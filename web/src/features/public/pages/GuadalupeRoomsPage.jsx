@@ -1,4 +1,5 @@
 import "../styles/guadalupe-rooms.css";
+// TODO: Replace with guadalupe-specific images when available
 import locationMapImage from "../../../assets/images/gpuyat/location-map.jpg";
 import quadrupleSharingImage from "../../../assets/images/gpuyat/premium-room.jpg";
 import Footer from "../components/Footer";

@@ -1,5 +1,6 @@
 import "../styles/guadalupe.css";
-import gilPuyatBranchImage from "../../../assets/images/gpuyat/gil-puyat-branch.jpg";
+// TODO: Replace with guadalupe-specific images when available
+import guadalupeBranchImage from "../../../assets/images/gpuyat/gil-puyat-branch.jpg";
 import locationViewImage from "../../../assets/images/gpuyat/location-view.jpg";
 import locationMapImage from "../../../assets/images/gpuyat/location-map.jpg";
 import quadrupleSharingImage from "../../../assets/images/gpuyat/premium-room.jpg";
@@ -37,7 +38,7 @@ function GuadalupePage() {
       {/* Hero Section */}
       <section
         className="guadalupe-hero"
-        style={{ backgroundImage: `url(${gilPuyatBranchImage})` }}
+        style={{ backgroundImage: `url(${guadalupeBranchImage})` }}
       >
         <div className="guadalupe-hero-overlay"></div>
         <div className="guadalupe-container">
