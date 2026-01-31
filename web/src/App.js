@@ -18,6 +18,10 @@ import InquiriesPage from './admin-pages/InquiriesPage';
 import ReservationsPage from './admin-pages/ReservationsPage';
 import RoomAvailabilityPage from './admin-pages/RoomAvailabilityPage';
 
+// Tenant Pages
+import SignIn from './tenant-pages/SignIn';
+import SignUp from './tenant-pages/SignUp';
+
 function App() {
   return (
     <Router>
@@ -39,6 +43,11 @@ function App() {
         <Route path="/admin/inquiries" element={<InquiriesPage />} />
         <Route path="/admin/reservations" element={<ReservationsPage />} />
         <Route path="/admin/room-availability" element={<RoomAvailabilityPage />} />
+
+        {/* Tenant Page */}
+        <Route path="/tenant/signin" element={<SignIn />} />
+        <Route path="/tenant/signup" element={<SignUp />} />
+
 
       </Routes>
     </Router>
