@@ -1,10 +1,10 @@
 import '../styles/landingpage.css';
-import gilPuyatImage from '../../../landingpage-images/gil-puyat-branch.png';
-import guadalupeImage from '../../../landingpage-images/guadalupe-branch.png';
-import logoImage from '../../../landingpage-images/logo.png';
+import gilPuyatImage from '../../../assets/images/landingpage/gil-puyat-branch.png';
+import guadalupeImage from '../../../assets/images/landingpage/guadalupe-branch.png';
+import logoImage from '../../../assets/images/landingpage/logo.png';
 import Footer from '../components/Footer';
 import Navbar from '../components/Navbar';
-import InquiryModal from '../../../shared/components/InquiryModal';
+import InquiryModal from '../modals/InquiryModal';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 

@@ -16,9 +16,9 @@ function QuadrupleSharingPage() {
         minStay: "3 months minimum",
         beds: "4 beds",
         images: [
-          require('../../../gpuyat-images/premium-room.jpg'),
-          require('../../../gpuyat-images/standard-room.jpg'),
-          require('../../../gpuyat-images/deluxe-room.jpg')
+          require('../../../assets/images/gpuyat/premium-room.jpg'),
+          require('../../../assets/images/gpuyat/standard-room.jpg'),
+          require('../../../assets/images/gpuyat/deluxe-room.jpg')
         ],
         descriptions: [
           "Welcome to our Guadalupe branch quadruple sharing rooms! Designed for students and young professionals seeking an affordable, community-focused living experience. Our rooms are thoughtfully furnished to comfortably accommodate four occupants while maintaining excellent standards of comfort and convenience.",
@@ -37,9 +37,9 @@ function QuadrupleSharingPage() {
         minStay: "3 months minimum",
         beds: "4 beds",
         images: [
-          require('../../../gpuyat-images/premium-room.jpg'),
-          require('../../../gpuyat-images/standard-room.jpg'),
-          require('../../../gpuyat-images/deluxe-room.jpg')
+          require('../../../assets/images/gpuyat/premium-room.jpg'),
+          require('../../../assets/images/gpuyat/standard-room.jpg'),
+          require('../../../assets/images/gpuyat/deluxe-room.jpg')
         ],
         descriptions: [
           "Experience budget-friendly and social living in our quadruple sharing rooms designed for students and young professionals. Each room is thoughtfully furnished to accommodate four occupants, providing a comfortable and vibrant environment perfect for those seeking affordability and community.",
@@ -104,7 +104,7 @@ function QuadrupleSharingPage() {
         price: 8000,
         minStay: "6 months minimum",
         beds: "1 bed",
-        image: require('../../../gpuyat-images/standard-room.jpg'),
+        image: require('../../../assets/images/gpuyat/standard-room.jpg'),
         badge: "Popular",
         onViewDetails: () => navigate('/gil-puyat/rooms/private')
       },
@@ -113,7 +113,7 @@ function QuadrupleSharingPage() {
         price: 6500,
         minStay: "6 months minimum",
         beds: "2 beds",
-        image: require('../../../gpuyat-images/deluxe-room.jpg'),
+        image: require('../../../assets/images/gpuyat/deluxe-room.jpg'),
         onViewDetails: () => navigate('/gil-puyat/rooms/double')
       }
     ]

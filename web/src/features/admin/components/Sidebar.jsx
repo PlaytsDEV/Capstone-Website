@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import '../styles/admin-sidebar.css';
-import logoImage from '../../../landingpage-images/logo.png';
+import logoImage from '../../../assets/images/landingpage/logo.png';
 
 function Sidebar() {
   return (

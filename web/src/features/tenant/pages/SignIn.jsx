@@ -1,6 +1,6 @@
 import '../styles/tenant-signin.css';
-import logoImage from '../../../landingpage-images/logo.png';
-import backgroundImage from '../../../landingpage-images/gil-puyat-branch.png';
+import logoImage from '../../../assets/images/landingpage/logo.png';
+import backgroundImage from '../../../assets/images/landingpage/gil-puyat-branch.png';
 
 function SignIn() {
   return (
