@@ -8,7 +8,10 @@ import {
   sendEmailVerification,
 } from "firebase/auth";
 import { auth } from "../../../firebase/config";
-import { showNotification, showConfirmation } from "../../../shared/utils/notification";
+import {
+  showNotification,
+  showConfirmation,
+} from "../../../shared/utils/notification";
 import { authApi } from "../../../shared/api/apiClient";
 import "../../public/styles/tenant-signin.css";
 import "../../../shared/styles/notification.css";
@@ -74,12 +77,12 @@ function SignIn() {
         );
 
         // STEP 3: Provide option to resend verification email (delayed to let notification show first)
-        await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
-        
+        await new Promise((resolve) => setTimeout(resolve, 500)); // 500ms delay
+
         const shouldResend = await showConfirmation(
           "Haven't received the verification email? Click OK to resend the verification link.",
           "OK",
-          "Cancel"
+          "Cancel",
         );
 
         if (shouldResend) {
