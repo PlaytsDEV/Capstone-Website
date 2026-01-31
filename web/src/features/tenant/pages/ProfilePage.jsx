@@ -1,10 +1,8 @@
-import "../styles/tenant-profile.css";
-
 function ProfilePage() {
   return (
-    <div className="tenant-profile">
-      <h1>My Profile</h1>
-      <p>Manage your profile information</p>
+    <div style={{ padding: "24px" }}>
+      <h1>Profile</h1>
+      <p>Placeholder page.</p>
     </div>
   );
 }

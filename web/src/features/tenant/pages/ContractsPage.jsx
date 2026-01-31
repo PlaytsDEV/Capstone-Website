@@ -1,10 +1,8 @@
-import "../styles/tenant-contracts.css";
-
 function ContractsPage() {
   return (
-    <div className="tenant-contracts">
-      <h1>My Contracts</h1>
-      <p>View and manage your rental contracts</p>
+    <div style={{ padding: "24px" }}>
+      <h1>Contracts</h1>
+      <p>Placeholder page.</p>
     </div>
   );
 }

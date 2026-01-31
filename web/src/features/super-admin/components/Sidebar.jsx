@@ -1,4 +1,3 @@
-import { NavLink } from "react-router-dom";
 import "../styles/superadmin-sidebar.css";
 
 function Sidebar() {
@@ -8,13 +7,14 @@ function Sidebar() {
         <h2>Super Admin</h2>
       </div>
       <nav className="superadmin-sidebar-nav">
-        <NavLink to="/super-admin/dashboard">Dashboard</NavLink>
-        <NavLink to="/super-admin/users">User Management</NavLink>
-        <NavLink to="/super-admin/roles">Roles & Permissions</NavLink>
-        <NavLink to="/super-admin/branches">Branch Management</NavLink>
-        <NavLink to="/super-admin/tenants">All Tenants</NavLink>
-        <NavLink to="/super-admin/logs">Activity Logs</NavLink>
-        <NavLink to="/super-admin/settings">System Settings</NavLink>
+        <ul>
+          <li>Dashboard</li>
+          <li>Users</li>
+          <li>Branches</li>
+          <li>Roles</li>
+          <li>Settings</li>
+          <li>Logs</li>
+        </ul>
       </nav>
     </aside>
   );

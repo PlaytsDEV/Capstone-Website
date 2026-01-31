@@ -1,10 +1,8 @@
-import "../styles/tenant-dashboard.css";
-
 function TenantDashboard() {
   return (
-    <div className="tenant-dashboard">
+    <div style={{ padding: "24px" }}>
       <h1>Tenant Dashboard</h1>
-      <p>Welcome to your dashboard</p>
+      <p>Placeholder page.</p>
     </div>
   );
 }

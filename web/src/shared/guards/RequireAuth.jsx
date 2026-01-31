@@ -1,14 +1,7 @@
-import { Navigate } from "react-router-dom";
-import { useAuth } from "../hooks/useAuth";
+import { Outlet } from "react-router-dom";
 
-function RequireAuth({ children }) {
-  const { isAuthenticated } = useAuth();
-
-  if (!isAuthenticated) {
-    return <Navigate to="/admin/login" replace />;
-  }
-
-  return children;
+function RequireAuth() {
+  return <Outlet />;
 }
 
 export default RequireAuth;

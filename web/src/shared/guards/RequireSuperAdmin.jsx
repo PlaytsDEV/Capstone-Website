@@ -1,18 +1,7 @@
-import { Navigate } from "react-router-dom";
-import { useAuth } from "../hooks/useAuth";
+import { Outlet } from "react-router-dom";
 
-function RequireSuperAdmin({ children }) {
-  const { user, isAuthenticated } = useAuth();
-
-  if (!isAuthenticated) {
-    return <Navigate to="/admin/login" replace />;
-  }
-
-  if (user?.role !== "super-admin") {
-    return <Navigate to="/admin/dashboard" replace />;
-  }
-
-  return children;
+function RequireSuperAdmin() {
+  return <Outlet />;
 }
 
 export default RequireSuperAdmin;
