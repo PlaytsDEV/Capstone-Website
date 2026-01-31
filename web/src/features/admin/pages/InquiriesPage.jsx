@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import Sidebar from '../admin-components/Sidebar';
-import '../admin-styles/admin-inquiries.css';
+import Sidebar from '../components/Sidebar';
+import '../styles/admin-inquiries.css';
 
 export default function InquiriesPage() {
   const [stats] = useState({

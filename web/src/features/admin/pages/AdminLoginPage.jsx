@@ -1,5 +1,5 @@
-import '../admin-styles/admin-login.css';
-import logoImage from '../landingpage-images/logo.png';
+import '../styles/admin-login.css';
+import logoImage from '../../../landingpage-images/logo.png';
 import { useState } from 'react';
 
 function AdminLoginPage() {

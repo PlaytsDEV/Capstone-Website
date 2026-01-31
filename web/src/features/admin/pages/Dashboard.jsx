@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import Sidebar from '../admin-components/Sidebar';
-import ReservationItem from '../admin-components/ReservationItem';
-import InquiryItem from '../admin-components/InquiryItem';
-import '../admin-styles/admin-dashboard.css';
+import Sidebar from '../components/Sidebar';
+import ReservationItem from '../components/ReservationItem';
+import InquiryItem from '../components/InquiryItem';
+import '../styles/admin-dashboard.css';
 
 export default function Dashboard() {
   const [stats] = useState([

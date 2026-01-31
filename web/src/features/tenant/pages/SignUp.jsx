@@ -1,54 +1,59 @@
-import '../tenant-styles/tenant-signin.css';
-import logoImage from '../landingpage-images/logo.png';
-import backgroundImage from '../landingpage-images/gil-puyat-branch.png';
+import '../styles/tenant-signup.css';
+import logoImage from '../../../landingpage-images/logo.png';
+import backgroundImage from '../../../landingpage-images/gil-puyat-branch.png';
 
-function SignIn() {
+function SignUp() {
   return (
-    <div className="tenant-signin-page">
-      <div className="tenant-signin-card">
-        <div className="tenant-signin-left" style={{ backgroundImage: `url(${backgroundImage})` }}>
-          <div className="tenant-signin-overlay">
-            <div className="tenant-signin-brand">
-              <img src={logoImage} alt="Lilycrest" className="tenant-signin-logo" />
-              <div className="tenant-signin-brand-text">
+    <div className="tenant-signup-page">
+      <div className="tenant-signup-card">
+        <div className="tenant-signup-left" style={{ backgroundImage: `url(${backgroundImage})` }}>
+          <div className="tenant-signup-overlay">
+            <div className="tenant-signup-brand">
+              <img src={logoImage} alt="Lilycrest" className="tenant-signup-logo" />
+              <div className="tenant-signup-brand-text">
                 <h2>Lilycrest</h2>
                 <span>URBAN CO-LIVING</span>
                 <span>GIL PUYAT • MAKATI</span>
               </div>
             </div>
-            <div className="tenant-signin-welcome">
-              <h3>Welcome to Lilycrest</h3>
-              <p>Your Urban Co-Living Space</p>
+            <div className="tenant-signup-welcome">
+              <h3>Join Lilycrest</h3>
+              <p>Find Your Perfect Space</p>
             </div>
           </div>
         </div>
 
-        <div className="tenant-signin-right">
-          <h1 className="tenant-signin-title">Sign In</h1>
-          <form className="tenant-signin-form">
-            <input
-              type="text"
-              placeholder="Email/Phone"
-              className="tenant-signin-input"
-            />
-            <input
-              type="password"
-              placeholder="Password"
-              className="tenant-signin-input"
-            />
-            <button type="button" className="tenant-signin-submit">
-              Login
+        <div className="tenant-signup-right">
+          <h1 className="tenant-signup-title">Sign Up</h1>
+          <form className="tenant-signup-form">
+            <input type="text" placeholder="First name" className="tenant-signup-input" />
+            <input type="text" placeholder="Last name" className="tenant-signup-input" />
+            <input type="email" placeholder="Email" className="tenant-signup-input" />
+            <input type="text" placeholder="Phone/No" className="tenant-signup-input" />
+            <input type="password" placeholder="Password" className="tenant-signup-input" />
+
+            <label className="tenant-signup-checkbox">
+              <input type="checkbox" />
+              <span>Keep me updated</span>
+            </label>
+
+            <p className="tenant-signup-terms">
+              By signing up, you agree to our <span className="tenant-signup-link">Terms and Conditions</span>
+            </p>
+
+            <button type="button" className="tenant-signup-submit">
+              Sign Up
             </button>
           </form>
 
-          <div className="tenant-signin-divider">
+          <div className="tenant-signup-divider">
             <span></span>
-            <span className="tenant-signin-divider-text">Or</span>
+            <span className="tenant-signup-divider-text">Or</span>
             <span></span>
           </div>
 
-          <div className="tenant-signin-social">
-            <button type="button" className="tenant-signin-social-btn">
+          <div className="tenant-signup-social">
+            <button type="button" className="tenant-signup-social-btn">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="none">
                 <g clipPath="url(#clip0_5_656)">
                   <path d="M20 10.0608C20 4.53832 15.5225 0.0608215 10 0.0608215C4.4775 0.0608215 0 4.53832 0 10.0608C0 15.0525 3.65667 19.1892 8.4375 19.9392V12.9517H5.89833V10.06H8.4375V7.85832C8.4375 5.35249 9.93083 3.96749 12.215 3.96749C13.3083 3.96749 14.4533 4.16332 14.4533 4.16332V6.62415H13.1917C11.9492 6.62415 11.5617 7.39499 11.5617 8.18582V10.0608H14.335L13.8917 12.9525H11.5617V19.94C16.3433 19.1892 20 15.0517 20 10.0608Z" fill="#1877F2"/>
@@ -62,7 +67,7 @@ function SignIn() {
               <span>Continue with Facebook</span>
             </button>
 
-            <button type="button" className="tenant-signin-social-btn">
+            <button type="button" className="tenant-signup-social-btn">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="none">
                 <path d="M18.8 10.2083C18.8 9.55831 18.7417 8.93331 18.6333 8.33331H10V11.8833H14.9333C14.7167 13.025 14.0667 13.9916 13.0917 14.6416V16.95H16.0667C17.8 15.35 18.8 13 18.8 10.2083Z" fill="#4285F4"/>
                 <path d="M9.99998 19.1667C12.475 19.1667 14.55 18.35 16.0667 16.95L13.0917 14.6417C12.275 15.1917 11.2333 15.525 9.99998 15.525C7.61665 15.525 5.59165 13.9167 4.86665 11.75H1.81665V14.1167C3.32498 17.1083 6.41665 19.1667 9.99998 19.1667Z" fill="#34A853"/>
@@ -73,8 +78,8 @@ function SignIn() {
             </button>
           </div>
 
-          <p className="tenant-signin-footer">
-            Don&apos;t have an account? <span className="tenant-signin-link">Sign Up Here</span>
+          <p className="tenant-signup-footer">
+            Have an account? <span className="tenant-signup-link">Sign Here</span>
           </p>
         </div>
       </div>
@@ -82,4 +87,4 @@ function SignIn() {
   );
 }
 
-export default SignIn;
+export default SignUp;

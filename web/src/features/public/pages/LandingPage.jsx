@@ -1,12 +1,12 @@
 import '../styles/landingpage.css';
-import gilPuyatImage from '../landingpage-images/gil-puyat-branch.png';
-import guadalupeImage from '../landingpage-images/guadalupe-branch.png';
-import logoImage from '../landingpage-images/logo.png';
+import gilPuyatImage from '../../../landingpage-images/gil-puyat-branch.png';
+import guadalupeImage from '../../../landingpage-images/guadalupe-branch.png';
+import logoImage from '../../../landingpage-images/logo.png';
 import Footer from '../components/Footer';
 import Navbar from '../components/Navbar';
-import InquiryModal from '../modals/InquiryModal';
-import { useState } from 'react';
+import InquiryModal from '../../../shared/components/InquiryModal';
 import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
 
 function LandingPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -231,12 +231,13 @@ function LandingPage() {
             </div>
           </div>
 
-          <button onClick={() => setIsModalOpen(true)} className="landing-btn-inquiry">Inquiry / Learn More</button>
+          <button className="landing-btn-inquiry" onClick={() => setIsModalOpen(true)}>Inquiry / Learn More</button>
           <p className="landing-contact-note">Visit us at our Gil Puyat or Guadalupe branches for a tour</p>
         </div>
       </section>
 
       <InquiryModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+
       <Footer />
     </div>
   );

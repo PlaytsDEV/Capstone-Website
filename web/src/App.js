@@ -2,25 +2,25 @@ import './App.css';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 
 // Public Pages
-import LandingPage from './public-pages/LandingPage';
-import GPuyatPage from './public-pages/GPuyatPage';
-import GPuyatRoomsPage from './public-pages/GPuyatRoomsPage';
-import PrivateRoomPage from './public-pages/PrivateRoomPage';
-import DoubleSharingPage from './public-pages/DoubleSharingPage';
-import QuadrupleSharingPage from './public-pages/QuadrupleSharingPage';
-import GuadalupePage from './public-pages/GuadalupePage';
-import GuadalupeRoomsPage from './public-pages/GuadalupeRoomsPage';
+import LandingPage from './features/public/pages/LandingPage';
+import GPuyatPage from './features/public/pages/GPuyatPage';
+import GPuyatRoomsPage from './features/public/pages/GPuyatRoomsPage';
+import PrivateRoomPage from './features/public/pages/PrivateRoomPage';
+import DoubleSharingPage from './features/public/pages/DoubleSharingPage';
+import QuadrupleSharingPage from './features/public/pages/QuadrupleSharingPage';
+import GuadalupePage from './features/public/pages/GuadalupePage';
+import GuadalupeRoomsPage from './features/public/pages/GuadalupeRoomsPage';
 
 // Admin Pages
-import AdminLoginPage from './admin-pages/AdminLoginPage';
-import AdminDashboardPage from './admin-pages/Dashboard';
-import InquiriesPage from './admin-pages/InquiriesPage';
-import ReservationsPage from './admin-pages/ReservationsPage';
-import RoomAvailabilityPage from './admin-pages/RoomAvailabilityPage';
+import AdminLoginPage from './features/admin/pages/AdminLoginPage';
+import AdminDashboardPage from './features/admin/pages/Dashboard';
+import InquiriesPage from './features/admin/pages/InquiriesPage';
+import ReservationsPage from './features/admin/pages/ReservationsPage';
+import RoomAvailabilityPage from './features/admin/pages/RoomAvailabilityPage';
 
 // Tenant Pages
-import SignIn from './tenant-pages/SignIn';
-import SignUp from './tenant-pages/SignUp';
+import SignIn from './features/tenant/pages/SignIn';
+import SignUp from './features/tenant/pages/SignUp';
 
 function App() {
   return (

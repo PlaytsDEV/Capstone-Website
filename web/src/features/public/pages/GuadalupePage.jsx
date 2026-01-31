@@ -1,9 +1,9 @@
 import '../styles/guadalupe.css';
-import gilPuyatBranchImage from '../gpuyat-images/gil-puyat-branch.jpg';
-import locationViewImage from '../gpuyat-images/location-view.jpg';
-import locationMapImage from '../gpuyat-images/location-map.jpg';
-import quadrupleSharingImage from '../gpuyat-images/premium-room.jpg';
-import gallery1Image from '../gpuyat-images/gallery1.jpg';
+import gilPuyatBranchImage from '../../../gpuyat-images/gil-puyat-branch.jpg';
+import locationViewImage from '../../../gpuyat-images/location-view.jpg';
+import locationMapImage from '../../../gpuyat-images/location-map.jpg';
+import quadrupleSharingImage from '../../../gpuyat-images/premium-room.jpg';
+import gallery1Image from '../../../gpuyat-images/gallery1.jpg';
 import Footer from '../components/Footer';
 import Navbar from '../components/Navbar';
 import { useState } from 'react';

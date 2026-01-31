@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import Sidebar from '../admin-components/Sidebar';
-import '../admin-styles/admin-reservations.css';
+import Sidebar from '../components/Sidebar';
+import '../styles/admin-reservations.css';
 
 function ReservationsPage() {
   const [searchTerm, setSearchTerm] = useState('');

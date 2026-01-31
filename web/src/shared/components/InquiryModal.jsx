@@ -1,4 +1,4 @@
-import '../styles/inquirymodal.css';
+import '../../features/public/styles/inquirymodal.css';
 import { useState } from 'react';
 
 function InquiryModal({ isOpen, onClose }) {

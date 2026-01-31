@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import Sidebar from '../admin-components/Sidebar';
-import RoomCard from '../admin-components/RoomCard';
-import '../admin-styles/admin-room-availability.css';
+import Sidebar from '../components/Sidebar';
+import RoomCard from '../components/RoomCard';
+import '../styles/admin-room-availability.css';
 
 function RoomAvailabilityPage() {
   const [searchTerm, setSearchTerm] = useState('');
