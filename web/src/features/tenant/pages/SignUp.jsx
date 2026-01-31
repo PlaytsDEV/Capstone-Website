@@ -1,8 +1,233 @@
-import "../styles/tenant-signup.css";
+import { useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import {
+  createUserWithEmailAndPassword,
+  signInWithPopup,
+  GoogleAuthProvider,
+  FacebookAuthProvider,
+} from "firebase/auth";
+import { auth } from "../../../firebase/config";
+import { showNotification } from "../../../shared/utils/notification";
+import { authApi } from "../../../shared/api/apiClient";
+import "../../public/styles/tenant-signup.css";
+import "../../../shared/styles/notification.css";
 import logoImage from "../../../assets/images/landingpage/logo.png";
 import backgroundImage from "../../../assets/images/landingpage/gil-puyat-branch.png";
 
 function SignUp() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Get branch from URL query parameter
+  const queryParams = new URLSearchParams(location.search);
+  const branch = queryParams.get("branch") || "gil-puyat";
+
+  const [formData, setFormData] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    password: "",
+    confirmPassword: "",
+  });
+
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleChange = (e) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value,
+    });
+  };
+
+  const validateForm = () => {
+    if (!formData.firstName.trim()) {
+      showNotification("First name is required", "error");
+      return false;
+    }
+    if (!formData.lastName.trim()) {
+      showNotification("Last name is required", "error");
+      return false;
+    }
+    if (!formData.email.trim()) {
+      showNotification("Email is required", "error");
+      return false;
+    }
+    if (!formData.password) {
+      showNotification("Password is required", "error");
+      return false;
+    }
+    if (formData.password.length < 6) {
+      showNotification("Password must be at least 6 characters", "error");
+      return false;
+    }
+    if (formData.password !== formData.confirmPassword) {
+      showNotification("Passwords do not match", "error");
+      return false;
+    }
+    if (!agreedToTerms) {
+      showNotification("Please agree to Terms and Conditions", "error");
+      return false;
+    }
+    return true;
+  };
+
+  const registerUserInBackend = async (firebaseUser) => {
+    try {
+      const token = await firebaseUser.getIdToken();
+      const response = await authApi.register(
+        {
+          email: firebaseUser.email,
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          phone: formData.phone,
+          branch: branch,
+        },
+        token,
+      );
+
+      // Store user data
+      localStorage.setItem("authToken", token);
+      localStorage.setItem("user", JSON.stringify(response.user));
+
+      return response.user;
+    } catch (error) {
+      console.error("Backend registration error:", error);
+      throw error;
+    }
+  };
+
+  const handleSignUp = async (e) => {
+    e.preventDefault();
+
+    if (!validateForm()) return;
+
+    setLoading(true);
+
+    try {
+      // Create Firebase user
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        formData.email,
+        formData.password,
+      );
+
+      // Register in backend
+      await registerUserInBackend(userCredential.user);
+
+      showNotification("Account created successfully!", "success");
+
+      setTimeout(() => {
+        navigate(`/${branch}`);
+      }, 1000);
+    } catch (error) {
+      console.error("Signup error:", error);
+      let errorMessage = "Registration failed. Please try again.";
+
+      if (error.code === "auth/email-already-in-use") {
+        errorMessage =
+          "This email is already registered. Please login instead.";
+      } else if (error.code === "auth/invalid-email") {
+        errorMessage = "Invalid email address.";
+      } else if (error.code === "auth/weak-password") {
+        errorMessage = "Password is too weak. Please use a stronger password.";
+      }
+
+      showNotification(errorMessage, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSocialSignup = async (provider) => {
+    // Check terms agreement for social signup too
+    if (!agreedToTerms) {
+      showNotification("Please agree to Terms and Conditions first", "error");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const token = await result.user.getIdToken();
+
+      // Extract name from display name
+      const displayName = result.user.displayName || "";
+      const nameParts = displayName.split(" ");
+      const firstName = nameParts[0] || "";
+      const lastName = nameParts.slice(1).join(" ") || "";
+
+      try {
+        // Try to register
+        const response = await authApi.register(
+          {
+            email: result.user.email,
+            firstName: firstName,
+            lastName: lastName,
+            phone: result.user.phoneNumber || "",
+            branch: branch,
+          },
+          token,
+        );
+
+        localStorage.setItem("authToken", token);
+        localStorage.setItem("user", JSON.stringify(response.user));
+
+        showNotification("Account created successfully!", "success");
+
+        setTimeout(() => {
+          navigate(`/${branch}`);
+        }, 1000);
+      } catch (error) {
+        // If already registered, try login
+        if (error.response?.status === 400) {
+          try {
+            const loginResponse = await authApi.login(token);
+            localStorage.setItem("authToken", token);
+            localStorage.setItem("user", JSON.stringify(loginResponse.user));
+
+            showNotification("Logged in successfully!", "success");
+
+            setTimeout(() => {
+              navigate(`/${branch}`);
+            }, 1000);
+          } catch (loginError) {
+            console.error("Login error:", loginError);
+            showNotification(
+              "Authentication failed. Please try again.",
+              "error",
+            );
+          }
+        } else {
+          throw error;
+        }
+      }
+    } catch (error) {
+      console.error("Social signup error:", error);
+      showNotification(
+        "Social authentication failed. Please try again.",
+        "error",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignup = () => {
+    const provider = new GoogleAuthProvider();
+    handleSocialSignup(provider);
+  };
+
+  const handleFacebookSignup = () => {
+    const provider = new FacebookAuthProvider();
+    handleSocialSignup(provider);
+  };
+
+  const branchDisplay =
+    branch === "gil-puyat" ? "GIL PUYAT • MAKATI" : "GUADALUPE • MAKATI";
+
   return (
     <div className="tenant-signup-page">
       <div className="tenant-signup-card">
@@ -20,7 +245,7 @@ function SignUp() {
               <div className="tenant-signup-brand-text">
                 <h2>Lilycrest</h2>
                 <span>URBAN CO-LIVING</span>
-                <span>GIL PUYAT • MAKATI</span>
+                <span>{branchDisplay}</span>
               </div>
             </div>
             <div className="tenant-signup-welcome">
@@ -32,45 +257,89 @@ function SignUp() {
 
         <div className="tenant-signup-right">
           <h1 className="tenant-signup-title">Sign Up</h1>
-          <form className="tenant-signup-form">
+          <form className="tenant-signup-form" onSubmit={handleSignUp}>
             <input
               type="text"
+              name="firstName"
               placeholder="First name"
               className="tenant-signup-input"
+              value={formData.firstName}
+              onChange={handleChange}
+              disabled={loading}
             />
             <input
               type="text"
+              name="lastName"
               placeholder="Last name"
               className="tenant-signup-input"
+              value={formData.lastName}
+              onChange={handleChange}
+              disabled={loading}
             />
             <input
               type="email"
+              name="email"
               placeholder="Email"
               className="tenant-signup-input"
+              value={formData.email}
+              onChange={handleChange}
+              disabled={loading}
             />
             <input
               type="text"
+              name="phone"
               placeholder="Phone/No"
               className="tenant-signup-input"
+              value={formData.phone}
+              onChange={handleChange}
+              disabled={loading}
             />
             <input
               type="password"
+              name="password"
               placeholder="Password"
               className="tenant-signup-input"
+              value={formData.password}
+              onChange={handleChange}
+              disabled={loading}
+            />
+            <input
+              type="password"
+              name="confirmPassword"
+              placeholder="Confirm Password"
+              className="tenant-signup-input"
+              value={formData.confirmPassword}
+              onChange={handleChange}
+              disabled={loading}
             />
 
             <label className="tenant-signup-checkbox">
-              <input type="checkbox" />
-              <span>Keep me updated</span>
+              <input
+                type="checkbox"
+                checked={agreedToTerms}
+                onChange={(e) => setAgreedToTerms(e.target.checked)}
+                disabled={loading}
+              />
+              <span>
+                I agree to the{" "}
+                <span
+                  className="tenant-signup-link"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    window.open("/terms-and-conditions", "_blank");
+                  }}
+                >
+                  Terms and Conditions
+                </span>
+              </span>
             </label>
 
-            <p className="tenant-signup-terms">
-              By signing up, you agree to our{" "}
-              <span className="tenant-signup-link">Terms and Conditions</span>
-            </p>
-
-            <button type="button" className="tenant-signup-submit">
-              Sign Up
+            <button
+              type="submit"
+              className="tenant-signup-submit"
+              disabled={!agreedToTerms || loading}
+            >
+              {loading ? "Creating Account..." : "Sign Up"}
             </button>
           </form>
 
@@ -81,7 +350,12 @@ function SignUp() {
           </div>
 
           <div className="tenant-signup-social">
-            <button type="button" className="tenant-signup-social-btn">
+            <button
+              type="button"
+              className="tenant-signup-social-btn"
+              onClick={handleFacebookSignup}
+              disabled={loading}
+            >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="20"
@@ -104,7 +378,12 @@ function SignUp() {
               <span>Continue with Facebook</span>
             </button>
 
-            <button type="button" className="tenant-signup-social-btn">
+            <button
+              type="button"
+              className="tenant-signup-social-btn"
+              onClick={handleGoogleSignup}
+              disabled={loading}
+            >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="20"
@@ -135,7 +414,13 @@ function SignUp() {
 
           <p className="tenant-signup-footer">
             Have an account?{" "}
-            <span className="tenant-signup-link">Sign Here</span>
+            <span
+              className="tenant-signup-link"
+              onClick={() => navigate(`/signin?branch=${branch}`)}
+              style={{ cursor: "pointer" }}
+            >
+              Sign Here
+            </span>
           </p>
         </div>
       </div>

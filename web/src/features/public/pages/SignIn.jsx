@@ -1,31 +1,22 @@
 import { useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
 import {
   signInWithEmailAndPassword,
-  signInWithPopup,
   GoogleAuthProvider,
   FacebookAuthProvider,
+  signInWithPopup,
 } from "firebase/auth";
 import { auth } from "../../../firebase/config";
-import { showNotification } from "../../../shared/utils/notification";
 import { authApi } from "../../../shared/api/apiClient";
-import "../../public/styles/tenant-signin.css";
-import "../../../shared/styles/notification.css";
+import "../styles/tenant-signin.css";
 import logoImage from "../../../assets/images/landingpage/logo.png";
 import backgroundImage from "../../../assets/images/landingpage/gil-puyat-branch.png";
 
 function SignIn() {
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  // Get branch from URL query parameter
-  const queryParams = new URLSearchParams(location.search);
-  const branch = queryParams.get("branch") || "gil-puyat";
-
   const [formData, setFormData] = useState({
     email: "",
     password: "",
   });
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleChange = (e) => {
@@ -35,172 +26,101 @@ function SignIn() {
     });
   };
 
-  const validateForm = () => {
-    if (!formData.email.trim()) {
-      showNotification("Email is required", "error");
-      return false;
-    }
-    if (!formData.password) {
-      showNotification("Password is required", "error");
-      return false;
-    }
-    return true;
-  };
-
-  const handleLogin = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-
-    if (!validateForm()) return;
-
+    setError("");
     setLoading(true);
 
     try {
-      // Sign in with Firebase
+      // Step 1: Sign in with Firebase Auth
       const userCredential = await signInWithEmailAndPassword(
         auth,
         formData.email,
         formData.password,
       );
 
-      const token = await userCredential.user.getIdToken();
+      // Step 2: Get Firebase ID token
+      const idToken = await userCredential.user.getIdToken();
+      localStorage.setItem("authToken", idToken);
 
-      // Verify with backend and get user data
-      const response = await authApi.login(token);
+      // Step 3: Verify user with backend and get user data
+      const response = await authApi.login();
 
-      // Check if user's branch matches the current branch
-      if (response.user.branch !== branch) {
-        showNotification(
-          `This account is registered for ${response.user.branch === "gil-puyat" ? "Gil Puyat" : "Guadalupe"} branch. Redirecting...`,
-          "warning",
-        );
-
-        setTimeout(() => {
-          localStorage.setItem("authToken", token);
-          localStorage.setItem("user", JSON.stringify(response.user));
-          navigate(`/${response.user.branch}`);
-        }, 1500);
-        return;
-      }
-
-      // Store user data
-      localStorage.setItem("authToken", token);
+      // Store user data in localStorage
       localStorage.setItem("user", JSON.stringify(response.user));
 
-      showNotification("Logged in successfully!", "success");
+      console.log("User signed in successfully:", response.user);
 
-      // Redirect based on role
-      setTimeout(() => {
+      // Redirect based on user role
+      if (
+        response.user.role === "admin" ||
+        response.user.role === "superAdmin"
+      ) {
+        window.location.href = "/admin/dashboard";
+      } else {
+        window.location.href = "/";
+      }
+    } catch (error) {
+      setError(error.message || "Sign-in failed. Please try again.");
+      console.error("Sign-in error:", error);
+      // Clear auth token on error
+      localStorage.removeItem("authToken");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSocialSignIn = async (provider, providerName) => {
+    setError("");
+    setLoading(true);
+
+    try {
+      // Step 1: Sign in with social provider
+      const result = await signInWithPopup(auth, provider);
+
+      // Step 2: Get Firebase ID token
+      const idToken = await result.user.getIdToken();
+      localStorage.setItem("authToken", idToken);
+
+      // Step 3: Try to login (verify user exists in database)
+      try {
+        const response = await authApi.login();
+        localStorage.setItem("user", JSON.stringify(response.user));
+
+        console.log(`${providerName} sign-in successful:`, response.user);
+
+        // Redirect based on role
         if (
           response.user.role === "admin" ||
           response.user.role === "superAdmin"
         ) {
-          navigate("/admin/dashboard");
+          window.location.href = "/admin/dashboard";
         } else {
-          navigate(`/${branch}`);
+          window.location.href = "/";
         }
-      }, 1000);
-    } catch (error) {
-      console.error("Login error:", error);
-      let errorMessage = "Login failed. Please try again.";
-
-      if (error.code === "auth/user-not-found") {
-        errorMessage = "No account found with this email.";
-      } else if (error.code === "auth/wrong-password") {
-        errorMessage = "Incorrect password.";
-      } else if (error.code === "auth/invalid-email") {
-        errorMessage = "Invalid email address.";
-      } else if (error.code === "auth/too-many-requests") {
-        errorMessage = "Too many failed attempts. Please try again later.";
-      } else if (error.response?.status === 404) {
-        errorMessage = "User not found in database. Please register first.";
-      } else if (error.response?.status === 403) {
-        errorMessage = "Your account is inactive. Please contact support.";
+      } catch (loginError) {
+        // User not in database, need to register first
+        setError(`Please sign up first before signing in with ${providerName}`);
+        localStorage.removeItem("authToken");
+        await auth.signOut();
       }
-
-      showNotification(errorMessage, "error");
+    } catch (error) {
+      setError(error.message || `${providerName} sign-in failed`);
+      console.error(`${providerName} sign-in error:`, error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSocialLogin = async (provider) => {
-    setLoading(true);
-
-    try {
-      const result = await signInWithPopup(auth, provider);
-      const token = await result.user.getIdToken();
-
-      try {
-        // Try to login
-        const response = await authApi.login(token);
-
-        // Check if user's branch matches
-        if (response.user.branch !== branch) {
-          showNotification(
-            `This account is registered for ${response.user.branch === "gil-puyat" ? "Gil Puyat" : "Guadalupe"} branch. Redirecting...`,
-            "warning",
-          );
-
-          setTimeout(() => {
-            localStorage.setItem("authToken", token);
-            localStorage.setItem("user", JSON.stringify(response.user));
-            navigate(`/${response.user.branch}`);
-          }, 1500);
-          return;
-        }
-
-        localStorage.setItem("authToken", token);
-        localStorage.setItem("user", JSON.stringify(response.user));
-
-        showNotification("Logged in successfully!", "success");
-
-        setTimeout(() => {
-          if (
-            response.user.role === "admin" ||
-            response.user.role === "superAdmin"
-          ) {
-            navigate("/admin/dashboard");
-          } else {
-            navigate(`/${branch}`);
-          }
-        }, 1000);
-      } catch (error) {
-        // If user not found, suggest registration
-        if (error.response?.status === 404) {
-          showNotification(
-            "Account not found. Redirecting to sign up...",
-            "info",
-          );
-          setTimeout(() => {
-            navigate(`/signup?branch=${branch}`);
-          }, 1500);
-        } else {
-          throw error;
-        }
-      }
-    } catch (error) {
-      console.error("Social login error:", error);
-      showNotification(
-        "Social authentication failed. Please try again.",
-        "error",
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGoogleLogin = () => {
+  const handleGoogleSignIn = async () => {
     const provider = new GoogleAuthProvider();
-    handleSocialLogin(provider);
+    await handleSocialSignIn(provider, "Google");
   };
 
-  const handleFacebookLogin = () => {
+  const handleFacebookSignIn = async () => {
     const provider = new FacebookAuthProvider();
-    handleSocialLogin(provider);
+    await handleSocialSignIn(provider, "Facebook");
   };
-
-  const branchDisplay =
-    branch === "gil-puyat" ? "GIL PUYAT • MAKATI" : "GUADALUPE • MAKATI";
 
   return (
     <div className="tenant-signin-page">
@@ -219,7 +139,7 @@ function SignIn() {
               <div className="tenant-signin-brand-text">
                 <h2>Lilycrest</h2>
                 <span>URBAN CO-LIVING</span>
-                <span>{branchDisplay}</span>
+                <span>GIL PUYAT • MAKATI</span>
               </div>
             </div>
             <div className="tenant-signin-welcome">
@@ -231,7 +151,10 @@ function SignIn() {
 
         <div className="tenant-signin-right">
           <h1 className="tenant-signin-title">Sign In</h1>
-          <form className="tenant-signin-form" onSubmit={handleLogin}>
+          {error && (
+            <div style={{ color: "red", marginBottom: "10px" }}>{error}</div>
+          )}
+          <form className="tenant-signin-form" onSubmit={handleSubmit}>
             <input
               type="email"
               name="email"
@@ -239,7 +162,7 @@ function SignIn() {
               className="tenant-signin-input"
               value={formData.email}
               onChange={handleChange}
-              disabled={loading}
+              required
             />
             <input
               type="password"
@@ -248,7 +171,7 @@ function SignIn() {
               className="tenant-signin-input"
               value={formData.password}
               onChange={handleChange}
-              disabled={loading}
+              required
             />
             <button
               type="submit"
@@ -269,8 +192,7 @@ function SignIn() {
             <button
               type="button"
               className="tenant-signin-social-btn"
-              onClick={handleFacebookLogin}
-              disabled={loading}
+              onClick={handleFacebookSignIn}
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -297,8 +219,7 @@ function SignIn() {
             <button
               type="button"
               className="tenant-signin-social-btn"
-              onClick={handleGoogleLogin}
-              disabled={loading}
+              onClick={handleGoogleSignIn}
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -330,13 +251,7 @@ function SignIn() {
 
           <p className="tenant-signin-footer">
             Don&apos;t have an account?{" "}
-            <span
-              className="tenant-signin-link"
-              onClick={() => navigate(`/signup?branch=${branch}`)}
-              style={{ cursor: "pointer" }}
-            >
-              Sign Up Here
-            </span>
+            <span className="tenant-signin-link">Sign Up Here</span>
           </p>
         </div>
       </div>

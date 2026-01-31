@@ -34,7 +34,11 @@ function GPuyatPage() {
   return (
     <div className="gpuyat-page">
       {/* Navigation */}
-      <Navbar type="branch" currentPage="gil-puyat" />
+      <Navbar
+        type="branch"
+        currentPage="gil-puyat"
+        onLoginClick={() => navigate("/signin?branch=gil-puyat")}
+      />
 
       {/* Hero Section */}
       <section

@@ -28,7 +28,11 @@ function GuadalupePage() {
   return (
     <div className="guadalupe-page">
       {/* Navigation */}
-      <Navbar type="branch" currentPage="guadalupe" />
+      <Navbar
+        type="branch"
+        currentPage="guadalupe"
+        onLoginClick={() => navigate("/signin?branch=guadalupe")}
+      />
 
       {/* Hero Section */}
       <section

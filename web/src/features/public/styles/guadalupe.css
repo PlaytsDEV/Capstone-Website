@@ -22,8 +22,21 @@
 
 .guadalupe-nav-content {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.guadalupe-nav-links {
+  display: flex;
   gap: 40px;
+  align-items: center;
+  flex: 1;
   justify-content: center;
+}
+
+.guadalupe-nav-auth {
+  margin-left: auto;
 }
 
 .guadalupe-nav-link {
@@ -40,7 +53,182 @@
 }
 
 .guadalupe-nav-link:hover {
-  color: #FF6B35;
+  color: #ff6b35;
+}
+
+/* Login Button */
+.guadalupe-nav-login {
+  background: #ff6900;
+  color: white;
+  border: none;
+  padding: 10px 24px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s;
+  white-space: nowrap;
+}
+
+.guadalupe-nav-login:hover {
+  background: #e55d00;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 105, 0, 0.3);
+}
+
+/* Profile Section */
+.guadalupe-nav-profile {
+  position: relative;
+}
+
+.guadalupe-profile-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font: inherit;
+}
+
+.guadalupe-profile-button:hover {
+  background: #f8f8f8;
+  border-color: #ff6900;
+}
+
+.guadalupe-profile-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ff6900, #ff8534);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.guadalupe-profile-name {
+  font-weight: 600;
+  color: #333;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.guadalupe-profile-arrow {
+  transition: transform 0.2s;
+  color: #666;
+}
+
+.guadalupe-profile-arrow.open {
+  transform: rotate(180deg);
+}
+
+/* Profile Dropdown */
+.guadalupe-profile-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  min-width: 260px;
+  z-index: 1000;
+  animation: slideDown 0.2s ease;
+}
+
+.guadalupe-profile-dropdown-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+}
+
+.guadalupe-profile-dropdown-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ff6900, #ff8534);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.guadalupe-profile-dropdown-info {
+  flex: 1;
+}
+
+.guadalupe-profile-dropdown-name {
+  font-weight: 600;
+  font-size: 15px;
+  color: #333;
+  margin-bottom: 2px;
+}
+
+.guadalupe-profile-dropdown-email {
+  font-size: 13px;
+  color: #666;
+}
+
+.guadalupe-profile-dropdown-divider {
+  height: 1px;
+  background: #e0e0e0;
+  margin: 0 8px;
+}
+
+.guadalupe-profile-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 16px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.2s;
+  font: inherit;
+  color: #333;
+  font-size: 14px;
+}
+
+.guadalupe-profile-dropdown-item:first-of-type {
+  border-radius: 0;
+}
+
+.guadalupe-profile-dropdown-item:last-of-type {
+  border-radius: 0 0 12px 12px;
+  color: #dc2626;
+}
+
+.guadalupe-profile-dropdown-item:hover {
+  background: #f8f8f8;
+}
+
+.guadalupe-profile-dropdown-item svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* Old styles - can be removed */
+.guadalupe-nav-user {
+  display: none;
+}
+
+.guadalupe-nav-username {
+  display: none;
+}
+
+.guadalupe-nav-logout {
+  display: none;
 }
 
 /* Hero Section */
@@ -85,7 +273,7 @@
 
 .guadalupe-logo-text {
   font-size: 24px;
-  color: #FFB366;
+  color: #ffb366;
   margin-bottom: 5px;
   font-weight: 600;
 }
@@ -132,7 +320,7 @@
 
 .guadalupe-btn-search {
   padding: 12px 30px;
-  background-color: #FF6900;
+  background-color: #ff6900;
   color: white;
   border: none;
   border-radius: 4px;
@@ -236,7 +424,7 @@
   display: block;
   margin: 0 auto 40px;
   padding: 12px 30px;
-  background-color: #FF6900;
+  background-color: #ff6900;
   color: white;
   border: none;
   border-radius: 4px;
@@ -284,7 +472,7 @@
 .guadalupe-room-price {
   padding: 0 15px 15px;
   font-size: 16px;
-  color: #FF6900;
+  color: #ff6900;
   font-weight: 600;
 }
 
@@ -339,7 +527,7 @@
   width: 48px;
   height: 48px;
   border-radius: 26843500px;
-  background: rgba(255, 255, 255, 0.90);
+  background: rgba(255, 255, 255, 0.9);
   border: none;
   color: #333;
   cursor: pointer;
@@ -385,7 +573,7 @@
 }
 
 .guadalupe-indicator.active {
-  background-color: #FF6900;
+  background-color: #ff6900;
 }
 
 /* Ratings Section */
@@ -413,7 +601,9 @@
   text-align: center;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
   border: 1px solid #f0f0f0;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
 }
 
 .guadalupe-rating-card:hover {
