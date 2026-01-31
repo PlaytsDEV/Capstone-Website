@@ -1,0 +1,471 @@
+/* Tenant Detail Modal Styles */
+
+.tenant-detail-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 24px;
+}
+
+.tenant-detail-modal {
+  background: white;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 900px;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  position: relative;
+}
+
+.tenant-detail-modal-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: transparent;
+  border: none;
+  color: #6b7280;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+
+.tenant-detail-modal-close:hover {
+  background: #f3f4f6;
+  color: #1f2937;
+}
+
+/* Modal Header */
+.tenant-detail-modal-header {
+  padding: 32px 32px 24px 32px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.tenant-detail-modal-profile {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.tenant-detail-modal-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 700;
+  color: white;
+  flex-shrink: 0;
+}
+
+.tenant-detail-modal-profile-info {
+  flex: 1;
+}
+
+.tenant-detail-modal-name {
+  font-size: 20px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 4px 0;
+}
+
+.tenant-detail-modal-label {
+  font-size: 13px;
+  color: #9ca3af;
+  margin: 0 0 8px 0;
+}
+
+.tenant-detail-modal-status-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tenant-detail-modal-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #16a34a;
+}
+
+.tenant-detail-modal-status-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #16a34a;
+}
+
+/* Modal Content */
+.tenant-detail-modal-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+  padding: 32px;
+}
+
+.tenant-detail-modal-left,
+.tenant-detail-modal-right {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Section Styles */
+.tenant-detail-modal-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tenant-detail-modal-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.tenant-detail-modal-section-title svg {
+  color: #2563eb;
+  flex-shrink: 0;
+}
+
+/* Form Styles */
+.tenant-detail-modal-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.tenant-detail-modal-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tenant-detail-modal-form-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.tenant-detail-modal-form-input {
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #374151;
+  background: #f9fafb;
+}
+
+.tenant-detail-modal-form-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  background: white;
+}
+
+/* Contract Details */
+.tenant-detail-modal-contract {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tenant-detail-modal-contract-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tenant-detail-modal-contract-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.tenant-detail-modal-contract-status {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.tenant-detail-modal-contract-status.active {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.tenant-detail-modal-contract-dates {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.tenant-detail-modal-contract-date {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tenant-detail-modal-contract-label {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.tenant-detail-modal-contract-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.tenant-detail-modal-contract-download {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: #eef2ff;
+  border: none;
+  border-radius: 6px;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tenant-detail-modal-contract-download:hover {
+  background: #e0e7ff;
+}
+
+/* Documents */
+.tenant-detail-modal-documents {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tenant-detail-modal-document-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
+.tenant-detail-modal-document-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  border-radius: 6px;
+  color: #2563eb;
+  flex-shrink: 0;
+}
+
+.tenant-detail-modal-document-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tenant-detail-modal-document-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.tenant-detail-modal-document-date {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.tenant-detail-modal-document-download {
+  padding: 6px;
+  background: transparent;
+  border: none;
+  color: #2563eb;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.tenant-detail-modal-document-download:hover {
+  background: #eef2ff;
+}
+
+.tenant-detail-modal-edit-docs {
+  padding: 10px 14px;
+  background: transparent;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.tenant-detail-modal-edit-docs:hover {
+  border-color: #2563eb;
+  background: #eef2ff;
+}
+
+/* Room Assignment Card */
+.tenant-detail-modal-room-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px;
+  background: #eff6ff;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.tenant-detail-modal-room-number {
+  font-size: 20px;
+  font-weight: 700;
+  color: #2563eb;
+}
+
+.tenant-detail-modal-room-type {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.tenant-detail-modal-room-details {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #dbeafe;
+}
+
+.tenant-detail-modal-room-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tenant-detail-modal-room-detail-label {
+  font-size: 11px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.tenant-detail-modal-room-detail-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.tenant-detail-modal-room-dates {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #dbeafe;
+}
+
+.tenant-detail-modal-room-date {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tenant-detail-modal-room-date-label {
+  font-size: 11px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.tenant-detail-modal-room-date-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .tenant-detail-modal {
+    max-width: 100%;
+    max-height: 90vh;
+    border-radius: 12px;
+  }
+
+  .tenant-detail-modal-content {
+    grid-template-columns: 1fr;
+    gap: 24px;
+    padding: 24px;
+  }
+
+  .tenant-detail-modal-form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .tenant-detail-modal-room-details,
+  .tenant-detail-modal-room-dates {
+    grid-template-columns: 1fr;
+  }
+
+  .tenant-detail-modal-contract-dates {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Scrollbar Styling */
+.tenant-detail-modal::-webkit-scrollbar {
+  width: 8px;
+}
+
+.tenant-detail-modal::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tenant-detail-modal::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+
+.tenant-detail-modal::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}

@@ -17,6 +17,7 @@ import AdminDashboardPage from './features/admin/pages/Dashboard';
 import InquiriesPage from './features/admin/pages/InquiriesPage';
 import ReservationsPage from './features/admin/pages/ReservationsPage';
 import RoomAvailabilityPage from './features/admin/pages/RoomAvailabilityPage';
+import TenantsPage from './features/admin/pages/TenantsPage';
 
 // Tenant Pages
 import SignIn from './features/tenant/pages/SignIn';
@@ -43,6 +44,7 @@ function App() {
         <Route path="/admin/inquiries" element={<InquiriesPage />} />
         <Route path="/admin/reservations" element={<ReservationsPage />} />
         <Route path="/admin/room-availability" element={<RoomAvailabilityPage />} />
+        <Route path="/admin/tenants" element={<TenantsPage />} />
 
         {/* Tenant Page */}
         <Route path="/tenant/signin" element={<SignIn />} />
