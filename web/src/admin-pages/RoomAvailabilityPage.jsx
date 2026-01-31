@@ -1,9 +1,13 @@
 import { useState } from 'react';
 import Sidebar from '../admin-components/Sidebar';
+import RoomCard from '../admin-components/RoomCard';
 import '../admin-styles/admin-room-availability.css';
 
 function RoomAvailabilityPage() {
   const [searchTerm, setSearchTerm] = useState('');
+  const [branchFilter, setBranchFilter] = useState('all');
+  const [floorFilter, setFloorFilter] = useState('all');
+  const [roomTypeFilter, setRoomTypeFilter] = useState('all');
 
   // Sample room data
   const rooms = [
@@ -33,42 +37,6 @@ function RoomAvailabilityPage() {
   const reservedBeds = rooms.reduce((sum, r) => sum + r.reserved, 0);
   const availableBeds = totalBeds - occupiedBeds - reservedBeds;
   const occupancyRate = ((occupiedBeds / totalBeds) * 100).toFixed(1);
-
-  const getRoomStatus = (room) => {
-    if (room.occupied === room.beds) return 'full';
-    if (room.occupied === 0 && room.reserved === 0) return 'available';
-    return 'partial';
-  };
-
-  const renderBedIcons = (room) => {
-    const icons = [];
-    for (let i = 0; i < room.beds; i++) {
-      let status = 'available';
-      if (i < room.occupied) status = 'occupied';
-      else if (i < room.occupied + room.reserved) status = 'reserved';
-      
-      icons.push(
-        <svg key={i} className={`room-bed-icon room-bed-${status}`} width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M2 13V6C2 5.46957 2.21071 4.96086 2.58579 4.58579C2.96086 4.21071 3.46957 4 4 4H16C16.5304 4 17.0391 4.21071 17.4142 4.58579C17.7893 4.96086 18 5.46957 18 6V13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M2 13V16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M18 13V16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          <path d="M2 10H18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      );
-    }
-    return icons;
-  };
-
-  const getRoomIcon = (type) => {
-    return (
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M2 10V5C2 4.46957 2.21071 3.96086 2.58579 3.58579C2.96086 3.21071 3.46957 3 4 3H12C12.5304 3 13.0391 3.21071 13.4142 3.58579C13.7893 3.96086 14 4.46957 14 5V10" stroke="#6B7280" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M2 10V13" stroke="#6B7280" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M14 10V13" stroke="#6B7280" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M2 8H14" stroke="#6B7280" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-      </svg>
-    );
-  };
 
   // Group rooms by floor
   const floor1Rooms = rooms.filter(r => r.floor === 1);
@@ -130,18 +98,50 @@ function RoomAvailabilityPage() {
           </div>
 
           {/* Search */}
-          <div className="room-availability-search-wrapper">
-            <svg className="room-search-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M9.16667 15.8333C12.8486 15.8333 15.8333 12.8486 15.8333 9.16667C15.8333 5.48477 12.8486 2.5 9.16667 2.5C5.48477 2.5 2.5 5.48477 2.5 9.16667C2.5 12.8486 5.48477 15.8333 9.16667 15.8333Z" stroke="#9CA3AF" strokeWidth="1.66667" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M17.5 17.5L13.875 13.875" stroke="#9CA3AF" strokeWidth="1.66667" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            <input
-              type="text"
-              className="room-search-input"
-              placeholder="Search room or tenant..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+          <div className="room-availability-search-section">
+            <div className="room-availability-search-wrapper">
+              <svg className="room-search-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M9.16667 15.8333C12.8486 15.8333 15.8333 12.8486 15.8333 9.16667C15.8333 5.48477 12.8486 2.5 9.16667 2.5C5.48477 2.5 2.5 5.48477 2.5 9.16667C2.5 12.8486 5.48477 15.8333 9.16667 15.8333Z" stroke="#9CA3AF" strokeWidth="1.66667" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M17.5 17.5L13.875 13.875" stroke="#9CA3AF" strokeWidth="1.66667" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <input
+                type="text"
+                className="room-search-input"
+                placeholder="Search room or tenant..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <div className="room-availability-filters">
+              <select
+                className="room-availability-filter-select"
+                value={branchFilter}
+                onChange={(e) => setBranchFilter(e.target.value)}
+              >
+                <option value="all">All Branches</option>
+                <option value="gil-puyat">Gil Puyat</option>
+                <option value="guadalupe">Guadalupe</option>
+              </select>
+              <select
+                className="room-availability-filter-select"
+                value={floorFilter}
+                onChange={(e) => setFloorFilter(e.target.value)}
+              >
+                <option value="all">All Floors</option>
+                <option value="1">Floor 1</option>
+                <option value="2">Floor 2</option>
+              </select>
+              <select
+                className="room-availability-filter-select"
+                value={roomTypeFilter}
+                onChange={(e) => setRoomTypeFilter(e.target.value)}
+              >
+                <option value="all">All Room Types</option>
+                <option value="single">Single</option>
+                <option value="double">Double</option>
+                <option value="quadruple">Quadruple</option>
+              </select>
+            </div>
           </div>
 
           {/* Legend */}
@@ -149,15 +149,30 @@ function RoomAvailabilityPage() {
             <div className="room-legend-title">Legend:</div>
             <div className="room-legend-items">
               <div className="room-legend-item">
-                <div className="room-legend-box room-legend-available"></div>
+                <svg className="room-legend-icon room-legend-available" width="18" height="18" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M2.66699 5.33331V26.6666" stroke="currentColor" strokeWidth="2.66667" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M2.66699 10.6667H26.667C27.3742 10.6667 28.0525 10.9476 28.5526 11.4477C29.0527 11.9478 29.3337 12.6261 29.3337 13.3334V26.6667" stroke="currentColor" strokeWidth="2.66667" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M2.66699 22.6667H29.3337" stroke="currentColor" strokeWidth="2.66667" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M8 10.6667V22.6667" stroke="currentColor" strokeWidth="2.66667" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
                 <span>Available</span>
               </div>
               <div className="room-legend-item">
-                <div className="room-legend-box room-legend-reserved"></div>
+                <svg className="room-legend-icon room-legend-reserved" width="18" height="18" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M2.66699 5.33331V26.6666" stroke="currentColor" strokeWidth="2.66667" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M2.66699 10.6667H26.667C27.3742 10.6667 28.0525 10.9476 28.5526 11.4477C29.0527 11.9478 29.3337 12.6261 29.3337 13.3334V26.6667" stroke="currentColor" strokeWidth="2.66667" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M2.66699 22.6667H29.3337" stroke="currentColor" strokeWidth="2.66667" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M8 10.6667V22.6667" stroke="currentColor" strokeWidth="2.66667" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
                 <span>Reserved</span>
               </div>
               <div className="room-legend-item">
-                <div className="room-legend-box room-legend-occupied"></div>
+                <svg className="room-legend-icon room-legend-occupied" width="18" height="18" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M2.66699 5.33331V26.6666" stroke="currentColor" strokeWidth="2.66667" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M2.66699 10.6667H26.667C27.3742 10.6667 28.0525 10.9476 28.5526 11.4477C29.0527 11.9478 29.3337 12.6261 29.3337 13.3334V26.6667" stroke="currentColor" strokeWidth="2.66667" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M2.66699 22.6667H29.3337" stroke="currentColor" strokeWidth="2.66667" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M8 10.6667V22.6667" stroke="currentColor" strokeWidth="2.66667" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
                 <span>Occupied</span>
               </div>
             </div>
@@ -173,31 +188,7 @@ function RoomAvailabilityPage() {
             </div>
             <div className="room-grid">
               {floor1Rooms.map(room => (
-                <div key={room.id} className={`room-card room-card-${getRoomStatus(room)}`}>
-                  <div className="room-card-header">
-                    <div className="room-card-id">{room.id}</div>
-                    <button className="room-card-info-btn">
-                      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M9 16.5C13.1421 16.5 16.5 13.1421 16.5 9C16.5 4.85786 13.1421 1.5 9 1.5C4.85786 1.5 1.5 4.85786 1.5 9C1.5 13.1421 4.85786 16.5 9 16.5Z" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M9 12V9" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M9 6H9.0075" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </button>
-                  </div>
-                  <div className="room-card-type">
-                    {getRoomIcon(room.type)}
-                    <span>{room.type}</span>
-                  </div>
-                  <div className="room-card-beds">
-                    {renderBedIcons(room)}
-                  </div>
-                  <div className="room-card-footer">
-                    <div className="room-card-occupancy">{room.occupied + room.reserved}/{room.beds} occupied</div>
-                    <span className={`room-status-badge room-status-${getRoomStatus(room)}`}>
-                      {getRoomStatus(room) === 'full' ? 'Full' : getRoomStatus(room) === 'available' ? 'Available' : 'Partial'}
-                    </span>
-                  </div>
-                </div>
+                <RoomCard key={room.id} room={room} />
               ))}
             </div>
           </div>
@@ -212,31 +203,7 @@ function RoomAvailabilityPage() {
             </div>
             <div className="room-grid">
               {floor2Rooms.map(room => (
-                <div key={room.id} className={`room-card room-card-${getRoomStatus(room)}`}>
-                  <div className="room-card-header">
-                    <div className="room-card-id">{room.id}</div>
-                    <button className="room-card-info-btn">
-                      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M9 16.5C13.1421 16.5 16.5 13.1421 16.5 9C16.5 4.85786 13.1421 1.5 9 1.5C4.85786 1.5 1.5 4.85786 1.5 9C1.5 13.1421 4.85786 16.5 9 16.5Z" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M9 12V9" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M9 6H9.0075" stroke="#9CA3AF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </button>
-                  </div>
-                  <div className="room-card-type">
-                    {getRoomIcon(room.type)}
-                    <span>{room.type}</span>
-                  </div>
-                  <div className="room-card-beds">
-                    {renderBedIcons(room)}
-                  </div>
-                  <div className="room-card-footer">
-                    <div className="room-card-occupancy">{room.occupied + room.reserved}/{room.beds} occupied</div>
-                    <span className={`room-status-badge room-status-${getRoomStatus(room)}`}>
-                      {getRoomStatus(room) === 'full' ? 'Full' : getRoomStatus(room) === 'available' ? 'Available' : 'Partial'}
-                    </span>
-                  </div>
-                </div>
+                <RoomCard key={room.id} room={room} />
               ))}
             </div>
           </div>
