@@ -5,6 +5,7 @@ import {
   signInWithPopup,
   GoogleAuthProvider,
   FacebookAuthProvider,
+  sendEmailVerification,
 } from "firebase/auth";
 import { auth } from "../../../firebase/config";
 import { showNotification } from "../../../shared/utils/notification";
@@ -23,6 +24,7 @@ function SignUp() {
   const branch = queryParams.get("branch") || "gil-puyat";
 
   const [formData, setFormData] = useState({
+    username: "",
     firstName: "",
     lastName: "",
     email: "",
@@ -42,6 +44,14 @@ function SignUp() {
   };
 
   const validateForm = () => {
+    if (!formData.username.trim()) {
+      showNotification("Username is required", "error");
+      return false;
+    }
+    if (formData.username.length < 3) {
+      showNotification("Username must be at least 3 characters", "error");
+      return false;
+    }
     if (!formData.firstName.trim()) {
       showNotification("First name is required", "error");
       return false;
@@ -79,6 +89,7 @@ function SignUp() {
       const response = await authApi.register(
         {
           email: firebaseUser.email,
+          username: formData.username,
           firstName: formData.firstName,
           lastName: formData.lastName,
           phone: formData.phone,
@@ -104,6 +115,7 @@ function SignUp() {
     if (!validateForm()) return;
 
     setLoading(true);
+    let firebaseUser = null;
 
     try {
       // Create Firebase user
@@ -112,15 +124,47 @@ function SignUp() {
         formData.email,
         formData.password,
       );
+      firebaseUser = userCredential.user;
 
-      // Register in backend
-      await registerUserInBackend(userCredential.user);
+      // Register in backend - if this fails, rollback Firebase user
+      try {
+        await registerUserInBackend(firebaseUser);
 
-      showNotification("Account created successfully!", "success");
+        // STEP 1: Send Firebase email verification link
+        // This is handled by Firebase - no need to store OTP in database
+        // User will receive a link to verify their email address
+        try {
+          await sendEmailVerification(firebaseUser);
+          console.log("✅ Verification email sent to:", firebaseUser.email);
+        } catch (emailError) {
+          console.error("⚠️ Failed to send verification email:", emailError);
+          // Don't fail registration if email sending fails
+          // User can resend from login page
+        }
 
-      setTimeout(() => {
-        navigate(`/${branch}`);
-      }, 1000);
+        showNotification(
+          "Account created successfully! Please check your email and click the verification link before logging in.",
+          "success",
+        );
+
+        // STEP 2: Sign out user after registration
+        // They must verify email before logging in
+        await auth.signOut();
+
+        setTimeout(() => {
+          navigate(`/signin?branch=${branch}`);
+        }, 2500);
+      } catch (backendError) {
+        // Rollback: Delete the Firebase user if backend registration fails
+        console.error(
+          "Backend registration failed, rolling back Firebase user:",
+          backendError,
+        );
+        if (firebaseUser) {
+          await firebaseUser.delete();
+        }
+        throw backendError;
+      }
     } catch (error) {
       console.error("Signup error:", error);
       let errorMessage = "Registration failed. Please try again.";
@@ -132,6 +176,8 @@ function SignUp() {
         errorMessage = "Invalid email address.";
       } else if (error.code === "auth/weak-password") {
         errorMessage = "Password is too weak. Please use a stronger password.";
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
       }
 
       showNotification(errorMessage, "error");
@@ -148,25 +194,32 @@ function SignUp() {
     }
 
     setLoading(true);
+    let firebaseUser = null;
 
     try {
       const result = await signInWithPopup(auth, provider);
-      const token = await result.user.getIdToken();
+      firebaseUser = result.user;
+      const token = await firebaseUser.getIdToken();
 
       // Extract name from display name
-      const displayName = result.user.displayName || "";
+      const displayName = firebaseUser.displayName || "";
       const nameParts = displayName.split(" ");
       const firstName = nameParts[0] || "";
       const lastName = nameParts.slice(1).join(" ") || "";
 
+      // Generate username from email
+      const username =
+        firebaseUser.email.split("@")[0] + Math.floor(Math.random() * 1000);
+
       try {
-        // Try to register
+        // Try to register - only register if not already exists
         const response = await authApi.register(
           {
-            email: result.user.email,
+            email: firebaseUser.email,
+            username: username,
             firstName: firstName,
             lastName: lastName,
-            phone: result.user.phoneNumber || "",
+            phone: firebaseUser.phoneNumber || "",
             branch: branch,
           },
           token,
@@ -182,9 +235,23 @@ function SignUp() {
         }, 1000);
       } catch (error) {
         // If already registered, try login
-        if (error.response?.status === 400) {
+        if (
+          error.response?.status === 400 &&
+          error.response?.data?.error?.includes("already registered")
+        ) {
           try {
             const loginResponse = await authApi.login(token);
+
+            // Verify branch matches
+            if (loginResponse.user.branch !== branch) {
+              await auth.signOut();
+              showNotification(
+                `This account is registered for ${loginResponse.user.branch === "gil-puyat" ? "Gil Puyat" : "Guadalupe"} branch.`,
+                "error",
+              );
+              return;
+            }
+
             localStorage.setItem("authToken", token);
             localStorage.setItem("user", JSON.stringify(loginResponse.user));
 
@@ -195,17 +262,30 @@ function SignUp() {
             }, 1000);
           } catch (loginError) {
             console.error("Login error:", loginError);
+            // Rollback: Sign out from Firebase
+            await auth.signOut();
             showNotification(
               "Authentication failed. Please try again.",
               "error",
             );
           }
         } else {
-          throw error;
+          // Registration failed for other reasons, rollback
+          console.error("Backend registration failed:", error);
+          await auth.signOut();
+          showNotification(
+            error.response?.data?.error ||
+              "Registration failed. Please try again.",
+            "error",
+          );
         }
       }
     } catch (error) {
       console.error("Social signup error:", error);
+      // Clean up Firebase session if exists
+      if (auth.currentUser) {
+        await auth.signOut();
+      }
       showNotification(
         "Social authentication failed. Please try again.",
         "error",
@@ -258,6 +338,15 @@ function SignUp() {
         <div className="tenant-signup-right">
           <h1 className="tenant-signup-title">Sign Up</h1>
           <form className="tenant-signup-form" onSubmit={handleSignUp}>
+            <input
+              type="text"
+              name="username"
+              placeholder="Username"
+              className="tenant-signup-input"
+              value={formData.username}
+              onChange={handleChange}
+              disabled={loading}
+            />
             <input
               type="text"
               name="firstName"

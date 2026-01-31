@@ -56,6 +56,27 @@ export const authApi = {
     );
   },
 
+  verifyOtp: async (otp, token) => {
+    return authFetch(
+      "/auth/verify-otp",
+      {
+        method: "POST",
+        body: JSON.stringify({ otp }),
+      },
+      token,
+    );
+  },
+
+  resendOtp: async (token) => {
+    return authFetch(
+      "/auth/resend-otp",
+      {
+        method: "POST",
+      },
+      token,
+    );
+  },
+
   getProfile: async () => {
     return authFetch("/auth/profile");
   },

@@ -22,6 +22,7 @@ import RoomAvailabilityPage from "./features/admin/pages/RoomAvailabilityPage";
 // Auth Pages (Tenant)
 import SignIn from "./features/tenant/pages/SignIn";
 import SignUp from "./features/tenant/pages/SignUp";
+import VerifyOTP from "./features/tenant/pages/VerifyOTP";
 
 function App() {
   return (
@@ -53,6 +54,7 @@ function App() {
         {/* Auth Pages */}
         <Route path="/signin" element={<SignIn />} />
         <Route path="/signup" element={<SignUp />} />
+        <Route path="/verify-otp" element={<VerifyOTP />} />
       </Routes>
     </Router>
   );

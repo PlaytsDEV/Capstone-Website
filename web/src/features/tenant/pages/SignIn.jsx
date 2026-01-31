@@ -5,9 +5,10 @@ import {
   signInWithPopup,
   GoogleAuthProvider,
   FacebookAuthProvider,
+  sendEmailVerification,
 } from "firebase/auth";
 import { auth } from "../../../firebase/config";
-import { showNotification } from "../../../shared/utils/notification";
+import { showNotification, showConfirmation } from "../../../shared/utils/notification";
 import { authApi } from "../../../shared/api/apiClient";
 import "../../public/styles/tenant-signin.css";
 import "../../../shared/styles/notification.css";
@@ -55,17 +56,72 @@ function SignIn() {
     setLoading(true);
 
     try {
-      // Sign in with Firebase
+      // STEP 1: Sign in with Firebase (email/password)
       const userCredential = await signInWithEmailAndPassword(
         auth,
         formData.email,
         formData.password,
       );
 
+      // STEP 2: Check if email is verified (Firebase is source of truth)
+      // This check happens BEFORE calling backend
+      if (!userCredential.user.emailVerified) {
+        console.log("❌ Email not verified for:", userCredential.user.email);
+
+        showNotification(
+          "Please verify your email before logging in. Check your inbox for the verification link.",
+          "warning",
+        );
+
+        // STEP 3: Provide option to resend verification email (delayed to let notification show first)
+        await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
+        
+        const shouldResend = await showConfirmation(
+          "Haven't received the verification email? Click OK to resend the verification link.",
+          "OK",
+          "Cancel"
+        );
+
+        if (shouldResend) {
+          try {
+            await sendEmailVerification(userCredential.user);
+            showNotification(
+              "Verification email sent! Please check your inbox (and spam folder).",
+              "success",
+            );
+            console.log(
+              "✅ Verification email resent to:",
+              userCredential.user.email,
+            );
+          } catch (resendError) {
+            console.error("Failed to resend verification email:", resendError);
+            showNotification(
+              "Failed to resend email. Please try again later.",
+              "error",
+            );
+          }
+        }
+
+        // STEP 4: Sign out unverified user (security best practice)
+        await auth.signOut();
+        setLoading(false);
+        return;
+      }
+
+      console.log("✅ Email verified, proceeding with login");
+
+      // STEP 5: Get Firebase token for backend authentication
       const token = await userCredential.user.getIdToken();
 
-      // Verify with backend and get user data
-      const response = await authApi.login(token);
+      // STEP 6: Verify with backend and get user data
+      let response;
+      try {
+        response = await authApi.login(token);
+      } catch (error) {
+        // If user not found in backend, sign out and show error
+        await auth.signOut();
+        throw error;
+      }
 
       // Check if user's branch matches the current branch
       if (response.user.branch !== branch) {
