@@ -71,17 +71,10 @@ function SignIn() {
       if (!userCredential.user.emailVerified) {
         console.log("❌ Email not verified for:", userCredential.user.email);
 
-        showNotification(
-          "Please verify your email before logging in. Check your inbox for the verification link.",
-          "warning",
-        );
-
-        // STEP 3: Provide option to resend verification email (delayed to let notification show first)
-        await new Promise((resolve) => setTimeout(resolve, 500)); // 500ms delay
-
+        // STEP 3: Show single confirmation dialog that explains and offers resend
         const shouldResend = await showConfirmation(
-          "Haven't received the verification email? Click OK to resend the verification link.",
-          "OK",
+          "Please verify your email before logging in.\n\nHaven't received the verification email? Click OK to resend it.",
+          "Resend Email",
           "Cancel",
         );
 
