@@ -1,0 +1,216 @@
+import '../styles/gpuyat.css';
+import gilPuyatBranchImage from '../gpuyat-images/gil-puyat-branch.jpg';
+import locationViewImage from '../gpuyat-images/location-view.jpg';
+import locationMapImage from '../gpuyat-images/location-map.jpg';
+import privateRoomImage from '../gpuyat-images/standard-room.jpg';
+import doubleSharingImage from '../gpuyat-images/deluxe-room.jpg';
+import quadrupleSharingImage from '../gpuyat-images/premium-room.jpg';
+import gallery1Image from '../gpuyat-images/gallery1.jpg';
+import Footer from '../components/Footer';
+import Navbar from '../components/Navbar';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+
+function GPuyatPage() {
+  const navigate = useNavigate();
+  const [currentSlide, setCurrentSlide] = useState(0);
+
+  const galleryImages = [
+    gallery1Image,
+    doubleSharingImage,
+    quadrupleSharingImage,
+  ];
+
+  const nextSlide = () => {
+    setCurrentSlide((prev) => (prev + 1) % galleryImages.length);
+  };
+
+  const prevSlide = () => {
+    setCurrentSlide((prev) => (prev - 1 + galleryImages.length) % galleryImages.length);
+  };
+
+  return (
+    <div className="gpuyat-page">
+      {/* Navigation */}
+      <Navbar type="branch" currentPage="gil-puyat" />
+
+      {/* Hero Section */}
+      <section className="gpuyat-hero" style={{ backgroundImage: `url(${gilPuyatBranchImage})` }}>
+        <div className="gpuyat-hero-overlay"></div>
+        <div className="gpuyat-container">
+          <div className="gpuyat-hero-content">
+            <div className="gpuyat-logo-section">
+              <p className="gpuyat-logo-text">Lilycrest</p>
+              <p className="gpuyat-logo-subtitle">Safe & Comfortable Living Space</p>
+            </div>
+            <h1 className="gpuyat-hero-title">Gil Puyat Branch</h1>
+            <p className="gpuyat-hero-location">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M13.3333 6.66659C13.3333 9.99525 9.64067 13.4619 8.40067 14.5326C8.28515 14.6194 8.14453 14.6664 8 14.6664C7.85547 14.6664 7.71485 14.6194 7.59933 14.5326C6.35933 13.4619 2.66667 9.99525 2.66667 6.66659C2.66667 5.2521 3.22857 3.89554 4.22877 2.89535C5.22896 1.89516 6.58551 1.33325 8 1.33325C9.41449 1.33325 10.771 1.89516 11.7712 2.89535C12.7714 3.89554 13.3333 5.2521 13.3333 6.66659Z" stroke="white" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M8 8.66675C9.10457 8.66675 10 7.77132 10 6.66675C10 5.56218 9.10457 4.66675 8 4.66675C6.89543 4.66675 6 5.56218 6 6.66675C6 7.77132 6.89543 8.66675 8 8.66675Z" stroke="white" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Gil Puyat Avenue, Makati City
+            </p>
+            <div className="gpuyat-search-bar">
+              <input type="text" placeholder="Search rooms..." />
+              <button className="gpuyat-btn-search">Find Your Room</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Our Location Section */}
+      <section className="gpuyat-location">
+        <div className="gpuyat-container">
+          <h2>Our Location</h2>
+          
+          <div className="gpuyat-location-grid">
+            <div className="gpuyat-location-card">
+              <img src={locationViewImage} alt="Main Location View" />
+              <p>Main Location View</p>
+            </div>
+            <div className="gpuyat-location-card">
+              <img src={locationMapImage} alt="Nearby Attractions" />
+              <p>Nearby Attractions</p>
+            </div>
+          </div>
+
+          <div className="gpuyat-location-info">
+            <div className="gpuyat-location-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path d="M21.3333 11C21.3333 18.6668 12 23.3334 12 23.3334C12 23.3334 2.66667 18.6668 2.66667 11C2.66667 8.34558 3.70238 5.80887 5.55048 3.96079C7.39857 2.1127 9.93528 1.07702 12.59 1.07702C15.2447 1.07702 17.7814 2.1127 19.6295 3.96079C21.4776 5.80887 22.5133 8.34558 22.5133 11" stroke="#FF6900" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+            <div className="gpuyat-location-text">
+              <p className="gpuyat-location-address">123 Gil Puyat Avenue, Makati City, Metro Manila</p>
+              <p className="gpuyat-location-desc">Easy access to NRIT and major business districts</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Room View Section */}
+      <section className="gpuyat-rooms">
+        <div className="gpuyat-container">
+          <h2>Room View</h2>
+          
+          <button className="gpuyat-btn-view-rooms">View All Rooms & Rates</button>
+
+          <div className="gpuyat-rooms-grid">
+            <div className="gpuyat-room-card">
+              <img src={privateRoomImage} alt="Private Room" />
+              <h3>Private Room</h3>
+              <p className="gpuyat-room-price">₱8,000/month</p>
+              <button onClick={() => navigate('/gil-puyat/rooms/private')} className="gpuyat-btn-view-details">View Details</button>
+            </div>
+
+            <div className="gpuyat-room-card">
+              <img src={doubleSharingImage} alt="Double Sharing" />
+              <h3>Double Sharing</h3>
+              <p className="gpuyat-room-price">₱6,500/month</p>
+              <button onClick={() => navigate('/gil-puyat/rooms/double')} className="gpuyat-btn-view-details">View Details</button>
+            </div>
+
+            <div className="gpuyat-room-card">
+              <img src={quadrupleSharingImage} alt="Quadruple Sharing" />
+              <h3>Quadruple Sharing</h3>
+              <p className="gpuyat-room-price">₱4,500/month</p>
+              <button onClick={() => navigate('/gil-puyat/rooms/quadruple')} className="gpuyat-btn-view-details">View Details</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Gallery Section */}
+      <section className="gpuyat-gallery">
+        <div className="gpuyat-container">
+          <div className="gpuyat-carousel">
+            <button className="gpuyat-carousel-btn gpuyat-carousel-prev" onClick={prevSlide}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="8" height="14" viewBox="0 0 8 14" fill="none">
+                <path d="M7 13L1 7L7 1" stroke="#364153" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+
+            <div className="gpuyat-carousel-inner">
+              <img src={galleryImages[currentSlide]} alt={`Gallery ${currentSlide + 1}`} />
+            </div>
+
+            <button className="gpuyat-carousel-btn gpuyat-carousel-next" onClick={nextSlide}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="8" height="14" viewBox="0 0 8 14" fill="none">
+                <path d="M1 13L7 7L1 1" stroke="#364153" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+
+            <div className="gpuyat-carousel-indicators">
+              {galleryImages.map((_, index) => (
+                <button
+                  key={index}
+                  className={`gpuyat-indicator ${index === currentSlide ? 'active' : ''}`}
+                  onClick={() => setCurrentSlide(index)}
+                ></button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Ratings/Reviews Section */}
+      <section className="gpuyat-ratings">
+        <div className="gpuyat-container">
+          <h2>Ratings/Reviews</h2>
+
+          <div className="gpuyat-ratings-grid">
+            <div className="gpuyat-rating-card">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path d="M11.525 2.29489C11.5688 2.20635 11.6365 2.13183 11.7204 2.07972C11.8044 2.02761 11.9012 2 12 2C12.0988 2 12.1956 2.02761 12.2795 2.07972C12.3634 2.13183 12.4311 2.20635 12.475 2.29489L14.785 6.97389C14.9371 7.28186 15.1618 7.5483 15.4396 7.75035C15.7174 7.95239 16.0401 8.08401 16.38 8.13389L21.546 8.88989C21.6439 8.90408 21.7358 8.94537 21.8115 9.00909C21.8871 9.07282 21.9434 9.15644 21.974 9.2505C22.0046 9.34456 22.0082 9.4453 21.9846 9.54133C21.9609 9.63736 21.9108 9.72485 21.84 9.79389L18.104 13.4319C17.8576 13.672 17.6732 13.9684 17.5668 14.2955C17.4604 14.6227 17.435 14.9708 17.493 15.3099L18.375 20.4499C18.3922 20.5477 18.3817 20.6485 18.3445 20.7406C18.3073 20.8327 18.2449 20.9125 18.1645 20.9709C18.0841 21.0293 17.9889 21.0639 17.8898 21.0708C17.7907 21.0777 17.6917 21.0566 17.604 21.0099L12.986 18.5819C12.6817 18.4221 12.3431 18.3386 11.9995 18.3386C11.6558 18.3386 11.3173 18.4221 11.013 18.5819L6.39597 21.0099C6.3083 21.0563 6.20937 21.0772 6.11042 21.0701C6.01147 21.0631 5.91649 21.0285 5.83626 20.9701C5.75604 20.9118 5.6938 20.8321 5.65662 20.7401C5.61945 20.6481 5.60883 20.5476 5.62597 20.4499L6.50697 15.3109C6.56516 14.9716 6.53995 14.6233 6.43351 14.2959C6.32706 13.9686 6.14258 13.672 5.89597 13.4319L2.15997 9.79489C2.08856 9.72593 2.03796 9.63829 2.01393 9.54197C1.9899 9.44565 1.99341 9.34451 2.02405 9.25008C2.05469 9.15566 2.11124 9.07174 2.18725 9.00788C2.26326 8.94402 2.35567 8.90279 2.45397 8.88889L7.61897 8.13389C7.95923 8.08439 8.28236 7.95295 8.56055 7.75088C8.83875 7.54881 9.06367 7.28216 9.21597 6.97389L11.525 2.29489Z" fill="#FF6900" stroke="#FF6900" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <p className="gpuyat-rating-score">4.8</p>
+              <p className="gpuyat-rating-label">Cleanliness</p>
+              <p className="gpuyat-rating-desc">Very Clean</p>
+            </div>
+
+            <div className="gpuyat-rating-card">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path d="M11.525 2.29489C11.5688 2.20635 11.6365 2.13183 11.7204 2.07972C11.8044 2.02761 11.9012 2 12 2C12.0988 2 12.1956 2.02761 12.2795 2.07972C12.3634 2.13183 12.4311 2.20635 12.475 2.29489L14.785 6.97389C14.9371 7.28186 15.1618 7.5483 15.4396 7.75035C15.7174 7.95239 16.0401 8.08401 16.38 8.13389L21.546 8.88989C21.6439 8.90408 21.7358 8.94537 21.8115 9.00909C21.8871 9.07282 21.9434 9.15644 21.974 9.2505C22.0046 9.34456 22.0082 9.4453 21.9846 9.54133C21.9609 9.63736 21.9108 9.72485 21.84 9.79389L18.104 13.4319C17.8576 13.672 17.6732 13.9684 17.5668 14.2955C17.4604 14.6227 17.435 14.9708 17.493 15.3099L18.375 20.4499C18.3922 20.5477 18.3817 20.6485 18.3445 20.7406C18.3073 20.8327 18.2449 20.9125 18.1645 20.9709C18.0841 21.0293 17.9889 21.0639 17.8898 21.0708C17.7907 21.0777 17.6917 21.0566 17.604 21.0099L12.986 18.5819C12.6817 18.4221 12.3431 18.3386 11.9995 18.3386C11.6558 18.3386 11.3173 18.4221 11.013 18.5819L6.39597 21.0099C6.3083 21.0563 6.20937 21.0772 6.11042 21.0701C6.01147 21.0631 5.91649 21.0285 5.83626 20.9701C5.75604 20.9118 5.6938 20.8321 5.65662 20.7401C5.61945 20.6481 5.60883 20.5476 5.62597 20.4499L6.50697 15.3109C6.56516 14.9716 6.53995 14.6233 6.43351 14.2959C6.32706 13.9686 6.14258 13.672 5.89597 13.4319L2.15997 9.79489C2.08856 9.72593 2.03796 9.63829 2.01393 9.54197C1.9899 9.44565 1.99341 9.34451 2.02405 9.25008C2.05469 9.15566 2.11124 9.07174 2.18725 9.00788C2.26326 8.94402 2.35567 8.90279 2.45397 8.88889L7.61897 8.13389C7.95923 8.08439 8.28236 7.95295 8.56055 7.75088C8.83875 7.54881 9.06367 7.28216 9.21597 6.97389L11.525 2.29489Z" fill="#FF6900" stroke="#FF6900" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <p className="gpuyat-rating-score">4.9</p>
+              <p className="gpuyat-rating-label">Location</p>
+              <p className="gpuyat-rating-desc">Prime Area</p>
+            </div>
+
+            <div className="gpuyat-rating-card">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path d="M11.525 2.29489C11.5688 2.20635 11.6365 2.13183 11.7204 2.07972C11.8044 2.02761 11.9012 2 12 2C12.0988 2 12.1956 2.02761 12.2795 2.07972C12.3634 2.13183 12.4311 2.20635 12.475 2.29489L14.785 6.97389C14.9371 7.28186 15.1618 7.5483 15.4396 7.75035C15.7174 7.95239 16.0401 8.08401 16.38 8.13389L21.546 8.88989C21.6439 8.90408 21.7358 8.94537 21.8115 9.00909C21.8871 9.07282 21.9434 9.15644 21.974 9.2505C22.0046 9.34456 22.0082 9.4453 21.9846 9.54133C21.9609 9.63736 21.9108 9.72485 21.84 9.79389L18.104 13.4319C17.8576 13.672 17.6732 13.9684 17.5668 14.2955C17.4604 14.6227 17.435 14.9708 17.493 15.3099L18.375 20.4499C18.3922 20.5477 18.3817 20.6485 18.3445 20.7406C18.3073 20.8327 18.2449 20.9125 18.1645 20.9709C18.0841 21.0293 17.9889 21.0639 17.8898 21.0708C17.7907 21.0777 17.6917 21.0566 17.604 21.0099L12.986 18.5819C12.6817 18.4221 12.3431 18.3386 11.9995 18.3386C11.6558 18.3386 11.3173 18.4221 11.013 18.5819L6.39597 21.0099C6.3083 21.0563 6.20937 21.0772 6.11042 21.0701C6.01147 21.0631 5.91649 21.0285 5.83626 20.9701C5.75604 20.9118 5.6938 20.8321 5.65662 20.7401C5.61945 20.6481 5.60883 20.5476 5.62597 20.4499L6.50697 15.3109C6.56516 14.9716 6.53995 14.6233 6.43351 14.2959C6.32706 13.9686 6.14258 13.672 5.89597 13.4319L2.15997 9.79489C2.08856 9.72593 2.03796 9.63829 2.01393 9.54197C1.9899 9.44565 1.99341 9.34451 2.02405 9.25008C2.05469 9.15566 2.11124 9.07174 2.18725 9.00788C2.26326 8.94402 2.35567 8.90279 2.45397 8.88889L7.61897 8.13389C7.95923 8.08439 8.28236 7.95295 8.56055 7.75088C8.83875 7.54881 9.06367 7.28216 9.21597 6.97389L11.525 2.29489Z" fill="#FF6900" stroke="#FF6900" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <p className="gpuyat-rating-score">4.7</p>
+              <p className="gpuyat-rating-label">Security</p>
+              <p className="gpuyat-rating-desc">Very Good</p>
+            </div>
+
+            <div className="gpuyat-rating-card">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path d="M11.525 2.29489C11.5688 2.20635 11.6365 2.13183 11.7204 2.07972C11.8044 2.02761 11.9012 2 12 2C12.0988 2 12.1956 2.02761 12.2795 2.07972C12.3634 2.13183 12.4311 2.20635 12.475 2.29489L14.785 6.97389C14.9371 7.28186 15.1618 7.5483 15.4396 7.75035C15.7174 7.95239 16.0401 8.08401 16.38 8.13389L21.546 8.88989C21.6439 8.90408 21.7358 8.94537 21.8115 9.00909C21.8871 9.07282 21.9434 9.15644 21.974 9.2505C22.0046 9.34456 22.0082 9.4453 21.9846 9.54133C21.9609 9.63736 21.9108 9.72485 21.84 9.79389L18.104 13.4319C17.8576 13.672 17.6732 13.9684 17.5668 14.2955C17.4604 14.6227 17.435 14.9708 17.493 15.3099L18.375 20.4499C18.3922 20.5477 18.3817 20.6485 18.3445 20.7406C18.3073 20.8327 18.2449 20.9125 18.1645 20.9709C18.0841 21.0293 17.9889 21.0639 17.8898 21.0708C17.7907 21.0777 17.6917 21.0566 17.604 21.0099L12.986 18.5819C12.6817 18.4221 12.3431 18.3386 11.9995 18.3386C11.6558 18.3386 11.3173 18.4221 11.013 18.5819L6.39597 21.0099C6.3083 21.0563 6.20937 21.0772 6.11042 21.0701C6.01147 21.0631 5.91649 21.0285 5.83626 20.9701C5.75604 20.9118 5.6938 20.8321 5.65662 20.7401C5.61945 20.6481 5.60883 20.5476 5.62597 20.4499L6.50697 15.3109C6.56516 14.9716 6.53995 14.6233 6.43351 14.2959C6.32706 13.9686 6.14258 13.672 5.89597 13.4319L2.15997 9.79489C2.08856 9.72593 2.03796 9.63829 2.01393 9.54197C1.9899 9.44565 1.99341 9.34451 2.02405 9.25008C2.05469 9.15566 2.11124 9.07174 2.18725 9.00788C2.26326 8.94402 2.35567 8.90279 2.45397 8.88889L7.61897 8.13389C7.95923 8.08439 8.28236 7.95295 8.56055 7.75088C8.83875 7.54881 9.06367 7.28216 9.21597 6.97389L11.525 2.29489Z" fill="#FF6900" stroke="#FF6900" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <p className="gpuyat-rating-score">4.6</p>
+              <p className="gpuyat-rating-label">Amenities</p>
+              <p className="gpuyat-rating-desc">Good Value</p>
+            </div>
+
+            <div className="gpuyat-rating-card">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path d="M11.525 2.29489C11.5688 2.20635 11.6365 2.13183 11.7204 2.07972C11.8044 2.02761 11.9012 2 12 2C12.0988 2 12.1956 2.02761 12.2795 2.07972C12.3634 2.13183 12.4311 2.20635 12.475 2.29489L14.785 6.97389C14.9371 7.28186 15.1618 7.5483 15.4396 7.75035C15.7174 7.95239 16.0401 8.08401 16.38 8.13389L21.546 8.88989C21.6439 8.90408 21.7358 8.94537 21.8115 9.00909C21.8871 9.07282 21.9434 9.15644 21.974 9.2505C22.0046 9.34456 22.0082 9.4453 21.9846 9.54133C21.9609 9.63736 21.9108 9.72485 21.84 9.79389L18.104 13.4319C17.8576 13.672 17.6732 13.9684 17.5668 14.2955C17.4604 14.6227 17.435 14.9708 17.493 15.3099L18.375 20.4499C18.3922 20.5477 18.3817 20.6485 18.3445 20.7406C18.3073 20.8327 18.2449 20.9125 18.1645 20.9709C18.0841 21.0293 17.9889 21.0639 17.8898 21.0708C17.7907 21.0777 17.6917 21.0566 17.604 21.0099L12.986 18.5819C12.6817 18.4221 12.3431 18.3386 11.9995 18.3386C11.6558 18.3386 11.3173 18.4221 11.013 18.5819L6.39597 21.0099C6.3083 21.0563 6.20937 21.0772 6.11042 21.0701C6.01147 21.0631 5.91649 21.0285 5.83626 20.9701C5.75604 20.9118 5.6938 20.8321 5.65662 20.7401C5.61945 20.6481 5.60883 20.5476 5.62597 20.4499L6.50697 15.3109C6.56516 14.9716 6.53995 14.6233 6.43351 14.2959C6.32706 13.9686 6.14258 13.672 5.89597 13.4319L2.15997 9.79489C2.08856 9.72593 2.03796 9.63829 2.01393 9.54197C1.9899 9.44565 1.99341 9.34451 2.02405 9.25008C2.05469 9.15566 2.11124 9.07174 2.18725 9.00788C2.26326 8.94402 2.35567 8.90279 2.45397 8.88889L7.61897 8.13389C7.95923 8.08439 8.28236 7.95295 8.56055 7.75088C8.83875 7.54881 9.06367 7.28216 9.21597 6.97389L11.525 2.29489Z" fill="#FF6900" stroke="#FF6900" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <p className="gpuyat-rating-score">4.8</p>
+              <p className="gpuyat-rating-label">Value</p>
+              <p className="gpuyat-rating-desc">Affordable</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <Footer />
+    </div>
+  );
+}
+
+export default GPuyatPage;
