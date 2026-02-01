@@ -29,9 +29,9 @@ import dotenv from "dotenv";
 import connectDB from "./config/database.js";
 import authRoutes from "./routes/auth.js";
 import userRoutes from "./routes/users.js";
-// import roomRoutes from "./routes/rooms.js";
-// import reservationRoutes from "./routes/reservations.js";
-// import inquiryRoutes from "./routes/inquiries.js";
+import roomRoutes from "./routes/rooms.js";
+import reservationRoutes from "./routes/reservations.js";
+import inquiryRoutes from "./routes/inquiries.js";
 
 // Load environment variables from .env file
 dotenv.config();
@@ -42,7 +42,7 @@ dotenv.config();
 
 // Connect to MongoDB database
 // This will auto-retry on failure (see database.js for retry logic)
-// connectDB();
+connectDB();
 
 // ============================================================================
 // EXPRESS APP INITIALIZATION
