@@ -1,33 +1,49 @@
+/**
+ * Authentication Routes
+ *
+ * Handles user authentication operations including:
+ * - User registration with Firebase integration
+ * - User login with email verification check
+ * - Profile management
+ * - Role management (admin only)
+ *
+ * Security: Firebase Auth is the single source of truth for email verification.
+ * All routes require Firebase token verification via verifyToken middleware.
+ */
+
 import express from "express";
 import { auth } from "../config/firebase.js";
 import User from "../models/User.js";
 import { verifyToken } from "../middleware/auth.js";
-import crypto from "crypto";
 
 const router = express.Router();
 
-// Helper function to generate OTP
-const generateOTP = () => {
-  return crypto.randomInt(100000, 999999).toString();
-};
+// ============================================================================
+// CONSTANTS
+// ============================================================================
 
-// Helper function to send OTP email (placeholder - will implement with email service)
-const sendOTPEmail = async (email, otp, userName) => {
-  // TODO: Implement actual email sending with SendGrid, Nodemailer, etc.
-  console.log(`\n======================`);
-  console.log(`OTP for ${email}: ${otp}`);
-  console.log(`User: ${userName}`);
-  console.log(`======================\n`);
-  // For now, just log to console for testing
-  // In production, use an email service:
-  // await emailService.send({
-  //   to: email,
-  //   subject: 'Verify Your Lilycrest Account',
-  //   html: `Your verification code is: ${otp}. Valid for 10 minutes.`
-  // });
-};
+const VALID_BRANCHES = ["gil-puyat", "guadalupe"];
+const VALID_ROLES = ["tenant", "admin", "superAdmin"];
 
-// Register new user
+// ============================================================================
+// AUTHENTICATION ENDPOINTS
+// ============================================================================
+
+/**
+ * POST /api/auth/register
+ *
+ * Register a new user in the database after Firebase account creation.
+ *
+ * Flow:
+ * 1. Firebase creates account and handles password hashing (client-side)
+ * 2. Client sends Firebase token to this endpoint
+ * 3. We verify the token and create user record in MongoDB
+ * 4. Email verification is handled by Firebase (not in database)
+ *
+ * @requires Firebase token in Authorization header
+ * @body { username, firstName, lastName, email, phone, branch }
+ * @returns { user, message }
+ */
 router.post("/register", verifyToken, async (req, res) => {
   try {
     const { email, username, firstName, lastName, phone, branch } = req.body;
@@ -40,10 +56,10 @@ router.post("/register", verifyToken, async (req, res) => {
       });
     }
 
-    // Validate branch
-    if (!["gil-puyat", "guadalupe"].includes(branch)) {
+    // Validate branch value
+    if (!VALID_BRANCHES.includes(branch)) {
       return res.status(400).json({
-        error: "Invalid branch. Must be 'gil-puyat' or 'guadalupe'",
+        error: `Invalid branch. Must be one of: ${VALID_BRANCHES.join(", ")}`,
       });
     }
 
@@ -115,93 +131,23 @@ router.post("/register", verifyToken, async (req, res) => {
   }
 });
 
-// Verify OTP
-router.post("/verify-otp", verifyToken, async (req, res) => {
-  try {
-    const { otp } = req.body;
-
-    if (!otp) {
-      return res.status(400).json({ error: "OTP is required" });
-    }
-
-    // Find user by Firebase UID
-    const user = await User.findOne({ firebaseUid: req.user.uid });
-
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    if (user.isEmailVerified) {
-      return res.status(400).json({ error: "Email already verified" });
-    }
-
-    // Check if OTP matches
-    if (user.verificationToken !== otp) {
-      return res.status(400).json({ error: "Invalid OTP" });
-    }
-
-    // Check if OTP has expired
-    if (new Date() > user.verificationTokenExpiry) {
-      return res
-        .status(400)
-        .json({ error: "OTP has expired. Please request a new one." });
-    }
-
-    // Mark email as verified
-    user.isEmailVerified = true;
-    user.verificationToken = undefined;
-    user.verificationTokenExpiry = undefined;
-    await user.save();
-
-    res.json({
-      message: "Email verified successfully",
-      user: {
-        id: user._id,
-        email: user.email,
-        isEmailVerified: user.isEmailVerified,
-      },
-    });
-  } catch (error) {
-    console.error("OTP verification error:", error);
-    res.status(500).json({ error: "Verification failed. Please try again." });
-  }
-});
-
-// Resend OTP
-router.post("/resend-otp", verifyToken, async (req, res) => {
-  try {
-    const user = await User.findOne({ firebaseUid: req.user.uid });
-
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    if (user.isEmailVerified) {
-      return res.status(400).json({ error: "Email already verified" });
-    }
-
-    // Generate new OTP
-    const otp = generateOTP();
-    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-
-    user.verificationToken = otp;
-    user.verificationTokenExpiry = otpExpiry;
-    await user.save();
-
-    // Send OTP via email
-    await sendOTPEmail(user.email, otp, `${user.firstName} ${user.lastName}`);
-
-    res.json({ message: "OTP sent successfully. Please check your email." });
-  } catch (error) {
-    console.error("Resend OTP error:", error);
-    res.status(500).json({ error: "Failed to resend OTP. Please try again." });
-  }
-});
-
-// Login - verify user exists in MongoDB and return user data
+/**
+ * POST /api/auth/login
+ *
+ * Authenticate user and return profile data.
+ *
+ * Flow:
+ * 1. User signs in with Firebase (client-side)
+ * 2. Client checks emailVerified status (Firebase is source of truth)
+ * 3. If verified, client sends token to this endpoint
+ * 4. We sync verification status and return user data
+ *
+ * @requires Firebase token in Authorization header
+ * @returns { user, message }
+ */
 router.post("/login", verifyToken, async (req, res) => {
   try {
-    // Find user by Firebase UID (already verified by verifyToken middleware)
+    // Find user in database using Firebase UID from verified token
     const user = await User.findOne({ firebaseUid: req.user.uid });
 
     if (!user) {
@@ -210,20 +156,21 @@ router.post("/login", verifyToken, async (req, res) => {
       });
     }
 
+    // Check if account is active
     if (!user.isActive) {
       return res.status(403).json({
         error: "Your account is inactive. Please contact support.",
       });
     }
 
-    // Sync email verification status from Firebase (source of truth)
-    // This ensures our database stays in sync with Firebase
+    // Sync email verification status from Firebase
+    // Firebase is the source of truth - we just mirror the status in our DB
     const firebaseEmailVerified = req.user.email_verified || false;
     if (user.isEmailVerified !== firebaseEmailVerified) {
       user.isEmailVerified = firebaseEmailVerified;
       await user.save();
       console.log(
-        `✅ Synced email verification status for ${user.email}: ${firebaseEmailVerified}`,
+        `✅ Synced verification for ${user.email}: ${firebaseEmailVerified}`,
       );
     }
 
@@ -252,7 +199,18 @@ router.post("/login", verifyToken, async (req, res) => {
   }
 });
 
-// Get current user profile
+// ============================================================================
+// PROFILE MANAGEMENT
+// ============================================================================
+
+/**
+ * GET /api/auth/profile
+ *
+ * Get current user's profile information.
+ *
+ * @requires Firebase token in Authorization header
+ * @returns { user profile data }
+ */
 router.get("/profile", verifyToken, async (req, res) => {
   try {
     const user = await User.findOne({ firebaseUid: req.user.uid });
@@ -282,7 +240,16 @@ router.get("/profile", verifyToken, async (req, res) => {
   }
 });
 
-// Update user profile
+/**
+ * PUT /api/auth/profile
+ *
+ * Update user's profile information (firstName, lastName, phone).
+ * Email and username cannot be changed via this endpoint.
+ *
+ * @requires Firebase token in Authorization header
+ * @body { firstName?, lastName?, phone? }
+ * @returns { updated user data }
+ */
 router.put("/profile", verifyToken, async (req, res) => {
   try {
     const { firstName, lastName, phone } = req.body;
@@ -313,12 +280,32 @@ router.put("/profile", verifyToken, async (req, res) => {
   }
 });
 
-// Set user role (admin only)
+// ============================================================================
+// ADMIN OPERATIONS
+// ============================================================================
+
+/**
+ * POST /api/auth/set-role
+ *
+ * Set user role and Firebase custom claims (admin/superAdmin only).
+ *
+ * @requires Firebase token in Authorization header
+ * @requires Admin privileges
+ * @body { userId, role }
+ * @returns { message }
+ */
 router.post("/set-role", verifyToken, async (req, res) => {
   try {
     const { userId, role } = req.body;
 
-    // Set custom claims
+    // Validate role
+    if (!VALID_ROLES.includes(role)) {
+      return res.status(400).json({
+        error: `Invalid role. Must be one of: ${VALID_ROLES.join(", ")}`,
+      });
+    }
+
+    // Set Firebase custom claims based on role
     const claims = {};
     if (role === "admin") {
       claims.admin = true;
