@@ -53,6 +53,7 @@ router.post("/register", verifyToken, async (req, res) => {
       return res.status(400).json({
         error:
           "Missing required fields: username, firstName, lastName, and branch are required",
+        code: "MISSING_REQUIRED_FIELDS",
       });
     }
 
@@ -60,6 +61,7 @@ router.post("/register", verifyToken, async (req, res) => {
     if (!VALID_BRANCHES.includes(branch)) {
       return res.status(400).json({
         error: `Invalid branch. Must be one of: ${VALID_BRANCHES.join(", ")}`,
+        code: "INVALID_BRANCH",
       });
     }
 
@@ -67,8 +69,10 @@ router.post("/register", verifyToken, async (req, res) => {
     const existingUser = await User.findOne({ firebaseUid: req.user.uid });
 
     if (existingUser) {
+      console.log(`⚠️ User already registered: ${existingUser.email}`);
       return res.status(400).json({
         error: "User already registered",
+        code: "USER_ALREADY_EXISTS",
         user: {
           id: existingUser._id,
           email: existingUser.email,
@@ -86,6 +90,7 @@ router.post("/register", verifyToken, async (req, res) => {
     if (usernameExists) {
       return res.status(400).json({
         error: "Username already taken. Please choose another one.",
+        code: "USERNAME_TAKEN",
       });
     }
 
@@ -106,6 +111,9 @@ router.post("/register", verifyToken, async (req, res) => {
 
     await user.save();
 
+    console.log(
+      `✅ User registered successfully: ${user.email} (${user.branch})`,
+    );
     res.status(201).json({
       message: "User registered successfully. Please verify your email.",
       userId: req.user.uid,
@@ -123,10 +131,30 @@ router.post("/register", verifyToken, async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Registration error:", error);
+    console.error("❌ Registration error:", error);
+
+    // Handle duplicate key errors (email or username already exists)
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      return res.status(400).json({
+        error: `${field.charAt(0).toUpperCase() + field.slice(1)} already exists`,
+        code: "DUPLICATE_FIELD",
+      });
+    }
+
+    // Handle validation errors
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        error: "Validation failed",
+        details: error.message,
+        code: "VALIDATION_ERROR",
+      });
+    }
+
     res.status(500).json({
       error: "Registration failed. Please try again.",
       details: error.message,
+      code: "REGISTRATION_ERROR",
     });
   }
 });
@@ -151,15 +179,19 @@ router.post("/login", verifyToken, async (req, res) => {
     const user = await User.findOne({ firebaseUid: req.user.uid });
 
     if (!user) {
+      console.log(`❌ User not found in database: ${req.user.uid}`);
       return res.status(404).json({
         error: "User not found in database. Please register first.",
+        code: "USER_NOT_FOUND",
       });
     }
 
     // Check if account is active
     if (!user.isActive) {
+      console.log(`⚠️ Inactive account login attempt: ${user.email}`);
       return res.status(403).json({
         error: "Your account is inactive. Please contact support.",
+        code: "ACCOUNT_INACTIVE",
       });
     }
 
@@ -174,6 +206,7 @@ router.post("/login", verifyToken, async (req, res) => {
       );
     }
 
+    console.log(`✅ Login successful: ${user.email} (${user.role})`);
     res.json({
       message: "Login successful",
       user: {
@@ -191,10 +224,11 @@ router.post("/login", verifyToken, async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Login error:", error);
+    console.error("❌ Login error:", error);
     res.status(500).json({
       error: "Login failed. Please try again.",
       details: error.message,
+      code: "LOGIN_ERROR",
     });
   }
 });
@@ -216,9 +250,14 @@ router.get("/profile", verifyToken, async (req, res) => {
     const user = await User.findOne({ firebaseUid: req.user.uid });
 
     if (!user) {
-      return res.status(404).json({ error: "User not found" });
+      console.log(`❌ Profile not found for Firebase UID: ${req.user.uid}`);
+      return res.status(404).json({
+        error: "User not found",
+        code: "USER_NOT_FOUND",
+      });
     }
 
+    console.log(`✅ Profile fetched: ${user.email}`);
     res.json({
       id: user._id,
       firebaseUid: user.firebaseUid,
@@ -235,8 +274,12 @@ router.get("/profile", verifyToken, async (req, res) => {
       updatedAt: user.updatedAt,
     });
   } catch (error) {
-    console.error("Profile fetch error:", error);
-    res.status(500).json({ error: error.message });
+    console.error("❌ Profile fetch error:", error);
+    res.status(500).json({
+      error: "Failed to fetch profile",
+      details: error.message,
+      code: "PROFILE_FETCH_ERROR",
+    });
   }
 });
 
@@ -254,29 +297,57 @@ router.put("/profile", verifyToken, async (req, res) => {
   try {
     const { firstName, lastName, phone } = req.body;
 
+    // Validate at least one field is provided
+    if (!firstName && !lastName && !phone) {
+      return res.status(400).json({
+        error:
+          "At least one field (firstName, lastName, or phone) must be provided",
+        code: "NO_UPDATE_DATA",
+      });
+    }
+
+    // Build update object with only provided fields
+    const updateData = {};
+    if (firstName) updateData.firstName = firstName;
+    if (lastName) updateData.lastName = lastName;
+    if (phone !== undefined) updateData.phone = phone;
+
     const user = await User.findOneAndUpdate(
       { firebaseUid: req.user.uid },
-      { firstName, lastName, phone },
+      updateData,
       { new: true, runValidators: true },
     );
 
     if (!user) {
-      return res.status(404).json({ error: "User not found" });
+      console.log(`❌ User not found for update: ${req.user.uid}`);
+      return res.status(404).json({
+        error: "User not found",
+        code: "USER_NOT_FOUND",
+      });
     }
 
+    console.log(`✅ Profile updated: ${user.email}`);
     res.json({
       message: "Profile updated successfully",
-      user: {
-        id: user._id,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        phone: user.phone,
-      },
+      user: {},
     });
   } catch (error) {
-    console.error("Profile update error:", error);
-    res.status(500).json({ error: error.message });
+    console.error("❌ Profile update error:", error);
+
+    // Handle validation errors
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        error: "Validation failed",
+        details: error.message,
+        code: "VALIDATION_ERROR",
+      });
+    }
+
+    res.status(500).json({
+      error: "Failed to update profile",
+      details: error.message,
+      code: "PROFILE_UPDATE_ERROR",
+    });
   }
 });
 
@@ -298,10 +369,27 @@ router.post("/set-role", verifyToken, async (req, res) => {
   try {
     const { userId, role } = req.body;
 
+    // Validate required fields
+    if (!userId || !role) {
+      return res.status(400).json({
+        error: "Missing required fields: userId and role are required",
+        code: "MISSING_REQUIRED_FIELDS",
+      });
+    }
+
     // Validate role
     if (!VALID_ROLES.includes(role)) {
       return res.status(400).json({
         error: `Invalid role. Must be one of: ${VALID_ROLES.join(", ")}`,
+        code: "INVALID_ROLE",
+      });
+    }
+
+    // Validate userId format
+    if (!userId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        error: "Invalid user ID format",
+        code: "INVALID_USER_ID",
       });
     }
 
@@ -311,25 +399,69 @@ router.post("/set-role", verifyToken, async (req, res) => {
       claims.admin = true;
     } else if (role === "superAdmin") {
       claims.superAdmin = true;
-      claims.admin = true;
+      claims.admin = true; // SuperAdmins also have admin privileges
     }
 
     // Find user by MongoDB _id
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ error: "User not found" });
+      console.log(`❌ User not found for role update: ${userId}`);
+      return res.status(404).json({
+        error: "User not found",
+        code: "USER_NOT_FOUND",
+      });
     }
 
+    // Set custom claims in Firebase Auth
+    // This allows the user to have admin/superAdmin access on the frontend
     await auth.setCustomUserClaims(user.firebaseUid, claims);
 
-    // Update role in MongoDB
+    // Update role in MongoDB database
     user.role = role;
     await user.save();
 
-    res.json({ message: "User role updated successfully" });
+    console.log(`✅ User role updated: ${user.email} → ${role}`);
+    res.json({
+      message: "User role updated successfully",
+      user: {
+        id: user._id,
+        email: user.email,
+        role: user.role,
+      },
+    });
   } catch (error) {
-    console.error("Role update error:", error);
-    res.status(500).json({ error: error.message });
+    console.error("❌ Role update error:", error);
+
+    // Handle Firebase errors
+    if (error.code && error.code.startsWith("auth/")) {
+      return res.status(400).json({
+        error: "Firebase error: " + error.message,
+        code: "FIREBASE_ERROR",
+      });
+    }
+
+    // Handle validation errors
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        error: "Validation failed",
+        details: error.message,
+        code: "VALIDATION_ERROR",
+      });
+    }
+
+    // Handle cast errors (invalid ID)
+    if (error.name === "CastError") {
+      return res.status(400).json({
+        error: "Invalid user ID format",
+        code: "INVALID_USER_ID",
+      });
+    }
+
+    res.status(500).json({
+      error: "Failed to update user role",
+      details: error.message,
+      code: "ROLE_UPDATE_ERROR",
+    });
   }
 });
 
