@@ -374,7 +374,7 @@ function SignUp() {
         await auth.signOut();
 
         setTimeout(() => {
-          navigate(`/signin`);
+          navigate(`/tenant/signin`);
         }, 2500);
       } catch (backendError) {
         // Rollback: Delete the Firebase user if backend registration fails
@@ -410,23 +410,30 @@ function SignUp() {
 
   /**
    * Handle social provider signup (Google/Facebook)
-   * - No "Agree to Terms" required for Gmail
-   * - AUTO-REGISTER if account doesn't exist
-   * - Show branch selection modal after registration
-   * - If account exists, login and redirect
+   *
+   * REQUIREMENTS:
+   * 1. Register with Google creates account that can login with email/password later
+   * 2. If account exists, redirect to sign in
+   * 3. Auto-register with empty branch for branch selection later
+   * 4. Robust error handling with user-friendly messages
+   * 5. Rollback on failures
    */
   const handleSocialSignup = async (provider) => {
     setLoading(true);
 
     try {
+      console.log("🔹 Starting Google sign-up...");
+
+      // STEP 1: Authenticate with Firebase
       const result = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
+      console.log("✅ Firebase authentication successful:", firebaseUser.email);
 
       // Validate email exists
       if (!firebaseUser.email) {
         await auth.signOut();
         showNotification(
-          "Unable to get email from Google account. Please try again.",
+          "Unable to get email from your Google account. Please try again or contact support.",
           "error",
         );
         setLoading(false);
@@ -436,109 +443,176 @@ function SignUp() {
       const token = await firebaseUser.getIdToken();
 
       try {
-        // Try to login first - check if account already exists
+        // STEP 2: Check if account already exists in backend
+        console.log("🔍 Checking if account exists...");
         await authApi.login(token);
 
-        // Account already exists - sign out and show error
+        // If login succeeds, account already exists
+        console.log("⚠️ Account already exists");
         await auth.signOut();
         showNotification(
           "This email is already registered. Please sign in instead.",
-          "error",
+          "info",
         );
+
+        // Redirect to sign in page
+        setTimeout(() => {
+          navigate("/tenant/signin");
+        }, 1500);
+
         setLoading(false);
         return;
       } catch (loginError) {
-        // If 404, account doesn't exist - AUTO-REGISTER
+        // STEP 3: If 404, account doesn't exist - proceed with registration
         if (loginError.response?.status === 404) {
+          console.log(
+            "✅ Account doesn't exist, proceeding with registration...",
+          );
+
           try {
-            // Extract name from display name
+            // Extract name from Google display name
             const displayName = firebaseUser.displayName || "";
             const nameParts = displayName.split(" ");
             const firstName = nameParts[0] || "User";
-            const lastName = nameParts.slice(1).join(" ") || "";
+            const lastName = nameParts.slice(1).join(" ") || "Guest";
 
-            // Generate username from email
-            const username =
-              firebaseUser.email.split("@")[0] +
-              Math.floor(Math.random() * 1000);
+            // Generate unique username from email
+            const baseUsername = firebaseUser.email.split("@")[0];
+            const username = `${baseUsername}${Math.floor(Math.random() * 10000)}`;
 
-            console.log(`📝 Generated username for Gmail user: ${username}`);
+            console.log(`📝 Creating account for: ${firstName} ${lastName}`);
+            console.log(`📝 Generated username: ${username}`);
 
-            // Register in backend without branch
-            // User will select branch via modal after login
-            const registerResponse = await authApi.register(
+            // STEP 4: Register in backend database without branch
+            // User will select branch after email verification
+            await authApi.register(
               {
                 email: firebaseUser.email,
                 username: username,
                 firstName: firstName,
                 lastName: lastName,
                 phone: "",
-                branch: "", // Empty - user will select via modal on login
+                branch: "", // Empty - will be selected after verification
               },
               token,
             );
 
-            console.log(
-              `✅ Gmail registration successful. Username: ${username}`,
+            console.log("✅ Backend registration successful");
+
+            // STEP 5: Google accounts are automatically verified by Google
+            // No need to send verification email - they can login immediately
+            console.log("✅ Google account is automatically verified");
+
+            showNotification(
+              `Account created successfully! You can now sign in with your Google account.`,
+              "success",
             );
 
-            showNotification("Account created successfully!", "success");
+            // STEP 6: Sign out user
+            await auth.signOut();
 
-            localStorage.setItem("authToken", token);
-            localStorage.setItem("user", JSON.stringify(registerResponse.user));
-
-            // Redirect to signin to trigger branch selection modal
+            // STEP 7: Redirect to sign-in page
+            console.log("🔄 Redirecting to sign-in page...");
             setTimeout(() => {
-              navigate("/signin");
-            }, 1500);
+              navigate("/tenant/signin");
+            }, 2000);
           } catch (registerError) {
-            console.error("❌ Gmail registration error:", registerError);
+            console.error("❌ Backend registration error:", registerError);
 
             // Get detailed error message
             let errorMessage = "Registration failed. ";
+
             if (registerError.response?.data?.error) {
-              errorMessage += registerError.response.data.error;
+              errorMessage = registerError.response.data.error;
+            } else if (
+              registerError.response?.data?.code === "USERNAME_TAKEN"
+            ) {
+              errorMessage = "Username already taken. Please try again.";
             } else if (registerError.message) {
-              errorMessage += registerError.message;
+              errorMessage = registerError.message;
             } else {
-              errorMessage += "Please try again or contact support.";
+              errorMessage = "An unexpected error occurred. Please try again.";
             }
 
-            // CRITICAL: Delete the Firebase user account if backend registration fails
+            // CRITICAL: Rollback - Delete Firebase account if backend registration fails
+            // Must happen BEFORE sign out to have access to delete
+            console.log("🔄 Rolling back Firebase account...");
             try {
-              await firebaseUser.delete();
-              console.log(
-                "✅ Firebase account deleted after backend registration failure",
-              );
+              // Re-authenticate to get fresh credentials for delete
+              const currentUser = auth.currentUser;
+              if (currentUser) {
+                await currentUser.delete();
+                console.log("✅ Firebase account deleted successfully");
+              } else {
+                console.warn("⚠️ No current user to delete");
+              }
             } catch (deleteError) {
               console.error(
                 "❌ Failed to delete Firebase account:",
                 deleteError,
               );
-              // If delete fails, at least sign out
-              await auth.signOut();
+              // If delete fails, sign out
+              try {
+                await auth.signOut();
+                console.log("✅ User signed out");
+              } catch (signOutError) {
+                console.error("❌ Failed to sign out:", signOutError);
+              }
             }
 
             showNotification(errorMessage, "error");
+            setLoading(false);
           }
         } else {
-          throw loginError;
+          // Other login errors (not 404)
+          console.error("❌ Unexpected login error:", loginError);
+
+          // Sign out to clean state
+          try {
+            await auth.signOut();
+          } catch (signOutError) {
+            console.error("❌ Failed to sign out:", signOutError);
+          }
+
+          showNotification(
+            "An error occurred while checking your account. Please try again.",
+            "error",
+          );
+          setLoading(false);
         }
       }
     } catch (error) {
-      console.error("❌ Social signup error:", error);
+      console.error("❌ Google sign-up error:", error);
+
       // Clean up Firebase session if exists
       if (auth.currentUser) {
-        await auth.signOut();
+        try {
+          await auth.signOut();
+          console.log("✅ Cleaned up Firebase session");
+        } catch (signOutError) {
+          console.error("❌ Failed to clean up session:", signOutError);
+        }
       }
 
-      // Only show error if it's not a user cancellation
-      if (
-        error.code !== "auth/popup-closed-by-user" &&
-        error.code !== "auth/cancelled-popup-request"
-      ) {
+      // Handle specific error cases
+      if (error.code === "auth/popup-closed-by-user") {
+        showNotification("Sign-up cancelled", "info");
+      } else if (error.code === "auth/cancelled-popup-request") {
+        // User cancelled - no need to show error
+        console.log("ℹ️ Sign-up cancelled by user");
+      } else if (error.code === "auth/network-request-failed") {
         showNotification(
-          "Social authentication failed. Please try again.",
+          "Network error. Please check your internet connection and try again.",
+          "error",
+        );
+      } else if (error.code === "auth/too-many-requests") {
+        showNotification(
+          "Too many attempts. Please wait a moment and try again.",
+          "error",
+        );
+      } else {
+        showNotification(
+          "Google sign-up failed. Please try again or contact support.",
           "error",
         );
       }
@@ -985,10 +1059,10 @@ function SignUp() {
               Have an account?{" "}
               <span
                 className="tenant-signup-link"
-                onClick={() => navigate("/signin")}
+                onClick={() => navigate("/tenant/signin")}
                 style={{ cursor: "pointer" }}
               >
-                Sign In Here
+                Sign In
               </span>
             </p>
           </div>

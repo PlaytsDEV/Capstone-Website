@@ -14,7 +14,7 @@
 import express from "express";
 import { auth } from "../config/firebase.js";
 import User from "../models/User.js";
-import { verifyToken } from "../middleware/auth.js";
+import { verifyToken, verifyAdmin } from "../middleware/auth.js";
 
 const router = express.Router();
 
@@ -23,7 +23,7 @@ const router = express.Router();
 // ============================================================================
 
 const VALID_BRANCHES = ["gil-puyat", "guadalupe"];
-const VALID_ROLES = ["tenant", "admin", "superAdmin"];
+const VALID_ROLES = ["user", "tenant", "admin", "superAdmin"];
 
 // ============================================================================
 // AUTHENTICATION ENDPOINTS
@@ -106,7 +106,7 @@ router.post("/register", verifyToken, async (req, res) => {
       lastName,
       phone,
       branch,
-      role: "tenant",
+      role: "user",
       isEmailVerified: req.user.email_verified || false, // Synced from Firebase
     });
 
@@ -437,7 +437,7 @@ router.patch("/update-branch", verifyToken, async (req, res) => {
  * @body { userId, role }
  * @returns { message }
  */
-router.post("/set-role", verifyToken, async (req, res) => {
+router.post("/set-role", verifyToken, verifyAdmin, async (req, res) => {
   try {
     const { userId, role } = req.body;
 

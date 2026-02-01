@@ -36,7 +36,9 @@ import { getAuth } from "firebase/auth";
  * - Never put service account credentials in client code
  */
 const firebaseConfig = {
-  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "YOUR_API_KEY",
+  apiKey:
+    process.env.REACT_APP_FIREBASE_API_KEY ||
+    "AIzaSyBsMEkwGFKfxp_0pItM_g5FzzG8g9Sra1o",
   authDomain:
     process.env.REACT_APP_FIREBASE_AUTH_DOMAIN ||
     "dormitorymanagement-caps-572cf.firebaseapp.com",
@@ -45,11 +47,12 @@ const firebaseConfig = {
     "dormitorymanagement-caps-572cf",
   storageBucket:
     process.env.REACT_APP_FIREBASE_STORAGE_BUCKET ||
-    "dormitorymanagement-caps-572cf.appspot.com",
+    "dormitorymanagement-caps-572cf.firebasestorage.app",
   messagingSenderId:
-    process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID ||
-    "YOUR_MESSAGING_SENDER_ID",
-  appId: process.env.REACT_APP_FIREBASE_APP_ID || "YOUR_APP_ID",
+    process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || "784085654130",
+  appId:
+    process.env.REACT_APP_FIREBASE_APP_ID ||
+    "1:784085654130:web:2fc1e42f23f78d665300eb",
 };
 
 /**
@@ -61,9 +64,9 @@ const firebaseConfig = {
 let app;
 try {
   app = initializeApp(firebaseConfig);
-  console.log("✅ Firebase initialized successfully");
+  console.log("Firebase initialized successfully");
 } catch (error) {
-  console.error("❌ Firebase initialization error:", error);
+  console.error("Firebase initialization error:", error);
   throw error;
 }
 

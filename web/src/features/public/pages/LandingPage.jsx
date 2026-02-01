@@ -15,7 +15,11 @@ function LandingPage() {
   return (
     <div className="landing-page">
       {/* Navigation */}
-      <Navbar type="landing" currentPage="home" />
+      <Navbar
+        type="landing"
+        currentPage="home"
+        onLoginClick={() => navigate("/tenant/signin")}
+      />
 
       {/* Hero Section */}
       <section className="landing-hero">

@@ -7,9 +7,9 @@
  * - Email/password login OR username/password login
  * - Email verification check
  * - Google and Facebook social authentication
- * - Branch selection modal for Gmail login
+ * - Redirects to branch selection page for users without branch
  * - Show/Hide password toggle
- * - No redirect to signup on Gmail 404 (shows error instead)
+ * - Comprehensive error handling
  */
 
 import { useState } from "react";
@@ -23,7 +23,6 @@ import {
 import { auth } from "../../../firebase/config";
 import { showNotification } from "../../../shared/utils/notification";
 import { authApi } from "../../../shared/api/apiClient";
-import BranchSelectionModal from "../modals/BranchSelectionModal";
 import "../../public/styles/tenant-signin.css";
 import "../../../shared/styles/notification.css";
 import logoImage from "../../../assets/images/landingpage/logo.png";
@@ -38,8 +37,6 @@ function SignIn() {
   });
 
   const [showPassword, setShowPassword] = useState(false);
-  const [showBranchModal, setShowBranchModal] = useState(false);
-  const [pendingFirebaseUser, setPendingFirebaseUser] = useState(null);
   const [loading, setLoading] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
   const [touched, setTouched] = useState({});
@@ -184,68 +181,104 @@ function SignIn() {
 
   /**
    * Handle email/password login
-   * - Use email directly for Firebase login
-   * - Check email verification status
-   * - Login to backend with Firebase token
+   *
+   * REQUIREMENTS:
+   * 1. Support login with email/password for Google-registered users
+   * 2. Check email verification before allowing login
+   * 3. Check if branch selection is needed
+   * 4. Redirect appropriately based on user role and branch
+   * 5. Robust error handling
    */
   const handleSignIn = async (e) => {
     e.preventDefault();
 
-    if (!validateForm()) return;
+    console.log("🔹 Login button clicked");
+    console.log("📧 Email:", formData.email);
 
+    if (!validateForm()) {
+      console.log("❌ Form validation failed");
+      return;
+    }
+
+    console.log("✅ Form validation passed, attempting login...");
     setLoading(true);
 
     try {
-      // Sign in with Firebase using email
+      // STEP 1: Sign in with Firebase using email and password
+      console.log("🔐 Authenticating with Firebase...");
       const userCredential = await signInWithEmailAndPassword(
         auth,
         formData.email,
         formData.password,
       );
       const firebaseUser = userCredential.user;
+      console.log("✅ Firebase authentication successful");
 
-      // Check if email is verified
+      // STEP 2: Check if email is verified
+      console.log("📧 Email verified:", firebaseUser.emailVerified);
       if (!firebaseUser.emailVerified) {
+        console.log("⚠️ Email not verified, signing out...");
         await auth.signOut();
         showNotification(
-          "Please verify your email before logging in. Check your inbox.",
+          "Please verify your email before logging in. Check your inbox for the verification link.",
           "warning",
         );
         setLoading(false);
         return;
       }
 
-      // Get Firebase token and login to backend
+      // STEP 3: Get Firebase token and login to backend
       const token = await firebaseUser.getIdToken();
+      console.log("🔑 Firebase token obtained");
 
       try {
+        console.log("🔍 Logging in to backend...");
         const loginResponse = await authApi.login(token);
+        console.log("✅ Backend login successful");
+        console.log("👤 User branch:", loginResponse.user.branch);
 
-        // Check if user needs to select branch (empty branch from Gmail registration)
+        // STEP 4: Check if user needs to select branch
+        // This happens when user registered with Google but hasn't selected a branch yet
         if (!loginResponse.user.branch || loginResponse.user.branch === "") {
-          // Store temp data and show branch selection modal
-          setPendingFirebaseUser({ firebaseUser, token });
+          console.log(
+            "📍 Branch not selected, redirecting to branch selection...",
+          );
+
+          // Store temporary data for branch selection
           localStorage.setItem("authToken", token);
           localStorage.setItem("user", JSON.stringify(loginResponse.user));
-          setShowBranchModal(true);
+
+          // Redirect to branch selection page
+          showNotification("Please select your branch to continue", "info");
+          setTimeout(() => {
+            navigate("/tenant/branch-selection");
+          }, 500);
           setLoading(false);
           return;
         }
 
-        // Store authentication data
+        // STEP 5: Store authentication data
         localStorage.setItem("authToken", token);
         localStorage.setItem("user", JSON.stringify(loginResponse.user));
 
-        showNotification(`Login successful!`, "success");
+        showNotification(
+          `Welcome back, ${loginResponse.user.firstName}!`,
+          "success",
+        );
 
-        // Redirect based on role
+        // STEP 6: Redirect based on role
+        console.log("🔄 Redirecting to appropriate page...");
         setTimeout(() => {
           if (
             loginResponse.user.role === "admin" ||
             loginResponse.user.role === "superAdmin"
           ) {
+            console.log("👨‍💼 Redirecting to admin dashboard");
             navigate("/admin/dashboard");
           } else {
+            console.log(
+              `🏠 Redirecting to branch: ${loginResponse.user.branch}`,
+            );
             navigate(`/${loginResponse.user.branch}`);
           }
         }, 800);
@@ -255,11 +288,19 @@ function SignIn() {
 
         if (backendError.response?.status === 404) {
           showNotification(
-            "Account not found in database. Please contact support.",
+            "Account not found in database. Please contact support or register again.",
+            "error",
+          );
+        } else if (backendError.response?.status === 403) {
+          showNotification(
+            "Your account is inactive. Please contact support.",
             "error",
           );
         } else {
-          showNotification("Login failed. Please try again.", "error");
+          showNotification(
+            "Login failed. Please try again or contact support.",
+            "error",
+          );
         }
       }
     } catch (error) {
@@ -270,14 +311,21 @@ function SignIn() {
         error.code === "auth/invalid-credential" ||
         error.code === "auth/wrong-password"
       ) {
-        errorMessage = "Invalid email or password";
+        errorMessage =
+          "Invalid email or password. Please check your credentials.";
       } else if (error.code === "auth/user-not-found") {
-        errorMessage = "No account found with this email";
+        errorMessage =
+          "No account found with this email. Please register first.";
       } else if (error.code === "auth/invalid-email") {
         errorMessage = "Invalid email format. Please check your email.";
       } else if (error.code === "auth/too-many-requests") {
         errorMessage =
-          "Too many failed login attempts. Please try again later.";
+          "Too many failed login attempts. Please try again later or reset your password.";
+      } else if (error.code === "auth/network-request-failed") {
+        errorMessage = "Network error. Please check your internet connection.";
+      } else if (error.code === "auth/user-disabled") {
+        errorMessage =
+          "This account has been disabled. Please contact support.";
       }
 
       showNotification(errorMessage, "error");
@@ -288,122 +336,175 @@ function SignIn() {
 
   /**
    * Handle social provider login (Google/Facebook)
-   * - If account exists, log in and redirect
-   * - If account doesn't exist, DO NOT redirect to signup, show error
-   * - For successful login, show branch selection modal
+   *
+   * REQUIREMENTS:
+   * 1. If user registered with Google, can login with Google
+   * 2. Check email verification status
+   * 3. Show branch selection if not yet selected
+   * 4. Redirect to appropriate page based on role and branch
+   * 5. If account doesn't exist, show error (no auto-registration on login)
+   * 6. Comprehensive error handling
    */
   const handleSocialLogin = async (provider) => {
     setLoading(true);
 
     try {
+      console.log("🔹 Starting Google sign-in...");
+
+      // STEP 1: Authenticate with Firebase
       const result = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
+      console.log("✅ Firebase authentication successful:", firebaseUser.email);
+      console.log("📧 Email verified:", firebaseUser.emailVerified);
+
+      // STEP 2: Check email verification (required for all users including Google)
+      if (!firebaseUser.emailVerified) {
+        console.log("⚠️ Email not verified");
+        await auth.signOut();
+        showNotification(
+          "Please verify your email first. Check your inbox for the verification link.",
+          "warning",
+        );
+        setLoading(false);
+        return;
+      }
+
+      // STEP 3: Get Firebase token
       const token = await firebaseUser.getIdToken();
+      console.log("🔑 Firebase token obtained");
 
       try {
-        // Try to login - check if account exists
+        // STEP 4: Try to login - check if account exists in backend
+        console.log("🔍 Checking if account exists in backend...");
         const loginResponse = await authApi.login(token);
+        console.log("✅ Account found in backend");
+        console.log("👤 User branch:", loginResponse.user.branch);
 
-        // Account exists - check if they need to select branch
-        if (!loginResponse.user.branch) {
-          // No branch assigned - show branch selection modal
-          setPendingFirebaseUser({ firebaseUser, token });
-          setShowBranchModal(true);
-        } else {
-          // Branch already assigned - login directly
+        // STEP 5: Check if branch selection is needed
+        if (!loginResponse.user.branch || loginResponse.user.branch === "") {
+          console.log(
+            "📍 Branch not selected, redirecting to branch selection page...",
+          );
+
+          // Store authentication data
           localStorage.setItem("authToken", token);
           localStorage.setItem("user", JSON.stringify(loginResponse.user));
 
+          // Redirect to branch selection page
+          showNotification("Please select your branch to continue", "info");
+          setTimeout(() => {
+            navigate("/tenant/branch-selection");
+          }, 500);
+          setLoading(false);
+          return; // Stop here - don't continue with regular login
+        }
+
+        // STEP 6: Branch already assigned - login directly
+        console.log("✅ Branch already selected, logging in...");
+        localStorage.setItem("authToken", token);
+        localStorage.setItem("user", JSON.stringify(loginResponse.user));
+
+        showNotification(
+          `Welcome back, ${loginResponse.user.firstName}!`,
+          "success",
+        );
+
+        // STEP 7: Redirect based on role
+        console.log("🔄 Redirecting to appropriate page...");
+        setTimeout(() => {
+          if (
+            loginResponse.user.role === "admin" ||
+            loginResponse.user.role === "superAdmin"
+          ) {
+            console.log("👨‍💼 Redirecting to admin dashboard");
+            navigate("/admin/dashboard");
+          } else {
+            console.log(
+              `🏠 Redirecting to branch: ${loginResponse.user.branch}`,
+            );
+            navigate(`/${loginResponse.user.branch}`);
+          }
+        }, 800);
+      } catch (loginError) {
+        // STEP 8: Handle login errors
+        console.error("❌ Backend login error:", loginError);
+
+        // Sign out from Firebase
+        await auth.signOut();
+
+        // If 404, account doesn't exist
+        if (loginError.response?.status === 404) {
+          console.log("⚠️ Account not found in backend");
           showNotification(
-            `Login successful! Hello, ${loginResponse.user.firstName}`,
-            "success",
+            "No account found. Please register first using the sign-up page.",
+            "info",
           );
 
+          // Optionally redirect to signup after a delay
           setTimeout(() => {
-            if (
-              loginResponse.user.role === "admin" ||
-              loginResponse.user.role === "superAdmin"
-            ) {
-              navigate("/admin/dashboard");
-            } else {
-              navigate(`/${loginResponse.user.branch}`);
-            }
-          }, 800);
-        }
-      } catch (loginError) {
-        // If 404, account doesn't exist - DO NOT REDIRECT, show error
-        if (loginError.response?.status === 404) {
-          await auth.signOut();
+            navigate("/tenant/signup");
+          }, 2000);
+        } else if (loginError.response?.status === 403) {
           showNotification(
-            "No account found. Please register using the form.",
-            "warning",
+            "Your account is inactive. Please contact support.",
+            "error",
           );
         } else {
-          throw loginError;
+          showNotification(
+            "Login failed. Please try again or contact support.",
+            "error",
+          );
         }
       }
     } catch (error) {
-      console.error("❌ Social login error:", error);
+      console.error("❌ Google sign-in error:", error);
+
       // Clean up Firebase session if exists
       if (auth.currentUser) {
-        await auth.signOut();
+        try {
+          await auth.signOut();
+          console.log("✅ Cleaned up Firebase session");
+        } catch (signOutError) {
+          console.error("❌ Failed to sign out:", signOutError);
+        }
       }
 
+      // Handle specific error cases
       if (error.code === "auth/popup-closed-by-user") {
-        showNotification("Login cancelled", "info");
+        showNotification("Sign-in cancelled", "info");
+      } else if (error.code === "auth/cancelled-popup-request") {
+        // User cancelled - no need to show error
+        console.log("ℹ️ Sign-in cancelled by user");
+      } else if (error.code === "auth/popup-blocked") {
+        showNotification(
+          "Popup blocked by browser. Please allow popups for this site.",
+          "error",
+        );
+      } else if (error.code === "auth/network-request-failed") {
+        showNotification(
+          "Network error. Please check your internet connection and try again.",
+          "error",
+        );
+      } else if (error.code === "auth/too-many-requests") {
+        showNotification(
+          "Too many attempts. Please wait a moment and try again.",
+          "error",
+        );
+      } else if (
+        error.code === "auth/account-exists-with-different-credential"
+      ) {
+        showNotification(
+          "An account already exists with this email using a different sign-in method.",
+          "error",
+        );
       } else {
-        showNotification("Social login failed. Please try again.", "error");
+        showNotification(
+          "Google sign-in failed. Please try again or use email/password login.",
+          "error",
+        );
       }
     } finally {
       setLoading(false);
-    }
-  };
-
-  /**
-   * Handle branch selection for Gmail users
-   * Update user's branch in backend
-   */
-  const handleBranchSelection = async (selectedBranch) => {
-    try {
-      if (!pendingFirebaseUser) return;
-
-      const { token } = pendingFirebaseUser;
-
-      // Update user branch in backend
-      const response = await fetch(
-        `${process.env.REACT_APP_API_URL || "http://localhost:5000"}/api/auth/update-branch`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ branch: selectedBranch }),
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to update branch");
-      }
-
-      const updatedUser = await response.json();
-
-      localStorage.setItem("authToken", token);
-      localStorage.setItem("user", JSON.stringify(updatedUser.user));
-
-      showNotification(
-        `Welcome to ${selectedBranch === "gil-puyat" ? "Gil Puyat" : "Guadalupe"} branch!`,
-        "success",
-      );
-
-      setShowBranchModal(false);
-
-      setTimeout(() => {
-        navigate(`/${selectedBranch}`);
-      }, 800);
-    } catch (error) {
-      console.error("❌ Branch selection error:", error);
-      showNotification("Failed to select branch. Please try again.", "error");
     }
   };
 
@@ -563,6 +664,33 @@ function SignIn() {
               >
                 {loading ? "Signing In..." : "Sign In"}
               </button>
+
+              <div
+                style={{
+                  textAlign: "center",
+                  marginTop: "12px",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => navigate("/tenant/forgot-password")}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#667eea",
+                    fontSize: "14px",
+                    cursor: "pointer",
+                    textDecoration: "none",
+                    padding: "4px 8px",
+                  }}
+                  onMouseOver={(e) =>
+                    (e.target.style.textDecoration = "underline")
+                  }
+                  onMouseOut={(e) => (e.target.style.textDecoration = "none")}
+                >
+                  Forgot Password?
+                </button>
+              </div>
             </form>
 
             <div className="tenant-signin-divider">
@@ -638,22 +766,15 @@ function SignIn() {
               Don't have an account?{" "}
               <span
                 className="tenant-signin-link"
-                onClick={() => navigate("/signup")}
+                onClick={() => navigate("/tenant/signup")}
                 style={{ cursor: "pointer" }}
               >
-                Sign Up Here
+                Sign Up
               </span>
             </p>
           </div>
         </div>
       </div>
-
-      {/* Branch Selection Modal for Gmail Login */}
-      <BranchSelectionModal
-        isOpen={showBranchModal}
-        onClose={() => setShowBranchModal(false)}
-        onSelectBranch={handleBranchSelection}
-      />
     </>
   );
 }

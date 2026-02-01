@@ -9,7 +9,7 @@ const RequireSuperAdmin = ({ children }) => {
     return <div>Loading...</div>;
   }
 
-  if (!isAuthenticated || user?.role !== "super-admin") {
+  if (!isAuthenticated || user?.role !== "superAdmin") {
     return <Navigate to="/admin/login" replace />;
   }
 

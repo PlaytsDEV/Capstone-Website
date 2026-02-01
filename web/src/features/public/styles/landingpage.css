@@ -37,8 +37,30 @@ html {
 .landing-nav-content {
   display: flex;
   align-items: center;
-  justify-content: center;
+  position: relative;
+  height: 40px;
+  width: 100%;
+}
+
+.landing-nav-links {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
   gap: 40px;
+  z-index: 10;
+}
+
+.landing-nav-auth {
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  z-index: 10;
 }
 
 .landing-nav-link {
@@ -94,6 +116,7 @@ html {
   cursor: pointer;
   transition: all 0.2s;
   font: inherit;
+  position: relative;
 }
 
 .landing-profile-button:hover {
@@ -104,7 +127,7 @@ html {
 .landing-profile-avatar {
   width: 32px;
   height: 32px;
-  border-radius: 50%;
+  border-radius: 8px;
   background: linear-gradient(135deg, #ff6900, #ff8534);
   color: white;
   display: flex;
@@ -134,13 +157,15 @@ html {
 .landing-profile-dropdown {
   position: absolute;
   top: calc(100% + 8px);
+  left: 0;
   right: 0;
+  margin: 0 auto;
   background: white;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  min-width: 260px;
   z-index: 1000;
   animation: slideDown 0.2s ease;
+  transform-origin: top center;
 }
 
 @keyframes slideDown {
@@ -162,16 +187,17 @@ html {
 }
 
 .landing-profile-dropdown-avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
   background: linear-gradient(135deg, #ff6900, #ff8534);
   color: white;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 18px;
+  font-size: 14px;
+  flex-shrink: 0;
 }
 
 .landing-profile-dropdown-info {
@@ -225,10 +251,43 @@ html {
   background: #f8f8f8;
 }
 
-.landing-profile-dropdown-item svg {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
+.landing-profile-dropdown-item:focus {
+  outline: 2px solid #ff6900;
+  outline-offset: 2px;
+  background: #f8f8f8;
+}
+
+.landing-profile-dropdown-item:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.landing-profile-button:focus {
+  outline: 2px solid #ff6900;
+  outline-offset: 2px;
+}
+
+.landing-profile-button:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Responsive design improvements */
+@media (max-width: 768px) {
+  .landing-profile-dropdown {
+    right: -20px;
+    left: -20px;
+    margin: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .landing-profile-dropdown-header {
+    padding: 12px;
+  }
+
+  .landing-profile-dropdown-item {
+    padding: 10px 12px;
+    font-size: 13px;
+  }
 }
 
 /* Old styles - can be removed */

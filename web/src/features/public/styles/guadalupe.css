@@ -23,20 +23,30 @@
 .guadalupe-nav-content {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 20px;
+  position: relative;
+  height: 40px;
+  width: 100%;
 }
 
 .guadalupe-nav-links {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   display: flex;
-  gap: 40px;
   align-items: center;
-  flex: 1;
-  justify-content: center;
+  gap: 40px;
+  z-index: 10;
 }
 
 .guadalupe-nav-auth {
-  margin-left: auto;
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  z-index: 10;
 }
 
 .guadalupe-nav-link {
@@ -92,6 +102,7 @@
   cursor: pointer;
   transition: all 0.2s;
   font: inherit;
+  position: relative;
 }
 
 .guadalupe-profile-button:hover {
@@ -102,7 +113,7 @@
 .guadalupe-profile-avatar {
   width: 32px;
   height: 32px;
-  border-radius: 50%;
+  border-radius: 8px;
   background: linear-gradient(135deg, #ff6900, #ff8534);
   color: white;
   display: flex;
@@ -132,13 +143,15 @@
 .guadalupe-profile-dropdown {
   position: absolute;
   top: calc(100% + 8px);
+  left: 0;
   right: 0;
+  margin: 0 auto;
   background: white;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  min-width: 260px;
   z-index: 1000;
   animation: slideDown 0.2s ease;
+  transform-origin: top center;
 }
 
 .guadalupe-profile-dropdown-header {
@@ -149,16 +162,17 @@
 }
 
 .guadalupe-profile-dropdown-avatar {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
   background: linear-gradient(135deg, #ff6900, #ff8534);
   color: white;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 18px;
+  font-size: 14px;
+  flex-shrink: 0;
 }
 
 .guadalupe-profile-dropdown-info {
@@ -212,10 +226,43 @@
   background: #f8f8f8;
 }
 
-.guadalupe-profile-dropdown-item svg {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
+.guadalupe-profile-dropdown-item:focus {
+  outline: 2px solid #ff6900;
+  outline-offset: 2px;
+  background: #f8f8f8;
+}
+
+.guadalupe-profile-dropdown-item:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.guadalupe-profile-button:focus {
+  outline: 2px solid #ff6900;
+  outline-offset: 2px;
+}
+
+.guadalupe-profile-button:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Responsive design improvements */
+@media (max-width: 768px) {
+  .guadalupe-profile-dropdown {
+    right: -20px;
+    left: -20px;
+    margin: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .guadalupe-profile-dropdown-header {
+    padding: 12px;
+  }
+
+  .guadalupe-profile-dropdown-item {
+    padding: 10px 12px;
+    font-size: 13px;
+  }
 }
 
 /* Old styles - can be removed */

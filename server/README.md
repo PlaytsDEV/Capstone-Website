@@ -28,6 +28,28 @@ npm run dev
 npm start
 ```
 
+## Admin Account Setup
+
+A default admin account is automatically created when you run the server for the first time. The credentials are configured in the `.env` file:
+
+```env
+ADMIN_EMAIL=admin@lilycrest.com
+ADMIN_PASSWORD=Admin123!
+ADMIN_ROLE=superAdmin
+```
+
+**⚠️ Security Notice:**
+
+- Change the default password immediately after first login
+- Remove or update these environment variables in production
+- The admin account has full system access (superAdmin role)
+
+To manually create/update the admin account:
+
+```bash
+node create-admin.js
+```
+
 ## API Endpoints
 
 ### Authentication (`/api/auth`)
