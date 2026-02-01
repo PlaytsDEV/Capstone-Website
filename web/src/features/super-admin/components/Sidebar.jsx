@@ -1,23 +1,22 @@
-import "../styles/superadmin-sidebar.css";
+import React from "react";
 
-function Sidebar() {
+const Sidebar = () => {
   return (
-    <aside className="superadmin-sidebar">
-      <div className="superadmin-sidebar-header">
-        <h2>Super Admin</h2>
-      </div>
-      <nav className="superadmin-sidebar-nav">
+    <div className="superadmin-sidebar">
+      <h2>Super Admin</h2>
+      <nav>
         <ul>
           <li>Dashboard</li>
-          <li>Users</li>
-          <li>Branches</li>
-          <li>Roles</li>
-          <li>Settings</li>
-          <li>Logs</li>
+          <li>User Management</li>
+          <li>Roles & Permissions</li>
+          <li>Branch Management</li>
+          <li>All Tenants</li>
+          <li>Activity Logs</li>
+          <li>System Settings</li>
         </ul>
       </nav>
-    </aside>
+    </div>
   );
-}
+};
 
 export default Sidebar;

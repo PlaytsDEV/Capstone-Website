@@ -1,7 +1,19 @@
-import { Outlet } from "react-router-dom";
+import React from "react";
+import { Navigate } from "react-router-dom";
+import { useAuth } from "../hooks/useAuth";
 
-function RequireAdmin() {
-  return <Outlet />;
-}
+const RequireAdmin = ({ children }) => {
+  const { user, isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+
+  if (!isAuthenticated || user?.role !== "admin") {
+    return <Navigate to="/admin/login" replace />;
+  }
+
+  return children;
+};
 
 export default RequireAdmin;

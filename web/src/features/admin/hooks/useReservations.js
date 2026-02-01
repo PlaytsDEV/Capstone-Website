@@ -1,13 +1,12 @@
+// Custom hook for managing reservations
 import { useState, useEffect } from "react";
 
-export function useReservations() {
+export const useReservations = () => {
   const [reservations, setReservations] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  // TODO: Implement API call
-  useEffect(() => {
-    // Fetch reservations from API
-  }, []);
+  // Add your API calls and logic here
 
-  return { reservations, loading };
-}
+  return { reservations, loading, error, setReservations };
+};

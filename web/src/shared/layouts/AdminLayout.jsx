@@ -1,15 +1,13 @@
-import { Outlet } from "react-router-dom";
+import React from "react";
 import Sidebar from "../../features/admin/components/Sidebar";
 
-function AdminLayout() {
+const AdminLayout = ({ children }) => {
   return (
     <div className="admin-layout">
       <Sidebar />
-      <main className="admin-content">
-        <Outlet />
-      </main>
+      <main className="admin-content">{children}</main>
     </div>
   );
-}
+};
 
 export default AdminLayout;

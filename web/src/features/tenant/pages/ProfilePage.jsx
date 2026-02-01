@@ -1,10 +1,12 @@
-function ProfilePage() {
+import React from "react";
+
+const ProfilePage = () => {
   return (
-    <div style={{ padding: "24px" }}>
-      <h1>Profile</h1>
-      <p>Placeholder page.</p>
+    <div className="profile-page">
+      <h1>My Profile</h1>
+      <p>Manage your profile information</p>
     </div>
   );
-}
+};
 
 export default ProfilePage;

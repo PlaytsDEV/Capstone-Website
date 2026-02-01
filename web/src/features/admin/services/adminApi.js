@@ -1,55 +1,27 @@
 // Admin API service
-const API_BASE = "/api/admin";
+import axios from "axios";
+
+const API_BASE_URL =
+  process.env.REACT_APP_API_URL || "http://localhost:5000/api";
 
 export const adminApi = {
-  // Dashboard
-  getDashboardStats: async () => {
-    // TODO: Implement API call
-    return {};
-  },
-
   // Inquiries
   getInquiries: async () => {
-    // TODO: Implement API call
-    return [];
-  },
-
-  updateInquiry: async (id, data) => {
-    // TODO: Implement API call
+    const response = await axios.get(`${API_BASE_URL}/admin/inquiries`);
+    return response.data;
   },
 
   // Reservations
   getReservations: async () => {
-    // TODO: Implement API call
-    return [];
-  },
-
-  updateReservation: async (id, data) => {
-    // TODO: Implement API call
+    const response = await axios.get(`${API_BASE_URL}/admin/reservations`);
+    return response.data;
   },
 
   // Tenants
   getTenants: async () => {
-    // TODO: Implement API call
-    return [];
+    const response = await axios.get(`${API_BASE_URL}/admin/tenants`);
+    return response.data;
   },
 
-  getTenant: async (id) => {
-    // TODO: Implement API call
-    return {};
-  },
-
-  updateTenant: async (id, data) => {
-    // TODO: Implement API call
-  },
-
-  // Rooms
-  getRooms: async () => {
-    // TODO: Implement API call
-    return [];
-  },
-
-  updateRoom: async (id, data) => {
-    // TODO: Implement API call
-  },
+  // Add more API methods as needed
 };

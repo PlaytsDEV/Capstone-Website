@@ -1,16 +1,12 @@
-import Sidebar from "../components/Sidebar";
-import "../styles/superadmin-dashboard.css";
+import React from "react";
 
-function SuperAdminDashboard() {
+const SuperAdminDashboard = () => {
   return (
-    <div className="superadmin-layout">
-      <Sidebar />
-      <main className="superadmin-content">
-        <h1>Super Admin Dashboard</h1>
-        <p>System-wide overview and management</p>
-      </main>
+    <div className="superadmin-dashboard">
+      <h1>Super Admin Dashboard</h1>
+      <p>System-wide overview and management</p>
     </div>
   );
-}
+};
 
 export default SuperAdminDashboard;

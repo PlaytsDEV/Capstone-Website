@@ -1,16 +1,12 @@
-import Sidebar from "../components/Sidebar";
-import "../styles/superadmin-settings.css";
+import React from "react";
 
-function SystemSettingsPage() {
+const SystemSettingsPage = () => {
   return (
-    <div className="superadmin-layout">
-      <Sidebar />
-      <main className="superadmin-content">
-        <h1>System Settings</h1>
-        <p>Configure system-wide settings</p>
-      </main>
+    <div className="system-settings-page">
+      <h1>System Settings</h1>
+      <p>Configure global system settings and preferences</p>
     </div>
   );
-}
+};
 
 export default SystemSettingsPage;

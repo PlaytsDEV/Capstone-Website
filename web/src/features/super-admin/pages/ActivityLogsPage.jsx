@@ -1,16 +1,12 @@
-import Sidebar from "../components/Sidebar";
-import "../styles/superadmin-settings.css";
+import React from "react";
 
-function ActivityLogsPage() {
+const ActivityLogsPage = () => {
   return (
-    <div className="superadmin-layout">
-      <Sidebar />
-      <main className="superadmin-content">
-        <h1>Activity Logs</h1>
-        <p>System audit trail and activity logs</p>
-      </main>
+    <div className="activity-logs-page">
+      <h1>Activity Logs</h1>
+      <p>View system-wide activity and audit logs</p>
     </div>
   );
-}
+};
 
 export default ActivityLogsPage;

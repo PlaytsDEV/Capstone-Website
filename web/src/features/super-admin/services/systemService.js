@@ -1,19 +1,27 @@
-// System Service
+// System service for super admin
 export const systemService = {
-  getSystemStatus: async () => {
-    // TODO: Implement system status check
-    return {};
+  getSystemInfo: async () => {
+    // Get system information
+    return {
+      version: "1.0.0",
+      uptime: "24 hours",
+      users: 100,
+      branches: 2,
+    };
   },
 
   updateSystemSettings: async (settings) => {
-    // TODO: Implement settings update
+    // Update system settings
+    console.log("Updating system settings", settings);
   },
 
-  performBackup: async () => {
-    // TODO: Implement backup
+  backupDatabase: async () => {
+    // Backup database
+    console.log("Backing up database");
   },
 
-  restoreBackup: async (backupId) => {
-    // TODO: Implement restore
+  restoreDatabase: async (backupFile) => {
+    // Restore database
+    console.log("Restoring database from", backupFile);
   },
 };

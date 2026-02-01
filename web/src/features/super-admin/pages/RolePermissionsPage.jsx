@@ -1,16 +1,12 @@
-import Sidebar from "../components/Sidebar";
-import "../styles/superadmin-settings.css";
+import React from "react";
 
-function RolePermissionsPage() {
+const RolePermissionsPage = () => {
   return (
-    <div className="superadmin-layout">
-      <Sidebar />
-      <main className="superadmin-content">
-        <h1>Roles & Permissions</h1>
-        <p>Configure system roles and permissions</p>
-      </main>
+    <div className="role-permissions-page">
+      <h1>Roles & Permissions</h1>
+      <p>Configure user roles and access permissions</p>
     </div>
   );
-}
+};
 
 export default RolePermissionsPage;

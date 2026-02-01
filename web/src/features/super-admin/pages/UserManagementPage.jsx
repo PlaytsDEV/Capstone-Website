@@ -1,16 +1,12 @@
-import Sidebar from "../components/Sidebar";
-import "../styles/superadmin-users.css";
+import React from "react";
 
-function UserManagementPage() {
+const UserManagementPage = () => {
   return (
-    <div className="superadmin-layout">
-      <Sidebar />
-      <main className="superadmin-content">
-        <h1>User Management</h1>
-        <p>Manage all system users and their roles</p>
-      </main>
+    <div className="user-management-page">
+      <h1>User Management</h1>
+      <p>Manage all system users and administrators</p>
     </div>
   );
-}
+};
 
 export default UserManagementPage;

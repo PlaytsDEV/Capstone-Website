@@ -1,13 +1,12 @@
+// Custom hook for managing inquiries
 import { useState, useEffect } from "react";
 
-export function useInquiries() {
+export const useInquiries = () => {
   const [inquiries, setInquiries] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  // TODO: Implement API call
-  useEffect(() => {
-    // Fetch inquiries from API
-  }, []);
+  // Add your API calls and logic here
 
-  return { inquiries, loading };
-}
+  return { inquiries, loading, error, setInquiries };
+};

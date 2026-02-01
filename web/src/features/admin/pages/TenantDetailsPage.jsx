@@ -1,19 +1,12 @@
-import { useParams } from "react-router-dom";
-import Sidebar from "../components/Sidebar";
-import "../styles/admin-tenants.css";
+import React from "react";
 
-function TenantDetailsPage() {
-  const { id } = useParams();
-
+const TenantDetailsPage = () => {
   return (
-    <div className="admin-layout">
-      <Sidebar />
-      <main className="admin-content">
-        <h1>Tenant Details #{id}</h1>
-        <p>View detailed tenant information</p>
-      </main>
+    <div className="tenant-details-page">
+      <h1>Tenant Details</h1>
+      <p>View detailed tenant information</p>
     </div>
   );
-}
+};
 
 export default TenantDetailsPage;

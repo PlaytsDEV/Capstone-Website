@@ -1,16 +1,12 @@
-import Sidebar from "../components/Sidebar";
-import "../styles/superadmin-settings.css";
+import React from "react";
 
-function BranchManagementPage() {
+const BranchManagementPage = () => {
   return (
-    <div className="superadmin-layout">
-      <Sidebar />
-      <main className="superadmin-content">
-        <h1>Branch Management</h1>
-        <p>Manage all branches (Gil Puyat, Guadalupe)</p>
-      </main>
+    <div className="branch-management-page">
+      <h1>Branch Management</h1>
+      <p>Manage all branches and their configurations</p>
     </div>
   );
-}
+};
 
 export default BranchManagementPage;

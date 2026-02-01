@@ -1,10 +1,12 @@
-function ContractsPage() {
+import React from "react";
+
+const ContractsPage = () => {
   return (
-    <div style={{ padding: "24px" }}>
-      <h1>Contracts</h1>
-      <p>Placeholder page.</p>
+    <div className="contracts-page">
+      <h1>My Contracts</h1>
+      <p>View and manage your rental contracts</p>
     </div>
   );
-}
+};
 
 export default ContractsPage;

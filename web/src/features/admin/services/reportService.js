@@ -1,22 +1,17 @@
-// Report Service
-const reportService = {
-  generateRevenueReport: async (startDate, endDate) => {
-    // TODO: Implement report generation
-    return {};
+// Report service for admin
+export const reportService = {
+  generateMonthlyReport: async (branchId, month, year) => {
+    // Generate monthly report logic
+    console.log("Generating report for", branchId, month, year);
   },
 
-  generateOccupancyReport: async (month, year) => {
-    // TODO: Implement report generation
-    return {};
+  exportToPDF: async (reportData) => {
+    // Export report to PDF logic
+    console.log("Exporting to PDF", reportData);
   },
 
-  exportToCSV: (data, filename) => {
-    // TODO: Implement CSV export
-  },
-
-  exportToPDF: (data, filename) => {
-    // TODO: Implement PDF export
+  exportToExcel: async (reportData) => {
+    // Export report to Excel logic
+    console.log("Exporting to Excel", reportData);
   },
 };
-
-export default reportService;

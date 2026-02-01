@@ -1,16 +1,12 @@
-import Sidebar from "../components/Sidebar";
-import "../styles/superadmin-users.css";
+import React from "react";
 
-function AllTenantsPage() {
+const AllTenantsPage = () => {
   return (
-    <div className="superadmin-layout">
-      <Sidebar />
-      <main className="superadmin-content">
-        <h1>All Tenants</h1>
-        <p>View tenants across all branches</p>
-      </main>
+    <div className="all-tenants-page">
+      <h1>All Tenants</h1>
+      <p>View all tenants across all branches</p>
     </div>
   );
-}
+};
 
 export default AllTenantsPage;

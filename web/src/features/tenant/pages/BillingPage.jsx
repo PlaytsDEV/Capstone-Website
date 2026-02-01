@@ -1,10 +1,12 @@
-function BillingPage() {
+import React from "react";
+
+const BillingPage = () => {
   return (
-    <div style={{ padding: "24px" }}>
-      <h1>Billing</h1>
-      <p>Placeholder page.</p>
+    <div className="billing-page">
+      <h1>Billing & Payments</h1>
+      <p>View your billing history and manage payments</p>
     </div>
   );
-}
+};
 
 export default BillingPage;

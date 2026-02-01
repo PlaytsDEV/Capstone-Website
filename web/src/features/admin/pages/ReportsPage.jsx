@@ -1,16 +1,12 @@
-import Sidebar from "../components/Sidebar";
-import "../styles/admin-reports.css";
+import React from "react";
 
-function ReportsPage() {
+const ReportsPage = () => {
   return (
-    <div className="admin-layout">
-      <Sidebar />
-      <main className="admin-content">
-        <h1>Reports & Analytics</h1>
-        <p>Generate and view reports</p>
-      </main>
+    <div className="reports-page">
+      <h1>Reports</h1>
+      <p>View branch reports and analytics</p>
     </div>
   );
-}
+};
 
 export default ReportsPage;
