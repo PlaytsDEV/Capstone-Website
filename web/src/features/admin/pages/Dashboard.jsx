@@ -128,31 +128,33 @@ export default function Dashboard() {
     switch (iconType) {
       case 'inquiries':
         return (
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M21 15A2 2 0 0 1 19 17H7L4 21V5A2 2 0 0 1 6 3H18A2 2 0 0 1 20 5V15Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path d="M22 17C22 17.5304 21.7893 18.0391 21.4142 18.4142C21.0391 18.7893 20.5304 19 20 19H6.828C6.29761 19.0001 5.78899 19.2109 5.414 19.586L3.212 21.788C3.1127 21.8873 2.9862 21.9549 2.84849 21.9823C2.71077 22.0097 2.56803 21.9956 2.43831 21.9419C2.30858 21.8881 2.1977 21.7971 2.11969 21.6804C2.04167 21.5637 2.00002 21.4264 2 21.286V5C2 4.46957 2.21071 3.96086 2.58579 3.58579C2.96086 3.21071 3.46957 3 4 3H20C20.5304 3 21.0391 3.21071 21.4142 3.58579C21.7893 3.96086 22 4.46957 22 5V17Z" stroke="#155DFC" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
         );
       case 'reservations':
         return (
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M12 2V6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M20 2V6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M22 11H2V20C2 21.1046 2.89543 22 4 22H20C21.1046 22 22 21.1046 22 20V11Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M2 7H22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <path d="M8 2V6" stroke="#9810FA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M16 2V6" stroke="#9810FA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M19 4H5C3.89543 4 3 4.89543 3 6V20C3 21.1046 3.89543 22 5 22H19C20.1046 22 21 21.1046 21 20V6C21 4.89543 20.1046 4 19 4Z" stroke="#9810FA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M3 10H21" stroke="#9810FA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         );
       case 'rooms':
         return (
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M3 9L12 2L21 9V20C21 20.5304 20.7893 21.0391 20.4142 21.4142C20.0391 21.7893 19.5304 22 19 22H5C4.46957 22 3.96086 21.7893 3.58579 21.4142C3.21071 21.0391 3 20.5304 3 20V9Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M9 22V12H15V22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path d="M15 21V13C15 12.7348 14.8946 12.4804 14.7071 12.2929C14.5196 12.1054 14.2652 12 14 12H10C9.73478 12 9.48043 12.1054 9.29289 12.2929C9.10536 12.4804 9 12.7348 9 13V21" stroke="#F54900" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M3 9.99999C2.99993 9.70906 3.06333 9.42161 3.18579 9.15771C3.30824 8.8938 3.4868 8.65979 3.709 8.47199L10.709 2.47199C11.07 2.1669 11.5274 1.99951 12 1.99951C12.4726 1.99951 12.93 2.1669 13.291 2.47199L20.291 8.47199C20.5132 8.65979 20.6918 8.8938 20.8142 9.15771C20.9367 9.42161 21.0001 9.70906 21 9.99999V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V9.99999Z" stroke="#F54900" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
         );
       case 'tenants':
         return (
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M20 21V19C20 17.9391 19.5786 16.9217 18.8284 15.1716C18.0783 14.4214 17.0609 14 16 14H8C6.93913 14 5.92172 14.4214 5.17157 15.1716C4.42143 16.9217 4 17.9391 4 19V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M12 11C14.2091 11 16 9.20914 16 7C16 4.79086 14.2091 3 12 3C9.79086 3 8 4.79086 8 7C8 9.20914 9.79086 11 12 11Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <path d="M16 21V19C16 17.9391 15.5786 16.9217 14.8284 16.1716C14.0783 15.4214 13.0609 15 12 15H6C4.93913 15 3.92172 15.4214 3.17157 16.1716C2.42143 16.9217 2 17.9391 2 19V21" stroke="#00A63E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M16 3.12805C16.8578 3.35042 17.6174 3.85132 18.1597 4.55211C18.702 5.25291 18.9962 6.11394 18.9962 7.00005C18.9962 7.88616 18.702 8.74719 18.1597 9.44799C17.6174 10.1488 16.8578 10.6497 16 10.8721" stroke="#00A63E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M22 21V19C21.9993 18.1137 21.7044 17.2528 21.1614 16.5523C20.6184 15.8519 19.8581 15.3516 19 15.13" stroke="#00A63E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M9 11C11.2091 11 13 9.20914 13 7C13 4.79086 11.2091 3 9 3C6.79086 3 5 4.79086 5 7C5 9.20914 6.79086 11 9 11Z" stroke="#00A63E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         );
       default:
@@ -323,7 +325,7 @@ export default function Dashboard() {
           <div className="admin-dashboard-inquiries-section">
             <div className="admin-dashboard-inquiries-header">
               <h2 className="admin-dashboard-section-title">Recent Inquiries</h2>
-              <a href="#view-all" className="admin-dashboard-view-all">View All</a>
+              <a href="/admin/inquiries" className="admin-dashboard-view-all">View All</a>
             </div>
             <div className="admin-dashboard-inquiries-list">
               {recentInquiries.map((inquiry) => (
@@ -395,7 +397,7 @@ export default function Dashboard() {
         <div className="admin-dashboard-reservations-full-section">
           <div className="admin-dashboard-reservations-header">
             <h2 className="admin-dashboard-section-title">Recent Reservations</h2>
-            <a href="#view-all" className="admin-dashboard-view-all">View All</a>
+            <a href="/admin/reservations" className="admin-dashboard-view-all">View All</a>
           </div>
           <div className="admin-dashboard-reservations-list">
             {recentReservations.map((reservation) => (

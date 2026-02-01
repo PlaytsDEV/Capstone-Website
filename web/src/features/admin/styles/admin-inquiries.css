@@ -116,7 +116,7 @@
   padding: 0 12px 0 36px;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .admin-inquiries-filter {
@@ -124,7 +124,19 @@
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   padding: 0 10px;
-  font-size: 12px;
+  font-size: 14px;
+}
+
+.admin-inquiries-search-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.admin-inquiries-filter:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
 .admin-inquiries-table {
@@ -154,6 +166,10 @@
   border-top: 1px solid #f3f4f6;
   font-size: 12px;
   color: #111827;
+}
+
+.admin-inquiries-row:hover {
+  background-color: #f9fafb;
 }
 
 .admin-inquiries-name {

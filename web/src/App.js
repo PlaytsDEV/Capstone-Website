@@ -1,5 +1,6 @@
 import './App.css';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import ScrollToTop from './shared/components/ScrollToTop';
 
 // Public Pages
 import LandingPage from './features/public/pages/LandingPage';
@@ -26,6 +27,7 @@ import SignUp from './features/tenant/pages/SignUp';
 function App() {
   return (
     <Router>
+      <ScrollToTop />
       <Routes>
 
         {/* Public Page */}
