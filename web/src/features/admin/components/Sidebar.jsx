@@ -1,12 +1,15 @@
 import { NavLink } from 'react-router-dom';
 import '../styles/admin-sidebar.css';
-import logoImage from '../../../landingpage-images/logo.png';
+import LilycrestLogo from "../../../shared/components/LilycrestLogo";
 
 function Sidebar() {
   return (
     <aside className="admin-sidebar">
       <div className="admin-sidebar-header">
-        <img src={logoImage} alt="Lilycrest Logo" className="admin-sidebar-logo" />
+        <LilycrestLogo
+              className="admin-sidebar-logo"
+              aria-label="Lilycrest Logo"
+            />
         <h2 className="admin-sidebar-title">Admin Portal</h2>
       </div>
 
