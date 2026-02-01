@@ -1,0 +1,35 @@
+/* Admin Reports Page Styles */
+
+.admin-reports {
+  padding: 2rem;
+}
+
+.admin-reports__header {
+  margin-bottom: 2rem;
+}
+
+.admin-reports__filters {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin-bottom: 2rem;
+}
+
+.admin-reports__content {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.admin-reports__chart {
+  margin: 2rem 0;
+}
+
+.admin-reports__export {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+  margin-top: 2rem;
+}
