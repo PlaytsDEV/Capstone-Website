@@ -1,7 +1,8 @@
 import "../styles/inquirymodal.css";
 import { useState } from "react";
+import { inquiryApi } from "../../../shared/api/apiClient";
 
-function InquiryModal({ isOpen, onClose }) {
+function InquiryModal({ isOpen, onClose, defaultBranch = "general" }) {
   const [inquiryType, setInquiryType] = useState("General Inquiry");
   const [formData, setFormData] = useState({
     name: "",
@@ -9,6 +10,9 @@ function InquiryModal({ isOpen, onClose }) {
     phone: "",
     message: "",
   });
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState("");
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -16,24 +20,68 @@ function InquiryModal({ isOpen, onClose }) {
       ...prev,
       [name]: value,
     }));
+    // Clear error when user types
+    if (error) setError("");
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log("Form submitted:", { inquiryType, ...formData });
-    // Handle form submission here
-    setFormData({ name: "", email: "", phone: "", message: "" });
+    setLoading(true);
+    setError("");
+
+    try {
+      // Map inquiry type to subject
+      const subject = `${inquiryType}: ${formData.name}`;
+
+      // Prepare inquiry data for API
+      const inquiryData = {
+        name: formData.name.trim(),
+        email: formData.email.trim().toLowerCase(),
+        phone: formData.phone.trim(),
+        subject: subject,
+        message: formData.message.trim(),
+        branch: defaultBranch, // Use the branch passed as prop or default to "general"
+      };
+
+      // Submit to API
+      const response = await inquiryApi.create(inquiryData);
+
+      console.log("✅ Inquiry submitted successfully:", response);
+
+      // Show success state
+      setSuccess(true);
+
+      // Reset form after delay
+      setTimeout(() => {
+        setFormData({ name: "", email: "", phone: "", message: "" });
+        setInquiryType("General Inquiry");
+        setSuccess(false);
+        onClose();
+      }, 3000);
+    } catch (err) {
+      console.error("❌ Failed to submit inquiry:", err);
+      setError(err.message || "Failed to submit inquiry. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClose = () => {
+    // Reset states when closing
+    setError("");
+    setSuccess(false);
+    onClose();
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="inquiry-modal-overlay" onClick={onClose}>
+    <div className="inquiry-modal-overlay" onClick={handleClose}>
       <div
         className="inquiry-modal-content"
         onClick={(e) => e.stopPropagation()}
       >
-        <button className="inquiry-modal-close" onClick={onClose}>
+        <button className="inquiry-modal-close" onClick={handleClose}>
           ×
         </button>
 
@@ -42,105 +90,171 @@ function InquiryModal({ isOpen, onClose }) {
           <div className="inquiry-modal-form-section">
             <h2 className="inquiry-modal-title">Send Us a Message</h2>
 
-            {/* Inquiry Type Selection */}
-            <div className="inquiry-type-section">
-              <label className="inquiry-label">Select Type of Inquiry</label>
-              <div className="inquiry-type-buttons">
-                <button
-                  className={`inquiry-type-btn ${inquiryType === "Reservation" ? "active" : ""}`}
-                  onClick={() => setInquiryType("Reservation")}
+            {/* Success Message */}
+            {success && (
+              <div className="inquiry-success-message">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
                 >
-                  Reservation
-                </button>
-                <button
-                  className={`inquiry-type-btn ${inquiryType === "Information" ? "active" : ""}`}
-                  onClick={() => setInquiryType("Information")}
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                  <polyline points="22,4 12,14.01 9,11.01" />
+                </svg>
+                <div>
+                  <p className="inquiry-success-title">Inquiry Submitted!</p>
+                  <p className="inquiry-success-text">
+                    Thank you for reaching out. We'll get back to you within 24
+                    hours.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Error Message */}
+            {error && (
+              <div className="inquiry-error-message">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
                 >
-                  Information
-                </button>
-                <button
-                  className={`inquiry-type-btn ${inquiryType === "General Inquiry" ? "active" : ""}`}
-                  onClick={() => setInquiryType("General Inquiry")}
-                >
-                  General Inquiry
-                </button>
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="15" y1="9" x2="9" y2="15" />
+                  <line x1="9" y1="9" x2="15" y2="15" />
+                </svg>
+                <p>{error}</p>
               </div>
-            </div>
+            )}
 
-            {/* Form */}
-            <form onSubmit={handleSubmit} className="inquiry-form">
-              {/* Name Field */}
-              <div className="inquiry-form-group">
-                <label htmlFor="name" className="inquiry-label">
-                  Name <span className="required">*</span>
-                </label>
-                <input
-                  type="text"
-                  id="name"
-                  name="name"
-                  placeholder="Enter your full name"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  required
-                  className="inquiry-input"
-                />
-              </div>
+            {!success && (
+              <>
+                {/* Inquiry Type Selection */}
+                <div className="inquiry-type-section">
+                  <label className="inquiry-label">
+                    Select Type of Inquiry
+                  </label>
+                  <div className="inquiry-type-buttons">
+                    <button
+                      type="button"
+                      className={`inquiry-type-btn ${inquiryType === "Reservation" ? "active" : ""}`}
+                      onClick={() => setInquiryType("Reservation")}
+                      disabled={loading}
+                    >
+                      Reservation
+                    </button>
+                    <button
+                      type="button"
+                      className={`inquiry-type-btn ${inquiryType === "Information" ? "active" : ""}`}
+                      onClick={() => setInquiryType("Information")}
+                      disabled={loading}
+                    >
+                      Information
+                    </button>
+                    <button
+                      type="button"
+                      className={`inquiry-type-btn ${inquiryType === "General Inquiry" ? "active" : ""}`}
+                      onClick={() => setInquiryType("General Inquiry")}
+                      disabled={loading}
+                    >
+                      General Inquiry
+                    </button>
+                  </div>
+                </div>
 
-              {/* Email Field */}
-              <div className="inquiry-form-group">
-                <label htmlFor="email" className="inquiry-label">
-                  Email Address <span className="required">*</span>
-                </label>
-                <input
-                  type="email"
-                  id="email"
-                  name="email"
-                  placeholder="your.email@example.com"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  required
-                  className="inquiry-input"
-                />
-              </div>
+                {/* Form */}
+                <form onSubmit={handleSubmit} className="inquiry-form">
+                  {/* Name Field */}
+                  <div className="inquiry-form-group">
+                    <label htmlFor="name" className="inquiry-label">
+                      Name <span className="required">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      id="name"
+                      name="name"
+                      placeholder="Enter your full name"
+                      value={formData.name}
+                      onChange={handleInputChange}
+                      required
+                      disabled={loading}
+                      className="inquiry-input"
+                    />
+                  </div>
 
-              {/* Phone Field */}
-              <div className="inquiry-form-group">
-                <label htmlFor="phone" className="inquiry-label">
-                  Phone Number
-                </label>
-                <input
-                  type="tel"
-                  id="phone"
-                  name="phone"
-                  placeholder="+63 XXX XXX XXXX"
-                  value={formData.phone}
-                  onChange={handleInputChange}
-                  className="inquiry-input"
-                />
-              </div>
+                  {/* Email Field */}
+                  <div className="inquiry-form-group">
+                    <label htmlFor="email" className="inquiry-label">
+                      Email Address <span className="required">*</span>
+                    </label>
+                    <input
+                      type="email"
+                      id="email"
+                      name="email"
+                      placeholder="your.email@example.com"
+                      value={formData.email}
+                      onChange={handleInputChange}
+                      required
+                      disabled={loading}
+                      className="inquiry-input"
+                    />
+                  </div>
 
-              {/* Message Field */}
-              <div className="inquiry-form-group">
-                <label htmlFor="message" className="inquiry-label">
-                  Message <span className="required">*</span>
-                </label>
-                <textarea
-                  id="message"
-                  name="message"
-                  placeholder="Please describe your inquiry or any questions you may have..."
-                  value={formData.message}
-                  onChange={handleInputChange}
-                  required
-                  className="inquiry-textarea"
-                  rows="6"
-                ></textarea>
-              </div>
+                  {/* Phone Field */}
+                  <div className="inquiry-form-group">
+                    <label htmlFor="phone" className="inquiry-label">
+                      Phone Number
+                    </label>
+                    <input
+                      type="tel"
+                      id="phone"
+                      name="phone"
+                      placeholder="+63 XXX XXX XXXX"
+                      value={formData.phone}
+                      onChange={handleInputChange}
+                      disabled={loading}
+                      className="inquiry-input"
+                    />
+                  </div>
 
-              {/* Submit Button */}
-              <button type="submit" className="inquiry-btn-submit">
-                Send Inquiry
-              </button>
-            </form>
+                  {/* Message Field */}
+                  <div className="inquiry-form-group">
+                    <label htmlFor="message" className="inquiry-label">
+                      Message <span className="required">*</span>
+                    </label>
+                    <textarea
+                      id="message"
+                      name="message"
+                      placeholder="Please describe your inquiry or any questions you may have..."
+                      value={formData.message}
+                      onChange={handleInputChange}
+                      required
+                      disabled={loading}
+                      className="inquiry-textarea"
+                      rows="6"
+                    ></textarea>
+                  </div>
+
+                  {/* Submit Button */}
+                  <button
+                    type="submit"
+                    className={`inquiry-btn-submit ${loading ? "loading" : ""}`}
+                    disabled={loading}
+                  >
+                    {loading ? (
+                      <>
+                        <span className="inquiry-spinner"></span>
+                        Sending...
+                      </>
+                    ) : (
+                      "Send Inquiry"
+                    )}
+                  </button>
+                </form>
+              </>
+            )}
           </div>
 
           {/* Right Side - Contact Info */}

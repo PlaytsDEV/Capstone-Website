@@ -1,38 +1,66 @@
-// Authentication API
-import axios from "axios";
+/**
+ * =============================================================================
+ * AUTH API (Legacy - for useAuth hook)
+ * =============================================================================
+ *
+ * NOTE: This file is kept for backwards compatibility with the useAuth hook.
+ * For new code, prefer using authApi from apiClient.js which uses fresh tokens.
+ */
+
+import { auth } from "../../firebase/config";
 
 const API_BASE_URL =
   process.env.REACT_APP_API_URL || "http://localhost:5000/api";
 
-export const authApi = {
-  login: async (credentials) => {
-    const response = await axios.post(
-      `${API_BASE_URL}/auth/login`,
-      credentials,
-    );
-    return response.data;
-  },
+/**
+ * Get fresh Firebase ID token for API requests
+ */
+const getFreshToken = async () => {
+  const user = auth.currentUser;
+  if (!user) return null;
+  try {
+    return await user.getIdToken(true);
+  } catch (error) {
+    console.error("Failed to get token:", error);
+    return null;
+  }
+};
 
-  register: async (userData) => {
-    const response = await axios.post(
-      `${API_BASE_URL}/auth/register`,
-      userData,
-    );
-    return response.data;
-  },
+/**
+ * Make authenticated request with fresh token
+ */
+const authRequest = async (url, options = {}) => {
+  const token = await getFreshToken();
+  const response = await fetch(`${API_BASE_URL}${url}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token && { Authorization: `Bearer ${token}` }),
+      ...options.headers,
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || error.message || "Request failed");
+  }
+
+  return response.json();
+};
+
+export const authApi = {
+  login: () => authRequest("/auth/login", { method: "POST" }),
+
+  register: (userData) =>
+    authRequest("/auth/register", {
+      method: "POST",
+      body: JSON.stringify(userData),
+    }),
 
   logout: async () => {
-    const response = await axios.post(`${API_BASE_URL}/auth/logout`);
-    return response.data;
+    await auth.signOut();
+    return { message: "Logged out successfully" };
   },
 
-  refreshToken: async () => {
-    const response = await axios.post(`${API_BASE_URL}/auth/refresh`);
-    return response.data;
-  },
-
-  getCurrentUser: async () => {
-    const response = await axios.get(`${API_BASE_URL}/auth/me`);
-    return response.data;
-  },
+  getCurrentUser: () => authRequest("/auth/profile"),
 };

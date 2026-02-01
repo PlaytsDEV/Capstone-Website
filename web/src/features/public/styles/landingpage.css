@@ -204,6 +204,11 @@ html {
   flex: 1;
 }
 
+/* Allow flex child to shrink so ellipsis works */
+.landing-profile-dropdown-info {
+  min-width: 0;
+}
+
 .landing-profile-dropdown-name {
   font-weight: 600;
   font-size: 15px;
@@ -214,6 +219,18 @@ html {
 .landing-profile-dropdown-email {
   font-size: 13px;
   color: #666;
+}
+
+/* Truncate long emails with ellipsis */
+.landing-profile-dropdown-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+
+.landing-profile-dropdown-email {
+  max-width: 100%;
 }
 
 .landing-profile-dropdown-divider {

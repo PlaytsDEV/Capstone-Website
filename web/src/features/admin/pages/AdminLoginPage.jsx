@@ -1,8 +1,10 @@
 import "../styles/admin-login.css";
 import logoImage from "../../public/assets/landingpage-images/logo.png";
 import { useState } from "react";
-import { useAuth } from "../../../shared/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { auth } from "../../../firebase/config";
+import { useAuth } from "../../../shared/hooks/useAuth";
 
 function AdminLoginPage() {
   const [showPassword, setShowPassword] = useState(false);
@@ -10,8 +12,8 @@ function AdminLoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -19,19 +21,53 @@ function AdminLoginPage() {
     setLoading(true);
 
     try {
-      const userData = await login({ email, password });
+      // Step 1: Authenticate with Firebase
+      console.log("🔐 Authenticating with Firebase...");
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        email,
+        password,
+      );
+      const firebaseUser = userCredential.user;
+      console.log("✅ Firebase authentication successful");
 
-      // Check if user has admin or superAdmin role
+      // Step 2: Check email verification
+      if (!firebaseUser.emailVerified) {
+        console.log("⚠️ Email not verified, signing out...");
+        await auth.signOut();
+        setError(
+          "Please verify your email before logging in. Check your inbox for the verification link.",
+        );
+        setLoading(false);
+        return;
+      }
+
+      // Step 3: Login to backend API
+      console.log("🔍 Logging in to backend...");
+      const userData = await login();
+      console.log("✅ Backend login successful");
+
+      // Step 4: Check if user has admin or superAdmin role
       if (
         userData.user.role === "admin" ||
         userData.user.role === "superAdmin"
       ) {
+        console.log("👨‍💼 Admin login successful, redirecting to dashboard");
         navigate("/admin/dashboard");
       } else {
+        console.log("❌ Access denied - not an admin");
         setError("Access denied. Admin privileges required.");
+        // Sign out from Firebase since they don't have admin access
+        await auth.signOut();
       }
     } catch (err) {
       console.error("Login error:", err);
+      // Sign out from Firebase on any error
+      try {
+        await auth.signOut();
+      } catch (signOutError) {
+        console.error("Error signing out:", signOutError);
+      }
       setError(err.response?.data?.error || "Login failed. Please try again.");
     } finally {
       setLoading(false);

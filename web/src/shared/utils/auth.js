@@ -22,16 +22,10 @@ export const logout = async (skipConfirmation = false) => {
     }
 
     await auth.signOut();
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("user");
-
     showNotification("Logged out successfully", "success");
-
-    // Delay redirect to show notification
     setTimeout(() => {
       window.location.href = "/";
     }, 500);
-
     return true;
   } catch (error) {
     console.error("Logout error:", error);
@@ -41,19 +35,11 @@ export const logout = async (skipConfirmation = false) => {
 };
 
 /**
- * Get the current user from localStorage
- * @returns {Object|null} User object or null if not logged in
+ * Get the current Firebase user
+ * @returns {Object|null} Firebase user object or null if not logged in
  */
 export const getCurrentUser = () => {
-  const userJson = localStorage.getItem("user");
-  if (!userJson) return null;
-
-  try {
-    return JSON.parse(userJson);
-  } catch (error) {
-    console.error("Error parsing user data:", error);
-    return null;
-  }
+  return auth.currentUser;
 };
 
 /**
@@ -61,23 +47,7 @@ export const getCurrentUser = () => {
  * @returns {boolean} True if user is logged in
  */
 export const isLoggedIn = () => {
-  return !!localStorage.getItem("authToken") && !!getCurrentUser();
+  return !!auth.currentUser;
 };
 
-/**
- * Check if user has admin role
- * @returns {boolean} True if user is admin or superAdmin
- */
-export const isAdmin = () => {
-  const user = getCurrentUser();
-  return user && (user.role === "admin" || user.role === "superAdmin");
-};
-
-/**
- * Check if user has super admin role
- * @returns {boolean} True if user is superAdmin
- */
-export const isSuperAdmin = () => {
-  const user = getCurrentUser();
-  return user && user.role === "superAdmin";
-};
+// Guide: Use the FirebaseAuthContext to get the current user and role in your app.

@@ -16,8 +16,9 @@
  */
 
 import express from "express";
-import Room from "../models/Room.js";
+import { Room } from "../models/index.js";
 import { verifyToken, verifyAdmin } from "../middleware/auth.js";
+import { filterByBranch } from "../middleware/branchAccess.js";
 
 const router = express.Router();
 
@@ -72,12 +73,12 @@ router.get("/", async (req, res) => {
  *
  * Create a new room in the system.
  *
- * Access: Admin only
+ * Access: Admin only (creates room in their branch) | Super Admin (any branch)
  *
  * @body {Object} Room data (name, branch, type, capacity, price, etc.)
  * @returns {Object} Created room with success message
  */
-router.post("/", verifyToken, verifyAdmin, async (req, res) => {
+router.post("/", verifyToken, verifyAdmin, filterByBranch, async (req, res) => {
   try {
     // Validate required fields
     const { name, branch, type, capacity, price } = req.body;
@@ -90,13 +91,21 @@ router.post("/", verifyToken, verifyAdmin, async (req, res) => {
       });
     }
 
-    // Create new room instance
+    // Ensure admin can only create rooms for their branch (unless super admin)
+    if (req.branchFilter && branch !== req.branchFilter) {
+      return res.status(403).json({
+        error: `Access denied. You can only create rooms for ${req.branchFilter} branch.`,
+        code: "BRANCH_ACCESS_DENIED",
+      });
+    }
+
+    // Create new room instance (uses shared Room model with branch field)
     const room = new Room(req.body);
 
     // Save to database
     await room.save();
 
-    console.log(`✅ Room created: ${room.name} (${room._id})`);
+    console.log(`✅ Room created: ${room.name} (${room._id}) for ${branch}`);
     res.status(201).json({
       message: "Room created successfully",
       roomId: room._id,
@@ -127,77 +136,102 @@ router.post("/", verifyToken, verifyAdmin, async (req, res) => {
  *
  * Update an existing room's information.
  *
- * Access: Admin only
+ * Access: Admin (must be from their branch) | Super Admin (any room)
  *
  * @param {string} roomId - MongoDB ObjectId of the room
  * @body {Object} Updated room data
  * @returns {Object} Updated room with success message
  */
-router.put("/:roomId", verifyToken, verifyAdmin, async (req, res) => {
-  try {
-    const { roomId } = req.params;
+router.put(
+  "/:roomId",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  async (req, res) => {
+    try {
+      const { roomId } = req.params;
 
-    // Validate roomId format
-    if (!roomId.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(400).json({
-        error: "Invalid room ID format",
-        code: "INVALID_ROOM_ID",
+      // Validate roomId format
+      if (!roomId.match(/^[0-9a-fA-F]{24}$/)) {
+        return res.status(400).json({
+          error: "Invalid room ID format",
+          code: "INVALID_ROOM_ID",
+        });
+      }
+
+      // Build query with branch filter
+      const query = { _id: roomId };
+      if (req.branchFilter) {
+        query.branch = req.branchFilter;
+      }
+
+      // Find room first to check access
+      const existingRoom = await Room.findOne(query);
+      if (!existingRoom) {
+        return res.status(404).json({
+          error: "Room not found or access denied",
+          code: "ROOM_NOT_FOUND",
+        });
+      }
+
+      // Prevent changing branch (unless super admin)
+      if (
+        req.body.branch &&
+        req.body.branch !== existingRoom.branch &&
+        req.branchFilter
+      ) {
+        return res.status(403).json({
+          error: "Cannot change room branch. Contact a super admin.",
+          code: "BRANCH_CHANGE_DENIED",
+        });
+      }
+
+      // Update room and return the updated document
+      const room = await Room.findByIdAndUpdate(roomId, req.body, {
+        new: true,
+        runValidators: true,
       });
-    }
 
-    // Update room and return the updated document
-    // runValidators: true ensures schema validation on update
-    const room = await Room.findByIdAndUpdate(roomId, req.body, {
-      new: true, // Return updated document
-      runValidators: true, // Validate against schema
-    });
-
-    if (!room) {
-      return res.status(404).json({
-        error: "Room not found",
-        code: "ROOM_NOT_FOUND",
+      console.log(`✅ Room updated: ${room.name} (${room._id})`);
+      res.json({
+        message: "Room updated successfully",
+        room,
       });
-    }
+    } catch (error) {
+      console.error("❌ Update room error:", error);
 
-    console.log(`✅ Room updated: ${room.name} (${room._id})`);
-    res.json({
-      message: "Room updated successfully",
-      room,
-    });
-  } catch (error) {
-    console.error("❌ Update room error:", error);
+      // Handle validation errors
+      if (error.name === "ValidationError") {
+        return res.status(400).json({
+          error: "Validation failed",
+          details: error.message,
+          code: "VALIDATION_ERROR",
+        });
+      }
 
-    // Handle validation errors
-    if (error.name === "ValidationError") {
-      return res.status(400).json({
-        error: "Validation failed",
+      // Handle cast errors (invalid ID)
+      if (error.name === "CastError") {
+        return res.status(400).json({
+          error: "Invalid room ID format",
+          code: "INVALID_ROOM_ID",
+        });
+      }
+
+      res.status(500).json({
+        error: "Failed to update room",
         details: error.message,
-        code: "VALIDATION_ERROR",
+        code: "UPDATE_ROOM_ERROR",
       });
     }
-
-    // Handle cast errors (invalid ID)
-    if (error.name === "CastError") {
-      return res.status(400).json({
-        error: "Invalid room ID format",
-        code: "INVALID_ROOM_ID",
-      });
-    }
-
-    res.status(500).json({
-      error: "Failed to update room",
-      details: error.message,
-      code: "UPDATE_ROOM_ERROR",
-    });
-  }
-});
+  },
+);
 
 /**
  * DELETE /api/rooms/:roomId
  *
  * Delete a room from the system.
  *
- * Access: Admin only
+ * Access: Admin (must be from their branch) | Super Admin (any room)
  *
  * IMPORTANT: This permanently deletes the room.
  * Consider implementing soft delete (isActive flag) instead.
@@ -205,53 +239,66 @@ router.put("/:roomId", verifyToken, verifyAdmin, async (req, res) => {
  * @param {string} roomId - MongoDB ObjectId of the room
  * @returns {Object} Success message
  */
-router.delete("/:roomId", verifyToken, verifyAdmin, async (req, res) => {
-  try {
-    const { roomId } = req.params;
+router.delete(
+  "/:roomId",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  async (req, res) => {
+    try {
+      const { roomId } = req.params;
 
-    // Validate roomId format
-    if (!roomId.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(400).json({
-        error: "Invalid room ID format",
-        code: "INVALID_ROOM_ID",
+      // Validate roomId format
+      if (!roomId.match(/^[0-9a-fA-F]{24}$/)) {
+        return res.status(400).json({
+          error: "Invalid room ID format",
+          code: "INVALID_ROOM_ID",
+        });
+      }
+
+      // Build query with branch filter
+      const query = { _id: roomId };
+      if (req.branchFilter) {
+        query.branch = req.branchFilter;
+      }
+
+      // Find and delete room
+      const room = await Room.findOneAndDelete(query);
+
+      if (!room) {
+        return res.status(404).json({
+          error: "Room not found or access denied",
+          code: "ROOM_NOT_FOUND",
+        });
+      }
+
+      console.log(`✅ Room deleted: ${room.name} (${room._id})`);
+      res.json({
+        message: "Room deleted successfully",
+        deletedRoom: {
+          id: room._id,
+          name: room.name,
+          branch: room.branch,
+        },
+      });
+    } catch (error) {
+      console.error("❌ Delete room error:", error);
+
+      // Handle cast errors (invalid ID)
+      if (error.name === "CastError") {
+        return res.status(400).json({
+          error: "Invalid room ID format",
+          code: "INVALID_ROOM_ID",
+        });
+      }
+
+      res.status(500).json({
+        error: "Failed to delete room",
+        details: error.message,
+        code: "DELETE_ROOM_ERROR",
       });
     }
-
-    // Delete the room
-    const room = await Room.findByIdAndDelete(roomId);
-
-    if (!room) {
-      return res.status(404).json({
-        error: "Room not found",
-        code: "ROOM_NOT_FOUND",
-      });
-    }
-
-    console.log(`✅ Room deleted: ${room.name} (${room._id})`);
-    res.json({
-      message: "Room deleted successfully",
-      deletedRoom: {
-        id: room._id,
-        name: room.name,
-      },
-    });
-  } catch (error) {
-    console.error("❌ Delete room error:", error);
-
-    // Handle cast errors (invalid ID)
-    if (error.name === "CastError") {
-      return res.status(400).json({
-        error: "Invalid room ID format",
-        code: "INVALID_ROOM_ID",
-      });
-    }
-
-    res.status(500).json({
-      error: "Failed to delete room",
-      details: error.message,
-      code: "DELETE_ROOM_ERROR",
-    });
-  }
-});
+  },
+);
 
 export default router;

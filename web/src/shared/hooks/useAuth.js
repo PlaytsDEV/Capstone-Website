@@ -27,7 +27,8 @@ export const AuthProvider = ({ children }) => {
   };
 
   const login = async (credentials) => {
-    const userData = await authApi.login(credentials);
+    // Note: credentials are not passed to authApi.login since backend gets user from Firebase token
+    const userData = await authApi.login();
     setUser(userData);
     setIsAuthenticated(true);
     return userData;

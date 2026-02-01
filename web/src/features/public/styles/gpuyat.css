@@ -179,6 +179,11 @@
   flex: 1;
 }
 
+/* Allow flex child to shrink so ellipsis works */
+.gpuyat-profile-dropdown-info {
+  min-width: 0;
+}
+
 .gpuyat-profile-dropdown-name {
   font-weight: 600;
   font-size: 15px;
@@ -189,6 +194,15 @@
 .gpuyat-profile-dropdown-email {
   font-size: 13px;
   color: #666;
+}
+
+/* Truncate long emails with ellipsis */
+.gpuyat-profile-dropdown-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+  max-width: 100%;
 }
 
 .gpuyat-profile-dropdown-divider {

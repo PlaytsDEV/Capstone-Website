@@ -179,6 +179,11 @@
   flex: 1;
 }
 
+/* Allow flex child to shrink so ellipsis works */
+.guadalupe-profile-dropdown-info {
+  min-width: 0;
+}
+
 .guadalupe-profile-dropdown-name {
   font-weight: 600;
   font-size: 15px;
@@ -189,6 +194,18 @@
 .guadalupe-profile-dropdown-email {
   font-size: 13px;
   color: #666;
+}
+
+/* Truncate long emails with ellipsis */
+.guadalupe-profile-dropdown-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+
+.guadalupe-profile-dropdown-email {
+  max-width: 100%;
 }
 
 .guadalupe-profile-dropdown-divider {

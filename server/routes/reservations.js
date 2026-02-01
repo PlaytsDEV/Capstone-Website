@@ -17,10 +17,9 @@
  */
 
 import express from "express";
-import Reservation from "../models/Reservation.js";
-import User from "../models/User.js";
-import Room from "../models/Room.js";
+import { Reservation, User, Room } from "../models/index.js";
 import { verifyToken, verifyAdmin } from "../middleware/auth.js";
+import { filterByBranch } from "../middleware/branchAccess.js";
 
 const router = express.Router();
 
@@ -28,7 +27,8 @@ const router = express.Router();
  * GET /api/reservations
  *
  * Retrieve reservations based on user role:
- * - Admin: Get all reservations
+ * - Admin: Get all reservations for their branch
+ * - Super Admin: Get all reservations
  * - Tenant: Get only their own reservations
  *
  * Access: Authenticated users only
@@ -38,33 +38,52 @@ const router = express.Router();
 router.get("/", verifyToken, async (req, res) => {
   try {
     const user = req.user;
-    let filter = {};
 
-    // If user is not an admin, only show their own reservations
-    if (!user.admin) {
-      // Find user in database to get MongoDB _id
-      const dbUser = await User.findOne({ firebaseUid: user.uid });
+    // Find user in database to get role and branch
+    const dbUser = await User.findOne({ firebaseUid: user.uid });
 
-      if (!dbUser) {
-        return res.status(404).json({
-          error: "User not found in database",
-          code: "USER_NOT_FOUND",
-        });
-      }
-
-      // Filter reservations by user ID
-      filter.userId = dbUser._id;
+    if (!dbUser) {
+      return res.status(404).json({
+        error: "User not found in database",
+        code: "USER_NOT_FOUND",
+      });
     }
 
-    // Fetch reservations with populated user and room details
-    const reservations = await Reservation.find(filter)
-      .populate("userId", "firstName lastName email") // Include user info
-      .populate("roomId", "name branch type price") // Include room info
-      .select("-__v") // Exclude version key
-      .sort({ createdAt: -1 }); // Newest first
+    let reservations;
+
+    // Super admin sees all reservations
+    if (dbUser.role === "superAdmin") {
+      reservations = await Reservation.find()
+        .populate("userId", "firstName lastName email")
+        .populate("roomId", "name branch type price")
+        .select("-__v")
+        .sort({ createdAt: -1 });
+    }
+    // Admin sees reservations for rooms in their branch
+    else if (dbUser.role === "admin") {
+      // First get all rooms for the admin's branch
+      const branchRooms = await Room.find({ branch: dbUser.branch }).select(
+        "_id",
+      );
+      const roomIds = branchRooms.map((room) => room._id);
+
+      reservations = await Reservation.find({ roomId: { $in: roomIds } })
+        .populate("userId", "firstName lastName email")
+        .populate("roomId", "name branch type price")
+        .select("-__v")
+        .sort({ createdAt: -1 });
+    }
+    // Regular users/tenants see only their own reservations
+    else {
+      reservations = await Reservation.find({ userId: dbUser._id })
+        .populate("userId", "firstName lastName email")
+        .populate("roomId", "name branch type price")
+        .select("-__v")
+        .sort({ createdAt: -1 });
+    }
 
     console.log(
-      `✅ Retrieved ${reservations.length} reservations for user: ${user.email || user.uid}`,
+      `✅ Retrieved ${reservations.length} reservations for ${dbUser.email} (${dbUser.role})`,
     );
     res.json(reservations);
   } catch (error) {
@@ -184,76 +203,98 @@ router.post("/", verifyToken, async (req, res) => {
  *
  * Update an existing reservation (status, payment, notes, etc.).
  *
- * Access: Admin only
+ * Access: Admin (must be from room's branch) | Super Admin (any reservation)
  *
  * @param {string} reservationId - MongoDB ObjectId of the reservation
  * @body {Object} Updated reservation data
  * @returns {Object} Updated reservation with success message
  */
-router.put("/:reservationId", verifyToken, verifyAdmin, async (req, res) => {
-  try {
-    const { reservationId } = req.params;
+router.put(
+  "/:reservationId",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  async (req, res) => {
+    try {
+      const { reservationId } = req.params;
 
-    // Validate reservationId format
-    if (!reservationId.match(/^[0-9a-fA-F]{24}$/)) {
-      return res.status(400).json({
-        error: "Invalid reservation ID format",
-        code: "INVALID_RESERVATION_ID",
+      // Validate reservationId format
+      if (!reservationId.match(/^[0-9a-fA-F]{24}$/)) {
+        return res.status(400).json({
+          error: "Invalid reservation ID format",
+          code: "INVALID_RESERVATION_ID",
+        });
+      }
+
+      // Find reservation first to check branch access
+      const existingReservation = await Reservation.findById(
+        reservationId,
+      ).populate("roomId", "branch");
+
+      if (!existingReservation) {
+        return res.status(404).json({
+          error: "Reservation not found",
+          code: "RESERVATION_NOT_FOUND",
+        });
+      }
+
+      // Check branch access (admin can only update reservations for rooms in their branch)
+      if (
+        req.branchFilter &&
+        existingReservation.roomId?.branch !== req.branchFilter
+      ) {
+        return res.status(403).json({
+          error: `Access denied. You can only manage reservations for ${req.branchFilter} branch.`,
+          code: "BRANCH_ACCESS_DENIED",
+        });
+      }
+
+      // Update reservation and return the updated document
+      const reservation = await Reservation.findByIdAndUpdate(
+        reservationId,
+        req.body,
+        {
+          new: true,
+          runValidators: true,
+        },
+      )
+        .populate("userId", "firstName lastName email")
+        .populate("roomId", "name branch type price");
+
+      console.log(
+        `✅ Reservation updated: ${reservation._id} - Status: ${reservation.status}`,
+      );
+      res.json({
+        message: "Reservation updated successfully",
+        reservation,
       });
-    }
+    } catch (error) {
+      console.error("❌ Update reservation error:", error);
 
-    // Update reservation and return the updated document
-    const reservation = await Reservation.findByIdAndUpdate(
-      reservationId,
-      req.body,
-      {
-        new: true, // Return updated document
-        runValidators: true, // Validate against schema
-      },
-    )
-      .populate("userId", "firstName lastName email")
-      .populate("roomId", "name branch type price");
+      // Handle validation errors
+      if (error.name === "ValidationError") {
+        return res.status(400).json({
+          error: "Validation failed",
+          details: error.message,
+          code: "VALIDATION_ERROR",
+        });
+      }
 
-    if (!reservation) {
-      return res.status(404).json({
-        error: "Reservation not found",
-        code: "RESERVATION_NOT_FOUND",
-      });
-    }
+      // Handle cast errors (invalid ID)
+      if (error.name === "CastError") {
+        return res.status(400).json({
+          error: "Invalid reservation ID format",
+          code: "INVALID_RESERVATION_ID",
+        });
+      }
 
-    console.log(
-      `✅ Reservation updated: ${reservation._id} - Status: ${reservation.status}`,
-    );
-    res.json({
-      message: "Reservation updated successfully",
-      reservation,
-    });
-  } catch (error) {
-    console.error("❌ Update reservation error:", error);
-
-    // Handle validation errors
-    if (error.name === "ValidationError") {
-      return res.status(400).json({
-        error: "Validation failed",
+      res.status(500).json({
+        error: "Failed to update reservation",
         details: error.message,
-        code: "VALIDATION_ERROR",
+        code: "UPDATE_RESERVATION_ERROR",
       });
     }
-
-    // Handle cast errors (invalid ID)
-    if (error.name === "CastError") {
-      return res.status(400).json({
-        error: "Invalid reservation ID format",
-        code: "INVALID_RESERVATION_ID",
-      });
-    }
-
-    res.status(500).json({
-      error: "Failed to update reservation",
-      details: error.message,
-      code: "UPDATE_RESERVATION_ERROR",
-    });
-  }
-});
+  },
+);
 
 export default router;
