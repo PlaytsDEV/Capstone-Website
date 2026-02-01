@@ -12,9 +12,9 @@ function DoubleSharingPage() {
     minStay: "6 months minimum",
     beds: "2 beds",
     images: [
-      require('../../../gpuyat-images/deluxe-room.jpg'),
-      require('../../../gpuyat-images/standard-room.jpg'),
-      require('../../../gpuyat-images/premium-room.jpg')
+      require('../assets/gpuyat-images/deluxe-room.jpg'),
+      require('../assets/gpuyat-images/standard-room.jpg'),
+      require('../assets/gpuyat-images/premium-room.jpg')
     ],
     descriptions: [
       "Experience affordable and social living in our double sharing rooms designed for students and young professionals. Each room is thoughtfully furnished to accommodate two occupants, providing a comfortable and friendly environment perfect for those seeking both privacy and companionship.",
@@ -70,7 +70,7 @@ function DoubleSharingPage() {
         price: 8000,
         minStay: "6 months minimum",
         beds: "1 bed",
-        image: require('../../../gpuyat-images/standard-room.jpg'),
+        image: require('../assets/gpuyat-images/standard-room.jpg'),
         badge: "Popular",
         onViewDetails: () => navigate('/gil-puyat/rooms/private')
       },
@@ -79,7 +79,7 @@ function DoubleSharingPage() {
         price: 4500,
         minStay: "3 months minimum",
         beds: "4 beds",
-        image: require('../../../gpuyat-images/premium-room.jpg'),
+        image: require('../assets/gpuyat-images/premium-room.jpg'),
         onViewDetails: () => navigate('/gil-puyat/rooms/quadruple')
       }
     ]
