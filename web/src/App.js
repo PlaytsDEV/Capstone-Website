@@ -11,6 +11,7 @@ import DoubleSharingPage from './features/public/pages/DoubleSharingPage';
 import QuadrupleSharingPage from './features/public/pages/QuadrupleSharingPage';
 import GuadalupePage from './features/public/pages/GuadalupePage';
 import GuadalupeRoomsPage from './features/public/pages/GuadalupeRoomsPage';
+import FAQsPage from './features/public/pages/FAQsPage';
 
 // Admin Pages
 import AdminLoginPage from './features/admin/pages/AdminLoginPage';
@@ -39,6 +40,7 @@ function App() {
         <Route path="/:branch/rooms/quadruple" element={<QuadrupleSharingPage />} />
         <Route path="/guadalupe" element={<GuadalupePage />} />
         <Route path="/guadalupe/rooms" element={<GuadalupeRoomsPage />} />
+        <Route path="/faqs" element={<FAQsPage />} />
         
         {/* Admin Page */}
         <Route path="/admin/login" element={<AdminLoginPage />} />

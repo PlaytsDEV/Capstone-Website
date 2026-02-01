@@ -15,11 +15,11 @@ function GuadalupeRoomsPage() {
       {/* Breadcrumb */}
       <div className="guadalupe-rooms-breadcrumb">
         <div className="guadalupe-rooms-container">
-          <span className="breadcrumb-link">Home</span>
+          <span onClick={() => navigate("/guadalupe")} className="breadcrumb-link">Home</span>
           <span className="breadcrumb-separator">/</span>
-          <span className="breadcrumb-link">Guadalupe Branch</span>
+          <span onClick={() => navigate("/guadalupe")} className="breadcrumb-link">Guadalupe Branch</span>
           <span className="breadcrumb-separator">/</span>
-          <span className="breadcrumb-current">Rooms & Rates</span>
+          <span onClick={() => navigate("/guadalupe/rooms")} className="breadcrumb-current">Rooms & Rates</span>
         </div>
       </div>
 

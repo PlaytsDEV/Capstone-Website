@@ -1,9 +1,10 @@
-import { useNavigate } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef } from "react";
 import { isLoggedIn, getCurrentUser, logout } from "../../../shared/utils/auth";
 
-function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
+function Navbar({ type = "landing", currentPage = "home", }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [user, setUser] = useState(null);
   const [loggedIn, setLoggedIn] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -54,44 +55,45 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
     return `${firstName?.charAt(0) || ""}${lastName?.charAt(0) || ""}`.toUpperCase();
   };
 
+  const handleLandingScroll = (selector) => {
+    if (location.pathname === "/") {
+      document.querySelector(selector)?.scrollIntoView({ behavior: "smooth" });
+      return;
+    }
+
+    navigate("/", { state: { scrollTo: selector } });
+  };
+
   // Landing page navigation
   if (type === "landing") {
     return (
       <nav className="landing-navbar">
         <div className="landing-container">
           <div className="landing-nav-content">
-            <button
-              onClick={() => navigate("/")}
+            <NavLink
+              to="/"
               className={`landing-nav-link ${currentPage === "home" ? "active" : ""}`}
             >
               Home
-            </button>
+            </NavLink>
             <button
-              onClick={() =>
-                document
-                  .querySelector(".landing-branches")
-                  ?.scrollIntoView({ behavior: "smooth" })
-              }
+              onClick={() => handleLandingScroll(".landing-branches")}
               className={`landing-nav-link ${currentPage === "branches" ? "active" : ""}`}
             >
               Branches
             </button>
             <button
-              onClick={() =>
-                document
-                  .querySelector(".landing-about")
-                  ?.scrollIntoView({ behavior: "smooth" })
-              }
+              onClick={() => handleLandingScroll(".landing-about")}
               className={`landing-nav-link ${currentPage === "about" ? "active" : ""}`}
             >
               About
             </button>
-            <button
-              onClick={() => {}}
+            <NavLink
+              to="/faqs"
               className={`landing-nav-link ${currentPage === "faqs" ? "active" : ""}`}
             >
               FAQs
-            </button>
+            </NavLink>
           </div>
         </div>
       </nav>
@@ -101,6 +103,7 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
   // Branch page navigation (Gil Puyat or Guadalupe)
   if (type === "branch") {
     const isBranchGilPuyat = currentPage?.includes("gil-puyat");
+    const branchHomePath = isBranchGilPuyat ? "/gil-puyat" : "/guadalupe";
     const branchClass = isBranchGilPuyat ? "gpuyat" : "guadalupe";
     const navbarClass = `${branchClass}-navbar`;
     const containerClass = `${branchClass}-container`;
@@ -112,9 +115,9 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
           <div className={`${branchClass}-nav-content`}>
             {/* Navigation Links - Center */}
             <div className={`${branchClass}-nav-links`}>
-              <button onClick={() => navigate("/")} className={navLinkClass}>
+              <NavLink to={branchHomePath} className={navLinkClass}>
                 Home
-              </button>
+              </NavLink>
               <button
                 onClick={() =>
                   document
@@ -125,18 +128,12 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
               >
                 Location
               </button>
-              <button
-                onClick={() => {
-                  if (isBranchGilPuyat) {
-                    navigate("/gil-puyat/rooms");
-                  } else {
-                    navigate("/guadalupe/rooms");
-                  }
-                }}
+              <NavLink
+                to={isBranchGilPuyat ? "/gil-puyat/rooms" : "/guadalupe/rooms"}
                 className={navLinkClass}
               >
                 Rooms & Rates
-              </button>
+              </NavLink>
             </div>
 
             {/* Auth Section - Right */}
@@ -242,7 +239,7 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
                 </div>
               ) : (
                 <button
-                  onClick={onLoginClick}
+                  onClick={() => navigate("/tenant/signin")}
                   className={`${branchClass}-nav-login`}
                 >
                   Login

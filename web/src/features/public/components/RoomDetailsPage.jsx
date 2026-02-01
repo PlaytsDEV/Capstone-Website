@@ -2,6 +2,7 @@ import "../styles/room-details.css";
 import Footer from "../../../shared/components/Footer";
 import Navbar from "../../../shared/components/Navbar";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 function RoomDetailsPage({
   roomTitle,
@@ -19,6 +20,11 @@ function RoomDetailsPage({
   branchType = "gil-puyat",
 }) {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const navigate = useNavigate();
+
+  const branchName = branchType === "gil-puyat" ? "Gil Puyat Branch" : "Guadalupe Branch";
+  const branchHomePath = branchType === "gil-puyat" ? "/gil-puyat" : "/guadalupe";
+  const branchRoomsPath = branchType === "gil-puyat" ? "/gil-puyat/rooms" : "/guadalupe/rooms";
 
   const nextSlide = () => {
     setCurrentSlide((prev) => (prev + 1) % images.length);
@@ -36,11 +42,11 @@ function RoomDetailsPage({
       {/* Breadcrumb */}
       <div className="room-details-breadcrumb">
         <div className="room-details-container">
-          <span className="breadcrumb-link">Home</span>
+          <span onClick={() => navigate(branchHomePath)} className="breadcrumb-link">Home</span>
           <span className="breadcrumb-separator">/</span>
-          <span className="breadcrumb-link">Gil Puyat Branch</span>
+          <span onClick={() => navigate(branchHomePath)} className="breadcrumb-link">{branchName}</span>
           <span className="breadcrumb-separator">/</span>
-          <span className="breadcrumb-link">Room & Rates</span>
+          <span onClick={() => navigate(branchRoomsPath)} className="breadcrumb-link">Room & Rates</span>
           <span className="breadcrumb-separator">/</span>
           <span className="breadcrumb-current">Room Details</span>
         </div>

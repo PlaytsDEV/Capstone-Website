@@ -77,9 +77,10 @@ function GPuyatPage() {
 
           <div className="gpuyat-location-info">
             <div className="gpuyat-location-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
-                <path d="M21.3333 11C21.3333 18.6668 12 23.3334 12 23.3334C12 23.3334 2.66667 18.6668 2.66667 11C2.66667 8.34558 3.70238 5.80887 5.55048 3.96079C7.39857 2.1127 9.93528 1.07702 12.59 1.07702C15.2447 1.07702 17.7814 2.1127 19.6295 3.96079C21.4776 5.80887 22.5133 8.34558 22.5133 11" stroke="#FF6900" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <path d="M16.6667 8.33329C16.6667 12.4941 12.0509 16.8275 10.5009 18.1658C10.3565 18.2744 10.1807 18.3331 10 18.3331C9.81938 18.3331 9.6436 18.2744 9.49921 18.1658C7.94921 16.8275 3.33337 12.4941 3.33337 8.33329C3.33337 6.56518 4.03575 4.86949 5.286 3.61925C6.53624 2.36901 8.23193 1.66663 10 1.66663C11.7682 1.66663 13.4638 2.36901 14.7141 3.61925C15.9643 4.86949 16.6667 6.56518 16.6667 8.33329Z" stroke="#FF6900" stroke-width="1.66667" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M10 10.8334C11.3807 10.8334 12.5 9.71409 12.5 8.33337C12.5 6.95266 11.3807 5.83337 10 5.83337C8.61929 5.83337 7.5 6.95266 7.5 8.33337C7.5 9.71409 8.61929 10.8334 10 10.8334Z" stroke="#FF6900" stroke-width="1.66667" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
             </div>
             <div className="gpuyat-location-text">
               <p className="gpuyat-location-address">123 Gil Puyat Avenue, Makati City, Metro Manila</p>
@@ -94,7 +95,7 @@ function GPuyatPage() {
         <div className="gpuyat-container">
           <h2>Room View</h2>
           
-          <button className="gpuyat-btn-view-rooms">View All Rooms & Rates</button>
+          <button onClick={() => navigate('/gil-puyat/rooms')} className="gpuyat-btn-view-rooms">View All Rooms & Rates</button>
 
           <div className="gpuyat-rooms-grid">
             <div className="gpuyat-room-card">
