@@ -4,7 +4,7 @@ import guadalupeImage from "../assets/landingpage-images/guadalupe-branch.png";
 import LilycrestLogo from "../../../shared/components/LilycrestLogo";
 import Footer from "../components/Footer";
 import Navbar from "../components/Navbar";
-import InquiryModal from "../../../shared/components/InquiryModal";
+import InquiryModal from "../modals/InquiryModal";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
