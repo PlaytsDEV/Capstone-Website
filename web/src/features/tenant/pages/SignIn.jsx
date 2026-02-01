@@ -40,6 +40,8 @@ function SignIn() {
   const [loading, setLoading] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
   const [touched, setTouched] = useState({});
+  const [fieldValid, setFieldValid] = useState({});
+  const [debounceTimer, setDebounceTimer] = useState(null);
 
   /**
    * Advanced email validation
@@ -118,8 +120,17 @@ function SignIn() {
       [name]: true,
     });
 
-    // Real-time validation
-    validateField(name, value);
+    // Clear previous debounce timer
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+    }
+
+    // Debounced validation (300ms delay)
+    const timer = setTimeout(() => {
+      validateField(name, value);
+    }, 300);
+
+    setDebounceTimer(timer);
   };
 
   /**
@@ -148,6 +159,18 @@ function SignIn() {
       ...prev,
       [fieldName]: error,
     }));
+
+    setFieldValid((prev) => ({
+      ...prev,
+      [fieldName]: !error,
+    }));
+  };
+
+  /**
+   * Check if sign-in form is valid for submission
+   */
+  const isFormValid = () => {
+    return fieldValid.email && fieldValid.password;
   };
 
   /**
@@ -549,118 +572,187 @@ function SignIn() {
           <div className="tenant-signin-right">
             <h1 className="tenant-signin-title">Sign In</h1>
             <form className="tenant-signin-form" onSubmit={handleSignIn}>
-              <div style={{ position: "relative", marginBottom: "8px" }}>
-                <input
-                  type="email"
-                  name="email"
-                  placeholder="Email"
-                  className="tenant-signin-input"
-                  value={formData.email}
-                  onChange={handleChange}
-                  disabled={loading}
-                  autoComplete="email"
-                />
+              <div className="form-field">
+                <div className="input-wrapper">
+                  <input
+                    type="email"
+                    name="email"
+                    placeholder="Email"
+                    className={`tenant-signin-input ${touched.email ? (fieldValid.email ? "input-valid" : "input-error") : ""}`}
+                    value={formData.email}
+                    onChange={handleChange}
+                    disabled={loading}
+                    autoComplete="email"
+                  />
+                  {touched.email && (
+                    <div className="input-icon">
+                      {fieldValid.email ? (
+                        <svg
+                          className="check-icon"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      ) : (
+                        <svg
+                          className="x-icon"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      )}
+                    </div>
+                  )}
+                </div>
                 {touched.email && validationErrors.email && (
-                  <div
-                    style={{
-                      color: "#dc3545",
-                      fontSize: "11px",
-                      marginTop: "2px",
-                      position: "absolute",
-                      textAlign: "center",
-                      width: "100%",
-                    }}
-                  >
+                  <span className="validation-msg error">
+                    <svg viewBox="0 0 20 20" fill="currentColor">
+                      <path
+                        fillRule="evenodd"
+                        d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-11.25a.75.75 0 00-1.5 0v4.5a.75.75 0 001.5 0v-4.5zm0 7a.75.75 0 10-1.5 0 .75.75 0 001.5 0z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
                     {validationErrors.email}
-                  </div>
+                  </span>
                 )}
               </div>
 
               {/* Password with Show/Hide Toggle */}
-              <div className="tenant-signin-password-wrapper">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  name="password"
-                  placeholder="Password"
-                  className="tenant-signin-input"
-                  value={formData.password}
-                  onChange={handleChange}
-                  disabled={loading}
-                  autoComplete="current-password"
-                />
-                <button
-                  type="button"
-                  className="tenant-signin-password-toggle"
-                  onClick={() => setShowPassword(!showPassword)}
-                  tabIndex={-1}
-                >
-                  {showPassword ? (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M12 5C5.63636 5 2 12 2 12C2 12 5.63636 19 12 19C18.3636 19 22 12 22 12C22 12 18.3636 5 12 5Z"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                      <path
-                        d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  ) : (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M3 3L21 21"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                      />
-                      <path
-                        d="M10.5 10.5C10.1851 10.8185 9.99222 11.2499 10 11.7C10.0078 12.1501 10.2141 12.5741 10.5 12.8838C10.7859 13.1935 11.1259 13.3619 11.5 13.3619C11.8741 13.3619 12.2141 13.1935 12.5 12.8838"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                      />
-                      <path
-                        d="M7.36182 7.37818C5.02182 8.87818 3.31818 11.1873 2.5 12C3.31818 13.8127 5.02182 16.1218 7.36182 17.6218"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                      />
-                      <path
-                        d="M16.6382 16.6218C18.9782 15.1218 20.6818 12.8127 21.5 12C20.6818 10.1873 18.9782 7.87818 16.6382 6.37818"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  )}
-                </button>
-                {touched.password && validationErrors.password && (
-                  <div
-                    style={{
-                      color: "#dc3545",
-                      fontSize: "11px",
-                      marginTop: "2px",
-                      position: "absolute",
-                      bottom: "-16px",
-                      textAlign: "center",
-                      width: "100%",
-                    }}
-                  >
-                    {validationErrors.password}
+              <div className="form-field">
+                <div className="input-wrapper tenant-signin-password-wrapper">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    name="password"
+                    placeholder="Password"
+                    className={`tenant-signin-input ${touched.password ? (fieldValid.password ? "input-valid" : "input-error") : ""}`}
+                    value={formData.password}
+                    onChange={handleChange}
+                    disabled={loading}
+                    autoComplete="current-password"
+                  />
+                  <div className="input-icons-group">
+                    <button
+                      type="button"
+                      className="tenant-signin-password-toggle"
+                      onClick={() => setShowPassword(!showPassword)}
+                      tabIndex={-1}
+                    >
+                      {showPassword ? (
+                        <svg
+                          width="20"
+                          height="20"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                        >
+                          <path
+                            d="M12 5C5.63636 5 2 12 2 12C2 12 5.63636 19 12 19C18.3636 19 22 12 22 12C22 12 18.3636 5 12 5Z"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                          <path
+                            d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      ) : (
+                        <svg
+                          width="20"
+                          height="20"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                        >
+                          <path
+                            d="M3 3L21 21"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                          <path
+                            d="M10.5 10.5C10.1851 10.8185 9.99222 11.2499 10 11.7C10.0078 12.1501 10.2141 12.5741 10.5 12.8838C10.7859 13.1935 11.1259 13.3619 11.5 13.3619C11.8741 13.3619 12.2141 13.1935 12.5 12.8838"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                          <path
+                            d="M7.36182 7.37818C5.02182 8.87818 3.31818 11.1873 2.5 12C3.31818 13.8127 5.02182 16.1218 7.36182 17.6218"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                          <path
+                            d="M16.6382 16.6218C18.9782 15.1218 20.6818 12.8127 21.5 12C20.6818 10.1873 18.9782 7.87818 16.6382 6.37818"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                      )}
+                    </button>
+                    {touched.password && (
+                      <div className="input-icon-inline">
+                        {fieldValid.password ? (
+                          <svg
+                            className="check-icon"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        ) : (
+                          <svg
+                            className="x-icon"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        )}
+                      </div>
+                    )}
                   </div>
+                </div>
+                {touched.password && validationErrors.password && (
+                  <span className="validation-msg error">
+                    <svg viewBox="0 0 20 20" fill="currentColor">
+                      <path
+                        fillRule="evenodd"
+                        d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-11.25a.75.75 0 00-1.5 0v4.5a.75.75 0 001.5 0v-4.5zm0 7a.75.75 0 10-1.5 0 .75.75 0 001.5 0z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    {validationErrors.password}
+                  </span>
                 )}
               </div>
 
               <button
                 type="submit"
                 className="tenant-signin-submit"
-                disabled={loading}
+                disabled={!isFormValid() || loading}
               >
                 {loading ? "Signing In..." : "Sign In"}
               </button>

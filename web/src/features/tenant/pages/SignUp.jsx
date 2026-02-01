@@ -52,6 +52,19 @@ function SignUp() {
   const [loading, setLoading] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
   const [touched, setTouched] = useState({});
+  const [fieldValid, setFieldValid] = useState({});
+  const [passwordStrength, setPasswordStrength] = useState({
+    score: 0,
+    level: "weak",
+    requirements: {
+      length: false,
+      uppercase: false,
+      lowercase: false,
+      number: false,
+      special: false,
+    },
+  });
+  const [debounceTimer, setDebounceTimer] = useState(null);
 
   /**
    * Advanced email validation
@@ -116,6 +129,36 @@ function SignUp() {
     return null; // Valid
   };
 
+  /**
+   * Calculate password strength
+   */
+  const calculatePasswordStrength = (password) => {
+    const requirements = {
+      length: password.length >= 8,
+      uppercase: /[A-Z]/.test(password),
+      lowercase: /[a-z]/.test(password),
+      number: /\d/.test(password),
+      special: /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>?/]/.test(password),
+    };
+
+    const metRequirements = Object.values(requirements).filter(Boolean).length;
+    let score = 0;
+    let level = "weak";
+
+    if (metRequirements >= 5) {
+      score = 100;
+      level = "strong";
+    } else if (metRequirements >= 3) {
+      score = 60;
+      level = "medium";
+    } else if (metRequirements >= 1) {
+      score = 30;
+      level = "weak";
+    }
+
+    return { score, level, requirements };
+  };
+
   const handleChange = (e) => {
     const { name, value } = e.target;
 
@@ -135,8 +178,23 @@ function SignUp() {
       [name]: true,
     });
 
-    // Real-time validation
-    validateField(name, value);
+    // Clear previous debounce timer
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+    }
+
+    // Special handling for password field
+    if (name === "password") {
+      const strength = calculatePasswordStrength(value);
+      setPasswordStrength(strength);
+    }
+
+    // Debounced validation (300ms delay)
+    const timer = setTimeout(() => {
+      validateField(name, value);
+    }, 300);
+
+    setDebounceTimer(timer);
   };
 
   /**
@@ -199,6 +257,27 @@ function SignUp() {
       ...prev,
       [fieldName]: error,
     }));
+
+    setFieldValid((prev) => ({
+      ...prev,
+      [fieldName]: !error,
+    }));
+  };
+
+  /**
+   * Check if form is valid for submission
+   */
+  const isFormValid = () => {
+    const requiredFields = [
+      "firstName",
+      "lastName",
+      "email",
+      "phone",
+      "branch",
+      "password",
+      "confirmPassword",
+    ];
+    return requiredFields.every((field) => fieldValid[field]) && agreedToTerms;
   };
 
   /**
@@ -662,297 +741,683 @@ function SignUp() {
           <div className="tenant-signup-right">
             <h1 className="tenant-signup-title">Sign Up</h1>
             <form className="tenant-signup-form" onSubmit={handleSignUp}>
-              <div style={{ position: "relative", marginBottom: "8px" }}>
-                <input
-                  type="text"
-                  name="firstName"
-                  placeholder="First Name"
-                  className="tenant-signup-input"
-                  value={formData.firstName}
-                  onChange={handleChange}
-                  disabled={loading}
-                />
-                {touched.firstName && validationErrors.firstName && (
-                  <div
-                    style={{
-                      color: "#dc3545",
-                      fontSize: "11px",
-                      marginTop: "2px",
-                      position: "absolute",
-                      textAlign: "center",
-                      width: "100%",
-                    }}
+              <div className="form-field">
+                <div className="input-wrapper">
+                  <input
+                    type="text"
+                    name="firstName"
+                    placeholder="First Name"
+                    className={`tenant-signup-input ${touched.firstName ? (fieldValid.firstName ? "input-valid" : "input-error") : ""}`}
+                    value={formData.firstName}
+                    onChange={handleChange}
+                    disabled={loading}
+                  />
+                  {touched.firstName && (
+                    <div className="input-icon">
+                      {fieldValid.firstName ? (
+                        <svg
+                          className="check-icon"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      ) : (
+                        <svg
+                          className="x-icon"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {touched.firstName && (
+                  <span
+                    className={`validation-msg ${fieldValid.firstName ? "success" : "error"}`}
                   >
-                    {validationErrors.firstName}
-                  </div>
+                    {fieldValid.firstName ? (
+                      <>
+                        <svg viewBox="0 0 20 20" fill="currentColor">
+                          <path
+                            fillRule="evenodd"
+                            d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                        Looks good!
+                      </>
+                    ) : (
+                      <>
+                        <svg viewBox="0 0 20 20" fill="currentColor">
+                          <path
+                            fillRule="evenodd"
+                            d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                        {validationErrors.firstName || "First name is required"}
+                      </>
+                    )}
+                  </span>
                 )}
               </div>
-              <div style={{ position: "relative", marginBottom: "8px" }}>
-                <input
-                  type="text"
-                  name="lastName"
-                  placeholder="Last Name"
-                  className="tenant-signup-input"
-                  value={formData.lastName}
-                  onChange={handleChange}
-                  disabled={loading}
-                />
-                {touched.lastName && validationErrors.lastName && (
-                  <div
-                    style={{
-                      color: "#dc3545",
-                      fontSize: "11px",
-                      marginTop: "2px",
-                      position: "absolute",
-                      textAlign: "center",
-                      width: "100%",
-                    }}
+              <div className="form-field">
+                <div className="input-wrapper">
+                  <input
+                    type="text"
+                    name="lastName"
+                    placeholder="Last Name"
+                    className={`tenant-signup-input ${touched.lastName ? (fieldValid.lastName ? "input-valid" : "input-error") : ""}`}
+                    value={formData.lastName}
+                    onChange={handleChange}
+                    disabled={loading}
+                  />
+                  {touched.lastName && (
+                    <div className="input-icon">
+                      {fieldValid.lastName ? (
+                        <svg
+                          className="check-icon"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      ) : (
+                        <svg
+                          className="x-icon"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {touched.lastName && (
+                  <span
+                    className={`validation-msg ${fieldValid.lastName ? "success" : "error"}`}
                   >
-                    {validationErrors.lastName}
-                  </div>
+                    {fieldValid.lastName ? (
+                      <>
+                        <svg viewBox="0 0 20 20" fill="currentColor">
+                          <path
+                            fillRule="evenodd"
+                            d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                        Looks good!
+                      </>
+                    ) : (
+                      <>
+                        <svg viewBox="0 0 20 20" fill="currentColor">
+                          <path
+                            fillRule="evenodd"
+                            d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                        {validationErrors.lastName || "Last name is required"}
+                      </>
+                    )}
+                  </span>
                 )}
               </div>
-              <div style={{ position: "relative", marginBottom: "8px" }}>
-                <input
-                  type="email"
-                  name="email"
-                  placeholder="Email"
-                  className="tenant-signup-input"
-                  value={formData.email}
-                  onChange={handleChange}
-                  disabled={loading}
-                />
-                {touched.email && validationErrors.email && (
-                  <div
-                    style={{
-                      color: "#dc3545",
-                      fontSize: "11px",
-                      marginTop: "2px",
-                      position: "absolute",
-                      textAlign: "center",
-                      width: "100%",
-                    }}
+              <div className="form-field">
+                <div className="input-wrapper">
+                  <input
+                    type="email"
+                    name="email"
+                    placeholder="Email"
+                    className={`tenant-signup-input ${touched.email ? (fieldValid.email ? "input-valid" : "input-error") : ""}`}
+                    value={formData.email}
+                    onChange={handleChange}
+                    disabled={loading}
+                  />
+                  {touched.email && (
+                    <div className="input-icon">
+                      {fieldValid.email ? (
+                        <svg
+                          className="check-icon"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      ) : (
+                        <svg
+                          className="x-icon"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {touched.email && (
+                  <span
+                    className={`validation-msg ${fieldValid.email ? "success" : "error"}`}
                   >
-                    {validationErrors.email}
-                  </div>
+                    {fieldValid.email ? (
+                      <>
+                        <svg viewBox="0 0 20 20" fill="currentColor">
+                          <path
+                            fillRule="evenodd"
+                            d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                        Looks good!
+                      </>
+                    ) : (
+                      <>
+                        <svg viewBox="0 0 20 20" fill="currentColor">
+                          <path
+                            fillRule="evenodd"
+                            d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                        {validationErrors.email ||
+                          "Please enter a valid email address"}
+                      </>
+                    )}
+                  </span>
                 )}
               </div>
-              <div style={{ position: "relative", marginBottom: "8px" }}>
-                <input
-                  type="tel"
-                  name="phone"
-                  placeholder="Phone Number"
-                  className="tenant-signup-input"
-                  value={formData.phone}
-                  onChange={handleChange}
-                  disabled={loading}
-                  maxLength={11}
-                  inputMode="numeric"
-                />
-                {touched.phone && validationErrors.phone && (
-                  <div
-                    style={{
-                      color: "#dc3545",
-                      fontSize: "11px",
-                      marginTop: "2px",
-                      position: "absolute",
-                      textAlign: "center",
-                      width: "100%",
-                    }}
+              <div className="form-field">
+                <div className="input-wrapper">
+                  <input
+                    type="tel"
+                    name="phone"
+                    placeholder="Phone Number"
+                    className={`tenant-signup-input ${touched.phone ? (fieldValid.phone ? "input-valid" : "input-error") : ""}`}
+                    value={formData.phone}
+                    onChange={handleChange}
+                    disabled={loading}
+                    maxLength={11}
+                    inputMode="numeric"
+                  />
+                  {touched.phone && (
+                    <div className="input-icon">
+                      {fieldValid.phone ? (
+                        <svg
+                          className="check-icon"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      ) : (
+                        <svg
+                          className="x-icon"
+                          viewBox="0 0 20 20"
+                          fill="currentColor"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {touched.phone && (
+                  <span
+                    className={`validation-msg ${fieldValid.phone ? "success" : "error"}`}
                   >
-                    {validationErrors.phone}
-                  </div>
+                    {fieldValid.phone ? (
+                      <>
+                        <svg viewBox="0 0 20 20" fill="currentColor">
+                          <path
+                            fillRule="evenodd"
+                            d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                        Looks good!
+                      </>
+                    ) : (
+                      <>
+                        <svg viewBox="0 0 20 20" fill="currentColor">
+                          <path
+                            fillRule="evenodd"
+                            d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                        {validationErrors.phone || "Phone number is required"}
+                      </>
+                    )}
+                  </span>
                 )}
               </div>
 
               {/* Branch Selection Dropdown */}
-              <div style={{ position: "relative", marginBottom: "8px" }}>
-                <select
-                  name="branch"
-                  className="tenant-signup-input tenant-signup-select"
-                  value={formData.branch}
-                  onChange={handleChange}
-                  disabled={loading}
-                >
-                  <option value="">Select Branch</option>
-                  <option value="gil-puyat">Gil Puyat • Makati</option>
-                  <option value="guadalupe">Guadalupe • Makati</option>
-                </select>
-                {touched.branch && validationErrors.branch && (
-                  <div
-                    style={{
-                      color: "#dc3545",
-                      fontSize: "11px",
-                      marginTop: "2px",
-                      position: "absolute",
-                      textAlign: "center",
-                      width: "100%",
-                    }}
+              <div className="form-field">
+                <div className="input-wrapper">
+                  <select
+                    name="branch"
+                    className={`tenant-signup-input tenant-signup-select ${touched.branch ? (fieldValid.branch ? "input-valid" : "input-error") : ""}`}
+                    value={formData.branch}
+                    onChange={handleChange}
+                    disabled={loading}
                   >
-                    {validationErrors.branch}
-                  </div>
-                )}
+                    <option value="">Select Branch</option>
+                    <option value="gil-puyat">Gil Puyat • Makati</option>
+                    <option value="guadalupe">Guadalupe • Makati</option>
+                  </select>
+                </div>
               </div>
 
-              {/* Password with Show/Hide Toggle */}
-              <div className="tenant-signup-password-wrapper">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  name="password"
-                  placeholder="Password"
-                  className="tenant-signup-input"
-                  value={formData.password}
-                  onChange={handleChange}
-                  disabled={loading}
-                />
-                <button
-                  type="button"
-                  className="tenant-signup-password-toggle"
-                  onClick={() => setShowPassword(!showPassword)}
-                  tabIndex={-1}
-                >
-                  {showPassword ? (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M12 5C5.63636 5 2 12 2 12C2 12 5.63636 19 12 19C18.3636 19 22 12 22 12C22 12 18.3636 5 12 5Z"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                      <path
-                        d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  ) : (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M3 3L21 21"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                      />
-                      <path
-                        d="M10.5 10.5C10.1851 10.8185 9.99222 11.2499 10 11.7C10.0078 12.1501 10.2141 12.5741 10.5 12.8838C10.7859 13.1935 11.1259 13.3619 11.5 13.3619C11.8741 13.3619 12.2141 13.1935 12.5 12.8838"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                      />
-                      <path
-                        d="M7.36182 7.37818C5.02182 8.87818 3.31818 11.1873 2.5 12C3.31818 13.8127 5.02182 16.1218 7.36182 17.6218"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                      />
-                      <path
-                        d="M16.6382 16.6218C18.9782 15.1218 20.6818 12.8127 21.5 12C20.6818 10.1873 18.9782 7.87818 16.6382 6.37818"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  )}
-                </button>
-                {touched.password && validationErrors.password && (
-                  <div
-                    style={{
-                      color: "#dc3545",
-                      fontSize: "11px",
-                      marginTop: "2px",
-                      position: "absolute",
-                      bottom: "-16px",
-                      textAlign: "center",
-                      width: "100%",
-                    }}
-                  >
-                    {validationErrors.password}
-                  </div>
-                )}
-              </div>
-
-              {/* Confirm Password with Show/Hide Toggle */}
-              <div className="tenant-signup-password-wrapper">
-                <input
-                  type={showConfirmPassword ? "text" : "password"}
-                  name="confirmPassword"
-                  placeholder="Confirm Password"
-                  className="tenant-signup-input"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  disabled={loading}
-                />
-                <button
-                  type="button"
-                  className="tenant-signup-password-toggle"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  tabIndex={-1}
-                >
-                  {showConfirmPassword ? (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M12 5C5.63636 5 2 12 2 12C2 12 5.63636 19 12 19C18.3636 19 22 12 22 12C22 12 18.3636 5 12 5Z"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                      <path
-                        d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  ) : (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M3 3L21 21"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                      />
-                      <path
-                        d="M10.5 10.5C10.1851 10.8185 9.99222 11.2499 10 11.7C10.0078 12.1501 10.2141 12.5741 10.5 12.8838C10.7859 13.1935 11.1259 13.3619 11.5 13.3619C11.8741 13.3619 12.2141 13.1935 12.5 12.8838"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                      />
-                      <path
-                        d="M7.36182 7.37818C5.02182 8.87818 3.31818 11.1873 2.5 12C3.31818 13.8127 5.02182 16.1218 7.36182 17.6218"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                      />
-                      <path
-                        d="M16.6382 16.6218C18.9782 15.1218 20.6818 12.8127 21.5 12C20.6818 10.1873 18.9782 7.87818 16.6382 6.37818"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  )}
-                </button>
-                {touched.confirmPassword &&
-                  validationErrors.confirmPassword && (
-                    <div
-                      style={{
-                        color: "#dc3545",
-                        fontSize: "11px",
-                        marginTop: "2px",
-                        position: "absolute",
-                        bottom: "-16px",
-                        textAlign: "center",
-                        width: "100%",
-                      }}
+              {/* Password with Show/Hide Toggle and Strength Meter */}
+              <div className="form-field">
+                <div className="input-wrapper tenant-signup-password-wrapper">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    name="password"
+                    placeholder="Password"
+                    className={`tenant-signup-input ${touched.password ? (fieldValid.password ? "input-valid" : "input-error") : ""}`}
+                    value={formData.password}
+                    onChange={handleChange}
+                    disabled={loading}
+                  />
+                  <div className="input-icons-group">
+                    <button
+                      type="button"
+                      className="tenant-signup-password-toggle"
+                      onClick={() => setShowPassword(!showPassword)}
+                      tabIndex={-1}
                     >
-                      {validationErrors.confirmPassword}
+                      {showPassword ? (
+                        <svg
+                          width="20"
+                          height="20"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                        >
+                          <path
+                            d="M12 5C5.63636 5 2 12 2 12C2 12 5.63636 19 12 19C18.3636 19 22 12 22 12C22 12 18.3636 5 12 5Z"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                          <path
+                            d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      ) : (
+                        <svg
+                          width="20"
+                          height="20"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                        >
+                          <path
+                            d="M3 3L21 21"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                          <path
+                            d="M10.5 10.5C10.1851 10.8185 9.99222 11.2499 10 11.7C10.0078 12.1501 10.2141 12.5741 10.5 12.8838C10.7859 13.1935 11.1259 13.3619 11.5 13.3619C11.8741 13.3619 12.2141 13.1935 12.5 12.8838"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                          <path
+                            d="M7.36182 7.37818C5.02182 8.87818 3.31818 11.1873 2.5 12C3.31818 13.8127 5.02182 16.1218 7.36182 17.6218"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                          <path
+                            d="M16.6382 16.6218C18.9782 15.1218 20.6818 12.8127 21.5 12C20.6818 10.1873 18.9782 7.87818 16.6382 6.37818"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                      )}
+                    </button>
+                    {touched.password && (
+                      <div className="input-icon-inline">
+                        {fieldValid.password ? (
+                          <svg
+                            className="check-icon"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        ) : (
+                          <svg
+                            className="x-icon"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Password Strength Indicator with Requirements */}
+                {formData.password && (
+                  <div className="password-strength-container">
+                    <div className="password-strength-header">
+                      <span>Password strength:</span>
+                      <span
+                        className={`strength-level ${passwordStrength.level}`}
+                      >
+                        {passwordStrength.level === "weak"
+                          ? "-"
+                          : passwordStrength.level === "medium"
+                            ? "+"
+                            : "++"}
+                      </span>
                     </div>
-                  )}
+                    <div className="strength-bars">
+                      <div
+                        className={`strength-bar ${passwordStrength.score >= 25 ? `active ${passwordStrength.level}` : ""}`}
+                      ></div>
+                      <div
+                        className={`strength-bar ${passwordStrength.score >= 50 ? `active ${passwordStrength.level}` : ""}`}
+                      ></div>
+                      <div
+                        className={`strength-bar ${passwordStrength.score >= 75 ? `active ${passwordStrength.level}` : ""}`}
+                      ></div>
+                      <div
+                        className={`strength-bar ${passwordStrength.score >= 100 ? `active ${passwordStrength.level}` : ""}`}
+                      ></div>
+                    </div>
+                    <div className="password-requirements">
+                      <div
+                        className={`requirement ${passwordStrength.requirements.length ? "met" : ""}`}
+                      >
+                        <svg viewBox="0 0 20 20" fill="currentColor">
+                          {passwordStrength.requirements.length ? (
+                            <path
+                              fillRule="evenodd"
+                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                              clipRule="evenodd"
+                            />
+                          ) : (
+                            <circle
+                              cx="10"
+                              cy="10"
+                              r="6"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            />
+                          )}
+                        </svg>
+                        At least 8 characters
+                      </div>
+                      <div
+                        className={`requirement ${passwordStrength.requirements.uppercase ? "met" : ""}`}
+                      >
+                        <svg viewBox="0 0 20 20" fill="currentColor">
+                          {passwordStrength.requirements.uppercase ? (
+                            <path
+                              fillRule="evenodd"
+                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                              clipRule="evenodd"
+                            />
+                          ) : (
+                            <circle
+                              cx="10"
+                              cy="10"
+                              r="6"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            />
+                          )}
+                        </svg>
+                        One uppercase letter
+                      </div>
+                      <div
+                        className={`requirement ${passwordStrength.requirements.lowercase ? "met" : ""}`}
+                      >
+                        <svg viewBox="0 0 20 20" fill="currentColor">
+                          {passwordStrength.requirements.lowercase ? (
+                            <path
+                              fillRule="evenodd"
+                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                              clipRule="evenodd"
+                            />
+                          ) : (
+                            <circle
+                              cx="10"
+                              cy="10"
+                              r="6"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            />
+                          )}
+                        </svg>
+                        One lowercase letter
+                      </div>
+                      <div
+                        className={`requirement ${passwordStrength.requirements.number ? "met" : ""}`}
+                      >
+                        <svg viewBox="0 0 20 20" fill="currentColor">
+                          {passwordStrength.requirements.number ? (
+                            <path
+                              fillRule="evenodd"
+                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                              clipRule="evenodd"
+                            />
+                          ) : (
+                            <circle
+                              cx="10"
+                              cy="10"
+                              r="6"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            />
+                          )}
+                        </svg>
+                        One number
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Confirm Password with Show/Hide Toggle and Matching Feedback */}
+              <div className="form-field">
+                <div className="input-wrapper tenant-signup-password-wrapper">
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    name="confirmPassword"
+                    placeholder="Confirm Password"
+                    className={`tenant-signup-input ${touched.confirmPassword ? (fieldValid.confirmPassword ? "input-valid" : "input-error") : ""}`}
+                    value={formData.confirmPassword}
+                    onChange={handleChange}
+                    disabled={loading}
+                  />
+                  <div className="input-icons-group">
+                    <button
+                      type="button"
+                      className="tenant-signup-password-toggle"
+                      onClick={() =>
+                        setShowConfirmPassword(!showConfirmPassword)
+                      }
+                      tabIndex={-1}
+                    >
+                      {showConfirmPassword ? (
+                        <svg
+                          width="20"
+                          height="20"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                        >
+                          <path
+                            d="M12 5C5.63636 5 2 12 2 12C2 12 5.63636 19 12 19C18.3636 19 22 12 22 12C22 12 18.3636 5 12 5Z"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                          <path
+                            d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      ) : (
+                        <svg
+                          width="20"
+                          height="20"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                        >
+                          <path
+                            d="M3 3L21 21"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                          <path
+                            d="M10.5 10.5C10.1851 10.8185 9.99222 11.2499 10 11.7C10.0078 12.1501 10.2141 12.5741 10.5 12.8838C10.7859 13.1935 11.1259 13.3619 11.5 13.3619C11.8741 13.3619 12.2141 13.1935 12.5 12.8838"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                          <path
+                            d="M7.36182 7.37818C5.02182 8.87818 3.31818 11.1873 2.5 12C3.31818 13.8127 5.02182 16.1218 7.36182 17.6218"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                          <path
+                            d="M16.6382 16.6218C18.9782 15.1218 20.6818 12.8127 21.5 12C20.6818 10.1873 18.9782 7.87818 16.6382 6.37818"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                      )}
+                    </button>
+                    {touched.confirmPassword && (
+                      <div className="input-icon-inline">
+                        {fieldValid.confirmPassword ? (
+                          <svg
+                            className="check-icon"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        ) : (
+                          <svg
+                            className="x-icon"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {touched.confirmPassword && (
+                  <span
+                    className={`validation-msg ${fieldValid.confirmPassword ? "success" : "error"}`}
+                  >
+                    {fieldValid.confirmPassword ? (
+                      <>
+                        <svg viewBox="0 0 20 20" fill="currentColor">
+                          <path
+                            fillRule="evenodd"
+                            d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                        Passwords match!
+                      </>
+                    ) : (
+                      <>
+                        <svg viewBox="0 0 20 20" fill="currentColor">
+                          <path
+                            fillRule="evenodd"
+                            d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                        {validationErrors.confirmPassword ||
+                          "Passwords don't match"}
+                      </>
+                    )}
+                  </span>
+                )}
               </div>
 
               {/* Terms and Conditions Checkbox with Modal */}
@@ -980,7 +1445,7 @@ function SignUp() {
               <button
                 type="submit"
                 className="tenant-signup-submit"
-                disabled={!agreedToTerms || loading}
+                disabled={!isFormValid() || loading}
               >
                 {loading ? "Creating Account..." : "Sign Up"}
               </button>

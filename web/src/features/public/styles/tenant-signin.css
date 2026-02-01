@@ -1,3 +1,7 @@
+/* ============================================
+   SIGNIN PAGE - Enhanced Layout & Validation
+   ============================================ */
+
 .tenant-signin-page {
   min-height: 100vh;
   display: flex;
@@ -16,8 +20,10 @@
   grid-template-columns: 1fr 1fr;
   overflow: hidden;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.18);
+  max-height: 90vh;
 }
 
+/* Left Panel - Fixed Image Section */
 .tenant-signin-left {
   position: relative;
   background-size: cover;
@@ -83,13 +89,15 @@
   color: #e5e7eb;
 }
 
+/* Right Panel - Scrollable Form Section */
 .tenant-signin-right {
   padding: 48px 64px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  text-align: center;
+  overflow-y: auto;
+  max-height: 90vh;
 }
 
 .tenant-signin-title {
@@ -97,8 +105,10 @@
   font-size: 26px;
   font-weight: 500;
   color: #111827;
+  text-align: center;
 }
 
+/* Form Styles */
 .tenant-signin-form {
   width: 100%;
   max-width: 360px;
@@ -107,41 +117,137 @@
   gap: 16px;
 }
 
-.tenant-signin-input {
-  width: 100%;
-  padding: 12px 16px;
-  border-radius: 8px;
-  border: 1px solid #d1d5db;
-  font-size: 14px;
-  color: #111827;
-  background: #fff;
+/* Form Field Group */
+.form-group,
+.form-field {
+  position: relative;
+  margin-bottom: 0;
+  min-height: 75px; /* Reserves space for input + message */
+  display: flex;
+  flex-direction: column;
 }
 
-.tenant-signin-input:focus {
-  outline: none;
-  border-color: #f97316;
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
-}
-
-.tenant-signin-password-wrapper {
+/* Input Wrapper */
+.input-wrapper {
   position: relative;
   width: 100%;
 }
 
-.tenant-signin-password-toggle {
+/* Base Input Styles */
+.tenant-signin-input {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 2px solid #e5e7eb;
+  font-size: 14px;
+  color: #111827;
+  background: #fff;
+  transition: all 0.3s ease;
+  outline: none;
+}
+
+.tenant-signin-input:focus {
+  border-color: #f97316;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
+}
+
+.tenant-signin-input::placeholder {
+  color: #9ca3af;
+}
+
+/* Input with validation icon */
+.input-with-icon {
+  padding-right: 44px;
+}
+
+/* Validation States */
+.tenant-signin-input.input-valid {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.02);
+}
+
+.tenant-signin-input.input-error {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.02);
+}
+
+.tenant-signin-input.input-valid:focus {
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+}
+
+.tenant-signin-input.input-error:focus {
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+
+/* Validation Icon */
+.input-icon {
   position: absolute;
   right: 14px;
   top: 50%;
   transform: translateY(-50%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.input-icon.show {
+  opacity: 1;
+}
+
+.check-icon {
+  color: #10b981;
+  width: 20px;
+  height: 20px;
+}
+
+.x-icon {
+  color: #ef4444;
+  width: 20px;
+  height: 20px;
+}
+
+/* Validation Message */
+
+/* Password Field */
+.password-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.password-wrapper .tenant-signin-input {
+  padding-right: 44px;
+}
+
+/* Password wrapper for signin (with toggle and validation icon) */
+.tenant-signin-password-wrapper {
+  position: relative;
+}
+
+.tenant-signin-password-wrapper .tenant-signin-input {
+  padding-right: 80px;
+}
+
+/* Input Icons Group - Toggle + Validation Icon */
+.input-icons-group {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tenant-signin-password-toggle {
   background: none;
   border: none;
-  color: #6b7280;
   cursor: pointer;
   padding: 4px;
+  color: #6b7280;
+  transition: color 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: color 0.2s ease;
 }
 
 .tenant-signin-password-toggle:hover {
@@ -152,46 +258,158 @@
   outline: none;
 }
 
+.tenant-signin-password-toggle svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+.input-icon-inline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.input-icon-inline .check-icon,
+.input-icon-inline .x-icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* Toggle Password Button */
+.toggle-password {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  color: #6b7280;
+  transition: color 0.2s ease;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toggle-password:hover {
+  color: #f97316;
+}
+
+.toggle-password:focus {
+  outline: none;
+}
+
+.toggle-password svg {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+/* Submit Button */
 .tenant-signin-submit {
-  margin-top: 6px;
+  margin-top: 10px;
   background: #f97316;
   color: #fff;
   border: none;
-  border-radius: 6px;
-  padding: 12px 16px;
-  font-size: 14px;
-  font-weight: 500;
+  border-radius: 10px;
+  padding: 14px 16px;
+  font-size: 15px;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: all 0.3s ease;
 }
 
-.tenant-signin-submit:hover {
+.tenant-signin-submit:hover:not(:disabled) {
   background: #ea580c;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3);
 }
 
+.tenant-signin-submit:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.tenant-signin-submit:disabled {
+  background: #e5e7eb;
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+/* Loading State */
+.tenant-signin-submit.loading {
+  position: relative;
+  color: transparent;
+}
+
+.tenant-signin-submit.loading::after {
+  content: "";
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  top: 50%;
+  left: 50%;
+  margin-left: -10px;
+  margin-top: -10px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Forgot Password Link */
+.forgot-password-link {
+  text-align: center;
+  margin-top: 8px;
+}
+
+.forgot-password-link button {
+  background: none;
+  border: none;
+  color: #667eea;
+  font-size: 14px;
+  cursor: pointer;
+  text-decoration: none;
+  padding: 4px 8px;
+  transition: color 0.2s ease;
+}
+
+.forgot-password-link button:hover {
+  text-decoration: underline;
+}
+
+/* Divider */
 .tenant-signin-divider {
   width: 100%;
   max-width: 360px;
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: 12px;
+  display: flex;
   align-items: center;
-  color: #9ca3af;
-  margin: 22px 0 18px;
+  text-align: center;
+  margin: 20px 0;
+  color: #6b7280;
   font-size: 13px;
 }
 
-.tenant-signin-divider span {
-  height: 1px;
-  background: #e5e7eb;
+.tenant-signin-divider::before,
+.tenant-signin-divider::after {
+  content: "";
+  flex: 1;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 .tenant-signin-divider-text {
-  background: transparent;
-  height: auto;
-  color: #9ca3af;
+  padding: 0 12px;
 }
 
+/* Social Buttons */
 .tenant-signin-social {
   width: 100%;
   max-width: 360px;
@@ -202,29 +420,37 @@
 
 .tenant-signin-social-btn {
   width: 100%;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
   background: #fff;
-  padding: 11px 12px;
+  padding: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
   font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
+  color: #1f2937;
 }
 
 .tenant-signin-social-btn:hover {
   background: #f9fafb;
-  border-color: #d1d5db;
+  border-color: #6b7280;
 }
 
+.tenant-signin-social-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Footer */
 .tenant-signin-footer {
-  margin-top: 22px;
-  text-align: center;
-  font-size: 13px;
+  margin-top: 20px;
+  font-size: 14px;
   color: #6b7280;
+  text-align: center;
 }
 
 .tenant-signin-link {
@@ -233,16 +459,62 @@
   cursor: pointer;
 }
 
+.tenant-signin-link:hover {
+  text-decoration: underline;
+}
+
+/* Validation Message (small inline) */
+.validation-msg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  margin-top: 6px;
+  opacity: 1;
+}
+
+.validation-msg.success {
+  color: #10b981;
+}
+
+.validation-msg.error {
+  color: #ef4444;
+}
+
+.validation-msg svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+/* Responsive */
 @media (max-width: 900px) {
   .tenant-signin-card {
     grid-template-columns: 1fr;
+    max-height: none;
   }
 
   .tenant-signin-left {
-    min-height: 320px;
+    min-height: 280px;
   }
 
   .tenant-signin-right {
-    padding: 36px 28px;
+    padding: 32px 24px;
+    max-height: none;
+    overflow-y: visible;
+  }
+}
+
+@media (max-width: 480px) {
+  .tenant-signin-page {
+    padding: 16px;
+  }
+
+  .tenant-signin-right {
+    padding: 24px 20px;
+  }
+
+  .tenant-signin-title {
+    font-size: 22px;
   }
 }
