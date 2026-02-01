@@ -21,6 +21,58 @@ import { verifyToken, verifyAdmin } from "../middleware/auth.js";
 const router = express.Router();
 
 /**
+ * GET /api/users/email-by-username
+ *
+ * Get user email by username (for login with username).
+ * This endpoint is public to allow username-based login.
+ *
+ * @query {string} username - Username to lookup
+ * @returns {Object} { email: string }
+ */
+router.get("/email-by-username", async (req, res) => {
+  try {
+    const { username } = req.query;
+
+    if (!username) {
+      return res.status(400).json({
+        error: "Username is required",
+        code: "MISSING_USERNAME",
+      });
+    }
+
+    // Trim and convert to lowercase for case-insensitive search
+    const trimmedUsername = username.trim();
+
+    console.log(`🔍 Looking up username: "${trimmedUsername}"`);
+
+    // Find user by username (case-insensitive), only return email
+    const user = await User.findOne({
+      username: { $regex: new RegExp(`^${trimmedUsername}$`, "i") },
+    }).select("email username");
+
+    if (!user) {
+      console.log(`❌ Username not found: "${trimmedUsername}"`);
+      return res.status(404).json({
+        error: "Username not found",
+        code: "USERNAME_NOT_FOUND",
+      });
+    }
+
+    console.log(
+      `✅ Email lookup for username: ${trimmedUsername} -> ${user.email}`,
+    );
+    res.json({ email: user.email });
+  } catch (error) {
+    console.error("❌ Username lookup error:", error);
+    res.status(500).json({
+      error: "Failed to lookup username",
+      details: error.message,
+      code: "USERNAME_LOOKUP_ERROR",
+    });
+  }
+});
+
+/**
  * GET /api/users
  *
  * Retrieve all users from the database.

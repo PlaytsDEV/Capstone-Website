@@ -28,7 +28,11 @@
 .tenant-signin-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(140deg, rgba(10, 42, 78, 0.88), rgba(10, 42, 78, 0.6));
+  background: linear-gradient(
+    140deg,
+    rgba(10, 42, 78, 0.88),
+    rgba(10, 42, 78, 0.6)
+  );
   color: #fff;
   padding: 40px;
   display: flex;
@@ -117,6 +121,35 @@
   outline: none;
   border-color: #f97316;
   box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
+}
+
+.tenant-signin-password-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.tenant-signin-password-toggle {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+}
+
+.tenant-signin-password-toggle:hover {
+  color: #f97316;
+}
+
+.tenant-signin-password-toggle:focus {
+  outline: none;
 }
 
 .tenant-signin-submit {

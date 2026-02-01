@@ -1,0 +1,179 @@
+/* Branch Selection Modal Styles */
+
+.branch-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.75);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000;
+  padding: 20px;
+  animation: fadeIn 0.3s ease;
+}
+
+.branch-modal-content {
+  background: white;
+  border-radius: 16px;
+  max-width: 500px;
+  width: 100%;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s ease;
+  overflow: hidden;
+}
+
+.branch-modal-header {
+  padding: 32px 30px 24px;
+  text-align: center;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.branch-modal-header h2 {
+  margin: 0 0 8px 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.branch-modal-header p {
+  margin: 0 0 12px 0;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.user-email {
+  display: inline-block;
+  padding: 6px 16px;
+  background-color: #f3f4f6;
+  border-radius: 20px;
+  font-size: 13px;
+  color: #374151;
+  font-weight: 500;
+}
+
+.branch-modal-body {
+  padding: 24px 30px;
+}
+
+.branch-option {
+  display: flex;
+  align-items: flex-start;
+  padding: 20px;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.branch-option:last-child {
+  margin-bottom: 0;
+}
+
+.branch-option:hover {
+  border-color: #ff6900;
+  background-color: #fff7ed;
+}
+
+.branch-option.selected {
+  border-color: #ff6900;
+  background-color: #fff7ed;
+  box-shadow: 0 0 0 3px rgba(255, 105, 0, 0.1);
+}
+
+.branch-radio {
+  margin-right: 16px;
+  padding-top: 2px;
+}
+
+.branch-radio input[type="radio"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: #ff6900;
+}
+
+.branch-info {
+  flex: 1;
+}
+
+.branch-info h3 {
+  margin: 0 0 4px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.branch-info p {
+  margin: 0;
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.branch-modal-footer {
+  padding: 20px 30px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.branch-confirm-btn {
+  width: 100%;
+  background-color: #ff6900;
+  color: white;
+  border: none;
+  padding: 14px 32px;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.branch-confirm-btn:hover:not(:disabled) {
+  background-color: #e55d00;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 105, 0, 0.3);
+}
+
+.branch-confirm-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.branch-confirm-btn:disabled {
+  background-color: #d1d5db;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .branch-modal-content {
+    margin: 10px;
+  }
+
+  .branch-modal-header {
+    padding: 24px 20px 20px;
+  }
+
+  .branch-modal-header h2 {
+    font-size: 20px;
+  }
+
+  .branch-modal-body {
+    padding: 20px;
+  }
+
+  .branch-option {
+    padding: 16px;
+  }
+
+  .branch-info h3 {
+    font-size: 16px;
+  }
+
+  .branch-modal-footer {
+    padding: 15px 20px;
+  }
+}

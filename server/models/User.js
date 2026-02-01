@@ -2,13 +2,13 @@ import mongoose from "mongoose";
 
 /**
  * User Model
- * 
+ *
  * Stores user profile and account information.
- * 
+ *
  * IMPORTANT: Firebase Authentication is the source of truth for:
  * - Authentication (password hashing, session management)
  * - Email verification status (emailVerified field)
- * 
+ *
  * This model stores:
  * - User profile data (name, phone, etc.)
  * - Branch assignment for multi-location system
@@ -25,7 +25,7 @@ const userSchema = new mongoose.Schema(
       unique: true,
       index: true,
     },
-    
+
     // User credentials
     email: {
       type: String,
@@ -35,7 +35,7 @@ const userSchema = new mongoose.Schema(
       trim: true,
       index: true,
     },
-    
+
     username: {
       type: String,
       required: true,
@@ -44,51 +44,57 @@ const userSchema = new mongoose.Schema(
       minlength: 3,
       index: true,
     },
-    
+
     // Personal information
     firstName: {
       type: String,
       required: true,
       trim: true,
     },
-    
+
     lastName: {
       type: String,
       required: true,
       trim: true,
     },
-    
+
     phone: {
       type: String,
       trim: true,
     },
-    
+
     // Branch assignment - users can only see data for their assigned branch
+    // Optional for Gmail users during registration - they select via modal after login
     branch: {
       type: String,
-      required: true,
-      enum: ["gil-puyat", "guadalupe"],
+      required: false,
+      enum: ["gil-puyat", "guadalupe", ""],
+      default: "",
       index: true,
     },
-    
+
     // Role-based access control
+    // user: Default role for new registrations (not yet moved in)
+    // tenant: Active tenant who has officially moved in
+    // admin: Branch administrator
+    // superAdmin: System administrator
     role: {
       type: String,
-      enum: ["tenant", "admin", "superAdmin"],
-      default: "tenant",
+      enum: ["user", "tenant", "admin", "superAdmin"],
+      default: "user",
     },
-    
+
     // Profile image URL (optional)
     profileImage: {
       type: String,
     },
-    
+
     // Account status - can be disabled by admin
     isActive: {
       type: Boolean,
       default: true,
     },
-    
+
     // Email verification status (synced from Firebase)
     // Firebase is the source of truth - this mirrors Firebase's emailVerified
     isEmailVerified: {
