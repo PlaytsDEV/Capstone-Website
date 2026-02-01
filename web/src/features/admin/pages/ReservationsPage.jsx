@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import Sidebar from '../components/Sidebar';
+import ReservationDetailsModal from '../components/ReservationDetailsModal';
 import '../styles/admin-reservations.css';
 
 function ReservationsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [branchFilter, setBranchFilter] = useState('all');
+  const [selectedReservation, setSelectedReservation] = useState(null);
 
   // Sample data
   const reservations = [
@@ -19,7 +21,21 @@ function ReservationsPage() {
       moveInDate: '2026-02-15',
       expiry: '2026-02-20',
       expiryDays: '20 days left',
-      status: 'Reserved'
+      status: 'Reserved',
+      customerName: 'Alex Rodriguez',
+      customerEmail: 'alex.rodriguez@email.com',
+      customerPhone: '+63 912 111 2222',
+      roomType: 'Standard Room (Quadruple)',
+      preferredMoveIn: '2026-02-15',
+      reservationFee: '₱2,000',
+      expiresOn: '2026-02-20',
+      daysRemaining: '20 days',
+      appliancePriceEach: 200,
+      appliances: ['Laptop', 'Electric Fan'],
+      totalApplianceFee: '400',
+      paymentProofAmount: '2,000',
+      paymentProofImage: null,
+      adminNotes: 'Completed viewing on Jan 19. All requirements submitted.'
     },
     {
       id: 'RES-2026-002',
@@ -31,7 +47,21 @@ function ReservationsPage() {
       moveInDate: '2026-02-10',
       expiry: '2026-02-18',
       expiryDays: '18 days left',
-      status: 'Ready for Move-In'
+      status: 'Ready for Move-In',
+      customerName: 'Maria Santos',
+      customerEmail: 'maria.santos@email.com',
+      customerPhone: '+63 915 234 5678',
+      roomType: 'Deluxe Room (Double)',
+      preferredMoveIn: '2026-02-10',
+      reservationFee: '₱2,000',
+      expiresOn: '2026-02-18',
+      daysRemaining: '18 days',
+      appliancePriceEach: 200,
+      appliances: ['Air Conditioner'],
+      totalApplianceFee: '200',
+      paymentProofAmount: '2,000',
+      paymentProofImage: null,
+      adminNotes: ''
     },
     {
       id: 'RES-2026-003',
@@ -43,7 +73,21 @@ function ReservationsPage() {
       moveInDate: '2026-04-01',
       expiry: '2026-02-22',
       expiryDays: '28 days left',
-      status: 'Pending Payment'
+      status: 'Pending Payment',
+      customerName: 'James Wilson',
+      customerEmail: 'james.w@example.com',
+      customerPhone: '+63 917 345 6789',
+      roomType: 'Standard Room (Double)',
+      preferredMoveIn: '2026-04-01',
+      reservationFee: '₱2,000',
+      expiresOn: '2026-02-22',
+      daysRemaining: '28 days',
+      appliancePriceEach: 200,
+      appliances: [],
+      totalApplianceFee: '0',
+      paymentProofAmount: null,
+      paymentProofImage: null,
+      adminNotes: 'Awaiting payment confirmation'
     },
     {
       id: 'RES-2025-099',
@@ -55,7 +99,21 @@ function ReservationsPage() {
       moveInDate: '2026-01-18',
       expiry: '2026-01-15',
       expiryDays: 'Expired',
-      status: 'Expired/Cancelled'
+      status: 'Expired/Cancelled',
+      customerName: 'Nicole Tan',
+      customerEmail: 'nicole.tan@email.com',
+      customerPhone: '+63 918 456 7890',
+      roomType: 'Standard Room (Quadruple)',
+      preferredMoveIn: '2026-01-18',
+      reservationFee: '₱2,000',
+      expiresOn: '2026-01-15',
+      daysRemaining: '0 days',
+      appliancePriceEach: 200,
+      appliances: ['Laptop', 'Microwave'],
+      totalApplianceFee: '400',
+      paymentProofAmount: null,
+      paymentProofImage: null,
+      adminNotes: 'Reservation expired without move-in'
     },
     {
       id: 'RES-2026-004',
@@ -67,7 +125,21 @@ function ReservationsPage() {
       moveInDate: '2026-01-26',
       expiry: '2026-02-24',
       expiryDays: 'Today',
-      status: 'Active Tenant'
+      status: 'Active Tenant',
+      customerName: 'Carlos Lopez',
+      customerEmail: 'carlos.l@example.com',
+      customerPhone: '+63 919 567 8901',
+      roomType: 'Standard Room (Quadruple)',
+      preferredMoveIn: '2026-01-26',
+      reservationFee: '₱2,000',
+      expiresOn: '2026-02-24',
+      daysRemaining: '24 days',
+      appliancePriceEach: 200,
+      appliances: ['Laptop', 'Electric Fan', 'Refrigerator'],
+      totalApplianceFee: '600',
+      paymentProofAmount: '2,000',
+      paymentProofImage: null,
+      adminNotes: 'Successfully converted to tenant on 2026-01-26'
     }
   ];
 
@@ -80,7 +152,10 @@ function ReservationsPage() {
   ];
 
   const handleView = (id) => {
-    console.log('View reservation:', id);
+    const reservation = reservations.find(res => res.id === id);
+    if (reservation) {
+      setSelectedReservation(reservation);
+    }
   };
 
   return (
@@ -266,6 +341,14 @@ function ReservationsPage() {
           </div>
         </div>
       </main>
+
+      {/* Reservation Details Modal */}
+      {selectedReservation && (
+        <ReservationDetailsModal 
+          reservation={selectedReservation}
+          onClose={() => setSelectedReservation(null)}
+        />
+      )}
     </div>
   );
 }

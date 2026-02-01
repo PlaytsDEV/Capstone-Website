@@ -1,12 +1,12 @@
 import "../styles/landingpage.css";
-import gilPuyatImage from "../../../assets/images/landingpage/gil-puyat-branch.png";
-import guadalupeImage from "../../../assets/images/landingpage/guadalupe-branch.png";
-import logoImage from "../../../assets/images/landingpage/logo.png";
+import gilPuyatImage from "../assets/landingpage-images/gil-puyat-branch.png";
+import guadalupeImage from "../assets/landingpage-images/guadalupe-branch.png";
+import LilycrestLogo from "../../../shared/components/LilycrestLogo";
 import Footer from "../components/Footer";
 import Navbar from "../components/Navbar";
 import InquiryModal from "../modals/InquiryModal";
-import { useNavigate } from "react-router-dom";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 function LandingPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -21,10 +21,9 @@ function LandingPage() {
       <section className="landing-hero">
         <div className="landing-container">
           <div className="landing-hero-content">
-            <img
-              src={logoImage}
-              alt="Lilycrest Logo"
+            <LilycrestLogo
               className="landing-logo"
+              aria-label="Lilycrest Logo"
             />
             <p className="landing-hero-tagline">
               A Safe & Comfortable Living Space
@@ -457,8 +456,8 @@ function LandingPage() {
           </div>
 
           <button
-            className="landing-btn-inquiry"
             onClick={() => setIsModalOpen(true)}
+            className="landing-btn-inquiry"
           >
             Inquiry / Learn More
           </button>
@@ -472,7 +471,6 @@ function LandingPage() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
       />
-
       <Footer />
     </div>
   );

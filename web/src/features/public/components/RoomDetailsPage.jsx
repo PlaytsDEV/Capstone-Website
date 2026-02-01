@@ -1,9 +1,9 @@
-import '../styles/room-details.css';
-import Footer from './Footer';
-import Navbar from './Navbar';
-import { useState } from 'react';
+import "../styles/room-details.css";
+import Footer from "../../../shared/components/Footer";
+import Navbar from "../../../shared/components/Navbar";
+import { useState } from "react";
 
-function RoomDetailsPage({ 
+function RoomDetailsPage({
   roomTitle,
   roomSubtitle,
   price,
@@ -16,7 +16,7 @@ function RoomDetailsPage({
   otherRooms,
   onCheckAvailability,
   onReserveNow,
-  branchType = 'gil-puyat'
+  branchType = "gil-puyat",
 }) {
   const [currentSlide, setCurrentSlide] = useState(0);
 
@@ -55,9 +55,13 @@ function RoomDetailsPage({
               <p className="room-details-subtitle">{roomSubtitle}</p>
             </div>
             <div className="room-details-price-section">
-              <span className="room-details-main-price">₱{price.toLocaleString()}</span>
+              <span className="room-details-main-price">
+                ₱{price.toLocaleString()}
+              </span>
               <span className="room-details-price-label">{priceNote}</span>
-              <span className="room-details-price-details">{minStay} | {beds}</span>
+              <span className="room-details-price-details">
+                {minStay} | {beds}
+              </span>
             </div>
           </div>
         </div>
@@ -68,28 +72,66 @@ function RoomDetailsPage({
         <div className="room-details-container">
           <div className="room-details-carousel-wrapper">
             <div className="room-details-carousel">
-              <button className="room-details-carousel-btn room-details-carousel-prev" onClick={prevSlide}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="8" height="14" viewBox="0 0 8 14" fill="none">
-                  <path d="M7 13L1 7L7 1" stroke="#364153" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <button
+                className="room-details-carousel-btn room-details-carousel-prev"
+                onClick={prevSlide}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="8"
+                  height="14"
+                  viewBox="0 0 8 14"
+                  fill="none"
+                >
+                  <path
+                    d="M7 13L1 7L7 1"
+                    stroke="#364153"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
                 </svg>
               </button>
 
               <div className="room-details-carousel-inner">
-                <img src={images[currentSlide]} alt={`Room ${currentSlide + 1}`} />
-                
+                <img
+                  src={images[currentSlide]}
+                  alt={`Room ${currentSlide + 1}`}
+                />
+
                 {/* Price Card Overlay */}
                 <div className="room-details-price-card">
-                  <span className="room-details-card-price">₱{price.toLocaleString()}</span>
+                  <span className="room-details-card-price">
+                    ₱{price.toLocaleString()}
+                  </span>
                   <span className="room-details-card-period">per month</span>
-                  <button className="room-details-btn-check-availability" onClick={onCheckAvailability}>
+                  <button
+                    className="room-details-btn-check-availability"
+                    onClick={onCheckAvailability}
+                  >
                     Check Availability
                   </button>
                 </div>
               </div>
 
-              <button className="room-details-carousel-btn room-details-carousel-next" onClick={nextSlide}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="8" height="14" viewBox="0 0 8 14" fill="none">
-                  <path d="M1 13L7 7L1 1" stroke="#364153" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <button
+                className="room-details-carousel-btn room-details-carousel-next"
+                onClick={nextSlide}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="8"
+                  height="14"
+                  viewBox="0 0 8 14"
+                  fill="none"
+                >
+                  <path
+                    d="M1 13L7 7L1 1"
+                    stroke="#364153"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
                 </svg>
               </button>
 
@@ -97,7 +139,7 @@ function RoomDetailsPage({
                 {images.map((_, index) => (
                   <button
                     key={index}
-                    className={`room-details-indicator ${index === currentSlide ? 'active' : ''}`}
+                    className={`room-details-indicator ${index === currentSlide ? "active" : ""}`}
                     onClick={() => setCurrentSlide(index)}
                   ></button>
                 ))}
@@ -128,7 +170,10 @@ function RoomDetailsPage({
           <div className="room-details-amenities-grid">
             {amenities.map((amenity, index) => (
               <div key={index} className="room-details-amenity-card">
-                <div className="room-details-amenity-icon" dangerouslySetInnerHTML={{ __html: amenity.icon }} />
+                <div
+                  className="room-details-amenity-icon"
+                  dangerouslySetInnerHTML={{ __html: amenity.icon }}
+                />
                 <h4>{amenity.title}</h4>
                 <p>{amenity.description}</p>
               </div>
@@ -139,30 +184,43 @@ function RoomDetailsPage({
 
       {/* Other Rooms Section */}
       {otherRooms && otherRooms.length > 0 && (
-      <section className="room-details-other-rooms">
-        <div className="room-details-container">
-          <h2>Other Rooms</h2>
-          <div className="room-details-other-rooms-grid">
-            {otherRooms.map((room, index) => (
-              <div key={index} className="room-details-other-room-card">
-                <div className="room-details-other-room-image">
-                  <img src={room.image} alt={room.title} />
-                  {room.badge && <span className="room-details-room-badge">{room.badge}</span>}
+        <section className="room-details-other-rooms">
+          <div className="room-details-container">
+            <h2>Other Rooms</h2>
+            <div className="room-details-other-rooms-grid">
+              {otherRooms.map((room, index) => (
+                <div key={index} className="room-details-other-room-card">
+                  <div className="room-details-other-room-image">
+                    <img src={room.image} alt={room.title} />
+                    {room.badge && (
+                      <span className="room-details-room-badge">
+                        {room.badge}
+                      </span>
+                    )}
+                  </div>
+                  <div className="room-details-other-room-content">
+                    <h3>{room.title}</h3>
+                    <p className="room-details-other-room-price">
+                      ₱{room.price.toLocaleString()}/month
+                    </p>
+                    <p className="room-details-other-room-details">
+                      {room.minStay}
+                    </p>
+                    <p className="room-details-other-room-details">
+                      {room.beds}
+                    </p>
+                    <button
+                      className="room-details-btn-view-details"
+                      onClick={room.onViewDetails}
+                    >
+                      View Details
+                    </button>
+                  </div>
                 </div>
-                <div className="room-details-other-room-content">
-                  <h3>{room.title}</h3>
-                  <p className="room-details-other-room-price">₱{room.price.toLocaleString()}/month</p>
-                  <p className="room-details-other-room-details">{room.minStay}</p>
-                  <p className="room-details-other-room-details">{room.beds}</p>
-                  <button className="room-details-btn-view-details" onClick={room.onViewDetails}>
-                    View Details
-                  </button>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
       )}
 
       <Footer />

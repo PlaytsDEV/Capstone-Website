@@ -12,14 +12,14 @@
 }
 
 .room-availability-title {
-  font-size: 24px;
-  font-weight: 700;
+  font-size: 30px;
+  font-weight: 400;
   color: #111827;
   margin: 0 0 8px 0;
 }
 
 .room-availability-subtitle {
-  font-size: 13px;
+  font-size: 16px;
   color: #6b7280;
   margin: 0;
 }

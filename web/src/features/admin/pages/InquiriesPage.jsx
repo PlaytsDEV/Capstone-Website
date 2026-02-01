@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import Sidebar from '../components/Sidebar';
+import InquiryDetailsModal from '../components/InquiryDetailsModal';
 import '../styles/admin-inquiries.css';
 
 export default function InquiriesPage() {
@@ -8,6 +9,8 @@ export default function InquiriesPage() {
     new: 3,
     responded: 2,
   });
+
+  const [selectedInquiry, setSelectedInquiry] = useState(null);
 
   const [rows] = useState([
     {
@@ -184,7 +187,11 @@ export default function InquiriesPage() {
                   <span className={`admin-inquiries-status ${row.status}`}>{row.status}</span>
                 </div>
                 <div className="admin-inquiries-cell admin-inquiries-actions">
-                  <button className="admin-inquiries-action" aria-label="View">
+                  <button 
+                    className="admin-inquiries-action" 
+                    aria-label="View"
+                    onClick={() => setSelectedInquiry(row)}
+                  >
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
   <path d="M1.37468 8.232C1.31912 8.08232 1.31912 7.91767 1.37468 7.768C1.91581 6.4559 2.83435 5.33402 4.01386 4.5446C5.19336 3.75517 6.58071 3.33374 8.00001 3.33374C9.41932 3.33374 10.8067 3.75517 11.9862 4.5446C13.1657 5.33402 14.0842 6.4559 14.6253 7.768C14.6809 7.91767 14.6809 8.08232 14.6253 8.232C14.0842 9.54409 13.1657 10.666 11.9862 11.4554C10.8067 12.2448 9.41932 12.6663 8.00001 12.6663C6.58071 12.6663 5.19336 12.2448 4.01386 11.4554C2.83435 10.666 1.91581 9.54409 1.37468 8.232Z" stroke="#155DFC" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/>
   <path d="M8 10C9.10457 10 10 9.10457 10 8C10 6.89543 9.10457 6 8 6C6.89543 6 6 6.89543 6 8C6 9.10457 6.89543 10 8 10Z" stroke="#155DFC" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/>
@@ -217,6 +224,14 @@ export default function InquiriesPage() {
             ))}
           </div>
         </section>
+
+        {/* Inquiry Details Modal */}
+        {selectedInquiry && (
+          <InquiryDetailsModal
+            inquiry={selectedInquiry}
+            onClose={() => setSelectedInquiry(null)}
+          />
+        )}
       </main>
     </div>
   );

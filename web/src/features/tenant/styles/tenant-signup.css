@@ -1,0 +1,234 @@
+.tenant-signup-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f3f4f6;
+  padding: 32px 16px;
+}
+
+.tenant-signup-card {
+  width: 100%;
+  max-width: 1100px;
+  background: #fff;
+  border-radius: 18px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.18);
+}
+
+.tenant-signup-left {
+  position: relative;
+  background-size: cover;
+  background-position: center;
+  min-height: 520px;
+}
+
+.tenant-signup-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(140deg, rgba(10, 42, 78, 0.88), rgba(10, 42, 78, 0.6));
+  color: #fff;
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 24px;
+}
+
+.tenant-signup-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.tenant-signup-logo {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.35));
+}
+
+.tenant-signup-brand-text h2 {
+  margin: 0;
+  font-size: 36px;
+  font-weight: 600;
+  color: #f59e0b;
+}
+
+.tenant-signup-brand-text span {
+  display: block;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: #e5e7eb;
+}
+
+.tenant-signup-welcome h3 {
+  margin: 0 0 6px 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.tenant-signup-welcome p {
+  margin: 0;
+  font-size: 13px;
+  color: #e5e7eb;
+}
+
+.tenant-signup-right {
+  padding: 48px 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.tenant-signup-title {
+  margin: 0 0 20px 0;
+  font-size: 26px;
+  font-weight: 500;
+  color: #111827;
+}
+
+.tenant-signup-form {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.tenant-signup-input {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  font-size: 14px;
+  color: #111827;
+  background: #fff;
+}
+
+.tenant-signup-input:focus {
+  outline: none;
+  border-color: #f97316;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.15);
+}
+
+.tenant-signup-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.tenant-signup-checkbox input {
+  width: 14px;
+  height: 14px;
+}
+
+.tenant-signup-terms {
+  font-size: 12px;
+  color: #6b7280;
+  margin: 0;
+}
+
+.tenant-signup-link {
+  color: #f97316;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tenant-signup-submit {
+  margin-top: 6px;
+  background: #f97316;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.tenant-signup-submit:hover {
+  background: #ea580c;
+}
+
+.tenant-signup-divider {
+  width: 100%;
+  max-width: 360px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 12px;
+  align-items: center;
+  color: #9ca3af;
+  margin: 22px 0 18px;
+  font-size: 13px;
+}
+
+.tenant-signup-divider span {
+  height: 1px;
+  background: #e5e7eb;
+}
+
+.tenant-signup-divider-text {
+  background: transparent;
+  height: auto;
+  color: #9ca3af;
+}
+
+.tenant-signup-social {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tenant-signup-social-btn {
+  width: 100%;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  padding: 11px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tenant-signup-social-btn:hover {
+  background: #f9fafb;
+  border-color: #d1d5db;
+}
+
+.tenant-signup-footer {
+  margin-top: 22px;
+  font-size: 13px;
+  color: #6b7280;
+  text-align: center;
+}
+
+@media (max-width: 900px) {
+  .tenant-signup-card {
+    grid-template-columns: 1fr;
+  }
+
+  .tenant-signup-left {
+    min-height: 320px;
+  }
+
+  .tenant-signup-right {
+    padding: 36px 28px;
+  }
+}
