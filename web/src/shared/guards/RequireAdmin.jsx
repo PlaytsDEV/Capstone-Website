@@ -34,7 +34,7 @@ const RequireAdmin = ({ children }) => {
     return <div>Loading...</div>;
   }
 
-  // Check Firebase authentication first
+  // Check Firebase authentication first - redirect to sign-in if not authenticated
   if (!firebaseUser) {
     return <Navigate to="/tenant/signin" replace />;
   }

@@ -8,6 +8,11 @@ import { useAuth } from "../hooks/useAuth";
  * Protects routes based on authentication and role requirements.
  * Uses Firebase custom claims from the ID token for role verification.
  *
+ * REDIRECT BEHAVIOR:
+ * - Unauthenticated on user routes: redirect to "/" (landing page)
+ * - Unauthenticated on admin routes: redirect to "/tenant/signin"
+ * - Role mismatch: redirect to appropriate dashboard or unauthorized
+ *
  * @param {Object} props
  * @param {React.ReactNode} props.children - Child components to render
  * @param {string} props.requiredRole - Required role: 'admin', 'superAdmin', or 'user'
@@ -29,7 +34,10 @@ const ProtectedRoute = ({ children, requiredRole, requireAuth = true }) => {
 
   // Check authentication requirement
   if (requireAuth && !isAuthenticated) {
-    return <Navigate to="/tenant/signin" replace />;
+    // User routes redirect to landing page "/"
+    // Admin routes redirect to sign-in page "/tenant/signin"
+    const redirectPath = requiredRole === "user" ? "/" : "/tenant/signin";
+    return <Navigate to={redirectPath} replace />;
   }
 
   // Check role requirements using custom claims from ID token

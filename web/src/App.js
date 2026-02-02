@@ -37,190 +37,206 @@ import ProfilePage from "./features/tenant/pages/ProfilePage";
 import BillingPage from "./features/tenant/pages/BillingPage";
 import ContractsPage from "./features/tenant/pages/ContractsPage";
 
-function App() {
+/**
+ * Inner App component that uses auth context
+ * Must be rendered inside AuthProvider to access useAuth hook
+ */
+function AppContent() {
   const { globalLoading } = useAuth();
+
+  return (
+    <Router>
+      <ScrollToTop />
+      {/* Global loading overlay for auth operations */}
+      {globalLoading && <GlobalLoading />}
+      <Routes>
+        {/* Public Page */}
+        <Route
+          path="/"
+          element={
+            <RequireNonAdmin>
+              <LandingPage />
+            </RequireNonAdmin>
+          }
+        />
+        <Route
+          path="/gil-puyat"
+          element={
+            <RequireNonAdmin>
+              <GPuyatPage />
+            </RequireNonAdmin>
+          }
+        />
+        <Route
+          path="/gil-puyat/rooms"
+          element={
+            <RequireNonAdmin>
+              <GPuyatRoomsPage />
+            </RequireNonAdmin>
+          }
+        />
+        <Route
+          path="/gil-puyat/rooms/private"
+          element={
+            <RequireNonAdmin>
+              <PrivateRoomPage />
+            </RequireNonAdmin>
+          }
+        />
+        <Route
+          path="/gil-puyat/rooms/double"
+          element={
+            <RequireNonAdmin>
+              <DoubleSharingPage />
+            </RequireNonAdmin>
+          }
+        />
+        <Route
+          path="/:branch/rooms/quadruple"
+          element={
+            <RequireNonAdmin>
+              <QuadrupleSharingPage />
+            </RequireNonAdmin>
+          }
+        />
+        <Route
+          path="/guadalupe"
+          element={
+            <RequireNonAdmin>
+              <GuadalupePage />
+            </RequireNonAdmin>
+          }
+        />
+        <Route
+          path="/guadalupe/rooms"
+          element={
+            <RequireNonAdmin>
+              <GuadalupeRoomsPage />
+            </RequireNonAdmin>
+          }
+        />
+
+        {/* Admin routes - all require admin auth */}
+        <Route
+          path="/admin/dashboard"
+          element={
+            <RequireAdmin>
+              <AdminDashboardPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/admin/inquiries"
+          element={
+            <RequireAdmin>
+              <InquiriesPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/admin/reservations"
+          element={
+            <RequireAdmin>
+              <ReservationsPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/admin/room-availability"
+          element={
+            <RequireAdmin>
+              <RoomAvailabilityPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/admin/tenants"
+          element={
+            <RequireAdmin>
+              <TenantsPage />
+            </RequireAdmin>
+          }
+        />
+
+        {/* Tenant Page */}
+        <Route
+          path="/tenant/signin"
+          element={
+            <RequireNonAdmin>
+              <SignIn />
+            </RequireNonAdmin>
+          }
+        />
+        <Route
+          path="/tenant/signup"
+          element={
+            <RequireNonAdmin>
+              <SignUp />
+            </RequireNonAdmin>
+          }
+        />
+        <Route
+          path="/tenant/branch-selection"
+          element={
+            <RequireNonAdmin>
+              <BranchSelection />
+            </RequireNonAdmin>
+          }
+        />
+        <Route
+          path="/tenant/forgot-password"
+          element={
+            <RequireNonAdmin>
+              <ForgotPassword />
+            </RequireNonAdmin>
+          }
+        />
+        <Route
+          path="/tenant/dashboard"
+          element={
+            <ProtectedRoute requiredRole="user">
+              <TenantDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/tenant/profile"
+          element={
+            <ProtectedRoute requiredRole="user">
+              <ProfilePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/tenant/billing"
+          element={
+            <ProtectedRoute requiredRole="user">
+              <BillingPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/tenant/contracts"
+          element={
+            <ProtectedRoute requiredRole="user">
+              <ContractsPage />
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
+    </Router>
+  );
+}
+
+/**
+ * Root App component
+ * Wraps AppContent with auth providers so useAuth hook works correctly
+ */
+function App() {
   return (
     <FirebaseAuthProvider>
       <AuthProvider>
-        <Router>
-          <ScrollToTop />
-          {globalLoading && <GlobalLoading />}
-          <Routes>
-            {/* Public Page */}
-            <Route
-              path="/"
-              element={
-                <RequireNonAdmin>
-                  <LandingPage />
-                </RequireNonAdmin>
-              }
-            />
-            <Route
-              path="/gil-puyat"
-              element={
-                <RequireNonAdmin>
-                  <GPuyatPage />
-                </RequireNonAdmin>
-              }
-            />
-            <Route
-              path="/gil-puyat/rooms"
-              element={
-                <RequireNonAdmin>
-                  <GPuyatRoomsPage />
-                </RequireNonAdmin>
-              }
-            />
-            <Route
-              path="/gil-puyat/rooms/private"
-              element={
-                <RequireNonAdmin>
-                  <PrivateRoomPage />
-                </RequireNonAdmin>
-              }
-            />
-            <Route
-              path="/gil-puyat/rooms/double"
-              element={
-                <RequireNonAdmin>
-                  <DoubleSharingPage />
-                </RequireNonAdmin>
-              }
-            />
-            <Route
-              path="/:branch/rooms/quadruple"
-              element={
-                <RequireNonAdmin>
-                  <QuadrupleSharingPage />
-                </RequireNonAdmin>
-              }
-            />
-            <Route
-              path="/guadalupe"
-              element={
-                <RequireNonAdmin>
-                  <GuadalupePage />
-                </RequireNonAdmin>
-              }
-            />
-            <Route
-              path="/guadalupe/rooms"
-              element={
-                <RequireNonAdmin>
-                  <GuadalupeRoomsPage />
-                </RequireNonAdmin>
-              }
-            />
-
-            {/* Admin routes - all require admin auth */}
-            <Route
-              path="/admin/dashboard"
-              element={
-                <RequireAdmin>
-                  <AdminDashboardPage />
-                </RequireAdmin>
-              }
-            />
-            <Route
-              path="/admin/inquiries"
-              element={
-                <RequireAdmin>
-                  <InquiriesPage />
-                </RequireAdmin>
-              }
-            />
-            <Route
-              path="/admin/reservations"
-              element={
-                <RequireAdmin>
-                  <ReservationsPage />
-                </RequireAdmin>
-              }
-            />
-            <Route
-              path="/admin/room-availability"
-              element={
-                <RequireAdmin>
-                  <RoomAvailabilityPage />
-                </RequireAdmin>
-              }
-            />
-            <Route
-              path="/admin/tenants"
-              element={
-                <RequireAdmin>
-                  <TenantsPage />
-                </RequireAdmin>
-              }
-            />
-
-            {/* Tenant Page */}
-            <Route
-              path="/tenant/signin"
-              element={
-                <RequireNonAdmin>
-                  <SignIn />
-                </RequireNonAdmin>
-              }
-            />
-            <Route
-              path="/tenant/signup"
-              element={
-                <RequireNonAdmin>
-                  <SignUp />
-                </RequireNonAdmin>
-              }
-            />
-            <Route
-              path="/tenant/branch-selection"
-              element={
-                <RequireNonAdmin>
-                  <BranchSelection />
-                </RequireNonAdmin>
-              }
-            />
-            <Route
-              path="/tenant/forgot-password"
-              element={
-                <RequireNonAdmin>
-                  <ForgotPassword />
-                </RequireNonAdmin>
-              }
-            />
-            <Route
-              path="/tenant/dashboard"
-              element={
-                <ProtectedRoute requiredRole="user">
-                  <TenantDashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/tenant/profile"
-              element={
-                <ProtectedRoute requiredRole="user">
-                  <ProfilePage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/tenant/billing"
-              element={
-                <ProtectedRoute requiredRole="user">
-                  <BillingPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/tenant/contracts"
-              element={
-                <ProtectedRoute requiredRole="user">
-                  <ContractsPage />
-                </ProtectedRoute>
-              }
-            />
-          </Routes>
-        </Router>
+        <AppContent />
       </AuthProvider>
     </FirebaseAuthProvider>
   );

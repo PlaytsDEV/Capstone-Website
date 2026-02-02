@@ -1,29 +1,56 @@
 import React from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
+import { showNotification } from "../../../shared/utils/notification";
 import "../styles/admin-sidebar.css";
 import LilycrestLogo from "../../../shared/components/LilycrestLogo";
 
 function Sidebar() {
-  const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { logout, globalLoading } = useAuth();
   const [showLogoutConfirm, setShowLogoutConfirm] = React.useState(false);
+  const [logoutInProgress, setLogoutInProgress] = React.useState(false);
+  // Ref to ensure logout executes exactly once per confirmation
+  const logoutCalledRef = React.useRef(false);
 
   /**
-   * Handle admin logout with confirmation
-   * Ensures complete session cleanup and redirects to main sign-in page
+   * Handle admin logout
+   *
+   * UI COMPONENT RESPONSIBILITY:
+   * - Triggers logout action (auth logic)
+   * - Shows notification based on result
+   * - Navigates to sign-in page
+   *
+   * CRITICAL: This is called AFTER modal is closed and unmounted
    */
   const handleLogout = async () => {
+    // Guard against duplicate calls
+    if (logoutCalledRef.current) return;
+    logoutCalledRef.current = true;
+
     try {
       console.log("🔐 Admin logout initiated");
-      await logout();
-      console.log("✅ Admin logout successful - redirecting to main sign-in");
-      // Redirect to main tenant sign-in page (not admin login)
-      navigate("/tenant/signin", { replace: true });
+
+      // Execute logout - this sets globalLoading which shows the overlay
+      const result = await logout();
+
+      if (result?.success) {
+        // Brief delay with loading overlay visible, then show notification and navigate
+        setTimeout(() => {
+          showNotification("You have been logged out successfully", "success");
+          // Small delay after notification appears, then navigate
+          setTimeout(() => {
+            window.location.href = "/tenant/signin";
+          }, 300);
+        }, 400);
+      }
     } catch (error) {
       console.error("❌ Admin logout error:", error);
-      // Force redirect even if logout fails
-      navigate("/tenant/signin", { replace: true });
+
+      // Show error notification
+      showNotification("Logout failed. Please try again.", "error");
+
+      // Reset on error for retry
+      logoutCalledRef.current = false;
     }
   };
 
@@ -31,6 +58,8 @@ function Sidebar() {
    * Show logout confirmation dialog
    */
   const confirmLogout = () => {
+    // Reset ref when opening new confirmation
+    logoutCalledRef.current = false;
     setShowLogoutConfirm(true);
   };
 
@@ -39,14 +68,32 @@ function Sidebar() {
    */
   const cancelLogout = () => {
     setShowLogoutConfirm(false);
+    logoutCalledRef.current = false;
   };
 
   /**
    * Proceed with logout after confirmation
+   *
+   * SEQUENCE (strict order):
+   * 1. Check if already in progress (prevent double-click)
+   * 2. Set local loading state
+   * 3. Close modal (allow unmount)
+   * 4. Wait for modal to fully unmount (requestAnimationFrame)
+   * 5. Execute logout (single call guaranteed by ref)
    */
-  const proceedLogout = async () => {
-    setShowLogoutConfirm(false);
-    await handleLogout();
+  const proceedLogout = () => {
+    if (logoutInProgress || logoutCalledRef.current) return;
+
+    setLogoutInProgress(true);
+    setShowLogoutConfirm(false); // Close modal first
+
+    // Wait for modal to unmount before executing logout
+    // requestAnimationFrame ensures DOM updates are complete
+    requestAnimationFrame(() => {
+      handleLogout().finally(() => {
+        setLogoutInProgress(false);
+      });
+    });
   };
   return (
     <aside className="admin-sidebar">
@@ -345,8 +392,11 @@ function Sidebar() {
 
       {/* Logout Confirmation Modal */}
       {showLogoutConfirm && (
-        <div className="admin-logout-modal-overlay">
-          <div className="admin-logout-modal">
+        <div className="admin-logout-modal-overlay" onClick={cancelLogout}>
+          <div
+            className="admin-logout-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="admin-logout-modal-header">
               <h3 className="admin-logout-modal-title">Confirm Logout</h3>
             </div>
@@ -360,14 +410,18 @@ function Sidebar() {
               <button
                 className="admin-logout-modal-cancel"
                 onClick={cancelLogout}
+                disabled={logoutInProgress || globalLoading}
               >
                 Cancel
               </button>
               <button
                 className="admin-logout-modal-confirm"
                 onClick={proceedLogout}
+                disabled={logoutInProgress || globalLoading}
               >
-                Logout
+                {logoutInProgress || globalLoading
+                  ? "Logging out..."
+                  : "Logout"}
               </button>
             </div>
           </div>

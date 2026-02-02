@@ -1,7 +1,10 @@
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../../../shared/hooks/useAuth";
-import { showNotification } from "../../../shared/utils/notification";
+import {
+  showNotification,
+  showConfirmation,
+} from "../../../shared/utils/notification";
 
 /**
  * Navbar component with profile dropdown functionality
@@ -12,11 +15,15 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
   const navigate = useNavigate();
 
   // Get user from auth context (includes backend data with firstName/lastName)
-  const { user, isAuthenticated, logout: authLogout } = useAuth();
+  const {
+    user,
+    isAuthenticated,
+    logout: authLogout,
+    globalLoading,
+  } = useAuth();
 
   // State management
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
 
   // Refs for DOM manipulation
   const profileMenuRef = useRef(null);
@@ -91,23 +98,67 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
     return "";
   }, []);
 
+  // Ref to prevent duplicate logout execution
+  const logoutCalledRef = useRef(false);
+
   /**
-   * Handles logout with proper error handling and user feedback
+   * Handles logout with confirmation and proper error handling
+   *
+   * UI COMPONENT RESPONSIBILITY:
+   * - Shows confirmation dialog
+   * - Triggers logout action
+   * - Shows notification based on result
+   * - Navigates to appropriate page
+   *
+   * EXECUTION SEQUENCE:
+   * 1. Close profile menu
+   * 2. Show confirmation dialog
+   * 3. If confirmed → call logout (ref guarded)
+   * 4. On success: show success notification, navigate to branch home
+   * 5. On error: show error notification, allow retry
    */
   const handleLogout = useCallback(async () => {
     setShowProfileMenu(false);
-    setIsLoading(true);
+
+    // Prevent duplicate calls
+    if (globalLoading || logoutCalledRef.current) return;
+
+    // Show confirmation dialog
+    const confirmed = await showConfirmation(
+      "Are you sure you want to log out?",
+      "Log Out",
+      "Cancel",
+    );
+
+    if (!confirmed) return;
+
+    // Guard against duplicate execution
+    if (logoutCalledRef.current) return;
+    logoutCalledRef.current = true;
 
     try {
-      await authLogout();
-      showNotification("Successfully logged out", "success");
+      // Execute logout - this sets globalLoading which shows the overlay
+      const result = await authLogout(user?.branch);
+
+      if (result?.success) {
+        // Brief delay with loading overlay visible, then show notification and navigate
+        setTimeout(() => {
+          showNotification("You have been logged out successfully", "success");
+          // Small delay after notification appears, then navigate
+          setTimeout(() => {
+            window.location.href = result.branch || "/";
+          }, 300);
+        }, 400);
+      }
     } catch (error) {
+      // Show error notification
+      showNotification("Logout failed. Please try again.", "error");
       console.error("Logout error:", error);
-      showNotification("Failed to logout. Please try again.", "error");
-    } finally {
-      setIsLoading(false);
+
+      // Reset ref to allow retry
+      logoutCalledRef.current = false;
     }
-  }, [authLogout]);
+  }, [authLogout, globalLoading, user]);
 
   /**
    * Toggles profile menu visibility with accessibility considerations
@@ -372,8 +423,8 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
                         onClick={handleLogout}
                         role="menuitem"
                         tabIndex={0}
-                        disabled={isLoading}
-                        aria-label={isLoading ? "Logging out..." : "Logout"}
+                        disabled={isLoading || globalLoading}
+                        aria-label={isLoading || globalLoading ? "Logging out..." : "Logout"}
                       >
                         <svg
                           width="16"
@@ -390,7 +441,7 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
                             strokeLinejoin="round"
                           />
                         </svg>
-                        {isLoading ? "Logging out..." : "Logout"}
+                        {isLoading || globalLoading ? "Logging out..." : "Logout"}
                       </button>
                     </div>
                   )}
@@ -468,7 +519,7 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
                     aria-expanded={showProfileMenu}
                     aria-haspopup="menu"
                     aria-label={`User menu for ${getDisplayName(user)}`}
-                    disabled={isLoading}
+                    disabled={globalLoading}
                   >
                     <div
                       className={`${branchClass}-profile-avatar`}
@@ -550,8 +601,8 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
                         onClick={handleLogout}
                         role="menuitem"
                         tabIndex={0}
-                        disabled={isLoading}
-                        aria-label={isLoading ? "Logging out..." : "Logout"}
+                        disabled={globalLoading}
+                        aria-label={globalLoading ? "Logging out..." : "Logout"}
                       >
                         <svg
                           width="16"
@@ -568,7 +619,7 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
                             strokeLinejoin="round"
                           />
                         </svg>
-                        {isLoading ? "Logging out..." : "Logout"}
+                        {globalLoading ? "Logging out..." : "Logout"}
                       </button>
                     </div>
                   )}
