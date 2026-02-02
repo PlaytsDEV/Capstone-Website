@@ -20,6 +20,11 @@
  * Displays a temporary message at the top of the screen.
  * Automatically dismisses after the specified duration.
  *
+ * DUPLICATE PREVENTION:
+ * - Removes existing notifications before showing new one
+ * - Debounces rapid calls with same message to prevent StrictMode duplicates
+ * - Uses unique ID to track notification state
+ *
  * @param {string} message - Notification message to display
  * @param {string} type - Notification type: 'success', 'error', 'warning', 'info'
  * @param {number} duration - Duration in milliseconds (default: 3000)
@@ -28,8 +33,24 @@
  * showNotification('Login successful!', 'success');
  * showNotification('Invalid credentials', 'error', 5000);
  */
+
+// Track last notification to prevent duplicates from StrictMode double-renders
+let lastNotification = { message: "", timestamp: 0 };
+const DEBOUNCE_MS = 100; // Prevent same notification within 100ms
+
 export const showNotification = (message, type = "info", duration = 3000) => {
   try {
+    // DEBOUNCE: Prevent duplicate notifications from StrictMode or rapid calls
+    const now = Date.now();
+    if (
+      message === lastNotification.message &&
+      now - lastNotification.timestamp < DEBOUNCE_MS
+    ) {
+      console.log("🔕 Notification debounced (duplicate):", message);
+      return;
+    }
+    lastNotification = { message, timestamp: now };
+
     // Remove any existing notifications to avoid duplicates
     const existing = document.getElementById("app-notification");
     if (existing) {

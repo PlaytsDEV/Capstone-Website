@@ -12,9 +12,9 @@ function PrivateRoomPage() {
     minStay: "6 months minimum",
     beds: "1 bed",
     images: [
-      require("../assets/gpuyat-images/standard-room.jpg"),
-      require("../assets/gpuyat-images/deluxe-room.jpg"),
-      require("../assets/gpuyat-images/premium-room.jpg"),
+      require("../../../assets/images/gpuyat/standard-room.jpg"),
+      require("../../../assets/images/gpuyat/deluxe-room.jpg"),
+      require("../../../assets/images/gpuyat/premium-room.jpg"),
     ],
     descriptions: [
       "Experience comfortable urban living in our private rooms designed for students and young professionals. Each room is thoughtfully furnished to provide a cozy and productive environment, perfect for those seeking privacy and convenience in the heart of Gil Puyat.",
@@ -73,7 +73,7 @@ function PrivateRoomPage() {
         price: 6500,
         minStay: "6 months minimum",
         beds: "2 beds",
-        image: require("../assets/gpuyat-images/deluxe-room.jpg"),
+        image: require("../../../assets/images/gpuyat/deluxe-room.jpg"),
         onViewDetails: () => navigate("/gil-puyat/rooms/double"),
       },
       {
@@ -81,7 +81,7 @@ function PrivateRoomPage() {
         price: 4500,
         minStay: "3 months minimum",
         beds: "4 beds",
-        image: require("../assets/gpuyat-images/premium-room.jpg"),
+        image: require("../../../assets/images/gpuyat/premium-room.jpg"),
         onViewDetails: () => navigate("/gil-puyat/rooms/quadruple"),
       },
     ],

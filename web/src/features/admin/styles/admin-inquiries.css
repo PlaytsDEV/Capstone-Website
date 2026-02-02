@@ -1,4 +1,4 @@
- .admin-inquiries-page {
+.admin-inquiries-page {
   display: flex;
   min-height: 100vh;
   background: #f8fafc;
@@ -232,7 +232,7 @@
   width: 28px;
   height: 28px;
   border-radius: 6px;
-  border: 0px;;
+  border: 0px;
   background: #fff;
   color: #2563eb;
   display: inline-flex;
@@ -243,6 +243,23 @@
 
 .admin-inquiries-action.delete {
   color: #ef4444;
+}
+
+/* Loading, Empty, Error States */
+.admin-inquiries-loading,
+.admin-inquiries-empty,
+.admin-inquiries-error {
+  text-align: center;
+  padding: 48px 24px;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.admin-inquiries-error {
+  color: #dc2626;
+  background: #fee2e2;
+  border-radius: 8px;
+  margin: 12px;
 }
 
 @media (max-width: 1200px) {

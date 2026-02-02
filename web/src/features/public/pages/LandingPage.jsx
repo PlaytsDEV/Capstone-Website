@@ -1,6 +1,6 @@
 import "../styles/landingpage.css";
-import gilPuyatImage from "../assets/landingpage-images/gil-puyat-branch.png";
-import guadalupeImage from "../assets/landingpage-images/guadalupe-branch.png";
+import gilPuyatImage from "../../../assets/images/landingpage/gil-puyat-branch.png";
+import guadalupeImage from "../../../assets/images/landingpage/guadalupe-branch.png";
 import LilycrestLogo from "../../../shared/components/LilycrestLogo";
 import Footer from "../components/Footer";
 import Navbar from "../components/Navbar";
@@ -26,7 +26,11 @@ function LandingPage() {
   return (
     <div className="landing-page">
       {/* Navigation */}
-      <Navbar type="landing" currentPage="home" />
+      <Navbar
+        type="landing"
+        currentPage="home"
+        onLoginClick={() => navigate("/tenant/signin")}
+      />
 
       {/* Hero Section */}
       <section className="landing-hero">

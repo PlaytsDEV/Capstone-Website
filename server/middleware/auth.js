@@ -9,16 +9,19 @@
  * 1. verifyToken: Validates Firebase ID token (required for all protected routes)
  * 2. verifyAdmin: Checks if user has admin privileges
  * 3. verifySuperAdmin: Checks if user has super admin privileges
+ * 4. verifyUser: Ensures user is NOT an admin (for user-only endpoints)
  *
  * Usage:
  * - Apply verifyToken to all routes that require authentication
  * - Chain verifyAdmin after verifyToken for admin-only routes
  * - Chain verifySuperAdmin after verifyToken for super-admin-only routes
+ * - Chain verifyUser after verifyToken for user-only routes
  *
  * Example:
  *   router.get('/protected', verifyToken, handler)
  *   router.post('/admin-only', verifyToken, verifyAdmin, handler)
  *   router.delete('/super-admin', verifyToken, verifySuperAdmin, handler)
+ *   router.post('/user-only', verifyToken, verifyUser, handler)
  */
 
 import { auth } from "../config/firebase.js";
@@ -105,8 +108,11 @@ export const verifyToken = async (req, res, next) => {
  * Middleware to check if the authenticated user has admin privileges.
  * Must be used AFTER verifyToken middleware.
  *
- * Checks Firebase custom claims for 'admin' flag.
- * Both 'admin' and 'superAdmin' users will pass this check.
+ * Checks for custom claims in the Firebase ID token:
+ * - admin: true (admin user)
+ * - superAdmin: true (super admin user)
+ *
+ * SECURITY: This prevents unauthorized access to admin-only endpoints.
  *
  * @middleware
  * @param {Object} req - Express request object (must have req.user from verifyToken)
@@ -125,35 +131,23 @@ export const verifyAdmin = async (req, res, next) => {
       });
     }
 
-    // Get user data from Firebase to check custom claims
-    const user = await auth.getUser(req.user.uid);
-
-    // Check if user has admin custom claim
-    // Custom claims are set via Firebase Admin SDK (see auth routes)
-    if (!user.customClaims?.admin) {
+    // Check custom claims from Firebase ID token
+    // Admin users have either 'admin' or 'superAdmin' custom claims
+    if (!req.user.admin && !req.user.superAdmin) {
       return res.status(403).json({
         error: "Access denied. Admin privileges required.",
-        code: "ADMIN_REQUIRED",
+        code: "ADMIN_ACCESS_DENIED",
       });
     }
 
-    // User is an admin, proceed to route handler
+    // User has admin privileges, proceed to route handler
     next();
   } catch (error) {
     console.error("❌ Admin verification error:", error.message);
 
-    // Handle specific Firebase errors
-    let errorMessage = "Access denied";
-    let errorCode = "ACCESS_DENIED";
-
-    if (error.code === "auth/user-not-found") {
-      errorMessage = "User not found in Firebase";
-      errorCode = "USER_NOT_FOUND";
-    }
-
     res.status(403).json({
-      error: errorMessage,
-      code: errorCode,
+      error: "Access denied",
+      code: "ACCESS_DENIED",
     });
   }
 };
@@ -164,8 +158,9 @@ export const verifyAdmin = async (req, res, next) => {
  * Middleware to check if the authenticated user has super admin privileges.
  * Must be used AFTER verifyToken middleware.
  *
- * Checks Firebase custom claims for 'superAdmin' flag.
- * Only users with 'superAdmin' role will pass (regular admins won't).
+ * Checks for the 'superAdmin' custom claim in the Firebase ID token.
+ *
+ * SECURITY: This prevents unauthorized access to super-admin-only endpoints.
  *
  * @middleware
  * @param {Object} req - Express request object (must have req.user from verifyToken)
@@ -184,34 +179,74 @@ export const verifySuperAdmin = async (req, res, next) => {
       });
     }
 
-    // Get user data from Firebase to check custom claims
-    const user = await auth.getUser(req.user.uid);
-
-    // Check if user has superAdmin custom claim
-    if (!user.customClaims?.superAdmin) {
+    // Check custom claims from Firebase ID token
+    // Only super admin users have the 'superAdmin' custom claim
+    if (!req.user.superAdmin) {
       return res.status(403).json({
-        error: "Access denied. Super Admin privileges required.",
-        code: "SUPER_ADMIN_REQUIRED",
+        error: "Access denied. Super admin privileges required.",
+        code: "SUPER_ADMIN_ACCESS_DENIED",
       });
     }
 
-    // User is a super admin, proceed to route handler
+    // User has super admin privileges, proceed to route handler
     next();
   } catch (error) {
-    console.error("❌ Super Admin verification error:", error.message);
-
-    // Handle specific Firebase errors
-    let errorMessage = "Access denied";
-    let errorCode = "ACCESS_DENIED";
-
-    if (error.code === "auth/user-not-found") {
-      errorMessage = "User not found in Firebase";
-      errorCode = "USER_NOT_FOUND";
-    }
+    console.error("❌ Super admin verification error:", error.message);
 
     res.status(403).json({
-      error: errorMessage,
-      code: errorCode,
+      error: "Access denied",
+      code: "ACCESS_DENIED",
+    });
+  }
+};
+
+/**
+ * Verify User/Tenant Role
+ *
+ * Middleware to check if the authenticated user has user/tenant privileges.
+ * Must be used AFTER verifyToken middleware.
+ *
+ * Ensures that admin users cannot access user-only endpoints.
+ * Users with "user", "tenant" roles will pass this check.
+ * Admin and superAdmin users will be denied access.
+ *
+ * SECURITY: This prevents privilege escalation where admins
+ * could access user endpoints with their elevated permissions.
+ *
+ * @middleware
+ * @param {Object} req - Express request object (must have req.user from verifyToken)
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next middleware function
+ *
+ * @returns {void} Calls next() if user/tenant, sends 403 error otherwise
+ */
+export const verifyUser = async (req, res, next) => {
+  try {
+    // Ensure verifyToken was called first
+    if (!req.user || !req.user.uid) {
+      return res.status(401).json({
+        error: "User not authenticated. Apply verifyToken middleware first.",
+        code: "USER_NOT_AUTHENTICATED",
+      });
+    }
+
+    // Check that user does NOT have admin privileges
+    // This prevents admins from accessing user-only endpoints
+    if (req.user.admin || req.user.superAdmin) {
+      return res.status(403).json({
+        error: "Access denied. User endpoint - admin access not allowed.",
+        code: "USER_ENDPOINT_ADMIN_DENIED",
+      });
+    }
+
+    // User is not an admin (regular user/tenant), proceed to route handler
+    next();
+  } catch (error) {
+    console.error("❌ User verification error:", error.message);
+
+    res.status(403).json({
+      error: "Access denied",
+      code: "ACCESS_DENIED",
     });
   }
 };

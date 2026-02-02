@@ -2,30 +2,48 @@
 
 Full-stack web application for managing dormitory operations with separate frontend and backend architecture.
 
-## Project Structure
+## 📁 Project Structure
 
 ```
 Lilycrest-Web/
-├── web/                    # React Frontend
-│   ├── src/
-│   │   ├── features/       # Feature-based modules
-│   │   ├── shared/         # Shared components & utilities
-│   │   ├── assets/         # Images, icons
-│   │   └── firebase/       # Firebase client config
-│   └── package.json
+├── docs/                    # 📚 Documentation
+│   ├── AUTHENTICATION.md   # Auth system guide
+│   ├── API.md              # API reference
+│   └── STRUCTURE.md        # Full project structure
 │
-└── server/                 # Express Backend API
-    ├── config/             # Firebase Admin SDK config
-    ├── middleware/         # Auth middleware
-    ├── routes/             # API routes
-    └── package.json
+├── web/                     # 🌐 React Frontend
+│   └── src/
+│       ├── features/       # Role-based modules
+│       │   ├── public/     # Public pages
+│       │   ├── tenant/     # Tenant features
+│       │   ├── admin/      # Admin dashboard
+│       │   └── super-admin/# System admin
+│       ├── shared/         # Shared components
+│       ├── assets/         # Images
+│       └── firebase/       # Firebase config
+│
+└── server/                  # 🖥️ Express Backend
+    ├── config/             # Database, Firebase, Email
+    ├── middleware/         # Auth & access control
+    ├── models/             # MongoDB schemas
+    ├── routes/             # API endpoints
+    └── scripts/            # Utility scripts
 ```
 
-## Getting Started
+## 📖 Documentation
+
+| Document                                         | Description                          |
+| ------------------------------------------------ | ------------------------------------ |
+| [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) | Authentication flows, Firebase setup |
+| [docs/API.md](docs/API.md)                       | API endpoints reference              |
+| [docs/STRUCTURE.md](docs/STRUCTURE.md)           | Detailed project structure           |
+
+## 🚀 Getting Started
 
 ### Prerequisites
 
 - Node.js 16+
+- MongoDB Atlas account
 - Firebase project with Authentication enabled
 - npm or yarn
 
@@ -97,7 +115,7 @@ npm start
 
 Backend runs on: http://localhost:5000
 
-## Architecture
+## 🏗️ Architecture
 
 ### Frontend (React)
 
@@ -109,7 +127,8 @@ Backend runs on: http://localhost:5000
 ### Backend (Express)
 
 - **Authentication**: Firebase Admin SDK
-- **Database**: Firebase Firestore
+- **Database**: MongoDB with Mongoose
+- **Email**: Nodemailer with Gmail SMTP
 - **API**: RESTful endpoints
 - **Security**: JWT token verification, role-based access
 
@@ -122,11 +141,11 @@ Backend runs on: http://localhost:5000
 5. Backend verifies token with Firebase Admin
 6. Protected operations executed based on user role
 
-## API Endpoints
+## 🔌 API Endpoints
 
-See [server/README.md](server/README.md) for complete API documentation.
+See [docs/API.md](docs/API.md) for complete API documentation.
 
-## Features
+## ✨ Features
 
 - **Public Pages**: Landing, Branch Info, Room Listings
 - **Authentication**: Sign In, Sign Up, Social Login
@@ -134,7 +153,7 @@ See [server/README.md](server/README.md) for complete API documentation.
 - **Admin Dashboard**: Room Management, Reservations, Inquiries
 - **Super Admin**: User Role Management
 
-## Environment Variables
+## 🔐 Environment Variables
 
 ### Frontend (.env in web/)
 
@@ -153,13 +172,16 @@ REACT_APP_FIREBASE_APP_ID=...
 ```
 PORT=5000
 NODE_ENV=development
+MONGODB_URI=mongodb+srv://...
 FIREBASE_PROJECT_ID=...
 FIREBASE_CLIENT_EMAIL=...
 FIREBASE_PRIVATE_KEY=...
+EMAIL_USER=your-gmail@gmail.com
+EMAIL_PASSWORD=your-app-password
 FRONTEND_URL=http://localhost:3000
 ```
 
-## Development
+## 💻 Development
 
 Start both frontend and backend simultaneously:
 
@@ -175,7 +197,7 @@ Terminal 2 (Backend):
 cd server && npm run dev
 ```
 
-## Deployment
+## 🚢 Deployment
 
 ### Frontend
 
@@ -188,7 +210,7 @@ cd server && npm run dev
 - Set environment variables in deployment platform
 - Update FRONTEND_URL to production domain
 
-## Security Notes
+## 🔒 Security Notes
 
 ⚠️ **Never commit**:
 

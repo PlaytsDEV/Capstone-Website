@@ -51,7 +51,7 @@
 }
 
 .inquiry-modal-close:hover {
-  color: #FF6900;
+  color: #ff6900;
 }
 
 .inquiry-modal-wrapper {
@@ -87,7 +87,7 @@
 }
 
 .required {
-  color: #FF6900;
+  color: #ff6900;
 }
 
 .inquiry-type-buttons {
@@ -109,13 +109,13 @@
 }
 
 .inquiry-type-btn:hover {
-  border-color: #FF6900;
-  color: #FF6900;
+  border-color: #ff6900;
+  color: #ff6900;
 }
 
 .inquiry-type-btn.active {
-  border-color: #FF6900;
-  background-color: #FF6900;
+  border-color: #ff6900;
+  background-color: #ff6900;
   color: white;
 }
 
@@ -147,7 +147,7 @@
 .inquiry-input:focus,
 .inquiry-textarea:focus {
   outline: none;
-  border-color: #FF6900;
+  border-color: #ff6900;
   background-color: white;
 }
 
@@ -163,7 +163,7 @@
 
 .inquiry-btn-submit {
   padding: 14px 20px;
-  background-color: #FF6900;
+  background-color: #ff6900;
   color: white;
   border: none;
   border-radius: 6px;
@@ -212,7 +212,7 @@
   flex-shrink: 0;
   width: 40px;
   height: 40px;
-  background-color: #FFF5E6;
+  background-color: #fff5e6;
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -251,6 +251,101 @@
   font-size: 13px;
   color: #666;
   line-height: 1.6;
+}
+
+/* Success Message */
+.inquiry-success-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 20px;
+  background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+  border-radius: 12px;
+  margin-bottom: 20px;
+  border: 1px solid #10b981;
+}
+
+.inquiry-success-message svg {
+  width: 28px;
+  height: 28px;
+  color: #059669;
+  flex-shrink: 0;
+}
+
+.inquiry-success-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #065f46;
+  margin: 0 0 4px 0;
+}
+
+.inquiry-success-text {
+  font-size: 14px;
+  color: #047857;
+  margin: 0;
+}
+
+/* Error Message */
+.inquiry-error-message {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  background: #fef2f2;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  border: 1px solid #fecaca;
+}
+
+.inquiry-error-message svg {
+  width: 20px;
+  height: 20px;
+  color: #dc2626;
+  flex-shrink: 0;
+}
+
+.inquiry-error-message p {
+  font-size: 14px;
+  color: #b91c1c;
+  margin: 0;
+}
+
+/* Loading Button State */
+.inquiry-btn-submit.loading {
+  background: #9ca3af;
+  cursor: not-allowed;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.inquiry-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Disabled input state */
+.inquiry-input:disabled,
+.inquiry-textarea:disabled {
+  background: #f3f4f6;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.inquiry-type-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 /* Responsive Design */

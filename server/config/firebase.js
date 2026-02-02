@@ -65,13 +65,20 @@ const serviceAccount = {
  *
  * This must be called before using any Firebase Admin features.
  * It authenticates the server with Firebase using the service account.
+ *
+ * IMPORTANT: Check if already initialized to prevent multiple initialization
+ * errors when nodemon restarts the server.
  */
 try {
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-  });
-
-  console.log("✅ Firebase Admin SDK initialized successfully");
+  // Only initialize if not already initialized
+  if (!admin.apps.length) {
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+    console.log("✅ Firebase Admin SDK initialized successfully");
+  } else {
+    console.log("ℹ️ Firebase Admin SDK already initialized");
+  }
 } catch (error) {
   console.error("❌ Firebase Admin SDK initialization failed:", error.message);
   console.error("⚠️ Authentication features will not work!");

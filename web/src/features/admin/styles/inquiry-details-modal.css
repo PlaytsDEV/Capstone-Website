@@ -216,6 +216,57 @@
   background: #9ca3af;
 }
 
+/* Status Badge */
+.inquiry-details-modal-status-badge {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 20px;
+  text-transform: capitalize;
+}
+
+.inquiry-details-modal-status-badge.new {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.inquiry-details-modal-status-badge.responded {
+  background: #d1fae5;
+  color: #059669;
+}
+
+/* Success/Error Messages */
+.inquiry-details-modal-success {
+  background: #d1fae5;
+  color: #059669;
+  padding: 12px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.inquiry-details-modal-error {
+  background: #fee2e2;
+  color: #dc2626;
+  padding: 12px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Previous Response */
+.inquiry-details-modal-previous-response {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.inquiry-details-modal-responded-by {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 8px;
+  font-style: italic;
+}
+
 /* Responsive */
 @media (max-width: 640px) {
   .inquiry-details-modal {

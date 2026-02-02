@@ -13,8 +13,13 @@
 
 import express from "express";
 import { auth } from "../config/firebase.js";
-import User from "../models/User.js";
-import { verifyToken } from "../middleware/auth.js";
+import { User } from "../models/index.js";
+import {
+  verifyToken,
+  verifyAdmin,
+  verifySuperAdmin,
+  verifyUser,
+} from "../middleware/auth.js";
 
 const router = express.Router();
 
@@ -23,7 +28,7 @@ const router = express.Router();
 // ============================================================================
 
 const VALID_BRANCHES = ["gil-puyat", "guadalupe"];
-const VALID_ROLES = ["tenant", "admin", "superAdmin"];
+const VALID_ROLES = ["user", "tenant", "admin", "superAdmin"];
 
 // ============================================================================
 // AUTHENTICATION ENDPOINTS
@@ -49,16 +54,17 @@ router.post("/register", verifyToken, async (req, res) => {
     const { email, username, firstName, lastName, phone, branch } = req.body;
 
     // Validate required fields
-    if (!username || !firstName || !lastName || !branch) {
+    if (!username || !firstName || !lastName) {
       return res.status(400).json({
         error:
-          "Missing required fields: username, firstName, lastName, and branch are required",
+          "Missing required fields: username, firstName, and lastName are required",
         code: "MISSING_REQUIRED_FIELDS",
       });
     }
 
-    // Validate branch value
-    if (!VALID_BRANCHES.includes(branch)) {
+    // Validate branch value (only if provided)
+    // Allow empty branch for Gmail users - they will select via modal after login
+    if (branch && !VALID_BRANCHES.includes(branch)) {
       return res.status(400).json({
         error: `Invalid branch. Must be one of: ${VALID_BRANCHES.join(", ")}`,
         code: "INVALID_BRANCH",
@@ -105,7 +111,7 @@ router.post("/register", verifyToken, async (req, res) => {
       lastName,
       phone,
       branch,
-      role: "tenant",
+      role: "user",
       isEmailVerified: req.user.email_verified || false, // Synced from Firebase
     });
 
@@ -351,6 +357,77 @@ router.put("/profile", verifyToken, async (req, res) => {
   }
 });
 
+/**
+ * PATCH /api/auth/update-branch
+ *
+ * Update user's branch (for Gmail login branch selection).
+ * This endpoint allows users to select their branch after Gmail login.
+ *
+ * @requires Firebase token in Authorization header
+ * @body { branch: 'gil-puyat' | 'guadalupe' }
+ * @returns { updated user data }
+ */
+router.patch("/update-branch", verifyToken, async (req, res) => {
+  try {
+    const { branch } = req.body;
+
+    // Validate branch value
+    if (!branch) {
+      return res.status(400).json({
+        error: "Branch is required",
+        code: "MISSING_BRANCH",
+      });
+    }
+
+    if (!["gil-puyat", "guadalupe"].includes(branch)) {
+      return res.status(400).json({
+        error: "Invalid branch. Must be 'gil-puyat' or 'guadalupe'",
+        code: "INVALID_BRANCH",
+      });
+    }
+
+    // Update user's branch
+    const user = await User.findOneAndUpdate(
+      { firebaseUid: req.user.uid },
+      { branch },
+      { new: true, runValidators: true },
+    );
+
+    if (!user) {
+      console.log(`❌ User not found for branch update: ${req.user.uid}`);
+      return res.status(404).json({
+        error: "User not found",
+        code: "USER_NOT_FOUND",
+      });
+    }
+
+    console.log(`✅ Branch updated for ${user.email}: ${branch}`);
+    res.json({
+      message: "Branch updated successfully",
+      user: {
+        id: user._id,
+        firebaseUid: user.firebaseUid,
+        email: user.email,
+        username: user.username,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        phone: user.phone,
+        branch: user.branch,
+        role: user.role,
+        isActive: user.isActive,
+        isEmailVerified: user.isEmailVerified,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Branch update error:", error);
+    res.status(500).json({
+      error: "Failed to update branch",
+      details: error.message,
+      code: "BRANCH_UPDATE_ERROR",
+    });
+  }
+});
+
 // ============================================================================
 // ADMIN OPERATIONS
 // ============================================================================
@@ -365,7 +442,7 @@ router.put("/profile", verifyToken, async (req, res) => {
  * @body { userId, role }
  * @returns { message }
  */
-router.post("/set-role", verifyToken, async (req, res) => {
+router.post("/set-role", verifyToken, verifyAdmin, async (req, res) => {
   try {
     const { userId, role } = req.body;
 

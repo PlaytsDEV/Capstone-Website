@@ -1,6 +1,6 @@
 import "../styles/room-details.css";
 import Footer from "../../../shared/components/Footer";
-import Navbar from "../../../shared/components/Navbar";
+import Navbar from "../components/Navbar";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -19,6 +19,7 @@ function RoomDetailsPage({
   onReserveNow,
   branchType = "gil-puyat",
 }) {
+  const navigate = useNavigate();
   const [currentSlide, setCurrentSlide] = useState(0);
   const navigate = useNavigate();
 
@@ -37,7 +38,11 @@ function RoomDetailsPage({
   return (
     <div className="room-details-page">
       {/* Navigation */}
-      <Navbar type="branch" currentPage={branchType} />
+      <Navbar
+        type="branch"
+        currentPage={branchType}
+        onLoginClick={() => navigate("/tenant/signin")}
+      />
 
       {/* Breadcrumb */}
       <div className="room-details-breadcrumb">
