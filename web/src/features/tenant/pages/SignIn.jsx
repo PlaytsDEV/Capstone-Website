@@ -30,7 +30,7 @@ import backgroundImage from "../../../assets/images/landingpage/gil-puyat-branch
 
 function SignIn() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, setGlobalLoading } = useAuth();
 
   const [formData, setFormData] = useState({
     email: "",
@@ -38,7 +38,7 @@ function SignIn() {
   });
 
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [fieldValid, setFieldValid] = useState({});
@@ -179,29 +179,7 @@ function SignIn() {
    * - Email is required and must be valid
    * - Password is required
    */
-  const validateForm = () => {
-    // Mark all fields as touched
-    setTouched({
-      email: true,
-      password: true,
-    });
-
-    // Validate all fields
-    validateField("email", formData.email);
-    validateField("password", formData.password);
-
-    const emailError = validateEmail(formData.email);
-    if (emailError) {
-      showNotification(emailError, "error");
-      return false;
-    }
-
-    if (!formData.password || !formData.password.trim()) {
-      showNotification("Password is required", "error");
-      return false;
-    }
-    return true;
-  };
+  // validateForm was unused and removed to resolve ESLint warning
 
   /**
    * Handle email/password login
@@ -213,19 +191,9 @@ function SignIn() {
    * 4. Redirect appropriately based on user role and branch
    * 5. Robust error handling
    */
-  const handleSignIn = async (e) => {
+  const handleEmailPasswordLogin = async (e) => {
     e.preventDefault();
-
-    console.log("🔹 Login button clicked");
-    console.log("📧 Email:", formData.email);
-
-    if (!validateForm()) {
-      console.log("❌ Form validation failed");
-      return;
-    }
-
-    console.log("✅ Form validation passed, attempting login...");
-    setLoading(true);
+    setGlobalLoading(true);
 
     try {
       // STEP 1: Sign in with Firebase using email and password
@@ -247,7 +215,7 @@ function SignIn() {
           "Please verify your email before logging in. Check your inbox for the verification link.",
           "warning",
         );
-        setLoading(false);
+        setGlobalLoading(false);
         return;
       }
 
@@ -270,13 +238,13 @@ function SignIn() {
           setTimeout(() => {
             navigate("/tenant/branch-selection");
           }, 500);
-          setLoading(false);
+          setGlobalLoading(false);
           return;
         }
 
         // STEP 5: Show success message
         showNotification(
-          `Welcome back, ${loginResponse.user.firstName}!`,
+          `Welcome, ${loginResponse.user.firstName}!`,
           "success",
         );
 
@@ -292,7 +260,6 @@ function SignIn() {
             // Admin reached tenant login - redirect to admin dashboard
             // (RequireNonAdmin should prevent this, but this is a safety net)
             console.log("👨‍💼 Admin detected - redirecting to admin dashboard");
-            showNotification("Redirecting to Admin Dashboard...", "info");
             navigate("/admin/dashboard");
           } else {
             console.log(
@@ -349,128 +316,86 @@ function SignIn() {
 
       showNotification(errorMessage, "error");
     } finally {
-      setLoading(false);
+      setGlobalLoading(false);
     }
   };
 
   /**
    * Handle social provider login (Google/Facebook)
    *
-   * REQUIREMENTS:
-   * 1. If user registered with Google, can login with Google
-   * 2. Check email verification status
-   * 3. Show branch selection if not yet selected
-   * 4. Redirect to appropriate page based on role and branch
-   * 5. If account doesn't exist, show error (no auto-registration on login)
-   * 6. Comprehensive error handling
+   * GOOGLE LOGIN FLOW (STRICT REGISTRATION-FIRST):
+   * - Google authentication ONLY works for pre-registered accounts
+   * - Does NOT create accounts or Firebase users during login attempts
+   * - Backend validation is the source of truth for account existence
+   * - Prevents unauthorized access and unintended account creation
+   *
+   * WHY THIS BEHAVIOR:
+   * - Login should only authenticate existing users
+   * - Registration (via SignUp page) is the only place for account creation
+   * - Maintains security by requiring explicit registration first
+   *
+   * FLOW ORDER:
+   * 1. Firebase authentication (temporary, for verification only)
+   * 2. Check if account exists in backend (MongoDB)
+   * 3. If account exists → proceed with login flow
+   * 4. If account doesn't exist → BLOCK ACCESS, terminate session
+   * 5. Branch selection required for authenticated users
    */
   const handleSocialLogin = async (provider) => {
-    setLoading(true);
+    setGlobalLoading(true);
 
     try {
-      console.log("🔹 Starting Google sign-in...");
+      console.log("🔹 Starting Google login verification...");
 
-      // STEP 1: Authenticate with Firebase
+      // STEP 1: Temporary Firebase authentication for account verification
       const result = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
       console.log("✅ Firebase authentication successful:", firebaseUser.email);
-      console.log("📧 Email verified:", firebaseUser.emailVerified);
 
-      // STEP 2: Check email verification (required for all users including Google)
-      if (!firebaseUser.emailVerified) {
-        console.log("⚠️ Email not verified");
-        await auth.signOut();
-        showNotification(
-          "Please verify your email first. Check your inbox for the verification link.",
-          "warning",
-        );
-        setLoading(false);
-        return;
-      }
-
-      // STEP 3: Login to backend
+      // STEP 2: Verify account exists in backend (source of truth)
       try {
-        // STEP 4: Try to login - check if account exists in backend
-        console.log("🔍 Checking if account exists in backend...");
+        console.log("🔍 Checking account registration status...");
         const loginResponse = await login();
-        console.log("✅ Account found in backend");
+        console.log("✅ Account verified - user is registered");
         console.log("👤 User branch:", loginResponse.user.branch);
 
-        // STEP 5: Check if branch selection is needed
-        if (!loginResponse.user.branch || loginResponse.user.branch === "") {
-          console.log(
-            "📍 Branch not selected, redirecting to branch selection page...",
-          );
-
-          // Redirect to branch selection page (useAuth handles session)
-          showNotification("Please select your branch to continue", "info");
-          setTimeout(() => {
-            navigate("/tenant/branch-selection");
-          }, 500);
-          setLoading(false);
-          return; // Stop here - don't continue with regular login
-        }
-
-        // STEP 6: Branch already assigned - login directly
-        console.log("✅ Branch already selected, logging in...");
-
-        showNotification(
-          `Welcome back, ${loginResponse.user.firstName}!`,
-          "success",
-        );
-
-        // STEP 7: Redirect based on role
-        // Admins should use /admin/login instead
-        console.log("🔄 Redirecting to appropriate page...");
-        setTimeout(() => {
-          if (
-            loginResponse.user.role === "admin" ||
-            loginResponse.user.role === "superAdmin"
-          ) {
-            // Sign out and redirect to admin login
-            console.log("👨‍💼 Admin detected - redirecting to admin login");
-            auth.signOut();
-            showNotification(
-              "Admins should use the Admin Portal to login.",
-              "info",
-            );
-            navigate("/admin/login");
-          } else {
-            console.log(
-              `🏠 Redirecting to branch: ${loginResponse.user.branch}`,
-            );
-            navigate(`/${loginResponse.user.branch}`);
-          }
-        }, 800);
+        // STEP 3: Account exists - proceed with normal login flow
+        handlePostAuthFlow(loginResponse);
       } catch (loginError) {
-        // STEP 8: Handle login errors
+        // STEP 4: Account not found - BLOCK ACCESS (registration required)
         console.error("❌ Backend login error:", loginError);
 
-        // Sign out from Firebase
-        await auth.signOut();
-
-        // If 404, account doesn't exist
         if (loginError.response?.status === 404) {
-          console.log("⚠️ Account not found in backend");
-          showNotification(
-            "No account found. Please register first using the sign-up page.",
-            "info",
+          console.log(
+            "🚫 Account not registered - blocking access per registration-first policy",
           );
 
-          // Optionally redirect to signup after a delay
+          // Immediately terminate Firebase session (no account creation)
+          await auth.signOut();
+
+          showNotification(
+            "This Google account is not registered. Please register first using the sign-up page.",
+            "warning",
+          );
+
+          // Redirect to signup after delay
           setTimeout(() => {
             navigate("/tenant/signup");
-          }, 2000);
-        } else if (loginError.response?.status === 403) {
-          showNotification(
-            "Your account is inactive. Please contact support.",
-            "error",
-          );
+          }, 3000);
         } else {
-          showNotification(
-            "Login failed. Please try again or contact support.",
-            "error",
-          );
+          // Other login errors (403 inactive, etc.)
+          await auth.signOut();
+          if (loginError.response?.status === 403) {
+            showNotification(
+              "Your account is inactive. Please contact support.",
+              "error",
+            );
+          } else {
+            showNotification(
+              "Login failed. Please try again or contact support.",
+              "error",
+            );
+          }
         }
       }
     } catch (error) {
@@ -521,7 +446,7 @@ function SignIn() {
         );
       }
     } finally {
-      setLoading(false);
+      setGlobalLoading(false);
     }
   };
 
@@ -533,6 +458,52 @@ function SignIn() {
   const handleFacebookLogin = () => {
     const provider = new FacebookAuthProvider();
     handleSocialLogin(provider);
+  };
+
+  /**
+   * Handle post-authentication flow (branch selection and redirects)
+   * @param {Object} loginResponse - Backend login response
+   */
+  const handlePostAuthFlow = (loginResponse) => {
+    console.log("🔄 Starting post-auth flow...");
+
+    // STEP: Check if branch selection is required
+    if (!loginResponse.user.branch || loginResponse.user.branch === "") {
+      console.log("📍 Branch not selected - redirecting to branch selection");
+
+      showNotification(
+        "Welcome! Please select your branch to continue",
+        "info",
+      );
+      setTimeout(() => {
+        navigate("/tenant/branch-selection");
+      }, 500);
+      return;
+    }
+
+    // STEP: Branch already selected - redirect based on role
+    console.log("✅ Branch selected - redirecting based on role");
+
+    showNotification(
+      `Welcome back, ${loginResponse.user.firstName}!`,
+      "success",
+    );
+
+    setTimeout(() => {
+      if (
+        loginResponse.user.role === "admin" ||
+        loginResponse.user.role === "superAdmin"
+      ) {
+        // Admin detected - redirect to admin dashboard
+        console.log("👨‍💼 Admin user - redirecting to admin dashboard");
+        navigate("/admin/dashboard");
+      } else {
+        console.log(
+          `🏠 Regular user - redirecting to branch: ${loginResponse.user.branch}`,
+        );
+        navigate(`/${loginResponse.user.branch}`);
+      }
+    }, 800);
   };
 
   return (
@@ -565,7 +536,10 @@ function SignIn() {
 
           <div className="tenant-signin-right">
             <h1 className="tenant-signin-title">Sign In</h1>
-            <form className="tenant-signin-form" onSubmit={handleSignIn}>
+            <form
+              className="tenant-signin-form"
+              onSubmit={handleEmailPasswordLogin}
+            >
               <div className="form-field">
                 <div className="input-wrapper">
                   <input

@@ -23,14 +23,16 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { showNotification } from "../../../shared/utils/notification";
+
 import { useAuth } from "../../../shared/hooks/useAuth";
+import { authApi } from "../../../shared/api/apiClient";
 import "../../../shared/styles/notification.css";
 import "./BranchSelection.css";
 import logoImage from "../../../assets/images/landingpage/logo.png";
 
 function BranchSelection() {
   const navigate = useNavigate();
-  const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const { user, isAuthenticated, loading: authLoading, updateUser } = useAuth();
   const [selectedBranch, setSelectedBranch] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -41,8 +43,8 @@ function BranchSelection() {
    * Redirect to signin if no valid session
    */
   useEffect(() => {
-    if (authLoading) return; // Wait for auth to load
-
+    // TEMPORARY: Remove session lock for branch selection access
+    if (authLoading) return;
     if (!isAuthenticated || !user) {
       console.log("⚠️ No authentication found, redirecting to signin");
       showNotification("Please sign in first", "warning");
@@ -50,20 +52,22 @@ function BranchSelection() {
       return;
     }
 
-    setUserEmail(user.email);
-
-    // Check if branch is already selected
-    if (user.branch && user.branch !== "") {
-      console.log("✅ Branch already selected, redirecting...");
+    // Allow access regardless of session
+    if (user && user.email) setUserEmail(user.email);
+    // Optionally, still auto-redirect if branch is already selected
+    if (user && user.branch && user.branch !== "") {
+      const branchDisplayName =
+        user.branch === "gil-puyat" ? "Gil Puyat" : "Guadalupe";
       showNotification(
-        `Welcome back! Redirecting to ${user.branch}...`,
+        `You're already assigned to ${branchDisplayName} branch`,
         "info",
       );
       setTimeout(() => {
         navigate(`/${user.branch}`);
       }, 1000);
     }
-  }, [authLoading, isAuthenticated, user, navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, isAuthenticated, user, navigate, showNotification]);
 
   /**
    * Handle branch selection
@@ -92,81 +96,36 @@ function BranchSelection() {
     setError("");
 
     try {
-      console.log(`📍 Updating branch to: ${selectedBranch}`);
-
-      // Get authentication token
-      const token = localStorage.getItem("authToken");
-      if (!token) {
-        throw new Error("No authentication token found");
-      }
-
-      // Update branch in backend
-      const response = await fetch(
-        `${process.env.REACT_APP_API_URL || "http://localhost:5000/api"}/auth/update-branch`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ branch: selectedBranch }),
-        },
-      );
-
-      // Handle response
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error("❌ Branch update failed:", errorData);
-        throw new Error(errorData.error || "Failed to update branch");
-      }
-
-      const updatedUser = await response.json();
-      console.log("✅ Branch updated successfully");
-
-      // Update localStorage with new user data
-      localStorage.setItem("user", JSON.stringify(updatedUser.user));
-
-      // Show success message
+      // Use API client to always get a fresh token
+      const updatedUser = await authApi.updateBranch(selectedBranch);
+      updateUser && updateUser(updatedUser.user);
       const branchName =
         selectedBranch === "gil-puyat" ? "Gil Puyat" : "Guadalupe";
       showNotification(
-        `Welcome to ${branchName} branch! Redirecting...`,
+        `Branch selection confirmed! You've been assigned to ${branchName}`,
         "success",
       );
-
-      // Redirect to branch page
       setTimeout(() => {
-        console.log(`🔄 Redirecting to /${selectedBranch}`);
         navigate(`/${selectedBranch}`);
       }, 1500);
     } catch (error) {
-      console.error("❌ Branch selection error:", error);
-
-      // Handle specific error cases
       let errorMessage = "Failed to select branch. ";
-
       if (
         error.message.includes("network") ||
         error.message.includes("fetch")
       ) {
         errorMessage += "Please check your internet connection and try again.";
       } else if (
-        error.message.includes("expired") ||
-        error.message.includes("token")
+        error.message.toLowerCase().includes("expired") ||
+        error.message.toLowerCase().includes("token")
       ) {
         errorMessage += "Your session has expired. Please sign in again.";
-
-        // Clear session and redirect to signin
-        localStorage.removeItem("authToken");
-        localStorage.removeItem("user");
-
         setTimeout(() => {
           navigate("/tenant/signin");
         }, 2000);
       } else {
         errorMessage += error.message || "Please try again.";
       }
-
       setError(errorMessage);
       showNotification(errorMessage, "error");
     } finally {

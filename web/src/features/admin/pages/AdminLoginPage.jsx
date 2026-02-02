@@ -6,6 +6,7 @@ import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../../../firebase/config";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { useFirebaseAuth } from "../../../shared/hooks/FirebaseAuthContext";
+import { showNotification } from "../../../shared/utils/notification";
 
 /**
  * =============================================================================
@@ -88,7 +89,15 @@ function AdminLoginPage() {
         userData.user.role === "superAdmin"
       ) {
         console.log("👨‍💼 Admin login successful, redirecting to dashboard");
-        navigate("/admin/dashboard");
+        // Show welcome notification
+        showNotification(
+          `Welcome back, ${userData.user.firstName || "Admin"}!`,
+          "success",
+        );
+        // Small delay to show the notification before redirect
+        setTimeout(() => {
+          navigate("/admin/dashboard");
+        }, 500);
       } else {
         console.log("❌ Access denied - not an admin");
         setError("Access denied. Admin privileges required.");

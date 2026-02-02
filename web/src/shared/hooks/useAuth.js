@@ -41,6 +41,8 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
+  // Global loading state for UX (spinner overlay)
+  const [globalLoading, setGlobalLoading] = useState(false);
   const { user: firebaseUser, loading: firebaseLoading } = useFirebaseAuth();
 
   // Sync with Firebase auth state
@@ -83,23 +85,37 @@ export const AuthProvider = ({ children }) => {
    * Login user after Firebase authentication
    * @returns {Promise<Object>} User data from backend
    */
+  // Login with global loading
   const login = async () => {
-    const userData = await authApi.login();
-    setUser(userData.user || userData);
-    setIsAuthenticated(true);
-    return userData;
+    setGlobalLoading(true);
+    try {
+      const userData = await authApi.login();
+      setUser(userData.user || userData);
+      setIsAuthenticated(true);
+      return userData;
+    } finally {
+      setGlobalLoading(false);
+    }
   };
 
   /**
    * Logout user from Firebase and clear state
    */
+  // Logout with global loading and redirect to home
   const logout = async () => {
-    await authApi.logout();
-    setUser(null);
-    setIsAuthenticated(false);
-    // Clear local storage
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("user");
+    setGlobalLoading(true);
+    try {
+      await authApi.logout();
+      setUser(null);
+      setIsAuthenticated(false);
+      // Clear local storage
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("user");
+      // Redirect to home after logout
+      window.location.href = "/";
+    } finally {
+      setGlobalLoading(false);
+    }
   };
 
   /**
@@ -112,6 +128,16 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error("Failed to refresh user:", error);
     }
+  };
+
+  /**
+   * Update user data in state (used after profile updates)
+   * @param {Object} userData - Updated user data
+   */
+  const updateUser = (userData) => {
+    setUser(userData);
+    // Also update localStorage for persistence
+    localStorage.setItem("user", JSON.stringify(userData));
   };
 
   /**
@@ -136,9 +162,12 @@ export const AuthProvider = ({ children }) => {
         user,
         isAuthenticated,
         loading,
+        globalLoading,
+        setGlobalLoading,
         login,
         logout,
         refreshUser,
+        updateUser,
         isAdmin,
         isSuperAdmin,
       }}

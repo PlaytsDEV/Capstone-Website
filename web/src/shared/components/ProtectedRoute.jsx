@@ -54,6 +54,12 @@ const ProtectedRoute = ({ children, requiredRole, requireAuth = true }) => {
       if (user?.role === "admin" || user?.role === "superAdmin") {
         return <Navigate to="/admin/dashboard" replace />;
       }
+
+      // BRANCH ENFORCEMENT: Users must have selected a branch before accessing protected routes
+      // If no branch is selected, redirect to branch selection
+      if (!user?.branch || user.branch === "") {
+        return <Navigate to="/tenant/branch-selection" replace />;
+      }
     }
   }
 

@@ -97,14 +97,29 @@ function SignIn() {
     setLoading(true);
 
     try {
-      // Step 1: Sign in with social provider
+      // Step 1: Temporary authentication for account verification
       const result = await signInWithPopup(auth, provider);
+      const firebaseUser = result.user;
 
-      // Step 2: Try to login (verify user exists in database)
+      // Step 2: Verify account exists in backend (registration-first policy)
       try {
         const response = await login();
+        console.log(
+          `${providerName} account verified - user is registered:`,
+          response.user,
+        );
 
-        console.log(`${providerName} sign-in successful:`, response.user);
+        // Check if branch selection is needed
+        if (!response.user.branch || response.user.branch === "") {
+          console.log(
+            "📍 Branch not selected - redirecting to branch selection",
+          );
+          setError("Welcome! Please select your branch to continue");
+          setTimeout(() => {
+            navigate("/tenant/branch-selection");
+          }, 1000);
+          return;
+        }
 
         // Redirect based on role
         if (
@@ -116,8 +131,13 @@ function SignIn() {
           navigate("/");
         }
       } catch (loginError) {
-        // User not in database, need to register first
-        setError(`Please sign up first before signing in with ${providerName}`);
+        // Account not found - BLOCK ACCESS (registration required)
+        console.log(
+          `🚫 ${providerName} account not registered - blocking access`,
+        );
+        setError(
+          `This ${providerName} account is not registered. Please sign up first before signing in.`,
+        );
         await auth.signOut();
       }
     } catch (error) {

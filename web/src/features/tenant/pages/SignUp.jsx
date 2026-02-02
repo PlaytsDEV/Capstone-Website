@@ -490,18 +490,33 @@ function SignUp() {
   /**
    * Handle social provider signup (Google/Facebook)
    *
+   * GOOGLE REGISTRATION FLOW (ACCOUNT CREATION + IMMEDIATE AUTH):
+   * - Creates Firebase Auth user and MongoDB record for new users
+   * - If account already exists, redirects to sign-in page
+   * - Social accounts are pre-verified, so no email verification needed
+   * - After successful registration, KEEP FIREBASE SESSION ACTIVE
+   * - Redirect immediately to branch selection (session must persist)
+   *
+   * WHY THIS BEHAVIOR:
+   * - Registration creates AND authenticates the user in one flow
+   * - Branch selection requires active Firebase session
+   * - Prevents session expiration during branch selection
+   * - Seamless user experience from registration to branch selection
+   *
    * REQUIREMENTS:
-   * 1. Register with Google creates account that can login with email/password later
+   * 1. Register with social provider creates account
    * 2. If account exists, redirect to sign in
-   * 3. Auto-register with empty branch for branch selection later
-   * 4. Robust error handling with user-friendly messages
-   * 5. Rollback on failures
+   * 3. Auto-register with empty branch for branch selection
+   * 4. KEEP Firebase session active after registration
+   * 5. Redirect directly to branch selection
+   * 6. Robust error handling with user-friendly messages
+   * 7. Rollback on failures
    */
-  const handleSocialSignup = async (provider) => {
+  const handleSocialSignup = async (provider, providerName = "Google") => {
     setLoading(true);
 
     try {
-      console.log("🔹 Starting Google sign-up...");
+      console.log(`🔹 Starting ${providerName} sign-up...`);
 
       // STEP 1: Authenticate with Firebase
       const result = await signInWithPopup(auth, provider);
@@ -578,22 +593,26 @@ function SignUp() {
 
             console.log("✅ Backend registration successful");
 
-            // STEP 5: Google accounts are automatically verified by Google
+            // STEP 5: Social accounts are automatically verified
             // No need to send verification email - they can login immediately
-            console.log("✅ Google account is automatically verified");
+            console.log("✅ Social account is automatically verified");
 
             showNotification(
-              `Account created successfully! You can now sign in with your Google account.`,
+              `Welcome to Lilycrest, ${firstName}! Please select your branch to continue.`,
               "success",
             );
 
-            // STEP 6: Sign out user
-            await auth.signOut();
+            // STEP 6: KEEP FIREBASE SESSION ACTIVE (critical for branch selection)
+            // Do NOT sign out - user needs active session for branch selection
+            console.log(
+              "🔄 Keeping Firebase session active for branch selection...",
+            );
 
-            // STEP 7: Redirect to sign-in page
-            console.log("🔄 Redirecting to sign-in page...");
+            // STEP 7: Redirect directly to branch selection
+            // Session must remain active throughout this flow
             setTimeout(() => {
-              navigate("/tenant/signin");
+              console.log("📍 Redirecting to branch selection...");
+              navigate("/tenant/branch-selection");
             }, 2000);
           } catch (registerError) {
             console.error("❌ Backend registration error:", registerError);
@@ -702,12 +721,12 @@ function SignUp() {
 
   const handleGoogleSignup = () => {
     const provider = new GoogleAuthProvider();
-    handleSocialSignup(provider);
+    handleSocialSignup(provider, "Google");
   };
 
   const handleFacebookSignup = () => {
     const provider = new FacebookAuthProvider();
-    handleSocialSignup(provider);
+    handleSocialSignup(provider, "Facebook");
   };
 
   return (

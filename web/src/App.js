@@ -2,7 +2,8 @@ import "./App.css";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import ScrollToTop from "./shared/components/ScrollToTop";
 import { FirebaseAuthProvider } from "./shared/hooks/FirebaseAuthContext";
-import { AuthProvider } from "./shared/hooks/useAuth";
+import { AuthProvider, useAuth } from "./shared/hooks/useAuth";
+import GlobalLoading from "./shared/components/GlobalLoading";
 
 // Public Pages
 import LandingPage from "./features/public/pages/LandingPage";
@@ -37,11 +38,13 @@ import BillingPage from "./features/tenant/pages/BillingPage";
 import ContractsPage from "./features/tenant/pages/ContractsPage";
 
 function App() {
+  const { globalLoading } = useAuth();
   return (
     <FirebaseAuthProvider>
       <AuthProvider>
         <Router>
           <ScrollToTop />
+          {globalLoading && <GlobalLoading />}
           <Routes>
             {/* Public Page */}
             <Route

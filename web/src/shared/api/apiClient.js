@@ -214,14 +214,14 @@ export const authApi = {
     }),
 
   /**
-   * Resend OTP code
+   * Update user branch
    */
-  resendOtp: () => authFetch("/auth/resend-otp", { method: "POST" }),
+  updateBranch: (branch) =>
+    authFetch("/auth/update-branch", {
+      method: "PATCH",
+      body: JSON.stringify({ branch }),
+    }),
 };
-
-// =============================================================================
-// ROOM API
-// =============================================================================
 
 export const roomApi = {
   /**
