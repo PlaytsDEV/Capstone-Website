@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { isLoggedIn, getCurrentUser, logout } from "../../../shared/utils/auth";
+import { useAuth } from "../../../shared/hooks/useAuth";
 import { showNotification } from "../../../shared/utils/notification";
 
 /**
@@ -11,12 +11,12 @@ import { showNotification } from "../../../shared/utils/notification";
 function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
   const navigate = useNavigate();
 
+  // Get user from auth context (includes backend data with firstName/lastName)
+  const { user, isAuthenticated, logout: authLogout } = useAuth();
+
   // State management
-  const [user, setUser] = useState(null);
-  const [loggedIn, setLoggedIn] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [buttonWidth, setButtonWidth] = useState(0);
 
   // Refs for DOM manipulation
   const profileMenuRef = useRef(null);
@@ -24,15 +24,37 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
 
   /**
    * Safely retrieves user initials with defensive checks
-   * @param {string} firstName - User's first name
-   * @param {string} lastName - User's last name
+   * Handles both Firebase user (displayName) and backend user (firstName/lastName)
+   * @param {Object} userData - User object
    * @returns {string} Uppercase initials or empty string
    */
-  const getInitials = useCallback((firstName, lastName) => {
+  const getInitials = useCallback((userData) => {
     try {
-      const first = (firstName || "").charAt(0).toUpperCase();
-      const last = (lastName || "").charAt(0).toUpperCase();
-      return `${first}${last}`;
+      if (!userData) return "";
+
+      // Check for backend user format (firstName, lastName)
+      if (userData.firstName || userData.lastName) {
+        const first = (userData.firstName || "").charAt(0).toUpperCase();
+        const last = (userData.lastName || "").charAt(0).toUpperCase();
+        return `${first}${last}`;
+      }
+
+      // Check for Firebase user format (displayName)
+      if (userData.displayName) {
+        const nameParts = userData.displayName.split(" ");
+        const first = (nameParts[0] || "").charAt(0).toUpperCase();
+        const last = (nameParts[nameParts.length - 1] || "")
+          .charAt(0)
+          .toUpperCase();
+        return nameParts.length > 1 ? `${first}${last}` : first;
+      }
+
+      // Fallback to email initial
+      if (userData.email) {
+        return userData.email.charAt(0).toUpperCase();
+      }
+
+      return "";
     } catch (error) {
       console.warn("Error generating user initials:", error);
       return "";
@@ -40,41 +62,33 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
   }, []);
 
   /**
-   * Measures the profile button width for dropdown alignment
+   * Get display name from user object
+   * Handles both Firebase user and backend user formats
+   * @param {Object} userData - User object
+   * @returns {string} Display name
    */
-  const measureButtonWidth = useCallback(() => {
-    if (profileButtonRef.current) {
-      const width = profileButtonRef.current.offsetWidth;
-      setButtonWidth(width);
-    }
-  }, []);
+  const getDisplayName = useCallback((userData) => {
+    if (!userData) return "";
 
-  /**
-   * Checks authentication status and updates state
-   * Includes error handling for auth operations
-   */
-  const checkAuth = useCallback(() => {
-    try {
-      const authenticated = isLoggedIn();
-      setLoggedIn(authenticated);
-
-      if (authenticated) {
-        const currentUser = getCurrentUser();
-        if (currentUser && typeof currentUser === "object") {
-          setUser(currentUser);
-        } else {
-          console.warn("Invalid user data received");
-          setUser(null);
-          setLoggedIn(false);
-        }
-      } else {
-        setUser(null);
-      }
-    } catch (error) {
-      console.error("Authentication check failed:", error);
-      setLoggedIn(false);
-      setUser(null);
+    // Backend user format
+    if (userData.firstName || userData.lastName) {
+      return `${userData.firstName || ""} ${userData.lastName || ""}`.trim();
     }
+
+    // Firebase user format
+    if (userData.displayName) {
+      return userData.displayName;
+    }
+
+    // Extract name from email (before @, replace dots/underscores with spaces, capitalize)
+    if (userData.email) {
+      const namePart = userData.email.split("@")[0];
+      return namePart
+        .replace(/[._]/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+
+    return "";
   }, []);
 
   /**
@@ -85,16 +99,15 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
     setIsLoading(true);
 
     try {
-      await logout();
+      await authLogout();
       showNotification("Successfully logged out", "success");
-      // Auth state will be updated via storage event listener
     } catch (error) {
       console.error("Logout error:", error);
       showNotification("Failed to logout. Please try again.", "error");
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [authLogout]);
 
   /**
    * Toggles profile menu visibility with accessibility considerations
@@ -154,34 +167,6 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
     },
     [closeProfileMenu],
   );
-
-  // Authentication status check on mount
-  useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
-
-  // Storage event listener for auth changes (login/logout from other tabs)
-  useEffect(() => {
-    const handleStorageChange = (event) => {
-      if (event.key === "user" || event.key === "token") {
-        checkAuth();
-      }
-    };
-
-    window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
-  }, [checkAuth]);
-
-  // Measure button width when user data changes (only for branch pages)
-  useEffect(() => {
-    if (loggedIn && user && type === "branch") {
-      // Use setTimeout to ensure DOM is updated
-      const timer = setTimeout(() => {
-        measureButtonWidth();
-      }, 0);
-      return () => clearTimeout(timer);
-    }
-  }, [loggedIn, user, type, measureButtonWidth]);
 
   // Click outside handler
   useEffect(() => {
@@ -286,7 +271,7 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
 
             {/* Auth Section - Hidden on landing page */}
             {/* <div className="landing-nav-auth">
-              {loggedIn && user ? (
+              {isAuthenticated && user ? (
                 <div className="landing-nav-profile" ref={profileMenuRef}>
                   <button
                     ref={profileButtonRef}
@@ -471,7 +456,7 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
 
             {/* Auth Section - Right */}
             <div className={`${branchClass}-nav-auth`}>
-              {loggedIn && user ? (
+              {isAuthenticated && user ? (
                 <div
                   className={`${branchClass}-nav-profile`}
                   ref={profileMenuRef}
@@ -482,17 +467,17 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
                     onClick={toggleProfileMenu}
                     aria-expanded={showProfileMenu}
                     aria-haspopup="menu"
-                    aria-label={`User menu for ${user.firstName || ""} ${user.lastName || ""}`}
+                    aria-label={`User menu for ${getDisplayName(user)}`}
                     disabled={isLoading}
                   >
                     <div
                       className={`${branchClass}-profile-avatar`}
                       aria-hidden="true"
                     >
-                      {getInitials(user.firstName, user.lastName)}
+                      {getInitials(user)}
                     </div>
                     <span className={`${branchClass}-profile-name`}>
-                      {user.firstName || ""} {user.lastName || ""}
+                      {getDisplayName(user)}
                     </span>
                     <svg
                       className={`${branchClass}-profile-arrow ${showProfileMenu ? "open" : ""}`}
@@ -517,30 +502,18 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
                       className={`${branchClass}-profile-dropdown`}
                       role="menu"
                       aria-label="User menu"
-                      style={{
-                        width: buttonWidth || "auto",
-                        minWidth: "auto",
-                        maxWidth: "none",
-                      }}
                     >
-                      <div
-                        className={`${branchClass}-profile-dropdown-header`}
-                        role="none"
-                      >
+                      <div className={`${branchClass}-profile-dropdown-header`}>
                         <div
                           className={`${branchClass}-profile-dropdown-avatar`}
-                          aria-hidden="true"
                         >
-                          {getInitials(user.firstName, user.lastName)}
+                          {getInitials(user)}
                         </div>
-                        <div
-                          className={`${branchClass}-profile-dropdown-info`}
-                          role="none"
-                        >
+                        <div className={`${branchClass}-profile-dropdown-info`}>
                           <div
                             className={`${branchClass}-profile-dropdown-name`}
                           >
-                            {user.firstName || ""} {user.lastName || ""}
+                            {getDisplayName(user)}
                           </div>
                           <div
                             className={`${branchClass}-profile-dropdown-email`}
@@ -549,11 +522,6 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
                           </div>
                         </div>
                       </div>
-                      <div
-                        className={`${branchClass}-profile-dropdown-divider`}
-                        role="separator"
-                        aria-hidden="true"
-                      ></div>
                       <button
                         className={`${branchClass}-profile-dropdown-item`}
                         onClick={() => {
@@ -578,7 +546,7 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
                         My Profile
                       </button>
                       <button
-                        className={`${branchClass}-profile-dropdown-item`}
+                        className={`${branchClass}-profile-dropdown-item logout`}
                         onClick={handleLogout}
                         role="menuitem"
                         tabIndex={0}

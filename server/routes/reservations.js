@@ -18,7 +18,7 @@
 
 import express from "express";
 import { Reservation, User, Room } from "../models/index.js";
-import { verifyToken, verifyAdmin } from "../middleware/auth.js";
+import { verifyToken, verifyAdmin, verifyUser } from "../middleware/auth.js";
 import { filterByBranch } from "../middleware/branchAccess.js";
 
 const router = express.Router();
@@ -106,7 +106,7 @@ router.get("/", verifyToken, async (req, res) => {
  * @body {Object} Reservation data (roomId, checkInDate, checkOutDate, etc.)
  * @returns {Object} Created reservation with success message
  */
-router.post("/", verifyToken, async (req, res) => {
+router.post("/", verifyToken, verifyUser, async (req, res) => {
   try {
     // Find user in database
     const dbUser = await User.findOne({ firebaseUid: req.user.uid });

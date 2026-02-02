@@ -14,7 +14,12 @@
 import express from "express";
 import { auth } from "../config/firebase.js";
 import { User } from "../models/index.js";
-import { verifyToken, verifyAdmin } from "../middleware/auth.js";
+import {
+  verifyToken,
+  verifyAdmin,
+  verifySuperAdmin,
+  verifyUser,
+} from "../middleware/auth.js";
 
 const router = express.Router();
 

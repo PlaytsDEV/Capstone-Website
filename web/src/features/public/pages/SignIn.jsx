@@ -8,12 +8,14 @@ import {
 } from "firebase/auth";
 import { auth } from "../../../firebase/config";
 import { authApi } from "../../../shared/api/apiClient";
+import { useAuth } from "../../../shared/hooks/useAuth";
 import "../styles/tenant-signin.css";
 import logoImage from "../../../assets/images/landingpage/logo.png";
 import backgroundImage from "../../../assets/images/landingpage/gil-puyat-branch.png";
 
 function SignIn() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -68,15 +70,8 @@ function SignIn() {
         formData.password,
       );
 
-      // Step 2: Get Firebase ID token
-      const idToken = await userCredential.user.getIdToken();
-      localStorage.setItem("authToken", idToken);
-
-      // Step 3: Verify user with backend and get user data
-      const response = await authApi.login();
-
-      // Store user data in localStorage
-      localStorage.setItem("user", JSON.stringify(response.user));
+      // Step 2: Login to backend using useAuth hook
+      const response = await login();
 
       console.log("User signed in successfully:", response.user);
 
@@ -85,15 +80,13 @@ function SignIn() {
         response.user.role === "admin" ||
         response.user.role === "superAdmin"
       ) {
-        window.location.href = "/admin/dashboard";
+        navigate("/admin/dashboard");
       } else {
-        window.location.href = "/";
+        navigate("/");
       }
     } catch (error) {
       setError(error.message || "Sign-in failed. Please try again.");
       console.error("Sign-in error:", error);
-      // Clear auth token on error
-      localStorage.removeItem("authToken");
     } finally {
       setLoading(false);
     }
@@ -107,14 +100,9 @@ function SignIn() {
       // Step 1: Sign in with social provider
       const result = await signInWithPopup(auth, provider);
 
-      // Step 2: Get Firebase ID token
-      const idToken = await result.user.getIdToken();
-      localStorage.setItem("authToken", idToken);
-
-      // Step 3: Try to login (verify user exists in database)
+      // Step 2: Try to login (verify user exists in database)
       try {
-        const response = await authApi.login();
-        localStorage.setItem("user", JSON.stringify(response.user));
+        const response = await login();
 
         console.log(`${providerName} sign-in successful:`, response.user);
 
@@ -123,14 +111,13 @@ function SignIn() {
           response.user.role === "admin" ||
           response.user.role === "superAdmin"
         ) {
-          window.location.href = "/admin/dashboard";
+          navigate("/admin/dashboard");
         } else {
-          window.location.href = "/";
+          navigate("/");
         }
       } catch (loginError) {
         // User not in database, need to register first
         setError(`Please sign up first before signing in with ${providerName}`);
-        localStorage.removeItem("authToken");
         await auth.signOut();
       }
     } catch (error) {

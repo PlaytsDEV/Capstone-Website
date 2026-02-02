@@ -365,14 +365,23 @@ export const inquiryApi = {
 
 export const userApi = {
   /**
-   * Get all users (admin only)
+   * Get all users (admin only, filtered by branch)
    */
-  getAll: () => authFetch("/users"),
+  getAll: (filters = {}) => {
+    const queryString = new URLSearchParams(filters).toString();
+    const url = queryString ? `/users?${queryString}` : "/users";
+    return authFetch(url);
+  },
 
   /**
    * Get user by ID (admin only)
    */
   getById: (userId) => authFetch(`/users/${userId}`),
+
+  /**
+   * Get user statistics (admin only)
+   */
+  getStats: () => authFetch("/users/stats"),
 
   /**
    * Update user (admin only)
@@ -382,6 +391,19 @@ export const userApi = {
       method: "PUT",
       body: JSON.stringify(userData),
     }),
+
+  /**
+   * Delete user (super admin only)
+   */
+  delete: (userId) => authFetch(`/users/${userId}`, { method: "DELETE" }),
+
+  /**
+   * Get email by username (public - for login)
+   */
+  getEmailByUsername: (username) =>
+    publicFetch(
+      `/users/email-by-username?username=${encodeURIComponent(username)}`,
+    ),
 };
 
 // =============================================================================

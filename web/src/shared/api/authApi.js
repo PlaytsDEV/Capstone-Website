@@ -1,10 +1,18 @@
 /**
  * =============================================================================
- * AUTH API (Legacy - for useAuth hook)
+ * AUTH API SERVICE (Legacy Compatibility)
  * =============================================================================
  *
- * NOTE: This file is kept for backwards compatibility with the useAuth hook.
- * For new code, prefer using authApi from apiClient.js which uses fresh tokens.
+ * DEPRECATION NOTICE:
+ * This file is maintained for backward compatibility with the useAuth hook.
+ * For new code, use the authApi from apiClient.js which uses fresh tokens.
+ *
+ * Migration Guide:
+ * - Old: import { authApi } from '../api/authApi'
+ * - New: import { authApi } from '../api/apiClient'
+ *
+ * @deprecated Use apiClient.js authApi instead
+ * =============================================================================
  */
 
 import { auth } from "../../firebase/config";
@@ -13,7 +21,11 @@ const API_BASE_URL =
   process.env.REACT_APP_API_URL || "http://localhost:5000/api";
 
 /**
- * Get fresh Firebase ID token for API requests
+ * Get fresh Firebase ID token for API requests.
+ * Forces refresh to ensure token validity.
+ *
+ * @returns {Promise<string|null>} Fresh ID token or null if not authenticated
+ * @private
  */
 const getFreshToken = async () => {
   const user = auth.currentUser;
@@ -27,7 +39,13 @@ const getFreshToken = async () => {
 };
 
 /**
- * Make authenticated request with fresh token
+ * Make authenticated request with fresh Firebase token.
+ *
+ * @param {string} url - API endpoint path (relative to API_BASE_URL)
+ * @param {Object} options - Fetch options (method, body, headers, etc.)
+ * @returns {Promise<Object>} Parsed JSON response
+ * @throws {Error} API error with message
+ * @private
  */
 const authRequest = async (url, options = {}) => {
   const token = await getFreshToken();
@@ -48,19 +66,40 @@ const authRequest = async (url, options = {}) => {
   return response.json();
 };
 
+/**
+ * Auth API methods for the useAuth hook.
+ * @deprecated Use apiClient.js authApi for new implementations
+ */
 export const authApi = {
+  /**
+   * Authenticate user with backend after Firebase sign-in
+   * @returns {Promise<Object>} User data from backend
+   */
   login: () => authRequest("/auth/login", { method: "POST" }),
 
+  /**
+   * Register new user in backend after Firebase account creation
+   * @param {Object} userData - User registration data
+   * @returns {Promise<Object>} Created user data
+   */
   register: (userData) =>
     authRequest("/auth/register", {
       method: "POST",
       body: JSON.stringify(userData),
     }),
 
+  /**
+   * Sign out user from Firebase
+   * @returns {Promise<Object>} Success message
+   */
   logout: async () => {
     await auth.signOut();
     return { message: "Logged out successfully" };
   },
 
+  /**
+   * Get current user's profile from backend
+   * @returns {Promise<Object>} User profile data
+   */
   getCurrentUser: () => authRequest("/auth/profile"),
 };

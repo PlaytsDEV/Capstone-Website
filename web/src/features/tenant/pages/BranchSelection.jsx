@@ -23,12 +23,14 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { showNotification } from "../../../shared/utils/notification";
+import { useAuth } from "../../../shared/hooks/useAuth";
 import "../../../shared/styles/notification.css";
 import "./BranchSelection.css";
 import logoImage from "../../../assets/images/landingpage/logo.png";
 
 function BranchSelection() {
   const navigate = useNavigate();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
   const [selectedBranch, setSelectedBranch] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -39,43 +41,29 @@ function BranchSelection() {
    * Redirect to signin if no valid session
    */
   useEffect(() => {
-    const validateSession = () => {
-      try {
-        const token = localStorage.getItem("authToken");
-        const userStr = localStorage.getItem("user");
+    if (authLoading) return; // Wait for auth to load
 
-        // Check if user is authenticated
-        if (!token || !userStr) {
-          console.log("⚠️ No authentication found, redirecting to signin");
-          showNotification("Please sign in first", "warning");
-          navigate("/tenant/signin");
-          return;
-        }
+    if (!isAuthenticated || !user) {
+      console.log("⚠️ No authentication found, redirecting to signin");
+      showNotification("Please sign in first", "warning");
+      navigate("/tenant/signin");
+      return;
+    }
 
-        // Parse user data
-        const user = JSON.parse(userStr);
-        setUserEmail(user.email);
+    setUserEmail(user.email);
 
-        // Check if branch is already selected
-        if (user.branch && user.branch !== "") {
-          console.log("✅ Branch already selected, redirecting...");
-          showNotification(
-            `Welcome back! Redirecting to ${user.branch}...`,
-            "info",
-          );
-          setTimeout(() => {
-            navigate(`/${user.branch}`);
-          }, 1000);
-        }
-      } catch (error) {
-        console.error("❌ Session validation error:", error);
-        showNotification("Session invalid. Please sign in again.", "error");
-        navigate("/tenant/signin");
-      }
-    };
-
-    validateSession();
-  }, [navigate]);
+    // Check if branch is already selected
+    if (user.branch && user.branch !== "") {
+      console.log("✅ Branch already selected, redirecting...");
+      showNotification(
+        `Welcome back! Redirecting to ${user.branch}...`,
+        "info",
+      );
+      setTimeout(() => {
+        navigate(`/${user.branch}`);
+      }, 1000);
+    }
+  }, [authLoading, isAuthenticated, user, navigate]);
 
   /**
    * Handle branch selection

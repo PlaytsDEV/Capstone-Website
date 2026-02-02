@@ -22,7 +22,7 @@ import {
 } from "firebase/auth";
 import { auth } from "../../../firebase/config";
 import { showNotification } from "../../../shared/utils/notification";
-import { authApi } from "../../../shared/api/apiClient";
+import { useAuth } from "../../../shared/hooks/useAuth";
 import "../../public/styles/tenant-signin.css";
 import "../../../shared/styles/notification.css";
 import logoImage from "../../../assets/images/landingpage/logo.png";
@@ -30,6 +30,7 @@ import backgroundImage from "../../../assets/images/landingpage/gil-puyat-branch
 
 function SignIn() {
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   const [formData, setFormData] = useState({
     email: "",
@@ -250,13 +251,10 @@ function SignIn() {
         return;
       }
 
-      // STEP 3: Get Firebase token and login to backend
-      const token = await firebaseUser.getIdToken();
-      console.log("🔑 Firebase token obtained");
-
+      // STEP 3: Login to backend using useAuth hook
       try {
         console.log("🔍 Logging in to backend...");
-        const loginResponse = await authApi.login(token);
+        const loginResponse = await login();
         console.log("✅ Backend login successful");
         console.log("👤 User branch:", loginResponse.user.branch);
 
@@ -267,11 +265,7 @@ function SignIn() {
             "📍 Branch not selected, redirecting to branch selection...",
           );
 
-          // Store temporary data for branch selection
-          localStorage.setItem("authToken", token);
-          localStorage.setItem("user", JSON.stringify(loginResponse.user));
-
-          // Redirect to branch selection page
+          // Redirect to branch selection page (useAuth handles session)
           showNotification("Please select your branch to continue", "info");
           setTimeout(() => {
             navigate("/tenant/branch-selection");
@@ -280,23 +274,25 @@ function SignIn() {
           return;
         }
 
-        // STEP 5: Store authentication data
-        localStorage.setItem("authToken", token);
-        localStorage.setItem("user", JSON.stringify(loginResponse.user));
-
+        // STEP 5: Show success message
         showNotification(
           `Welcome back, ${loginResponse.user.firstName}!`,
           "success",
         );
 
         // STEP 6: Redirect based on role
+        // NOTE: RequireNonAdmin guard prevents admins from accessing this page,
+        // but if somehow an admin reaches here, redirect to admin dashboard
         console.log("🔄 Redirecting to appropriate page...");
         setTimeout(() => {
           if (
             loginResponse.user.role === "admin" ||
             loginResponse.user.role === "superAdmin"
           ) {
-            console.log("👨‍💼 Redirecting to admin dashboard");
+            // Admin reached tenant login - redirect to admin dashboard
+            // (RequireNonAdmin should prevent this, but this is a safety net)
+            console.log("👨‍💼 Admin detected - redirecting to admin dashboard");
+            showNotification("Redirecting to Admin Dashboard...", "info");
             navigate("/admin/dashboard");
           } else {
             console.log(
@@ -392,14 +388,11 @@ function SignIn() {
         return;
       }
 
-      // STEP 3: Get Firebase token
-      const token = await firebaseUser.getIdToken();
-      console.log("🔑 Firebase token obtained");
-
+      // STEP 3: Login to backend
       try {
         // STEP 4: Try to login - check if account exists in backend
         console.log("🔍 Checking if account exists in backend...");
-        const loginResponse = await authApi.login(token);
+        const loginResponse = await login();
         console.log("✅ Account found in backend");
         console.log("👤 User branch:", loginResponse.user.branch);
 
@@ -409,11 +402,7 @@ function SignIn() {
             "📍 Branch not selected, redirecting to branch selection page...",
           );
 
-          // Store authentication data
-          localStorage.setItem("authToken", token);
-          localStorage.setItem("user", JSON.stringify(loginResponse.user));
-
-          // Redirect to branch selection page
+          // Redirect to branch selection page (useAuth handles session)
           showNotification("Please select your branch to continue", "info");
           setTimeout(() => {
             navigate("/tenant/branch-selection");
@@ -424,8 +413,6 @@ function SignIn() {
 
         // STEP 6: Branch already assigned - login directly
         console.log("✅ Branch already selected, logging in...");
-        localStorage.setItem("authToken", token);
-        localStorage.setItem("user", JSON.stringify(loginResponse.user));
 
         showNotification(
           `Welcome back, ${loginResponse.user.firstName}!`,
@@ -433,14 +420,21 @@ function SignIn() {
         );
 
         // STEP 7: Redirect based on role
+        // Admins should use /admin/login instead
         console.log("🔄 Redirecting to appropriate page...");
         setTimeout(() => {
           if (
             loginResponse.user.role === "admin" ||
             loginResponse.user.role === "superAdmin"
           ) {
-            console.log("👨‍💼 Redirecting to admin dashboard");
-            navigate("/admin/dashboard");
+            // Sign out and redirect to admin login
+            console.log("👨‍💼 Admin detected - redirecting to admin login");
+            auth.signOut();
+            showNotification(
+              "Admins should use the Admin Portal to login.",
+              "info",
+            );
+            navigate("/admin/login");
           } else {
             console.log(
               `🏠 Redirecting to branch: ${loginResponse.user.branch}`,

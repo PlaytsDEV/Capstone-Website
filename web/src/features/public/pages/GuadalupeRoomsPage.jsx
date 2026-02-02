@@ -1,6 +1,6 @@
 import "../styles/guadalupe-rooms.css";
-import locationMapImage from "../assets/gpuyat-images/location-map.jpg";
-import quadrupleSharingImage from "../assets/gpuyat-images/premium-room.jpg";
+import locationMapImage from "../../../assets/images/gpuyat/location-map.jpg";
+import quadrupleSharingImage from "../../../assets/images/gpuyat/premium-room.jpg";
 import Footer from "../components/Footer";
 import Navbar from "../components/Navbar";
 import { useNavigate } from "react-router-dom";

@@ -1,11 +1,11 @@
 import "../styles/gpuyat.css";
-import gilPuyatBranchImage from "../assets/gpuyat-images/gil-puyat-branch.jpg";
-import locationViewImage from "../assets/gpuyat-images/location-view.jpg";
-import locationMapImage from "../assets/gpuyat-images/location-map.jpg";
-import privateRoomImage from "../assets/gpuyat-images/standard-room.jpg";
-import doubleSharingImage from "../assets/gpuyat-images/deluxe-room.jpg";
-import quadrupleSharingImage from "../assets/gpuyat-images/premium-room.jpg";
-import gallery1Image from "../assets/gpuyat-images/gallery1.jpg";
+import gilPuyatBranchImage from "../../../assets/images/gpuyat/gil-puyat-branch.jpg";
+import locationViewImage from "../../../assets/images/gpuyat/location-view.jpg";
+import locationMapImage from "../../../assets/images/gpuyat/location-map.jpg";
+import privateRoomImage from "../../../assets/images/gpuyat/standard-room.jpg";
+import doubleSharingImage from "../../../assets/images/gpuyat/deluxe-room.jpg";
+import quadrupleSharingImage from "../../../assets/images/gpuyat/premium-room.jpg";
+import gallery1Image from "../../../assets/images/gpuyat/gallery1.jpg";
 import Footer from "../components/Footer";
 import Navbar from "../components/Navbar";
 import { useState } from "react";

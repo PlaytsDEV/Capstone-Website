@@ -1,11 +1,27 @@
 import "../styles/admin-login.css";
-import logoImage from "../../public/assets/landingpage-images/logo.png";
-import { useState } from "react";
+import logoImage from "../../../assets/images/landingpage/logo.png";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../../../firebase/config";
 import { useAuth } from "../../../shared/hooks/useAuth";
+import { useFirebaseAuth } from "../../../shared/hooks/FirebaseAuthContext";
 
+/**
+ * =============================================================================
+ * ADMIN LOGIN PAGE
+ * =============================================================================
+ *
+ * Dedicated login page for administrators and super administrators.
+ * This is separate from the tenant login (/tenant/signin).
+ *
+ * Features:
+ * - Email/password authentication via Firebase
+ * - Role verification (only admin/superAdmin allowed)
+ * - Email verification check
+ * - Redirects to dashboard if already logged in as admin
+ * =============================================================================
+ */
 function AdminLoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
@@ -13,7 +29,19 @@ function AdminLoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, user, isAuthenticated, loading: authLoading } = useAuth();
+  const { signOut } = useFirebaseAuth();
+
+  // Redirect to dashboard if already logged in as admin
+  // NOTE: RequireNonAdmin guard now handles preventing admin access to this page
+  // This useEffect is kept for immediate redirect if admin somehow reaches here
+  useEffect(() => {
+    if (!authLoading && isAuthenticated && user) {
+      if (user.role === "admin" || user.role === "superAdmin") {
+        navigate("/admin/dashboard", { replace: true });
+      }
+    }
+  }, [authLoading, isAuthenticated, user, navigate]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -21,7 +49,14 @@ function AdminLoginPage() {
     setLoading(true);
 
     try {
-      // Step 1: Authenticate with Firebase
+      // Step 1: Sign out any existing session first to ensure clean state
+      try {
+        await signOut();
+      } catch (e) {
+        // Ignore sign out errors
+      }
+
+      // Step 2: Authenticate with Firebase
       console.log("🔐 Authenticating with Firebase...");
       const userCredential = await signInWithEmailAndPassword(
         auth,
@@ -31,10 +66,10 @@ function AdminLoginPage() {
       const firebaseUser = userCredential.user;
       console.log("✅ Firebase authentication successful");
 
-      // Step 2: Check email verification
+      // Step 3: Check email verification
       if (!firebaseUser.emailVerified) {
         console.log("⚠️ Email not verified, signing out...");
-        await auth.signOut();
+        await signOut();
         setError(
           "Please verify your email before logging in. Check your inbox for the verification link.",
         );
@@ -42,12 +77,12 @@ function AdminLoginPage() {
         return;
       }
 
-      // Step 3: Login to backend API
+      // Step 4: Login to backend API
       console.log("🔍 Logging in to backend...");
       const userData = await login();
       console.log("✅ Backend login successful");
 
-      // Step 4: Check if user has admin or superAdmin role
+      // Step 5: Check if user has admin or superAdmin role
       if (
         userData.user.role === "admin" ||
         userData.user.role === "superAdmin"
@@ -57,18 +92,33 @@ function AdminLoginPage() {
       } else {
         console.log("❌ Access denied - not an admin");
         setError("Access denied. Admin privileges required.");
-        // Sign out from Firebase since they don't have admin access
-        await auth.signOut();
+        // Sign out since they don't have admin access
+        await signOut();
       }
     } catch (err) {
       console.error("Login error:", err);
-      // Sign out from Firebase on any error
+      // Sign out on any error
       try {
-        await auth.signOut();
+        await signOut();
       } catch (signOutError) {
         console.error("Error signing out:", signOutError);
       }
-      setError(err.response?.data?.error || "Login failed. Please try again.");
+
+      // Handle specific Firebase error codes
+      if (
+        err.code === "auth/invalid-credential" ||
+        err.code === "auth/wrong-password"
+      ) {
+        setError("Invalid email or password.");
+      } else if (err.code === "auth/user-not-found") {
+        setError("No account found with this email.");
+      } else if (err.code === "auth/too-many-requests") {
+        setError("Too many failed attempts. Please try again later.");
+      } else {
+        setError(
+          err.response?.data?.error || "Login failed. Please try again.",
+        );
+      }
     } finally {
       setLoading(false);
     }
