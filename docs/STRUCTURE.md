@@ -17,54 +17,49 @@ Lilycrest-Web/
 │
 ├── server/                  # 🖥️ Backend (Express.js)
 │   ├── config/             # Configuration files
-│   ├── middleware/         # Express middleware
+
+
 │   ├── models/             # MongoDB schemas
+
 │   ├── routes/             # API route handlers
-│   ├── scripts/            # Utility scripts
 │   └── server.js           # Entry point
 │
-├── web/                     # 🌐 Frontend (React)
 │   ├── public/             # Static public files
-│   ├── src/                # Source code
 │   └── build/              # Production build (generated)
 │
-└── README.md               # Project overview
 ```
-
----
 
 ## Frontend Structure (`web/src/`)
 
-```
 src/
-├── features/               # 🎯 Role-based feature modules
-│   ├── public/            # Public pages (no auth required)
-│   ├── tenant/            # Tenant/resident features
-│   ├── admin/             # Branch admin features
-│   └── super-admin/       # System admin features
+├── features/ # 🎯 Role-based feature modules
+│ ├── public/ # Public pages (no auth required)
+
+│ ├── tenant/ # Tenant/resident features
+│ ├── admin/ # Branch admin features
+│ └── super-admin/ # System admin features
 │
-├── shared/                 # ♻️ Shared across all features
-│   ├── api/               # API client functions
-│   ├── components/        # Reusable UI components
-│   ├── guards/            # Route protection
-│   ├── hooks/             # Custom React hooks
-│   ├── layouts/           # Page layouts
-│   ├── styles/            # Shared styles
-│   └── utils/             # Utility functions
+├── shared/ # ♻️ Shared across all features
+│ ├── api/ # API client functions
+
+│ ├── components/ # Reusable UI components
+
+│ ├── layouts/ # Page layouts
 │
-├── assets/                 # 🖼️ Static assets
-│   └── images/            # Images by category
-│       ├── gpuyat/        # Gil Puyat branch
-│       ├── guadalupe/     # Guadalupe branch
-│       └── landingpage/   # Landing page
+├── assets/ # 🖼️ Static assets
+│ └── images/ # Images by category
+│ ├── gpuyat/ # Gil Puyat branch
+│ ├── guadalupe/ # Guadalupe branch
+│ └── landingpage/ # Landing page
 │
-├── firebase/              # 🔥 Firebase configuration
-│   └── config.js
+├── firebase/ # 🔥 Firebase configuration
+│ └── config.js
 │
-├── App.js                 # Main app with routing
-├── App.css                # Global app styles
-├── index.js               # Entry point
-└── index.css              # Global CSS
+├── App.js # Main app with routing
+├── App.css # Global app styles
+├── index.js # Entry point
+└── index.css # Global CSS
+
 ```
 
 ---
@@ -74,14 +69,16 @@ src/
 Each feature module follows a consistent pattern:
 
 ```
+
 features/{role}/
-├── pages/                 # Page components
-├── components/            # Feature-specific components
-├── modals/                # Modal dialogs
-├── hooks/                 # Feature-specific hooks
-├── services/              # API services
-├── styles/                # CSS files
-└── index.js               # Barrel exports
+├── pages/ # Page components
+├── components/ # Feature-specific components
+├── modals/ # Modal dialogs
+├── hooks/ # Feature-specific hooks
+├── services/ # API services
+├── styles/ # CSS files
+└── index.js # Barrel exports
+
 ```
 
 ### Public Feature (`features/public/`)
@@ -121,37 +118,39 @@ features/{role}/
 ## Backend Structure (`server/`)
 
 ```
+
 server/
 ├── config/
-│   ├── database.js        # MongoDB connection
-│   ├── firebase.js        # Firebase Admin SDK
-│   └── email.js           # Nodemailer configuration
+│ ├── database.js # MongoDB connection
+│ ├── firebase.js # Firebase Admin SDK
+│ └── email.js # Nodemailer configuration
 │
 ├── middleware/
-│   ├── auth.js            # JWT/Firebase verification
-│   └── branchAccess.js    # Branch-based access control
+│ ├── auth.js # JWT/Firebase verification
+│ └── branchAccess.js # Branch-based access control
 │
 ├── models/
-│   ├── User.js            # User schema
-│   ├── Room.js            # Room schema
-│   ├── Reservation.js     # Reservation schema
-│   ├── Inquiry.js         # Inquiry schema
-│   ├── archive/           # Archive utility schemas
-│   └── index.js           # Model exports
+│ ├── User.js # User schema
+│ ├── Room.js # Room schema
+│ ├── Reservation.js # Reservation schema
+│ ├── Inquiry.js # Inquiry schema
+│ ├── archive/ # Archive utility schemas
+│ └── index.js # Model exports
 │
 ├── routes/
-│   ├── auth.js            # Authentication routes
-│   ├── users.js           # User management routes
-│   ├── rooms.js           # Room routes
-│   ├── reservations.js    # Reservation routes
-│   └── inquiries.js       # Inquiry routes
+│ ├── auth.js # Authentication routes
+│ ├── users.js # User management routes
+│ ├── rooms.js # Room routes
+│ ├── reservations.js # Reservation routes
+│ └── inquiries.js # Inquiry routes
 │
-├── scripts/               # Utility scripts
-│   ├── check-inquiry-data.js
-│   ├── cleanup-test-data.js
-│   └── fix-inquiry-data.js
+├── scripts/ # Utility scripts
+│ ├── check-inquiry-data.js
+│ ├── cleanup-test-data.js
+│ └── fix-inquiry-data.js
 │
-└── server.js              # Express app entry point
+└── server.js # Express app entry point
+
 ```
 
 ---
@@ -270,3 +269,4 @@ server/
 | `/super-admin/branches`  | BranchManagementPage |
 | `/super-admin/logs`      | ActivityLogsPage     |
 | `/super-admin/settings`  | SystemSettingsPage   |
+```
