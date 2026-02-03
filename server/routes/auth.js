@@ -113,6 +113,7 @@ router.post("/register", verifyToken, async (req, res) => {
       branch,
       role: "user",
       isEmailVerified: req.user.email_verified || false, // Synced from Firebase
+      tenantStatus: req.user.email_verified ? "registered" : "",
     });
 
     await user.save();
@@ -206,6 +207,10 @@ router.post("/login", verifyToken, async (req, res) => {
     const firebaseEmailVerified = req.user.email_verified || false;
     if (user.isEmailVerified !== firebaseEmailVerified) {
       user.isEmailVerified = firebaseEmailVerified;
+      // If email is now verified and tenantStatus is not 'registered', update it
+      if (firebaseEmailVerified && user.tenantStatus !== "registered") {
+        user.tenantStatus = "registered";
+      }
       await user.save();
       console.log(
         `✅ Synced verification for ${user.email}: ${firebaseEmailVerified}`,

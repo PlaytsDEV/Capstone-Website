@@ -88,10 +88,26 @@ const userSchema = new mongoose.Schema(
       default: "",
       index: true,
     },
+
+    // --- Role & Reservation Status ---
     role: {
       type: String,
       enum: ["user", "tenant", "admin", "superAdmin"],
       default: "user",
+      // Reservation flow:
+      // - "user" (registered, reserved)
+      // - "tenant" (active/inactive after official move-in/move-out)
+    },
+
+    tenantStatus: {
+      type: String,
+      enum: ["registered", "reserved", "active", "inactive", ""],
+      default: "",
+      // Usage:
+      // - "registered": after registration
+      // - "reserved": after reservation approval
+      // - "active": after official move-in (admin action)
+      // - "inactive": after move-out
     },
 
     // --- Status ---

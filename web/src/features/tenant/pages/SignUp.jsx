@@ -26,6 +26,7 @@ import {
 import { auth } from "../../../firebase/config";
 import { showNotification } from "../../../shared/utils/notification";
 import { authApi } from "../../../shared/api/apiClient";
+import { useAuth } from "../../../shared/hooks/useAuth";
 import TermsModal from "../modals/TermsModal";
 import "../../public/styles/tenant-signup.css";
 import "../../../shared/styles/notification.css";
@@ -34,6 +35,7 @@ import backgroundImage from "../../../assets/images/landingpage/gil-puyat-branch
 
 function SignUp() {
   const navigate = useNavigate();
+  const { login: loginBackend } = useAuth();
 
   const [formData, setFormData] = useState({
     firstName: "",
@@ -132,13 +134,17 @@ function SignUp() {
   /**
    * Calculate password strength
    */
+  const SPECIAL_CHARS_REGEX = /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>?/]/;
+  const SPECIAL_CHARS_DISPLAY =
+    "! @ # $ % ^ & * ( ) _ + - = [ ] { } ; ' : \" \\ | , . < > ? /";
+
   const calculatePasswordStrength = (password) => {
     const requirements = {
       length: password.length >= 8,
       uppercase: /[A-Z]/.test(password),
       lowercase: /[a-z]/.test(password),
       number: /\d/.test(password),
-      special: /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>?/]/.test(password),
+      special: SPECIAL_CHARS_REGEX.test(password),
     };
 
     const metRequirements = Object.values(requirements).filter(Boolean).length;
@@ -165,6 +171,10 @@ function SignUp() {
     // Restrict phone field to numbers only
     if (name === "phone" && value && !/^[0-9]*$/.test(value)) {
       return; // Don't update if non-numeric
+    }
+
+    if (name === "phone" && value.length > 11) {
+      return; // Enforce max 11 digits
     }
 
     setFormData({
@@ -219,8 +229,8 @@ function SignUp() {
       case "phone":
         if (!value.trim()) {
           error = "Phone number is required";
-        } else if (!/^[0-9]{1,11}$/.test(value)) {
-          error = "Phone must be 1-11 digits only";
+        } else if (!/^[0-9]{11}$/.test(value)) {
+          error = "Phone must be exactly 11 digits";
         }
         break;
 
@@ -233,6 +243,8 @@ function SignUp() {
           error = "Password is required";
         } else if (value.length < 6) {
           error = "Password must be at least 6 characters";
+        } else if (!SPECIAL_CHARS_REGEX.test(value)) {
+          error = `Password must include a special character (e.g., ! @ # $ % ^ & * )`;
         }
         // Re-validate confirm password if it's already filled
         if (formData.confirmPassword) {
@@ -597,10 +609,16 @@ function SignUp() {
             // No need to send verification email - they can login immediately
             console.log("✅ Social account is automatically verified");
 
-            showNotification(
-              `Welcome to Lilycrest, ${firstName}! Please select your branch to continue.`,
-              "success",
-            );
+            // STEP 5.1: Establish backend session to avoid branch selection auth race
+            try {
+              await loginBackend();
+              console.log("✅ Backend session established after registration");
+            } catch (sessionError) {
+              console.warn(
+                "⚠️ Failed to establish backend session; proceeding to branch selection",
+                sessionError,
+              );
+            }
 
             // STEP 6: KEEP FIREBASE SESSION ACTIVE (critical for branch selection)
             // Do NOT sign out - user needs active session for branch selection
@@ -612,7 +630,11 @@ function SignUp() {
             // Session must remain active throughout this flow
             setTimeout(() => {
               console.log("📍 Redirecting to branch selection...");
-              navigate("/tenant/branch-selection");
+              navigate("/tenant/branch-selection", {
+                state: {
+                  notice: `Welcome to Lilycrest, ${firstName}! Please select your branch to continue.`,
+                },
+              });
             }, 2000);
           } catch (registerError) {
             console.error("❌ Backend registration error:", registerError);
@@ -1153,6 +1175,29 @@ function SignUp() {
                           )}
                         </svg>
                         One number
+                      </div>
+                      <div
+                        className={`requirement ${passwordStrength.requirements.special ? "met" : ""}`}
+                      >
+                        <svg viewBox="0 0 20 20" fill="currentColor">
+                          {passwordStrength.requirements.special ? (
+                            <path
+                              fillRule="evenodd"
+                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                              clipRule="evenodd"
+                            />
+                          ) : (
+                            <circle
+                              cx="10"
+                              cy="10"
+                              r="6"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            />
+                          )}
+                        </svg>
+                        One special character (e.g., ! @ # $ % ^ & *)
                       </div>
                     </div>
                   </div>
