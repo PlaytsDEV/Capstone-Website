@@ -112,27 +112,43 @@
   position: relative;
   height: 40px;
   width: 100%;
+  justify-content: space-between;
 }
 
+.gpuyat-nav-logo {
+  display: flex;
+  align-items: center;
+  z-index: var(--z-carousel);
+  flex-shrink: 0;
+}
+
+.gpuyat-logo-link {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+  color: inherit;
+}
+
+.gpuyat-logo-icon {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+}
 .gpuyat-nav-links {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
   gap: var(--spacing-xl);
   z-index: var(--z-carousel);
+  flex: 1;
+  justify-content: center;
 }
 
 .gpuyat-nav-auth {
-  position: absolute;
-  right: var(--spacing-md);
-  top: 50%;
-  transform: translateY(-50%);
+  position: relative;
   display: flex;
   align-items: center;
   z-index: var(--z-carousel);
+  flex-shrink: 0;
 }
 
 .gpuyat-nav-link {
@@ -165,6 +181,14 @@
 }
 
 .gpuyat-nav-link:hover::after {
+  width: 100%;
+}
+
+.gpuyat-nav-link.active {
+  color: var(--color-primary);
+}
+
+.gpuyat-nav-link.active::after {
   width: 100%;
 }
 
@@ -477,6 +501,13 @@
   filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
 }
 
+.gpuyat-hero-logo {
+  width: 80px;
+  height: 80px;
+  margin-bottom: 12px;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+}
+
 .gpuyat-logo-text {
   font-size: var(--font-size-2xl);
   color: var(--color-accent);
@@ -522,30 +553,6 @@
   justify-content: center;
 }
 
-.gpuyat-search-bar input {
-  flex: 1;
-  min-width: 200px;
-  padding: var(--spacing-sm) 15px;
-  border: 1px solid #ddd;
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-base);
-  background-color: rgba(255, 255, 255, 0.95);
-  transition: var(--transition-all);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.gpuyat-search-bar input:focus {
-  outline: none;
-  border-color: var(--color-primary);
-  background-color: var(--color-white);
-  box-shadow: 0 4px 12px rgba(255, 105, 0, 0.2);
-  transform: translateY(-1px);
-}
-
-.gpuyat-search-bar input::placeholder {
-  color: #999;
-}
-
 .gpuyat-btn-search {
   padding: var(--spacing-sm) var(--spacing-lg);
   background-color: var(--color-primary);
@@ -575,7 +582,7 @@
    ============================================ */
 .gpuyat-location {
   padding: var(--spacing-2xl) 0;
-  background-color: var(--color-background);
+  background-color: var(--color-white);
 }
 
 .gpuyat-location h2 {
@@ -588,9 +595,9 @@
 
 .gpuyat-location-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: var(--spacing-md);
-  margin-bottom: var(--spacing-xl);
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-lg);
+  margin-bottom: var(--spacing-2xl);
 }
 
 .gpuyat-location-card {
@@ -610,7 +617,7 @@
 
 .gpuyat-location-card img {
   width: 100%;
-  height: 300px;
+  height: 250px;
   object-fit: cover;
   transition: transform var(--transition-normal);
 }
@@ -632,20 +639,20 @@
   border-radius: var(--radius-lg);
   display: flex;
   gap: var(--spacing-md);
-  align-items: flex-start;
-  box-shadow: var(--shadow-md);
-  border: 1px solid var(--color-border-light);
-  transition: box-shadow var(--transition-normal);
+  align-items: center;
+  justify-content: center;
+  max-width: 600px;
   margin: 0 auto;
-}
-
-.gpuyat-location-info:hover {
-  box-shadow: var(--shadow-lg);
+  flex-direction: column;
+  text-align: center;
 }
 
 .gpuyat-location-icon {
   flex-shrink: 0;
   color: var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .gpuyat-location-text {
@@ -670,6 +677,7 @@
    ============================================ */
 .gpuyat-rooms {
   padding: var(--spacing-2xl) 0;
+  background-color: #f9f9f9;
 }
 
 .gpuyat-rooms h2 {
@@ -783,7 +791,7 @@
    ============================================ */
 .gpuyat-gallery {
   padding: var(--spacing-2xl) 0;
-  background-color: var(--color-background);
+  background-color: #fff;
 }
 
 .gpuyat-carousel {
@@ -929,7 +937,6 @@
 }
 
 .gpuyat-rating-card:hover svg {
-  background-color: var(--color-primary);
   color: var(--color-white);
   transform: scale(1.1);
 }
@@ -980,10 +987,6 @@
 
   .gpuyat-search-bar {
     flex-direction: column;
-  }
-
-  .gpuyat-search-bar input {
-    min-width: 100%;
   }
 
   .gpuyat-location h2,

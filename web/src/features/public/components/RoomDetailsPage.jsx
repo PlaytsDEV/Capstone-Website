@@ -174,9 +174,9 @@ function RoomDetailsPage({
               </div>
             </div>
 
-            <button className="room-details-btn-reserve" onClick={onReserveNow}>
+            {/* <button className="room-details-btn-reserve" onClick={onReserveNow}>
               Reserve Now
-            </button>
+            </button> */}
           </div>
         </div>
       </section>

@@ -135,8 +135,6 @@ function SignUp() {
    * Calculate password strength
    */
   const SPECIAL_CHARS_REGEX = /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>?/]/;
-  const SPECIAL_CHARS_DISPLAY =
-    "! @ # $ % ^ & * ( ) _ + - = [ ] { } ; ' : \" \\ | , . < > ? /";
 
   const calculatePasswordStrength = (password) => {
     const requirements = {

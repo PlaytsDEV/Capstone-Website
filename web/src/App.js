@@ -38,7 +38,6 @@ import TenantDashboard from "./features/tenant/pages/TenantDashboard";
 import ProfilePage from "./features/tenant/pages/ProfilePage";
 import BillingPage from "./features/tenant/pages/BillingPage";
 import ContractsPage from "./features/tenant/pages/ContractsPage";
-
 /**
  * Inner App component that uses auth context
  * Must be rendered inside AuthProvider to access useAuth hook
@@ -127,6 +126,16 @@ function AppContent() {
         />
 
         <Route path="/admin/login" element={<AdminLoginPage />} />
+
+        <Route
+          path="/faqs"
+          element={
+            <RequireNonAdmin>
+              <FAQsPage />
+            </RequireNonAdmin>
+          }
+        />
+
 
         {/* Admin routes - all require admin auth */}
         <Route
