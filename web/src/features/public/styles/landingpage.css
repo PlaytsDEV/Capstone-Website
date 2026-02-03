@@ -32,6 +32,7 @@ html {
   position: sticky;
   top: 0;
   z-index: 100;
+  border-bottom: 3px solid #0a2a4e;
 }
 
 .landing-nav-content {
@@ -40,27 +41,44 @@ html {
   position: relative;
   height: 40px;
   width: 100%;
+  justify-content: space-between;
+}
+
+.landing-nav-logo {
+  display: flex;
+  align-items: center;
+  z-index: 10;
+  flex-shrink: 0;
+}
+
+.landing-logo-link {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+  color: inherit;
+}
+
+.landing-logo-icon {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
 }
 
 .landing-nav-links {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
   gap: 40px;
   z-index: 10;
+  flex: 1;
+  justify-content: center;
 }
 
 .landing-nav-auth {
-  position: absolute;
-  right: 20px;
-  top: 50%;
-  transform: translateY(-50%);
+  position: relative;
   display: flex;
   align-items: center;
   z-index: 10;
+  flex-shrink: 0;
 }
 
 .landing-nav-link {
@@ -74,10 +92,34 @@ html {
   cursor: pointer;
   padding: 0;
   font: inherit;
+  position: relative;
+}
+
+.landing-nav-link::after {
+  content: "";
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  width: 0;
+  height: 2px;
+  background-color: #ff6900;
+  transition: width 0.3s ease;
 }
 
 .landing-nav-link:hover {
-  color: #ff6b35;
+  color: #ff6900;
+}
+
+.landing-nav-link:hover::after {
+  width: 100%;
+}
+
+.landing-nav-link.active {
+  color: #ff6900;
+}
+
+.landing-nav-link.active::after {
+  width: 100%;
 }
 
 /* Login Button */

@@ -21,7 +21,6 @@ function RoomDetailsPage({
 }) {
   const navigate = useNavigate();
   const [currentSlide, setCurrentSlide] = useState(0);
-  const navigate = useNavigate();
 
   const branchName = branchType === "gil-puyat" ? "Gil Puyat Branch" : "Guadalupe Branch";
   const branchHomePath = branchType === "gil-puyat" ? "/gil-puyat" : "/guadalupe";
@@ -157,9 +156,9 @@ function RoomDetailsPage({
               </div>
             </div>
 
-            <button className="room-details-btn-reserve" onClick={onReserveNow}>
+            {/* <button className="room-details-btn-reserve" onClick={onReserveNow}>
               Reserve Now
-            </button>
+            </button> */}
           </div>
         </div>
       </section>

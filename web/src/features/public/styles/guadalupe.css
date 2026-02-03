@@ -112,27 +112,44 @@
   position: relative;
   height: 40px;
   width: 100%;
+  justify-content: space-between;
+}
+
+.guadalupe-nav-logo {
+  display: flex;
+  align-items: center;
+  z-index: var(--z-carousel);
+  flex-shrink: 0;
+}
+
+.guadalupe-logo-link {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+  color: inherit;
+}
+
+.guadalupe-logo-icon {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
 }
 
 .guadalupe-nav-links {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
   display: flex;
   align-items: center;
   gap: var(--spacing-xl);
   z-index: var(--z-carousel);
+  flex: 1;
+  justify-content: center;
 }
 
 .guadalupe-nav-auth {
-  position: absolute;
-  right: var(--spacing-md);
-  top: 50%;
-  transform: translateY(-50%);
+  position: relative;
   display: flex;
   align-items: center;
   z-index: var(--z-carousel);
+  flex-shrink: 0;
 }
 
 .guadalupe-nav-link {
@@ -165,6 +182,14 @@
 }
 
 .guadalupe-nav-link:hover::after {
+  width: 100%;
+}
+
+.guadalupe-nav-link.active {
+  color: var(--color-primary);
+}
+
+.guadalupe-nav-link.active::after {
   width: 100%;
 }
 
@@ -476,6 +501,13 @@
   filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
 }
 
+.guadalupe-hero-logo {
+  width: 80px;
+  height: 80px;
+  margin-bottom: 12px;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+}
+
 .guadalupe-logo-text {
   font-size: var(--font-size-2xl);
   color: var(--color-accent);
@@ -521,30 +553,6 @@
   justify-content: center;
 }
 
-.guadalupe-search-bar input {
-  flex: 1;
-  min-width: 200px;
-  padding: var(--spacing-sm) 15px;
-  border: 1px solid #ddd;
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-base);
-  background-color: rgba(255, 255, 255, 0.95);
-  transition: var(--transition-all);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.guadalupe-search-bar input:focus {
-  outline: none;
-  border-color: var(--color-primary);
-  background-color: var(--color-white);
-  box-shadow: 0 4px 12px rgba(255, 105, 0, 0.2);
-  transform: translateY(-1px);
-}
-
-.guadalupe-search-bar input::placeholder {
-  color: #999;
-}
-
 .guadalupe-btn-search {
   padding: var(--spacing-sm) var(--spacing-lg);
   background-color: var(--color-primary);
@@ -574,7 +582,7 @@
    ============================================ */
 .guadalupe-location {
   padding: var(--spacing-2xl) 0;
-  background-color: var(--color-background);
+  background-color: var(--color-white);
 }
 
 .guadalupe-location h2 {
@@ -587,9 +595,9 @@
 
 .guadalupe-location-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: var(--spacing-md);
-  margin-bottom: var(--spacing-xl);
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--spacing-lg);
+  margin-bottom: var(--spacing-2xl);
 }
 
 .guadalupe-location-card {
@@ -609,7 +617,7 @@
 
 .guadalupe-location-card img {
   width: 100%;
-  height: 300px;
+  height: 250px;
   object-fit: cover;
   transition: transform var(--transition-normal);
 }
@@ -631,19 +639,20 @@
   border-radius: var(--radius-lg);
   display: flex;
   gap: var(--spacing-md);
-  align-items: flex-start;
-  box-shadow: var(--shadow-md);
-  border: 1px solid var(--color-border-light);
-  transition: box-shadow var(--transition-normal);
-}
-
-.guadalupe-location-info:hover {
-  box-shadow: var(--shadow-lg);
+  align-items: center;
+  justify-content: center;
+  max-width: 600px;
+  margin: 0 auto;
+  flex-direction: column;
+  text-align: center;
 }
 
 .guadalupe-location-icon {
   flex-shrink: 0;
   color: var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .guadalupe-location-text {
@@ -668,6 +677,7 @@
    ============================================ */
 .guadalupe-rooms {
   padding: var(--spacing-2xl) 0;
+  background-color: #f9f9f9;
 }
 
 .guadalupe-rooms h2 {
@@ -707,9 +717,13 @@
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 25px;
   margin-bottom: var(--spacing-xl);
+  max-width: 500px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .guadalupe-room-card {
+  width: 100%;
   background-color: var(--color-background);
   border-radius: var(--radius-lg);
   overflow: hidden;
@@ -781,7 +795,7 @@
    ============================================ */
 .guadalupe-gallery {
   padding: var(--spacing-2xl) 0;
-  background-color: var(--color-background);
+  background-color: #fff
 }
 
 .guadalupe-carousel {
@@ -927,7 +941,6 @@
 }
 
 .guadalupe-rating-card:hover svg {
-  background-color: var(--color-primary);
   color: var(--color-white);
   transform: scale(1.1);
 }
@@ -978,10 +991,6 @@
 
   .guadalupe-search-bar {
     flex-direction: column;
-  }
-
-  .guadalupe-search-bar input {
-    min-width: 100%;
   }
 
   .guadalupe-location h2,

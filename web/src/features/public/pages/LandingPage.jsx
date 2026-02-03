@@ -40,13 +40,13 @@ function LandingPage() {
               className="landing-logo"
               aria-label="Lilycrest Logo"
             />
+            <h1 className="landing-hero-title">Lilycrest</h1>
             <p className="landing-hero-tagline">
               A Safe & Comfortable Living Space
             </p>
 
             <div className="landing-search-bar">
-              <input type="text" placeholder="Search for rooms, amenities" />
-              <button className="landing-btn-search">Find Your Room</button>
+              <button onClick={() => navigate("/tenant/dashboard")} className="landing-btn-search">Find Your Room</button>
             </div>
           </div>
         </div>

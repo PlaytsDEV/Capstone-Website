@@ -14,6 +14,7 @@ import DoubleSharingPage from "./features/public/pages/DoubleSharingPage";
 import QuadrupleSharingPage from "./features/public/pages/QuadrupleSharingPage";
 import GuadalupePage from "./features/public/pages/GuadalupePage";
 import GuadalupeRoomsPage from "./features/public/pages/GuadalupeRoomsPage";
+import FAQsPage from "./features/public/pages/FAQsPage";
 
 // Admin Pages
 import AdminDashboardPage from "./features/admin/pages/Dashboard";
@@ -36,7 +37,6 @@ import TenantDashboard from "./features/tenant/pages/TenantDashboard";
 import ProfilePage from "./features/tenant/pages/ProfilePage";
 import BillingPage from "./features/tenant/pages/BillingPage";
 import ContractsPage from "./features/tenant/pages/ContractsPage";
-
 /**
  * Inner App component that uses auth context
  * Must be rendered inside AuthProvider to access useAuth hook
@@ -115,6 +115,16 @@ function AppContent() {
             </RequireNonAdmin>
           }
         />
+
+        <Route
+          path="/faqs"
+          element={
+            <RequireNonAdmin>
+              <FAQsPage />
+            </RequireNonAdmin>
+          }
+        />
+
 
         {/* Admin routes - all require admin auth */}
         <Route

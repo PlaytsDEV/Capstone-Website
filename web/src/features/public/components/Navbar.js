@@ -1,515 +1,337 @@
-import { useNavigate } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../../../shared/hooks/useAuth";
+import LilycrestLogo from "../../../shared/components/LilycrestLogo";
 import {
   showNotification,
   showConfirmation,
 } from "../../../shared/utils/notification";
 
-/**
- * Navbar component with profile dropdown functionality
- * Supports multiple navbar types (landing, branch) with consistent behavior
- * Features accessibility enhancements, keyboard navigation, and error handling
- */
-function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
+function Navbar({ type = "landing", currentPage = "home" }) {
   const navigate = useNavigate();
+  const location = useLocation();
 
-  // Get user from auth context (includes backend data with firstName/lastName)
-  const {
-    user,
-    isAuthenticated,
-    logout: authLogout,
-    globalLoading,
-  } = useAuth();
+  const { user, isAuthenticated, logout, globalLoading } = useAuth();
 
-  // State management
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [activeSection, setActiveSection] = useState("home");
 
-  // Refs for DOM manipulation
   const profileMenuRef = useRef(null);
   const profileButtonRef = useRef(null);
+  const logoutCalledRef = useRef(false);
 
-  /**
-   * Safely retrieves user initials with defensive checks
-   * Handles both Firebase user (displayName) and backend user (firstName/lastName)
-   * @param {Object} userData - User object
-   * @returns {string} Uppercase initials or empty string
-   */
+  /* ============================
+     Helpers
+  ============================ */
+
   const getInitials = useCallback((userData) => {
-    try {
-      if (!userData) return "";
-
-      // Check for backend user format (firstName, lastName)
-      if (userData.firstName || userData.lastName) {
-        const first = (userData.firstName || "").charAt(0).toUpperCase();
-        const last = (userData.lastName || "").charAt(0).toUpperCase();
-        return `${first}${last}`;
-      }
-
-      // Check for Firebase user format (displayName)
-      if (userData.displayName) {
-        const nameParts = userData.displayName.split(" ");
-        const first = (nameParts[0] || "").charAt(0).toUpperCase();
-        const last = (nameParts[nameParts.length - 1] || "")
-          .charAt(0)
-          .toUpperCase();
-        return nameParts.length > 1 ? `${first}${last}` : first;
-      }
-
-      // Fallback to email initial
-      if (userData.email) {
-        return userData.email.charAt(0).toUpperCase();
-      }
-
-      return "";
-    } catch (error) {
-      console.warn("Error generating user initials:", error);
-      return "";
-    }
-  }, []);
-
-  /**
-   * Get display name from user object
-   * Handles both Firebase user and backend user formats
-   * @param {Object} userData - User object
-   * @returns {string} Display name
-   */
-  const getDisplayName = useCallback((userData) => {
     if (!userData) return "";
 
-    // Backend user format
+    if (userData.firstName || userData.lastName) {
+      return `${userData.firstName?.[0] || ""}${userData.lastName?.[0] || ""}`.toUpperCase();
+    }
+
+    if (userData.displayName) {
+      const parts = userData.displayName.split(" ");
+      return `${parts[0][0]}${parts.at(-1)[0]}`.toUpperCase();
+    }
+
+    return userData.email?.[0]?.toUpperCase() || "";
+  }, []);
+
+  const getDisplayName = useCallback((userData) => {
+    if (!userData) return "";
     if (userData.firstName || userData.lastName) {
       return `${userData.firstName || ""} ${userData.lastName || ""}`.trim();
     }
-
-    // Firebase user format
-    if (userData.displayName) {
-      return userData.displayName;
-    }
-
-    // Extract name from email (before @, replace dots/underscores with spaces, capitalize)
-    if (userData.email) {
-      const namePart = userData.email.split("@")[0];
-      return namePart
-        .replace(/[._]/g, " ")
-        .replace(/\b\w/g, (c) => c.toUpperCase());
-    }
-
-    return "";
+    return userData.displayName || userData.email || "";
   }, []);
 
-  // Ref to prevent duplicate logout execution
-  const logoutCalledRef = useRef(false);
+  /* ============================
+     Logout
+  ============================ */
 
-  /**
-   * Handles logout with confirmation and proper error handling
-   *
-   * UI COMPONENT RESPONSIBILITY:
-   * - Shows confirmation dialog
-   * - Triggers logout action
-   * - Shows notification based on result
-   * - Navigates to appropriate page
-   *
-   * EXECUTION SEQUENCE:
-   * 1. Close profile menu
-   * 2. Show confirmation dialog
-   * 3. If confirmed → call logout (ref guarded)
-   * 4. On success: show success notification, navigate to branch home
-   * 5. On error: show error notification, allow retry
-   */
   const handleLogout = useCallback(async () => {
     setShowProfileMenu(false);
-
-    // Prevent duplicate calls
     if (globalLoading || logoutCalledRef.current) return;
 
-    // Show confirmation dialog
     const confirmed = await showConfirmation(
       "Are you sure you want to log out?",
       "Log Out",
-      "Cancel",
+      "Cancel"
     );
 
     if (!confirmed) return;
 
-    // Guard against duplicate execution
-    if (logoutCalledRef.current) return;
     logoutCalledRef.current = true;
 
     try {
-      // Execute logout - this sets globalLoading which shows the overlay
-      const result = await authLogout(user?.branch);
-
+      const result = await logout(user?.branch);
       if (result?.success) {
-        // Brief delay with loading overlay visible, then show notification and navigate
-        setTimeout(() => {
-          showNotification("You have been logged out successfully", "success");
-          // Small delay after notification appears, then navigate
-          setTimeout(() => {
-            window.location.href = result.branch || "/";
-          }, 300);
-        }, 400);
+        showNotification("Logged out successfully", "success");
+        window.location.href = result.branch || "/";
       }
-    } catch (error) {
-      // Show error notification
+    } catch (err) {
       showNotification("Logout failed. Please try again.", "error");
-      console.error("Logout error:", error);
-
-      // Reset ref to allow retry
       logoutCalledRef.current = false;
     }
-  }, [authLogout, globalLoading, user]);
+  }, [logout, globalLoading, user]);
 
-  /**
-   * Toggles profile menu visibility with accessibility considerations
-   */
-  const toggleProfileMenu = useCallback(() => {
-    setShowProfileMenu((prev) => !prev);
-  }, []);
+  /* ============================
+     Outside Click
+  ============================ */
 
-  /**
-   * Closes profile menu
-   */
-  const closeProfileMenu = useCallback(() => {
-    setShowProfileMenu(false);
-  }, []);
-
-  /**
-   * Handles keyboard navigation for accessibility
-   * @param {KeyboardEvent} event - Keyboard event
-   */
-  const handleKeyDown = useCallback(
-    (event) => {
-      if (!showProfileMenu) return;
-
-      switch (event.key) {
-        case "Escape":
-          closeProfileMenu();
-          profileButtonRef.current?.focus();
-          break;
-        case "ArrowDown":
-          event.preventDefault();
-          // Focus first dropdown item
-          const firstItem =
-            profileMenuRef.current?.querySelector('[role="menuitem"]');
-          firstItem?.focus();
-          break;
-        default:
-          break;
-      }
-    },
-    [showProfileMenu, closeProfileMenu],
-  );
-
-  /**
-   * Handles clicks outside the dropdown to close it
-   * Uses modern event handling without global listeners when possible
-   * @param {MouseEvent} event - Click event
-   */
-  const handleClickOutside = useCallback(
-    (event) => {
-      if (
-        profileMenuRef.current &&
-        !profileMenuRef.current.contains(event.target) &&
-        !profileButtonRef.current?.contains(event.target)
-      ) {
-        closeProfileMenu();
-      }
-    },
-    [closeProfileMenu],
-  );
-
-  // Click outside handler
   useEffect(() => {
     if (!showProfileMenu) return;
+
+    const handleClickOutside = (e) => {
+      if (
+        profileMenuRef.current &&
+        !profileMenuRef.current.contains(e.target) &&
+        !profileButtonRef.current?.contains(e.target)
+      ) {
+        setShowProfileMenu(false);
+      }
+    };
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [showProfileMenu, handleClickOutside]);
+  }, [showProfileMenu]);
 
-  // Keyboard navigation
+  /* ============================
+     Landing Scroll & Intersection Observer
+  ============================ */
+
+  // Use Intersection Observer to detect which section is in viewport on landing page
   useEffect(() => {
-    if (!showProfileMenu) return;
+    if (type !== "landing" || location.pathname !== "/") return;
 
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [showProfileMenu, handleKeyDown]);
+    const observerOptions = {
+      root: null,
+      rootMargin: "-50% 0px -50% 0px", // Trigger when section is in middle of viewport
+      threshold: 0,
+    };
 
-  // Focus management for accessibility
-  useEffect(() => {
-    if (showProfileMenu) {
-      // Focus trap within dropdown
-      const focusableElements = profileMenuRef.current?.querySelectorAll(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      );
-      const firstElement = focusableElements?.[0];
-      const lastElement = focusableElements?.[focusableElements.length - 1];
-
-      const handleTabKey = (e) => {
-        if (e.key === "Tab") {
-          if (e.shiftKey) {
-            if (document.activeElement === firstElement) {
-              e.preventDefault();
-              lastElement?.focus();
-            }
-          } else {
-            if (document.activeElement === lastElement) {
-              e.preventDefault();
-              firstElement?.focus();
-            }
+    const observerCallback = (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          // Map section classes to nav link sections
+          if (entry.target.classList.contains("landing-hero")) {
+            setActiveSection("home");
+          } else if (entry.target.classList.contains("landing-branches")) {
+            setActiveSection("branches");
+          } else if (entry.target.classList.contains("landing-about")) {
+            setActiveSection("about");
           }
         }
-      };
+      });
+    };
 
-      document.addEventListener("keydown", handleTabKey);
-      return () => document.removeEventListener("keydown", handleTabKey);
+    const observer = new IntersectionObserver(observerCallback, observerOptions);
+
+    const heroSection = document.querySelector(".landing-hero");
+    const branchesSection = document.querySelector(".landing-branches");
+    const aboutSection = document.querySelector(".landing-about");
+
+    if (heroSection) observer.observe(heroSection);
+    if (branchesSection) observer.observe(branchesSection);
+    if (aboutSection) observer.observe(aboutSection);
+
+    return () => observer.disconnect();
+  }, [type, location.pathname]);
+
+  // Use Intersection Observer to detect which section is in viewport on branch pages
+  useEffect(() => {
+    if (type !== "branch") return;
+
+    const isGilPuyat = currentPage?.includes("gil-puyat");
+    const branchClass = isGilPuyat ? "gpuyat" : "guadalupe";
+
+    // If on /rooms route, set Rooms & Rates as active
+    if (location.pathname.includes("/rooms")) {
+      setActiveSection("rooms");
+      return;
     }
-  }, [showProfileMenu]);
+
+    // Otherwise use Intersection Observer for home and location sections
+    const observerOptions = {
+      root: null,
+      rootMargin: "-50% 0px -50% 0px",
+      threshold: 0,
+    };
+
+    const observerCallback = (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          if (entry.target.classList.contains(`${branchClass}-hero`)) {
+            setActiveSection("home");
+          } else if (entry.target.classList.contains(`${branchClass}-location`)) {
+            setActiveSection("location");
+          }
+        }
+      });
+    };
+
+    const observer = new IntersectionObserver(observerCallback, observerOptions);
+
+    const heroSection = document.querySelector(`.${branchClass}-hero`);
+    const locationSection = document.querySelector(`.${branchClass}-location`);
+
+    if (heroSection) observer.observe(heroSection);
+    if (locationSection) observer.observe(locationSection);
+
+    return () => observer.disconnect();
+  }, [type, currentPage, location.pathname]);
 
   const handleLandingScroll = (selector) => {
     if (location.pathname === "/") {
       document.querySelector(selector)?.scrollIntoView({ behavior: "smooth" });
-      return;
+    } else {
+      navigate("/", { state: { scrollTo: selector } });
     }
-
-    navigate("/", { state: { scrollTo: selector } });
   };
 
-  // Landing page navigation
+  /* ============================
+     LANDING NAV
+  ============================ */
+
   if (type === "landing") {
     return (
-      <nav
-        className="landing-navbar"
-        role="navigation"
-        aria-label="Main navigation"
-      >
+      <nav className="landing-navbar">
         <div className="landing-container">
           <div className="landing-nav-content">
-            {/* Navigation Links - Center */}
-            <div className="landing-nav-links" role="menubar">
+            <div className="landing-nav-logo">
+              <NavLink to="/" className="landing-logo-link">
+                <LilycrestLogo className="landing-logo-icon" aria-label="Lilycrest Logo" />
+              </NavLink>
+            </div>
+            <div className="landing-nav-links">
               <button
-                onClick={() => navigate("/")}
-                className={`landing-nav-link ${currentPage === "home" ? "active" : ""}`}
-                role="menuitem"
-                aria-current={currentPage === "home" ? "page" : undefined}
+                className={`landing-nav-link ${activeSection === "home" ? "active" : ""}`}
+                onClick={() => handleLandingScroll(".landing-hero")}
+                type="button"
               >
                 Home
               </button>
               <button
-                onClick={() =>
-                  document
-                    .querySelector(".landing-branches")
-                    ?.scrollIntoView({ behavior: "smooth" })
-                }
-                className={`landing-nav-link ${currentPage === "branches" ? "active" : ""}`}
-                role="menuitem"
-                aria-current={currentPage === "branches" ? "page" : undefined}
+                className={`landing-nav-link ${activeSection === "branches" ? "active" : ""}`}
+                onClick={() => handleLandingScroll(".landing-branches")}
+                type="button"
               >
                 Branches
               </button>
               <button
-                onClick={() =>
-                  document
-                    .querySelector(".landing-about")
-                    ?.scrollIntoView({ behavior: "smooth" })
-                }
-                className={`landing-nav-link ${currentPage === "about" ? "active" : ""}`}
-                role="menuitem"
-                aria-current={currentPage === "about" ? "page" : undefined}
+                className={`landing-nav-link ${activeSection === "about" ? "active" : ""}`}
+                onClick={() => handleLandingScroll(".landing-about")}
+                type="button"
               >
                 About
               </button>
-              <button
-                onClick={() => {}}
-                className={`landing-nav-link ${currentPage === "faqs" ? "active" : ""}`}
-                role="menuitem"
-                aria-current={currentPage === "faqs" ? "page" : undefined}
-              >
+              <NavLink to="/faqs" className="landing-nav-link">
                 FAQs
-              </button>
+              </NavLink>
             </div>
-
-            {/* Auth Section - Hidden on landing page */}
-            {/* <div className="landing-nav-auth">
+            <div className="landing-nav-auth">
               {isAuthenticated && user ? (
-                <div className="landing-nav-profile" ref={profileMenuRef}>
+                <div
+                  className="landing-nav-profile"
+                  ref={profileMenuRef}
+                >
                   <button
                     ref={profileButtonRef}
                     className="landing-profile-button"
-                    onClick={toggleProfileMenu}
+                    onClick={() => setShowProfileMenu((v) => !v)}
                     aria-expanded={showProfileMenu}
-                    aria-haspopup="menu"
-                    aria-label={`User menu for ${user.firstName || ""} ${user.lastName || ""}`}
-                    disabled={isLoading}
                   >
-                    <div className="landing-profile-avatar" aria-hidden="true">
-                      {getInitials(user.firstName, user.lastName)}
+                    <div className="landing-profile-avatar">
+                      {getInitials(user)}
                     </div>
                     <span className="landing-profile-name">
-                      {user.firstName || ""} {user.lastName || ""}
+                      {getDisplayName(user)}
                     </span>
-                    <svg
-                      className={`landing-profile-arrow ${showProfileMenu ? "open" : ""}`}
-                      width="12"
-                      height="12"
-                      viewBox="0 0 12 12"
-                      fill="none"
-                      aria-hidden="true"
-                    >
-                      <path
-                        d="M3 4.5L6 7.5L9 4.5"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
                   </button>
 
                   {showProfileMenu && (
-                    <div
-                      className="landing-profile-dropdown"
-                      role="menu"
-                      aria-label="User menu"
-                      style={{
-                        width: buttonWidth || "auto",
-                        minWidth: "auto",
-                        maxWidth: "none",
-                      }}
-                    >
-                      <div
-                        className="landing-profile-dropdown-header"
-                        role="none"
-                      >
-                        <div
-                          className="landing-profile-dropdown-avatar"
-                          aria-hidden="true"
-                        >
-                          {getInitials(user.firstName, user.lastName)}
-                        </div>
-                        <div
-                          className="landing-profile-dropdown-info"
-                          role="none"
-                        >
-                          <div className="landing-profile-dropdown-name">
-                            {user.firstName || ""} {user.lastName || ""}
-                          </div>
-                          <div className="landing-profile-dropdown-email">
-                            {user.email || ""}
-                          </div>
-                        </div>
-                      </div>
-                      <div
-                        className="landing-profile-dropdown-divider"
-                        role="separator"
-                        aria-hidden="true"
-                      ></div>
+                    <div className="landing-profile-dropdown">
                       <button
                         className="landing-profile-dropdown-item"
-                        onClick={() => {
-                          closeProfileMenu();
-                          navigate("/profile");
-                        }}
-                        role="menuitem"
-                        tabIndex={0}
+                        onClick={() => navigate("/profile")}
                       >
-                        <svg
-                          width="16"
-                          height="16"
-                          viewBox="0 0 16 16"
-                          fill="none"
-                          aria-hidden="true"
-                        >
-                          <path
-                            d="M8 8C10.21 8 12 6.21 12 4C12 1.79 10.21 0 8 0C5.79 0 4 1.79 4 4C4 6.21 5.79 8 8 8ZM8 10C5.33 10 0 11.34 0 14V16H16V14C16 11.34 10.67 10 8 10Z"
-                            fill="currentColor"
-                          />
-                        </svg>
                         My Profile
                       </button>
                       <button
-                        className="landing-profile-dropdown-item"
+                        className="landing-profile-dropdown-item logout"
                         onClick={handleLogout}
-                        role="menuitem"
-                        tabIndex={0}
-                        disabled={isLoading || globalLoading}
-                        aria-label={isLoading || globalLoading ? "Logging out..." : "Logout"}
+                        disabled={globalLoading}
                       >
-                        <svg
-                          width="16"
-                          height="16"
-                          viewBox="0 0 16 16"
-                          fill="none"
-                          aria-hidden="true"
-                        >
-                          <path
-                            d="M6 14H3.33333C2.97971 14 2.64057 13.8595 2.39052 13.6095C2.14048 13.3594 2 13.0203 2 12.6667V3.33333C2 2.97971 2.14048 2.64057 2.39052 2.39052C2.64057 2.14048 2.97971 2 3.33333 2H6M10.6667 11.3333L14 8M14 8L10.6667 4.66667M14 8H6"
-                            stroke="currentColor"
-                            strokeWidth="1.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                        {isLoading || globalLoading ? "Logging out..." : "Logout"}
+                        {globalLoading ? "Logging out..." : "Logout"}
                       </button>
                     </div>
                   )}
                 </div>
-              ) : null}
-            </div> */}
+              ) : (
+                <button
+                  onClick={() => navigate("/tenant/signin")}
+                  className="landing-nav-login"
+                >
+                  Login
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </nav>
     );
   }
 
-  // Branch page navigation (Gil Puyat or Guadalupe)
+  /* ============================
+     BRANCH NAV
+  ============================ */
+
   if (type === "branch") {
-    const isBranchGilPuyat = currentPage?.includes("gil-puyat");
-    const branchHomePath = isBranchGilPuyat ? "/gil-puyat" : "/guadalupe";
-    const branchClass = isBranchGilPuyat ? "gpuyat" : "guadalupe";
-    const navbarClass = `${branchClass}-navbar`;
-    const containerClass = `${branchClass}-container`;
-    const navLinkClass = `${branchClass}-nav-link`;
+    const isGilPuyat = currentPage?.includes("gil-puyat");
+    const branchClass = isGilPuyat ? "gpuyat" : "guadalupe";
+    const branchHome = isGilPuyat ? "/gil-puyat" : "/guadalupe";
 
     return (
-      <nav
-        className={navbarClass}
-        role="navigation"
-        aria-label="Branch navigation"
-      >
-        <div className={containerClass}>
+      <nav className={`${branchClass}-navbar`}>
+        <div className={`${branchClass}-container`}>
           <div className={`${branchClass}-nav-content`}>
-            {/* Navigation Links - Center */}
-            <div className={`${branchClass}-nav-links`} role="menubar">
+            <div className={`${branchClass}-nav-logo`}>
+              <NavLink to="/" className={`${branchClass}-logo-link`}>
+                <LilycrestLogo className={`${branchClass}-logo-icon`} aria-label="Lilycrest Logo" />
+              </NavLink>
+            </div>
+            <div className={`${branchClass}-nav-links`}>
               <button
-                onClick={() => navigate("/")}
-                className={navLinkClass}
-                role="menuitem"
+                className={`${branchClass}-nav-link ${activeSection === "home" ? "active" : ""}`}
+                onClick={() =>
+                  document
+                    .querySelector(`.${branchClass}-hero`)
+                    ?.scrollIntoView({ behavior: "smooth" })
+                }
+                type="button"
               >
                 Home
               </button>
               <button
+                className={`${branchClass}-nav-link ${activeSection === "location" ? "active" : ""}`}
                 onClick={() =>
                   document
                     .querySelector(`.${branchClass}-location`)
                     ?.scrollIntoView({ behavior: "smooth" })
                 }
-                className={navLinkClass}
-                role="menuitem"
               >
                 Location
               </button>
               <NavLink
-                to={isBranchGilPuyat ? "/gil-puyat/rooms" : "/guadalupe/rooms"}
-                className={navLinkClass}
-                role="menuitem"
+                to={`${branchHome}/rooms`}
+                className={`${branchClass}-nav-link ${activeSection === "rooms" ? "active" : ""}`}
               >
                 Rooms & Rates
               </NavLink>
             </div>
 
-            {/* Auth Section - Right */}
             <div className={`${branchClass}-nav-auth`}>
               {isAuthenticated && user ? (
                 <div
@@ -519,110 +341,30 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
                   <button
                     ref={profileButtonRef}
                     className={`${branchClass}-profile-button`}
-                    onClick={toggleProfileMenu}
+                    onClick={() => setShowProfileMenu((v) => !v)}
                     aria-expanded={showProfileMenu}
-                    aria-haspopup="menu"
-                    aria-label={`User menu for ${getDisplayName(user)}`}
-                    disabled={globalLoading}
                   >
-                    <div
-                      className={`${branchClass}-profile-avatar`}
-                      aria-hidden="true"
-                    >
+                    <div className={`${branchClass}-profile-avatar`}>
                       {getInitials(user)}
                     </div>
                     <span className={`${branchClass}-profile-name`}>
                       {getDisplayName(user)}
                     </span>
-                    <svg
-                      className={`${branchClass}-profile-arrow ${showProfileMenu ? "open" : ""}`}
-                      width="12"
-                      height="12"
-                      viewBox="0 0 12 12"
-                      fill="none"
-                      aria-hidden="true"
-                    >
-                      <path
-                        d="M3 4.5L6 7.5L9 4.5"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
                   </button>
 
                   {showProfileMenu && (
-                    <div
-                      className={`${branchClass}-profile-dropdown`}
-                      role="menu"
-                      aria-label="User menu"
-                    >
-                      <div className={`${branchClass}-profile-dropdown-header`}>
-                        <div
-                          className={`${branchClass}-profile-dropdown-avatar`}
-                        >
-                          {getInitials(user)}
-                        </div>
-                        <div className={`${branchClass}-profile-dropdown-info`}>
-                          <div
-                            className={`${branchClass}-profile-dropdown-name`}
-                          >
-                            {getDisplayName(user)}
-                          </div>
-                          <div
-                            className={`${branchClass}-profile-dropdown-email`}
-                          >
-                            {user.email || ""}
-                          </div>
-                        </div>
-                      </div>
+                    <div className={`${branchClass}-profile-dropdown`}>
                       <button
                         className={`${branchClass}-profile-dropdown-item`}
-                        onClick={() => {
-                          closeProfileMenu();
-                          navigate("/profile");
-                        }}
-                        role="menuitem"
-                        tabIndex={0}
+                        onClick={() => navigate("/profile")}
                       >
-                        <svg
-                          width="16"
-                          height="16"
-                          viewBox="0 0 16 16"
-                          fill="none"
-                          aria-hidden="true"
-                        >
-                          <path
-                            d="M8 8C10.21 8 12 6.21 12 4C12 1.79 10.21 0 8 0C5.79 0 4 1.79 4 4C4 6.21 5.79 8 8 8ZM8 10C5.33 10 0 11.34 0 14V16H16V14C16 11.34 10.67 10 8 10Z"
-                            fill="currentColor"
-                          />
-                        </svg>
                         My Profile
                       </button>
                       <button
                         className={`${branchClass}-profile-dropdown-item logout`}
                         onClick={handleLogout}
-                        role="menuitem"
-                        tabIndex={0}
                         disabled={globalLoading}
-                        aria-label={globalLoading ? "Logging out..." : "Logout"}
                       >
-                        <svg
-                          width="16"
-                          height="16"
-                          viewBox="0 0 16 16"
-                          fill="none"
-                          aria-hidden="true"
-                        >
-                          <path
-                            d="M6 14H3.33333C2.97971 14 2.64057 13.8595 2.39052 13.6095C2.14048 13.3594 2 13.0203 2 12.6667V3.33333C2 2.97971 2.14048 2.64057 2.39052 2.39052C2.64057 2.14048 2.97971 2 3.33333 2H6M10.6667 11.3333L14 8M14 8L10.6667 4.66667M14 8H6"
-                            stroke="currentColor"
-                            strokeWidth="1.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
                         {globalLoading ? "Logging out..." : "Logout"}
                       </button>
                     </div>
@@ -632,7 +374,6 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
                 <button
                   onClick={() => navigate("/tenant/signin")}
                   className={`${branchClass}-nav-login`}
-                  aria-label="Login to your account"
                 >
                   Login
                 </button>

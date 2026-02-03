@@ -125,6 +125,24 @@ export default function InquiriesPage() {
     });
   };
 
+  // Extract inquiry type from subject
+  const getInquiryType = (subject) => {
+    if (!subject) return "General";
+    // Subject format is "InquiryType: Name" so extract the part before the colon
+    const type = subject.split(":")[0].trim();
+    return type || "General";
+  };
+
+  // Format branch name for display
+  const formatBranchName = (branch) => {
+    const branchNames = {
+      "gil-puyat": "Gil Puyat",
+      "guadalupe": "Guadalupe",
+      "general": "General",
+    };
+    return branchNames[branch] || branch;
+  };
+
   return (
     <div className="admin-inquiries-page">
       <Sidebar />
@@ -195,6 +213,7 @@ export default function InquiriesPage() {
           <div className="admin-inquiries-table-header">
             <div>NAME</div>
             <div>CONTACT</div>
+            <div>INQUIRY TYPE</div>
             <div>BRANCH</div>
             <div>DATE &amp; TIME</div>
             <div>STATUS</div>
@@ -274,6 +293,11 @@ export default function InquiriesPage() {
                     </div>
                   </div>
                   <div className="admin-inquiries-cell">
+                    <span className={`admin-inquiries-inquiry-type-badge ${getInquiryType(inquiry.subject).toLowerCase().replace(/\s+/g, '-')}`}>
+                      {getInquiryType(inquiry.subject)}
+                    </span>
+                  </div>
+                  <div className="admin-inquiries-cell">
                     <div className="admin-inquiries-branch">
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -297,7 +321,7 @@ export default function InquiriesPage() {
                           strokeLinejoin="round"
                         />
                       </svg>
-                      <span>{inquiry.branch}</span>
+                      <span>{formatBranchName(inquiry.branch)}</span>
                     </div>
                   </div>
                   <div className="admin-inquiries-cell">
@@ -371,41 +395,43 @@ export default function InquiriesPage() {
                         />
                       </svg>
                     </button>
-                    <button
-                      className="admin-inquiries-action"
-                      aria-label="Respond"
-                      onClick={() => setSelectedInquiry(inquiry)}
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="16"
-                        height="16"
-                        viewBox="0 0 16 16"
-                        fill="none"
+                    {inquiry.status !== "resolved" && (
+                      <button
+                        className="admin-inquiries-action"
+                        aria-label="Respond"
+                        onClick={() => setSelectedInquiry(inquiry)}
                       >
-                        <g clipPath="url(#clip0_113_255)">
-                          <path
-                            d="M9.6907 14.4573C9.71603 14.5205 9.76006 14.5743 9.81688 14.6117C9.87371 14.6491 9.9406 14.6682 10.0086 14.6664C10.0766 14.6647 10.1424 14.6422 10.1973 14.6019C10.2521 14.5617 10.2933 14.5057 10.3154 14.4413L14.6487 1.77466C14.67 1.71559 14.6741 1.65167 14.6604 1.59037C14.6468 1.52907 14.6159 1.47293 14.5715 1.42852C14.5271 1.3841 14.471 1.35326 14.4097 1.33959C14.3484 1.32592 14.2844 1.32999 14.2254 1.35133L1.5587 5.68466C1.49436 5.70673 1.43832 5.74794 1.39808 5.80278C1.35785 5.85761 1.33535 5.92344 1.33361 5.99144C1.33186 6.05943 1.35096 6.12632 1.38834 6.18315C1.42571 6.23997 1.47958 6.284 1.5427 6.30933L6.82937 8.42933C6.99649 8.49624 7.14833 8.5963 7.27574 8.72348C7.40315 8.85066 7.50349 9.00233 7.5707 9.16933L9.6907 14.4573Z"
-                            stroke="#00A63E"
-                            strokeWidth="1.33333"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                          <path
-                            d="M14.5692 1.43134L7.27588 8.724"
-                            stroke="#00A63E"
-                            strokeWidth="1.33333"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </g>
-                        <defs>
-                          <clipPath id="clip0_113_255">
-                            <rect width="16" height="16" fill="white" />
-                          </clipPath>
-                        </defs>
-                      </svg>
-                    </button>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="16"
+                          height="16"
+                          viewBox="0 0 16 16"
+                          fill="none"
+                        >
+                          <g clipPath="url(#clip0_113_255)">
+                            <path
+                              d="M9.6907 14.4573C9.71603 14.5205 9.76006 14.5743 9.81688 14.6117C9.87371 14.6491 9.9406 14.6682 10.0086 14.6664C10.0766 14.6647 10.1424 14.6422 10.1973 14.6019C10.2521 14.5617 10.2933 14.5057 10.3154 14.4413L14.6487 1.77466C14.67 1.71559 14.6741 1.65167 14.6604 1.59037C14.6468 1.52907 14.6159 1.47293 14.5715 1.42852C14.5271 1.3841 14.471 1.35326 14.4097 1.33959C14.3484 1.32592 14.2844 1.32999 14.2254 1.35133L1.5587 5.68466C1.49436 5.70673 1.43832 5.74794 1.39808 5.80278C1.35785 5.85761 1.33535 5.92344 1.33361 5.99144C1.33186 6.05943 1.35096 6.12632 1.38834 6.18315C1.42571 6.23997 1.47958 6.284 1.5427 6.30933L6.82937 8.42933C6.99649 8.49624 7.14833 8.5963 7.27574 8.72348C7.40315 8.85066 7.50349 9.00233 7.5707 9.16933L9.6907 14.4573Z"
+                              stroke="#00A63E"
+                              strokeWidth="1.33333"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                            <path
+                              d="M14.5692 1.43134L7.27588 8.724"
+                              stroke="#00A63E"
+                              strokeWidth="1.33333"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </g>
+                          <defs>
+                            <clipPath id="clip0_113_255">
+                              <rect width="16" height="16" fill="white" />
+                            </clipPath>
+                          </defs>
+                        </svg>
+                      </button>
+                    )}
                     <button
                       className="admin-inquiries-action delete"
                       aria-label="Archive"
