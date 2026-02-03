@@ -665,7 +665,7 @@ html {
 }
 
 .landing-contact-subtitle {
-  font-size: 16px;
+  font-size: 18px;
   margin-bottom: 50px;
   opacity: 0.9;
 }
@@ -691,12 +691,12 @@ html {
 }
 
 .landing-contact-icon svg {
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
 }
 
 .landing-contact-box p {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 500;
   margin: 0;
 }
@@ -708,7 +708,7 @@ html {
   border: none;
   border-radius: 4px;
   font-weight: 600;
-  font-size: 14px;
+  font-size: 16px;
   cursor: pointer;
   margin-bottom: 15px;
   transition: background-color 0.3s ease;
@@ -719,7 +719,7 @@ html {
 }
 
 .landing-contact-note {
-  font-size: 14px;
+  font-size: 16px;
   opacity: 0.8;
   margin: 0;
 }

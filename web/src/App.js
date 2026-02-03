@@ -14,8 +14,10 @@ import DoubleSharingPage from "./features/public/pages/DoubleSharingPage";
 import QuadrupleSharingPage from "./features/public/pages/QuadrupleSharingPage";
 import GuadalupePage from "./features/public/pages/GuadalupePage";
 import GuadalupeRoomsPage from "./features/public/pages/GuadalupeRoomsPage";
+import FAQsPage from "./features/public/pages/FAQsPage";
 
 // Admin Pages
+import AdminLoginPage from "./features/admin/pages/AdminLoginPage";
 import AdminDashboardPage from "./features/admin/pages/Dashboard";
 import InquiriesPage from "./features/admin/pages/InquiriesPage";
 import ReservationsPage from "./features/admin/pages/ReservationsPage";
@@ -115,6 +117,16 @@ function AppContent() {
             </RequireNonAdmin>
           }
         />
+        <Route
+          path="/faqs"
+          element={
+            <RequireNonAdmin>
+              <FAQsPage />
+            </RequireNonAdmin>
+          }
+        />
+
+        <Route path="/admin/login" element={<AdminLoginPage />} />
 
         {/* Admin routes - all require admin auth */}
         <Route

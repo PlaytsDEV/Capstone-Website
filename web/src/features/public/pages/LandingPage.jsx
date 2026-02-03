@@ -5,12 +5,23 @@ import LilycrestLogo from "../../../shared/components/LilycrestLogo";
 import Footer from "../components/Footer";
 import Navbar from "../components/Navbar";
 import InquiryModal from "../modals/InquiryModal";
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 function LandingPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    const selector = location.state?.scrollTo;
+    if (!selector) return;
+
+    const target = document.querySelector(selector);
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [location]);
 
   return (
     <div className="landing-page">
@@ -49,21 +60,6 @@ function LandingPage() {
             Experience modern urban living at its finest. We provide safe,
             comfortable, and affordable dormitory spaces in prime locations
             across Metro Manila.
-          </p>
-        </div>
-      </section>
-
-      {/* About Section */}
-      <section className="landing-about">
-        <div className="landing-container">
-          <h2>About Lilycrest</h2>
-          <p>
-            Lilycrest offers premium dormitory accommodations designed for
-            students and young professionals. With two strategic locations in
-            Gil Puyat and Guadalupe, we provide easy access to business
-            districts, educational institutions, and vibrant entertainment
-            areas. Each facility is equipped with modern amenities to ensure a
-            comfortable and productive living experience.
           </p>
         </div>
       </section>
@@ -376,6 +372,21 @@ function LandingPage() {
               </ul>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* About Section */}
+      <section className="landing-about">
+        <div className="landing-container">
+          <h2>About Lilycrest</h2>
+          <p>
+            Lilycrest offers premium dormitory accommodations designed for
+            students and young professionals. With two strategic locations in
+            Gil Puyat and Guadalupe, we provide easy access to business
+            districts, educational institutions, and vibrant entertainment
+            areas. Each facility is equipped with modern amenities to ensure a
+            comfortable and productive living experience.
+          </p>
         </div>
       </section>
 

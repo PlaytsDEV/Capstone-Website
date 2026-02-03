@@ -139,7 +139,10 @@ function GPuyatPage() {
         <div className="gpuyat-container">
           <h2>Room View</h2>
 
-          <button className="gpuyat-btn-view-rooms">
+          <button
+            onClick={() => navigate("/gil-puyat/rooms")}
+            className="gpuyat-btn-view-rooms"
+          >
             View All Rooms & Rates
           </button>
 

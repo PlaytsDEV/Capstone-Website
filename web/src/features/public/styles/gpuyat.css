@@ -636,6 +636,7 @@
   box-shadow: var(--shadow-md);
   border: 1px solid var(--color-border-light);
   transition: box-shadow var(--transition-normal);
+  margin: 0 auto;
 }
 
 .gpuyat-location-info:hover {

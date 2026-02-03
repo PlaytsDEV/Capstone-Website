@@ -49,7 +49,10 @@ function PrivateRoomPage() {
         description: "Electronic door lock",
       },
       {
-        icon: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FF6900" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6"/><path d="M15 2v6"/><path d="M12 17v5"/><path d="M5 8h14"/><path d="M6 11V8h12v3"/></svg>',
+        icon: `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="none">
+    <path d="M5.83333 13.5832C7.66667 13.5832 9.16667 12.0582 9.16667 10.2082C9.16667 9.2415 8.69167 8.32484 7.74167 7.54984C6.79167 6.77484 6.075 5.62484 5.83333 4.4165C5.59167 5.62484 4.88333 6.78317 3.925 7.54984C2.96667 8.3165 2.5 9.24984 2.5 10.2082C2.5 12.0582 4 13.5832 5.83333 13.5832Z" stroke="#FF6900" stroke-width="1.66667" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M10.4666 5.49993C11.0398 4.58421 11.446 3.57414 11.6666 2.5166C12.0833 4.59993 13.3333 6.59994 15 7.93327C16.6666 9.2666 17.5 10.8499 17.5 12.5166C17.5047 13.6685 17.1673 14.7959 16.5306 15.7558C15.8939 16.7158 14.9865 17.4651 13.9234 17.9087C12.8603 18.3523 11.6895 18.4703 10.5593 18.2477C9.42906 18.0251 8.3904 17.4719 7.57495 16.6583" stroke="#FF6900" stroke-width="1.66667" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`,
         title: "Hot & Cold Shower",
         description: "Private bathroom",
       },

@@ -21,11 +21,11 @@ function GPuyatRoomsPage() {
       {/* Breadcrumb */}
       <div className="gpuyat-rooms-breadcrumb">
         <div className="gpuyat-rooms-container">
-          <span className="breadcrumb-link">Home</span>
+          <span onClick={() => navigate("/")} className="breadcrumb-link">Home</span>
           <span className="breadcrumb-separator">/</span>
-          <span className="breadcrumb-link">Gil Puyat Branch</span>
+          <span onClick={() => navigate("/gil-puyat")} className="breadcrumb-link">Gil Puyat Branch</span>
           <span className="breadcrumb-separator">/</span>
-          <span className="breadcrumb-current">Rooms & Rates</span>
+          <span onClick={() => navigate("/gil-puyat/rooms")} className="breadcrumb-current">Rooms & Rates</span>
         </div>
       </div>
 

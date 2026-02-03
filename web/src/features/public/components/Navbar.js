@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import {
@@ -13,6 +13,7 @@ import {
  */
 function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
   const navigate = useNavigate();
+  const location = useLocation();
 
   // Get user from auth context (includes backend data with firstName/lastName)
   const {
@@ -266,6 +267,15 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
     }
   }, [showProfileMenu]);
 
+  const handleLandingScroll = (selector) => {
+    if (location.pathname === "/") {
+      document.querySelector(selector)?.scrollIntoView({ behavior: "smooth" });
+      return;
+    }
+
+    navigate("/", { state: { scrollTo: selector } });
+  };
+
   // Landing page navigation
   if (type === "landing") {
     return (
@@ -278,20 +288,16 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
           <div className="landing-nav-content">
             {/* Navigation Links - Center */}
             <div className="landing-nav-links" role="menubar">
-              <button
-                onClick={() => navigate("/")}
+              <NavLink
+                to="/"
                 className={`landing-nav-link ${currentPage === "home" ? "active" : ""}`}
                 role="menuitem"
                 aria-current={currentPage === "home" ? "page" : undefined}
               >
                 Home
-              </button>
+              </NavLink>
               <button
-                onClick={() =>
-                  document
-                    .querySelector(".landing-branches")
-                    ?.scrollIntoView({ behavior: "smooth" })
-                }
+                onClick={() => handleLandingScroll(".landing-branches")}
                 className={`landing-nav-link ${currentPage === "branches" ? "active" : ""}`}
                 role="menuitem"
                 aria-current={currentPage === "branches" ? "page" : undefined}
@@ -299,25 +305,21 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
                 Branches
               </button>
               <button
-                onClick={() =>
-                  document
-                    .querySelector(".landing-about")
-                    ?.scrollIntoView({ behavior: "smooth" })
-                }
+                onClick={() => handleLandingScroll(".landing-about")}
                 className={`landing-nav-link ${currentPage === "about" ? "active" : ""}`}
                 role="menuitem"
                 aria-current={currentPage === "about" ? "page" : undefined}
               >
                 About
               </button>
-              <button
-                onClick={() => {}}
+              <NavLink
+                to="/faqs"
                 className={`landing-nav-link ${currentPage === "faqs" ? "active" : ""}`}
                 role="menuitem"
                 aria-current={currentPage === "faqs" ? "page" : undefined}
               >
                 FAQs
-              </button>
+              </NavLink>
             </div>
 
             {/* Auth Section - Hidden on landing page */}
@@ -457,6 +459,7 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
   // Branch page navigation (Gil Puyat or Guadalupe)
   if (type === "branch") {
     const isBranchGilPuyat = currentPage?.includes("gil-puyat");
+    const branchHomePath = isBranchGilPuyat ? "/gil-puyat" : "/guadalupe";
     const branchClass = isBranchGilPuyat ? "gpuyat" : "guadalupe";
     const navbarClass = `${branchClass}-navbar`;
     const containerClass = `${branchClass}-container`;
@@ -472,13 +475,13 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
           <div className={`${branchClass}-nav-content`}>
             {/* Navigation Links - Center */}
             <div className={`${branchClass}-nav-links`} role="menubar">
-              <button
-                onClick={() => navigate("/")}
+              <NavLink
+                to={branchHomePath}
                 className={navLinkClass}
                 role="menuitem"
               >
                 Home
-              </button>
+              </NavLink>
               <button
                 onClick={() =>
                   document
@@ -490,19 +493,13 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
               >
                 Location
               </button>
-              <button
-                onClick={() => {
-                  if (isBranchGilPuyat) {
-                    navigate("/gil-puyat/rooms");
-                  } else {
-                    navigate("/guadalupe/rooms");
-                  }
-                }}
+              <NavLink
+                to={isBranchGilPuyat ? "/gil-puyat/rooms" : "/guadalupe/rooms"}
                 className={navLinkClass}
                 role="menuitem"
               >
                 Rooms & Rates
-              </button>
+              </NavLink>
             </div>
 
             {/* Auth Section - Right */}
@@ -626,7 +623,7 @@ function Navbar({ type = "landing", currentPage = "home", onLoginClick }) {
                 </div>
               ) : (
                 <button
-                  onClick={onLoginClick}
+                  onClick={() => navigate("/tenant/signin")}
                   className={`${branchClass}-nav-login`}
                   aria-label="Login to your account"
                 >
