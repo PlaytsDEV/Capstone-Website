@@ -30,8 +30,8 @@ import { useAuth } from "../../../shared/hooks/useAuth";
 import TermsModal from "../modals/TermsModal";
 import "../../public/styles/tenant-signup.css";
 import "../../../shared/styles/notification.css";
-import logoImage from "../../../assets/images/landingpage/logo.png";
-import backgroundImage from "../../../assets/images/landingpage/gil-puyat-branch.png";
+import logoImage from "../../../assets/images/branding/logo.png";
+import backgroundImage from "../../../assets/images/branding/gil-puyat-branch.png";
 
 function SignUp() {
   const navigate = useNavigate();

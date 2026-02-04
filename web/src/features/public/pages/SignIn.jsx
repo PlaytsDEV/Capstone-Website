@@ -10,8 +10,8 @@ import { auth } from "../../../firebase/config";
 import { authApi } from "../../../shared/api/apiClient";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import "../styles/tenant-signin.css";
-import logoImage from "../../../assets/images/landingpage/logo.png";
-import backgroundImage from "../../../assets/images/landingpage/gil-puyat-branch.png";
+import logoImage from "../../../assets/images/branding/logo.png";
+import backgroundImage from "../../../assets/images/branding/gil-puyat-branch.png";
 
 function SignIn() {
   const navigate = useNavigate();

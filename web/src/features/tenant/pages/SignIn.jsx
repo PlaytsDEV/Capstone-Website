@@ -25,8 +25,8 @@ import { showNotification } from "../../../shared/utils/notification";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import "../../public/styles/tenant-signin.css";
 import "../../../shared/styles/notification.css";
-import logoImage from "../../../assets/images/landingpage/logo.png";
-import backgroundImage from "../../../assets/images/landingpage/gil-puyat-branch.png";
+import logoImage from "../../../assets/images/branding/logo.png";
+import backgroundImage from "../../../assets/images/branding/gil-puyat-branch.png";
 
 function SignIn() {
   const navigate = useNavigate();

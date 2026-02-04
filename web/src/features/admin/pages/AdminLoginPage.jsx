@@ -1,5 +1,5 @@
 import "../styles/admin-login.css";
-import logoImage from "../../../assets/images/landingpage/logo.png";
+import logoImage from "../../../assets/images/branding/logo.png";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { signInWithEmailAndPassword } from "firebase/auth";

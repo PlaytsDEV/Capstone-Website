@@ -1,8 +1,8 @@
 import "../styles/gpuyat-rooms.css";
-import locationMapImage from "../../../assets/images/gpuyat/location-map.jpg";
-import privateRoomImage from "../../../assets/images/gpuyat/standard-room.jpg";
-import doubleSharingImage from "../../../assets/images/gpuyat/deluxe-room.jpg";
-import quadrupleSharingImage from "../../../assets/images/gpuyat/premium-room.jpg";
+import locationMapImage from "../../../assets/images/branches/gil-puyat/location-map.jpg";
+import privateRoomImage from "../../../assets/images/branches/gil-puyat/standard-room.jpg";
+import doubleSharingImage from "../../../assets/images/branches/gil-puyat/deluxe-room.jpg";
+import quadrupleSharingImage from "../../../assets/images/branches/gil-puyat/premium-room.jpg";
 import Footer from "../components/Footer";
 import Navbar from "../components/Navbar";
 import { useNavigate } from "react-router-dom";
@@ -21,11 +21,23 @@ function GPuyatRoomsPage() {
       {/* Breadcrumb */}
       <div className="gpuyat-rooms-breadcrumb">
         <div className="gpuyat-rooms-container">
-          <span onClick={() => navigate("/")} className="breadcrumb-link">Home</span>
+          <span onClick={() => navigate("/")} className="breadcrumb-link">
+            Home
+          </span>
           <span className="breadcrumb-separator">/</span>
-          <span onClick={() => navigate("/gil-puyat")} className="breadcrumb-link">Gil Puyat Branch</span>
+          <span
+            onClick={() => navigate("/gil-puyat")}
+            className="breadcrumb-link"
+          >
+            Gil Puyat Branch
+          </span>
           <span className="breadcrumb-separator">/</span>
-          <span onClick={() => navigate("/gil-puyat/rooms")} className="breadcrumb-current">Rooms & Rates</span>
+          <span
+            onClick={() => navigate("/gil-puyat/rooms")}
+            className="breadcrumb-current"
+          >
+            Rooms & Rates
+          </span>
         </div>
       </div>
 

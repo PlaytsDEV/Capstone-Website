@@ -1,6 +1,6 @@
 import "../styles/landingpage.css";
-import gilPuyatImage from "../../../assets/images/landingpage/gil-puyat-branch.png";
-import guadalupeImage from "../../../assets/images/landingpage/guadalupe-branch.png";
+import gilPuyatImage from "../../../assets/images/branding/gil-puyat-branch.png";
+import guadalupeImage from "../../../assets/images/branding/guadalupe-branch.png";
 import LilycrestLogo from "../../../shared/components/LilycrestLogo";
 import Footer from "../components/Footer";
 import Navbar from "../components/Navbar";
@@ -46,7 +46,12 @@ function LandingPage() {
             </p>
 
             <div className="landing-search-bar">
-              <button onClick={() => navigate("/tenant/dashboard")} className="landing-btn-search">Find Your Room</button>
+              <button
+                onClick={() => navigate("/tenant/dashboard")}
+                className="landing-btn-search"
+              >
+                Find Your Room
+              </button>
             </div>
           </div>
         </div>

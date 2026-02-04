@@ -28,7 +28,7 @@ import { useAuth } from "../../../shared/hooks/useAuth";
 import { authApi } from "../../../shared/api/apiClient";
 import "../../../shared/styles/notification.css";
 import "./BranchSelection.css";
-import logoImage from "../../../assets/images/landingpage/logo.png";
+import logoImage from "../../../assets/images/branding/logo.png";
 
 function BranchSelection() {
   const navigate = useNavigate();
