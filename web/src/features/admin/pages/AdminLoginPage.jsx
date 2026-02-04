@@ -91,7 +91,7 @@ function AdminLoginPage() {
         console.log("👨‍💼 Admin login successful, redirecting to dashboard");
         // Show welcome notification
         showNotification(
-          `Welcome back, ${userData.user.firstName || "Admin"}!`,
+          `Welcome, ${userData.user.firstName || "Admin"}!`,
           "success",
         );
         // Small delay to show the notification before redirect

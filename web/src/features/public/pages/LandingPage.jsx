@@ -47,7 +47,7 @@ function LandingPage() {
 
             <div className="landing-search-bar">
               <button
-                onClick={() => navigate("/tenant/dashboard")}
+                onClick={() => navigate("/check-availability")}
                 className="landing-btn-search"
               >
                 Find Your Room

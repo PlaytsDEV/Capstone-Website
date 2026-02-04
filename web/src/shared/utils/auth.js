@@ -22,10 +22,13 @@ export const logout = async (skipConfirmation = false) => {
     }
 
     await auth.signOut();
-    showNotification("Logged out successfully", "success");
+    // Wait for screen to load before showing notification
+    setTimeout(() => {
+      showNotification("Logged out successfully", "success");
+    }, 300);
     setTimeout(() => {
       window.location.href = "/";
-    }, 500);
+    }, 800);
     return true;
   } catch (error) {
     console.error("Logout error:", error);

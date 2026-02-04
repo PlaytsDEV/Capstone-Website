@@ -78,7 +78,7 @@ function GuadalupePage() {
             </p>
             <div className="guadalupe-search-bar">
               <button
-                onClick={() => navigate("/tenants/dashboard")}
+                onClick={() => navigate("/check-availability")}
                 className="guadalupe-btn-search"
               >
                 Find Your Room

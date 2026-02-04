@@ -69,8 +69,14 @@ function Navbar({ type = "landing", currentPage = "home" }) {
     try {
       const result = await logout(user?.branch);
       if (result?.success) {
-        showNotification("Logged out successfully", "success");
-        window.location.href = result.branch || "/";
+        // Brief delay with loading overlay visible, then show notification and navigate
+        setTimeout(() => {
+          showNotification("You have been logged out successfully", "success");
+          // Small delay after notification appears, then navigate
+          setTimeout(() => {
+            window.location.href = result.branch || "/";
+          }, 300);
+        }, 400);
       }
     } catch (err) {
       showNotification("Logout failed. Please try again.", "error");

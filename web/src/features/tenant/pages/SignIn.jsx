@@ -506,10 +506,7 @@ function SignIn() {
     // STEP: Branch already selected - redirect based on role
     console.log("✅ Branch selected - redirecting based on role");
 
-    showNotification(
-      `Welcome back, ${loginResponse.user.firstName}!`,
-      "success",
-    );
+    showNotification(`Welcome, ${loginResponse.user.firstName}!`, "success");
 
     setTimeout(() => {
       if (

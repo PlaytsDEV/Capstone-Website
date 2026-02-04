@@ -84,7 +84,7 @@ function GPuyatPage() {
             </p>
             <div className="gpuyat-search-bar">
               <button
-                onClick={() => navigate("/tenant/dashboard")}
+                onClick={() => navigate("/check-availability")}
                 className="gpuyat-btn-search"
               >
                 Find Your Room

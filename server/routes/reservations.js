@@ -120,18 +120,24 @@ router.post("/", verifyToken, verifyUser, async (req, res) => {
     }
 
     // Validate required fields
-    const { roomId, checkInDate, totalPrice } = req.body;
+    const { roomId, roomName, checkInDate, totalPrice } = req.body;
 
-    if (!roomId || !checkInDate || !totalPrice) {
+    if ((!roomId && !roomName) || !checkInDate || !totalPrice) {
       return res.status(400).json({
         error:
-          "Missing required fields: roomId, checkInDate, and totalPrice are required",
+          "Missing required fields: roomId or roomName, checkInDate, and totalPrice are required",
         code: "MISSING_REQUIRED_FIELDS",
       });
     }
 
-    // Verify room exists
-    const room = await Room.findById(roomId);
+    // Verify room exists - look up by ID or name
+    let room;
+    if (roomId) {
+      room = await Room.findById(roomId);
+    } else if (roomName) {
+      room = await Room.findOne({ name: roomName });
+    }
+
     if (!room) {
       return res.status(404).json({
         error: "Room not found",
@@ -147,10 +153,14 @@ router.post("/", verifyToken, verifyUser, async (req, res) => {
       });
     }
 
-    // Create new reservation
+    // Create new reservation with room's ObjectId
     const reservation = new Reservation({
-      ...req.body,
       userId: dbUser._id,
+      roomId: room._id, // Use the actual room ObjectId
+      checkInDate: req.body.checkInDate,
+      checkOutDate: req.body.checkOutDate || null,
+      totalPrice: req.body.totalPrice,
+      notes: req.body.notes || "",
       status: "pending",
     });
 

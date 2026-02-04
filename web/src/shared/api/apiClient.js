@@ -298,7 +298,10 @@ export const reservationApi = {
    * Cancel reservation
    */
   cancel: (reservationId) =>
-    authFetch(`/reservations/${reservationId}/cancel`, { method: "POST" }),
+    authFetch(`/reservations/${reservationId}`, {
+      method: "PUT",
+      body: JSON.stringify({ status: "cancelled" }),
+    }),
 };
 
 // =============================================================================
