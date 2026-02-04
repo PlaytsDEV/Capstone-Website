@@ -108,15 +108,15 @@ function ReservationsPage() {
       color: "blue",
     },
     {
-      label: "Checked In",
-      value: reservations.filter((r) => r.status.toLowerCase() === "checked-in")
+      label: "Ready For Move In",
+      value: reservations.filter((r) => r.status.toLowerCase() === "ready-for-move-in")
         .length,
       color: "green",
     },
     {
-      label: "Checked Out",
+      label: "Active Tenant",
       value: reservations.filter(
-        (r) => r.status.toLowerCase() === "checked-out",
+        (r) => r.status.toLowerCase() === "active-tenant",
       ).length,
       color: "purple",
     },
@@ -132,6 +132,19 @@ function ReservationsPage() {
     const reservation = reservations.find((res) => res.id === id);
     if (reservation) {
       setSelectedReservation(reservation);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (window.confirm("Are you sure you want to delete this reservation? This action cannot be undone.")) {
+      try {
+        await reservationApi.delete(id);
+        showNotification("Reservation deleted successfully", "success", 3000);
+        handleRefreshData();
+      } catch (err) {
+        console.error("❌ Error deleting reservation:", err);
+        showNotification("Failed to delete reservation", "error", 3000);
+      }
     }
   };
 
@@ -534,34 +547,85 @@ function ReservationsPage() {
                           </span>
                         </td>
                         <td className="admin-reservations-table-td">
-                          <button
-                            className="admin-reservations-action-btn"
-                            onClick={() => handleView(reservation.id)}
-                            title="View Details"
-                          >
-                            <svg
-                              width="18"
-                              height="18"
-                              viewBox="0 0 18 18"
-                              fill="none"
-                              xmlns="http://www.w3.org/2000/svg"
+                          <div className="admin-reservations-actions">
+                            <button
+                              className="admin-reservations-action-btn"
+                              onClick={() => handleView(reservation.id)}
+                              title="View Details"
                             >
-                              <path
-                                d="M1.5 9C1.5 9 4.5 3 9 3C13.5 3 16.5 9 16.5 9C16.5 9 13.5 15 9 15C4.5 15 1.5 9 1.5 9Z"
-                                stroke="#6B7280"
-                                strokeWidth="1.5"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                              <path
-                                d="M9 11.25C10.2426 11.25 11.25 10.2426 11.25 9C11.25 7.75736 10.2426 6.75 9 6.75C7.75736 6.75 6.75 7.75736 6.75 9C6.75 10.2426 7.75736 11.25 9 11.25Z"
-                                stroke="#6B7280"
-                                strokeWidth="1.5"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                            </svg>
-                          </button>
+                              <svg
+                                width="18"
+                                height="18"
+                                viewBox="0 0 18 18"
+                                fill="none"
+                                xmlns="http://www.w3.org/2000/svg"
+                              >
+                                <path
+                                  d="M1.5 9C1.5 9 4.5 3 9 3C13.5 3 16.5 9 16.5 9C16.5 9 13.5 15 9 15C4.5 15 1.5 9 1.5 9Z"
+                                  stroke="#6B7280"
+                                  strokeWidth="1.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                                <path
+                                  d="M9 11.25C10.2426 11.25 11.25 10.2426 11.25 9C11.25 7.75736 10.2426 6.75 9 6.75C7.75736 6.75 6.75 7.75736 6.75 9C6.75 10.2426 7.75736 11.25 9 11.25Z"
+                                  stroke="#6B7280"
+                                  strokeWidth="1.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </button>
+                            <button
+                              className="admin-reservations-action-btn admin-reservations-action-btn-delete"
+                              onClick={() => handleDelete(reservation.id)}
+                              title="Delete Reservation"
+                            >
+                              <svg
+                                width="18"
+                                height="18"
+                                viewBox="0 0 18 18"
+                                fill="none"
+                                xmlns="http://www.w3.org/2000/svg"
+                              >
+                                <path
+                                  d="M2.25 4.5H16.5"
+                                  stroke="#EF4444"
+                                  strokeWidth="1.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                                <path
+                                  d="M3.75 4.5V14.25C3.75 15.0117 4.23857 15.75 5.25 15.75H12.75C13.7614 15.75 14.25 15.0117 14.25 14.25V4.5"
+                                  stroke="#EF4444"
+                                  strokeWidth="1.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                                <path
+                                  d="M7.5 7.5V13.5"
+                                  stroke="#EF4444"
+                                  strokeWidth="1.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                                <path
+                                  d="M10.5 7.5V13.5"
+                                  stroke="#EF4444"
+                                  strokeWidth="1.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                                <path
+                                  d="M6.75 4.5V3C6.75 2.58579 7.08579 2.25 7.5 2.25H10.5C10.9142 2.25 11.25 2.58579 11.25 3V4.5"
+                                  stroke="#EF4444"
+                                  strokeWidth="1.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}

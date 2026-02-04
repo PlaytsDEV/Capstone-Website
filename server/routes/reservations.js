@@ -307,4 +307,76 @@ router.put(
   },
 );
 
+/**
+ * DELETE /api/reservations/:reservationId
+ *
+ * Delete a reservation (admin only)
+ *
+ * Access: Admin only
+ *
+ * @param {string} reservationId - Reservation ID to delete
+ * @returns {Object} Success message
+ */
+router.delete("/:reservationId", verifyToken, verifyAdmin, async (req, res) => {
+  try {
+    const { reservationId } = req.params;
+    const user = req.user;
+
+    // Get user from database to check branch
+    const dbUser = await User.findOne({ firebaseUid: user.uid });
+
+    if (!dbUser) {
+      return res.status(404).json({
+        error: "User not found",
+        code: "USER_NOT_FOUND",
+      });
+    }
+
+    // Find reservation
+    const reservation = await Reservation.findById(reservationId);
+
+    if (!reservation) {
+      return res.status(404).json({
+        error: "Reservation not found",
+        code: "RESERVATION_NOT_FOUND",
+      });
+    }
+
+    // Check branch access (non-super-admin can only manage their branch)
+    if (dbUser.role !== "super-admin") {
+      const room = await Room.findById(reservation.roomId);
+      if (!room || room.branch !== dbUser.branch) {
+        return res.status(403).json({
+          error: "Unauthorized to delete this reservation",
+          code: "UNAUTHORIZED_BRANCH",
+        });
+      }
+    }
+
+    // Delete the reservation
+    await Reservation.findByIdAndDelete(reservationId);
+
+    res.json({
+      message: "Reservation deleted successfully",
+      reservationId: reservationId,
+    });
+  } catch (error) {
+    console.error("❌ Error deleting reservation:", error);
+
+    // Handle cast errors (invalid ID)
+    if (error.name === "CastError") {
+      return res.status(400).json({
+        error: "Invalid reservation ID format",
+        code: "INVALID_RESERVATION_ID",
+      });
+    }
+
+    res.status(500).json({
+      error: "Failed to delete reservation",
+      details: error.message,
+      code: "DELETE_RESERVATION_ERROR",
+    });
+  }
+});
+
 export default router;

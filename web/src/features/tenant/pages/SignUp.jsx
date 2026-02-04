@@ -27,10 +27,10 @@ import { auth } from "../../../firebase/config";
 import { showNotification } from "../../../shared/utils/notification";
 import { authApi } from "../../../shared/api/apiClient";
 import { useAuth } from "../../../shared/hooks/useAuth";
+import LilycrestLogo from "../../../shared/components/LilycrestLogo";
 import TermsModal from "../modals/TermsModal";
 import "../../public/styles/tenant-signup.css";
 import "../../../shared/styles/notification.css";
-import logoImage from "../../../assets/images/branding/logo.png";
 import backgroundImage from "../../../assets/images/branding/gil-puyat-branch.png";
 
 function SignUp() {
@@ -751,38 +751,11 @@ function SignUp() {
 
   return (
     <>
-      {/* Navbar */}
-      <nav className="tenant-signup-navbar">
-        <div className="tenant-signup-navbar-content">
-          <button
-            className="tenant-signup-back-btn"
-            onClick={() => navigate("/")}
-            type="button"
-          >
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M15 18L9 12L15 6"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            Back to Home
-          </button>
-        </div>
-      </nav>
-
       <div className="tenant-signup-page">
         <div className="tenant-signup-card">
           <div className="tenant-signup-right">
             <h1 className="tenant-signup-title">Sign Up</h1>
+            <p className="tenant-signup-subtitle">Create your Lilycrest account</p>
             <form className="tenant-signup-form" onSubmit={handleSignUp}>
               <div className="form-field">
                 <div className="input-wrapper">
@@ -1436,11 +1409,7 @@ function SignUp() {
           >
             <div className="tenant-signup-overlay">
               <div className="tenant-signup-brand">
-                <img
-                  src={logoImage}
-                  alt="Lilycrest"
-                  className="tenant-signup-logo"
-                />
+                <LilycrestLogo className="tenant-signup-logo-icon" aria-label="Lilycrest Logo" />
                 <div className="tenant-signup-brand-text">
                   <h2>Lilycrest</h2>
                   <span>URBAN CO-LIVING</span>

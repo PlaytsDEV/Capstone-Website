@@ -128,9 +128,14 @@
 }
 
 .tenant-signin-logo {
-  width: 70px;
-  height: 70px;
-  object-fit: contain;
+  width: 80px;
+  height: 80px;
+  filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.3));
+}
+
+.tenant-signin-logo-icon {
+  width: 80px;
+  height: 80px;
   filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.3));
 }
 
@@ -181,8 +186,8 @@
 }
 
 .tenant-signin-title {
-  margin: 0 0 4px 0;
-  font-size: 28px;
+  margin: 0 0 8px 0;
+  font-size: 36px;
   font-weight: 700;
   color: #0f172a;
   text-align: center;
@@ -190,11 +195,12 @@
 }
 
 .tenant-signin-subtitle {
-  margin: 0 0 20px 0;
-  font-size: 13px;
+  margin: 0 0 28px 0;
+  font-size: 15px;
   color: #64748b;
   text-align: center;
   font-weight: 400;
+  line-height: 1.5;
 }
 
 /* Form Styles */
@@ -225,10 +231,10 @@
 /* Base Input Styles */
 .tenant-signin-input {
   width: 100%;
-  padding: 10px 14px;
+  padding: 12px 14px;
   border-radius: 8px;
   border: 1.5px solid #e2e8f0;
-  font-size: 13px;
+  font-size: 15px;
   color: #1e293b;
   background: #f8fafc;
   transition: all 0.3s ease;
@@ -245,6 +251,7 @@
 .tenant-signin-input::placeholder {
   color: #94a3b8;
   font-weight: 400;
+  font-size: 15px;
 }
 
 .tenant-signin-input:hover {
@@ -399,8 +406,8 @@
   color: #fff;
   border: none;
   border-radius: 8px;
-  padding: 11px 16px;
-  font-size: 14px;
+  padding: 12px 16px;
+  font-size: 15px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -568,7 +575,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: 12px;
   margin-top: 4px;
   opacity: 1;
   font-weight: 500;

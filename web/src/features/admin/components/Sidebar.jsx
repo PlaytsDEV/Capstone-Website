@@ -1,5 +1,6 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
+import { createPortal } from "react-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { showNotification } from "../../../shared/utils/notification";
 import "../styles/admin-sidebar.css";
@@ -390,43 +391,45 @@ function Sidebar() {
         </button>
       </div>
 
-      {/* Logout Confirmation Modal */}
-      {showLogoutConfirm && (
-        <div className="admin-logout-modal-overlay" onClick={cancelLogout}>
-          <div
-            className="admin-logout-modal"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="admin-logout-modal-header">
-              <h3 className="admin-logout-modal-title">Confirm Logout</h3>
+      {/* Logout Confirmation Modal - Rendered in Portal */}
+      {showLogoutConfirm &&
+        createPortal(
+          <div className="admin-logout-modal-overlay" onClick={cancelLogout}>
+            <div
+              className="admin-logout-modal"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="admin-logout-modal-header">
+                <h3 className="admin-logout-modal-title">Confirm Logout</h3>
+              </div>
+              <div className="admin-logout-modal-body">
+                <p className="admin-logout-modal-message">
+                  Are you sure you want to logout? You will be redirected to the
+                  main sign-in page.
+                </p>
+              </div>
+              <div className="admin-logout-modal-footer">
+                <button
+                  className="admin-logout-modal-cancel"
+                  onClick={cancelLogout}
+                  disabled={logoutInProgress || globalLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="admin-logout-modal-confirm"
+                  onClick={proceedLogout}
+                  disabled={logoutInProgress || globalLoading}
+                >
+                  {logoutInProgress || globalLoading
+                    ? "Logging out..."
+                    : "Logout"}
+                </button>
+              </div>
             </div>
-            <div className="admin-logout-modal-body">
-              <p className="admin-logout-modal-message">
-                Are you sure you want to logout? You will be redirected to the
-                main sign-in page.
-              </p>
-            </div>
-            <div className="admin-logout-modal-footer">
-              <button
-                className="admin-logout-modal-cancel"
-                onClick={cancelLogout}
-                disabled={logoutInProgress || globalLoading}
-              >
-                Cancel
-              </button>
-              <button
-                className="admin-logout-modal-confirm"
-                onClick={proceedLogout}
-                disabled={logoutInProgress || globalLoading}
-              >
-                {logoutInProgress || globalLoading
-                  ? "Logging out..."
-                  : "Logout"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </aside>
   );
 }

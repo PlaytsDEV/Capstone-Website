@@ -302,6 +302,14 @@ export const reservationApi = {
       method: "PUT",
       body: JSON.stringify({ status: "cancelled" }),
     }),
+
+  /**
+   * Delete reservation
+   */
+  delete: (reservationId) =>
+    authFetch(`/reservations/${reservationId}`, {
+      method: "DELETE",
+    }),
 };
 
 // =============================================================================

@@ -23,9 +23,9 @@ import {
 import { auth } from "../../../firebase/config";
 import { showNotification } from "../../../shared/utils/notification";
 import { useAuth } from "../../../shared/hooks/useAuth";
+import LilycrestLogo from "../../../shared/components/LilycrestLogo";
 import "../../public/styles/tenant-signin.css";
 import "../../../shared/styles/notification.css";
-import logoImage from "../../../assets/images/branding/logo.png";
 import backgroundImage from "../../../assets/images/branding/gil-puyat-branch.png";
 
 function SignIn() {
@@ -551,11 +551,7 @@ function SignIn() {
           >
             <div className="tenant-signin-overlay">
               <div className="tenant-signin-brand">
-                <img
-                  src={logoImage}
-                  alt="Lilycrest"
-                  className="tenant-signin-logo"
-                />
+                <LilycrestLogo className="tenant-signin-logo-icon" aria-label="Lilycrest Logo" />
                 <div className="tenant-signin-brand-text">
                   <h2>Lilycrest</h2>
                   <span>URBAN CO-LIVING</span>

@@ -11,6 +11,7 @@
   position: sticky;
   top: 0;
   overflow-y: auto;
+  overflow: visible;
 }
 
 /* Header */
@@ -190,15 +191,13 @@
 /* Logout Confirmation Modal */
 .admin-logout-modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 999999;
+  pointer-events: auto;
 }
 
 .admin-logout-modal {
@@ -210,6 +209,8 @@
   max-width: 400px;
   width: 90%;
   margin: 20px;
+  position: relative;
+  z-index: 999999;
 }
 
 .admin-logout-modal-header {
