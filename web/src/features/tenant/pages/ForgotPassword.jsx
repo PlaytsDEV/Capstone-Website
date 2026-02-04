@@ -18,7 +18,7 @@ import { auth } from "../../../firebase/config";
 import { showNotification } from "../../../shared/utils/notification";
 import "../../../shared/styles/notification.css";
 import "./ForgotPassword.css";
-import logoImage from "../../../assets/images/landingpage/logo.png";
+import logoImage from "../../../assets/images/branding/logo.png";
 
 function ForgotPassword() {
   const navigate = useNavigate();

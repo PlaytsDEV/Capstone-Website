@@ -1,6 +1,6 @@
 import "../styles/guadalupe-rooms.css";
-import locationMapImage from "../../../assets/images/gpuyat/location-map.jpg";
-import quadrupleSharingImage from "../../../assets/images/gpuyat/premium-room.jpg";
+import locationMapImage from "../../../assets/images/branches/gil-puyat/location-map.jpg";
+import quadrupleSharingImage from "../../../assets/images/branches/gil-puyat/premium-room.jpg";
 import Footer from "../components/Footer";
 import Navbar from "../components/Navbar";
 import { useNavigate } from "react-router-dom";
@@ -19,11 +19,26 @@ function GuadalupeRoomsPage() {
       {/* Breadcrumb */}
       <div className="guadalupe-rooms-breadcrumb">
         <div className="guadalupe-rooms-container">
-          <span onClick={() => navigate("/guadalupe")} className="breadcrumb-link">Home</span>
+          <span
+            onClick={() => navigate("/guadalupe")}
+            className="breadcrumb-link"
+          >
+            Home
+          </span>
           <span className="breadcrumb-separator">/</span>
-          <span onClick={() => navigate("/guadalupe")} className="breadcrumb-link">Guadalupe Branch</span>
+          <span
+            onClick={() => navigate("/guadalupe")}
+            className="breadcrumb-link"
+          >
+            Guadalupe Branch
+          </span>
           <span className="breadcrumb-separator">/</span>
-          <span onClick={() => navigate("/guadalupe/rooms")} className="breadcrumb-current">Rooms & Rates</span>
+          <span
+            onClick={() => navigate("/guadalupe/rooms")}
+            className="breadcrumb-current"
+          >
+            Rooms & Rates
+          </span>
         </div>
       </div>
 

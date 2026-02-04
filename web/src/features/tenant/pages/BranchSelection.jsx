@@ -20,23 +20,25 @@
  * - Auto-redirect on expired session
  */
 
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { showNotification } from "../../../shared/utils/notification";
 
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { authApi } from "../../../shared/api/apiClient";
 import "../../../shared/styles/notification.css";
 import "./BranchSelection.css";
-import logoImage from "../../../assets/images/landingpage/logo.png";
+import logoImage from "../../../assets/images/branding/logo.png";
 
 function BranchSelection() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, isAuthenticated, loading: authLoading, updateUser } = useAuth();
   const [selectedBranch, setSelectedBranch] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [userEmail, setUserEmail] = useState("");
+  const noticeShownRef = useRef(false);
 
   /**
    * Validate authentication on component mount
@@ -65,9 +67,16 @@ function BranchSelection() {
       setTimeout(() => {
         navigate(`/${user.branch}`);
       }, 1000);
+      return;
+    }
+
+    // Show branch-selection notice only after page is ready
+    if (!noticeShownRef.current && location.state?.notice) {
+      noticeShownRef.current = true;
+      showNotification(location.state.notice, "info");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, isAuthenticated, user, navigate, showNotification]);
+  }, [authLoading, isAuthenticated, user, navigate, location.state]);
 
   /**
    * Handle branch selection

@@ -10,8 +10,8 @@ import { auth } from "../../../firebase/config";
 import { authApi } from "../../../shared/api/apiClient";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import "../styles/tenant-signin.css";
-import logoImage from "../../../assets/images/landingpage/logo.png";
-import backgroundImage from "../../../assets/images/landingpage/gil-puyat-branch.png";
+import logoImage from "../../../assets/images/branding/logo.png";
+import backgroundImage from "../../../assets/images/branding/gil-puyat-branch.png";
 
 function SignIn() {
   const navigate = useNavigate();
@@ -100,6 +100,9 @@ function SignIn() {
       // Step 1: Temporary authentication for account verification
       const result = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
+      console.log(
+        `✅ Firebase authentication successful: ${firebaseUser.email}`,
+      );
 
       // Step 2: Verify account exists in backend (registration-first policy)
       try {
@@ -132,17 +135,86 @@ function SignIn() {
         }
       } catch (loginError) {
         // Account not found - BLOCK ACCESS (registration required)
-        console.log(
-          `🚫 ${providerName} account not registered - blocking access`,
-        );
-        setError(
-          `This ${providerName} account is not registered. Please sign up first before signing in.`,
-        );
-        await auth.signOut();
+        console.error(`❌ Backend login error:`, loginError);
+
+        const isNotRegistered =
+          loginError.response?.status === 404 ||
+          /not found|not registered|register first/i.test(loginError.message);
+
+        if (isNotRegistered) {
+          console.log(
+            `🚫 ${providerName} account not registered - blocking access`,
+          );
+
+          // Delete the Firebase user to prevent orphaned accounts
+          if (firebaseUser) {
+            try {
+              await firebaseUser.delete();
+              console.log("🗑️ Removed unregistered Firebase user");
+            } catch (deleteError) {
+              console.warn("⚠️ Failed to delete Firebase user:", deleteError);
+            }
+          }
+
+          // Terminate Firebase session
+          await auth.signOut();
+
+          setError(
+            `This ${providerName} account isn't registered yet. Please sign up first.`,
+          );
+        } else {
+          // Other login errors (403 inactive, etc.)
+          await auth.signOut();
+          if (loginError.response?.status === 403) {
+            setError("Your account is inactive. Please contact support.");
+          } else {
+            setError("Login failed. Please try again or contact support.");
+          }
+        }
       }
     } catch (error) {
-      setError(error.message || `${providerName} sign-in failed`);
       console.error(`${providerName} sign-in error:`, error);
+
+      // Handle popup cancelled by user
+      if (
+        error.code === "auth/popup-closed-by-user" ||
+        error.code === "auth/cancelled-popup-request"
+      ) {
+        setLoading(false);
+        console.log("ℹ️ Sign-in cancelled by user");
+        return;
+      }
+
+      // Clean up Firebase session if exists
+      if (auth.currentUser) {
+        try {
+          await auth.signOut();
+          console.log("✅ Cleaned up Firebase session");
+        } catch (signOutError) {
+          console.error("❌ Failed to sign out:", signOutError);
+        }
+      }
+
+      // Handle specific error cases
+      if (error.code === "auth/popup-blocked") {
+        setError(
+          "Popup blocked by browser. Please allow popups for this site.",
+        );
+      } else if (error.code === "auth/network-request-failed") {
+        setError("Network error. Please check your internet connection.");
+      } else if (error.code === "auth/too-many-requests") {
+        setError("Too many attempts. Please wait a moment and try again.");
+      } else if (
+        error.code === "auth/account-exists-with-different-credential"
+      ) {
+        setError(
+          "An account already exists with this email using a different sign-in method.",
+        );
+      } else {
+        setError(
+          error.message || `${providerName} sign-in failed. Please try again.`,
+        );
+      }
     } finally {
       setLoading(false);
     }

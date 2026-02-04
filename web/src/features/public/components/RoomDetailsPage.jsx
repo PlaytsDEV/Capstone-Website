@@ -22,9 +22,12 @@ function RoomDetailsPage({
   const navigate = useNavigate();
   const [currentSlide, setCurrentSlide] = useState(0);
 
-  const branchName = branchType === "gil-puyat" ? "Gil Puyat Branch" : "Guadalupe Branch";
-  const branchHomePath = branchType === "gil-puyat" ? "/gil-puyat" : "/guadalupe";
-  const branchRoomsPath = branchType === "gil-puyat" ? "/gil-puyat/rooms" : "/guadalupe/rooms";
+  const branchName =
+    branchType === "gil-puyat" ? "Gil Puyat Branch" : "Guadalupe Branch";
+  const branchHomePath =
+    branchType === "gil-puyat" ? "/gil-puyat" : "/guadalupe";
+  const branchRoomsPath =
+    branchType === "gil-puyat" ? "/gil-puyat/rooms" : "/guadalupe/rooms";
 
   const nextSlide = () => {
     setCurrentSlide((prev) => (prev + 1) % images.length);
@@ -46,11 +49,26 @@ function RoomDetailsPage({
       {/* Breadcrumb */}
       <div className="room-details-breadcrumb">
         <div className="room-details-container">
-          <span onClick={() => navigate(branchHomePath)} className="breadcrumb-link">Home</span>
+          <span
+            onClick={() => navigate(branchHomePath)}
+            className="breadcrumb-link"
+          >
+            Home
+          </span>
           <span className="breadcrumb-separator">/</span>
-          <span onClick={() => navigate(branchHomePath)} className="breadcrumb-link">{branchName}</span>
+          <span
+            onClick={() => navigate(branchHomePath)}
+            className="breadcrumb-link"
+          >
+            {branchName}
+          </span>
           <span className="breadcrumb-separator">/</span>
-          <span onClick={() => navigate(branchRoomsPath)} className="breadcrumb-link">Room & Rates</span>
+          <span
+            onClick={() => navigate(branchRoomsPath)}
+            className="breadcrumb-link"
+          >
+            Room & Rates
+          </span>
           <span className="breadcrumb-separator">/</span>
           <span className="breadcrumb-current">Room Details</span>
         </div>

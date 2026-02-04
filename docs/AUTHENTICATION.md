@@ -184,7 +184,37 @@ if (!userCredential.user.emailVerified) {
 4. **Email Verification** - Required for email/password users before login
 5. **Rollback on Failure** - Firebase account deleted if backend registration fails
 
+## Reservation Access & Permissions
+
+### Role-Based Access Control (RBAC)
+
+- **Tenant/User:**
+  - Can create, view, and cancel their own reservations.
+- **Admin:**
+  - Can view, approve, or reject reservations for their branch.
+- **Super Admin:**
+  - Can view and manage all reservations across branches.
+
+### Reservation Workflow Authentication
+
+- All reservation actions require a valid Firebase token.
+- Backend checks user role before allowing reservation actions.
+- Unauthorized or insufficient permissions result in 401/403 errors.
+
+### Example: Reservation API Call
+
+```
+POST /api/reservations
+Authorization: Bearer <firebase_id_token>
+```
+
 ---
+
+## Integration with Reservation Workflow
+
+- Authentication is enforced on all reservation endpoints.
+- Role checks ensure only authorized users can perform reservation actions.
+- Reservation status changes (approve, cancel, complete) are restricted by role.
 
 ## Firebase Setup
 

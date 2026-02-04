@@ -677,7 +677,7 @@
    ============================================ */
 .gpuyat-rooms {
   padding: var(--spacing-2xl) 0;
-  background-color: #f9f9f9
+  background-color: #f9f9f9;
 }
 
 .gpuyat-rooms h2 {
@@ -791,7 +791,7 @@
    ============================================ */
 .gpuyat-gallery {
   padding: var(--spacing-2xl) 0;
-  background-color: #fff
+  background-color: #fff;
 }
 
 .gpuyat-carousel {

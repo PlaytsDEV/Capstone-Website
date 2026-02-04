@@ -39,6 +39,13 @@ const roomSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+      unique: true,
+    },
+    roomNumber: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true,
     },
     description: {
       type: String,
@@ -75,6 +82,10 @@ const roomSchema = new mongoose.Schema(
       type: Number,
       required: true,
       min: 0,
+    },
+    monthlyPrice: {
+      type: Number,
+      default: null,
     },
 
     // --- Features ---

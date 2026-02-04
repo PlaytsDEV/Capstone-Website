@@ -1,5 +1,5 @@
 import "../styles/admin-login.css";
-import logoImage from "../../../assets/images/landingpage/logo.png";
+import logoImage from "../../../assets/images/branding/logo.png";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { signInWithEmailAndPassword } from "firebase/auth";
@@ -91,7 +91,7 @@ function AdminLoginPage() {
         console.log("👨‍💼 Admin login successful, redirecting to dashboard");
         // Show welcome notification
         showNotification(
-          `Welcome back, ${userData.user.firstName || "Admin"}!`,
+          `Welcome, ${userData.user.firstName || "Admin"}!`,
           "success",
         );
         // Small delay to show the notification before redirect

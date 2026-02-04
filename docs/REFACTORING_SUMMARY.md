@@ -2,9 +2,7 @@
 
 ## Overview
 
-This document summarizes all refactoring changes made to standardize naming conventions, improve code clarity, and ensure consistency across the MERN stack architecture.
-
----
+## This document summarizes all refactoring changes made to standardize naming conventions, improve code clarity, and ensure consistency across the MERN stack architecture.
 
 ## 1. Naming Convention Fixes
 
@@ -34,7 +32,7 @@ BRANCHES: {
 
 **Fix:** Updated `web/src/shared/utils/constants.js`
 
-```javascript
+````javascript
 // Before
 ROLES: {
   USER: "user",
@@ -50,22 +48,21 @@ ROLES: {
   ADMIN: "admin",
   SUPER_ADMIN: "superAdmin",
 }
-```
+
+
+
 
 ### 1.3 Inquiry Status Naming
 
-**Issue:** Backend used `pending` but frontend constants had no clear mapping
 
-**Fix:** Added explicit status constants matching backend
 
-```javascript
+
+
 INQUIRY_STATUS: {
-  PENDING: "pending",
-  IN_PROGRESS: "in-progress",
-  RESOLVED: "resolved",
+
+
   CLOSED: "closed",
-}
-```
+
 
 ---
 
@@ -95,7 +92,7 @@ userApi: {
   getEmailByUsername: (username) => authFetch(`/users/email/${username}`),  // NEW
   // ... other methods
 }
-```
+````
 
 ---
 

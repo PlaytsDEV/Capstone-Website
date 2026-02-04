@@ -17,6 +17,7 @@ import GuadalupeRoomsPage from "./features/public/pages/GuadalupeRoomsPage";
 import FAQsPage from "./features/public/pages/FAQsPage";
 
 // Admin Pages
+import AdminLoginPage from "./features/admin/pages/AdminLoginPage";
 import AdminDashboardPage from "./features/admin/pages/Dashboard";
 import InquiriesPage from "./features/admin/pages/InquiriesPage";
 import ReservationsPage from "./features/admin/pages/ReservationsPage";
@@ -33,7 +34,7 @@ import SignIn from "./features/tenant/pages/SignIn.jsx";
 import SignUp from "./features/tenant/pages/SignUp.jsx";
 import BranchSelection from "./features/tenant/pages/BranchSelection.jsx";
 import ForgotPassword from "./features/tenant/pages/ForgotPassword.jsx";
-import TenantDashboard from "./features/tenant/pages/TenantDashboard";
+import CheckAvailabilityPage from "./features/tenant/pages/CheckAvailabilityPage";
 import ProfilePage from "./features/tenant/pages/ProfilePage";
 import BillingPage from "./features/tenant/pages/BillingPage";
 import ContractsPage from "./features/tenant/pages/ContractsPage";
@@ -70,33 +71,33 @@ function AppContent() {
         <Route
           path="/gil-puyat/rooms"
           element={
-            <RequireNonAdmin>
+            <ProtectedRoute>
               <GPuyatRoomsPage />
-            </RequireNonAdmin>
+            </ProtectedRoute>
           }
         />
         <Route
           path="/gil-puyat/rooms/private"
           element={
-            <RequireNonAdmin>
+            <ProtectedRoute>
               <PrivateRoomPage />
-            </RequireNonAdmin>
+            </ProtectedRoute>
           }
         />
         <Route
           path="/gil-puyat/rooms/double"
           element={
-            <RequireNonAdmin>
+            <ProtectedRoute>
               <DoubleSharingPage />
-            </RequireNonAdmin>
+            </ProtectedRoute>
           }
         />
         <Route
           path="/:branch/rooms/quadruple"
           element={
-            <RequireNonAdmin>
+            <ProtectedRoute>
               <QuadrupleSharingPage />
-            </RequireNonAdmin>
+            </ProtectedRoute>
           }
         />
         <Route
@@ -110,12 +111,11 @@ function AppContent() {
         <Route
           path="/guadalupe/rooms"
           element={
-            <RequireNonAdmin>
+            <ProtectedRoute>
               <GuadalupeRoomsPage />
-            </RequireNonAdmin>
+            </ProtectedRoute>
           }
         />
-
         <Route
           path="/faqs"
           element={
@@ -125,6 +125,16 @@ function AppContent() {
           }
         />
 
+        <Route path="/admin/login" element={<AdminLoginPage />} />
+
+        <Route
+          path="/faqs"
+          element={
+            <RequireNonAdmin>
+              <FAQsPage />
+            </RequireNonAdmin>
+          }
+        />
 
         {/* Admin routes - all require admin auth */}
         <Route
@@ -202,10 +212,10 @@ function AppContent() {
           }
         />
         <Route
-          path="/tenant/dashboard"
+          path="/check-availability"
           element={
             <ProtectedRoute requiredRole="user">
-              <TenantDashboard />
+              <CheckAvailabilityPage />
             </ProtectedRoute>
           }
         />

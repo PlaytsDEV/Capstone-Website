@@ -25,8 +25,8 @@ import { showNotification } from "../../../shared/utils/notification";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import "../../public/styles/tenant-signin.css";
 import "../../../shared/styles/notification.css";
-import logoImage from "../../../assets/images/landingpage/logo.png";
-import backgroundImage from "../../../assets/images/landingpage/gil-puyat-branch.png";
+import logoImage from "../../../assets/images/branding/logo.png";
+import backgroundImage from "../../../assets/images/branding/gil-puyat-branch.png";
 
 function SignIn() {
   const navigate = useNavigate();
@@ -234,9 +234,10 @@ function SignIn() {
           );
 
           // Redirect to branch selection page (useAuth handles session)
-          showNotification("Please select your branch to continue", "info");
           setTimeout(() => {
-            navigate("/tenant/branch-selection");
+            navigate("/tenant/branch-selection", {
+              state: { notice: "Please select your branch to continue" },
+            });
           }, 500);
           setGlobalLoading(false);
           return;
@@ -272,10 +273,14 @@ function SignIn() {
         console.error("❌ Backend login error:", backendError);
         await auth.signOut();
 
-        if (backendError.response?.status === 404) {
+        const isNotRegistered =
+          backendError.response?.status === 404 ||
+          /not found|not registered|register first/i.test(backendError.message);
+
+        if (isNotRegistered) {
           showNotification(
-            "Account not found in database. Please contact support or register again.",
-            "error",
+            "User is not registered. Please sign up first.",
+            "warning",
           );
         } else if (backendError.response?.status === 403) {
           showNotification(
@@ -365,23 +370,34 @@ function SignIn() {
         // STEP 4: Account not found - BLOCK ACCESS (registration required)
         console.error("❌ Backend login error:", loginError);
 
-        if (loginError.response?.status === 404) {
+        const isNotRegistered =
+          loginError.response?.status === 404 ||
+          /not found|not registered|register first/i.test(loginError.message);
+
+        if (isNotRegistered) {
           console.log(
             "🚫 Account not registered - blocking access per registration-first policy",
           );
 
-          // Immediately terminate Firebase session (no account creation)
+          // Remove unintended Firebase user to avoid lingering auth account
+          if (firebaseUser) {
+            try {
+              await firebaseUser.delete();
+              console.log("🗑️ Removed unregistered Firebase user");
+            } catch (deleteError) {
+              console.warn("⚠️ Failed to delete Firebase user:", deleteError);
+            }
+          }
+
+          // Terminate Firebase session
           await auth.signOut();
 
           showNotification(
-            "This Google account is not registered. Please register first using the sign-up page.",
+            "This Google account isn’t registered yet. Please sign up first.",
             "warning",
           );
 
-          // Redirect to signup after delay
-          setTimeout(() => {
-            navigate("/tenant/signup");
-          }, 3000);
+          // Stay on login screen
         } else {
           // Other login errors (403 inactive, etc.)
           await auth.signOut();
@@ -401,6 +417,19 @@ function SignIn() {
     } catch (error) {
       console.error("❌ Google sign-in error:", error);
 
+      // Exit loading quickly on user-cancelled popups
+      if (error.code === "auth/popup-closed-by-user") {
+        setGlobalLoading(false);
+        showNotification("Sign-in cancelled", "info");
+        return;
+      }
+
+      if (error.code === "auth/cancelled-popup-request") {
+        setGlobalLoading(false);
+        console.log("ℹ️ Sign-in cancelled by user");
+        return;
+      }
+
       // Clean up Firebase session if exists
       if (auth.currentUser) {
         try {
@@ -412,12 +441,7 @@ function SignIn() {
       }
 
       // Handle specific error cases
-      if (error.code === "auth/popup-closed-by-user") {
-        showNotification("Sign-in cancelled", "info");
-      } else if (error.code === "auth/cancelled-popup-request") {
-        // User cancelled - no need to show error
-        console.log("ℹ️ Sign-in cancelled by user");
-      } else if (error.code === "auth/popup-blocked") {
+      if (error.code === "auth/popup-blocked") {
         showNotification(
           "Popup blocked by browser. Please allow popups for this site.",
           "error",
@@ -471,12 +495,10 @@ function SignIn() {
     if (!loginResponse.user.branch || loginResponse.user.branch === "") {
       console.log("📍 Branch not selected - redirecting to branch selection");
 
-      showNotification(
-        "Welcome! Please select your branch to continue",
-        "info",
-      );
       setTimeout(() => {
-        navigate("/tenant/branch-selection");
+        navigate("/tenant/branch-selection", {
+          state: { notice: "Welcome! Please select your branch to continue" },
+        });
       }, 500);
       return;
     }
@@ -484,10 +506,7 @@ function SignIn() {
     // STEP: Branch already selected - redirect based on role
     console.log("✅ Branch selected - redirecting based on role");
 
-    showNotification(
-      `Welcome back, ${loginResponse.user.firstName}!`,
-      "success",
-    );
+    showNotification(`Welcome, ${loginResponse.user.firstName}!`, "success");
 
     setTimeout(() => {
       if (

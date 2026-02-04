@@ -2,11 +2,6 @@
 
 ## Base URL
 
-- Development: `http://localhost:5000/api`
-- Production: TBD
-
----
-
 ## Authentication Endpoints
 
 ### Health Check
@@ -20,8 +15,6 @@ GET /api/health
 ```json
 { "status": "ok", "timestamp": "2024-01-01T00:00:00.000Z" }
 ```
-
----
 
 ### Register User
 
@@ -53,11 +46,13 @@ Content-Type: application/json
 ```json
 {
   "message": "User registered successfully",
+
   "user": {
     "_id": "...",
     "email": "user@example.com",
     "firstName": "John",
     "lastName": "Doe",
+
     "branch": "gil-puyat",
     "role": "tenant"
   }
@@ -83,7 +78,7 @@ Authorization: Bearer <firebase_id_token>
 ```json
 {
   "message": "Login successful",
-  "user": { ... },
+
   "token": "jwt_token"
 }
 ```
@@ -106,11 +101,14 @@ Authorization: Bearer <jwt_token>
 
 ```json
 {
-  "user": {
+
+
     "_id": "...",
+
     "email": "user@example.com",
     "firstName": "John",
     "lastName": "Doe",
+
     "branch": "gil-puyat",
     "role": "tenant"
   }
@@ -122,6 +120,7 @@ Authorization: Bearer <jwt_token>
 ### Update Branch
 
 ```http
+
 PATCH /api/auth/update-branch
 ```
 
@@ -132,13 +131,7 @@ Authorization: Bearer <jwt_token>
 Content-Type: application/json
 ```
 
-**Body:**
-
-```json
-{
-  "branch": "gil-puyat"
-}
-```
+````json
 
 **Response (200):**
 
@@ -147,7 +140,7 @@ Content-Type: application/json
   "message": "Branch updated successfully",
   "user": { ... }
 }
-```
+````
 
 ---
 

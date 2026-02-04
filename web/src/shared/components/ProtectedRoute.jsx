@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useRef } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+import { showNotification } from "../utils/notification";
 
 /**
  * Protected Route Component
@@ -9,8 +10,8 @@ import { useAuth } from "../hooks/useAuth";
  * Uses Firebase custom claims from the ID token for role verification.
  *
  * REDIRECT BEHAVIOR:
- * - Unauthenticated on user routes: redirect to "/" (landing page)
- * - Unauthenticated on admin routes: redirect to "/tenant/signin"
+ * - Unauthenticated on user routes: redirect to "/" (landing page) with notification
+ * - Unauthenticated on admin routes: redirect to "/tenant/signin" with notification
  * - Role mismatch: redirect to appropriate dashboard or unauthorized
  *
  * @param {Object} props
@@ -22,6 +23,7 @@ import { useAuth } from "../hooks/useAuth";
  */
 const ProtectedRoute = ({ children, requiredRole, requireAuth = true }) => {
   const { user, isAuthenticated, loading } = useAuth();
+  const notificationShown = useRef(false);
 
   // Show loading spinner while checking authentication
   if (loading) {
@@ -34,6 +36,16 @@ const ProtectedRoute = ({ children, requiredRole, requireAuth = true }) => {
 
   // Check authentication requirement
   if (requireAuth && !isAuthenticated) {
+    // Show notification to prompt login (only once)
+    if (!notificationShown.current) {
+      notificationShown.current = true;
+      showNotification(
+        "Sign in to discover available rooms and reserve your space",
+        "info",
+        3500,
+      );
+    }
+
     // User routes redirect to landing page "/"
     // Admin routes redirect to sign-in page "/tenant/signin"
     const redirectPath = requiredRole === "user" ? "/" : "/tenant/signin";

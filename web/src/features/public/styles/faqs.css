@@ -41,7 +41,7 @@
   left: 20px;
   top: 50%;
   transform: translateY(-50%);
-  color: rgba(255,255,255,0.9);
+  color: rgba(255, 255, 255, 0.9);
   pointer-events: none;
 }
 
@@ -49,22 +49,24 @@
   width: 100%;
   padding: 14px 20px 14px 48px;
   height: 48px;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.35);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.35);
   border-radius: 999px;
   font-size: 1rem;
   color: white;
   outline: none;
-  transition: box-shadow 0.2s, border-color 0.2s;
+  transition:
+    box-shadow 0.2s,
+    border-color 0.2s;
 }
 
 .faqs-search-bar input::placeholder {
-  color: rgba(255,255,255,0.7);
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .faqs-search-bar input:focus {
-  border-color: rgba(255,255,255,0.85);
-  box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+  border-color: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
 }
 
 /* Tabs Section */
@@ -104,19 +106,22 @@
   cursor: pointer;
   white-space: nowrap;
   border-radius: 18px;
-  transition: transform 0.12s, box-shadow 0.12s, background 0.12s;
+  transition:
+    transform 0.12s,
+    box-shadow 0.12s,
+    background 0.12s;
 }
 
 .faqs-tab:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
 }
 
 .faqs-tab.active {
   color: #ffffff;
   background: #ff6b35;
   border-color: #ff6b35;
-  box-shadow: 0 6px 20px rgba(255,107,53,0.14);
+  box-shadow: 0 6px 20px rgba(255, 107, 53, 0.14);
 }
 
 /* FAQ Content */
@@ -169,8 +174,8 @@
   display: inline-block;
   font-size: 0.75rem;
   font-weight: 400;
-  color: #CA3500;
-  background: #FFF7ED;
+  color: #ca3500;
+  background: #fff7ed;
   padding: 6px 10px;
   border-radius: 10px;
   text-transform: none;
@@ -190,7 +195,9 @@
   flex-shrink: 0;
   margin-left: 16px;
   color: #98a0a6;
-  transition: transform 0.22s, color 0.15s;
+  transition:
+    transform 0.22s,
+    color 0.15s;
   align-self: center;
 }
 

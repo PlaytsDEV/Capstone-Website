@@ -1,11 +1,11 @@
 import "../styles/gpuyat.css";
-import gilPuyatBranchImage from "../../../assets/images/gpuyat/gil-puyat-branch.jpg";
-import locationViewImage from "../../../assets/images/gpuyat/location-view.jpg";
-import locationMapImage from "../../../assets/images/gpuyat/location-map.jpg";
-import privateRoomImage from "../../../assets/images/gpuyat/standard-room.jpg";
-import doubleSharingImage from "../../../assets/images/gpuyat/deluxe-room.jpg";
-import quadrupleSharingImage from "../../../assets/images/gpuyat/premium-room.jpg";
-import gallery1Image from "../../../assets/images/gpuyat/gallery1.jpg";
+import gilPuyatBranchImage from "../../../assets/images/branches/gil-puyat/gil-puyat-branch.jpg";
+import locationViewImage from "../../../assets/images/branches/gil-puyat/location-view.jpg";
+import locationMapImage from "../../../assets/images/branches/gil-puyat/location-map.jpg";
+import privateRoomImage from "../../../assets/images/branches/gil-puyat/standard-room.jpg";
+import doubleSharingImage from "../../../assets/images/branches/gil-puyat/deluxe-room.jpg";
+import quadrupleSharingImage from "../../../assets/images/branches/gil-puyat/premium-room.jpg";
+import gallery1Image from "../../../assets/images/branches/gil-puyat/gallery1.jpg";
 import Footer from "../components/Footer";
 import Navbar from "../components/Navbar";
 import LilycrestLogo from "../../../shared/components/LilycrestLogo";
@@ -64,7 +64,10 @@ function GPuyatPage() {
         <div className="gpuyat-container">
           <div className="gpuyat-hero-content">
             <div className="gpuyat-logo-section">
-              <LilycrestLogo className="gpuyat-hero-logo" aria-label="Lilycrest Logo" />
+              <LilycrestLogo
+                className="gpuyat-hero-logo"
+                aria-label="Lilycrest Logo"
+              />
               <p className="gpuyat-logo-text">Lilycrest</p>
             </div>
             <h1 className="gpuyat-hero-title">Gil Puyat Branch</h1>
@@ -94,7 +97,12 @@ function GPuyatPage() {
               Gil Puyat Avenue, Makati City
             </p>
             <div className="gpuyat-search-bar">
-              <button onClick={() => navigate("/tenant/dashboard")} className="gpuyat-btn-search">Find Your Room</button>
+              <button
+                onClick={() => navigate("/check-availability")}
+                className="gpuyat-btn-search"
+              >
+                Find Your Room
+              </button>
             </div>
           </div>
         </div>
@@ -118,10 +126,28 @@ function GPuyatPage() {
 
           <div className="gpuyat-location-info">
             <div className="gpuyat-location-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="none">
-  <path d="M16.6666 8.33329C16.6666 12.4941 12.0508 16.8275 10.5008 18.1658C10.3564 18.2744 10.1806 18.3331 9.99998 18.3331C9.81931 18.3331 9.64354 18.2744 9.49915 18.1658C7.94915 16.8275 3.33331 12.4941 3.33331 8.33329C3.33331 6.56518 4.03569 4.86949 5.28593 3.61925C6.53618 2.36901 8.23187 1.66663 9.99998 1.66663C11.7681 1.66663 13.4638 2.36901 14.714 3.61925C15.9643 4.86949 16.6666 6.56518 16.6666 8.33329Z" stroke="#FF6900" stroke-width="1.66667" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M10 10.8334C11.3807 10.8334 12.5 9.71409 12.5 8.33337C12.5 6.95266 11.3807 5.83337 10 5.83337C8.61929 5.83337 7.5 6.95266 7.5 8.33337C7.5 9.71409 8.61929 10.8334 10 10.8334Z" stroke="#FF6900" stroke-width="1.66667" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="20"
+                height="20"
+                viewBox="0 0 20 20"
+                fill="none"
+              >
+                <path
+                  d="M16.6666 8.33329C16.6666 12.4941 12.0508 16.8275 10.5008 18.1658C10.3564 18.2744 10.1806 18.3331 9.99998 18.3331C9.81931 18.3331 9.64354 18.2744 9.49915 18.1658C7.94915 16.8275 3.33331 12.4941 3.33331 8.33329C3.33331 6.56518 4.03569 4.86949 5.28593 3.61925C6.53618 2.36901 8.23187 1.66663 9.99998 1.66663C11.7681 1.66663 13.4638 2.36901 14.714 3.61925C15.9643 4.86949 16.6666 6.56518 16.6666 8.33329Z"
+                  stroke="#FF6900"
+                  stroke-width="1.66667"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path
+                  d="M10 10.8334C11.3807 10.8334 12.5 9.71409 12.5 8.33337C12.5 6.95266 11.3807 5.83337 10 5.83337C8.61929 5.83337 7.5 6.95266 7.5 8.33337C7.5 9.71409 8.61929 10.8334 10 10.8334Z"
+                  stroke="#FF6900"
+                  stroke-width="1.66667"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
             </div>
             <div className="gpuyat-location-text">
               <p className="gpuyat-location-address">
@@ -140,7 +166,10 @@ function GPuyatPage() {
         <div className="gpuyat-container">
           <h2>Room View</h2>
 
-          <button onClick={() => navigate("/gil-puyat/rooms")} className="gpuyat-btn-view-rooms">
+          <button
+            onClick={() => navigate("/gil-puyat/rooms")}
+            className="gpuyat-btn-view-rooms"
+          >
             View All Rooms & Rates
           </button>
 
