@@ -2,25 +2,92 @@
    SIGNUP PAGE - Enhanced Layout & Validation
    ============================================ */
 
-.tenant-signup-page {
-  min-height: 100vh;
+/* Navbar Styles */
+.tenant-signup-navbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 70px;
+  background: white;
+  border-bottom: 1px solid #e5e7eb;
   display: flex;
   align-items: center;
-  justify-content: center;
+  padding: 0 24px;
+  z-index: 1000;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.tenant-signup-navbar-content {
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+.tenant-signup-back-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  color: #374151;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 8px 16px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.tenant-signup-back-btn:hover {
+  color: #f97316;
+}
+
+.tenant-signup-back-btn::after {
+  content: "";
+  position: absolute;
+  bottom: 2px;
+  left: 16px;
+  width: 0;
+  height: 2px;
+  background-color: #ff6900;
+  transition: width 0.3s ease;
+}
+
+.tenant-signup-back-btn:hover::after {
+  width: calc(100% - 32px);
+}
+
+.tenant-signup-back-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.tenant-signup-page {
+  height: 100vh;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
   background: #f3f4f6;
-  padding: 32px 16px;
+  padding: 70px 0 0;
+  width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .tenant-signup-card {
   width: 100%;
-  max-width: 1100px;
+  height: 100%;
+  max-width: none;
   background: #fff;
-  border-radius: 18px;
+  border-radius: 0;
   display: grid;
   grid-template-columns: 1fr 1fr;
   overflow: hidden;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.18);
-  max-height: 90vh;
+  box-shadow: none;
 }
 
 /* Left Panel - Fixed Image Section */
@@ -28,7 +95,7 @@
   position: relative;
   background-size: cover;
   background-position: center;
-  min-height: 520px;
+  height: 100%;
 }
 
 .tenant-signup-overlay {
@@ -91,12 +158,14 @@
 
 /* Right Panel - Scrollable Form Section */
 .tenant-signup-right {
-  padding: 40px 48px;
+  padding: 32px 48px;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: flex-start;
+  text-align: center;
   overflow-y: auto;
-  max-height: 90vh;
+  height: 100%;
 }
 
 .tenant-signup-title {
@@ -711,25 +780,27 @@
 @media (max-width: 900px) {
   .tenant-signup-card {
     grid-template-columns: 1fr;
-    max-height: none;
+    height: auto;
+    min-height: 100%;
   }
 
   .tenant-signup-left {
-    min-height: 280px;
+    display: none;
   }
 
   .tenant-signup-right {
-    padding: 32px 24px;
-    max-height: none;
-    overflow-y: visible;
+    padding: 24px;
+    height: auto;
+    overflow: visible;
+  }
+
+  .tenant-signup-page {
+    height: auto;
+    min-height: calc(100vh - 70px);
   }
 }
 
 @media (max-width: 480px) {
-  .tenant-signup-page {
-    padding: 16px;
-  }
-
   .tenant-signup-right {
     padding: 24px 20px;
   }

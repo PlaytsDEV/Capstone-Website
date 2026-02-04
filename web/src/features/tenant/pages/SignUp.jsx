@@ -731,32 +731,36 @@ function SignUp() {
 
   return (
     <>
+      {/* Navbar */}
+      <nav className="tenant-signup-navbar">
+        <div className="tenant-signup-navbar-content">
+          <button
+            className="tenant-signup-back-btn"
+            onClick={() => navigate("/")}
+            type="button"
+          >
+            <svg
+              width="24"
+              height="24"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M15 18L9 12L15 6"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Back to Home
+          </button>
+        </div>
+      </nav>
+
       <div className="tenant-signup-page">
         <div className="tenant-signup-card">
-          <div
-            className="tenant-signup-left"
-            style={{ backgroundImage: `url(${backgroundImage})` }}
-          >
-            <div className="tenant-signup-overlay">
-              <div className="tenant-signup-brand">
-                <img
-                  src={logoImage}
-                  alt="Lilycrest"
-                  className="tenant-signup-logo"
-                />
-                <div className="tenant-signup-brand-text">
-                  <h2>Lilycrest</h2>
-                  <span>URBAN CO-LIVING</span>
-                  <span>MAKATI CITY</span>
-                </div>
-              </div>
-              <div className="tenant-signup-welcome">
-                <h3>Join Lilycrest</h3>
-                <p>Find Your Perfect Space</p>
-              </div>
-            </div>
-          </div>
-
           <div className="tenant-signup-right">
             <h1 className="tenant-signup-title">Sign Up</h1>
             <form className="tenant-signup-form" onSubmit={handleSignUp}>
@@ -1381,6 +1385,30 @@ function SignUp() {
                 Sign In
               </span>
             </p>
+          </div>
+
+          <div
+            className="tenant-signup-left"
+            style={{ backgroundImage: `url(${backgroundImage})` }}
+          >
+            <div className="tenant-signup-overlay">
+              <div className="tenant-signup-brand">
+                <img
+                  src={logoImage}
+                  alt="Lilycrest"
+                  className="tenant-signup-logo"
+                />
+                <div className="tenant-signup-brand-text">
+                  <h2>Lilycrest</h2>
+                  <span>URBAN CO-LIVING</span>
+                  <span>MAKATI CITY</span>
+                </div>
+              </div>
+              <div className="tenant-signup-welcome">
+                <h3>Join Lilycrest</h3>
+                <p>Find Your Perfect Space</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>

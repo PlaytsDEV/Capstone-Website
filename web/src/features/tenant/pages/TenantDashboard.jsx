@@ -1,6 +1,11 @@
 import "../styles/tenant-dashboard.css";
+import { useState } from "react";
 
 function TenantDashboard() {
+  const [filteredRooms, setFilteredRooms] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedBranch, setSelectedBranch] = useState("All");
+  const [selectedRoomType, setSelectedRoomType] = useState("All");
   const availableRooms = [
     {
       id: "GP-100",
@@ -68,6 +73,56 @@ function TenantDashboard() {
     availableFrom: "March 15, 2026",
   };
 
+  const handleSearch = (value) => {
+    setSearchTerm(value);
+    filterRooms(value, selectedBranch, selectedRoomType);
+  };
+
+  const handleBranchFilter = (branch) => {
+    setSelectedBranch(branch);
+    filterRooms(searchTerm, branch, selectedRoomType);
+  };
+
+  const handleRoomTypeFilter = (type) => {
+    setSelectedRoomType(type);
+    filterRooms(searchTerm, selectedBranch, type);
+  };
+
+  const filterRooms = (search, branch, roomType) => {
+    let filtered = availableRooms;
+
+    // Filter by search term
+    if (search.trim()) {
+      filtered = filtered.filter(
+        (room) =>
+          room.title.toLowerCase().includes(search.toLowerCase()) ||
+          room.branch.toLowerCase().includes(search.toLowerCase())
+      );
+    }
+
+    // Filter by branch
+    if (branch !== "All") {
+      filtered = filtered.filter((room) => room.branch === branch);
+    }
+
+    // Filter by room type
+    if (roomType !== "All") {
+      filtered = filtered.filter((room) => room.type === roomType);
+    }
+
+    setFilteredRooms(filtered);
+  };
+
+  const handleScheduleVisit = (roomId) => {
+    console.log(`Scheduled visit for room: ${roomId}`);
+    // TODO: Implement the schedule visit functionality
+  };
+
+  // Initialize filtered rooms on component mount
+  const displayRooms = searchTerm || selectedBranch !== "All" || selectedRoomType !== "All" 
+    ? filteredRooms 
+    : availableRooms;
+
   return (
     <div className="tenant-dashboard-page">
       <div className="tenant-dashboard-container">
@@ -82,7 +137,12 @@ function TenantDashboard() {
               <path d="M9.16667 16.6667C13.3088 16.6667 16.6667 13.3088 16.6667 9.16667C16.6667 5.02453 13.3088 1.66667 9.16667 1.66667C5.02453 1.66667 1.66667 5.02453 1.66667 9.16667C1.66667 13.3088 5.02453 16.6667 9.16667 16.6667Z" stroke="currentColor" strokeWidth="1.5" />
               <path d="M18.3333 18.3333L14.7083 14.7083" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
-            <input type="text" placeholder="Search by room number or branch..." />
+            <input 
+              type="text" 
+              placeholder="Search by room number or branch..." 
+              value={searchTerm}
+              onChange={(e) => handleSearch(e.target.value)}
+            />
           </div>
           <button className="tenant-dashboard-filter-btn" type="button">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -95,23 +155,47 @@ function TenantDashboard() {
         <div className="tenant-dashboard-filters">
           <div className="tenant-dashboard-filter-group">
             <span className="tenant-dashboard-filter-label">Branch</span>
-            <button className="tenant-dashboard-pill active" type="button">All</button>
-            <button className="tenant-dashboard-pill" type="button">Gil Puyat</button>
-            <button className="tenant-dashboard-pill" type="button">Makati</button>
+            <button 
+              className={`tenant-dashboard-pill ${selectedBranch === "All" ? "active" : ""}`} 
+              type="button"
+              onClick={() => handleBranchFilter("All")}
+            >All</button>
+            <button 
+              className={`tenant-dashboard-pill ${selectedBranch === "Gil Puyat" ? "active" : ""}`} 
+              type="button"
+              onClick={() => handleBranchFilter("Gil Puyat")}
+            >Gil Puyat</button>
+            <button 
+              className={`tenant-dashboard-pill ${selectedBranch === "Makati" ? "active" : ""}`} 
+              type="button"
+              onClick={() => handleBranchFilter("Makati")}
+            >Makati</button>
           </div>
           <div className="tenant-dashboard-filter-group">
             <span className="tenant-dashboard-filter-label">Room Type</span>
-            <button className="tenant-dashboard-pill active" type="button">All</button>
-            <button className="tenant-dashboard-pill" type="button">Single</button>
-            <button className="tenant-dashboard-pill" type="button">Shared</button>
+            <button 
+              className={`tenant-dashboard-pill ${selectedRoomType === "All" ? "active" : ""}`} 
+              type="button"
+              onClick={() => handleRoomTypeFilter("All")}
+            >All</button>
+            <button 
+              className={`tenant-dashboard-pill ${selectedRoomType === "Single" ? "active" : ""}`} 
+              type="button"
+              onClick={() => handleRoomTypeFilter("Single")}
+            >Single</button>
+            <button 
+              className={`tenant-dashboard-pill ${selectedRoomType === "Shared" ? "active" : ""}`} 
+              type="button"
+              onClick={() => handleRoomTypeFilter("Shared")}
+            >Shared</button>
           </div>
         </div>
 
         <section className="tenant-dashboard-section">
           <h2>Available Now</h2>
-          <p>{availableRooms.length} rooms ready for immediate move-in</p>
+          <p>{displayRooms.length} rooms ready for immediate move-in</p>
           <div className="tenant-dashboard-grid">
-            {availableRooms.map((room) => (
+            {displayRooms.map((room) => (
               <article key={room.id} className="tenant-room-card">
                 <div className="tenant-room-image">
                   <img src={room.image} alt={room.title} />
@@ -148,8 +232,12 @@ function TenantDashboard() {
                       ₱{room.price.toLocaleString()}
                       <span>/month</span>
                     </div>
-                    <button className="tenant-room-cta" type="button">
-                      Book Now
+                    <button 
+                      className="tenant-room-cta" 
+                      type="button"
+                      onClick={() => handleScheduleVisit(room.id)}
+                    >
+                      Schedule a Visit
                       <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M3 6H9" stroke="white" strokeWidth="1.4" strokeLinecap="round" />
                         <path d="M7 3L9 6L7 9" stroke="white" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
@@ -201,15 +289,6 @@ function TenantDashboard() {
                 </div>
               </div>
             </article>
-          </div>
-        </section>
-
-        <section className="tenant-dashboard-cta">
-          <h3>Ready to move in?</h3>
-          <p>Schedule a viewing or send us an inquiry to reserve your room</p>
-          <div className="tenant-dashboard-cta-buttons">
-            <button className="tenant-dashboard-cta-primary" type="button">Send an Inquiry</button>
-            <button className="tenant-dashboard-cta-secondary" type="button">View FAQs</button>
           </div>
         </section>
       </div>

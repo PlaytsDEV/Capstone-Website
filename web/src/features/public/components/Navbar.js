@@ -293,6 +293,28 @@ function Navbar({ type = "landing", currentPage = "home" }) {
     const branchClass = isGilPuyat ? "gpuyat" : "guadalupe";
     const branchHome = isGilPuyat ? "/gil-puyat" : "/guadalupe";
 
+    const handleHomeClick = () => {
+      const heroElement = document.querySelector(`.${branchClass}-hero`);
+      if (heroElement) {
+        // We're on a branch page with the hero section
+        heroElement.scrollIntoView({ behavior: "smooth" });
+      } else {
+        // We're on a details page or other page, navigate to branch home
+        navigate(branchHome);
+      }
+    };
+
+    const handleLocationClick = () => {
+      const locationElement = document.querySelector(`.${branchClass}-location`);
+      if (locationElement) {
+        // We're on the branch home page, scroll to location section
+        locationElement.scrollIntoView({ behavior: "smooth" });
+      } else {
+        // We're on rooms page or other pages, navigate to branch home with state
+        navigate(branchHome, { state: { scrollToLocation: true } });
+      }
+    };
+
     return (
       <nav className={`${branchClass}-navbar`}>
         <div className={`${branchClass}-container`}>
@@ -305,22 +327,14 @@ function Navbar({ type = "landing", currentPage = "home" }) {
             <div className={`${branchClass}-nav-links`}>
               <button
                 className={`${branchClass}-nav-link ${activeSection === "home" ? "active" : ""}`}
-                onClick={() =>
-                  document
-                    .querySelector(`.${branchClass}-hero`)
-                    ?.scrollIntoView({ behavior: "smooth" })
-                }
+                onClick={handleHomeClick}
                 type="button"
               >
                 Home
               </button>
               <button
                 className={`${branchClass}-nav-link ${activeSection === "location" ? "active" : ""}`}
-                onClick={() =>
-                  document
-                    .querySelector(`.${branchClass}-location`)
-                    ?.scrollIntoView({ behavior: "smooth" })
-                }
+                onClick={handleLocationClick}
               >
                 Location
               </button>

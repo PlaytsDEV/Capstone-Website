@@ -508,6 +508,22 @@ function SignIn() {
 
   return (
     <>
+      {/* Navbar */}
+      <nav className="tenant-signin-navbar">
+        <div className="tenant-signin-navbar-content">
+          <button 
+            className="tenant-signin-back-btn" 
+            onClick={() => navigate("/")}
+            type="button"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M15 18L9 12L15 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Back to Home
+          </button>
+        </div>
+      </nav>
+
       <div className="tenant-signin-page">
         <div className="tenant-signin-card">
           <div
@@ -535,7 +551,8 @@ function SignIn() {
           </div>
 
           <div className="tenant-signin-right">
-            <h1 className="tenant-signin-title">Sign In</h1>
+            <h1 className="tenant-signin-title">Welcome Back</h1>
+            <p className="tenant-signin-subtitle">Sign in to access your account</p>
             <form
               className="tenant-signin-form"
               onSubmit={handleEmailPasswordLogin}
@@ -669,28 +686,10 @@ function SignIn() {
                 {loading ? "Signing In..." : "Sign In"}
               </button>
 
-              <div
-                style={{
-                  textAlign: "center",
-                  marginTop: "12px",
-                }}
-              >
+              <div className="forgot-password-link">
                 <button
                   type="button"
                   onClick={() => navigate("/tenant/forgot-password")}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "#667eea",
-                    fontSize: "14px",
-                    cursor: "pointer",
-                    textDecoration: "none",
-                    padding: "4px 8px",
-                  }}
-                  onMouseOver={(e) =>
-                    (e.target.style.textDecoration = "underline")
-                  }
-                  onMouseOut={(e) => (e.target.style.textDecoration = "none")}
                 >
                   Forgot Password?
                 </button>

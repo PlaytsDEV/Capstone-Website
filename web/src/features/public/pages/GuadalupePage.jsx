@@ -7,12 +7,26 @@ import gallery1Image from "../../../assets/images/gpuyat/gallery1.jpg";
 import Footer from "../components/Footer";
 import Navbar from "../components/Navbar";
 import LilycrestLogo from "../../../shared/components/LilycrestLogo";
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 
 function GuadalupePage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [currentSlide, setCurrentSlide] = useState(0);
+
+  // Scroll to location section if navigated from rooms page
+  useEffect(() => {
+    if (location.state?.scrollToLocation) {
+      const locationElement = document.querySelector(".guadalupe-location");
+      if (locationElement) {
+        // Use a small delay to ensure the page is fully rendered
+        setTimeout(() => {
+          locationElement.scrollIntoView({ behavior: "smooth" });
+        }, 100);
+      }
+    }
+  }, [location]);
 
   const galleryImages = [gallery1Image, quadrupleSharingImage];
 
