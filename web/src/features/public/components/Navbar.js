@@ -59,7 +59,7 @@ function Navbar({ type = "landing", currentPage = "home" }) {
     const confirmed = await showConfirmation(
       "Are you sure you want to log out?",
       "Log Out",
-      "Cancel"
+      "Cancel",
     );
 
     if (!confirmed) return;
@@ -105,6 +105,12 @@ function Navbar({ type = "landing", currentPage = "home" }) {
 
   // Use Intersection Observer to detect which section is in viewport on landing page
   useEffect(() => {
+    // Check if on FAQs page
+    if (location.pathname === "/faqs") {
+      setActiveSection("faqs");
+      return;
+    }
+
     if (type !== "landing" || location.pathname !== "/") return;
 
     const observerOptions = {
@@ -128,7 +134,10 @@ function Navbar({ type = "landing", currentPage = "home" }) {
       });
     };
 
-    const observer = new IntersectionObserver(observerCallback, observerOptions);
+    const observer = new IntersectionObserver(
+      observerCallback,
+      observerOptions,
+    );
 
     const heroSection = document.querySelector(".landing-hero");
     const branchesSection = document.querySelector(".landing-branches");
@@ -148,6 +157,12 @@ function Navbar({ type = "landing", currentPage = "home" }) {
     const isGilPuyat = currentPage?.includes("gil-puyat");
     const branchClass = isGilPuyat ? "gpuyat" : "guadalupe";
 
+    // Check if on FAQs page
+    if (location.pathname === "/faqs") {
+      setActiveSection("faqs");
+      return;
+    }
+
     // If on /rooms route, set Rooms & Rates as active
     if (location.pathname.includes("/rooms")) {
       setActiveSection("rooms");
@@ -166,14 +181,19 @@ function Navbar({ type = "landing", currentPage = "home" }) {
         if (entry.isIntersecting) {
           if (entry.target.classList.contains(`${branchClass}-hero`)) {
             setActiveSection("home");
-          } else if (entry.target.classList.contains(`${branchClass}-location`)) {
+          } else if (
+            entry.target.classList.contains(`${branchClass}-location`)
+          ) {
             setActiveSection("location");
           }
         }
       });
     };
 
-    const observer = new IntersectionObserver(observerCallback, observerOptions);
+    const observer = new IntersectionObserver(
+      observerCallback,
+      observerOptions,
+    );
 
     const heroSection = document.querySelector(`.${branchClass}-hero`);
     const locationSection = document.querySelector(`.${branchClass}-location`);
@@ -203,7 +223,10 @@ function Navbar({ type = "landing", currentPage = "home" }) {
           <div className="landing-nav-content">
             <div className="landing-nav-logo">
               <NavLink to="/" className="landing-logo-link">
-                <LilycrestLogo className="landing-logo-icon" aria-label="Lilycrest Logo" />
+                <LilycrestLogo
+                  className="landing-logo-icon"
+                  aria-label="Lilycrest Logo"
+                />
               </NavLink>
             </div>
             <div className="landing-nav-links">
@@ -228,16 +251,17 @@ function Navbar({ type = "landing", currentPage = "home" }) {
               >
                 About
               </button>
-              <NavLink to="/faqs" className="landing-nav-link">
+              <button
+                className={`landing-nav-link ${activeSection === "faqs" ? "active" : ""}`}
+                onClick={() => navigate("/faqs")}
+                type="button"
+              >
                 FAQs
-              </NavLink>
+              </button>
             </div>
             <div className="landing-nav-auth">
               {isAuthenticated && user ? (
-                <div
-                  className="landing-nav-profile"
-                  ref={profileMenuRef}
-                >
+                <div className="landing-nav-profile" ref={profileMenuRef}>
                   <button
                     ref={profileButtonRef}
                     className="landing-profile-button"
@@ -300,7 +324,15 @@ function Navbar({ type = "landing", currentPage = "home" }) {
           <div className={`${branchClass}-nav-content`}>
             <div className={`${branchClass}-nav-logo`}>
               <NavLink to="/" className={`${branchClass}-logo-link`}>
-                <LilycrestLogo className={`${branchClass}-logo-icon`} aria-label="Lilycrest Logo" />ame={`${branchClass}-nav-link ${activeSection === "home" ? "active" : ""}`}
+                <LilycrestLogo
+                  className={`${branchClass}-logo-icon`}
+                  aria-label="Lilycrest Logo"
+                />
+              </NavLink>
+            </div>
+            <div className={`${branchClass}-nav-links`}>
+              <button
+                className={`${branchClass}-nav-link ${activeSection === "home" ? "active" : ""}`}
                 onClick={() =>
                   document
                     .querySelector(`.${branchClass}-hero`)
@@ -317,15 +349,24 @@ function Navbar({ type = "landing", currentPage = "home" }) {
                     .querySelector(`.${branchClass}-location`)
                     ?.scrollIntoView({ behavior: "smooth" })
                 }
+                type="button"
               >
                 Location
               </button>
-              <NavLink
-                to={`${branchHome}/rooms`}
+              <button
                 className={`${branchClass}-nav-link ${activeSection === "rooms" ? "active" : ""}`}
+                onClick={() => navigate(`${branchHome}/rooms`)}
+                type="button"
               >
                 Rooms & Rates
-              </NavLink>
+              </button>
+              <button
+                className={`${branchClass}-nav-link ${activeSection === "faqs" ? "active" : ""}`}
+                onClick={() => navigate("/faqs")}
+                type="button"
+              >
+                FAQs
+              </button>
             </div>
 
             <div className={`${branchClass}-nav-auth`}>
