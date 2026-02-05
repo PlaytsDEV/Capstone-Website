@@ -343,8 +343,9 @@ router.delete("/:reservationId", verifyToken, verifyAdmin, async (req, res) => {
     }
 
     // Check branch access (non-super-admin can only manage their branch)
-    if (dbUser.role !== "super-admin") {
+    if (dbUser.role !== "super-admin" && dbUser.role !== "superAdmin") {
       const room = await Room.findById(reservation.roomId);
+
       if (!room || room.branch !== dbUser.branch) {
         return res.status(403).json({
           error: "Unauthorized to delete this reservation",

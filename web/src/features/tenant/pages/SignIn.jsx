@@ -558,10 +558,10 @@ function SignIn() {
                   <span>MAKATI CITY</span>
                 </div>
               </div>
-              <div className="tenant-signin-welcome">
+              {/* <div className="tenant-signin-welcome">
                 <h3>Sign In</h3>
                 <p>Access Your Account</p>
-              </div>
+              </div> */}
             </div>
           </div>
 
