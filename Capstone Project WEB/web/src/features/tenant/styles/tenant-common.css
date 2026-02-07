@@ -1,0 +1,509 @@
+/* =============================================================================
+   TENANT COMMON STYLES - Minimalist Design
+   ============================================================================= */
+
+.tenant-page {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 2rem;
+}
+
+.page-header h1 {
+  font-size: 1.875rem;
+  color: #0f172a;
+  margin: 0 0 0.5rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.page-header p {
+  color: #64748b;
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+/* Section Cards */
+.section-card {
+  background: white;
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid #e2e8f0;
+}
+
+.section-card h2 {
+  font-size: 1.25rem;
+  color: #0f172a;
+  margin: 0 0 1rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+/* Billing Styles */
+.billing-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.balance-card,
+.breakdown-card {
+  background: white;
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  border: 1px solid #e2e8f0;
+}
+
+.balance-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.due-date {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.balance-amount {
+  font-size: 3rem;
+  font-weight: 700;
+  color: #1f2937;
+  margin-bottom: 1.5rem;
+}
+
+.breakdown-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.breakdown-item {
+  display: flex;
+  justify-content: space-between;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 1rem;
+}
+
+.breakdown-item.penalty {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.payment-history-table {
+  overflow-x: auto;
+}
+
+.payment-history-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.payment-history-table th,
+.payment-history-table td {
+  padding: 1rem;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.payment-history-table th {
+  background: #f9fafb;
+  font-weight: 600;
+  color: #374151;
+}
+
+/* Maintenance Styles */
+.maintenance-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.maintenance-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.maintenance-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  transition: background 0.3s;
+}
+
+.maintenance-item:hover {
+  background: #f9fafb;
+}
+
+.maintenance-info h3 {
+  font-size: 1.125rem;
+  color: #1f2937;
+  margin: 0 0 0.5rem 0;
+}
+
+.maintenance-info p {
+  color: #6b7280;
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+/* Announcements Styles */
+.filter-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+}
+
+.filter-tabs .tab {
+  padding: 0.75rem 1.5rem;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-weight: 500;
+  color: #6b7280;
+}
+
+.filter-tabs .tab.active {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-color: transparent;
+}
+
+.announcements-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.announcement-card {
+  background: white;
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.announcement-card.unread {
+  border-left: 4px solid #ef4444;
+}
+
+.announcement-header {
+  margin-bottom: 1rem;
+}
+
+.announcement-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.unread-indicator {
+  width: 10px;
+  height: 10px;
+  background: #ef4444;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.announcement-header h3 {
+  font-size: 1.25rem;
+  color: #1f2937;
+  margin: 0;
+}
+
+.announcement-meta {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.category-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.813rem;
+  font-weight: 500;
+}
+
+.category-reminder {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.category-maintenance {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.category-policy {
+  background: #e0e7ff;
+  color: #4338ca;
+}
+
+.category-utilities {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.announcement-date {
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+.announcement-content {
+  color: #374151;
+  line-height: 1.6;
+  margin: 0 0 1rem 0;
+}
+
+.announcement-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Settings Styles */
+.settings-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.settings-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.settings-item:last-child {
+  border-bottom: none;
+}
+
+.settings-item h4 {
+  font-size: 1rem;
+  color: #1f2937;
+  margin: 0 0 0.25rem 0;
+}
+
+.settings-item p {
+  color: #6b7280;
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 26px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #cbd5e1;
+  border-radius: 26px;
+  transition: 0.4s;
+}
+
+.toggle-slider::before {
+  position: absolute;
+  content: "";
+  height: 20px;
+  width: 20px;
+  left: 3px;
+  bottom: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: 0.4s;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: #6366f1;
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(24px);
+}
+
+/* Form Elements */
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.form-control {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 1rem;
+}
+
+.form-control:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.form-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-sm {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.btn-secondary {
+  background: white;
+  color: #6b7280;
+  border: 1px solid #d1d5db;
+}
+
+.btn-secondary:hover {
+  background: #f3f4f6;
+}
+
+/* Badges */
+.badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.badge-success {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.badge-info {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.badge-warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+/* Alert */
+.profile-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  border-radius: 8px;
+  margin-bottom: 2rem;
+}
+
+.alert-warning {
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  color: #92400e;
+}
+
+.profile-alert i {
+  font-size: 1.25rem;
+  margin-top: 0.125rem;
+}
+
+.alert-link {
+  background: none;
+  border: none;
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+  margin-left: 0.5rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .page-header {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .page-header h1 {
+    font-size: 1.5rem;
+  }
+
+  .billing-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .balance-amount {
+    font-size: 2rem;
+  }
+
+  .settings-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+}
