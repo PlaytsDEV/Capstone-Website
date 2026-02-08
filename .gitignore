@@ -1,9 +1,0 @@
-# Ignore everything on the Desktop by default
-*
-
-# Keep this ignore file itself
-!.gitignore
-
-# Allow only the project folder and its contents
-!Capstone Project WEB/
-!Capstone Project WEB/**
