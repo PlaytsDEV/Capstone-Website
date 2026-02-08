@@ -24,7 +24,7 @@
  *   router.post('/user-only', verifyToken, verifyUser, handler)
  */
 
-import { auth } from "../config/firebase.js";
+import { getAuth } from "../config/firebase.js";
 
 /**
  * Verify Firebase ID Token
@@ -47,6 +47,15 @@ import { auth } from "../config/firebase.js";
  */
 export const verifyToken = async (req, res, next) => {
   try {
+    const auth = getAuth();
+
+    if (!auth) {
+      return res.status(503).json({
+        error: "Authentication service unavailable. Firebase not initialized.",
+        code: "FIREBASE_NOT_INITIALIZED",
+      });
+    }
+
     // Extract the Authorization header
     const authHeader = req.headers.authorization;
 

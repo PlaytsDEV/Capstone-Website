@@ -38,6 +38,16 @@ dotenv.config();
  */
 const connectDB = async () => {
   try {
+    if (!process.env.MONGODB_URI) {
+      console.error(
+        "❌ MongoDB connection error: MONGODB_URI is not set in environment variables",
+      );
+      console.log(
+        "⚠️ Server will continue without MongoDB. Set MONGODB_URI in .env to enable database features.",
+      );
+      return;
+    }
+
     // Attempt to connect to MongoDB
     await mongoose.connect(process.env.MONGODB_URI, {
       serverSelectionTimeoutMS: 10000, // Wait up to 10 seconds to select a server

@@ -3,7 +3,7 @@
  * Extracted from routes for cleaner separation.
  */
 
-import { auth } from "../config/firebase.js";
+import { getAuth } from "../config/firebase.js";
 import { User } from "../models/index.js";
 import auditLogger from "../utils/auditLogger.js";
 import {} from "../middleware/validation.js";
@@ -561,6 +561,15 @@ export const setRole = async (req, res) => {
 
     // Set custom claims in Firebase Auth
     // This allows the user to have admin/superAdmin access on the frontend
+    const auth = getAuth();
+
+    if (!auth) {
+      return res.status(503).json({
+        error: "Authentication service unavailable. Firebase not initialized.",
+        code: "FIREBASE_NOT_INITIALIZED",
+      });
+    }
+
     await auth.setCustomUserClaims(user.firebaseUid, claims);
 
     // Update role in MongoDB database

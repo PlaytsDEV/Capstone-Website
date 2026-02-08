@@ -72,10 +72,27 @@ const serviceAccount = {
 try {
   // Only initialize if not already initialized
   if (!admin.apps.length) {
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-    });
-    console.log("✅ Firebase Admin SDK initialized successfully");
+    const missingFields = [
+      "FIREBASE_PROJECT_ID",
+      "FIREBASE_PRIVATE_KEY_ID",
+      "FIREBASE_PRIVATE_KEY",
+      "FIREBASE_CLIENT_EMAIL",
+      "FIREBASE_CLIENT_ID",
+      "FIREBASE_CLIENT_CERT_URL",
+    ].filter((key) => !process.env[key]);
+
+    if (missingFields.length > 0) {
+      console.error(
+        "❌ Firebase Admin SDK initialization failed: Missing environment variables:",
+        missingFields.join(", "),
+      );
+      console.error("⚠️ Authentication features will not work!");
+    } else {
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+      });
+      console.log("✅ Firebase Admin SDK initialized successfully");
+    }
   } else {
     console.log("ℹ️ Firebase Admin SDK already initialized");
   }
@@ -88,15 +105,17 @@ try {
 }
 
 /**
- * Export Firebase Auth module
+ * Export Firebase Auth module (lazy)
  *
- * Use this in middleware and routes to:
- * - Verify ID tokens: auth.verifyIdToken(token)
- * - Get user data: auth.getUser(uid)
- * - Set custom claims: auth.setCustomUserClaims(uid, claims)
- * - Manage users: auth.createUser(), auth.updateUser(), etc.
+ * This avoids throwing when Firebase failed to initialize.
  */
-export const auth = admin.auth();
+export const getAuth = () => {
+  if (!admin.apps.length) {
+    return null;
+  }
+
+  return admin.auth();
+};
 
 /**
  * Export Firebase Admin instance
