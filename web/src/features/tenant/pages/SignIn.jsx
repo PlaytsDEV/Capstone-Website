@@ -234,7 +234,7 @@ function SignIn() {
 
           // Redirect to branch selection page (useAuth handles session)
           setTimeout(() => {
-            navigate("/tenant/branch-selection", {
+            navigate("/tenant/check-availability", {
               state: { notice: "Please select your branch to continue" },
             });
           }, 500);

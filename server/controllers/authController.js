@@ -561,6 +561,14 @@ export const setRole = async (req, res) => {
 
     // Set custom claims in Firebase Auth
     // This allows the user to have admin/superAdmin access on the frontend
+    if (!auth) {
+      return res.status(503).json({
+        error:
+          "Authentication is temporarily unavailable. Firebase Admin is not initialized.",
+        code: "FIREBASE_ADMIN_NOT_INITIALIZED",
+      });
+    }
+
     await auth.setCustomUserClaims(user.firebaseUid, claims);
 
     // Update role in MongoDB database

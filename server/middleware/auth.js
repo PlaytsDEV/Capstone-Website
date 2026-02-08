@@ -47,6 +47,14 @@ import { auth } from "../config/firebase.js";
  */
 export const verifyToken = async (req, res, next) => {
   try {
+    if (!auth) {
+      return res.status(503).json({
+        error:
+          "Authentication is temporarily unavailable. Firebase Admin is not initialized.",
+        code: "FIREBASE_ADMIN_NOT_INITIALIZED",
+      });
+    }
+
     // Extract the Authorization header
     const authHeader = req.headers.authorization;
 

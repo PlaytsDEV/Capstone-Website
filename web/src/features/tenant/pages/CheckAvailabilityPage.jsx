@@ -9,7 +9,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { roomApi } from "../../../shared/api/apiClient";
 import "../../../shared/styles/notification.css";
@@ -19,6 +19,7 @@ import deluxeRoom from "../../../assets/images/branches/gil-puyat/deluxe-room.jp
 import premiumRoom from "../../../assets/images/branches/gil-puyat/premium-room.jpg";
 import gallery1 from "../../../assets/images/branches/gil-puyat/gallery1.jpg";
 import InquiryModal from "../../public/modals/InquiryModal";
+import RoomDetailsModal from "../modals/RoomDetailsModal";
 
 const AVAILABLE_APPLIANCES = [
   { id: "fan", name: "Electric Fan", price: 200 },
@@ -361,7 +362,7 @@ function CheckAvailabilityPage() {
     closeRoomDetails();
 
     navigate("/tenant/reservation-flow", {
-      state: { roomData: reservationData },
+      state: { roomData: reservationData, step: 1 },
     });
   };
 
@@ -492,6 +493,13 @@ function CheckAvailabilityPage() {
             </div>
 
             <div className="flex items-center gap-4">
+              {/* User Menu */}
+              <Link
+                to="/tenant/profile"
+                className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center hover:bg-gray-300 transition-colors"
+              >
+                <span className="text-sm font-semibold text-gray-700">JD</span>
+              </Link>
             </div>
           </div>
 
@@ -509,6 +517,7 @@ function CheckAvailabilityPage() {
           </div>
         </div>
       </header>
+      
 
       {showFilters && (
         <div className="bg-white border-b border-gray-200 shadow-sm">
@@ -742,344 +751,19 @@ function CheckAvailabilityPage() {
         </section>
       </main>
 
-      {isDetailsModalOpen && selectedRoom && (
-        <div className="room-details-modal-overlay">
-          <div className="room-details-modal">
-            <button className="close-modal" onClick={closeRoomDetails}>
-              &times;
-            </button>
-            <div className="room-details-header">
-              <img src={selectedRoom.image} alt={selectedRoom.title} />
-              <div>
-                <h2>{selectedRoom.title}</h2>
-                <p>{selectedRoom.branch}</p>
-              </div>
-            </div>
-
-            <div className="room-details-body">
-              <p>{selectedRoom.description}</p>
-
-              <div className="room-details-section">
-                <h4>Bed Layout: {selectedRoom.bedLayout}</h4>
-                {selectedRoom.intendedTenant && (
-                  <p
-                    style={{
-                      fontSize: "14px",
-                      color: "#6b7280",
-                      margin: "8px 0 0",
-                    }}
-                  >
-                    <strong>Intended for:</strong> {selectedRoom.intendedTenant}
-                  </p>
-                )}
-              </div>
-
-              <div className="room-details-section">
-                <h4>Amenities & Inclusions</h4>
-                <p
-                  style={{
-                    fontSize: "13px",
-                    color: "#6b7280",
-                    marginBottom: "12px",
-                  }}
-                >
-                  All amenities below are included in the monthly rent
-                </p>
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "8px",
-                  }}
-                >
-                  {selectedRoom.amenities.map((amenity, index) => (
-                    <div
-                      key={index}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        fontSize: "14px",
-                        color: "#475569",
-                      }}
-                    >
-                      <span style={{ color: "#22c55e", fontWeight: "bold" }}>
-                        ✓
-                      </span>
-                      <span>{amenity}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {selectedRoom.beds &&
-                selectedRoom.beds.length > 1 &&
-                selectedRoom.type !== "Private" && (
-                  <div className="room-details-section">
-                    <h4>Select Your Bed *</h4>
-                    <p
-                      style={{
-                        fontSize: "13px",
-                        color: "#6b7280",
-                        marginBottom: "12px",
-                      }}
-                    >
-                      Choose your preferred bed position. Only available beds
-                      can be selected.
-                    </p>
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns:
-                          "repeat(auto-fit, minmax(140px, 1fr))",
-                        gap: "12px",
-                      }}
-                    >
-                      {selectedRoom.beds.map((bed, index) => (
-                        <button
-                          key={bed.id || index}
-                          type="button"
-                          onClick={() => bed.available && setSelectedBed(bed)}
-                          disabled={!bed.available}
-                          style={{
-                            padding: "16px",
-                            border: `2px solid ${
-                              selectedBed?.id === bed.id
-                                ? "#2563eb"
-                                : bed.available
-                                  ? "#e5e7eb"
-                                  : "#f3f4f6"
-                            }`,
-                            borderRadius: "8px",
-                            background: bed.available
-                              ? selectedBed?.id === bed.id
-                                ? "#eff6ff"
-                                : "white"
-                              : "#f9fafb",
-                            cursor: bed.available ? "pointer" : "not-allowed",
-                            transition: "all 0.2s",
-                            opacity: bed.available ? 1 : 0.5,
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            gap: "8px",
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontSize: "24px",
-                            }}
-                          >
-                            {bed.position === "upper" || bed.position === "top"
-                              ? "🛏️⬆️"
-                              : bed.position === "lower" ||
-                                  bed.position === "bottom"
-                                ? "🛏️⬇️"
-                                : "🛏️"}
-                          </div>
-                          <div
-                            style={{
-                              fontWeight: "600",
-                              fontSize: "14px",
-                              color: bed.available ? "#111827" : "#9ca3af",
-                              textTransform: "capitalize",
-                            }}
-                          >
-                            {bed.position === "single"
-                              ? "Single Bed"
-                              : `${bed.position} Bed`}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: "12px",
-                              color: bed.available ? "#22c55e" : "#ef4444",
-                              fontWeight: "500",
-                            }}
-                          >
-                            {bed.available ? "Available" : "Occupied"}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                    {selectedBed && (
-                      <div
-                        style={{
-                          marginTop: "12px",
-                          padding: "12px",
-                          background: "#eff6ff",
-                          borderRadius: "8px",
-                          fontSize: "14px",
-                          color: "#1e40af",
-                        }}
-                      >
-                        ✓ Selected:{" "}
-                        <strong style={{ textTransform: "capitalize" }}>
-                          {selectedBed.position} Bed
-                        </strong>{" "}
-                        ({selectedBed.id})
-                      </div>
-                    )}
-                  </div>
-                )}
-
-              <div className="room-details-section">
-                <h4>Appliance Fees (Optional)</h4>
-                <p
-                  style={{
-                    fontSize: "13px",
-                    color: "#6b7280",
-                    marginBottom: "12px",
-                  }}
-                >
-                  Select only appliances you plan to bring. Appliance fees are
-                  charged monthly per tenant and added to your billing summary.
-                </p>
-                {AVAILABLE_APPLIANCES.map((appliance) => (
-                  <div key={appliance.id} className="appliance-row">
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: "500", marginBottom: "2px" }}>
-                        {appliance.name}
-                      </div>
-                      <div style={{ fontSize: "12px", color: "#6b7280" }}>
-                        ₱{appliance.price}/month each
-                      </div>
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                      }}
-                    >
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleApplianceQuantityChange(
-                            appliance.id,
-                            Math.max(
-                              0,
-                              (selectedAppliances[appliance.id] || 0) - 1,
-                            ),
-                          )
-                        }
-                        style={{
-                          width: "32px",
-                          height: "32px",
-                          border: "1px solid #e5e7eb",
-                          borderRadius: "6px",
-                          background: "white",
-                          cursor: "pointer",
-                          fontSize: "16px",
-                        }}
-                      >
-                        −
-                      </button>
-                      <span
-                        style={{
-                          minWidth: "30px",
-                          textAlign: "center",
-                          fontWeight: "600",
-                        }}
-                      >
-                        {selectedAppliances[appliance.id] || 0}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleApplianceQuantityChange(
-                            appliance.id,
-                            (selectedAppliances[appliance.id] || 0) + 1,
-                          )
-                        }
-                        style={{
-                          width: "32px",
-                          height: "32px",
-                          border: "1px solid #e5e7eb",
-                          borderRadius: "6px",
-                          background: "white",
-                          cursor: "pointer",
-                          fontSize: "16px",
-                        }}
-                      >
-                        +
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleApplianceQuantityChange(appliance.id, 0)
-                        }
-                        style={{
-                          padding: "6px 12px",
-                          border: "1px solid #e5e7eb",
-                          borderRadius: "6px",
-                          background: "white",
-                          cursor: "pointer",
-                          fontSize: "13px",
-                          color: "#6b7280",
-                        }}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="room-details-section">
-                <h4>Total Appliance Fees:</h4>
-                <p
-                  style={{
-                    fontSize: "20px",
-                    fontWeight: "600",
-                    color: "#f97316",
-                  }}
-                >
-                  ₱{calculateApplianceFees().toLocaleString()}
-                </p>
-              </div>
-
-              <div className="room-details-section">
-                <h4>Policies & Important Notes</h4>
-                <ul
-                  style={{
-                    margin: "0",
-                    paddingLeft: "20px",
-                    color: "#475569",
-                    fontSize: "14px",
-                  }}
-                >
-                  {selectedRoom.policies.map((policy, index) => (
-                    <li key={index} style={{ marginBottom: "6px" }}>
-                      {policy}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-
-            <div className="room-details-footer">
-              <button
-                className="primary"
-                onClick={handleProceedToReservation}
-                disabled={
-                  checkRoomOverbooking(selectedRoom) ||
-                  (selectedRoom.beds &&
-                    selectedRoom.beds.length > 1 &&
-                    selectedRoom.type !== "Private" &&
-                    !selectedBed)
-                }
-              >
-                {selectedRoom.beds &&
-                selectedRoom.beds.length > 1 &&
-                selectedRoom.type !== "Private" &&
-                !selectedBed
-                  ? "Please Select a Bed"
-                  : "Proceed to Reservation"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <RoomDetailsModal
+        isOpen={isDetailsModalOpen}
+        room={selectedRoom}
+        onClose={closeRoomDetails}
+        onProceed={handleProceedToReservation}
+        isOverbooked={selectedRoom ? checkRoomOverbooking(selectedRoom) : false}
+        selectedBed={selectedBed}
+        onSelectBed={setSelectedBed}
+        selectedAppliances={selectedAppliances}
+        onApplianceQuantityChange={handleApplianceQuantityChange}
+        calculateApplianceFees={calculateApplianceFees}
+        availableAppliances={AVAILABLE_APPLIANCES}
+      />
 
       <InquiryModal
         isOpen={isInquiryModalOpen}
