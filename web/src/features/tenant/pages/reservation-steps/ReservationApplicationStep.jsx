@@ -1180,7 +1180,7 @@ const ReservationApplicationStep = ({
 
       <div className="section-group">
         <h3 className="section-header">Agreements & Consent</h3>
-        
+
         <div
           style={{
             background: cardBackground,
@@ -1248,11 +1248,20 @@ const ReservationApplicationStep = ({
           />
           <label
             htmlFor="privacy-consent"
-            style={{ margin: 0, fontSize: "13px", color: "#374151", cursor: "pointer" }}
+            style={{
+              margin: 0,
+              fontSize: "13px",
+              color: "#374151",
+              cursor: "pointer",
+            }}
           >
-            <strong>Privacy Policy & Data Protection Consent</strong> <span style={{ color: "#dc2626" }}>*</span>
-            <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>
-              I consent to the collection and use of my personal data for dormitory services.
+            <strong>Privacy Policy & Data Protection Consent</strong>{" "}
+            <span style={{ color: "#dc2626" }}>*</span>
+            <div
+              style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}
+            >
+              I consent to the collection and use of my personal data for
+              dormitory services.
             </div>
           </label>
         </div>
@@ -1277,16 +1286,32 @@ const ReservationApplicationStep = ({
           />
           <label
             htmlFor="certification"
-            style={{ margin: 0, fontSize: "13px", color: "#374151", cursor: "pointer" }}
+            style={{
+              margin: 0,
+              fontSize: "13px",
+              color: "#374151",
+              cursor: "pointer",
+            }}
           >
-            <strong>Information Accuracy Certification</strong> <span style={{ color: "#dc2626" }}>*</span>
-            <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>
-              I certify all information is true and accurate. False information may result in rejection.
+            <strong>Information Accuracy Certification</strong>{" "}
+            <span style={{ color: "#dc2626" }}>*</span>
+            <div
+              style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}
+            >
+              I certify all information is true and accurate. False information
+              may result in rejection.
             </div>
           </label>
         </div>
 
-        <div style={{ fontSize: "12px", color: "#9ca3af", marginTop: "12px", fontStyle: "italic" }}>
+        <div
+          style={{
+            fontSize: "12px",
+            color: "#9ca3af",
+            marginTop: "12px",
+            fontStyle: "italic",
+          }}
+        >
           * Required to continue
         </div>
       </div>
