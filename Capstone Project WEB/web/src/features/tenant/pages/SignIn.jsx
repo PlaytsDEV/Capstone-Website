@@ -7,7 +7,7 @@
  * - Email/password login OR username/password login
  * - Email verification check
  * - Google and Facebook social authentication
- * - Redirects to branch selection page for users without branch
+ * - Redirects to check availability after login
  * - Show/Hide password toggle
  * - Comprehensive error handling
  */
@@ -186,8 +186,7 @@ function SignIn() {
    * REQUIREMENTS:
    * 1. Support login with email/password for Google-registered users
    * 2. Check email verification before allowing login
-   * 3. Check if branch selection is needed
-   * 4. Redirect appropriately based on user role and branch
+   * 3. Redirect appropriately based on user role
    * 5. Robust error handling
    */
   const handleEmailPasswordLogin = async (e) => {
@@ -224,23 +223,6 @@ function SignIn() {
         const loginResponse = await login();
         console.log("✅ Backend login successful");
         console.log("👤 User branch:", loginResponse.user.branch);
-
-        // STEP 4: Check if user needs to select branch
-        // This happens when user registered with Google but hasn't selected a branch yet
-        if (!loginResponse.user.branch || loginResponse.user.branch === "") {
-          console.log(
-            "📍 Branch not selected, redirecting to branch selection...",
-          );
-
-          // Redirect to branch selection page (useAuth handles session)
-          setTimeout(() => {
-            navigate("/tenant/branch-selection", {
-              state: { notice: "Please select your branch to continue" },
-            });
-          }, 500);
-          setGlobalLoading(false);
-          return;
-        }
 
         // STEP 5: Show success message
         showNotification(
@@ -341,7 +323,7 @@ function SignIn() {
    * 2. Check if account exists in backend (MongoDB)
    * 3. If account exists → proceed with login flow
    * 4. If account doesn't exist → BLOCK ACCESS, terminate session
-   * 5. Branch selection required for authenticated users
+   * 5. Redirect after authentication
    */
   const handleSocialLogin = async (provider) => {
     setGlobalLoading(true);
@@ -482,26 +464,14 @@ function SignIn() {
   };
 
   /**
-   * Handle post-authentication flow (branch selection and redirects)
+   * Handle post-authentication flow and redirects
    * @param {Object} loginResponse - Backend login response
    */
   const handlePostAuthFlow = (loginResponse) => {
     console.log("🔄 Starting post-auth flow...");
 
-    // STEP: Check if branch selection is required
-    if (!loginResponse.user.branch || loginResponse.user.branch === "") {
-      console.log("📍 Branch not selected - redirecting to branch selection");
-
-      setTimeout(() => {
-        navigate("/tenant/branch-selection", {
-          state: { notice: "Welcome! Please select your branch to continue" },
-        });
-      }, 500);
-      return;
-    }
-
-    // STEP: Branch already selected - redirect based on role
-    console.log("✅ Branch selected - redirecting based on role");
+    // STEP: Redirect based on role
+    console.log("✅ Redirecting based on role");
 
     showNotification(`Welcome, ${loginResponse.user.firstName}!`, "success");
 
@@ -563,8 +533,7 @@ function SignIn() {
           </p>
         </div>
 
-        <div className="relative z-20 flex gap-2">
-        </div>
+        <div className="relative z-20 flex gap-2"></div>
       </div>
 
       {/* Right Side - Login Form */}
@@ -742,9 +711,7 @@ function SignIn() {
                     d="M5.27698177,14.2678769 C5.03832634,13.556323 4.90909091,12.7937589 4.90909091,12 C4.90909091,11.2182781 5.03443647,10.4668121 5.26620003,9.76452941 L1.23999023,6.65002441 C0.43658717,8.26043162 0,10.0753848 0,12 C0,13.9195484 0.444780743,15.7301709 1.23746264,17.3349879 L5.27698177,14.2678769 Z"
                   />
                 </svg>
-                <span className="text-gray-700 font-light text-sm">
-                  Google
-                </span>
+                <span className="text-gray-700 font-light text-sm">Google</span>
               </button>
               <button
                 type="button"

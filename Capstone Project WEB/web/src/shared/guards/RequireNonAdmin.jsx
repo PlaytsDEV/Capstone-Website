@@ -3,20 +3,23 @@
  * REQUIRE NON-ADMIN GUARD
  * =============================================================================
  *
- * Route protection component that blocks admin users from public/tenant pages.
+ * Route protection component that blocks admin users and logged-in users
+ * from auth-only pages (signin/signup/forgot password).
  *
  * SESSION LOCK BEHAVIOR:
- * - Admin and super admin users are BLOCKED from accessing public/tenant pages
- * - Admins are redirected to /admin/dashboard (their designated workspace)
- * - Enforces strict role separation: admins stay in admin area, users in tenant area
+ * - Admin and super admin users are BLOCKED from accessing auth pages
+ * - Authenticated regular users are BLOCKED from accessing auth pages
+ * - Admins are redirected to /admin/dashboard
+ * - Regular users are redirected to /check-availability
  *
  * Usage:
  *   <Route path="/tenant/signin" element={<RequireNonAdmin><TenantSignIn /></RequireNonAdmin>} />
  *   <Route path="/" element={<RequireNonAdmin><LandingPage /></RequireNonAdmin>} />
  *
  * Behavior:
- * - Non-admin users: Allowed access
+ * - Unauthenticated users: Allowed access
  * - Admin/Super admin users: Redirected to /admin/dashboard
+ * - Authenticated regular users: Redirected to /check-availability
  * =============================================================================
  */
 
@@ -31,7 +34,7 @@ import { useAuth } from "../hooks/useAuth";
  * @returns {React.ReactElement} Children if non-admin, redirect if admin
  */
 const RequireNonAdmin = ({ children }) => {
-  const { user, loading } = useAuth();
+  const { user, isAuthenticated, loading } = useAuth();
 
   // Wait for auth to load
   if (loading) {
@@ -44,7 +47,12 @@ const RequireNonAdmin = ({ children }) => {
     return <Navigate to="/admin/dashboard" replace />;
   }
 
-  // Allow non-admin users (including unauthenticated users)
+  // Block authenticated regular users from auth pages
+  if (isAuthenticated && user && !isAdmin) {
+    return <Navigate to="/check-availability" replace />;
+  }
+
+  // Allow unauthenticated users
   return children;
 };
 

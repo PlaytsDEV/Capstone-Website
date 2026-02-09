@@ -97,14 +97,7 @@ function AppContent() {
       <ErrorBoundary>
         <Routes>
           {/* Public Page */}
-          <Route
-            path="/"
-            element={
-              <RequireNonAdmin>
-                <LandingPage />
-              </RequireNonAdmin>
-            }
-          />
+          <Route path="/" element={<LandingPage />} />
 
           {/* Admin routes - all require admin auth */}
           <Route
@@ -198,14 +191,6 @@ function AppContent() {
             }
           />
           <Route
-            path="/"
-            element={
-              <RequireNonAdmin>
-                <LandingPage />
-              </RequireNonAdmin>
-            }
-          />
-          <Route
             path="/tenant/forgot-password"
             element={
               <RequireNonAdmin>
@@ -216,17 +201,17 @@ function AppContent() {
           <Route
             path="/check-availability"
             element={
-              <RequireNonAdmin>
+              <ProtectedRoute requiredRole="user">
                 <CheckAvailabilityPage />
-              </RequireNonAdmin>
+              </ProtectedRoute>
             }
           />
           <Route
             path="/tenant/check-availability"
             element={
-              <RequireNonAdmin>
+              <ProtectedRoute requiredRole="user">
                 <CheckAvailabilityPage />
-              </RequireNonAdmin>
+              </ProtectedRoute>
             }
           />
           <Route

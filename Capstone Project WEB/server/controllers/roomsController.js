@@ -5,6 +5,57 @@
 import { Room } from "../models/index.js";
 import auditLogger from "../utils/auditLogger.js";
 
+const normalizeRoomType = (rawType) => {
+  if (!rawType) return null;
+  const value = String(rawType).toLowerCase();
+  if (value.includes("private")) return "private";
+  if (value.includes("double") || value.includes("shared")) {
+    return "double-sharing";
+  }
+  if (value.includes("quad")) return "quadruple-sharing";
+  return null;
+};
+
+const normalizeBranch = (rawBranch) => {
+  if (!rawBranch) return null;
+  const value = String(rawBranch).toLowerCase();
+  if (value.includes("gil")) return "gil-puyat";
+  if (value.includes("guad")) return "guadalupe";
+  return null;
+};
+
+const normalizeRoom = (room) => {
+  const name =
+    room.name || room.roomNumber || room.room_number || room.room_id || null;
+  const roomNumber =
+    room.roomNumber || room.room_number || room.name || room.room_id || null;
+  const type = normalizeRoomType(room.type || room.room_type);
+  const branch = normalizeBranch(room.branch);
+  const capacity = room.capacity ?? null;
+  const currentOccupancy = room.currentOccupancy ?? 0;
+  const price = room.price ?? room.regular_price ?? null;
+  const available =
+    typeof room.available === "boolean"
+      ? room.available
+      : typeof room.status === "string"
+        ? room.status.toLowerCase() === "available"
+        : capacity !== null
+          ? currentOccupancy < capacity
+          : undefined;
+
+  return {
+    ...room,
+    name,
+    roomNumber,
+    type,
+    branch,
+    capacity,
+    currentOccupancy,
+    price,
+    available,
+  };
+};
+
 export const getRooms = async (req, res) => {
   try {
     // Extract query parameters for filtering
@@ -23,10 +74,14 @@ export const getRooms = async (req, res) => {
     }
 
     // Fetch rooms matching the filter, excluding version key
-    const rooms = await Room.find(filter).select("-__v");
+    const rooms = await Room.find(filter).select("-__v").lean();
+    const normalizedRooms = rooms.map(normalizeRoom);
 
-    console.log(`✅ Retrieved ${rooms.length} rooms with filter:`, filter);
-    res.json(rooms);
+    console.log(
+      `✅ Retrieved ${normalizedRooms.length} rooms with filter:`,
+      filter,
+    );
+    res.json(normalizedRooms);
   } catch (error) {
     console.error("❌ Fetch rooms error:", error);
     res.status(500).json({

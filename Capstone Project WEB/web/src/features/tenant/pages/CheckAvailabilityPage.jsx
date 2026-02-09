@@ -127,14 +127,18 @@ function CheckAvailabilityPage() {
   const [roomsError, setRoomsError] = useState(null);
 
   const mapRoomType = (type) => {
-    if (type === "private") return "Private";
-    if (type === "double-sharing") return "Shared";
-    if (type === "quadruple-sharing") return "Quadruple";
+    const value = typeof type === "string" ? type.toLowerCase() : "";
+    if (value === "private") return "Private";
+    if (value === "double-sharing") return "Shared";
+    if (value === "quadruple-sharing") return "Quadruple";
     return "Unknown";
   };
 
-  const mapBranchLabel = (branch) =>
-    branch === "gil-puyat" ? "Gil Puyat" : "Guadalupe";
+  const mapBranchLabel = (branch) => {
+    if (branch === "gil-puyat") return "Gil Puyat";
+    if (branch === "guadalupe") return "Guadalupe";
+    return "Unknown";
+  };
 
   const getPrimaryImage = (type) => {
     if (type === "private") return standardRoom;
@@ -179,14 +183,22 @@ function CheckAvailabilityPage() {
       try {
         const data = await roomApi.getAll();
         const mappedRooms = data.map((room) => {
-          const mappedType = mapRoomType(room.type);
+          const displayName =
+            room.name ||
+            room.roomNumber ||
+            room.room_number ||
+            room.room_id ||
+            "Unknown";
+          const normalizedType = room.type || room.room_type;
+          const mappedType = mapRoomType(normalizedType);
           const branchLabel = mapBranchLabel(room.branch);
-          const primaryImage = getPrimaryImage(room.type);
+          const primaryImage = getPrimaryImage(normalizedType);
+          const roomNumber = room.roomNumber || room.room_number || displayName;
           const beds = room.beds?.length
             ? room.beds
             : buildBedsFromCapacity(
-                room.roomNumber || room.name,
-                room.type,
+                roomNumber,
+                normalizedType,
                 room.currentOccupancy || 0,
               );
 
@@ -198,14 +210,14 @@ function CheckAvailabilityPage() {
               : `${availableBeds} bed${availableBeds === 1 ? "" : "s"} available`;
 
           return {
-            id: room.name,
+            id: roomNumber,
             roomId: room._id,
-            title: `Room ${room.name}`,
+            title: `Room ${displayName}`,
             branch: branchLabel,
             type: mappedType,
             occupancy: `${room.currentOccupancy || 0}/${room.capacity || totalBeds}`,
             bedsLeft: bedsLeftText,
-            price: room.price,
+            price: typeof room.price === "number" ? room.price : 0,
             image: primaryImage,
             description: room.description || "",
             bedLayout:
@@ -378,7 +390,6 @@ function CheckAvailabilityPage() {
     setIsInquiryModalOpen(true);
   };
 
-
   const handleGetNotified = () => {
     handleSendInquiry();
   };
@@ -491,8 +502,7 @@ function CheckAvailabilityPage() {
               </button>
             </div>
 
-            <div className="flex items-center gap-4">
-            </div>
+            <div className="flex items-center gap-4"></div>
           </div>
 
           <div className="md:hidden pb-4">
@@ -707,7 +717,9 @@ function CheckAvailabilityPage() {
           <h2 className="text-2xl font-light mb-2" style={{ color: "#0C375F" }}>
             Coming Soon
           </h2>
-          <p className="text-gray-600 mb-6">Rooms that will be available soon</p>
+          <p className="text-gray-600 mb-6">
+            Rooms that will be available soon
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             <article
               className="group rounded-2xl border border-gray-200 overflow-hidden"
@@ -1150,8 +1162,7 @@ function RoomCard({ room, onClick }) {
           </div>
         )}
 
-        <div className="absolute top-3 left-3">
-        </div>
+        <div className="absolute top-3 left-3"></div>
       </div>
 
       <div className="space-y-1">
