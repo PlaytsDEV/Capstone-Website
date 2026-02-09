@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
+import ProfileSidebar from "../components/ProfileSidebar";
 import {
   authApi,
   userApi,
@@ -19,14 +20,14 @@ import {
   FileText,
   DollarSign,
   Bed,
-  LogOut,
-  Search,
   Check,
-  LayoutDashboard,
-  AlertCircle,
   CreditCard,
-  ArrowRight,
+  Search,
+  AlertCircle,
   MapPin,
+  Monitor,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 const ProfilePage = () => {
@@ -122,7 +123,6 @@ const ProfilePage = () => {
           yearLevel: profile.yearLevel || "",
         });
 
-        // Load reservations and visits
         await loadReservationsAndVisits();
       } catch (err) {
         console.error("Error loading profile:", err);
@@ -137,11 +137,9 @@ const ProfilePage = () => {
 
   const loadReservationsAndVisits = async () => {
     try {
-      // Load reservations
       const reservationsData = await reservationApi.getAll();
       setReservations(reservationsData || []);
 
-      // Find active reservation (non-completed, non-cancelled)
       const activeOnes =
         reservationsData?.filter((r) => {
           const status = r.reservationStatus || r.status;
@@ -151,12 +149,10 @@ const ProfilePage = () => {
       const active = activeOnes[0] || null;
       setActiveReservation(active);
 
-      // Set the first active reservation as selected by default
       if (active && !selectedReservationId) {
         setSelectedReservationId(active._id);
       }
 
-      // Extract visits from reservations
       const allVisits =
         reservationsData
           ?.filter((r) => r.visitDate)
@@ -177,7 +173,6 @@ const ProfilePage = () => {
           })) || [];
       setVisits(allVisits);
 
-      // Build activity log from reservations
       const activities = [];
       reservationsData?.forEach((r) => {
         if (r.createdAt) {
@@ -200,16 +195,6 @@ const ProfilePage = () => {
             status: r.visitCompleted ? "Completed" : "Scheduled",
           });
         }
-        if (r.paymentDate) {
-          activities.push({
-            id: `payment-${r._id}`,
-            type: "payment",
-            title: "Deposit Payment Completed",
-            description: `Successfully paid security deposit for Room ${r.roomId?.name || "N/A"}`,
-            date: r.paymentDate,
-            status: "Completed",
-          });
-        }
         if (r.approvedDate) {
           activities.push({
             id: `approval-${r._id}`,
@@ -221,6 +206,7 @@ const ProfilePage = () => {
           });
         }
       });
+
       activities.sort((a, b) => new Date(b.date) - new Date(a.date));
       setActivityLog(activities);
     } catch (err) {
@@ -615,10 +601,12 @@ const ProfilePage = () => {
     },
   ];
 
-  const stepsToRender = selectedReservation
-    ? reservationProgress.steps
-    : defaultSteps;
+  const stepsToRender =
+    selectedReservation && reservationProgress.steps?.length
+      ? reservationProgress.steps
+      : defaultSteps;
 
+  const [showTracker, setShowTracker] = useState(true);
   const [expandedStep, setExpandedStep] = useState(null);
   const [receiptModal, setReceiptModal] = useState({ open: false, step: null });
 
@@ -849,12 +837,28 @@ const ProfilePage = () => {
                 }}
               >
                 <span style={{ color: "#6B7280" }}>Visit Type</span>
-                <span style={{ color: "#1F2937", fontWeight: "500" }}>
-                  {selectedReservation.viewingType === "inperson"
-                    ? "🏠 In-Person Visit"
-                    : selectedReservation.viewingType === "virtual"
-                      ? "💻 Virtual Verification"
-                      : "Not selected"}
+                <span
+                  style={{
+                    color: "#1F2937",
+                    fontWeight: "500",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  {selectedReservation.viewingType === "inperson" ? (
+                    <>
+                      <Home size={16} />
+                      In-Person Visit
+                    </>
+                  ) : selectedReservation.viewingType === "virtual" ? (
+                    <>
+                      <Monitor size={16} />
+                      Virtual Verification
+                    </>
+                  ) : (
+                    "Not selected"
+                  )}
                 </span>
               </div>
               {selectedReservation.isOutOfTown && (
@@ -866,8 +870,17 @@ const ProfilePage = () => {
                   }}
                 >
                   <span style={{ color: "#6B7280" }}>Location</span>
-                  <span style={{ color: "#1F2937", fontWeight: "500" }}>
-                    📍 {selectedReservation.currentLocation || "Out of town"}
+                  <span
+                    style={{
+                      color: "#1F2937",
+                      fontWeight: "500",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    <MapPin size={14} />
+                    {selectedReservation.currentLocation || "Out of town"}
                   </span>
                 </div>
               )}
@@ -885,9 +898,19 @@ const ProfilePage = () => {
                       ? "#10B981"
                       : "#6B7280",
                     fontWeight: "500",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
                   }}
                 >
-                  {selectedReservation.agreedToPrivacy ? "✓ Yes" : "No"}
+                  {selectedReservation.agreedToPrivacy ? (
+                    <>
+                      <Check size={14} />
+                      Yes
+                    </>
+                  ) : (
+                    "No"
+                  )}
                 </span>
               </div>
               <div
@@ -907,8 +930,30 @@ const ProfilePage = () => {
                   }}
                 >
                   {selectedReservation.scheduleApproved
-                    ? "✓ Approved"
-                    : "⏳ Awaiting Admin Approval"}
+                    ? (
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                          }}
+                        >
+                          <Check size={14} />
+                          Approved
+                        </span>
+                      )
+                    : (
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                          }}
+                        >
+                          <Clock size={14} />
+                          Awaiting Admin Approval
+                        </span>
+                      )}
                 </span>
               </div>
               {step.status === "current" &&
@@ -950,10 +995,26 @@ const ProfilePage = () => {
                 }}
               >
                 <span style={{ color: "#6B7280" }}>Visit Type</span>
-                <span style={{ color: "#1F2937", fontWeight: "500" }}>
-                  {selectedReservation.viewingType === "inperson"
-                    ? "🏠 In-Person Visit"
-                    : "💻 Virtual Verification"}
+                <span
+                  style={{
+                    color: "#1F2937",
+                    fontWeight: "500",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  {selectedReservation.viewingType === "inperson" ? (
+                    <>
+                      <Home size={16} />
+                      In-Person Visit
+                    </>
+                  ) : (
+                    <>
+                      <Monitor size={16} />
+                      Virtual Verification
+                    </>
+                  )}
                 </span>
               </div>
               <div
@@ -964,8 +1025,17 @@ const ProfilePage = () => {
                 }}
               >
                 <span style={{ color: "#6B7280" }}>Schedule Approval</span>
-                <span style={{ color: "#10B981", fontWeight: "600" }}>
-                  ✓ Approved
+                <span
+                  style={{
+                    color: "#10B981",
+                    fontWeight: "600",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <Check size={14} />
+                  Approved
                 </span>
               </div>
               <div
@@ -976,8 +1046,17 @@ const ProfilePage = () => {
                 }}
               >
                 <span style={{ color: "#6B7280" }}>Visit Status</span>
-                <span style={{ color: "#10B981", fontWeight: "600" }}>
-                  ✓ Completed & Verified
+                <span
+                  style={{
+                    color: "#10B981",
+                    fontWeight: "600",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <Check size={14} />
+                  Completed & Verified
                 </span>
               </div>
               <div
@@ -1015,10 +1094,26 @@ const ProfilePage = () => {
                 }}
               >
                 <span style={{ color: "#6B7280" }}>Visit Type</span>
-                <span style={{ color: "#1F2937", fontWeight: "500" }}>
-                  {selectedReservation.viewingType === "inperson"
-                    ? "🏠 In-Person Visit"
-                    : "💻 Virtual Verification"}
+                <span
+                  style={{
+                    color: "#1F2937",
+                    fontWeight: "500",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  {selectedReservation.viewingType === "inperson" ? (
+                    <>
+                      <Home size={16} />
+                      In-Person Visit
+                    </>
+                  ) : (
+                    <>
+                      <Monitor size={16} />
+                      Virtual Verification
+                    </>
+                  )}
                 </span>
               </div>
               <div
@@ -1038,8 +1133,30 @@ const ProfilePage = () => {
                   }}
                 >
                   {selectedReservation.scheduleApproved
-                    ? "✓ Approved"
-                    : "⏳ Awaiting Approval"}
+                    ? (
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                          }}
+                        >
+                          <Check size={14} />
+                          Approved
+                        </span>
+                      )
+                    : (
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                          }}
+                        >
+                          <Clock size={14} />
+                          Awaiting Approval
+                        </span>
+                      )}
                 </span>
               </div>
               <div
@@ -1050,8 +1167,17 @@ const ProfilePage = () => {
                 }}
               >
                 <span style={{ color: "#6B7280" }}>Visit Status</span>
-                <span style={{ color: "#F59E0B", fontWeight: "600" }}>
-                  ⏳ Awaiting Completion
+                <span
+                  style={{
+                    color: "#F59E0B",
+                    fontWeight: "600",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <Clock size={14} />
+                  Awaiting Completion
                 </span>
               </div>
               <p
@@ -1142,8 +1268,17 @@ const ProfilePage = () => {
                 }}
               >
                 <span style={{ color: "#6B7280" }}>Status</span>
-                <span style={{ color: "#10B981", fontWeight: "600" }}>
-                  ✓ Submitted
+                <span
+                  style={{
+                    color: "#10B981",
+                    fontWeight: "600",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <Check size={14} />
+                  Submitted
                 </span>
               </div>
             </div>
@@ -1162,8 +1297,17 @@ const ProfilePage = () => {
               }}
             >
               <p style={{ color: "#92400E", margin: 0 }}>
-                <strong>📝 Action Required:</strong> Submit your personal
-                details and documents for admin review.
+                <strong
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <FileText size={14} />
+                  Action Required:
+                </strong>{" "}
+                Submit your personal details and documents for admin review.
               </p>
             </div>
           );
@@ -1237,8 +1381,17 @@ const ProfilePage = () => {
                 }}
               >
                 <span style={{ color: "#6B7280" }}>Status</span>
-                <span style={{ color: "#10B981", fontWeight: "600" }}>
-                  ✓ Verified
+                <span
+                  style={{
+                    color: "#10B981",
+                    fontWeight: "600",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <Check size={14} />
+                  Verified
                 </span>
               </div>
               {selectedReservation?.paymentReference && (
@@ -1276,9 +1429,18 @@ const ProfilePage = () => {
               }}
             >
               <p style={{ color: "#78350F", marginBottom: "8px", margin: 0 }}>
-                <strong>⏳ Pending Review:</strong> Your payment proof has been
-                submitted and is awaiting admin verification. This usually takes
-                1-2 business days.
+                <strong
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <Clock size={14} />
+                  Pending Review:
+                </strong>{" "}
+                Your payment proof has been submitted and is awaiting admin
+                verification. This usually takes 1-2 business days.
               </p>
               {selectedReservation?.paymentReference && (
                 <p
@@ -1308,8 +1470,17 @@ const ProfilePage = () => {
               }}
             >
               <p style={{ color: "#92400E", margin: 0 }}>
-                <strong>💳 Action Required:</strong> Upload your proof of
-                payment to proceed.
+                <strong
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <CreditCard size={14} />
+                  Action Required:
+                </strong>{" "}
+                Upload your proof of payment to proceed.
               </p>
             </div>
           );
@@ -1345,7 +1516,17 @@ const ProfilePage = () => {
                     margin: "0 0 8px",
                   }}
                 >
-                  🎉 Reservation Confirmed!
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <CheckCircle size={16} />
+                    Reservation Confirmed!
+                  </span>
                 </p>
                 {selectedReservation.reservationCode && (
                   <p
@@ -1457,9 +1638,18 @@ const ProfilePage = () => {
               }}
             >
               <p style={{ color: "#78350F", margin: 0 }}>
-                <strong>⏳ Under Review:</strong> Your payment is being verified
-                by our admin team. Once approved, your reservation will be
-                confirmed.
+                <strong
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <Clock size={14} />
+                  Under Review:
+                </strong>{" "}
+                Your payment is being verified by our admin team. Once approved,
+                your reservation will be confirmed.
               </p>
             </div>
           );
@@ -1471,79 +1661,6 @@ const ProfilePage = () => {
     }
   };
 
-  // Get next action based on current step
-  const getNextAction = () => {
-    if (!activeReservation) {
-      return {
-        title: "Start Your Reservation",
-        description: "Browse available rooms and start the reservation process",
-        buttonText: "Browse Rooms",
-        buttonLink: "/tenant/check-availability",
-      };
-    }
-
-    const currentStep = reservationProgress.currentStep;
-
-    switch (currentStep) {
-      case "room_selected":
-        return {
-          title: "Acknowledge Policies & Schedule Visit",
-          description:
-            "Review dormitory policies and schedule your room visit to proceed with the application.",
-          buttonText: "Continue",
-          buttonLink: "/tenant/reservation-flow",
-          reservationId: activeReservation._id,
-          step: 2,
-        };
-      case "visit_scheduled":
-        return {
-          title: "Waiting for Visit Completion",
-          description:
-            "Your visit has been scheduled. Please complete your visit and wait for admin verification.",
-          buttonText: "View Status",
-          buttonLink: "/tenant/profile",
-          buttonVariant: "outline",
-        };
-      case "visit_completed":
-        return {
-          title: "Submit Your Application",
-          description:
-            "Provide your personal details and upload required documents for admin review.",
-          buttonText: "Fill Application Form",
-          buttonLink: "/tenant/reservation-flow",
-          reservationId: activeReservation._id,
-          step: 4,
-        };
-      case "application_submitted":
-        return {
-          title: "Submit Your Payment",
-          description:
-            "Your application has been submitted. Upload your proof of payment to confirm your reservation.",
-          buttonText: "Upload Payment",
-          buttonLink: "/tenant/reservation-flow",
-          reservationId: activeReservation._id,
-          step: 5,
-        };
-      case "payment_submitted":
-      case "confirmed":
-        return {
-          title: "Reservation Confirmed!",
-          description:
-            "Your reservation is confirmed! Prepare for move-in and check your email for contract details.",
-          buttonText: "View Details",
-          buttonLink: "/tenant/profile",
-        };
-      default:
-        return {
-          title: "Get Started",
-          description: "Browse available rooms to begin your reservation",
-          buttonText: "Browse Rooms",
-          buttonLink: "/tenant/check-availability",
-        };
-    }
-  };
-
-  const nextAction = getNextAction();
   const activeStatusLabel =
     activeReservation?.reservationStatus ||
     activeReservation?.status ||
@@ -1572,6 +1689,13 @@ const ProfilePage = () => {
           }}
         ></div>
         <p>Loading profile...</p>
+        <style>
+          {`
+              @keyframes spin {
+                to { transform: rotate(360deg); }
+              }
+            `}
+        </style>
       </div>
     );
   }
@@ -1588,160 +1712,109 @@ const ProfilePage = () => {
         price: selectedReservation.roomId.price,
       }
     : null;
+  const progressTotalSteps = 6;
+  const progressStepNumber = selectedReservation
+    ? reservationProgress.currentStepIndex + 1
+    : 0;
+  const progressPercent = selectedReservation
+    ? Math.min(
+        100,
+        Math.round((progressStepNumber / progressTotalSteps) * 100),
+      )
+    : 0;
+  const currentStepLabel = selectedReservation
+    ? reservationProgress.steps?.[reservationProgress.currentStepIndex]?.title
+    : null;
+  const roomImageUrl = selectedReservation?.roomId?.images?.[0] || null;
+  const roomMonthlyPrice =
+    selectedReservation?.roomId?.price ||
+    selectedReservation?.roomId?.monthlyPrice ||
+    selectedReservation?.totalPrice ||
+    0;
 
   return (
     <div className="min-h-screen flex" style={{ backgroundColor: "#F7F8FA" }}>
+      <style>
+        {`
+          @keyframes dropdownSlideDown {
+            from {
+              opacity: 0;
+              max-height: 0;
+              transform: translateY(-10px);
+            }
+            to {
+              opacity: 1;
+              max-height: 1000px;
+              transform: translateY(0);
+            }
+          }
+
+          @keyframes dropdownSlideUp {
+            from {
+              opacity: 1;
+              max-height: 1000px;
+              transform: translateY(0);
+            }
+            to {
+              opacity: 0;
+              max-height: 0;
+              transform: translateY(-10px);
+            }
+          }
+
+          .dropdown-enter {
+            animation: dropdownSlideDown 0.3s ease-out forwards;
+          }
+
+          .dropdown-exit {
+            animation: dropdownSlideUp 0.3s ease-out forwards;
+          }
+
+          .reservation-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid #E8EBF0;
+            background: white;
+          }
+
+          .reservation-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 24px -4px rgba(12, 55, 95, 0.08), 0 4px 8px -2px rgba(12, 55, 95, 0.04);
+            border-color: #E7710F30;
+          }
+
+          .reservation-card-expanded {
+            box-shadow: 0 12px 24px -4px rgba(12, 55, 95, 0.12), 0 4px 8px -2px rgba(12, 55, 95, 0.06);
+            border-color: #E7710F;
+          }
+
+          .step-card {
+            transition: all 0.25s ease;
+            cursor: pointer;
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            border: 2px solid transparent;
+          }
+
+          .step-card:hover {
+            border-color: #E7710F20;
+            transform: translateX(4px);
+          }
+
+          .step-card.clickable:hover {
+            background: #FFF7ED;
+            box-shadow: 0 4px 12px rgba(231, 113, 15, 0.08);
+          }
+        `}
+      </style>
       {/* Left Sidebar Navigation */}
-      <aside
-        className="w-64 bg-white border-r flex flex-col"
-        style={{ borderColor: "#E8EBF0" }}
-      >
-        <div className="p-6 border-b" style={{ borderColor: "#E8EBF0" }}>
-          <Link
-            to="/tenant/check-availability"
-            className="flex items-center gap-3"
-          >
-            <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center"
-              style={{ backgroundColor: "#0C375F" }}
-            >
-              <Bed className="w-5 h-5 text-white" />
-            </div>
-            <span
-              className="font-semibold text-lg"
-              style={{ color: "#0C375F" }}
-            >
-              Lilycrest
-            </span>
-          </Link>
-        </div>
-
-        <div className="p-4 border-b" style={{ borderColor: "#E8EBF0" }}>
-          <div className="flex items-center gap-3">
-            <div
-              className="w-10 h-10 rounded-full flex items-center justify-center"
-              style={{ backgroundColor: "#0C375F" }}
-            >
-              <User className="w-6 h-6 text-white" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p
-                className="text-sm font-medium truncate"
-                style={{ color: "#1F2937" }}
-              >
-                {fullName}
-              </p>
-              <p className="text-xs text-gray-500 truncate">
-                {profileData.email}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <nav className="flex-1 p-4 space-y-6">
-          <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 px-3">
-              Menu
-            </p>
-            <div className="space-y-1">
-              <button
-                onClick={() => setActiveTab("dashboard")}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                  activeTab === "dashboard"
-                    ? "text-white"
-                    : "text-gray-600 hover:bg-gray-50"
-                }`}
-                style={
-                  activeTab === "dashboard"
-                    ? { backgroundColor: "#E7710F" }
-                    : {}
-                }
-              >
-                <LayoutDashboard className="w-5 h-5" />
-                <span>Dashboard</span>
-              </button>
-              {/* <Link to="/" className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors">
-                <Home className="w-5 h-5" />
-                <span>Home</span>
-              </Link> */}
-              <Link
-                to="/tenant/check-availability"
-                className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
-              >
-                <Bed className="w-5 h-5" />
-                <span>Browse Rooms</span>
-              </Link>
-            </div>
-          </div>
-
-          <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 px-3">
-              Account
-            </p>
-            <div className="space-y-1">
-              <button
-                onClick={() => setActiveTab("personal")}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                  activeTab === "personal"
-                    ? "text-white"
-                    : "text-gray-600 hover:bg-gray-50"
-                }`}
-                style={
-                  activeTab === "personal" ? { backgroundColor: "#E7710F" } : {}
-                }
-              >
-                <User className="w-5 h-5" />
-                <span>Personal Details</span>
-              </button>
-              <button
-                onClick={() => setActiveTab("room")}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                  activeTab === "room"
-                    ? "text-white"
-                    : "text-gray-600 hover:bg-gray-50"
-                }`}
-                style={
-                  activeTab === "room" ? { backgroundColor: "#E7710F" } : {}
-                }
-              >
-                <CreditCard className="w-5 h-5" />
-                <span>Room & Payment</span>
-                {activeReservation && (
-                  <span
-                    className="ml-auto w-2 h-2 rounded-full"
-                    style={{ backgroundColor: "#10B981" }}
-                  ></span>
-                )}
-              </button>
-              <button
-                onClick={() => setActiveTab("history")}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                  activeTab === "history"
-                    ? "text-white"
-                    : "text-gray-600 hover:bg-gray-50"
-                }`}
-                style={
-                  activeTab === "history" ? { backgroundColor: "#E7710F" } : {}
-                }
-              >
-                <History className="w-5 h-5" />
-                <span>Activity Log</span>
-              </button>
-            </div>
-          </div>
-        </nav>
-
-        <div className="p-4 border-t" style={{ borderColor: "#E8EBF0" }}>
-          <Link
-            to="/signin"
-            onClick={handleLogout}
-            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50 transition-colors"
-          >
-            <LogOut className="w-5 h-5" />
-            <span>Sign Out</span>
-          </Link>
-        </div>
-      </aside>
+      <ProfileSidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        fullName={fullName}
+        email={profileData.email}
+        handleLogout={handleLogout}
+      />
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
@@ -1761,15 +1834,6 @@ const ProfilePage = () => {
           </div>
 
           <div className="flex items-center gap-4">
-            <button className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-gray-50 transition-colors relative">
-              <Bell className="w-5 h-5 text-gray-600" />
-              {unacknowledgedCount > 0 && (
-                <span
-                  className="absolute top-1 right-1 w-2 h-2 rounded-full"
-                  style={{ backgroundColor: "#EF4444" }}
-                ></span>
-              )}
-            </button>
             <div
               className="w-9 h-9 rounded-full flex items-center justify-center cursor-pointer"
               style={{ backgroundColor: "#0C375F" }}
@@ -1796,54 +1860,20 @@ const ProfilePage = () => {
                   </p>
                 </div>
 
-                {/* NEXT ACTION PROMPT */}
-                <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl p-6 mb-6 text-white">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <AlertCircle className="w-5 h-5" />
-                        <h3 className="font-semibold text-lg">
-                          Next Action Required
-                        </h3>
-                      </div>
-                      <h2 className="text-2xl font-bold mb-2">
-                        {nextAction.title}
-                      </h2>
-                      <p className="text-white/90 mb-4">
-                        {nextAction.description}
-                      </p>
-                      <Link
-                        to={nextAction.buttonLink}
-                        state={{
-                          reservationId: nextAction.reservationId,
-                          continueFlow: true,
-                          step: nextAction.step,
-                        }}
-                      >
-                        <button
-                          className={`px-6 py-3 bg-white rounded-lg font-medium flex items-center gap-2 ${nextAction.buttonVariant === "outline" ? "border border-gray-300" : ""}`}
-                          style={{ color: "#E7710F" }}
-                        >
-                          {nextAction.buttonText}
-                          <ArrowRight className="w-4 h-4" />
-                        </button>
-                      </Link>
-                    </div>
-                  </div>
-                </div>
+                {/* NEXT ACTION PROMPT removed */}
 
-                {/* NEW RESERVATION PROGRESS TRACKER - 7 STEPS */}
+                {/* NEW RESERVATION PROGRESS TRACKER - ENHANCED CARDS */}
                 <div
-                  className="bg-white rounded-xl p-8 border mb-6"
+                  className="bg-white rounded-xl p-8 border mb-6 shadow-sm"
                   style={{ borderColor: "#E8EBF0" }}
                 >
-                  <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center justify-between mb-6">
                     <div>
                       <h3
                         className="font-semibold text-lg mb-1"
                         style={{ color: "#1F2937" }}
                       >
-                        Reservation Progress Tracker
+                        Reservation Progress
                       </h3>
                       <p className="text-sm text-gray-500">
                         Follow these steps from room selection to confirmation
@@ -1851,7 +1881,7 @@ const ProfilePage = () => {
                     </div>
                     {selectedReservation ? (
                       <div
-                        className="px-4 py-2 rounded-lg text-sm font-medium"
+                        className="px-4 py-2 rounded-lg text-sm font-medium shadow-sm"
                         style={{
                           backgroundColor:
                             reservationProgress.currentStepIndex === 5
@@ -1914,35 +1944,99 @@ const ProfilePage = () => {
 
                   {/* Show selected reservation info */}
                   {selectedReservation && (
-                    <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-blue-800">
-                            Tracking: Room{" "}
-                            {selectedReservation.roomId?.name || "Unknown"}
-                          </p>
-                          <p className="text-xs text-blue-600">
-                            {selectedReservation.roomId?.branch === "gil-puyat"
-                              ? "Gil Puyat Branch"
-                              : "Guadalupe Branch"}{" "}
-                            {selectedReservation.reservationCode && (
-                              <>• Code: {selectedReservation.reservationCode}</>
-                            )}
-                          </p>
+                    <button
+                      type="button"
+                      onClick={() => setShowTracker((prev) => !prev)}
+                      className="w-full text-left mb-6 p-4 bg-white rounded-2xl border border-gray-200 hover:border-orange-200 hover:shadow-md transition-all"
+                      aria-expanded={showTracker}
+                    >
+                      <div className="flex items-center gap-5">
+                        <div className="w-20 h-20 rounded-xl overflow-hidden bg-gray-100 flex items-center justify-center flex-shrink-0">
+                          {roomImageUrl ? (
+                            <img
+                              src={roomImageUrl}
+                              alt={selectedReservation.roomId?.name || "Room"}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center" style={{ background: "linear-gradient(135deg, #E5E7EB 0%, #F3F4F6 100%)" }}>
+                              <Bed className="w-8 h-8 text-gray-400" />
+                            </div>
+                          )}
                         </div>
-                        <span className="text-xs text-blue-600">
-                          Created{" "}
-                          {new Date(
-                            selectedReservation.createdAt,
-                          ).toLocaleDateString()}
-                        </span>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <p className="text-lg font-semibold" style={{ color: "#0C375F" }}>
+                                Room {selectedReservation.roomId?.name || "Unknown"}
+                              </p>
+                              <p className="text-sm text-gray-600">
+                                {selectedReservation.roomId?.type || "Room"}
+                              </p>
+                              <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
+                                <MapPin className="w-3.5 h-3.5" />
+                                <span>
+                                  {selectedReservation.roomId?.branch === "gil-puyat"
+                                    ? "Gil Puyat"
+                                    : selectedReservation.roomId?.branch === "guadalupe"
+                                      ? "Guadalupe"
+                                      : selectedReservation.roomId?.branch || "Branch"}
+                                  {selectedReservation.roomId?.floor
+                                    ? ` · Floor ${selectedReservation.roomId.floor}`
+                                    : ""}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="text-right">
+                              <p className="text-xl font-bold" style={{ color: "#E7710F" }}>
+                                ₱{Number(roomMonthlyPrice || 0).toLocaleString()}
+                              </p>
+                              <p className="text-xs text-gray-500">per month</p>
+                            </div>
+                          </div>
+
+                          <div className="mt-4">
+                            <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
+                              <span>
+                                Progress: Step {progressStepNumber} of {progressTotalSteps}
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-orange-600 font-medium">
+                                  {progressPercent}%
+                                </span>
+                                {showTracker ? (
+                                  <ChevronUp className="w-4 h-4 text-gray-400" />
+                                ) : (
+                                  <ChevronDown className="w-4 h-4 text-gray-400" />
+                                )}
+                              </div>
+                            </div>
+                            <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
+                              <div
+                                className="h-full rounded-full"
+                                style={{
+                                  width: `${progressPercent}%`,
+                                  backgroundColor: "#E7710F",
+                                }}
+                              ></div>
+                            </div>
+                            {currentStepLabel && (
+                              <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-medium">
+                                {currentStepLabel}
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
+                    </button>
                   )}
 
-                  {/* New 7-Step Progress Tracker - Vertical List */}
-                  <div className="space-y-4">
-                    {stepsToRender.map((step, index) => {
+                  {/* Enhanced Step Cards with Dropdown */}
+                  {showTracker && (
+                    <div className="space-y-3">
+                      {stepsToRender.map((step, index) => {
                       const icons = {
                         room_selected: Home,
                         visit_scheduled: Calendar,
@@ -1958,8 +2052,7 @@ const ProfilePage = () => {
                       const isPendingApproval =
                         step.status === "pending_approval";
                       const isRejected = step.status === "rejected";
-                      // Only allow clicking on current, rejected, or explicitly editable steps
-                      // Completed steps are NOT clickable unless marked editable
+                      const isExpanded = expandedStep === step.step;
                       const isClickable =
                         !isLocked &&
                         (selectedReservation ||
@@ -1967,31 +2060,25 @@ const ProfilePage = () => {
                         (isCurrent || isRejected || step.editable === true);
 
                       return (
-                        <div key={index} className="relative">
-                          {index !== reservationProgress.steps.length - 1 && (
-                            <div
-                              className="absolute left-6 top-14 bottom-0 w-0.5"
-                              style={{
-                                backgroundColor: isCompleted
-                                  ? "#10B981"
-                                  : isRejected
-                                    ? "#EF4444"
-                                    : "#E5E7EB",
-                              }}
-                            ></div>
-                          )}
+                        <div
+                          key={index}
+                          className={`reservation-card rounded-xl ${isExpanded ? "reservation-card-expanded" : ""}`}
+                          style={{
+                            overflow: "hidden",
+                          }}
+                        >
                           <div
-                            className={`flex items-start gap-4 ${
-                              isClickable ? "cursor-pointer" : ""
-                            }`}
-                            onClick={
-                              isClickable
-                                ? () => handleStepClick(step)
-                                : undefined
-                            }
+                            className={`flex items-start gap-4 p-4 ${isClickable ? "cursor-pointer" : ""}`}
+                            onClick={() => {
+                              if (isCompleted || isCurrent || isRejected) {
+                                setExpandedStep(
+                                  isExpanded ? null : step.step,
+                                );
+                              }
+                            }}
                           >
                             <div
-                              className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 relative z-10 transition-all ${
+                              className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 transition-all shadow-sm ${
                                 isLocked ? "bg-gray-200" : ""
                               }`}
                               style={
@@ -2017,38 +2104,41 @@ const ProfilePage = () => {
                               )}
                             </div>
                             <div
-                              className={`flex-1 pb-6 ${isLocked ? "opacity-50" : ""}`}
+                              className={`flex-1 ${isLocked ? "opacity-50" : ""}`}
                             >
                               <div className="flex items-start justify-between mb-2">
-                                <div>
-                                  <h4
-                                    className={`font-semibold mb-1 ${isCurrent ? "text-orange-600" : isRejected ? "text-red-600" : ""} ${isClickable && (isCurrent || isRejected) ? "hover:underline cursor-pointer" : ""}`}
-                                    style={
-                                      !isCurrent && !isRejected
-                                        ? { color: "#1F2937" }
-                                        : {}
-                                    }
-                                    onClick={
-                                      isClickable
-                                        ? () => handleStepClick(step)
-                                        : undefined
-                                    }
-                                  >
-                                    {step.title}
-                                    {isClickable &&
-                                      (isCurrent || isRejected) && (
-                                        <span
-                                          className={`ml-2 text-xs font-normal ${isRejected ? "text-red-500" : "text-orange-500"}`}
-                                        >
-                                          →{" "}
-                                          {isRejected
-                                            ? "Click to reschedule"
-                                            : "Click to continue"}
-                                        </span>
-                                      )}
-                                  </h4>
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <h4
+                                      className={`font-semibold ${isCurrent ? "text-orange-600" : isRejected ? "text-red-600" : ""}`}
+                                      style={
+                                        !isCurrent && !isRejected
+                                          ? { color: "#1F2937" }
+                                          : {}
+                                      }
+                                    >
+                                      {step.title}
+                                    </h4>
+                                    {(isCompleted || isCurrent || isRejected) && (
+                                      <button
+                                        className="ml-auto"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          setExpandedStep(
+                                            isExpanded ? null : step.step,
+                                          );
+                                        }}
+                                      >
+                                        {isExpanded ? (
+                                          <ChevronUp className="w-5 h-5 text-gray-400" />
+                                        ) : (
+                                          <ChevronDown className="w-5 h-5 text-gray-400" />
+                                        )}
+                                      </button>
+                                    )}
+                                  </div>
                                   <p
-                                    className={`text-sm ${isRejected ? "text-red-600" : "text-gray-600"}`}
+                                    className={`text-sm mt-1 ${isRejected ? "text-red-600" : "text-gray-600"}`}
                                   >
                                     {step.description}
                                   </p>
@@ -2078,7 +2168,7 @@ const ProfilePage = () => {
                                     : isRejected
                                       ? "Rejected"
                                       : isPendingApproval
-                                        ? "Pending Admin Approval"
+                                        ? "Pending Approval"
                                         : isCurrent
                                           ? "In Progress"
                                           : isLocked
@@ -2086,32 +2176,6 @@ const ProfilePage = () => {
                                             : "Upcoming"}
                                 </span>
                               </div>
-                              {/* Status subtext */}
-                              {isCurrent && (
-                                <p className="text-xs text-orange-600 mt-1">
-                                  Please complete the details
-                                </p>
-                              )}
-                              {isPendingApproval && (
-                                <p className="text-xs text-amber-600 mt-1">
-                                  Waiting for admin confirmation
-                                </p>
-                              )}
-                              {isRejected && (
-                                <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                                  <p className="text-xs text-red-700 font-medium mb-1">
-                                    Your schedule was rejected by admin
-                                  </p>
-                                  {step.rejectionReason && (
-                                    <p className="text-xs text-red-600">
-                                      Reason: {step.rejectionReason}
-                                    </p>
-                                  )}
-                                  <p className="text-xs text-red-500 mt-1">
-                                    Please reschedule your visit to continue.
-                                  </p>
-                                </div>
-                              )}
                               {step.completedDate && (
                                 <p className="text-xs text-gray-400 flex items-center gap-1">
                                   <Clock className="w-3 h-3" />
@@ -2125,74 +2189,52 @@ const ProfilePage = () => {
                                   })}
                                 </p>
                               )}
-                              {/* Action buttons row */}
-                              {!isLocked && selectedReservation && (
-                                <div className="flex items-center gap-2 mt-3">
-                                  {/* View Summary only for completed steps */}
-                                  {isCompleted && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setExpandedStep(
-                                          expandedStep === step.step
-                                            ? null
-                                            : step.step,
-                                        );
-                                      }}
-                                      className="px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors"
-                                      style={{
-                                        borderColor:
-                                          expandedStep === step.step
-                                            ? "#E7710F"
-                                            : "#E5E7EB",
-                                        color:
-                                          expandedStep === step.step
-                                            ? "#E7710F"
-                                            : "#6B7280",
-                                        backgroundColor:
-                                          expandedStep === step.step
-                                            ? "#FFF7ED"
-                                            : "transparent",
-                                      }}
-                                    >
-                                      {expandedStep === step.step
-                                        ? "Hide Summary"
-                                        : "View Summary"}
-                                    </button>
-                                  )}
-                                  {/* Reschedule Visit button for rejected schedules */}
-                                  {step.step === "visit_scheduled" &&
-                                    isRejected && (
+                            </div>
+                          </div>
+
+                          {/* Dropdown Content */}
+                          {isExpanded && (
+                            <div className="dropdown-enter px-4 pb-4">
+                              <div
+                                className="border-t pt-4"
+                                style={{ borderColor: "#E8EBF0" }}
+                              >
+                                {renderStepReceipt(step)}
+
+                                {/* Action buttons */}
+                                {!isLocked && selectedReservation && (
+                                  <div className="flex items-center gap-2 mt-4">
+                                    {step.step === "visit_scheduled" &&
+                                      isRejected && (
+                                        <button
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            navigate("/tenant/reservation-flow", {
+                                              state: {
+                                                reservationId:
+                                                  selectedReservation._id,
+                                                continueFlow: true,
+                                                step: 2,
+                                              },
+                                            });
+                                          }}
+                                          className="px-4 py-2 text-sm font-medium rounded-lg border transition-colors hover:bg-red-50"
+                                          style={{
+                                            borderColor: "#EF4444",
+                                            color: "#EF4444",
+                                          }}
+                                        >
+                                          Reschedule Visit
+                                        </button>
+                                      )}
+                                    {step.step === "room_selected" &&
+                                      selectedReservation?.status !==
+                                        "confirmed" &&
+                                      selectedReservation?.status !==
+                                        "checked-in" && (
                                       <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          navigate("/tenant/reservation-flow", {
-                                            state: {
-                                              reservationId:
-                                                selectedReservation._id,
-                                              continueFlow: true,
-                                              step: 2,
-                                            },
-                                          });
-                                        }}
-                                        className="px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors hover:bg-red-50"
-                                        style={{
-                                          borderColor: "#EF4444",
-                                          color: "#EF4444",
-                                        }}
-                                      >
-                                        Reschedule Visit
-                                      </button>
-                                    )}
-                                  {/* Cancel Reservation button - only when not confirmed */}
-                                  {step.step === "room_selected" &&
-                                    selectedReservation?.status !==
-                                      "confirmed" &&
-                                    selectedReservation?.status !==
-                                      "checked-in" && (
-                                      <button
-                                        onClick={async (e) => {
-                                          e.stopPropagation();
+                                        onClick={async (event) => {
+                                          event.stopPropagation();
                                           if (
                                             window.confirm(
                                               "Are you sure you want to cancel this reservation? This action cannot be undone.",
@@ -2207,7 +2249,6 @@ const ProfilePage = () => {
                                                 "success",
                                                 3000,
                                               );
-                                              // Refresh reservations
                                               window.location.reload();
                                             } catch (error) {
                                               console.error(
@@ -2222,7 +2263,7 @@ const ProfilePage = () => {
                                             }
                                           }
                                         }}
-                                        className="px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors hover:bg-red-50"
+                                        className="px-4 py-2 text-sm font-medium rounded-lg border transition-colors hover:bg-red-50"
                                         style={{
                                           borderColor: "#EF4444",
                                           color: "#EF4444",
@@ -2231,76 +2272,66 @@ const ProfilePage = () => {
                                         Cancel Reservation
                                       </button>
                                     )}
-                                  {step.step === "application_submitted" &&
-                                    step.editable && (
+                                    {step.step === "application_submitted" &&
+                                      step.editable && (
+                                        <button
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            navigate("/tenant/reservation-flow", {
+                                              state: {
+                                                reservationId:
+                                                  selectedReservation._id,
+                                                editMode: true,
+                                                step: 4,
+                                              },
+                                            });
+                                          }}
+                                          className="px-4 py-2 text-sm font-medium rounded-lg border transition-colors hover:bg-blue-50"
+                                          style={{
+                                            borderColor: "#3B82F6",
+                                            color: "#3B82F6",
+                                          }}
+                                        >
+                                          Edit Application
+                                        </button>
+                                      )}
+                                    {isClickable && (isCurrent || isRejected) && (
                                       <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          navigate("/tenant/reservation-flow", {
-                                            state: {
-                                              reservationId:
-                                                selectedReservation._id,
-                                              editMode: true,
-                                              step: 4,
-                                            },
-                                          });
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          handleStepClick(step);
                                         }}
-                                        className="px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors hover:bg-blue-50"
-                                        style={{
-                                          borderColor: "#3B82F6",
-                                          color: "#3B82F6",
-                                        }}
+                                        className="px-4 py-2 text-sm font-medium rounded-lg text-white transition-all hover:shadow-md"
+                                        style={{ backgroundColor: "#E7710F" }}
                                       >
-                                        Edit Application
+                                        {isRejected ? "Reschedule" : "Continue"} →
                                       </button>
                                     )}
-                                  {step.step === "application_submitted" &&
-                                    !step.editable &&
-                                    step.status === "completed" && (
-                                      <span className="px-3 py-1.5 text-xs font-medium text-gray-400 flex items-center gap-1">
-                                        🔒 Locked
-                                      </span>
-                                    )}
-                                </div>
-                              )}
-                              {/* Expandable inline receipt */}
-                              {expandedStep === step.step && (
-                                <div>
-                                  {renderStepReceipt(step)}
-                                  {/* View Receipt Modal Button */}
-                                  {step.status === "completed" && (
-                                    <div
-                                      style={{
-                                        marginTop: "12px",
-                                        textAlign: "center",
-                                      }}
-                                    >
+                                    {step.status === "completed" && (
                                       <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
+                                        onClick={(event) => {
+                                          event.stopPropagation();
                                           setReceiptModal({
                                             open: true,
-                                            step: step,
+                                            step,
                                           });
                                         }}
-                                        className="px-4 py-2 text-sm font-medium rounded-lg transition-colors"
-                                        style={{
-                                          backgroundColor: "#E7710F",
-                                          color: "white",
-                                        }}
+                                        className="px-4 py-2 text-sm font-medium rounded-lg text-white transition-all hover:shadow-md"
+                                        style={{ backgroundColor: "#E7710F" }}
                                       >
-                                        🧾 View Receipt
+                                        View Receipt
                                       </button>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
+                                    )}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
+                          )}
                         </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
 
                   {!selectedReservation && activeReservations.length === 0 && (
                     <div className="text-center py-12">
@@ -2313,7 +2344,7 @@ const ProfilePage = () => {
                       </p>
                       <Link to="/tenant/check-availability">
                         <button
-                          className="px-6 py-3 rounded-lg font-medium text-white"
+                          className="px-6 py-3 rounded-lg font-medium text-white shadow-md hover:shadow-lg transition-shadow"
                           style={{ backgroundColor: "#E7710F" }}
                         >
                           Browse Available Rooms
@@ -2321,290 +2352,6 @@ const ProfilePage = () => {
                       </Link>
                     </div>
                   )}
-                </div>
-
-                {/* VISIT DETAILS & SELECTED ROOM */}
-                <div className="grid grid-cols-2 gap-6 mb-6">
-                  <div
-                    className="bg-white rounded-xl p-6 border"
-                    style={{ borderColor: "#E8EBF0" }}
-                  >
-                    <h3
-                      className="font-semibold mb-4"
-                      style={{ color: "#1F2937" }}
-                    >
-                      Visit Details
-                    </h3>
-                    {visits.length > 0 ? (
-                      <div className="space-y-3">
-                        {visits.slice(0, 2).map((visit) => (
-                          <div
-                            key={visit.id}
-                            className="p-4 rounded-lg border"
-                            style={{ borderColor: "#E8EBF0" }}
-                          >
-                            <div className="flex items-center justify-between mb-2">
-                              <p className="font-medium text-sm">
-                                Room {visit.roomNumber}
-                              </p>
-                              <span
-                                className={`px-2 py-0.5 text-xs font-medium rounded-full ${
-                                  visit.status === "Completed"
-                                    ? "bg-green-100 text-green-700"
-                                    : visit.status === "Scheduled"
-                                      ? "text-white"
-                                      : "bg-gray-100 text-gray-600"
-                                }`}
-                                style={
-                                  visit.status === "Scheduled"
-                                    ? { backgroundColor: "#E7710F" }
-                                    : {}
-                                }
-                              >
-                                {visit.status}
-                              </span>
-                            </div>
-                            <p className="text-xs text-gray-500 mb-2">
-                              {visit.location} · Floor {visit.floor}
-                            </p>
-                            <div className="flex items-center gap-3 text-xs text-gray-600">
-                              <span className="flex items-center gap-1">
-                                <Calendar className="w-3 h-3" />
-                                {new Date(visit.date).toLocaleDateString(
-                                  "en-US",
-                                  { month: "short", day: "numeric" },
-                                )}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                {visit.time}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-500">
-                        No visits scheduled yet
-                      </p>
-                    )}
-                  </div>
-
-                  {/* SELECTED ROOM DETAILS */}
-                  <div
-                    className="bg-white rounded-xl p-6 border"
-                    style={{ borderColor: "#E8EBF0" }}
-                  >
-                    <h3
-                      className="font-semibold mb-4"
-                      style={{ color: "#1F2937" }}
-                    >
-                      Selected Room
-                    </h3>
-                    {selectedRoom ? (
-                      <div
-                        className="p-4 rounded-lg"
-                        style={{ backgroundColor: "#FEF3E7" }}
-                      >
-                        <div className="flex items-start justify-between mb-3">
-                          <div>
-                            <p
-                              className="font-semibold text-lg mb-1"
-                              style={{ color: "#0C375F" }}
-                            >
-                              Room {selectedRoom.roomNumber}
-                            </p>
-                            <p className="text-sm text-gray-600">
-                              {selectedRoom.roomType}
-                            </p>
-                          </div>
-                          <div
-                            className="w-10 h-10 rounded-lg flex items-center justify-center"
-                            style={{ backgroundColor: "#E7710F" }}
-                          >
-                            <Bed className="w-5 h-5 text-white" />
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-gray-600 mb-3">
-                          <MapPin className="w-4 h-4" />
-                          <span>
-                            {selectedRoom.location} · Floor {selectedRoom.floor}
-                          </span>
-                        </div>
-                        <div
-                          className="pt-3 border-t"
-                          style={{ borderColor: "#E8EBF0" }}
-                        >
-                          <p className="text-xs text-gray-500 mb-1">
-                            Monthly Rent
-                          </p>
-                          <p
-                            className="text-2xl font-bold"
-                            style={{ color: "#E7710F" }}
-                          >
-                            ₱{selectedRoom.price.toLocaleString()}
-                          </p>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-500">
-                        No room selected yet
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* RESERVATION & PAYMENT STATUS */}
-                <div className="grid grid-cols-2 gap-6">
-                  <div
-                    className="bg-white rounded-xl p-6 border"
-                    style={{ borderColor: "#E8EBF0" }}
-                  >
-                    <h3
-                      className="font-semibold mb-4"
-                      style={{ color: "#1F2937" }}
-                    >
-                      Reservation Status
-                    </h3>
-                    {activeReservation ? (
-                      <div>
-                        <div className="flex items-center justify-between mb-4">
-                          <div>
-                            <p className="font-medium">
-                              Room {selectedReservation?.roomId?.name}
-                            </p>
-                            <p className="text-sm text-gray-500">
-                              {selectedReservation?.roomId?.type}
-                            </p>
-                          </div>
-                          <span
-                            className={`px-3 py-1 rounded-full text-xs font-medium ${
-                              activeStatusLabel === "confirmed" ||
-                              activeStatusLabel === "active"
-                                ? "bg-green-100 text-green-700"
-                                : activeStatusLabel === "visit-completed"
-                                  ? "bg-blue-100 text-blue-700"
-                                  : activeStatusLabel === "pending"
-                                    ? "bg-yellow-100 text-yellow-700"
-                                    : "bg-red-100 text-red-700"
-                            }`}
-                          >
-                            {activeStatusLabel}
-                          </span>
-                        </div>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">
-                              Reservation Date
-                            </span>
-                            <span className="font-medium">
-                              {formatDate(activeReservation.createdAt)}
-                            </span>
-                          </div>
-                          {activeReservation.approvedDate && (
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">
-                                Approval Date
-                              </span>
-                              <span className="font-medium">
-                                {formatDate(activeReservation.approvedDate)}
-                              </span>
-                            </div>
-                          )}
-                          {activeReservation.moveInDate && (
-                            <div className="flex justify-between">
-                              <span className="text-gray-600">
-                                Move-In Date
-                              </span>
-                              <span className="font-medium">
-                                {formatDate(activeReservation.moveInDate)}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-500">
-                        No active reservation
-                      </p>
-                    )}
-                  </div>
-
-                  <div
-                    className="bg-white rounded-xl p-6 border"
-                    style={{ borderColor: "#E8EBF0" }}
-                  >
-                    <h3
-                      className="font-semibold mb-4"
-                      style={{ color: "#1F2937" }}
-                    >
-                      Payment / Deposit Status
-                    </h3>
-                    {activeReservation ? (
-                      <div>
-                        <div className="mb-4">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm text-gray-600">
-                              Status
-                            </span>
-                            <span
-                              className="px-3 py-1 rounded-full text-xs font-medium text-white"
-                              style={{ backgroundColor: "#0C375F" }}
-                            >
-                              {activeReservation.paymentStatus || "Pending"}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="space-y-3">
-                          {activeReservation.paymentVerified && (
-                            <div
-                              className="flex items-center justify-between p-3 rounded-lg"
-                              style={{ backgroundColor: "#F0FDF4" }}
-                            >
-                              <div className="flex items-center gap-2">
-                                <Check className="w-4 h-4 text-green-600" />
-                                <span className="text-sm font-medium">
-                                  Deposit
-                                </span>
-                              </div>
-                              <span className="font-bold text-green-600">
-                                ₱
-                                {(
-                                  activeReservation.totalAmount || 0
-                                ).toLocaleString()}
-                              </span>
-                            </div>
-                          )}
-                          {!activeReservation.paymentVerified && (
-                            <div
-                              className="flex items-center justify-between p-3 rounded-lg border"
-                              style={{ borderColor: "#E8EBF0" }}
-                            >
-                              <div className="flex items-center gap-2">
-                                <Clock className="w-4 h-4 text-gray-400" />
-                                <span className="text-sm font-medium">
-                                  Payment Due
-                                </span>
-                              </div>
-                              <span
-                                className="font-bold"
-                                style={{ color: "#E7710F" }}
-                              >
-                                ₱
-                                {(
-                                  activeReservation.totalAmount || 0
-                                ).toLocaleString()}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-500">
-                        Complete a reservation to view payment details
-                      </p>
-                    )}
-                  </div>
                 </div>
               </div>
             )}
@@ -2626,7 +2373,7 @@ const ProfilePage = () => {
 
                 <div className="space-y-6">
                   <div
-                    className="bg-white rounded-xl p-6 border"
+                    className="bg-white rounded-xl p-6 border shadow-sm"
                     style={{ borderColor: "#E8EBF0" }}
                   >
                     <div className="flex items-center gap-4 mb-6">
@@ -2667,7 +2414,7 @@ const ProfilePage = () => {
                         <button
                           onClick={handleSaveProfile}
                           disabled={saving}
-                          className="px-5 py-2 text-sm rounded-lg text-white"
+                          className="px-5 py-2 text-sm rounded-lg text-white shadow-sm hover:shadow-md transition-shadow"
                           style={{ backgroundColor: "#E7710F" }}
                         >
                           {saving ? "Saving..." : "Save Changes"}
@@ -2776,237 +2523,6 @@ const ProfilePage = () => {
               </div>
             )}
 
-            {/* ROOM & PAYMENT TAB */}
-            {activeTab === "room" && (
-              <div className="max-w-5xl">
-                <div className="mb-8">
-                  <h1
-                    className="text-2xl font-semibold mb-1"
-                    style={{ color: "#1F2937" }}
-                  >
-                    Room & Payment
-                  </h1>
-                  <p className="text-sm text-gray-500">
-                    Your selected room, reservation, and payment details
-                  </p>
-                </div>
-
-                <div className="space-y-6">
-                  {/* Selected Room */}
-                  {selectedRoom && (
-                    <div
-                      className="bg-white rounded-xl p-6 border"
-                      style={{ borderColor: "#E8EBF0" }}
-                    >
-                      <h3
-                        className="font-semibold text-lg mb-4"
-                        style={{ color: "#1F2937" }}
-                      >
-                        Selected Room
-                      </h3>
-                      <div
-                        className="p-5 rounded-lg"
-                        style={{ backgroundColor: "#FEF3E7" }}
-                      >
-                        <div className="flex items-start justify-between mb-4">
-                          <div>
-                            <h4
-                              className="text-2xl font-bold mb-1"
-                              style={{ color: "#0C375F" }}
-                            >
-                              Room {selectedRoom.roomNumber}
-                            </h4>
-                            <p className="text-sm text-gray-600 mb-2">
-                              {selectedRoom.roomType}
-                            </p>
-                            <div className="flex items-center gap-2 text-sm text-gray-600">
-                              <MapPin className="w-4 h-4" />
-                              <span>
-                                {selectedRoom.location} · Floor{" "}
-                                {selectedRoom.floor}
-                              </span>
-                            </div>
-                          </div>
-                          <div
-                            className="w-14 h-14 rounded-lg flex items-center justify-center"
-                            style={{ backgroundColor: "#E7710F" }}
-                          >
-                            <Bed className="w-7 h-7 text-white" />
-                          </div>
-                        </div>
-                        <div
-                          className="pt-4 border-t"
-                          style={{ borderColor: "#E7710F30" }}
-                        >
-                          <p className="text-xs text-gray-500 mb-1">
-                            Monthly Rent
-                          </p>
-                          <p
-                            className="text-3xl font-bold"
-                            style={{ color: "#E7710F" }}
-                          >
-                            ₱{selectedRoom.price.toLocaleString()}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Reservation */}
-                  {activeReservation && (
-                    <div
-                      className="bg-white rounded-xl p-6 border"
-                      style={{ borderColor: "#E8EBF0" }}
-                    >
-                      <h3
-                        className="font-semibold text-lg mb-4"
-                        style={{ color: "#1F2937" }}
-                      >
-                        Reservation Details
-                      </h3>
-                      <div className="grid grid-cols-2 gap-6 mb-6">
-                        <div>
-                          <p className="text-xs font-medium text-gray-500 mb-2">
-                            Reservation Status
-                          </p>
-                          <span
-                            className={`inline-block px-3 py-1.5 rounded-lg text-sm font-medium ${
-                              activeStatusLabel === "confirmed" ||
-                              activeStatusLabel === "active"
-                                ? "bg-green-100 text-green-700"
-                                : activeStatusLabel === "visit-completed"
-                                  ? "bg-blue-100 text-blue-700"
-                                  : activeStatusLabel === "pending"
-                                    ? "bg-yellow-100 text-yellow-700"
-                                    : "bg-red-100 text-red-700"
-                            }`}
-                          >
-                            {activeStatusLabel}
-                          </span>
-                        </div>
-                        <div>
-                          <p className="text-xs font-medium text-gray-500 mb-2">
-                            Move-In Date
-                          </p>
-                          <p
-                            className="text-lg font-semibold"
-                            style={{ color: "#1F2937" }}
-                          >
-                            {formatDate(activeReservation.moveInDate)}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div
-                        className="pt-6 border-t"
-                        style={{ borderColor: "#E8EBF0" }}
-                      >
-                        <div className="flex items-center justify-between mb-4">
-                          <h4 className="font-semibold">Payment Breakdown</h4>
-                          <span
-                            className="px-3 py-1 rounded-full text-xs font-medium text-white"
-                            style={{ backgroundColor: "#0C375F" }}
-                          >
-                            {activeReservation.paymentStatus || "Pending"}
-                          </span>
-                        </div>
-
-                        <div className="space-y-3 mb-6">
-                          {activeReservation.paymentVerified ? (
-                            <div
-                              className="flex items-center justify-between p-4 rounded-lg"
-                              style={{ backgroundColor: "#F0FDF4" }}
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center">
-                                  <Check className="w-5 h-5 text-white" />
-                                </div>
-                                <div>
-                                  <p className="text-sm font-medium">
-                                    Security Deposit
-                                  </p>
-                                  <p className="text-xs text-gray-500">Paid</p>
-                                </div>
-                              </div>
-                              <p className="text-lg font-bold text-green-600">
-                                ₱
-                                {(
-                                  activeReservation.totalAmount || 0
-                                ).toLocaleString()}
-                              </p>
-                            </div>
-                          ) : (
-                            <div
-                              className="flex items-center justify-between p-4 rounded-lg border"
-                              style={{ borderColor: "#E8EBF0" }}
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
-                                  <Clock className="w-5 h-5 text-gray-500" />
-                                </div>
-                                <div>
-                                  <p className="text-sm font-medium">
-                                    Payment Due
-                                  </p>
-                                  <p className="text-xs text-gray-500">
-                                    Pending
-                                  </p>
-                                </div>
-                              </div>
-                              <p
-                                className="text-lg font-bold"
-                                style={{ color: "#E7710F" }}
-                              >
-                                ₱
-                                {(
-                                  activeReservation.totalAmount || 0
-                                ).toLocaleString()}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-
-                        {!activeReservation.paymentVerified && (
-                          <button
-                            className="w-full py-3 text-sm font-medium rounded-lg text-white transition-colors"
-                            style={{ backgroundColor: "#E7710F" }}
-                          >
-                            Pay Deposit - ₱
-                            {(
-                              activeReservation.totalAmount || 0
-                            ).toLocaleString()}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {!activeReservation && (
-                    <div
-                      className="bg-white rounded-xl p-8 border text-center"
-                      style={{ borderColor: "#E8EBF0" }}
-                    >
-                      <Bed className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-                      <h3 className="text-lg font-semibold text-gray-700 mb-2">
-                        No Active Reservation
-                      </h3>
-                      <p className="text-sm text-gray-500 mb-6">
-                        Start browsing rooms to make a reservation
-                      </p>
-                      <Link to="/tenant/check-availability">
-                        <button
-                          className="px-6 py-3 rounded-lg font-medium text-white"
-                          style={{ backgroundColor: "#E7710F" }}
-                        >
-                          Browse Available Rooms
-                        </button>
-                      </Link>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
             {/* ACTIVITY LOG TAB */}
             {activeTab === "history" && (
               <div className="max-w-5xl">
@@ -3018,13 +2534,13 @@ const ProfilePage = () => {
                     Activity History
                   </h1>
                   <p className="text-sm text-gray-500">
-                    Complete record of visit requests, approvals, reservation
-                    updates, and payments
+                    Complete record of visit requests, approvals, and
+                    reservation updates
                   </p>
                 </div>
 
                 <div
-                  className="bg-white rounded-xl p-6 border"
+                  className="bg-white rounded-xl p-6 border shadow-sm"
                   style={{ borderColor: "#E8EBF0" }}
                 >
                   {activityLog.length > 0 ? (
@@ -3036,7 +2552,7 @@ const ProfilePage = () => {
                           )}
                           <div className="flex items-start gap-4">
                             <div
-                              className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 relative z-10"
+                              className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 relative z-10 shadow-sm"
                               style={{
                                 backgroundColor:
                                   activity.type === "payment"
@@ -3173,7 +2689,7 @@ const ProfilePage = () => {
                   margin: "0 auto 12px",
                 }}
               >
-                <span style={{ fontSize: "28px" }}>🧾</span>
+                <FileText size={28} color="#E7710F" />
               </div>
               <h2
                 style={{
@@ -3539,10 +3055,26 @@ const ProfilePage = () => {
                       }}
                     >
                       <span style={{ color: "#6B7280" }}>Visit Type</span>
-                      <span style={{ color: "#1F2937", fontWeight: "600" }}>
-                        {activeReservation?.viewingType === "inperson"
-                          ? "🏠 In-Person Visit"
-                          : "💻 Virtual Tour"}
+                      <span
+                        style={{
+                          color: "#1F2937",
+                          fontWeight: "600",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                        }}
+                      >
+                        {activeReservation?.viewingType === "inperson" ? (
+                          <>
+                            <Home size={16} />
+                            In-Person Visit
+                          </>
+                        ) : (
+                          <>
+                            <Monitor size={16} />
+                            Virtual Tour
+                          </>
+                        )}
                       </span>
                     </div>
                     <div
@@ -3589,8 +3121,30 @@ const ProfilePage = () => {
                         }}
                       >
                         {activeReservation?.scheduleApproved
-                          ? "✓ Confirmed by Admin"
-                          : "⏳ Awaiting Admin Confirmation"}
+                          ? (
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "6px",
+                                }}
+                              >
+                                <Check size={14} />
+                                Confirmed by Admin
+                              </span>
+                            )
+                          : (
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "6px",
+                                }}
+                              >
+                                <Clock size={14} />
+                                Awaiting Admin Confirmation
+                              </span>
+                            )}
                       </span>
                     </div>
                   </div>
@@ -3683,8 +3237,17 @@ const ProfilePage = () => {
                       <span style={{ color: "#6B7280" }}>
                         Policies Accepted
                       </span>
-                      <span style={{ color: "#10B981", fontWeight: "600" }}>
-                        ✓ Yes
+                      <span
+                        style={{
+                          color: "#10B981",
+                          fontWeight: "600",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                        }}
+                      >
+                        <Check size={14} />
+                        Yes
                       </span>
                     </div>
                   </div>
@@ -3757,7 +3320,7 @@ const ProfilePage = () => {
                         margin: "0 auto 12px",
                       }}
                     >
-                      <span style={{ fontSize: "28px" }}>✓</span>
+                      <CheckCircle size={28} color="#16A34A" />
                     </div>
                     <p
                       style={{
@@ -3838,7 +3401,7 @@ const ProfilePage = () => {
                               : "N/A"}
                         </p>
                       </div>
-                      <span style={{ fontSize: "24px" }}>📅</span>
+                      <Calendar size={22} color="#166534" />
                     </div>
                   </div>
                 </>
@@ -4173,7 +3736,7 @@ const ProfilePage = () => {
                           border: "1px dashed #D1D5DB",
                         }}
                       >
-                        <span style={{ fontSize: "24px" }}>📄</span>
+                        <FileText size={22} color="#6B7280" />
                         <p
                           style={{
                             color: "#6B7280",
@@ -4259,8 +3822,30 @@ const ProfilePage = () => {
                         }}
                       >
                         {activeReservation?.status === "confirmed"
-                          ? "✓ Verified"
-                          : "⏳ Pending Verification"}
+                          ? (
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "6px",
+                                }}
+                              >
+                                <Check size={14} />
+                                Verified
+                              </span>
+                            )
+                          : (
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "6px",
+                                }}
+                              >
+                                <Clock size={14} />
+                                Pending Verification
+                              </span>
+                            )}
                       </span>
                     </div>
                   </div>
@@ -4349,7 +3934,7 @@ const ProfilePage = () => {
                               : ""}
                         </p>
                       </div>
-                      <span style={{ fontSize: "24px" }}>⏰</span>
+                      <Clock size={22} color="#E7710F" />
                     </div>
                   </div>
                 </>
@@ -4364,7 +3949,7 @@ const ProfilePage = () => {
                       borderBottom: "1px solid #E5E7EB",
                     }}
                   >
-                    <span style={{ fontSize: "32px" }}>🎉</span>
+                    <CheckCircle size={30} color="#166534" />
                     <p
                       style={{
                         color: "#166534",

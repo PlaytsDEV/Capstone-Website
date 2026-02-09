@@ -1,4 +1,20 @@
 import React from "react";
+import { 
+  Clock, 
+  DollarSign, 
+  Upload, 
+  Calendar,
+  Bed,
+  MapPin,
+  Home,
+  CheckCircle,
+  CreditCard,
+  AlertCircle,
+  ArrowRight,
+  Building,
+  User,
+  RefreshCw
+} from "lucide-react";
 
 // Helper function to format branch name
 const formatBranch = (branch) => {
@@ -69,158 +85,407 @@ const ReservationPaymentStep = ({
   const room = reservationData?.room || {};
 
   return (
-    <div className="reservation-card bg-white rounded-2xl shadow-xl border border-gray-200 p-8">
-      <h2 className="stage-title text-2xl font-semibold text-slate-800">
-        Reservation Fee Payment
-      </h2>
-      <p className="stage-subtitle text-sm text-gray-500 mt-1">
-        Review your final details and secure your reservation with a ₱2,000 fee.
-      </p>
-
-      <div className="section-group">
-        <h3 className="section-header">Reservation Details</h3>
-        <div className="summary-section">
-          <div className="summary-row">
-            <span className="summary-label">Room</span>
-            <span className="summary-value" style={{ fontWeight: "600" }}>
-              {getRoomName(room)}
-            </span>
+    <div className="max-w-4xl mx-auto">
+      {/* Header Section */}
+      <div className="mb-8">
+        <div className="flex items-center gap-4 mb-3">
+          <div
+            className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg"
+            style={{
+              backgroundColor: "#E7710F",
+              boxShadow: "0 4px 14px rgba(231, 113, 15, 0.25)",
+            }}
+          >
+            <DollarSign className="w-7 h-7 text-white" />
           </div>
-          <div className="summary-row">
-            <span className="summary-label">Branch</span>
-            <span className="summary-value">{formatBranch(room.branch)}</span>
-          </div>
-          <div className="summary-row">
-            <span className="summary-label">Room Type</span>
-            <span className="summary-value">{formatRoomType(room.type)}</span>
-          </div>
-          <div className="summary-row">
-            <span className="summary-label">Monthly Rent</span>
-            <span
-              className="summary-value"
-              style={{ color: "#E7710F", fontWeight: "600" }}
-            >
-              ₱{(room.price || 0).toLocaleString()}
-            </span>
-          </div>
-          <div className="summary-row">
-            <span className="summary-label">Lease Duration</span>
-            <span className="summary-value">{leaseDuration || 12} months</span>
-          </div>
-          <div className="summary-row">
-            <span className="summary-label">Target Move-In Date</span>
-            <span className="summary-value">{formatDate(finalMoveInDate)}</span>
-          </div>
-          {reservationData?.selectedBed && (
-            <div className="summary-row">
-              <span className="summary-label">Selected Bed</span>
-              <span className="summary-value">
-                {reservationData.selectedBed.position} (
-                {reservationData.selectedBed.id})
-              </span>
-            </div>
-          )}
-          <div className="total-section">
-            <span>Reservation Fee</span>
-            <span className="total-amount">₱2,000</span>
+          <div>
+            <h2 className="text-3xl font-bold mb-1" style={{ color: "#0C375F" }}>
+              Reservation Fee Payment
+            </h2>
+            <p className="text-gray-600">
+              Review your final details and secure your reservation with a ₱2,000 fee
+            </p>
           </div>
         </div>
       </div>
 
-      <div className="section-group">
-        <h3 className="section-header">Final Move-In Date</h3>
-        <p className="section-helper">
-          Need to adjust your move-in date? Click "Re-Check" to verify room
-          availability for the new date.
-        </p>
-        <div className="form-group">
-          <label className="form-label">Update Move-In Date (Optional)</label>
-          <div style={{ display: "flex", gap: "8px", alignItems: "flex-end" }}>
-            <input
-              type="date"
-              className="form-input"
-              value={finalMoveInDate}
-              onChange={(e) => setFinalMoveInDate(e.target.value)}
-              style={{ flex: 1 }}
-            />
+      <div className="space-y-6">
+        {/* Payment Deadline Alert */}
+        <div
+          className="p-5 rounded-2xl border-2"
+          style={{ backgroundColor: "#FEF3C7", borderColor: "#FDE68A" }}
+        >
+          <div className="flex items-start gap-3">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ backgroundColor: "#FEF9C3" }}
+            >
+              <Clock className="w-5 h-5" style={{ color: "#D97706" }} />
+            </div>
+            <div>
+              <h4 className="font-semibold mb-1" style={{ color: "#92400E" }}>
+                Payment must be submitted within 48 hours
+              </h4>
+              <p className="text-sm" style={{ color: "#B45309" }}>
+                Your application will expire if payment is not received within the deadline.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Reservation Summary Card */}
+        <div
+          className="bg-white rounded-2xl shadow-lg border p-6"
+          style={{ borderColor: "#E5E7EB" }}
+        >
+          <div className="flex items-center gap-3 mb-5">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: "#FEF3E7" }}
+            >
+              <Bed className="w-5 h-5" style={{ color: "#E7710F" }} />
+            </div>
+            <h3 className="text-lg font-semibold" style={{ color: "#0C375F" }}>
+              Reservation Details
+            </h3>
+          </div>
+
+          <div
+            className="rounded-xl p-5"
+            style={{
+              background: "linear-gradient(135deg, #FAFAFA 0%, #FFFFFF 100%)",
+              border: "1px solid #E5E7EB",
+            }}
+          >
+            <div className="space-y-3">
+              {/* Room */}
+              <div className="flex items-center justify-between py-2 border-b" style={{ borderColor: "#F3F4F6" }}>
+                <div className="flex items-center gap-2">
+                  <Home className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm text-gray-600">Room</span>
+                </div>
+                <span className="text-sm font-semibold text-gray-900">
+                  {getRoomName(room)}
+                </span>
+              </div>
+
+              {/* Branch */}
+              <div className="flex items-center justify-between py-2 border-b" style={{ borderColor: "#F3F4F6" }}>
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm text-gray-600">Branch</span>
+                </div>
+                <span className="text-sm font-semibold text-gray-900">
+                  {formatBranch(room.branch)}
+                </span>
+              </div>
+
+              {/* Room Type */}
+              <div className="flex items-center justify-between py-2 border-b" style={{ borderColor: "#F3F4F6" }}>
+                <div className="flex items-center gap-2">
+                  <Bed className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm text-gray-600">Room Type</span>
+                </div>
+                <span className="text-sm font-semibold text-gray-900">
+                  {formatRoomType(room.type)}
+                </span>
+              </div>
+
+              {/* Monthly Rent */}
+              <div className="flex items-center justify-between py-2 border-b" style={{ borderColor: "#F3F4F6" }}>
+                <div className="flex items-center gap-2">
+                  <DollarSign className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm text-gray-600">Monthly Rent</span>
+                </div>
+                <span className="text-sm font-bold" style={{ color: "#E7710F" }}>
+                  ₱{(room.price || 0).toLocaleString()}
+                </span>
+              </div>
+
+              {/* Lease Duration */}
+              <div className="flex items-center justify-between py-2 border-b" style={{ borderColor: "#F3F4F6" }}>
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm text-gray-600">Lease Duration</span>
+                </div>
+                <span className="text-sm font-semibold text-gray-900">
+                  {leaseDuration || 12} months
+                </span>
+              </div>
+
+              {/* Target Move-In Date */}
+              <div className="flex items-center justify-between py-2 border-b" style={{ borderColor: "#F3F4F6" }}>
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm text-gray-600">Target Move-In Date</span>
+                </div>
+                <span className="text-sm font-semibold text-gray-900">
+                  {formatDate(finalMoveInDate)}
+                </span>
+              </div>
+
+              {/* Selected Bed */}
+              {reservationData?.selectedBed && (
+                <div className="flex items-center justify-between py-2 border-b" style={{ borderColor: "#F3F4F6" }}>
+                  <div className="flex items-center gap-2">
+                    <Bed className="w-4 h-4 text-gray-400" />
+                    <span className="text-sm text-gray-600">Selected Bed</span>
+                  </div>
+                  <span className="text-sm font-semibold text-gray-900">
+                    {reservationData.selectedBed.position} ({reservationData.selectedBed.id})
+                  </span>
+                </div>
+              )}
+
+              {/* Total Fee */}
+              <div
+                className="flex items-center justify-between py-4 mt-4 pt-4 border-t-2"
+                style={{ borderColor: "#E5E7EB" }}
+              >
+                <span className="text-base font-semibold" style={{ color: "#0C375F" }}>
+                  Reservation Fee
+                </span>
+                <span className="text-2xl font-bold" style={{ color: "#E7710F" }}>
+                  ₱2,000
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Move-In Date Update Section */}
+        <div
+          className="bg-white rounded-2xl shadow-lg border p-6"
+          style={{ borderColor: "#E5E7EB" }}
+        >
+          <div className="flex items-center gap-3 mb-5">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: "#FEF3E7" }}
+            >
+              <Calendar className="w-5 h-5" style={{ color: "#E7710F" }} />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold" style={{ color: "#0C375F" }}>
+                Final Move-In Date
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">
+                Need to adjust your move-in date? Click "Re-Check" to verify room availability
+              </p>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <div className="relative">
+                <div className="absolute left-4 top-1/2 -translate-y-1/2">
+                  <Calendar className="w-4 h-4 text-gray-400" />
+                </div>
+                <input
+                  type="date"
+                  className="w-full pl-11 pr-4 py-3 border rounded-xl text-sm"
+                  value={finalMoveInDate}
+                  onChange={(e) => setFinalMoveInDate(e.target.value)}
+                  style={{ borderColor: "#E5E7EB" }}
+                />
+              </div>
+            </div>
             <button
               type="button"
-              className="btn btn-secondary"
               onClick={onMoveInDateUpdate}
-              style={{ whiteSpace: "nowrap" }}
+              className="px-6 py-3 rounded-xl font-semibold text-gray-700 border-2 transition-all hover:bg-gray-50 whitespace-nowrap flex items-center gap-2"
+              style={{ borderColor: "#E5E7EB" }}
               title="Verify if the room is still available on the selected date"
             >
+              <RefreshCw className="w-4 h-4" />
               Re-Check Availability
             </button>
           </div>
+          <p className="text-xs text-gray-500 mt-3">
+            The Re-Check button verifies if your selected room is still available on the new move-in date
+          </p>
+        </div>
+
+        {/* Payment Method Section */}
+        <div
+          className="bg-white rounded-2xl shadow-lg border p-6"
+          style={{ borderColor: "#E5E7EB" }}
+        >
+          <div className="flex items-center gap-3 mb-5">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: "#FEF3E7" }}
+            >
+              <CreditCard className="w-5 h-5" style={{ color: "#E7710F" }} />
+            </div>
+            <h3 className="text-lg font-semibold" style={{ color: "#0C375F" }}>
+              Payment Method
+            </h3>
+          </div>
+
+          <div className="mb-5">
+            <select
+              className="w-full px-4 py-3 border rounded-xl text-sm appearance-none bg-white font-medium"
+              value={paymentMethod}
+              onChange={(e) => setPaymentMethod(e.target.value)}
+              style={{ borderColor: "#E5E7EB" }}
+            >
+              <option value="bank">🏦 Bank Transfer</option>
+              <option value="gcash">💳 GCash</option>
+              <option value="card">💳 Credit/Debit Card</option>
+              <option value="check">📝 Check</option>
+            </select>
+          </div>
+
+          {/* Payment Details Box */}
           <div
-            className="form-helper"
-            style={{ marginTop: "8px", fontSize: "12px", color: "#6B7280" }}
+            className="rounded-xl p-5"
+            style={{
+              background: "linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%)",
+              border: "1px solid #BFDBFE",
+            }}
           >
-            The Re-Check button verifies if your selected room is still
-            available on the new move-in date
+            <div className="flex items-start gap-3 mb-4">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: "#DBEAFE" }}
+              >
+                <Building className="w-5 h-5" style={{ color: "#1E40AF" }} />
+              </div>
+              <div>
+                <h4 className="font-semibold mb-1" style={{ color: "#1E3A8A" }}>
+                  Payment Details
+                </h4>
+                <p className="text-xs" style={{ color: "#1E40AF" }}>
+                  Please transfer the exact amount to the account below
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between py-2 px-3 bg-white rounded-lg">
+                <span className="text-xs font-medium text-gray-600">Bank Account</span>
+                <span className="text-sm font-bold" style={{ color: "#0C375F" }}>
+                  BDO - 1234-5678-9012
+                </span>
+              </div>
+              <div className="flex items-center justify-between py-2 px-3 bg-white rounded-lg">
+                <span className="text-xs font-medium text-gray-600">Account Name</span>
+                <span className="text-sm font-semibold text-gray-900">
+                  Dormitory Services Inc.
+                </span>
+              </div>
+              <div className="flex items-center justify-between py-2 px-3 bg-white rounded-lg">
+                <span className="text-xs font-medium text-gray-600">Amount</span>
+                <span className="text-sm font-bold" style={{ color: "#E7710F" }}>
+                  ₱2,000
+                </span>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="section-group">
-        <h3 className="section-header">Payment Method</h3>
-        <div className="form-group">
-          <select
-            className="form-select"
-            value={paymentMethod}
-            onChange={(e) => setPaymentMethod(e.target.value)}
-          >
-            <option value="bank">Bank Transfer</option>
-            <option value="gcash">GCash</option>
-            <option value="card">Credit/Debit Card</option>
-            <option value="check">Check</option>
-          </select>
-        </div>
-
-        <div className="info-box">
-          <div className="info-box-title">💳 Payment Details</div>
-          <div className="info-text">
-            <strong>Bank Account:</strong> BDO - 1234-5678-9012
-            <br />
-            <strong>Account Name:</strong> Dormitory Services Inc.
-            <br />
-            <strong>Amount:</strong> ₱2,000
+        {/* Proof of Payment Section */}
+        <div
+          className="bg-white rounded-2xl shadow-lg border p-6"
+          style={{ borderColor: "#E5E7EB" }}
+        >
+          <div className="flex items-center gap-3 mb-5">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: "#FEF3E7" }}
+            >
+              <Upload className="w-5 h-5" style={{ color: "#E7710F" }} />
+            </div>
+            <h3 className="text-lg font-semibold" style={{ color: "#0C375F" }}>
+              Proof of Payment
+            </h3>
           </div>
-        </div>
-      </div>
 
-      <div className="section-group">
-        <h3 className="section-header">Proof of Payment</h3>
-        <div className="form-group">
-          <label className="file-upload" htmlFor="payment-file">
+          <label
+            className="flex items-center gap-4 p-4 border-2 border-dashed rounded-xl cursor-pointer transition-all hover:border-orange-400 hover:bg-orange-50"
+            htmlFor="payment-file"
+            style={{ borderColor: proofOfPayment ? "#E7710F" : "#E5E7EB" }}
+          >
             <input
               id="payment-file"
               type="file"
               accept="image/*,.pdf"
               onChange={(e) => setProofOfPayment(e.target.files?.[0] || null)}
+              className="sr-only"
             />
-            <div className="file-icon">💳</div>
-            <div className="file-text">
-              {proofOfPayment
-                ? proofOfPayment.name
-                : "Upload receipt or screenshot"}
+            <div
+              className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{
+                backgroundColor: proofOfPayment ? "#FEF3E7" : "#F3F4F6",
+              }}
+            >
+              <Upload
+                className="w-6 h-6"
+                style={{ color: proofOfPayment ? "#E7710F" : "#6B7280" }}
+              />
             </div>
+            <div className="flex-1">
+              <p
+                className="text-sm font-medium"
+                style={{ color: proofOfPayment ? "#E7710F" : "#374151" }}
+              >
+                {proofOfPayment ? proofOfPayment.name : "Upload receipt or screenshot"}
+              </p>
+              <p className="text-xs text-gray-500">
+                {proofOfPayment ? "Click to change" : "JPG, PNG, PDF up to 5MB"}
+              </p>
+            </div>
+            {proofOfPayment && (
+              <CheckCircle className="w-5 h-5" style={{ color: "#10B981" }} />
+            )}
           </label>
-        </div>
-      </div>
 
-      <div className="stage-buttons">
-        <button onClick={onPrev} className="btn btn-secondary">
-          Back
-        </button>
-        <button
-          onClick={onNext}
-          className="btn btn-primary"
-          disabled={isLoading}
-        >
-          {isLoading ? "Processing..." : "Confirm Payment & Reserve"}
-        </button>
+          <div
+            className="mt-4 p-4 rounded-xl border"
+            style={{ backgroundColor: "#F0FDF4", borderColor: "#BBF7D0" }}
+          >
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: "#059669" }} />
+              <p className="text-xs" style={{ color: "#065F46" }}>
+                <strong>Important:</strong> Make sure your receipt clearly shows the transaction details, amount, and date.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <button
+            onClick={onPrev}
+            className="px-6 py-3 rounded-xl font-semibold text-gray-700 border-2 transition-all hover:bg-gray-50"
+            style={{ borderColor: "#E5E7EB" }}
+            disabled={isLoading}
+          >
+            Back
+          </button>
+          <button
+            onClick={onNext}
+            disabled={isLoading}
+            className="flex-1 px-6 py-3 rounded-xl font-semibold text-white transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]"
+            style={{
+              backgroundColor: isLoading ? "#D1D5DB" : "#E7710F",
+              boxShadow: isLoading ? "none" : "0 4px 14px rgba(231, 113, 15, 0.25)",
+            }}
+          >
+            {isLoading ? (
+              <>
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                Processing...
+              </>
+            ) : (
+              <>
+                Confirm Payment & Reserve
+                <ArrowRight className="w-5 h-5" />
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

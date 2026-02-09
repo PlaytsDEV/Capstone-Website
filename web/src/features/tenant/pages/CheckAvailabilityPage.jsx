@@ -286,15 +286,6 @@ function CheckAvailabilityPage() {
   const availableRoomTypes = getAvailableRoomTypes();
   const availableRooms = rooms;
 
-  const upcomingRoom = {
-    id: "GD-Q-004",
-    title: "Room GD-Q-004",
-    branch: "Guadalupe",
-    type: "Quadruple",
-    price: 4200,
-    availableFrom: "March 15, 2026",
-  };
-
   const filteredRooms = availableRooms.filter((room) => {
     const matchesSearch =
       room.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -725,45 +716,7 @@ function CheckAvailabilityPage() {
           </div>
         )}
 
-        <section className="mt-16">
-          <h2 className="text-2xl font-light mb-2" style={{ color: "#0C375F" }}>
-            Coming Soon
-          </h2>
-          <p className="text-gray-600 mb-6">
-            Rooms that will be available soon
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            <article
-              className="group rounded-2xl border border-gray-200 overflow-hidden"
-              onClick={handleGetNotified}
-              style={{ cursor: "pointer" }}
-            >
-              <div className="relative aspect-square bg-gray-100">
-                <img
-                  src={standardRoom}
-                  alt={upcomingRoom.title}
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute top-3 left-3">
-                  <span className="px-3 py-1.5 rounded-full text-xs font-medium bg-white/95 shadow-sm">
-                    Coming Soon
-                  </span>
-                </div>
-              </div>
-              <div className="p-4 space-y-1">
-                <h3 className="text-base font-semibold text-gray-900">
-                  {upcomingRoom.title}
-                </h3>
-                <p className="text-sm text-gray-600">
-                  {upcomingRoom.branch} · {upcomingRoom.type}
-                </p>
-                <p className="text-sm text-gray-600">
-                  Available from {upcomingRoom.availableFrom}
-                </p>
-              </div>
-            </article>
-          </div>
-        </section>
+        
       </main>
 
       <RoomDetailsModal
