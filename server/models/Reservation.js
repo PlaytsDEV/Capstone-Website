@@ -78,9 +78,31 @@ const reservationSchema = new mongoose.Schema(
     },
     isOutOfTown: Boolean,
     currentLocation: String,
+    scheduleApproved: {
+      type: Boolean,
+      default: false,
+    },
     visitApproved: {
       type: Boolean,
       default: false,
+    },
+    // Schedule rejection tracking
+    scheduleRejected: {
+      type: Boolean,
+      default: false,
+    },
+    scheduleRejectionReason: {
+      type: String,
+      default: null,
+    },
+    scheduleRejectedAt: {
+      type: Date,
+      default: null,
+    },
+    scheduleRejectedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
     },
 
     // =========================================================================
@@ -159,6 +181,12 @@ const reservationSchema = new mongoose.Schema(
     // =========================================================================
     // STAGE 4: PAYMENT
     // =========================================================================
+    finalMoveInDate: Date,
+    paymentMethod: {
+      type: String,
+      enum: ["bank", "gcash", "card", "check", "cash"],
+      default: "bank",
+    },
     proofOfPaymentUrl: String,
 
     // --- Reservation Dates & Pricing ---
@@ -181,11 +209,37 @@ const reservationSchema = new mongoose.Schema(
     },
 
     // --- Status ---
+
     status: {
       type: String,
-      enum: ["pending", "confirmed", "checked-in", "checked-out", "cancelled"],
+      enum: [
+        "pending",
+        "confirmed",
+        "checked-in",
+        "checked-out",
+        "cancelled",
+        "at-risk",
+      ],
       default: "pending",
       index: true,
+    },
+
+    // System assist fields
+    atRisk: {
+      type: Boolean,
+      default: false,
+    },
+    moveInReminderSent: {
+      type: Boolean,
+      default: false,
+    },
+    moveInReminderDate: {
+      type: Date,
+      default: null,
+    },
+    moveInRiskDate: {
+      type: Date,
+      default: null,
     },
 
     // --- Payment ---

@@ -134,12 +134,23 @@ export const createReservation = async (req, res) => {
 
     // Validate required fields
     const { roomId, roomName, checkInDate, totalPrice } = req.body;
-
     if ((!roomId && !roomName) || !checkInDate || !totalPrice) {
       return res.status(400).json({
         error:
           "Missing required fields: roomId or roomName, checkInDate, and totalPrice are required",
         code: "MISSING_REQUIRED_FIELDS",
+      });
+    }
+
+    // Enforce 3-month reservation window
+    const moveInDate = new Date(checkInDate);
+    const now = new Date();
+    const threeMonthsLater = new Date(now);
+    threeMonthsLater.setMonth(now.getMonth() + 3);
+    if (moveInDate < now || moveInDate > threeMonthsLater) {
+      return res.status(400).json({
+        error: "Move-in date must be within 3 months from today.",
+        code: "MOVEIN_DATE_OUT_OF_RANGE",
       });
     }
 
@@ -167,6 +178,12 @@ export const createReservation = async (req, res) => {
     }
 
     // Create new reservation with ALL fields from the form
+    // Calculate reminder and at-risk dates
+    const reminderDate = new Date(moveInDate);
+    reminderDate.setDate(reminderDate.getDate() + 1);
+    const riskDate = new Date(moveInDate);
+    riskDate.setDate(riskDate.getDate() + 2);
+
     const reservation = new Reservation({
       userId: dbUser._id,
       roomId: room._id,
@@ -187,10 +204,10 @@ export const createReservation = async (req, res) => {
       billingEmail: req.body.billingEmail || dbUser.email,
 
       // Stage 2: Visit
-      viewingType: req.body.viewingType || "inperson",
+      viewingType: req.body.viewingType || null,
       isOutOfTown: req.body.isOutOfTown || false,
       currentLocation: req.body.currentLocation || null,
-      visitApproved: req.body.visitApproved || true,
+      visitApproved: req.body.visitApproved === true ? true : false,
 
       // Stage 3: Details - Photos
       selfiePhotoUrl: req.body.selfiePhotoUrl || null,
@@ -266,6 +283,10 @@ export const createReservation = async (req, res) => {
       notes: req.body.notes || "",
       status: "pending",
       paymentStatus: "pending",
+      moveInReminderSent: false,
+      moveInReminderDate: reminderDate,
+      moveInRiskDate: riskDate,
+      atRisk: false,
     });
 
     // Save reservation to database
@@ -368,6 +389,28 @@ export const updateReservation = async (req, res) => {
         error: `Access denied. You can only manage reservations for ${req.branchFilter} branch.`,
         code: "BRANCH_ACCESS_DENIED",
       });
+    }
+
+    // If checkInDate is being updated, enforce 3-month window and update reminders
+    if (req.body.checkInDate) {
+      const moveInDate = new Date(req.body.checkInDate);
+      const now = new Date();
+      const threeMonthsLater = new Date(now);
+      threeMonthsLater.setMonth(now.getMonth() + 3);
+      if (moveInDate < now || moveInDate > threeMonthsLater) {
+        return res.status(400).json({
+          error: "Move-in date must be within 3 months from today.",
+          code: "MOVEIN_DATE_OUT_OF_RANGE",
+        });
+      }
+      req.body.moveInReminderSent = false;
+      const reminderDate = new Date(moveInDate);
+      reminderDate.setDate(reminderDate.getDate() + 1);
+      req.body.moveInReminderDate = reminderDate;
+      const riskDate = new Date(moveInDate);
+      riskDate.setDate(riskDate.getDate() + 2);
+      req.body.moveInRiskDate = riskDate;
+      req.body.atRisk = false;
     }
 
     // Update reservation and return the updated document
@@ -511,6 +554,8 @@ export const updateReservationByUser = async (req, res) => {
     setField("workScheduleOther", req.body.workScheduleOther);
     setField("agreedToPrivacy", req.body.agreedToPrivacy);
     setField("agreedToCertification", req.body.agreedToCertification);
+    setField("finalMoveInDate", req.body.finalMoveInDate);
+    setField("paymentMethod", req.body.paymentMethod);
     setField("proofOfPaymentUrl", req.body.proofOfPaymentUrl);
     setField("checkInDate", req.body.checkInDate);
     setField("checkOutDate", req.body.checkOutDate);
@@ -538,8 +583,7 @@ export const updateReservationByUser = async (req, res) => {
       updates["emergencyContact.name"] = req.body.emergencyContactName;
     }
     if (req.body.emergencyRelationship !== undefined) {
-      updates["emergencyContact.relationship"] =
-        req.body.emergencyRelationship;
+      updates["emergencyContact.relationship"] = req.body.emergencyRelationship;
     }
     if (req.body.emergencyContactNumber !== undefined) {
       updates["emergencyContact.contactNumber"] =
@@ -609,9 +653,8 @@ export const deleteReservation = async (req, res) => {
     }
 
     // Find the reservation with populated room data for branch checking
-    const reservation = await Reservation.findById(reservationId).populate(
-      "roomId",
-    );
+    const reservation =
+      await Reservation.findById(reservationId).populate("roomId");
 
     if (!reservation) {
       return res.status(404).json({
@@ -621,10 +664,7 @@ export const deleteReservation = async (req, res) => {
     }
 
     // Check branch access (admin can only delete reservations for rooms in their branch)
-    if (
-      req.branchFilter &&
-      reservation.roomId?.branch !== req.branchFilter
-    ) {
+    if (req.branchFilter && reservation.roomId?.branch !== req.branchFilter) {
       return res.status(403).json({
         error: `Access denied. You can only manage reservations for ${req.branchFilter} branch.`,
         code: "BRANCH_ACCESS_DENIED",
@@ -666,6 +706,281 @@ export const deleteReservation = async (req, res) => {
       error: "Failed to delete reservation",
       details: error.message,
       code: "DELETE_RESERVATION_ERROR",
+    });
+  }
+};
+
+/**
+ * Extend a reservation's move-in date (admin action for at-risk reservations)
+ */
+export const extendReservation = async (req, res) => {
+  try {
+    const { reservationId } = req.params;
+    const { extensionDays = 3 } = req.body; // Default 3-day extension
+
+    if (!reservationId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        error: "Invalid reservation ID format",
+        code: "INVALID_RESERVATION_ID",
+      });
+    }
+
+    const reservation = await Reservation.findById(reservationId).populate(
+      "roomId",
+      "branch",
+    );
+
+    if (!reservation) {
+      return res.status(404).json({
+        error: "Reservation not found",
+        code: "RESERVATION_NOT_FOUND",
+      });
+    }
+
+    // Check branch access
+    if (req.branchFilter && reservation.roomId?.branch !== req.branchFilter) {
+      return res.status(403).json({
+        error: `Access denied. You can only manage reservations for ${req.branchFilter} branch.`,
+        code: "BRANCH_ACCESS_DENIED",
+      });
+    }
+
+    const oldData = reservation.toObject();
+
+    // Calculate new move-in date
+    const currentMoveIn =
+      reservation.checkInDate || reservation.finalMoveInDate;
+    const newMoveInDate = new Date(currentMoveIn);
+    newMoveInDate.setDate(newMoveInDate.getDate() + extensionDays);
+
+    // Update reminder and risk dates
+    const newReminderDate = new Date(newMoveInDate);
+    newReminderDate.setDate(newReminderDate.getDate() + 1);
+    const newRiskDate = new Date(newMoveInDate);
+    newRiskDate.setDate(newRiskDate.getDate() + 2);
+
+    // Update reservation
+    reservation.checkInDate = newMoveInDate;
+    reservation.finalMoveInDate = newMoveInDate;
+    reservation.moveInReminderDate = newReminderDate;
+    reservation.moveInRiskDate = newRiskDate;
+    reservation.moveInReminderSent = false;
+    reservation.atRisk = false;
+    reservation.status =
+      reservation.paymentStatus === "paid" ? "confirmed" : "pending";
+
+    await reservation.save();
+    await reservation.populate("userId", "firstName lastName email");
+    await reservation.populate("roomId", "name branch type price");
+
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservationId,
+      oldData,
+      reservation.toObject(),
+      `Extended move-in date by ${extensionDays} days`,
+    );
+
+    console.log(
+      `✅ Reservation extended: ${reservationId} - New move-in: ${newMoveInDate}`,
+    );
+    res.json({
+      message: `Reservation extended by ${extensionDays} days`,
+      newMoveInDate,
+      reservation,
+    });
+  } catch (error) {
+    console.error("❌ Extend reservation error:", error);
+    await auditLogger.logError(req, error, "Failed to extend reservation");
+    res.status(500).json({
+      error: "Failed to extend reservation",
+      details: error.message,
+      code: "EXTEND_RESERVATION_ERROR",
+    });
+  }
+};
+
+/**
+ * Release a reservation slot (admin action to cancel and free up room)
+ */
+export const releaseSlot = async (req, res) => {
+  try {
+    const { reservationId } = req.params;
+    const { reason = "No-show after move-in date" } = req.body;
+
+    if (!reservationId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        error: "Invalid reservation ID format",
+        code: "INVALID_RESERVATION_ID",
+      });
+    }
+
+    const reservation =
+      await Reservation.findById(reservationId).populate("roomId");
+
+    if (!reservation) {
+      return res.status(404).json({
+        error: "Reservation not found",
+        code: "RESERVATION_NOT_FOUND",
+      });
+    }
+
+    // Check branch access
+    if (req.branchFilter && reservation.roomId?.branch !== req.branchFilter) {
+      return res.status(403).json({
+        error: `Access denied. You can only manage reservations for ${req.branchFilter} branch.`,
+        code: "BRANCH_ACCESS_DENIED",
+      });
+    }
+
+    const oldData = reservation.toObject();
+
+    // Cancel the reservation
+    reservation.status = "cancelled";
+    reservation.notes = `${reservation.notes ? reservation.notes + " | " : ""}Released: ${reason}`;
+    reservation.atRisk = false;
+    await reservation.save();
+
+    // Free up the room slot (increment available beds or set available)
+    if (reservation.roomId) {
+      const room = await Room.findById(reservation.roomId._id);
+      if (room) {
+        // If shared room, increment available beds
+        if (room.beds && room.beds.length > 0 && reservation.selectedBed?.id) {
+          const bed = room.beds.find(
+            (b) => b.id === reservation.selectedBed.id,
+          );
+          if (bed) bed.occupied = false;
+        }
+        // Ensure room is marked available
+        room.available = true;
+        await room.save();
+      }
+    }
+
+    await reservation.populate("userId", "firstName lastName email");
+
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservationId,
+      oldData,
+      reservation.toObject(),
+      `Slot released: ${reason}`,
+    );
+
+    console.log(`✅ Reservation slot released: ${reservationId}`);
+    res.json({
+      message: "Reservation slot released successfully",
+      reason,
+      reservation,
+    });
+  } catch (error) {
+    console.error("❌ Release slot error:", error);
+    await auditLogger.logError(
+      req,
+      error,
+      "Failed to release reservation slot",
+    );
+    res.status(500).json({
+      error: "Failed to release slot",
+      details: error.message,
+      code: "RELEASE_SLOT_ERROR",
+    });
+  }
+};
+
+/**
+ * Soft delete (archive) a reservation
+ */
+export const archiveReservation = async (req, res) => {
+  try {
+    const { reservationId } = req.params;
+    const { reason = "Archived by admin" } = req.body;
+
+    if (!reservationId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        error: "Invalid reservation ID format",
+        code: "INVALID_RESERVATION_ID",
+      });
+    }
+
+    const reservation = await Reservation.findById(reservationId).populate(
+      "roomId",
+      "branch",
+    );
+
+    if (!reservation) {
+      return res.status(404).json({
+        error: "Reservation not found",
+        code: "RESERVATION_NOT_FOUND",
+      });
+    }
+
+    // Check branch access
+    if (req.branchFilter && reservation.roomId?.branch !== req.branchFilter) {
+      return res.status(403).json({
+        error: `Access denied. You can only manage reservations for ${req.branchFilter} branch.`,
+        code: "BRANCH_ACCESS_DENIED",
+      });
+    }
+
+    const oldData = reservation.toObject();
+
+    // Find the admin user
+    const dbUser = await User.findOne({ firebaseUid: req.user.uid });
+
+    // Soft delete the reservation
+    reservation.isArchived = true;
+    reservation.archivedAt = new Date();
+    reservation.archivedBy = dbUser?._id || null;
+    reservation.notes = `${reservation.notes ? reservation.notes + " | " : ""}Archived: ${reason}`;
+    await reservation.save();
+
+    // Free up the room slot if reservation was active
+    if (
+      reservation.roomId &&
+      ["pending", "confirmed"].includes(reservation.status)
+    ) {
+      const room = await Room.findById(reservation.roomId._id);
+      if (room) {
+        if (room.beds && room.beds.length > 0 && reservation.selectedBed?.id) {
+          const bed = room.beds.find(
+            (b) => b.id === reservation.selectedBed.id,
+          );
+          if (bed) bed.occupied = false;
+        }
+        room.available = true;
+        await room.save();
+      }
+    }
+
+    await reservation.populate("userId", "firstName lastName email");
+    await reservation.populate("roomId", "name branch type price");
+
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservationId,
+      oldData,
+      reservation.toObject(),
+      `Reservation archived: ${reason}`,
+    );
+
+    console.log(`✅ Reservation archived: ${reservationId}`);
+    res.json({
+      message: "Reservation archived successfully",
+      reason,
+      reservation,
+    });
+  } catch (error) {
+    console.error("❌ Archive reservation error:", error);
+    await auditLogger.logError(req, error, "Failed to archive reservation");
+    res.status(500).json({
+      error: "Failed to archive reservation",
+      details: error.message,
+      code: "ARCHIVE_RESERVATION_ERROR",
     });
   }
 };

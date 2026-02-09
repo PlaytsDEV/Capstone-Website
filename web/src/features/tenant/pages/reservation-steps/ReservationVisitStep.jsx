@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 
 const ReservationVisitStep = ({
   targetMoveInDate,
@@ -9,29 +9,62 @@ const ReservationVisitStep = ({
   currentLocation,
   setCurrentLocation,
   visitApproved,
-  onSimulateApproval,
   onPrev,
   onNext,
+  // Visit booking form fields from parent
+  visitorName,
+  setVisitorName,
+  visitorPhone,
+  setVisitorPhone,
+  visitorEmail,
+  setVisitorEmail,
+  visitDate,
+  setVisitDate,
+  visitTime,
+  setVisitTime,
+  reservationData,
+  reservationCode,
 }) => {
+  const [policiesAccepted, setPoliciesAccepted] = useState(false);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [isSubmitted, setIsSubmitted] = useState(false);
+
+  const handleSubmitClick = () => {
+    setShowConfirmModal(true);
+  };
+
+  const handleConfirmSubmit = () => {
+    setShowConfirmModal(false);
+    setIsSubmitted(true);
+    setShowReceiptModal(true);
+  };
+
+  const handleCloseReceiptAndContinue = () => {
+    setShowReceiptModal(false);
+    onNext();
+  };
+
+  const isInPerson = viewingType === "inperson";
+  const isFormComplete = isInPerson
+    ? Boolean(
+        visitorName && visitorPhone && visitorEmail && visitDate && visitTime,
+      )
+    : true;
+  const canSubmit = policiesAccepted && viewingType && isFormComplete;
+
   return (
     <div className="reservation-card bg-white rounded-2xl shadow-xl border border-gray-200 p-8">
       <h2 className="stage-title text-2xl font-semibold text-slate-800">
-        Room Verification
+        Visit Scheduling & Policies
       </h2>
       <p className="stage-subtitle text-sm text-gray-500 mt-1">
-        Verify your identity and room availability before proceeding.
+        Schedule your room visit and review dormitory policies.
       </p>
 
-      <div className="info-box">
-        <div className="info-box-title">ℹ️ What Happens Here</div>
-        <div className="info-text">
-          We'll confirm your room is available on your target move-in date (
-          {targetMoveInDate}). Select how you'd like to verify yourself.
-        </div>
-      </div>
-
+      {/* ────── SECTION 1: Visit Type Selection ────── */}
       <div className="section-group">
-        <h3 className="section-header">Verification Method</h3>
+        <h3 className="section-header">🏢 Schedule Your Visit</h3>
         <div className="radio-group">
           <div className="radio-option">
             <input
@@ -66,8 +99,127 @@ const ReservationVisitStep = ({
         </div>
       </div>
 
+      {/* ────── SECTION 2: In-Person Visit Booking Form ────── */}
+      {isInPerson && (
+        <div className="section-group">
+          <h3 className="section-header">📝 Visit Booking Details</h3>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "16px",
+            }}
+          >
+            <div className="form-group" style={{ gridColumn: "1 / -1" }}>
+              <label className="form-label">
+                Full Name <span style={{ color: "#EF4444" }}>*</span>
+              </label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Enter your full name"
+                value={visitorName || ""}
+                onChange={(e) => setVisitorName(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  border: "1px solid #D1D5DB",
+                  borderRadius: "8px",
+                  fontSize: "14px",
+                }}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">
+                Phone Number <span style={{ color: "#EF4444" }}>*</span>
+              </label>
+              <input
+                type="tel"
+                className="form-input"
+                placeholder="09XX XXX XXXX"
+                value={visitorPhone || ""}
+                onChange={(e) => setVisitorPhone(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  border: "1px solid #D1D5DB",
+                  borderRadius: "8px",
+                  fontSize: "14px",
+                }}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">
+                Email Address <span style={{ color: "#EF4444" }}>*</span>
+              </label>
+              <input
+                type="email"
+                className="form-input"
+                placeholder="your@email.com"
+                value={visitorEmail || ""}
+                onChange={(e) => setVisitorEmail(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  border: "1px solid #D1D5DB",
+                  borderRadius: "8px",
+                  fontSize: "14px",
+                }}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">
+                Preferred Visit Date <span style={{ color: "#EF4444" }}>*</span>
+              </label>
+              <input
+                type="date"
+                className="form-input"
+                value={visitDate || ""}
+                onChange={(e) => setVisitDate(e.target.value)}
+                min={new Date().toISOString().split("T")[0]}
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  border: "1px solid #D1D5DB",
+                  borderRadius: "8px",
+                  fontSize: "14px",
+                }}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">
+                Preferred Visit Time <span style={{ color: "#EF4444" }}>*</span>
+              </label>
+              <select
+                className="form-select"
+                value={visitTime || ""}
+                onChange={(e) => setVisitTime(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  border: "1px solid #D1D5DB",
+                  borderRadius: "8px",
+                  fontSize: "14px",
+                }}
+              >
+                <option value="">Select time</option>
+                <option value="09:00 AM">09:00 AM</option>
+                <option value="10:00 AM">10:00 AM</option>
+                <option value="11:00 AM">11:00 AM</option>
+                <option value="01:00 PM">01:00 PM</option>
+                <option value="02:00 PM">02:00 PM</option>
+                <option value="03:00 PM">03:00 PM</option>
+                <option value="04:00 PM">04:00 PM</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ────── SECTION 2b: Virtual Visit ────── */}
       {viewingType === "virtual" && (
         <div className="section-group">
+          <h3 className="section-header">💻 Virtual Verification</h3>
           <div className="checkbox-group">
             <input
               type="checkbox"
@@ -80,7 +232,7 @@ const ReservationVisitStep = ({
             </label>
           </div>
 
-          <div className="form-group">
+          <div className="form-group" style={{ marginTop: "12px" }}>
             <label className="form-label">Current Location (Optional)</label>
             <select
               className="form-select"
@@ -98,44 +250,503 @@ const ReservationVisitStep = ({
         </div>
       )}
 
-      {!visitApproved && (
-        <button
-          onClick={onSimulateApproval}
-          className="btn btn-secondary btn-full"
-          style={{ marginTop: "16px" }}
-        >
-          Simulate Verification (Demo)
-        </button>
-      )}
-
-      {visitApproved && (
+      {/* ────── SECTION 3: Policies & Terms ────── */}
+      <div className="section-group">
+        <h3 className="section-header">📋 Policies, Terms & Conditions</h3>
         <div
-          className="info-box"
           style={{
-            background: "rgba(82, 165, 124, 0.06)",
-            borderLeftColor: "#52a57c",
+            maxHeight: "200px",
+            overflow: "auto",
+            padding: "16px",
+            background: "#F9FAFB",
+            borderRadius: "8px",
+            border: "1px solid #E5E7EB",
+            marginBottom: "16px",
+            fontSize: "14px",
+            lineHeight: "1.8",
+            color: "#374151",
           }}
         >
-          <div className="info-box-title">✅ Verification Approved</div>
-          <div className="info-text">
-            Room availability confirmed. You may now proceed to provide your
-            details.
-          </div>
+          <strong>Dormitory House Rules & Regulations:</strong>
+          <ol style={{ paddingLeft: "20px", marginTop: "8px" }}>
+            <li>Occupancy limit per room must be strictly followed.</li>
+            <li>Quiet hours: 10:00 PM – 8:00 AM daily.</li>
+            <li>No pets allowed on the premises at any time.</li>
+            <li>Common areas must be kept clean after use.</li>
+            <li>Guests are allowed only with prior management approval.</li>
+            <li>Minimum lease term: 1 month. Maximum: 12 months.</li>
+            <li>Smoking and alcohol are prohibited inside the dormitory.</li>
+            <li>
+              All personal belongings must be kept inside your assigned room.
+            </li>
+            <li>
+              Management may conduct periodic inspections with 24-hour notice.
+            </li>
+            <li>Damage to property will be charged to the tenant's account.</li>
+          </ol>
+          <br />
+          <strong>Privacy Policy:</strong>
+          <p style={{ marginTop: "4px" }}>
+            Your personal information will be collected and processed in
+            accordance with the Data Privacy Act of 2012. Information provided
+            will be used solely for reservation and tenancy purposes.
+          </p>
         </div>
-      )}
 
+        <div className="checkbox-group">
+          <input
+            type="checkbox"
+            id="policies-accepted"
+            checked={policiesAccepted}
+            onChange={(e) => setPoliciesAccepted(e.target.checked)}
+          />
+          <label htmlFor="policies-accepted" className="checkbox-label">
+            I have read and agree to the dormitory policies, terms & conditions,
+            and privacy policy
+          </label>
+        </div>
+      </div>
+
+      {/* ────── Action Buttons ────── */}
       <div className="stage-buttons flex flex-col sm:flex-row gap-3 mt-6">
         <button onClick={onPrev} className="btn btn-secondary">
           Back
         </button>
         <button
-          onClick={onNext}
+          onClick={handleSubmitClick}
           className="btn btn-primary"
-          disabled={!visitApproved}
+          disabled={!canSubmit}
         >
-          Continue to Details
+          Submit Visit Schedule
         </button>
       </div>
+
+      {/* ════════ Confirmation Modal ════════ */}
+      {showConfirmModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+        >
+          <div
+            style={{
+              background: "white",
+              borderRadius: "16px",
+              padding: "32px",
+              maxWidth: "400px",
+              width: "90%",
+              boxShadow: "0 8px 30px rgba(0,0,0,0.2)",
+              textAlign: "center",
+            }}
+          >
+            <div
+              style={{
+                width: "56px",
+                height: "56px",
+                borderRadius: "50%",
+                background: "#FEF3C7",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 16px",
+                fontSize: "24px",
+              }}
+            >
+              📋
+            </div>
+            <h3
+              style={{
+                fontSize: "18px",
+                fontWeight: "700",
+                color: "#1F2937",
+                margin: "0 0 8px",
+              }}
+            >
+              Confirm Visit Schedule Submission
+            </h3>
+            <p
+              style={{
+                fontSize: "14px",
+                color: "#6B7280",
+                margin: "0 0 24px",
+                lineHeight: "1.5",
+              }}
+            >
+              Are you sure you want to submit your visit schedule? Once
+              submitted, you will need to wait for admin approval before
+              proceeding.
+            </p>
+            <div style={{ display: "flex", gap: "12px" }}>
+              <button
+                onClick={() => setShowConfirmModal(false)}
+                style={{
+                  flex: 1,
+                  padding: "12px",
+                  background: "#F3F4F6",
+                  color: "#374151",
+                  border: "none",
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                  fontWeight: "500",
+                  fontSize: "14px",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmSubmit}
+                style={{
+                  flex: 1,
+                  padding: "12px",
+                  background: "#E7710F",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                  fontWeight: "600",
+                  fontSize: "14px",
+                }}
+              >
+                Yes, Submit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════════ Visit Booking Receipt Modal ════════ */}
+      {showReceiptModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+        >
+          <div
+            style={{
+              background: "white",
+              borderRadius: "16px",
+              padding: "32px",
+              maxWidth: "480px",
+              width: "90%",
+              maxHeight: "90vh",
+              overflow: "auto",
+              boxShadow: "0 8px 30px rgba(0,0,0,0.2)",
+            }}
+          >
+            {/* Receipt Header */}
+            <div style={{ textAlign: "center", marginBottom: "24px" }}>
+              <div
+                style={{
+                  width: "56px",
+                  height: "56px",
+                  borderRadius: "50%",
+                  background: "#DEF7EC",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  margin: "0 auto 12px",
+                  fontSize: "24px",
+                }}
+              >
+                ✓
+              </div>
+              <h3
+                style={{
+                  fontSize: "20px",
+                  fontWeight: "700",
+                  color: "#1F2937",
+                  margin: "0 0 4px",
+                }}
+              >
+                Visit Schedule Submitted
+              </h3>
+              <p style={{ fontSize: "14px", color: "#6B7280", margin: 0 }}>
+                Your visit request is awaiting admin confirmation
+              </p>
+            </div>
+
+            {/* Receipt Reference */}
+            <div
+              style={{
+                textAlign: "center",
+                padding: "12px",
+                background: "#F0FDF4",
+                borderRadius: "8px",
+                border: "1px solid #BBF7D0",
+                marginBottom: "20px",
+              }}
+            >
+              <p
+                style={{
+                  fontSize: "11px",
+                  color: "#6B7280",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                  marginBottom: "2px",
+                }}
+              >
+                Reference Code
+              </p>
+              <p
+                style={{
+                  fontSize: "18px",
+                  fontWeight: "700",
+                  color: "#166534",
+                  fontFamily: "monospace",
+                  margin: 0,
+                }}
+              >
+                {reservationCode || "PENDING"}
+              </p>
+            </div>
+
+            {/* Receipt Details */}
+            <div
+              style={{ borderTop: "1px dashed #D1D5DB", paddingTop: "16px" }}
+            >
+              {isInPerson && (
+                <>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      padding: "8px 0",
+                      borderBottom: "1px solid #F3F4F6",
+                    }}
+                  >
+                    <span style={{ color: "#6B7280", fontSize: "14px" }}>
+                      Visitor Name
+                    </span>
+                    <span
+                      style={{
+                        color: "#1F2937",
+                        fontSize: "14px",
+                        fontWeight: "500",
+                      }}
+                    >
+                      {visitorName}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      padding: "8px 0",
+                      borderBottom: "1px solid #F3F4F6",
+                    }}
+                  >
+                    <span style={{ color: "#6B7280", fontSize: "14px" }}>
+                      Phone
+                    </span>
+                    <span
+                      style={{
+                        color: "#1F2937",
+                        fontSize: "14px",
+                        fontWeight: "500",
+                      }}
+                    >
+                      {visitorPhone}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      padding: "8px 0",
+                      borderBottom: "1px solid #F3F4F6",
+                    }}
+                  >
+                    <span style={{ color: "#6B7280", fontSize: "14px" }}>
+                      Email
+                    </span>
+                    <span
+                      style={{
+                        color: "#1F2937",
+                        fontSize: "14px",
+                        fontWeight: "500",
+                      }}
+                    >
+                      {visitorEmail}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      padding: "8px 0",
+                      borderBottom: "1px solid #F3F4F6",
+                    }}
+                  >
+                    <span style={{ color: "#6B7280", fontSize: "14px" }}>
+                      Visit Date
+                    </span>
+                    <span
+                      style={{
+                        color: "#1F2937",
+                        fontSize: "14px",
+                        fontWeight: "500",
+                      }}
+                    >
+                      {visitDate
+                        ? new Date(visitDate).toLocaleDateString("en-US", {
+                            weekday: "short",
+                            month: "long",
+                            day: "numeric",
+                            year: "numeric",
+                          })
+                        : "N/A"}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      padding: "8px 0",
+                      borderBottom: "1px solid #F3F4F6",
+                    }}
+                  >
+                    <span style={{ color: "#6B7280", fontSize: "14px" }}>
+                      Visit Time
+                    </span>
+                    <span
+                      style={{
+                        color: "#1F2937",
+                        fontSize: "14px",
+                        fontWeight: "500",
+                      }}
+                    >
+                      {visitTime}
+                    </span>
+                  </div>
+                </>
+              )}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  padding: "8px 0",
+                  borderBottom: "1px solid #F3F4F6",
+                }}
+              >
+                <span style={{ color: "#6B7280", fontSize: "14px" }}>
+                  Visit Type
+                </span>
+                <span
+                  style={{
+                    color: "#1F2937",
+                    fontSize: "14px",
+                    fontWeight: "500",
+                  }}
+                >
+                  {isInPerson ? "In-Person Visit" : "Virtual Verification"}
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  padding: "8px 0",
+                  borderBottom: "1px solid #F3F4F6",
+                }}
+              >
+                <span style={{ color: "#6B7280", fontSize: "14px" }}>Room</span>
+                <span
+                  style={{
+                    color: "#1F2937",
+                    fontSize: "14px",
+                    fontWeight: "500",
+                  }}
+                >
+                  {reservationData?.room?.roomNumber ||
+                    reservationData?.room?.name ||
+                    reservationData?.room?.title ||
+                    "N/A"}
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  padding: "8px 0",
+                  borderBottom: "1px solid #F3F4F6",
+                }}
+              >
+                <span style={{ color: "#6B7280", fontSize: "14px" }}>
+                  Branch
+                </span>
+                <span
+                  style={{
+                    color: "#1F2937",
+                    fontSize: "14px",
+                    fontWeight: "500",
+                    textTransform: "capitalize",
+                  }}
+                >
+                  {reservationData?.room?.branch || "N/A"}
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  padding: "8px 0",
+                }}
+              >
+                <span style={{ color: "#6B7280", fontSize: "14px" }}>
+                  Status
+                </span>
+                <span
+                  style={{
+                    color: "#F59E0B",
+                    fontSize: "14px",
+                    fontWeight: "600",
+                  }}
+                >
+                  ⏳ Awaiting Confirmation
+                </span>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div style={{ marginTop: "24px", display: "flex", gap: "12px" }}>
+              <button
+                onClick={handleCloseReceiptAndContinue}
+                style={{
+                  flex: 1,
+                  padding: "12px",
+                  background: "#E7710F",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                  fontWeight: "600",
+                  fontSize: "14px",
+                }}
+              >
+                Continue to Booking Summary
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

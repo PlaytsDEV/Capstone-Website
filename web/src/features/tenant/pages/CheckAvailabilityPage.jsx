@@ -503,6 +503,16 @@ function CheckAvailabilityPage() {
               </button>
             </div>
 
+            <div className="flex items-center gap-4">
+              {/* User Menu */}
+              <Link
+                to="/tenant/profile"
+                className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center hover:bg-gray-300 transition-colors"
+              >
+                <span className="text-sm font-semibold text-gray-700">JD</span>
+              </Link>
+            </div>
+
             <div className="flex items-center gap-4"></div>
           </div>
 

@@ -11,12 +11,23 @@ import ReservationApplicationStep from "./reservation-steps/ReservationApplicati
 import ReservationPaymentStep from "./reservation-steps/ReservationPaymentStep";
 import ReservationConfirmationStep from "./reservation-steps/ReservationConfirmationStep";
 
+// Helper function to convert File to base64 data URL
+const fileToBase64 = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = (error) => reject(error);
+  });
+};
+
 const RESERVATION_STAGES = [
-  { id: 1, label: "Summary" },
-  { id: 2, label: "Visit" },
-  { id: 3, label: "Details" },
-  { id: 4, label: "Payment" },
-  { id: 5, label: "Done" },
+  { id: 1, label: "Room Selection" },
+  { id: 2, label: "Visit & Policies" },
+  { id: 3, label: "Visit Scheduled" },
+  { id: 4, label: "Application" },
+  { id: 5, label: "Payment" },
+  { id: 6, label: "Confirmation" },
 ];
 
 function ReservationFlowPage() {
@@ -24,7 +35,9 @@ function ReservationFlowPage() {
   const location = useLocation();
   const { user } = useAuth();
   const stepFromState = Number(location.state?.step);
-  const stepFromQuery = Number(new URLSearchParams(location.search).get("step"));
+  const stepFromQuery = Number(
+    new URLSearchParams(location.search).get("step"),
+  );
   const stepOverride = Number.isInteger(stepFromState)
     ? stepFromState
     : Number.isInteger(stepFromQuery)
@@ -51,6 +64,12 @@ function ReservationFlowPage() {
   const [viewingType, setViewingType] = useState("inperson");
   const [isOutOfTown, setIsOutOfTown] = useState(false);
   const [currentLocation, setCurrentLocation] = useState("");
+  // Stage 2: Visit Booking Form
+  const [visitorName, setVisitorName] = useState(user?.displayName || "");
+  const [visitorPhone, setVisitorPhone] = useState("");
+  const [visitorEmail, setVisitorEmail] = useState(user?.email || "");
+  const [visitDate, setVisitDate] = useState("");
+  const [visitTime, setVisitTime] = useState("");
 
   // Stage 3: Details - Photo Upload
   const [selfiePhoto, setSelfiePhoto] = useState(null);
@@ -137,9 +156,10 @@ function ReservationFlowPage() {
 
     // Check if continuing existing reservation from ProfilePage
     const continueReservation = location.state?.continueFlow;
+    const editMode = location.state?.editMode;
     const reservationId = location.state?.reservationId;
 
-    if (continueReservation && reservationId) {
+    if ((continueReservation || editMode) && reservationId) {
       loadExistingReservation(reservationId);
     } else {
       // Get reservation data from navigation state or session storage
@@ -184,23 +204,28 @@ function ReservationFlowPage() {
       if (reservation.reservationCode) {
         setReservationCode(reservation.reservationCode);
       }
-      
+
       // Set reservation data from existing reservation
       setReservationData({
         room: reservation.roomId,
         selectedBed: reservation.selectedBed,
-        appliances: reservation.selectedAppliances || []
+        appliances: reservation.selectedAppliances || [],
       });
 
       // Populate all form fields from existing reservation
-      if (reservation.targetMoveInDate) setTargetMoveInDate(reservation.targetMoveInDate);
-      if (reservation.leaseDuration) setLeaseDuration(reservation.leaseDuration);
+      if (reservation.targetMoveInDate)
+        setTargetMoveInDate(reservation.targetMoveInDate);
+      if (reservation.leaseDuration)
+        setLeaseDuration(reservation.leaseDuration);
       if (reservation.billingEmail) setBillingEmail(reservation.billingEmail);
-      
+
       if (reservation.viewingType) setViewingType(reservation.viewingType);
-      if (reservation.isOutOfTown !== undefined) setIsOutOfTown(reservation.isOutOfTown);
-      if (reservation.currentLocation) setCurrentLocation(reservation.currentLocation);
-      if (reservation.visitApproved !== undefined) setVisitApproved(reservation.visitApproved);
+      if (reservation.isOutOfTown !== undefined)
+        setIsOutOfTown(reservation.isOutOfTown);
+      if (reservation.currentLocation)
+        setCurrentLocation(reservation.currentLocation);
+      if (reservation.visitApproved !== undefined)
+        setVisitApproved(reservation.visitApproved);
 
       if (reservation.firstName) setFirstName(reservation.firstName);
       if (reservation.lastName) setLastName(reservation.lastName);
@@ -208,52 +233,89 @@ function ReservationFlowPage() {
       if (reservation.nickname) setNickname(reservation.nickname);
       if (reservation.mobileNumber) setMobileNumber(reservation.mobileNumber);
       if (reservation.birthday) setBirthday(reservation.birthday);
-      if (reservation.maritalStatus) setMaritalStatus(reservation.maritalStatus);
+      if (reservation.maritalStatus)
+        setMaritalStatus(reservation.maritalStatus);
       if (reservation.nationality) setNationality(reservation.nationality);
-      if (reservation.educationLevel) setEducationLevel(reservation.educationLevel);
+      if (reservation.educationLevel)
+        setEducationLevel(reservation.educationLevel);
 
-      if (reservation.addressUnitHouseNo) setAddressUnitHouseNo(reservation.addressUnitHouseNo);
-      if (reservation.addressStreet) setAddressStreet(reservation.addressStreet);
-      if (reservation.addressBarangay) setAddressBarangay(reservation.addressBarangay);
+      if (reservation.addressUnitHouseNo)
+        setAddressUnitHouseNo(reservation.addressUnitHouseNo);
+      if (reservation.addressStreet)
+        setAddressStreet(reservation.addressStreet);
+      if (reservation.addressBarangay)
+        setAddressBarangay(reservation.addressBarangay);
       if (reservation.addressCity) setAddressCity(reservation.addressCity);
-      if (reservation.addressProvince) setAddressProvince(reservation.addressProvince);
+      if (reservation.addressProvince)
+        setAddressProvince(reservation.addressProvince);
 
-      if (reservation.emergencyContactName) setEmergencyContactName(reservation.emergencyContactName);
-      if (reservation.emergencyRelationship) setEmergencyRelationship(reservation.emergencyRelationship);
-      if (reservation.emergencyContactNumber) setEmergencyContactNumber(reservation.emergencyContactNumber);
-      if (reservation.healthConcerns) setHealthConcerns(reservation.healthConcerns);
+      if (reservation.emergencyContactName)
+        setEmergencyContactName(reservation.emergencyContactName);
+      if (reservation.emergencyRelationship)
+        setEmergencyRelationship(reservation.emergencyRelationship);
+      if (reservation.emergencyContactNumber)
+        setEmergencyContactNumber(reservation.emergencyContactNumber);
+      if (reservation.healthConcerns)
+        setHealthConcerns(reservation.healthConcerns);
 
-      if (reservation.employerSchool) setEmployerSchool(reservation.employerSchool);
-      if (reservation.employerAddress) setEmployerAddress(reservation.employerAddress);
-      if (reservation.employerContact) setEmployerContact(reservation.employerContact);
+      if (reservation.employerSchool)
+        setEmployerSchool(reservation.employerSchool);
+      if (reservation.employerAddress)
+        setEmployerAddress(reservation.employerAddress);
+      if (reservation.employerContact)
+        setEmployerContact(reservation.employerContact);
       if (reservation.startDate) setStartDate(reservation.startDate);
       if (reservation.occupation) setOccupation(reservation.occupation);
-      if (reservation.previousEmployment) setPreviousEmployment(reservation.previousEmployment);
+      if (reservation.previousEmployment)
+        setPreviousEmployment(reservation.previousEmployment);
 
       if (reservation.roomType) setRoomType(reservation.roomType);
-      if (reservation.preferredRoomNumber) setPreferredRoomNumber(reservation.preferredRoomNumber);
-      if (reservation.referralSource) setReferralSource(reservation.referralSource);
+      if (reservation.preferredRoomNumber)
+        setPreferredRoomNumber(reservation.preferredRoomNumber);
+      if (reservation.referralSource)
+        setReferralSource(reservation.referralSource);
       if (reservation.referrerName) setReferrerName(reservation.referrerName);
-      if (reservation.estimatedMoveInTime) setEstimatedMoveInTime(reservation.estimatedMoveInTime);
+      if (reservation.estimatedMoveInTime)
+        setEstimatedMoveInTime(reservation.estimatedMoveInTime);
       if (reservation.workSchedule) setWorkSchedule(reservation.workSchedule);
 
       // Determine which stage to start at based on reservation status
-      const status = reservation.reservationStatus || reservation.status;
-      if (status === 'pending' && !reservation.visitCompleted) {
-        setCurrentStage(2); // Visit stage
-      } else if (status === 'pending' || status === 'visit-completed') {
-        setCurrentStage(3); // Details stage
-      } else if (status === 'confirmed' && !reservation.paymentVerified) {
-        setCurrentStage(4); // Payment stage
+      const hasVisitScheduled = Boolean(
+        reservation.viewingType && reservation.agreedToPrivacy,
+      );
+      const isVisitApproved = Boolean(reservation.visitApproved === true);
+      const hasApplication = Boolean(
+        reservation.firstName &&
+        reservation.lastName &&
+        reservation.mobileNumber,
+      );
+      const hasPayment = Boolean(reservation.proofOfPaymentUrl);
+      const isConfirmed =
+        reservation.reservationStatus === "confirmed" ||
+        reservation.paymentStatus === "paid";
+
+      if (isConfirmed) {
+        setCurrentStage(6); // Confirmation
+      } else if (hasPayment) {
+        setCurrentStage(6); // Awaiting confirmation
+      } else if (hasApplication) {
+        setCurrentStage(5); // Payment stage
+      } else if (isVisitApproved) {
+        setCurrentStage(4); // Application stage
+      } else if (hasVisitScheduled) {
+        setCurrentStage(3); // Visit scheduled - waiting for admin
       } else {
-        setCurrentStage(1); // Start from beginning if unknown
+        setCurrentStage(2); // Visit stage
       }
 
       if (stepOverride) {
         setCurrentStage(stepOverride);
       }
 
-      showNotification("Reservation data loaded. Continue where you left off!", "success", 3000);
+      const message = stepOverride
+        ? "Editing your application. Make your changes and save."
+        : "Reservation data loaded. Continue where you left off!";
+      showNotification(message, "success", 3000);
     } catch (err) {
       console.error("Error loading reservation:", err);
       const status = err?.response?.status;
@@ -265,7 +327,11 @@ function ReservationFlowPage() {
         );
         navigate("/tenant/profile");
       } else if (status === 401 || status === 403) {
-        showNotification("Please sign in to continue your reservation.", "error", 3000);
+        showNotification(
+          "Please sign in to continue your reservation.",
+          "error",
+          3000,
+        );
         navigate("/signin");
       } else {
         showNotification("Failed to load reservation data", "error", 3000);
@@ -294,11 +360,7 @@ function ReservationFlowPage() {
 
   const advanceStage = (nextStage) => {
     if (isStepMode) {
-      showNotification(
-        "Step saved. Continue from your profile to unlock the next step.",
-        "success",
-        2500,
-      );
+      showNotification("Changes saved successfully!", "success", 2500);
       navigate("/tenant/profile");
       return;
     }
@@ -319,8 +381,12 @@ function ReservationFlowPage() {
   };
 
   const resolveRoomId = async () => {
-    if (reservationData?.room?._id) {
-      return reservationData.room._id;
+    // Try to get room ID from different possible properties
+    // The room object might have _id (from API) or roomId (from mapped CheckAvailability)
+    const directId =
+      reservationData?.room?._id || reservationData?.room?.roomId;
+    if (directId) {
+      return directId;
     }
 
     const roomName = normalizeRoomName(reservationData?.room);
@@ -376,10 +442,17 @@ function ReservationFlowPage() {
         : null,
       targetMoveInDate: getFieldValue(targetMoveInDate, checkInDate),
       leaseDuration: getFieldValue(leaseDuration, "12"),
-      billingEmail: getFieldValue(billingEmail, user?.email || "test@example.com"),
+      billingEmail: getFieldValue(
+        billingEmail,
+        user?.email || "test@example.com",
+      ),
       checkInDate,
       totalPrice: totalPrice > 0 ? totalPrice : 5000,
       applianceFees: reservationData?.applianceFees || 0,
+      // Explicitly null out later-stage fields to prevent schema defaults
+      viewingType: null,
+      agreedToPrivacy: false,
+      visitApproved: false,
       ...payloadOverrides,
     });
 
@@ -407,255 +480,130 @@ function ReservationFlowPage() {
     return response?.reservation || response;
   };
 
+  const [showStageConfirm, setShowStageConfirm] = useState(false);
+  const [pendingStageAction, setPendingStageAction] = useState(null);
+
   const handleNextStage = async () => {
     try {
-      // Validate current stage
+      // Stage 1: Room Selection - show confirmation
       if (currentStage === 1) {
-        if (!devBypassValidation && (!targetMoveInDate || !billingEmail)) {
-          showNotification("Please fill in all summary fields", "error", 3000);
-          return;
-        }
-        const created = await createReservationDraft();
-        if (!created) {
-          return;
-        }
-        advanceStage(2);
-      } else if (currentStage === 2) {
-        if (!devBypassValidation && viewingType === "virtual" && !isOutOfTown) {
-          showNotification(
-            "Please confirm you are out of town for virtual tour",
-            "error",
-            3000,
-          );
-          return;
-        }
-        // Simulate visiting approval
-        setVisitApproved(true);
-        await updateReservationDraft({
-          viewingType: getFieldValue(viewingType, "inperson"),
-          isOutOfTown: getFieldValue(isOutOfTown, false),
-          currentLocation: getFieldValue(currentLocation, "Philippines"),
-          visitApproved: true,
-        });
-        advanceStage(3);
-      } else if (currentStage === 3) {
-        // Validate required fields
-        if (
-          !devBypassValidation &&
-          (!selfiePhoto ||
-            !firstName ||
-            !lastName ||
-            !middleName ||
-            !nickname ||
-            !mobileNumber ||
-            !birthday ||
-            !maritalStatus ||
-            !nationality ||
-            !educationLevel ||
-            !addressUnitHouseNo ||
-            !addressStreet ||
-            !addressBarangay ||
-            !addressCity ||
-            !addressProvince ||
-            !validIDFront ||
-            !validIDBack ||
-            !nbiClearance ||
-            !emergencyContactName ||
-            !emergencyRelationship ||
-            !emergencyContactNumber ||
-            !healthConcerns ||
-            !employerSchool ||
-            !employerContact ||
-            !occupation ||
-            !targetMoveInDate ||
-            !estimatedMoveInTime ||
-            !leaseDuration ||
-            !workSchedule ||
-            (workSchedule === "others" && !workScheduleOther) ||
-            !agreedToPrivacy ||
-            !agreedToCertification)
-        ) {
-          showNotification(
-            "Please fill in all required fields and upload all documents",
-            "error",
-            3000,
-          );
-          return;
-        }
-        await updateReservationDraft({
-          selfiePhotoUrl:
-            selfiePhoto?.name || (devBypassValidation ? "selfie.jpg" : null),
-          firstName: getFieldValue(firstName, "Test"),
-          lastName: getFieldValue(lastName, "User"),
-          middleName: getFieldValue(middleName, ""),
-          nickname: getFieldValue(nickname, "TestUser"),
-          mobileNumber: getFieldValue(mobileNumber, "09123456789"),
-          birthday: getFieldValue(birthday, "1990-01-01"),
-          maritalStatus: getFieldValue(maritalStatus, "single"),
-          nationality: getFieldValue(nationality, "Filipino"),
-          educationLevel: getFieldValue(educationLevel, "college"),
-          addressUnitHouseNo: getFieldValue(addressUnitHouseNo, "Unit 123"),
-          addressStreet: getFieldValue(addressStreet, "Test Street"),
-          addressBarangay: getFieldValue(addressBarangay, "Test Barangay"),
-          addressCity: getFieldValue(addressCity, "Manila"),
-          addressProvince: getFieldValue(addressProvince, "NCR"),
-          validIDFrontUrl:
-            validIDFront?.name || (devBypassValidation ? "id-front.jpg" : null),
-          validIDBackUrl:
-            validIDBack?.name || (devBypassValidation ? "id-back.jpg" : null),
-          nbiClearanceUrl:
-            nbiClearance?.name || (devBypassValidation ? "nbi.jpg" : null),
-          nbiReason: getFieldValue(nbiReason, "Employment"),
-          companyIDUrl:
-            companyID?.name || (devBypassValidation ? "company-id.jpg" : null),
-          companyIDReason: getFieldValue(companyIDReason, "Verification"),
-          emergencyContactName: getFieldValue(
-            emergencyContactName,
-            "Emergency Name",
-          ),
-          emergencyRelationship: getFieldValue(emergencyRelationship, "Friend"),
-          emergencyContactNumber: getFieldValue(
-            emergencyContactNumber,
-            "09987654321",
-          ),
-          healthConcerns: getFieldValue(healthConcerns, "None"),
-          employerSchool: getFieldValue(employerSchool, "Test Company"),
-          employerAddress: getFieldValue(employerAddress, "Company Address"),
-          employerContact: getFieldValue(employerContact, "09111111111"),
-          startDate: getFieldValue(startDate, "2024-01-01"),
-          occupation: getFieldValue(occupation, "Developer"),
-          previousEmployment: getFieldValue(previousEmployment, "None"),
-          roomType: getFieldValue(roomType, "quadruple"),
-          preferredRoomNumber: getFieldValue(preferredRoomNumber, ""),
-          referralSource: getFieldValue(referralSource, "other"),
-          referrerName: getFieldValue(referrerName, ""),
-          estimatedMoveInTime: getFieldValue(estimatedMoveInTime, "09:00"),
-          workSchedule: getFieldValue(workSchedule, "day"),
-          workScheduleOther: getFieldValue(workScheduleOther, ""),
-          agreedToPrivacy: devBypassValidation ? true : agreedToPrivacy,
-          agreedToCertification: devBypassValidation
-            ? true
-            : agreedToCertification,
-        });
-        advanceStage(4);
-      } else if (currentStage === 4) {
-        if (!devBypassValidation && !proofOfPayment) {
-          showNotification("Please upload proof of payment", "error", 3000);
-          return;
-        }
-
         if (!reservationData?.room) {
-          showNotification(
-            "Room details are missing. Please try again.",
-            "error",
-            3000,
-          );
+          showNotification("Please select a room to continue", "error", 3000);
           return;
         }
-
-        setIsLoading(true);
-
-        let checkInDate = getCheckInDate();
-        if (!checkInDate) {
-          const tomorrow = new Date();
-          tomorrow.setDate(tomorrow.getDate() + 1);
-          checkInDate = tomorrow.toISOString().split("T")[0];
+        setPendingStageAction("stage1");
+        setShowStageConfirm(true);
+        return;
+      }
+      // Stage 2: Visit Scheduling & Policies
+      else if (currentStage === 2) {
+        if (!devBypassValidation && (!viewingType || !targetMoveInDate)) {
+          showNotification("Please select visit type and date", "error", 3000);
+          return;
         }
-
-        const totalPrice = getTotalPrice();
-
-        const paymentPayload = {
-          proofOfPaymentUrl:
-            proofOfPayment?.name ||
-            (devBypassValidation ? "payment.jpg" : null),
-          checkInDate,
-          totalPrice: totalPrice > 0 ? totalPrice : 5000,
-          applianceFees: reservationData.applianceFees || 0,
-          paymentStatus: "pending",
+        // Save policies acknowledgment, visit data, and booking form fields
+        const visitPayload = {
+          agreedToPrivacy: true,
+          viewingType,
+          isOutOfTown,
+          currentLocation: isOutOfTown ? currentLocation : undefined,
         };
-
-        let savedReservation;
-        if (reservationId) {
-          savedReservation = await updateReservationDraft(paymentPayload);
-        } else {
-          savedReservation = await createReservationDraft({
-            viewingType: getFieldValue(viewingType, "inperson"),
-            isOutOfTown: getFieldValue(isOutOfTown, false),
-            currentLocation: getFieldValue(currentLocation, "Philippines"),
-            visitApproved: true,
-            selfiePhotoUrl:
-              selfiePhoto?.name || (devBypassValidation ? "selfie.jpg" : null),
-            firstName: getFieldValue(firstName, "Test"),
-            lastName: getFieldValue(lastName, "User"),
-            middleName: getFieldValue(middleName, ""),
-            nickname: getFieldValue(nickname, "TestUser"),
-            mobileNumber: getFieldValue(mobileNumber, "09123456789"),
-            birthday: getFieldValue(birthday, "1990-01-01"),
-            maritalStatus: getFieldValue(maritalStatus, "single"),
-            nationality: getFieldValue(nationality, "Filipino"),
-            educationLevel: getFieldValue(educationLevel, "college"),
-            addressUnitHouseNo: getFieldValue(addressUnitHouseNo, "Unit 123"),
-            addressStreet: getFieldValue(addressStreet, "Test Street"),
-            addressBarangay: getFieldValue(addressBarangay, "Test Barangay"),
-            addressCity: getFieldValue(addressCity, "Manila"),
-            addressProvince: getFieldValue(addressProvince, "NCR"),
-            validIDFrontUrl:
-              validIDFront?.name ||
-              (devBypassValidation ? "id-front.jpg" : null),
-            validIDBackUrl:
-              validIDBack?.name || (devBypassValidation ? "id-back.jpg" : null),
-            nbiClearanceUrl:
-              nbiClearance?.name || (devBypassValidation ? "nbi.jpg" : null),
-            nbiReason: getFieldValue(nbiReason, "Employment"),
-            companyIDUrl:
-              companyID?.name || (devBypassValidation ? "company-id.jpg" : null),
-            companyIDReason: getFieldValue(companyIDReason, "Verification"),
-            emergencyContactName: getFieldValue(
-              emergencyContactName,
-              "Emergency Name",
-            ),
-            emergencyRelationship: getFieldValue(emergencyRelationship, "Friend"),
-            emergencyContactNumber: getFieldValue(
-              emergencyContactNumber,
-              "09987654321",
-            ),
-            healthConcerns: getFieldValue(healthConcerns, "None"),
-            employerSchool: getFieldValue(employerSchool, "Test Company"),
-            employerAddress: getFieldValue(employerAddress, "Company Address"),
-            employerContact: getFieldValue(employerContact, "09111111111"),
-            startDate: getFieldValue(startDate, "2024-01-01"),
-            occupation: getFieldValue(occupation, "Developer"),
-            previousEmployment: getFieldValue(previousEmployment, "None"),
-            roomType: getFieldValue(roomType, "quadruple"),
-            preferredRoomNumber: getFieldValue(preferredRoomNumber, ""),
-            referralSource: getFieldValue(referralSource, "other"),
-            referrerName: getFieldValue(referrerName, ""),
-            estimatedMoveInTime: getFieldValue(estimatedMoveInTime, "09:00"),
-            workSchedule: getFieldValue(workSchedule, "day"),
-            workScheduleOther: getFieldValue(workScheduleOther, ""),
-            agreedToPrivacy: devBypassValidation ? true : agreedToPrivacy,
-            agreedToCertification: devBypassValidation
-              ? true
-              : agreedToCertification,
-            ...paymentPayload,
-          });
+        // Save visitor booking details if in-person
+        if (viewingType === "inperson") {
+          visitPayload.firstName = visitorName?.split(" ")[0] || firstName;
+          visitPayload.lastName =
+            visitorName?.split(" ").slice(1).join(" ") || lastName;
+          visitPayload.mobileNumber = visitorPhone || mobileNumber;
+          visitPayload.billingEmail = visitorEmail || billingEmail;
         }
-
-        const actualCode =
-          savedReservation?.reservationCode || reservationCode || "CODE-ERROR";
-        setReservationCode(actualCode);
-        advanceStage(5);
+        await updateReservationDraft(visitPayload);
+        advanceStage(3);
+      }
+      // Stage 3: Visit Scheduled (read-only receipt — redirect to profile, wait for admin)
+      else if (currentStage === 3) {
         showNotification(
-          "Reservation confirmed successfully!",
+          "Your visit has been scheduled! Return to your profile to track progress.",
           "success",
           3000,
         );
+        navigate("/tenant/profile");
+      }
+      // Stage 4: Application (no admin approval needed - flows directly to payment)
+      else if (currentStage === 4) {
+        // Validate application data
+        if (
+          !devBypassValidation &&
+          (!firstName || !lastName || !mobileNumber)
+        ) {
+          showNotification("Please fill in all required fields", "error", 3000);
+          return;
+        }
+        // Save application data
+        const applicationPayload = {
+          firstName,
+          lastName,
+          middleName,
+          nickname,
+          mobileNumber,
+          birthday,
+          maritalStatus,
+          nationality,
+          educationLevel,
+          address: {
+            unitHouseNo: addressUnitHouseNo,
+            street: addressStreet,
+            barangay: addressBarangay,
+            city: addressCity,
+            province: addressProvince,
+          },
+          emergencyContactName,
+          emergencyRelationship,
+          emergencyContactNumber,
+          healthConcerns,
+          employerSchool,
+          employerAddress,
+          employerContact,
+          startDate,
+          occupation,
+          previousEmployment,
+          roomType,
+          preferredRoomNumber,
+          referralSource,
+          referrerName,
+          estimatedMoveInTime,
+          workSchedule,
+          workScheduleOther,
+          agreedToCertification,
+        };
+        await updateReservationDraft(applicationPayload);
+        advanceStage(5);
+      }
+      // Stage 5: Payment
+      else if (currentStage === 5) {
+        if (!proofOfPayment) {
+          showNotification("Please upload proof of payment", "error", 3000);
+          return;
+        }
+        // Convert file to base64 data URL
+        const proofOfPaymentUrl = await fileToBase64(proofOfPayment);
+        // Save payment data
+        const paymentPayload = {
+          finalMoveInDate,
+          paymentMethod,
+          proofOfPaymentUrl,
+        };
+        await updateReservationDraft(paymentPayload);
+        advanceStage(6);
+      }
+      // Stage 6: Confirmation - done
+      else if (currentStage === 6) {
+        navigate("/tenant/profile");
       }
     } catch (error) {
       const message =
         error?.response?.data?.error ||
         error?.message ||
-        "Failed to create reservation. Please try again.";
+        "Failed to process reservation. Please try again.";
       showNotification(message, "error", 3000);
     } finally {
       setIsLoading(false);
@@ -859,12 +807,149 @@ function ReservationFlowPage() {
     );
   };
 
-  const simulateVisitApproval = () => {
-    setVisitApproved(true);
-    showNotification(
-      "Visit approved! You can now proceed to next step.",
-      "success",
-      2000,
+  // Stage Confirmation Handler
+  const handleStageConfirm = async () => {
+    setShowStageConfirm(false);
+    try {
+      if (pendingStageAction === "stage1") {
+        // Create reservation draft in DB (only if not already created)
+        if (!reservationId) {
+          const draft = await createReservationDraft();
+          if (!draft) return;
+        }
+        advanceStage(2);
+      } else if (pendingStageAction === "stage4") {
+        // Reservation stays as "pending" until admin confirms
+        showNotification(
+          "Reservation submitted successfully!",
+          "success",
+          3000,
+        );
+        navigate("/tenant/profile");
+      }
+    } catch (error) {
+      const message =
+        error?.response?.data?.error ||
+        error?.message ||
+        "Failed to process reservation. Please try again.";
+      showNotification(message, "error", 3000);
+    }
+    setPendingStageAction(null);
+  };
+
+  // Stage Confirmation Modal Component
+  const StageConfirmModal = () => {
+    if (!showStageConfirm) return null;
+
+    const isStage1 = pendingStageAction === "stage1";
+    const title = isStage1
+      ? "Confirm Room Selection"
+      : "Confirm Reservation Submission";
+    const message = isStage1
+      ? "Are you sure you want to proceed with this room selection? A reservation draft will be created."
+      : "Are you sure you want to submit your reservation? Once submitted, you will need to wait for admin confirmation.";
+    const icon = isStage1 ? "🏠" : "✅";
+
+    return (
+      <div
+        style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: "rgba(0, 0, 0, 0.5)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 1000,
+        }}
+      >
+        <div
+          style={{
+            background: "white",
+            borderRadius: "16px",
+            padding: "32px",
+            maxWidth: "400px",
+            width: "90%",
+            boxShadow: "0 8px 30px rgba(0,0,0,0.2)",
+            textAlign: "center",
+          }}
+        >
+          <div
+            style={{
+              width: "56px",
+              height: "56px",
+              borderRadius: "50%",
+              background: "#FEF3C7",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 16px",
+              fontSize: "24px",
+            }}
+          >
+            {icon}
+          </div>
+          <h3
+            style={{
+              fontSize: "18px",
+              fontWeight: "700",
+              color: "#1F2937",
+              margin: "0 0 8px",
+            }}
+          >
+            {title}
+          </h3>
+          <p
+            style={{
+              fontSize: "14px",
+              color: "#6B7280",
+              margin: "0 0 24px",
+              lineHeight: "1.5",
+            }}
+          >
+            {message}
+          </p>
+          <div style={{ display: "flex", gap: "12px" }}>
+            <button
+              onClick={() => {
+                setShowStageConfirm(false);
+                setPendingStageAction(null);
+              }}
+              style={{
+                flex: 1,
+                padding: "12px",
+                background: "#F3F4F6",
+                color: "#374151",
+                border: "none",
+                borderRadius: "8px",
+                cursor: "pointer",
+                fontWeight: "500",
+                fontSize: "14px",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleStageConfirm}
+              style={{
+                flex: 1,
+                padding: "12px",
+                background: "#E7710F",
+                color: "white",
+                border: "none",
+                borderRadius: "8px",
+                cursor: "pointer",
+                fontWeight: "600",
+                fontSize: "14px",
+              }}
+            >
+              Yes, Proceed
+            </button>
+          </div>
+        </div>
+      </div>
     );
   };
 
@@ -895,6 +980,9 @@ function ReservationFlowPage() {
 
       {/* Cancel Confirmation Modal */}
       <CancelConfirmModal />
+
+      {/* Stage Confirmation Modal */}
+      <StageConfirmModal />
 
       <div className="max-w-5xl mx-auto px-4">
         {/* Header */}
@@ -940,163 +1028,361 @@ function ReservationFlowPage() {
           )}
         </div>
 
-      {/* Stage 1: Summary */}
-      {currentStage === 1 && (
-        <ReservationSummaryStep
-          reservationData={reservationData}
-          targetMoveInDate={targetMoveInDate}
-          setTargetMoveInDate={setTargetMoveInDate}
-          leaseDuration={leaseDuration}
-          setLeaseDuration={setLeaseDuration}
-          billingEmail={billingEmail}
-          setBillingEmail={setBillingEmail}
-          devBypassValidation={devBypassValidation}
-          setDevBypassValidation={setDevBypassValidation}
-          onCancel={() => navigate(-1)}
-          onNext={handleNextStage}
-        />
-      )}
+        {/* Stage 1: Room Selection & Summary */}
+        {currentStage === 1 && (
+          <ReservationSummaryStep
+            reservationData={reservationData}
+            onNext={handleNextStage}
+          />
+        )}
 
-      {/* Stage 2: Visit Verification */}
-      {currentStage === 2 && (
-        <ReservationVisitStep
-          targetMoveInDate={targetMoveInDate}
-          viewingType={viewingType}
-          setViewingType={setViewingType}
-          isOutOfTown={isOutOfTown}
-          setIsOutOfTown={setIsOutOfTown}
-          currentLocation={currentLocation}
-          setCurrentLocation={setCurrentLocation}
-          visitApproved={visitApproved}
-          onSimulateApproval={simulateVisitApproval}
-          onPrev={handlePrevStage}
-          onNext={handleNextStage}
-        />
-      )}
+        {/* Stage 2: Visit Scheduling & Policies */}
+        {currentStage === 2 && (
+          <ReservationVisitStep
+            targetMoveInDate={targetMoveInDate}
+            viewingType={viewingType}
+            setViewingType={setViewingType}
+            isOutOfTown={isOutOfTown}
+            setIsOutOfTown={setIsOutOfTown}
+            currentLocation={currentLocation}
+            setCurrentLocation={setCurrentLocation}
+            visitApproved={visitApproved}
+            onPrev={handlePrevStage}
+            onNext={handleNextStage}
+            visitorName={visitorName}
+            setVisitorName={setVisitorName}
+            visitorPhone={visitorPhone}
+            setVisitorPhone={setVisitorPhone}
+            visitorEmail={visitorEmail}
+            setVisitorEmail={setVisitorEmail}
+            visitDate={visitDate}
+            setVisitDate={setVisitDate}
+            visitTime={visitTime}
+            setVisitTime={setVisitTime}
+            reservationData={reservationData}
+            reservationCode={reservationCode}
+          />
+        )}
 
-      {/* Stage 3: Applicant Registration Form */}
-      {currentStage === 3 && (
-        <ReservationApplicationStep
-          billingEmail={billingEmail}
-          selfiePhoto={selfiePhoto}
-          setSelfiePhoto={setSelfiePhoto}
-          lastName={lastName}
-          setLastName={setLastName}
-          firstName={firstName}
-          setFirstName={setFirstName}
-          middleName={middleName}
-          setMiddleName={setMiddleName}
-          nickname={nickname}
-          setNickname={setNickname}
-          mobileNumber={mobileNumber}
-          setMobileNumber={setMobileNumber}
-          birthday={birthday}
-          setBirthday={setBirthday}
-          maritalStatus={maritalStatus}
-          setMaritalStatus={setMaritalStatus}
-          nationality={nationality}
-          setNationality={setNationality}
-          educationLevel={educationLevel}
-          setEducationLevel={setEducationLevel}
-          addressUnitHouseNo={addressUnitHouseNo}
-          setAddressUnitHouseNo={setAddressUnitHouseNo}
-          addressStreet={addressStreet}
-          setAddressStreet={setAddressStreet}
-          addressBarangay={addressBarangay}
-          setAddressBarangay={setAddressBarangay}
-          addressCity={addressCity}
-          setAddressCity={setAddressCity}
-          addressProvince={addressProvince}
-          setAddressProvince={setAddressProvince}
-          validIDFront={validIDFront}
-          setValidIDFront={setValidIDFront}
-          validIDBack={validIDBack}
-          setValidIDBack={setValidIDBack}
-          nbiClearance={nbiClearance}
-          setNbiClearance={setNbiClearance}
-          nbiReason={nbiReason}
-          setNbiReason={setNbiReason}
-          personalNotes={personalNotes}
-          setPersonalNotes={setPersonalNotes}
-          emergencyContactName={emergencyContactName}
-          setEmergencyContactName={setEmergencyContactName}
-          emergencyRelationship={emergencyRelationship}
-          setEmergencyRelationship={setEmergencyRelationship}
-          emergencyContactNumber={emergencyContactNumber}
-          setEmergencyContactNumber={setEmergencyContactNumber}
-          healthConcerns={healthConcerns}
-          setHealthConcerns={setHealthConcerns}
-          employerSchool={employerSchool}
-          setEmployerSchool={setEmployerSchool}
-          employerAddress={employerAddress}
-          setEmployerAddress={setEmployerAddress}
-          employerContact={employerContact}
-          setEmployerContact={setEmployerContact}
-          startDate={startDate}
-          setStartDate={setStartDate}
-          occupation={occupation}
-          setOccupation={setOccupation}
-          companyID={companyID}
-          setCompanyID={setCompanyID}
-          companyIDReason={companyIDReason}
-          setCompanyIDReason={setCompanyIDReason}
-          previousEmployment={previousEmployment}
-          setPreviousEmployment={setPreviousEmployment}
-          preferredRoomNumber={preferredRoomNumber}
-          setPreferredRoomNumber={setPreferredRoomNumber}
-          referralSource={referralSource}
-          setReferralSource={setReferralSource}
-          referrerName={referrerName}
-          setReferrerName={setReferrerName}
-          targetMoveInDate={targetMoveInDate}
-          setTargetMoveInDate={setTargetMoveInDate}
-          estimatedMoveInTime={estimatedMoveInTime}
-          setEstimatedMoveInTime={setEstimatedMoveInTime}
-          leaseDuration={leaseDuration}
-          setLeaseDuration={setLeaseDuration}
-          workSchedule={workSchedule}
-          setWorkSchedule={setWorkSchedule}
-          workScheduleOther={workScheduleOther}
-          setWorkScheduleOther={setWorkScheduleOther}
-          agreedToPrivacy={agreedToPrivacy}
-          setAgreedToPrivacy={setAgreedToPrivacy}
-          agreedToCertification={agreedToCertification}
-          setAgreedToCertification={setAgreedToCertification}
-          devBypassValidation={devBypassValidation}
-          setDevBypassValidation={setDevBypassValidation}
-          onPrev={handlePrevStage}
-          onNext={handleNextStage}
-        />
-      )}
+        {/* Stage 3: Visit Schedule Confirmation (Read-Only Receipt) */}
+        {currentStage === 3 && (
+          <div className="reservation-card bg-white rounded-2xl shadow-xl border border-gray-200 p-8">
+            <div className="text-center mb-6">
+              <div style={{ fontSize: "48px", marginBottom: "8px" }}>📋</div>
+              <h2 className="stage-title text-2xl font-semibold text-slate-800">
+                Visit Schedule Confirmation
+              </h2>
+              <p className="stage-subtitle text-sm text-gray-500 mt-1">
+                Your visit has been scheduled. Please review the details below.
+              </p>
+            </div>
 
-      {/* Stage 4: Payment */}
-      {currentStage === 4 && (
-        <ReservationPaymentStep
-          reservationData={reservationData}
-          leaseDuration={leaseDuration}
-          finalMoveInDate={finalMoveInDate}
-          setFinalMoveInDate={setFinalMoveInDate}
-          onMoveInDateUpdate={handleMoveInDateUpdate}
-          paymentMethod={paymentMethod}
-          setPaymentMethod={setPaymentMethod}
-          proofOfPayment={proofOfPayment}
-          setProofOfPayment={setProofOfPayment}
-          isLoading={isLoading}
-          onPrev={handlePrevStage}
-          onNext={handleNextStage}
-        />
-      )}
+            {/* Visit Receipt Card */}
+            <div
+              style={{
+                border: "2px solid #E5E7EB",
+                borderRadius: "12px",
+                padding: "24px",
+                background: "#FAFAFA",
+                marginBottom: "24px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "20px",
+                  paddingBottom: "16px",
+                  borderBottom: "1px dashed #D1D5DB",
+                }}
+              >
+                <div>
+                  <p
+                    style={{
+                      fontSize: "12px",
+                      color: "#6B7280",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.05em",
+                    }}
+                  >
+                    Visit Reference
+                  </p>
+                  <p style={{ fontWeight: "600", color: "#1F2937" }}>
+                    {reservationCode || "Pending"}
+                  </p>
+                </div>
+                <span
+                  style={{
+                    padding: "6px 16px",
+                    borderRadius: "20px",
+                    fontSize: "13px",
+                    fontWeight: "600",
+                    backgroundColor: "#FEF3C7",
+                    color: "#92400E",
+                  }}
+                >
+                  Awaiting Admin Confirmation
+                </span>
+              </div>
 
-      {/* Stage 5: Confirmation */}
-      {currentStage === 5 && (
-        <ReservationConfirmationStep
-          reservationData={reservationData}
-          reservationCode={reservationCode}
-          finalMoveInDate={finalMoveInDate}
-          onViewDetails={() => navigate("/tenant/profile")}
-          onReturnHome={() => navigate("/")}
-        />
-      )}
+              <div className="summary-section">
+                <div className="summary-row">
+                  <span className="summary-label">Visit Type</span>
+                  <span className="summary-value" style={{ fontWeight: "600" }}>
+                    {viewingType === "inperson"
+                      ? "🏢 In-Person Visit"
+                      : "💻 Virtual Verification"}
+                  </span>
+                </div>
+                <div className="summary-row">
+                  <span className="summary-label">Target Move-In Date</span>
+                  <span className="summary-value">
+                    {targetMoveInDate
+                      ? new Date(targetMoveInDate).toLocaleDateString("en-US", {
+                          weekday: "long",
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                        })
+                      : "Not set"}
+                  </span>
+                </div>
+                {isOutOfTown && (
+                  <div className="summary-row">
+                    <span className="summary-label">Current Location</span>
+                    <span className="summary-value">
+                      {currentLocation || "Not specified"}
+                    </span>
+                  </div>
+                )}
+                <div
+                  style={{
+                    borderTop: "1px solid #E5E7EB",
+                    marginTop: "12px",
+                    paddingTop: "12px",
+                  }}
+                >
+                  <div className="summary-row">
+                    <span className="summary-label">Room</span>
+                    <span className="summary-value">
+                      {reservationData?.room?.title ||
+                        reservationData?.room?.name ||
+                        reservationData?.room?.id ||
+                        "N/A"}
+                    </span>
+                  </div>
+                  <div className="summary-row">
+                    <span className="summary-label">Branch</span>
+                    <span
+                      className="summary-value"
+                      style={{ textTransform: "capitalize" }}
+                    >
+                      {reservationData?.room?.branch || "N/A"}
+                    </span>
+                  </div>
+                  <div className="summary-row">
+                    <span className="summary-label">Room Type</span>
+                    <span
+                      className="summary-value"
+                      style={{ textTransform: "capitalize" }}
+                    >
+                      {reservationData?.room?.type || "N/A"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Info Notice */}
+            <div
+              style={{
+                padding: "16px",
+                background: "#EFF6FF",
+                borderRadius: "8px",
+                border: "1px solid #BFDBFE",
+                marginBottom: "24px",
+              }}
+            >
+              <p
+                style={{
+                  fontSize: "14px",
+                  color: "#1E40AF",
+                  lineHeight: "1.6",
+                  margin: 0,
+                }}
+              >
+                <strong>ℹ️ What happens next?</strong>
+                <br />
+                Our admin team will review your visit schedule and confirm the
+                date and time. You will receive a notification once your visit
+                is confirmed. You can track the status from your profile.
+              </p>
+            </div>
+
+            <div className="stage-buttons flex flex-col sm:flex-row gap-3 mt-6">
+              <button onClick={handlePrevStage} className="btn btn-secondary">
+                Back
+              </button>
+              <button
+                onClick={handleNextStage}
+                className="btn btn-primary w-full"
+              >
+                Go to Profile & Track Status
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Stage 4: Tenant Application */}
+        {currentStage === 4 &&
+          (visitApproved ? (
+            <ReservationApplicationStep
+              billingEmail={billingEmail}
+              selfiePhoto={selfiePhoto}
+              setSelfiePhoto={setSelfiePhoto}
+              lastName={lastName}
+              setLastName={setLastName}
+              firstName={firstName}
+              setFirstName={setFirstName}
+              middleName={middleName}
+              setMiddleName={setMiddleName}
+              nickname={nickname}
+              setNickname={setNickname}
+              mobileNumber={mobileNumber}
+              setMobileNumber={setMobileNumber}
+              birthday={birthday}
+              setBirthday={setBirthday}
+              maritalStatus={maritalStatus}
+              setMaritalStatus={setMaritalStatus}
+              nationality={nationality}
+              setNationality={setNationality}
+              educationLevel={educationLevel}
+              setEducationLevel={setEducationLevel}
+              addressUnitHouseNo={addressUnitHouseNo}
+              setAddressUnitHouseNo={setAddressUnitHouseNo}
+              addressStreet={addressStreet}
+              setAddressStreet={setAddressStreet}
+              addressBarangay={addressBarangay}
+              setAddressBarangay={setAddressBarangay}
+              addressCity={addressCity}
+              setAddressCity={setAddressCity}
+              addressProvince={addressProvince}
+              setAddressProvince={setAddressProvince}
+              validIDFront={validIDFront}
+              setValidIDFront={setValidIDFront}
+              validIDBack={validIDBack}
+              setValidIDBack={setValidIDBack}
+              nbiClearance={nbiClearance}
+              setNbiClearance={setNbiClearance}
+              nbiReason={nbiReason}
+              setNbiReason={setNbiReason}
+              companyID={companyID}
+              setCompanyID={setCompanyID}
+              companyIDReason={companyIDReason}
+              setCompanyIDReason={setCompanyIDReason}
+              emergencyContactName={emergencyContactName}
+              setEmergencyContactName={setEmergencyContactName}
+              emergencyRelationship={emergencyRelationship}
+              setEmergencyRelationship={setEmergencyRelationship}
+              emergencyContactNumber={emergencyContactNumber}
+              setEmergencyContactNumber={setEmergencyContactNumber}
+              healthConcerns={healthConcerns}
+              setHealthConcerns={setHealthConcerns}
+              employerSchool={employerSchool}
+              setEmployerSchool={setEmployerSchool}
+              employerAddress={employerAddress}
+              setEmployerAddress={setEmployerAddress}
+              employerContact={employerContact}
+              setEmployerContact={setEmployerContact}
+              startDate={startDate}
+              setStartDate={setStartDate}
+              occupation={occupation}
+              setOccupation={setOccupation}
+              previousEmployment={previousEmployment}
+              setPreviousEmployment={setPreviousEmployment}
+              preferredRoomNumber={preferredRoomNumber}
+              setPreferredRoomNumber={setPreferredRoomNumber}
+              referralSource={referralSource}
+              setReferralSource={setReferralSource}
+              referrerName={referrerName}
+              setReferrerName={setReferrerName}
+              targetMoveInDate={targetMoveInDate}
+              setTargetMoveInDate={setTargetMoveInDate}
+              leaseDuration={leaseDuration}
+              setLeaseDuration={setLeaseDuration}
+              estimatedMoveInTime={estimatedMoveInTime}
+              setEstimatedMoveInTime={setEstimatedMoveInTime}
+              workSchedule={workSchedule}
+              setWorkSchedule={setWorkSchedule}
+              workScheduleOther={workScheduleOther}
+              setWorkScheduleOther={setWorkScheduleOther}
+              agreedToPrivacy={agreedToPrivacy}
+              setAgreedToPrivacy={setAgreedToPrivacy}
+              agreedToCertification={agreedToCertification}
+              setAgreedToCertification={setAgreedToCertification}
+              personalNotes={personalNotes}
+              setPersonalNotes={setPersonalNotes}
+              devBypassValidation={devBypassValidation}
+              setDevBypassValidation={setDevBypassValidation}
+              onPrev={handlePrevStage}
+              onNext={handleNextStage}
+            />
+          ) : (
+            <div className="reservation-card bg-white rounded-2xl shadow-xl border border-gray-200 p-8">
+              <div className="text-center">
+                <div style={{ fontSize: "64px", marginBottom: "16px" }}>⏳</div>
+                <h2 className="stage-title text-2xl font-semibold text-slate-800">
+                  Waiting for Visit Approval
+                </h2>
+                <p className="text-gray-500 mt-2 mb-6">
+                  Your visit has been scheduled but is not yet approved by
+                  admin. Please check your profile for updates.
+                </p>
+                <button
+                  onClick={() => navigate("/tenant/profile")}
+                  className="btn btn-primary"
+                >
+                  Go to Profile
+                </button>
+              </div>
+            </div>
+          ))}
+
+        {/* Stage 5: Payment */}
+        {currentStage === 5 && (
+          <ReservationPaymentStep
+            reservationData={reservationData}
+            leaseDuration={leaseDuration}
+            finalMoveInDate={finalMoveInDate}
+            setFinalMoveInDate={setFinalMoveInDate}
+            onMoveInDateUpdate={() => {
+              showNotification(
+                "Move-in date updated. Availability will be checked.",
+                "info",
+                2000,
+              );
+            }}
+            paymentMethod={paymentMethod}
+            setPaymentMethod={setPaymentMethod}
+            proofOfPayment={proofOfPayment}
+            setProofOfPayment={setProofOfPayment}
+            isLoading={isLoading}
+            onPrev={handlePrevStage}
+            onNext={handleNextStage}
+          />
+        )}
+
+        {/* Stage 6: Confirmation */}
+        {currentStage === 6 && (
+          <ReservationConfirmationStep
+            reservationCode={reservationCode}
+            reservationData={reservationData}
+            finalMoveInDate={finalMoveInDate || targetMoveInDate}
+            onViewDetails={() => navigate("/tenant/profile")}
+            onReturnHome={() => navigate("/")}
+          />
+        )}
       </div>
     </div>
   );

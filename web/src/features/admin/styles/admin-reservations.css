@@ -79,10 +79,10 @@
 }
 
 .admin-reservations-info-list li::before {
-  content: '•';
+  content: "•";
   position: absolute;
   left: -16px;
-  color: #2563EB;
+  color: #2563eb;
 }
 
 .admin-reservations-info-list li:last-child {
@@ -182,6 +182,18 @@
 
 .admin-reservations-stat-card-red .admin-reservations-stat-value {
   color: #dc2626;
+}
+
+.admin-reservations-stat-card-orange {
+  background-color: #fff7ed;
+}
+
+.admin-reservations-stat-card-orange .admin-reservations-stat-label {
+  color: #fb923c;
+}
+
+.admin-reservations-stat-card-orange .admin-reservations-stat-value {
+  color: #ea580c;
 }
 
 /* Search Section */
@@ -463,6 +475,11 @@
 .admin-reservations-status-checked-out {
   color: #7c3aed;
   background-color: #ede9fe;
+}
+
+.admin-reservations-status-at-risk {
+  color: #ea580c;
+  background-color: #ffedd5;
 }
 
 /* Action Buttons */

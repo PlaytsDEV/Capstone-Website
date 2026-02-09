@@ -357,3 +357,132 @@
     max-width: 100%;
   }
 }
+
+/* Collapsible Section Styles */
+.reservation-details-collapsible-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 16px;
+  background: #f9fafb;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.reservation-details-collapsible-header:hover {
+  background: #f3f4f6;
+}
+
+.reservation-details-collapse-icon {
+  font-size: 12px;
+  color: #6b7280;
+  transition: transform 0.2s ease;
+}
+
+/* Documents Grid */
+.reservation-details-documents-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.reservation-details-document-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reservation-details-view-doc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.reservation-details-view-doc-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.reservation-details-view-doc-btn:active {
+  transform: translateY(0);
+}
+
+.reservation-details-view-doc-btn-large {
+  padding: 12px 20px;
+  font-size: 14px;
+}
+
+.reservation-details-no-doc {
+  font-size: 13px;
+  color: #9ca3af;
+  font-style: italic;
+}
+
+/* Payment Details Section */
+.reservation-details-payment-proof-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.reservation-details-payment-proof-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.reservation-details-payment-thumbnail {
+  max-width: 200px;
+  max-height: 150px;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.reservation-details-payment-thumbnail:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Payment Status Colors */
+.reservation-details-payment-status-pending {
+  color: #f59e0b;
+  font-weight: 600;
+}
+
+.reservation-details-payment-status-submitted {
+  color: #3b82f6;
+  font-weight: 600;
+}
+
+.reservation-details-payment-status-verified {
+  color: #10b981;
+  font-weight: 600;
+}
+
+.reservation-details-payment-status-rejected {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+/* Responsive for documents */
+@media (max-width: 640px) {
+  .reservation-details-documents-grid {
+    grid-template-columns: 1fr;
+  }
+}

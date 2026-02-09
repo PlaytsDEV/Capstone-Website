@@ -10,6 +10,8 @@ export default function ReservationDetailsModal({
 }) {
   const [adminNotes, setAdminNotes] = useState(reservation?.notes || "");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showRequirements, setShowRequirements] = useState(false);
+  const [showPaymentDetails, setShowPaymentDetails] = useState(false);
 
   if (!reservation) return null;
 
@@ -20,10 +22,39 @@ export default function ReservationDetailsModal({
     return `₱${numeric.toLocaleString()}`;
   };
 
+  const formatDate = (dateString) => {
+    if (!dateString) return "N/A";
+    try {
+      return new Date(dateString).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+    } catch {
+      return dateString;
+    }
+  };
+
+  const openImageInNewTab = (url, title) => {
+    if (!url) {
+      showNotification("No file available", "error");
+      return;
+    }
+    const newWindow = window.open("", "_blank");
+    newWindow.document.write(`
+      <html>
+        <head><title>${title}</title></head>
+        <body style="margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#1a1a2e;">
+          <img src="${url}" style="max-width:100%;max-height:100vh;object-fit:contain;" alt="${title}" />
+        </body>
+      </html>
+    `);
+  };
+
   const customerName =
     reservation.customerName ?? reservation.customer ?? "Unknown";
   const customerEmail = reservation.customerEmail ?? reservation.email ?? "N/A";
-  const customerPhone = reservation.customerPhone ?? "N/A";
+  const customerPhone = reservation.customerPhone ?? reservation.phone ?? "N/A";
   const roomName = reservation.room ?? reservation.roomName ?? "N/A";
   const roomType = reservation.roomType ?? "N/A";
   const branchName = reservation.branch ?? "N/A";
@@ -236,7 +267,7 @@ export default function ReservationDetailsModal({
             </div>
           </div>
 
-          {/* Payment Proof Container */}
+          {/* Payment Proof Container - Legacy */}
           {paymentProofAmount && (
             <div className="reservation-details-container">
               <h3 className="reservation-details-section-title">
@@ -258,7 +289,276 @@ export default function ReservationDetailsModal({
             </div>
           )}
 
-          {/* Requirements Status Container */}
+          {/* Submitted Requirements - Clickable Section */}
+          <div className="reservation-details-container">
+            <button
+              type="button"
+              className="reservation-details-collapsible-header"
+              onClick={() => setShowRequirements(!showRequirements)}
+            >
+              <h3 className="reservation-details-section-title">
+                📋 Submitted Requirements
+              </h3>
+              <span className="reservation-details-collapse-icon">
+                {showRequirements ? "▲" : "▼"}
+              </span>
+            </button>
+            {showRequirements && (
+              <div className="reservation-details-container-body">
+                <div className="reservation-details-documents-grid">
+                  {/* Selfie Photo */}
+                  <div className="reservation-details-document-item">
+                    <label className="reservation-details-label">
+                      Selfie Photo
+                    </label>
+                    {reservation.selfiePhotoUrl ? (
+                      <button
+                        type="button"
+                        className="reservation-details-view-doc-btn"
+                        onClick={() =>
+                          openImageInNewTab(
+                            reservation.selfiePhotoUrl,
+                            "Selfie Photo",
+                          )
+                        }
+                      >
+                        📷 View Selfie
+                      </button>
+                    ) : (
+                      <span className="reservation-details-no-doc">
+                        Not submitted
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Valid ID Front */}
+                  <div className="reservation-details-document-item">
+                    <label className="reservation-details-label">
+                      Valid ID (Front){" "}
+                      {reservation.validIDType &&
+                        `- ${reservation.validIDType}`}
+                    </label>
+                    {reservation.validIDFrontUrl ? (
+                      <button
+                        type="button"
+                        className="reservation-details-view-doc-btn"
+                        onClick={() =>
+                          openImageInNewTab(
+                            reservation.validIDFrontUrl,
+                            "Valid ID Front",
+                          )
+                        }
+                      >
+                        🪪 View ID Front
+                      </button>
+                    ) : (
+                      <span className="reservation-details-no-doc">
+                        Not submitted
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Valid ID Back */}
+                  <div className="reservation-details-document-item">
+                    <label className="reservation-details-label">
+                      Valid ID (Back)
+                    </label>
+                    {reservation.validIDBackUrl ? (
+                      <button
+                        type="button"
+                        className="reservation-details-view-doc-btn"
+                        onClick={() =>
+                          openImageInNewTab(
+                            reservation.validIDBackUrl,
+                            "Valid ID Back",
+                          )
+                        }
+                      >
+                        🪪 View ID Back
+                      </button>
+                    ) : (
+                      <span className="reservation-details-no-doc">
+                        Not submitted
+                      </span>
+                    )}
+                  </div>
+
+                  {/* NBI Clearance */}
+                  <div className="reservation-details-document-item">
+                    <label className="reservation-details-label">
+                      NBI Clearance
+                    </label>
+                    {reservation.nbiClearanceUrl ? (
+                      <button
+                        type="button"
+                        className="reservation-details-view-doc-btn"
+                        onClick={() =>
+                          openImageInNewTab(
+                            reservation.nbiClearanceUrl,
+                            "NBI Clearance",
+                          )
+                        }
+                      >
+                        📄 View NBI
+                      </button>
+                    ) : (
+                      <span className="reservation-details-no-doc">
+                        {reservation.nbiReason
+                          ? `Skipped: ${reservation.nbiReason}`
+                          : "Not submitted"}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Company ID */}
+                  <div className="reservation-details-document-item">
+                    <label className="reservation-details-label">
+                      Company/School ID
+                    </label>
+                    {reservation.companyIDUrl ? (
+                      <button
+                        type="button"
+                        className="reservation-details-view-doc-btn"
+                        onClick={() =>
+                          openImageInNewTab(
+                            reservation.companyIDUrl,
+                            "Company ID",
+                          )
+                        }
+                      >
+                        🏢 View Company ID
+                      </button>
+                    ) : (
+                      <span className="reservation-details-no-doc">
+                        {reservation.companyIDReason
+                          ? `Skipped: ${reservation.companyIDReason}`
+                          : "Not submitted"}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Payment Details - Clickable Section */}
+          <div className="reservation-details-container">
+            <button
+              type="button"
+              className="reservation-details-collapsible-header"
+              onClick={() => setShowPaymentDetails(!showPaymentDetails)}
+            >
+              <h3 className="reservation-details-section-title">
+                💳 Payment Details
+              </h3>
+              <span className="reservation-details-collapse-icon">
+                {showPaymentDetails ? "▲" : "▼"}
+              </span>
+            </button>
+            {showPaymentDetails && (
+              <div className="reservation-details-container-body">
+                <div className="reservation-details-grid-2col">
+                  <div className="reservation-details-form-group">
+                    <label className="reservation-details-label">
+                      Payment Status
+                    </label>
+                    <p
+                      className={`reservation-details-value reservation-details-payment-status-${paymentStatus?.toLowerCase()}`}
+                    >
+                      {paymentStatus}
+                    </p>
+                  </div>
+
+                  <div className="reservation-details-form-group">
+                    <label className="reservation-details-label">
+                      Payment Method
+                    </label>
+                    <p className="reservation-details-value">
+                      {reservation.paymentMethod || "N/A"}
+                    </p>
+                  </div>
+
+                  <div className="reservation-details-form-group">
+                    <label className="reservation-details-label">
+                      Final Move-In Date
+                    </label>
+                    <p className="reservation-details-value">
+                      {formatDate(reservation.finalMoveInDate)}
+                    </p>
+                  </div>
+
+                  <div className="reservation-details-form-group">
+                    <label className="reservation-details-label">
+                      Lease Duration
+                    </label>
+                    <p className="reservation-details-value">
+                      {reservation.leaseDuration
+                        ? `${reservation.leaseDuration} months`
+                        : "N/A"}
+                    </p>
+                  </div>
+
+                  <div className="reservation-details-form-group">
+                    <label className="reservation-details-label">
+                      Total Amount
+                    </label>
+                    <p className="reservation-details-value reservation-details-fee">
+                      {formatCurrency(totalPrice)}
+                    </p>
+                  </div>
+
+                  <div className="reservation-details-form-group">
+                    <label className="reservation-details-label">
+                      Billing Email
+                    </label>
+                    <p className="reservation-details-value">
+                      {reservation.billingEmail || customerEmail}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Proof of Payment */}
+                <div className="reservation-details-payment-proof-section">
+                  <label className="reservation-details-label">
+                    Proof of Payment
+                  </label>
+                  {reservation.proofOfPaymentUrl ? (
+                    <div className="reservation-details-payment-proof-actions">
+                      <button
+                        type="button"
+                        className="reservation-details-view-doc-btn reservation-details-view-doc-btn-large"
+                        onClick={() =>
+                          openImageInNewTab(
+                            reservation.proofOfPaymentUrl,
+                            "Proof of Payment",
+                          )
+                        }
+                      >
+                        🧾 View Proof of Payment
+                      </button>
+                      <img
+                        src={reservation.proofOfPaymentUrl}
+                        alt="Proof of Payment Preview"
+                        className="reservation-details-payment-thumbnail"
+                        onClick={() =>
+                          openImageInNewTab(
+                            reservation.proofOfPaymentUrl,
+                            "Proof of Payment",
+                          )
+                        }
+                      />
+                    </div>
+                  ) : (
+                    <p className="reservation-details-no-doc">
+                      No proof of payment submitted yet
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Requirements Status Summary */}
           <div className="reservation-details-container reservation-details-container-highlight">
             <div className="reservation-details-container-body">
               <div className="reservation-details-requirements-check">

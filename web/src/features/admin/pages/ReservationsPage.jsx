@@ -4,6 +4,7 @@ import { reservationApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
 import Sidebar from "../components/Sidebar";
 import ReservationDetailsModal from "../components/ReservationDetailsModal";
+import VisitSchedulesTab from "../components/VisitSchedulesTab";
 import InquiriesPage from "./InquiriesPage";
 import "../styles/admin-reservations.css";
 
@@ -18,6 +19,7 @@ function ReservationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [actionLoading, setActionLoading] = useState(null);
   const itemsPerPage = 10;
 
   // Fetch reservations from API
@@ -49,6 +51,8 @@ function ReservationsPage() {
           status: res.status.charAt(0).toUpperCase() + res.status.slice(1),
           totalPrice: res.totalPrice,
           paymentStatus: res.paymentStatus,
+          proofOfPaymentUrl: res.proofOfPaymentUrl,
+          atRisk: res.atRisk || false,
           notes: res.notes || "No notes",
           roomType: res.roomId?.type || "Unknown",
           roomId: res.roomId?._id,
@@ -95,6 +99,8 @@ function ReservationsPage() {
         status: res.status.charAt(0).toUpperCase() + res.status.slice(1),
         totalPrice: res.totalPrice,
         paymentStatus: res.paymentStatus,
+        proofOfPaymentUrl: res.proofOfPaymentUrl,
+        atRisk: res.atRisk || false,
         notes: res.notes || "No notes",
         roomType: res.roomId?.type || "Unknown",
         roomId: res.roomId?._id,
@@ -124,17 +130,16 @@ function ReservationsPage() {
       color: "blue",
     },
     {
-      label: "Ready For Move In",
-      value: reservations.filter((r) => r.status.toLowerCase() === "ready-for-move-in")
+      label: "Checked In",
+      value: reservations.filter((r) => r.status.toLowerCase() === "checked-in")
         .length,
       color: "green",
     },
     {
-      label: "Active Tenant",
-      value: reservations.filter(
-        (r) => r.status.toLowerCase() === "active-tenant",
-      ).length,
-      color: "purple",
+      label: "At Risk",
+      value: reservations.filter((r) => r.status.toLowerCase() === "at-risk")
+        .length,
+      color: "orange",
     },
     {
       label: "Cancelled",
@@ -144,21 +149,208 @@ function ReservationsPage() {
     },
   ];
 
+  // Payment action handlers
+  const handleVerifyPayment = async (reservationId) => {
+    if (
+      !window.confirm(
+        "Verify this payment? This will mark the payment as paid and confirm the reservation.",
+      )
+    ) {
+      return;
+    }
+    try {
+      setActionLoading(reservationId);
+      await reservationApi.update(reservationId, {
+        paymentStatus: "paid",
+        status: "confirmed",
+      });
+      showNotification(
+        "Payment verified! Reservation confirmed.",
+        "success",
+        3000,
+      );
+      handleRefreshData();
+    } catch (error) {
+      console.error("Error verifying payment:", error);
+      showNotification("Failed to verify payment", "error", 3000);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleRejectPayment = async (reservationId) => {
+    const reason = window.prompt("Enter reason for rejection:");
+    if (!reason) return;
+    try {
+      setActionLoading(reservationId);
+      await reservationApi.update(reservationId, {
+        paymentStatus: "pending",
+        proofOfPaymentUrl: null,
+        notes: `Payment rejected: ${reason}`,
+      });
+      showNotification(
+        "Payment rejected. User will need to resubmit.",
+        "warning",
+        3000,
+      );
+      handleRefreshData();
+    } catch (error) {
+      console.error("Error rejecting payment:", error);
+      showNotification("Failed to reject payment", "error", 3000);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleCheckIn = async (reservationId) => {
+    if (
+      !window.confirm(
+        "Confirm tenant has arrived? This will mark them as Checked In (Active Tenant).",
+      )
+    ) {
+      return;
+    }
+    try {
+      setActionLoading(reservationId);
+      await reservationApi.update(reservationId, {
+        status: "checked-in",
+      });
+      showNotification("Tenant checked in successfully!", "success", 3000);
+      handleRefreshData();
+    } catch (error) {
+      console.error("Error checking in:", error);
+      showNotification("Failed to check in tenant", "error", 3000);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleExtendReservation = async (reservationId) => {
+    const days = window.prompt("Enter number of days to extend:", "3");
+    if (!days) return;
+    try {
+      setActionLoading(reservationId);
+      await reservationApi.extend(reservationId, {
+        extensionDays: parseInt(days),
+      });
+      showNotification(`Reservation extended by ${days} days`, "success", 3000);
+      handleRefreshData();
+    } catch (error) {
+      console.error("Error extending reservation:", error);
+      showNotification("Failed to extend reservation", "error", 3000);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleReleaseSlot = async (reservationId) => {
+    const reason = window.prompt(
+      "Enter reason for releasing slot:",
+      "No-show after move-in date",
+    );
+    if (!reason) return;
+    try {
+      setActionLoading(reservationId);
+      await reservationApi.release(reservationId, { reason });
+      showNotification("Slot released successfully", "success", 3000);
+      handleRefreshData();
+    } catch (error) {
+      console.error("Error releasing slot:", error);
+      showNotification("Failed to release slot", "error", 3000);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleViewProof = (url) => {
+    if (url) {
+      window.open(url, "_blank");
+    }
+  };
+
   // Format payment status for display
   const formatPaymentStatus = (status) => {
     if (!status) return "Pending";
     return status.charAt(0).toUpperCase() + status.slice(1);
   };
 
-  const handleView = (id) => {
-    const reservation = reservations.find((res) => res.id === id);
-    if (reservation) {
-      setSelectedReservation(reservation);
+  const handleView = async (id) => {
+    try {
+      // Fetch full reservation data from API to get all details
+      const fullReservation = await reservationApi.getById(id);
+      setSelectedReservation({
+        id: fullReservation._id,
+        reservationCode: fullReservation.reservationCode || "N/A",
+        customer:
+          `${fullReservation.userId?.firstName || ""} ${fullReservation.userId?.lastName || ""}`.trim() ||
+          "Unknown",
+        email:
+          fullReservation.userId?.email ||
+          fullReservation.billingEmail ||
+          "N/A",
+        phone: fullReservation.mobileNumber || "N/A",
+        room: fullReservation.roomId?.name || "Unknown Room",
+        roomType: fullReservation.roomId?.type || "Unknown",
+        branch:
+          fullReservation.roomId?.branch === "gil-puyat"
+            ? "Gil Puyat"
+            : "Guadalupe",
+        moveInDate: fullReservation.checkInDate
+          ? new Date(fullReservation.checkInDate).toISOString().split("T")[0]
+          : "N/A",
+        totalPrice: fullReservation.totalPrice,
+        paymentStatus: fullReservation.paymentStatus,
+        status: fullReservation.status,
+        notes: fullReservation.notes,
+        // Personal Information
+        firstName: fullReservation.firstName,
+        lastName: fullReservation.lastName,
+        middleName: fullReservation.middleName,
+        nickname: fullReservation.nickname,
+        mobileNumber: fullReservation.mobileNumber,
+        birthday: fullReservation.birthday,
+        maritalStatus: fullReservation.maritalStatus,
+        nationality: fullReservation.nationality,
+        educationLevel: fullReservation.educationLevel,
+        address: fullReservation.address,
+        emergencyContact: fullReservation.emergencyContact,
+        healthConcerns: fullReservation.healthConcerns,
+        employment: fullReservation.employment,
+        // Documents
+        selfiePhotoUrl: fullReservation.selfiePhotoUrl,
+        validIDFrontUrl: fullReservation.validIDFrontUrl,
+        validIDBackUrl: fullReservation.validIDBackUrl,
+        validIDType: fullReservation.validIDType,
+        nbiClearanceUrl: fullReservation.nbiClearanceUrl,
+        nbiReason: fullReservation.nbiReason,
+        companyIDUrl: fullReservation.companyIDUrl,
+        companyIDReason: fullReservation.companyIDReason,
+        // Payment
+        finalMoveInDate: fullReservation.finalMoveInDate,
+        paymentMethod: fullReservation.paymentMethod,
+        proofOfPaymentUrl: fullReservation.proofOfPaymentUrl,
+        leaseDuration: fullReservation.leaseDuration,
+        billingEmail: fullReservation.billingEmail,
+        // Agreements
+        agreedToPrivacy: fullReservation.agreedToPrivacy,
+        agreedToCertification: fullReservation.agreedToCertification,
+      });
+    } catch (error) {
+      console.error("Error fetching reservation details:", error);
+      // Fallback to basic data
+      const reservation = reservations.find((res) => res.id === id);
+      if (reservation) {
+        setSelectedReservation(reservation);
+      }
     }
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm("Are you sure you want to delete this reservation? This action cannot be undone.")) {
+    if (
+      window.confirm(
+        "Are you sure you want to delete this reservation? This action cannot be undone.",
+      )
+    ) {
       try {
         await reservationApi.delete(id);
         showNotification("Reservation deleted successfully", "success", 3000);
@@ -167,6 +359,25 @@ function ReservationsPage() {
         console.error("❌ Error deleting reservation:", err);
         showNotification("Failed to delete reservation", "error", 3000);
       }
+    }
+  };
+
+  const handleArchive = async (reservationId) => {
+    const reason = window.prompt(
+      "Enter reason for archiving this reservation:",
+      "No longer needed",
+    );
+    if (!reason) return;
+    try {
+      setActionLoading(reservationId);
+      await reservationApi.archive(reservationId, { reason });
+      showNotification("Reservation archived successfully", "success", 3000);
+      handleRefreshData();
+    } catch (error) {
+      console.error("Error archiving reservation:", error);
+      showNotification("Failed to archive reservation", "error", 3000);
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -190,6 +401,12 @@ function ReservationsPage() {
               onClick={() => setActiveTab("reservations")}
             >
               📋 Reservations
+            </button>
+            <button
+              className={`room-tab ${activeTab === "visits" ? "active" : ""}`}
+              onClick={() => setActiveTab("visits")}
+            >
+              🗓️ Visit Schedules
             </button>
             <button
               className={`room-tab ${activeTab === "inquiries" ? "active" : ""}`}
@@ -319,7 +536,7 @@ function ReservationsPage() {
                     <option value="pending">Pending</option>
                     <option value="confirmed">Confirmed</option>
                     <option value="checked-in">Checked In</option>
-                    <option value="checked-out">Checked Out</option>
+                    <option value="at-risk">At Risk</option>
                     <option value="cancelled">Cancelled</option>
                   </select>
                   <select
@@ -649,34 +866,246 @@ function ReservationsPage() {
                                     </span>
                                   </td>
                                   <td className="admin-reservations-table-td">
-                                    <button
-                                      className="admin-reservations-action-btn"
-                                      onClick={() => handleView(reservation.id)}
-                                      title="View Details"
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        gap: "4px",
+                                        alignItems: "center",
+                                        flexWrap: "wrap",
+                                      }}
                                     >
-                                      <svg
-                                        width="18"
-                                        height="18"
-                                        viewBox="0 0 18 18"
-                                        fill="none"
-                                        xmlns="http://www.w3.org/2000/svg"
+                                      {/* View Details */}
+                                      <button
+                                        className="admin-reservations-action-btn"
+                                        onClick={() =>
+                                          handleView(reservation.id)
+                                        }
+                                        title="View Details"
+                                        disabled={
+                                          actionLoading === reservation.id
+                                        }
                                       >
-                                        <path
-                                          d="M1.5 9C1.5 9 4.5 3 9 3C13.5 3 16.5 9 16.5 9C16.5 9 13.5 15 9 15C4.5 15 1.5 9 1.5 9Z"
-                                          stroke="#6B7280"
-                                          strokeWidth="1.5"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                        />
-                                        <path
-                                          d="M9 11.25C10.2426 11.25 11.25 10.2426 11.25 9C11.25 7.75736 10.2426 6.75 9 6.75C7.75736 6.75 6.75 7.75736 6.75 9C6.75 10.2426 7.75736 11.25 9 11.25Z"
-                                          stroke="#6B7280"
-                                          strokeWidth="1.5"
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                        />
-                                      </svg>
-                                    </button>
+                                        <svg
+                                          width="16"
+                                          height="16"
+                                          viewBox="0 0 18 18"
+                                          fill="none"
+                                        >
+                                          <path
+                                            d="M1.5 9C1.5 9 4.5 3 9 3C13.5 3 16.5 9 16.5 9C16.5 9 13.5 15 9 15C4.5 15 1.5 9 1.5 9Z"
+                                            stroke="#6B7280"
+                                            strokeWidth="1.5"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                          />
+                                          <path
+                                            d="M9 11.25C10.2426 11.25 11.25 10.2426 11.25 9C11.25 7.75736 10.2426 6.75 9 6.75C7.75736 6.75 6.75 7.75736 6.75 9C6.75 10.2426 7.75736 11.25 9 11.25Z"
+                                            stroke="#6B7280"
+                                            strokeWidth="1.5"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                          />
+                                        </svg>
+                                      </button>
+
+                                      {/* Payment Actions - Show payment proof and verify/reject buttons if proof exists and payment is pending */}
+                                      {reservation.proofOfPaymentUrl &&
+                                        reservation.paymentStatus ===
+                                          "pending" && (
+                                          <>
+                                            <button
+                                              onClick={() =>
+                                                handleViewProof(
+                                                  reservation.proofOfPaymentUrl,
+                                                )
+                                              }
+                                              title="View Payment Proof"
+                                              style={{
+                                                padding: "4px 8px",
+                                                border: "1px solid #DBEAFE",
+                                                borderRadius: "4px",
+                                                backgroundColor: "#EFF6FF",
+                                                color: "#2563EB",
+                                                cursor: "pointer",
+                                                fontSize: "11px",
+                                                fontWeight: "500",
+                                              }}
+                                            >
+                                              📄
+                                            </button>
+                                            <button
+                                              onClick={() =>
+                                                handleVerifyPayment(
+                                                  reservation.id,
+                                                )
+                                              }
+                                              disabled={
+                                                actionLoading === reservation.id
+                                              }
+                                              title="Verify Payment"
+                                              style={{
+                                                padding: "4px 8px",
+                                                border: "1px solid #D1FAE5",
+                                                borderRadius: "4px",
+                                                backgroundColor: "#ECFDF5",
+                                                color: "#059669",
+                                                cursor:
+                                                  actionLoading ===
+                                                  reservation.id
+                                                    ? "not-allowed"
+                                                    : "pointer",
+                                                fontSize: "11px",
+                                                fontWeight: "500",
+                                              }}
+                                            >
+                                              ✓
+                                            </button>
+                                            <button
+                                              onClick={() =>
+                                                handleRejectPayment(
+                                                  reservation.id,
+                                                )
+                                              }
+                                              disabled={
+                                                actionLoading === reservation.id
+                                              }
+                                              title="Reject Payment"
+                                              style={{
+                                                padding: "4px 8px",
+                                                border: "1px solid #FEE2E2",
+                                                borderRadius: "4px",
+                                                backgroundColor: "#FEF2F2",
+                                                color: "#DC2626",
+                                                cursor:
+                                                  actionLoading ===
+                                                  reservation.id
+                                                    ? "not-allowed"
+                                                    : "pointer",
+                                                fontSize: "11px",
+                                                fontWeight: "500",
+                                              }}
+                                            >
+                                              ✗
+                                            </button>
+                                          </>
+                                        )}
+
+                                      {/* Check-In Button - Show when payment is paid and status is confirmed */}
+                                      {reservation.paymentStatus === "paid" &&
+                                        reservation.status.toLowerCase() ===
+                                          "confirmed" && (
+                                          <button
+                                            onClick={() =>
+                                              handleCheckIn(reservation.id)
+                                            }
+                                            disabled={
+                                              actionLoading === reservation.id
+                                            }
+                                            title="Check In Tenant"
+                                            style={{
+                                              padding: "4px 8px",
+                                              border: "1px solid #D1FAE5",
+                                              borderRadius: "4px",
+                                              backgroundColor: "#ECFDF5",
+                                              color: "#059669",
+                                              cursor:
+                                                actionLoading === reservation.id
+                                                  ? "not-allowed"
+                                                  : "pointer",
+                                              fontSize: "11px",
+                                              fontWeight: "500",
+                                            }}
+                                          >
+                                            Check In
+                                          </button>
+                                        )}
+
+                                      {/* At Risk Actions - Extend or Release */}
+                                      {reservation.status.toLowerCase() ===
+                                        "at-risk" && (
+                                        <>
+                                          <button
+                                            onClick={() =>
+                                              handleExtendReservation(
+                                                reservation.id,
+                                              )
+                                            }
+                                            disabled={
+                                              actionLoading === reservation.id
+                                            }
+                                            title="Extend Move-In Date"
+                                            style={{
+                                              padding: "4px 8px",
+                                              border: "1px solid #FDE68A",
+                                              borderRadius: "4px",
+                                              backgroundColor: "#FFFBEB",
+                                              color: "#B45309",
+                                              cursor:
+                                                actionLoading === reservation.id
+                                                  ? "not-allowed"
+                                                  : "pointer",
+                                              fontSize: "11px",
+                                              fontWeight: "500",
+                                            }}
+                                          >
+                                            Extend
+                                          </button>
+                                          <button
+                                            onClick={() =>
+                                              handleReleaseSlot(reservation.id)
+                                            }
+                                            disabled={
+                                              actionLoading === reservation.id
+                                            }
+                                            title="Release Slot"
+                                            style={{
+                                              padding: "4px 8px",
+                                              border: "1px solid #FEE2E2",
+                                              borderRadius: "4px",
+                                              backgroundColor: "#FEF2F2",
+                                              color: "#DC2626",
+                                              cursor:
+                                                actionLoading === reservation.id
+                                                  ? "not-allowed"
+                                                  : "pointer",
+                                              fontSize: "11px",
+                                              fontWeight: "500",
+                                            }}
+                                          >
+                                            Release
+                                          </button>
+                                        </>
+                                      )}
+
+                                      {/* Archive (Soft Delete) - Always available except for checked-in */}
+                                      {reservation.status.toLowerCase() !==
+                                        "checked-in" && (
+                                        <button
+                                          onClick={() =>
+                                            handleArchive(reservation.id)
+                                          }
+                                          disabled={
+                                            actionLoading === reservation.id
+                                          }
+                                          title="Archive Reservation"
+                                          style={{
+                                            padding: "4px 8px",
+                                            border: "1px solid #E5E7EB",
+                                            borderRadius: "4px",
+                                            backgroundColor: "#F9FAFB",
+                                            color: "#6B7280",
+                                            cursor:
+                                              actionLoading === reservation.id
+                                                ? "not-allowed"
+                                                : "pointer",
+                                            fontSize: "11px",
+                                            fontWeight: "500",
+                                          }}
+                                        >
+                                          🗑️
+                                        </button>
+                                      )}
+                                    </div>
                                   </td>
                                 </tr>
                               ))
@@ -822,6 +1251,9 @@ function ReservationsPage() {
               </div>
             </>
           )}
+
+          {/* Visit Schedules Tab */}
+          {activeTab === "visits" && <VisitSchedulesTab />}
 
           {/* Inquiries Tab */}
           {activeTab === "inquiries" && <InquiriesPage isEmbedded={true} />}

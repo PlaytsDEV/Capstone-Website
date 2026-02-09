@@ -115,7 +115,12 @@ const ReservationApplicationStep = ({
         <h3 className="section-header">Email & Photo</h3>
         <div className="form-group">
           <label className="form-label">Email Address *</label>
-          <input type="email" className="form-input" value={billingEmail} disabled />
+          <input
+            type="email"
+            className="form-input"
+            value={billingEmail}
+            disabled
+          />
           <div className="form-helper">
             This is where we'll send your billing statements
           </div>
@@ -132,7 +137,9 @@ const ReservationApplicationStep = ({
             />
             <div className="file-icon">📷</div>
             <div className="file-text">
-              {selfiePhoto ? selfiePhoto.name : "Upload clear 2x2 or selfie photo"}
+              {selfiePhoto
+                ? selfiePhoto.name
+                : "Upload clear 2x2 or selfie photo"}
             </div>
           </label>
         </div>
@@ -244,7 +251,9 @@ const ReservationApplicationStep = ({
         </div>
 
         <fieldset style={{ border: "none", padding: 0 }}>
-          <legend className="form-label">Permanent Address: Unit / House No. *</legend>
+          <legend className="form-label">
+            Permanent Address: Unit / House No. *
+          </legend>
           <input
             type="text"
             className="form-input"
@@ -286,7 +295,9 @@ const ReservationApplicationStep = ({
             />
           </fieldset>
           <fieldset style={{ border: "none", padding: 0 }}>
-            <legend className="form-label">Permanent Address: Region / Province *</legend>
+            <legend className="form-label">
+              Permanent Address: Region / Province *
+            </legend>
             <input
               type="text"
               className="form-input"
@@ -727,7 +738,8 @@ const ReservationApplicationStep = ({
         {workSchedule === "others" && (
           <div className="form-group">
             <label className="form-label">
-              If You Answered "Others", Please Specify Your Work Schedule Below *
+              If You Answered "Others", Please Specify Your Work Schedule Below
+              *
             </label>
             <textarea
               className="form-textarea"
@@ -774,32 +786,90 @@ const ReservationApplicationStep = ({
         </div>
       </div>
 
+      {/* Simulation Helper Button */}
       <div
         style={{
           marginTop: "16px",
           padding: "12px",
-          background: "#fff3cd",
+          background: "#EFF6FF",
           borderRadius: "8px",
-          border: "1px solid #ffc107",
+          border: "1px solid #3B82F6",
         }}
       >
-        <label
+        <div
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "8px",
-            cursor: "pointer",
+            justifyContent: "space-between",
+            gap: "12px",
           }}
         >
-          <input
-            type="checkbox"
-            checked={devBypassValidation}
-            onChange={(e) => setDevBypassValidation(e.target.checked)}
-          />
-          <span style={{ fontSize: "13px", color: "#856404" }}>
-            🔧 DEV MODE: Bypass validation (Testing only)
-          </span>
-        </label>
+          <div>
+            <p
+              style={{
+                fontSize: "13px",
+                fontWeight: "600",
+                color: "#1E40AF",
+                margin: "0 0 4px",
+              }}
+            >
+              🧪 Simulation Mode
+            </p>
+            <p style={{ fontSize: "12px", color: "#3B82F6", margin: 0 }}>
+              Fill all required fields with sample data for testing purposes
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              // Fill all required fields with sample data
+              setFirstName("Juan");
+              setLastName("Dela Cruz");
+              setMiddleName("Santos");
+              setNickname("JD");
+              setMobileNumber("09171234567");
+              setBirthday("1995-05-15");
+              setMaritalStatus("single");
+              setNationality("Filipino");
+              setEducationLevel("college");
+              setAddressUnitHouseNo("123");
+              setAddressStreet("Rizal Street");
+              setAddressBarangay("Barangay 1");
+              setAddressCity("Manila");
+              setAddressProvince("Metro Manila");
+              setEmergencyContactName("Maria Dela Cruz");
+              setEmergencyRelationship("Mother");
+              setEmergencyContactNumber("09181234567");
+              setHealthConcerns("None");
+              setEmployerSchool("Sample University");
+              setEmployerAddress("123 University Ave, Manila");
+              setEmployerContact("02-1234567");
+              setStartDate("2024-01-15");
+              setOccupation("Student");
+              setPreviousEmployment("N/A");
+              setReferralSource("friend");
+              setReferrerName("Pedro Santos");
+              setEstimatedMoveInTime("morning");
+              setWorkSchedule("day");
+              setAgreedToPrivacy(true);
+              setAgreedToCertification(true);
+              setPersonalNotes("Sample application for testing");
+            }}
+            style={{
+              padding: "8px 16px",
+              backgroundColor: "#3B82F6",
+              color: "white",
+              border: "none",
+              borderRadius: "6px",
+              fontSize: "13px",
+              fontWeight: "500",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Fill Sample Data
+          </button>
+        </div>
       </div>
 
       <div className="stage-buttons flex flex-col sm:flex-row gap-3 mt-6">

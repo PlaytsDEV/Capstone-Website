@@ -26,6 +26,9 @@ import {
   updateReservation,
   updateReservationByUser,
   deleteReservation,
+  extendReservation,
+  releaseSlot,
+  archiveReservation,
 } from "../controllers/reservationsController.js";
 
 const router = express.Router();
@@ -78,7 +81,13 @@ router.post("/", verifyToken, verifyUser, createReservation);
  * @body {Object} Updated reservation data
  * @returns {Object} Updated reservation with success message
  */
-router.put("/:reservationId", verifyToken, verifyAdmin, filterByBranch, updateReservation);
+router.put(
+  "/:reservationId",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  updateReservation,
+);
 
 /**
  * PUT /api/reservations/:reservationId/user
@@ -108,6 +117,69 @@ router.put(
  * @param {string} reservationId - MongoDB ObjectId of the reservation
  * @returns {Object} Success message with deleted reservation ID
  */
-router.delete("/:reservationId", verifyToken, verifyAdmin, filterByBranch, deleteReservation);
+router.delete(
+  "/:reservationId",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  deleteReservation,
+);
+
+/**
+ * PUT /api/reservations/:reservationId/extend
+ *
+ * Extend a reservation's move-in date (admin action for at-risk reservations).
+ *
+ * Access: Admin (must be from room's branch) | Super Admin (any reservation)
+ *
+ * @param {string} reservationId - MongoDB ObjectId of the reservation
+ * @body {number} extensionDays - Number of days to extend (default: 3)
+ * @returns {Object} Updated reservation with new move-in date
+ */
+router.put(
+  "/:reservationId/extend",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  extendReservation,
+);
+
+/**
+ * PUT /api/reservations/:reservationId/release
+ *
+ * Release a reservation slot (admin action to cancel and free up room).
+ *
+ * Access: Admin (must be from room's branch) | Super Admin (any reservation)
+ *
+ * @param {string} reservationId - MongoDB ObjectId of the reservation
+ * @body {string} reason - Reason for releasing the slot
+ * @returns {Object} Cancelled reservation with success message
+ */
+router.put(
+  "/:reservationId/release",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  releaseSlot,
+);
+
+/**
+ * PUT /api/reservations/:reservationId/archive
+ *
+ * Soft delete (archive) a reservation.
+ *
+ * Access: Admin (must be from room's branch) | Super Admin (any reservation)
+ *
+ * @param {string} reservationId - MongoDB ObjectId of the reservation
+ * @body {string} reason - Reason for archiving
+ * @returns {Object} Archived reservation with success message
+ */
+router.put(
+  "/:reservationId/archive",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  archiveReservation,
+);
 
 export default router;

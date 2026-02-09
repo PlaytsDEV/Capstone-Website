@@ -330,6 +330,33 @@ export const reservationApi = {
     authFetch(`/reservations/${reservationId}`, {
       method: "DELETE",
     }),
+
+  /**
+   * Extend reservation move-in date (admin only)
+   */
+  extend: (reservationId, data) =>
+    authFetch(`/reservations/${reservationId}/extend`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  /**
+   * Release reservation slot (admin only)
+   */
+  release: (reservationId, data) =>
+    authFetch(`/reservations/${reservationId}/release`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  /**
+   * Archive (soft delete) reservation (admin only)
+   */
+  archive: (reservationId, data) =>
+    authFetch(`/reservations/${reservationId}/archive`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
 };
 
 // =============================================================================
