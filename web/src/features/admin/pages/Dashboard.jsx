@@ -1,128 +1,301 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Sidebar from "../components/Sidebar";
 import ReservationItem from "../components/ReservationItem";
 import InquiryItem from "../components/InquiryItem";
+import {
+  inquiryApi,
+  reservationApi,
+  roomApi,
+  userApi,
+} from "../../../shared/api/apiClient";
 import "../styles/admin-dashboard.css";
 
 export default function Dashboard() {
-  const [stats] = useState([
-    {
-      id: 1,
-      label: "Total Inquiries",
-      value: "24",
-      icon: "inquiries",
-      color: "#3B82F6",
-      percentage: "+12%",
-    },
-    {
-      id: 2,
-      label: "Available Rooms",
-      value: "18",
-      icon: "rooms",
-      color: "#F59E0B",
-      percentage: "+75%",
-    },
-    {
-      id: 3,
-      label: "Registered Users",
-      value: "156",
-      icon: "tenants",
-      color: "#10B981",
-      percentage: "+8%",
-    },
-    {
-      id: 4,
-      label: "Active Bookings",
-      value: "42",
-      icon: "reservations",
-      color: "#A855F7",
-      percentage: "+15%",
-    },
-  ]);
-
-  const [branchData] = useState([
-    { month: "01", gilPuyat: 8, guadalupe: 7 },
-    { month: "02", gilPuyat: 12, guadalupe: 8 },
-    { month: "03", gilPuyat: 6, guadalupe: 6 },
-    { month: "04", gilPuyat: 15, guadalupe: 10 },
-    { month: "05", gilPuyat: 9, guadalupe: 9 },
-  ]);
-
-  const [reservationData] = useState([
-    { month: "01", value: 14 },
-    { month: "02", value: 20 },
-    { month: "03", value: 12 },
-    { month: "04", value: 26 },
-    { month: "05", value: 18 },
-  ]);
-
-  const [recentInquiries] = useState([
-    {
-      id: 1,
-      name: "John Doe",
-      email: "john@example.com",
-      branch: "Gil Puyat",
-      time: "5 min ago",
-      status: "new",
-    },
-    {
-      id: 2,
-      name: "Jane Smith",
-      email: "jane@example.com",
-      branch: "Makati",
-      time: "15 min ago",
-      status: "new",
-    },
-    {
-      id: 3,
-      name: "Mike Johnson",
-      email: "mike@example.com",
-      branch: "Gil Puyat",
-      time: "1 hour ago",
-      status: "responded",
-    },
-    {
-      id: 4,
-      name: "Sarah Lee",
-      email: "sarah@example.com",
-      branch: "Makati",
-      time: "2 hours ago",
-      status: "new",
-    },
-  ]);
-
-  const [reservationStatus] = useState({
-    approved: 8,
-    pending: 12,
-    rejected: 3,
+  const [stats, setStats] = useState([]);
+  const [branchData, setBranchData] = useState([]);
+  const [reservationData, setReservationData] = useState([]);
+  const [recentInquiries, setRecentInquiries] = useState([]);
+  const [reservationStatus, setReservationStatus] = useState({
+    approved: 0,
+    pending: 0,
+    rejected: 0,
   });
+  const [recentReservations, setRecentReservations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const [recentReservations] = useState([
-    {
-      id: 1,
-      roomType: "Standard Room",
-      guestName: "Ana Brown",
-      branch: "Gil Puyat",
-      date: "2026-02-01",
-      status: "confirmed",
-    },
-    {
-      id: 2,
-      roomType: "Deluxe Room",
-      guestName: "Emma Davis",
-      branch: "Makati",
-      date: "2026-02-05",
-      status: "pending",
-    },
-    {
-      id: 3,
-      roomType: "Standard Room",
-      guestName: "Chris Wilson",
-      branch: "Makati",
-      date: "2026-02-10",
-      status: "confirmed",
-    },
-  ]);
+  const formatRoomType = (type) => {
+    if (!type) return "Unknown";
+    if (type === "double-sharing") return "Double Sharing";
+    if (type === "quadruple-sharing") return "Quadruple Sharing";
+    if (type === "private") return "Private";
+    return type;
+  };
+
+  const formatBranch = (branch) => {
+    if (!branch) return "Unknown";
+    if (branch === "gil-puyat") return "Gil Puyat";
+    if (branch === "guadalupe") return "Guadalupe";
+    return branch;
+  };
+
+  const formatDate = (dateValue) => {
+    if (!dateValue) return "-";
+    const date = new Date(dateValue);
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  };
+
+  const formatRelativeTime = (dateValue) => {
+    if (!dateValue) return "-";
+    const date = new Date(dateValue);
+    const diffMs = Date.now() - date.getTime();
+    const minutes = Math.floor(diffMs / (1000 * 60));
+    if (minutes < 60) return `${minutes} min ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+    const days = Math.floor(hours / 24);
+    return `${days} day${days === 1 ? "" : "s"} ago`;
+  };
+
+  const getMonthSeries = (monthsBack = 5) => {
+    const now = new Date();
+    const series = [];
+    for (let i = monthsBack - 1; i >= 0; i -= 1) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      series.push({
+        key: `${date.getFullYear()}-${date.getMonth()}`,
+        month: String(date.getMonth() + 1).padStart(2, "0"),
+      });
+    }
+    return series;
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchDashboardData = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const results = await Promise.allSettled([
+          roomApi.getBranchOccupancy(),
+          inquiryApi.getStats(),
+          userApi.getStats(),
+          reservationApi.getAll(),
+          inquiryApi.getAll({ limit: 6, sort: "createdAt", order: "desc" }),
+        ]);
+
+        const [
+          occupancyResult,
+          inquiryStatsResult,
+          userStatsResult,
+          reservationsResult,
+          inquiriesResult,
+        ] = results;
+
+        const getValue = (result, fallback) =>
+          result.status === "fulfilled" ? result.value : fallback;
+
+        const occupancyResponse = getValue(occupancyResult, null);
+        const inquiryStats = getValue(inquiryStatsResult, null);
+        const userStats = getValue(userStatsResult, null);
+        const reservations = getValue(reservationsResult, []);
+        const inquiries = getValue(inquiriesResult, []);
+        const inquiryItems = Array.isArray(inquiries)
+          ? inquiries
+          : inquiries?.inquiries || [];
+
+            const failedCount = results.filter(
+              (result) => result.status === "rejected",
+            ).length;
+
+        const occupancyStats =
+          occupancyResponse?.statistics || occupancyResponse;
+        const totalInquiries = inquiryStats?.total || 0;
+        const availableBeds =
+          (occupancyStats?.totalCapacity || 0) -
+          (occupancyStats?.totalOccupancy || 0);
+        const registeredUsers = userStats?.total || 0;
+        const activeBookings = (reservations || []).filter((reservation) =>
+          ["confirmed", "checked-in"].includes(reservation.status),
+        ).length;
+
+        const recentInquiriesData = (inquiryItems || [])
+          .slice(0, 4)
+          .map((item) => {
+            const status =
+              item.status === "resolved" || item.status === "closed"
+                ? "responded"
+                : "new";
+
+            return {
+              id: item._id,
+              name:
+                `${item.firstName || ""} ${item.lastName || ""}`.trim() ||
+                item.name ||
+                "Unknown",
+              email: item.email || "-",
+              branch: formatBranch(item.branch),
+              time: formatRelativeTime(item.createdAt),
+              status,
+            };
+          });
+
+        const sortedReservations = (reservations || [])
+          .slice()
+          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+        const recentReservationsData = sortedReservations
+          .slice(0, 4)
+          .map((item) => {
+            const guestName =
+              `${item.userId?.firstName || ""} ${
+                item.userId?.lastName || ""
+              }`.trim() ||
+              item.guestName ||
+              "Unknown";
+
+            return {
+              id: item._id,
+              roomType: formatRoomType(
+                item.roomId?.type || item.preferredRoomType,
+              ),
+              guestName,
+              branch: formatBranch(item.roomId?.branch || item.branch),
+              date: formatDate(item.checkInDate || item.createdAt),
+              status: item.status || "pending",
+            };
+          });
+
+        const approvedCount = (reservations || []).filter((reservation) =>
+          ["confirmed", "checked-in"].includes(reservation.status),
+        ).length;
+        const pendingCount = (reservations || []).filter(
+          (reservation) => reservation.status === "pending",
+        ).length;
+        const rejectedCount = (reservations || []).filter((reservation) =>
+          ["cancelled", "rejected"].includes(reservation.status),
+        ).length;
+
+        const monthSeries = getMonthSeries(5);
+        const monthlyData = monthSeries.map((entry) => ({
+          key: entry.key,
+          month: entry.month,
+          gilPuyat: 0,
+          guadalupe: 0,
+          total: 0,
+        }));
+
+        const monthIndex = monthlyData.reduce((acc, item, index) => {
+          acc[item.key] = index;
+          return acc;
+        }, {});
+
+        (reservations || []).forEach((reservation) => {
+          const dateValue = reservation.createdAt || reservation.checkInDate;
+          if (!dateValue) return;
+          const date = new Date(dateValue);
+          const key = `${date.getFullYear()}-${date.getMonth()}`;
+          const index = monthIndex[key];
+          if (index === undefined) return;
+
+          const branch = reservation.roomId?.branch || reservation.branch;
+          if (branch === "gil-puyat") monthlyData[index].gilPuyat += 1;
+          if (branch === "guadalupe") monthlyData[index].guadalupe += 1;
+          monthlyData[index].total += 1;
+        });
+
+        const reservationSeries = monthlyData.map((item) => ({
+          month: item.month,
+          value: item.total,
+        }));
+
+        if (isMounted) {
+          setStats([
+            {
+              id: 1,
+              label: "Total Inquiries",
+              value: String(totalInquiries),
+              icon: "inquiries",
+              color: "#3B82F6",
+              percentage: inquiryStats?.recentCount
+                ? `${inquiryStats.recentCount} last 7d`
+                : "-",
+            },
+            {
+              id: 2,
+              label: "Available Beds",
+              value: String(Math.max(availableBeds, 0)),
+              icon: "rooms",
+              color: "#F59E0B",
+              percentage: occupancyStats?.overallOccupancyRate || "-",
+            },
+            {
+              id: 3,
+              label: "Registered Users",
+              value: String(registeredUsers),
+              icon: "tenants",
+              color: "#10B981",
+              percentage: userStats?.activeCount
+                ? `${userStats.activeCount} active`
+                : "-",
+            },
+            {
+              id: 4,
+              label: "Active Bookings",
+              value: String(activeBookings),
+              icon: "reservations",
+              color: "#A855F7",
+              percentage: approvedCount ? `${approvedCount} confirmed` : "-",
+            },
+          ]);
+          setRecentInquiries(recentInquiriesData);
+          setRecentReservations(recentReservationsData);
+          setReservationStatus({
+            approved: approvedCount,
+            pending: pendingCount,
+            rejected: rejectedCount,
+          });
+          setBranchData(
+            monthlyData.map(({ month, gilPuyat, guadalupe }) => ({
+              month,
+              gilPuyat,
+              guadalupe,
+            })),
+          );
+          setReservationData(reservationSeries);
+
+              if (failedCount > 0) {
+            setError(
+              "Some dashboard data failed to load. Showing partial data.",
+            );
+          }
+        }
+      } catch (fetchError) {
+        console.error("Failed to load dashboard data:", fetchError);
+        if (isMounted) {
+          setError("Failed to load dashboard data. Please try again.");
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchDashboardData();
+
+    const refreshInterval = setInterval(fetchDashboardData, 60000);
+    return () => {
+      isMounted = false;
+      clearInterval(refreshInterval);
+    };
+  }, []);
 
   const renderStatIcon = (iconType) => {
     switch (iconType) {
@@ -138,9 +311,9 @@ export default function Dashboard() {
             <path
               d="M22 17C22 17.5304 21.7893 18.0391 21.4142 18.4142C21.0391 18.7893 20.5304 19 20 19H6.828C6.29761 19.0001 5.78899 19.2109 5.414 19.586L3.212 21.788C3.1127 21.8873 2.9862 21.9549 2.84849 21.9823C2.71077 22.0097 2.56803 21.9956 2.43831 21.9419C2.30858 21.8881 2.1977 21.7971 2.11969 21.6804C2.04167 21.5637 2.00002 21.4264 2 21.286V5C2 4.46957 2.21071 3.96086 2.58579 3.58579C2.96086 3.21071 3.46957 3 4 3H20C20.5304 3 21.0391 3.21071 21.4142 3.58579C21.7893 3.96086 22 4.46957 22 5V17Z"
               stroke="#155DFC"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
           </svg>
         );
@@ -156,30 +329,30 @@ export default function Dashboard() {
             <path
               d="M8 2V6"
               stroke="#9810FA"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
             <path
               d="M16 2V6"
               stroke="#9810FA"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
             <path
               d="M19 4H5C3.89543 4 3 4.89543 3 6V20C3 21.1046 3.89543 22 5 22H19C20.1046 22 21 21.1046 21 20V6C21 4.89543 20.1046 4 19 4Z"
               stroke="#9810FA"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
             <path
               d="M3 10H21"
               stroke="#9810FA"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
           </svg>
         );
@@ -195,16 +368,16 @@ export default function Dashboard() {
             <path
               d="M15 21V13C15 12.7348 14.8946 12.4804 14.7071 12.2929C14.5196 12.1054 14.2652 12 14 12H10C9.73478 12 9.48043 12.1054 9.29289 12.2929C9.10536 12.4804 9 12.7348 9 13V21"
               stroke="#F54900"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
             <path
               d="M3 9.99999C2.99993 9.70906 3.06333 9.42161 3.18579 9.15771C3.30824 8.8938 3.4868 8.65979 3.709 8.47199L10.709 2.47199C11.07 2.1669 11.5274 1.99951 12 1.99951C12.4726 1.99951 12.93 2.1669 13.291 2.47199L20.291 8.47199C20.5132 8.65979 20.6918 8.8938 20.8142 9.15771C20.9367 9.42161 21.0001 9.70906 21 9.99999V19C21 19.5304 20.7893 20.0391 20.4142 20.4142C20.0391 20.7893 19.5304 21 19 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V9.99999Z"
               stroke="#F54900"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
           </svg>
         );
@@ -220,30 +393,30 @@ export default function Dashboard() {
             <path
               d="M16 21V19C16 17.9391 15.5786 16.9217 14.8284 16.1716C14.0783 15.4214 13.0609 15 12 15H6C4.93913 15 3.92172 15.4214 3.17157 16.1716C2.42143 16.9217 2 17.9391 2 19V21"
               stroke="#00A63E"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
             <path
               d="M16 3.12805C16.8578 3.35042 17.6174 3.85132 18.1597 4.55211C18.702 5.25291 18.9962 6.11394 18.9962 7.00005C18.9962 7.88616 18.702 8.74719 18.1597 9.44799C17.6174 10.1488 16.8578 10.6497 16 10.8721"
               stroke="#00A63E"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
             <path
               d="M22 21V19C21.9993 18.1137 21.7044 17.2528 21.1614 16.5523C20.6184 15.8519 19.8581 15.3516 19 15.13"
               stroke="#00A63E"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
             <path
               d="M9 11C11.2091 11 13 9.20914 13 7C13 4.79086 11.2091 3 9 3C6.79086 3 5 4.79086 5 7C5 9.20914 6.79086 11 9 11Z"
               stroke="#00A63E"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
           </svg>
         );
@@ -251,6 +424,14 @@ export default function Dashboard() {
         return null;
     }
   };
+
+  const reservationTotal = useMemo(
+    () =>
+      reservationStatus.approved +
+      reservationStatus.pending +
+      reservationStatus.rejected,
+    [reservationStatus],
+  );
 
   return (
     <div className="admin-dashboard">
@@ -273,6 +454,12 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {error && <div className="admin-dashboard-error">{error}</div>}
+
+        {loading && (
+          <div className="admin-dashboard-loading">Loading dashboard...</div>
+        )}
+
         {/* Stats Cards */}
         <div className="admin-dashboard-stats">
           {stats.map((stat) => (
@@ -284,7 +471,13 @@ export default function Dashboard() {
                 >
                   {renderStatIcon(stat.icon)}
                 </div>
-                <p className="admin-dashboard-stat-percentage">
+                <p
+                  className={
+                    stat.percentage === "-"
+                      ? "admin-dashboard-stat-percentage muted"
+                      : "admin-dashboard-stat-percentage"
+                  }
+                >
                   {stat.percentage}
                 </p>
               </div>
@@ -300,11 +493,19 @@ export default function Dashboard() {
         <div className="admin-dashboard-charts">
           {/* Branch Distribution Chart */}
           <div className="admin-dashboard-chart-card">
-            <h3 className="admin-dashboard-chart-title">Branch Distribution</h3>
+            <h3 className="admin-dashboard-chart-title">
+              Reservation Distribution
+            </h3>
             <div className="admin-dashboard-chart">
               <div className="admin-dashboard-chart-bars">
                 {branchData.map((data, index) => {
-                  const maxValue = 16;
+                  const maxValue = branchData.length
+                    ? Math.max(
+                        ...branchData.map((item) =>
+                          Math.max(item.gilPuyat, item.guadalupe, 1),
+                        ),
+                      )
+                    : 1;
                   const gilPuyatHeight = (data.gilPuyat / maxValue) * 100;
                   const guadalupeHeight = (data.guadalupe / maxValue) * 100;
 
@@ -361,7 +562,11 @@ export default function Dashboard() {
             <div className="admin-dashboard-chart">
               <div className="admin-dashboard-chart-bars">
                 {reservationData.map((data, index) => {
-                  const maxValue = 28;
+                  const maxValue = reservationData.length
+                    ? Math.max(
+                        ...reservationData.map((item) => item.value || 1),
+                      )
+                    : 1;
                   const height = (data.value / maxValue) * 100;
 
                   return (
@@ -404,9 +609,13 @@ export default function Dashboard() {
               </a>
             </div>
             <div className="admin-dashboard-inquiries-list">
-              {recentInquiries.map((inquiry) => (
-                <InquiryItem key={inquiry.id} inquiry={inquiry} />
-              ))}
+              {recentInquiries.length > 0 ? (
+                recentInquiries.map((inquiry) => (
+                  <InquiryItem key={inquiry.id} inquiry={inquiry} />
+                ))
+              ) : (
+                <p className="admin-dashboard-empty">No recent inquiries.</p>
+              )}
             </div>
           </div>
 
@@ -427,7 +636,11 @@ export default function Dashboard() {
                   fill="none"
                   stroke="#10B981"
                   strokeWidth="40"
-                  strokeDasharray={`${(reservationStatus.approved / 23) * 439.8} 439.8`}
+                  strokeDasharray={`${
+                    reservationTotal
+                      ? (reservationStatus.approved / reservationTotal) * 439.8
+                      : 0
+                  } 439.8`}
                   transform="rotate(-90 100 100)"
                 />
                 <circle
@@ -437,8 +650,16 @@ export default function Dashboard() {
                   fill="none"
                   stroke="#F59E0B"
                   strokeWidth="40"
-                  strokeDasharray={`${(reservationStatus.pending / 23) * 439.8} 439.8`}
-                  strokeDashoffset={`-${(reservationStatus.approved / 23) * 439.8}`}
+                  strokeDasharray={`${
+                    reservationTotal
+                      ? (reservationStatus.pending / reservationTotal) * 439.8
+                      : 0
+                  } 439.8`}
+                  strokeDashoffset={`-${
+                    reservationTotal
+                      ? (reservationStatus.approved / reservationTotal) * 439.8
+                      : 0
+                  }`}
                   transform="rotate(-90 100 100)"
                 />
                 <circle
@@ -448,8 +669,19 @@ export default function Dashboard() {
                   fill="none"
                   stroke="#EF4444"
                   strokeWidth="40"
-                  strokeDasharray={`${(reservationStatus.rejected / 23) * 439.8} 439.8`}
-                  strokeDashoffset={`-${((reservationStatus.approved + reservationStatus.pending) / 23) * 439.8}`}
+                  strokeDasharray={`${
+                    reservationTotal
+                      ? (reservationStatus.rejected / reservationTotal) * 439.8
+                      : 0
+                  } 439.8`}
+                  strokeDashoffset={`-${
+                    reservationTotal
+                      ? ((reservationStatus.approved +
+                          reservationStatus.pending) /
+                          reservationTotal) *
+                        439.8
+                      : 0
+                  }`}
                   transform="rotate(-90 100 100)"
                 />
               </svg>
@@ -497,9 +729,16 @@ export default function Dashboard() {
             </a>
           </div>
           <div className="admin-dashboard-reservations-list">
-            {recentReservations.map((reservation) => (
-              <ReservationItem key={reservation.id} reservation={reservation} />
-            ))}
+            {recentReservations.length > 0 ? (
+              recentReservations.map((reservation) => (
+                <ReservationItem
+                  key={reservation.id}
+                  reservation={reservation}
+                />
+              ))
+            ) : (
+              <p className="admin-dashboard-empty">No recent reservations.</p>
+            )}
           </div>
         </div>
       </main>

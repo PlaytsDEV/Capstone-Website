@@ -40,6 +40,26 @@
   font-weight: 500;
 }
 
+.admin-dashboard-error {
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+.admin-dashboard-loading {
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  color: #6b7280;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
 /* Stats Cards */
 .admin-dashboard-stats {
   display: grid;
@@ -97,8 +117,17 @@
   gap: 4px;
 }
 
+.admin-dashboard-stat-percentage.muted {
+  color: #9ca3af;
+}
+
+.admin-dashboard-stat-percentage.muted::before {
+  content: "";
+  display: none;
+}
+
 .admin-dashboard-stat-percentage::before {
-  content: '↗';
+  content: "↗";
   font-size: 14px;
 }
 
@@ -199,11 +228,11 @@
 }
 
 .admin-dashboard-chart-bar.blue {
-  background: #3B82F6;
+  background: #3b82f6;
 }
 
 .admin-dashboard-chart-bar.orange {
-  background: #F59E0B;
+  background: #f59e0b;
 }
 
 .admin-dashboard-chart-bar:hover {
@@ -251,11 +280,11 @@
 }
 
 .admin-dashboard-chart-legend-color.blue {
-  background: #3B82F6;
+  background: #3b82f6;
 }
 
 .admin-dashboard-chart-legend-color.orange {
-  background: #F59E0B;
+  background: #f59e0b;
 }
 
 /* Bottom Section - Inquiries and Reservation Status */
@@ -371,6 +400,13 @@
   color: #10b981;
 }
 
+.admin-dashboard-empty {
+  color: #9ca3af;
+  font-size: 13px;
+  padding: 12px 0;
+  margin: 0;
+}
+
 /* Reservation Status */
 .admin-dashboard-reservation-status-section {
   background: white;
@@ -416,15 +452,15 @@
 }
 
 .admin-dashboard-reservation-legend-dot.green {
-  background: #10B981;
+  background: #10b981;
 }
 
 .admin-dashboard-reservation-legend-dot.orange {
-  background: #F59E0B;
+  background: #f59e0b;
 }
 
 .admin-dashboard-reservation-legend-dot.red {
-  background: #EF4444;
+  background: #ef4444;
 }
 
 .admin-dashboard-reservation-legend-label {
@@ -540,6 +576,17 @@
 .admin-reservation-status.pending {
   background: #fef3c7;
   color: #f59e0b;
+}
+
+.admin-reservation-status.checked-in {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+.admin-reservation-status.cancelled,
+.admin-reservation-status.rejected {
+  background: #fee2e2;
+  color: #ef4444;
 }
 
 /* Content Section */
