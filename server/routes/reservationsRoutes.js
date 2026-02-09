@@ -21,8 +21,10 @@ import { verifyToken, verifyAdmin, verifyUser } from "../middleware/auth.js";
 import { filterByBranch } from "../middleware/branchAccess.js";
 import {
   getReservations,
+  getReservationById,
   createReservation,
   updateReservation,
+  updateReservationByUser,
   deleteReservation,
 } from "../controllers/reservationsController.js";
 
@@ -41,6 +43,17 @@ const router = express.Router();
  * @returns {Array} List of reservations with populated user and room data
  */
 router.get("/", verifyToken, getReservations);
+
+/**
+ * GET /api/reservations/:reservationId
+ *
+ * Retrieve a single reservation by ID.
+ *
+ * Access: Authenticated users (admins can view all; tenants only their own)
+ *
+ * @returns {Object} Reservation with populated user and room data
+ */
+router.get("/:reservationId", verifyToken, getReservationById);
 
 /**
  * POST /api/reservations
@@ -66,6 +79,24 @@ router.post("/", verifyToken, verifyUser, createReservation);
  * @returns {Object} Updated reservation with success message
  */
 router.put("/:reservationId", verifyToken, verifyAdmin, filterByBranch, updateReservation);
+
+/**
+ * PUT /api/reservations/:reservationId/user
+ *
+ * Update an existing reservation (tenant only, own reservation)
+ *
+ * Access: Authenticated users (tenant)
+ *
+ * @param {string} reservationId - MongoDB ObjectId of the reservation
+ * @body {Object} Updated reservation data
+ * @returns {Object} Updated reservation with success message
+ */
+router.put(
+  "/:reservationId/user",
+  verifyToken,
+  verifyUser,
+  updateReservationByUser,
+);
 
 /**
  * DELETE /api/reservations/:reservationId

@@ -565,8 +565,9 @@ export const setRole = async (req, res) => {
 
     if (!auth) {
       return res.status(503).json({
-        error: "Authentication service unavailable. Firebase not initialized.",
-        code: "FIREBASE_NOT_INITIALIZED",
+        error:
+          "Authentication is temporarily unavailable. Firebase Admin is not initialized.",
+        code: "FIREBASE_ADMIN_NOT_INITIALIZED",
       });
     }
 

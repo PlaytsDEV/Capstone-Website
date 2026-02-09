@@ -224,6 +224,22 @@ function SignIn() {
         console.log("✅ Backend login successful");
         console.log("👤 User branch:", loginResponse.user.branch);
 
+        // STEP 4: Check if user needs to select branch
+        // This happens when user registered with Google but hasn't selected a branch yet
+        if (!loginResponse.user.branch || loginResponse.user.branch === "") {
+          console.log(
+            "📍 Branch not selected, redirecting to branch selection...",
+          );
+
+          // Redirect to branch selection page (useAuth handles session)
+          setTimeout(() => {
+            navigate("/tenant/check-availability", {
+              state: { notice: "Please select your branch to continue" },
+            });
+          }, 500);
+          setGlobalLoading(false);
+          return;
+        }
         // STEP 5: Show success message
         showNotification(
           `Welcome, ${loginResponse.user.firstName}!`,

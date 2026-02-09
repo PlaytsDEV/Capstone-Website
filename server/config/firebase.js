@@ -60,6 +60,19 @@ const serviceAccount = {
   universe_domain: "googleapis.com",
 };
 
+const requiredEnvVars = [
+  "FIREBASE_PROJECT_ID",
+  "FIREBASE_PRIVATE_KEY_ID",
+  "FIREBASE_PRIVATE_KEY",
+  "FIREBASE_CLIENT_EMAIL",
+  "FIREBASE_CLIENT_ID",
+  "FIREBASE_CLIENT_CERT_URL",
+];
+
+const missingEnvVars = requiredEnvVars.filter((name) => !process.env[name]);
+
+const canInitialize = missingEnvVars.length === 0;
+
 /**
  * Initialize Firebase Admin SDK
  *
@@ -70,29 +83,16 @@ const serviceAccount = {
  * errors when nodemon restarts the server.
  */
 try {
-  // Only initialize if not already initialized
-  if (!admin.apps.length) {
-    const missingFields = [
-      "FIREBASE_PROJECT_ID",
-      "FIREBASE_PRIVATE_KEY_ID",
-      "FIREBASE_PRIVATE_KEY",
-      "FIREBASE_CLIENT_EMAIL",
-      "FIREBASE_CLIENT_ID",
-      "FIREBASE_CLIENT_CERT_URL",
-    ].filter((key) => !process.env[key]);
-
-    if (missingFields.length > 0) {
-      console.error(
-        "❌ Firebase Admin SDK initialization failed: Missing environment variables:",
-        missingFields.join(", "),
-      );
-      console.error("⚠️ Authentication features will not work!");
-    } else {
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-      });
-      console.log("✅ Firebase Admin SDK initialized successfully");
-    }
+  if (!canInitialize) {
+    console.error(
+      "❌ Firebase Admin SDK initialization failed: Missing required env vars",
+    );
+    console.error("⚠️ Missing:", missingEnvVars.join(", "));
+  } else if (!admin.apps.length) {
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+    console.log("✅ Firebase Admin SDK initialized successfully");
   } else {
     console.log("ℹ️ Firebase Admin SDK already initialized");
   }

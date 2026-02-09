@@ -66,6 +66,59 @@ export const getReservations = async (req, res) => {
   }
 };
 
+export const getReservationById = async (req, res) => {
+  try {
+    const { reservationId } = req.params;
+    const user = req.user;
+
+    if (!reservationId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        error: "Invalid reservation ID format",
+        code: "INVALID_RESERVATION_ID",
+      });
+    }
+
+    const dbUser = await User.findOne({ firebaseUid: user.uid });
+    if (!dbUser) {
+      return res.status(404).json({
+        error: "User not found in database",
+        code: "USER_NOT_FOUND",
+      });
+    }
+
+    const reservation = await Reservation.findById(reservationId)
+      .populate("userId", "firstName lastName email")
+      .populate("roomId", "name branch type price floor");
+
+    if (!reservation) {
+      return res.status(404).json({
+        error: "Reservation not found",
+        code: "RESERVATION_NOT_FOUND",
+      });
+    }
+
+    if (
+      dbUser.role !== "admin" &&
+      dbUser.role !== "superAdmin" &&
+      String(reservation.userId?._id) !== String(dbUser._id)
+    ) {
+      return res.status(403).json({
+        error: "Access denied. You can only view your own reservations.",
+        code: "RESERVATION_ACCESS_DENIED",
+      });
+    }
+
+    res.json(reservation);
+  } catch (error) {
+    console.error("❌ Fetch reservation error:", error);
+    res.status(500).json({
+      error: "Failed to fetch reservation",
+      details: error.message,
+      code: "FETCH_RESERVATION_ERROR",
+    });
+  }
+};
+
 export const createReservation = async (req, res) => {
   try {
     // Find user in database
@@ -366,6 +419,169 @@ export const updateReservation = async (req, res) => {
       });
     }
 
+    res.status(500).json({
+      error: "Failed to update reservation",
+      details: error.message,
+      code: "UPDATE_RESERVATION_ERROR",
+    });
+  }
+};
+
+export const updateReservationByUser = async (req, res) => {
+  try {
+    const { reservationId } = req.params;
+    const user = req.user;
+
+    if (!reservationId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        error: "Invalid reservation ID format",
+        code: "INVALID_RESERVATION_ID",
+      });
+    }
+
+    const dbUser = await User.findOne({ firebaseUid: user.uid });
+    if (!dbUser) {
+      return res.status(404).json({
+        error: "User not found in database",
+        code: "USER_NOT_FOUND",
+      });
+    }
+
+    const reservation = await Reservation.findById(reservationId);
+    if (!reservation) {
+      return res.status(404).json({
+        error: "Reservation not found",
+        code: "RESERVATION_NOT_FOUND",
+      });
+    }
+
+    if (String(reservation.userId) !== String(dbUser._id)) {
+      return res.status(403).json({
+        error: "Access denied. You can only update your own reservation.",
+        code: "RESERVATION_ACCESS_DENIED",
+      });
+    }
+
+    if (req.body?.paymentStatus && req.body.paymentStatus !== "pending") {
+      return res.status(403).json({
+        error: "Access denied. Payment status can only be set by admin.",
+        code: "PAYMENT_STATUS_ADMIN_ONLY",
+      });
+    }
+
+    const updates = {};
+    const setField = (key, value) => {
+      if (value !== undefined) {
+        updates[key] = value;
+      }
+    };
+
+    setField("selectedBed", req.body.selectedBed);
+    setField("targetMoveInDate", req.body.targetMoveInDate);
+    setField("leaseDuration", req.body.leaseDuration);
+    setField("billingEmail", req.body.billingEmail);
+    setField("viewingType", req.body.viewingType);
+    setField("isOutOfTown", req.body.isOutOfTown);
+    setField("currentLocation", req.body.currentLocation);
+    setField("visitApproved", req.body.visitApproved);
+    setField("selfiePhotoUrl", req.body.selfiePhotoUrl);
+    setField("firstName", req.body.firstName);
+    setField("lastName", req.body.lastName);
+    setField("middleName", req.body.middleName);
+    setField("nickname", req.body.nickname);
+    setField("mobileNumber", req.body.mobileNumber);
+    setField("birthday", req.body.birthday);
+    setField("maritalStatus", req.body.maritalStatus);
+    setField("nationality", req.body.nationality);
+    setField("educationLevel", req.body.educationLevel);
+    setField("validIDFrontUrl", req.body.validIDFrontUrl);
+    setField("validIDBackUrl", req.body.validIDBackUrl);
+    setField("validIDType", req.body.validIDType);
+    setField("nbiClearanceUrl", req.body.nbiClearanceUrl);
+    setField("nbiReason", req.body.nbiReason);
+    setField("companyIDUrl", req.body.companyIDUrl);
+    setField("companyIDReason", req.body.companyIDReason);
+    setField("healthConcerns", req.body.healthConcerns);
+    setField("preferredRoomType", req.body.roomType);
+    setField("preferredRoomNumber", req.body.preferredRoomNumber);
+    setField("referralSource", req.body.referralSource);
+    setField("referrerName", req.body.referrerName);
+    setField("estimatedMoveInTime", req.body.estimatedMoveInTime);
+    setField("workSchedule", req.body.workSchedule);
+    setField("workScheduleOther", req.body.workScheduleOther);
+    setField("agreedToPrivacy", req.body.agreedToPrivacy);
+    setField("agreedToCertification", req.body.agreedToCertification);
+    setField("proofOfPaymentUrl", req.body.proofOfPaymentUrl);
+    setField("checkInDate", req.body.checkInDate);
+    setField("checkOutDate", req.body.checkOutDate);
+    setField("totalPrice", req.body.totalPrice);
+    setField("applianceFees", req.body.applianceFees);
+    setField("notes", req.body.notes);
+
+    if (req.body.addressUnitHouseNo !== undefined) {
+      updates["address.unitHouseNo"] = req.body.addressUnitHouseNo;
+    }
+    if (req.body.addressStreet !== undefined) {
+      updates["address.street"] = req.body.addressStreet;
+    }
+    if (req.body.addressBarangay !== undefined) {
+      updates["address.barangay"] = req.body.addressBarangay;
+    }
+    if (req.body.addressCity !== undefined) {
+      updates["address.city"] = req.body.addressCity;
+    }
+    if (req.body.addressProvince !== undefined) {
+      updates["address.province"] = req.body.addressProvince;
+    }
+
+    if (req.body.emergencyContactName !== undefined) {
+      updates["emergencyContact.name"] = req.body.emergencyContactName;
+    }
+    if (req.body.emergencyRelationship !== undefined) {
+      updates["emergencyContact.relationship"] =
+        req.body.emergencyRelationship;
+    }
+    if (req.body.emergencyContactNumber !== undefined) {
+      updates["emergencyContact.contactNumber"] =
+        req.body.emergencyContactNumber;
+    }
+
+    if (req.body.employerSchool !== undefined) {
+      updates["employment.employerSchool"] = req.body.employerSchool;
+    }
+    if (req.body.employerAddress !== undefined) {
+      updates["employment.employerAddress"] = req.body.employerAddress;
+    }
+    if (req.body.employerContact !== undefined) {
+      updates["employment.employerContact"] = req.body.employerContact;
+    }
+    if (req.body.startDate !== undefined) {
+      updates["employment.startDate"] = req.body.startDate;
+    }
+    if (req.body.occupation !== undefined) {
+      updates["employment.occupation"] = req.body.occupation;
+    }
+    if (req.body.previousEmployment !== undefined) {
+      updates["employment.previousEmployment"] = req.body.previousEmployment;
+    }
+
+    const updatedReservation = await Reservation.findByIdAndUpdate(
+      reservationId,
+      { $set: updates },
+      {
+        new: true,
+        runValidators: true,
+      },
+    )
+      .populate("userId", "firstName lastName email")
+      .populate("roomId", "name branch type price");
+
+    res.json({
+      message: "Reservation updated successfully",
+      reservation: updatedReservation,
+    });
+  } catch (error) {
+    console.error("❌ User reservation update error:", error);
     res.status(500).json({
       error: "Failed to update reservation",
       details: error.message,

@@ -306,6 +306,15 @@ export const reservationApi = {
     }),
 
   /**
+   * Update reservation (tenant only)
+   */
+  updateByUser: (reservationId, data) =>
+    authFetch(`/reservations/${reservationId}/user`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  /**
    * Cancel reservation
    */
   cancel: (reservationId) =>
