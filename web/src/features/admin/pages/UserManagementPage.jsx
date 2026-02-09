@@ -49,7 +49,7 @@ function UserManagementPage() {
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const ITEMS_PER_PAGE = 20;
+  const ITEMS_PER_PAGE = 10;
 
   useEffect(() => {
     fetchUsers();
