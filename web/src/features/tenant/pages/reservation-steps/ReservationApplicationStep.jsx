@@ -1,4 +1,65 @@
-import React from "react";
+import React, { useState } from "react";
+import { TimePicker } from "antd";
+import dayjs from "dayjs";
+import {
+  PoliciesTermsModal,
+  PrivacyConsentModal,
+} from "../../modals/PoliciesAndConsent";
+import {
+  validateFullName,
+  validatePhoneNumber,
+  validateBirthday,
+  validateAddress,
+  validateUnitHouseNo,
+  validateTargetMoveInDate,
+  validateEstimatedTime,
+  validateGeneralTextField,
+  validateNameField,
+  validateAddressField,
+} from "../../utils/reservationValidation";
+
+// Philippine locations data (simplified - can be expanded)
+const REGIONS = [
+  "Regionl Autonomous Region in Muslim Mindanao (ARMM)",
+  "Bicol Region",
+  "Calabarzon",
+  "Cavite",
+  "Laguna",
+  "Quezon",
+  "Rizal",
+  "NCR - National Capital Region",
+  "CAR - Cordillera Administrative Region",
+  "Region I - Ilocos",
+  "Region II - Cagayan Valley",
+  "Region III - Central Luzon",
+  "Region IV - Mimaropa",
+  "Region V - Bicol",
+  "Region VI - Western Visayas",
+  "Region VII - Central Visayas",
+  "Region VIII - Eastern Visayas",
+  "Region IX - Zamboanga Peninsula",
+  "Region X - Northern Mindanao",
+  "Region XI - Davao",
+  "Region XII - Soccsksargen",
+];
+
+const CITIES = [
+  "Manila",
+  "Quezon City",
+  "Caloocan",
+  "Las Piñas",
+  "Makati",
+  "Parañaque",
+  "Pasay",
+  "Pasig",
+  "Taguig",
+  "Valenzuela",
+  "Cebu",
+  "Davao",
+  "Cagayan de Oro",
+  "Bacolod",
+  "Iloilo City",
+];
 
 const ReservationApplicationStep = ({
   billingEmail,
@@ -91,6 +152,73 @@ const ReservationApplicationStep = ({
   onPrev,
   onNext,
 }) => {
+  // Modal states
+  const [showPoliciesModal, setShowPoliciesModal] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
+
+  // Input validation handlers
+  const handleNameInput = (value, setter) => {
+    // Remove numbers from input
+    const cleanedValue = value.replace(/\d+/g, "");
+    setter(cleanedValue);
+  };
+
+  const handlePhoneInput = (value, setter) => {
+    // Only allow +63 and digits
+    const cleaned = value.replace(/[^0-9+]/g, "");
+    // Prevent multiple + signs
+    const finalValue = cleaned.includes("+")
+      ? "+" + cleaned.replace(/\+/g, "")
+      : cleaned;
+    setter(finalValue);
+  };
+
+  const handleGeneralInput = (value, setter, maxLength = 100) => {
+    if (value.length <= maxLength) {
+      setter(value);
+    }
+  };
+
+  const accentColor = "#1f2937";
+  const cardBackground = "#f8fafc";
+  const cardBorder = "#e5e7eb";
+  const canProceed = agreedToPrivacy && agreedToCertification;
+
+  const disableMoveInTime = () => ({
+    disabledHours: () =>
+      Array.from({ length: 24 }, (_, hour) => hour).filter(
+        (hour) => hour < 8 || hour > 18,
+      ),
+    disabledMinutes: (hour) => {
+      if (hour === 18) {
+        return Array.from({ length: 60 }, (_, minute) => minute).filter(
+          (minute) => minute > 0,
+        );
+      }
+      return [];
+    },
+  });
+
+  const validateField = (fieldName, value, validator) => {
+    const result = validator(value);
+    setFieldErrors((prev) => ({
+      ...prev,
+      [fieldName]: result.error,
+    }));
+    return result.valid;
+  };
+
+  const handleTimeInput = (value) => {
+    validateField("estimatedMoveInTime", value, validateEstimatedTime);
+    setEstimatedMoveInTime(value);
+  };
+
+  const handleTargetDateInput = (value) => {
+    validateField("targetMoveInDate", value, validateTargetMoveInDate);
+    setTargetMoveInDate(value);
+  };
+
   return (
     <div className="reservation-card bg-white rounded-2xl shadow-xl border border-gray-200 p-8">
       <h2 className="stage-title text-2xl font-semibold text-slate-800">
@@ -102,12 +230,48 @@ const ReservationApplicationStep = ({
 
       <div className="info-box" style={{ marginBottom: "24px" }}>
         <div className="info-box-title">📋 Required Documents</div>
-        <div className="info-text">
-          Please upload clear images of:
-          <br />• ID photo (2x2 or selfie)
-          <br />• Valid ID (front & back)
-          <br />• NBI Clearance
-          <br />• Company ID (if employed)
+        <div className="info-text" style={{ marginBottom: "12px" }}>
+          Please upload clear, legible images of the following:
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: "12px",
+          }}
+        >
+          <div
+            style={{ fontSize: "12px", color: "#1e3a8a", lineHeight: "1.6" }}
+          >
+            <div style={{ fontWeight: "600", marginBottom: "4px" }}>
+              ✓ 2x2 ID Photo
+            </div>
+            Clear headshot or selfie
+          </div>
+          <div
+            style={{ fontSize: "12px", color: "#1e3a8a", lineHeight: "1.6" }}
+          >
+            <div style={{ fontWeight: "600", marginBottom: "4px" }}>
+              ✓ Valid ID (Front)
+            </div>
+            Government-issued ID
+          </div>
+          <div
+            style={{ fontSize: "12px", color: "#1e3a8a", lineHeight: "1.6" }}
+          >
+            <div style={{ fontWeight: "600", marginBottom: "4px" }}>
+              ✓ Valid ID (Back)
+            </div>
+            Back side of ID
+          </div>
+          <div
+            style={{ fontSize: "12px", color: "#1e3a8a", lineHeight: "1.6" }}
+          >
+            <div style={{ fontWeight: "600", marginBottom: "4px" }}>
+              ✓ NBI Clearance
+            </div>
+            Latest clearance
+          </div>
         </div>
       </div>
 
@@ -154,18 +318,50 @@ const ReservationApplicationStep = ({
             <input
               type="text"
               className="form-input"
+              placeholder="Last name (no numbers)"
+              maxLength="32"
               value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
+              onChange={(e) => handleNameInput(e.target.value, setLastName)}
+              onBlur={() =>
+                validateField("lastName", lastName, validateNameField)
+              }
+              style={{ border: "1.5px solid #999" }}
             />
+            {fieldErrors.lastName && (
+              <div
+                style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}
+              >
+                {fieldErrors.lastName}
+              </div>
+            )}
+            <div style={{ fontSize: "11px", color: "#666", marginTop: "4px" }}>
+              32 characters max
+            </div>
           </div>
           <div className="form-group">
             <label className="form-label">First Name *</label>
             <input
               type="text"
               className="form-input"
+              placeholder="First name (no numbers)"
+              maxLength="32"
               value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
+              onChange={(e) => handleNameInput(e.target.value, setFirstName)}
+              onBlur={() =>
+                validateField("firstName", firstName, validateNameField)
+              }
+              style={{ border: "1.5px solid #999" }}
             />
+            {fieldErrors.firstName && (
+              <div
+                style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}
+              >
+                {fieldErrors.firstName}
+              </div>
+            )}
+            <div style={{ fontSize: "11px", color: "#666", marginTop: "4px" }}>
+              32 characters max
+            </div>
           </div>
         </div>
 
@@ -175,31 +371,78 @@ const ReservationApplicationStep = ({
             <input
               type="text"
               className="form-input"
+              placeholder="Middle name (no numbers)"
+              maxLength="32"
               value={middleName}
-              onChange={(e) => setMiddleName(e.target.value)}
+              onChange={(e) => handleNameInput(e.target.value, setMiddleName)}
+              onBlur={() =>
+                validateField("middleName", middleName, validateNameField)
+              }
+              style={{ border: "1.5px solid #999" }}
             />
+            {fieldErrors.middleName && (
+              <div
+                style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}
+              >
+                {fieldErrors.middleName}
+              </div>
+            )}
+            <div style={{ fontSize: "11px", color: "#666", marginTop: "4px" }}>
+              32 characters max
+            </div>
           </div>
           <div className="form-group">
             <label className="form-label">Nickname *</label>
             <input
               type="text"
               className="form-input"
+              placeholder="Nickname (no numbers)"
+              maxLength="32"
               value={nickname}
-              onChange={(e) => setNickname(e.target.value)}
+              onChange={(e) => handleNameInput(e.target.value, setNickname)}
+              onBlur={() =>
+                validateField("nickname", nickname, validateNameField)
+              }
+              style={{ border: "1.5px solid #999" }}
             />
+            {fieldErrors.nickname && (
+              <div
+                style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}
+              >
+                {fieldErrors.nickname}
+              </div>
+            )}
+            <div style={{ fontSize: "11px", color: "#666", marginTop: "4px" }}>
+              32 characters max
+            </div>
           </div>
         </div>
 
         <div className="form-row">
           <div className="form-group">
-            <label className="form-label">Mobile Number *</label>
+            <label className="form-label">
+              Mobile Number *{" "}
+              <span style={{ fontSize: "11px", color: "#666" }}>(+63...)</span>
+            </label>
             <input
               type="tel"
               className="form-input"
+              placeholder="+63912345678"
               value={mobileNumber}
-              onChange={(e) => setMobileNumber(e.target.value)}
-              placeholder="+63 912 345 6789"
+              onChange={(e) =>
+                handlePhoneInput(e.target.value, setMobileNumber)
+              }
+              onBlur={() =>
+                validateField("mobileNumber", mobileNumber, validatePhoneNumber)
+              }
             />
+            {fieldErrors.mobileNumber && (
+              <div
+                style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}
+              >
+                {fieldErrors.mobileNumber}
+              </div>
+            )}
           </div>
           <div className="form-group">
             <label className="form-label">Birthday *</label>
@@ -207,8 +450,18 @@ const ReservationApplicationStep = ({
               type="date"
               className="form-input"
               value={birthday}
-              onChange={(e) => setBirthday(e.target.value)}
+              onChange={(e) => {
+                setBirthday(e.target.value);
+                validateField("birthday", e.target.value, validateBirthday);
+              }}
             />
+            {fieldErrors.birthday && (
+              <div
+                style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}
+              >
+                {fieldErrors.birthday}
+              </div>
+            )}
           </div>
         </div>
 
@@ -250,60 +503,164 @@ const ReservationApplicationStep = ({
           </select>
         </div>
 
-        <fieldset style={{ border: "none", padding: 0 }}>
+        <fieldset style={{ border: "none", padding: "0 0 20px 0" }}>
           <legend className="form-label">
             Permanent Address: Unit / House No. *
           </legend>
           <input
             type="text"
             className="form-input"
+            placeholder="e.g., 123-A"
+            maxLength="64"
             value={addressUnitHouseNo}
-            onChange={(e) => setAddressUnitHouseNo(e.target.value)}
+            onChange={(e) =>
+              handleGeneralInput(e.target.value, setAddressUnitHouseNo, 64)
+            }
+            onBlur={() =>
+              validateField(
+                "addressUnitHouseNo",
+                addressUnitHouseNo,
+                validateUnitHouseNo,
+              )
+            }
+            style={{ border: "1.5px solid #999" }}
           />
+          {fieldErrors.addressUnitHouseNo && (
+            <div
+              style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}
+            >
+              {fieldErrors.addressUnitHouseNo}
+            </div>
+          )}
+          <div style={{ fontSize: "11px", color: "#666", marginTop: "4px" }}>
+            64 characters max
+          </div>
         </fieldset>
 
-        <fieldset style={{ border: "none", padding: 0 }}>
+        <fieldset style={{ border: "none", padding: "0 0 20px 0" }}>
           <legend className="form-label">Permanent Address: Street *</legend>
           <input
             type="text"
             className="form-input"
+            placeholder="e.g., Rizal Street"
+            maxLength="64"
             value={addressStreet}
-            onChange={(e) => setAddressStreet(e.target.value)}
+            onChange={(e) =>
+              handleGeneralInput(e.target.value, setAddressStreet, 64)
+            }
+            onBlur={() =>
+              validateField("addressStreet", addressStreet, (v) =>
+                validateGeneralTextField(v, 64),
+              )
+            }
+            style={{ border: "1.5px solid #999" }}
           />
+          {fieldErrors.addressStreet && (
+            <div
+              style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}
+            >
+              {fieldErrors.addressStreet}
+            </div>
+          )}
+          <div style={{ fontSize: "11px", color: "#666", marginTop: "4px" }}>
+            64 characters max
+          </div>
         </fieldset>
 
-        <fieldset style={{ border: "none", padding: 0 }}>
+        <fieldset style={{ border: "none", padding: "0 0 20px 0" }}>
           <legend className="form-label">Permanent Address: Barangay *</legend>
           <input
             type="text"
             className="form-input"
+            placeholder="e.g., Barangay 1"
+            maxLength="32"
             value={addressBarangay}
-            onChange={(e) => setAddressBarangay(e.target.value)}
+            onChange={(e) =>
+              handleGeneralInput(e.target.value, setAddressBarangay, 32)
+            }
+            onBlur={() =>
+              validateField(
+                "addressBarangay",
+                addressBarangay,
+                validateAddressField,
+              )
+            }
+            style={{ border: "1.5px solid #999" }}
           />
+          {fieldErrors.addressBarangay && (
+            <div
+              style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}
+            >
+              {fieldErrors.addressBarangay}
+            </div>
+          )}
+          <div style={{ fontSize: "11px", color: "#666", marginTop: "4px" }}>
+            32 characters max
+          </div>
         </fieldset>
 
         <div className="form-row">
-          <fieldset style={{ border: "none", padding: 0 }}>
+          <fieldset style={{ border: "none", padding: "0" }}>
             <legend className="form-label">
               Permanent Address: City or Municipality *
             </legend>
             <input
               type="text"
               className="form-input"
+              placeholder="e.g., Manila"
+              maxLength="32"
               value={addressCity}
-              onChange={(e) => setAddressCity(e.target.value)}
+              onChange={(e) =>
+                handleGeneralInput(e.target.value, setAddressCity, 32)
+              }
+              onBlur={() =>
+                validateField("addressCity", addressCity, validateAddressField)
+              }
+              style={{ border: "1.5px solid #999" }}
             />
+            {fieldErrors.addressCity && (
+              <div
+                style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}
+              >
+                {fieldErrors.addressCity}
+              </div>
+            )}
+            <div style={{ fontSize: "11px", color: "#666", marginTop: "4px" }}>
+              32 characters max
+            </div>
           </fieldset>
-          <fieldset style={{ border: "none", padding: 0 }}>
+          <fieldset style={{ border: "none", padding: "0" }}>
             <legend className="form-label">
               Permanent Address: Region / Province *
             </legend>
             <input
               type="text"
               className="form-input"
+              placeholder="e.g., NCR"
+              maxLength="32"
               value={addressProvince}
-              onChange={(e) => setAddressProvince(e.target.value)}
+              onChange={(e) =>
+                handleGeneralInput(e.target.value, setAddressProvince, 32)
+              }
+              onBlur={() =>
+                validateField(
+                  "addressProvince",
+                  addressProvince,
+                  validateAddressField,
+                )
+              }
+              style={{ border: "1.5px solid #999" }}
             />
+            {fieldErrors.addressProvince && (
+              <div
+                style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}
+              >
+                {fieldErrors.addressProvince}
+              </div>
+            )}
+            <div style={{ fontSize: "11px", color: "#666", marginTop: "4px" }}>
+              32 characters max
+            </div>
           </fieldset>
         </div>
 
@@ -412,14 +769,33 @@ const ReservationApplicationStep = ({
             </select>
           </div>
           <div className="form-group">
-            <label className="form-label">Contact Number *</label>
+            <label className="form-label">
+              Contact Number *{" "}
+              <span style={{ fontSize: "11px", color: "#666" }}>(+63...)</span>
+            </label>
             <input
               type="tel"
               className="form-input"
+              placeholder="+63912345678"
               value={emergencyContactNumber}
-              onChange={(e) => setEmergencyContactNumber(e.target.value)}
-              placeholder="+63 912 345 6789"
+              onChange={(e) =>
+                handlePhoneInput(e.target.value, setEmergencyContactNumber)
+              }
+              onBlur={() =>
+                validateField(
+                  "emergencyContactNumber",
+                  emergencyContactNumber,
+                  validatePhoneNumber,
+                )
+              }
             />
+            {fieldErrors.emergencyContactNumber && (
+              <div
+                style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}
+              >
+                {fieldErrors.emergencyContactNumber}
+              </div>
+            )}
           </div>
         </div>
 
@@ -448,18 +824,31 @@ const ReservationApplicationStep = ({
           <input
             type="text"
             className="form-input"
+            placeholder="Company or School name"
             value={employerSchool}
-            onChange={(e) => setEmployerSchool(e.target.value)}
+            onChange={(e) =>
+              handleGeneralInput(e.target.value, setEmployerSchool, 100)
+            }
           />
+          <div style={{ fontSize: "11px", color: "#666", marginTop: "4px" }}>
+            100 characters max
+          </div>
         </div>
 
         <div className="form-group">
           <label className="form-label">Employer's Address *</label>
           <textarea
             className="form-textarea"
+            placeholder="Full address"
             value={employerAddress}
-            onChange={(e) => setEmployerAddress(e.target.value)}
+            onChange={(e) =>
+              handleGeneralInput(e.target.value, setEmployerAddress, 100)
+            }
+            style={{ resize: "vertical" }}
           />
+          <div style={{ fontSize: "11px", color: "#666", marginTop: "4px" }}>
+            100 characters max
+          </div>
         </div>
 
         <div className="form-group">
@@ -467,9 +856,15 @@ const ReservationApplicationStep = ({
           <input
             type="tel"
             className="form-input"
+            placeholder="+63 or land line"
             value={employerContact}
-            onChange={(e) => setEmployerContact(e.target.value)}
+            onChange={(e) =>
+              handleGeneralInput(e.target.value, setEmployerContact, 100)
+            }
           />
+          <div style={{ fontSize: "11px", color: "#666", marginTop: "4px" }}>
+            100 characters max
+          </div>
         </div>
 
         <div className="form-group">
@@ -483,16 +878,35 @@ const ReservationApplicationStep = ({
         </div>
 
         <div className="form-group">
-          <label className="form-label">
-            Occupation / Job Description (if currently looking for a job, please
-            indicate so) *
-          </label>
+          <label className="form-label">Occupation / Job Description *</label>
           <textarea
             className="form-textarea"
-            value={occupation}
-            onChange={(e) => setOccupation(e.target.value)}
             placeholder="e.g., Software Engineer, Nurse, Currently Job Hunting"
+            value={occupation}
+            onChange={(e) =>
+              handleGeneralInput(e.target.value, setOccupation, 100)
+            }
+            style={{ resize: "vertical" }}
           />
+          <div style={{ fontSize: "11px", color: "#666", marginTop: "4px" }}>
+            100 characters max
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Previous Employment</label>
+          <textarea
+            className="form-textarea"
+            placeholder="(Optional) Previous work experience"
+            value={previousEmployment}
+            onChange={(e) =>
+              handleGeneralInput(e.target.value, setPreviousEmployment, 100)
+            }
+            style={{ resize: "vertical" }}
+          />
+          <div style={{ fontSize: "11px", color: "#666", marginTop: "4px" }}>
+            100 characters max
+          </div>
         </div>
 
         <div className="form-group">
@@ -538,16 +952,6 @@ const ReservationApplicationStep = ({
 
       <div className="section-group">
         <h3 className="section-header">Dorm Related Questions</h3>
-
-        <div className="form-group">
-          <label className="form-label">Preferred Room Number</label>
-          <input
-            type="text"
-            className="form-input"
-            value={preferredRoomNumber}
-            onChange={(e) => setPreferredRoomNumber(e.target.value)}
-          />
-        </div>
 
         <div className="form-group">
           <label className="form-label">
@@ -651,26 +1055,49 @@ const ReservationApplicationStep = ({
 
         <div className="form-group">
           <label className="form-label">
-            Target Move In Date (If there are any changes, keep us posted) *
+            Target Move In Date (within 3 months) *
           </label>
           <input
             type="date"
             className="form-input"
             value={targetMoveInDate}
-            onChange={(e) => setTargetMoveInDate(e.target.value)}
+            onChange={handleTargetDateInput}
           />
+          {fieldErrors.targetMoveInDate && (
+            <div
+              style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}
+            >
+              {fieldErrors.targetMoveInDate}
+            </div>
+          )}
         </div>
 
         <div className="form-group">
           <label className="form-label">
-            Estimated Time of Move In (Preferably between 8am to 6pm) *
+            Estimated Time of Move In (8:00 AM to 6:00 PM) *
           </label>
-          <input
-            type="time"
+          <TimePicker
             className="form-input"
-            value={estimatedMoveInTime}
-            onChange={(e) => setEstimatedMoveInTime(e.target.value)}
+            value={
+              estimatedMoveInTime ? dayjs(estimatedMoveInTime, "HH:mm") : null
+            }
+            onChange={(time, timeString) => handleTimeInput(timeString)}
+            format="HH:mm"
+            placeholder="Select time"
+            disabledTime={disableMoveInTime}
+            style={{
+              width: "100%",
+              border: "1.5px solid #999",
+              borderRadius: "8px",
+            }}
           />
+          {fieldErrors.estimatedMoveInTime && (
+            <div
+              style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}
+            >
+              {fieldErrors.estimatedMoveInTime}
+            </div>
+          )}
         </div>
 
         <div className="form-group">
@@ -752,39 +1179,127 @@ const ReservationApplicationStep = ({
       </div>
 
       <div className="section-group">
-        <h3 className="section-header">Privacy Consent & Certification</h3>
+        <h3 className="section-header">Agreements & Consent</h3>
+        
+        <div
+          style={{
+            background: cardBackground,
+            border: `1px solid ${cardBorder}`,
+            borderRadius: "8px",
+            padding: "16px",
+            marginBottom: "12px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "14px",
+              fontWeight: "600",
+              color: accentColor,
+              marginBottom: "8px",
+            }}
+          >
+            Policies & Terms of Service
+          </div>
+          <div
+            style={{
+              fontSize: "13px",
+              color: "#6b7280",
+              marginBottom: "12px",
+            }}
+          >
+            Review dormitory policies, house rules, and lease terms.
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowPoliciesModal(true)}
+            style={{
+              padding: "8px 16px",
+              background: accentColor,
+              color: "white",
+              border: "none",
+              borderRadius: "6px",
+              fontSize: "13px",
+              fontWeight: "500",
+              cursor: "pointer",
+            }}
+          >
+            View Policies
+          </button>
+        </div>
 
-        <div className="checkbox-group" style={{ marginBottom: "24px" }}>
+        <div
+          className="checkbox-group"
+          style={{
+            background: cardBackground,
+            border: `1px solid ${cardBorder}`,
+            borderRadius: "8px",
+            padding: "14px",
+            display: "flex",
+            gap: "10px",
+            marginBottom: "12px",
+          }}
+        >
           <input
             type="checkbox"
             id="privacy-consent"
             checked={agreedToPrivacy}
             onChange={(e) => setAgreedToPrivacy(e.target.checked)}
+            style={{ marginTop: "2px", cursor: "pointer" }}
           />
-          <label htmlFor="privacy-consent" className="checkbox-label">
-            <strong>Privacy Consent:</strong> By submitting this form, I grant
-            Lilycrest / First JRAC Partnership Co. permission to collect and use
-            my data for the dormitory's purposes only. I understand that my
-            information will be kept confidential and not shared with others. *
+          <label
+            htmlFor="privacy-consent"
+            style={{ margin: 0, fontSize: "13px", color: "#374151", cursor: "pointer" }}
+          >
+            <strong>Privacy Policy & Data Protection Consent</strong> <span style={{ color: "#dc2626" }}>*</span>
+            <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>
+              I consent to the collection and use of my personal data for dormitory services.
+            </div>
           </label>
         </div>
 
-        <div className="checkbox-group">
+        <div
+          className="checkbox-group"
+          style={{
+            background: cardBackground,
+            border: `1px solid ${cardBorder}`,
+            borderRadius: "8px",
+            padding: "14px",
+            display: "flex",
+            gap: "10px",
+          }}
+        >
           <input
             type="checkbox"
             id="certification"
             checked={agreedToCertification}
             onChange={(e) => setAgreedToCertification(e.target.checked)}
+            style={{ marginTop: "2px", cursor: "pointer" }}
           />
-          <label htmlFor="certification" className="checkbox-label">
-            <strong>Certification:</strong> I certify that the facts and
-            information above are true and correct to the best of my knowledge
-            and belief. I understand that any false information,
-            misrepresentation, or omission of facts in this application may be
-            justification for refusal or termination of lease. *
+          <label
+            htmlFor="certification"
+            style={{ margin: 0, fontSize: "13px", color: "#374151", cursor: "pointer" }}
+          >
+            <strong>Information Accuracy Certification</strong> <span style={{ color: "#dc2626" }}>*</span>
+            <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>
+              I certify all information is true and accurate. False information may result in rejection.
+            </div>
           </label>
         </div>
+
+        <div style={{ fontSize: "12px", color: "#9ca3af", marginTop: "12px", fontStyle: "italic" }}>
+          * Required to continue
+        </div>
       </div>
+
+      {/* Modals */}
+      <PoliciesTermsModal
+        isOpen={showPoliciesModal}
+        onClose={() => setShowPoliciesModal(false)}
+      />
+      <PrivacyConsentModal
+        isOpen={showPrivacyModal}
+        onClose={() => setShowPrivacyModal(false)}
+      />
 
       {/* Simulation Helper Button */}
       <div
@@ -827,7 +1342,7 @@ const ReservationApplicationStep = ({
               setLastName("Dela Cruz");
               setMiddleName("Santos");
               setNickname("JD");
-              setMobileNumber("09171234567");
+              setMobileNumber("+639171234567");
               setBirthday("1995-05-15");
               setMaritalStatus("single");
               setNationality("Filipino");
@@ -836,10 +1351,10 @@ const ReservationApplicationStep = ({
               setAddressStreet("Rizal Street");
               setAddressBarangay("Barangay 1");
               setAddressCity("Manila");
-              setAddressProvince("Metro Manila");
+              setAddressProvince("NCR - National Capital Region");
               setEmergencyContactName("Maria Dela Cruz");
               setEmergencyRelationship("Mother");
-              setEmergencyContactNumber("09181234567");
+              setEmergencyContactNumber("+639181234567");
               setHealthConcerns("None");
               setEmployerSchool("Sample University");
               setEmployerAddress("123 University Ave, Manila");
@@ -849,7 +1364,7 @@ const ReservationApplicationStep = ({
               setPreviousEmployment("N/A");
               setReferralSource("friend");
               setReferrerName("Pedro Santos");
-              setEstimatedMoveInTime("morning");
+              setEstimatedMoveInTime("14:00");
               setWorkSchedule("day");
               setAgreedToPrivacy(true);
               setAgreedToCertification(true);
@@ -876,7 +1391,15 @@ const ReservationApplicationStep = ({
         <button onClick={onPrev} className="btn btn-secondary">
           Back
         </button>
-        <button onClick={onNext} className="btn btn-primary">
+        <button
+          onClick={onNext}
+          className="btn btn-primary"
+          disabled={!canProceed}
+          style={{
+            opacity: canProceed ? 1 : 0.6,
+            cursor: canProceed ? "pointer" : "not-allowed",
+          }}
+        >
           Continue to Payment
         </button>
       </div>

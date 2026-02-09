@@ -8,10 +8,13 @@ import {
   SlidersHorizontal,
   Users,
   X,
+  Plus,
+  Minus,
 } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { roomApi } from "../../../shared/api/apiClient";
+import ElasticSlider from "../components/ElasticSlider";
 import "../../../shared/styles/notification.css";
 import "../styles/tenant-dashboard.css";
 import standardRoom from "../../../assets/images/branches/gil-puyat/standard-room.jpg";
@@ -603,20 +606,19 @@ function CheckAvailabilityPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-3">
-                  Price Range: ₱{minPrice.toLocaleString()} - ₱
-                  {maxPrice.toLocaleString()}
+              <div className="flex flex-col items-center">
+                <label className="block text-base font-semibold text-gray-900 mb-6">
+                  Price Range
                 </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="15000"
-                  step="100"
-                  value={maxPrice}
-                  onChange={(e) => setMaxPrice(Number(e.target.value))}
-                  className="w-full"
-                  style={{ accentColor: "#E7710F" }}
+                <ElasticSlider
+                  defaultValue={maxPrice}
+                  startingValue={0}
+                  maxValue={15000}
+                  isStepped={true}
+                  stepSize={100}
+                  leftIcon={<Minus className="w-5 h-5 text-gray-600" />}
+                  rightIcon={<Plus className="w-5 h-5 text-gray-600" />}
+                  onChange={(value) => setMaxPrice(value)}
                 />
               </div>
             </div>

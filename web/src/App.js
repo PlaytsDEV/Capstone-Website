@@ -96,15 +96,8 @@ function AppContent() {
       {globalLoading && <GlobalLoading />}
       <ErrorBoundary>
         <Routes>
-          {/* Public Page */}
-          <Route
-            path="/"
-            element={
-              <RequireNonAdmin>
-                <LandingPage />
-              </RequireNonAdmin>
-            }
-          />
+          {/* Public Page - accessible to everyone */}
+          <Route path="/" element={<LandingPage />} />
 
           {/* Admin routes - all require admin auth */}
           <Route

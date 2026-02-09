@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { PoliciesTermsModal } from "../../modals/PoliciesAndConsent";
 
 const ReservationVisitStep = ({
   targetMoveInDate,
@@ -28,7 +29,32 @@ const ReservationVisitStep = ({
   const [policiesAccepted, setPoliciesAccepted] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showPoliciesModal, setShowPoliciesModal] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [phoneError, setPhoneError] = useState("");
+
+  const handlePhoneChange = (value) => {
+    // Only allow +63 and digits
+    const cleaned = value.replace(/[^0-9+]/g, "");
+    // Prevent multiple + signs
+    const finalValue = cleaned.includes("+")
+      ? "+" + cleaned.replace(/\+/g, "")
+      : cleaned;
+    setVisitorPhone(finalValue);
+
+    // Validate
+    if (finalValue && !finalValue.startsWith("+63")) {
+      setPhoneError("Phone must start with +63");
+    } else {
+      setPhoneError("");
+    }
+  };
+
+  const handleNameChange = (value) => {
+    // Remove numbers from input
+    const cleanedValue = value.replace(/\d+/g, "");
+    setVisitorName(cleanedValue);
+  };
 
   const handleSubmitClick = () => {
     setShowConfirmModal(true);
@@ -117,36 +143,58 @@ const ReservationVisitStep = ({
               <input
                 type="text"
                 className="form-input"
-                placeholder="Enter your full name"
+                placeholder="Enter your full name (no numbers)"
+                maxLength="64"
                 value={visitorName || ""}
-                onChange={(e) => setVisitorName(e.target.value)}
+                onChange={(e) => handleNameChange(e.target.value)}
                 style={{
                   width: "100%",
                   padding: "10px 14px",
-                  border: "1px solid #D1D5DB",
+                  border: "1.5px solid #999",
                   borderRadius: "8px",
                   fontSize: "14px",
                 }}
               />
+              <div
+                style={{ fontSize: "11px", color: "#666", marginTop: "4px" }}
+              >
+                64 characters max
+              </div>
             </div>
             <div className="form-group">
               <label className="form-label">
-                Phone Number <span style={{ color: "#EF4444" }}>*</span>
+                Phone Number <span style={{ color: "#EF4444" }}>*</span>{" "}
+                <span style={{ fontSize: "11px", color: "#666" }}>
+                  (+63...)
+                </span>
               </label>
               <input
                 type="tel"
                 className="form-input"
-                placeholder="09XX XXX XXXX"
+                placeholder="+63912345678"
                 value={visitorPhone || ""}
-                onChange={(e) => setVisitorPhone(e.target.value)}
+                onChange={(e) => handlePhoneChange(e.target.value)}
                 style={{
                   width: "100%",
                   padding: "10px 14px",
-                  border: "1px solid #D1D5DB",
+                  border: phoneError
+                    ? "1px solid #dc2626"
+                    : "1px solid #D1D5DB",
                   borderRadius: "8px",
                   fontSize: "14px",
                 }}
               />
+              {phoneError && (
+                <div
+                  style={{
+                    fontSize: "12px",
+                    color: "#dc2626",
+                    marginTop: "4px",
+                  }}
+                >
+                  {phoneError}
+                </div>
+              )}
             </div>
             <div className="form-group">
               <label className="form-label">
@@ -203,13 +251,17 @@ const ReservationVisitStep = ({
                 }}
               >
                 <option value="">Select time</option>
+                <option value="08:00 AM">08:00 AM</option>
                 <option value="09:00 AM">09:00 AM</option>
                 <option value="10:00 AM">10:00 AM</option>
                 <option value="11:00 AM">11:00 AM</option>
+                <option value="12:00 PM">12:00 PM</option>
                 <option value="01:00 PM">01:00 PM</option>
                 <option value="02:00 PM">02:00 PM</option>
                 <option value="03:00 PM">03:00 PM</option>
                 <option value="04:00 PM">04:00 PM</option>
+                <option value="05:00 PM">05:00 PM</option>
+                <option value="06:00 PM">06:00 PM</option>
               </select>
             </div>
           </div>
@@ -231,22 +283,6 @@ const ReservationVisitStep = ({
               I confirm that I am currently unable to visit in person
             </label>
           </div>
-
-          <div className="form-group" style={{ marginTop: "12px" }}>
-            <label className="form-label">Current Location (Optional)</label>
-            <select
-              className="form-select"
-              value={currentLocation}
-              onChange={(e) => setCurrentLocation(e.target.value)}
-            >
-              <option value="">Select city/province</option>
-              <option>Cebu</option>
-              <option>Davao</option>
-              <option>Iloilo</option>
-              <option>Baguio</option>
-              <option>Other</option>
-            </select>
-          </div>
         </div>
       )}
 
@@ -255,42 +291,40 @@ const ReservationVisitStep = ({
         <h3 className="section-header">📋 Policies, Terms & Conditions</h3>
         <div
           style={{
-            maxHeight: "200px",
-            overflow: "auto",
-            padding: "16px",
-            background: "#F9FAFB",
-            borderRadius: "8px",
-            border: "1px solid #E5E7EB",
+            padding: "18px",
+            background: "#f0f9ff",
+            borderRadius: "12px",
+            border: "1.5px solid #bfdbfe",
             marginBottom: "16px",
-            fontSize: "14px",
-            lineHeight: "1.8",
-            color: "#374151",
           }}
         >
-          <strong>Dormitory House Rules & Regulations:</strong>
-          <ol style={{ paddingLeft: "20px", marginTop: "8px" }}>
-            <li>Occupancy limit per room must be strictly followed.</li>
-            <li>Quiet hours: 10:00 PM – 8:00 AM daily.</li>
-            <li>No pets allowed on the premises at any time.</li>
-            <li>Common areas must be kept clean after use.</li>
-            <li>Guests are allowed only with prior management approval.</li>
-            <li>Minimum lease term: 1 month. Maximum: 12 months.</li>
-            <li>Smoking and alcohol are prohibited inside the dormitory.</li>
-            <li>
-              All personal belongings must be kept inside your assigned room.
-            </li>
-            <li>
-              Management may conduct periodic inspections with 24-hour notice.
-            </li>
-            <li>Damage to property will be charged to the tenant's account.</li>
-          </ol>
-          <br />
-          <strong>Privacy Policy:</strong>
-          <p style={{ marginTop: "4px" }}>
-            Your personal information will be collected and processed in
-            accordance with the Data Privacy Act of 2012. Information provided
-            will be used solely for reservation and tenancy purposes.
-          </p>
+          <div
+            style={{
+              fontSize: "13px",
+              color: "#1e3a8a",
+              marginBottom: "12px",
+              lineHeight: "1.6",
+            }}
+          >
+            Please review all dormitory policies and terms before submitting
+            your visit schedule.
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowPoliciesModal(true)}
+            style={{
+              padding: "8px 16px",
+              background: "#E7710F",
+              color: "white",
+              border: "none",
+              borderRadius: "8px",
+              fontSize: "13px",
+              fontWeight: "600",
+              cursor: "pointer",
+            }}
+          >
+            Read Full Policies
+          </button>
         </div>
 
         <div className="checkbox-group">
@@ -747,6 +781,12 @@ const ReservationVisitStep = ({
           </div>
         </div>
       )}
+
+      {/* Policies Modal */}
+      <PoliciesTermsModal
+        isOpen={showPoliciesModal}
+        onClose={() => setShowPoliciesModal(false)}
+      />
     </div>
   );
 };
