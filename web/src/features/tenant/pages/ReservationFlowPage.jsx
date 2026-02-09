@@ -857,24 +857,35 @@ function ReservationFlowPage() {
       <CancelConfirmModal />
 
       <div className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex h-14 w-full items-center justify-between px-6">
-          <button
-            onClick={() => navigate("/check-availability")}
-            className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900"
-            type="button"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Rooms
-          </button>
-          <div className="text-center">
-            <h1 className="text-lg font-semibold text-slate-900">
-              Room Reservation
-            </h1>
-            <p className="text-xs text-slate-500">Room {roomLabel}</p>
-          </div>
-          <div className="w-24" />
-        </div>
+  <div className="mx-auto w-full px-6 py-4">
+    <div className="flex items-center justify-between">
+      
+      {/* Back Button */}
+      <button
+        onClick={() => navigate("/check-availability")}
+        className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors"
+        type="button"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to Rooms
+      </button>
+
+      {/* Title Section */}
+      <div className="text-center">
+        <h1 className="text-4xl font-bold tracking-tight text-slate-900 leading-tight">
+          Room Reservation
+        </h1>
+        <p className="mt-1 text-sm text-slate-500">
+          Room <span className="font-medium text-slate-700">{roomLabel}</span>
+        </p>
       </div>
+
+      {/* Spacer (keeps title centered) */}
+      <div className="w-28" />
+    </div>
+  </div>
+</div>
+
 
       <div className="border-b border-slate-200 bg-white">
         <div className="mx-auto w-full max-w-6xl px-6 py-6">
