@@ -7,8 +7,14 @@ function VisitSchedulesTab() {
   const [loading, setLoading] = useState(true);
   const [selectedSchedule, setSelectedSchedule] = useState(null);
   const [actionLoading, setActionLoading] = useState(null);
-  const [viewDetailsModal, setViewDetailsModal] = useState({ open: false, schedule: null });
-  const [rejectModal, setRejectModal] = useState({ open: false, scheduleId: null });
+  const [viewDetailsModal, setViewDetailsModal] = useState({
+    open: false,
+    schedule: null,
+  });
+  const [rejectModal, setRejectModal] = useState({
+    open: false,
+    scheduleId: null,
+  });
   const [rejectReason, setRejectReason] = useState("");
 
   // Fetch reservations that have visit scheduled but not yet approved
@@ -135,7 +141,11 @@ function VisitSchedulesTab() {
         scheduleApproved: false,
         viewingType: null,
       });
-      showNotification("Visit schedule rejected. User has been notified.", "warning", 3000);
+      showNotification(
+        "Visit schedule rejected. User has been notified.",
+        "warning",
+        3000,
+      );
       setRejectModal({ open: false, scheduleId: null });
       setRejectReason("");
       fetchSchedules();
@@ -496,7 +506,9 @@ function VisitSchedulesTab() {
                         }}
                       >
                         <button
-                          onClick={() => setViewDetailsModal({ open: true, schedule })}
+                          onClick={() =>
+                            setViewDetailsModal({ open: true, schedule })
+                          }
                           style={{
                             padding: "6px 12px",
                             backgroundColor: "#EFF6FF",
@@ -807,7 +819,9 @@ function VisitSchedulesTab() {
                         }}
                       >
                         <button
-                          onClick={() => setViewDetailsModal({ open: true, schedule })}
+                          onClick={() =>
+                            setViewDetailsModal({ open: true, schedule })
+                          }
                           style={{
                             padding: "6px 12px",
                             backgroundColor: "#EFF6FF",
@@ -1051,7 +1065,9 @@ function VisitSchedulesTab() {
                         }}
                       >
                         <button
-                          onClick={() => setViewDetailsModal({ open: true, schedule })}
+                          onClick={() =>
+                            setViewDetailsModal({ open: true, schedule })
+                          }
                           style={{
                             padding: "6px 12px",
                             backgroundColor: "#EFF6FF",
@@ -1136,15 +1152,30 @@ function VisitSchedulesTab() {
               }}
             >
               <div>
-                <h2 style={{ margin: 0, fontSize: "18px", fontWeight: "600", color: "#1F2937" }}>
+                <h2
+                  style={{
+                    margin: 0,
+                    fontSize: "18px",
+                    fontWeight: "600",
+                    color: "#1F2937",
+                  }}
+                >
                   Visit Schedule Details
                 </h2>
-                <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#6B7280" }}>
+                <p
+                  style={{
+                    margin: "4px 0 0",
+                    fontSize: "13px",
+                    color: "#6B7280",
+                  }}
+                >
                   {viewDetailsModal.schedule.reservationCode}
                 </p>
               </div>
               <button
-                onClick={() => setViewDetailsModal({ open: false, schedule: null })}
+                onClick={() =>
+                  setViewDetailsModal({ open: false, schedule: null })
+                }
                 style={{
                   background: "none",
                   border: "none",
@@ -1162,31 +1193,106 @@ function VisitSchedulesTab() {
             <div style={{ padding: "24px" }}>
               {/* Customer Info */}
               <div style={{ marginBottom: "24px" }}>
-                <h3 style={{ fontSize: "14px", fontWeight: "600", color: "#374151", marginBottom: "12px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                <h3
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: "600",
+                    color: "#374151",
+                    marginBottom: "12px",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
                   Customer Information
                 </h3>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: "12px",
+                  }}
+                >
                   <div>
-                    <p style={{ fontSize: "12px", color: "#6B7280", marginBottom: "4px" }}>Name</p>
-                    <p style={{ fontSize: "14px", color: "#1F2937", fontWeight: "500", margin: 0 }}>
+                    <p
+                      style={{
+                        fontSize: "12px",
+                        color: "#6B7280",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      Name
+                    </p>
+                    <p
+                      style={{
+                        fontSize: "14px",
+                        color: "#1F2937",
+                        fontWeight: "500",
+                        margin: 0,
+                      }}
+                    >
                       {viewDetailsModal.schedule.customer}
                     </p>
                   </div>
                   <div>
-                    <p style={{ fontSize: "12px", color: "#6B7280", marginBottom: "4px" }}>Email</p>
-                    <p style={{ fontSize: "14px", color: "#1F2937", fontWeight: "500", margin: 0 }}>
+                    <p
+                      style={{
+                        fontSize: "12px",
+                        color: "#6B7280",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      Email
+                    </p>
+                    <p
+                      style={{
+                        fontSize: "14px",
+                        color: "#1F2937",
+                        fontWeight: "500",
+                        margin: 0,
+                      }}
+                    >
                       {viewDetailsModal.schedule.email}
                     </p>
                   </div>
                   <div>
-                    <p style={{ fontSize: "12px", color: "#6B7280", marginBottom: "4px" }}>Phone</p>
-                    <p style={{ fontSize: "14px", color: "#1F2937", fontWeight: "500", margin: 0 }}>
+                    <p
+                      style={{
+                        fontSize: "12px",
+                        color: "#6B7280",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      Phone
+                    </p>
+                    <p
+                      style={{
+                        fontSize: "14px",
+                        color: "#1F2937",
+                        fontWeight: "500",
+                        margin: 0,
+                      }}
+                    >
                       {viewDetailsModal.schedule.phone}
                     </p>
                   </div>
                   <div>
-                    <p style={{ fontSize: "12px", color: "#6B7280", marginBottom: "4px" }}>Billing Email</p>
-                    <p style={{ fontSize: "14px", color: "#1F2937", fontWeight: "500", margin: 0 }}>
+                    <p
+                      style={{
+                        fontSize: "12px",
+                        color: "#6B7280",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      Billing Email
+                    </p>
+                    <p
+                      style={{
+                        fontSize: "14px",
+                        color: "#1F2937",
+                        fontWeight: "500",
+                        margin: 0,
+                      }}
+                    >
                       {viewDetailsModal.schedule.billingEmail || "N/A"}
                     </p>
                   </div>
@@ -1195,19 +1301,64 @@ function VisitSchedulesTab() {
 
               {/* Room Info */}
               <div style={{ marginBottom: "24px" }}>
-                <h3 style={{ fontSize: "14px", fontWeight: "600", color: "#374151", marginBottom: "12px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                <h3
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: "600",
+                    color: "#374151",
+                    marginBottom: "12px",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
                   Room Information
                 </h3>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: "12px",
+                  }}
+                >
                   <div>
-                    <p style={{ fontSize: "12px", color: "#6B7280", marginBottom: "4px" }}>Room</p>
-                    <p style={{ fontSize: "14px", color: "#1F2937", fontWeight: "500", margin: 0 }}>
+                    <p
+                      style={{
+                        fontSize: "12px",
+                        color: "#6B7280",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      Room
+                    </p>
+                    <p
+                      style={{
+                        fontSize: "14px",
+                        color: "#1F2937",
+                        fontWeight: "500",
+                        margin: 0,
+                      }}
+                    >
                       {viewDetailsModal.schedule.room}
                     </p>
                   </div>
                   <div>
-                    <p style={{ fontSize: "12px", color: "#6B7280", marginBottom: "4px" }}>Branch</p>
-                    <p style={{ fontSize: "14px", color: "#1F2937", fontWeight: "500", margin: 0 }}>
+                    <p
+                      style={{
+                        fontSize: "12px",
+                        color: "#6B7280",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      Branch
+                    </p>
+                    <p
+                      style={{
+                        fontSize: "14px",
+                        color: "#1F2937",
+                        fontWeight: "500",
+                        margin: 0,
+                      }}
+                    >
                       {viewDetailsModal.schedule.branch}
                     </p>
                   </div>
@@ -1216,20 +1367,69 @@ function VisitSchedulesTab() {
 
               {/* Visit Info */}
               <div style={{ marginBottom: "24px" }}>
-                <h3 style={{ fontSize: "14px", fontWeight: "600", color: "#374151", marginBottom: "12px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                <h3
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: "600",
+                    color: "#374151",
+                    marginBottom: "12px",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
                   Visit Information
                 </h3>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: "12px",
+                  }}
+                >
                   <div>
-                    <p style={{ fontSize: "12px", color: "#6B7280", marginBottom: "4px" }}>Visit Type</p>
-                    <p style={{ fontSize: "14px", color: "#1F2937", fontWeight: "500", margin: 0 }}>
-                      {viewDetailsModal.schedule.viewingType === "inperson" ? "🏠 In-Person" : "💻 Virtual"}
+                    <p
+                      style={{
+                        fontSize: "12px",
+                        color: "#6B7280",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      Visit Type
+                    </p>
+                    <p
+                      style={{
+                        fontSize: "14px",
+                        color: "#1F2937",
+                        fontWeight: "500",
+                        margin: 0,
+                      }}
+                    >
+                      {viewDetailsModal.schedule.viewingType === "inperson"
+                        ? "🏠 In-Person"
+                        : "💻 Virtual"}
                     </p>
                   </div>
                   <div>
-                    <p style={{ fontSize: "12px", color: "#6B7280", marginBottom: "4px" }}>Requested Date</p>
-                    <p style={{ fontSize: "14px", color: "#1F2937", fontWeight: "500", margin: 0 }}>
-                      {new Date(viewDetailsModal.schedule.scheduledDate).toLocaleDateString("en-US", {
+                    <p
+                      style={{
+                        fontSize: "12px",
+                        color: "#6B7280",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      Requested Date
+                    </p>
+                    <p
+                      style={{
+                        fontSize: "14px",
+                        color: "#1F2937",
+                        fontWeight: "500",
+                        margin: 0,
+                      }}
+                    >
+                      {new Date(
+                        viewDetailsModal.schedule.scheduledDate,
+                      ).toLocaleDateString("en-US", {
                         weekday: "long",
                         month: "long",
                         day: "numeric",
@@ -1239,9 +1439,26 @@ function VisitSchedulesTab() {
                   </div>
                   {viewDetailsModal.schedule.isOutOfTown && (
                     <div style={{ gridColumn: "1 / -1" }}>
-                      <p style={{ fontSize: "12px", color: "#6B7280", marginBottom: "4px" }}>Current Location (Out of Town)</p>
-                      <p style={{ fontSize: "14px", color: "#1F2937", fontWeight: "500", margin: 0 }}>
-                        📍 {viewDetailsModal.schedule.currentLocation || "Not specified"}
+                      <p
+                        style={{
+                          fontSize: "12px",
+                          color: "#6B7280",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        Current Location (Out of Town)
+                      </p>
+                      <p
+                        style={{
+                          fontSize: "14px",
+                          color: "#1F2937",
+                          fontWeight: "500",
+                          margin: 0,
+                        }}
+                      >
+                        📍{" "}
+                        {viewDetailsModal.schedule.currentLocation ||
+                          "Not specified"}
                       </p>
                     </div>
                   )}
@@ -1250,7 +1467,16 @@ function VisitSchedulesTab() {
 
               {/* Status */}
               <div>
-                <h3 style={{ fontSize: "14px", fontWeight: "600", color: "#374151", marginBottom: "12px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                <h3
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: "600",
+                    color: "#374151",
+                    marginBottom: "12px",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
                   Status
                 </h3>
                 <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
@@ -1260,11 +1486,18 @@ function VisitSchedulesTab() {
                       borderRadius: "20px",
                       fontSize: "12px",
                       fontWeight: "500",
-                      backgroundColor: viewDetailsModal.schedule.scheduleApproved ? "#D1FAE5" : "#FEF3C7",
-                      color: viewDetailsModal.schedule.scheduleApproved ? "#059669" : "#92400E",
+                      backgroundColor: viewDetailsModal.schedule
+                        .scheduleApproved
+                        ? "#D1FAE5"
+                        : "#FEF3C7",
+                      color: viewDetailsModal.schedule.scheduleApproved
+                        ? "#059669"
+                        : "#92400E",
                     }}
                   >
-                    {viewDetailsModal.schedule.scheduleApproved ? "✓ Schedule Approved" : "⏳ Pending Approval"}
+                    {viewDetailsModal.schedule.scheduleApproved
+                      ? "✓ Schedule Approved"
+                      : "⏳ Pending Approval"}
                   </span>
                   {viewDetailsModal.schedule.visitApproved && (
                     <span
@@ -1294,7 +1527,9 @@ function VisitSchedulesTab() {
               }}
             >
               <button
-                onClick={() => setViewDetailsModal({ open: false, schedule: null })}
+                onClick={() =>
+                  setViewDetailsModal({ open: false, schedule: null })
+                }
                 style={{
                   padding: "10px 20px",
                   backgroundColor: "#F3F4F6",
@@ -1348,17 +1583,39 @@ function VisitSchedulesTab() {
                 borderBottom: "1px solid #E5E7EB",
               }}
             >
-              <h2 style={{ margin: 0, fontSize: "18px", fontWeight: "600", color: "#DC2626" }}>
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: "18px",
+                  fontWeight: "600",
+                  color: "#DC2626",
+                }}
+              >
                 ⚠️ Reject Visit Schedule
               </h2>
-              <p style={{ margin: "8px 0 0", fontSize: "14px", color: "#6B7280" }}>
-                The user will be notified about this rejection and can reschedule.
+              <p
+                style={{
+                  margin: "8px 0 0",
+                  fontSize: "14px",
+                  color: "#6B7280",
+                }}
+              >
+                The user will be notified about this rejection and can
+                reschedule.
               </p>
             </div>
 
             {/* Modal Content */}
             <div style={{ padding: "24px" }}>
-              <label style={{ display: "block", fontSize: "14px", fontWeight: "500", color: "#374151", marginBottom: "8px" }}>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "14px",
+                  fontWeight: "500",
+                  color: "#374151",
+                  marginBottom: "8px",
+                }}
+              >
                 Rejection Reason
               </label>
               <textarea

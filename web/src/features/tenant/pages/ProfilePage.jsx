@@ -436,19 +436,20 @@ const ProfilePage = () => {
         description: isScheduleRejected
           ? `Schedule rejected: ${activeReservation.scheduleRejectionReason || "No reason provided"}`
           : "Acknowledge policies and schedule your room visit",
-        status:
-          isScheduleRejected
-            ? "rejected"
-            : currentStepIndex >= 1
-              ? isSchedulePendingApproval
-                ? "pending_approval"
-                : "completed"
-              : currentStepIndex === 0
-                ? "current"
-                : "locked",
+        status: isScheduleRejected
+          ? "rejected"
+          : currentStepIndex >= 1
+            ? isSchedulePendingApproval
+              ? "pending_approval"
+              : "completed"
+            : currentStepIndex === 0
+              ? "current"
+              : "locked",
         completedDate:
           currentStepIndex >= 1 ? activeReservation.updatedAt : undefined,
-        rejectionReason: isScheduleRejected ? activeReservation.scheduleRejectionReason : null,
+        rejectionReason: isScheduleRejected
+          ? activeReservation.scheduleRejectionReason
+          : null,
       },
       {
         step: "visit_completed",
@@ -534,7 +535,8 @@ const ProfilePage = () => {
       };
     }
 
-    const status = reservation.reservationStatus || reservation.status || "pending";
+    const status =
+      reservation.reservationStatus || reservation.status || "pending";
     const stepOrder = [
       "room_selected",
       "visit_scheduled",
@@ -546,12 +548,17 @@ const ProfilePage = () => {
 
     const hasRoom = Boolean(reservation.roomId);
     const hasPoliciesAccepted = Boolean(reservation.agreedToPrivacy === true);
-    const hasVisitRequest = Boolean(reservation.viewingType && reservation.viewingType !== "none");
+    const hasVisitRequest = Boolean(
+      reservation.viewingType && reservation.viewingType !== "none",
+    );
     const isVisitScheduled = hasPoliciesAccepted && hasVisitRequest;
     const isVisitCompleted = Boolean(reservation.visitApproved === true);
-    const hasApplication = Boolean(reservation.firstName && reservation.lastName);
+    const hasApplication = Boolean(
+      reservation.firstName && reservation.lastName,
+    );
     const hasPayment = Boolean(reservation.proofOfPaymentUrl);
-    const isConfirmed = status === "confirmed" || reservation.paymentStatus === "paid";
+    const isConfirmed =
+      status === "confirmed" || reservation.paymentStatus === "paid";
     const isScheduleRejected = Boolean(reservation.scheduleRejected);
 
     let currentStepIndex = -1;
@@ -562,7 +569,8 @@ const ProfilePage = () => {
     if (hasPayment) currentStepIndex = 4;
     if (isConfirmed) currentStepIndex = 5;
 
-    const isSchedulePendingApproval = isVisitScheduled && !reservation.scheduleApproved && !isScheduleRejected;
+    const isSchedulePendingApproval =
+      isVisitScheduled && !reservation.scheduleApproved && !isScheduleRejected;
 
     const steps = [
       {
@@ -578,17 +586,18 @@ const ProfilePage = () => {
         description: isScheduleRejected
           ? `Schedule rejected: ${reservation.scheduleRejectionReason || "No reason provided"}`
           : "Acknowledge policies and schedule your room visit",
-        status:
-          isScheduleRejected
-            ? "rejected"
-            : currentStepIndex >= 1
-              ? isSchedulePendingApproval
-                ? "pending_approval"
-                : "completed"
-              : currentStepIndex === 0
-                ? "current"
-                : "locked",
-        rejectionReason: isScheduleRejected ? reservation.scheduleRejectionReason : null,
+        status: isScheduleRejected
+          ? "rejected"
+          : currentStepIndex >= 1
+            ? isSchedulePendingApproval
+              ? "pending_approval"
+              : "completed"
+            : currentStepIndex === 0
+              ? "current"
+              : "locked",
+        rejectionReason: isScheduleRejected
+          ? reservation.scheduleRejectionReason
+          : null,
       },
       {
         step: "visit_completed",
@@ -609,19 +618,34 @@ const ProfilePage = () => {
         step: "application_submitted",
         title: "4. Tenant Application Submitted",
         description: "Personal details and documents submitted",
-        status: currentStepIndex >= 3 ? "completed" : currentStepIndex === 2 ? "current" : "locked",
+        status:
+          currentStepIndex >= 3
+            ? "completed"
+            : currentStepIndex === 2
+              ? "current"
+              : "locked",
       },
       {
         step: "payment_submitted",
         title: "5. Payment Submitted",
         description: "Payment proof uploaded and pending verification",
-        status: currentStepIndex >= 4 ? "completed" : currentStepIndex === 3 ? "current" : "locked",
+        status:
+          currentStepIndex >= 4
+            ? "completed"
+            : currentStepIndex === 3
+              ? "current"
+              : "locked",
       },
       {
         step: "confirmed",
         title: "6. Reservation Confirmed",
         description: "Reservation fully confirmed and finalized",
-        status: currentStepIndex >= 5 ? "completed" : currentStepIndex === 4 ? "current" : "locked",
+        status:
+          currentStepIndex >= 5
+            ? "completed"
+            : currentStepIndex === 4
+              ? "current"
+              : "locked",
       },
     ];
 
@@ -1658,20 +1682,24 @@ const ProfilePage = () => {
                 {/* RESERVATION PROGRESS TRACKER - CARD FORMAT */}
                 <div className="space-y-6 mb-6">
                   {/* Show card for each reservation, or default empty state */}
-                  {reservations.filter(r => {
+                  {reservations.filter((r) => {
                     const status = r.reservationStatus || r.status;
                     return status !== "completed" && status !== "cancelled";
                   }).length > 0 ? (
                     reservations
-                      .filter(r => {
+                      .filter((r) => {
                         const status = r.reservationStatus || r.status;
                         return status !== "completed" && status !== "cancelled";
                       })
                       .map((reservation) => {
                         const progress = getProgressForReservation(reservation);
-                        const roomName = reservation.roomId?.name || "Unknown Room";
-                        const branchName = reservation.roomId?.branch === "gil-puyat" ? "Gil Puyat" : "Guadalupe";
-                        
+                        const roomName =
+                          reservation.roomId?.name || "Unknown Room";
+                        const branchName =
+                          reservation.roomId?.branch === "gil-puyat"
+                            ? "Gil Puyat"
+                            : "Guadalupe";
+
                         return (
                           <div
                             key={reservation._id}
@@ -1679,26 +1707,30 @@ const ProfilePage = () => {
                             style={{ borderColor: "#E8EBF0" }}
                           >
                             {/* Card Header - Room Info */}
-                            <div 
+                            <div
                               className="p-4 border-b flex items-center justify-between"
-                              style={{ 
-                                backgroundColor: "#F8FAFC", 
-                                borderColor: "#E8EBF0" 
+                              style={{
+                                backgroundColor: "#F8FAFC",
+                                borderColor: "#E8EBF0",
                               }}
                             >
                               <div className="flex items-center gap-3">
-                                <div 
+                                <div
                                   className="w-10 h-10 rounded-lg flex items-center justify-center"
                                   style={{ backgroundColor: "#FFF7ED" }}
                                 >
-                                  <Home className="w-5 h-5" style={{ color: "#E7710F" }} />
+                                  <Home
+                                    className="w-5 h-5"
+                                    style={{ color: "#E7710F" }}
+                                  />
                                 </div>
                                 <div>
                                   <h4 className="font-semibold text-gray-900">
                                     {roomName}
                                   </h4>
                                   <p className="text-xs text-gray-500">
-                                    {branchName} Branch • Code: {reservation.reservationCode || "N/A"}
+                                    {branchName} Branch • Code:{" "}
+                                    {reservation.reservationCode || "N/A"}
                                   </p>
                                 </div>
                               </div>
@@ -1722,7 +1754,7 @@ const ProfilePage = () => {
                                 Step {progress.currentStepIndex + 1} of 6
                               </div>
                             </div>
-                            
+
                             {/* Card Body - Progress Steps */}
                             <div className="p-6">
                               <div className="flex items-center justify-between mb-6">
@@ -1734,11 +1766,12 @@ const ProfilePage = () => {
                                     Reservation Progress
                                   </h3>
                                   <p className="text-sm text-gray-500">
-                                    Follow these steps to complete your reservation
+                                    Follow these steps to complete your
+                                    reservation
                                   </p>
                                 </div>
                               </div>
-                              
+
                               {/* Progress Steps */}
                               <div className="space-y-4">
                                 {progress.steps.map((step, stepIndex) => {
@@ -1751,26 +1784,39 @@ const ProfilePage = () => {
                                     confirmed: CheckCircle,
                                   };
                                   const StepIcon = icons[step.step];
-                                  const isCompleted = step.status === "completed";
+                                  const isCompleted =
+                                    step.status === "completed";
                                   const isCurrent = step.status === "current";
                                   const isLocked = step.status === "locked";
-                                  const isPendingApproval = step.status === "pending_approval";
+                                  const isPendingApproval =
+                                    step.status === "pending_approval";
                                   const isRejected = step.status === "rejected";
                                   const isClickable = !isLocked && !isRejected;
 
                                   return (
                                     <div key={stepIndex} className="relative">
-                                      {stepIndex !== progress.steps.length - 1 && (
+                                      {stepIndex !==
+                                        progress.steps.length - 1 && (
                                         <div
                                           className="absolute left-6 top-14 bottom-0 w-0.5"
                                           style={{
-                                            backgroundColor: isCompleted ? "#10B981" : "#E5E7EB",
+                                            backgroundColor: isCompleted
+                                              ? "#10B981"
+                                              : "#E5E7EB",
                                           }}
                                         />
                                       )}
                                       <div
                                         className={`flex items-start gap-4 ${isClickable ? "cursor-pointer" : ""}`}
-                                        onClick={isClickable ? () => handleStepClick(step, reservation) : undefined}
+                                        onClick={
+                                          isClickable
+                                            ? () =>
+                                                handleStepClick(
+                                                  step,
+                                                  reservation,
+                                                )
+                                            : undefined
+                                        }
                                       >
                                         <div
                                           className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 relative z-10 transition-all ${isLocked ? "bg-gray-200" : ""}`}
@@ -1780,27 +1826,48 @@ const ProfilePage = () => {
                                               : isCurrent
                                                 ? { backgroundColor: "#E7710F" }
                                                 : isPendingApproval
-                                                  ? { backgroundColor: "#F59E0B" }
+                                                  ? {
+                                                      backgroundColor:
+                                                        "#F59E0B",
+                                                    }
                                                   : isRejected
-                                                    ? { backgroundColor: "#DC2626" }
+                                                    ? {
+                                                        backgroundColor:
+                                                          "#DC2626",
+                                                      }
                                                     : {}
                                           }
                                         >
                                           {isLocked ? (
                                             <div className="w-5 h-5 rounded-full border-2 border-gray-400" />
                                           ) : isRejected ? (
-                                            <span className="text-white text-lg font-bold">✕</span>
+                                            <span className="text-white text-lg font-bold">
+                                              ✕
+                                            </span>
                                           ) : (
-                                            <StepIcon className={`w-6 h-6 ${isCompleted || isCurrent || isPendingApproval ? "text-white" : "text-gray-400"}`} />
+                                            <StepIcon
+                                              className={`w-6 h-6 ${isCompleted || isCurrent || isPendingApproval ? "text-white" : "text-gray-400"}`}
+                                            />
                                           )}
                                         </div>
-                                        <div className={`flex-1 pb-6 ${isLocked ? "opacity-50" : ""}`}>
+                                        <div
+                                          className={`flex-1 pb-6 ${isLocked ? "opacity-50" : ""}`}
+                                        >
                                           <div className="flex items-start justify-between mb-2">
                                             <div>
-                                              <h4 className={`font-semibold mb-1 ${isCurrent ? "text-orange-600" : ""}`} style={!isCurrent ? { color: "#1F2937" } : {}}>
+                                              <h4
+                                                className={`font-semibold mb-1 ${isCurrent ? "text-orange-600" : ""}`}
+                                                style={
+                                                  !isCurrent
+                                                    ? { color: "#1F2937" }
+                                                    : {}
+                                                }
+                                              >
                                                 {step.title}
                                               </h4>
-                                              <p className="text-sm text-gray-600">{step.description}</p>
+                                              <p className="text-sm text-gray-600">
+                                                {step.description}
+                                              </p>
                                             </div>
                                             <span
                                               className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ml-4 ${
@@ -1816,7 +1883,14 @@ const ProfilePage = () => {
                                                           ? "bg-gray-100 text-gray-500"
                                                           : "bg-blue-100 text-blue-700"
                                               }`}
-                                              style={isCurrent ? { backgroundColor: "#E7710F" } : {}}
+                                              style={
+                                                isCurrent
+                                                  ? {
+                                                      backgroundColor:
+                                                        "#E7710F",
+                                                    }
+                                                  : {}
+                                              }
                                             >
                                               {isCompleted
                                                 ? "Complete"
@@ -1834,42 +1908,62 @@ const ProfilePage = () => {
                                           {/* Status messages and action buttons */}
                                           {isCurrent && (
                                             <div className="mt-2 flex items-center justify-between">
-                                              <p className="text-xs text-orange-600">Click to continue this step</p>
+                                              <p className="text-xs text-orange-600">
+                                                Click to continue this step
+                                              </p>
                                               <button
                                                 onClick={(e) => {
                                                   e.stopPropagation();
-                                                  handleStepClick(step, reservation);
+                                                  handleStepClick(
+                                                    step,
+                                                    reservation,
+                                                  );
                                                 }}
                                                 className="px-4 py-1.5 text-xs font-medium rounded-lg text-white flex items-center gap-1 hover:opacity-90 transition-opacity"
-                                                style={{ backgroundColor: "#E7710F" }}
+                                                style={{
+                                                  backgroundColor: "#E7710F",
+                                                }}
                                               >
                                                 Continue
                                                 <ArrowRight className="w-3 h-3" />
                                               </button>
                                             </div>
                                           )}
-                                          {isPendingApproval && <p className="text-xs text-amber-600 mt-1">Waiting for admin confirmation</p>}
-                                          {isRejected && step.rejectionReason && (
-                                            <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                                              <p className="text-xs text-red-700 font-medium mb-1">⚠️ Admin Rejection Reason:</p>
-                                              <p className="text-sm text-red-600">{step.rejectionReason}</p>
-                                              <button
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  navigate("/tenant/reservation-flow", {
-                                                    state: {
-                                                      reservationId: reservation._id,
-                                                      continueFlow: true,
-                                                      step: 2,
-                                                    },
-                                                  });
-                                                }}
-                                                className="mt-2 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors"
-                                              >
-                                                Reschedule Visit
-                                              </button>
-                                            </div>
+                                          {isPendingApproval && (
+                                            <p className="text-xs text-amber-600 mt-1">
+                                              Waiting for admin confirmation
+                                            </p>
                                           )}
+                                          {isRejected &&
+                                            step.rejectionReason && (
+                                              <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                                                <p className="text-xs text-red-700 font-medium mb-1">
+                                                  ⚠️ Admin Rejection Reason:
+                                                </p>
+                                                <p className="text-sm text-red-600">
+                                                  {step.rejectionReason}
+                                                </p>
+                                                <button
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    navigate(
+                                                      "/tenant/reservation-flow",
+                                                      {
+                                                        state: {
+                                                          reservationId:
+                                                            reservation._id,
+                                                          continueFlow: true,
+                                                          step: 2,
+                                                        },
+                                                      },
+                                                    );
+                                                  }}
+                                                  className="mt-2 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors"
+                                                >
+                                                  Reschedule Visit
+                                                </button>
+                                              </div>
+                                            )}
                                         </div>
                                       </div>
                                     </div>
@@ -1881,7 +1975,7 @@ const ProfilePage = () => {
                         );
                       })
                   ) : (
-                    <div 
+                    <div
                       className="bg-white rounded-xl p-8 border text-center"
                       style={{ borderColor: "#E8EBF0" }}
                     >
