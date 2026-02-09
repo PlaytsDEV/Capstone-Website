@@ -110,9 +110,9 @@ export default function Dashboard() {
           ? inquiries
           : inquiries?.inquiries || [];
 
-            const failedCount = results.filter(
-              (result) => result.status === "rejected",
-            ).length;
+        const failedCount = results.filter(
+          (result) => result.status === "rejected",
+        ).length;
 
         const occupancyStats =
           occupancyResponse?.statistics || occupancyResponse;
@@ -270,7 +270,7 @@ export default function Dashboard() {
           );
           setReservationData(reservationSeries);
 
-              if (failedCount > 0) {
+          if (failedCount > 0) {
             setError(
               "Some dashboard data failed to load. Showing partial data.",
             );
