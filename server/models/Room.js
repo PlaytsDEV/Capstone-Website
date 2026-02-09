@@ -124,6 +124,22 @@ const roomSchema = new mongoose.Schema(
             required: true,
           },
           available: { type: Boolean, default: true },
+          occupiedBy: {
+            userId: {
+              type: mongoose.Schema.Types.ObjectId,
+              ref: "User",
+              default: null,
+            },
+            reservationId: {
+              type: mongoose.Schema.Types.ObjectId,
+              ref: "Reservation",
+              default: null,
+            },
+            occupiedSince: {
+              type: Date,
+              default: null,
+            },
+          },
         },
       ],
       default: [],
@@ -206,6 +222,96 @@ roomSchema.methods.restore = async function () {
   this.archivedAt = null;
   this.archivedBy = null;
   return this.save();
+};
+
+/**
+ * Mark a bed as occupied
+ * @param {string} bedId - The bed ID to occupy
+ * @param {string} userId - User ID occupying the bed
+ * @param {string} reservationId - Reservation ID for tracking
+ * @returns {boolean} - true if successful, false if bed not found
+ */
+roomSchema.methods.occupyBed = function (bedId, userId, reservationId) {
+  const bed = this.beds.find((b) => b.id === bedId);
+  if (!bed) return false;
+
+  bed.available = false;
+  bed.occupiedBy = {
+    userId,
+    reservationId,
+    occupiedSince: new Date(),
+  };
+  return true;
+};
+
+/**
+ * Mark a bed as vacant
+ * @param {string} bedId - The bed ID to vacate
+ * @returns {boolean} - true if successful, false if bed not found
+ */
+roomSchema.methods.vacateBed = function (bedId) {
+  const bed = this.beds.find((b) => b.id === bedId);
+  if (!bed) return false;
+
+  bed.available = true;
+  bed.occupiedBy = {
+    userId: null,
+    reservationId: null,
+    occupiedSince: null,
+  };
+  return true;
+};
+
+/**
+ * Get all available beds
+ * @returns {array} - Array of available beds
+ */
+roomSchema.methods.getAvailableBeds = function () {
+  return this.beds.filter((bed) => bed.available);
+};
+
+/**
+ * Get all occupied beds
+ * @returns {array} - Array of occupied beds
+ */
+roomSchema.methods.getOccupiedBeds = function () {
+  return this.beds.filter((bed) => !bed.available);
+};
+
+/**
+ * Check if a specific bed is available
+ * @param {string} bedId - The bed ID to check
+ * @returns {boolean} - true if bed is available
+ */
+roomSchema.methods.isBedAvailable = function (bedId) {
+  const bed = this.beds.find((b) => b.id === bedId);
+  return bed ? bed.available : false;
+};
+
+/**
+ * Increase room occupancy
+ */
+roomSchema.methods.increaseOccupancy = function () {
+  this.currentOccupancy = Math.min(this.currentOccupancy + 1, this.capacity);
+  this.available = this.currentOccupancy < this.capacity;
+  return this;
+};
+
+/**
+ * Decrease room occupancy
+ */
+roomSchema.methods.decreaseOccupancy = function () {
+  this.currentOccupancy = Math.max(this.currentOccupancy - 1, 0);
+  this.available = this.currentOccupancy < this.capacity;
+  return this;
+};
+
+/**
+ * Update room availability based on current occupancy
+ */
+roomSchema.methods.updateAvailability = function () {
+  this.available = this.currentOccupancy < this.capacity && !this.isArchived;
+  return this;
 };
 
 // ============================================================================

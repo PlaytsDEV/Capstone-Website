@@ -1241,6 +1241,25 @@ const ProfilePage = () => {
                   ✓ Verified
                 </span>
               </div>
+              {selectedReservation?.paymentReference && (
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    padding: "4px 0",
+                    borderTop: "1px solid #BBF7D0",
+                    marginTop: "8px",
+                    paddingTop: "8px",
+                  }}
+                >
+                  <span style={{ color: "#6B7280", fontWeight: "500" }}>
+                    Payment Reference
+                  </span>
+                  <span style={{ color: "#059669", fontWeight: "600" }}>
+                    {selectedReservation.paymentReference}
+                  </span>
+                </div>
+              )}
             </div>
           );
         }
@@ -1256,11 +1275,23 @@ const ProfilePage = () => {
                 border: "1px solid #FCD34D",
               }}
             >
-              <p style={{ color: "#78350F", margin: 0 }}>
+              <p style={{ color: "#78350F", marginBottom: "8px", margin: 0 }}>
                 <strong>⏳ Pending Review:</strong> Your payment proof has been
                 submitted and is awaiting admin verification. This usually takes
                 1-2 business days.
               </p>
+              {selectedReservation?.paymentReference && (
+                <p
+                  style={{
+                    color: "#78350F",
+                    fontSize: "12px",
+                    margin: "8px 0 0",
+                  }}
+                >
+                  <strong>Payment Reference:</strong>{" "}
+                  {selectedReservation.paymentReference}
+                </p>
+              )}
             </div>
           );
         }
@@ -1311,17 +1342,39 @@ const ProfilePage = () => {
                     color: "#166534",
                     fontWeight: "700",
                     fontSize: "16px",
-                    margin: "0 0 4px",
+                    margin: "0 0 8px",
                   }}
                 >
                   🎉 Reservation Confirmed!
                 </p>
-                <p style={{ color: "#6B7280", fontSize: "13px", margin: 0 }}>
-                  Code:{" "}
-                  <strong>
-                    {selectedReservation.reservationCode || "N/A"}
-                  </strong>
-                </p>
+                {selectedReservation.reservationCode && (
+                  <p
+                    style={{
+                      color: "#6B7280",
+                      fontSize: "12px",
+                      margin: "4px 0",
+                    }}
+                  >
+                    Reservation Code:{" "}
+                    <strong style={{ color: "#166534" }}>
+                      {selectedReservation.reservationCode}
+                    </strong>
+                  </p>
+                )}
+                {selectedReservation.paymentReference && (
+                  <p
+                    style={{
+                      color: "#6B7280",
+                      fontSize: "12px",
+                      margin: "4px 0",
+                    }}
+                  >
+                    Payment Reference:{" "}
+                    <strong style={{ color: "#059669" }}>
+                      {selectedReservation.paymentReference}
+                    </strong>
+                  </p>
+                )}
               </div>
               <div
                 style={{
@@ -1872,7 +1925,9 @@ const ProfilePage = () => {
                             {selectedReservation.roomId?.branch === "gil-puyat"
                               ? "Gil Puyat Branch"
                               : "Guadalupe Branch"}{" "}
-                            • Code: {selectedReservation.reservationCode}
+                            {selectedReservation.reservationCode && (
+                              <>• Code: {selectedReservation.reservationCode}</>
+                            )}
                           </p>
                         </div>
                         <span className="text-xs text-blue-600">
@@ -3131,8 +3186,23 @@ const ProfilePage = () => {
                 {receiptModal.step?.title || "Receipt"}
               </h2>
               <p style={{ fontSize: "14px", color: "#6B7280", margin: 0 }}>
-                Reservation Code:{" "}
-                <strong>{activeReservation?.reservationCode || "N/A"}</strong>
+                {activeReservation?.reservationCode && (
+                  <>
+                    Reservation Code:{" "}
+                    <strong>{activeReservation.reservationCode}</strong>
+                    <br />
+                  </>
+                )}
+                {activeReservation?.paymentReference && (
+                  <>
+                    Payment Reference:{" "}
+                    <strong>{activeReservation.paymentReference}</strong>
+                  </>
+                )}
+                {!activeReservation?.reservationCode &&
+                  !activeReservation?.paymentReference && (
+                    <>No tracking codes yet</>
+                  )}
               </p>
             </div>
 

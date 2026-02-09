@@ -270,6 +270,21 @@ export const roomApi = {
    * Delete room (admin only)
    */
   delete: (roomId) => authFetch(`/rooms/${roomId}`, { method: "DELETE" }),
+
+  /**
+   * Get occupancy status for a specific room
+   */
+  getOccupancy: (roomId) => authFetch(`/reservations/occupancy/${roomId}`),
+
+  /**
+   * Get branch occupancy statistics
+   */
+  getBranchOccupancy: (branch = null) => {
+    const url = branch
+      ? `/reservations/stats/occupancy?branch=${branch}`
+      : "/reservations/stats/occupancy";
+    return authFetch(url);
+  },
 };
 
 // =============================================================================

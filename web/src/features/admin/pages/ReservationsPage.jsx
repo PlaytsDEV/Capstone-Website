@@ -35,12 +35,7 @@ function ReservationsPage() {
         const transformedReservations = data.map((res) => ({
           id: res._id,
           reservationCode: res.reservationCode || "N/A",
-          date: new Date(res.createdAt).toISOString().split("T")[0],
-          time: new Date(res.createdAt).toLocaleTimeString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: true,
-          }),
+          paymentReference: res.paymentReference || "N/A",
           customer:
             res.userId?.firstName + " " + res.userId?.lastName || "Unknown",
           email: res.userId?.email || "N/A",
@@ -84,6 +79,7 @@ function ReservationsPage() {
       const transformedReservations = data.map((res) => ({
         id: res._id,
         reservationCode: res.reservationCode || "N/A",
+        paymentReference: res.paymentReference || "N/A",
         date: new Date(res.createdAt).toISOString().split("T")[0],
         time: new Date(res.createdAt).toLocaleTimeString("en-US", {
           hour: "2-digit",
@@ -612,6 +608,9 @@ function ReservationsPage() {
                                 RESERVATION CODE
                               </th>
                               <th className="admin-reservations-table-th">
+                                PAYMENT REFERENCE
+                              </th>
+                              <th className="admin-reservations-table-th">
                                 CUSTOMER
                               </th>
                               <th className="admin-reservations-table-th">
@@ -643,7 +642,12 @@ function ReservationsPage() {
                                 >
                                   <td className="admin-reservations-table-td">
                                     <div className="admin-reservations-code">
-                                      {reservation.reservationCode}
+                                      {reservation.reservationCode || "—"}
+                                    </div>
+                                  </td>
+                                  <td className="admin-reservations-table-td">
+                                    <div className="admin-reservations-code">
+                                      {reservation.paymentReference || "—"}
                                     </div>
                                   </td>
                                   <td className="admin-reservations-table-td">

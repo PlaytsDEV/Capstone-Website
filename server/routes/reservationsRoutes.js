@@ -29,6 +29,8 @@ import {
   extendReservation,
   releaseSlot,
   archiveReservation,
+  getRoomOccupancy,
+  getBranchOccupancyStatistics,
 } from "../controllers/reservationsController.js";
 
 const router = express.Router();
@@ -175,5 +177,34 @@ router.put(
   filterByBranch,
   archiveReservation,
 );
+
+// ============================================================================
+// OCCUPANCY MANAGEMENT ROUTES
+// ============================================================================
+
+/**
+ * GET /api/reservations/occupancy/:roomId
+ *
+ * Get occupancy status of a specific room, including bed assignments.
+ *
+ * Access: Authenticated users (typically admin)
+ *
+ * @param {string} roomId - MongoDB ObjectId of the room
+ * @returns {Object} Room occupancy status with bed details
+ */
+router.get("/occupancy/:roomId", verifyToken, getRoomOccupancy);
+
+/**
+ * GET /api/reservations/stats/occupancy
+ *
+ * Get occupancy statistics for a branch.
+ * Query parameter: branch (optional) - 'gil-puyat' or 'guadalupe'
+ *
+ * Access: Authenticated users (typically admin)
+ *
+ * @query {string} branch - Optional branch filter
+ * @returns {Object} Branch occupancy statistics with all rooms
+ */
+router.get("/stats/occupancy", verifyToken, getBranchOccupancyStatistics);
 
 export default router;

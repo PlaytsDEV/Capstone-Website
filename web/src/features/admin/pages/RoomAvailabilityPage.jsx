@@ -30,13 +30,17 @@ function RoomAvailabilityPage() {
       setRoomsLoading(true);
       setRoomsError(null);
       try {
+        // Fetch rooms with real-time occupancy data
         const data = await roomApi.getAll();
+
+        // Map rooms with currentOccupancy from confirmed reservations
         const mappedRooms = data.map((room) => ({
           id: room.roomNumber || room.name || "Unknown",
           floor: room.floor || 1,
           branch: room.branch || "unknown",
           type: normalizeType(room.type),
           beds: room.capacity || (room.beds ? room.beds.length : 0),
+          // Use currentOccupancy which reflects confirmed/checked-in reservations
           occupied: room.currentOccupancy || 0,
           reserved: 0,
         }));
@@ -58,8 +62,12 @@ function RoomAvailabilityPage() {
 
     fetchRooms();
 
+    // Set up auto-refresh every 30 seconds to get latest occupancy
+    const refreshInterval = setInterval(fetchRooms, 30000);
+
     return () => {
       isMounted = false;
+      clearInterval(refreshInterval);
     };
   }, []);
 

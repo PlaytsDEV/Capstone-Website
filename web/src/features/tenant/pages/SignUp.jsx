@@ -654,10 +654,10 @@ function SignUp() {
             // STEP 6: Show success notification
             showNotification(`Welcome to Lilycrest, ${firstName}!`, "success");
 
-            // STEP 7: Redirect to home page
-            console.log("🔄 Redirecting to home page...");
+            // STEP 7: Redirect to check availability page
+            console.log("🔄 Redirecting to check availability...");
             setTimeout(() => {
-              navigate("/");
+              navigate("/check-availability");
             }, 2000);
           } catch (registerError) {
             console.error("❌ Backend registration error:", registerError);
@@ -780,7 +780,9 @@ function SignUp() {
         <div className="tenant-signup-card">
           <div className="tenant-signup-right">
             <h1 className="tenant-signup-title">Sign Up</h1>
-            <p className="tenant-signup-subtitle">Create your Lilycrest account</p>
+            <p className="tenant-signup-subtitle">
+              Create your Lilycrest account
+            </p>
             <form className="tenant-signup-form" onSubmit={handleSignUp}>
               <div className="form-field">
                 <div className="input-wrapper">
@@ -1417,7 +1419,10 @@ function SignUp() {
           >
             <div className="tenant-signup-overlay">
               <div className="tenant-signup-brand">
-                <LilycrestLogo className="tenant-signup-logo-icon" aria-label="Lilycrest Logo" />
+                <LilycrestLogo
+                  className="tenant-signup-logo-icon"
+                  aria-label="Lilycrest Logo"
+                />
                 <div className="tenant-signup-brand-text">
                   <h2>Lilycrest</h2>
                   <span>URBAN CO-LIVING</span>

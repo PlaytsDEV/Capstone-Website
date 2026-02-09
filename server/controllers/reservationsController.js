@@ -4,6 +4,10 @@
 
 import { Reservation, User, Room } from "../models/index.js";
 import auditLogger from "../utils/auditLogger.js";
+import {
+  updateOccupancyOnReservationChange,
+  getRoomOccupancyStatus,
+} from "../utils/occupancyManager.js";
 
 export const getReservations = async (req, res) => {
   try {
@@ -437,16 +441,41 @@ export const updateReservation = async (req, res) => {
     }
 
     // Update reservation and return the updated document
-    const reservation = await Reservation.findByIdAndUpdate(
-      reservationId,
-      req.body,
-      {
-        new: true,
-        runValidators: true,
-      },
-    )
-      .populate("userId", "firstName lastName email")
-      .populate("roomId", "name branch type price");
+    // Use save() instead of findByIdAndUpdate() to trigger pre-save hooks (reservation code generation)
+    const reservation = await Reservation.findById(reservationId);
+    if (!reservation) {
+      return res.status(404).json({
+        error: "Reservation not found",
+        code: "RESERVATION_NOT_FOUND",
+      });
+    }
+
+    // Apply updates to the reservation object
+    Object.assign(reservation, req.body);
+
+    // Save the reservation (this triggers pre-save hooks for code generation)
+    const updatedReservation = await reservation.save();
+
+    // === OCCUPANCY TRACKING ===
+    // Update room occupancy if status changed
+    if (oldReservationData.status !== updatedReservation.status) {
+      try {
+        await updateOccupancyOnReservationChange(
+          updatedReservation,
+          oldReservationData,
+        );
+      } catch (occupancyError) {
+        console.error(
+          "⚠️ Occupancy update failed (non-fatal):",
+          occupancyError,
+        );
+        // Don't fail the request if occupancy update fails
+      }
+    }
+
+    // Populate fields
+    await updatedReservation.populate("userId", "firstName lastName email");
+    await updatedReservation.populate("roomId", "name branch type price");
 
     // Log reservation modification
     await auditLogger.logModification(
@@ -454,15 +483,15 @@ export const updateReservation = async (req, res) => {
       "reservation",
       reservationId,
       oldReservationData,
-      reservation.toObject(),
+      updatedReservation.toObject(),
     );
 
     console.log(
-      `✅ Reservation updated: ${reservation._id} - Status: ${reservation.status}`,
+      `✅ Reservation updated: ${updatedReservation._id} - Status: ${updatedReservation.status}${updatedReservation.reservationCode ? ` - Code: ${updatedReservation.reservationCode}` : ""}`,
     );
     res.json({
       message: "Reservation updated successfully",
-      reservation,
+      reservation: updatedReservation,
     });
   } catch (error) {
     console.error("❌ Update reservation error:", error);
@@ -625,10 +654,22 @@ export const updateReservationByUser = async (req, res) => {
       updates["employment.previousEmployment"] = req.body.previousEmployment;
     }
 
-    // When payment proof is uploaded, set status to pending payment verification
+    // When payment proof is uploaded, set status to pending payment verification and generate payment reference
     if (req.body.proofOfPaymentUrl) {
       updates.paymentStatus = "pending";
       updates.paymentDate = new Date();
+
+      // Generate payment reference if not already generated
+      const existingReservation = await Reservation.findById(reservationId);
+      if (!existingReservation.paymentReference) {
+        // Generate unique payment reference: PAY-XXXXXX (6 characters)
+        const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        let paymentRef = "PAY-";
+        for (let i = 0; i < 6; i++) {
+          paymentRef += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        updates.paymentReference = paymentRef;
+      }
     }
 
     const updatedReservation = await Reservation.findByIdAndUpdate(
@@ -709,6 +750,28 @@ export const deleteReservation = async (req, res) => {
 
     // Store data for audit log before deletion
     const reservationData = reservation.toObject();
+
+    // === OCCUPANCY TRACKING ===
+    // Release occupancy if reservation was confirmed or checked-in
+    if (
+      reservation.status === "confirmed" ||
+      reservation.status === "checked-in"
+    ) {
+      try {
+        // Create a cancelled version to trigger occupancy release
+        const cancelledReservation = reservation.toObject();
+        cancelledReservation.status = "cancelled";
+        await updateOccupancyOnReservationChange(
+          { ...reservation, status: "cancelled" },
+          reservationData,
+        );
+      } catch (occupancyError) {
+        console.error(
+          "⚠️ Occupancy release during deletion failed:",
+          occupancyError,
+        );
+      }
+    }
 
     // Delete the reservation
     await Reservation.findByIdAndDelete(reservationId);
@@ -967,30 +1030,37 @@ export const archiveReservation = async (req, res) => {
     // Find the admin user
     const dbUser = await User.findOne({ firebaseUid: req.user.uid });
 
-    // Soft delete the reservation
+    // If reservation was confirmed or checked-in, mark as cancelled first to trigger occupancy release
+    if (
+      reservation.status === "confirmed" ||
+      reservation.status === "checked-in"
+    ) {
+      const previousStatus = reservation.status;
+      reservation.status = "cancelled";
+
+      // Save with cancelled status to trigger occupancy update
+      await reservation.save();
+
+      // Update occupancy
+      try {
+        await updateOccupancyOnReservationChange(reservation, {
+          ...oldData,
+          status: previousStatus,
+        });
+      } catch (occupancyError) {
+        console.error(
+          "⚠️ Occupancy update during archive failed:",
+          occupancyError,
+        );
+      }
+    }
+
+    // Now soft delete the reservation
     reservation.isArchived = true;
     reservation.archivedAt = new Date();
     reservation.archivedBy = dbUser?._id || null;
     reservation.notes = `${reservation.notes ? reservation.notes + " | " : ""}Archived: ${reason}`;
     await reservation.save();
-
-    // Free up the room slot if reservation was active
-    if (
-      reservation.roomId &&
-      ["pending", "confirmed"].includes(reservation.status)
-    ) {
-      const room = await Room.findById(reservation.roomId._id);
-      if (room) {
-        if (room.beds && room.beds.length > 0 && reservation.selectedBed?.id) {
-          const bed = room.beds.find(
-            (b) => b.id === reservation.selectedBed.id,
-          );
-          if (bed) bed.occupied = false;
-        }
-        room.available = true;
-        await room.save();
-      }
-    }
 
     await reservation.populate("userId", "firstName lastName email");
     await reservation.populate("roomId", "name branch type price");
@@ -1017,6 +1087,66 @@ export const archiveReservation = async (req, res) => {
       error: "Failed to archive reservation",
       details: error.message,
       code: "ARCHIVE_RESERVATION_ERROR",
+    });
+  }
+};
+// ============================================================================
+// OCCUPANCY MANAGEMENT CONTROLLERS
+// ============================================================================
+
+/**
+ * Get occupancy status of a specific room
+ * GET /api/reservations/:roomId/occupancy
+ */
+export const getRoomOccupancy = async (req, res) => {
+  try {
+    const { roomId } = req.params;
+
+    if (!roomId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        error: "Invalid room ID format",
+        code: "INVALID_ROOM_ID",
+      });
+    }
+
+    const occupancyStatus = await getRoomOccupancyStatus(roomId);
+
+    res.json({
+      message: "Room occupancy status retrieved",
+      occupancy: occupancyStatus,
+    });
+  } catch (error) {
+    console.error("❌ Get room occupancy error:", error);
+    res.status(500).json({
+      error: "Failed to get room occupancy",
+      details: error.message,
+      code: "GET_OCCUPANCY_ERROR",
+    });
+  }
+};
+
+/**
+ * Get branch occupancy statistics
+ * GET /api/reservations/stats/occupancy?branch=gil-puyat
+ */
+export const getBranchOccupancyStatistics = async (req, res) => {
+  try {
+    const { branch } = req.query;
+    const { getBranchOccupancyStats } =
+      await import("../utils/occupancyManager.js");
+
+    const stats = await getBranchOccupancyStats(branch || null);
+
+    res.json({
+      message: "Branch occupancy statistics retrieved",
+      statistics: stats,
+    });
+  } catch (error) {
+    console.error("❌ Get branch occupancy stats error:", error);
+    res.status(500).json({
+      error: "Failed to get branch occupancy statistics",
+      details: error.message,
+      code: "GET_BRANCH_STATS_ERROR",
     });
   }
 };

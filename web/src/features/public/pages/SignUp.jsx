@@ -653,10 +653,10 @@ function SignUp() {
             // STEP 6: Show success notification
             showNotification(`Welcome to Lilycrest, ${firstName}!`, "success");
 
-            // STEP 7: Redirect to home page
-            console.log("🔄 Redirecting to home page...");
+            // STEP 7: Redirect to check availability page
+            console.log("🔄 Redirecting to check availability...");
             setTimeout(() => {
-              navigate("/");
+              navigate("/check-availability");
             }, 2000);
           } catch (registerError) {
             console.error("❌ Backend registration error:", registerError);
@@ -817,8 +817,7 @@ function SignUp() {
             </p>
           </div>
 
-          <div className="relative z-20 flex gap-2">
-          </div>
+          <div className="relative z-20 flex gap-2"></div>
         </div>
 
         {/* Right Side - Register Form */}
@@ -1051,9 +1050,7 @@ function SignUp() {
                   />
                   <button
                     type="button"
-                    onClick={() =>
-                      setShowConfirmPassword(!showConfirmPassword)
-                    }
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                     className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
                     tabIndex={-1}
                   >
@@ -1064,11 +1061,12 @@ function SignUp() {
                     )}
                   </button>
                 </div>
-                {touched.confirmPassword && validationErrors.confirmPassword && (
-                  <span className="validation-msg error">
-                    {validationErrors.confirmPassword}
-                  </span>
-                )}
+                {touched.confirmPassword &&
+                  validationErrors.confirmPassword && (
+                    <span className="validation-msg error">
+                      {validationErrors.confirmPassword}
+                    </span>
+                  )}
               </div>
 
               <div>
