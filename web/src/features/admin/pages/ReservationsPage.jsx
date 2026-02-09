@@ -115,37 +115,27 @@ function ReservationsPage() {
     }
   };
 
-  // Calculate stats from real data
+  // Calculate stats from real data (only reservations with payment proof)
+  const paidReservations = reservations.filter((r) => r.proofOfPaymentUrl);
   const stats = [
     {
-      label: "Pending",
-      value: reservations.filter((r) => r.status.toLowerCase() === "pending")
-        .length,
-      color: "yellow",
-    },
-    {
       label: "Confirmed",
-      value: reservations.filter((r) => r.status.toLowerCase() === "confirmed")
-        .length,
+      value: paidReservations.filter(
+        (r) => r.status.toLowerCase() === "confirmed",
+      ).length,
       color: "blue",
     },
     {
       label: "Checked In",
-      value: reservations.filter((r) => r.status.toLowerCase() === "checked-in")
-        .length,
+      value: paidReservations.filter(
+        (r) => r.status.toLowerCase() === "checked-in",
+      ).length,
       color: "green",
     },
     {
-      label: "At Risk",
-      value: reservations.filter((r) => r.status.toLowerCase() === "at-risk")
-        .length,
-      color: "orange",
-    },
-    {
-      label: "Cancelled",
-      value: reservations.filter((r) => r.status.toLowerCase() === "cancelled")
-        .length,
-      color: "red",
+      label: "Total",
+      value: paidReservations.length,
+      color: "yellow",
     },
   ];
 
@@ -533,11 +523,8 @@ function ReservationsPage() {
                     onChange={(e) => setStatusFilter(e.target.value)}
                   >
                     <option value="all">All Status</option>
-                    <option value="pending">Pending</option>
                     <option value="confirmed">Confirmed</option>
                     <option value="checked-in">Checked In</option>
-                    <option value="at-risk">At Risk</option>
-                    <option value="cancelled">Cancelled</option>
                   </select>
                   <select
                     className="admin-reservations-filter-select"
@@ -573,9 +560,12 @@ function ReservationsPage() {
                   </div>
                 ) : (
                   (() => {
-                    // Filter reservations
+                    // Filter reservations - only show those with payment proof submitted
                     const filteredReservations = reservations.filter(
                       (reservation) => {
+                        // Must have payment proof submitted
+                        if (!reservation.proofOfPaymentUrl) return false;
+
                         const matchesSearch =
                           reservation.customer
                             .toLowerCase()
@@ -908,88 +898,6 @@ function ReservationsPage() {
                                         </svg>
                                       </button>
 
-                                      {/* Payment Actions - Show payment proof and verify/reject buttons if proof exists and payment is pending */}
-                                      {reservation.proofOfPaymentUrl &&
-                                        reservation.paymentStatus ===
-                                          "pending" && (
-                                          <>
-                                            <button
-                                              onClick={() =>
-                                                handleViewProof(
-                                                  reservation.proofOfPaymentUrl,
-                                                )
-                                              }
-                                              title="View Payment Proof"
-                                              style={{
-                                                padding: "4px 8px",
-                                                border: "1px solid #DBEAFE",
-                                                borderRadius: "4px",
-                                                backgroundColor: "#EFF6FF",
-                                                color: "#2563EB",
-                                                cursor: "pointer",
-                                                fontSize: "11px",
-                                                fontWeight: "500",
-                                              }}
-                                            >
-                                              📄
-                                            </button>
-                                            <button
-                                              onClick={() =>
-                                                handleVerifyPayment(
-                                                  reservation.id,
-                                                )
-                                              }
-                                              disabled={
-                                                actionLoading === reservation.id
-                                              }
-                                              title="Verify Payment"
-                                              style={{
-                                                padding: "4px 8px",
-                                                border: "1px solid #D1FAE5",
-                                                borderRadius: "4px",
-                                                backgroundColor: "#ECFDF5",
-                                                color: "#059669",
-                                                cursor:
-                                                  actionLoading ===
-                                                  reservation.id
-                                                    ? "not-allowed"
-                                                    : "pointer",
-                                                fontSize: "11px",
-                                                fontWeight: "500",
-                                              }}
-                                            >
-                                              ✓
-                                            </button>
-                                            <button
-                                              onClick={() =>
-                                                handleRejectPayment(
-                                                  reservation.id,
-                                                )
-                                              }
-                                              disabled={
-                                                actionLoading === reservation.id
-                                              }
-                                              title="Reject Payment"
-                                              style={{
-                                                padding: "4px 8px",
-                                                border: "1px solid #FEE2E2",
-                                                borderRadius: "4px",
-                                                backgroundColor: "#FEF2F2",
-                                                color: "#DC2626",
-                                                cursor:
-                                                  actionLoading ===
-                                                  reservation.id
-                                                    ? "not-allowed"
-                                                    : "pointer",
-                                                fontSize: "11px",
-                                                fontWeight: "500",
-                                              }}
-                                            >
-                                              ✗
-                                            </button>
-                                          </>
-                                        )}
-
                                       {/* Check-In Button - Show when payment is paid and status is confirmed */}
                                       {reservation.paymentStatus === "paid" &&
                                         reservation.status.toLowerCase() ===
@@ -1019,92 +927,6 @@ function ReservationsPage() {
                                             Check In
                                           </button>
                                         )}
-
-                                      {/* At Risk Actions - Extend or Release */}
-                                      {reservation.status.toLowerCase() ===
-                                        "at-risk" && (
-                                        <>
-                                          <button
-                                            onClick={() =>
-                                              handleExtendReservation(
-                                                reservation.id,
-                                              )
-                                            }
-                                            disabled={
-                                              actionLoading === reservation.id
-                                            }
-                                            title="Extend Move-In Date"
-                                            style={{
-                                              padding: "4px 8px",
-                                              border: "1px solid #FDE68A",
-                                              borderRadius: "4px",
-                                              backgroundColor: "#FFFBEB",
-                                              color: "#B45309",
-                                              cursor:
-                                                actionLoading === reservation.id
-                                                  ? "not-allowed"
-                                                  : "pointer",
-                                              fontSize: "11px",
-                                              fontWeight: "500",
-                                            }}
-                                          >
-                                            Extend
-                                          </button>
-                                          <button
-                                            onClick={() =>
-                                              handleReleaseSlot(reservation.id)
-                                            }
-                                            disabled={
-                                              actionLoading === reservation.id
-                                            }
-                                            title="Release Slot"
-                                            style={{
-                                              padding: "4px 8px",
-                                              border: "1px solid #FEE2E2",
-                                              borderRadius: "4px",
-                                              backgroundColor: "#FEF2F2",
-                                              color: "#DC2626",
-                                              cursor:
-                                                actionLoading === reservation.id
-                                                  ? "not-allowed"
-                                                  : "pointer",
-                                              fontSize: "11px",
-                                              fontWeight: "500",
-                                            }}
-                                          >
-                                            Release
-                                          </button>
-                                        </>
-                                      )}
-
-                                      {/* Archive (Soft Delete) - Always available except for checked-in */}
-                                      {reservation.status.toLowerCase() !==
-                                        "checked-in" && (
-                                        <button
-                                          onClick={() =>
-                                            handleArchive(reservation.id)
-                                          }
-                                          disabled={
-                                            actionLoading === reservation.id
-                                          }
-                                          title="Archive Reservation"
-                                          style={{
-                                            padding: "4px 8px",
-                                            border: "1px solid #E5E7EB",
-                                            borderRadius: "4px",
-                                            backgroundColor: "#F9FAFB",
-                                            color: "#6B7280",
-                                            cursor:
-                                              actionLoading === reservation.id
-                                                ? "not-allowed"
-                                                : "pointer",
-                                            fontSize: "11px",
-                                            fontWeight: "500",
-                                          }}
-                                        >
-                                          🗑️
-                                        </button>
-                                      )}
                                     </div>
                                   </td>
                                 </tr>

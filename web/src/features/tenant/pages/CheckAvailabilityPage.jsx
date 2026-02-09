@@ -110,6 +110,7 @@ function CheckAvailabilityPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
+
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedBranch, setSelectedBranch] = useState("All");
   const [selectedRoomType, setSelectedRoomType] = useState("All");
@@ -353,7 +354,7 @@ function CheckAvailabilityPage() {
     proceedWithReservation();
   };
 
-  const proceedWithReservation = () => {
+  const proceedWithReservation = async () => {
     const reservationData = {
       room: selectedRoom,
       selectedAppliances: Object.keys(selectedAppliances)

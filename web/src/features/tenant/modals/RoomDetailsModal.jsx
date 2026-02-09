@@ -48,6 +48,7 @@ export default function RoomDetailsModal({
   onApplianceQuantityChange,
   calculateApplianceFees,
   availableAppliances,
+  proceedButtonText = "Proceed to Reservation",
 }) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
@@ -370,8 +371,8 @@ export default function RoomDetailsModal({
                                   }`}
                                 >
                                   {upperBeds.filter((bed) => bed.available)
-                                    .length || 0}
-                                  {" "}/ {upperBeds.length} Available
+                                    .length || 0}{" "}
+                                  / {upperBeds.length} Available
                                 </span>
                               </div>
                             </div>
@@ -450,8 +451,8 @@ export default function RoomDetailsModal({
                                   }`}
                                 >
                                   {lowerBeds.filter((bed) => bed.available)
-                                    .length || 0}
-                                  {" "}/ {lowerBeds.length} Available
+                                    .length || 0}{" "}
+                                  / {lowerBeds.length} Available
                                 </span>
                               </div>
                             </div>
@@ -499,7 +500,8 @@ export default function RoomDetailsModal({
                             }`}
                           >
                             <div className="text-xl mb-2">
-                              {bed.position === "upper" || bed.position === "top"
+                              {bed.position === "upper" ||
+                              bed.position === "top"
                                 ? "🛏️⬆️"
                                 : bed.position === "lower" ||
                                     bed.position === "bottom"
@@ -513,7 +515,9 @@ export default function RoomDetailsModal({
                             </div>
                             <div
                               className={`text-xs font-medium ${
-                                bed.available ? "text-green-600" : "text-red-500"
+                                bed.available
+                                  ? "text-green-600"
+                                  : "text-red-500"
                               }`}
                             >
                               {bed.available ? "Available" : "Occupied"}
@@ -614,7 +618,9 @@ export default function RoomDetailsModal({
                       </button>
                       <button
                         type="button"
-                        onClick={() => onApplianceQuantityChange(appliance.id, 0)}
+                        onClick={() =>
+                          onApplianceQuantityChange(appliance.id, 0)
+                        }
                         style={{
                           padding: "6px 12px",
                           border: "1px solid #e5e7eb",
@@ -673,7 +679,7 @@ export default function RoomDetailsModal({
             >
               {requiresBedSelection && !selectedBed
                 ? "Please Select a Bed"
-                : "Proceed to Reservation"}
+                : proceedButtonText}
             </button>
           </div>
         </div>

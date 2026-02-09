@@ -112,18 +112,12 @@ router.put(
  *
  * Delete an existing reservation.
  *
- * Access: Admin (must be from room's branch) | Super Admin (any reservation)
+ * Access: User (own reservation) | Admin (any reservation in their branch) | Super Admin (any reservation)
  *
  * @param {string} reservationId - MongoDB ObjectId of the reservation
  * @returns {Object} Success message with deleted reservation ID
  */
-router.delete(
-  "/:reservationId",
-  verifyToken,
-  verifyAdmin,
-  filterByBranch,
-  deleteReservation,
-);
+router.delete("/:reservationId", verifyToken, deleteReservation);
 
 /**
  * PUT /api/reservations/:reservationId/extend

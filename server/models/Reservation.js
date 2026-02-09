@@ -86,7 +86,8 @@ const reservationSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    // Schedule rejection tracking
+
+    // Visit Schedule Rejection
     scheduleRejected: {
       type: Boolean,
       default: false,
@@ -281,10 +282,11 @@ const reservationSchema = new mongoose.Schema(
 // ============================================================================
 
 /**
- * Generate reservation code before saving if not already set
+ * Generate reservation code before saving only when status is confirmed
  */
 reservationSchema.pre("save", async function (next) {
-  if (!this.reservationCode) {
+  // Only generate reservation code when status becomes confirmed and code doesn't exist
+  if (this.status === "confirmed" && !this.reservationCode) {
     // Generate a short unique code: RES-ABC123 (6 characters)
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     let code = "RES-";

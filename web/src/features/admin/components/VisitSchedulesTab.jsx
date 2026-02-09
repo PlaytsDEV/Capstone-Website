@@ -1,21 +1,15 @@
 import { useState, useEffect } from "react";
 import { reservationApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
+import VisitDetailsModal from "./VisitDetailsModal";
 
 function VisitSchedulesTab() {
   const [schedules, setSchedules] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedSchedule, setSelectedSchedule] = useState(null);
   const [actionLoading, setActionLoading] = useState(null);
-  const [viewDetailsModal, setViewDetailsModal] = useState({
-    open: false,
-    schedule: null,
-  });
-  const [rejectModal, setRejectModal] = useState({
-    open: false,
-    scheduleId: null,
-  });
-  const [rejectReason, setRejectReason] = useState("");
+  const [viewModalOpen, setViewModalOpen] = useState(false);
+  const [viewSchedule, setViewSchedule] = useState(null);
 
   // Fetch reservations that have visit scheduled but not yet approved
   useEffect(() => {
@@ -58,6 +52,10 @@ function VisitSchedulesTab() {
         billingEmail: res.billingEmail,
         firstName: res.firstName,
         lastName: res.lastName,
+        // Rejection fields
+        scheduleRejected: res.scheduleRejected,
+        scheduleRejectionReason: res.scheduleRejectionReason,
+        scheduleRejectedAt: res.scheduleRejectedAt,
       }));
 
       setSchedules(transformed);
@@ -121,33 +119,35 @@ function VisitSchedulesTab() {
     }
   };
 
-  const handleRejectSchedule = async (scheduleId) => {
-    // Open reject modal instead of prompt
-    setRejectModal({ open: true, scheduleId });
-    setRejectReason("");
-  };
-
-  const confirmRejectSchedule = async () => {
-    const scheduleId = rejectModal.scheduleId;
-    if (!scheduleId) return;
+  const handleRejectSchedule = async (scheduleId, reason = null) => {
+    // If no reason provided, prompt for it
+    if (reason === null) {
+      const inputReason = window.prompt(
+        "Enter reason for rejection (required):",
+      );
+      if (inputReason === null) return; // User cancelled
+      if (!inputReason.trim()) {
+        showNotification("Rejection reason is required", "warning");
+        return;
+      }
+      reason = inputReason.trim();
+    }
 
     try {
       setActionLoading(scheduleId);
       await reservationApi.update(scheduleId, {
         scheduleRejected: true,
-        scheduleRejectionReason: rejectReason || "No reason provided",
+        scheduleRejectionReason: reason,
         scheduleRejectedAt: new Date().toISOString(),
-        // Reset schedule-related fields
-        scheduleApproved: false,
         viewingType: null,
+        agreedToPrivacy: false,
+        scheduleApproved: false,
       });
       showNotification(
-        "Visit schedule rejected. User has been notified.",
-        "warning",
+        "Visit schedule rejected. User will see the rejection reason.",
+        "success",
         3000,
       );
-      setRejectModal({ open: false, scheduleId: null });
-      setRejectReason("");
       fetchSchedules();
     } catch (error) {
       console.error("Error rejecting schedule:", error);
@@ -155,6 +155,11 @@ function VisitSchedulesTab() {
     } finally {
       setActionLoading(null);
     }
+  };
+
+  const handleViewDetails = (schedule) => {
+    setViewSchedule(schedule);
+    setViewModalOpen(true);
   };
 
   const handleSoftDelete = async (scheduleId) => {
@@ -506,21 +511,19 @@ function VisitSchedulesTab() {
                         }}
                       >
                         <button
-                          onClick={() =>
-                            setViewDetailsModal({ open: true, schedule })
-                          }
+                          onClick={() => handleViewDetails(schedule)}
                           style={{
                             padding: "6px 12px",
-                            backgroundColor: "#EFF6FF",
-                            color: "#1E40AF",
-                            border: "1px solid #BFDBFE",
+                            backgroundColor: "#6B7280",
+                            color: "white",
+                            border: "none",
                             borderRadius: "6px",
                             fontSize: "12px",
                             fontWeight: "500",
                             cursor: "pointer",
                           }}
                         >
-                          👁️ View Details
+                          👁 View
                         </button>
                         <button
                           onClick={() => handleApproveSchedule(schedule.id)}
@@ -540,7 +543,7 @@ function VisitSchedulesTab() {
                             opacity: actionLoading === schedule.id ? 0.6 : 1,
                           }}
                         >
-                          ✓ Approve Schedule
+                          ✓ Approve
                         </button>
                         <button
                           onClick={() => handleRejectSchedule(schedule.id)}
@@ -815,25 +818,22 @@ function VisitSchedulesTab() {
                           display: "flex",
                           gap: "8px",
                           justifyContent: "center",
-                          flexWrap: "wrap",
                         }}
                       >
                         <button
-                          onClick={() =>
-                            setViewDetailsModal({ open: true, schedule })
-                          }
+                          onClick={() => handleViewDetails(schedule)}
                           style={{
                             padding: "6px 12px",
-                            backgroundColor: "#EFF6FF",
-                            color: "#1E40AF",
-                            border: "1px solid #BFDBFE",
+                            backgroundColor: "#6B7280",
+                            color: "white",
+                            border: "none",
                             borderRadius: "6px",
                             fontSize: "12px",
                             fontWeight: "500",
                             cursor: "pointer",
                           }}
                         >
-                          👁️ View Details
+                          👁 View
                         </button>
                         <button
                           onClick={() => handleMarkVisitComplete(schedule.id)}
@@ -1061,25 +1061,22 @@ function VisitSchedulesTab() {
                           display: "flex",
                           gap: "8px",
                           justifyContent: "center",
-                          flexWrap: "wrap",
                         }}
                       >
                         <button
-                          onClick={() =>
-                            setViewDetailsModal({ open: true, schedule })
-                          }
+                          onClick={() => handleViewDetails(schedule)}
                           style={{
                             padding: "6px 12px",
-                            backgroundColor: "#EFF6FF",
-                            color: "#1E40AF",
-                            border: "1px solid #BFDBFE",
+                            backgroundColor: "#6B7280",
+                            color: "white",
+                            border: "none",
                             borderRadius: "6px",
                             fontSize: "12px",
                             fontWeight: "500",
                             cursor: "pointer",
                           }}
                         >
-                          👁️ View Details
+                          👁 View
                         </button>
                         <button
                           onClick={() => handleSoftDelete(schedule.id)}
@@ -1112,577 +1109,15 @@ function VisitSchedulesTab() {
       </div>
 
       {/* View Details Modal */}
-      {viewDetailsModal.open && viewDetailsModal.schedule && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0, 0, 0, 0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            padding: "20px",
+      {viewModalOpen && viewSchedule && (
+        <VisitDetailsModal
+          schedule={viewSchedule}
+          onClose={() => {
+            setViewModalOpen(false);
+            setViewSchedule(null);
           }}
-          onClick={() => setViewDetailsModal({ open: false, schedule: null })}
-        >
-          <div
-            style={{
-              backgroundColor: "white",
-              borderRadius: "16px",
-              maxWidth: "600px",
-              width: "100%",
-              maxHeight: "80vh",
-              overflow: "auto",
-              boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div
-              style={{
-                padding: "20px 24px",
-                borderBottom: "1px solid #E5E7EB",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <div>
-                <h2
-                  style={{
-                    margin: 0,
-                    fontSize: "18px",
-                    fontWeight: "600",
-                    color: "#1F2937",
-                  }}
-                >
-                  Visit Schedule Details
-                </h2>
-                <p
-                  style={{
-                    margin: "4px 0 0",
-                    fontSize: "13px",
-                    color: "#6B7280",
-                  }}
-                >
-                  {viewDetailsModal.schedule.reservationCode}
-                </p>
-              </div>
-              <button
-                onClick={() =>
-                  setViewDetailsModal({ open: false, schedule: null })
-                }
-                style={{
-                  background: "none",
-                  border: "none",
-                  fontSize: "24px",
-                  cursor: "pointer",
-                  color: "#6B7280",
-                  padding: "4px",
-                }}
-              >
-                ×
-              </button>
-            </div>
-
-            {/* Modal Content */}
-            <div style={{ padding: "24px" }}>
-              {/* Customer Info */}
-              <div style={{ marginBottom: "24px" }}>
-                <h3
-                  style={{
-                    fontSize: "14px",
-                    fontWeight: "600",
-                    color: "#374151",
-                    marginBottom: "12px",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                  }}
-                >
-                  Customer Information
-                </h3>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: "12px",
-                  }}
-                >
-                  <div>
-                    <p
-                      style={{
-                        fontSize: "12px",
-                        color: "#6B7280",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      Name
-                    </p>
-                    <p
-                      style={{
-                        fontSize: "14px",
-                        color: "#1F2937",
-                        fontWeight: "500",
-                        margin: 0,
-                      }}
-                    >
-                      {viewDetailsModal.schedule.customer}
-                    </p>
-                  </div>
-                  <div>
-                    <p
-                      style={{
-                        fontSize: "12px",
-                        color: "#6B7280",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      Email
-                    </p>
-                    <p
-                      style={{
-                        fontSize: "14px",
-                        color: "#1F2937",
-                        fontWeight: "500",
-                        margin: 0,
-                      }}
-                    >
-                      {viewDetailsModal.schedule.email}
-                    </p>
-                  </div>
-                  <div>
-                    <p
-                      style={{
-                        fontSize: "12px",
-                        color: "#6B7280",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      Phone
-                    </p>
-                    <p
-                      style={{
-                        fontSize: "14px",
-                        color: "#1F2937",
-                        fontWeight: "500",
-                        margin: 0,
-                      }}
-                    >
-                      {viewDetailsModal.schedule.phone}
-                    </p>
-                  </div>
-                  <div>
-                    <p
-                      style={{
-                        fontSize: "12px",
-                        color: "#6B7280",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      Billing Email
-                    </p>
-                    <p
-                      style={{
-                        fontSize: "14px",
-                        color: "#1F2937",
-                        fontWeight: "500",
-                        margin: 0,
-                      }}
-                    >
-                      {viewDetailsModal.schedule.billingEmail || "N/A"}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Room Info */}
-              <div style={{ marginBottom: "24px" }}>
-                <h3
-                  style={{
-                    fontSize: "14px",
-                    fontWeight: "600",
-                    color: "#374151",
-                    marginBottom: "12px",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                  }}
-                >
-                  Room Information
-                </h3>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: "12px",
-                  }}
-                >
-                  <div>
-                    <p
-                      style={{
-                        fontSize: "12px",
-                        color: "#6B7280",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      Room
-                    </p>
-                    <p
-                      style={{
-                        fontSize: "14px",
-                        color: "#1F2937",
-                        fontWeight: "500",
-                        margin: 0,
-                      }}
-                    >
-                      {viewDetailsModal.schedule.room}
-                    </p>
-                  </div>
-                  <div>
-                    <p
-                      style={{
-                        fontSize: "12px",
-                        color: "#6B7280",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      Branch
-                    </p>
-                    <p
-                      style={{
-                        fontSize: "14px",
-                        color: "#1F2937",
-                        fontWeight: "500",
-                        margin: 0,
-                      }}
-                    >
-                      {viewDetailsModal.schedule.branch}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Visit Info */}
-              <div style={{ marginBottom: "24px" }}>
-                <h3
-                  style={{
-                    fontSize: "14px",
-                    fontWeight: "600",
-                    color: "#374151",
-                    marginBottom: "12px",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                  }}
-                >
-                  Visit Information
-                </h3>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: "12px",
-                  }}
-                >
-                  <div>
-                    <p
-                      style={{
-                        fontSize: "12px",
-                        color: "#6B7280",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      Visit Type
-                    </p>
-                    <p
-                      style={{
-                        fontSize: "14px",
-                        color: "#1F2937",
-                        fontWeight: "500",
-                        margin: 0,
-                      }}
-                    >
-                      {viewDetailsModal.schedule.viewingType === "inperson"
-                        ? "🏠 In-Person"
-                        : "💻 Virtual"}
-                    </p>
-                  </div>
-                  <div>
-                    <p
-                      style={{
-                        fontSize: "12px",
-                        color: "#6B7280",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      Requested Date
-                    </p>
-                    <p
-                      style={{
-                        fontSize: "14px",
-                        color: "#1F2937",
-                        fontWeight: "500",
-                        margin: 0,
-                      }}
-                    >
-                      {new Date(
-                        viewDetailsModal.schedule.scheduledDate,
-                      ).toLocaleDateString("en-US", {
-                        weekday: "long",
-                        month: "long",
-                        day: "numeric",
-                        year: "numeric",
-                      })}
-                    </p>
-                  </div>
-                  {viewDetailsModal.schedule.isOutOfTown && (
-                    <div style={{ gridColumn: "1 / -1" }}>
-                      <p
-                        style={{
-                          fontSize: "12px",
-                          color: "#6B7280",
-                          marginBottom: "4px",
-                        }}
-                      >
-                        Current Location (Out of Town)
-                      </p>
-                      <p
-                        style={{
-                          fontSize: "14px",
-                          color: "#1F2937",
-                          fontWeight: "500",
-                          margin: 0,
-                        }}
-                      >
-                        📍{" "}
-                        {viewDetailsModal.schedule.currentLocation ||
-                          "Not specified"}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Status */}
-              <div>
-                <h3
-                  style={{
-                    fontSize: "14px",
-                    fontWeight: "600",
-                    color: "#374151",
-                    marginBottom: "12px",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                  }}
-                >
-                  Status
-                </h3>
-                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                  <span
-                    style={{
-                      padding: "6px 12px",
-                      borderRadius: "20px",
-                      fontSize: "12px",
-                      fontWeight: "500",
-                      backgroundColor: viewDetailsModal.schedule
-                        .scheduleApproved
-                        ? "#D1FAE5"
-                        : "#FEF3C7",
-                      color: viewDetailsModal.schedule.scheduleApproved
-                        ? "#059669"
-                        : "#92400E",
-                    }}
-                  >
-                    {viewDetailsModal.schedule.scheduleApproved
-                      ? "✓ Schedule Approved"
-                      : "⏳ Pending Approval"}
-                  </span>
-                  {viewDetailsModal.schedule.visitApproved && (
-                    <span
-                      style={{
-                        padding: "6px 12px",
-                        borderRadius: "20px",
-                        fontSize: "12px",
-                        fontWeight: "500",
-                        backgroundColor: "#D1FAE5",
-                        color: "#059669",
-                      }}
-                    >
-                      ✓ Visit Completed
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div
-              style={{
-                padding: "16px 24px",
-                borderTop: "1px solid #E5E7EB",
-                display: "flex",
-                justifyContent: "flex-end",
-              }}
-            >
-              <button
-                onClick={() =>
-                  setViewDetailsModal({ open: false, schedule: null })
-                }
-                style={{
-                  padding: "10px 20px",
-                  backgroundColor: "#F3F4F6",
-                  color: "#374151",
-                  border: "none",
-                  borderRadius: "8px",
-                  fontSize: "14px",
-                  fontWeight: "500",
-                  cursor: "pointer",
-                }}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Reject Modal */}
-      {rejectModal.open && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0, 0, 0, 0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-            padding: "20px",
-          }}
-          onClick={() => setRejectModal({ open: false, scheduleId: null })}
-        >
-          <div
-            style={{
-              backgroundColor: "white",
-              borderRadius: "16px",
-              maxWidth: "500px",
-              width: "100%",
-              boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div
-              style={{
-                padding: "20px 24px",
-                borderBottom: "1px solid #E5E7EB",
-              }}
-            >
-              <h2
-                style={{
-                  margin: 0,
-                  fontSize: "18px",
-                  fontWeight: "600",
-                  color: "#DC2626",
-                }}
-              >
-                ⚠️ Reject Visit Schedule
-              </h2>
-              <p
-                style={{
-                  margin: "8px 0 0",
-                  fontSize: "14px",
-                  color: "#6B7280",
-                }}
-              >
-                The user will be notified about this rejection and can
-                reschedule.
-              </p>
-            </div>
-
-            {/* Modal Content */}
-            <div style={{ padding: "24px" }}>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: "14px",
-                  fontWeight: "500",
-                  color: "#374151",
-                  marginBottom: "8px",
-                }}
-              >
-                Rejection Reason
-              </label>
-              <textarea
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                placeholder="Enter the reason for rejection (this will be shown to the user)..."
-                style={{
-                  width: "100%",
-                  minHeight: "120px",
-                  padding: "12px",
-                  border: "1px solid #D1D5DB",
-                  borderRadius: "8px",
-                  fontSize: "14px",
-                  resize: "vertical",
-                  boxSizing: "border-box",
-                }}
-              />
-            </div>
-
-            {/* Modal Footer */}
-            <div
-              style={{
-                padding: "16px 24px",
-                borderTop: "1px solid #E5E7EB",
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: "12px",
-              }}
-            >
-              <button
-                onClick={() => {
-                  setRejectModal({ open: false, scheduleId: null });
-                  setRejectReason("");
-                }}
-                style={{
-                  padding: "10px 20px",
-                  backgroundColor: "#F3F4F6",
-                  color: "#374151",
-                  border: "none",
-                  borderRadius: "8px",
-                  fontSize: "14px",
-                  fontWeight: "500",
-                  cursor: "pointer",
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmRejectSchedule}
-                disabled={actionLoading}
-                style={{
-                  padding: "10px 20px",
-                  backgroundColor: "#DC2626",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "8px",
-                  fontSize: "14px",
-                  fontWeight: "500",
-                  cursor: actionLoading ? "not-allowed" : "pointer",
-                  opacity: actionLoading ? 0.6 : 1,
-                }}
-              >
-                {actionLoading ? "Rejecting..." : "Confirm Rejection"}
-              </button>
-            </div>
-          </div>
-        </div>
+          onUpdate={fetchSchedules}
+        />
       )}
     </div>
   );

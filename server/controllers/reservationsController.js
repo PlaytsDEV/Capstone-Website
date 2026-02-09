@@ -21,9 +21,9 @@ export const getReservations = async (req, res) => {
 
     let reservations;
 
-    // Super admin sees all reservations
+    // Super admin sees all reservations (excluding archived)
     if (dbUser.role === "superAdmin") {
-      reservations = await Reservation.find()
+      reservations = await Reservation.find({ isArchived: { $ne: true } })
         .populate("userId", "firstName lastName email")
         .populate("roomId", "name branch type price")
         .select("-__v")
@@ -37,7 +37,10 @@ export const getReservations = async (req, res) => {
       );
       const roomIds = branchRooms.map((room) => room._id);
 
-      reservations = await Reservation.find({ roomId: { $in: roomIds } })
+      reservations = await Reservation.find({
+        roomId: { $in: roomIds },
+        isArchived: { $ne: true },
+      })
         .populate("userId", "firstName lastName email")
         .populate("roomId", "name branch type price")
         .select("-__v")
@@ -45,7 +48,10 @@ export const getReservations = async (req, res) => {
     }
     // Regular users/tenants see only their own reservations
     else {
-      reservations = await Reservation.find({ userId: dbUser._id })
+      reservations = await Reservation.find({
+        userId: dbUser._id,
+        isArchived: { $ne: true },
+      })
         .populate("userId", "firstName lastName email")
         .populate("roomId", "name branch type price")
         .select("-__v")
@@ -413,6 +419,23 @@ export const updateReservation = async (req, res) => {
       req.body.atRisk = false;
     }
 
+    // When status is changed to "confirmed", automatically set payment to "paid"
+    if (req.body.status === "confirmed") {
+      req.body.paymentStatus = "paid";
+      req.body.approvedDate = new Date();
+    }
+
+    // When status is changed to "checked-in", update user role and tenantStatus to active
+    if (req.body.status === "checked-in") {
+      const reservation = await Reservation.findById(reservationId);
+      if (reservation && reservation.userId) {
+        await User.findByIdAndUpdate(reservation.userId, {
+          role: "tenant",
+          tenantStatus: "active",
+        });
+      }
+    }
+
     // Update reservation and return the updated document
     const reservation = await Reservation.findByIdAndUpdate(
       reservationId,
@@ -502,13 +525,6 @@ export const updateReservationByUser = async (req, res) => {
       return res.status(403).json({
         error: "Access denied. You can only update your own reservation.",
         code: "RESERVATION_ACCESS_DENIED",
-      });
-    }
-
-    if (req.body?.paymentStatus && req.body.paymentStatus !== "pending") {
-      return res.status(403).json({
-        error: "Access denied. Payment status can only be set by admin.",
-        code: "PAYMENT_STATUS_ADMIN_ONLY",
       });
     }
 
@@ -609,6 +625,12 @@ export const updateReservationByUser = async (req, res) => {
       updates["employment.previousEmployment"] = req.body.previousEmployment;
     }
 
+    // When payment proof is uploaded, set status to pending payment verification
+    if (req.body.proofOfPaymentUrl) {
+      updates.paymentStatus = "pending";
+      updates.paymentDate = new Date();
+    }
+
     const updatedReservation = await Reservation.findByIdAndUpdate(
       reservationId,
       { $set: updates },
@@ -663,10 +685,24 @@ export const deleteReservation = async (req, res) => {
       });
     }
 
-    // Check branch access (admin can only delete reservations for rooms in their branch)
-    if (req.branchFilter && reservation.roomId?.branch !== req.branchFilter) {
+    // Check authorization
+    const isOwner = String(reservation.userId) === String(dbUser._id);
+    const isAdmin = dbUser.role === "admin" || dbUser.role === "superAdmin";
+
+    if (!isOwner && !isAdmin) {
       return res.status(403).json({
-        error: `Access denied. You can only manage reservations for ${req.branchFilter} branch.`,
+        error: "Access denied. You can only delete your own reservation.",
+        code: "RESERVATION_ACCESS_DENIED",
+      });
+    }
+
+    // Check branch access (admin can only delete reservations for rooms in their branch)
+    if (
+      dbUser.role === "admin" &&
+      reservation.roomId?.branch !== dbUser.branch
+    ) {
+      return res.status(403).json({
+        error: `Access denied. You can only manage reservations for ${dbUser.branch} branch.`,
         code: "BRANCH_ACCESS_DENIED",
       });
     }

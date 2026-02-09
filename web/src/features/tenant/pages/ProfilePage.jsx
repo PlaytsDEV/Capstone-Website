@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import {
   authApi,
@@ -32,6 +32,7 @@ import {
 const ProfilePage = () => {
   const { user: authUser, updateUser, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [unacknowledgedCount] = useState(1); // TODO: Get from API
   const [activeTab, setActiveTab] = useState("dashboard");
   const [loading, setLoading] = useState(true);
@@ -44,6 +45,7 @@ const ProfilePage = () => {
   const [activeReservation, setActiveReservation] = useState(null);
   const [reservations, setReservations] = useState([]);
   const [visits, setVisits] = useState([]);
+  const [selectedReservationId, setSelectedReservationId] = useState(null);
 
   // Profile data
   const [profileData, setProfileData] = useState({
@@ -131,7 +133,7 @@ const ProfilePage = () => {
     };
 
     loadProfileData();
-  }, []);
+  }, [location.state?.refresh]);
 
   const loadReservationsAndVisits = async () => {
     try {
@@ -139,12 +141,20 @@ const ProfilePage = () => {
       const reservationsData = await reservationApi.getAll();
       setReservations(reservationsData || []);
 
-      // Find active reservation
-      const active = reservationsData?.find((r) => {
-        const status = r.reservationStatus || r.status;
-        return status !== "completed" && status !== "cancelled";
-      });
-      setActiveReservation(active || null);
+      // Find active reservation (non-completed, non-cancelled)
+      const activeOnes =
+        reservationsData?.filter((r) => {
+          const status = r.reservationStatus || r.status;
+          return status !== "completed" && status !== "cancelled";
+        }) || [];
+
+      const active = activeOnes[0] || null;
+      setActiveReservation(active);
+
+      // Set the first active reservation as selected by default
+      if (active && !selectedReservationId) {
+        setSelectedReservationId(active._id);
+      }
 
       // Extract visits from reservations
       const allVisits =
@@ -362,171 +372,8 @@ const ProfilePage = () => {
     }
   };
 
-  // Get reservation progress based on current status
-  const getReservationProgress = () => {
-    if (!activeReservation) {
-      return {
-        currentStep: "not_started",
-        steps: [],
-        currentStepIndex: -1,
-      };
-    }
-
-    const status =
-      activeReservation.reservationStatus ||
-      activeReservation.status ||
-      "pending";
-    const stepOrder = [
-      "room_selected",
-      "visit_scheduled",
-      "visit_completed",
-      "application_submitted",
-      "payment_submitted",
-      "confirmed",
-    ];
-
-    const hasRoom = Boolean(activeReservation.roomId);
-    const hasPoliciesAccepted = Boolean(
-      activeReservation.agreedToPrivacy === true,
-    );
-    const hasVisitRequest = Boolean(
-      activeReservation.viewingType && activeReservation.viewingType !== "none",
-    );
-    const isVisitScheduled = hasPoliciesAccepted && hasVisitRequest;
-    const isVisitCompleted = Boolean(activeReservation.visitApproved === true);
-    const hasApplication = Boolean(
-      activeReservation.firstName && activeReservation.lastName,
-    );
-    const hasPayment = Boolean(activeReservation.proofOfPaymentUrl);
-    const isConfirmed =
-      status === "confirmed" || activeReservation.paymentStatus === "paid";
-
-    let currentStepIndex = -1;
-    if (hasRoom) currentStepIndex = 0;
-    if (isVisitScheduled) currentStepIndex = 1;
-    if (isVisitCompleted) currentStepIndex = 2;
-    if (hasApplication) currentStepIndex = 3;
-    if (hasPayment) currentStepIndex = 4;
-    if (isConfirmed) currentStepIndex = 5;
-
-    // Room selection is NOT editable once confirmed
-    const isRoomEditable = false;
-    // Application is editable until payment is submitted
-    const isApplicationEditable = currentStepIndex >= 3 && !hasPayment;
-
-    // Determine pending approval states
-    const isSchedulePendingApproval =
-      isVisitScheduled && !activeReservation.scheduleApproved;
-    const isVisitPendingCompletion =
-      activeReservation.scheduleApproved && !isVisitCompleted;
-    const isPaymentPendingVerification = hasPayment && !isConfirmed;
-    const isScheduleRejected = Boolean(activeReservation.scheduleRejected);
-
-    const steps = [
-      {
-        step: "room_selected",
-        title: "1. Room Selection",
-        description: "Room selected and reserved",
-        status: currentStepIndex >= 0 ? "completed" : "current",
-        completedDate: activeReservation.createdAt,
-      },
-      {
-        step: "visit_scheduled",
-        title: "2. Policies & Visit Scheduled",
-        description: isScheduleRejected
-          ? `Schedule rejected: ${activeReservation.scheduleRejectionReason || "No reason provided"}`
-          : "Acknowledge policies and schedule your room visit",
-        status: isScheduleRejected
-          ? "rejected"
-          : currentStepIndex >= 1
-            ? isSchedulePendingApproval
-              ? "pending_approval"
-              : "completed"
-            : currentStepIndex === 0
-              ? "current"
-              : "locked",
-        completedDate:
-          currentStepIndex >= 1 ? activeReservation.updatedAt : undefined,
-        rejectionReason: isScheduleRejected
-          ? activeReservation.scheduleRejectionReason
-          : null,
-      },
-      {
-        step: "visit_completed",
-        title: "3. Visit Completed",
-        description: activeReservation.scheduleApproved
-          ? "Waiting for admin to verify visit completion"
-          : isScheduleRejected
-            ? "Please reschedule your visit"
-            : "Complete your scheduled visit first",
-        status:
-          currentStepIndex >= 2
-            ? "completed"
-            : currentStepIndex === 1 && activeReservation.scheduleApproved
-              ? "pending_approval"
-              : "locked",
-        completedDate:
-          currentStepIndex >= 2
-            ? activeReservation.visitCompletedAt
-            : undefined,
-      },
-      {
-        step: "application_submitted",
-        title: "4. Tenant Application Submitted",
-        description: isApplicationEditable
-          ? "Application submitted - can still edit"
-          : "Personal details and documents submitted",
-        status:
-          currentStepIndex >= 3
-            ? "completed"
-            : currentStepIndex === 2
-              ? "current"
-              : "locked",
-        completedDate:
-          currentStepIndex >= 3
-            ? activeReservation.applicationSubmittedAt
-            : undefined,
-        editable: isApplicationEditable,
-      },
-      {
-        step: "payment_submitted",
-        title: "5. Payment Submitted",
-        description: "Payment proof uploaded and pending verification",
-        status:
-          currentStepIndex >= 4
-            ? isPaymentPendingVerification
-              ? "pending_approval"
-              : "completed"
-            : currentStepIndex === 3
-              ? "current"
-              : "locked",
-        completedDate:
-          currentStepIndex >= 4 ? activeReservation.paymentDate : undefined,
-      },
-      {
-        step: "confirmed",
-        title: "6. Reservation Confirmed",
-        description: "Reservation fully confirmed and finalized",
-        status:
-          currentStepIndex >= 5
-            ? "completed"
-            : currentStepIndex === 4
-              ? "current"
-              : "locked",
-        completedDate:
-          currentStepIndex >= 5 ? activeReservation.approvedDate : undefined,
-      },
-    ];
-
-    return {
-      currentStep: stepOrder[currentStepIndex] || "room_selected",
-      steps,
-      currentStepIndex: Math.max(currentStepIndex, 0),
-    };
-  };
-
-  // Function to get progress for a specific reservation
-  const getProgressForReservation = (reservation) => {
+  // Get reservation progress based on current status - accepts a reservation parameter
+  const getReservationProgress = (reservation = activeReservation) => {
     if (!reservation) {
       return {
         currentStep: "not_started",
@@ -559,7 +406,10 @@ const ProfilePage = () => {
     const hasPayment = Boolean(reservation.proofOfPaymentUrl);
     const isConfirmed =
       status === "confirmed" || reservation.paymentStatus === "paid";
-    const isScheduleRejected = Boolean(reservation.scheduleRejected);
+
+    // Check for schedule rejection
+    const isScheduleRejected = Boolean(reservation.scheduleRejected === true);
+    const scheduleRejectionReason = reservation.scheduleRejectionReason || null;
 
     let currentStepIndex = -1;
     if (hasRoom) currentStepIndex = 0;
@@ -569,8 +419,15 @@ const ProfilePage = () => {
     if (hasPayment) currentStepIndex = 4;
     if (isConfirmed) currentStepIndex = 5;
 
+    // Application is editable only after submission but before confirmation
+    // Once payment is submitted OR reservation is confirmed, application is locked
+    const isApplicationEditable =
+      currentStepIndex >= 3 && !hasPayment && !isConfirmed;
+
+    // Determine pending approval states
     const isSchedulePendingApproval =
       isVisitScheduled && !reservation.scheduleApproved && !isScheduleRejected;
+    const isPaymentPendingApproval = hasPayment && !isConfirmed;
 
     const steps = [
       {
@@ -579,12 +436,14 @@ const ProfilePage = () => {
         description: "Room selected and reserved",
         status: currentStepIndex >= 0 ? "completed" : "current",
         completedDate: reservation.createdAt,
+        roomName: reservation.roomId?.name || "Unknown Room",
+        branch: reservation.roomId?.branch,
       },
       {
         step: "visit_scheduled",
         title: "2. Policies & Visit Scheduled",
         description: isScheduleRejected
-          ? `Schedule rejected: ${reservation.scheduleRejectionReason || "No reason provided"}`
+          ? `Schedule rejected: ${scheduleRejectionReason || "Please reschedule your visit"}`
           : "Acknowledge policies and schedule your room visit",
         status: isScheduleRejected
           ? "rejected"
@@ -595,57 +454,73 @@ const ProfilePage = () => {
             : currentStepIndex === 0
               ? "current"
               : "locked",
-        rejectionReason: isScheduleRejected
-          ? reservation.scheduleRejectionReason
-          : null,
+        completedDate:
+          currentStepIndex >= 1 ? reservation.updatedAt : undefined,
+        rejectionReason: scheduleRejectionReason,
+        rejectedAt: reservation.scheduleRejectedAt,
       },
       {
         step: "visit_completed",
         title: "3. Visit Completed",
         description: reservation.scheduleApproved
           ? "Waiting for admin to verify visit completion"
-          : isScheduleRejected
-            ? "Please reschedule your visit"
-            : "Complete your scheduled visit first",
+          : "Complete your scheduled visit first",
         status:
           currentStepIndex >= 2
             ? "completed"
             : currentStepIndex === 1 && reservation.scheduleApproved
               ? "pending_approval"
               : "locked",
+        completedDate:
+          currentStepIndex >= 2 ? reservation.visitCompletedAt : undefined,
       },
       {
         step: "application_submitted",
         title: "4. Tenant Application Submitted",
-        description: "Personal details and documents submitted",
+        description: isApplicationEditable
+          ? "Application submitted - can still edit"
+          : isConfirmed
+            ? "Application locked - reservation confirmed"
+            : hasPayment
+              ? "Application locked - payment submitted"
+              : "Personal details and documents submitted",
         status:
           currentStepIndex >= 3
             ? "completed"
             : currentStepIndex === 2
               ? "current"
               : "locked",
+        completedDate:
+          currentStepIndex >= 3
+            ? reservation.applicationSubmittedAt
+            : undefined,
+        editable: isApplicationEditable,
       },
       {
         step: "payment_submitted",
         title: "5. Payment Submitted",
-        description: "Payment proof uploaded and pending verification",
-        status:
-          currentStepIndex >= 4
+        description: isPaymentPendingApproval
+          ? "Awaiting admin payment verification"
+          : "Payment proof uploaded and verified",
+        status: isPaymentPendingApproval
+          ? "pending_approval"
+          : currentStepIndex >= 4
             ? "completed"
             : currentStepIndex === 3
               ? "current"
               : "locked",
+        completedDate:
+          currentStepIndex >= 4 ? reservation.paymentDate : undefined,
       },
       {
         step: "confirmed",
         title: "6. Reservation Confirmed",
-        description: "Reservation fully confirmed and finalized",
-        status:
-          currentStepIndex >= 5
-            ? "completed"
-            : currentStepIndex === 4
-              ? "current"
-              : "locked",
+        description: isPaymentPendingApproval
+          ? "Pending admin payment verification"
+          : "Reservation fully confirmed and finalized",
+        status: currentStepIndex >= 5 ? "completed" : "locked",
+        completedDate:
+          currentStepIndex >= 5 ? reservation.approvedDate : undefined,
       },
     ];
 
@@ -653,13 +528,53 @@ const ProfilePage = () => {
       currentStep: stepOrder[currentStepIndex] || "room_selected",
       steps,
       currentStepIndex: Math.max(currentStepIndex, 0),
-      roomName: reservation.roomId?.name || "Unknown Room",
-      branch: reservation.roomId?.branch || "N/A",
-      reservationId: reservation._id,
     };
   };
 
-  const reservationProgress = getReservationProgress();
+  // Get active reservations (not completed or cancelled)
+  const activeReservations = reservations.filter((r) => {
+    const status = r.reservationStatus || r.status;
+    return status !== "completed" && status !== "cancelled";
+  });
+
+  // Get selected reservation or fallback to first active
+  const selectedReservation = selectedReservationId
+    ? activeReservations.find((r) => r._id === selectedReservationId) ||
+      activeReservations[0]
+    : activeReservations[0];
+
+  const reservationProgress = getReservationProgress(selectedReservation);
+
+  // Check if reservation is confirmed (step 6 complete)
+  const isReservationConfirmed =
+    selectedReservation &&
+    (selectedReservation.reservationStatus === "confirmed" ||
+      selectedReservation.status === "confirmed" ||
+      selectedReservation.paymentStatus === "paid");
+
+  // Prevent browser back button when reservation is confirmed
+  useEffect(() => {
+    if (!isReservationConfirmed) return;
+
+    // Push a new history state to prevent going back
+    window.history.pushState(null, "", window.location.href);
+
+    const handlePopState = (event) => {
+      // When back button is pressed, push state again to stay on page
+      window.history.pushState(null, "", window.location.href);
+      showNotification(
+        "Your reservation is confirmed. You cannot go back to edit previous steps.",
+        "info",
+        3000,
+      );
+    };
+
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [isReservationConfirmed]);
 
   const defaultSteps = [
     {
@@ -700,80 +615,114 @@ const ProfilePage = () => {
     },
   ];
 
-  const stepsToRender = activeReservation
+  const stepsToRender = selectedReservation
     ? reservationProgress.steps
     : defaultSteps;
 
   const [expandedStep, setExpandedStep] = useState(null);
   const [receiptModal, setReceiptModal] = useState({ open: false, step: null });
 
-  const handleStepClick = (step, reservation) => {
-    // Handle locked steps
+  const handleStepClick = (step) => {
+    // Only for room_selected without active reservation - navigate to browse
+    if (!selectedReservation && step.step === "room_selected") {
+      navigate("/tenant/check-availability");
+      return;
+    }
     if (step.status === "locked") {
-      showNotification("Complete previous steps first.", "warning", 2500);
+      showNotification("Complete previous step first.", "warning", 2500);
+      return;
+    }
+    // Block completed steps that are not editable
+    if (
+      step.status === "completed" &&
+      step.step !== "room_selected" &&
+      !step.editable
+    ) {
+      showNotification(
+        "This step is already complete and locked.",
+        "info",
+        2500,
+      );
       return;
     }
 
-    // Handle rejected steps - navigate to reschedule
-    if (step.status === "rejected") {
-      return; // Rejection has its own reschedule button
-    }
+    // Navigate based on step type and status
+    if (selectedReservation) {
+      const stepActions = {
+        room_selected: {
+          // Room selection is locked - always go to step 2
+          navigateToRooms: false,
+          flowStep: 2,
+        },
+        visit_scheduled: {
+          // If rejected, allow reschedule; if pending or current, go to step 2
+          flowStep: 2,
+        },
+        visit_completed: {
+          // If pending admin approval, just show notification
+          isPendingAdmin: step.status === "pending_approval",
+        },
+        application_submitted: {
+          // Go to application form (step 4)
+          flowStep: 4,
+        },
+        payment_submitted: {
+          // Go to payment step (step 5)
+          flowStep: 5,
+        },
+        confirmed: {
+          // Already confirmed, no action needed
+          isComplete: true,
+        },
+      };
 
-    // Handle pending approval steps - just show info
-    if (step.status === "pending_approval") {
-      showNotification("Waiting for admin approval.", "info", 2500);
-      return;
-    }
+      const action = stepActions[step.step];
 
-    // Handle completed steps - no action needed
-    if (step.status === "completed") {
-      return;
-    }
-
-    // Navigate based on current step that needs action
-    const reservationId = reservation?._id;
-
-    switch (step.step) {
-      case "room_selected":
-        if (!reservationId) {
-          navigate("/tenant/check-availability");
-        } else {
-          navigate("/tenant/reservation-flow", {
-            state: { reservationId, continueFlow: true, step: 2 },
-          });
-        }
-        break;
-      case "visit_scheduled":
-        // Navigate to schedule visit (step 2)
-        navigate("/tenant/reservation-flow", {
-          state: { reservationId, continueFlow: true, step: 2 },
-        });
-        break;
-      case "visit_completed":
-        navigate("/tenant/reservation-flow", {
-          state: { reservationId, continueFlow: true, step: 4 },
-        });
-        break;
-      case "application_submitted":
-        navigate("/tenant/reservation-flow", {
-          state: { reservationId, continueFlow: true, step: 5 },
-        });
-        break;
-      case "payment_submitted":
-        // Waiting for payment verification
-        showNotification("Payment is being verified.", "info", 2500);
-        break;
-      case "confirmed":
+      if (action?.isComplete) {
         showNotification("Reservation is confirmed!", "success", 2500);
-        break;
-      default:
-        break;
+        return;
+      }
+
+      if (action?.isPendingAdmin) {
+        showNotification("Waiting for admin verification.", "info", 2500);
+        return;
+      }
+
+      if (
+        step.status === "pending_approval" &&
+        step.step !== "visit_scheduled"
+      ) {
+        showNotification("Waiting for admin approval.", "info", 2500);
+        return;
+      }
+
+      // Navigate to room selection if editable
+      if (action?.navigateToRooms) {
+        navigate("/tenant/check-availability", {
+          state: {
+            changeRoom: true,
+            reservationId: selectedReservation._id,
+          },
+        });
+        return;
+      }
+
+      if (action?.flowStep) {
+        navigate("/tenant/reservation-flow", {
+          state: {
+            reservationId: selectedReservation._id,
+            continueFlow: true,
+            step: action.flowStep,
+          },
+        });
+        return;
+      }
     }
   };
 
   // Render inline receipt content for each step
   const renderStepReceipt = (step) => {
-    if (!activeReservation) return null;
+    if (!selectedReservation) return null;
 
     switch (step.step) {
       case "room_selected":
@@ -796,8 +745,8 @@ const ProfilePage = () => {
             >
               <span style={{ color: "#6B7280" }}>Room</span>
               <span style={{ color: "#1F2937", fontWeight: "500" }}>
-                {activeReservation.roomId?.name ||
-                  activeReservation.roomId?.roomNumber ||
+                {selectedReservation.roomId?.name ||
+                  selectedReservation.roomId?.roomNumber ||
                   "N/A"}
               </span>
             </div>
@@ -816,7 +765,7 @@ const ProfilePage = () => {
                   textTransform: "capitalize",
                 }}
               >
-                {activeReservation.roomId?.branch || "N/A"}
+                {selectedReservation.roomId?.branch || "N/A"}
               </span>
             </div>
             <div
@@ -834,7 +783,7 @@ const ProfilePage = () => {
                   textTransform: "capitalize",
                 }}
               >
-                {activeReservation.roomId?.type || "N/A"}
+                {selectedReservation.roomId?.type || "N/A"}
               </span>
             </div>
             <div
@@ -848,13 +797,13 @@ const ProfilePage = () => {
               <span style={{ color: "#E7710F", fontWeight: "600" }}>
                 ₱
                 {(
-                  activeReservation.roomId?.price ||
-                  activeReservation.totalPrice ||
+                  selectedReservation.roomId?.price ||
+                  selectedReservation.totalPrice ||
                   0
                 ).toLocaleString()}
               </span>
             </div>
-            {activeReservation.selectedBed && (
+            {selectedReservation.selectedBed && (
               <div
                 style={{
                   display: "flex",
@@ -870,8 +819,8 @@ const ProfilePage = () => {
                     textTransform: "capitalize",
                   }}
                 >
-                  {activeReservation.selectedBed.position} (
-                  {activeReservation.selectedBed.id})
+                  {selectedReservation.selectedBed.position} (
+                  {selectedReservation.selectedBed.id})
                 </span>
               </div>
             )}
@@ -901,14 +850,14 @@ const ProfilePage = () => {
               >
                 <span style={{ color: "#6B7280" }}>Visit Type</span>
                 <span style={{ color: "#1F2937", fontWeight: "500" }}>
-                  {activeReservation.viewingType === "inperson"
+                  {selectedReservation.viewingType === "inperson"
                     ? "🏠 In-Person Visit"
-                    : activeReservation.viewingType === "virtual"
+                    : selectedReservation.viewingType === "virtual"
                       ? "💻 Virtual Verification"
                       : "Not selected"}
                 </span>
               </div>
-              {activeReservation.isOutOfTown && (
+              {selectedReservation.isOutOfTown && (
                 <div
                   style={{
                     display: "flex",
@@ -918,7 +867,7 @@ const ProfilePage = () => {
                 >
                   <span style={{ color: "#6B7280" }}>Location</span>
                   <span style={{ color: "#1F2937", fontWeight: "500" }}>
-                    📍 {activeReservation.currentLocation || "Out of town"}
+                    📍 {selectedReservation.currentLocation || "Out of town"}
                   </span>
                 </div>
               )}
@@ -932,13 +881,13 @@ const ProfilePage = () => {
                 <span style={{ color: "#6B7280" }}>Policies Accepted</span>
                 <span
                   style={{
-                    color: activeReservation.agreedToPrivacy
+                    color: selectedReservation.agreedToPrivacy
                       ? "#10B981"
                       : "#6B7280",
                     fontWeight: "500",
                   }}
                 >
-                  {activeReservation.agreedToPrivacy ? "✓ Yes" : "No"}
+                  {selectedReservation.agreedToPrivacy ? "✓ Yes" : "No"}
                 </span>
               </div>
               <div
@@ -951,19 +900,19 @@ const ProfilePage = () => {
                 <span style={{ color: "#6B7280" }}>Schedule Status</span>
                 <span
                   style={{
-                    color: activeReservation.scheduleApproved
+                    color: selectedReservation.scheduleApproved
                       ? "#10B981"
                       : "#F59E0B",
                     fontWeight: "600",
                   }}
                 >
-                  {activeReservation.scheduleApproved
+                  {selectedReservation.scheduleApproved
                     ? "✓ Approved"
                     : "⏳ Awaiting Admin Approval"}
                 </span>
               </div>
               {step.status === "current" &&
-                !activeReservation.scheduleApproved && (
+                !selectedReservation.scheduleApproved && (
                   <p
                     style={{
                       color: "#92400E",
@@ -1002,7 +951,7 @@ const ProfilePage = () => {
               >
                 <span style={{ color: "#6B7280" }}>Visit Type</span>
                 <span style={{ color: "#1F2937", fontWeight: "500" }}>
-                  {activeReservation.viewingType === "inperson"
+                  {selectedReservation.viewingType === "inperson"
                     ? "🏠 In-Person Visit"
                     : "💻 Virtual Verification"}
                 </span>
@@ -1067,7 +1016,7 @@ const ProfilePage = () => {
               >
                 <span style={{ color: "#6B7280" }}>Visit Type</span>
                 <span style={{ color: "#1F2937", fontWeight: "500" }}>
-                  {activeReservation.viewingType === "inperson"
+                  {selectedReservation.viewingType === "inperson"
                     ? "🏠 In-Person Visit"
                     : "💻 Virtual Verification"}
                 </span>
@@ -1082,13 +1031,13 @@ const ProfilePage = () => {
                 <span style={{ color: "#6B7280" }}>Schedule</span>
                 <span
                   style={{
-                    color: activeReservation.scheduleApproved
+                    color: selectedReservation.scheduleApproved
                       ? "#10B981"
                       : "#F59E0B",
                     fontWeight: "600",
                   }}
                 >
-                  {activeReservation.scheduleApproved
+                  {selectedReservation.scheduleApproved
                     ? "✓ Approved"
                     : "⏳ Awaiting Approval"}
                 </span>
@@ -1142,11 +1091,11 @@ const ProfilePage = () => {
               >
                 <span style={{ color: "#6B7280" }}>Applicant</span>
                 <span style={{ color: "#1F2937", fontWeight: "500" }}>
-                  {activeReservation.firstName}{" "}
-                  {activeReservation.middleName
-                    ? activeReservation.middleName + " "
+                  {selectedReservation.firstName}{" "}
+                  {selectedReservation.middleName
+                    ? selectedReservation.middleName + " "
                     : ""}
-                  {activeReservation.lastName}
+                  {selectedReservation.lastName}
                 </span>
               </div>
               <div
@@ -1158,7 +1107,7 @@ const ProfilePage = () => {
               >
                 <span style={{ color: "#6B7280" }}>Mobile</span>
                 <span style={{ color: "#1F2937", fontWeight: "500" }}>
-                  {activeReservation.mobileNumber || "N/A"}
+                  {selectedReservation.mobileNumber || "N/A"}
                 </span>
               </div>
               <div
@@ -1170,7 +1119,7 @@ const ProfilePage = () => {
               >
                 <span style={{ color: "#6B7280" }}>Emergency Contact</span>
                 <span style={{ color: "#1F2937", fontWeight: "500" }}>
-                  {activeReservation.emergencyContactName || "N/A"}
+                  {selectedReservation.emergencyContactName || "N/A"}
                 </span>
               </div>
               <div
@@ -1182,7 +1131,7 @@ const ProfilePage = () => {
               >
                 <span style={{ color: "#6B7280" }}>Employer/School</span>
                 <span style={{ color: "#1F2937", fontWeight: "500" }}>
-                  {activeReservation.employerSchool || "N/A"}
+                  {selectedReservation.employerSchool || "N/A"}
                 </span>
               </div>
               <div
@@ -1243,7 +1192,7 @@ const ProfilePage = () => {
               >
                 <span style={{ color: "#6B7280" }}>Amount</span>
                 <span style={{ color: "#E7710F", fontWeight: "600" }}>
-                  ₱{(activeReservation.totalPrice || 0).toLocaleString()}
+                  ₱{(selectedReservation.totalPrice || 0).toLocaleString()}
                 </span>
               </div>
               <div
@@ -1261,7 +1210,7 @@ const ProfilePage = () => {
                     textTransform: "capitalize",
                   }}
                 >
-                  {activeReservation.paymentMethod || "N/A"}
+                  {selectedReservation.paymentMethod || "N/A"}
                 </span>
               </div>
               <div
@@ -1273,9 +1222,9 @@ const ProfilePage = () => {
               >
                 <span style={{ color: "#6B7280" }}>Move-in Date</span>
                 <span style={{ color: "#1F2937", fontWeight: "500" }}>
-                  {activeReservation.finalMoveInDate
+                  {selectedReservation.finalMoveInDate
                     ? new Date(
-                        activeReservation.finalMoveInDate,
+                        selectedReservation.finalMoveInDate,
                       ).toLocaleDateString()
                     : "TBD"}
                 </span>
@@ -1292,6 +1241,26 @@ const ProfilePage = () => {
                   ✓ Verified
                 </span>
               </div>
+            </div>
+          );
+        }
+        if (step.status === "pending_approval") {
+          return (
+            <div
+              style={{
+                padding: "12px 16px",
+                background: "#FEF3C7",
+                borderRadius: "8px",
+                marginTop: "8px",
+                fontSize: "14px",
+                border: "1px solid #FCD34D",
+              }}
+            >
+              <p style={{ color: "#78350F", margin: 0 }}>
+                <strong>⏳ Pending Review:</strong> Your payment proof has been
+                submitted and is awaiting admin verification. This usually takes
+                1-2 business days.
+              </p>
             </div>
           );
         }
@@ -1349,7 +1318,9 @@ const ProfilePage = () => {
                 </p>
                 <p style={{ color: "#6B7280", fontSize: "13px", margin: 0 }}>
                   Code:{" "}
-                  <strong>{activeReservation.reservationCode || "N/A"}</strong>
+                  <strong>
+                    {selectedReservation.reservationCode || "N/A"}
+                  </strong>
                 </p>
               </div>
               <div
@@ -1361,8 +1332,8 @@ const ProfilePage = () => {
               >
                 <span style={{ color: "#6B7280" }}>Room</span>
                 <span style={{ color: "#1F2937", fontWeight: "500" }}>
-                  {activeReservation.roomId?.name ||
-                    activeReservation.roomId?.roomNumber ||
+                  {selectedReservation.roomId?.name ||
+                    selectedReservation.roomId?.roomNumber ||
                     "N/A"}
                 </span>
               </div>
@@ -1381,7 +1352,7 @@ const ProfilePage = () => {
                     textTransform: "capitalize",
                   }}
                 >
-                  {activeReservation.roomId?.branch || "N/A"}
+                  {selectedReservation.roomId?.branch || "N/A"}
                 </span>
               </div>
               <div
@@ -1395,8 +1366,8 @@ const ProfilePage = () => {
                 <span style={{ color: "#E7710F", fontWeight: "600" }}>
                   ₱
                   {(
-                    activeReservation.roomId?.price ||
-                    activeReservation.totalPrice ||
+                    selectedReservation.roomId?.price ||
+                    selectedReservation.totalPrice ||
                     0
                   ).toLocaleString()}
                 </span>
@@ -1410,13 +1381,33 @@ const ProfilePage = () => {
               >
                 <span style={{ color: "#6B7280" }}>Move-in Date</span>
                 <span style={{ color: "#1F2937", fontWeight: "500" }}>
-                  {activeReservation.finalMoveInDate
+                  {selectedReservation.finalMoveInDate
                     ? new Date(
-                        activeReservation.finalMoveInDate,
+                        selectedReservation.finalMoveInDate,
                       ).toLocaleDateString()
                     : "TBD"}
                 </span>
               </div>
+            </div>
+          );
+        }
+        if (step.status === "pending_approval") {
+          return (
+            <div
+              style={{
+                padding: "12px 16px",
+                background: "#FEF3C7",
+                borderRadius: "8px",
+                marginTop: "8px",
+                fontSize: "14px",
+                border: "1px solid #FCD34D",
+              }}
+            >
+              <p style={{ color: "#78350F", margin: 0 }}>
+                <strong>⏳ Under Review:</strong> Your payment is being verified
+                by our admin team. Once approved, your reservation will be
+                confirmed.
+              </p>
             </div>
           );
         }
@@ -1427,6 +1418,79 @@ const ProfilePage = () => {
     }
   };
 
+  // Get next action based on current step
+  const getNextAction = () => {
+    if (!activeReservation) {
+      return {
+        title: "Start Your Reservation",
+        description: "Browse available rooms and start the reservation process",
+        buttonText: "Browse Rooms",
+        buttonLink: "/tenant/check-availability",
+      };
+    }
+
+    const currentStep = reservationProgress.currentStep;
+
+    switch (currentStep) {
+      case "room_selected":
+        return {
+          title: "Acknowledge Policies & Schedule Visit",
+          description:
+            "Review dormitory policies and schedule your room visit to proceed with the application.",
+          buttonText: "Continue",
+          buttonLink: "/tenant/reservation-flow",
+          reservationId: activeReservation._id,
+          step: 2,
+        };
+      case "visit_scheduled":
+        return {
+          title: "Waiting for Visit Completion",
+          description:
+            "Your visit has been scheduled. Please complete your visit and wait for admin verification.",
+          buttonText: "View Status",
+          buttonLink: "/tenant/profile",
+          buttonVariant: "outline",
+        };
+      case "visit_completed":
+        return {
+          title: "Submit Your Application",
+          description:
+            "Provide your personal details and upload required documents for admin review.",
+          buttonText: "Fill Application Form",
+          buttonLink: "/tenant/reservation-flow",
+          reservationId: activeReservation._id,
+          step: 4,
+        };
+      case "application_submitted":
+        return {
+          title: "Submit Your Payment",
+          description:
+            "Your application has been submitted. Upload your proof of payment to confirm your reservation.",
+          buttonText: "Upload Payment",
+          buttonLink: "/tenant/reservation-flow",
+          reservationId: activeReservation._id,
+          step: 5,
+        };
+      case "payment_submitted":
+      case "confirmed":
+        return {
+          title: "Reservation Confirmed!",
+          description:
+            "Your reservation is confirmed! Prepare for move-in and check your email for contract details.",
+          buttonText: "View Details",
+          buttonLink: "/tenant/profile",
+        };
+      default:
+        return {
+          title: "Get Started",
+          description: "Browse available rooms to begin your reservation",
+          buttonText: "Browse Rooms",
+          buttonLink: "/tenant/check-availability",
+        };
+    }
+  };
+
+  const nextAction = getNextAction();
   const activeStatusLabel =
     activeReservation?.reservationStatus ||
     activeReservation?.status ||
@@ -1462,13 +1526,13 @@ const ProfilePage = () => {
   const fullName =
     `${profileData.firstName || ""} ${profileData.lastName || ""}`.trim() ||
     "User";
-  const selectedRoom = activeReservation?.roomId
+  const selectedRoom = selectedReservation?.roomId
     ? {
-        roomNumber: activeReservation.roomId.name,
-        location: activeReservation.roomId.branch,
-        floor: activeReservation.roomId.floor,
-        roomType: activeReservation.roomId.type,
-        price: activeReservation.roomId.price,
+        roomNumber: selectedReservation.roomId.name,
+        location: selectedReservation.roomId.branch,
+        floor: selectedReservation.roomId.floor,
+        roomType: selectedReservation.roomId.type,
+        price: selectedReservation.roomId.price,
       }
     : null;
 
@@ -1679,309 +1743,515 @@ const ProfilePage = () => {
                   </p>
                 </div>
 
-                {/* RESERVATION PROGRESS TRACKER - CARD FORMAT */}
-                <div className="space-y-6 mb-6">
-                  {/* Show card for each reservation, or default empty state */}
-                  {reservations.filter((r) => {
-                    const status = r.reservationStatus || r.status;
-                    return status !== "completed" && status !== "cancelled";
-                  }).length > 0 ? (
-                    reservations
-                      .filter((r) => {
-                        const status = r.reservationStatus || r.status;
-                        return status !== "completed" && status !== "cancelled";
-                      })
-                      .map((reservation) => {
-                        const progress = getProgressForReservation(reservation);
-                        const roomName =
-                          reservation.roomId?.name || "Unknown Room";
-                        const branchName =
-                          reservation.roomId?.branch === "gil-puyat"
-                            ? "Gil Puyat"
-                            : "Guadalupe";
+                {/* NEXT ACTION PROMPT */}
+                <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl p-6 mb-6 text-white">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <AlertCircle className="w-5 h-5" />
+                        <h3 className="font-semibold text-lg">
+                          Next Action Required
+                        </h3>
+                      </div>
+                      <h2 className="text-2xl font-bold mb-2">
+                        {nextAction.title}
+                      </h2>
+                      <p className="text-white/90 mb-4">
+                        {nextAction.description}
+                      </p>
+                      <Link
+                        to={nextAction.buttonLink}
+                        state={{
+                          reservationId: nextAction.reservationId,
+                          continueFlow: true,
+                          step: nextAction.step,
+                        }}
+                      >
+                        <button
+                          className={`px-6 py-3 bg-white rounded-lg font-medium flex items-center gap-2 ${nextAction.buttonVariant === "outline" ? "border border-gray-300" : ""}`}
+                          style={{ color: "#E7710F" }}
+                        >
+                          {nextAction.buttonText}
+                          <ArrowRight className="w-4 h-4" />
+                        </button>
+                      </Link>
+                    </div>
+                  </div>
+                </div>
 
-                        return (
-                          <div
-                            key={reservation._id}
-                            className="bg-white rounded-xl border overflow-hidden"
-                            style={{ borderColor: "#E8EBF0" }}
+                {/* NEW RESERVATION PROGRESS TRACKER - 7 STEPS */}
+                <div
+                  className="bg-white rounded-xl p-8 border mb-6"
+                  style={{ borderColor: "#E8EBF0" }}
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3
+                        className="font-semibold text-lg mb-1"
+                        style={{ color: "#1F2937" }}
+                      >
+                        Reservation Progress Tracker
+                      </h3>
+                      <p className="text-sm text-gray-500">
+                        Follow these steps from room selection to confirmation
+                      </p>
+                    </div>
+                    {selectedReservation ? (
+                      <div
+                        className="px-4 py-2 rounded-lg text-sm font-medium"
+                        style={{
+                          backgroundColor:
+                            reservationProgress.currentStepIndex === 5
+                              ? "#DEF7EC"
+                              : reservationProgress.currentStepIndex === 4
+                                ? "#FEF3C7"
+                                : "#DBEAFE",
+                          color:
+                            reservationProgress.currentStepIndex === 5
+                              ? "#03543F"
+                              : reservationProgress.currentStepIndex === 4
+                                ? "#92400E"
+                                : "#1E40AF",
+                        }}
+                      >
+                        Step {reservationProgress.currentStepIndex + 1} of 6
+                      </div>
+                    ) : (
+                      <div
+                        className="px-4 py-2 rounded-lg text-sm font-medium"
+                        style={{
+                          backgroundColor: "#F3F4F6",
+                          color: "#6B7280",
+                        }}
+                      >
+                        Not started
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Reservation Selector (shows when multiple active reservations) */}
+                  {activeReservations.length > 1 && (
+                    <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Select Reservation to Track:
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        {activeReservations.map((res) => (
+                          <button
+                            key={res._id}
+                            onClick={() => setSelectedReservationId(res._id)}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                              selectedReservationId === res._id
+                                ? "bg-orange-500 text-white shadow-md"
+                                : "bg-white border border-gray-300 text-gray-700 hover:border-orange-300"
+                            }`}
                           >
-                            {/* Card Header - Room Info */}
+                            <span className="flex items-center gap-2">
+                              <Home className="w-4 h-4" />
+                              {res.roomId?.name || "Room"} -{" "}
+                              {res.roomId?.branch === "gil-puyat"
+                                ? "Gil Puyat"
+                                : "Guadalupe"}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Show selected reservation info */}
+                  {selectedReservation && (
+                    <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-blue-800">
+                            Tracking: Room{" "}
+                            {selectedReservation.roomId?.name || "Unknown"}
+                          </p>
+                          <p className="text-xs text-blue-600">
+                            {selectedReservation.roomId?.branch === "gil-puyat"
+                              ? "Gil Puyat Branch"
+                              : "Guadalupe Branch"}{" "}
+                            • Code: {selectedReservation.reservationCode}
+                          </p>
+                        </div>
+                        <span className="text-xs text-blue-600">
+                          Created{" "}
+                          {new Date(
+                            selectedReservation.createdAt,
+                          ).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* New 7-Step Progress Tracker - Vertical List */}
+                  <div className="space-y-4">
+                    {stepsToRender.map((step, index) => {
+                      const icons = {
+                        room_selected: Home,
+                        visit_scheduled: Calendar,
+                        visit_completed: Check,
+                        application_submitted: User,
+                        payment_submitted: DollarSign,
+                        confirmed: CheckCircle,
+                      };
+                      const StepIcon = icons[step.step];
+                      const isCompleted = step.status === "completed";
+                      const isCurrent = step.status === "current";
+                      const isLocked = step.status === "locked";
+                      const isPendingApproval =
+                        step.status === "pending_approval";
+                      const isRejected = step.status === "rejected";
+                      // Only allow clicking on current, rejected, or explicitly editable steps
+                      // Completed steps are NOT clickable unless marked editable
+                      const isClickable =
+                        !isLocked &&
+                        (selectedReservation ||
+                          step.step === "room_selected") &&
+                        (isCurrent || isRejected || step.editable === true);
+
+                      return (
+                        <div key={index} className="relative">
+                          {index !== reservationProgress.steps.length - 1 && (
                             <div
-                              className="p-4 border-b flex items-center justify-between"
+                              className="absolute left-6 top-14 bottom-0 w-0.5"
                               style={{
-                                backgroundColor: "#F8FAFC",
-                                borderColor: "#E8EBF0",
+                                backgroundColor: isCompleted
+                                  ? "#10B981"
+                                  : isRejected
+                                    ? "#EF4444"
+                                    : "#E5E7EB",
                               }}
+                            ></div>
+                          )}
+                          <div
+                            className={`flex items-start gap-4 ${
+                              isClickable ? "cursor-pointer" : ""
+                            }`}
+                            onClick={
+                              isClickable
+                                ? () => handleStepClick(step)
+                                : undefined
+                            }
+                          >
+                            <div
+                              className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 relative z-10 transition-all ${
+                                isLocked ? "bg-gray-200" : ""
+                              }`}
+                              style={
+                                isCompleted
+                                  ? { backgroundColor: "#10B981" }
+                                  : isCurrent
+                                    ? { backgroundColor: "#E7710F" }
+                                    : isPendingApproval
+                                      ? { backgroundColor: "#F59E0B" }
+                                      : isRejected
+                                        ? { backgroundColor: "#EF4444" }
+                                        : {}
+                              }
                             >
-                              <div className="flex items-center gap-3">
-                                <div
-                                  className="w-10 h-10 rounded-lg flex items-center justify-center"
-                                  style={{ backgroundColor: "#FFF7ED" }}
-                                >
-                                  <Home
-                                    className="w-5 h-5"
-                                    style={{ color: "#E7710F" }}
-                                  />
-                                </div>
-                                <div>
-                                  <h4 className="font-semibold text-gray-900">
-                                    {roomName}
-                                  </h4>
-                                  <p className="text-xs text-gray-500">
-                                    {branchName} Branch • Code:{" "}
-                                    {reservation.reservationCode || "N/A"}
-                                  </p>
-                                </div>
-                              </div>
-                              <div
-                                className="px-3 py-1.5 rounded-lg text-xs font-medium"
-                                style={{
-                                  backgroundColor:
-                                    progress.currentStepIndex === 5
-                                      ? "#DEF7EC"
-                                      : progress.currentStepIndex === 4
-                                        ? "#FEF3C7"
-                                        : "#DBEAFE",
-                                  color:
-                                    progress.currentStepIndex === 5
-                                      ? "#03543F"
-                                      : progress.currentStepIndex === 4
-                                        ? "#92400E"
-                                        : "#1E40AF",
-                                }}
-                              >
-                                Step {progress.currentStepIndex + 1} of 6
-                              </div>
+                              {isLocked ? (
+                                <div className="w-5 h-5 rounded-full border-2 border-gray-400"></div>
+                              ) : isRejected ? (
+                                <AlertCircle className="w-6 h-6 text-white" />
+                              ) : (
+                                <StepIcon
+                                  className={`w-6 h-6 ${isCompleted || isCurrent || isPendingApproval ? "text-white" : "text-gray-400"}`}
+                                />
+                              )}
                             </div>
-
-                            {/* Card Body - Progress Steps */}
-                            <div className="p-6">
-                              <div className="flex items-center justify-between mb-6">
+                            <div
+                              className={`flex-1 pb-6 ${isLocked ? "opacity-50" : ""}`}
+                            >
+                              <div className="flex items-start justify-between mb-2">
                                 <div>
-                                  <h3
-                                    className="font-semibold text-base"
-                                    style={{ color: "#1F2937" }}
+                                  <h4
+                                    className={`font-semibold mb-1 ${isCurrent ? "text-orange-600" : isRejected ? "text-red-600" : ""} ${isClickable && (isCurrent || isRejected) ? "hover:underline cursor-pointer" : ""}`}
+                                    style={
+                                      !isCurrent && !isRejected
+                                        ? { color: "#1F2937" }
+                                        : {}
+                                    }
+                                    onClick={
+                                      isClickable
+                                        ? () => handleStepClick(step)
+                                        : undefined
+                                    }
                                   >
-                                    Reservation Progress
-                                  </h3>
-                                  <p className="text-sm text-gray-500">
-                                    Follow these steps to complete your
-                                    reservation
+                                    {step.title}
+                                    {isClickable &&
+                                      (isCurrent || isRejected) && (
+                                        <span
+                                          className={`ml-2 text-xs font-normal ${isRejected ? "text-red-500" : "text-orange-500"}`}
+                                        >
+                                          →{" "}
+                                          {isRejected
+                                            ? "Click to reschedule"
+                                            : "Click to continue"}
+                                        </span>
+                                      )}
+                                  </h4>
+                                  <p
+                                    className={`text-sm ${isRejected ? "text-red-600" : "text-gray-600"}`}
+                                  >
+                                    {step.description}
                                   </p>
                                 </div>
+                                <span
+                                  className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ml-4 ${
+                                    isCompleted
+                                      ? "bg-green-100 text-green-700"
+                                      : isRejected
+                                        ? "bg-red-100 text-red-700"
+                                        : isPendingApproval
+                                          ? "bg-amber-100 text-amber-700"
+                                          : isCurrent
+                                            ? "text-white"
+                                            : isLocked
+                                              ? "bg-gray-100 text-gray-500"
+                                              : "bg-blue-100 text-blue-700"
+                                  }`}
+                                  style={
+                                    isCurrent
+                                      ? { backgroundColor: "#E7710F" }
+                                      : {}
+                                  }
+                                >
+                                  {isCompleted
+                                    ? "Complete"
+                                    : isRejected
+                                      ? "Rejected"
+                                      : isPendingApproval
+                                        ? "Pending Admin Approval"
+                                        : isCurrent
+                                          ? "In Progress"
+                                          : isLocked
+                                            ? "Locked"
+                                            : "Upcoming"}
+                                </span>
                               </div>
-
-                              {/* Progress Steps */}
-                              <div className="space-y-4">
-                                {progress.steps.map((step, stepIndex) => {
-                                  const icons = {
-                                    room_selected: Home,
-                                    visit_scheduled: Calendar,
-                                    visit_completed: Check,
-                                    application_submitted: User,
-                                    payment_submitted: DollarSign,
-                                    confirmed: CheckCircle,
-                                  };
-                                  const StepIcon = icons[step.step];
-                                  const isCompleted =
-                                    step.status === "completed";
-                                  const isCurrent = step.status === "current";
-                                  const isLocked = step.status === "locked";
-                                  const isPendingApproval =
-                                    step.status === "pending_approval";
-                                  const isRejected = step.status === "rejected";
-                                  const isClickable = !isLocked && !isRejected;
-
-                                  return (
-                                    <div key={stepIndex} className="relative">
-                                      {stepIndex !==
-                                        progress.steps.length - 1 && (
-                                        <div
-                                          className="absolute left-6 top-14 bottom-0 w-0.5"
-                                          style={{
-                                            backgroundColor: isCompleted
-                                              ? "#10B981"
-                                              : "#E5E7EB",
-                                          }}
-                                        />
-                                      )}
-                                      <div
-                                        className={`flex items-start gap-4 ${isClickable ? "cursor-pointer" : ""}`}
-                                        onClick={
-                                          isClickable
-                                            ? () =>
-                                                handleStepClick(
-                                                  step,
-                                                  reservation,
-                                                )
-                                            : undefined
-                                        }
+                              {/* Status subtext */}
+                              {isCurrent && (
+                                <p className="text-xs text-orange-600 mt-1">
+                                  Please complete the details
+                                </p>
+                              )}
+                              {isPendingApproval && (
+                                <p className="text-xs text-amber-600 mt-1">
+                                  Waiting for admin confirmation
+                                </p>
+                              )}
+                              {isRejected && (
+                                <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                                  <p className="text-xs text-red-700 font-medium mb-1">
+                                    Your schedule was rejected by admin
+                                  </p>
+                                  {step.rejectionReason && (
+                                    <p className="text-xs text-red-600">
+                                      Reason: {step.rejectionReason}
+                                    </p>
+                                  )}
+                                  <p className="text-xs text-red-500 mt-1">
+                                    Please reschedule your visit to continue.
+                                  </p>
+                                </div>
+                              )}
+                              {step.completedDate && (
+                                <p className="text-xs text-gray-400 flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  Completed on{" "}
+                                  {new Date(
+                                    step.completedDate,
+                                  ).toLocaleDateString("en-US", {
+                                    month: "short",
+                                    day: "numeric",
+                                    year: "numeric",
+                                  })}
+                                </p>
+                              )}
+                              {/* Action buttons row */}
+                              {!isLocked && selectedReservation && (
+                                <div className="flex items-center gap-2 mt-3">
+                                  {/* View Summary only for completed steps */}
+                                  {isCompleted && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setExpandedStep(
+                                          expandedStep === step.step
+                                            ? null
+                                            : step.step,
+                                        );
+                                      }}
+                                      className="px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors"
+                                      style={{
+                                        borderColor:
+                                          expandedStep === step.step
+                                            ? "#E7710F"
+                                            : "#E5E7EB",
+                                        color:
+                                          expandedStep === step.step
+                                            ? "#E7710F"
+                                            : "#6B7280",
+                                        backgroundColor:
+                                          expandedStep === step.step
+                                            ? "#FFF7ED"
+                                            : "transparent",
+                                      }}
+                                    >
+                                      {expandedStep === step.step
+                                        ? "Hide Summary"
+                                        : "View Summary"}
+                                    </button>
+                                  )}
+                                  {/* Reschedule Visit button for rejected schedules */}
+                                  {step.step === "visit_scheduled" &&
+                                    isRejected && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          navigate("/tenant/reservation-flow", {
+                                            state: {
+                                              reservationId:
+                                                selectedReservation._id,
+                                              continueFlow: true,
+                                              step: 2,
+                                            },
+                                          });
+                                        }}
+                                        className="px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors hover:bg-red-50"
+                                        style={{
+                                          borderColor: "#EF4444",
+                                          color: "#EF4444",
+                                        }}
                                       >
-                                        <div
-                                          className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 relative z-10 transition-all ${isLocked ? "bg-gray-200" : ""}`}
-                                          style={
-                                            isCompleted
-                                              ? { backgroundColor: "#10B981" }
-                                              : isCurrent
-                                                ? { backgroundColor: "#E7710F" }
-                                                : isPendingApproval
-                                                  ? {
-                                                      backgroundColor:
-                                                        "#F59E0B",
-                                                    }
-                                                  : isRejected
-                                                    ? {
-                                                        backgroundColor:
-                                                          "#DC2626",
-                                                      }
-                                                    : {}
+                                        Reschedule Visit
+                                      </button>
+                                    )}
+                                  {/* Cancel Reservation button - only when not confirmed */}
+                                  {step.step === "room_selected" &&
+                                    selectedReservation?.status !==
+                                      "confirmed" &&
+                                    selectedReservation?.status !==
+                                      "checked-in" && (
+                                      <button
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          if (
+                                            window.confirm(
+                                              "Are you sure you want to cancel this reservation? This action cannot be undone.",
+                                            )
+                                          ) {
+                                            try {
+                                              await reservationApi.delete(
+                                                selectedReservation._id,
+                                              );
+                                              showNotification(
+                                                "Reservation cancelled successfully",
+                                                "success",
+                                                3000,
+                                              );
+                                              // Refresh reservations
+                                              window.location.reload();
+                                            } catch (error) {
+                                              console.error(
+                                                "Error cancelling reservation:",
+                                                error,
+                                              );
+                                              showNotification(
+                                                "Failed to cancel reservation",
+                                                "error",
+                                                3000,
+                                              );
+                                            }
                                           }
-                                        >
-                                          {isLocked ? (
-                                            <div className="w-5 h-5 rounded-full border-2 border-gray-400" />
-                                          ) : isRejected ? (
-                                            <span className="text-white text-lg font-bold">
-                                              ✕
-                                            </span>
-                                          ) : (
-                                            <StepIcon
-                                              className={`w-6 h-6 ${isCompleted || isCurrent || isPendingApproval ? "text-white" : "text-gray-400"}`}
-                                            />
-                                          )}
-                                        </div>
-                                        <div
-                                          className={`flex-1 pb-6 ${isLocked ? "opacity-50" : ""}`}
-                                        >
-                                          <div className="flex items-start justify-between mb-2">
-                                            <div>
-                                              <h4
-                                                className={`font-semibold mb-1 ${isCurrent ? "text-orange-600" : ""}`}
-                                                style={
-                                                  !isCurrent
-                                                    ? { color: "#1F2937" }
-                                                    : {}
-                                                }
-                                              >
-                                                {step.title}
-                                              </h4>
-                                              <p className="text-sm text-gray-600">
-                                                {step.description}
-                                              </p>
-                                            </div>
-                                            <span
-                                              className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ml-4 ${
-                                                isCompleted
-                                                  ? "bg-green-100 text-green-700"
-                                                  : isPendingApproval
-                                                    ? "bg-amber-100 text-amber-700"
-                                                    : isRejected
-                                                      ? "bg-red-100 text-red-700"
-                                                      : isCurrent
-                                                        ? "text-white"
-                                                        : isLocked
-                                                          ? "bg-gray-100 text-gray-500"
-                                                          : "bg-blue-100 text-blue-700"
-                                              }`}
-                                              style={
-                                                isCurrent
-                                                  ? {
-                                                      backgroundColor:
-                                                        "#E7710F",
-                                                    }
-                                                  : {}
-                                              }
-                                            >
-                                              {isCompleted
-                                                ? "Complete"
-                                                : isPendingApproval
-                                                  ? "Pending Admin Approval"
-                                                  : isRejected
-                                                    ? "Rejected"
-                                                    : isCurrent
-                                                      ? "In Progress"
-                                                      : isLocked
-                                                        ? "Locked"
-                                                        : "Upcoming"}
-                                            </span>
-                                          </div>
-                                          {/* Status messages and action buttons */}
-                                          {isCurrent && (
-                                            <div className="mt-2 flex items-center justify-between">
-                                              <p className="text-xs text-orange-600">
-                                                Click to continue this step
-                                              </p>
-                                              <button
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  handleStepClick(
-                                                    step,
-                                                    reservation,
-                                                  );
-                                                }}
-                                                className="px-4 py-1.5 text-xs font-medium rounded-lg text-white flex items-center gap-1 hover:opacity-90 transition-opacity"
-                                                style={{
-                                                  backgroundColor: "#E7710F",
-                                                }}
-                                              >
-                                                Continue
-                                                <ArrowRight className="w-3 h-3" />
-                                              </button>
-                                            </div>
-                                          )}
-                                          {isPendingApproval && (
-                                            <p className="text-xs text-amber-600 mt-1">
-                                              Waiting for admin confirmation
-                                            </p>
-                                          )}
-                                          {isRejected &&
-                                            step.rejectionReason && (
-                                              <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                                                <p className="text-xs text-red-700 font-medium mb-1">
-                                                  ⚠️ Admin Rejection Reason:
-                                                </p>
-                                                <p className="text-sm text-red-600">
-                                                  {step.rejectionReason}
-                                                </p>
-                                                <button
-                                                  onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    navigate(
-                                                      "/tenant/reservation-flow",
-                                                      {
-                                                        state: {
-                                                          reservationId:
-                                                            reservation._id,
-                                                          continueFlow: true,
-                                                          step: 2,
-                                                        },
-                                                      },
-                                                    );
-                                                  }}
-                                                  className="mt-2 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors"
-                                                >
-                                                  Reschedule Visit
-                                                </button>
-                                              </div>
-                                            )}
-                                        </div>
-                                      </div>
+                                        }}
+                                        className="px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors hover:bg-red-50"
+                                        style={{
+                                          borderColor: "#EF4444",
+                                          color: "#EF4444",
+                                        }}
+                                      >
+                                        Cancel Reservation
+                                      </button>
+                                    )}
+                                  {step.step === "application_submitted" &&
+                                    step.editable && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          navigate("/tenant/reservation-flow", {
+                                            state: {
+                                              reservationId:
+                                                selectedReservation._id,
+                                              editMode: true,
+                                              step: 4,
+                                            },
+                                          });
+                                        }}
+                                        className="px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors hover:bg-blue-50"
+                                        style={{
+                                          borderColor: "#3B82F6",
+                                          color: "#3B82F6",
+                                        }}
+                                      >
+                                        Edit Application
+                                      </button>
+                                    )}
+                                  {step.step === "application_submitted" &&
+                                    !step.editable &&
+                                    step.status === "completed" && (
+                                      <span className="px-3 py-1.5 text-xs font-medium text-gray-400 flex items-center gap-1">
+                                        🔒 Locked
+                                      </span>
+                                    )}
+                                </div>
+                              )}
+                              {/* Expandable inline receipt */}
+                              {expandedStep === step.step && (
+                                <div>
+                                  {renderStepReceipt(step)}
+                                  {/* View Receipt Modal Button */}
+                                  {step.status === "completed" && (
+                                    <div
+                                      style={{
+                                        marginTop: "12px",
+                                        textAlign: "center",
+                                      }}
+                                    >
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setReceiptModal({
+                                            open: true,
+                                            step: step,
+                                          });
+                                        }}
+                                        className="px-4 py-2 text-sm font-medium rounded-lg transition-colors"
+                                        style={{
+                                          backgroundColor: "#E7710F",
+                                          color: "white",
+                                        }}
+                                      >
+                                        🧾 View Receipt
+                                      </button>
                                     </div>
-                                  );
-                                })}
-                              </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
-                        );
-                      })
-                  ) : (
-                    <div
-                      className="bg-white rounded-xl p-8 border text-center"
-                      style={{ borderColor: "#E8EBF0" }}
-                    >
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {!selectedReservation && activeReservations.length === 0 && (
+                    <div className="text-center py-12">
                       <Bed className="w-16 h-16 mx-auto text-gray-300 mb-4" />
                       <h3 className="text-lg font-semibold text-gray-700 mb-2">
-                        No Active Reservations
+                        No Active Reservation
                       </h3>
                       <p className="text-sm text-gray-500 mb-6">
                         Start your journey by browsing available rooms
@@ -2146,10 +2416,10 @@ const ProfilePage = () => {
                         <div className="flex items-center justify-between mb-4">
                           <div>
                             <p className="font-medium">
-                              Room {activeReservation.roomId?.name}
+                              Room {selectedReservation?.roomId?.name}
                             </p>
                             <p className="text-sm text-gray-500">
-                              {activeReservation.roomId?.type}
+                              {selectedReservation?.roomId?.type}
                             </p>
                           </div>
                           <span
@@ -2901,8 +3171,8 @@ const ProfilePage = () => {
                     >
                       <span style={{ color: "#6B7280" }}>Room Name/Number</span>
                       <span style={{ color: "#1F2937", fontWeight: "600" }}>
-                        {activeReservation?.roomId?.name ||
-                          activeReservation?.roomId?.roomNumber ||
+                        {selectedReservation?.roomId?.name ||
+                          selectedReservation?.roomId?.roomNumber ||
                           "N/A"}
                       </span>
                     </div>
@@ -2922,7 +3192,7 @@ const ProfilePage = () => {
                           textTransform: "capitalize",
                         }}
                       >
-                        {activeReservation?.roomId?.branch || "N/A"}
+                        {selectedReservation?.roomId?.branch || "N/A"}
                       </span>
                     </div>
                     <div
@@ -2941,7 +3211,7 @@ const ProfilePage = () => {
                           textTransform: "capitalize",
                         }}
                       >
-                        {activeReservation?.roomId?.type || "N/A"}
+                        {selectedReservation?.roomId?.type || "N/A"}
                       </span>
                     </div>
                     <div
@@ -2954,8 +3224,8 @@ const ProfilePage = () => {
                     >
                       <span style={{ color: "#6B7280" }}>Floor</span>
                       <span style={{ color: "#1F2937", fontWeight: "600" }}>
-                        {activeReservation?.roomId?.floor
-                          ? `Floor ${activeReservation.roomId.floor}`
+                        {selectedReservation?.roomId?.floor
+                          ? `Floor ${selectedReservation.roomId.floor}`
                           : "Ground Floor"}
                       </span>
                     </div>
@@ -2970,8 +3240,8 @@ const ProfilePage = () => {
                       <span style={{ color: "#1F2937", fontWeight: "600" }}>
                         {(() => {
                           const capacity =
-                            activeReservation?.roomId?.capacity ||
-                            activeReservation?.roomId?.beds?.length;
+                            selectedReservation?.roomId?.capacity ||
+                            selectedReservation?.roomId?.beds?.length;
                           if (!capacity) return "N/A";
                           return `${capacity} ${capacity === 1 ? "Person" : "Persons"}`;
                         })()}
@@ -2980,7 +3250,7 @@ const ProfilePage = () => {
                   </div>
 
                   {/* Selected Bed/Slot */}
-                  {activeReservation?.selectedBed && (
+                  {selectedReservation?.selectedBed && (
                     <div style={{ marginBottom: "12px" }}>
                       <p
                         style={{
@@ -3004,7 +3274,7 @@ const ProfilePage = () => {
                       >
                         <span style={{ color: "#6B7280" }}>Bed/Slot ID</span>
                         <span style={{ color: "#1F2937", fontWeight: "600" }}>
-                          {activeReservation.selectedBed.id}
+                          {selectedReservation.selectedBed.id}
                         </span>
                       </div>
                       <div
@@ -3017,7 +3287,8 @@ const ProfilePage = () => {
                       >
                         <span style={{ color: "#6B7280" }}>Position</span>
                         <span style={{ color: "#1F2937", fontWeight: "600" }}>
-                          {activeReservation.selectedBed.position || "Standard"}
+                          {selectedReservation.selectedBed.position ||
+                            "Standard"}
                         </span>
                       </div>
                     </div>
@@ -3038,8 +3309,8 @@ const ProfilePage = () => {
                       Room Amenities
                     </p>
                     <div style={{ padding: "8px 0" }}>
-                      {activeReservation?.roomId?.amenities &&
-                      activeReservation.roomId.amenities.length > 0 ? (
+                      {selectedReservation?.roomId?.amenities &&
+                      selectedReservation.roomId.amenities.length > 0 ? (
                         <div
                           style={{
                             display: "flex",
@@ -3047,7 +3318,7 @@ const ProfilePage = () => {
                             gap: "6px",
                           }}
                         >
-                          {activeReservation.roomId.amenities.map(
+                          {selectedReservation.roomId.amenities.map(
                             (amenity, index) => (
                               <span
                                 key={index}
@@ -3105,13 +3376,13 @@ const ProfilePage = () => {
                       >
                         ₱
                         {(
-                          activeReservation?.roomId?.price ||
-                          activeReservation?.totalPrice ||
+                          selectedReservation?.roomId?.price ||
+                          selectedReservation?.totalPrice ||
                           0
                         ).toLocaleString()}
                       </span>
                     </div>
-                    {activeReservation?.roomId?.deposit && (
+                    {selectedReservation?.roomId?.deposit && (
                       <div
                         style={{
                           display: "flex",
@@ -3123,7 +3394,7 @@ const ProfilePage = () => {
                           Security Deposit
                         </span>
                         <span style={{ color: "#1F2937", fontWeight: "600" }}>
-                          ₱{activeReservation.roomId.deposit.toLocaleString()}
+                          ₱{selectedReservation.roomId.deposit.toLocaleString()}
                         </span>
                       </div>
                     )}
@@ -3156,9 +3427,9 @@ const ProfilePage = () => {
                           fontSize: "13px",
                         }}
                       >
-                        {activeReservation?.createdAt
+                        {selectedReservation?.createdAt
                           ? new Date(
-                              activeReservation.createdAt,
+                              selectedReservation.createdAt,
                             ).toLocaleDateString("en-US", {
                               month: "short",
                               day: "numeric",
