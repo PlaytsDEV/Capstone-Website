@@ -316,14 +316,6 @@ function ReservationsPage() {
   return (
     <div>
       <div style={{ maxWidth: 1400, margin: "0 auto" }}>
-        {/* Header */}
-        <div className="admin-page-header">
-          <h1 className="admin-page-title">Reservations</h1>
-          <p className="admin-page-subtitle">
-            Review and manage reservation applications
-          </p>
-        </div>
-
         {/* Tabs */}
         <div className="admin-tabs">
           {tabs.map((t) => (

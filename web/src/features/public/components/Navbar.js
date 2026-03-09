@@ -1,11 +1,19 @@
-import { Home, Menu } from "lucide-react";
+import { Home, Menu, User } from "lucide-react";
 import { Button } from "./ui/button";
 import { RippleButton } from "../../../registry/magicui/ripple-button";
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { useAuth } from "../../../shared/hooks/useAuth";
 
 export function Navigation() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { user, isAuthenticated, loading } = useAuth();
+
+  // Determine profile URL based on role
+  const profileUrl =
+    user?.role === "admin" || user?.role === "superAdmin"
+      ? "/admin/dashboard"
+      : "/applicant/profile";
 
   return (
     <nav
@@ -19,9 +27,12 @@ export function Navigation() {
             <div className="w-8 h-8 rounded-lg bg-white/90 backdrop-blur-sm flex items-center justify-center">
               <Home className="w-4 h-4" style={{ color: "#0C375F" }} />
             </div>
-            <span className="font-semibold text-lg text-white tracking-wide">
+            <Link
+              to="/"
+              className="font-semibold text-lg text-white tracking-wide no-underline"
+            >
               Lilycrest
-            </span>
+            </Link>
           </div>
 
           {/* Desktop Menu */}
@@ -60,7 +71,29 @@ export function Navigation() {
 
           {/* Right Side */}
           <div className="flex items-center gap-4">
-            <Link to="/signin">
+            {!loading && (
+              <>
+                {isAuthenticated ? (
+                  /* Logged-in: show Profile icon */
+                  <Link
+                    to={profileUrl}
+                    className="hidden md:flex items-center gap-2 text-white/70 hover:text-white transition-colors text-sm font-light"
+                  >
+                    <User className="w-4 h-4" />
+                    Profile
+                  </Link>
+                ) : (
+                  /* Not logged in: show Sign In */
+                  <Link
+                    to="/signin"
+                    className="hidden md:block text-white/70 hover:text-white transition-colors text-sm font-light"
+                  >
+                    Sign In
+                  </Link>
+                )}
+              </>
+            )}
+            <Link to="/applicant/check-availability">
               <RippleButton
                 rippleColor="rgba(12, 55, 95, 0.4)"
                 className="hidden md:block bg-white/90 backdrop-blur-sm hover:bg-white text-sm px-8 py-5 rounded-full font-light"
@@ -106,18 +139,29 @@ export function Navigation() {
               Location
             </a>
             <a
-              href="#testimonials"
-              className="block text-white hover:text-white/80 transition-colors font-light"
-            >
-              Testimonials
-            </a>
-            <a
               href="#inquiry"
               className="block text-white hover:text-white/80 transition-colors font-light"
             >
               Inquiry
             </a>
-            <Link to="/login">
+            {!loading &&
+              (isAuthenticated ? (
+                <Link
+                  to={profileUrl}
+                  className="flex items-center gap-2 text-white/70 hover:text-white transition-colors font-light"
+                >
+                  <User className="w-4 h-4" />
+                  My Profile
+                </Link>
+              ) : (
+                <Link
+                  to="/signin"
+                  className="block text-white/70 hover:text-white transition-colors font-light"
+                >
+                  Sign In
+                </Link>
+              ))}
+            <Link to="/applicant/check-availability">
               <RippleButton
                 rippleColor="rgba(12, 55, 95, 0.4)"
                 className="w-full bg-white rounded-full font-light"

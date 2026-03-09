@@ -171,15 +171,6 @@ export default function TenantsPage() {
   return (
     <div className="admin-tenants-page">
       <main className="admin-tenants-main">
-        <header className="admin-page-header">
-          <div>
-            <h1 className="admin-page-title">Tenants</h1>
-            <p className="admin-page-subtitle">
-              Manage all tenant information, contracts, and documents
-            </p>
-          </div>
-        </header>
-
         <section className="admin-tenants-stats">
           <div className="admin-tenants-stat-card">
             <p className="admin-tenants-stat-label">Total Tenants</p>

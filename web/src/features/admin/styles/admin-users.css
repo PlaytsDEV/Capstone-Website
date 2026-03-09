@@ -614,6 +614,58 @@
   line-height: 1.4;
 }
 
+/* ── Field Validation ──────────────────────────────────────────────────── */
+.admin-users-page .form-group.has-error input,
+.admin-users-page .form-group.has-error select {
+  border-color: #ef4444;
+}
+
+.admin-users-page .form-group.has-error input:focus,
+.admin-users-page .form-group.has-error select:focus {
+  border-color: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+}
+
+.admin-users-page .field-error {
+  font-size: 0.7rem;
+  color: #ef4444;
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+/* ── Password Toggle ───────────────────────────────────────────────────── */
+.admin-users-page .password-field-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.admin-users-page .password-field-wrapper input {
+  width: 100%;
+  padding-right: 36px;
+}
+
+.admin-users-page .password-toggle-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: color 0.15s;
+}
+
+.admin-users-page .password-toggle-btn:hover {
+  color: #374151;
+}
+
 /* ── Responsive ─────────────────────────────────────────────────────────── */
 @media (max-width: 1024px) {
   .admin-users-page .toolbar {

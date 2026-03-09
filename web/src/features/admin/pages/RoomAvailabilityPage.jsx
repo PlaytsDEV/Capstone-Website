@@ -110,14 +110,6 @@ function RoomAvailabilityPage() {
   return (
     <div>
       <div className="room-availability-container">
-        {/* Header */}
-        <div className="room-availability-header">
-          <h1 className="room-availability-title">Rooms</h1>
-          <p className="room-availability-subtitle">
-            Manage room availability, configuration, and occupancy
-          </p>
-        </div>
-
         {/* Tab Navigation */}
         <div className="room-tabs">
           <button

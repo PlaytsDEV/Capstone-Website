@@ -212,16 +212,6 @@ const AuditLogsPage = () => {
 
   return (
     <div className="admin-audit-page">
-      {/* Header */}
-      <div className="admin-page-header">
-        <div>
-          <h1 className="admin-page-title">Activity Log</h1>
-          <p className="admin-page-subtitle">
-            Monitor all system activities and maintain audit trails
-          </p>
-        </div>
-      </div>
-
       {/* Stats Cards */}
       <div className="audit-stats">
         <div className="stat-card">

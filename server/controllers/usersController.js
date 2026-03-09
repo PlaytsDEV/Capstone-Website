@@ -114,7 +114,7 @@ export const createUser = async (req, res) => {
       role: allowedRole,
       isEmailVerified: false,
       isActive: true,
-      tenantStatus: "registered",
+      tenantStatus: null,
     });
 
     await user.save();

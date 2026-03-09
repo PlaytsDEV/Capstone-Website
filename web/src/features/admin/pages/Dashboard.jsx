@@ -323,15 +323,6 @@ export default function Dashboard() {
 
   return (
     <div className="admin-dashboard-main">
-      <div className="admin-page-header">
-        <div>
-          <h1 className="admin-page-title">Dashboard</h1>
-          <p className="admin-page-subtitle">
-            Welcome back! Here's your admin overview.
-          </p>
-        </div>
-      </div>
-
       {error && <div className="admin-dashboard-error">{error}</div>}
 
       {loading && (
@@ -365,106 +356,6 @@ export default function Dashboard() {
             </div>
           </div>
         ))}
-      </div>
-
-      {/* Charts Section */}
-      <div className="admin-dashboard-charts">
-        {/* Branch Distribution Chart */}
-        <div className="admin-dashboard-chart-card">
-          <h3 className="admin-dashboard-chart-title">
-            Reservation Distribution
-          </h3>
-          <div className="admin-dashboard-chart">
-            <div className="admin-dashboard-chart-bars">
-              {branchData.map((data, index) => {
-                const maxValue = branchData.length
-                  ? Math.max(
-                      ...branchData.map((item) =>
-                        Math.max(item.gilPuyat, item.guadalupe, 1),
-                      ),
-                    )
-                  : 1;
-                const gilPuyatHeight = (data.gilPuyat / maxValue) * 100;
-                const guadalupeHeight = (data.guadalupe / maxValue) * 100;
-
-                return (
-                  <div key={index} className="admin-dashboard-chart-bar-group">
-                    <div className="admin-dashboard-chart-bars-pair">
-                      <div
-                        className="admin-dashboard-chart-bar blue"
-                        style={{ height: `${gilPuyatHeight}%` }}
-                        title={`Gil Puyat: ${data.gilPuyat}`}
-                      >
-                        <span className="admin-dashboard-chart-bar-value">
-                          {data.gilPuyat}
-                        </span>
-                      </div>
-                      <div
-                        className="admin-dashboard-chart-bar orange"
-                        style={{ height: `${guadalupeHeight}%` }}
-                        title={`Guadalupe: ${data.guadalupe}`}
-                      >
-                        <span className="admin-dashboard-chart-bar-value">
-                          {data.guadalupe}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="admin-dashboard-chart-label">
-                      {data.month}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="admin-dashboard-chart-legend">
-              <div className="admin-dashboard-chart-legend-item">
-                <span className="admin-dashboard-chart-legend-color blue"></span>
-                <span>Gil Puyat</span>
-              </div>
-              <div className="admin-dashboard-chart-legend-item">
-                <span className="admin-dashboard-chart-legend-color orange"></span>
-                <span>Guadalupe</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Reservation Activity Chart */}
-        <div className="admin-dashboard-chart-card">
-          <h3 className="admin-dashboard-chart-title">Reservation Activity</h3>
-          <div className="admin-dashboard-chart">
-            <div className="admin-dashboard-chart-bars">
-              {reservationData.map((data, index) => {
-                const maxValue = reservationData.length
-                  ? Math.max(...reservationData.map((item) => item.value || 1))
-                  : 1;
-                const height = (data.value / maxValue) * 100;
-
-                return (
-                  <div
-                    key={index}
-                    className="admin-dashboard-chart-bar-group single"
-                  >
-                    <div className="admin-dashboard-chart-bars-pair">
-                      <div
-                        className="admin-dashboard-chart-bar blue single"
-                        style={{ height: `${height}%` }}
-                        title={`Reservations: ${data.value}`}
-                      >
-                        <span className="admin-dashboard-chart-bar-value">
-                          {data.value}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="admin-dashboard-chart-label">
-                      {data.month}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Recent Inquiries and Reservation Status Section */}

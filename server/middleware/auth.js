@@ -199,6 +199,7 @@ export const verifySuperAdmin = async (req, res, next) => {
 
     // Check custom claims from Firebase ID token (fast path)
     if (req.user.superAdmin) {
+      req.isSuperAdmin = true;
       return next();
     }
 
@@ -210,6 +211,7 @@ export const verifySuperAdmin = async (req, res, next) => {
       req.user.superAdmin = true;
       req.user.admin = true;
       req.user.dbRole = dbUser.role;
+      req.isSuperAdmin = true;
       return next();
     }
 

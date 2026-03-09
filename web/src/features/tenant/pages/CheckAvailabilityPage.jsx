@@ -510,62 +510,59 @@ function CheckAvailabilityPage() {
     if (!showLoginConfirmBeforeReserve) return null;
     return (
       <div
-        style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: "rgba(0, 0, 0, 0.5)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          zIndex: 1000,
-        }}
+        className="fixed inset-0 z-[100] flex items-center justify-center"
+        style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+        onClick={handleLoginDismissBeforeReserve}
       >
         <div
-          style={{
-            background: "white",
-            padding: "24px",
-            borderRadius: "12px",
-            maxWidth: "420px",
-            width: "90%",
-            textAlign: "center",
-          }}
+          className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
         >
-          <h3 style={{ marginBottom: "10px" }}>Login Required</h3>
-          <p style={{ marginBottom: "20px", color: "#555" }}>
-            You need to be logged in to reserve a room.
-          </p>
-          <div
-            style={{ display: "flex", gap: "12px", justifyContent: "center" }}
-          >
-            <button
-              onClick={handleLoginDismissBeforeReserve}
-              style={{
-                padding: "8px 16px",
-                borderRadius: "8px",
-                border: "1px solid #ccc",
-                background: "white",
-                cursor: "pointer",
-              }}
+          <div className="text-center">
+            <div
+              className="w-14 h-14 rounded-full mx-auto mb-5 flex items-center justify-center"
+              style={{ backgroundColor: "#FFF4E6" }}
             >
-              Cancel
-            </button>
-            <button
-              onClick={handleLoginConfirmBeforeReserve}
-              style={{
-                padding: "8px 16px",
-                borderRadius: "8px",
-                border: "none",
-                background: "#2563eb",
-                color: "white",
-                cursor: "pointer",
-                fontWeight: "500",
-              }}
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#E7710F"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+                <polyline points="10 17 15 12 10 7" />
+                <line x1="15" y1="12" x2="3" y2="12" />
+              </svg>
+            </div>
+            <h3
+              className="text-xl font-semibold mb-2"
+              style={{ color: "#0C375F" }}
             >
-              Go to Login
-            </button>
+              Sign in to continue
+            </h3>
+            <p className="text-gray-500 text-sm leading-relaxed mb-6">
+              You need an account to reserve a room. Sign in if you already have
+              one, or create a new account — it only takes a minute.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleLoginDismissBeforeReserve}
+                className="flex-1 py-3 px-4 rounded-full border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors cursor-pointer"
+              >
+                Maybe later
+              </button>
+              <button
+                onClick={handleLoginConfirmBeforeReserve}
+                className="flex-1 py-3 px-4 rounded-full text-white text-sm font-medium hover:opacity-90 transition-opacity cursor-pointer"
+                style={{ backgroundColor: "#E7710F" }}
+              >
+                Sign In
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -618,204 +615,217 @@ function CheckAvailabilityPage() {
             </div>
 
             <div className="flex items-center gap-4">
-              {/* User Profile Menu */}
-              <div className="relative" ref={userMenuRef}>
-                <button
-                  onClick={() => setShowUserMenu(!showUserMenu)}
-                  className="flex items-center gap-2.5 pl-1.5 pr-3 py-1 rounded-full transition-all duration-200"
-                  style={{
-                    width: "260px",
-                    border: showUserMenu
-                      ? "1.5px solid #E7710F"
-                      : "1.5px solid transparent",
-                    backgroundColor: showUserMenu ? "#FFF7ED" : "transparent",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!showUserMenu) {
-                      e.currentTarget.style.backgroundColor = "#F9FAFB";
-                      e.currentTarget.style.borderColor = "#E5E7EB";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!showUserMenu) {
-                      e.currentTarget.style.backgroundColor = "transparent";
-                      e.currentTarget.style.borderColor = "transparent";
-                    }
-                  }}
-                  aria-label="User menu"
-                  aria-expanded={showUserMenu}
-                >
-                  <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
+              {/* User Profile Menu or Sign In */}
+              {user ? (
+                <div className="relative" ref={userMenuRef}>
+                  <button
+                    onClick={() => setShowUserMenu(!showUserMenu)}
+                    className="flex items-center gap-2.5 pl-1.5 pr-3 py-1 rounded-full transition-all duration-200"
                     style={{
-                      background:
-                        "linear-gradient(135deg, #E7710F 0%, #D35400 100%)",
-                      boxShadow: "0 1px 3px rgba(231, 113, 15, 0.3)",
+                      width: "260px",
+                      border: showUserMenu
+                        ? "1.5px solid #E7710F"
+                        : "1.5px solid transparent",
+                      backgroundColor: showUserMenu ? "#FFF7ED" : "transparent",
                     }}
-                  >
-                    {userInitials}
-                  </div>
-                  <span className="flex-1 text-sm font-medium text-gray-700 truncate leading-tight text-left">
-                    {userDisplayName}
-                  </span>
-                  <ChevronDown
-                    className={`w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform duration-200 ${
-                      showUserMenu ? "rotate-180" : ""
-                    }`}
-                  />
-                </button>
-
-                {/* Dropdown Menu */}
-                {showUserMenu && (
-                  <div
-                    className="absolute right-0 mt-1.5 w-full bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden"
-                    style={{
-                      animation: "fadeIn 0.18s ease-out",
-                      boxShadow:
-                        "0 10px 40px -8px rgba(0,0,0,0.12), 0 4px 12px -2px rgba(0,0,0,0.06)",
+                    onMouseEnter={(e) => {
+                      if (!showUserMenu) {
+                        e.currentTarget.style.backgroundColor = "#F9FAFB";
+                        e.currentTarget.style.borderColor = "#E5E7EB";
+                      }
                     }}
+                    onMouseLeave={(e) => {
+                      if (!showUserMenu) {
+                        e.currentTarget.style.backgroundColor = "transparent";
+                        e.currentTarget.style.borderColor = "transparent";
+                      }
+                    }}
+                    aria-label="User menu"
+                    aria-expanded={showUserMenu}
                   >
-                    {/* ─── User Identity Header ─── */}
                     <div
-                      className="px-3 pt-3 pb-2.5"
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
                       style={{
                         background:
-                          "linear-gradient(180deg, #FAFBFC 0%, #FFFFFF 100%)",
-                        borderBottom: "1px solid #F3F4F6",
+                          "linear-gradient(135deg, #E7710F 0%, #D35400 100%)",
+                        boxShadow: "0 1px 3px rgba(231, 113, 15, 0.3)",
                       }}
                     >
-                      <div className="flex items-center gap-2.5">
-                        <div
-                          className="w-10 h-10 rounded-[10px] flex items-center justify-center text-white text-sm font-bold shrink-0"
-                          style={{
-                            background:
-                              "linear-gradient(135deg, #E7710F 0%, #D35400 100%)",
-                            boxShadow: "0 2px 6px rgba(231, 113, 15, 0.25)",
-                          }}
-                        >
-                          {userInitials}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5">
-                            <p
-                              className="text-[13px] font-semibold truncate leading-none"
-                              style={{ color: "#1A1A2E" }}
-                            >
-                              {userDisplayName}
-                            </p>
-                            <span
-                              className="shrink-0 px-1.5 py-px text-[9px] font-semibold rounded uppercase tracking-wide"
-                              style={{
-                                backgroundColor:
-                                  user?.role === "superAdmin"
-                                    ? "#FEF3C7"
-                                    : user?.role === "admin"
-                                      ? "#DBEAFE"
-                                      : user?.role === "tenant"
-                                        ? "#E0E7FF"
-                                        : "#ECFDF5",
-                                color:
-                                  user?.role === "superAdmin"
-                                    ? "#92400E"
-                                    : user?.role === "admin"
-                                      ? "#1E40AF"
-                                      : user?.role === "tenant"
-                                        ? "#3730A3"
-                                        : "#065F46",
-                              }}
-                            >
-                              {user?.role === "superAdmin"
-                                ? "Super Admin"
-                                : user?.role === "admin"
-                                  ? "Admin"
-                                  : user?.role === "tenant"
-                                    ? "Tenant"
-                                    : "Applicant"}
-                            </span>
-                          </div>
-                          <p
-                            className="text-[11px] truncate mt-1 leading-none"
-                            style={{ color: "#9CA3AF" }}
+                      {userInitials}
+                    </div>
+                    <span className="flex-1 text-sm font-medium text-gray-700 truncate leading-tight text-left">
+                      {userDisplayName}
+                    </span>
+                    <ChevronDown
+                      className={`w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform duration-200 ${
+                        showUserMenu ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+
+                  {/* Dropdown Menu */}
+                  {showUserMenu && (
+                    <div
+                      className="absolute right-0 mt-1.5 w-full bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden"
+                      style={{
+                        animation: "fadeIn 0.18s ease-out",
+                        boxShadow:
+                          "0 10px 40px -8px rgba(0,0,0,0.12), 0 4px 12px -2px rgba(0,0,0,0.06)",
+                      }}
+                    >
+                      {/* ─── User Identity Header ─── */}
+                      <div
+                        className="px-3 pt-3 pb-2.5"
+                        style={{
+                          background:
+                            "linear-gradient(180deg, #FAFBFC 0%, #FFFFFF 100%)",
+                          borderBottom: "1px solid #F3F4F6",
+                        }}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            className="w-10 h-10 rounded-[10px] flex items-center justify-center text-white text-sm font-bold shrink-0"
+                            style={{
+                              background:
+                                "linear-gradient(135deg, #E7710F 0%, #D35400 100%)",
+                              boxShadow: "0 2px 6px rgba(231, 113, 15, 0.25)",
+                            }}
                           >
-                            {user?.email || ""}
-                          </p>
+                            {userInitials}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <p
+                                className="text-[13px] font-semibold truncate leading-none"
+                                style={{ color: "#1A1A2E" }}
+                              >
+                                {userDisplayName}
+                              </p>
+                              <span
+                                className="shrink-0 px-1.5 py-px text-[9px] font-semibold rounded uppercase tracking-wide"
+                                style={{
+                                  backgroundColor:
+                                    user?.role === "superAdmin"
+                                      ? "#FEF3C7"
+                                      : user?.role === "admin"
+                                        ? "#DBEAFE"
+                                        : user?.role === "tenant"
+                                          ? "#E0E7FF"
+                                          : "#ECFDF5",
+                                  color:
+                                    user?.role === "superAdmin"
+                                      ? "#92400E"
+                                      : user?.role === "admin"
+                                        ? "#1E40AF"
+                                        : user?.role === "tenant"
+                                          ? "#3730A3"
+                                          : "#065F46",
+                                }}
+                              >
+                                {user?.role === "superAdmin"
+                                  ? "Super Admin"
+                                  : user?.role === "admin"
+                                    ? "Admin"
+                                    : user?.role === "tenant"
+                                      ? "Tenant"
+                                      : "Applicant"}
+                              </span>
+                            </div>
+                            <p
+                              className="text-[11px] truncate mt-1 leading-none"
+                              style={{ color: "#9CA3AF" }}
+                            >
+                              {user?.email || ""}
+                            </p>
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    {/* ─── Navigation Links ─── */}
-                    <div className="py-1.5 px-2">
-                      <Link
-                        to="/applicant/profile"
-                        className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors duration-150"
-                        style={{ color: "#374151" }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = "#F9FAFB";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = "transparent";
-                        }}
-                        onClick={() => setShowUserMenu(false)}
-                      >
-                        <div
-                          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                          style={{ backgroundColor: "#F3F4F6" }}
+                      {/* ─── Navigation Links ─── */}
+                      <div className="py-1.5 px-2">
+                        <Link
+                          to="/applicant/profile"
+                          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors duration-150"
+                          style={{ color: "#374151" }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = "#F9FAFB";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor =
+                              "transparent";
+                          }}
+                          onClick={() => setShowUserMenu(false)}
                         >
-                          <User
-                            className="w-4 h-4"
-                            style={{ color: "#6B7280" }}
-                          />
-                        </div>
-                        <div>
-                          <p className="font-medium text-sm leading-tight">
-                            My Profile
-                          </p>
-                          <p
-                            className="text-[11px] leading-tight mt-0.5"
-                            style={{ color: "#9CA3AF" }}
+                          <div
+                            className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                            style={{ backgroundColor: "#F3F4F6" }}
                           >
-                            View your dashboard
-                          </p>
-                        </div>
-                      </Link>
-                    </div>
+                            <User
+                              className="w-4 h-4"
+                              style={{ color: "#6B7280" }}
+                            />
+                          </div>
+                          <div>
+                            <p className="font-medium text-sm leading-tight">
+                              My Profile
+                            </p>
+                            <p
+                              className="text-[11px] leading-tight mt-0.5"
+                              style={{ color: "#9CA3AF" }}
+                            >
+                              View your dashboard
+                            </p>
+                          </div>
+                        </Link>
+                      </div>
 
-                    {/* ─── Sign Out ─── */}
-                    <div
-                      className="px-2 pb-2 pt-1"
-                      style={{ borderTop: "1px solid #F3F4F6" }}
-                    >
-                      <button
-                        onClick={() => {
-                          setShowUserMenu(false);
-                          setShowLogoutConfirm(true);
-                        }}
-                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors duration-150"
-                        style={{ color: "#EF4444" }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = "#FEF2F2";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = "transparent";
-                        }}
+                      {/* ─── Sign Out ─── */}
+                      <div
+                        className="px-2 pb-2 pt-1"
+                        style={{ borderTop: "1px solid #F3F4F6" }}
                       >
-                        <div
-                          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                          style={{ backgroundColor: "#FEF2F2" }}
+                        <button
+                          onClick={() => {
+                            setShowUserMenu(false);
+                            setShowLogoutConfirm(true);
+                          }}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors duration-150"
+                          style={{ color: "#EF4444" }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = "#FEF2F2";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor =
+                              "transparent";
+                          }}
                         >
-                          <LogOut
-                            className="w-4 h-4"
-                            style={{ color: "#EF4444" }}
-                          />
-                        </div>
-                        <p className="font-medium text-sm leading-tight">
-                          Sign Out
-                        </p>
-                      </button>
+                          <div
+                            className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                            style={{ backgroundColor: "#FEF2F2" }}
+                          >
+                            <LogOut
+                              className="w-4 h-4"
+                              style={{ color: "#EF4444" }}
+                            />
+                          </div>
+                          <p className="font-medium text-sm leading-tight">
+                            Sign Out
+                          </p>
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              ) : (
+                <Link
+                  to="/signin"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-full border border-gray-300 hover:border-gray-400 transition-colors text-sm font-medium"
+                  style={{ color: "#0C375F" }}
+                >
+                  <User className="w-4 h-4" />
+                  Sign In
+                </Link>
+              )}
             </div>
           </div>
 

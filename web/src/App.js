@@ -262,11 +262,9 @@ function AppContent() {
           <Route
             path="/applicant/check-availability"
             element={
-              <ProtectedRoute requiredRole="applicant">
-                <RouteErrorBoundary name="CheckAvailability">
-                  <CheckAvailabilityPage />
-                </RouteErrorBoundary>
-              </ProtectedRoute>
+              <RouteErrorBoundary name="CheckAvailability">
+                <CheckAvailabilityPage />
+              </RouteErrorBoundary>
             }
           />
           <Route

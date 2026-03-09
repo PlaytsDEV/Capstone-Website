@@ -45,6 +45,40 @@ function UserManagementPage() {
     password: "",
   });
   const [isCreating, setIsCreating] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [addFormErrors, setAddFormErrors] = useState({});
+
+  const validateAddField = (name, value) => {
+    switch (name) {
+      case "username":
+        if (!value) return "Username is required";
+        if (value.length < 3) return "Username must be at least 3 characters";
+        return "";
+      case "email":
+        if (!value) return "Email is required";
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))
+          return "Please enter a valid email address";
+        return "";
+      case "firstName":
+        if (!value) return "First name is required";
+        return "";
+      case "lastName":
+        if (!value) return "Last name is required";
+        return "";
+      case "password":
+        if (!value) return "Password is required";
+        if (value.length < 6) return "Password must be at least 6 characters";
+        return "";
+      default:
+        return "";
+    }
+  };
+
+  const handleAddFormChange = (field, value) => {
+    setAddForm((prev) => ({ ...prev, [field]: value }));
+    const error = validateAddField(field, value);
+    setAddFormErrors((prev) => ({ ...prev, [field]: error }));
+  };
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -187,25 +221,23 @@ function UserManagementPage() {
       role: "applicant",
       password: "",
     });
+    setAddFormErrors({});
+    setShowPassword(false);
     setIsAddModalOpen(true);
   };
 
   const handleCreateUser = async (e) => {
     e.preventDefault();
 
-    if (
-      !addForm.username ||
-      !addForm.firstName ||
-      !addForm.lastName ||
-      !addForm.email ||
-      !addForm.password
-    ) {
-      showNotification("Please fill in all required fields", "error", 3000);
-      return;
-    }
-
-    if (addForm.password.length < 6) {
-      showNotification("Password must be at least 6 characters", "error", 3000);
+    // Run all validations
+    const errors = {};
+    ["username", "email", "firstName", "lastName", "password"].forEach((f) => {
+      const err = validateAddField(f, addForm[f]);
+      if (err) errors[f] = err;
+    });
+    setAddFormErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      showNotification("Please fix the highlighted fields", "error", 3000);
       return;
     }
 
@@ -225,13 +257,41 @@ function UserManagementPage() {
         }),
       });
 
-      showNotification("User created successfully", "success", 3000);
+      showNotification("User created successfully!", "success", 3000);
       setIsAddModalOpen(false);
       fetchUsers();
       fetchStats();
     } catch (error) {
       console.error("Error creating user:", error);
-      showNotification(error.message || "Failed to create user", "error", 4000);
+      // Map technical errors to user-friendly messages
+      const msg = error.message || "";
+      if (msg.includes("Email already") || error.code === "EMAIL_TAKEN")
+        showNotification(
+          "This email is already registered. Try a different one.",
+          "error",
+          4000,
+        );
+      else if (
+        msg.includes("Username already") ||
+        error.code === "USERNAME_TAKEN"
+      )
+        showNotification(
+          "This username is taken. Please choose another.",
+          "error",
+          4000,
+        );
+      else if (msg.includes("Super Admin") || error.code === "ROLE_FORBIDDEN")
+        showNotification(
+          "You don't have permission to create this type of account.",
+          "error",
+          4000,
+        );
+      else
+        showNotification(
+          "Something went wrong. Please try again.",
+          "error",
+          4000,
+        );
     } finally {
       setIsCreating(false);
     }
@@ -290,15 +350,6 @@ function UserManagementPage() {
   return (
     <div className="admin-users-page">
       <div className="admin-users-container">
-        <div className="admin-page-header">
-          <div>
-            <h1 className="admin-page-title">Accounts</h1>
-            <p className="admin-page-subtitle">
-              Manage system users and their access permissions
-            </p>
-          </div>
-        </div>
-
         <div className="stats">
           <div className="stat-card">
             <div className="stat-header">
@@ -830,56 +881,82 @@ function UserManagementPage() {
             </div>
             <form onSubmit={handleCreateUser} className="modal-form">
               <div className="form-row">
-                <div className="form-group">
+                <div
+                  className={`form-group ${addFormErrors.username ? "has-error" : ""}`}
+                >
                   <label>Username *</label>
                   <input
                     type="text"
                     value={addForm.username}
                     onChange={(e) =>
-                      setAddForm({ ...addForm, username: e.target.value })
+                      handleAddFormChange("username", e.target.value)
                     }
                     required
                     placeholder="john_doe"
                   />
+                  {addFormErrors.username && (
+                    <span className="field-error">
+                      {addFormErrors.username}
+                    </span>
+                  )}
                 </div>
-                <div className="form-group">
+                <div
+                  className={`form-group ${addFormErrors.email ? "has-error" : ""}`}
+                >
                   <label>Email *</label>
                   <input
                     type="email"
                     value={addForm.email}
                     onChange={(e) =>
-                      setAddForm({ ...addForm, email: e.target.value })
+                      handleAddFormChange("email", e.target.value)
                     }
                     required
                     placeholder="user@example.com"
                   />
+                  {addFormErrors.email && (
+                    <span className="field-error">{addFormErrors.email}</span>
+                  )}
                 </div>
               </div>
 
               <div className="form-row">
-                <div className="form-group">
+                <div
+                  className={`form-group ${addFormErrors.firstName ? "has-error" : ""}`}
+                >
                   <label>First Name *</label>
                   <input
                     type="text"
                     value={addForm.firstName}
                     onChange={(e) =>
-                      setAddForm({ ...addForm, firstName: e.target.value })
+                      handleAddFormChange("firstName", e.target.value)
                     }
                     required
                     placeholder="John"
                   />
+                  {addFormErrors.firstName && (
+                    <span className="field-error">
+                      {addFormErrors.firstName}
+                    </span>
+                  )}
                 </div>
-                <div className="form-group">
+                <div
+                  className={`form-group ${addFormErrors.lastName ? "has-error" : ""}`}
+                >
                   <label>Last Name *</label>
                   <input
                     type="text"
                     value={addForm.lastName}
                     onChange={(e) =>
-                      setAddForm({ ...addForm, lastName: e.target.value })
+                      handleAddFormChange("lastName", e.target.value)
                     }
                     required
                     placeholder="Doe"
                   />
+                  {addFormErrors.lastName && (
+                    <span className="field-error">
+                      {addFormErrors.lastName}
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -895,18 +972,63 @@ function UserManagementPage() {
                     placeholder="+1234567890"
                   />
                 </div>
-                <div className="form-group">
+                <div
+                  className={`form-group ${addFormErrors.password ? "has-error" : ""}`}
+                >
                   <label>Password *</label>
-                  <input
-                    type="password"
-                    value={addForm.password}
-                    onChange={(e) =>
-                      setAddForm({ ...addForm, password: e.target.value })
-                    }
-                    required
-                    placeholder="••••••••"
-                    minLength={6}
-                  />
+                  <div className="password-field-wrapper">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      value={addForm.password}
+                      onChange={(e) =>
+                        handleAddFormChange("password", e.target.value)
+                      }
+                      required
+                      placeholder="••••••••"
+                      minLength={6}
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle-btn"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? (
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                          <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                          <line x1="1" y1="1" x2="23" y2="23" />
+                        </svg>
+                      ) : (
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                          <circle cx="12" cy="12" r="3" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                  {addFormErrors.password && (
+                    <span className="field-error">
+                      {addFormErrors.password}
+                    </span>
+                  )}
                 </div>
               </div>
 
