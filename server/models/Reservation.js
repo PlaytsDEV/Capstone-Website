@@ -73,6 +73,10 @@ const reservationSchema = new mongoose.Schema(
       default: 12, // months
     },
     billingEmail: String,
+    roomConfirmed: {
+      type: Boolean,
+      default: false,
+    },
 
     // =========================================================================
     // STAGE 2: VISIT

@@ -69,33 +69,6 @@ const PORT = process.env.PORT || 5000;
 // ============================================================================
 
 /**
- * Helmet — sets secure HTTP headers:
- * - Content-Security-Policy, X-Content-Type-Options, X-Frame-Options
- * - Strict-Transport-Security, X-XSS-Protection, etc.
- */
-app.use(
-  helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", "data:", "https:"],
-        connectSrc: [
-          "'self'",
-          "https://identitytoolkit.googleapis.com",
-          "https://securetoken.googleapis.com",
-        ],
-        fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        objectSrc: ["'none'"],
-        frameSrc: ["'none'"],
-      },
-    },
-    crossOriginEmbedderPolicy: false,
-  }),
-);
-
-/**
  * Request ID — trace every request through the system
  */
 app.use(requestId);
@@ -139,6 +112,33 @@ app.use(
     origin: allowedOrigins,
     credentials: true,
     exposedHeaders: ["X-Request-Id"],
+  }),
+);
+
+/**
+ * Helmet — sets secure HTTP headers:
+ * - Content-Security-Policy, X-Content-Type-Options, X-Frame-Options
+ * - Strict-Transport-Security, X-XSS-Protection, etc.
+ */
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: [
+          "'self'",
+          "https://identitytoolkit.googleapis.com",
+          "https://securetoken.googleapis.com",
+        ],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        objectSrc: ["'none'"],
+        frameSrc: ["'none'"],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
   }),
 );
 

@@ -380,15 +380,11 @@ const ReservationVisitStep = ({
         </div>
 
         {/* ── Actions ── */}
-        <div className="stage-buttons">
-          <button onClick={onPrev} className="btn btn-secondary">
-            ← Back
-          </button>
+        <div className="stage-buttons" style={{ justifyContent: "flex-end" }}>
           <button
             onClick={() => setShowConfirmModal(true)}
             className="btn btn-primary"
             disabled={!canSubmit}
-            style={{ marginLeft: "auto" }}
           >
             Confirm Visit
           </button>

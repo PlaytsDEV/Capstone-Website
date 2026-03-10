@@ -128,7 +128,7 @@ router.get("/", verifyToken, verifyAdmin, filterByBranch, getUsers);
 router.get("/:userId", verifyToken, verifyAdmin, filterByBranch, getUserById);
 
 // ============================================================================
-// UPDATE USER
+// UPDATE USER (Super Admin only)
 // ============================================================================
 
 /**
@@ -136,9 +136,9 @@ router.get("/:userId", verifyToken, verifyAdmin, filterByBranch, getUserById);
  *
  * Update a user's information.
  *
- * Access: Admin (must be from their branch) | Super Admin (any user)
+ * Access: Super Admin only
  */
-router.put("/:userId", verifyToken, verifyAdmin, filterByBranch, updateUser);
+router.put("/:userId", verifyToken, verifySuperAdmin, updateUser);
 
 // ============================================================================
 // DELETE USER (Super Admin only)

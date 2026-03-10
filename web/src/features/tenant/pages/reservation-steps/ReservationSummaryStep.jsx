@@ -1,4 +1,8 @@
 import React from "react";
+import {
+  formatBranch,
+  formatRoomType,
+} from "../../../../shared/utils/formatDate";
 
 /**
  * Step 1 — Room Selection Summary
@@ -6,20 +10,6 @@ import React from "react";
  */
 const ReservationSummaryStep = ({ reservationData, onNext, readOnly }) => {
   const room = reservationData?.room || {};
-
-  const formatBranch = (branch) => {
-    if (!branch) return "N/A";
-    if (branch.includes(" ") && !branch.includes("-")) return branch;
-    return branch
-      .split("-")
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(" ");
-  };
-
-  const formatType = (type) => {
-    if (!type) return "N/A";
-    return type.charAt(0).toUpperCase() + type.slice(1);
-  };
 
   return (
     <div className="reservation-card">
@@ -49,7 +39,7 @@ const ReservationSummaryStep = ({ reservationData, onNext, readOnly }) => {
           </div>
           <div className="summary-row">
             <span className="summary-label">Room Type</span>
-            <span className="summary-value">{formatType(room.type)}</span>
+            <span className="summary-value">{formatRoomType(room.type)}</span>
           </div>
           <div className="summary-row">
             <span className="summary-label">Room Number</span>

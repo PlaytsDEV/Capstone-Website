@@ -28,4 +28,29 @@ export const billingApi = {
       method: "POST",
       body: JSON.stringify({ amount, note }),
     }),
+
+  // ── Admin Billing ──
+
+  /**
+   * Get all bills for a branch (admin only)
+   */
+  getBillsByBranch: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return authFetch(`/billing/branch?${query}`);
+  },
+
+  /**
+   * Get rooms with occupants for bill generation (admin only)
+   */
+  getRoomsWithTenants: (branch) =>
+    authFetch(`/billing/rooms${branch ? `?branch=${branch}` : ""}`),
+
+  /**
+   * Generate room-based bills (admin only)
+   */
+  generateRoomBill: (billData) =>
+    authFetch("/billing/generate-room", {
+      method: "POST",
+      body: JSON.stringify(billData),
+    }),
 };

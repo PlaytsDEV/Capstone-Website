@@ -45,6 +45,24 @@ router.get("/history", billingController.getBillingHistory);
 router.get("/stats", billingController.getBillingStats);
 
 /**
+ * GET /api/billing/branch
+ * Get all bills for a branch (Admin only)
+ */
+router.get("/branch", billingController.getBillsByBranch);
+
+/**
+ * GET /api/billing/rooms
+ * Get rooms with occupants for bill generation (Admin only)
+ */
+router.get("/rooms", billingController.getRoomsWithTenants);
+
+/**
+ * POST /api/billing/generate-room
+ * Generate room-based bills distributed among tenants (Admin only)
+ */
+router.post("/generate-room", billingController.generateRoomBill);
+
+/**
  * POST /api/billing/:billId/mark-paid
  * Mark a bill as paid (Admin only)
  */

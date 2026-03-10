@@ -1,4 +1,5 @@
 import React, { useRef } from "react";
+import { formatBranch, fmtDate } from "../../../../shared/utils/formatDate";
 
 /**
  * Step 5 — Reservation Confirmed
@@ -20,16 +21,6 @@ const ReservationConfirmationStep = ({
 }) => {
   const receiptRef = useRef(null);
 
-  const formatDate = (dateStr) => {
-    if (!dateStr) return "Not set";
-    return new Date(dateStr).toLocaleDateString("en-US", {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-    });
-  };
-
   const formatPaymentMethod = (method) => {
     const methods = {
       bank: "Bank Transfer",
@@ -38,15 +29,6 @@ const ReservationConfirmationStep = ({
       check: "Check",
     };
     return methods[method] || method || "N/A";
-  };
-
-  const formatBranch = (branch) => {
-    if (!branch) return "N/A";
-    if (branch.includes(" ") && !branch.includes("-")) return branch;
-    return branch
-      .split("-")
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(" ");
   };
 
   const handlePrint = () => {
@@ -101,8 +83,8 @@ const ReservationConfirmationStep = ({
           </div>
           <div class="receipt-section">
             <h3>Schedule</h3>
-            <div class="receipt-row"><span class="label">Move-In Date</span><span class="value">${formatDate(finalMoveInDate)}</span></div>
-            ${visitDate ? `<div class="receipt-row"><span class="label">Visit Date</span><span class="value">${formatDate(visitDate)} at ${visitTime || ""}</span></div>` : ""}
+            <div class="receipt-row"><span class="label">Move-In Date</span><span class="value">${fmtDate(finalMoveInDate)}</span></div>
+            ${visitDate ? `<div class="receipt-row"><span class="label">Visit Date</span><span class="value">${fmtDate(visitDate)} at ${visitTime || ""}</span></div>` : ""}
           </div>
           <div class="receipt-section">
             <h3>Payment</h3>
@@ -230,13 +212,13 @@ const ReservationConfirmationStep = ({
         <div className="detail-list">
           <div className="detail-item">
             <span className="detail-label">Move-In Date</span>
-            <span className="detail-value">{formatDate(finalMoveInDate)}</span>
+            <span className="detail-value">{fmtDate(finalMoveInDate)}</span>
           </div>
           {visitDate && (
             <div className="detail-item">
               <span className="detail-label">Visit Date</span>
               <span className="detail-value">
-                {formatDate(visitDate)} {visitTime ? `at ${visitTime}` : ""}
+                {fmtDate(visitDate)} {visitTime ? `at ${visitTime}` : ""}
               </span>
             </div>
           )}
@@ -284,7 +266,7 @@ const ReservationConfirmationStep = ({
         <div className="info-box">
           <div className="info-box-title">Prepare for Move-In</div>
           <div className="info-text">
-            <strong>Move-In Date:</strong> {formatDate(finalMoveInDate)}
+            <strong>Move-In Date:</strong> {fmtDate(finalMoveInDate)}
             <br />
             <strong>Reservation Valid Until:</strong>{" "}
             {new Date(

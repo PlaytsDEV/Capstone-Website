@@ -6,51 +6,15 @@ import GlobalLoading from "../../../shared/components/GlobalLoading";
 import ReservationDetailsModal from "../components/ReservationDetailsModal";
 import VisitSchedulesTab from "../components/VisitSchedulesTab";
 import InquiriesPage from "./InquiriesPage";
-import "../styles/admin-layout.css";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
+
+import ReservationStatsBar from "../components/reservations/ReservationStatsBar";
+import ReservationToolbar from "../components/reservations/ReservationToolbar";
+import ReservationTable, {
+  checkOverdue,
+} from "../components/reservations/ReservationTable";
+import "../styles/admin-layout.css";
 import "../styles/admin-reservations.css";
-
-/* ── helpers ──────────────────────────────────────────────────────────────── */
-
-function statusBadgeClass(status) {
-  const map = {
-    pending: "ar-badge-pending",
-    confirmed: "ar-badge-confirmed",
-    "checked-in": "ar-badge-checkedin",
-    cancelled: "ar-badge-cancelled",
-  };
-  return map[(status || "").toLowerCase()] || "ar-badge-pending";
-}
-
-function statusLabel(status) {
-  const map = {
-    pending: "Pending",
-    confirmed: "Confirmed",
-    "checked-in": "Checked In",
-    "checked-out": "Checked Out",
-    cancelled: "Cancelled",
-  };
-  return map[(status || "").toLowerCase()] || status || "—";
-}
-
-function formatDate(d) {
-  if (!d) return "—";
-  return new Date(d).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function checkOverdue(r) {
-  return (
-    r.status === "confirmed" &&
-    r.moveInDate &&
-    new Date(r.moveInDate) < new Date()
-  );
-}
-
-/* ── component ────────────────────────────────────────────────────────────── */
 
 function ReservationsPage() {
   const { user } = useAuth();
@@ -74,8 +38,7 @@ function ReservationsPage() {
   });
   const itemsPerPage = 12;
 
-  /* ── data ────────────────────────────────────────────────────────────── */
-
+  /* ── data ── */
   useEffect(() => {
     if (user) fetchReservations();
   }, [user]);
@@ -120,8 +83,7 @@ function ReservationsPage() {
     }
   };
 
-  /* ── actions ─────────────────────────────────────────────────────────── */
-
+  /* ── actions ── */
   const handleAccept = (id) => {
     setConfirmModal({
       open: true,
@@ -225,8 +187,7 @@ function ReservationsPage() {
     });
   };
 
-  /* ── filter + sort + paginate ───────────────────────────────────────── */
-
+  /* ── filter + sort + paginate ── */
   const filtered = reservations.filter((r) => {
     const q = searchTerm.toLowerCase();
     const matchSearch =
@@ -255,7 +216,6 @@ function ReservationsPage() {
         return a.customer.localeCompare(b.customer);
       case "name-za":
         return b.customer.localeCompare(a.customer);
-      case "recent":
       default:
         return new Date(b.createdAt) - new Date(a.createdAt);
     }
@@ -264,10 +224,7 @@ function ReservationsPage() {
   const totalPages = Math.ceil(sorted.length / itemsPerPage);
   const startIdx = (currentPage - 1) * itemsPerPage;
   const page = sorted.slice(startIdx, startIdx + itemsPerPage);
-
   if (currentPage > totalPages && totalPages > 0) setCurrentPage(1);
-
-  /* ── stats ──────────────────────────────────────────────────────────── */
 
   const counts = {
     total: reservations.length,
@@ -311,12 +268,9 @@ function ReservationsPage() {
     { key: "inquiries", label: "Inquiries" },
   ];
 
-  /* ── render ──────────────────────────────────────────────────────────── */
-
   return (
     <div>
       <div style={{ maxWidth: 1400, margin: "0 auto" }}>
-        {/* Tabs */}
         <div className="admin-tabs">
           {tabs.map((t) => (
             <button
@@ -329,225 +283,101 @@ function ReservationsPage() {
           ))}
         </div>
 
-        {/* ── Reservations Tab ────────────────────────── */}
         {activeTab === "reservations" && (
           <>
-            {/* Stats */}
-            <div className="ar-stats">
-              {statItems.map((s) => (
-                <button
-                  key={s.key}
-                  className={`ar-stat ${s.cls} ${statusFilter === s.key ? "active" : ""}`}
-                  onClick={() => {
-                    setStatusFilter(statusFilter === s.key ? "all" : s.key);
-                    setCurrentPage(1);
-                  }}
-                >
-                  <span className="ar-stat-count">{s.count}</span>
-                  <span className="ar-stat-label">{s.label}</span>
-                </button>
-              ))}
-            </div>
+            <ReservationStatsBar
+              statItems={statItems}
+              activeFilter={statusFilter}
+              onFilterChange={(key) => {
+                setStatusFilter(key);
+                setCurrentPage(1);
+              }}
+            />
+            <ReservationToolbar
+              searchTerm={searchTerm}
+              branchFilter={branchFilter}
+              sortBy={sortBy}
+              onSearchChange={(v) => {
+                setSearchTerm(v);
+                setCurrentPage(1);
+              }}
+              onBranchChange={(v) => {
+                setBranchFilter(v);
+                setCurrentPage(1);
+              }}
+              onSortChange={(v) => {
+                setSortBy(v);
+                setCurrentPage(1);
+              }}
+            />
 
-            {/* Toolbar */}
-            <div className="ar-toolbar">
-              <input
-                className="ar-search"
-                type="text"
-                placeholder="Search by name, email, code, or room..."
-                value={searchTerm}
-                onChange={(e) => {
-                  setSearchTerm(e.target.value);
-                  setCurrentPage(1);
-                }}
-              />
-              <select
-                className="ar-select"
-                value={branchFilter}
-                onChange={(e) => {
-                  setBranchFilter(e.target.value);
-                  setCurrentPage(1);
-                }}
-              >
-                <option value="all">All Branches</option>
-                <option value="gil puyat">Gil Puyat</option>
-                <option value="guadalupe">Guadalupe</option>
-              </select>
-              <select
-                className="ar-select"
-                value={sortBy}
-                onChange={(e) => {
-                  setSortBy(e.target.value);
-                  setCurrentPage(1);
-                }}
-              >
-                <option value="recent">Most Recent</option>
-                <option value="oldest">Oldest First</option>
-                <option value="name-az">Name A–Z</option>
-                <option value="name-za">Name Z–A</option>
-              </select>
-            </div>
-
-            {/* Table */}
             <div className="ar-table-wrap">
-              {loading ? (
-                <GlobalLoading />
-              ) : error ? (
-                <div className="ar-error">Error: {error}</div>
-              ) : filtered.length === 0 ? (
-                <div className="ar-empty">
-                  <p className="ar-empty-title">No reservations found</p>
-                  <p className="ar-empty-sub">
-                    Try adjusting your search or filters
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <div style={{ overflowX: "auto" }}>
-                    <table
-                      className="ar-table"
-                      style={{ tableLayout: "fixed", width: "100%" }}
-                    >
-                      <thead>
-                        <tr>
-                          <th style={{ width: "12%" }}>Code</th>
-                          <th style={{ width: "24%" }}>Customer</th>
-                          <th style={{ width: "18%" }}>Room / Branch</th>
-                          <th style={{ width: "14%" }}>Move-in</th>
-                          <th style={{ width: "12%" }}>Status</th>
-                          <th style={{ width: "20%" }}>Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {page.map((r) => {
-                          const overdue = checkOverdue(r);
-                          return (
-                            <tr
-                              key={r.id}
-                              className={overdue ? "ar-row-overdue" : ""}
-                              onClick={() => handleView(r.id)}
-                            >
-                              <td>
-                                <span className="ar-cell-code">
-                                  {r.reservationCode}
-                                </span>
-                              </td>
-                              <td>
-                                <p className="ar-cell-name">{r.customer}</p>
-                                <p className="ar-cell-sub">{r.email}</p>
-                              </td>
-                              <td>
-                                <p className="ar-cell-name">{r.room}</p>
-                                <p className="ar-cell-sub">{r.branch}</p>
-                              </td>
-                              <td>
-                                <span
-                                  className={`ar-cell-date ${overdue ? "overdue" : ""}`}
-                                >
-                                  {formatDate(r.moveInDate)}
-                                </span>
-                                {overdue && (
-                                  <span className="ar-badge ar-badge-overdue">
-                                    Overdue
-                                  </span>
-                                )}
-                              </td>
-                              <td>
-                                <span
-                                  className={`ar-badge ${statusBadgeClass(r.status)}`}
-                                >
-                                  {statusLabel(r.status)}
-                                </span>
-                              </td>
-                              <td onClick={(e) => e.stopPropagation()}>
-                                <div className="ar-actions">
-                                  <button
-                                    className="ar-btn ar-btn-view"
-                                    onClick={() => handleView(r.id)}
-                                  >
-                                    View
-                                  </button>
-                                  <button
-                                    className="ar-btn ar-btn-delete"
-                                    onClick={() => handleDelete(r.id)}
-                                  >
-                                    Delete
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+              <ReservationTable
+                reservations={page}
+                loading={loading}
+                error={error}
+                LoadingComponent={GlobalLoading}
+                onView={handleView}
+                onDelete={handleDelete}
+              />
 
-                  {/* Pagination */}
-                  {totalPages > 1 && (
-                    <div className="ar-pagination">
-                      <span>
-                        {startIdx + 1}–
-                        {Math.min(startIdx + itemsPerPage, filtered.length)} of{" "}
-                        {filtered.length}
-                      </span>
-                      <div className="ar-pagination-buttons">
-                        <button
-                          className="ar-page-btn"
-                          onClick={() =>
-                            setCurrentPage(Math.max(1, currentPage - 1))
-                          }
-                          disabled={currentPage === 1}
-                        >
-                          Previous
-                        </button>
-                        {Array.from({ length: totalPages }, (_, i) => i + 1)
-                          .filter(
-                            (p) =>
-                              p === 1 ||
-                              p === totalPages ||
-                              Math.abs(p - currentPage) <= 1,
-                          )
-                          .map((p, idx, arr) => (
-                            <span key={p}>
-                              {idx > 0 && arr[idx - 1] !== p - 1 && (
-                                <span className="ar-page-ellipsis">…</span>
-                              )}
-                              <button
-                                className={`ar-page-btn ${p === currentPage ? "active" : ""}`}
-                                onClick={() => setCurrentPage(p)}
-                              >
-                                {p}
-                              </button>
-                            </span>
-                          ))}
-                        <button
-                          className="ar-page-btn"
-                          onClick={() =>
-                            setCurrentPage(
-                              Math.min(totalPages, currentPage + 1),
-                            )
-                          }
-                          disabled={currentPage === totalPages}
-                        >
-                          Next
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </>
+              {!loading && !error && filtered.length > 0 && totalPages > 1 && (
+                <div className="ar-pagination">
+                  <span>
+                    {startIdx + 1}–
+                    {Math.min(startIdx + itemsPerPage, filtered.length)} of{" "}
+                    {filtered.length}
+                  </span>
+                  <div className="ar-pagination-buttons">
+                    <button
+                      className="ar-page-btn"
+                      onClick={() =>
+                        setCurrentPage(Math.max(1, currentPage - 1))
+                      }
+                      disabled={currentPage === 1}
+                    >
+                      Previous
+                    </button>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter(
+                        (p) =>
+                          p === 1 ||
+                          p === totalPages ||
+                          Math.abs(p - currentPage) <= 1,
+                      )
+                      .map((p, idx, arr) => (
+                        <span key={p}>
+                          {idx > 0 && arr[idx - 1] !== p - 1 && (
+                            <span className="ar-page-ellipsis">…</span>
+                          )}
+                          <button
+                            className={`ar-page-btn ${p === currentPage ? "active" : ""}`}
+                            onClick={() => setCurrentPage(p)}
+                          >
+                            {p}
+                          </button>
+                        </span>
+                      ))}
+                    <button
+                      className="ar-page-btn"
+                      onClick={() =>
+                        setCurrentPage(Math.min(totalPages, currentPage + 1))
+                      }
+                      disabled={currentPage === totalPages}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           </>
         )}
 
-        {/* ── Visit Schedules Tab ──────────────────────── */}
         {activeTab === "visits" && <VisitSchedulesTab />}
-
-        {/* ── Inquiries Tab ────────────────────────────── */}
         {activeTab === "inquiries" && <InquiriesPage isEmbedded={true} />}
       </div>
 
-      {/* Details Modal */}
       {selectedReservation && (
         <ReservationDetailsModal
           reservation={selectedReservation}
@@ -555,8 +385,6 @@ function ReservationsPage() {
           onUpdate={fetchReservations}
         />
       )}
-
-      {/* Confirm Modal */}
       <ConfirmModal
         isOpen={confirmModal.open}
         onClose={() => setConfirmModal((prev) => ({ ...prev, open: false }))}

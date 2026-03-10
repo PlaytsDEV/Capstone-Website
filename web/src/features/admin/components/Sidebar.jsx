@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   BedDouble,
   FileText,
+  DollarSign,
   LogOut,
   X,
 } from "lucide-react";
@@ -29,6 +30,7 @@ const NAV_SECTIONS = [
       { to: "/admin/reservations", icon: CalendarCheck, text: "Reservations" },
       { to: "/admin/room-availability", icon: BedDouble, text: "Rooms" },
       { to: "/admin/tenants", icon: Users, text: "Tenants" },
+      { to: "/admin/billing", icon: DollarSign, text: "Billing" },
     ],
   },
   {

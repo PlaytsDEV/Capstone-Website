@@ -47,6 +47,9 @@ const AuditLogsPage = React.lazy(
 const UserManagementPage = React.lazy(
   () => import("./features/admin/pages/UserManagementPage"),
 );
+const AdminBillingPage = React.lazy(
+  () => import("./features/admin/pages/AdminBillingPage"),
+);
 
 // Applicant / Tenant Pages
 const SignIn = React.lazy(() => import("./features/tenant/pages/SignIn.jsx"));
@@ -73,9 +76,7 @@ const MaintenancePage = React.lazy(
 const AnnouncementsPage = React.lazy(
   () => import("./features/tenant/pages/AnnouncementsPage"),
 );
-const SettingsPage = React.lazy(
-  () => import("./features/tenant/pages/SettingsPage"),
-);
+
 const ContractsPage = React.lazy(
   () => import("./features/tenant/pages/ContractsPage"),
 );
@@ -230,7 +231,7 @@ function AppContent() {
               path="billing"
               element={
                 <RouteErrorBoundary name="AdminBilling">
-                  <BillingPage />
+                  <AdminBillingPage />
                 </RouteErrorBoundary>
               }
             />
@@ -287,16 +288,7 @@ function AppContent() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/applicant/settings"
-            element={
-              <ProtectedRoute requiredRole="applicant">
-                <RouteErrorBoundary name="Settings">
-                  <SettingsPage />
-                </RouteErrorBoundary>
-              </ProtectedRoute>
-            }
-          />
+
           <Route
             path="/applicant/announcements"
             element={
@@ -377,10 +369,7 @@ function AppContent() {
             path="/tenant/announcements"
             element={<Navigate to="/applicant/announcements" replace />}
           />
-          <Route
-            path="/tenant/settings"
-            element={<Navigate to="/applicant/settings" replace />}
-          />
+
           <Route
             path="/tenant/contracts"
             element={<Navigate to="/applicant/contracts" replace />}

@@ -91,10 +91,13 @@ function resolveCurrentStage(reservation) {
   // visit approved → ready for application
   if (reservation.visitApproved || reservation.scheduleApproved) return 3;
 
-  // visit submitted (agreedToPrivacy set) but not yet approved → waiting at step 2
-  if (reservation.agreedToPrivacy || reservation.viewingType) return 2;
+  // visit actually submitted (needs date + type, not just agreedToPrivacy)
+  if (reservation.visitDate && reservation.viewingType) return 2;
 
-  // room selected (reservation exists)
+  // room confirmed — ready for visit scheduling
+  if (reservation.roomConfirmed) return 2;
+
+  // room selected (reservation exists but not yet confirmed)
   return 1;
 }
 
@@ -142,10 +145,10 @@ function getNextAction(reservation, currentStage) {
   switch (currentStage) {
     case 1:
       return {
-        title: "Schedule Your Visit",
-        description: "Review your room and schedule a visit to the dormitory",
+        title: "Confirm Room & Continue",
+        description: "Review your selected room and confirm your choice",
         buttonLabel: "Continue →",
-        route: `/applicant/reservation?step=2`,
+        route: `/applicant/reservation?step=1`,
         isWaiting: false,
       };
     case 2: {
@@ -388,6 +391,14 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
                   opacity: status === "locked" ? 0.4 : 1,
                 }}
                 onClick={() => {
+                  // Completed steps: navigate to summary view
+                  if (
+                    step.stage === 1 &&
+                    (status === "complete" || status === "waiting")
+                  ) {
+                    navigate(`/applicant/reservation?step=${step.stage}`);
+                    return;
+                  }
                   if (status === "current" && action.route) {
                     navigate(action.route);
                   } else if (status === "complete" || status === "waiting") {
@@ -765,11 +776,13 @@ const styles = {
     transition: "all 0.2s",
   },
   stepComplete: {
-    background: "#10B981",
+    background: "linear-gradient(135deg, #059669 0%, #10B981 100%)",
+    boxShadow: "0 0 0 3px rgba(16, 185, 129, 0.2)",
   },
   stepCurrent: {
-    background: "#E7710F",
-    boxShadow: "0 0 0 4px rgba(231, 113, 15, 0.15)",
+    background: "linear-gradient(135deg, #E7710F 0%, #FF8C2E 100%)",
+    boxShadow:
+      "0 0 0 4px rgba(231, 113, 15, 0.25), 0 0 12px rgba(231, 113, 15, 0.3)",
   },
   stepWaiting: {
     background: "#2563EB",

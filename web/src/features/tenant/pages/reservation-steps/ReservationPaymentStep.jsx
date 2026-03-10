@@ -1,33 +1,14 @@
 import React from "react";
+import {
+  formatBranch,
+  formatRoomType,
+  fmtDate,
+} from "../../../../shared/utils/formatDate";
 
 /**
  * Step 4 — Reservation Fee Payment
  * User reviews a breakdown of costs and uploads proof of payment.
  */
-
-const formatBranch = (branch) => {
-  if (!branch) return "N/A";
-  if (branch.includes(" ") && !branch.includes("-")) return branch;
-  return branch
-    .split("-")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-};
-
-const formatRoomType = (type) => {
-  if (!type) return "N/A";
-  return type.charAt(0).toUpperCase() + type.slice(1);
-};
-
-const formatDate = (dateString) => {
-  if (!dateString) return "Not set";
-  return new Date(dateString).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-};
 
 const ReservationPaymentStep = ({
   reservationData,
@@ -127,9 +108,7 @@ const ReservationPaymentStep = ({
             </div>
             <div className="summary-row">
               <span className="summary-label">Target Move-In Date</span>
-              <span className="summary-value">
-                {formatDate(finalMoveInDate)}
-              </span>
+              <span className="summary-value">{fmtDate(finalMoveInDate)}</span>
             </div>
             {reservationData?.selectedBed && (
               <div className="summary-row">
@@ -252,15 +231,11 @@ const ReservationPaymentStep = ({
 
       {/* Actions */}
       {!readOnly && (
-        <div className="stage-buttons">
-          <button onClick={onPrev} className="btn btn-secondary">
-            ← Back
-          </button>
+        <div className="stage-buttons" style={{ justifyContent: "flex-end" }}>
           <button
             onClick={onNext}
             className="btn btn-primary"
             disabled={isLoading}
-            style={{ marginLeft: "auto" }}
           >
             {isLoading ? "Processing…" : "Confirm Payment & Reserve"}
           </button>

@@ -47,8 +47,8 @@ const RequireNonAdmin = ({ children }) => {
     if (isAdmin) {
       return <Navigate to="/admin/dashboard" replace />;
     }
-    // Applicant or tenant — redirect to applicant profile
-    return <Navigate to="/applicant/profile" replace />;
+    // Applicant or tenant — redirect to browse rooms
+    return <Navigate to="/applicant/check-availability" replace />;
   }
 
   // Allow unauthenticated users

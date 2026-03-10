@@ -4,6 +4,116 @@ import { showNotification } from "../../../shared/utils/notification";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
 import "../styles/reservation-details-modal.css";
 
+/* ─── constants ─────────────────────────────────── */
+const STATUS_MAP = {
+  pending: {
+    label: "Pending Review",
+    color: "#b45309",
+    bg: "#fffbeb",
+    dot: "#f59e0b",
+  },
+  confirmed: {
+    label: "Confirmed",
+    color: "#047857",
+    bg: "#ecfdf5",
+    dot: "#10b981",
+  },
+  "checked-in": {
+    label: "Checked In",
+    color: "#1d4ed8",
+    bg: "#eff6ff",
+    dot: "#3b82f6",
+  },
+  "checked-out": {
+    label: "Checked Out",
+    color: "#64748b",
+    bg: "#f8fafc",
+    dot: "#94a3b8",
+  },
+  cancelled: {
+    label: "Cancelled",
+    color: "#dc2626",
+    bg: "#fef2f2",
+    dot: "#ef4444",
+  },
+};
+
+const ACTION_MSGS = {
+  confirm: {
+    title: "Confirm Reservation",
+    message:
+      "Confirm the payment and reserve the bed? Branch will be assigned automatically.",
+    confirmText: "Yes, Confirm",
+    variant: "info",
+  },
+  checkin: {
+    title: "Check In Tenant",
+    message:
+      "Mark this tenant as moved in? They'll be promoted to Tenant role with full system access.",
+    confirmText: "Yes, Check In",
+    variant: "info",
+  },
+  cancel: {
+    title: "Cancel Reservation",
+    message:
+      "The ₱2,000 reservation fee is non-refundable. The bed will be freed and user reset to applicant.",
+    confirmText: "Yes, Cancel It",
+    variant: "danger",
+  },
+};
+
+/* ─── helpers ───────────────────────────────────── */
+const fmt = (v) => (v === null || v === undefined || v === "" ? "—" : v);
+const fmtCurrency = (v) =>
+  !v && v !== 0 ? "—" : `₱${Number(v).toLocaleString()}`;
+const fmtDate = (d) => {
+  if (!d) return "—";
+  try {
+    return new Date(d).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  } catch {
+    return d;
+  }
+};
+
+const openImage = (url, title) => {
+  if (!url) return showNotification("No file available", "error");
+  const w = window.open("", "_blank");
+  w.document.write(
+    `<html><head><title>${title}</title></head><body style="margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#111;"><img src="${url}" style="max-width:100%;max-height:100vh;object-fit:contain;" alt="${title}"/></body></html>`,
+  );
+};
+
+const buildDocs = (r) => [
+  { label: "Selfie Photo", url: r.selfiePhotoUrl },
+  {
+    label: `Valid ID Front${r.validIDType ? ` (${r.validIDType})` : ""}`,
+    url: r.validIDFrontUrl,
+  },
+  { label: "Valid ID Back", url: r.validIDBackUrl },
+  { label: "NBI Clearance", url: r.nbiClearanceUrl, reason: r.nbiReason },
+  {
+    label: "Company/School ID",
+    url: r.companyIDUrl,
+    reason: r.companyIDReason,
+  },
+];
+
+const PERSONAL_FIELDS = (r) => [
+  ["First Name", fmt(r.firstName)],
+  ["Last Name", fmt(r.lastName)],
+  ["Middle Name", fmt(r.middleName)],
+  ["Nickname", fmt(r.nickname)],
+  ["Birthday", fmtDate(r.birthday)],
+  ["Marital Status", fmt(r.maritalStatus)],
+  ["Nationality", fmt(r.nationality)],
+  ["Education", fmt(r.educationLevel)],
+];
+
+/* ─── component ─────────────────────────────────── */
 export default function ReservationDetailsModal({
   reservation,
   onClose,
@@ -25,115 +135,26 @@ export default function ReservationDetailsModal({
 
   if (!reservation) return null;
 
-  /* ── helpers ─────────────────────────────────────── */
-  const fmt = (v) => (v === null || v === undefined || v === "" ? "—" : v);
-  const fmtCurrency = (v) =>
-    !v && v !== 0 ? "—" : `₱${Number(v).toLocaleString()}`;
-  const fmtDate = (d) => {
-    if (!d) return "—";
-    try {
-      return new Date(d).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
-    } catch {
-      return d;
-    }
-  };
-
-  const openImage = (url, title) => {
-    if (!url) return showNotification("No file available", "error");
-    const w = window.open("", "_blank");
-    w.document.write(
-      `<html><head><title>${title}</title></head><body style="margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;background:#111;"><img src="${url}" style="max-width:100%;max-height:100vh;object-fit:contain;" alt="${title}"/></body></html>`,
-    );
-  };
-
-  /* ── derived ────────────────────────────────────── */
-  const name = reservation.customer ?? "Unknown";
-  const email = reservation.email ?? "—";
-  const phone = reservation.phone ?? reservation.mobileNumber ?? "—";
-  const room = reservation.room ?? "—";
-  const roomType = reservation.roomType ?? "—";
-  const branch = reservation.branch ?? "—";
   const status = (reservation.status || "").toLowerCase();
+  const sc = STATUS_MAP[status] || STATUS_MAP.pending;
   const moveIn = reservation.moveInDate ?? reservation.checkInDate ?? null;
-  const totalPrice = reservation.totalPrice ?? null;
-  const paymentStatus = reservation.paymentStatus ?? "—";
-
   const isOverdue =
     status === "confirmed" && moveIn && new Date(moveIn) < new Date();
   const daysOverdue = isOverdue
     ? Math.floor((new Date() - new Date(moveIn)) / 86400000)
     : 0;
+  const docs = buildDocs(reservation);
 
-  const statusMap = {
-    pending: {
-      label: "Pending Review",
-      color: "#b45309",
-      bg: "#fffbeb",
-      dot: "#f59e0b",
-    },
-    confirmed: {
-      label: "Confirmed",
-      color: "#047857",
-      bg: "#ecfdf5",
-      dot: "#10b981",
-    },
-    "checked-in": {
-      label: "Checked In",
-      color: "#1d4ed8",
-      bg: "#eff6ff",
-      dot: "#3b82f6",
-    },
-    "checked-out": {
-      label: "Checked Out",
-      color: "#64748b",
-      bg: "#f8fafc",
-      dot: "#94a3b8",
-    },
-    cancelled: {
-      label: "Cancelled",
-      color: "#dc2626",
-      bg: "#fef2f2",
-      dot: "#ef4444",
-    },
-  };
-  const sc = statusMap[status] || statusMap.pending;
-
-  /* ── action handler ─────────────────────────────── */
   const doAction = (key, apiCall, successMsg) => {
-    const msgs = {
-      confirm: {
-        title: "Confirm Reservation",
-        message:
-          "Confirm the payment and reserve the bed? Branch will be assigned automatically.",
-        confirmText: "Yes, Confirm",
-        variant: "info",
-      },
-      checkin: {
-        title: "Check In Tenant",
-        message:
-          "Mark this tenant as moved in? They'll be promoted to Tenant role with full system access.",
-        confirmText: "Yes, Check In",
-        variant: "info",
-      },
-      cancel: {
-        title: "Cancel Reservation",
-        message:
-          "The ₱2,000 reservation fee is non-refundable. The bed will be freed and user reset to applicant.",
-        confirmText: "Yes, Cancel It",
-        variant: "danger",
-      },
-      extend: {
-        title: `Extend Move-in by ${extendDays} Day${extendDays > 1 ? "s" : ""}`,
-        message: `Push the move-in date forward by ${extendDays} day${extendDays > 1 ? "s" : ""}. Reservation stays confirmed.`,
-        confirmText: "Extend",
-        variant: "info",
-      },
-    };
-    const m = msgs[key];
+    const m =
+      key === "extend"
+        ? {
+            title: `Extend Move-in by ${extendDays} Day${extendDays > 1 ? "s" : ""}`,
+            message: `Push the move-in date forward by ${extendDays} day${extendDays > 1 ? "s" : ""}. Reservation stays confirmed.`,
+            confirmText: "Extend",
+            variant: "info",
+          }
+        : ACTION_MSGS[key];
     setConfirmModal({
       open: true,
       ...m,
@@ -169,43 +190,22 @@ export default function ReservationDetailsModal({
     }
   };
 
-  /* ── document list ──────────────────────────────── */
-  const docs = [
-    { label: "Selfie Photo", url: reservation.selfiePhotoUrl },
-    {
-      label: `Valid ID Front${reservation.validIDType ? ` (${reservation.validIDType})` : ""}`,
-      url: reservation.validIDFrontUrl,
-    },
-    { label: "Valid ID Back", url: reservation.validIDBackUrl },
-    {
-      label: "NBI Clearance",
-      url: reservation.nbiClearanceUrl,
-      reason: reservation.nbiReason,
-    },
-    {
-      label: "Company/School ID",
-      url: reservation.companyIDUrl,
-      reason: reservation.companyIDReason,
-    },
-  ];
-
-  const hasPaymentProof = !!reservation.proofOfPaymentUrl;
-
-  /* ── render ─────────────────────────────────────── */
   return (
     <>
       <div className="rdm-overlay" onClick={onClose}>
         <div className="rdm" onClick={(e) => e.stopPropagation()}>
-          {/* ━━ Header ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+          {/* Header */}
           <div className="rdm-header">
             <div>
-              <h2 className="rdm-title">{name}</h2>
+              <h2 className="rdm-title">{reservation.customer ?? "Unknown"}</h2>
               <div className="rdm-header-meta">
                 <span className="rdm-code">
                   {reservation.reservationCode || "—"}
                 </span>
                 <span className="rdm-header-sep">·</span>
-                <span className="rdm-header-detail">{email}</span>
+                <span className="rdm-header-detail">
+                  {reservation.email ?? "—"}
+                </span>
               </div>
             </div>
             <button className="rdm-close" onClick={onClose} aria-label="Close">
@@ -220,9 +220,9 @@ export default function ReservationDetailsModal({
             </button>
           </div>
 
-          {/* ━━ Body ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+          {/* Body */}
           <div className="rdm-body">
-            {/* ── Status + Overdue ────────────────────── */}
+            {/* Status */}
             <div className="rdm-status-row">
               <div
                 className="rdm-status-chip"
@@ -241,20 +241,18 @@ export default function ReservationDetailsModal({
               )}
             </div>
 
-            {/* ── Quick Info Grid ─────────────────────── */}
+            {/* Quick Info */}
             <div className="rdm-info-grid">
-              <div className="rdm-info-item">
-                <span className="rdm-info-label">Room</span>
-                <span className="rdm-info-value">{room}</span>
-              </div>
-              <div className="rdm-info-item">
-                <span className="rdm-info-label">Type</span>
-                <span className="rdm-info-value">{roomType}</span>
-              </div>
-              <div className="rdm-info-item">
-                <span className="rdm-info-label">Branch</span>
-                <span className="rdm-info-value">{branch}</span>
-              </div>
+              {[
+                ["Room", reservation.room ?? "—"],
+                ["Type", reservation.roomType ?? "—"],
+                ["Branch", reservation.branch ?? "—"],
+              ].map(([l, v]) => (
+                <div className="rdm-info-item" key={l}>
+                  <span className="rdm-info-label">{l}</span>
+                  <span className="rdm-info-value">{v}</span>
+                </div>
+              ))}
               <div className="rdm-info-item">
                 <span className="rdm-info-label">Move-in Date</span>
                 <span
@@ -265,7 +263,9 @@ export default function ReservationDetailsModal({
               </div>
               <div className="rdm-info-item">
                 <span className="rdm-info-label">Phone</span>
-                <span className="rdm-info-value">{phone}</span>
+                <span className="rdm-info-value">
+                  {reservation.phone ?? reservation.mobileNumber ?? "—"}
+                </span>
               </div>
               {reservation.leaseDuration && (
                 <div className="rdm-info-item">
@@ -277,19 +277,19 @@ export default function ReservationDetailsModal({
               )}
             </div>
 
-            {/* ── Payment Bar ─────────────────────────── */}
+            {/* Payment */}
             <div className="rdm-payment-bar">
               <div className="rdm-payment-amount">
                 <span className="rdm-info-label">Fee</span>
                 <span className="rdm-payment-price">
-                  {fmtCurrency(totalPrice)}
+                  {fmtCurrency(reservation.totalPrice ?? null)}
                 </span>
               </div>
               <div className="rdm-payment-status-wrap">
                 <span
-                  className={`rdm-chip rdm-chip-${paymentStatus.toLowerCase()}`}
+                  className={`rdm-chip rdm-chip-${(reservation.paymentStatus ?? "—").toLowerCase()}`}
                 >
-                  {paymentStatus}
+                  {reservation.paymentStatus ?? "—"}
                 </span>
               </div>
               <div className="rdm-payment-method">
@@ -298,7 +298,7 @@ export default function ReservationDetailsModal({
                   {fmt(reservation.paymentMethod)}
                 </span>
               </div>
-              {hasPaymentProof && (
+              {reservation.proofOfPaymentUrl && (
                 <button
                   type="button"
                   className="rdm-proof-btn"
@@ -311,7 +311,7 @@ export default function ReservationDetailsModal({
               )}
             </div>
 
-            {/* ── Actions (primary focus) ─────────────── */}
+            {/* Actions */}
             {status !== "cancelled" && status !== "checked-out" && (
               <div className="rdm-actions-card">
                 {status === "pending" && (
@@ -332,7 +332,6 @@ export default function ReservationDetailsModal({
                     Confirm Payment & Reserve Bed
                   </button>
                 )}
-
                 {status === "confirmed" && (
                   <>
                     <button
@@ -351,7 +350,6 @@ export default function ReservationDetailsModal({
                     >
                       Check In — Tenant Has Moved In
                     </button>
-
                     <button
                       className="rdm-action rdm-action-extend"
                       onClick={() => setShowExtendPrompt(true)}
@@ -361,9 +359,7 @@ export default function ReservationDetailsModal({
                     </button>
                   </>
                 )}
-
                 <div className="rdm-action-divider" />
-
                 {status !== "checked-in" && (
                   <button
                     className="rdm-action rdm-action-cancel"
@@ -385,7 +381,7 @@ export default function ReservationDetailsModal({
               </div>
             )}
 
-            {/* ── Notes ───────────────────────────────── */}
+            {/* Notes */}
             <div className="rdm-section">
               <h4 className="rdm-section-title">Admin Notes</h4>
               <form onSubmit={saveNotes} className="rdm-notes-form">
@@ -408,7 +404,7 @@ export default function ReservationDetailsModal({
               </form>
             </div>
 
-            {/* ── Expandable: Personal Details ────────── */}
+            {/* Personal Details (expandable) */}
             <button
               type="button"
               className="rdm-expand-btn"
@@ -434,48 +430,40 @@ export default function ReservationDetailsModal({
             {showPersonal && (
               <div className="rdm-expand-content">
                 <div className="rdm-info-grid">
-                  {[
-                    ["First Name", fmt(reservation.firstName)],
-                    ["Last Name", fmt(reservation.lastName)],
-                    ["Middle Name", fmt(reservation.middleName)],
-                    ["Nickname", fmt(reservation.nickname)],
-                    ["Birthday", fmtDate(reservation.birthday)],
-                    ["Marital Status", fmt(reservation.maritalStatus)],
-                    ["Nationality", fmt(reservation.nationality)],
-                    ["Education", fmt(reservation.educationLevel)],
-                  ].map(([label, val]) => (
-                    <div className="rdm-info-item" key={label}>
-                      <span className="rdm-info-label">{label}</span>
-                      <span className="rdm-info-value">{val}</span>
+                  {PERSONAL_FIELDS(reservation).map(([l, v]) => (
+                    <div className="rdm-info-item" key={l}>
+                      <span className="rdm-info-label">{l}</span>
+                      <span className="rdm-info-value">{v}</span>
                     </div>
                   ))}
                 </div>
                 {reservation.emergencyContact && (
                   <div className="rdm-info-grid" style={{ marginTop: 10 }}>
-                    <div className="rdm-info-item">
-                      <span className="rdm-info-label">Emergency Contact</span>
-                      <span className="rdm-info-value">
-                        {fmt(reservation.emergencyContact.name)}
-                      </span>
-                    </div>
-                    <div className="rdm-info-item">
-                      <span className="rdm-info-label">Relationship</span>
-                      <span className="rdm-info-value">
-                        {fmt(reservation.emergencyContact.relationship)}
-                      </span>
-                    </div>
-                    <div className="rdm-info-item">
-                      <span className="rdm-info-label">Contact #</span>
-                      <span className="rdm-info-value">
-                        {fmt(reservation.emergencyContact.contactNumber)}
-                      </span>
-                    </div>
+                    {[
+                      [
+                        "Emergency Contact",
+                        fmt(reservation.emergencyContact.name),
+                      ],
+                      [
+                        "Relationship",
+                        fmt(reservation.emergencyContact.relationship),
+                      ],
+                      [
+                        "Contact #",
+                        fmt(reservation.emergencyContact.contactNumber),
+                      ],
+                    ].map(([l, v]) => (
+                      <div className="rdm-info-item" key={l}>
+                        <span className="rdm-info-label">{l}</span>
+                        <span className="rdm-info-value">{v}</span>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
             )}
 
-            {/* ── Expandable: Submitted Documents ─────── */}
+            {/* Documents (expandable) */}
             <button
               type="button"
               className="rdm-expand-btn"
@@ -526,6 +514,7 @@ export default function ReservationDetailsModal({
         </div>
       </div>
 
+      {/* Extend Dialog */}
       {showExtendPrompt && (
         <div
           className="rdm-extend-overlay"
