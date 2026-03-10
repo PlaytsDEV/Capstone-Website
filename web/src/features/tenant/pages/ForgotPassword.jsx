@@ -56,6 +56,16 @@ function ForgotPassword() {
       await sendPasswordResetEmail(auth, email);
       setEmailSent(true);
       showNotification("Password reset email sent!", "success");
+      // Log successful password reset attempt for security auditing
+      try {
+        await fetch("/api/auth/log-password-reset", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, success: true }),
+        });
+      } catch (_) {
+        /* non-critical */
+      }
     } catch (error) {
       let msg = "Failed to send reset email. ";
       if (error.code === "auth/user-not-found")
@@ -68,6 +78,16 @@ function ForgotPassword() {
         msg = "Network error. Please check your connection.";
       else msg += error.message || "Please try again.";
       showNotification(msg, "error");
+      // Log failed password reset attempt
+      try {
+        await fetch("/api/auth/log-password-reset", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, success: false }),
+        });
+      } catch (_) {
+        /* non-critical */
+      }
     } finally {
       setLoading(false);
     }

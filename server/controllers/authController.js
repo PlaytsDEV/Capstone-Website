@@ -652,3 +652,51 @@ export const setRole = async (req, res) => {
     });
   }
 };
+
+// ============================================================================
+// PASSWORD RESET AUDIT LOGGING
+// ============================================================================
+
+/**
+ * POST /api/auth/log-password-reset
+ *
+ * Public endpoint to log password reset attempts in the audit trail.
+ * Called by the ForgotPassword frontend component.
+ * No auth required since the user is not logged in at this point.
+ */
+export const logPasswordReset = async (req, res) => {
+  try {
+    const { email, success } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    await auditLogger.log({
+      type: "login",
+      action: success
+        ? `Password reset email sent to ${email}`
+        : `Password reset attempt failed for ${email}`,
+      severity: success ? "info" : "warning",
+      userId: null,
+      userName: email,
+      userRole: "unknown",
+      userEmail: email,
+      ipAddress:
+        req.headers["x-forwarded-for"] || req.connection?.remoteAddress,
+      userAgent: req.headers["user-agent"],
+      metadata: {
+        event: "password_reset_attempt",
+        email,
+        success,
+        timestamp: new Date().toISOString(),
+      },
+    });
+
+    res.json({ message: "Logged" });
+  } catch (error) {
+    console.error("❌ Failed to log password reset:", error);
+    // Don't break the flow — just acknowledge
+    res.json({ message: "Logged" });
+  }
+};

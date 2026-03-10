@@ -368,7 +368,7 @@ function SignIn() {
                 required
                 value={formData.email}
                 onChange={handleChange}
-                disabled={loading}
+                disabled={submitting}
                 autoComplete="email"
                 className={inputClass("email")}
                 placeholder="your.email@example.com"
@@ -395,7 +395,7 @@ function SignIn() {
                   required
                   value={formData.password}
                   onChange={handleChange}
-                  disabled={loading}
+                  disabled={submitting}
                   autoComplete="current-password"
                   className={inputClass("password")}
                   placeholder="Enter your password"
@@ -470,7 +470,7 @@ function SignIn() {
             <SocialAuthButtons
               onGoogle={handleGoogleLogin}
               onFacebook={handleFacebookLogin}
-              loading={loading}
+              loading={submitting}
               dividerText="Or continue with"
             />
           </form>

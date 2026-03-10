@@ -11,6 +11,7 @@
  */
 
 import { Bill, RoomBill, Reservation, Room, User } from "../models/index.js";
+import { sendBillGeneratedEmail } from "../config/email.js";
 
 /* ─── shared helpers ─────────────────────────────── */
 
@@ -283,16 +284,19 @@ export const generateRoomBill = async (req, res) => {
     const occupiedBeds = room.beds.filter(
       (b) => !b.available && b.occupiedBy?.userId,
     );
-    if (occupiedBeds.length === 0)
-      return res.status(400).json({ error: "No tenants found in this room" });
 
     const tenantInfos = [];
+    const seenUserIds = new Set();
+
+    // Source 1: Bed occupancy data
     for (const bed of occupiedBeds) {
       if (!bed.occupiedBy.reservationId) continue;
       const reservation = await Reservation.findById(
         bed.occupiedBy.reservationId,
       ).populate("userId", "firstName lastName email");
       if (!reservation?.userId || reservation.status !== "checked-in") continue;
+      if (seenUserIds.has(String(reservation.userId._id))) continue;
+      seenUserIds.add(String(reservation.userId._id));
 
       const rent =
         reservation.totalPrice || room.monthlyPrice || room.price || 0;
@@ -322,13 +326,52 @@ export const generateRoomBill = async (req, res) => {
       });
     }
 
-    if (tenantInfos.length === 0)
-      return res
-        .status(400)
-        .json({
-          error:
-            "No checked-in tenants found in this room. Only tenants with 'checked-in' status can be billed.",
+    // Source 2: Direct reservation query fallback (if bed data is stale)
+    if (tenantInfos.length === 0) {
+      const checkedInReservations = await Reservation.find({
+        roomId: room._id,
+        status: "checked-in",
+        isArchived: { $ne: true },
+      }).populate("userId", "firstName lastName email");
+
+      for (const reservation of checkedInReservations) {
+        if (!reservation?.userId) continue;
+        if (seenUserIds.has(String(reservation.userId._id))) continue;
+        seenUserIds.add(String(reservation.userId._id));
+
+        const rent =
+          reservation.totalPrice || room.monthlyPrice || room.price || 0;
+        const moveInDate = reservation.checkInDate || monthStart;
+        const tenantStart = new Date(
+          Math.max(new Date(moveInDate).getTime(), monthStart.getTime()),
+        );
+        const tenantEnd = new Date(
+          Math.min(Date.now(), monthEnd.getTime() + 86400000),
+        );
+        const daysInRoom = Math.max(
+          1,
+          Math.ceil((tenantEnd - tenantStart) / 86400000),
+        );
+
+        tenantInfos.push({
+          userId: reservation.userId._id,
+          reservationId: reservation._id,
+          userName:
+            `${reservation.userId.firstName || ""} ${reservation.userId.lastName || ""}`.trim() ||
+            "Tenant",
+          email: reservation.userId.email || "",
+          rent,
+          daysInRoom,
+          moveInDate,
         });
+      }
+    }
+
+    if (tenantInfos.length === 0)
+      return res.status(400).json({
+        error:
+          "No checked-in tenants found in this room. Only tenants with 'checked-in' status can be billed.",
+      });
 
     // Pro-rata calculation
     const totalOccupantDays = tenantInfos.reduce((s, t) => s + t.daysInRoom, 0);
@@ -403,12 +446,10 @@ export const generateRoomBill = async (req, res) => {
     }
 
     if (generatedBills.length === 0)
-      return res
-        .status(409)
-        .json({
-          error:
-            "Bills already exist for all tenants in this room for the selected month",
-        });
+      return res.status(409).json({
+        error:
+          "Bills already exist for all tenants in this room for the selected month",
+      });
 
     const roomBill = new RoomBill({
       roomId: room._id,
@@ -445,6 +486,43 @@ export const generateRoomBill = async (req, res) => {
         })),
       },
     });
+
+    // Send bill notification emails to all billed tenants
+    const monthLabel = monthStart.toLocaleDateString("en-PH", {
+      year: "numeric",
+      month: "long",
+    });
+    const dueDateLabel = billDueDate.toLocaleDateString("en-PH", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+    for (const tenant of tenantInfos) {
+      if (!tenant.email) continue;
+      try {
+        await sendBillGeneratedEmail({
+          to: tenant.email,
+          tenantName: tenant.userName,
+          billingMonth: monthLabel,
+          totalAmount:
+            tenant.rent +
+            r2(
+              (roomCharges.electricity +
+                roomCharges.water +
+                roomCharges.applianceFees +
+                roomCharges.corkageFees) *
+                (tenant.daysInRoom / totalOccupantDays),
+            ),
+          dueDate: dueDateLabel,
+          branchName: room.branch || "Lilycrest",
+        });
+      } catch (emailErr) {
+        console.error(
+          `⚠️ Bill email to ${tenant.email} failed:`,
+          emailErr.message,
+        );
+      }
+    }
   } catch (error) {
     console.error("❌ Generate room bill error:", error);
     res.status(500).json({ error: "Failed to generate room bill" });
@@ -468,18 +546,13 @@ export const getRoomsWithTenants = async (req, res) => {
     res.json({
       rooms: await Promise.all(
         rooms.map(async (room) => {
-          const occupiedBeds = room.beds.filter(
-            (b) => !b.available && b.occupiedBy?.userId,
-          );
-          let checkedInCount = 0;
-          for (const bed of occupiedBeds) {
-            if (bed.occupiedBy.reservationId) {
-              const r = await Reservation.findById(bed.occupiedBy.reservationId)
-                .select("status")
-                .lean();
-              if (r?.status === "checked-in") checkedInCount++;
-            }
-          }
+          // Only count reservations with status exactly "checked-in"
+          const tenantCount = await Reservation.countDocuments({
+            roomId: room._id,
+            status: "checked-in",
+            isArchived: { $ne: true },
+          });
+
           return {
             id: room._id,
             name: room.name,
@@ -487,8 +560,8 @@ export const getRoomsWithTenants = async (req, res) => {
             branch: room.branch,
             type: room.type,
             capacity: room.capacity,
-            currentOccupancy: room.currentOccupancy,
-            tenantCount: checkedInCount,
+            currentOccupancy: tenantCount,
+            tenantCount,
           };
         }),
       ),

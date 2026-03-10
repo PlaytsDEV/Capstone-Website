@@ -27,6 +27,7 @@ import {
   updateProfile,
   updateBranch,
   setRole,
+  logPasswordReset,
 } from "../controllers/authController.js";
 
 const router = express.Router();
@@ -145,5 +146,16 @@ router.patch("/update-branch", verifyToken, updateBranch);
  * @returns { message }
  */
 router.post("/set-role", verifyToken, verifyAdmin, setRole);
+
+/**
+ * POST /api/auth/log-password-reset
+ *
+ * Log password reset attempts for security auditing.
+ * Public endpoint — no auth required.
+ *
+ * @body { email, success }
+ * @returns { message }
+ */
+router.post("/log-password-reset", logPasswordReset);
 
 export default router;

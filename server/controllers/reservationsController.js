@@ -19,6 +19,7 @@ import {
   handleStatusTransition,
   buildUserUpdatePayload,
 } from "../utils/reservationHelpers.js";
+import { sendReservationConfirmedEmail } from "../config/email.js";
 
 /* ─── helpers ────────────────────────────────────── */
 const HEAVY_FIELDS =
@@ -81,24 +82,20 @@ export const getReservationById = async (req, res) => {
       .populate(...POPULATE_USER)
       .populate("roomId", "name branch type price floor");
     if (!reservation)
-      return res
-        .status(404)
-        .json({
-          error: "Reservation not found",
-          code: "RESERVATION_NOT_FOUND",
-        });
+      return res.status(404).json({
+        error: "Reservation not found",
+        code: "RESERVATION_NOT_FOUND",
+      });
 
     if (
       dbUser.role !== "admin" &&
       dbUser.role !== "superAdmin" &&
       String(reservation.userId?._id) !== String(dbUser._id)
     ) {
-      return res
-        .status(403)
-        .json({
-          error: "Access denied. You can only view your own reservations.",
-          code: "RESERVATION_ACCESS_DENIED",
-        });
+      return res.status(403).json({
+        error: "Access denied. You can only view your own reservations.",
+        code: "RESERVATION_ACCESS_DENIED",
+      });
     }
 
     res.json(reservation);
@@ -113,13 +110,11 @@ export const createReservation = async (req, res) => {
   try {
     const dbUser = await findDbUser(req.user.uid);
     if (!dbUser)
-      return res
-        .status(404)
-        .json({
-          error:
-            "User not found in database. Please complete registration first.",
-          code: "USER_NOT_FOUND",
-        });
+      return res.status(404).json({
+        error:
+          "User not found in database. Please complete registration first.",
+        code: "USER_NOT_FOUND",
+      });
 
     // Single reservation enforcement
     const existingActive = await Reservation.findOne({
@@ -128,33 +123,27 @@ export const createReservation = async (req, res) => {
       isArchived: { $ne: true },
     });
     if (existingActive)
-      return res
-        .status(400)
-        .json({
-          error:
-            "You already have an active reservation. Please complete or cancel it before creating a new one.",
-          code: "RESERVATION_ALREADY_EXISTS",
-          existingReservationId: existingActive._id,
-        });
+      return res.status(400).json({
+        error:
+          "You already have an active reservation. Please complete or cancel it before creating a new one.",
+        code: "RESERVATION_ALREADY_EXISTS",
+        existingReservationId: existingActive._id,
+      });
 
     const { roomId, roomName, checkInDate, totalPrice } = req.body;
     if ((!roomId && !roomName) || !checkInDate || !totalPrice)
-      return res
-        .status(400)
-        .json({
-          error:
-            "Missing required fields: roomId or roomName, checkInDate, and totalPrice are required",
-          code: "MISSING_REQUIRED_FIELDS",
-        });
+      return res.status(400).json({
+        error:
+          "Missing required fields: roomId or roomName, checkInDate, and totalPrice are required",
+        code: "MISSING_REQUIRED_FIELDS",
+      });
 
     // Enforce 3-month window
     if (!validateMoveInDate(checkInDate))
-      return res
-        .status(400)
-        .json({
-          error: "Move-in date must be within 3 months from today.",
-          code: "MOVEIN_DATE_OUT_OF_RANGE",
-        });
+      return res.status(400).json({
+        error: "Move-in date must be within 3 months from today.",
+        code: "MOVEIN_DATE_OUT_OF_RANGE",
+      });
 
     // Verify room
     const room = roomId
@@ -165,12 +154,10 @@ export const createReservation = async (req, res) => {
         .status(404)
         .json({ error: "Room not found", code: "ROOM_NOT_FOUND" });
     if (room.isArchived)
-      return res
-        .status(400)
-        .json({
-          error: "Room is not available for reservation",
-          code: "ROOM_NOT_AVAILABLE",
-        });
+      return res.status(400).json({
+        error: "Room is not available for reservation",
+        code: "ROOM_NOT_AVAILABLE",
+      });
     if (!room.available)
       console.warn(
         `⚠️ Room ${room.name} is at capacity but allowing draft reservation for ${dbUser.email}`,
@@ -268,14 +255,12 @@ export const createReservation = async (req, res) => {
     console.log(
       `✅ Reservation created: ${reservation._id} (${reservation.reservationCode}) for ${dbUser.email}`,
     );
-    res
-      .status(201)
-      .json({
-        message: "Reservation created successfully",
-        reservationId: reservation._id,
-        reservationCode: reservation.reservationCode,
-        reservation,
-      });
+    res.status(201).json({
+      message: "Reservation created successfully",
+      reservationId: reservation._id,
+      reservationCode: reservation.reservationCode,
+      reservation,
+    });
   } catch (error) {
     console.error("❌ Create reservation error:", error);
     await auditLogger.logError(req, error, "Failed to create reservation");
@@ -293,12 +278,10 @@ export const updateReservation = async (req, res) => {
       reservationId,
     ).populate("roomId", "branch");
     if (!existingReservation)
-      return res
-        .status(404)
-        .json({
-          error: "Reservation not found",
-          code: "RESERVATION_NOT_FOUND",
-        });
+      return res.status(404).json({
+        error: "Reservation not found",
+        code: "RESERVATION_NOT_FOUND",
+      });
 
     const oldData = existingReservation.toObject();
     const denied = checkBranchAccess(
@@ -310,12 +293,10 @@ export const updateReservation = async (req, res) => {
 
     // Enforce 3-month window on checkInDate update
     if (req.body.checkInDate && !validateMoveInDate(req.body.checkInDate)) {
-      return res
-        .status(400)
-        .json({
-          error: "Move-in date must be within 3 months from today.",
-          code: "MOVEIN_DATE_OUT_OF_RANGE",
-        });
+      return res.status(400).json({
+        error: "Move-in date must be within 3 months from today.",
+        code: "MOVEIN_DATE_OUT_OF_RANGE",
+      });
     }
 
     // Status transition side-effects
@@ -335,12 +316,10 @@ export const updateReservation = async (req, res) => {
 
     const reservation = await Reservation.findById(reservationId);
     if (!reservation)
-      return res
-        .status(404)
-        .json({
-          error: "Reservation not found",
-          code: "RESERVATION_NOT_FOUND",
-        });
+      return res.status(404).json({
+        error: "Reservation not found",
+        code: "RESERVATION_NOT_FOUND",
+      });
     Object.assign(reservation, req.body);
     const updatedReservation = await reservation.save();
 
@@ -369,6 +348,36 @@ export const updateReservation = async (req, res) => {
       message: "Reservation updated successfully",
       reservation: updatedReservation,
     });
+
+    // Send confirmation email if status just changed to "confirmed"
+    if (
+      req.body.status === "confirmed" &&
+      oldData.status !== "confirmed" &&
+      updatedReservation.userId?.email
+    ) {
+      try {
+        await sendReservationConfirmedEmail({
+          to: updatedReservation.userId.email,
+          tenantName:
+            `${updatedReservation.userId.firstName || ""} ${updatedReservation.userId.lastName || ""}`.trim() ||
+            "Tenant",
+          reservationCode: updatedReservation.reservationCode || "N/A",
+          roomName: updatedReservation.roomId?.name || "N/A",
+          branchName: updatedReservation.roomId?.branch || "Lilycrest",
+          checkInDate: updatedReservation.checkInDate
+            ? new Date(updatedReservation.checkInDate).toLocaleDateString(
+                "en-PH",
+                { year: "numeric", month: "long", day: "numeric" },
+              )
+            : "TBD",
+        });
+      } catch (emailErr) {
+        console.error(
+          "⚠️ Confirmation email failed (non-fatal):",
+          emailErr.message,
+        );
+      }
+    }
   } catch (error) {
     console.error("❌ Update reservation error:", error);
     await auditLogger.logError(req, error, "Failed to update reservation");
@@ -390,19 +399,15 @@ export const updateReservationByUser = async (req, res) => {
 
     const reservation = await Reservation.findById(reservationId);
     if (!reservation)
-      return res
-        .status(404)
-        .json({
-          error: "Reservation not found",
-          code: "RESERVATION_NOT_FOUND",
-        });
+      return res.status(404).json({
+        error: "Reservation not found",
+        code: "RESERVATION_NOT_FOUND",
+      });
     if (String(reservation.userId) !== String(dbUser._id))
-      return res
-        .status(403)
-        .json({
-          error: "Access denied. You can only update your own reservation.",
-          code: "RESERVATION_ACCESS_DENIED",
-        });
+      return res.status(403).json({
+        error: "Access denied. You can only update your own reservation.",
+        code: "RESERVATION_ACCESS_DENIED",
+      });
 
     // Build update payload from config-driven field mapping
     const updates = buildUserUpdatePayload(req.body);
@@ -452,29 +457,23 @@ export const deleteReservation = async (req, res) => {
     const reservation =
       await Reservation.findById(reservationId).populate("roomId");
     if (!reservation)
-      return res
-        .status(404)
-        .json({
-          error: "Reservation not found",
-          code: "RESERVATION_NOT_FOUND",
-        });
+      return res.status(404).json({
+        error: "Reservation not found",
+        code: "RESERVATION_NOT_FOUND",
+      });
 
     const isOwner = String(reservation.userId) === String(dbUser._id);
     const isAdmin = dbUser.role === "admin" || dbUser.role === "superAdmin";
     if (!isOwner && !isAdmin)
-      return res
-        .status(403)
-        .json({
-          error: "Access denied. You can only delete your own reservation.",
-          code: "RESERVATION_ACCESS_DENIED",
-        });
+      return res.status(403).json({
+        error: "Access denied. You can only delete your own reservation.",
+        code: "RESERVATION_ACCESS_DENIED",
+      });
     if (dbUser.role === "admin" && reservation.roomId?.branch !== dbUser.branch)
-      return res
-        .status(403)
-        .json({
-          error: `Access denied. You can only manage reservations for ${dbUser.branch} branch.`,
-          code: "BRANCH_ACCESS_DENIED",
-        });
+      return res.status(403).json({
+        error: `Access denied. You can only manage reservations for ${dbUser.branch} branch.`,
+        code: "BRANCH_ACCESS_DENIED",
+      });
 
     const reservationData = reservation.toObject();
 
@@ -521,12 +520,10 @@ export const extendReservation = async (req, res) => {
       "branch",
     );
     if (!reservation)
-      return res
-        .status(404)
-        .json({
-          error: "Reservation not found",
-          code: "RESERVATION_NOT_FOUND",
-        });
+      return res.status(404).json({
+        error: "Reservation not found",
+        code: "RESERVATION_NOT_FOUND",
+      });
     const denied = checkBranchAccess(
       res,
       req.branchFilter,
@@ -581,12 +578,10 @@ export const releaseSlot = async (req, res) => {
     const reservation =
       await Reservation.findById(reservationId).populate("roomId");
     if (!reservation)
-      return res
-        .status(404)
-        .json({
-          error: "Reservation not found",
-          code: "RESERVATION_NOT_FOUND",
-        });
+      return res.status(404).json({
+        error: "Reservation not found",
+        code: "RESERVATION_NOT_FOUND",
+      });
     const denied = checkBranchAccess(
       res,
       req.branchFilter,
@@ -660,12 +655,10 @@ export const archiveReservation = async (req, res) => {
       "branch",
     );
     if (!reservation)
-      return res
-        .status(404)
-        .json({
-          error: "Reservation not found",
-          code: "RESERVATION_NOT_FOUND",
-        });
+      return res.status(404).json({
+        error: "Reservation not found",
+        code: "RESERVATION_NOT_FOUND",
+      });
     const denied = checkBranchAccess(
       res,
       req.branchFilter,
