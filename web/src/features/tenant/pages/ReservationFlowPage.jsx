@@ -157,6 +157,18 @@ function ReservationFlowPage() {
   const autoSaveTimerRef = useRef(null);
   const isFirstRenderRef = useRef(true);
 
+  // ── Warn before leaving mid-flow ────────────────────────────
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (isFormDirty || currentStage > 1) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isFormDirty, currentStage]);
+
   // ── Stepper locking ────────────────────────────────────────
   const isStageLocked = (stageId) => {
     if (paymentApproved) return stageId < 5;

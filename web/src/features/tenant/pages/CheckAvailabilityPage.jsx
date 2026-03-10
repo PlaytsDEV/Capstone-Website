@@ -431,6 +431,58 @@ function CheckAvailabilityPage() {
               ? "Loading rooms..."
               : `${filteredRooms.length} rooms available`}
           </p>
+          {!user && (
+            <div
+              style={{
+                marginTop: "12px",
+                padding: "10px 16px",
+                backgroundColor: "#FFF7ED",
+                border: "1px solid #FDBA74",
+                borderRadius: "8px",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                fontSize: "14px",
+                color: "#9A3412",
+              }}
+            >
+              <span>🔑</span>
+              <span>
+                <button
+                  onClick={() => navigate("/signin")}
+                  style={{
+                    fontWeight: "500",
+                    color: "#E7710F",
+                    textDecoration: "underline",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 0,
+                    fontSize: "inherit",
+                  }}
+                >
+                  Sign in
+                </button>{" "}
+                or{" "}
+                <button
+                  onClick={() => navigate("/signup")}
+                  style={{
+                    fontWeight: "500",
+                    color: "#E7710F",
+                    textDecoration: "underline",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 0,
+                    fontSize: "inherit",
+                  }}
+                >
+                  create an account
+                </button>{" "}
+                to reserve a room
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">

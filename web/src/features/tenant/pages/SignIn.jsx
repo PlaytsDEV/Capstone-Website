@@ -30,6 +30,7 @@ import {
 } from "../../../shared/utils/authValidation";
 import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
 import SocialAuthButtons from "../../../shared/components/SocialAuthButtons";
+import { Loader2 } from "lucide-react";
 import "../../public/styles/tenant-signin.css";
 import "../../../shared/styles/notification.css";
 
@@ -42,7 +43,7 @@ function SignIn() {
 
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
-  const [loading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [fieldValid, setFieldValid] = useState({});
@@ -95,6 +96,7 @@ function SignIn() {
 
   const handleEmailPasswordLogin = async (e) => {
     e.preventDefault();
+    setSubmitting(true);
     setGlobalLoading(true);
     try {
       const userCredential = await signInWithEmailAndPassword(
@@ -179,15 +181,31 @@ function SignIn() {
     } catch (error) {
       showNotification(getFirebaseErrorMessage(error, "login"), "error");
     } finally {
+      setSubmitting(false);
       setGlobalLoading(false);
     }
   };
 
   const handleSocialLogin = async (provider) => {
+    setSubmitting(true);
     setGlobalLoading(true);
     try {
       const result = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
+
+      // Check email verification (admin bypasses via custom claims)
+      const tokenResult = await firebaseUser.getIdTokenResult();
+      const isAdmin = tokenResult.claims.admin || tokenResult.claims.superAdmin;
+      if (!firebaseUser.emailVerified && !isAdmin) {
+        await auth.signOut();
+        showNotification(
+          "Please verify your email before logging in. Check your inbox for the verification link.",
+          "warning",
+        );
+        setGlobalLoading(false);
+        return;
+      }
+
       try {
         const loginResponse = await login();
         handlePostAuthFlow(loginResponse);
@@ -241,6 +259,7 @@ function SignIn() {
       }
       showNotification(getFirebaseErrorMessage(error, "login"), "error");
     } finally {
+      setSubmitting(false);
       setGlobalLoading(false);
     }
   };
@@ -383,11 +402,24 @@ function SignIn() {
 
             <button
               type="submit"
-              className="w-full py-6 rounded-xl text-white font-light hover:opacity-90 transition-opacity text-base"
-              style={{ backgroundColor: "#E7710F" }}
-              disabled={!isFormValid() || loading}
+              className="w-full py-6 rounded-xl text-white font-light hover:opacity-90 transition-opacity text-base flex items-center justify-center gap-2"
+              style={{
+                backgroundColor: "#E7710F",
+                opacity: submitting ? 0.7 : 1,
+              }}
+              disabled={!isFormValid() || submitting}
             >
-              {loading ? "Signing In..." : "Sign in"}
+              {submitting ? (
+                <>
+                  <Loader2
+                    className="w-4 h-4"
+                    style={{ animation: "spin 1s linear infinite" }}
+                  />
+                  Signing in...
+                </>
+              ) : (
+                "Sign in"
+              )}
             </button>
 
             <SocialAuthButtons

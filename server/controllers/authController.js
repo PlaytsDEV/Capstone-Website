@@ -271,6 +271,17 @@ export const login = async (req, res) => {
       );
     }
 
+    // Block unverified non-admin users from logging in
+    const isAdminRole = user.role === "admin" || user.role === "superAdmin";
+    if (!user.isEmailVerified && !isAdminRole) {
+      console.log(`⚠️ Unverified email login attempt: ${user.email}`);
+      await auditLogger.logLogin(req, user, false, "Email not verified");
+      return res.status(403).json({
+        error: "Please verify your email before logging in.",
+        code: "EMAIL_NOT_VERIFIED",
+      });
+    }
+
     // Log successful login (not for checkOnly)
     if (!isCheckOnly) {
       await auditLogger.logLogin(req, user, true);

@@ -116,9 +116,11 @@ function AppContent() {
           <Route
             path="/"
             element={
-              <RouteErrorBoundary name="LandingPage">
-                <LandingPage />
-              </RouteErrorBoundary>
+              <ProtectedRoute requiredRole="applicant" requireAuth={false}>
+                <RouteErrorBoundary name="LandingPage">
+                  <LandingPage />
+                </RouteErrorBoundary>
+              </ProtectedRoute>
             }
           />
 
@@ -356,44 +358,84 @@ function AppContent() {
           {/* ============================================================ */}
           <Route
             path="/check-availability"
-            element={<Navigate to="/applicant/check-availability" replace />}
+            element={
+              <ProtectedRoute requiredRole="applicant" requireAuth={false}>
+                <Navigate to="/applicant/check-availability" replace />
+              </ProtectedRoute>
+            }
           />
           <Route
             path="/tenant/dashboard"
-            element={<Navigate to="/applicant/profile" replace />}
+            element={
+              <ProtectedRoute requiredRole="applicant">
+                <Navigate to="/applicant/profile" replace />
+              </ProtectedRoute>
+            }
           />
           <Route
             path="/tenant/check-availability"
-            element={<Navigate to="/applicant/check-availability" replace />}
+            element={
+              <ProtectedRoute requiredRole="applicant" requireAuth={false}>
+                <Navigate to="/applicant/check-availability" replace />
+              </ProtectedRoute>
+            }
           />
           <Route
             path="/tenant/reservation-flow"
-            element={<Navigate to="/applicant/reservation" replace />}
+            element={
+              <ProtectedRoute requiredRole="applicant">
+                <Navigate to="/applicant/reservation" replace />
+              </ProtectedRoute>
+            }
           />
           <Route
             path="/tenant/reservation"
-            element={<Navigate to="/applicant/reservation" replace />}
+            element={
+              <ProtectedRoute requiredRole="applicant">
+                <Navigate to="/applicant/reservation" replace />
+              </ProtectedRoute>
+            }
           />
           <Route
             path="/tenant/profile"
-            element={<Navigate to="/applicant/profile" replace />}
+            element={
+              <ProtectedRoute requiredRole="applicant">
+                <Navigate to="/applicant/profile" replace />
+              </ProtectedRoute>
+            }
           />
           <Route
             path="/tenant/billing"
-            element={<Navigate to="/applicant/billing" replace />}
+            element={
+              <ProtectedRoute requiredRole="applicant">
+                <Navigate to="/applicant/billing" replace />
+              </ProtectedRoute>
+            }
           />
           <Route
             path="/tenant/maintenance"
-            element={<Navigate to="/applicant/maintenance" replace />}
+            element={
+              <ProtectedRoute requiredRole="applicant">
+                <Navigate to="/applicant/maintenance" replace />
+              </ProtectedRoute>
+            }
           />
           <Route
             path="/tenant/announcements"
-            element={<Navigate to="/applicant/announcements" replace />}
+            element={
+              <ProtectedRoute requiredRole="applicant">
+                <Navigate to="/applicant/announcements" replace />
+              </ProtectedRoute>
+            }
           />
 
           <Route
             path="/tenant/contracts"
-            element={<Navigate to="/applicant/contracts" replace />}
+            element={
+              <ProtectedRoute requiredRole="applicant">
+                <Navigate to="/applicant/contracts" replace />
+              </ProtectedRoute>
+            }
           />
         </Routes>
       </Suspense>
