@@ -48,7 +48,6 @@ function ReservationFlowPage() {
 
   // ── Core state ─────────────────────────────────────────────
   const [reservationData, setReservationData] = useState(null);
-  const [reservationId, setReservationId] = useState(null);
   const [currentStage, setCurrentStage] = useState(1);
   const [highestStageReached, setHighestStageReached] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -721,8 +720,8 @@ function ReservationFlowPage() {
   const handleNextStage = async () => {
     try {
       if (currentStage === 1) {
-        if (!devBypassValidation && (!targetMoveInDate || !billingEmail)) {
-          showNotification("Please fill in all summary fields", "error", 3000);
+        if (!reservationData?.room) {
+          showNotification("Please select a room to continue", "error", 3000);
           return;
         }
         setPendingStageAction("stage1");

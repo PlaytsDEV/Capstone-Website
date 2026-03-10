@@ -254,6 +254,7 @@ const ReservationConfirmationStep = ({
             </span>
           </div>
         </div>
+      </div>
 
       {/* What's Next */}
       <div className="content-card" style={{ textAlign: "left" }}>
@@ -282,6 +283,7 @@ const ReservationConfirmationStep = ({
             <strong>Contact:</strong> reservations@lilycrest.com
           </div>
         </div>
+      </div>
 
       {/* Actions */}
       <div className="action-buttons">

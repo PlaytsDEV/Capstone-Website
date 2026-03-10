@@ -208,7 +208,6 @@ const ProfilePage = () => {
             status: "Approved",
           });
       });
-
       activities.sort((a, b) => new Date(b.date) - new Date(a.date));
       setActivityLog(activities);
     } catch (err) {
@@ -336,25 +335,6 @@ const ProfilePage = () => {
         price: selectedReservation.roomId.price,
       }
     : null;
-  const progressTotalSteps = 6;
-  const progressStepNumber = selectedReservation
-    ? reservationProgress.currentStepIndex + 1
-    : 0;
-  const progressPercent = selectedReservation
-    ? Math.min(
-        100,
-        Math.round((progressStepNumber / progressTotalSteps) * 100),
-      )
-    : 0;
-  const currentStepLabel = selectedReservation
-    ? reservationProgress.steps?.[reservationProgress.currentStepIndex]?.title
-    : null;
-  const roomImageUrl = selectedReservation?.roomId?.images?.[0] || null;
-  const roomMonthlyPrice =
-    selectedReservation?.roomId?.price ||
-    selectedReservation?.roomId?.monthlyPrice ||
-    selectedReservation?.totalPrice ||
-    0;
 
   // ── Tab title map ──────────────────────────────────────────
   const TAB_TITLES = {
