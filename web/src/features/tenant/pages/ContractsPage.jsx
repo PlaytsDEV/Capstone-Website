@@ -1,27 +1,13 @@
-import { useState, useEffect, useMemo } from "react";
-import { reservationApi } from "../../../shared/api/apiClient";
+import { useMemo } from "react";
+import { useReservations } from "../../../shared/hooks/queries/useReservations";
 import TenantLayout from "../../../shared/layouts/TenantLayout";
 import "../styles/tenant-common.css";
 import "../styles/contracts.css";
 
 const ContractsPage = () => {
-  const [reservations, setReservations] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const data = await reservationApi.getAll();
-        setReservations(Array.isArray(data) ? data : []);
-      } catch (err) {
-        setError(err.message || "Failed to load contracts");
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, []);
+  const { data: rawReservations, isLoading: loading, error: queryError } = useReservations();
+  const reservations = Array.isArray(rawReservations) ? rawReservations : [];
+  const error = queryError ? (queryError.message || "Failed to load contracts") : null;
 
   // Active contract = checked-in reservations
   const activeContract = useMemo(

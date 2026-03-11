@@ -1,29 +1,15 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { announcementApi } from "../../../shared/api/apiClient";
+import { useAnnouncements } from "../../../shared/hooks/queries/useAnnouncements";
 import TenantLayout from "../../../shared/layouts/TenantLayout";
 import "../styles/tenant-common.css";
 
 const AnnouncementsPage = () => {
-  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
-  const [announcements, setAnnouncements] = useState([]);
   const [acknowledged, setAcknowledged] = useState(new Set());
 
-  useEffect(() => {
-    loadAnnouncements();
-  }, []);
-
-  const loadAnnouncements = async () => {
-    try {
-      setLoading(true);
-      const data = await announcementApi.getAll(50);
-      setAnnouncements(data.announcements || []);
-    } catch (error) {
-      console.error("Failed to load announcements:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data: announcementData, isLoading: loading } = useAnnouncements(50);
+  const announcements = announcementData?.announcements || [];
 
   const filteredAnnouncements = announcements.filter(
     (a) => filter === "all" || a.category.toLowerCase() === filter,

@@ -1,19 +1,18 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import GlobalLoading from "../../../shared/components/GlobalLoading";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
-import {
-  authApi,
-  userApi,
-  reservationApi,
-} from "../../../shared/api/apiClient";
+import { authApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
 import {
   getReservationProgress,
   getNextAction,
   DEFAULT_STEPS,
 } from "../utils/reservationProgress";
+import { useCurrentUser } from "../../../shared/hooks/queries/useUsers";
+import { useReservations } from "../../../shared/hooks/queries/useReservations";
+import { useMyStays } from "../../../shared/hooks/queries/useUsers";
 
 // Sub-components
 import {
@@ -29,7 +28,6 @@ import {
 
 // ─────────────────────────────────────────────────────────────
 // ProfilePage — thin orchestrator
-// 4,256 lines → ~350 lines (state, data-loading, tab routing)
 // ─────────────────────────────────────────────────────────────
 const ProfilePage = () => {
   const { user: authUser, updateUser, logout } = useAuth();
@@ -38,30 +36,13 @@ const ProfilePage = () => {
 
   // ── UI state ───────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [receiptModal, setReceiptModal] = useState({ open: false, step: null });
-
-  // ── Data state ─────────────────────────────────────────────
-  const [activeReservation, setActiveReservation] = useState(null);
-  const [reservations, setReservations] = useState([]);
-  const [visits, setVisits] = useState([]);
   const [selectedReservationId, setSelectedReservationId] = useState(null);
-  const [activityLog, setActivityLog] = useState([]);
-  const [stayData, setStayData] = useState({
-    currentStays: [],
-    pastStays: [],
-    stats: {
-      totalStays: 0,
-      completedStays: 0,
-      totalNights: 0,
-      memberSince: null,
-    },
-  });
 
   const [profileData, setProfileData] = useState({
     firstName: "",
@@ -99,135 +80,117 @@ const ProfilePage = () => {
     yearLevel: "",
   });
 
-  // ── Data loading ───────────────────────────────────────────
+  // ── TanStack Query data fetching ──────────────────────────
+  const { data: profile, isLoading: profileLoading } = useCurrentUser();
+  const { data: reservationsData, isLoading: reservationsLoading } = useReservations();
+  const { data: stayData } = useMyStays(activeTab === "stays");
+
+  const loading = profileLoading || reservationsLoading;
+
+  // Sync profile data when query resolves
   useEffect(() => {
-    const loadProfileData = async () => {
-      try {
-        setLoading(true);
-        const profile = await authApi.getCurrentUser();
-        setProfileData(profile);
-        setEditData({
-          firstName: profile.firstName || "",
-          lastName: profile.lastName || "",
-          phone: profile.phone || "",
-          profileImage: profile.profileImage || "",
-          address: profile.address || "",
-          city: profile.city || "",
-          dateOfBirth: profile.dateOfBirth || "",
-          emergencyContact: profile.emergencyContact || "",
-          emergencyPhone: profile.emergencyPhone || "",
-          studentId: profile.studentId || "",
-          school: profile.school || "",
-          yearLevel: profile.yearLevel || "",
+    if (!profile) return;
+    setProfileData(profile);
+    setEditData({
+      firstName: profile.firstName || "",
+      lastName: profile.lastName || "",
+      phone: profile.phone || "",
+      profileImage: profile.profileImage || "",
+      address: profile.address || "",
+      city: profile.city || "",
+      dateOfBirth: profile.dateOfBirth || "",
+      emergencyContact: profile.emergencyContact || "",
+      emergencyPhone: profile.emergencyPhone || "",
+      studentId: profile.studentId || "",
+      school: profile.school || "",
+      yearLevel: profile.yearLevel || "",
+    });
+  }, [profile]);
+
+  // ── Derive reservations, visits, activity from cached data ─
+  const reservations = useMemo(() => reservationsData || [], [reservationsData]);
+
+  const activeReservation = useMemo(() => {
+    const activeOnes =
+      reservations.filter((r) => {
+        const status = r.reservationStatus || r.status;
+        return status !== "completed" && status !== "cancelled";
+      }) || [];
+    return activeOnes[0] || null;
+  }, [reservations]);
+
+  // Set initial selected reservation
+  useEffect(() => {
+    if (activeReservation && !selectedReservationId) {
+      setSelectedReservationId(activeReservation._id);
+    }
+  }, [activeReservation, selectedReservationId]);
+
+  const visits = useMemo(
+    () =>
+      reservations
+        .filter((r) => r.visitDate)
+        .map((r) => ({
+          id: r._id,
+          roomNumber: r.roomId?.name || "N/A",
+          location: r.roomId?.branch || "N/A",
+          floor: r.roomId?.floor || 1,
+          date: r.visitDate,
+          time: r.visitTime || "TBD",
+          status: r.visitCompleted
+            ? "Completed"
+            : new Date(r.visitDate) < new Date()
+              ? "Missed"
+              : "Scheduled",
+          specialInstructions:
+            "Please bring valid ID. Meet at the reception area.",
+        })),
+    [reservations],
+  );
+
+  const activityLog = useMemo(() => {
+    const activities = [];
+    reservations.forEach((r) => {
+      if (r.createdAt)
+        activities.push({
+          id: `res-${r._id}`,
+          type: "reservation",
+          title: "Room Reservation Submitted",
+          description: `Submitted reservation request for Room ${r.roomId?.name || "N/A"}`,
+          date: r.createdAt,
+          status: "Pending",
         });
-        await loadReservationsAndVisits();
-      } catch (err) {
-        console.error("Error loading profile:", err);
-        setError("Failed to load profile data");
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadProfileData();
-  }, [location.state?.refresh]);
-
-  const loadReservationsAndVisits = async () => {
-    try {
-      const reservationsData = await reservationApi.getAll();
-      setReservations(reservationsData || []);
-
-      const activeOnes =
-        reservationsData?.filter((r) => {
-          const status = r.reservationStatus || r.status;
-          return status !== "completed" && status !== "cancelled";
-        }) || [];
-
-      const active = activeOnes[0] || null;
-      setActiveReservation(active);
-      if (active && !selectedReservationId)
-        setSelectedReservationId(active._id);
-
-      // Extract visits
-      const allVisits =
-        reservationsData
-          ?.filter((r) => r.visitDate)
-          .map((r) => ({
-            id: r._id,
-            roomNumber: r.roomId?.name || "N/A",
-            location: r.roomId?.branch || "N/A",
-            floor: r.roomId?.floor || 1,
-            date: r.visitDate,
-            time: r.visitTime || "TBD",
-            status: r.visitCompleted
-              ? "Completed"
-              : new Date(r.visitDate) < new Date()
-                ? "Missed"
-                : "Scheduled",
-            specialInstructions:
-              "Please bring valid ID. Meet at the reception area.",
-          })) || [];
-      setVisits(allVisits);
-
-      // Build activity log
-      const activities = [];
-      reservationsData?.forEach((r) => {
-        if (r.createdAt)
-          activities.push({
-            id: `res-${r._id}`,
-            type: "reservation",
-            title: "Room Reservation Submitted",
-            description: `Submitted reservation request for Room ${r.roomId?.name || "N/A"}`,
-            date: r.createdAt,
-            status: "Pending",
-          });
-        if (r.visitDate)
-          activities.push({
-            id: `visit-${r._id}`,
-            type: "visit",
-            title: r.visitCompleted ? "Visit Completed" : "Visit Scheduled",
-            description: `${r.visitCompleted ? "Completed" : "Scheduled"} visit to Room ${r.roomId?.name || "N/A"}`,
-            date: r.visitDate,
-            status: r.visitCompleted ? "Completed" : "Scheduled",
-          });
-        if (r.paymentDate)
-          activities.push({
-            id: `payment-${r._id}`,
-            type: "payment",
-            title: "Deposit Payment Completed",
-            description: `Successfully paid security deposit for Room ${r.roomId?.name || "N/A"}`,
-            date: r.paymentDate,
-            status: "Completed",
-          });
-        if (r.approvedDate)
-          activities.push({
-            id: `approval-${r._id}`,
-            type: "approval",
-            title: "Reservation Approved",
-            description: `Your reservation for Room ${r.roomId?.name || "N/A"} has been approved by admin`,
-            date: r.approvedDate,
-            status: "Approved",
-          });
-      });
-      activities.sort((a, b) => new Date(b.date) - new Date(a.date));
-      setActivityLog(activities);
-    } catch (err) {
-      console.error("Error loading reservations:", err);
-    }
-  };
-
-  // Load stay data when Stay History tab is active
-  useEffect(() => {
-    if (activeTab === "stays") {
-      (async () => {
-        try {
-          const data = await userApi.getMyStays();
-          setStayData(data);
-        } catch (err) {
-          console.error("Error loading stay data:", err);
-        }
-      })();
-    }
-  }, [activeTab]);
+      if (r.visitDate)
+        activities.push({
+          id: `visit-${r._id}`,
+          type: "visit",
+          title: r.visitCompleted ? "Visit Completed" : "Visit Scheduled",
+          description: `${r.visitCompleted ? "Completed" : "Scheduled"} visit to Room ${r.roomId?.name || "N/A"}`,
+          date: r.visitDate,
+          status: r.visitCompleted ? "Completed" : "Scheduled",
+        });
+      if (r.paymentDate)
+        activities.push({
+          id: `payment-${r._id}`,
+          type: "payment",
+          title: "Deposit Payment Completed",
+          description: `Successfully paid security deposit for Room ${r.roomId?.name || "N/A"}`,
+          date: r.paymentDate,
+          status: "Completed",
+        });
+      if (r.approvedDate)
+        activities.push({
+          id: `approval-${r._id}`,
+          type: "approval",
+          title: "Reservation Approved",
+          description: `Your reservation for Room ${r.roomId?.name || "N/A"} has been approved by admin`,
+          date: r.approvedDate,
+          status: "Approved",
+        });
+    });
+    activities.sort((a, b) => new Date(b.date) - new Date(a.date));
+    return activities;
+  }, [reservations]);
 
   // ── Profile editing handlers ───────────────────────────────
   const handleSaveProfile = async () => {

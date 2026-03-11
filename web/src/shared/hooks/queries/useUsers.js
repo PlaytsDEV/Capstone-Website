@@ -1,11 +1,19 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { userApi } from "../../api/apiClient";
+import { userApi, authApi } from "../../api/apiClient";
 import { queryKeys } from "../../lib/queryKeys";
+
+/** Fetch the currently authenticated user's profile */
+export function useCurrentUser() {
+  return useQuery({
+    queryKey: ["users", "currentUser"],
+    queryFn: () => authApi.getCurrentUser(),
+  });
+}
 
 /** Fetch all users with optional filters */
 export function useUsers(filters) {
   return useQuery({
-    queryKey: queryKeys.users.all,
+    queryKey: [...queryKeys.users.all, filters],
     queryFn: () => userApi.getAll(filters),
   });
 }
@@ -28,10 +36,11 @@ export function useUser(userId) {
 }
 
 /** Fetch current user's stay history */
-export function useMyStays() {
+export function useMyStays(enabled = true) {
   return useQuery({
     queryKey: ["users", "myStays"],
     queryFn: () => userApi.getMyStays(),
+    enabled,
   });
 }
 

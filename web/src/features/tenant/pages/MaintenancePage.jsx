@@ -1,41 +1,26 @@
-import React, { useState, useEffect } from "react";
-import { maintenanceApi } from "../../../shared/api/apiClient";
+import React, { useState } from "react";
 import TenantLayout from "../../../shared/layouts/TenantLayout";
+import { useMyMaintenanceRequests, useCreateMaintenanceRequest } from "../../../shared/hooks/queries/useMaintenance";
 import "../styles/tenant-common.css";
 
 const MaintenancePage = () => {
-  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [requests, setRequests] = useState([]);
   const [formData, setFormData] = useState({
     category: "other",
     title: "",
     description: "",
   });
 
-  useEffect(() => {
-    loadRequests();
-  }, []);
-
-  const loadRequests = async () => {
-    try {
-      setLoading(true);
-      const data = await maintenanceApi.getMyRequests(50);
-      setRequests(data.requests || []);
-    } catch (error) {
-      console.error("Failed to load maintenance requests:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data: requestsData, isLoading: loading } = useMyMaintenanceRequests(50);
+  const requests = requestsData?.requests || [];
+  const createMutation = useCreateMaintenanceRequest();
 
   const handleSubmitRequest = async (e) => {
     e.preventDefault();
     try {
-      await maintenanceApi.createRequest(formData);
+      await createMutation.mutateAsync(formData);
       setFormData({ category: "other", title: "", description: "" });
       setShowForm(false);
-      await loadRequests();
     } catch (error) {
       console.error("Failed to submit maintenance request:", error);
     }

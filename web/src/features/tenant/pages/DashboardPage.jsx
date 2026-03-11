@@ -1,41 +1,25 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
-import { userApi, announcementApi } from "../../../shared/api/apiClient";
+import { useAnnouncements } from "../../../shared/hooks/queries/useAnnouncements";
+import { useMyStays } from "../../../shared/hooks/queries/useUsers";
 import TenantLayout from "../../../shared/layouts/TenantLayout";
 import "../styles/dashboard.css";
 
 const DashboardPage = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [stayData, setStayData] = useState(null);
-  const [announcements, setAnnouncements] = useState([]);
 
   const isTenant =
     user?.role === "tenant" ||
     user?.tenantStatus === "active" ||
     user?.tenantStatus === "inactive";
 
-  useEffect(() => {
-    loadDashboardData();
-  }, []);
+  const { data: announcementData, isLoading: announcementsLoading } = useAnnouncements(5);
+  const { data: stayData, isLoading: staysLoading } = useMyStays(isTenant);
 
-  const loadDashboardData = async () => {
-    try {
-      setLoading(true);
-      const announcementData = await announcementApi.getAll(5);
-      setAnnouncements(announcementData.announcements || []);
-      if (isTenant) {
-        const stays = await userApi.getMyStays();
-        setStayData(stays);
-      }
-    } catch (error) {
-      console.error("Error loading dashboard data:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const announcements = announcementData?.announcements || [];
+  const loading = announcementsLoading || (isTenant && staysLoading);
 
   const getStatusBadge = (status) => {
     const badges = {

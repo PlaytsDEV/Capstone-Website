@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { showNotification } from "../../../shared/utils/notification";
 import { Search, SlidersHorizontal } from "lucide-react";
 import { useAuth } from "../../../shared/hooks/useAuth";
-import { roomApi } from "../../../shared/api/apiClient";
+import { useRooms } from "../../../shared/hooks/queries/useRooms";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
 import "../../../shared/styles/notification.css";
 import "../styles/tenant-dashboard.css";
@@ -28,8 +28,6 @@ import {
 
 // ─────────────────────────────────────────────────────────────
 // CheckAvailabilityPage — orchestrator
-// 1,260 lines → ~400 lines (state, data-loading, handlers, routing)
-// Extracted: header, filter panel, room card, constants
 // ─────────────────────────────────────────────────────────────
 function CheckAvailabilityPage() {
   const navigate = useNavigate();
@@ -53,9 +51,67 @@ function CheckAvailabilityPage() {
   const [selectedBed, setSelectedBed] = useState(null);
   const [showLoginConfirmBeforeReserve, setShowLoginConfirmBeforeReserve] =
     useState(false);
-  const [rooms, setRooms] = useState([]);
-  const [roomsLoading, setRoomsLoading] = useState(true);
-  const [roomsError, setRoomsError] = useState(null);
+
+  // ── TanStack Query ─────────────────────────────────────────
+  const { data: rawRooms = [], isLoading: roomsLoading, error: roomsQueryError } = useRooms();
+  const roomsError = roomsQueryError ? "Failed to load rooms. Please try again." : null;
+
+  const rooms = useMemo(
+    () =>
+      rawRooms.map((room) => {
+        const displayName =
+          room.name ||
+          room.roomNumber ||
+          room.room_number ||
+          room.room_id ||
+          "Unknown";
+        const normalizedType = room.type || room.room_type;
+        const mappedType = mapRoomType(normalizedType);
+        const branchLabel = mapBranchLabel(room.branch);
+        const primaryImage = getPrimaryImage(normalizedType);
+        const roomNumber = room.roomNumber || room.room_number || displayName;
+        const beds = room.beds?.length
+          ? room.beds
+          : buildBedsFromCapacity(
+              roomNumber,
+              normalizedType,
+              room.currentOccupancy || 0,
+            );
+        const availableBeds = beds.filter((bed) => bed.available).length;
+        const totalBeds = beds.length || room.capacity || 0;
+        return {
+          id: roomNumber,
+          roomId: room._id,
+          title: `Room ${displayName}`,
+          branch: branchLabel,
+          type: mappedType,
+          occupancy: `${room.currentOccupancy || 0}/${room.capacity || totalBeds}`,
+          bedsLeft:
+            availableBeds === 0
+              ? "Full"
+              : `${availableBeds} bed${availableBeds === 1 ? "" : "s"} available`,
+          price: typeof room.price === "number" ? room.price : 0,
+          image: primaryImage,
+          description: room.description || "",
+          bedLayout:
+            mappedType === "Private"
+              ? "2 Single Beds"
+              : mappedType === "Shared"
+                ? "2 Single Beds"
+                : "4 Single Beds",
+          intendedTenant: room.intendedTenant || "",
+          beds,
+          amenities: room.amenities || [],
+          images: [
+            primaryImage,
+            ROOM_IMAGES.deluxeRoom,
+            ROOM_IMAGES.gallery1,
+          ],
+          policies: room.policies || [],
+        };
+      }),
+    [rawRooms],
+  );
 
   // ── Query param filters ────────────────────────────────────
   useEffect(() => {
@@ -64,80 +120,6 @@ function CheckAvailabilityPage() {
     if (branch) setSelectedBranch(branch);
     if (roomType) setSelectedRoomType(roomType);
   }, [searchParams]);
-
-  // ── Fetch rooms ────────────────────────────────────────────
-  useEffect(() => {
-    let isMounted = true;
-    const fetchRooms = async () => {
-      setRoomsLoading(true);
-      setRoomsError(null);
-      try {
-        const data = await roomApi.getAll();
-        const mappedRooms = data.map((room) => {
-          const displayName =
-            room.name ||
-            room.roomNumber ||
-            room.room_number ||
-            room.room_id ||
-            "Unknown";
-          const normalizedType = room.type || room.room_type;
-          const mappedType = mapRoomType(normalizedType);
-          const branchLabel = mapBranchLabel(room.branch);
-          const primaryImage = getPrimaryImage(normalizedType);
-          const roomNumber = room.roomNumber || room.room_number || displayName;
-          const beds = room.beds?.length
-            ? room.beds
-            : buildBedsFromCapacity(
-                roomNumber,
-                normalizedType,
-                room.currentOccupancy || 0,
-              );
-          const availableBeds = beds.filter((bed) => bed.available).length;
-          const totalBeds = beds.length || room.capacity || 0;
-          return {
-            id: roomNumber,
-            roomId: room._id,
-            title: `Room ${displayName}`,
-            branch: branchLabel,
-            type: mappedType,
-            occupancy: `${room.currentOccupancy || 0}/${room.capacity || totalBeds}`,
-            bedsLeft:
-              availableBeds === 0
-                ? "Full"
-                : `${availableBeds} bed${availableBeds === 1 ? "" : "s"} available`,
-            price: typeof room.price === "number" ? room.price : 0,
-            image: primaryImage,
-            description: room.description || "",
-            bedLayout:
-              mappedType === "Private"
-                ? "2 Single Beds"
-                : mappedType === "Shared"
-                  ? "2 Single Beds"
-                  : "4 Single Beds",
-            intendedTenant: room.intendedTenant || "",
-            beds,
-            amenities: room.amenities || [],
-            images: [
-              primaryImage,
-              ROOM_IMAGES.deluxeRoom,
-              ROOM_IMAGES.gallery1,
-            ],
-            policies: room.policies || [],
-          };
-        });
-        if (isMounted) setRooms(mappedRooms);
-      } catch (error) {
-        console.error("Failed to fetch rooms:", error);
-        if (isMounted) setRoomsError("Failed to load rooms. Please try again.");
-      } finally {
-        if (isMounted) setRoomsLoading(false);
-      }
-    };
-    fetchRooms();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   // ── Capacity validation ────────────────────────────────────
   useEffect(() => {
