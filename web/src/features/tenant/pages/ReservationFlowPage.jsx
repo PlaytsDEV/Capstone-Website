@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { showNotification } from "../../../shared/utils/notification";
@@ -34,6 +35,7 @@ function ReservationFlowPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const stepFromState = Number(location.state?.step);
   const stepFromQuery = Number(
     new URLSearchParams(location.search).get("step"),
@@ -956,6 +958,7 @@ function ReservationFlowPage() {
           "success",
           3000,
         );
+        queryClient.invalidateQueries({ queryKey: ["reservations"] });
         navigate("/applicant/profile");
       } else if (pendingStageAction === "stage4") {
         showNotification(
@@ -963,6 +966,7 @@ function ReservationFlowPage() {
           "success",
           3000,
         );
+        queryClient.invalidateQueries({ queryKey: ["reservations"] });
         navigate("/applicant/profile");
       }
     } catch (error) {
