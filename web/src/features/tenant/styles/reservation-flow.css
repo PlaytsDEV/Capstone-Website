@@ -1122,3 +1122,147 @@
   }
 }
 
+/* ============ SUCCESS OVERLAY ============ */
+.rf-success-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: rfOverlayIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes rfOverlayIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.rf-success-overlay-content {
+  text-align: center;
+  padding: 48px 40px;
+  background: white;
+  border-radius: 24px;
+  box-shadow:
+    0 25px 60px rgba(0, 0, 0, 0.15),
+    0 8px 20px rgba(0, 0, 0, 0.08);
+  max-width: 400px;
+  width: 90vw;
+  animation: rfContentPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s both;
+}
+
+@keyframes rfContentPop {
+  from {
+    opacity: 0;
+    transform: scale(0.85) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Animated Checkmark */
+.rf-success-checkmark {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 24px;
+}
+
+.rf-success-checkmark svg {
+  width: 72px;
+  height: 72px;
+}
+
+.rf-checkmark-circle {
+  stroke: #059669;
+  stroke-width: 2;
+  stroke-dasharray: 166;
+  stroke-dashoffset: 166;
+  stroke-linecap: round;
+  animation: rfCircleDraw 0.6s cubic-bezier(0.65, 0, 0.45, 1) 0.3s forwards;
+}
+
+@keyframes rfCircleDraw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.rf-checkmark-check {
+  stroke: #059669;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 48;
+  stroke-dashoffset: 48;
+  animation: rfCheckDraw 0.35s cubic-bezier(0.65, 0, 0.45, 1) 0.75s forwards;
+}
+
+@keyframes rfCheckDraw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.rf-success-title {
+  font-family: "Inter", sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--rf-text, #0f172a);
+  margin: 0 0 8px;
+  letter-spacing: -0.02em;
+}
+
+.rf-success-subtitle {
+  font-family: "Inter", sans-serif;
+  font-size: 14px;
+  color: var(--rf-text-secondary, #475569);
+  line-height: 1.5;
+  margin: 0 0 28px;
+}
+
+/* Animated loading dots */
+.rf-success-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+
+.rf-success-dots span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #059669;
+  opacity: 0.3;
+  animation: rfDotPulse 1.2s ease infinite;
+}
+
+.rf-success-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.rf-success-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes rfDotPulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+

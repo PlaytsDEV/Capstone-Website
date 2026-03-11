@@ -62,6 +62,11 @@ function ReservationFlowPage() {
   const [devBypassValidation, setDevBypassValidation] = useState(false);
   const [payingOnline, setPayingOnline] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+  const [successOverlay, setSuccessOverlay] = useState({
+    show: false,
+    title: "",
+    subtitle: "",
+  });
 
   // Stage 1
   const [targetMoveInDate, setTargetMoveInDate] = useState("");
@@ -953,22 +958,22 @@ function ReservationFlowPage() {
         } else {
           await updateReservationDraft({ roomConfirmed: true });
         }
-        showNotification(
-          "Room confirmed! Continue from your dashboard to schedule a visit.",
-          "success",
-          3000,
-        );
         await queryClient.invalidateQueries({ queryKey: ["reservations"] });
         await queryClient.invalidateQueries({ queryKey: ["rooms"] });
-        navigate("/applicant/profile");
+        setSuccessOverlay({
+          show: true,
+          title: "Room Confirmed!",
+          subtitle: "Continue from your dashboard to schedule a visit.",
+        });
+        setTimeout(() => navigate("/applicant/profile"), 2200);
       } else if (pendingStageAction === "stage4") {
-        showNotification(
-          "Reservation submitted successfully!",
-          "success",
-          3000,
-        );
         await queryClient.invalidateQueries({ queryKey: ["reservations"] });
-        navigate("/applicant/profile");
+        setSuccessOverlay({
+          show: true,
+          title: "Reservation Submitted!",
+          subtitle: "Your reservation is being processed by admin.",
+        });
+        setTimeout(() => navigate("/applicant/profile"), 2200);
       }
     } catch (error) {
       showNotification(
@@ -988,6 +993,24 @@ function ReservationFlowPage() {
   // ── Render ─────────────────────────────────────────────────
   return (
     <div className="reservation-flow-container">
+      {/* ── Success Overlay ── */}
+      {successOverlay.show && (
+        <div className="rf-success-overlay">
+          <div className="rf-success-overlay-content">
+            <div className="rf-success-checkmark">
+              <svg viewBox="0 0 52 52">
+                <circle className="rf-checkmark-circle" cx="26" cy="26" r="25" fill="none" />
+                <path className="rf-checkmark-check" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8" />
+              </svg>
+            </div>
+            <h2 className="rf-success-title">{successOverlay.title}</h2>
+            <p className="rf-success-subtitle">{successOverlay.subtitle}</p>
+            <div className="rf-success-dots">
+              <span /><span /><span />
+            </div>
+          </div>
+        </div>
+      )}
       <LoginConfirmModal
         show={showLoginConfirm}
         onLogin={() => {
