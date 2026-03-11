@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { roomApi } from "../../../shared/api/apiClient";
 import { formatRoomType } from "../utils/formatters";
+import { useBranchOccupancy } from "../../../shared/hooks/queries/useRooms";
 
 import OccupancyRoomTable from "../components/occupancy/OccupancyRoomTable";
 import OccupancyRoomModal from "../components/occupancy/OccupancyRoomModal";
@@ -17,50 +18,16 @@ function getOccupancyColor(occupied, capacity) {
 
 function OccupancyTrackingPage({ isEmbedded = false }) {
   const [branchFilter, setBranchFilter] = useState("all");
-  const [rooms, setRooms] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [occupancyStats, setOccupancyStats] = useState(null);
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [showRoomDetails, setShowRoomDetails] = useState(false);
   const [loadingRoomDetails, setLoadingRoomDetails] = useState(false);
 
-  // Fetch occupancy data
-  useEffect(() => {
-    let isMounted = true;
-    const fetchOccupancyData = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await roomApi.getBranchOccupancy(
-          branchFilter === "all" ? null : branchFilter,
-        );
-        const stats = response?.statistics || response;
-        if (isMounted) {
-          setOccupancyStats(stats);
-          setRooms(stats.rooms || []);
-        }
-      } catch (err) {
-        console.error("Failed to fetch occupancy data:", err);
-        try {
-          const data = await roomApi.getAll();
-          if (isMounted) setRooms(data);
-        } catch (fallbackErr) {
-          console.error("Fallback fetch failed:", fallbackErr);
-          if (isMounted) setError("Failed to load occupancy data");
-        }
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
+  const branch = branchFilter === "all" ? null : branchFilter;
+  const { data: occupancyResponse, isLoading: loading, error: queryError } = useBranchOccupancy(branch);
+  const error = queryError ? "Failed to load occupancy data" : null;
 
-    fetchOccupancyData();
-    const refreshInterval = setInterval(fetchOccupancyData, 30000);
-    return () => {
-      isMounted = false;
-      clearInterval(refreshInterval);
-    };
-  }, [branchFilter]);
+  const occupancyStats = occupancyResponse?.statistics || occupancyResponse;
+  const rooms = occupancyStats?.rooms || [];
 
   const handleViewRoomDetails = async (room) => {
     setLoadingRoomDetails(true);

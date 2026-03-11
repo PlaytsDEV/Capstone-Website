@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { roomApi } from "../../../shared/api/apiClient";
 import { formatRoomType, formatBranch } from "../utils/formatters";
+import { useRooms } from "../../../shared/hooks/queries/useRooms";
 
 import RoomConfigGrid from "../components/rooms/RoomConfigGrid";
 import RoomConfigModal from "../components/rooms/RoomConfigModal";
@@ -10,32 +11,11 @@ function RoomConfigurationPage({ isEmbedded = false }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [branchFilter, setBranchFilter] = useState("all");
   const [roomTypeFilter, setRoomTypeFilter] = useState("all");
-  const [rooms, setRooms] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
 
-  useEffect(() => {
-    let isMounted = true;
-    const fetchRooms = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await roomApi.getAll();
-        if (isMounted) setRooms(data);
-      } catch (err) {
-        console.error("Failed to fetch rooms:", err);
-        if (isMounted) setError("Failed to load room configurations");
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-    fetchRooms();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  const { data: rooms = [], isLoading: loading, error: queryError } = useRooms();
+  const error = queryError ? "Failed to load room configurations" : null;
 
   const filteredRooms = rooms.filter((room) => {
     const matchesSearch =

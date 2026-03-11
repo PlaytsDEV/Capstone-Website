@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useMemo } from "react";
 import InquiryDetailsModal from "../components/InquiryDetailsModal";
 import { inquiryApi } from "../../../shared/api/apiClient";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
+import { useInquiries, useInquiryStats } from "../../../shared/hooks/queries/useInquiries";
+import { useQueryClient } from "@tanstack/react-query";
 
 import InquiryStatsBar from "../components/inquiries/InquiryStatsBar";
 import InquiryToolbar from "../components/inquiries/InquiryToolbar";
@@ -9,11 +11,8 @@ import InquiryTable from "../components/inquiries/InquiryTable";
 import "../styles/admin-inquiries.css";
 
 export default function InquiriesPage({ isEmbedded = false }) {
-  const [stats, setStats] = useState({ total: 0, new: 0, responded: 0 });
+  const queryClient = useQueryClient();
   const [selectedInquiry, setSelectedInquiry] = useState(null);
-  const [inquiries, setInquiries] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [confirmModal, setConfirmModal] = useState({
     open: false,
     title: "",
@@ -30,44 +29,35 @@ export default function InquiriesPage({ isEmbedded = false }) {
     pages: 0,
   });
 
-  // ── Fetch data ──
-  const fetchInquiries = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = { page: pagination.page, limit: pagination.limit };
-      if (statusFilter) params.status = statusFilter;
-      if (searchTerm) params.search = searchTerm;
-      const response = await inquiryApi.getAll(params);
-      setInquiries(response.inquiries || []);
-      setPagination((prev) => ({ ...prev, ...response.pagination }));
-    } catch (err) {
-      console.error("Error fetching inquiries:", err);
-      setError("Failed to load inquiries. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+  // ── TanStack Query ──
+  const params = useMemo(() => {
+    const p = { page: pagination.page, limit: pagination.limit };
+    if (statusFilter) p.status = statusFilter;
+    if (searchTerm) p.search = searchTerm;
+    return p;
   }, [pagination.page, pagination.limit, statusFilter, searchTerm]);
 
-  const fetchStats = useCallback(async () => {
-    try {
-      const response = await inquiryApi.getStats();
-      setStats({
-        total: response.total || 0,
-        new: response.byStatus?.pending || 0,
-        responded: response.byStatus?.resolved || 0,
-      });
-    } catch (err) {
-      console.error("Error fetching stats:", err);
-    }
-  }, []);
+  const { data: inquiriesData, isLoading: loading, error: queryError } = useInquiries(params);
+  const { data: statsData } = useInquiryStats();
 
-  useEffect(() => {
-    fetchInquiries();
-  }, [fetchInquiries]);
-  useEffect(() => {
-    fetchStats();
-  }, [fetchStats]);
+  const inquiries = inquiriesData?.inquiries || [];
+  const error = queryError ? "Failed to load inquiries. Please try again." : null;
+
+  // Sync pagination from server response
+  const serverPagination = inquiriesData?.pagination;
+  if (serverPagination && serverPagination.total !== pagination.total) {
+    setPagination((prev) => ({ ...prev, ...serverPagination }));
+  }
+
+  const stats = {
+    total: statsData?.total || 0,
+    new: statsData?.byStatus?.pending || 0,
+    responded: statsData?.byStatus?.resolved || 0,
+  };
+
+  const refetchAll = () => {
+    queryClient.invalidateQueries({ queryKey: ["inquiries"] });
+  };
 
   // ── Handlers ──
   const handleSearch = (e) => {
@@ -92,8 +82,7 @@ export default function InquiriesPage({ isEmbedded = false }) {
         setConfirmModal((prev) => ({ ...prev, open: false }));
         try {
           await inquiryApi.archive(inquiryId);
-          fetchInquiries();
-          fetchStats();
+          refetchAll();
         } catch (err) {
           console.error("Error archiving inquiry:", err);
         }
@@ -102,8 +91,7 @@ export default function InquiriesPage({ isEmbedded = false }) {
   };
 
   const handleInquiryUpdate = () => {
-    fetchInquiries();
-    fetchStats();
+    refetchAll();
     setSelectedInquiry(null);
   };
 

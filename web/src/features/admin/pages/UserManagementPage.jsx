@@ -1,7 +1,9 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { useApiClient } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
+import { useQueryClient } from "@tanstack/react-query";
+import { useUsers, useUserStats } from "../../../shared/hooks/queries/useUsers";
 
 import UserStatsBar from "../components/users/UserStatsBar";
 import UserToolbar from "../components/users/UserToolbar";
@@ -14,9 +16,7 @@ import "../styles/admin-users.css";
 function UserManagementPage() {
   const { user } = useAuth();
   const { authFetch } = useApiClient();
-  const [users, setUsers] = useState([]);
-  const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [selectedUser, setSelectedUser] = useState(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -55,7 +55,6 @@ function UserManagementPage() {
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
   const ITEMS_PER_PAGE = 10;
 
   // ── Validation ──
@@ -91,45 +90,23 @@ function UserManagementPage() {
     setAddFormErrors((prev) => ({ ...prev, [field]: error }));
   };
 
-  // ── Data fetching ──
-  useEffect(() => {
-    fetchUsers();
+  // ── TanStack Query data fetching ──
+  const userFilters = useMemo(() => {
+    const params = { page: currentPage, limit: ITEMS_PER_PAGE };
+    if (roleFilter !== "all") params.role = roleFilter;
+    if (branchFilter !== "all") params.branch = branchFilter;
+    if (statusFilter !== "all") params.isActive = statusFilter === "active";
+    return params;
   }, [currentPage, roleFilter, branchFilter, statusFilter]);
 
-  useEffect(() => {
-    fetchStats();
-  }, []);
+  const { data: usersData, isLoading: loading } = useUsers(userFilters);
+  const { data: stats } = useUserStats();
 
-  const fetchUsers = async () => {
-    try {
-      setLoading(true);
-      const params = new URLSearchParams({
-        page: currentPage,
-        limit: ITEMS_PER_PAGE,
-      });
-      if (roleFilter !== "all") params.append("role", roleFilter);
-      if (branchFilter !== "all") params.append("branch", branchFilter);
-      if (statusFilter !== "all")
-        params.append("isActive", statusFilter === "active");
+  const users = usersData?.users || [];
+  const totalPages = usersData?.pagination?.totalPages || 1;
 
-      const data = await authFetch(`/users?${params}`);
-      setUsers(data.users || []);
-      setTotalPages(data.pagination?.totalPages || 1);
-    } catch (error) {
-      console.error("Error fetching users:", error);
-      showNotification("Failed to load users", "error", 3000);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchStats = async () => {
-    try {
-      const data = await authFetch("/users/stats");
-      setStats(data || null);
-    } catch (error) {
-      console.error("Error fetching user stats:", error);
-    }
+  const refetchAll = () => {
+    queryClient.invalidateQueries({ queryKey: ["users"] });
   };
 
   // ── Handlers ──
@@ -158,8 +135,7 @@ function UserManagementPage() {
       });
       showNotification("User updated successfully", "success", 3000);
       setIsEditModalOpen(false);
-      fetchUsers();
-      fetchStats();
+      refetchAll();
     } catch (error) {
       console.error("Error updating user:", error);
       showNotification(error.message || "Failed to update user", "error", 3000);
@@ -176,8 +152,7 @@ function UserManagementPage() {
       await authFetch(`/users/${selectedUser._id}`, { method: "DELETE" });
       showNotification("User deleted successfully", "success", 3000);
       setIsDeleteModalOpen(false);
-      fetchUsers();
-      fetchStats();
+      refetchAll();
     } catch (error) {
       console.error("Error deleting user:", error);
       showNotification(error.message || "Failed to delete user", "error", 3000);
@@ -228,8 +203,7 @@ function UserManagementPage() {
       });
       showNotification("User created successfully!", "success", 3000);
       setIsAddModalOpen(false);
-      fetchUsers();
-      fetchStats();
+      refetchAll();
     } catch (error) {
       console.error("Error creating user:", error);
       const msg = error.message || "";

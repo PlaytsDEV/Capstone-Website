@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { reservationApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
@@ -7,6 +7,8 @@ import ReservationDetailsModal from "../components/ReservationDetailsModal";
 import VisitSchedulesTab from "../components/VisitSchedulesTab";
 import InquiriesPage from "./InquiriesPage";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
+import { useReservations } from "../../../shared/hooks/queries/useReservations";
+import { useQueryClient } from "@tanstack/react-query";
 
 import ReservationStatsBar from "../components/reservations/ReservationStatsBar";
 import ReservationToolbar from "../components/reservations/ReservationToolbar";
@@ -18,15 +20,13 @@ import "../styles/admin-reservations.css";
 
 function ReservationsPage() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("reservations");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [branchFilter, setBranchFilter] = useState("all");
   const [sortBy, setSortBy] = useState("recent");
   const [selectedReservation, setSelectedReservation] = useState(null);
-  const [reservations, setReservations] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [actionLoading, setActionLoading] = useState(null);
   const [confirmModal, setConfirmModal] = useState({
@@ -38,50 +38,38 @@ function ReservationsPage() {
   });
   const itemsPerPage = 12;
 
-  /* ── data ── */
-  useEffect(() => {
-    if (user) fetchReservations();
-  }, [user]);
+  /* ── data via TanStack Query ── */
+  const { data: rawReservations = [], isLoading: loading, error: queryError } = useReservations();
+  const error = queryError?.message || null;
 
-  const fetchReservations = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await reservationApi.getAll();
-      const list = data
-        .filter((r) => {
-          const hasVisitOnly =
-            r.visitDate &&
-            !r.visitApproved &&
-            !r.firstName &&
-            !r.proofOfPaymentUrl;
-          return !hasVisitOnly;
-        })
-        .map((r) => ({
-          id: r._id,
-          reservationCode: r.reservationCode || "—",
-          customer:
-            `${r.userId?.firstName || ""} ${r.userId?.lastName || ""}`.trim() ||
-            "Unknown",
-          email: r.userId?.email || "—",
-          room: r.roomId?.name || "—",
-          branch: r.roomId?.branch === "gil-puyat" ? "Gil Puyat" : "Guadalupe",
-          moveInDate: r.checkInDate,
-          status: r.status || "pending",
-          totalPrice: r.totalPrice,
-          paymentStatus: r.paymentStatus,
-          createdAt: r.createdAt,
-          checkInDate: r.checkInDate,
-        }));
-      setReservations(list);
-    } catch (err) {
-      console.error("Error fetching reservations:", err);
-      setError(err.message);
-      showNotification("Failed to load reservations", "error", 3000);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const reservations = rawReservations
+    .filter((r) => {
+      const hasVisitOnly =
+        r.visitDate &&
+        !r.visitApproved &&
+        !r.firstName &&
+        !r.proofOfPaymentUrl;
+      return !hasVisitOnly;
+    })
+    .map((r) => ({
+      id: r._id,
+      reservationCode: r.reservationCode || "—",
+      customer:
+        `${r.userId?.firstName || ""} ${r.userId?.lastName || ""}`.trim() ||
+        "Unknown",
+      email: r.userId?.email || "—",
+      room: r.roomId?.name || "—",
+      branch: r.roomId?.branch === "gil-puyat" ? "Gil Puyat" : "Guadalupe",
+      moveInDate: r.checkInDate,
+      status: r.status || "pending",
+      totalPrice: r.totalPrice,
+      paymentStatus: r.paymentStatus,
+      createdAt: r.createdAt,
+      checkInDate: r.checkInDate,
+    }));
+
+  const refetchReservations = () =>
+    queryClient.invalidateQueries({ queryKey: ["reservations"] });
 
   /* ── actions ── */
   const handleAccept = (id) => {
@@ -98,7 +86,7 @@ function ReservationsPage() {
           setActionLoading(id);
           await reservationApi.update(id, { status: "confirmed" });
           showNotification("Reservation confirmed", "success");
-          fetchReservations();
+          refetchReservations();
         } catch {
           showNotification("Failed to confirm reservation", "error");
         } finally {
@@ -179,7 +167,7 @@ function ReservationsPage() {
         try {
           await reservationApi.delete(id);
           showNotification("Reservation deleted", "success");
-          fetchReservations();
+          refetchReservations();
         } catch {
           showNotification("Failed to delete", "error");
         }
@@ -382,7 +370,7 @@ function ReservationsPage() {
         <ReservationDetailsModal
           reservation={selectedReservation}
           onClose={() => setSelectedReservation(null)}
-          onUpdate={fetchReservations}
+          onUpdate={refetchReservations}
         />
       )}
       <ConfirmModal

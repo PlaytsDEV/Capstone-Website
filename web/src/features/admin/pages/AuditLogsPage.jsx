@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useMemo } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
+import { useAuditLogs, useAuditStats } from "../../../shared/hooks/queries/useAuditLogs";
 import { useApiClient } from "../../../shared/api/apiClient";
 import AuditStatsBar from "../components/audit/AuditStatsBar";
 import AuditToolbar from "../components/audit/AuditToolbar";
@@ -11,14 +12,6 @@ import "../styles/admin-audit-logs.css";
 const AuditLogsPage = () => {
   const { authFetch } = useApiClient();
 
-  const [logs, setLogs] = useState([]);
-  const [stats, setStats] = useState({
-    total: 0,
-    critical: 0,
-    today: 0,
-    deletions: 0,
-  });
-  const [loading, setLoading] = useState(true);
   const [showFilters, setShowFilters] = useState(false);
   const [pagination, setPagination] = useState({
     currentPage: 1,
@@ -34,63 +27,47 @@ const AuditLogsPage = () => {
     search: "",
   });
 
-  // ── Fetch ──
-  const fetchLogs = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (filters.type !== "all") params.append("type", filters.type);
-      if (filters.severity !== "all")
-        params.append("severity", filters.severity);
-      if (filters.role !== "all") params.append("role", filters.role);
-      if (filters.search) params.append("search", filters.search);
-      params.append("limit", pagination.itemsPerPage);
-      params.append(
-        "offset",
-        (pagination.currentPage - 1) * pagination.itemsPerPage,
-      );
-
-      if (filters.dateRange !== "all") {
-        const days = parseInt(filters.dateRange.replace("days", ""));
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - days);
-        params.append("startDate", startDate.toISOString());
-      }
-
-      const response = await authFetch(`/audit-logs?${params.toString()}`);
-      if (response.success) {
-        setLogs(response.data);
-        const pageCount = Math.ceil(
-          (response.pagination?.total || 0) / pagination.itemsPerPage,
-        );
-        setPagination((prev) => ({
-          ...prev,
-          total: response.pagination?.total || 0,
-          pageCount,
-        }));
-      }
-    } catch (error) {
-      console.error("Failed to fetch audit logs:", error);
-    } finally {
-      setLoading(false);
+  // ── Build query params ──
+  const queryParams = useMemo(() => {
+    const params = {};
+    if (filters.type !== "all") params.type = filters.type;
+    if (filters.severity !== "all") params.severity = filters.severity;
+    if (filters.role !== "all") params.role = filters.role;
+    if (filters.search) params.search = filters.search;
+    params.limit = String(pagination.itemsPerPage);
+    params.offset = String(
+      (pagination.currentPage - 1) * pagination.itemsPerPage,
+    );
+    if (filters.dateRange !== "all") {
+      const days = parseInt(filters.dateRange.replace("days", ""));
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+      params.startDate = startDate.toISOString();
     }
-  }, [authFetch, filters, pagination.currentPage, pagination.itemsPerPage]);
+    return params;
+  }, [filters, pagination.currentPage, pagination.itemsPerPage]);
 
-  const fetchStats = useCallback(async () => {
-    try {
-      const response = await authFetch("/audit-logs/stats");
-      if (response.success) setStats(response.data);
-    } catch (error) {
-      console.error("Failed to fetch audit stats:", error);
-    }
-  }, [authFetch]);
+  const { data: logsResponse, isLoading: loading } = useAuditLogs(queryParams);
+  const { data: statsResponse } = useAuditStats();
 
-  useEffect(() => {
-    fetchLogs();
-  }, [fetchLogs]);
-  useEffect(() => {
-    fetchStats();
-  }, [fetchStats]);
+  const logs = logsResponse?.data || [];
+  const stats = statsResponse?.data || {
+    total: 0,
+    critical: 0,
+    today: 0,
+    deletions: 0,
+  };
+
+  // Sync pagination from server response
+  const serverTotal = logsResponse?.pagination?.total || 0;
+  if (serverTotal !== pagination.total) {
+    const pageCount = Math.ceil(serverTotal / pagination.itemsPerPage);
+    setPagination((prev) => ({
+      ...prev,
+      total: serverTotal,
+      pageCount,
+    }));
+  }
 
   // ── Handlers ──
   const handleFilterChange = (key, value) => {

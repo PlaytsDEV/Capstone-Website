@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { LayoutGrid, Settings, BarChart3 } from "lucide-react";
 
 import RoomCard from "../components/RoomCard";
 import RoomConfigurationPage from "./RoomConfigurationPage";
 import OccupancyTrackingPage from "./OccupancyTrackingPage";
-import { roomApi } from "../../../shared/api/apiClient";
+import { useRooms } from "../../../shared/hooks/queries/useRooms";
 import "../styles/admin-room-availability.css";
 
 function RoomAvailabilityPage() {
@@ -12,65 +12,31 @@ function RoomAvailabilityPage() {
   const [branchFilter, setBranchFilter] = useState("all");
   const [floorFilter, setFloorFilter] = useState("all");
   const [roomTypeFilter, setRoomTypeFilter] = useState("all");
-  const [rooms, setRooms] = useState([]);
-  const [roomsLoading, setRoomsLoading] = useState(true);
-  const [roomsError, setRoomsError] = useState(null);
   const [activeTab, setActiveTab] = useState("availability");
 
-  useEffect(() => {
-    let isMounted = true;
+  const { data: rawRooms = [], isLoading: roomsLoading, error: roomsQueryError } = useRooms();
+  const roomsError = roomsQueryError ? "Failed to load rooms. Please try again." : null;
 
-    const normalizeType = (type) => {
-      if (type === "private") return "Single";
-      if (type === "double-sharing") return "Double";
-      if (type === "quadruple-sharing") return "Quadruple";
-      return "Unknown";
-    };
+  const normalizeType = (type) => {
+    if (type === "private") return "Single";
+    if (type === "double-sharing") return "Double";
+    if (type === "quadruple-sharing") return "Quadruple";
+    return "Unknown";
+  };
 
-    const fetchRooms = async () => {
-      setRoomsLoading(true);
-      setRoomsError(null);
-      try {
-        // Fetch rooms with real-time occupancy data
-        const data = await roomApi.getAll();
-
-        // Map rooms with currentOccupancy from confirmed reservations
-        const mappedRooms = data.map((room) => ({
-          id: room.roomNumber || room.name || "Unknown",
-          floor: room.floor || 1,
-          branch: room.branch || "unknown",
-          type: normalizeType(room.type),
-          beds: room.capacity || (room.beds ? room.beds.length : 0),
-          // Use currentOccupancy which reflects confirmed/checked-in reservations
-          occupied: room.currentOccupancy || 0,
-          reserved: 0,
-        }));
-
-        if (isMounted) {
-          setRooms(mappedRooms);
-        }
-      } catch (error) {
-        console.error("Failed to fetch rooms:", error);
-        if (isMounted) {
-          setRoomsError("Failed to load rooms. Please try again.");
-        }
-      } finally {
-        if (isMounted) {
-          setRoomsLoading(false);
-        }
-      }
-    };
-
-    fetchRooms();
-
-    // Set up auto-refresh every 30 seconds to get latest occupancy
-    const refreshInterval = setInterval(fetchRooms, 30000);
-
-    return () => {
-      isMounted = false;
-      clearInterval(refreshInterval);
-    };
-  }, []);
+  const rooms = useMemo(
+    () =>
+      rawRooms.map((room) => ({
+        id: room.roomNumber || room.name || "Unknown",
+        floor: room.floor || 1,
+        branch: room.branch || "unknown",
+        type: normalizeType(room.type),
+        beds: room.capacity || (room.beds ? room.beds.length : 0),
+        occupied: room.currentOccupancy || 0,
+        reserved: 0,
+      })),
+    [rawRooms],
+  );
 
   const filteredRooms = rooms.filter((room) => {
     const matchesSearch = (room.id || "")

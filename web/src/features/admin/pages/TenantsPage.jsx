@@ -1,7 +1,8 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import TenantDetailModal from "../components/TenantDetailModal";
-import { reservationApi, userApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
+import { useUsers } from "../../../shared/hooks/queries/useUsers";
+import { useReservations } from "../../../shared/hooks/queries/useReservations";
 
 import TenantStatsBar from "../components/tenants/TenantStatsBar";
 import TenantToolbar from "../components/tenants/TenantToolbar";
@@ -14,103 +15,88 @@ export default function TenantsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [branchFilter, setBranchFilter] = useState("all");
   const [selectedTenant, setSelectedTenant] = useState(null);
-  const [tenants, setTenants] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  // Fetch tenants (users with role="tenant") from database
-  useEffect(() => {
-    const fetchTenants = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+  // Fetch tenants (users with role="tenant") and reservations
+  const { data: usersResponse, isLoading: usersLoading, error: usersError } = useUsers({ role: "tenant" });
+  const { data: reservationsData = [], isLoading: reservationsLoading } = useReservations();
 
-        const usersResponse = await userApi.getAll({ role: "tenant" });
-        const users = usersResponse.users || usersResponse;
-        const reservations = await reservationApi.getAll();
+  const loading = usersLoading || reservationsLoading;
+  const error = usersError ? "Failed to load tenants. Please try again." : null;
 
-        const tenantsData = users.map((user) => {
-          const userReservation = reservations
-            .filter(
-              (res) =>
-                res.userId?._id === user._id && res.status === "checked-in",
-            )
-            .sort(
-              (a, b) => new Date(b.checkInDate) - new Date(a.checkInDate),
-            )[0];
+  const tenants = useMemo(() => {
+    const users = usersResponse?.users || usersResponse || [];
+    const reservations = reservationsData || [];
 
-          let status = "Active";
-          if (userReservation) {
-            if (
-              userReservation.paymentStatus === "pending" ||
-              userReservation.paymentStatus === "partial"
-            ) {
-              status = "Overdue";
-            }
-            if (userReservation.checkOutDate) {
-              const daysUntilMoveOut = Math.ceil(
-                (new Date(userReservation.checkOutDate) - new Date()) /
-                  (1000 * 60 * 60 * 24),
-              );
-              if (daysUntilMoveOut <= 30 && daysUntilMoveOut > 0) {
-                status = "Moving Out";
-              }
-            }
+    return users.map((user) => {
+      const userReservation = reservations
+        .filter(
+          (res) =>
+            res.userId?._id === user._id && res.status === "checked-in",
+        )
+        .sort(
+          (a, b) => new Date(b.checkInDate) - new Date(a.checkInDate),
+        )[0];
+
+      let status = "Active";
+      if (userReservation) {
+        if (
+          userReservation.paymentStatus === "pending" ||
+          userReservation.paymentStatus === "partial"
+        ) {
+          status = "Overdue";
+        }
+        if (userReservation.checkOutDate) {
+          const daysUntilMoveOut = Math.ceil(
+            (new Date(userReservation.checkOutDate) - new Date()) /
+              (1000 * 60 * 60 * 24),
+          );
+          if (daysUntilMoveOut <= 30 && daysUntilMoveOut > 0) {
+            status = "Moving Out";
           }
-
-          const firstName = user.firstName || "";
-          const lastName = user.lastName || "";
-          const fullName =
-            `${firstName} ${lastName}`.trim() || user.email || "Unknown";
-
-          return {
-            id: user._id,
-            name: fullName,
-            initials:
-              `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase() ||
-              user.email?.charAt(0).toUpperCase() ||
-              "U",
-            status,
-            room:
-              userReservation?.roomId?.name ||
-              userReservation?.roomId?.roomNumber ||
-              "Not Assigned",
-            branch:
-              userReservation?.roomId?.branch === "gil-puyat"
-                ? "Gil Puyat"
-                : userReservation?.roomId?.branch === "guadalupe"
-                  ? "Guadalupe"
-                  : "N/A",
-            moveIn: userReservation?.checkInDate
-              ? new Date(userReservation.checkInDate)
-                  .toISOString()
-                  .split("T")[0]
-              : "-",
-            moveOut: userReservation?.checkOutDate
-              ? new Date(userReservation.checkOutDate)
-                  .toISOString()
-                  .split("T")[0]
-              : "-",
-            email: user.email || "N/A",
-            phone: userReservation?.mobileNumber || user.phone || "N/A",
-            reservationId: userReservation?._id,
-          };
-        });
-
-        setTenants(tenantsData);
-      } catch (err) {
-        console.error("❌ Error fetching tenants:", err);
-        setError("Failed to load tenants. Please try again.");
-        showNotification("Failed to load tenants", "error", 3000);
-      } finally {
-        setLoading(false);
+        }
       }
-    };
 
-    fetchTenants();
-  }, []);
+      const firstName = user.firstName || "";
+      const lastName = user.lastName || "";
+      const fullName =
+        `${firstName} ${lastName}`.trim() || user.email || "Unknown";
+
+      return {
+        id: user._id,
+        name: fullName,
+        initials:
+          `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase() ||
+          user.email?.charAt(0).toUpperCase() ||
+          "U",
+        status,
+        room:
+          userReservation?.roomId?.name ||
+          userReservation?.roomId?.roomNumber ||
+          "Not Assigned",
+        branch:
+          userReservation?.roomId?.branch === "gil-puyat"
+            ? "Gil Puyat"
+            : userReservation?.roomId?.branch === "guadalupe"
+              ? "Guadalupe"
+              : "N/A",
+        moveIn: userReservation?.checkInDate
+          ? new Date(userReservation.checkInDate)
+              .toISOString()
+              .split("T")[0]
+          : "-",
+        moveOut: userReservation?.checkOutDate
+          ? new Date(userReservation.checkOutDate)
+              .toISOString()
+              .split("T")[0]
+          : "-",
+        email: user.email || "N/A",
+        phone: userReservation?.mobileNumber || user.phone || "N/A",
+        reservationId: userReservation?._id,
+      };
+    });
+  }, [usersResponse, reservationsData]);
 
   const stats = useMemo(() => {
     const total = tenants.length;

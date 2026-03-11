@@ -1,7 +1,14 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { billingApi } from "../../../shared/api/apiClient";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { TrendingUp, ShieldAlert, Clock, AlertTriangle } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  useBillingStats,
+  useBillsByBranch,
+  useRoomsWithTenants,
+  usePendingVerifications,
+} from "../../../shared/hooks/queries/useBilling";
 
 import BillingStatsBar from "../components/billing/BillingStatsBar";
 import BillingRoomGrid from "../components/billing/BillingRoomGrid";
@@ -13,19 +20,15 @@ import "../styles/admin-billing.css";
 
 const AdminBillingPage = () => {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
 
   // ── State ──
-  const [bills, setBills] = useState([]);
-  const [stats, setStats] = useState(null);
-  const [meta, setMeta] = useState({ total: 0, page: 1, totalPages: 1 });
-  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [monthFilter, setMonthFilter] = useState("");
 
   // Rooms
-  const [rooms, setRooms] = useState([]);
-  const [roomsLoading, setRoomsLoading] = useState(true);
   const [roomBranchFilter, setRoomBranchFilter] = useState("");
   const [roomTypeFilter, setRoomTypeFilter] = useState("");
 
@@ -48,9 +51,24 @@ const AdminBillingPage = () => {
   const [payNote, setPayNote] = useState("");
   const [paying, setPaying] = useState(false);
 
-  // Pending verifications
-  const [pendingVerifications, setPendingVerifications] = useState([]);
-  const [pendingLoading, setPendingLoading] = useState(false);
+  // ── TanStack Query ──
+  const billParams = useMemo(() => {
+    const params = { page, limit: 15 };
+    if (search) params.search = search;
+    if (statusFilter) params.status = statusFilter;
+    if (monthFilter) params.month = monthFilter;
+    return params;
+  }, [page, search, statusFilter, monthFilter]);
+
+  const { data: billsResponse, isLoading: loading } = useBillsByBranch(billParams);
+  const { data: stats } = useBillingStats();
+  const { data: roomsResponse, isLoading: roomsLoading } = useRoomsWithTenants();
+  const { data: pendingResponse } = usePendingVerifications();
+
+  const bills = billsResponse?.bills || [];
+  const meta = billsResponse?.pagination || { total: 0, page: 1, totalPages: 1 };
+  const rooms = roomsResponse?.rooms || [];
+  const pendingVerifications = pendingResponse?.bills || [];
 
   // ── Filtered rooms (client-side) ──
   const filteredRooms = useMemo(() => {
@@ -61,66 +79,9 @@ const AdminBillingPage = () => {
     });
   }, [rooms, roomBranchFilter, roomTypeFilter]);
 
-  // ── Fetch data ──
-  const fetchBills = useCallback(
-    async (page = 1) => {
-      setLoading(true);
-      try {
-        const params = { page, limit: 15 };
-        if (search) params.search = search;
-        if (statusFilter) params.status = statusFilter;
-        if (monthFilter) params.month = monthFilter;
-        const res = await billingApi.getBillsByBranch(params);
-        setBills(res.bills || []);
-        setMeta(res.pagination || { total: 0, page: 1, totalPages: 1 });
-      } catch (err) {
-        console.error("Fetch bills error:", err);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [search, statusFilter, monthFilter],
-  );
-
-  const fetchStats = async () => {
-    try {
-      const data = await billingApi.getStats();
-      setStats(data);
-    } catch (err) {
-      console.error("Stats error:", err);
-    }
+  const refetchAll = () => {
+    queryClient.invalidateQueries({ queryKey: ["billing"] });
   };
-
-  const fetchRooms = async () => {
-    setRoomsLoading(true);
-    try {
-      const res = await billingApi.getRoomsWithTenants();
-      setRooms(res.rooms || []);
-    } catch (err) {
-      console.error("Fetch rooms error:", err);
-    } finally {
-      setRoomsLoading(false);
-    }
-  };
-
-  const fetchPendingVerifications = async () => {
-    setPendingLoading(true);
-    try {
-      const res = await billingApi.getPendingVerifications();
-      setPendingVerifications(res.bills || []);
-    } catch (err) {
-      console.error("Pending verifications error:", err);
-    } finally {
-      setPendingLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchBills();
-    fetchStats();
-    fetchRooms();
-    fetchPendingVerifications();
-  }, [fetchBills]);
 
   // ── Room card click → open generate modal ──
   const handleRoomClick = (room) => {
@@ -161,8 +122,7 @@ const AdminBillingPage = () => {
       });
       setShowGenerate(false);
       setSelectedRoom(null);
-      fetchBills();
-      fetchStats();
+      refetchAll();
     } catch (err) {
       alert(err.error || err.message || "Failed to generate bills");
     } finally {
@@ -183,8 +143,7 @@ const AdminBillingPage = () => {
       setDetailBill(null);
       setPayAmount("");
       setPayNote("");
-      fetchBills();
-      fetchStats();
+      refetchAll();
     } catch (err) {
       alert(err.message || "Failed to mark as paid");
     } finally {
@@ -197,9 +156,7 @@ const AdminBillingPage = () => {
     try {
       await billingApi.verifyPayment(billId, { action, rejectionReason });
       setDetailBill(null);
-      fetchBills();
-      fetchStats();
-      fetchPendingVerifications();
+      refetchAll();
     } catch (err) {
       alert(err.error || err.message || "Failed to verify payment");
     }
@@ -211,8 +168,7 @@ const AdminBillingPage = () => {
     try {
       const res = await billingApi.applyPenalties();
       alert(res.message || "Penalties applied");
-      fetchBills();
-      fetchStats();
+      refetchAll();
     } catch (err) {
       alert(err.error || err.message || "Failed to apply penalties");
     }
@@ -350,7 +306,7 @@ const AdminBillingPage = () => {
           <div className="pagination">
             <button
               disabled={meta.page <= 1}
-              onClick={() => fetchBills(meta.page - 1)}
+              onClick={() => setPage(Math.max(1, meta.page - 1))}
             >
               Previous
             </button>
@@ -359,7 +315,7 @@ const AdminBillingPage = () => {
             </span>
             <button
               disabled={meta.page >= meta.totalPages}
-              onClick={() => fetchBills(meta.page + 1)}
+              onClick={() => setPage(meta.page + 1)}
             >
               Next
             </button>
