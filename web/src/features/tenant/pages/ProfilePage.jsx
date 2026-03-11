@@ -85,7 +85,9 @@ const ProfilePage = () => {
   const { data: reservationsData, isLoading: reservationsLoading } = useReservations();
   const { data: stayData } = useMyStays(activeTab === "stays");
 
-  const loading = profileLoading || reservationsLoading;
+  // Only show full-screen loader on FIRST load (no cached data yet).
+  // Refetches happen silently in background — no stutter/flash.
+  const loading = (!profile && profileLoading) || (!reservationsData && reservationsLoading);
 
   // Sync profile data when query resolves
   useEffect(() => {

@@ -76,6 +76,21 @@ async function fetchBills(filter, query) {
     };
   }
 
+  // Build search into pipeline so it runs BEFORE pagination
+  let userIds = null;
+  if (search) {
+    const q = search.trim();
+    const matchingUsers = await User.find({
+      $or: [
+        { firstName: { $regex: q, $options: "i" } },
+        { lastName: { $regex: q, $options: "i" } },
+        { email: { $regex: q, $options: "i" } },
+      ],
+    }).select("_id").lean();
+    userIds = matchingUsers.map((u) => u._id);
+    filter.userId = { $in: userIds };
+  }
+
   let bills = await Bill.find(filter)
     .populate("userId", "firstName lastName email username")
     .populate("reservationId", "roomId roomName bedDetails")
@@ -85,16 +100,6 @@ async function fetchBills(filter, query) {
 
   const total = await Bill.countDocuments(filter);
   await markOverdueBills(bills);
-
-  if (search) {
-    const q = search.toLowerCase();
-    bills = bills.filter(
-      (b) =>
-        b.userId?.firstName?.toLowerCase().includes(q) ||
-        b.userId?.lastName?.toLowerCase().includes(q) ||
-        b.userId?.email?.toLowerCase().includes(q),
-    );
-  }
 
   return {
     bills: bills.map(formatBill),
@@ -114,8 +119,10 @@ const r2 = (n) => Math.round(n * 100) / 100;
 export const getCurrentBilling = async (req, res) => {
   try {
     const { uid, branch } = req.user;
+    const dbUser = await User.findOne({ firebaseUid: uid }).lean();
+    if (!dbUser) return res.status(404).json({ error: "User not found" });
     const activeStay = await Reservation.findOne({
-      userId: uid,
+      userId: dbUser._id,
       branch,
       status: "checked-in",
     });
@@ -521,19 +528,15 @@ export const generateRoomBill = async (req, res) => {
     for (const tenant of tenantInfos) {
       if (!tenant.email) continue;
       try {
+        // Use the pre-computed total from tenantBreakdown to avoid NaN
+        const breakdown = tenantBreakdown.find(
+          (t) => String(t.userId) === String(tenant.userId),
+        );
         await sendBillGeneratedEmail({
           to: tenant.email,
           tenantName: tenant.userName,
           billingMonth: monthLabel,
-          totalAmount:
-            tenant.rent +
-            r2(
-              (roomCharges.electricity +
-                roomCharges.water +
-                roomCharges.applianceFees +
-                roomCharges.corkageFees) *
-                (tenant.daysInRoom / totalOccupantDays),
-            ),
+          totalAmount: breakdown?.totalAmount || 0,
           dueDate: dueDateLabel,
           branchName: room.branch || "Lilycrest",
         });

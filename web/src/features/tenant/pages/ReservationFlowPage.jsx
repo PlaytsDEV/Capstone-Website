@@ -70,7 +70,7 @@ function ReservationFlowPage() {
 
   // Stage 1
   const [targetMoveInDate, setTargetMoveInDate] = useState("");
-  const [leaseDuration, setLeaseDuration] = useState("12");
+  const [leaseDuration, setLeaseDuration] = useState("");
   const [billingEmail, setBillingEmail] = useState(user?.email || "");
 
   // Stage 2
@@ -107,14 +107,14 @@ function ReservationFlowPage() {
   const [addressProvince, setAddressProvince] = useState("");
   const [validIDFront, setValidIDFront] = useState(null);
   const [validIDBack, setValidIDBack] = useState(null);
-  const [validIDType, setValidIDType] = useState("");
+  const [validIDType, setValidIDType] = useState("national_id");
   const [nbiClearance, setNbiClearance] = useState(null);
   const [nbiReason, setNbiReason] = useState("");
   const [personalNotes, setPersonalNotes] = useState("");
 
   // Stage 3: Emergency
   const [emergencyContactName, setEmergencyContactName] = useState("");
-  const [emergencyRelationship, setEmergencyRelationship] = useState("");
+  const [emergencyRelationship, setEmergencyRelationship] = useState("parent");
   const [emergencyContactNumber, setEmergencyContactNumber] = useState("");
   const [healthConcerns, setHealthConcerns] = useState("");
 
@@ -143,6 +143,7 @@ function ReservationFlowPage() {
 
   // Stage 4
   const [finalMoveInDate, setFinalMoveInDate] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentSubmitted, setPaymentSubmitted] = useState(false);
 
   // Stage 5
@@ -157,16 +158,18 @@ function ReservationFlowPage() {
   const [isFormDirty, setIsFormDirty] = useState(false);
   const [initialFormState, setInitialFormState] = useState({
     targetMoveInDate: "",
-    leaseDuration: "12",
+    leaseDuration: "",
     billingEmail: "",
   });
   const [saveStatus, setSaveStatus] = useState("");
   const autoSaveTimerRef = useRef(null);
   const isFirstRenderRef = useRef(true);
+  const navigatingAwayRef = useRef(false);
 
-  // ── Warn before leaving mid-flow ────────────────────────────
+  // ── Warn before leaving mid-flow (skip if intentional navigation) ──
   useEffect(() => {
     const handleBeforeUnload = (e) => {
+      if (navigatingAwayRef.current) return;
       if (isFormDirty || currentStage > 1) {
         e.preventDefault();
         e.returnValue = "";
@@ -278,7 +281,7 @@ function ReservationFlowPage() {
     const hasApplication = Boolean(r.firstName && r.lastName && r.mobileNumber);
     const hasPayment = Boolean(r.proofOfPaymentUrl);
     const isConfirmed =
-      r.reservationStatus === "confirmed" || r.paymentStatus === "paid";
+      r.status === "confirmed" || r.paymentStatus === "paid";
 
     if (hasVisitScheduled) setVisitCompleted(true);
     if (isVisitApprovedFlag) setVisitApproved(true);
@@ -304,11 +307,18 @@ function ReservationFlowPage() {
   };
 
   // ── Data loading ───────────────────────────────────────────
+  const initRef = useRef(false);
+
   useEffect(() => {
     if (!user) {
       setShowLoginConfirm(true);
       return;
     }
+
+    // Guard: only initialize once per mount (prevents re-render loop
+    // from setState calls below re-triggering this effect)
+    if (initRef.current) return;
+    initRef.current = true;
 
     const continueReservation = location.state?.continueFlow;
     const editMode = location.state?.editMode;
@@ -339,7 +349,7 @@ function ReservationFlowPage() {
     }
     setInitialFormState({
       targetMoveInDate: "",
-      leaseDuration: "12",
+      leaseDuration: "",
       billingEmail: user?.email || "",
     });
     if (!continueReservation && stepOverride) setCurrentStage(stepOverride);
@@ -352,6 +362,7 @@ function ReservationFlowPage() {
         if (result.status === "paid") {
           setPaymentSubmitted(true);
           setPaymentApproved(true);
+          setPaymentMethod(result.paymentMethod || "online");
           showNotification("Payment successful! Your reservation is confirmed.", "success", 5000);
           setCurrentStage(5);
           setHighestStageReached(5);
@@ -361,15 +372,15 @@ function ReservationFlowPage() {
       }).catch(() => {
         showNotification("Could not verify payment. Please check your profile.", "warning", 5000);
       });
-      // Clean URL params without reloading
-      const cleanUrl = window.location.pathname;
-      window.history.replaceState({}, "", cleanUrl);
+      // Clean URL params via React Router (not history.replaceState, which
+      // doesn't update React Router's internal location)
+      setSearchParams({}, { replace: true });
     } else if (paymentStatus === "cancelled") {
       showNotification("Payment was cancelled. You can try again.", "info", 3000);
-      const cleanUrl = window.location.pathname;
-      window.history.replaceState({}, "", cleanUrl);
+      setSearchParams({}, { replace: true });
     }
-  }, [user, navigate, location]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const loadActiveReservation = async () => {
     try {
@@ -530,8 +541,9 @@ function ReservationFlowPage() {
   ]);
 
   // ── API helpers ────────────────────────────────────────────
-  const advanceStage = (nextStage, message) => {
+  const advanceStage = async (nextStage, message) => {
     setHighestStageReached((prev) => Math.max(prev, nextStage));
+    await queryClient.invalidateQueries({ queryKey: ["reservations"] });
     showNotification(
       message || "Step completed! Track your progress here.",
       "success",
@@ -690,7 +702,6 @@ function ReservationFlowPage() {
       workScheduleOther,
       targetMoveInDate,
       leaseDuration,
-      paymentMethod,
       finalMoveInDate,
     }),
     [
@@ -731,7 +742,6 @@ function ReservationFlowPage() {
       workScheduleOther,
       targetMoveInDate,
       leaseDuration,
-      paymentMethod,
       finalMoveInDate,
     ],
   );
@@ -789,12 +799,13 @@ function ReservationFlowPage() {
         });
         setVisitCompleted(true);
         setHighestStageReached((prev) => Math.max(prev, 3));
-        showNotification(
-          "Visit booked! Track progress on your dashboard.",
-          "success",
-          4000,
-        );
-        navigate("/applicant/profile");
+        await queryClient.invalidateQueries({ queryKey: ["reservations"] });
+        setSuccessOverlay({
+          show: true,
+          title: "Visit Scheduled!",
+          subtitle: "Your visit request has been submitted. Track progress on your dashboard.",
+        });
+        setTimeout(() => navigate("/applicant/profile"), 2200);
       } else if (currentStage === 3) {
         if (!devBypassValidation) {
           const inc = [];
@@ -896,7 +907,13 @@ function ReservationFlowPage() {
         });
         setApplicationSubmitted(true);
         setEditingApplication(false);
-        advanceStage(4, "Application submitted! Payment step is now unlocked.");
+        await queryClient.invalidateQueries({ queryKey: ["reservations"] });
+        setSuccessOverlay({
+          show: true,
+          title: "Application Submitted!",
+          subtitle: "Payment step is now unlocked. Continue from your dashboard.",
+        });
+        setTimeout(() => navigate("/applicant/profile"), 2200);
       } else if (currentStage === 4) {
         // Stage 4 only uses PayMongo online checkout.
         // If user got here via the "Confirm" button, show overlay and go to profile.
@@ -1070,6 +1087,7 @@ function ReservationFlowPage() {
           isStageClickable={isStageClickable}
           isStageLocked={isStageLocked}
           onStepperClick={handleStepperClick}
+          paymentApproved={paymentApproved}
         />
         <RoomInfoBanner room={reservationData?.room} />
 
@@ -1269,6 +1287,7 @@ function ReservationFlowPage() {
                     await updateReservationDraft({ finalMoveInDate });
                   }
                   const { checkoutUrl } = await billingApi.createDepositCheckout(reservationId);
+                  navigatingAwayRef.current = true;
                   window.location.href = checkoutUrl;
                 } catch (error) {
                   console.error("Failed to create deposit checkout:", error);

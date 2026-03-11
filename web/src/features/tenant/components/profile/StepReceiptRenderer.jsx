@@ -252,7 +252,7 @@ const PaymentReceipt = ({ reservation, step }) => {
         />
         <ReceiptRow
           label="Payment Method"
-          value={reservation.paymentMethod || "N/A"}
+          value={reservation.paymentMethod || "PayMongo"}
           valueStyle={{ textTransform: "capitalize" }}
         />
         <ReceiptRow
@@ -295,9 +295,8 @@ const PaymentReceipt = ({ reservation, step }) => {
     return (
       <ReceiptContainer bg="#FEF3C7" border="1px solid #FCD34D">
         <p style={{ color: "#78350F", marginBottom: "8px", margin: 0 }}>
-          <strong>⏳ Pending Review:</strong> Your payment proof has been
-          submitted and is awaiting admin verification. This usually takes 1-2
-          business days.
+          <strong>⏳ Pending Review:</strong> Your payment has been
+          submitted and is being confirmed. This usually takes a few minutes.
         </p>
         {reservation.paymentReference && (
           <p style={{ color: "#78350F", fontSize: "12px", margin: "8px 0 0" }}>
@@ -310,8 +309,8 @@ const PaymentReceipt = ({ reservation, step }) => {
   if (step.status === "current") {
     return (
       <ActionNote>
-        <strong>💳 Action Required:</strong> Upload your proof of payment to
-        proceed.
+        <strong>💳 Action Required:</strong> Pay ₱2,000 online to secure your
+        reservation.
       </ActionNote>
     );
   }

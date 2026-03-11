@@ -32,6 +32,7 @@ import React, {
   useRef,
 } from "react";
 import { authApi } from "../api/authApi";
+import { auth } from "../../firebase/config";
 import { useFirebaseAuth } from "./FirebaseAuthContext";
 
 const AuthContext = createContext(null);
@@ -95,6 +96,16 @@ export const AuthProvider = ({ children }) => {
   const checkAuth = async () => {
     try {
       const userData = await authApi.getCurrentUser();
+
+      // Guard: If Firebase user was signed out while this API call was in-flight
+      // (e.g. during social signup duplicate detection), don't set authenticated state
+      if (!auth.currentUser) {
+        setUser(null);
+        setIsAuthenticated(false);
+        setLoading(false);
+        return;
+      }
+
       setUser(userData);
       setIsAuthenticated(true);
 

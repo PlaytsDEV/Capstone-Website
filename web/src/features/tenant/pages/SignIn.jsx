@@ -13,7 +13,7 @@
  */
 
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import {
   signInWithEmailAndPassword,
@@ -39,11 +39,13 @@ const SIGNIN_IMAGE =
 
 function SignIn() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login, setGlobalLoading } = useAuth();
 
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [socialLoading, setSocialLoading] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [fieldValid, setFieldValid] = useState({});
@@ -61,6 +63,13 @@ function SignIn() {
       setRememberMe(true);
       setFieldValid((prev) => ({ ...prev, email: true }));
       setTouched((prev) => ({ ...prev, email: true }));
+    }
+
+    // Show notification passed from signup page (e.g. duplicate Google account)
+    if (location.state?.notification) {
+      showNotification(location.state.notification, "info", 5000);
+      // Clear the state so it doesn't re-show on refresh
+      window.history.replaceState({}, "", window.location.pathname);
     }
   }, []);
 
@@ -230,7 +239,7 @@ function SignIn() {
   };
 
   const handleSocialLogin = async (provider) => {
-    setSubmitting(true);
+    setSocialLoading(true);
     setGlobalLoading(true);
     try {
       const result = await signInWithPopup(auth, provider);
@@ -253,34 +262,35 @@ function SignIn() {
         const loginResponse = await login();
         handlePostAuthFlow(loginResponse);
       } catch (loginError) {
-        const isNotRegistered =
-          loginError.response?.status === 404 ||
-          /not found|not registered|register first/i.test(loginError.message);
-        if (isNotRegistered) {
-          if (firebaseUser) {
-            try {
-              await firebaseUser.delete();
-            } catch (e) {
-              /* ignore */
-            }
-          }
-          await auth.signOut();
+        // Always sign out on failure — but NEVER delete the Firebase account
+        await auth.signOut();
+
+        const status = loginError.response?.status;
+        const errMsg = loginError.message || "";
+
+        if (status === 404 || /not found|not registered|register first/i.test(errMsg)) {
           showNotification(
             "This Google account isn't registered yet. Please sign up first.",
             "warning",
           );
-        } else {
-          await auth.signOut();
-          if (loginError.response?.status === 403)
+        } else if (status === 403) {
+          const code = loginError.response?.data?.code;
+          if (code === "EMAIL_NOT_VERIFIED") {
+            showNotification(
+              "Please verify your email before logging in.",
+              "warning",
+            );
+          } else {
             showNotification(
               "Your account is inactive. Please contact support.",
               "error",
             );
-          else
-            showNotification(
-              "Login failed. Please try again or contact support.",
-              "error",
-            );
+          }
+        } else {
+          showNotification(
+            "Login failed. Please try again or contact support.",
+            "error",
+          );
         }
       }
     } catch (error) {
@@ -302,7 +312,7 @@ function SignIn() {
       }
       showNotification(getFirebaseErrorMessage(error, "login"), "error");
     } finally {
-      setSubmitting(false);
+      setSocialLoading(false);
       setGlobalLoading(false);
     }
   };
@@ -450,7 +460,7 @@ function SignIn() {
                 backgroundColor: "#E7710F",
                 opacity: submitting ? 0.7 : 1,
               }}
-              disabled={!isFormValid() || submitting || isLockedOut}
+              disabled={!isFormValid() || submitting || socialLoading || isLockedOut}
             >
               {isLockedOut ? (
                 `Locked out (${lockoutCountdown}s)`
@@ -470,7 +480,7 @@ function SignIn() {
             <SocialAuthButtons
               onGoogle={handleGoogleLogin}
               onFacebook={handleFacebookLogin}
-              loading={submitting}
+              loading={socialLoading}
               dividerText="Or continue with"
             />
           </form>

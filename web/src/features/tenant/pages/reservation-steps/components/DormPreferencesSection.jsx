@@ -140,6 +140,7 @@ const DormPreferencesSection = ({
         value={leaseDuration}
         onChange={(e) => setLeaseDuration(e.target.value)}
       >
+        <option value="" disabled>Select duration...</option>
         {LEASE_OPTIONS.map((opt) => (
           <option key={opt.value} value={opt.value}>
             {opt.label}

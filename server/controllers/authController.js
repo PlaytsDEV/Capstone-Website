@@ -6,22 +6,13 @@
 import { getAuth } from "../config/firebase.js";
 import { User } from "../models/index.js";
 import auditLogger from "../utils/auditLogger.js";
-import {} from "../middleware/validation.js";
+
 
 const VALID_BRANCHES = ["gil-puyat", "guadalupe"];
 const VALID_ROLES = ["applicant", "tenant", "admin", "superAdmin"];
 
 export const register = async (req, res) => {
   try {
-    console.log("🧪 REGISTER DEBUG START ==================");
-    console.log("📦 req.body:", req.body);
-    console.log("🧼 req.sanitizedData:", req.sanitizedData);
-    console.log("🔥 Firebase user:", {
-      uid: req.user?.uid,
-      email: req.user?.email,
-      email_verified: req.user?.email_verified,
-    });
-    console.log("🧪 REGISTER DEBUG END ====================");
 
     // Sanitize and validate input
     const data = req.sanitizedData;
@@ -104,15 +95,7 @@ export const register = async (req, res) => {
         code: "USERNAME_TAKEN",
       });
     }
-    console.log("🧾 Creating user with:", {
-      firebaseUid: req.user.uid,
-      email: req.user.email,
-      username,
-      firstName,
-      lastName,
-      phone,
-      branch,
-    });
+
 
     // Save user data to MongoDB
     // NOTE: Firebase Auth is the source of truth for email verification
@@ -400,6 +383,12 @@ export const getProfile = async (req, res) => {
     });
   }
 };
+
+/** Sanitize a name field — strip HTML/injection characters */
+const sanitizeName = (s) => s?.trim().replace(/[<>"'&]/g, "") || "";
+
+/** Sanitize a phone field — strip non-phone characters */
+const sanitizePhone = (s) => s?.replace(/[^\d+\-() ]/g, "") || "";
 
 export const updateProfile = async (req, res) => {
   try {

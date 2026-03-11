@@ -305,6 +305,65 @@ export const sendReservationConfirmedEmail = async ({
 };
 
 // =============================================================================
+// VISIT APPROVED EMAIL
+// =============================================================================
+
+const generateVisitApprovedEmailHtml = (tenantName, branchName) => `
+  <div style="max-width:600px;margin:0 auto;font-family:'Segoe UI',sans-serif;color:#1F2937;">
+    <div style="background:#0C375F;padding:24px;text-align:center;border-radius:12px 12px 0 0;">
+      <h1 style="color:#fff;margin:0;font-size:22px;">Lilycrest Dormitory</h1>
+    </div>
+    <div style="padding:32px 24px;background:#fff;">
+      <p style="font-size:16px;margin:0 0 16px;">Hello <strong>${tenantName}</strong>,</p>
+      <p style="font-size:14px;line-height:1.6;margin:0 0 16px;">
+        Great news! Your visit to <strong>${branchName}</strong> has been <strong>approved</strong> by our admin team.
+      </p>
+      <div style="background:#ECFDF5;border-left:4px solid #10B981;padding:16px 20px;border-radius:8px;margin:0 0 16px;">
+        <p style="margin:0;font-size:14px;color:#065F46;">
+          <strong>✓ Visit Approved</strong><br/>
+          You can now proceed to the <strong>Tenant Application</strong> step in your reservation flow.
+        </p>
+      </div>
+      <p style="font-size:14px;line-height:1.6;margin:0 0 24px;">
+        Log in to your account and continue your application from your profile dashboard.
+      </p>
+    </div>
+    <div style="padding:16px 24px;background:#F9FAFB;border-top:1px solid #E5E7EB;text-align:center;border-radius:0 0 12px 12px;">
+      <p style="margin:0;font-size:11px;color:#9CA3AF;">Lilycrest Dormitory Management System</p>
+    </div>
+  </div>
+`;
+
+export const sendVisitApprovedEmail = async ({
+  to,
+  tenantName,
+  branchName,
+}) => {
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
+    console.log("⚠️ Email not sent — not configured");
+    return { success: false, message: "Email service not configured" };
+  }
+  const mailOptions = {
+    from: { name: "Lilycrest Dormitory", address: process.env.EMAIL_USER },
+    to,
+    subject: "Visit Approved — Continue Your Application | Lilycrest Dormitory",
+    html: generateVisitApprovedEmailHtml(tenantName, branchName),
+    text: `Hello ${tenantName}, your visit to ${branchName} has been approved. You can now proceed to the Tenant Application step. — Lilycrest Dormitory`,
+  };
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ Visit approved email sent to ${to}`);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error(
+      `❌ Failed to send visit approved email to ${to}:`,
+      error.message,
+    );
+    return { success: false, error: error.message };
+  }
+};
+
+// =============================================================================
 // DOCUMENTS REJECTED EMAIL
 // =============================================================================
 

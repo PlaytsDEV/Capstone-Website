@@ -321,7 +321,7 @@ export const getEmailByUsername = async (req, res) => {
     console.log(`🔍 Looking up username: "${trimmedUsername}"`);
 
     const user = await User.findOne({
-      username: { $regex: new RegExp(`^${trimmedUsername}$`, "i") },
+      username: { $regex: new RegExp(`^${trimmedUsername.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") },
     }).select("email username");
 
     if (!user) {
@@ -358,8 +358,8 @@ export const getUsers = async (req, res) => {
       order = "desc",
     } = req.query;
 
-    // Build query with branch filter
-    const query = {};
+    // Build query with branch filter (exclude archived/soft-deleted users)
+    const query = { isArchived: { $ne: true } };
 
     if (req.branchFilter) {
       query.branch = req.branchFilter;
@@ -564,7 +564,7 @@ export const deleteUser = async (req, res) => {
       });
     }
 
-    const user = await User.findByIdAndDelete(userId);
+    const user = await User.findById(userId);
 
     if (!user) {
       return res.status(404).json({
@@ -573,16 +573,27 @@ export const deleteUser = async (req, res) => {
       });
     }
 
+    // Delete Firebase account
+    try {
+      const auth = getAuth();
+      if (auth && user.firebaseUid) await auth.deleteUser(user.firebaseUid);
+    } catch (fbErr) {
+      console.error("⚠️ Firebase deletion failed:", fbErr.message);
+    }
+
+    // Hard delete from MongoDB
+    await User.findByIdAndDelete(userId);
+
     // Log user deletion
     await auditLogger.logDeletion(
       req,
       "user",
       userId,
       user.toObject(),
-      "User account deleted",
+      "User account permanently deleted",
     );
 
-    console.log(`✅ User deleted: ${user.email}`);
+    console.log(`✅ User permanently deleted: ${user.email}`);
     res.json({
       message: "User deleted successfully",
       deletedId: userId,
@@ -632,13 +643,13 @@ export const getMyStays = async (req, res) => {
 
     // Find active/current stays
     const currentStays = allReservations.filter((reservation) => {
-      const status = reservation.reservationStatus;
+      const status = reservation.status;
       return status === "confirmed" || status === "checked-in";
     });
 
     // Past stays (completed or cancelled)
     const pastStays = allReservations.filter((reservation) => {
-      const status = reservation.reservationStatus;
+      const status = reservation.status;
       return status === "checked-out" || status === "cancelled";
     });
 

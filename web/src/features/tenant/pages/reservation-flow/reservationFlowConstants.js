@@ -24,7 +24,7 @@ export const RESERVATION_STAGES = [
   {
     id: 4,
     label: "Payment",
-    desc: "Upload proof of reservation fee payment",
+    desc: "Pay reservation fee online via PayMongo",
     category: "Finalization",
   },
   {

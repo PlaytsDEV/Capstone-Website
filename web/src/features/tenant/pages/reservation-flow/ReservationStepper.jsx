@@ -9,11 +9,12 @@ const ReservationStepper = ({
   isStageClickable,
   isStageLocked,
   onStepperClick,
+  paymentApproved,
 }) => (
   <div className="rf-stepper">
     <div className="rf-stepper-track">
       {RESERVATION_STAGES.map((stage, index) => {
-        const isDone = stage.id < currentStage;
+        const isDone = stage.id < currentStage || (stage.id === 5 && paymentApproved);
         const isActive = stage.id === currentStage;
         const clickable = isStageClickable(stage.id);
         const locked = isStageLocked(stage.id);
@@ -24,10 +25,9 @@ const ReservationStepper = ({
           <div key={stage.id} style={{ display: "contents" }}>
             <div
               className={`rf-stepper-step ${stepClass}`}
-              onClick={() => clickable && onStepperClick(stage.id)}
               style={{
-                cursor: clickable ? "pointer" : "default",
-                opacity: isActive || isDone ? 1 : !clickable ? 0.4 : 1,
+                cursor: "default",
+                opacity: isActive || isDone ? 1 : 0.4,
               }}
               title={
                 locked

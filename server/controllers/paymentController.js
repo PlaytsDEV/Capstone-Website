@@ -105,10 +105,8 @@ export const createDepositCheckout = async (req, res) => {
       return res.status(400).json({ error: "Deposit is already paid" });
     }
 
-    const amount = reservation.totalPrice || reservation.depositAmount || 0;
-    if (amount <= 0) {
-      return res.status(400).json({ error: "Invalid deposit amount" });
-    }
+    // Reservation deposit is always ₱2,000 (not room rent)
+    const amount = 2000;
 
     const roomName = reservation.roomId?.name || "Room";
 
@@ -120,8 +118,8 @@ export const createDepositCheckout = async (req, res) => {
         reservationId: String(reservation._id),
         userId: String(dbUser._id),
       },
-      successUrl: `${FRONTEND_URL}/profile?payment=success&session_id={id}`,
-      cancelUrl: `${FRONTEND_URL}/profile?payment=cancelled`,
+      successUrl: `${FRONTEND_URL}/applicant/profile?payment=success&session_id={id}`,
+      cancelUrl: `${FRONTEND_URL}/applicant/profile?payment=cancelled`,
     });
 
     // Store session ID on the reservation for later verification

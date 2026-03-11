@@ -26,24 +26,38 @@
 
 import { getAuth } from "../config/firebase.js";
 
+/* ─── In-memory token verification cache (avoids hitting Firebase each request) ── */
+const tokenCache = new Map();
+const TOKEN_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+function getCachedToken(token) {
+  const key = token.slice(-40); // use last 40 chars as key (unique enough, avoids storing full token)
+  const entry = tokenCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > TOKEN_CACHE_TTL) {
+    tokenCache.delete(key);
+    return null;
+  }
+  return entry.decoded;
+}
+
+function setCachedToken(token, decoded) {
+  const key = token.slice(-40);
+  tokenCache.set(key, { decoded, ts: Date.now() });
+  // Evict old entries if cache grows too large
+  if (tokenCache.size > 500) {
+    const oldest = tokenCache.keys().next().value;
+    tokenCache.delete(oldest);
+  }
+}
+
 /**
  * Verify Firebase ID Token
  *
  * Middleware to authenticate requests using Firebase ID tokens.
  * The token should be sent in the Authorization header as "Bearer <token>".
  *
- * Flow:
- * 1. Extract token from Authorization header
- * 2. Verify token with Firebase Admin SDK
- * 3. Attach decoded user data to req.user
- * 4. Call next() to proceed to the next middleware/route handler
- *
- * @middleware
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @param {Function} next - Express next middleware function
- *
- * @returns {void} Calls next() on success, sends 401 error on failure
+ * Uses an in-memory cache to avoid hitting Firebase on every request.
  */
 export const verifyToken = async (req, res, next) => {
   try {
@@ -77,15 +91,14 @@ export const verifyToken = async (req, res, next) => {
       });
     }
 
-    // Verify the token with Firebase
-    // This checks:
-    // - Token signature is valid
-    // - Token hasn't expired
-    // - Token was issued by this project
-    const decodedToken = await auth.verifyIdToken(token);
+    // Try cache first — saves ~200ms per request
+    let decodedToken = getCachedToken(token);
+    if (!decodedToken) {
+      decodedToken = await auth.verifyIdToken(token);
+      setCachedToken(token, decodedToken);
+    }
 
     // Attach decoded user data to request object
-    // Available fields: uid, email, email_verified, custom claims, etc.
     req.user = decodedToken;
 
     // Token is valid, proceed to next middleware/route
@@ -262,6 +275,16 @@ export const verifyApplicant = async (req, res, next) => {
     // Check that user does NOT have admin privileges
     // This prevents admins from accessing applicant-only endpoints
     if (req.user.admin || req.user.superAdmin) {
+      return res.status(403).json({
+        error: "Access denied. Applicant endpoint - admin access not allowed.",
+        code: "APPLICANT_ENDPOINT_ADMIN_DENIED",
+      });
+    }
+
+    // Fallback: Check MongoDB role (handles missing/stale Firebase custom claims)
+    const { User } = await import("../models/index.js");
+    const dbUser = await User.findOne({ firebaseUid: req.user.uid });
+    if (dbUser && (dbUser.role === "admin" || dbUser.role === "superAdmin")) {
       return res.status(403).json({
         error: "Access denied. Applicant endpoint - admin access not allowed.",
         code: "APPLICANT_ENDPOINT_ADMIN_DENIED",

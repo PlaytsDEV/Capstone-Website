@@ -53,7 +53,7 @@ const ReservationPaymentStep = ({
             Payment Complete
           </div>
           <div className="info-text" style={{ color: "#047857" }}>
-            Your reservation fee has been paid. Awaiting admin confirmation.
+            Your reservation fee has been paid and your room is reserved.
           </div>
         </div>
       )}

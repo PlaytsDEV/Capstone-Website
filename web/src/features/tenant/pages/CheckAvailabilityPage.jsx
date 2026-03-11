@@ -4,6 +4,7 @@ import { showNotification } from "../../../shared/utils/notification";
 import { Search, SlidersHorizontal } from "lucide-react";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { useRooms } from "../../../shared/hooks/queries/useRooms";
+import { queryClient } from "../../../shared/lib/queryClient";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
 import "../../../shared/styles/notification.css";
 import "../styles/tenant-dashboard.css";
@@ -211,6 +212,7 @@ function CheckAvailabilityPage() {
           applianceFees: calculateApplianceFees(),
         });
         closeRoomDetails();
+        await queryClient.invalidateQueries({ queryKey: ["reservations"] });
         navigate("/applicant/profile", {
           state: { notification: `Room changed to ${selectedRoom.title}` },
         });
@@ -261,6 +263,7 @@ function CheckAvailabilityPage() {
         }
       }
       closeRoomDetails();
+      await queryClient.invalidateQueries({ queryKey: ["reservations"] });
       navigate("/applicant/profile", {
         state: {
           notification: `Room ${selectedRoom.title} reserved! Continue from your dashboard.`,

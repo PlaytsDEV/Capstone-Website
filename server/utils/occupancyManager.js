@@ -54,20 +54,28 @@ export const updateOccupancyOnReservationChange = async (
       oldStatus !== "confirmed" &&
       oldStatus !== "checked-in"
     ) {
-      console.log(`📈 Increasing occupancy for room ${room.name}`);
-      room.increaseOccupancy();
+      console.log(`📈 Increasing occupancy for room ${room.name} (atomic)`);
+      const updated = await Room.atomicIncreaseOccupancy(room._id);
+      if (!updated) {
+        console.warn(`⚠️ Room ${room.name} is at capacity, could not increase occupancy`);
+      }
 
-      // Assign bed if selected
+      // Assign bed if selected (needs loaded doc)
       if (reservation.selectedBed?.id) {
-        const assigned = room.occupyBed(
-          reservation.selectedBed.id,
-          reservation.userId,
-          reservation._id,
-        );
-        if (assigned) {
-          console.log(
-            `🛏️ Bed ${reservation.selectedBed.id} assigned in ${room.name}`,
+        // Re-fetch room after atomic update to get latest state
+        const freshRoom = await Room.findById(room._id);
+        if (freshRoom) {
+          const assigned = freshRoom.occupyBed(
+            reservation.selectedBed.id,
+            reservation.userId,
+            reservation._id,
           );
+          if (assigned) {
+            console.log(
+              `🛏️ Bed ${reservation.selectedBed.id} assigned in ${room.name}`,
+            );
+            await freshRoom.save();
+          }
         }
       }
     }
@@ -78,17 +86,21 @@ export const updateOccupancyOnReservationChange = async (
       oldStatus !== "confirmed" &&
       oldStatus !== "checked-in"
     ) {
-      console.log(`📈 Increasing occupancy for room ${room.name} (check-in)`);
-      room.increaseOccupancy();
+      console.log(`📈 Increasing occupancy for room ${room.name} (check-in, atomic)`);
+      await Room.atomicIncreaseOccupancy(room._id);
 
       if (reservation.selectedBed?.id) {
-        const assigned = room.occupyBed(
-          reservation.selectedBed.id,
-          reservation.userId,
-          reservation._id,
-        );
-        if (assigned) {
-          console.log(`🛏️ Bed ${reservation.selectedBed.id} occupied`);
+        const freshRoom = await Room.findById(room._id);
+        if (freshRoom) {
+          const assigned = freshRoom.occupyBed(
+            reservation.selectedBed.id,
+            reservation.userId,
+            reservation._id,
+          );
+          if (assigned) {
+            console.log(`🛏️ Bed ${reservation.selectedBed.id} occupied`);
+            await freshRoom.save();
+          }
         }
       }
     }
@@ -96,16 +108,20 @@ export const updateOccupancyOnReservationChange = async (
     // === DECREASE OCCUPANCY ===
     // When transitioning to cancelled
     if (newStatus === "cancelled" && oldStatus !== "cancelled") {
-      console.log(`📉 Decreasing occupancy for room ${room.name}`);
-      room.decreaseOccupancy();
+      console.log(`📉 Decreasing occupancy for room ${room.name} (atomic)`);
+      await Room.atomicDecreaseOccupancy(room._id);
 
       // Vacate bed if it was occupied
       if (reservation.selectedBed?.id) {
-        const vacated = room.vacateBed(reservation.selectedBed.id);
-        if (vacated) {
-          console.log(
-            `🛏️ Bed ${reservation.selectedBed.id} vacated in ${room.name}`,
-          );
+        const freshRoom = await Room.findById(room._id);
+        if (freshRoom) {
+          const vacated = freshRoom.vacateBed(reservation.selectedBed.id);
+          if (vacated) {
+            console.log(
+              `🛏️ Bed ${reservation.selectedBed.id} vacated in ${room.name}`,
+            );
+            await freshRoom.save();
+          }
         }
       }
     }
@@ -114,30 +130,31 @@ export const updateOccupancyOnReservationChange = async (
     if (newStatus === "checked-out" && oldStatus !== "checked-out") {
       if (oldStatus === "confirmed" || oldStatus === "checked-in") {
         console.log(
-          `📉 Decreasing occupancy for room ${room.name} (check-out)`,
+          `📉 Decreasing occupancy for room ${room.name} (check-out, atomic)`,
         );
-        room.decreaseOccupancy();
+        await Room.atomicDecreaseOccupancy(room._id);
 
         if (reservation.selectedBed?.id) {
-          const vacated = room.vacateBed(reservation.selectedBed.id);
-          if (vacated) {
-            console.log(`🛏️ Bed ${reservation.selectedBed.id} vacated`);
+          const freshRoom = await Room.findById(room._id);
+          if (freshRoom) {
+            const vacated = freshRoom.vacateBed(reservation.selectedBed.id);
+            if (vacated) {
+              console.log(`🛏️ Bed ${reservation.selectedBed.id} vacated`);
+              await freshRoom.save();
+            }
           }
         }
       }
     }
 
-    // Update room availability
-    room.updateAvailability();
-
-    // Save the room
-    await room.save();
+    // Re-fetch room for return value (atomic ops already updated it)
+    const finalRoom = await Room.findById(room._id);
 
     console.log(
-      `✅ Room occupancy updated: ${room.name} (${room.currentOccupancy}/${room.capacity})`,
+      `✅ Room occupancy updated: ${finalRoom.name} (${finalRoom.currentOccupancy}/${finalRoom.capacity})`,
     );
 
-    return room;
+    return finalRoom;
   } catch (error) {
     console.error("❌ Occupancy update error:", error);
     throw error;

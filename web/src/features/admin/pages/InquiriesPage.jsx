@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import InquiryDetailsModal from "../components/InquiryDetailsModal";
 import { inquiryApi } from "../../../shared/api/apiClient";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
@@ -44,10 +44,13 @@ export default function InquiriesPage({ isEmbedded = false }) {
   const error = queryError ? "Failed to load inquiries. Please try again." : null;
 
   // Sync pagination from server response
-  const serverPagination = inquiriesData?.pagination;
-  if (serverPagination && serverPagination.total !== pagination.total) {
-    setPagination((prev) => ({ ...prev, ...serverPagination }));
-  }
+  const serverTotal = inquiriesData?.pagination?.total;
+  const serverPages = inquiriesData?.pagination?.pages;
+  useEffect(() => {
+    if (serverTotal != null && serverTotal !== pagination.total) {
+      setPagination((prev) => ({ ...prev, total: serverTotal, pages: serverPages }));
+    }
+  }, [serverTotal, serverPages]);
 
   const stats = {
     total: statsData?.total || 0,

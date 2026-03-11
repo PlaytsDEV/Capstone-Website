@@ -43,7 +43,7 @@ export const DEFAULT_STEPS = [
   {
     step: "payment_submitted",
     title: "5. Payment Submitted",
-    description: "Payment proof uploaded and verified",
+    description: "Reservation fee paid via PayMongo",
     status: "locked",
   },
   {
@@ -70,7 +70,7 @@ export function getReservationProgress(reservation) {
   const isVisitScheduled = hasPoliciesAccepted && hasVisitRequest;
   const isVisitCompleted = Boolean(reservation.visitApproved === true);
   const hasApplication = Boolean(reservation.firstName && reservation.lastName);
-  const hasPayment = Boolean(reservation.proofOfPaymentUrl);
+  const hasPayment = Boolean(reservation.paymentStatus === "paid" || reservation.paymongoSessionId);
   const isConfirmed =
     status === "confirmed" || reservation.paymentStatus === "paid";
 
@@ -160,8 +160,8 @@ export function getReservationProgress(reservation) {
       step: "payment_submitted",
       title: "5. Payment Submitted",
       description: isPaymentPendingApproval
-        ? "Awaiting admin payment verification"
-        : "Payment proof uploaded and verified",
+        ? "Awaiting payment confirmation"
+        : "Reservation fee paid and confirmed",
       status: isPaymentPendingApproval
         ? "pending_approval"
         : currentStepIndex >= 4
@@ -252,8 +252,8 @@ export function getNextAction(activeReservation, reservationProgress) {
       return {
         title: "Submit Your Payment",
         description:
-          "Your application has been submitted. Upload your proof of payment to confirm your reservation.",
-        buttonText: "Upload Payment",
+          "Your application has been submitted. Pay ₱2,000 online to confirm your reservation.",
+        buttonText: "Pay Now",
         buttonLink: "/tenant/reservation-flow",
         reservationId: activeReservation._id,
         step: 5,

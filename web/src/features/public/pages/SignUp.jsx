@@ -12,7 +12,7 @@
  * - Gmail registration doesn't require "Agree to Terms" checkbox
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import {
@@ -80,9 +80,13 @@ function SignUp() {
     },
   });
   const [debounceTimer, setDebounceTimer] = useState(null);
+  // Guard: prevents session lock from auto-redirecting while social
+  // auth duplicate check is in progress
+  const socialAuthRef = useRef(false);
 
   // Session lock: Redirect if already logged in
   useEffect(() => {
+    if (socialAuthRef.current) return; // skip while checking duplicate
     if (!authLoading && isAuthenticated && user) {
       if (user.role === "admin" || user.role === "superAdmin")
         navigate("/admin/dashboard", { replace: true });
@@ -288,11 +292,14 @@ function SignUp() {
 
   const handleSocialSignup = async (provider, providerName = "Google") => {
     setLoading(true);
+    socialAuthRef.current = true;
+    sessionStorage.setItem("socialAuthInProgress", "1"); // tell RequireNonAdmin to skip redirect
     try {
       const result = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
       if (!firebaseUser.email) {
         await auth.signOut();
+        socialAuthRef.current = false;
         showNotification(
           "Unable to get email from your Google account.",
           "error",
@@ -303,12 +310,13 @@ function SignUp() {
       const token = await firebaseUser.getIdToken();
       try {
         await authApi.checkUser(token);
+        // User already exists — sign out and redirect to sign-in
         await auth.signOut();
-        showNotification(
-          "This email is already registered. Please sign in instead.",
-          "info",
-        );
-        setTimeout(() => navigate("/signin"), 1500);
+        socialAuthRef.current = false;
+        navigate("/signin", {
+          state: { notification: "This email is already registered. Please sign in instead." },
+          replace: true,
+        });
         setLoading(false);
         return;
       } catch (loginError) {
@@ -340,11 +348,23 @@ function SignUp() {
             showNotification(`Welcome to Lilycrest, ${firstName}!`, "success");
             setTimeout(() => navigate("/check-availability"), 2000);
           } catch (regError) {
-            const msg =
-              regError.response?.data?.error ||
-              regError.response?.data?.code === "USERNAME_TAKEN"
-                ? "Username already taken. Please try again."
-                : regError.message || "An unexpected error occurred.";
+            const errMsg = regError.response?.data?.error || regError.message || "";
+            const errCode = regError.response?.data?.code || "";
+
+            // If the error is about duplicate email/username, redirect to sign-in
+            if (errCode === "USERNAME_TAKEN" || errCode === "EMAIL_TAKEN" ||
+                errMsg.includes("already") || errMsg.includes("duplicate")) {
+              await auth.signOut();
+              socialAuthRef.current = false;
+              navigate("/signin", {
+                state: { notification: "This email is already registered. Please sign in instead." },
+                replace: true,
+              });
+              setLoading(false);
+              return;
+            }
+
+            // Other registration errors — clean up and show message
             try {
               const u = auth.currentUser;
               if (u) await u.delete();
@@ -355,7 +375,7 @@ function SignUp() {
                 /* ignore */
               }
             }
-            showNotification(msg, "error");
+            showNotification(errMsg || "An unexpected error occurred.", "error");
             setLoading(false);
           }
         } else {
@@ -385,6 +405,8 @@ function SignUp() {
           error.code === "auth/popup-closed-by-user" ? "info" : "error",
         );
     } finally {
+      socialAuthRef.current = false;
+      sessionStorage.removeItem("socialAuthInProgress");
       setLoading(false);
     }
   };

@@ -53,7 +53,7 @@ const STEPS = [
   {
     key: "payment_submitted",
     label: "Payment",
-    desc: "Upload proof of reservation fee",
+    desc: "Pay reservation fee online",
     icon: CreditCard,
     stage: 4,
     category: "Finalization",
@@ -77,8 +77,8 @@ function resolveCurrentStage(reservation) {
   if (status === "confirmed") return 5;
   if (reservation.paymentStatus === "paid") return 5;
 
-  // payment submitted but not yet verified
-  if (reservation.proofOfPaymentUrl) return 4;
+  // payment submitted via PayMongo
+  if (reservation.paymentStatus === "paid") return 5;
 
   // application submitted
   if (
@@ -112,7 +112,7 @@ function getStepStatus(stepStage, currentStage, reservation) {
       if (hasSchedule && !approved) return "waiting";
     }
     if (stepStage === 4 && reservation) {
-      if (reservation.proofOfPaymentUrl && reservation.paymentStatus !== "paid")
+      if (reservation.paymentStatus === "pending" && reservation.paymongoSessionId)
         return "waiting";
     }
     return "current";
@@ -187,24 +187,11 @@ function getNextAction(reservation, currentStage) {
         isWaiting: false,
       };
     case 4: {
-      if (
-        reservation.proofOfPaymentUrl &&
-        reservation.paymentStatus !== "paid"
-      ) {
-        return {
-          title: "Awaiting Payment Verification",
-          description:
-            "Your payment proof is being reviewed. This usually takes 1–2 business days.",
-          buttonLabel: null,
-          route: null,
-          isWaiting: true,
-        };
-      }
       return {
-        title: "Submit Payment",
+        title: "Pay Reservation Fee",
         description:
-          "Upload your proof of payment to finalize your reservation",
-        buttonLabel: "Upload Payment →",
+          "Pay ₱2,000 online via GCash, Maya, or Card to secure your reservation",
+        buttonLabel: "Pay Now →",
         route: `/applicant/reservation?step=4`,
         isWaiting: false,
       };

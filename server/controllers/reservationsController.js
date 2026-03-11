@@ -19,7 +19,7 @@ import {
   handleStatusTransition,
   buildUserUpdatePayload,
 } from "../utils/reservationHelpers.js";
-import { sendReservationConfirmedEmail } from "../config/email.js";
+import { sendReservationConfirmedEmail, sendVisitApprovedEmail } from "../config/email.js";
 
 /* ─── helpers ────────────────────────────────────── */
 const HEAVY_FIELDS =
@@ -27,7 +27,25 @@ const HEAVY_FIELDS =
 const POPULATE_USER = ["userId", "firstName lastName email"];
 const POPULATE_ROOM = ["roomId", "name branch type price"];
 
-const findDbUser = async (uid) => User.findOne({ firebaseUid: uid });
+/* ── Cached user lookup (saves ~50-100ms per API call) ──── */
+const userCache = new Map();
+const USER_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
+
+const findDbUser = async (uid) => {
+  const cached = userCache.get(uid);
+  if (cached && Date.now() - cached.ts < USER_CACHE_TTL) return cached.user;
+  const user = await User.findOne({ firebaseUid: uid });
+  if (user) userCache.set(uid, { user, ts: Date.now() });
+  // Evict if too large
+  if (userCache.size > 200) {
+    const oldest = userCache.keys().next().value;
+    userCache.delete(oldest);
+  }
+  return user;
+};
+
+/** Invalidate a cached user entry (call when user data changes) */
+export const invalidateUserCache = (uid) => userCache.delete(uid);
 
 /* ─── GET all reservations ───────────────────────── */
 export const getReservations = async (req, res) => {
@@ -320,7 +338,17 @@ export const updateReservation = async (req, res) => {
         error: "Reservation not found",
         code: "RESERVATION_NOT_FOUND",
       });
-    Object.assign(reservation, req.body);
+
+    // Whitelist admin-allowed fields to prevent mass-assignment
+    const ADMIN_ALLOWED = [
+      "status", "paymentStatus", "notes", "checkInDate", "checkOutDate",
+      "approvedDate", "visitApproved", "documentsApproved",
+      "documentRejectionReason", "nbiApproved", "nbiRejectionReason",
+      "companyIDApproved", "companyIDRejectionReason",
+    ];
+    for (const key of ADMIN_ALLOWED) {
+      if (req.body[key] !== undefined) reservation[key] = req.body[key];
+    }
     const updatedReservation = await reservation.save();
 
     // Occupancy tracking
@@ -374,6 +402,28 @@ export const updateReservation = async (req, res) => {
       } catch (emailErr) {
         console.error(
           "⚠️ Confirmation email failed (non-fatal):",
+          emailErr.message,
+        );
+      }
+    }
+
+    // Send visit-approved email when admin approves a visit
+    if (
+      req.body.visitApproved === true &&
+      !oldData.visitApproved &&
+      updatedReservation.userId?.email
+    ) {
+      try {
+        await sendVisitApprovedEmail({
+          to: updatedReservation.userId.email,
+          tenantName:
+            `${updatedReservation.userId.firstName || ""} ${updatedReservation.userId.lastName || ""}`.trim() ||
+            "Tenant",
+          branchName: updatedReservation.roomId?.branch || "Lilycrest",
+        });
+      } catch (emailErr) {
+        console.error(
+          "⚠️ Visit approved email failed (non-fatal):",
           emailErr.message,
         );
       }
@@ -602,17 +652,15 @@ export const releaseSlot = async (req, res) => {
       reservation.roomId,
     );
 
-    // Free room slot
+    // Free room slot using proper model methods
     if (reservation.roomId) {
       const room = await Room.findById(reservation.roomId._id);
       if (room) {
-        if (room.beds?.length > 0 && reservation.selectedBed?.id) {
-          const bed = room.beds.find(
-            (b) => b.id === reservation.selectedBed.id,
-          );
-          if (bed) bed.occupied = false;
+        if (reservation.selectedBed?.id) {
+          room.vacateBed(reservation.selectedBed.id);
         }
-        room.available = true;
+        room.decreaseOccupancy();
+        room.updateAvailability();
         await room.save();
       }
     }
