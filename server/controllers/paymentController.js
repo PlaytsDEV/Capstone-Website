@@ -161,7 +161,7 @@ export const checkSessionStatus = async (req, res) => {
           bill.paymentMethod = "paymongo";
           bill.paymongoPaymentId = payments[0]?.id || sessionId;
           bill.paymentProof = {
-            verificationStatus: "auto-verified",
+            verificationStatus: "approved",
             verifiedAt: new Date(),
             submittedAmount: bill.totalAmount,
           };

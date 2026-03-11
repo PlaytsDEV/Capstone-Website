@@ -139,6 +139,19 @@ const billSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    paymentMethod: {
+      type: String,
+      enum: ["bank", "gcash", "card", "check", "cash", "paymongo"],
+      default: null,
+    },
+    paymongoSessionId: {
+      type: String,
+      default: null,
+    },
+    paymongoPaymentId: {
+      type: String,
+      default: null,
+    },
 
     // --- Metadata ---
     notes: {

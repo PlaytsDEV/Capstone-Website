@@ -196,10 +196,22 @@ const reservationSchema = new mongoose.Schema(
     finalMoveInDate: Date,
     paymentMethod: {
       type: String,
-      enum: ["bank", "gcash", "card", "check", "cash"],
+      enum: ["bank", "gcash", "card", "check", "cash", "paymongo"],
       default: "bank",
     },
     proofOfPaymentUrl: String,
+    paymentDate: {
+      type: Date,
+      default: null,
+    },
+    paymongoSessionId: {
+      type: String,
+      default: null,
+    },
+    paymongoPaymentId: {
+      type: String,
+      default: null,
+    },
 
     // --- Reservation Dates & Pricing ---
     checkInDate: {
