@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { showNotification } from "../../../shared/utils/notification";
+import getFriendlyError from "../../../shared/utils/friendlyError";
 import { reservationApi, roomApi, billingApi } from "../../../shared/api/apiClient";
 import GlobalLoading from "../../../shared/components/GlobalLoading";
 import "../../../shared/styles/notification.css";
@@ -155,6 +156,7 @@ function ReservationFlowPage() {
   const [showStageConfirm, setShowStageConfirm] = useState(false);
   const [pendingStageAction, setPendingStageAction] = useState(null);
   const [showValidationErrors, setShowValidationErrors] = useState(false);
+  const [scrollToSection, setScrollToSection] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
   const [initialFormState, setInitialFormState] = useState({
     targetMoveInDate: "",
@@ -782,12 +784,20 @@ function ReservationFlowPage() {
         setShowStageConfirm(true);
         return;
       } else if (currentStage === 2) {
-        if (!devBypassValidation && (!visitDate || !visitTime)) {
-          showNotification(
-            "Please select a visit date and time",
-            "error",
-            3000,
-          );
+        if (!devBypassValidation && !visitDate) {
+          showNotification("Please select a visit date", "error", 3000);
+          setTimeout(() => {
+            const el = document.getElementById("visit-date-section");
+            if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+          }, 100);
+          return;
+        }
+        if (!devBypassValidation && !visitTime) {
+          showNotification("Please select a time slot", "error", 3000);
+          setTimeout(() => {
+            const el = document.getElementById("visit-time-section");
+            if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+          }, 100);
           return;
         }
         await updateReservationDraft({
@@ -835,10 +845,21 @@ function ReservationFlowPage() {
             inc.push("Agreements & Consent");
           if (inc.length > 0) {
             setShowValidationErrors(true);
+            // Map section names to accordion IDs for scroll-to-error
+            const sectionIdMap = {
+              "Email & Photo": "photo",
+              "Personal Information": "personal",
+              "Emergency Contact": "emergency",
+              "Employment / School": "employment",
+              "Dorm Preferences": "dorm",
+              "Agreements & Consent": "agreements",
+            };
+            const targetSection = sectionIdMap[inc[0]] || null;
+            setScrollToSection(targetSection);
             showNotification(
-              `Please complete the ${inc[0]} section`,
+              `Please complete the "${inc[0]}" section to continue.`,
               "error",
-              3000,
+              4000,
             );
             return;
           }
@@ -919,9 +940,7 @@ function ReservationFlowPage() {
       }
     } catch (error) {
       showNotification(
-        error?.response?.data?.error ||
-          error?.message ||
-          "Failed to process reservation. Please try again.",
+        getFriendlyError(error, "Failed to process reservation. Please try again."),
         "error",
         3000,
       );
@@ -1211,6 +1230,8 @@ function ReservationFlowPage() {
                   showValidationErrors,
                   applicationSubmitted,
                   paymentApproved,
+                  scrollToSection,
+                  onClearScrollToSection: () => setScrollToSection(null),
                 }}
                 onPrev={() => navigate("/applicant/profile")}
                 onNext={() => handleNextStage()}

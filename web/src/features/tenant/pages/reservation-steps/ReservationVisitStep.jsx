@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { showNotification } from "../../../../shared/utils/notification";
 import { PoliciesTermsModal } from "../../modals/PoliciesAndConsent";
 
 /* ── Available time slots ────────────────────────────────────────────── */
@@ -175,6 +176,28 @@ const ReservationVisitStep = ({
 
   const canSubmit = policiesAccepted && visitDate && visitTime && !isSubmitted;
 
+  const handleSubmitWithValidation = () => {
+    if (!visitDate) {
+      showNotification("Please select a visit date to continue.", "error", 3000);
+      const el = document.getElementById("visit-date-section");
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (!visitTime) {
+      showNotification("Please select a time slot for your visit.", "error", 3000);
+      const el = document.getElementById("visit-time-section");
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (!policiesAccepted) {
+      showNotification("Please agree to the policies and terms to continue.", "error", 3000);
+      const el = document.getElementById("visit-policies-section");
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    setShowConfirmModal(true);
+  };
+
   return (
     <div className="reservation-card">
       {/* Step Header */}
@@ -216,7 +239,7 @@ const ReservationVisitStep = ({
         }}
       >
         {/* ── Card 1: Select Date ── */}
-        <div className="content-card">
+        <div className="content-card" id="visit-date-section">
           <div className="card-section-title">
             <div className="icon"></div>
             Choose a Date
@@ -261,7 +284,7 @@ const ReservationVisitStep = ({
 
         {/* ── Card 2: Select Time ── */}
         {visitDate && (
-          <div className="content-card">
+          <div className="content-card" id="visit-time-section">
             <div className="card-section-title">
               <div className="icon"></div>
               Choose a Time
@@ -342,7 +365,7 @@ const ReservationVisitStep = ({
         )}
 
         {/* ── Card 3: Policies & Terms ── */}
-        <div className="content-card">
+        <div className="content-card" id="visit-policies-section">
           <div className="card-section-title">
             <div className="icon"></div>
             Policies, Terms & Conditions
@@ -382,9 +405,9 @@ const ReservationVisitStep = ({
         {/* ── Actions ── */}
         <div className="stage-buttons" style={{ justifyContent: "flex-end" }}>
           <button
-            onClick={() => setShowConfirmModal(true)}
+            onClick={handleSubmitWithValidation}
             className="btn btn-primary"
-            disabled={!canSubmit}
+            disabled={isSubmitted}
           >
             Confirm Visit
           </button>

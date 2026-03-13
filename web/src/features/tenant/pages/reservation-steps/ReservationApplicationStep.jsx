@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import ConfirmModal from "../../../../shared/components/ConfirmModal";
 import {
   PoliciesTermsModal,
@@ -233,6 +233,8 @@ const ReservationApplicationStep = ({
   applicationSubmitted,
   paymentApproved,
   onEditApplication,
+  scrollToSection,
+  onClearScrollToSection,
 }) => {
   // ── Modal state ────────────────────────────────────────────
   const [showPoliciesModal, setShowPoliciesModal] = useState(false);
@@ -256,6 +258,26 @@ const ReservationApplicationStep = ({
       return next;
     });
   }, []);
+
+  // ── Scroll-to-error: auto-expand and scroll to the target section ──
+  const sectionRefs = useRef({});
+  useEffect(() => {
+    if (!scrollToSection) return;
+    // Auto-expand the target section
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      next.add(scrollToSection);
+      return next;
+    });
+    // Scroll to it after a brief delay for the DOM to update
+    setTimeout(() => {
+      const el = sectionRefs.current[scrollToSection];
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      onClearScrollToSection?.();
+    }, 200);
+  }, [scrollToSection, onClearScrollToSection]);
 
   // ── Section completion ─────────────────────────────────────
   const sectionStatus = {
@@ -466,6 +488,7 @@ const ReservationApplicationStep = ({
         />
 
         {/* Section 1: Photo & Email */}
+        <div ref={(el) => { sectionRefs.current.photo = el; }}>
         <AccordionSection
           id="photo"
           title="Email & Photo"
@@ -481,8 +504,10 @@ const ReservationApplicationStep = ({
             setSelfiePhoto={setSelfiePhoto}
           />
         </AccordionSection>
+        </div>
 
         {/* Section 2: Personal Info */}
+        <div ref={(el) => { sectionRefs.current.personal = el; }}>
         <AccordionSection
           id="personal"
           title="Personal Information"
@@ -494,56 +519,31 @@ const ReservationApplicationStep = ({
         >
           <PersonalInfoSection
             {...{
-              lastName,
-              setLastName,
-              firstName,
-              setFirstName,
-              middleName,
-              setMiddleName,
-              nickname,
-              setNickname,
-              mobileNumber,
-              setMobileNumber,
-              birthday,
-              setBirthday,
-              maritalStatus,
-              setMaritalStatus,
-              nationality,
-              setNationality,
-              educationLevel,
-              setEducationLevel,
-              addressUnitHouseNo,
-              setAddressUnitHouseNo,
-              addressStreet,
-              setAddressStreet,
-              addressBarangay,
-              setAddressBarangay,
-              addressCity,
-              setAddressCity,
-              addressProvince,
-              setAddressProvince,
-              validIDFront,
-              setValidIDFront,
-              validIDBack,
-              setValidIDBack,
-              nbiClearance,
-              setNbiClearance,
-              nbiReason,
-              setNbiReason,
-              personalNotes,
-              setPersonalNotes,
-              handleNameInput,
-              handlePhoneInput,
-              handleGeneralInput,
-              validateField,
-              fieldErrors,
-              birthdayMin,
-              birthdayMax,
+              lastName, setLastName, firstName, setFirstName,
+              middleName, setMiddleName, nickname, setNickname,
+              mobileNumber, setMobileNumber, birthday, setBirthday,
+              maritalStatus, setMaritalStatus, nationality, setNationality,
+              educationLevel, setEducationLevel,
+              addressUnitHouseNo, setAddressUnitHouseNo,
+              addressStreet, setAddressStreet,
+              addressBarangay, setAddressBarangay,
+              addressCity, setAddressCity,
+              addressProvince, setAddressProvince,
+              validIDFront, setValidIDFront,
+              validIDBack, setValidIDBack,
+              nbiClearance, setNbiClearance,
+              nbiReason, setNbiReason,
+              personalNotes, setPersonalNotes,
+              handleNameInput, handlePhoneInput, handleGeneralInput,
+              validateField, fieldErrors,
+              birthdayMin, birthdayMax,
             }}
           />
         </AccordionSection>
+        </div>
 
         {/* Section 3: Emergency Contact */}
+        <div ref={(el) => { sectionRefs.current.emergency = el; }}>
         <AccordionSection
           id="emergency"
           title="Emergency Contact"
@@ -555,22 +555,18 @@ const ReservationApplicationStep = ({
         >
           <EmergencyContactSection
             {...{
-              emergencyContactName,
-              setEmergencyContactName,
-              emergencyRelationship,
-              setEmergencyRelationship,
-              emergencyContactNumber,
-              setEmergencyContactNumber,
-              healthConcerns,
-              setHealthConcerns,
-              handlePhoneInput,
-              validateField,
-              fieldErrors,
+              emergencyContactName, setEmergencyContactName,
+              emergencyRelationship, setEmergencyRelationship,
+              emergencyContactNumber, setEmergencyContactNumber,
+              healthConcerns, setHealthConcerns,
+              handlePhoneInput, validateField, fieldErrors,
             }}
           />
         </AccordionSection>
+        </div>
 
         {/* Section 4: Employment */}
+        <div ref={(el) => { sectionRefs.current.employment = el; }}>
         <AccordionSection
           id="employment"
           title="Employment / School"
@@ -582,28 +578,22 @@ const ReservationApplicationStep = ({
         >
           <EmploymentSection
             {...{
-              employerSchool,
-              setEmployerSchool,
-              employerAddress,
-              setEmployerAddress,
-              employerContact,
-              setEmployerContact,
-              startDate,
-              setStartDate,
-              occupation,
-              setOccupation,
-              previousEmployment,
-              setPreviousEmployment,
-              companyID,
-              setCompanyID,
-              companyIDReason,
-              setCompanyIDReason,
+              employerSchool, setEmployerSchool,
+              employerAddress, setEmployerAddress,
+              employerContact, setEmployerContact,
+              startDate, setStartDate,
+              occupation, setOccupation,
+              previousEmployment, setPreviousEmployment,
+              companyID, setCompanyID,
+              companyIDReason, setCompanyIDReason,
               handleGeneralInput,
             }}
           />
         </AccordionSection>
+        </div>
 
         {/* Section 5: Dorm Preferences */}
+        <div ref={(el) => { sectionRefs.current.dorm = el; }}>
         <AccordionSection
           id="dorm"
           title="Dorm Preferences"
@@ -615,29 +605,19 @@ const ReservationApplicationStep = ({
         >
           <DormPreferencesSection
             {...{
-              referralSource,
-              setReferralSource,
-              referrerName,
-              setReferrerName,
-              targetMoveInDate,
-              setTargetMoveInDate,
-              estimatedMoveInTime,
-              setEstimatedMoveInTime,
-              leaseDuration,
-              setLeaseDuration,
-              workSchedule,
-              setWorkSchedule,
-              workScheduleOther,
-              setWorkScheduleOther,
-              handleTargetDateInput,
-              handleTimeInput,
-              readOnly,
-              moveInMin,
-              moveInMax,
-              fieldErrors,
+              referralSource, setReferralSource,
+              referrerName, setReferrerName,
+              targetMoveInDate, setTargetMoveInDate,
+              estimatedMoveInTime, setEstimatedMoveInTime,
+              leaseDuration, setLeaseDuration,
+              workSchedule, setWorkSchedule,
+              workScheduleOther, setWorkScheduleOther,
+              handleTargetDateInput, handleTimeInput,
+              readOnly, moveInMin, moveInMax, fieldErrors,
             }}
           />
         </AccordionSection>
+        </div>
 
         {/* Section 6: Agreements */}
         <AgreementsSection

@@ -2,6 +2,8 @@ import { useState, useMemo } from "react";
 import { billingApi } from "../../../shared/api/apiClient";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { TrendingUp, ShieldAlert, Clock, AlertTriangle, Download } from "lucide-react";
+import { showNotification } from "../../../shared/utils/notification";
+import getFriendlyError from "../../../shared/utils/friendlyError";
 import { exportToCSV, BILLING_COLUMNS } from "../../../shared/utils/exportUtils";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -107,7 +109,7 @@ const AdminBillingPage = () => {
 
   const handleGenerate = async () => {
     if (!selectedRoom) return;
-    if (genTotal <= 0) return alert("Please enter at least one utility charge");
+    if (genTotal <= 0) return showNotification("Please enter at least one utility charge.", "error");
     setGenerating(true);
     try {
       const monthDate = genMonth ? new Date(genMonth + "-01") : new Date();
@@ -124,7 +126,7 @@ const AdminBillingPage = () => {
       setSelectedRoom(null);
       refetchAll();
     } catch (err) {
-      alert(err.error || err.message || "Failed to generate bills");
+      showNotification(getFriendlyError(err, "Failed to generate bills. Please try again."), "error");
     } finally {
       setGenerating(false);
     }
@@ -145,7 +147,7 @@ const AdminBillingPage = () => {
       setPayNote("");
       refetchAll();
     } catch (err) {
-      alert(err.message || "Failed to mark as paid");
+      showNotification(getFriendlyError(err, "Failed to mark as paid. Please try again."), "error");
     } finally {
       setPaying(false);
     }
@@ -153,13 +155,13 @@ const AdminBillingPage = () => {
 
   // ── Apply penalties ──
   const handleApplyPenalties = async () => {
-    if (!confirm("Apply ₱50/day penalties to all overdue bills?")) return;
+    if (!window.confirm("Apply ₱50/day penalties to all overdue bills?")) return;
     try {
       const res = await billingApi.applyPenalties();
-      alert(res.message || "Penalties applied");
+      showNotification("Penalties applied successfully.", "success");
       refetchAll();
     } catch (err) {
-      alert(err.error || err.message || "Failed to apply penalties");
+      showNotification(getFriendlyError(err, "Failed to apply penalties."), "error");
     }
   };
 
@@ -204,7 +206,7 @@ const AdminBillingPage = () => {
                 const res = await billingApi.getExportData(params);
                 exportToCSV(res.data || [], BILLING_COLUMNS, `billing_export_${new Date().toISOString().slice(0, 10)}`);
               } catch (err) {
-                alert(err.message || "Export failed");
+                showNotification(getFriendlyError(err, "Export failed. Please try again."), "error");
               }
             }}
             style={{

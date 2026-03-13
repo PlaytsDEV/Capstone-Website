@@ -1,4 +1,5 @@
 import '../styles/tenant-detail-modal.css';
+import { showNotification } from '../../../shared/utils/notification';
 
 const formatDate = (d) => {
   if (!d || d === '-') return 'N/A';
@@ -131,7 +132,7 @@ export default function TenantDetailModal({ tenant, onClose }) {
                         leaseDuration: 12,
                         totalPrice: tenant.monthlyRent,
                       });
-                    } catch (err) { console.error('PDF generation failed:', err); alert('Failed to generate contract PDF'); }
+                    } catch (err) { console.error('PDF generation failed:', err); showNotification('Failed to generate contract PDF. Please try again.', 'error'); }
                   }}
                 >
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -336,9 +337,9 @@ export default function TenantDetailModal({ tenant, onClose }) {
                       try {
                         const { reservationApi } = await import('../../../shared/api/apiClient');
                         const res = await reservationApi.renew(tenant.reservationId, { additionalMonths: m });
-                        alert(res.message || 'Contract renewed!');
+                        showNotification(res.message || 'Contract renewed!', 'success');
                         onClose();
-                      } catch (err) { alert(err.error || err.message || 'Renewal failed'); }
+                      } catch (err) { showNotification('Renewal failed. Please try again.', 'error'); }
                     }}
                     style={{ background: '#EEF2FF', color: '#4338CA', border: '1px solid #C7D2FE', borderRadius: '8px', padding: '10px 16px', cursor: 'pointer', fontWeight: 600, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}
                   >
@@ -354,9 +355,9 @@ export default function TenantDetailModal({ tenant, onClose }) {
                       try {
                         const { reservationApi } = await import('../../../shared/api/apiClient');
                         const res = await reservationApi.checkout(tenant.reservationId, { reason: 'Admin checkout' });
-                        alert(res.message || 'Tenant checked out');
+                        showNotification(res.message || 'Tenant checked out', 'success');
                         onClose();
-                      } catch (err) { alert(err.error || err.message || 'Checkout failed'); }
+                      } catch (err) { showNotification('Checkout failed. Please try again.', 'error'); }
                     }}
                     style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: '8px', padding: '10px 16px', cursor: 'pointer', fontWeight: 600, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}
                   >
@@ -376,9 +377,9 @@ export default function TenantDetailModal({ tenant, onClose }) {
                       try {
                           const { reservationApi } = await import('../../../shared/api/apiClient');
                           const res = await reservationApi.transfer(tenant.reservationId, { newRoomId, newBedId, reason });
-                          alert(res.message || 'Transfer complete');
+                          showNotification(res.message || 'Transfer complete', 'success');
                           onClose();
-                      } catch (err) { alert(err.error || err.message || 'Transfer failed'); }
+                      } catch (err) { showNotification('Transfer failed. Please try again.', 'error'); }
                     }}
                     style={{ background: '#FFF7ED', color: '#C2410C', border: '1px solid #FED7AA', borderRadius: '8px', padding: '10px 16px', cursor: 'pointer', fontWeight: 600, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}
                   >

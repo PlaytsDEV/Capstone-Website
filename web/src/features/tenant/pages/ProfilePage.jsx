@@ -215,7 +215,7 @@ const ProfilePage = () => {
       queryClient.invalidateQueries({ queryKey: ["users", "currentUser"] });
     } catch (err) {
       console.error("Error updating profile:", err);
-      setError(err.message || "Failed to update profile");
+      setError("Failed to update profile. Please try again.");
     } finally {
       setSaving(false);
     }

@@ -101,9 +101,14 @@ const Sidebar = ({ isOpen, toggleSidebar, isCollapsed, toggleCollapse }) => {
           <div className="sidebar-user">
             <div className="sidebar-user-avatar">
               {user?.profileImage ? (
-                <img src={user.profileImage} alt="Profile" />
-              ) : (
-                <div className="sidebar-user-initials">
+                <img
+                  src={user.profileImage}
+                  alt="Profile"
+                  onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling && (e.target.nextSibling.style.display = 'flex'); }}
+                />
+              ) : null}
+              {(!user?.profileImage || true) && (
+                <div className="sidebar-user-initials" style={{ display: user?.profileImage ? 'none' : 'flex' }}>
                   {user?.firstName?.[0]}
                   {user?.lastName?.[0]}
                 </div>

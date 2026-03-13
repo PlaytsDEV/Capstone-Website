@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { reservationApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
+import getFriendlyError from "../../../shared/utils/friendlyError";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
 import "../styles/reservation-details-modal.css";
 
@@ -168,7 +169,7 @@ export default function ReservationDetailsModal({
           onClose();
         } catch (err) {
           console.error(err);
-          showNotification(`Failed: ${err.message || key}`, "error");
+          showNotification(getFriendlyError(err, "Action failed. Please try again."), "error");
         } finally {
           setIsSubmitting(false);
         }

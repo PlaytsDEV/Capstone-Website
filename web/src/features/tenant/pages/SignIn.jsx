@@ -125,6 +125,30 @@ function SignIn() {
 
   const isFormValid = () => fieldValid.email && fieldValid.password;
 
+  const validateForm = () => {
+    setTouched({ email: true, password: true });
+    validateField("email", formData.email);
+    validateField("password", formData.password);
+
+    if (!formData.email.trim() || validateEmail(formData.email)) {
+      showNotification(validateEmail(formData.email) || "Email is required", "error");
+      setTimeout(() => {
+        const el = document.getElementById("email");
+        if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.focus(); }
+      }, 100);
+      return false;
+    }
+    if (!formData.password.trim()) {
+      showNotification("Password is required", "error");
+      setTimeout(() => {
+        const el = document.getElementById("password");
+        if (el) { el.scrollIntoView({ behavior: "smooth", block: "center" }); el.focus(); }
+      }, 100);
+      return false;
+    }
+    return true;
+  };
+
   // ── Auth handlers ──────────────────────────────────────────
   const handlePostAuthFlow = (loginResponse) => {
     showNotification(`Welcome back, ${loginResponse.user.firstName}!`, "success", 4000);
@@ -140,6 +164,7 @@ function SignIn() {
 
   const handleEmailPasswordLogin = async (e) => {
     e.preventDefault();
+    if (!validateForm()) return;
     if (isLockedOut) {
       showNotification(
         `Too many attempts. Try again in ${lockoutCountdown}s.`,
@@ -371,7 +396,6 @@ function SignIn() {
                 type="email"
                 id="email"
                 name="email"
-                required
                 value={formData.email}
                 onChange={handleChange}
                 disabled={submitting}
@@ -398,7 +422,6 @@ function SignIn() {
                   type={showPassword ? "text" : "password"}
                   id="password"
                   name="password"
-                  required
                   value={formData.password}
                   onChange={handleChange}
                   disabled={submitting}
@@ -451,12 +474,12 @@ function SignIn() {
 
             <button
               type="submit"
-              className="w-full py-6 rounded-xl text-white font-light hover:opacity-90 transition-opacity text-base flex items-center justify-center gap-2"
+              className="auth-submit-btn w-full py-6 rounded-xl text-white font-light transition-opacity text-base flex items-center justify-center gap-2"
               style={{
                 backgroundColor: "#E7710F",
                 opacity: submitting ? 0.7 : 1,
               }}
-              disabled={!isFormValid() || submitting || socialLoading || isLockedOut}
+              disabled={submitting || socialLoading || isLockedOut}
             >
               {isLockedOut ? (
                 `Locked out (${lockoutCountdown}s)`

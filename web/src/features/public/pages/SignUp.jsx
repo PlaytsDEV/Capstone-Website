@@ -173,35 +173,41 @@ function SignUp() {
       "confirmPassword",
     ].forEach((f) => validateField(f, formData[f]));
 
-    if (!formData.firstName.trim()) {
-      showNotification("First name is required", "error");
+    // Find the first field with an error and scroll to it
+    const scrollToField = (fieldName, message) => {
+      showNotification(message, "error");
+      setTimeout(() => {
+        const el = document.getElementById(fieldName);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.focus();
+        }
+      }, 100);
       return false;
+    };
+
+    if (!formData.firstName.trim()) {
+      return scrollToField("firstName", "First name is required");
     }
     if (!formData.lastName.trim()) {
-      showNotification("Last name is required", "error");
-      return false;
+      return scrollToField("lastName", "Last name is required");
     }
     const emailError = validateEmail(formData.email);
     if (emailError) {
-      showNotification(emailError, "error");
-      return false;
+      return scrollToField("email", emailError);
     }
     if (!formData.phone.trim()) {
-      showNotification("Phone number is required", "error");
-      return false;
+      return scrollToField("phone", "Phone number is required");
     }
     if (!/^[0-9]{1,11}$/.test(formData.phone)) {
-      showNotification("Phone number must be 1-11 digits only", "error");
-      return false;
+      return scrollToField("phone", "Phone number must be 1-11 digits only");
     }
     const passwordError = validatePassword(formData.password);
     if (passwordError) {
-      showNotification(passwordError, "error");
-      return false;
+      return scrollToField("password", passwordError);
     }
     if (formData.password !== formData.confirmPassword) {
-      showNotification("Passwords do not match", "error");
-      return false;
+      return scrollToField("confirmPassword", "Passwords do not match");
     }
     if (!agreedToTerms) {
       showNotification("Please agree to Terms and Conditions", "error");
@@ -469,7 +475,6 @@ function SignUp() {
                     type="text"
                     id="firstName"
                     name="firstName"
-                    required
                     value={formData.firstName}
                     onChange={handleChange}
                     disabled={loading}
@@ -493,7 +498,6 @@ function SignUp() {
                     type="text"
                     id="lastName"
                     name="lastName"
-                    required
                     value={formData.lastName}
                     onChange={handleChange}
                     disabled={loading}
@@ -519,7 +523,6 @@ function SignUp() {
                   type="email"
                   id="email"
                   name="email"
-                  required
                   value={formData.email}
                   onChange={handleChange}
                   disabled={loading}
@@ -544,7 +547,6 @@ function SignUp() {
                   type="tel"
                   id="phone"
                   name="phone"
-                  required
                   value={formData.phone}
                   onChange={handleChange}
                   disabled={loading}
@@ -572,7 +574,6 @@ function SignUp() {
                     type={showPassword ? "text" : "password"}
                     id="password"
                     name="password"
-                    required
                     value={formData.password}
                     onChange={handleChange}
                     disabled={loading}
@@ -747,7 +748,6 @@ function SignUp() {
                     type={showConfirmPassword ? "text" : "password"}
                     id="confirmPassword"
                     name="confirmPassword"
-                    required
                     value={formData.confirmPassword}
                     onChange={handleChange}
                     disabled={loading}
@@ -816,9 +816,9 @@ function SignUp() {
 
               <button
                 type="submit"
-                className="w-full py-6 rounded-xl text-white font-light hover:opacity-90 transition-opacity text-base"
+                className="auth-submit-btn w-full py-6 rounded-xl text-white font-light transition-opacity text-base"
                 style={{ backgroundColor: "#E7710F" }}
-                disabled={!isFormValid() || loading}
+                disabled={loading}
               >
                 {loading ? "Creating Account..." : "Create account"}
               </button>

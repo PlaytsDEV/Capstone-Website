@@ -46,10 +46,10 @@ export function validateFile(file) {
  * @returns {Promise<{ token: string, expire: number, signature: string }>}
  */
 async function getAuthParams() {
-  const response = await authFetch("/api/upload/imagekit-auth");
-  const data = await response.json();
-  if (!data.success) throw new Error("Failed to get upload auth");
-  return data.data;
+  const data = await authFetch("/upload/imagekit-auth");
+  // authFetch auto-unwraps { success, data } → returns data directly
+  if (!data || !data.token) throw new Error("Unable to prepare file upload. Please try again.");
+  return data;
 }
 
 /**
@@ -94,10 +94,10 @@ export async function uploadToImageKit(file, onProgress) {
           const data = JSON.parse(xhr.responseText);
           resolve(data.url);
         } catch {
-          reject(new Error("Failed to parse ImageKit response"));
+          reject(new Error("Upload completed but we couldn't process the response. Please try again."));
         }
       } else {
-        reject(new Error(`Upload failed (${xhr.status}): ${xhr.statusText}`));
+        reject(new Error("File upload failed. Please check your connection and try again."));
       }
     });
 

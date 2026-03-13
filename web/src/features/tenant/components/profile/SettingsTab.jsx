@@ -134,7 +134,7 @@ const SettingsTab = () => {
         );
       } else {
         showNotification(
-          error.message || "Failed to change password",
+          "Failed to change password. Please try again.",
           "error",
         );
       }

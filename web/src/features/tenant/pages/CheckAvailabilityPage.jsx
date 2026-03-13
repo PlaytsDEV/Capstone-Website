@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { showNotification } from "../../../shared/utils/notification";
+import getFriendlyError from "../../../shared/utils/friendlyError";
 import { Search, SlidersHorizontal } from "lucide-react";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { useRooms } from "../../../shared/hooks/queries/useRooms";
@@ -214,8 +215,7 @@ function CheckAvailabilityPage() {
       } catch (err) {
         console.error("Failed to change room:", err);
         showNotification(
-          "Failed to change room. " +
-            (err?.response?.data?.error || err.message),
+          getFriendlyError(err, "Failed to change room. Please try again."),
           "error",
           4000,
         );
@@ -274,8 +274,7 @@ function CheckAvailabilityPage() {
         );
       } else {
         showNotification(
-          "Failed to reserve room. " +
-            (err?.response?.data?.error || err.message),
+          getFriendlyError(err, "Failed to reserve room. Please try again."),
           "error",
           4000,
         );

@@ -1,5 +1,6 @@
 import React, { useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { showNotification } from "../../../../shared/utils/notification";
 import {
   User,
   Bell,
@@ -93,6 +94,7 @@ const ProfileSidebar = ({
       }
     } catch (err) {
       console.error("Profile image upload failed:", err);
+      showNotification("Failed to upload photo. Please try again.", "error", 3000);
     } finally {
       setUploading(false);
       e.target.value = "";
