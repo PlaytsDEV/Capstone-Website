@@ -114,7 +114,7 @@ const ProfilePage = () => {
     });
   }, [profile]);
 
-  // ── Payment success redirect handler ──────────────────────
+  // ── Payment redirect handler (success OR cancelled) ────────
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const paymentStatus = params.get("payment");
@@ -125,27 +125,30 @@ const ProfilePage = () => {
     // Clean URL immediately
     navigate(location.pathname, { replace: true });
 
-    if (paymentStatus === "success" && sessionId) {
-      // Verify payment with backend
-      const verifyPayment = async () => {
+    // Always verify session status — PayMongo's back button sends to
+    // cancel_url even after successful payment, so we can't trust the URL
+    const verifyPayment = async () => {
+      if (sessionId) {
         try {
           const result = await billingApi.checkPaymentStatus(sessionId);
           if (result?.isPaid) {
             showNotification("Payment successful! Your reservation is confirmed.", "success", 5000);
-          } else {
-            showNotification("Payment is being processed. Please wait a moment.", "info", 5000);
+            queryClient.invalidateQueries({ queryKey: ["reservations"] });
+            return;
           }
         } catch (err) {
           console.error("Payment verification failed:", err);
-          showNotification("Payment received. Verifying with PayMongo...", "info", 5000);
         }
-        // Refresh reservations regardless
-        queryClient.invalidateQueries({ queryKey: ["reservations"] });
-      };
-      verifyPayment();
-    } else if (paymentStatus === "cancelled") {
-      showNotification("Payment was cancelled. You can try again from your profile.", "warning", 5000);
-    }
+      }
+      // Only show cancelled if session truly wasn't paid
+      if (paymentStatus === "cancelled") {
+        showNotification("Payment was cancelled. You can try again from your profile.", "warning", 5000);
+      } else {
+        showNotification("Payment is being processed. Please wait a moment.", "info", 5000);
+      }
+      queryClient.invalidateQueries({ queryKey: ["reservations"] });
+    };
+    verifyPayment();
   }, [location.search]);
 
   // ── Derive reservations, visits, activity from cached data ─

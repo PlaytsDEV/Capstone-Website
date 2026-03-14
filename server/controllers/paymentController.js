@@ -112,7 +112,7 @@ export const createDepositCheckout = async (req, res, next) => {
         userId: String(dbUser._id),
       },
       successUrl: `${FRONTEND_URL}/applicant/profile?payment=success&session_id={id}`,
-      cancelUrl: `${FRONTEND_URL}/applicant/profile?payment=cancelled`,
+      cancelUrl: `${FRONTEND_URL}/applicant/profile?payment=cancelled&session_id={id}`,
     });
 
     reservation.paymongoSessionId = sessionId;
