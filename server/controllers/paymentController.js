@@ -55,6 +55,24 @@ export const createBillCheckout = async (req, res, next) => {
       throw new AppError("Bill is already paid", 400, "ALREADY_PAID");
     }
 
+    // --- Double-payment guard: reuse existing unpaid session ---
+    if (bill.paymongoSessionId) {
+      try {
+        const existing = await getCheckoutSession(bill.paymongoSessionId);
+        const existingUrl = existing?.attributes?.checkout_url;
+        const existingPayments = existing?.attributes?.payments || [];
+        if (existingUrl && existingPayments.length === 0) {
+          return sendSuccess(res, {
+            checkoutUrl: existingUrl,
+            sessionId: bill.paymongoSessionId,
+            reused: true,
+          });
+        }
+      } catch {
+        // Session expired or invalid — create a new one below
+      }
+    }
+
     const amountDue = bill.totalAmount - (bill.paidAmount || 0);
     const monthLabel = dayjs(bill.billingMonth).format("MMMM YYYY");
 
@@ -98,6 +116,25 @@ export const createDepositCheckout = async (req, res, next) => {
 
     if (reservation.paymentStatus === "paid") {
       throw new AppError("Deposit is already paid", 400, "ALREADY_PAID");
+    }
+
+    // --- Double-payment guard: reuse existing unpaid session ---
+    if (reservation.paymongoSessionId) {
+      try {
+        const existing = await getCheckoutSession(reservation.paymongoSessionId);
+        const existingUrl = existing?.attributes?.checkout_url;
+        const existingPayments = existing?.attributes?.payments || [];
+        // If session exists and has no payments yet, reuse it
+        if (existingUrl && existingPayments.length === 0) {
+          return sendSuccess(res, {
+            checkoutUrl: existingUrl,
+            sessionId: reservation.paymongoSessionId,
+            reused: true,
+          });
+        }
+      } catch {
+        // Session expired or invalid — create a new one below
+      }
     }
 
     const amount = 2000;
@@ -181,6 +218,7 @@ export const checkSessionStatus = async (req, res, next) => {
           reservation.paymentDate = new Date();
           reservation.paymentMethod = "paymongo";
           reservation.paymongoPaymentId = payments[0]?.id || sessionId;
+          reservation.status = "reserved"; // triggers reservation code generation in pre-save hook
           await reservation.save();
         }
       }

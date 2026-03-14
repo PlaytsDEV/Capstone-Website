@@ -10,7 +10,10 @@ import {
   ArrowRight,
   AlertCircle,
   MapPin,
+  Download,
 } from "lucide-react";
+import { useCurrentUser } from "../../../shared/hooks/queries/useUsers";
+import { generateDepositReceipt } from "../../../shared/utils/receiptGenerator";
 
 /**
  * ─── RESERVATION DASHBOARD ──────────────────────────────────────────────────
@@ -104,6 +107,13 @@ function resolveCurrentStage(reservation) {
 function getStepStatus(stepStage, currentStage, reservation) {
   if (stepStage < currentStage) return "complete";
   if (stepStage === currentStage) {
+    // Step 5 is the final step — if reservation is confirmed, mark as complete (green)
+    if (stepStage === 5 && reservation) {
+      const status = reservation.reservationStatus || reservation.status;
+      if (status === "reserved" || reservation.paymentStatus === "paid") {
+        return "complete";
+      }
+    }
     // Check for "waiting" states at steps 2 and 4
     if (stepStage === 2 && reservation) {
       const hasSchedule = reservation.visitDate || reservation.viewingType;
@@ -273,6 +283,7 @@ function getStepDesc(step, status, reservation) {
 
 export default function ReservationDashboard({ reservation, visits = [] }) {
   const navigate = useNavigate();
+  const { data: profile } = useCurrentUser();
   const currentStage = resolveCurrentStage(reservation);
   const action = getNextAction(reservation, currentStage);
   const [showCancelModal, setShowCancelModal] = React.useState(false);
@@ -518,12 +529,38 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
       {isConfirmed && (
         <div style={styles.celebrationCard}>
           <CheckCircle size={24} color="#059669" />
-          <div style={{ marginLeft: 12 }}>
+          <div style={{ marginLeft: 12, flex: 1 }}>
             <h4 style={styles.celebrationTitle}>Reservation Secured!</h4>
             <p style={styles.celebrationDesc}>
               Your reservation is secured. Please prepare for your move-in
               date.
             </p>
+            {reservation.paymentDate && (
+              <div style={{ marginTop: 8, fontSize: 12, color: "#047857" }}>
+                <div>💳 Paid: ₱2,000 via {reservation.paymentMethod === "paymongo" ? "Online Payment" : reservation.paymentMethod || "Online"}</div>
+                <div>📅 Date: {formatDate(reservation.paymentDate)}</div>
+                <button
+                  onClick={() => generateDepositReceipt(reservation, profile)}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    marginTop: 8,
+                    padding: "6px 14px",
+                    background: "#059669",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  <Download size={14} />
+                  Download Receipt
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

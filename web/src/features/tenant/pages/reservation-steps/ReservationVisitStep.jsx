@@ -152,9 +152,11 @@ const ReservationVisitStep = ({
   reservationData,
   reservationCode,
   readOnly,
+  agreedToPrivacy,
 }) => {
   const navigate = useNavigate();
-  const [policiesAccepted, setPoliciesAccepted] = useState(false);
+  // Initialize from parent state; always true when read-only (already submitted)
+  const [policiesAccepted, setPoliciesAccepted] = useState(agreedToPrivacy || readOnly || false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showPoliciesModal, setShowPoliciesModal] = useState(false);
@@ -392,7 +394,7 @@ const ReservationVisitStep = ({
             <input
               type="checkbox"
               id="policies-accepted"
-              checked={policiesAccepted}
+              checked={policiesAccepted || readOnly}
               onChange={(e) => setPoliciesAccepted(e.target.checked)}
             />
             <label htmlFor="policies-accepted" className="checkbox-label">

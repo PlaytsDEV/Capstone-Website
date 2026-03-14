@@ -32,6 +32,8 @@ const FileUploadField = ({
   accept = "image/*,.pdf",
   hint,
   userId,
+  hasError,
+  required,
 }) => {
   const inputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
@@ -41,6 +43,7 @@ const FileUploadField = ({
 
   const isUploaded = typeof value === "string" && value.startsWith("http");
   const isFile = value instanceof File;
+  const showFieldError = hasError && !isUploaded && !isFile;
 
   const handleClick = () => {
     if (!uploading) inputRef.current?.click();
@@ -91,7 +94,10 @@ const FileUploadField = ({
 
   return (
     <div className="form-group">
-      <label className="form-label">{label}</label>
+      <label className="form-label">
+        {label}
+        {required && <span style={{ color: "#dc2626" }}> *</span>}
+      </label>
       <input
         ref={inputRef}
         type="file"
@@ -105,13 +111,13 @@ const FileUploadField = ({
         onDragOver={handleDragOver}
         style={{
           padding: "16px",
-          border: `2px dashed ${error ? "#EF4444" : isUploaded ? "#10B981" : "#d9d9d9"}`,
+          border: `2px dashed ${showFieldError ? "#EF4444" : error ? "#EF4444" : isUploaded ? "#10B981" : "#d9d9d9"}`,
           borderRadius: "8px",
           textAlign: "center",
           cursor: uploading ? "wait" : "pointer",
           transition: "all 0.3s",
           marginTop: "8px",
-          background: error ? "#FEF2F2" : isUploaded ? "#F0FDF4" : "transparent",
+          background: showFieldError ? "#FEF2F2" : error ? "#FEF2F2" : isUploaded ? "#F0FDF4" : "transparent",
           opacity: uploading ? 0.85 : 1,
         }}
       >

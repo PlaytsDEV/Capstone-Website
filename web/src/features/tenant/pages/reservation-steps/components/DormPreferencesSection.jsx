@@ -6,38 +6,39 @@ import {
   LEASE_OPTIONS,
 } from "../applicationFormConstants";
 
+const errBorder = (show, value) =>
+  show && !value ? "1.5px solid #dc2626" : undefined;
+
 /**
  * Section 5: Dorm Preferences — referral, move-in date/time, lease, work schedule.
  */
 const DormPreferencesSection = ({
-  referralSource,
-  setReferralSource,
-  referrerName,
-  setReferrerName,
-  targetMoveInDate,
-  setTargetMoveInDate,
-  estimatedMoveInTime,
-  setEstimatedMoveInTime,
-  leaseDuration,
-  setLeaseDuration,
-  workSchedule,
-  setWorkSchedule,
-  workScheduleOther,
-  setWorkScheduleOther,
-  handleTargetDateInput,
-  handleTimeInput,
-  readOnly,
-  moveInMin,
-  moveInMax,
-  fieldErrors,
+  referralSource, setReferralSource,
+  referrerName, setReferrerName,
+  targetMoveInDate, setTargetMoveInDate,
+  estimatedMoveInTime, setEstimatedMoveInTime,
+  leaseDuration, setLeaseDuration,
+  workSchedule, setWorkSchedule,
+  workScheduleOther, setWorkScheduleOther,
+  handleTargetDateInput, handleTimeInput,
+  readOnly, moveInMin, moveInMax, fieldErrors,
+  showValidationErrors,
 }) => (
   <>
     {/* Referral Source */}
-    <div className="form-group">
+    <div className="form-group" data-field="referralSource">
       <label className="form-label">
-        How Did You First Learn About Lilycrest Gil Puyat?
+        How Did You First Learn About Lilycrest Gil Puyat?{" "}
+        <span style={{ color: "#dc2626" }}>*</span>
       </label>
-      <div className="radio-group">
+      <div
+        className="radio-group"
+        style={{
+          border: errBorder(showValidationErrors, referralSource),
+          borderRadius: "8px",
+          padding: showValidationErrors && !referralSource ? "8px" : undefined,
+        }}
+      >
         {REFERRAL_OPTIONS.map((opt) => (
           <div className="radio-option" key={opt.id}>
             <input
@@ -54,6 +55,7 @@ const DormPreferencesSection = ({
           </div>
         ))}
       </div>
+      <FieldError error={showValidationErrors && !referralSource ? "Please select how you learned about us" : null} />
     </div>
 
     {referralSource === "friend" && (
@@ -71,7 +73,7 @@ const DormPreferencesSection = ({
     )}
 
     {/* Move-in Date */}
-    <div className="form-group">
+    <div className="form-group" data-field="targetMoveInDate">
       <label className="form-label">
         Target Move In Date (within 3 months) <span style={{ color: "#dc2626" }}>*</span>
       </label>
@@ -87,20 +89,17 @@ const DormPreferencesSection = ({
         style={{
           colorScheme: "light",
           cursor: readOnly ? "not-allowed" : "pointer",
+          border: errBorder(showValidationErrors, targetMoveInDate),
         }}
       />
       <div style={{ fontSize: "11px", color: "#6B7280", marginTop: "4px" }}>
         Must be at least 3 days from today
       </div>
-      {fieldErrors.targetMoveInDate && (
-        <div style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}>
-          {fieldErrors.targetMoveInDate}
-        </div>
-      )}
+      <FieldError error={showValidationErrors && !targetMoveInDate ? "Move-in date is required" : fieldErrors.targetMoveInDate} />
     </div>
 
     {/* Move-in Time */}
-    <div className="form-group">
+    <div className="form-group" data-field="estimatedMoveInTime">
       <label className="form-label">
         Estimated Time of Move In (8:00 AM to 6:00 PM) <span style={{ color: "#dc2626" }}>*</span>
       </label>
@@ -112,7 +111,7 @@ const DormPreferencesSection = ({
           cursor: "pointer",
           padding: "10px 12px",
           borderRadius: "8px",
-          border: "1.5px solid #d1d5db",
+          border: errBorder(showValidationErrors, estimatedMoveInTime) || "1.5px solid #d1d5db",
           fontSize: "14px",
           background: "white",
           width: "100%",
@@ -125,11 +124,7 @@ const DormPreferencesSection = ({
           </option>
         ))}
       </select>
-      {fieldErrors.estimatedMoveInTime && (
-        <div style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}>
-          {fieldErrors.estimatedMoveInTime}
-        </div>
-      )}
+      <FieldError error={showValidationErrors && !estimatedMoveInTime ? "Please select a move-in time" : fieldErrors.estimatedMoveInTime} />
     </div>
 
     {/* Lease Duration */}
@@ -150,9 +145,18 @@ const DormPreferencesSection = ({
     </div>
 
     {/* Work Schedule */}
-    <div className="form-group">
-      <label className="form-label">Work Schedule</label>
-      <div className="radio-group">
+    <div className="form-group" data-field="workSchedule">
+      <label className="form-label">
+        Work Schedule <span style={{ color: "#dc2626" }}>*</span>
+      </label>
+      <div
+        className="radio-group"
+        style={{
+          border: errBorder(showValidationErrors, workSchedule),
+          borderRadius: "8px",
+          padding: showValidationErrors && !workSchedule ? "8px" : undefined,
+        }}
+      >
         {WORK_SCHEDULE_OPTIONS.map((opt) => (
           <div className="radio-option" key={opt.id}>
             <input
@@ -169,6 +173,7 @@ const DormPreferencesSection = ({
           </div>
         ))}
       </div>
+      <FieldError error={showValidationErrors && !workSchedule ? "Please select your work schedule" : null} />
     </div>
 
     {workSchedule === "others" && (
@@ -186,5 +191,14 @@ const DormPreferencesSection = ({
     )}
   </>
 );
+
+const FieldError = ({ error }) => {
+  if (!error) return null;
+  return (
+    <div style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}>
+      {error}
+    </div>
+  );
+};
 
 export default DormPreferencesSection;

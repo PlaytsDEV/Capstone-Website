@@ -268,16 +268,24 @@ function SignUp() {
         );
         try {
           const actionCodeSettings = {
-            url: `${window.location.origin}/signin`,
+            url: `${window.location.origin}/verify-email`,
           };
           await sendEmailVerification(firebaseUser, actionCodeSettings);
         } catch (emailError) {
           console.error("⚠️ Failed to send verification email:", emailError);
+          showNotification(
+            "Account created, but we couldn't send the verification email. You can request a new one from the sign-in page.",
+            "warning",
+            6000,
+          );
         }
         showNotification(
-          "Account created successfully! Please check your email and verify before logging in.",
+          "Account created! Please check your email and verify before logging in.",
           "success",
+          6000,
         );
+        // Save email so sign-in page can pre-fill it after verification
+        localStorage.setItem("lilycrest_pending_email", formData.email);
         await auth.signOut();
         setTimeout(() => {
           setGlobalLoading(true);

@@ -198,7 +198,7 @@ export const createReservation = async (req, res, next) => {
       targetMoveInDate: b.targetMoveInDate
         ? new Date(b.targetMoveInDate)
         : null,
-      leaseDuration: b.leaseDuration || 12,
+      leaseDuration: b.leaseDuration || null,
       billingEmail: b.billingEmail || dbUser.email,
       viewingType: b.viewingType || null,
       isOutOfTown: b.isOutOfTown || false,

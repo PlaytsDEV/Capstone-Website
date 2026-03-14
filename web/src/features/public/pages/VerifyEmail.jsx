@@ -28,10 +28,8 @@ function VerifyEmail() {
       const oobCode = searchParams.get("oobCode");
 
       if (!oobCode) {
-        setStatus("error");
-        setErrorMessage(
-          "Invalid verification link. No verification code found.",
-        );
+        // Firebase already verified on their hosted page — show success
+        setStatus("success");
         return;
       }
 
@@ -64,7 +62,7 @@ function VerifyEmail() {
   useEffect(() => {
     if (status !== "success") return;
     if (countdown <= 0) {
-      window.location.href = "/signin";
+      window.location.href = "/signin?verified=true";
       return;
     }
     const timer = setTimeout(() => setCountdown((c) => c - 1), 1000);
@@ -228,7 +226,7 @@ function VerifyEmail() {
                 You can now sign in to your account.
               </p>
               <Link
-                to="/signin"
+                to="/signin?verified=true"
                 style={{
                   display: "inline-block",
                   padding: "12px 36px",

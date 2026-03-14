@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { showNotification } from "../../../shared/utils/notification";
 import getFriendlyError from "../../../shared/utils/friendlyError";
 import { reservationApi, roomApi, billingApi } from "../../../shared/api/apiClient";
+import { usePaymentRedirect } from "../hooks/usePaymentRedirect";
 import GlobalLoading from "../../../shared/components/GlobalLoading";
 import "../../../shared/styles/notification.css";
 import "../styles/reservation-flow.css";
@@ -62,7 +63,6 @@ function ReservationFlowPage() {
   const [reservationId, setReservationId] = useState(null);
   const [devBypassValidation, setDevBypassValidation] = useState(false);
   const [payingOnline, setPayingOnline] = useState(false);
-  const [searchParams, setSearchParams] = useSearchParams();
   const [successOverlay, setSuccessOverlay] = useState({
     show: false,
     title: "",
@@ -162,6 +162,18 @@ function ReservationFlowPage() {
     targetMoveInDate: "",
     leaseDuration: "",
     billingEmail: "",
+  });
+
+  // ── Payment redirect hook (must be after all useState) ────
+  const { searchParams, setSearchParams } = usePaymentRedirect({
+    user,
+    showNotification,
+    navigate,
+    setPaymentSubmitted,
+    setPaymentApproved,
+    setPaymentMethod,
+    setCurrentStage,
+    setHighestStageReached,
   });
   const [saveStatus, setSaveStatus] = useState("");
   const autoSaveTimerRef = useRef(null);
@@ -263,6 +275,11 @@ function ReservationFlowPage() {
         r.targetMoveInDate.split?.("T")?.[0] || r.targetMoveInDate,
       );
     if (r.leaseDuration) setLeaseDuration(String(r.leaseDuration));
+    // Restore agreements ONLY if the application was previously submitted
+    // (prevents step 2's agreedToPrivacy from pre-checking step 3's consent)
+    const hasApplication = Boolean(r.firstName && r.lastName && r.mobileNumber);
+    if (hasApplication && r.agreedToPrivacy) setAgreedToPrivacy(true);
+    if (hasApplication && r.agreedToCertification) setAgreedToCertification(true);
     // File URLs
     if (r.selfiePhotoUrl) setSelfiePhoto(r.selfiePhotoUrl);
     if (r.validIDFrontUrl) setValidIDFront(r.validIDFrontUrl);
@@ -308,7 +325,7 @@ function ReservationFlowPage() {
   };
 
   // ── Data loading ───────────────────────────────────────────
-  const initRef = useRef(false);
+  const processedKeyRef = useRef(null);
 
   useEffect(() => {
     if (!user) {
@@ -316,14 +333,24 @@ function ReservationFlowPage() {
       return;
     }
 
-    // Guard: only initialize once per mount (prevents re-render loop
-    // from setState calls below re-triggering this effect)
-    if (initRef.current) return;
-    initRef.current = true;
+    // Guard: only process each navigation once (prevents re-render loop
+    // from setState calls below re-triggering this effect).
+    // Uses location.key so re-navigation to the same route still re-initializes.
+    if (processedKeyRef.current === location.key) return;
+    processedKeyRef.current = location.key;
 
     const continueReservation = location.state?.continueFlow;
     const editMode = location.state?.editMode;
     const resId = location.state?.reservationId;
+
+    // ── ALWAYS reset session-specific fields first ──
+    // For new reservations, these stay blank.
+    // For continuing, the async load functions below will repopulate from DB.
+    setTargetMoveInDate("");
+    setFinalMoveInDate("");
+    setLeaseDuration("");
+    setAgreedToPrivacy(false);
+    setAgreedToCertification(false);
 
     if ((continueReservation || editMode) && resId) {
       loadExistingReservation(resId);
@@ -343,11 +370,6 @@ function ReservationFlowPage() {
         }
       }
     }
-
-    if (!isStepMode && !continueReservation) {
-      setTargetMoveInDate("");
-      setFinalMoveInDate("");
-    }
     setInitialFormState({
       targetMoveInDate: "",
       leaseDuration: "",
@@ -355,33 +377,9 @@ function ReservationFlowPage() {
     });
     if (!continueReservation && stepOverride) setCurrentStage(stepOverride);
 
-    // Handle PayMongo return for deposit payments
-    const paymentStatus = new URLSearchParams(location.search).get("payment");
-    const sessionId = new URLSearchParams(location.search).get("session_id");
-    if (paymentStatus === "success" && sessionId) {
-      billingApi.checkPaymentStatus(sessionId).then((result) => {
-        if (result.status === "paid") {
-          setPaymentSubmitted(true);
-          setPaymentApproved(true);
-          setPaymentMethod(result.paymentMethod || "online");
-          showNotification("Payment successful! Your reservation is secured.", "success", 5000);
-          setCurrentStage(5);
-          setHighestStageReached(5);
-        } else {
-          showNotification("Payment is being processed. Check your profile for updates.", "info", 5000);
-        }
-      }).catch(() => {
-        showNotification("Could not verify payment. Please check your profile.", "warning", 5000);
-      });
-      // Clean URL params via React Router (not history.replaceState, which
-      // doesn't update React Router's internal location)
-      setSearchParams({}, { replace: true });
-    } else if (paymentStatus === "cancelled") {
-      showNotification("Payment was cancelled. You can try again.", "info", 3000);
-      setSearchParams({}, { replace: true });
-    }
+    // Payment redirect is handled by usePaymentRedirect hook
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user, location.key]);
 
   const loadActiveReservation = async () => {
     try {
@@ -638,7 +636,28 @@ function ReservationFlowPage() {
         existingId
       ) {
         setReservationId(existingId);
+        // Update the existing reservation with new step 1 values
         try {
+          await reservationApi.updateByUser(existingId, {
+            roomId,
+            selectedBed: reservationData?.selectedBed
+              ? {
+                  id: reservationData.selectedBed.id,
+                  position: reservationData.selectedBed.position,
+                }
+              : null,
+            targetMoveInDate: getFieldValue(targetMoveInDate, checkInDate),
+            leaseDuration: null,
+            billingEmail: getFieldValue(
+              billingEmail,
+              user?.email || "test@example.com",
+            ),
+            checkInDate,
+            totalPrice: totalPrice > 0 ? totalPrice : 5000,
+            applianceFees: reservationData?.applianceFees || 0,
+            agreedToPrivacy: false,
+            agreedToCertification: false,
+          });
           const existing = await reservationApi.getById(existingId);
           if (existing?.reservationCode)
             setReservationCode(existing.reservationCode);
@@ -679,13 +698,11 @@ function ReservationFlowPage() {
       maritalStatus,
       nationality,
       educationLevel,
-      address: {
-        unitHouseNo: addressUnitHouseNo,
-        street: addressStreet,
-        barangay: addressBarangay,
-        city: addressCity,
-        province: addressProvince,
-      },
+      addressUnitHouseNo,
+      addressStreet,
+      addressBarangay,
+      addressCity,
+      addressProvince,
       emergencyContactName,
       emergencyRelationship,
       emergencyContactNumber,
@@ -704,6 +721,8 @@ function ReservationFlowPage() {
       targetMoveInDate,
       leaseDuration,
       finalMoveInDate,
+      agreedToPrivacy,
+      agreedToCertification,
     }),
     [
       visitDate,
@@ -744,6 +763,8 @@ function ReservationFlowPage() {
       targetMoveInDate,
       leaseDuration,
       finalMoveInDate,
+      agreedToPrivacy,
+      agreedToCertification,
     ],
   );
 
@@ -845,22 +866,57 @@ function ReservationFlowPage() {
             inc.push("Agreements & Consent");
           if (inc.length > 0) {
             setShowValidationErrors(true);
-            // Map section names to accordion IDs for scroll-to-error
-            const sectionIdMap = {
-              "Email & Photo": "photo",
-              "Personal Information": "personal",
-              "Emergency Contact": "emergency",
-              "Employment / School": "employment",
-              "Dorm Preferences": "dorm",
-              "Agreements & Consent": "agreements",
-            };
-            const targetSection = sectionIdMap[inc[0]] || null;
-            setScrollToSection(targetSection);
-            showNotification(
-              `Please complete the "${inc[0]}" section to continue.`,
-              "error",
-              4000,
-            );
+            // Scroll to the first empty required field directly
+            const requiredFields = [
+              { key: "selfiePhoto", value: selfiePhoto, label: "Selfie Photo" },
+              { key: "lastName", value: lastName, label: "Last Name" },
+              { key: "firstName", value: firstName, label: "First Name" },
+              { key: "middleName", value: middleName, label: "Middle Name" },
+              { key: "mobileNumber", value: mobileNumber, label: "Mobile Number" },
+              { key: "birthday", value: birthday, label: "Birthday" },
+              { key: "maritalStatus", value: maritalStatus, label: "Marital Status" },
+              { key: "nationality", value: nationality, label: "Nationality" },
+              { key: "educationLevel", value: educationLevel, label: "Education Level" },
+              { key: "addressUnitHouseNo", value: addressUnitHouseNo, label: "Unit/House No" },
+              { key: "addressStreet", value: addressStreet, label: "Street" },
+              { key: "addressProvince", value: addressProvince, label: "Region" },
+              { key: "addressCity", value: addressCity, label: "City" },
+              { key: "validIDFront", value: validIDFront, label: "Valid ID (Front)" },
+              { key: "validIDBack", value: validIDBack, label: "Valid ID (Back)" },
+              { key: "emergencyContactName", value: emergencyContactName, label: "Emergency Contact Name" },
+              { key: "emergencyRelationship", value: emergencyRelationship, label: "Emergency Relationship" },
+              { key: "emergencyContactNumber", value: emergencyContactNumber, label: "Emergency Contact Number" },
+              { key: "healthConcerns", value: healthConcerns, label: "Health Concerns" },
+              { key: "employerSchool", value: employerSchool, label: "Current Employer" },
+              { key: "employerAddress", value: employerAddress, label: "Employer Address" },
+              { key: "employerContact", value: employerContact, label: "Employer Contact" },
+              { key: "occupation", value: occupation, label: "Occupation" },
+              { key: "referralSource", value: referralSource, label: "Referral Source" },
+              { key: "targetMoveInDate", value: targetMoveInDate, label: "Move-in Date" },
+              { key: "estimatedMoveInTime", value: estimatedMoveInTime, label: "Move-in Time" },
+              { key: "workSchedule", value: workSchedule, label: "Work Schedule" },
+            ];
+            const firstEmpty = requiredFields.find((f) => !f.value);
+            if (firstEmpty) {
+              setTimeout(() => {
+                const el = document.querySelector(`[data-field="${firstEmpty.key}"]`);
+                if (el) {
+                  el.scrollIntoView({ behavior: "smooth", block: "center" });
+                }
+              }, 100);
+              showNotification(
+                `"${firstEmpty.label}" is required. Please fill it in to continue.`,
+                "error",
+                4000,
+              );
+            } else {
+              // Agreements are missing
+              showNotification(
+                `Please agree to both consent items to continue.`,
+                "error",
+                4000,
+              );
+            }
             return;
           }
         }
@@ -901,6 +957,8 @@ function ReservationFlowPage() {
           estimatedMoveInTime,
           workSchedule,
           workScheduleOther,
+          targetMoveInDate,
+          leaseDuration,
           agreedToPrivacy,
           agreedToCertification,
           selfiePhotoUrl,
@@ -1089,9 +1147,7 @@ function ReservationFlowPage() {
 
         <ReservationStepper
           currentStage={currentStage}
-          isStageClickable={isStageClickable}
           isStageLocked={isStageLocked}
-          onStepperClick={handleStepperClick}
           paymentApproved={paymentApproved}
         />
         <RoomInfoBanner room={reservationData?.room} />
@@ -1128,6 +1184,7 @@ function ReservationFlowPage() {
                 setVisitTime,
                 reservationData,
                 reservationCode,
+                agreedToPrivacy,
               }}
               onPrev={handlePrevStage}
               onNext={handleNextStage}

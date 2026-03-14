@@ -20,7 +20,6 @@ import { getDateConstraints } from "./applicationFormConstants";
 
 // Sub-components
 import {
-  ApplicationProgressBar,
   PhotoEmailSection,
   PersonalInfoSection,
   EmergencyContactSection,
@@ -29,113 +28,52 @@ import {
   AgreementsSection,
 } from "./components";
 
-/* ─── Accordion Section (MUST be outside the main component to avoid focus loss) ─── */
-const AccordionSection = React.memo(
-  ({
-    id,
-    title,
-    icon,
-    isComplete,
-    isExpanded,
-    onToggle,
-    hasError,
-    children,
-  }) => {
-    const borderColor = isComplete
-      ? "#10B981"
-      : hasError
-        ? "#EF4444"
-        : "#e5e7eb";
-    return (
-      <div
-        style={{
-          border: `1.5px solid ${borderColor}`,
-          borderRadius: "12px",
-          marginBottom: "12px",
-          overflow: "hidden",
-          transition: "all 0.2s ease",
-        }}
-      >
-        <button
-          type="button"
-          onClick={() => onToggle(id)}
-          style={{
-            width: "100%",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "16px 20px",
-            border: "none",
-            background: isComplete
-              ? "#F0FDF4"
-              : hasError
-                ? "#FEF2F2"
-                : isExpanded
-                  ? "#F8FAFC"
-                  : "#fff",
-            cursor: "pointer",
-            transition: "all 0.2s ease",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <span style={{ fontSize: "20px" }}>{icon}</span>
-            <span
-              style={{ fontSize: "15px", fontWeight: "600", color: "#0f172a" }}
-            >
-              {title}
-            </span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            {isComplete ? (
-              <span
-                style={{
-                  fontSize: "12px",
-                  fontWeight: "600",
-                  color: "#059669",
-                  backgroundColor: "#D1FAE5",
-                  padding: "3px 10px",
-                  borderRadius: "999px",
-                }}
-              >
-                Complete
-              </span>
-            ) : (
-              <span
-                style={{
-                  fontSize: "12px",
-                  fontWeight: hasError ? "600" : "500",
-                  color: hasError ? "#DC2626" : "#9CA3AF",
-                  backgroundColor: hasError ? "#FEE2E2" : "#F3F4F6",
-                  padding: "3px 10px",
-                  borderRadius: "999px",
-                }}
-              >
-                Incomplete
-              </span>
-            )}
-            <span
-              style={{
-                transition: "transform 0.2s ease",
-                transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
-                color: "#6B7280",
-                fontSize: "18px",
-              }}
-            >
-              ▾
-            </span>
-          </div>
-        </button>
-        {isExpanded && (
-          <div style={{ padding: "4px 20px 20px" }}>{children}</div>
-        )}
-      </div>
-    );
-  },
-);
+/* ─── Section Header — clean divider with label ─── */
+const SectionHeader = React.memo(({ number, title, id, sectionRef }) => (
+  <div
+    ref={sectionRef}
+    id={`section-${id}`}
+    style={{
+      display: "flex",
+      alignItems: "center",
+      gap: "12px",
+      padding: "20px 0 12px",
+      marginTop: number > 1 ? "8px" : 0,
+      borderTop: number > 1 ? "1px solid #E5E7EB" : "none",
+    }}
+  >
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: "28px",
+        height: "28px",
+        borderRadius: "50%",
+        backgroundColor: "#183153",
+        color: "#fff",
+        fontSize: "13px",
+        fontWeight: "600",
+        flexShrink: 0,
+      }}
+    >
+      {number}
+    </span>
+    <span
+      style={{
+        fontSize: "15px",
+        fontWeight: "600",
+        color: "#0f172a",
+        letterSpacing: "-0.01em",
+      }}
+    >
+      {title}
+    </span>
+  </div>
+));
 
 // ─────────────────────────────────────────────────────────────
-// ReservationApplicationStep — thin orchestrator
-// 2,072 lines → ~250 lines (state, handlers, section routing)
+// ReservationApplicationStep — flat layout with section headers
 // ─────────────────────────────────────────────────────────────
 const ReservationApplicationStep = ({
   billingEmail,
@@ -248,78 +186,24 @@ const ReservationApplicationStep = ({
   });
   const [fieldErrors, setFieldErrors] = useState({});
 
-  // ── Accordion state ────────────────────────────────────────
-  const [expandedSections, setExpandedSections] = useState(new Set(["photo"]));
-
-  const toggleSection = useCallback((sectionId) => {
-    setExpandedSections((prev) => {
-      const next = new Set(prev);
-      next.has(sectionId) ? next.delete(sectionId) : next.add(sectionId);
-      return next;
-    });
-  }, []);
-
-  // ── Scroll-to-error: auto-expand and scroll to the target section ──
+  // ── Section refs for scroll-to-error ──────────────────────
   const sectionRefs = useRef({});
   useEffect(() => {
     if (!scrollToSection) return;
-    // Auto-expand the target section
-    setExpandedSections((prev) => {
-      const next = new Set(prev);
-      next.add(scrollToSection);
-      return next;
-    });
-    // Scroll to it after a brief delay for the DOM to update
     setTimeout(() => {
       const el = sectionRefs.current[scrollToSection];
       if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        // Brief highlight flash
+        el.style.transition = "background-color 0.3s ease";
+        el.style.backgroundColor = "#FEF3C7";
+        setTimeout(() => {
+          el.style.backgroundColor = "transparent";
+        }, 1500);
       }
       onClearScrollToSection?.();
-    }, 200);
+    }, 100);
   }, [scrollToSection, onClearScrollToSection]);
-
-  // ── Section completion ─────────────────────────────────────
-  const sectionStatus = {
-    photo: Boolean(selfiePhoto),
-    personal: Boolean(
-      firstName &&
-      lastName &&
-      middleName &&
-      nickname &&
-      mobileNumber &&
-      birthday &&
-      maritalStatus &&
-      nationality &&
-      educationLevel &&
-      addressUnitHouseNo &&
-      addressStreet &&
-      addressBarangay &&
-      addressCity &&
-      addressProvince &&
-      validIDFront &&
-      validIDBack &&
-      (nbiClearance || nbiReason),
-    ),
-    emergency: Boolean(
-      emergencyContactName &&
-      emergencyRelationship &&
-      emergencyContactNumber &&
-      healthConcerns,
-    ),
-    employment: Boolean(
-      employerSchool &&
-      employerAddress &&
-      employerContact &&
-      occupation &&
-      (companyID || companyIDReason),
-    ),
-    dorm: Boolean(
-      referralSource && targetMoveInDate && estimatedMoveInTime && workSchedule,
-    ),
-  };
-  const completedCount = Object.values(sectionStatus).filter(Boolean).length;
-  const totalSections = Object.keys(sectionStatus).length;
 
   // ── Input handlers ─────────────────────────────────────────
   const handleNameInput = (value, setter) => setter(value.replace(/\d+/g, ""));
@@ -422,8 +306,8 @@ const ReservationApplicationStep = ({
         </div>
         <h2 className="main-header-title">Tenant Application</h2>
         <p className="main-header-subtitle">
-          Fill out each section below to complete your application. Sections
-          turn green when all required fields are filled.
+          Complete all fields below. Required fields are marked with{" "}
+          <span style={{ color: "#dc2626", fontWeight: 600 }}>*</span>
         </p>
       </div>
 
@@ -446,15 +330,28 @@ const ReservationApplicationStep = ({
         </div>
       )}
 
-      {/* Reset button */}
+      {/* Top actions row */}
       {!readOnly && (
         <div
           style={{
             display: "flex",
+            alignItems: "center",
             justifyContent: "flex-end",
-            marginBottom: "12px",
+            marginBottom: "4px",
+            gap: "12px",
           }}
         >
+          {saveStatus && (
+            <span
+              style={{
+                fontSize: "12px",
+                color: "#6B7280",
+                fontStyle: "italic",
+              }}
+            >
+              {saveStatus}
+            </span>
+          )}
           <button
             type="button"
             onClick={handleResetAll}
@@ -469,168 +366,177 @@ const ReservationApplicationStep = ({
               cursor: "pointer",
             }}
           >
-            Reset All Fields
+            Reset All
           </button>
         </div>
       )}
 
-      {/* Form wrapper */}
+      {/* Form body */}
       <div
         style={{
           pointerEvents: readOnly ? "none" : "auto",
           opacity: readOnly ? 0.7 : 1,
         }}
       >
-        <ApplicationProgressBar
-          completedCount={completedCount}
-          totalSections={totalSections}
-          saveStatus={saveStatus}
+        {/* ─── Section 1: Photo & Email ─── */}
+        <SectionHeader
+          number={1}
+          title="Email & Photo"
+          id="photo"
+          sectionRef={(el) => { sectionRefs.current.photo = el; }}
+        />
+        <PhotoEmailSection
+          billingEmail={billingEmail}
+          selfiePhoto={selfiePhoto}
+          setSelfiePhoto={setSelfiePhoto}
+          showValidationErrors={showValidationErrors}
         />
 
-        {/* Section 1: Photo & Email */}
-        <div ref={(el) => { sectionRefs.current.photo = el; }}>
-        <AccordionSection
-          id="photo"
-          title="Email & Photo"
-          icon="1"
-          isComplete={sectionStatus.photo}
-          isExpanded={expandedSections.has("photo")}
-          onToggle={toggleSection}
-          hasError={showValidationErrors && !sectionStatus.photo}
-        >
-          <PhotoEmailSection
-            billingEmail={billingEmail}
-            selfiePhoto={selfiePhoto}
-            setSelfiePhoto={setSelfiePhoto}
-          />
-        </AccordionSection>
-        </div>
-
-        {/* Section 2: Personal Info */}
-        <div ref={(el) => { sectionRefs.current.personal = el; }}>
-        <AccordionSection
-          id="personal"
+        {/* ─── Section 2: Personal Information ─── */}
+        <SectionHeader
+          number={2}
           title="Personal Information"
-          icon="2"
-          isComplete={sectionStatus.personal}
-          isExpanded={expandedSections.has("personal")}
-          onToggle={toggleSection}
-          hasError={showValidationErrors && !sectionStatus.personal}
-        >
-          <PersonalInfoSection
-            {...{
-              lastName, setLastName, firstName, setFirstName,
-              middleName, setMiddleName, nickname, setNickname,
-              mobileNumber, setMobileNumber, birthday, setBirthday,
-              maritalStatus, setMaritalStatus, nationality, setNationality,
-              educationLevel, setEducationLevel,
-              addressUnitHouseNo, setAddressUnitHouseNo,
-              addressStreet, setAddressStreet,
-              addressBarangay, setAddressBarangay,
-              addressCity, setAddressCity,
-              addressProvince, setAddressProvince,
-              validIDFront, setValidIDFront,
-              validIDBack, setValidIDBack,
-              nbiClearance, setNbiClearance,
-              nbiReason, setNbiReason,
-              personalNotes, setPersonalNotes,
-              handleNameInput, handlePhoneInput, handleGeneralInput,
-              validateField, fieldErrors,
-              birthdayMin, birthdayMax,
-            }}
-          />
-        </AccordionSection>
-        </div>
-
-        {/* Section 3: Emergency Contact */}
-        <div ref={(el) => { sectionRefs.current.emergency = el; }}>
-        <AccordionSection
-          id="emergency"
-          title="Emergency Contact"
-          icon="3"
-          isComplete={sectionStatus.emergency}
-          isExpanded={expandedSections.has("emergency")}
-          onToggle={toggleSection}
-          hasError={showValidationErrors && !sectionStatus.emergency}
-        >
-          <EmergencyContactSection
-            {...{
-              emergencyContactName, setEmergencyContactName,
-              emergencyRelationship, setEmergencyRelationship,
-              emergencyContactNumber, setEmergencyContactNumber,
-              healthConcerns, setHealthConcerns,
-              handlePhoneInput, validateField, fieldErrors,
-            }}
-          />
-        </AccordionSection>
-        </div>
-
-        {/* Section 4: Employment */}
-        <div ref={(el) => { sectionRefs.current.employment = el; }}>
-        <AccordionSection
-          id="employment"
-          title="Employment / School"
-          icon="4"
-          isComplete={sectionStatus.employment}
-          isExpanded={expandedSections.has("employment")}
-          onToggle={toggleSection}
-          hasError={showValidationErrors && !sectionStatus.employment}
-        >
-          <EmploymentSection
-            {...{
-              employerSchool, setEmployerSchool,
-              employerAddress, setEmployerAddress,
-              employerContact, setEmployerContact,
-              startDate, setStartDate,
-              occupation, setOccupation,
-              previousEmployment, setPreviousEmployment,
-              companyID, setCompanyID,
-              companyIDReason, setCompanyIDReason,
-              handleGeneralInput,
-            }}
-          />
-        </AccordionSection>
-        </div>
-
-        {/* Section 5: Dorm Preferences */}
-        <div ref={(el) => { sectionRefs.current.dorm = el; }}>
-        <AccordionSection
-          id="dorm"
-          title="Dorm Preferences"
-          icon="5"
-          isComplete={sectionStatus.dorm}
-          isExpanded={expandedSections.has("dorm")}
-          onToggle={toggleSection}
-          hasError={showValidationErrors && !sectionStatus.dorm}
-        >
-          <DormPreferencesSection
-            {...{
-              referralSource, setReferralSource,
-              referrerName, setReferrerName,
-              targetMoveInDate, setTargetMoveInDate,
-              estimatedMoveInTime, setEstimatedMoveInTime,
-              leaseDuration, setLeaseDuration,
-              workSchedule, setWorkSchedule,
-              workScheduleOther, setWorkScheduleOther,
-              handleTargetDateInput, handleTimeInput,
-              readOnly, moveInMin, moveInMax, fieldErrors,
-            }}
-          />
-        </AccordionSection>
-        </div>
-
-        {/* Section 6: Agreements */}
-        <AgreementsSection
+          id="personal"
+          sectionRef={(el) => { sectionRefs.current.personal = el; }}
+        />
+        <PersonalInfoSection
           {...{
-            agreedToPrivacy,
-            setAgreedToPrivacy,
-            agreedToCertification,
-            setAgreedToCertification,
+            lastName, setLastName, firstName, setFirstName,
+            middleName, setMiddleName, nickname, setNickname,
+            mobileNumber, setMobileNumber, birthday, setBirthday,
+            maritalStatus, setMaritalStatus, nationality, setNationality,
+            educationLevel, setEducationLevel,
+            addressUnitHouseNo, setAddressUnitHouseNo,
+            addressStreet, setAddressStreet,
+            addressBarangay, setAddressBarangay,
+            addressCity, setAddressCity,
+            addressProvince, setAddressProvince,
+            validIDFront, setValidIDFront,
+            validIDBack, setValidIDBack,
+            nbiClearance, setNbiClearance,
+            nbiReason, setNbiReason,
+            personalNotes, setPersonalNotes,
+            handleNameInput, handlePhoneInput, handleGeneralInput,
+            validateField, fieldErrors,
+            birthdayMin, birthdayMax,
             showValidationErrors,
           }}
-          onShowPolicies={() => setShowPoliciesModal(true)}
-          onShowPrivacy={() => setShowPrivacyModal(true)}
         />
+
+        {/* ─── Section 3: Emergency Contact ─── */}
+        <SectionHeader
+          number={3}
+          title="Emergency Contact"
+          id="emergency"
+          sectionRef={(el) => { sectionRefs.current.emergency = el; }}
+        />
+        <EmergencyContactSection
+          {...{
+            emergencyContactName, setEmergencyContactName,
+            emergencyRelationship, setEmergencyRelationship,
+            emergencyContactNumber, setEmergencyContactNumber,
+            healthConcerns, setHealthConcerns,
+            handlePhoneInput, validateField, fieldErrors,
+            showValidationErrors,
+          }}
+        />
+
+        {/* ─── Section 4: Employment / School ─── */}
+        <SectionHeader
+          number={4}
+          title="Employment / School"
+          id="employment"
+          sectionRef={(el) => { sectionRefs.current.employment = el; }}
+        />
+        <EmploymentSection
+          {...{
+            employerSchool, setEmployerSchool,
+            employerAddress, setEmployerAddress,
+            employerContact, setEmployerContact,
+            startDate, setStartDate,
+            occupation, setOccupation,
+            previousEmployment, setPreviousEmployment,
+            companyID, setCompanyID,
+            companyIDReason, setCompanyIDReason,
+            handleGeneralInput,
+            showValidationErrors,
+          }}
+        />
+
+        {/* ─── Section 5: Dorm Preferences ─── */}
+        <SectionHeader
+          number={5}
+          title="Dorm Preferences"
+          id="dorm"
+          sectionRef={(el) => { sectionRefs.current.dorm = el; }}
+        />
+        <DormPreferencesSection
+          {...{
+            referralSource, setReferralSource,
+            referrerName, setReferrerName,
+            targetMoveInDate, setTargetMoveInDate,
+            estimatedMoveInTime, setEstimatedMoveInTime,
+            leaseDuration, setLeaseDuration,
+            workSchedule, setWorkSchedule,
+            workScheduleOther, setWorkScheduleOther,
+            handleTargetDateInput, handleTimeInput,
+            readOnly, moveInMin, moveInMax, fieldErrors,
+            showValidationErrors,
+          }}
+        />
+
+        {/* ─── Section 6: Agreements & Consent ─── */}
+        <div ref={(el) => { sectionRefs.current.agreements = el; }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              padding: "20px 0 12px",
+              marginTop: "8px",
+              borderTop: "1px solid #E5E7EB",
+            }}
+          >
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "28px",
+                height: "28px",
+                borderRadius: "50%",
+                backgroundColor: "#183153",
+                color: "#fff",
+                fontSize: "13px",
+                fontWeight: "600",
+                flexShrink: 0,
+              }}
+            >
+              6
+            </span>
+            <span
+              style={{
+                fontSize: "15px",
+                fontWeight: "600",
+                color: "#0f172a",
+                letterSpacing: "-0.01em",
+              }}
+            >
+              Agreements & Consent
+            </span>
+          </div>
+          <AgreementsSection
+            {...{
+              agreedToPrivacy,
+              setAgreedToPrivacy,
+              agreedToCertification,
+              setAgreedToCertification,
+              showValidationErrors,
+            }}
+            onShowPolicies={() => setShowPoliciesModal(true)}
+            onShowPrivacy={() => setShowPrivacyModal(true)}
+          />
+        </div>
       </div>
 
       {/* Modals */}

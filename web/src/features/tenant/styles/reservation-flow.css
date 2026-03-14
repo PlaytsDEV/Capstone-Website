@@ -139,13 +139,23 @@
   flex-shrink: 0;
 }
 
-.rf-stepper-step.done .rf-stepper-dot {
+/* Complete = green (fully done / confirmed) */
+.rf-stepper-step.complete .rf-stepper-dot {
   background: linear-gradient(135deg, #059669 0%, #10b981 100%);
   border-color: #059669;
   color: white;
   box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
 }
 
+/* Ongoing = blue (locked / in-progress, not yet fully complete) */
+.rf-stepper-step.ongoing .rf-stepper-dot {
+  background: linear-gradient(135deg, #2563EB 0%, #3B82F6 100%);
+  border-color: #2563EB;
+  color: white;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+}
+
+/* Active = orange (currently selected step) */
 .rf-stepper-step.active .rf-stepper-dot {
   background: linear-gradient(135deg, #D4982B 0%, #ff8c2e 100%);
   border-color: #D4982B;
@@ -185,8 +195,13 @@
   font-weight: 700;
 }
 
-.rf-stepper-step.done .rf-stepper-label {
+.rf-stepper-step.complete .rf-stepper-label {
   color: #059669;
+  font-weight: 600;
+}
+
+.rf-stepper-step.ongoing .rf-stepper-label {
+  color: #2563EB;
   font-weight: 600;
 }
 
@@ -202,8 +217,12 @@
   transition: background var(--rf-transition);
 }
 
-.rf-stepper-line.done {
+.rf-stepper-line.complete {
   background: var(--rf-success);
+}
+
+.rf-stepper-line.ongoing {
+  background: #2563EB;
 }
 
 /* ============ ROOM INFO BANNER ============ */

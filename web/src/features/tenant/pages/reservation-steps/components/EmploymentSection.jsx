@@ -1,27 +1,23 @@
 import React from "react";
 import FileUploadField from "./FileUploadField";
 
+const errBorder = (show, value) =>
+  show && !value ? "1.5px solid #dc2626" : undefined;
+
 /**
  * Section 4: Employment / School — employer info, occupation, company ID.
  */
 const EmploymentSection = ({
-  employerSchool,
-  setEmployerSchool,
-  employerAddress,
-  setEmployerAddress,
-  employerContact,
-  setEmployerContact,
-  startDate,
-  setStartDate,
-  occupation,
-  setOccupation,
-  previousEmployment,
-  setPreviousEmployment,
-  companyID,
-  setCompanyID,
-  companyIDReason,
-  setCompanyIDReason,
+  employerSchool, setEmployerSchool,
+  employerAddress, setEmployerAddress,
+  employerContact, setEmployerContact,
+  startDate, setStartDate,
+  occupation, setOccupation,
+  previousEmployment, setPreviousEmployment,
+  companyID, setCompanyID,
+  companyIDReason, setCompanyIDReason,
   handleGeneralInput,
+  showValidationErrors,
 }) => (
   <>
     <div className="section-helper">
@@ -29,7 +25,7 @@ const EmploymentSection = ({
       school instead of employer.
     </div>
 
-    <div className="form-group">
+    <div className="form-group" data-field="employerSchool">
       <label className="form-label">Current Employer <span style={{ color: "#dc2626" }}>*</span></label>
       <input
         type="text"
@@ -39,10 +35,12 @@ const EmploymentSection = ({
         onChange={(e) =>
           handleGeneralInput(e.target.value, setEmployerSchool, 100)
         }
+        style={{ border: errBorder(showValidationErrors, employerSchool) }}
       />
+      <FieldError error={showValidationErrors && !employerSchool ? "Employer / school name is required" : null} />
     </div>
 
-    <div className="form-group">
+    <div className="form-group" data-field="employerAddress">
       <label className="form-label">Employer's Address <span style={{ color: "#dc2626" }}>*</span></label>
       <textarea
         className="form-textarea"
@@ -51,11 +49,12 @@ const EmploymentSection = ({
         onChange={(e) =>
           handleGeneralInput(e.target.value, setEmployerAddress, 100)
         }
-        style={{ resize: "vertical" }}
+        style={{ resize: "vertical", border: errBorder(showValidationErrors, employerAddress) }}
       />
+      <FieldError error={showValidationErrors && !employerAddress ? "Employer address is required" : null} />
     </div>
 
-    <div className="form-group">
+    <div className="form-group" data-field="employerContact">
       <label className="form-label">Employer's Contact Number <span style={{ color: "#dc2626" }}>*</span></label>
       <input
         type="tel"
@@ -65,7 +64,9 @@ const EmploymentSection = ({
         onChange={(e) =>
           handleGeneralInput(e.target.value, setEmployerContact, 100)
         }
+        style={{ border: errBorder(showValidationErrors, employerContact) }}
       />
+      <FieldError error={showValidationErrors && !employerContact ? "Employer contact is required" : null} />
     </div>
 
     <div className="form-group">
@@ -78,15 +79,16 @@ const EmploymentSection = ({
       />
     </div>
 
-    <div className="form-group">
+    <div className="form-group" data-field="occupation">
       <label className="form-label">Occupation / Job Description <span style={{ color: "#dc2626" }}>*</span></label>
       <textarea
         className="form-textarea"
         placeholder="e.g., Software Engineer, Nurse, Currently Job Hunting"
         value={occupation}
         onChange={(e) => handleGeneralInput(e.target.value, setOccupation, 100)}
-        style={{ resize: "vertical" }}
+        style={{ resize: "vertical", border: errBorder(showValidationErrors, occupation) }}
       />
+      <FieldError error={showValidationErrors && !occupation ? "Occupation is required" : null} />
     </div>
 
     <div className="form-group">
@@ -102,25 +104,42 @@ const EmploymentSection = ({
       />
     </div>
 
-    <FileUploadField
-      label="Company ID"
-      value={companyID}
-      onChange={setCompanyID}
-      hint="Company ID or employee badge"
-    />
+    <div data-field="companyID">
+      <FileUploadField
+        label="Company ID"
+        value={companyID}
+        onChange={setCompanyID}
+        hint="Company ID or employee badge"
+        hasError={showValidationErrors && !companyID && !companyIDReason}
+      />
+    </div>
 
-    <div className="form-group">
+    <div className="form-group" data-field="companyIDReason">
       <label className="form-label">
-        If not yet available, please indicate reason below *
+        If not yet available, please indicate reason below{" "}
+        <span style={{ color: "#dc2626" }}>*</span>
       </label>
       <textarea
         className="form-textarea"
         value={companyIDReason}
         onChange={(e) => setCompanyIDReason(e.target.value)}
         placeholder="N/A if Company ID has been submitted"
+        style={{ border: !companyID ? errBorder(showValidationErrors, companyIDReason) : undefined }}
       />
+      {showValidationErrors && !companyID && !companyIDReason && (
+        <FieldError error="Please upload Company ID or provide a reason" />
+      )}
     </div>
   </>
 );
+
+const FieldError = ({ error }) => {
+  if (!error) return null;
+  return (
+    <div style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}>
+      {error}
+    </div>
+  );
+};
 
 export default EmploymentSection;

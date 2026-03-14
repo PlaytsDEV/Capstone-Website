@@ -20,6 +20,7 @@ import {
   signInWithPopup,
   GoogleAuthProvider,
   FacebookAuthProvider,
+  sendEmailVerification,
 } from "firebase/auth";
 import { auth } from "../../../firebase/config";
 import { showNotification } from "../../../shared/utils/notification";
@@ -56,6 +57,9 @@ function SignIn() {
   const [failedAttempts, setFailedAttempts] = useState(0);
   const [lockoutUntil, setLockoutUntil] = useState(null);
   const [lockoutCountdown, setLockoutCountdown] = useState(0);
+  const [unverifiedEmail, setUnverifiedEmail] = useState(null);
+  const [resending, setResending] = useState(false);
+  const [verifiedSuccess, setVerifiedSuccess] = useState(false);
 
   // Load remembered email on mount
   useEffect(() => {
@@ -71,6 +75,27 @@ function SignIn() {
     if (location.state?.notification) {
       showNotification(location.state.notification, "info", 5000);
       // Clear the state so it doesn't re-show on refresh
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+
+    // Show success banner if redirected from email verification
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("verified") === "true") {
+      setUnverifiedEmail(null);
+      setVerifiedSuccess(true);
+      // Pre-fill email from registration
+      const pendingEmail = localStorage.getItem("lilycrest_pending_email");
+      if (pendingEmail) {
+        setFormData((prev) => ({ ...prev, email: pendingEmail }));
+        setFieldValid((prev) => ({ ...prev, email: true }));
+        setTouched((prev) => ({ ...prev, email: true }));
+        localStorage.removeItem("lilycrest_pending_email");
+        // Auto-focus password field after render
+        setTimeout(() => {
+          const pw = document.getElementById("password");
+          if (pw) pw.focus();
+        }, 200);
+      }
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, []);
@@ -190,10 +215,23 @@ function SignIn() {
       const isAdmin = tokenResult.claims.admin || tokenResult.claims.superAdmin;
 
       if (!firebaseUser.emailVerified && !isAdmin) {
+        // Send a fresh verification email before signing out
+        // Guard: prevent RequireNonAdmin from redirecting during brief sign-in
+        sessionStorage.setItem("resendInProgress", "1");
+        try {
+          await sendEmailVerification(firebaseUser, {
+            url: `${window.location.origin}/verify-email`,
+          });
+        } catch (e) {
+          console.warn("Could not auto-send verification email:", e.message);
+        }
+        setUnverifiedEmail(formData.email);
         await auth.signOut();
+        sessionStorage.removeItem("resendInProgress");
         showNotification(
-          "Please verify your email before logging in. Check your inbox for the verification link.",
+          "Please verify your email before logging in. A verification email has been sent.",
           "warning",
+          6000,
         );
         setGlobalLoading(false);
         return;
@@ -375,12 +413,103 @@ function SignIn() {
           </Link>
 
           <div className="auth-header">
+            {verifiedSuccess && (
+              <p
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  margin: "0 0 6px",
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  color: "#10B981",
+                  letterSpacing: "0.2px",
+                }}
+              >
+                <span style={{ fontSize: "14px" }}>✓</span> Email verified
+              </p>
+            )}
             <h1 className="auth-header__title">Welcome back</h1>
             <p className="auth-header__subtitle">
               Don&apos;t have an account?{" "}
               <Link to="/signup">Sign up</Link>
             </p>
           </div>
+
+          {/* Unverified email banner with resend button */}
+          {unverifiedEmail && (
+            <div
+              style={{
+                background: "#FEF3C7",
+                border: "1px solid #F59E0B",
+                borderRadius: "12px",
+                padding: "16px 20px",
+                marginBottom: "20px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "10px",
+              }}
+            >
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: "14px",
+                  color: "#92400E",
+                  lineHeight: 1.5,
+                }}
+              >
+                <strong>Email not verified.</strong> Check your inbox (and spam folder) for the verification link.
+              </p>
+              <button
+                type="button"
+                disabled={resending}
+                onClick={async () => {
+                  setResending(true);
+                  sessionStorage.setItem("resendInProgress", "1");
+                  try {
+                    const cred = await signInWithEmailAndPassword(
+                      auth,
+                      unverifiedEmail,
+                      formData.password,
+                    );
+                    await sendEmailVerification(cred.user, {
+                      url: `${window.location.origin}/verify-email`,
+                    });
+                    await auth.signOut();
+                    showNotification(
+                      "Verification email sent! Check your inbox.",
+                      "success",
+                      5000,
+                    );
+                  } catch (err) {
+                    showNotification(
+                      err.code === "auth/too-many-requests"
+                        ? "Too many requests. Please wait a few minutes."
+                        : "Could not resend. Please try signing in again.",
+                      "error",
+                    );
+                  } finally {
+                    sessionStorage.removeItem("resendInProgress");
+                    setResending(false);
+                  }
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#D97706",
+                  fontWeight: 600,
+                  fontSize: "13px",
+                  cursor: resending ? "not-allowed" : "pointer",
+                  textDecoration: "underline",
+                  padding: 0,
+                  alignSelf: "flex-start",
+                  opacity: resending ? 0.6 : 1,
+                }}
+              >
+                {resending ? "Sending..." : "Resend verification email"}
+              </button>
+            </div>
+          )}
 
           <form onSubmit={handleEmailPasswordLogin} className="auth-form">
             <FloatingInput

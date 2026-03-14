@@ -4,7 +4,7 @@ import FileUploadField from "./FileUploadField";
 /**
  * Section 1: Email & Photo — email (disabled) + selfie upload.
  */
-const PhotoEmailSection = ({ billingEmail, selfiePhoto, setSelfiePhoto }) => (
+const PhotoEmailSection = ({ billingEmail, selfiePhoto, setSelfiePhoto, showValidationErrors }) => (
   <>
     <div className="form-group">
       <label className="form-label">Email Address</label>
@@ -18,13 +18,17 @@ const PhotoEmailSection = ({ billingEmail, selfiePhoto, setSelfiePhoto }) => (
         This is where we'll send your billing statements
       </div>
     </div>
-    <FileUploadField
-      label="2x2 Photo or Selfie Photo"
-      value={selfiePhoto}
-      onChange={setSelfiePhoto}
-      accept="image/*"
-      hint="Clear 2x2 or selfie photo"
-    />
+    <div data-field="selfiePhoto">
+      <FileUploadField
+        label="2x2 Photo or Selfie Photo"
+        value={selfiePhoto}
+        onChange={setSelfiePhoto}
+        accept="image/*"
+        hint="Clear 2x2 or selfie photo"
+        hasError={showValidationErrors && !selfiePhoto}
+        required
+      />
+    </div>
   </>
 );
 

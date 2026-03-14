@@ -2,107 +2,67 @@ import React from "react";
 import FileUploadField from "./FileUploadField";
 import AddressCascadeFields from "./AddressCascadeFields";
 
+const errBorder = (show, value) =>
+  show && !value ? "1.5px solid #dc2626" : undefined;
+
 /**
  * Section 2: Personal Information — names, phone, birthday, marital status,
  * nationality, education, address fields (PSGC cascading), ID uploads, NBI, notes.
  */
 const PersonalInfoSection = ({
-  lastName,
-  setLastName,
-  firstName,
-  setFirstName,
-  middleName,
-  setMiddleName,
-  nickname,
-  setNickname,
-  mobileNumber,
-  setMobileNumber,
-  birthday,
-  setBirthday,
-  maritalStatus,
-  setMaritalStatus,
-  nationality,
-  setNationality,
-  educationLevel,
-  setEducationLevel,
-  addressUnitHouseNo,
-  setAddressUnitHouseNo,
-  addressStreet,
-  setAddressStreet,
-  addressBarangay,
-  setAddressBarangay,
-  addressCity,
-  setAddressCity,
-  addressProvince,
-  setAddressProvince,
-  validIDFront,
-  setValidIDFront,
-  validIDBack,
-  setValidIDBack,
-  nbiClearance,
-  setNbiClearance,
-  nbiReason,
-  setNbiReason,
-  personalNotes,
-  setPersonalNotes,
-  // handlers
-  handleNameInput,
-  handlePhoneInput,
-  handleGeneralInput,
-  validateField,
-  fieldErrors,
-  birthdayMin,
-  birthdayMax,
+  lastName, setLastName, firstName, setFirstName,
+  middleName, setMiddleName, nickname, setNickname,
+  mobileNumber, setMobileNumber, birthday, setBirthday,
+  maritalStatus, setMaritalStatus, nationality, setNationality,
+  educationLevel, setEducationLevel,
+  addressUnitHouseNo, setAddressUnitHouseNo,
+  addressStreet, setAddressStreet,
+  addressBarangay, setAddressBarangay,
+  addressCity, setAddressCity,
+  addressProvince, setAddressProvince,
+  validIDFront, setValidIDFront,
+  validIDBack, setValidIDBack,
+  nbiClearance, setNbiClearance,
+  nbiReason, setNbiReason,
+  personalNotes, setPersonalNotes,
+  handleNameInput, handlePhoneInput, handleGeneralInput,
+  validateField, fieldErrors,
+  birthdayMin, birthdayMax,
+  showValidationErrors,
 }) => (
   <>
     {/* Names */}
     <div className="form-row">
       <NameField
-        label="Last Name"
-        value={lastName}
-        setter={setLastName}
-        fieldKey="lastName"
-        handler={handleNameInput}
-        validate={validateField}
-        errors={fieldErrors}
-        required
+        label="Last Name" value={lastName} setter={setLastName}
+        fieldKey="lastName" handler={handleNameInput}
+        validate={validateField} errors={fieldErrors}
+        required showValidationErrors={showValidationErrors}
       />
       <NameField
-        label="First Name"
-        value={firstName}
-        setter={setFirstName}
-        fieldKey="firstName"
-        handler={handleNameInput}
-        validate={validateField}
-        errors={fieldErrors}
-        required
+        label="First Name" value={firstName} setter={setFirstName}
+        fieldKey="firstName" handler={handleNameInput}
+        validate={validateField} errors={fieldErrors}
+        required showValidationErrors={showValidationErrors}
       />
     </div>
     <div className="form-row">
       <NameField
-        label="Middle Name"
-        value={middleName}
-        setter={setMiddleName}
-        fieldKey="middleName"
-        handler={handleNameInput}
-        validate={validateField}
-        errors={fieldErrors}
-        required
+        label="Middle Name" value={middleName} setter={setMiddleName}
+        fieldKey="middleName" handler={handleNameInput}
+        validate={validateField} errors={fieldErrors}
+        required showValidationErrors={showValidationErrors}
       />
       <NameField
-        label="Nickname"
-        value={nickname}
-        setter={setNickname}
-        fieldKey="nickname"
-        handler={handleNameInput}
-        validate={validateField}
-        errors={fieldErrors}
+        label="Nickname" value={nickname} setter={setNickname}
+        fieldKey="nickname" handler={handleNameInput}
+        validate={validateField} errors={fieldErrors}
       />
     </div>
 
     {/* Phone & Birthday */}
     <div className="form-row">
-      <div className="form-group">
+      <div className="form-group" data-field="mobileNumber">
         <label className="form-label">
           Mobile Number <span style={{ color: "#dc2626" }}>*</span>
         </label>
@@ -121,10 +81,11 @@ const PersonalInfoSection = ({
               };
             })
           }
+          style={{ border: errBorder(showValidationErrors, mobileNumber) }}
         />
-        <FieldError error={fieldErrors.mobileNumber} />
+        <FieldError error={showValidationErrors && !mobileNumber ? "Mobile number is required" : fieldErrors.mobileNumber} />
       </div>
-      <div className="form-group">
+      <div className="form-group" data-field="birthday">
         <label className="form-label">
           Birthday <span style={{ color: "#dc2626" }}>*</span>
         </label>
@@ -141,15 +102,15 @@ const PersonalInfoSection = ({
               return { valid, error: valid ? null : "Birthday is required" };
             });
           }}
-          style={{ colorScheme: "light", cursor: "pointer" }}
+          style={{ colorScheme: "light", cursor: "pointer", border: errBorder(showValidationErrors, birthday) }}
         />
-        <FieldError error={fieldErrors.birthday} />
+        <FieldError error={showValidationErrors && !birthday ? "Birthday is required" : fieldErrors.birthday} />
       </div>
     </div>
 
     {/* Marital / Nationality */}
     <div className="form-row">
-      <div className="form-group">
+      <div className="form-group" data-field="maritalStatus">
         <label className="form-label">
           Marital Status <span style={{ color: "#dc2626" }}>*</span>
         </label>
@@ -157,14 +118,16 @@ const PersonalInfoSection = ({
           className="form-select"
           value={maritalStatus}
           onChange={(e) => setMaritalStatus(e.target.value)}
+          style={{ border: errBorder(showValidationErrors, maritalStatus) }}
         >
           <option value="">Select status...</option>
           <option value="single">Single</option>
           <option value="married">Married</option>
           <option value="other">Other</option>
         </select>
+        <FieldError error={showValidationErrors && !maritalStatus ? "Marital status is required" : null} />
       </div>
-      <div className="form-group">
+      <div className="form-group" data-field="nationality">
         <label className="form-label">
           Nationality <span style={{ color: "#dc2626" }}>*</span>
         </label>
@@ -180,13 +143,14 @@ const PersonalInfoSection = ({
               error: v?.trim() ? null : "Nationality is required",
             }))
           }
+          style={{ border: errBorder(showValidationErrors, nationality) }}
         />
-        <FieldError error={fieldErrors.nationality} />
+        <FieldError error={showValidationErrors && !nationality ? "Nationality is required" : fieldErrors.nationality} />
       </div>
     </div>
 
     {/* Education */}
-    <div className="form-group">
+    <div className="form-group" data-field="educationLevel">
       <label className="form-label">
         Educational Attainment <span style={{ color: "#dc2626" }}>*</span>
       </label>
@@ -194,6 +158,7 @@ const PersonalInfoSection = ({
         className="form-select"
         value={educationLevel}
         onChange={(e) => setEducationLevel(e.target.value)}
+        style={{ border: errBorder(showValidationErrors, educationLevel) }}
       >
         <option value="">Select level...</option>
         <option value="highschool">High School</option>
@@ -201,6 +166,7 @@ const PersonalInfoSection = ({
         <option value="vocational">Vocational</option>
         <option value="graduate">Graduate</option>
       </select>
+      <FieldError error={showValidationErrors && !educationLevel ? "Education level is required" : null} />
     </div>
 
     {/* ── Permanent Address (PSGC Cascading Dropdowns) ──────── */}
@@ -227,21 +193,30 @@ const PersonalInfoSection = ({
       handleGeneralInput={handleGeneralInput}
       validateField={validateField}
       fieldErrors={fieldErrors}
+      showValidationErrors={showValidationErrors}
     />
 
     {/* ID & document uploads */}
-    <FileUploadField
-      label="Valid ID (Front)"
-      value={validIDFront}
-      onChange={setValidIDFront}
-      hint="Government-issued ID (Front side)"
-    />
-    <FileUploadField
-      label="Valid ID (Back)"
-      value={validIDBack}
-      onChange={setValidIDBack}
-      hint="Government-issued ID (Back side)"
-    />
+    <div data-field="validIDFront">
+      <FileUploadField
+        label="Valid ID (Front)"
+        value={validIDFront}
+        onChange={setValidIDFront}
+        hint="Government-issued ID (Front side)"
+        hasError={showValidationErrors && !validIDFront}
+        required
+      />
+    </div>
+    <div data-field="validIDBack">
+      <FileUploadField
+        label="Valid ID (Back)"
+        value={validIDBack}
+        onChange={setValidIDBack}
+        hint="Government-issued ID (Back side)"
+        hasError={showValidationErrors && !validIDBack}
+        required
+      />
+    </div>
 
     <div className="form-group">
       <label className="form-label">
@@ -294,16 +269,10 @@ const FieldError = ({ error }) => {
 };
 
 const NameField = ({
-  label,
-  value,
-  setter,
-  fieldKey,
-  handler,
-  validate,
-  errors,
-  required,
+  label, value, setter, fieldKey, handler,
+  validate, errors, required, showValidationErrors,
 }) => (
-  <div className="form-group">
+  <div className="form-group" data-field={required ? fieldKey : undefined}>
     <label className="form-label">
       {label} {required && <span style={{ color: "#dc2626" }}>*</span>}
     </label>
@@ -323,9 +292,9 @@ const NameField = ({
           };
         })
       }
-      style={{ border: "1.5px solid #999" }}
+      style={{ border: required ? errBorder(showValidationErrors, value) : "1.5px solid #999" }}
     />
-    <FieldError error={errors[fieldKey]} />
+    <FieldError error={showValidationErrors && required && !value ? `${label} is required` : errors[fieldKey]} />
   </div>
 );
 

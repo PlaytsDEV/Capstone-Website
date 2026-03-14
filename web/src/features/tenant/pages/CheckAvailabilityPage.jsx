@@ -231,7 +231,6 @@ function CheckAvailabilityPage() {
         selectedBed: selectedBed
           ? { id: selectedBed.id, position: selectedBed.position }
           : null,
-        targetMoveInDate: checkInDate.toISOString(),
         checkInDate: checkInDate.toISOString(),
         totalPrice: selectedRoom.price || 5000,
         applianceFees: calculateApplianceFees(),
@@ -243,10 +242,33 @@ function CheckAvailabilityPage() {
         await reservationApi.create(payload);
       } catch (createErr) {
         if (createErr?.response?.data?.code === "RESERVATION_ALREADY_EXISTS") {
+          const existingId = createErr?.response?.data?.existingReservationId;
+          if (existingId) {
+            // Update existing reservation with new room and clear stale step data
+            try {
+              await reservationApi.updateByUser(existingId, {
+                roomId: selectedRoom.roomId,
+                selectedBed: selectedBed
+                  ? { id: selectedBed.id, position: selectedBed.position }
+                  : null,
+                totalPrice: selectedRoom.price || 5000,
+                applianceFees: calculateApplianceFees(),
+                targetMoveInDate: null,
+                leaseDuration: null,
+                agreedToPrivacy: false,
+                agreedToCertification: false,
+              });
+              await queryClient.invalidateQueries({ queryKey: ["reservations"] });
+            } catch (updateErr) {
+              console.error("Failed to update existing reservation:", updateErr);
+            }
+          }
           closeRoomDetails();
           showNotification(
-            "You already have an ongoing reservation. Please complete or cancel it before reserving another room.",
-            "warning",
+            existingId
+              ? `Room updated to ${selectedRoom.title}! Continue from your dashboard.`
+              : "You already have an ongoing reservation. Please complete or cancel it before reserving another room.",
+            existingId ? "success" : "warning",
             5000,
           );
           navigate("/applicant/profile");

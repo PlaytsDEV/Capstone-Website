@@ -43,7 +43,7 @@ const RequireNonAdmin = ({ children }) => {
 
   // If already authenticated, redirect based on role (they don't need auth pages)
   // EXCEPTION: Skip redirect while social signup is checking for duplicate accounts
-  if (isAuthenticated && user && !sessionStorage.getItem("socialAuthInProgress")) {
+  if (isAuthenticated && user && !sessionStorage.getItem("socialAuthInProgress") && !sessionStorage.getItem("resendInProgress")) {
     const isAdmin = user.role === "admin" || user.role === "superAdmin";
     if (isAdmin) {
       return <Navigate to="/admin/dashboard" replace />;

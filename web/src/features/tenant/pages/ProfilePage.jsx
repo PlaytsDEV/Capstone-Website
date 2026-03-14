@@ -118,38 +118,70 @@ const ProfilePage = () => {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const paymentStatus = params.get("payment");
-    const sessionId = params.get("session_id");
+    const rawSessionId = params.get("session_id");
 
     if (!paymentStatus) return;
 
-    // Clean URL immediately
+    // PayMongo back button doesn't replace {id} placeholder — detect it
+    const urlSessionId = rawSessionId && rawSessionId !== "{id}" ? rawSessionId : null;
+
+    // If we need the fallback (no valid URL session ID), wait for reservationsData
+    if (!urlSessionId && !reservationsData) return;
+
+    // Clean URL only AFTER we have what we need
     navigate(location.pathname, { replace: true });
 
-    // Always verify session status — PayMongo's back button sends to
-    // cancel_url even after successful payment, so we can't trust the URL
     const verifyPayment = async () => {
+      // 1. Try URL session ID first (works on proper success redirect)
+      // 2. Fall back to active reservation's stored paymongoSessionId
+      let sessionId = urlSessionId;
+
+      const active = (Array.isArray(reservationsData) ? reservationsData : [])
+        .find(r => r.paymongoSessionId && r.status !== "cancelled");
+
+      if (!sessionId && active?.paymongoSessionId) {
+        sessionId = active.paymongoSessionId;
+      }
+
       if (sessionId) {
         try {
           const result = await billingApi.checkPaymentStatus(sessionId);
-          if (result?.isPaid) {
+          if (result?.status === "paid") {
             showNotification("Payment successful! Your reservation is confirmed.", "success", 5000);
             queryClient.invalidateQueries({ queryKey: ["reservations"] });
+            // Navigate to confirmation step so user sees reservation code + receipt
+            // Use replace:true to prevent back-button loops through PayMongo URLs
+            navigate("/applicant/reservation", {
+              state: { step: 5, continueFlow: true, reservationId: active?._id },
+              replace: true,
+            });
             return;
           }
         } catch (err) {
           console.error("Payment verification failed:", err);
         }
       }
-      // Only show cancelled if session truly wasn't paid
+
+      // Could not verify — check if reservation is already paid before showing cancelled
+      queryClient.invalidateQueries({ queryKey: ["reservations"] });
+
+      // If the reservation is already paid/reserved, skip cancelled flash and go to confirmation
+      if (active && (active.paymentStatus === "paid" || active.status === "reserved")) {
+        navigate("/applicant/reservation", {
+          state: { step: 5, continueFlow: true, reservationId: active._id },
+          replace: true,
+        });
+        return;
+      }
+
       if (paymentStatus === "cancelled") {
         showNotification("Payment was cancelled. You can try again from your profile.", "warning", 5000);
       } else {
         showNotification("Payment is being processed. Please wait a moment.", "info", 5000);
       }
-      queryClient.invalidateQueries({ queryKey: ["reservations"] });
     };
     verifyPayment();
-  }, [location.search]);
+  }, [location.search, reservationsData]);
 
   // ── Derive reservations, visits, activity from cached data ─
   const reservations = useMemo(() => reservationsData || [], [reservationsData]);

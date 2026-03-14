@@ -3,6 +3,7 @@ import React from "react";
 /**
  * Section 6: Agreements & Consent — privacy consent + certification checkboxes
  * with links to policy modals.
+ * Flat layout (no card wrapper — the parent handles section header).
  */
 const AgreementsSection = ({
   agreedToPrivacy,
@@ -17,34 +18,22 @@ const AgreementsSection = ({
   const hasError = showValidationErrors && !allAgreed;
 
   return (
-    <div
-      style={{
-        border: `1.5px solid ${allAgreed ? "#10B981" : hasError ? "#EF4444" : "#e5e7eb"}`,
-        borderRadius: "12px",
-        padding: "20px",
-        marginBottom: "12px",
-        background: allAgreed ? "#F0FDF4" : hasError ? "#FEF2F2" : "#fff",
-      }}
-    >
-      {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "10px",
-          marginBottom: "16px",
-        }}
-      >
-        <span style={{ fontSize: "20px" }}>6</span>
-        <span style={{ fontSize: "15px", fontWeight: "600", color: "#1F2937" }}>
-          Agreements & Consent
-        </span>
-        {allAgreed ? (
-          <StatusBadge text="Agreed" color="#059669" bg="#D1FAE5" />
-        ) : hasError ? (
-          <StatusBadge text="Required" color="#DC2626" bg="#FEE2E2" />
-        ) : null}
-      </div>
+    <div style={{ paddingBottom: "4px" }}>
+      {hasError && (
+        <div
+          style={{
+            fontSize: "12px",
+            color: "#DC2626",
+            backgroundColor: "#FEF2F2",
+            border: "1px solid #FECACA",
+            borderRadius: "8px",
+            padding: "8px 12px",
+            marginBottom: "12px",
+          }}
+        >
+          Please agree to both consent items to continue.
+        </div>
+      )}
 
       {/* Privacy Consent */}
       <ConsentCheckbox
@@ -65,7 +54,7 @@ const AgreementsSection = ({
       />
 
       {/* Policy links */}
-      <div style={{ fontSize: "12px", color: "#6b7280" }}>
+      <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>
         By proceeding, you agree to our{" "}
         <PolicyLink onClick={onShowPolicies}>
           Policies & Terms of Service
@@ -75,22 +64,6 @@ const AgreementsSection = ({
     </div>
   );
 };
-
-const StatusBadge = ({ text, color, bg }) => (
-  <span
-    style={{
-      fontSize: "12px",
-      fontWeight: "600",
-      color,
-      backgroundColor: bg,
-      padding: "3px 10px",
-      borderRadius: "999px",
-      marginLeft: "auto",
-    }}
-  >
-    {text}
-  </span>
-);
 
 const ConsentCheckbox = ({ id, checked, onChange, title, description }) => (
   <div
