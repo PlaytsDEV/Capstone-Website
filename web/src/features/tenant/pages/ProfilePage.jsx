@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import ProfilePageSkeleton from "../components/profile/ProfilePageSkeleton";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
-import { authApi } from "../../../shared/api/apiClient";
+import { authFetch } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -21,8 +21,8 @@ import {
   ProfileSidebar,
   ReceiptModal,
   DashboardTab,
+  BillingTab,
   PersonalDetailsTab,
-  RoomPaymentTab,
   ActivityHistoryTab,
   NotificationsTab,
   SettingsTab,
@@ -40,7 +40,9 @@ const ProfilePage = () => {
   const location = useLocation();
 
   // ── UI state ───────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState("dashboard");
+  const [activeTab, setActiveTab] = useState(
+    location.state?.tab || "dashboard"
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -128,7 +130,6 @@ const ProfilePage = () => {
     const alreadyPaid = (Array.isArray(reservationsData) ? reservationsData : [])
       .find(r => r.status !== "cancelled" && (r.paymentStatus === "paid" || r.status === "reserved"));
     if (alreadyPaid) {
-      console.log("📋 Already paid — instant redirect to confirmation");
       navigate(location.pathname, { replace: true });
       navigate("/applicant/reservation", {
         state: { step: 5, continueFlow: true, reservationId: alreadyPaid._id },
@@ -239,49 +240,6 @@ const ProfilePage = () => {
     [reservations],
   );
 
-  const activityLog = useMemo(() => {
-    const activities = [];
-    reservations.forEach((r) => {
-      if (r.createdAt)
-        activities.push({
-          id: `res-${r._id}`,
-          type: "reservation",
-          title: "Room Reservation Submitted",
-          description: `Submitted reservation request for Room ${r.roomId?.name || "N/A"}`,
-          date: r.createdAt,
-          status: "Pending",
-        });
-      if (r.visitDate)
-        activities.push({
-          id: `visit-${r._id}`,
-          type: "visit",
-          title: r.visitCompleted ? "Visit Completed" : "Visit Scheduled",
-          description: `${r.visitCompleted ? "Completed" : "Scheduled"} visit to Room ${r.roomId?.name || "N/A"}`,
-          date: r.visitDate,
-          status: r.visitCompleted ? "Completed" : "Scheduled",
-        });
-      if (r.paymentDate)
-        activities.push({
-          id: `payment-${r._id}`,
-          type: "payment",
-          title: "Deposit Payment Completed",
-          description: `Successfully paid security deposit for Room ${r.roomId?.name || "N/A"}`,
-          date: r.paymentDate,
-          status: "Completed",
-        });
-      if (r.approvedDate)
-        activities.push({
-          id: `approval-${r._id}`,
-          type: "approval",
-          title: "Reservation Approved",
-          description: `Your reservation for Room ${r.roomId?.name || "N/A"} has been approved by admin`,
-          date: r.approvedDate,
-          status: "Approved",
-        });
-    });
-    activities.sort((a, b) => new Date(b.date) - new Date(a.date));
-    return activities;
-  }, [reservations]);
 
   // ── Profile editing handlers ───────────────────────────────
   const queryClient = useQueryClient();
@@ -291,16 +249,21 @@ const ProfilePage = () => {
     setError(null);
     setSuccess(null);
     try {
-      const updatedUser = await authApi.updateProfile(editData);
+      const updatedUser = await authFetch("/auth/profile", {
+        method: "PUT",
+        body: JSON.stringify(editData),
+      });
       setProfileData((prev) => ({ ...prev, ...updatedUser.user }));
       setSuccess("Profile updated successfully!");
       setIsEditingProfile(false);
       if (updateUser) updateUser(updatedUser.user);
       // Invalidate cache so sidebar/header reflect new data immediately
       queryClient.invalidateQueries({ queryKey: ["users", "currentUser"] });
+      showNotification("Profile updated successfully!", "success", 3000);
     } catch (err) {
       console.error("Error updating profile:", err);
       setError("Failed to update profile. Please try again.");
+      showNotification("Failed to update profile. Please try again.", "error", 4000);
     } finally {
       setSaving(false);
     }
@@ -430,16 +393,6 @@ const ProfilePage = () => {
     : null;
 
   // ── Tab title map ──────────────────────────────────────────
-  const TAB_TITLES = {
-    dashboard: "Dashboard",
-    personal: "Personal Details",
-    room: "Room & Payment",
-    reservation: "My Reservation",
-    contract: "My Contract",
-    history: "Activity Log",
-    notifications: "Notifications",
-    settings: "Settings",
-  };
 
   if (loading) return <ProfilePageSkeleton />;
 
@@ -457,24 +410,6 @@ const ProfilePage = () => {
         />
 
         <div className="flex-1 flex flex-col">
-          {/* Top Header */}
-          <header
-            className="bg-white border-b flex items-center justify-between px-8"
-            style={{
-              borderColor: "#E8EBF0",
-              height: "60px",
-              minHeight: "60px",
-            }}
-          >
-            <div className="flex items-center gap-3">
-              <span
-                className="text-sm font-medium"
-                style={{ color: "#1F2937" }}
-              >
-                {TAB_TITLES[activeTab] || "Profile"}
-              </span>
-            </div>
-          </header>
 
           <main className="flex-1 overflow-auto">
             <div className="p-8">
@@ -503,13 +438,7 @@ const ProfilePage = () => {
                 />
               )}
 
-              {activeTab === "room" && (
-                <RoomPaymentTab
-                  selectedRoom={selectedRoom}
-                  activeReservation={activeReservation}
-                  activeStatusLabel={activeStatusLabel}
-                />
-              )}
+              {activeTab === "billing" && <BillingTab />}
 
               {activeTab === "reservation" && (
                 <ReservationAgreementPage
@@ -521,13 +450,13 @@ const ProfilePage = () => {
               {activeTab === "contract" && <ContractTab />}
 
               {activeTab === "history" && (
-                <ActivityHistoryTab activityLog={activityLog} />
+                <ActivityHistoryTab reservation={selectedReservation || activeReservation} />
               )}
+
+              {activeTab === "notifications" && <NotificationsTab />}
+              {activeTab === "settings" && <SettingsTab />}
             </div>
           </main>
-
-          {activeTab === "notifications" && <NotificationsTab />}
-          {activeTab === "settings" && <SettingsTab />}
         </div>
 
         <ReceiptModal

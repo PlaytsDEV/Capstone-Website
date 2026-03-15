@@ -233,7 +233,7 @@ const SettingsTab = () => {
   };
 
   return (
-    <div className="max-w-4xl" style={{ padding: "32px" }}>
+    <div className="max-w-5xl">
       {/* Header */}
       <div style={{ marginBottom: "24px" }}>
         <h1

@@ -141,7 +141,7 @@ const billSchema = new mongoose.Schema(
     },
     paymentMethod: {
       type: String,
-      enum: ["bank", "gcash", "card", "check", "cash", "paymongo"],
+      enum: ["bank", "gcash", "card", "check", "cash", "paymongo", "paymaya", "grab_pay", "maya", "online"],
       default: null,
     },
     paymongoSessionId: {

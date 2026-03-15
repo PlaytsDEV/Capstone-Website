@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { billingApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
+import { formatPaymentMethod } from "../../../shared/utils/formatPaymentMethod";
 import TenantLayout from "../../../shared/layouts/TenantLayout";
 import {
   FileText,
@@ -463,8 +464,7 @@ function PaymentReceipt({ bill, fmtCurrency, fmtMonth, fmtDate }) {
         <div className="receipt-row">
           <span className="receipt-label">Payment Method</span>
           <span className="receipt-value">
-            {(bill.paymentMethod || "online").charAt(0).toUpperCase() +
-              (bill.paymentMethod || "online").slice(1)}
+            {formatPaymentMethod(bill.paymentMethod)}
           </span>
         </div>
         <div className="receipt-row total">

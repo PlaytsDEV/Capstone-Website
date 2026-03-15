@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback } from "react";
 import { formatBranch, fmtDate } from "../../../../shared/utils/formatDate";
+import { formatPaymentMethod } from "../../../../shared/utils/formatPaymentMethod";
 
 /**
  * Step 5 — Reservation Secured
@@ -20,10 +21,11 @@ const ReservationConfirmationStep = ({
   visitTime,
   onViewDetails,
   onReturnHome,
+  isPaymentReturn = false,
 }) => {
   const receiptRef = useRef(null);
   const [countdown, setCountdown] = useState(REDIRECT_SECONDS);
-  const [paused, setPaused] = useState(false);
+  const [paused, setPaused] = useState(!isPaymentReturn);
 
   // Auto-redirect countdown
   useEffect(() => {
@@ -43,17 +45,7 @@ const ReservationConfirmationStep = ({
 
   const pauseRedirect = useCallback(() => setPaused(true), []);
 
-  const formatPaymentMethod = (method) => {
-    const methods = {
-      bank: "Bank Transfer",
-      gcash: "GCash",
-      maya: "Maya",
-      card: "Credit/Debit Card",
-      online: "Online Payment",
-      check: "Check",
-    };
-    return methods[method] || method || "Online Payment";
-  };
+
 
   const handlePrint = () => {
     const content = receiptRef.current;
@@ -258,7 +250,7 @@ const ReservationConfirmationStep = ({
       </div>
 
       {/* ── Auto-redirect countdown ──────────────────────────── */}
-      {!paused && countdown > 0 && (
+      {isPaymentReturn && !paused && countdown > 0 && (
         <div style={s.redirectRow}>
           <span style={s.redirectText}>
             Taking you to your reservation in{" "}

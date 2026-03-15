@@ -524,18 +524,30 @@ export const deleteReservation = async (req, res, next) => {
 
     const reservationData = reservation.toObject();
 
-    // Release occupancy
-    if (
+    // Release occupancy — use toObject() to avoid Mongoose getter issues with spread
+    const hadOccupancy =
       reservation.status === "reserved" ||
-      reservation.status === "checked-in"
-    ) {
+      reservation.status === "checked-in";
+    if (hadOccupancy) {
       try {
         await updateOccupancyOnReservationChange(
-          { ...reservation, status: "cancelled" },
+          { ...reservationData, status: "cancelled" },
           reservationData,
         );
+        console.log(`🔓 Occupancy released for reservation ${reservationId} (was ${reservation.status})`);
       } catch (e) {
         console.error("⚠️ Occupancy release during deletion failed:", e);
+      }
+    }
+
+    // Safety net: recalculate room occupancy from actual reservations
+    if (reservation.roomId?._id) {
+      try {
+        const { recalculateRoomOccupancy } = await import("../utils/occupancyManager.js");
+        await recalculateRoomOccupancy(reservation.roomId._id);
+        console.log(`🔄 Recalculated occupancy for room ${reservation.roomId.name || reservation.roomId._id}`);
+      } catch (e) {
+        console.error("⚠️ Occupancy recalculation failed:", e);
       }
     }
 

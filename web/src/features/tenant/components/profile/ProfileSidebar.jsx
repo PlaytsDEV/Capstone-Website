@@ -26,7 +26,7 @@ const NAV_SECTIONS = [
     label: "Account",
     items: [
       { id: "personal", label: "Personal Details", icon: User },
-      { id: "room", label: "Room & Payment", icon: CreditCard, hasBadge: true },
+      { id: "billing", label: "My Bills", icon: CreditCard },
       { id: "reservation", label: "My Reservation", icon: FileText },
       { id: "contract", label: "My Contract", icon: FileText },
       { id: "history", label: "Activity Log", icon: History },

@@ -1,4 +1,5 @@
 import React from "react";
+import { formatPaymentMethod } from "../../../../shared/utils/formatPaymentMethod";
 
 /**
  * Full-page receipt modal showing detailed info per reservation step.
@@ -583,8 +584,7 @@ const PaymentReceiptContent = ({ reservation }) => (
       </div>
       <ReceiptRow
         label="Payment Method"
-        value={reservation?.paymentMethod || "N/A"}
-        capitalize
+        value={formatPaymentMethod(reservation?.paymentMethod)}
       />
       <div
         style={{

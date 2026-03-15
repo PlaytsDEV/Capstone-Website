@@ -1,126 +1,326 @@
-import React from "react";
-import { Calendar, DollarSign, FileText, Edit2, History } from "lucide-react";
+import React, { useMemo, useState } from "react";
+import {
+  Calendar,
+  CreditCard,
+  FileText,
+  CheckCircle,
+  Home,
+  UserCheck,
+  ClipboardCheck,
+  Clock,
+  History,
+  XCircle,
+} from "lucide-react";
 
 /**
- * Activity History tab content for ProfilePage.
- * Displays a timeline of reservation-related activities.
+ * Activity History tab — derives a real timeline from the user's reservation data.
+ * Receives the reservation object as a prop to avoid duplicate API calls.
  */
 
-const ACTIVITY_ICONS = {
-  payment: { icon: DollarSign, bg: "#DEF7EC", color: "text-green-600" },
-  reservation: {
-    icon: FileText,
-    bg: "#EEF2FF",
-    color: undefined,
-    style: { color: "#183153" },
-  },
-  approval: {
-    icon: FileText,
-    bg: "#EEF2FF",
-    color: undefined,
-    style: { color: "#183153" },
-  },
-  visit: { icon: Calendar, bg: "#DBEAFE", color: "text-blue-600" },
-  default: { icon: Edit2, bg: "#F3F4F6", color: "text-gray-600" },
+const fmtDate = (d) =>
+  new Date(d).toLocaleDateString("en-PH", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+const fmtDateTime = (d) =>
+  new Date(d).toLocaleDateString("en-PH", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+const formatMethod = (m) => {
+  const map = {
+    gcash: "GCash",
+    maya: "Maya",
+    paymaya: "PayMaya",
+    grab_pay: "GrabPay",
+    card: "Credit/Debit Card",
+    bank: "Bank Transfer",
+    paymongo: "PayMongo",
+    cash: "Cash",
+    online: "Online Payment",
+  };
+  return map[m] || m || "Online";
 };
 
-const getStatusClass = (status) => {
-  if (["Completed", "Confirmed", "Approved", "Complete"].includes(status)) {
-    return "bg-green-100 text-green-700";
+/* ── Build timeline from reservation ─────────────── */
+const buildTimeline = (r) => {
+  if (!r) return [];
+  const events = [];
+
+  // 1. Reservation created
+  if (r.createdAt) {
+    events.push({
+      id: "created",
+      icon: Home,
+      iconBg: "#EEF2FF",
+      iconColor: "#183153",
+      title: "Reservation Created",
+      description: `Room ${r.roomId?.name || r.roomId?.roomNumber || "—"} selected`,
+      date: r.createdAt,
+      status: "Completed",
+      statusColor: "#059669",
+      statusBg: "#F0FDF4",
+    });
   }
-  if (["Scheduled", "Pending"].includes(status)) {
-    return "bg-blue-100 text-blue-700";
+
+  // 2. Visit scheduled
+  if (r.visitDate) {
+    events.push({
+      id: "visit-scheduled",
+      icon: Calendar,
+      iconBg: "#DBEAFE",
+      iconColor: "#2563EB",
+      title: "Visit Scheduled",
+      description: `${r.viewingType === "virtual" ? "Virtual" : "In-person"} visit on ${fmtDate(r.visitDate)}${r.visitTime ? ` at ${r.visitTime}` : ""}`,
+      date: r.visitDate,
+      status: r.scheduleRejected ? "Rejected" : r.scheduleApproved ? "Approved" : "Pending",
+      statusColor: r.scheduleRejected ? "#DC2626" : r.scheduleApproved ? "#059669" : "#D97706",
+      statusBg: r.scheduleRejected ? "#FEF2F2" : r.scheduleApproved ? "#F0FDF4" : "#FFFBEB",
+    });
   }
-  return "bg-gray-100 text-gray-700";
+
+  // 3. Schedule rejected
+  if (r.scheduleRejected && r.scheduleRejectedAt) {
+    events.push({
+      id: "schedule-rejected",
+      icon: XCircle,
+      iconBg: "#FEF2F2",
+      iconColor: "#DC2626",
+      title: "Visit Schedule Rejected",
+      description: r.scheduleRejectionReason || "Admin requested reschedule",
+      date: r.scheduleRejectedAt,
+      status: "Rejected",
+      statusColor: "#DC2626",
+      statusBg: "#FEF2F2",
+    });
+  }
+
+  // 4. Visit approved
+  if (r.visitApproved) {
+    events.push({
+      id: "visit-approved",
+      icon: CheckCircle,
+      iconBg: "#F0FDF4",
+      iconColor: "#059669",
+      title: "Visit Completed & Approved",
+      description: "Admin confirmed your visit — proceed to application",
+      date: r.updatedAt,
+      status: "Completed",
+      statusColor: "#059669",
+      statusBg: "#F0FDF4",
+    });
+  }
+
+  // 5. Application submitted
+  if (r.firstName && r.lastName && r.agreedToCertification) {
+    events.push({
+      id: "application",
+      icon: ClipboardCheck,
+      iconBg: "#F5F3FF",
+      iconColor: "#7C3AED",
+      title: "Application Submitted",
+      description: `Personal details and documents submitted`,
+      date: r.updatedAt,
+      status: "Completed",
+      statusColor: "#059669",
+      statusBg: "#F0FDF4",
+    });
+  }
+
+  // 6. Payment completed
+  if (r.paymentDate) {
+    events.push({
+      id: "payment",
+      icon: CreditCard,
+      iconBg: "#ECFDF5",
+      iconColor: "#059669",
+      title: "Payment Confirmed",
+      description: `Deposit paid via ${formatMethod(r.paymentMethod)}`,
+      date: r.paymentDate,
+      status: "Paid",
+      statusColor: "#059669",
+      statusBg: "#F0FDF4",
+    });
+  }
+
+  // 7. Checked in
+  if ((r.status === "checked-in" || r.reservationStatus === "checked-in") && r.checkInDate) {
+    events.push({
+      id: "checked-in",
+      icon: UserCheck,
+      iconBg: "#ECFDF5",
+      iconColor: "#059669",
+      title: "Checked In",
+      description: `Moved in on ${fmtDate(r.checkInDate)}`,
+      date: r.checkInDate,
+      status: "Active",
+      statusColor: "#059669",
+      statusBg: "#F0FDF4",
+    });
+  }
+
+  // Sort oldest first (chronological)
+  events.sort((a, b) => new Date(a.date) - new Date(b.date));
+  return events;
 };
 
-const ActivityHistoryTab = ({ activityLog }) => (
-  <div className="max-w-5xl">
-    <div className="mb-8">
-      <h1 className="text-2xl font-semibold mb-1" style={{ color: "#1F2937" }}>
-        Activity History
-      </h1>
-      <p className="text-sm text-gray-500">
-        Complete record of visit requests, approvals, reservation updates, and
-        payments
-      </p>
-    </div>
+/* ── Main Component ──────────────────────────────── */
+const ActivityHistoryTab = ({ reservation }) => {
+  const events = useMemo(() => buildTimeline(reservation), [reservation]);
 
-    <div
-      className="bg-white rounded-xl p-6 border"
-      style={{ borderColor: "#E8EBF0" }}
-    >
-      {activityLog.length > 0 ? (
-        <div className="space-y-4">
-          {activityLog.map((activity, index) => {
-            const iconConfig =
-              ACTIVITY_ICONS[activity.type] || ACTIVITY_ICONS.default;
-            const IconComponent = iconConfig.icon;
-
-            return (
-              <div key={activity.id} className="relative">
-                {index !== activityLog.length - 1 && (
-                  <div className="absolute left-5 top-12 bottom-0 w-px bg-gray-200" />
-                )}
-                <div className="flex items-start gap-4">
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 relative z-10"
-                    style={{ backgroundColor: iconConfig.bg }}
-                  >
-                    <IconComponent
-                      className={`w-5 h-5 ${iconConfig.color || ""}`}
-                      style={iconConfig.style}
-                    />
-                  </div>
-                  <div className="flex-1 pb-8">
-                    <div className="flex items-start justify-between mb-2">
-                      <div>
-                        <h4
-                          className="font-semibold mb-1"
-                          style={{ color: "#1F2937" }}
-                        >
-                          {activity.title}
-                        </h4>
-                        <p className="text-sm text-gray-600">
-                          {activity.description}
-                        </p>
-                      </div>
-                      {activity.status && (
-                        <span
-                          className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ml-4 ${getStatusClass(activity.status)}`}
-                        >
-                          {activity.status}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-gray-400">
-                      {new Date(activity.date).toLocaleDateString("en-US", {
-                        month: "long",
-                        day: "numeric",
-                        year: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+  if (events.length === 0) {
+    return (
+      <div style={{ maxWidth: 960 }}>
+        <div style={s.heading}>
+          <h1 style={s.title}>Activity Log</h1>
+          <p style={s.subtitle}>Your reservation journey at a glance</p>
         </div>
-      ) : (
-        <div className="text-center py-12">
-          <History className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-          <h3 className="text-lg font-semibold text-gray-700 mb-2">
-            No Activity Yet
+        <div style={s.emptyState}>
+          <History size={48} color="#D1D5DB" />
+          <h3 style={{ fontSize: 16, fontWeight: 600, color: "#374151", margin: "16px 0 8px" }}>
+            No activity yet
           </h3>
-          <p className="text-sm text-gray-500">
-            Your reservation activities will appear here
+          <p style={{ fontSize: 13, color: "#9CA3AF", maxWidth: 280 }}>
+            Your reservation milestones will appear here once you start your journey.
           </p>
         </div>
-      )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ maxWidth: 960 }}>
+      <div style={s.heading}>
+        <h1 style={s.title}>Activity Log</h1>
+        <p style={s.subtitle}>Your reservation journey at a glance</p>
+      </div>
+
+      {/* Timeline */}
+      <div style={s.timeline}>
+        {events.map((ev, i) => (
+          <div key={ev.id} style={s.timelineItem}>
+            {/* Connector line */}
+            {i < events.length - 1 && <div style={s.connector} />}
+
+            {/* Icon */}
+            <div style={{ ...s.iconCircle, background: ev.iconBg }}>
+              <ev.icon size={18} color={ev.iconColor} />
+            </div>
+
+            {/* Content */}
+            <div style={s.content}>
+              <div style={s.contentHeader}>
+                <div style={{ flex: 1 }}>
+                  <h4 style={s.eventTitle}>{ev.title}</h4>
+                  <p style={s.eventDesc}>{ev.description}</p>
+                </div>
+                <span
+                  style={{
+                    ...s.badge,
+                    background: ev.statusBg,
+                    color: ev.statusColor,
+                  }}
+                >
+                  {ev.status}
+                </span>
+              </div>
+              <p style={s.eventDate}>
+                <Clock size={12} style={{ marginRight: 4, opacity: 0.6 }} />
+                {fmtDateTime(ev.date)}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
-  </div>
-);
+  );
+};
+
+/* ── Styles ───────────────────────────────────────── */
+const s = {
+  heading: { marginBottom: 24 },
+  title: { fontSize: 22, fontWeight: 700, color: "#0A1628", margin: 0 },
+  subtitle: { fontSize: 13, color: "#9CA3AF", marginTop: 4 },
+
+  timeline: { position: "relative" },
+  timelineItem: {
+    display: "flex",
+    gap: 14,
+    position: "relative",
+    paddingBottom: 24,
+  },
+  connector: {
+    position: "absolute",
+    left: 19,
+    top: 44,
+    bottom: 0,
+    width: 2,
+    background: "#E8EBF0",
+    borderRadius: 1,
+  },
+  iconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    position: "relative",
+    zIndex: 1,
+  },
+  content: {
+    flex: 1,
+    background: "#fff",
+    borderRadius: 10,
+    border: "1px solid #E8EBF0",
+    padding: "14px 18px",
+  },
+  contentHeader: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  eventTitle: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: "#0A1628",
+    margin: 0,
+  },
+  eventDesc: {
+    fontSize: 13,
+    color: "#6B7280",
+    margin: "3px 0 0",
+    lineHeight: 1.4,
+  },
+  eventDate: {
+    display: "flex",
+    alignItems: "center",
+    fontSize: 12,
+    color: "#9CA3AF",
+    marginTop: 10,
+  },
+  badge: {
+    padding: "3px 10px",
+    borderRadius: 20,
+    fontSize: 11,
+    fontWeight: 600,
+    whiteSpace: "nowrap",
+  },
+  emptyState: {
+    textAlign: "center",
+    padding: "48px 24px",
+    background: "#fff",
+    borderRadius: 10,
+    border: "1px solid #E8EBF0",
+  },
+};
 
 export default ActivityHistoryTab;

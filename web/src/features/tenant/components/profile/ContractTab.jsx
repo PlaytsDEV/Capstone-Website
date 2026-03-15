@@ -155,7 +155,7 @@ const ContractTab = () => {
   const monthsLeft = contract.leaseDuration - contract.monthsCompleted;
 
   return (
-    <div style={{ maxWidth: 780, margin: "0 auto" }}>
+    <div style={{ maxWidth: 960, margin: "0 auto" }}>
       {/* ── Header ──────────────────────────────────── */}
       <div
         style={{
@@ -167,9 +167,14 @@ const ContractTab = () => {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <h2 style={{ fontSize: 20, fontWeight: 700, color: "#0A1628", margin: 0 }}>My Contract</h2>
-            <StatusBadge status={contract.contractStatus} />
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
+              <h2 style={{ fontSize: 20, fontWeight: 700, color: "#0A1628", margin: 0 }}>My Contract</h2>
+              <StatusBadge status={contract.contractStatus} />
+            </div>
+            <p style={{ fontSize: 13, color: "#94A3B8", margin: 0 }}>
+              Your lease agreement and progress
+            </p>
           </div>
           <p style={{ fontSize: 13, color: "#94A3B8", margin: 0, fontWeight: 500 }}>
             {contract.room} · {contract.bed} · {contract.branch}

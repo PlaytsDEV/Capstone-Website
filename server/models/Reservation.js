@@ -133,6 +133,7 @@ const reservationSchema = new mongoose.Schema(
 
     // Address Information
     address: {
+      region: String,
       unitHouseNo: String,
       street: String,
       barangay: String,
@@ -148,6 +149,7 @@ const reservationSchema = new mongoose.Schema(
     nbiReason: String,
     companyIDUrl: String,
     companyIDReason: String,
+    personalNotes: String,
 
     // Emergency Contact
     emergencyContact: {
@@ -192,7 +194,7 @@ const reservationSchema = new mongoose.Schema(
     finalMoveInDate: Date,
     paymentMethod: {
       type: String,
-      enum: ["bank", "gcash", "card", "check", "cash", "paymongo"],
+      enum: ["bank", "gcash", "card", "check", "cash", "paymongo", "paymaya", "grab_pay", "maya", "online"],
       default: "bank",
     },
     proofOfPaymentUrl: String,

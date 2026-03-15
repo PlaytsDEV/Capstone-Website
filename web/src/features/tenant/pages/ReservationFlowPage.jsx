@@ -54,7 +54,11 @@ function ReservationFlowPage() {
   const [reservationData, setReservationData] = useState(null);
   const [currentStage, setCurrentStage] = useState(1);
   const [highestStageReached, setHighestStageReached] = useState(1);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(
+    () =>
+      new URLSearchParams(window.location.search).has("payment") ||
+      Boolean(sessionStorage.getItem("activeReservationId"))
+  );
   const [visitApproved, setVisitApproved] = useState(false);
   const [visitCompleted, setVisitCompleted] = useState(false);
   const [applicationSubmitted, setApplicationSubmitted] = useState(false);
@@ -103,6 +107,7 @@ function ReservationFlowPage() {
   const [educationLevel, setEducationLevel] = useState("");
   const [addressUnitHouseNo, setAddressUnitHouseNo] = useState("");
   const [addressStreet, setAddressStreet] = useState("");
+  const [addressRegion, setAddressRegion] = useState("");
   const [addressBarangay, setAddressBarangay] = useState("");
   const [addressCity, setAddressCity] = useState("");
   const [addressProvince, setAddressProvince] = useState("");
@@ -164,6 +169,12 @@ function ReservationFlowPage() {
     billingEmail: "",
   });
 
+  // ── Capture payment redirect flag + status at render time (before effects clear URL) ──
+  const paymentReturnStatusRef = useRef(
+    new URLSearchParams(window.location.search).get("payment")
+  );
+  const isPaymentReturnRef = useRef(Boolean(paymentReturnStatusRef.current));
+
   // ── Payment redirect hook (must be after all useState) ────
   const { searchParams, setSearchParams } = usePaymentRedirect({
     user,
@@ -213,6 +224,7 @@ function ReservationFlowPage() {
 
   const handleStepperClick = (stageId) => {
     if (!isStageClickable(stageId)) return;
+    if (isStageLocked(stageId)) return;
     if (stageId === 1 && reservationId) {
       navigate(
         `/applicant/check-availability?changeRoom=1&reservationId=${reservationId}`,
@@ -239,6 +251,7 @@ function ReservationFlowPage() {
     if (r.address) {
       setAddressUnitHouseNo(r.address.unitHouseNo || "");
       setAddressStreet(r.address.street || "");
+      setAddressRegion(r.address.region || "");
       setAddressBarangay(r.address.barangay || "");
       setAddressCity(r.address.city || "");
       setAddressProvince(r.address.province || "");
@@ -288,6 +301,7 @@ function ReservationFlowPage() {
     if (r.nbiReason) setNbiReason(r.nbiReason);
     if (r.companyIDUrl) setCompanyID(r.companyIDUrl);
     if (r.companyIDReason) setCompanyIDReason(r.companyIDReason);
+    if (r.personalNotes) setPersonalNotes(r.personalNotes);
     if (r.validIDType) setValidIDType(r.validIDType);
     // NOTE: agreedToPrivacy / agreedToCertification are NOT restored
     // from saved data — consent must be re-affirmed each session.
@@ -326,10 +340,18 @@ function ReservationFlowPage() {
 
   // ── Data loading ───────────────────────────────────────────
   const processedKeyRef = useRef(null);
+  const paymentVerifyingRef = useRef(false);
+  const justPaidRef = useRef(false);
 
   useEffect(() => {
     if (!user) {
       setShowLoginConfirm(true);
+      return;
+    }
+
+    // Skip re-initialization if payment verification is in progress
+    // (the hook's setSearchParams changes location.key, re-triggering this effect)
+    if (paymentVerifyingRef.current) {
       return;
     }
 
@@ -356,12 +378,28 @@ function ReservationFlowPage() {
       loadExistingReservation(resId);
     } else {
       const state = location.state?.roomData;
+      // Check if this is a PayMongo return — defer stage logic to usePaymentRedirect
+      const paymentParam = new URLSearchParams(window.location.search).get("payment");
       if (state) {
         setReservationData(state);
+      } else if (isPaymentReturnRef.current) {
+        // Returning from PayMongo — load reservation data for display,
+        // and verify payment using the reservation's stored session ID.
+        paymentVerifyingRef.current = true; // block re-init from hook's setSearchParams
+        isPaymentReturnRef.current = false; // consume the flag
+        const storedResId = sessionStorage.getItem("activeReservationId");
+        if (storedResId) {
+          loadExistingReservation(storedResId, true);
+        } else {
+          loadActiveReservation();
+        }
       } else {
         const stored = sessionStorage.getItem("pendingReservation");
+        const storedResId = sessionStorage.getItem("activeReservationId");
         if (stored) {
           setReservationData(JSON.parse(stored));
+        } else if (storedResId) {
+          loadExistingReservation(storedResId);
         } else if (isStepMode) {
           loadActiveReservation();
         } else {
@@ -431,7 +469,7 @@ function ReservationFlowPage() {
     }
   };
 
-  const loadExistingReservation = async (resId) => {
+  const loadExistingReservation = async (resId, skipStageSet = false) => {
     try {
       setIsLoading(true);
       const reservation = await reservationApi.getById(resId);
@@ -484,12 +522,50 @@ function ReservationFlowPage() {
       if (reservation.roomConfirmed && targetStage === 1) {
         targetStage = 2;
       }
-      setHighestStageReached(
-        Math.max(highest, targetStage === 2 ? 2 : highest),
-      );
-      if (stepOverride && stepOverride <= highest)
-        setCurrentStage(stepOverride);
-      else setCurrentStage(targetStage);
+      if (skipStageSet) {
+        // Payment redirect — verify using the reservation's stored paymongoSessionId
+        // Set highest to 5 immediately so the stepper renders all stages green from the start
+        setHighestStageReached(5);
+        // Verify payment status with PayMongo
+        if (reservation.paymongoSessionId) {
+          try {
+            const result = await billingApi.checkPaymentStatus(reservation.paymongoSessionId);
+            if (result.status === "paid") {
+              sessionStorage.removeItem("activeReservationId");
+              // Back button → redirect to dashboard; Return to merchant → show step 5
+              if (paymentReturnStatusRef.current === "cancelled") {
+                showNotification("Payment successful! Your reservation is secured.", "success", 5000);
+                navigate("/applicant/profile");
+                return;
+              }
+              setCurrentStage(5);
+              setHighestStageReached(5);
+              setPaymentSubmitted(true);
+              setPaymentApproved(true);
+              justPaidRef.current = true;
+              setPaymentMethod(result.paymentMethod || "paymongo");
+              showNotification("Payment successful! Your reservation is secured.", "success", 5000);
+              return;
+            } else {
+              setCurrentStage(4);
+              showNotification("Payment is being processed. Please wait or try again.", "info", 5000);
+              return;
+            }
+          } catch (err) {
+            console.error("❌ [VERIFY] Payment check failed:", err);
+            setCurrentStage(4);
+            showNotification("Could not verify payment. Please check your profile.", "warning", 5000);
+            return;
+          }
+        } else {
+          // No stored session ID — just show step 4
+          setCurrentStage(targetStage);
+        }
+      } else {
+        if (stepOverride && stepOverride <= highest)
+          setCurrentStage(stepOverride);
+        else setCurrentStage(targetStage);
+      }
       showNotification(
         stepOverride
           ? "Editing your application. Make your changes and save."
@@ -501,6 +577,7 @@ function ReservationFlowPage() {
       console.error("Error loading reservation:", err);
       const status = err?.response?.status;
       if (status === 404) {
+        sessionStorage.removeItem("activeReservationId");
         showNotification(
           "Reservation not found. It may have been removed or expired.",
           "error",
@@ -518,6 +595,7 @@ function ReservationFlowPage() {
         showNotification("Failed to load reservation data", "error", 3000);
       }
     } finally {
+      paymentVerifyingRef.current = false;
       setIsLoading(false);
     }
   };
@@ -713,6 +791,9 @@ function ReservationFlowPage() {
       startDate,
       occupation,
       previousEmployment,
+      nbiReason,
+      companyIDReason,
+      personalNotes,
       referralSource,
       referrerName,
       estimatedMoveInTime,
@@ -742,6 +823,7 @@ function ReservationFlowPage() {
       educationLevel,
       addressUnitHouseNo,
       addressStreet,
+      addressRegion,
       addressBarangay,
       addressCity,
       addressProvince,
@@ -937,6 +1019,7 @@ function ReservationFlowPage() {
           educationLevel,
           addressUnitHouseNo,
           addressStreet,
+          addressRegion,
           addressBarangay,
           addressCity,
           addressProvince,
@@ -966,6 +1049,7 @@ function ReservationFlowPage() {
           validIDBackUrl,
           nbiClearanceUrl,
           nbiReason,
+          personalNotes,
           companyIDUrl,
           companyIDReason,
           validIDType,
@@ -1067,7 +1151,7 @@ function ReservationFlowPage() {
   };
 
   // ── Loading ────────────────────────────────────────────────
-  if (!reservationData) return <GlobalLoading />;
+  if (!reservationData || paymentVerifyingRef.current) return <GlobalLoading />;
 
   // ── Render ─────────────────────────────────────────────────
   return (
@@ -1221,6 +1305,8 @@ function ReservationFlowPage() {
                   setAddressUnitHouseNo,
                   addressStreet,
                   setAddressStreet,
+                  addressRegion,
+                  setAddressRegion,
                   addressBarangay,
                   setAddressBarangay,
                   addressCity,
@@ -1352,6 +1438,8 @@ function ReservationFlowPage() {
                   }
                   const { checkoutUrl } = await billingApi.createDepositCheckout(reservationId);
                   navigatingAwayRef.current = true;
+                  // Persist reservation ID so we can reload on return from PayMongo
+                  sessionStorage.setItem("activeReservationId", reservationId);
                   window.location.href = checkoutUrl;
                 } catch (error) {
                   console.error("Failed to create deposit checkout:", error);
@@ -1381,8 +1469,9 @@ function ReservationFlowPage() {
               applicantName={`${firstName} ${lastName}`.trim()}
               applicantEmail={billingEmail}
               applicantPhone={mobileNumber}
-              onViewDetails={() => navigate("/applicant/profile")}
-              onReturnHome={() => navigate("/")}
+              onViewDetails={() => navigate("/applicant/profile", { state: { tab: "reservation" } })}
+              onReturnHome={() => navigate("/applicant/profile", { state: { tab: "dashboard" } })}
+              isPaymentReturn={justPaidRef.current}
             />
           )}
         </main>

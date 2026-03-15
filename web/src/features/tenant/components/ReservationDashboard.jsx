@@ -1,5 +1,6 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { formatPaymentMethod } from "../../../shared/utils/formatPaymentMethod";
 import {
   Home,
   Calendar,
@@ -534,28 +535,8 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
             </p>
             {reservation.paymentDate && (
               <div style={{ marginTop: 8, fontSize: 12, color: "#047857" }}>
-                <div>💳 Paid: ₱2,000 via {reservation.paymentMethod === "paymongo" ? "Online Payment" : reservation.paymentMethod || "Online"}</div>
+                <div>💳 Paid: ₱2,000 via {formatPaymentMethod(reservation.paymentMethod)}</div>
                 <div>📅 Date: {formatDate(reservation.paymentDate)}</div>
-                <button
-                  onClick={() => generateDepositReceipt(reservation, profile)}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    marginTop: 8,
-                    padding: "6px 14px",
-                    background: "#059669",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: 6,
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  <Download size={14} />
-                  Download Receipt
-                </button>
               </div>
             )}
           </div>
@@ -564,7 +545,8 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
 
       {/* ── Room change link (only before visit approval) ─────────────── */}
       {!isConfirmed &&
-        currentStage <= 2 &&
+        currentStage <= 1 &&
+        !reservation.viewingType &&
         !reservation.visitApproved &&
         !reservation.scheduleApproved && (
           <div style={{ textAlign: "center", marginTop: 12 }}>

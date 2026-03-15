@@ -167,6 +167,7 @@ export const USER_UPDATE_FLAT_FIELDS = [
   "nbiReason",
   "companyIDUrl",
   "companyIDReason",
+  "personalNotes",
   "healthConcerns",
   "preferredRoomNumber",
   "referralSource",
@@ -189,6 +190,7 @@ export const USER_UPDATE_FLAT_FIELDS = [
 /** Maps for body fields that target nested doc paths */
 export const USER_UPDATE_NESTED_FIELDS = {
   // address.*
+  addressRegion: "address.region",
   addressUnitHouseNo: "address.unitHouseNo",
   addressStreet: "address.street",
   addressBarangay: "address.barangay",

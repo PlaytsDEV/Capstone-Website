@@ -19,7 +19,7 @@ const DashboardTab = ({
   const navigate = useNavigate();
 
   return (
-    <div className="max-w-4xl">
+    <div className="max-w-5xl">
       {/* Profile Completion Card — auto-hides at 100% */}
       <ProfileCompletionCard
         profileData={profileData}

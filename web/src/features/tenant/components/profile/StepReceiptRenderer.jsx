@@ -1,4 +1,5 @@
 import React from "react";
+import { formatPaymentMethod } from "../../../../shared/utils/formatPaymentMethod";
 
 /**
  * Renders inline receipt/summary content for each reservation step.
@@ -252,8 +253,7 @@ const PaymentReceipt = ({ reservation, step }) => {
         />
         <ReceiptRow
           label="Payment Method"
-          value={reservation.paymentMethod || "PayMongo"}
-          valueStyle={{ textTransform: "capitalize" }}
+          value={formatPaymentMethod(reservation.paymentMethod)}
         />
         <ReceiptRow
           label="Move-in Date"

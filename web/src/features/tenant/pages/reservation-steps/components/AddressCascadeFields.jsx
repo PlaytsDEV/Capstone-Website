@@ -10,18 +10,24 @@ import {
 /**
  * Cascading Philippine address dropdowns powered by PSGC API.
  *
- * Flow: Region → Province → City/Municipality → Barangay
+ * ALL fields are visible at all times. Each level unlocks once the
+ * previous level has been selected:
+ *   Region → Province → City/Municipality → Barangay
+ *
  * NCR has no provinces — cities load directly under the region.
  *
- * Stores both code and name so the form saves the human-readable name
- * while having the code available for the cascade.
+ * Stores the human-readable name for each level so the form
+ * saves the display name (not the PSGC code).
  */
 const AddressCascadeFields = ({
-  // Street / unit (kept as freetext)
+  // Street / unit (freetext)
   addressUnitHouseNo,
   setAddressUnitHouseNo,
   addressStreet,
   setAddressStreet,
+  // Region (new)
+  addressRegion,
+  setAddressRegion,
   // PSGC-powered
   addressBarangay,
   setAddressBarangay,
@@ -33,6 +39,7 @@ const AddressCascadeFields = ({
   handleGeneralInput,
   validateField,
   fieldErrors,
+  showValidationErrors,
 }) => {
   // ── PSGC data caches ────────────────────────────────────────
   const [regions, setRegions] = useState([]);
@@ -60,6 +67,77 @@ const AddressCascadeFields = ({
       .finally(() => setLoadingRegions(false));
   }, []);
 
+  // ── Restore saved values on load ────────────────────────────
+  // When regions finish loading and we have a saved addressRegion,
+  // reverse-lookup PSGC codes to re-initialize the cascade.
+  const restoredRef = React.useRef(false);
+  useEffect(() => {
+    if (restoredRef.current || regions.length === 0 || !addressRegion) return;
+    restoredRef.current = true;
+
+    const restore = async () => {
+      // 1. Find region code from saved name
+      const regionObj = regions.find(
+        (r) => r.name === addressRegion || r.name.toLowerCase() === addressRegion.toLowerCase(),
+      );
+      if (!regionObj) return;
+
+      setSelectedRegionCode(regionObj.code);
+      const isNcrRegion = regionObj.code === NCR_CODE;
+      setIsNCR(isNcrRegion);
+
+      if (isNcrRegion) {
+        // NCR: load cities directly
+        try {
+          const cityList = await getCities(null, regionObj.code);
+          setCities(cityList);
+          if (addressCity) {
+            const cityObj = cityList.find(
+              (c) => c.name === addressCity || c.name.toLowerCase() === addressCity.toLowerCase(),
+            );
+            if (cityObj) {
+              setSelectedCityCode(cityObj.code);
+              const brgyList = await getBarangays(cityObj.code);
+              setBarangays(brgyList);
+            }
+          }
+        } catch (err) {
+          console.error("Failed to restore NCR cascade:", err);
+        }
+      } else {
+        // Non-NCR: load provinces → find match → load cities → find match → load barangays
+        try {
+          const provList = await getProvinces(regionObj.code);
+          setProvinces(provList);
+          if (addressProvince) {
+            const provObj = provList.find(
+              (p) => p.name === addressProvince || p.name.toLowerCase() === addressProvince.toLowerCase(),
+            );
+            if (provObj) {
+              setSelectedProvinceCode(provObj.code);
+              const cityList = await getCities(provObj.code);
+              setCities(cityList);
+              if (addressCity) {
+                const cityObj = cityList.find(
+                  (c) => c.name === addressCity || c.name.toLowerCase() === addressCity.toLowerCase(),
+                );
+                if (cityObj) {
+                  setSelectedCityCode(cityObj.code);
+                  const brgyList = await getBarangays(cityObj.code);
+                  setBarangays(brgyList);
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Failed to restore cascade:", err);
+        }
+      }
+    };
+
+    restore();
+  }, [regions, addressRegion, addressProvince, addressCity]);
+
   // ── Region change → load provinces (or cities for NCR) ──────
   const handleRegionChange = useCallback(
     async (code) => {
@@ -73,9 +151,14 @@ const AddressCascadeFields = ({
       setAddressCity("");
       setAddressBarangay("");
 
-      if (!code) return;
+      if (!code) {
+        setAddressRegion("");
+        setIsNCR(false);
+        return;
+      }
 
       const regionObj = regions.find((r) => r.code === code);
+      setAddressRegion(regionObj?.name || "");
       const isNcrRegion = code === NCR_CODE;
       setIsNCR(isNcrRegion);
 
@@ -101,7 +184,7 @@ const AddressCascadeFields = ({
         setLoadingProvinces(false);
       }
     },
-    [regions, setAddressProvince, setAddressCity, setAddressBarangay],
+    [regions, setAddressRegion, setAddressProvince, setAddressCity, setAddressBarangay],
   );
 
   // ── Province change → load cities ───────────────────────────
@@ -114,7 +197,10 @@ const AddressCascadeFields = ({
       setAddressCity("");
       setAddressBarangay("");
 
-      if (!code) return;
+      if (!code) {
+        setAddressProvince("");
+        return;
+      }
 
       const provObj = provinces.find((p) => p.code === code);
       setAddressProvince(provObj?.name || "");
@@ -138,7 +224,10 @@ const AddressCascadeFields = ({
       setBarangays([]);
       setAddressBarangay("");
 
-      if (!code) return;
+      if (!code) {
+        setAddressCity("");
+        return;
+      }
 
       const cityObj = cities.find((c) => c.code === code);
       setAddressCity(cityObj?.name || "");
@@ -163,22 +252,32 @@ const AddressCascadeFields = ({
     [setAddressBarangay],
   );
 
-  // ── Shared select style ─────────────────────────────────────
-  const selectStyle = {
+  // ── Derived lock states ─────────────────────────────────────
+  const regionSelected = Boolean(selectedRegionCode);
+  const provinceReady = isNCR || Boolean(selectedProvinceCode);
+  const cityReady = Boolean(selectedCityCode);
+
+  // ── Error border helper ─────────────────────────────────────
+  const errBorder = (show, value) =>
+    show && !value ? "1.5px solid #dc2626" : undefined;
+
+  // ── Shared styles ───────────────────────────────────────────
+  const selectStyle = (disabled) => ({
     width: "100%",
     padding: "10px 12px",
     borderRadius: "8px",
     border: "1.5px solid #d1d5db",
     fontSize: "14px",
-    background: "white",
-    cursor: "pointer",
-    color: "#1F2937",
-  };
+    background: disabled ? "#f3f4f6" : "white",
+    cursor: disabled ? "not-allowed" : "pointer",
+    color: disabled ? "#9CA3AF" : "#1F2937",
+    opacity: disabled ? 0.7 : 1,
+  });
 
   return (
     <>
       {/* Unit / House No. */}
-      <div className="form-group">
+      <div className="form-group" data-field="addressUnitHouseNo">
         <label className="form-label">
           Unit / House No. <span style={{ color: "#dc2626" }}>*</span>
         </label>
@@ -195,7 +294,7 @@ const AddressCascadeFields = ({
               error: v?.trim() ? null : "This field is required",
             }))
           }
-          style={{ border: "1.5px solid #999" }}
+          style={{ border: errBorder(showValidationErrors, addressUnitHouseNo) || "1.5px solid #999" }}
         />
         {fieldErrors.addressUnitHouseNo && (
           <div style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}>
@@ -205,7 +304,7 @@ const AddressCascadeFields = ({
       </div>
 
       {/* Street */}
-      <div className="form-group">
+      <div className="form-group" data-field="addressStreet">
         <label className="form-label">
           Street <span style={{ color: "#dc2626" }}>*</span>
         </label>
@@ -222,7 +321,7 @@ const AddressCascadeFields = ({
               error: v?.trim() ? null : "This field is required",
             }))
           }
-          style={{ border: "1.5px solid #999" }}
+          style={{ border: errBorder(showValidationErrors, addressStreet) || "1.5px solid #999" }}
         />
         {fieldErrors.addressStreet && (
           <div style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}>
@@ -232,12 +331,15 @@ const AddressCascadeFields = ({
       </div>
 
       {/* Region */}
-      <div className="form-group">
+      <div className="form-group" data-field="addressRegion">
         <label className="form-label">
           Region <span style={{ color: "#dc2626" }}>*</span>
         </label>
         <select
-          style={selectStyle}
+          style={{
+            ...selectStyle(false),
+            border: errBorder(showValidationErrors, addressRegion) || "1.5px solid #d1d5db",
+          }}
           value={selectedRegionCode}
           onChange={(e) => handleRegionChange(e.target.value)}
           disabled={loadingRegions}
@@ -251,22 +353,34 @@ const AddressCascadeFields = ({
             </option>
           ))}
         </select>
+        {showValidationErrors && !addressRegion && (
+          <div style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}>
+            Region is required
+          </div>
+        )}
       </div>
 
-      {/* Province (hidden for NCR) */}
-      {!isNCR && selectedRegionCode && (
-        <div className="form-group">
+      {/* Province (disabled until region is selected, hidden for NCR) */}
+      {!isNCR && (
+        <div className="form-group" data-field="addressProvince">
           <label className="form-label">
             Province <span style={{ color: "#dc2626" }}>*</span>
           </label>
           <select
-            style={selectStyle}
+            style={{
+              ...selectStyle(!regionSelected),
+              border: errBorder(showValidationErrors && regionSelected, addressProvince) || "1.5px solid #d1d5db",
+            }}
             value={selectedProvinceCode}
             onChange={(e) => handleProvinceChange(e.target.value)}
-            disabled={loadingProvinces}
+            disabled={!regionSelected || loadingProvinces}
           >
             <option value="">
-              {loadingProvinces ? "Loading provinces..." : "Select province..."}
+              {!regionSelected
+                ? "Select a region first..."
+                : loadingProvinces
+                  ? "Loading provinces..."
+                  : "Select province..."}
             </option>
             {provinces.map((p) => (
               <option key={p.code} value={p.code}>
@@ -274,56 +388,83 @@ const AddressCascadeFields = ({
               </option>
             ))}
           </select>
+          {showValidationErrors && regionSelected && !addressProvince && (
+            <div style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}>
+              Province is required
+            </div>
+          )}
         </div>
       )}
 
-      {/* City / Municipality */}
-      {(isNCR || selectedProvinceCode) && (
-        <div className="form-group">
-          <label className="form-label">
-            City / Municipality <span style={{ color: "#dc2626" }}>*</span>
-          </label>
-          <select
-            style={selectStyle}
-            value={selectedCityCode}
-            onChange={(e) => handleCityChange(e.target.value)}
-            disabled={loadingCities}
-          >
-            <option value="">
-              {loadingCities ? "Loading cities..." : "Select city..."}
+      {/* City / Municipality (disabled until province is selected) */}
+      <div className="form-group" data-field="addressCity">
+        <label className="form-label">
+          City / Municipality <span style={{ color: "#dc2626" }}>*</span>
+        </label>
+        <select
+          style={{
+            ...selectStyle(!provinceReady || !regionSelected),
+            border: errBorder(showValidationErrors && provinceReady && regionSelected, addressCity) || "1.5px solid #d1d5db",
+          }}
+          value={selectedCityCode}
+          onChange={(e) => handleCityChange(e.target.value)}
+          disabled={!provinceReady || !regionSelected || loadingCities}
+        >
+          <option value="">
+            {!regionSelected
+              ? "Select a region first..."
+              : !provinceReady
+                ? "Select a province first..."
+                : loadingCities
+                  ? "Loading cities..."
+                  : "Select city..."}
+          </option>
+          {cities.map((c) => (
+            <option key={c.code} value={c.code}>
+              {c.name}
             </option>
-            {cities.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
+          ))}
+        </select>
+        {showValidationErrors && provinceReady && regionSelected && !addressCity && (
+          <div style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}>
+            City is required
+          </div>
+        )}
+      </div>
 
-      {/* Barangay */}
-      {selectedCityCode && (
-        <div className="form-group">
-          <label className="form-label">
-            Barangay <span style={{ color: "#dc2626" }}>*</span>
-          </label>
-          <select
-            style={selectStyle}
-            value={addressBarangay}
-            onChange={(e) => handleBarangayChange(e.target.value)}
-            disabled={loadingBarangays}
-          >
-            <option value="">
-              {loadingBarangays ? "Loading barangays..." : "Select barangay..."}
+      {/* Barangay (disabled until city is selected) */}
+      <div className="form-group" data-field="addressBarangay">
+        <label className="form-label">
+          Barangay <span style={{ color: "#dc2626" }}>*</span>
+        </label>
+        <select
+          style={{
+            ...selectStyle(!cityReady),
+            border: errBorder(showValidationErrors && cityReady, addressBarangay) || "1.5px solid #d1d5db",
+          }}
+          value={addressBarangay}
+          onChange={(e) => handleBarangayChange(e.target.value)}
+          disabled={!cityReady || loadingBarangays}
+        >
+          <option value="">
+            {!cityReady
+              ? "Select a city first..."
+              : loadingBarangays
+                ? "Loading barangays..."
+                : "Select barangay..."}
+          </option>
+          {barangays.map((b) => (
+            <option key={b.code} value={b.name}>
+              {b.name}
             </option>
-            {barangays.map((b) => (
-              <option key={b.code} value={b.name}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
+          ))}
+        </select>
+        {showValidationErrors && cityReady && !addressBarangay && (
+          <div style={{ fontSize: "12px", color: "#dc2626", marginTop: "4px" }}>
+            Barangay is required
+          </div>
+        )}
+      </div>
     </>
   );
 };

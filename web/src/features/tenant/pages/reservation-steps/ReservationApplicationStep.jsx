@@ -101,6 +101,8 @@ const ReservationApplicationStep = ({
   setAddressUnitHouseNo,
   addressStreet,
   setAddressStreet,
+  addressRegion,
+  setAddressRegion,
   addressBarangay,
   setAddressBarangay,
   addressCity,
@@ -292,6 +294,45 @@ const ReservationApplicationStep = ({
     setFieldErrors({});
   };
 
+  // ── Dev auto-fill (development only) ────────────────────────
+  const devAutoFill = () => {
+    setFirstName("Juan");
+    setLastName("Dela Cruz");
+    setMiddleName("Santos");
+    setNickname("JD");
+    setMobileNumber("+639171234567");
+    setBirthday("2000-05-15");
+    setMaritalStatus("single");
+    setNationality("Filipino");
+    setEducationLevel("college");
+    setAddressUnitHouseNo("Unit 12-B");
+    setAddressStreet("Rizal Avenue");
+    setPersonalNotes("Test applicant - dev auto-fill");
+    setNbiReason("");
+    setCompanyIDReason("");
+    // Emergency contact
+    setEmergencyContactName("Maria Dela Cruz");
+    setEmergencyRelationship("parent");
+    setEmergencyContactNumber("+639181234567");
+    setHealthConcerns("None");
+    // Employment
+    setEmployerSchool("University of the Philippines");
+    setEmployerAddress("Diliman, Quezon City");
+    setEmployerContact("+639191234567");
+    setStartDate("2024-06-01");
+    setOccupation("Software Developer");
+    setPreviousEmployment("Accenture Philippines");
+    // Preferences
+    setReferralSource("online");
+    setReferrerName("Google Search");
+    setEstimatedMoveInTime("morning");
+    setWorkSchedule("day");
+    setWorkScheduleOther("");
+    // Agreements
+    setAgreedToPrivacy(true);
+    setAgreedToCertification(true);
+  };
+
   // ── Date constraints ───────────────────────────────────────
   const { birthdayMin, birthdayMax, moveInMin, moveInMax } =
     getDateConstraints();
@@ -368,6 +409,24 @@ const ReservationApplicationStep = ({
           >
             Reset All
           </button>
+          {import.meta.env.DEV && (
+            <button
+              type="button"
+              onClick={devAutoFill}
+              style={{
+                background: "#F59E0B",
+                border: "none",
+                borderRadius: "6px",
+                padding: "6px 14px",
+                fontSize: "12px",
+                fontWeight: "600",
+                color: "white",
+                cursor: "pointer",
+              }}
+            >
+              ⚡ Dev Auto-Fill
+            </button>
+          )}
         </div>
       )}
 
@@ -408,6 +467,7 @@ const ReservationApplicationStep = ({
             educationLevel, setEducationLevel,
             addressUnitHouseNo, setAddressUnitHouseNo,
             addressStreet, setAddressStreet,
+            addressRegion, setAddressRegion,
             addressBarangay, setAddressBarangay,
             addressCity, setAddressCity,
             addressProvince, setAddressProvince,

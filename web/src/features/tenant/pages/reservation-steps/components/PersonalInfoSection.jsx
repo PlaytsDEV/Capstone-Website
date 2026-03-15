@@ -17,6 +17,7 @@ const PersonalInfoSection = ({
   educationLevel, setEducationLevel,
   addressUnitHouseNo, setAddressUnitHouseNo,
   addressStreet, setAddressStreet,
+  addressRegion, setAddressRegion,
   addressBarangay, setAddressBarangay,
   addressCity, setAddressCity,
   addressProvince, setAddressProvince,
@@ -184,6 +185,8 @@ const PersonalInfoSection = ({
       setAddressUnitHouseNo={setAddressUnitHouseNo}
       addressStreet={addressStreet}
       setAddressStreet={setAddressStreet}
+      addressRegion={addressRegion}
+      setAddressRegion={setAddressRegion}
       addressBarangay={addressBarangay}
       setAddressBarangay={setAddressBarangay}
       addressCity={addressCity}

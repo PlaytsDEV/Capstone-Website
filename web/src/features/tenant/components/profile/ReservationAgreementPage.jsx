@@ -117,28 +117,7 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
   };
 
   return (
-    <div style={{ maxWidth: 960, margin: "0 auto", padding: "24px 16px" }}>
-      {/* ── Back Button ─────────────────────────────── */}
-      {onBack && (
-        <button
-          onClick={onBack}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            background: "none",
-            border: "none",
-            color: "#64748B",
-            fontSize: 13,
-            fontWeight: 500,
-            cursor: "pointer",
-            marginBottom: 16,
-            padding: 0,
-          }}
-        >
-          <ChevronLeft size={16} /> Back to Dashboard
-        </button>
-      )}
+    <div style={{ maxWidth: 960, margin: "0 auto", padding: "8px 16px 24px" }}>
 
       {/* ── Hero Image ──────────────────────────────── */}
       <div

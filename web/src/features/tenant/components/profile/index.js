@@ -3,7 +3,7 @@ export { default as StepReceiptRenderer } from "./StepReceiptRenderer";
 export { default as ReceiptModal } from "./ReceiptModal";
 export { default as DashboardTab } from "./DashboardTab";
 export { default as PersonalDetailsTab } from "./PersonalDetailsTab";
-export { default as RoomPaymentTab } from "./RoomPaymentTab";
+export { default as BillingTab } from "./BillingTab";
 export { default as ActivityHistoryTab } from "./ActivityHistoryTab";
 export { default as NotificationsTab } from "./NotificationsTab";
 export { default as SettingsTab } from "./SettingsTab";

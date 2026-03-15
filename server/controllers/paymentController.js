@@ -175,6 +175,9 @@ export const checkSessionStatus = async (req, res, next) => {
     const isPaid = payments.length > 0;
     console.log(`💰 Payment check — isPaid: ${isPaid}, paymentCount: ${payments.length}`);
 
+    // Declare outside so it's accessible in the response
+    let paymentMethod = null;
+
     if (isPaid) {
       const metadata = session.attributes.metadata || {};
       console.log(`📋 Metadata — type: ${metadata.type}, billId: ${metadata.billId || "N/A"}, reservationId: ${metadata.reservationId || "N/A"}`);
@@ -228,6 +231,17 @@ export const checkSessionStatus = async (req, res, next) => {
         }
       }
 
+      // Extract payment method from PayMongo's data (before saving to reservation)
+      if (isPaid && payments.length > 0) {
+        const firstPayment = payments[0];
+        const payObj = firstPayment?.attributes || firstPayment;
+        paymentMethod =
+          payObj?.source?.type ||
+          session.attributes?.payment_method_used ||
+          "online";
+        console.log(`💳 Payment method detected: ${paymentMethod}`);
+      }
+
       // Auto-mark the reservation deposit as paid
       if (metadata.type === "deposit" && metadata.reservationId) {
         const reservation = await Reservation.findById(metadata.reservationId).populate("roomId", "name branch");
@@ -236,7 +250,7 @@ export const checkSessionStatus = async (req, res, next) => {
           const oldStatus = reservation.status;
           reservation.paymentStatus = "paid";
           reservation.paymentDate = new Date();
-          reservation.paymentMethod = "paymongo";
+          reservation.paymentMethod = paymentMethod || "paymongo";
           reservation.paymongoPaymentId = payments[0]?.id || sessionId;
           reservation.status = "reserved"; // triggers reservation code generation in pre-save hook
           await reservation.save();
@@ -272,10 +286,12 @@ export const checkSessionStatus = async (req, res, next) => {
     }
 
     console.log(`✅ checkSessionStatus complete — status: ${isPaid ? "paid" : "pending"}`);
+
     sendSuccess(res, {
       sessionId,
       status: isPaid ? "paid" : "pending",
       paymentCount: payments.length,
+      paymentMethod,
     });
   } catch (error) {
     console.error(`❌ checkSessionStatus error:`, error.message);
