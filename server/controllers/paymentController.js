@@ -17,7 +17,8 @@
 import dayjs from "dayjs";
 import { createCheckoutSession, getCheckoutSession } from "../config/paymongo.js";
 import { Bill, Reservation, User } from "../models/index.js";
-import { sendPaymentApprovedEmail } from "../config/email.js";
+import { sendPaymentApprovedEmail, sendPaymentReceiptEmail } from "../config/email.js";
+import { updateOccupancyOnReservationChange } from "../utils/occupancyManager.js";
 import {
   sendSuccess,
   AppError,
@@ -148,8 +149,8 @@ export const createDepositCheckout = async (req, res, next) => {
         reservationId: String(reservation._id),
         userId: String(dbUser._id),
       },
-      successUrl: `${FRONTEND_URL}/applicant/profile?payment=success&session_id={id}`,
-      cancelUrl: `${FRONTEND_URL}/applicant/profile?payment=cancelled&session_id={id}`,
+      successUrl: `${FRONTEND_URL}/applicant/reservation?payment=success&session_id={id}`,
+      cancelUrl: `${FRONTEND_URL}/applicant/reservation?payment=cancelled&session_id={id}`,
     });
 
     reservation.paymongoSessionId = sessionId;
@@ -168,17 +169,21 @@ export const createDepositCheckout = async (req, res, next) => {
 export const checkSessionStatus = async (req, res, next) => {
   try {
     const { sessionId } = req.params;
+    console.log(`📦 checkSessionStatus called — sessionId: ${sessionId}`);
     const session = await getCheckoutSession(sessionId);
     const payments = session.attributes.payments || [];
     const isPaid = payments.length > 0;
+    console.log(`💰 Payment check — isPaid: ${isPaid}, paymentCount: ${payments.length}`);
 
     if (isPaid) {
       const metadata = session.attributes.metadata || {};
+      console.log(`📋 Metadata — type: ${metadata.type}, billId: ${metadata.billId || "N/A"}, reservationId: ${metadata.reservationId || "N/A"}`);
 
       // Auto-mark the bill as paid
       if (metadata.type === "bill" && metadata.billId) {
         const bill = await Bill.findById(metadata.billId);
         if (bill && bill.status !== "paid") {
+          console.log(`📝 Marking bill ${metadata.billId} as paid`);
           bill.paidAmount = bill.totalAmount;
           bill.status = "paid";
           bill.paymentDate = new Date();
@@ -191,45 +196,89 @@ export const checkSessionStatus = async (req, res, next) => {
           };
           await bill.save();
 
-          // Send confirmation email
+          // Send confirmation + receipt emails
           try {
             const tenant = await User.findById(bill.userId).lean();
             if (tenant?.email) {
               const monthStr = dayjs(bill.billingMonth).format("MMMM YYYY");
+              const tenantName = `${tenant.firstName || ""} ${tenant.lastName || ""}`.trim() || "Tenant";
+              console.log(`📧 Sending bill receipt to ${tenant.email}...`);
               await sendPaymentApprovedEmail({
                 to: tenant.email,
-                tenantName: `${tenant.firstName || ""} ${tenant.lastName || ""}`.trim(),
+                tenantName,
                 billingMonth: monthStr,
                 paidAmount: bill.totalAmount,
                 branchName: bill.branch,
               });
+              await sendPaymentReceiptEmail({
+                to: tenant.email,
+                tenantName,
+                amount: bill.totalAmount,
+                description: `Monthly Bill — ${monthStr}`,
+                paymentMethod: "PayMongo (Online)",
+                paymentDate: dayjs().format("MMMM D, YYYY"),
+                referenceId: payments[0]?.id || sessionId,
+              });
             }
           } catch (emailErr) {
-            console.error("Email error:", emailErr.message);
+            console.error("❌ Bill email error:", emailErr.message);
           }
+        } else {
+          console.log(`⏭️ Bill ${metadata.billId} already marked as paid — skipping`);
         }
       }
 
       // Auto-mark the reservation deposit as paid
       if (metadata.type === "deposit" && metadata.reservationId) {
-        const reservation = await Reservation.findById(metadata.reservationId);
+        const reservation = await Reservation.findById(metadata.reservationId).populate("roomId", "name branch");
         if (reservation && reservation.paymentStatus !== "paid") {
+          console.log(`📝 Marking deposit for reservation ${metadata.reservationId} as paid`);
+          const oldStatus = reservation.status;
           reservation.paymentStatus = "paid";
           reservation.paymentDate = new Date();
           reservation.paymentMethod = "paymongo";
           reservation.paymongoPaymentId = payments[0]?.id || sessionId;
           reservation.status = "reserved"; // triggers reservation code generation in pre-save hook
           await reservation.save();
+
+          // Lock the bed — update room occupancy (matches webhook handler)
+          await updateOccupancyOnReservationChange(reservation, { status: oldStatus });
+          console.log(`🔒 Bed locked for reservation ${metadata.reservationId}`);
+
+          // Send receipt email for deposit
+          try {
+            const tenant = await User.findById(reservation.userId).lean();
+            if (tenant?.email) {
+              const tenantName = `${tenant.firstName || ""} ${tenant.lastName || ""}`.trim() || "Tenant";
+              const roomName = reservation.roomId?.name || "Room";
+              console.log(`📧 Sending deposit receipt to ${tenant.email}...`);
+              await sendPaymentReceiptEmail({
+                to: tenant.email,
+                tenantName,
+                amount: 2000,
+                description: `Reservation Deposit — ${roomName}`,
+                paymentMethod: "PayMongo (Online)",
+                paymentDate: dayjs().format("MMMM D, YYYY"),
+                referenceId: payments[0]?.id || sessionId,
+              });
+            }
+          } catch (emailErr) {
+            console.error("❌ Deposit receipt email error:", emailErr.message);
+          }
+        } else {
+          console.log(`⏭️ Deposit for ${metadata.reservationId} already paid — skipping`);
         }
       }
     }
 
+    console.log(`✅ checkSessionStatus complete — status: ${isPaid ? "paid" : "pending"}`);
     sendSuccess(res, {
       sessionId,
       status: isPaid ? "paid" : "pending",
       paymentCount: payments.length,
     });
   } catch (error) {
+    console.error(`❌ checkSessionStatus error:`, error.message);
     next(error);
   }
 };
