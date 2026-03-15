@@ -1,7 +1,10 @@
 import jsPDF from "jspdf";
 
 /**
- * Generate a downloadable PDF receipt for a reservation deposit payment.
+ * Generate a downloadable PDF receipt matching the Lilycrest email template.
+ *
+ * Layout mirrors the email: dark navy header → "Order details" section →
+ * amount, description, payment method + date, reference ID → navy footer.
  *
  * @param {Object} reservation - The reservation object with payment details
  * @param {Object} profile - The user profile (name, email)
@@ -9,69 +12,33 @@ import jsPDF from "jspdf";
 export function generateDepositReceipt(reservation, profile) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
-  const margin = 20;
-  let y = 25;
+  const margin = 25;
+  const contentWidth = pageWidth - margin * 2;
+  let y = 0;
 
-  // ── Colors ──
-  const navy = [26, 54, 93];       // #1A365D
-  const orange = [212, 152, 43];    // #D4982B
-  const gray = [100, 116, 139];     // #64748B
-  const darkGray = [15, 23, 42];    // #0F172A
-  const lightGray = [226, 232, 240]; // #E2E8F0
+  // ── Colors (matching email template) ──
+  const navy = [24, 49, 83]; // #183153
+  const gold = [212, 152, 43]; // #D4982B
+  const darkText = [17, 24, 39]; // #111827
+  const bodyText = [55, 65, 81]; // #374151
+  const mutedText = [156, 163, 175]; // #9CA3AF
+  const lightLine = [229, 231, 235]; // #E5E7EB
+  const white = [255, 255, 255];
+
+  // ── Helper: draw filled rectangle ──
+  const fillRect = (x, yPos, w, h, color) => {
+    doc.setFillColor(...color);
+    doc.rect(x, yPos, w, h, "F");
+  };
 
   // ── Helper: draw horizontal line ──
-  const drawLine = (yPos, color = lightGray) => {
-    doc.setDrawColor(...color);
+  const drawLine = (yPos) => {
+    doc.setDrawColor(...lightLine);
     doc.setLineWidth(0.3);
     doc.line(margin, yPos, pageWidth - margin, yPos);
   };
 
-  // ── Header ──
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(22);
-  doc.setTextColor(...navy);
-  doc.text("Lilycrest Dormitory", margin, y);
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  doc.setTextColor(...gray);
-  doc.text("Payment Receipt", pageWidth - margin, y, { align: "right" });
-
-  y += 8;
-  drawLine(y);
-  y += 10;
-
-  // ── Receipt Badge ──
-  doc.setFillColor(236, 253, 245); // #ECFDF5
-  doc.roundedRect(margin, y - 4, pageWidth - margin * 2, 14, 3, 3, "F");
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.setTextColor(5, 150, 105); // #059669
-  doc.text("✓ PAYMENT CONFIRMED", pageWidth / 2, y + 4, { align: "center" });
-
-  y += 18;
-
-  // ── Receipt Details Grid ──
-  const labelX = margin;
-  const valueX = margin + 45;
-  const lineHeight = 8;
-
-  const addRow = (label, value) => {
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(...gray);
-    doc.text(label, labelX, y);
-
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(...darkGray);
-    doc.text(String(value || "—"), valueX, y);
-    y += lineHeight;
-  };
-
-  const room = reservation.roomId || {};
-  const roomName = room.name || "Room";
-  const branch = room.branch || "Lilycrest";
-
+  // ── Helper: format date ──
   const formatDate = (d) => {
     if (!d) return "—";
     return new Date(d).toLocaleDateString("en-PH", {
@@ -81,89 +48,189 @@ export function generateDepositReceipt(reservation, profile) {
     });
   };
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.setTextColor(...navy);
-  doc.text("Payment Details", margin, y);
-  y += lineHeight;
-
-  addRow("Receipt No:", reservation.reservationCode || reservation._id?.slice(-8)?.toUpperCase() || "—");
-  addRow("Date Paid:", formatDate(reservation.paymentDate));
-  addRow("Payment Method:", reservation.paymentMethod === "paymongo" ? "Online (PayMongo)" : reservation.paymentMethod || "Online");
-  addRow("Amount:", "PHP 2,000.00");
-
-  y += 4;
-  drawLine(y);
-  y += 8;
-
-  // ── Tenant Info ──
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.setTextColor(...navy);
-  doc.text("Tenant Information", margin, y);
-  y += lineHeight;
-
+  const room = reservation.roomId || {};
   const fullName = profile
     ? `${profile.firstName || ""} ${profile.lastName || ""}`.trim()
     : "—";
 
-  addRow("Name:", fullName || "—");
-  addRow("Email:", profile?.email || "—");
+  // ==========================================================================
+  // HEADER — Dark navy block (matches email #183153)
+  // ==========================================================================
+  const headerHeight = 38;
+  fillRect(0, 0, pageWidth, headerHeight, navy);
 
-  y += 4;
+  // "Your receipt from" in gold
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(...gold);
+  doc.text("Your receipt from", margin, 16);
+
+  // "LILYCREST DORMITORY" in white bold
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.setTextColor(...white);
+  doc.text("LILYCREST DORMITORY", margin, 28);
+
+  y = headerHeight + 16;
+
+  // ==========================================================================
+  // GREETING
+  // ==========================================================================
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(12);
+  doc.setTextColor(...bodyText);
+  doc.text(`Hi ${fullName},`, margin, y);
+  y += 7;
+  doc.setFontSize(10);
+  doc.setTextColor(...mutedText);
+  doc.text("Thank you for your payment. Here's a copy of your receipt.", margin, y);
+  y += 14;
+
+  // ==========================================================================
+  // "ORDER DETAILS" SECTION
+  // ==========================================================================
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...mutedText);
+  doc.text("ORDER DETAILS", margin, y);
+  y += 3;
+  drawLine(y);
+  y += 10;
+
+  // ── Amount paid ──
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(...mutedText);
+  doc.text("AMOUNT PAID", margin, y);
+  y += 8;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(22);
+  doc.setTextColor(...darkText);
+  doc.text("₱ 2,000.00", margin, y);
+  y += 12;
+
+  // ── Description ──
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(...mutedText);
+  doc.text("DESCRIPTION", margin, y);
+  y += 6;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.setTextColor(...bodyText);
+  const roomName = room.name || "Room";
+  const branch = room.branch === "gil-puyat" ? "Gil Puyat" : room.branch === "guadalupe" ? "Guadalupe" : room.branch || "Lilycrest";
+  doc.text(`Security Deposit — ${roomName} (${branch})`, margin, y);
+  y += 10;
+
   drawLine(y);
   y += 8;
 
-  // ── Reservation Info ──
+  // ── Payment method + Date paid (side by side) ──
+  const halfWidth = contentWidth / 2;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(...mutedText);
+  doc.text("PAYMENT METHOD", margin, y);
+  doc.text("DATE PAID", margin + halfWidth, y);
+  y += 6;
+
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.setTextColor(...navy);
-  doc.text("Reservation Details", margin, y);
-  y += lineHeight;
+  doc.setFontSize(10);
+  doc.setTextColor(...bodyText);
+  const paymentMethod = reservation.paymentMethod === "paymongo" ? "Online (PayMongo)" : reservation.paymentMethod || "Online";
+  doc.text(paymentMethod, margin, y);
+  doc.text(formatDate(reservation.paymentDate), margin + halfWidth, y);
+  y += 10;
 
-  addRow("Room:", roomName);
-  addRow("Branch:", branch);
-  addRow("Lease Duration:", `${reservation.leaseDuration || 12} months`);
-  addRow("Move-In Date:", formatDate(reservation.targetMoveInDate || reservation.finalMoveInDate));
-  if (reservation.selectedBed) {
-    addRow("Bed:", `${reservation.selectedBed.position} (${reservation.selectedBed.id})`);
-  }
-
-  y += 4;
   drawLine(y);
+  y += 8;
+
+  // ── Reference ──
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(...mutedText);
+  doc.text("REFERENCE", margin, y);
+  y += 6;
+
+  doc.setFont("courier", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...bodyText);
+  const refId = reservation.paymongoPaymentId || reservation.reservationCode || reservation._id?.slice(-8)?.toUpperCase() || "—";
+  doc.text(refId, margin, y);
   y += 12;
 
-  // ── Total Box ──
-  doc.setFillColor(255, 251, 235); // #FFFBEB
-  doc.roundedRect(margin, y - 5, pageWidth - margin * 2, 16, 3, 3, "F");
-  doc.setDrawColor(...orange);
-  doc.setLineWidth(0.5);
-  doc.roundedRect(margin, y - 5, pageWidth - margin * 2, 16, 3, 3, "S");
+  drawLine(y);
+  y += 10;
 
+  // ==========================================================================
+  // RESERVATION INFO
+  // ==========================================================================
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);
-  doc.setTextColor(...navy);
-  doc.text("Total Paid:", margin + 8, y + 4);
-  doc.setTextColor(...orange);
-  doc.text("PHP 2,000.00", pageWidth - margin - 8, y + 4, { align: "right" });
+  doc.setFontSize(8);
+  doc.setTextColor(...mutedText);
+  doc.text("RESERVATION DETAILS", margin, y);
+  y += 3;
+  drawLine(y);
+  y += 8;
 
-  y += 24;
+  const addDetailRow = (label, value) => {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...mutedText);
+    doc.text(label, margin, y);
 
-  // ── Footer ──
-  doc.setFont("helvetica", "italic");
-  doc.setFontSize(9);
-  doc.setTextColor(...gray);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...bodyText);
+    doc.text(String(value || "—"), margin + halfWidth, y);
+    y += 8;
+  };
+
+  addDetailRow("TENANT", fullName);
+  addDetailRow("EMAIL", profile?.email || "—");
+  addDetailRow("ROOM", roomName);
+  addDetailRow("BRANCH", branch);
+  addDetailRow("LEASE", `${reservation.leaseDuration || 12} months`);
+  addDetailRow("MOVE-IN", formatDate(reservation.targetMoveInDate || reservation.finalMoveInDate));
+  if (reservation.selectedBed?.position) {
+    addDetailRow("BED", `${reservation.selectedBed.position}`);
+  }
+
+  y += 6;
+
+  // ==========================================================================
+  // FOOTER — Dark navy block (matches email footer)
+  // ==========================================================================
+  const footerY = y + 4;
+  const footerHeight = 30;
+  fillRect(0, footerY, pageWidth, footerHeight, navy);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(255, 255, 255, 180);
   doc.text(
-    "This is a system-generated receipt. No signature required.",
+    "You're receiving this because you made a payment at Lilycrest Dormitory.",
     pageWidth / 2,
-    y,
+    footerY + 10,
     { align: "center" },
   );
-  y += 5;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(...gold);
+  doc.text("🏠 Lilycrest Dormitory", pageWidth / 2, footerY + 18, { align: "center" });
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  doc.setTextColor(255, 255, 255, 130);
   doc.text(
     `Generated on ${new Date().toLocaleString("en-PH")}`,
     pageWidth / 2,
-    y,
+    footerY + 24,
     { align: "center" },
   );
 
