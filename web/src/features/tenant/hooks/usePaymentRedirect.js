@@ -40,10 +40,16 @@ export function usePaymentRedirect({
 
     // Verify with real session ID, or skip if unavailable
     if (pmSessionId) {
+      // Optimistic: show confirmation step immediately while we verify
+      console.log("💳 Payment redirect — setting step 5 optimistically");
+      setCurrentStage(5);
+      setHighestStageReached(5);
+
       billingApi
         .checkPaymentStatus(pmSessionId)
         .then((result) => {
           if (result.status === "paid") {
+            console.log("✅ Payment verified — confirmed step 5");
             setPaymentSubmitted(true);
             setPaymentApproved(true);
             setPaymentMethod(result.paymentMethod || "online");
@@ -52,9 +58,11 @@ export function usePaymentRedirect({
               "success",
               5000,
             );
-            setCurrentStage(5);
-            setHighestStageReached(5);
           } else {
+            // Not paid yet — revert to payment step
+            console.log("⏳ Payment not confirmed yet — reverting to step 4");
+            setCurrentStage(4);
+            setHighestStageReached(4);
             showNotification(
               "Payment is being processed. Check your profile for updates.",
               "info",
@@ -63,6 +71,9 @@ export function usePaymentRedirect({
           }
         })
         .catch(() => {
+          console.log("❌ Payment verification failed — reverting to step 4");
+          setCurrentStage(4);
+          setHighestStageReached(4);
           showNotification(
             "Could not verify payment. Please check your profile.",
             "warning",
@@ -70,19 +81,16 @@ export function usePaymentRedirect({
           );
         });
     } else if (paymentStatus === "cancelled") {
-      showNotification(
-        "Payment was cancelled. You can try again.",
-        "info",
-        3000,
-      );
-    } else {
-      // Success redirect but no valid session ID — redirect to profile to verify
-      showNotification(
-        "Verifying payment... Please check your profile.",
-        "info",
-        3000,
-      );
-      navigate("/applicant/profile?payment=success");
+      // No valid session ID (PayMongo back button sends literal {id})
+      // Don't show "cancelled" — the page's data-loading will auto-detect
+      // if payment already went through and set the correct step
+      console.log("🔙 Cancelled redirect (no session ID) — deferring to data-loading");
+      // Silently let the page determine the correct step from reservation data
+    } else if (paymentStatus === "success") {
+      // Success redirect but no valid session ID — show step 5 optimistically
+      console.log("💳 Payment success (no session ID) — showing step 5");
+      setCurrentStage(5);
+      setHighestStageReached(5);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);

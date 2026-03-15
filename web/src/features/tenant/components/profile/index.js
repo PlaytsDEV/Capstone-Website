@@ -7,4 +7,6 @@ export { default as RoomPaymentTab } from "./RoomPaymentTab";
 export { default as ActivityHistoryTab } from "./ActivityHistoryTab";
 export { default as NotificationsTab } from "./NotificationsTab";
 export { default as SettingsTab } from "./SettingsTab";
+export { default as ContractTab } from "./ContractTab";
+export { default as ReservationAgreementPage } from "./ReservationAgreementPage";
 export { default as ProfileCompletionCard } from "./ProfileCompletionCard";

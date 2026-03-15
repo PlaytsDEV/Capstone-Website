@@ -80,9 +80,6 @@ function resolveCurrentStage(reservation) {
   if (status === "reserved") return 5;
   if (reservation.paymentStatus === "paid") return 5;
 
-  // payment submitted via PayMongo
-  if (reservation.paymentStatus === "paid") return 5;
-
   // application submitted
   if (
     reservation.agreedToCertification &&

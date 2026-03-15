@@ -27,6 +27,8 @@ import {
   NotificationsTab,
   SettingsTab,
   ProfileCompletionCard,
+  ContractTab,
+  ReservationAgreementPage,
 } from "../components/profile";
 
 // ─────────────────────────────────────────────────────────────
@@ -121,6 +123,19 @@ const ProfilePage = () => {
     const rawSessionId = params.get("session_id");
 
     if (!paymentStatus) return;
+
+    // INSTANT: If reservation already paid, skip everything — prevents blue flash
+    const alreadyPaid = (Array.isArray(reservationsData) ? reservationsData : [])
+      .find(r => r.status !== "cancelled" && (r.paymentStatus === "paid" || r.status === "reserved"));
+    if (alreadyPaid) {
+      console.log("📋 Already paid — instant redirect to confirmation");
+      navigate(location.pathname, { replace: true });
+      navigate("/applicant/reservation", {
+        state: { step: 5, continueFlow: true, reservationId: alreadyPaid._id },
+        replace: true,
+      });
+      return;
+    }
 
     // PayMongo back button doesn't replace {id} placeholder — detect it
     const urlSessionId = rawSessionId && rawSessionId !== "{id}" ? rawSessionId : null;
@@ -419,6 +434,8 @@ const ProfilePage = () => {
     dashboard: "Dashboard",
     personal: "Personal Details",
     room: "Room & Payment",
+    reservation: "My Reservation",
+    contract: "My Contract",
     history: "Activity Log",
     notifications: "Notifications",
     settings: "Settings",
@@ -493,6 +510,15 @@ const ProfilePage = () => {
                   activeStatusLabel={activeStatusLabel}
                 />
               )}
+
+              {activeTab === "reservation" && (
+                <ReservationAgreementPage
+                  reservation={selectedReservation || activeReservation}
+                  onBack={() => setActiveTab("dashboard")}
+                />
+              )}
+
+              {activeTab === "contract" && <ContractTab />}
 
               {activeTab === "history" && (
                 <ActivityHistoryTab activityLog={activityLog} />

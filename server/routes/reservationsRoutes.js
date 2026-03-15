@@ -36,6 +36,7 @@ import {
   renewContract,
   checkoutReservation,
   transferTenant,
+  getMyContract,
 } from "../controllers/reservationsController.js";
 import {
   getRoomOccupancy,
@@ -57,6 +58,17 @@ const router = express.Router();
  * @returns {Array} List of reservations with populated user and room data
  */
 router.get("/", verifyToken, getReservations);
+
+/**
+ * GET /api/reservations/my-contract
+ *
+ * Get the logged-in tenant's active contract details.
+ *
+ * Access: Authenticated tenants (checked-in status)
+ *
+ * @returns {Object} Contract details (lease dates, progress, room/bed info)
+ */
+router.get("/my-contract", verifyToken, getMyContract);
 
 /**
  * GET /api/reservations/:reservationId

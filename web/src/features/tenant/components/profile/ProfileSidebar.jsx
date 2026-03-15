@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Settings,
   Camera,
+  FileText,
 } from "lucide-react";
 
 const NAV_SECTIONS = [
@@ -26,6 +27,8 @@ const NAV_SECTIONS = [
     items: [
       { id: "personal", label: "Personal Details", icon: User },
       { id: "room", label: "Room & Payment", icon: CreditCard, hasBadge: true },
+      { id: "reservation", label: "My Reservation", icon: FileText },
+      { id: "contract", label: "My Contract", icon: FileText },
       { id: "history", label: "Activity Log", icon: History },
     ],
   },

@@ -1038,3 +1038,63 @@ export const transferTenant = async (req, res, next) => {
     handleReservationError(res, error, "transfer");
   }
 };
+
+/* ─── GET MY CONTRACT (tenant) ─────────────────────── */
+export const getMyContract = async (req, res) => {
+  try {
+    const firebaseUid = req.user.uid;
+    const user = await getOrSetUser(firebaseUid);
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Find the tenant's active checked-in reservation
+    const reservation = await Reservation.findOne({
+      userId: user._id,
+      status: "checked-in",
+      isArchived: false,
+    }).populate("roomId", "name branch type price floor");
+
+    if (!reservation) {
+      return res.status(404).json({ error: "No active contract found" });
+    }
+
+    const dayjs = (await import("dayjs")).default;
+    const now = dayjs();
+    const leaseStart = dayjs(reservation.checkInDate);
+    const leaseDuration = reservation.leaseDuration || 12;
+    const leaseEnd = leaseStart.add(leaseDuration, "month");
+    const monthsCompleted = Math.min(now.diff(leaseStart, "month"), leaseDuration);
+    const daysRemaining = Math.max(leaseEnd.diff(now, "day"), 0);
+    const totalDays = leaseEnd.diff(leaseStart, "day");
+    const daysElapsed = now.diff(leaseStart, "day");
+    const progressPercent = Math.min(Math.round((daysElapsed / totalDays) * 100), 100);
+
+    // Determine contract status
+    let contractStatus = "active";
+    if (daysRemaining <= 0) contractStatus = "expired";
+    else if (daysRemaining <= 30) contractStatus = "expiring";
+
+    const monthlyRent = reservation.monthlyRent || reservation.totalPrice || reservation.roomId?.price || 0;
+
+    res.json({
+      contractStatus,
+      room: reservation.roomId?.name || "N/A",
+      bed: reservation.selectedBed?.position || "N/A",
+      branch: reservation.roomId?.branch || "N/A",
+      roomType: reservation.roomId?.type || "N/A",
+      floor: reservation.roomId?.floor || 1,
+      monthlyRent,
+      leaseStart: leaseStart.format("MMMM D, YYYY"),
+      leaseEnd: leaseEnd.format("MMMM D, YYYY"),
+      leaseDuration,
+      monthsCompleted,
+      daysRemaining,
+      progressPercent,
+      reservationId: reservation._id,
+    });
+  } catch (error) {
+    console.error("❌ Get contract error:", error);
+    res.status(500).json({ error: "Failed to fetch contract" });
+  }
+};

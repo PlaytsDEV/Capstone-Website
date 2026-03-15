@@ -725,5 +725,110 @@ export const sendPaymentRejectedEmail = async ({
     return { success: false, error: error.message };
   }
 };
+// =============================================================================
+// PAYMENT RECEIPT EMAIL (PayMongo-style receipt with Lilycrest branding)
+// =============================================================================
+
+const generatePaymentReceiptHtml = ({
+  tenantName,
+  amount,
+  description,
+  paymentMethod,
+  paymentDate,
+  referenceId,
+}) => `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:#f5f5f5;">
+  <table role="presentation" style="width:100%;border-collapse:collapse;"><tr><td style="padding:40px 20px;">
+    <table role="presentation" style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.1);">
+      <!-- Dark Header -->
+      <tr><td style="background:#183153;padding:32px 40px;">
+        <p style="color:#D4982B;font-size:13px;margin:0 0 4px;font-weight:400;">Your receipt from</p>
+        <h1 style="color:#fff;margin:0;font-size:24px;font-weight:700;letter-spacing:0.5px;">LILYCREST DORMITORY</h1>
+      </td></tr>
+      <!-- Body -->
+      <tr><td style="padding:32px 40px;">
+        <p style="color:#374151;font-size:16px;margin:0 0 8px;">Hi <strong>${tenantName}</strong>,</p>
+        <p style="color:#6B7280;font-size:14px;margin:0 0 28px;line-height:1.5;">Thank you for your payment. Here's a copy of your receipt.</p>
+        <!-- Order details -->
+        <p style="color:#9CA3AF;font-size:11px;text-transform:uppercase;letter-spacing:1.5px;margin:0 0 12px;padding-bottom:8px;border-bottom:1px solid #E5E7EB;">Order details</p>
+        <table style="width:100%;border-collapse:collapse;margin:0 0 24px;">
+          <tr>
+            <td style="padding:8px 0;color:#9CA3AF;font-size:12px;text-transform:uppercase;">Amount paid</td>
+            <td style="padding:8px 0;text-align:right;"></td>
+          </tr>
+          <tr>
+            <td colspan="2" style="padding:0 0 16px;color:#111827;font-size:28px;font-weight:700;">₱ ${Number(amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0;color:#9CA3AF;font-size:12px;text-transform:uppercase;">Description</td>
+            <td style="padding:8px 0;text-align:right;"></td>
+          </tr>
+          <tr>
+            <td colspan="2" style="padding:0 0 16px;color:#374151;font-size:14px;">${description}</td>
+          </tr>
+          <tr style="border-top:1px solid #F3F4F6;">
+            <td style="padding:12px 0 4px;color:#9CA3AF;font-size:12px;text-transform:uppercase;width:50%;">Payment method</td>
+            <td style="padding:12px 0 4px;color:#9CA3AF;font-size:12px;text-transform:uppercase;width:50%;">Date paid</td>
+          </tr>
+          <tr>
+            <td style="padding:0 0 12px;color:#374151;font-size:14px;font-weight:500;">${paymentMethod}</td>
+            <td style="padding:0 0 12px;color:#374151;font-size:14px;font-weight:500;">${paymentDate}</td>
+          </tr>
+          <tr style="border-top:1px solid #F3F4F6;">
+            <td style="padding:12px 0 4px;color:#9CA3AF;font-size:12px;text-transform:uppercase;">Reference</td>
+            <td style="padding:12px 0 4px;"></td>
+          </tr>
+          <tr>
+            <td colspan="2" style="padding:0 0 8px;color:#6B7280;font-size:12px;font-family:monospace;">${referenceId}</td>
+          </tr>
+        </table>
+        <p style="color:#6B7280;font-size:13px;line-height:1.5;margin:0;">If you have any questions about this payment, contact Lilycrest Dormitory through the tenant portal.</p>
+      </td></tr>
+      <!-- Footer -->
+      <tr><td style="background:#183153;padding:20px 40px;text-align:center;">
+        <p style="color:rgba(255,255,255,0.7);font-size:11px;margin:0 0 8px;line-height:1.5;">You're receiving this e-mail because you made a payment at Lilycrest Dormitory.</p>
+        <p style="color:#D4982B;font-size:14px;font-weight:600;margin:0 0 4px;">🏠 Lilycrest Dormitory</p>
+        <p style="color:rgba(255,255,255,0.5);font-size:10px;margin:0;">Dormitory Management System</p>
+      </td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+
+export const sendPaymentReceiptEmail = async ({
+  to,
+  tenantName,
+  amount,
+  description,
+  paymentMethod = "Online Payment",
+  paymentDate,
+  referenceId,
+}) => {
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
+    console.log("⚠️ Receipt email not sent — email not configured");
+    return { success: false, message: "Email service not configured" };
+  }
+  const mailOptions = {
+    from: { name: "Lilycrest Dormitory", address: process.env.EMAIL_USER },
+    to,
+    subject: `Payment Receipt — ₱${Number(amount).toLocaleString()} | Lilycrest Dormitory`,
+    html: generatePaymentReceiptHtml({
+      tenantName,
+      amount,
+      description,
+      paymentMethod,
+      paymentDate,
+      referenceId,
+    }),
+    text: `Hi ${tenantName}, your payment of ₱${amount} for "${description}" has been received. Reference: ${referenceId}. Date: ${paymentDate}. — Lilycrest Dormitory`,
+  };
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ Receipt email sent to ${to} — ${info.messageId}`);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error(`❌ Receipt email failed for ${to}:`, error.message);
+    return { success: false, error: error.message };
+  }
+};
 
 export default transporter;

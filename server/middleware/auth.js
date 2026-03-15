@@ -51,6 +51,31 @@ function setCachedToken(token, decoded) {
   }
 }
 
+/* ─── In-memory account status cache (avoids hitting MongoDB each request) ── */
+const accountStatusCache = new Map();
+const ACCOUNT_STATUS_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
+
+function getCachedAccountStatus(uid) {
+  const entry = accountStatusCache.get(uid);
+  if (!entry) return undefined;
+  if (Date.now() - entry.ts > ACCOUNT_STATUS_CACHE_TTL) {
+    accountStatusCache.delete(uid);
+    return undefined;
+  }
+  return entry.status;
+}
+
+function setCachedAccountStatus(uid, status) {
+  accountStatusCache.set(uid, { status, ts: Date.now() });
+  if (accountStatusCache.size > 500) {
+    const oldest = accountStatusCache.keys().next().value;
+    accountStatusCache.delete(oldest);
+  }
+}
+
+/** Invalidate a user's cached account status (call when admin suspends/bans) */
+export const invalidateAccountStatusCache = (uid) => accountStatusCache.delete(uid);
+
 /**
  * Verify Firebase ID Token
  *
@@ -101,17 +126,23 @@ export const verifyToken = async (req, res, next) => {
     // Attach decoded user data to request object
     req.user = decodedToken;
 
-    // --- Account status check ---
+    // --- Account status check (cached — saves ~5-50ms per request) ---
     // Block suspended/banned users from accessing any protected endpoint
-    const { User } = await import("../models/index.js");
-    const dbUser = await User.findOne({ firebaseUid: decodedToken.uid }).select("accountStatus").lean();
-    if (dbUser && dbUser.accountStatus && dbUser.accountStatus !== "active") {
+    let accountStatus = getCachedAccountStatus(decodedToken.uid);
+    if (accountStatus === undefined) {
+      const { User } = await import("../models/index.js");
+      const dbUser = await User.findOne({ firebaseUid: decodedToken.uid }).select("accountStatus").lean();
+      accountStatus = dbUser?.accountStatus || null;
+      setCachedAccountStatus(decodedToken.uid, accountStatus);
+    }
+
+    if (accountStatus && accountStatus !== "active") {
       const statusMap = {
         suspended: { error: "Your account has been suspended. Contact support.", code: "ACCOUNT_SUSPENDED" },
         banned: { error: "Your account has been banned.", code: "ACCOUNT_BANNED" },
         pending_verification: { error: "Your account is pending verification.", code: "ACCOUNT_PENDING_VERIFICATION" },
       };
-      const info = statusMap[dbUser.accountStatus];
+      const info = statusMap[accountStatus];
       if (info) return res.status(403).json(info);
     }
 

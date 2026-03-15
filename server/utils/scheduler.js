@@ -354,7 +354,7 @@ async function expireStaleReservations() {
 
         // Release the bed
         try {
-          await updateOccupancyOnReservationChange(reservation, "cancelled", oldStatus);
+          await updateOccupancyOnReservationChange(reservation, { status: oldStatus });
         } catch (err) {
           console.error(`⚠️ Bed release failed for ${reservation._id}:`, err.message);
         }
@@ -407,7 +407,7 @@ async function cancelNoShowReservations() {
 
       // Release the bed
       try {
-        await updateOccupancyOnReservationChange(reservation, "cancelled", "reserved");
+        await updateOccupancyOnReservationChange(reservation, { status: "reserved" });
       } catch (err) {
         console.error(`⚠️ Bed release failed for ${reservation._id}:`, err.message);
       }

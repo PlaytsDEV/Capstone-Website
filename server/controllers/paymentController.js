@@ -17,7 +17,7 @@
 import dayjs from "dayjs";
 import { createCheckoutSession, getCheckoutSession } from "../config/paymongo.js";
 import { Bill, Reservation, User } from "../models/index.js";
-import { sendPaymentApprovedEmail, sendPaymentReceiptEmail } from "../config/email.js";
+import { sendPaymentApprovedEmail } from "../config/email.js";
 import { updateOccupancyOnReservationChange } from "../utils/occupancyManager.js";
 import {
   sendSuccess,
