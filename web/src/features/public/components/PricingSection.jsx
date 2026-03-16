@@ -76,7 +76,7 @@ export function PricingSection() {
 
   return (
     <section className="py-24 lg:py-32 bg-white" id="pricing">
-      <div className="max-w-7xl mx-auto px-8 lg:px-12">
+      <div className="max-w-screen-2xl mx-auto px-8 lg:px-12">
         {/* Header */}
         <div className="text-center mb-20">
           <p className="text-xs text-gray-400 mb-3 tracking-widest uppercase font-light">
@@ -84,7 +84,7 @@ export function PricingSection() {
           </p>
           <h2
             className="text-4xl lg:text-5xl font-light mb-5 tracking-tight"
-            style={{ color: "#183153" }}
+            style={{ color: "#0A1628" }}
           >
             Monthly Rates & Inclusions
           </h2>
@@ -104,13 +104,13 @@ export function PricingSection() {
                   ? "border-transparent shadow-xl"
                   : "border-gray-100 hover:border-gray-200"
               }`}
-              style={plan.popular ? { borderColor: "#D4982B" } : {}}
+              style={plan.popular ? { borderColor: "#FF8C42" } : {}}
             >
               {/* Popular Badge */}
               {plan.popular && (
                 <div
                   className="text-center py-3 text-white text-xs font-light tracking-wider uppercase"
-                  style={{ backgroundColor: "#D4982B" }}
+                  style={{ backgroundColor: "#FF8C42" }}
                 >
                   Most Popular
                 </div>
@@ -121,7 +121,7 @@ export function PricingSection() {
                 <div className="mb-8">
                   <h3
                     className="text-2xl font-normal mb-2 tracking-tight"
-                    style={{ color: "#183153" }}
+                    style={{ color: "#0A1628" }}
                   >
                     {plan.type}
                   </h3>
@@ -131,7 +131,7 @@ export function PricingSection() {
                   <div className="flex items-baseline gap-2">
                     <span
                       className="text-5xl font-light tracking-tight"
-                      style={{ color: "#D4982B" }}
+                      style={{ color: "#FF8C42" }}
                     >
                       {plan.price}
                     </span>
@@ -188,8 +188,8 @@ export function PricingSection() {
                   }`}
                   style={
                     plan.popular
-                      ? { backgroundColor: "#D4982B" }
-                      : { borderColor: "#D4982B", color: "#D4982B" }
+                      ? { backgroundColor: "#FF8C42" }
+                      : { borderColor: "#FF8C42", color: "#FF8C42" }
                   }
                 >
                   Reserve This Room
@@ -204,7 +204,7 @@ export function PricingSection() {
           <div className="p-8 rounded-3xl bg-gradient-to-br from-gray-50 to-white border border-gray-100">
             <h4
               className="text-lg font-normal mb-4 tracking-tight"
-              style={{ color: "#183153" }}
+              style={{ color: "#0A1628" }}
             >
               Payment Terms
             </h4>
@@ -257,7 +257,7 @@ export function PricingSection() {
                   height="24"
                   viewBox="0 0 24 24"
                   fill="none"
-                  stroke="#D4982B"
+                  stroke="#FF8C42"
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -269,7 +269,7 @@ export function PricingSection() {
               </div>
               <h3
                 className="text-xl font-semibold mb-2"
-                style={{ color: "#183153" }}
+                style={{ color: "#0A1628" }}
               >
                 Sign in to reserve
               </h3>
@@ -287,7 +287,7 @@ export function PricingSection() {
                 <button
                   onClick={() => navigate("/signin")}
                   className="flex-1 py-3 px-4 rounded-full text-white text-sm font-medium hover:opacity-90 transition-opacity"
-                  style={{ backgroundColor: "#D4982B" }}
+                  style={{ backgroundColor: "#FF8C42" }}
                 >
                   Sign In
                 </button>

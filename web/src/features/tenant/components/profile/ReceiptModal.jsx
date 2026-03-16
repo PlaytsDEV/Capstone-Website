@@ -43,7 +43,7 @@ const SectionTitle = ({ children }) => (
     style={{
       fontSize: "12px",
       fontWeight: "600",
-      color: "#D4982B",
+      color: "#FF8C42",
       marginBottom: "8px",
       textTransform: "uppercase",
       letterSpacing: "0.5px",
@@ -156,7 +156,7 @@ const RoomReceipt = ({ reservation }) => (
                 key={index}
                 style={{
                   backgroundColor: "#FFF7ED",
-                  color: "#D4982B",
+                  color: "#FF8C42",
                   padding: "4px 10px",
                   borderRadius: "12px",
                   fontSize: "12px",
@@ -186,7 +186,7 @@ const RoomReceipt = ({ reservation }) => (
         }}
       >
         <span style={{ color: "#6B7280" }}>Monthly Rate</span>
-        <span style={{ color: "#D4982B", fontWeight: "700", fontSize: "18px" }}>
+        <span style={{ color: "#FF8C42", fontWeight: "700", fontSize: "18px" }}>
           ₱
           {(
             reservation?.roomId?.price ||
@@ -578,7 +578,7 @@ const PaymentReceiptContent = ({ reservation }) => (
         }}
       >
         <span style={{ color: "#6B7280" }}>Amount Paid</span>
-        <span style={{ color: "#D4982B", fontWeight: "700", fontSize: "18px" }}>
+        <span style={{ color: "#FF8C42", fontWeight: "700", fontSize: "18px" }}>
           ₱{(reservation?.totalPrice || 0).toLocaleString()}
         </span>
       </div>
@@ -709,7 +709,7 @@ const ConfirmedReceipt = ({ reservation }) => (
     <ReceiptRow
       label="Monthly Rate"
       value={`₱${(reservation?.roomId?.price || reservation?.totalPrice || 0).toLocaleString()}`}
-      valueColor="#D4982B"
+      valueColor="#FF8C42"
       valueWeight="700"
     />
     <div

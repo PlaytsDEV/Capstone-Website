@@ -580,7 +580,7 @@
 
 .admin-reservation-status.checked-in {
   background: #E0EBF5;
-  color: #183153;
+  color: #0A1628;
 }
 
 .admin-reservation-status.cancelled,
@@ -663,7 +663,7 @@
 }
 
 .admin-dashboard-view-all:hover {
-  color: #183153;
+  color: #0A1628;
 }
 
 /* Activities List */

@@ -136,7 +136,7 @@ const PaymentTable = ({
                         style={{
                           padding: "6px 12px",
                           backgroundColor: "#EFF6FF",
-                          color: "#183153",
+                          color: "#0A1628",
                           border: "1px solid #BFDBFE",
                           borderRadius: "6px",
                           fontSize: "12px",

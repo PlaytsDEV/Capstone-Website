@@ -44,7 +44,7 @@ const RoomPaymentTab = ({
               <div>
                 <h4
                   className="text-2xl font-bold mb-1"
-                  style={{ color: "#183153" }}
+                  style={{ color: "#0A1628" }}
                 >
                   Room {selectedRoom.roomNumber}
                 </h4>
@@ -60,14 +60,14 @@ const RoomPaymentTab = ({
               </div>
               <div
                 className="w-14 h-14 rounded-lg flex items-center justify-center"
-                style={{ backgroundColor: "#D4982B" }}
+                style={{ backgroundColor: "#FF8C42" }}
               >
                 <Bed className="w-7 h-7 text-white" />
               </div>
             </div>
-            <div className="pt-4 border-t" style={{ borderColor: "#D4982B30" }}>
+            <div className="pt-4 border-t" style={{ borderColor: "#FF8C4230" }}>
               <p className="text-xs text-gray-500 mb-1">Monthly Rent</p>
-              <p className="text-3xl font-bold" style={{ color: "#D4982B" }}>
+              <p className="text-3xl font-bold" style={{ color: "#FF8C42" }}>
                 ₱{selectedRoom.price.toLocaleString()}
               </p>
             </div>
@@ -122,7 +122,7 @@ const RoomPaymentTab = ({
               <h4 className="font-semibold">Payment Breakdown</h4>
               <span
                 className="px-3 py-1 rounded-full text-xs font-medium text-white"
-                style={{ backgroundColor: "#183153" }}
+                style={{ backgroundColor: "#0A1628" }}
               >
                 {activeReservation.paymentStatus || "Pending"}
               </span>
@@ -160,7 +160,7 @@ const RoomPaymentTab = ({
                       <p className="text-xs text-gray-500">Pending</p>
                     </div>
                   </div>
-                  <p className="text-lg font-bold" style={{ color: "#D4982B" }}>
+                  <p className="text-lg font-bold" style={{ color: "#FF8C42" }}>
                     ₱{(activeReservation.totalAmount || 0).toLocaleString()}
                   </p>
                 </div>
@@ -169,7 +169,7 @@ const RoomPaymentTab = ({
             {!activeReservation.paymentVerified && (
               <button
                 className="w-full py-3 text-sm font-medium rounded-lg text-white transition-colors"
-                style={{ backgroundColor: "#D4982B" }}
+                style={{ backgroundColor: "#FF8C42" }}
               >
                 Pay Deposit - ₱
                 {(activeReservation.totalAmount || 0).toLocaleString()}
@@ -195,7 +195,7 @@ const RoomPaymentTab = ({
           <Link to="/applicant/check-availability">
             <button
               className="px-6 py-3 rounded-lg font-medium text-white"
-              style={{ backgroundColor: "#D4982B" }}
+              style={{ backgroundColor: "#FF8C42" }}
             >
               Browse Available Rooms
             </button>

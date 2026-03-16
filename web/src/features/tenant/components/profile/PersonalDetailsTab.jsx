@@ -122,7 +122,7 @@ const s = {
     boxSizing: "border-box",
   },
   inputFocus: {
-    borderColor: "#D4982B",
+    borderColor: "#FF8C42",
     boxShadow: "0 0 0 3px rgba(212,152,43,0.08)",
   },
   inputError: {
@@ -161,7 +161,7 @@ const s = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    background: "linear-gradient(135deg, #183153 0%, #1E3A5F 100%)",
+    background: "linear-gradient(135deg, #0A1628 0%, #1E3A5F 100%)",
     color: "#fff",
     fontSize: 24,
     fontWeight: 700,
@@ -195,7 +195,7 @@ const s = {
     background: "#fff",
     fontSize: 13,
     fontWeight: 600,
-    color: "#D4982B",
+    color: "#FF8C42",
     cursor: "pointer",
     transition: "all 0.15s",
   },
@@ -206,7 +206,7 @@ const s = {
     padding: "8px 20px",
     border: "none",
     borderRadius: 8,
-    background: "#D4982B",
+    background: "#FF8C42",
     fontSize: 13,
     fontWeight: 600,
     color: "#fff",
@@ -507,7 +507,7 @@ const PersonalDetailsTab = ({
                         width: 28,
                         height: 28,
                         border: "3px solid rgba(255,255,255,0.25)",
-                        borderTop: "3px solid #D4982B",
+                        borderTop: "3px solid #FF8C42",
                         borderRadius: "50%",
                         animation: "spin 0.8s linear infinite",
                       }}
@@ -533,7 +533,7 @@ const PersonalDetailsTab = ({
                   width: 24,
                   height: 24,
                   borderRadius: "50%",
-                  background: "#D4982B",
+                  background: "#FF8C42",
                   border: "2px solid #fff",
                   display: "flex",
                   alignItems: "center",
@@ -593,7 +593,7 @@ const PersonalDetailsTab = ({
                   if (!saving && !uploading && hasChanges) e.currentTarget.style.background = "#C48A24";
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = !hasChanges ? "#9CA3AF" : "#D4982B";
+                  e.currentTarget.style.background = !hasChanges ? "#9CA3AF" : "#FF8C42";
                 }}
               >
                 <Save size={14} /> {uploading ? "Uploading…" : saving ? "Saving…" : "Save Changes"}
@@ -605,7 +605,7 @@ const PersonalDetailsTab = ({
               style={s.editBtn}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = "#FFF8ED";
-                e.currentTarget.style.borderColor = "#D4982B";
+                e.currentTarget.style.borderColor = "#FF8C42";
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.background = "#fff";
@@ -619,7 +619,7 @@ const PersonalDetailsTab = ({
       </div>
 
       {/* Section: Personal Information */}
-      <Section icon={User} title="Personal Information" color="#183153">
+      <Section icon={User} title="Personal Information" color="#0A1628">
         {isEditingProfile ? (
           <>
             <Field label="First Name" field="firstName" required {...fieldProps} />

@@ -105,3 +105,28 @@ export const apiLimiter = rateLimit({
   handler: rateLimitResponse,
   skip: skipInDev,
 });
+
+/**
+ * Inquiry limiter — strict limits on public inquiry form submissions.
+ * 5 submissions per 15-minute window per IP.
+ */
+export const inquiryLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      error: {
+        code: "RATE_LIMIT_EXCEEDED",
+        message: "You've submitted too many inquiries. Please try again in 15 minutes.",
+      },
+      meta: {
+        requestId: req.id,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  },
+  skip: skipInDev,
+});

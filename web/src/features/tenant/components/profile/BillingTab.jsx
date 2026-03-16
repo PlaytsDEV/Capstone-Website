@@ -42,7 +42,7 @@ const STATUS_STYLES = {
 };
 
 const CHARGE_ITEMS = [
-  { key: "rent", label: "Rent", icon: Home, color: "#183153" },
+  { key: "rent", label: "Rent", icon: Home, color: "#0A1628" },
   { key: "electricity", label: "Electricity", icon: Zap, color: "#F59E0B" },
   { key: "water", label: "Water", icon: Droplets, color: "#3B82F6" },
   { key: "applianceFees", label: "Appliance Fee", icon: Package, color: "#8B5CF6" },
@@ -316,7 +316,7 @@ const BillingTab = () => {
         <StatCard
           label="Unpaid Bills"
           value={unpaid.length}
-          accent="#D4982B"
+          accent="#FF8C42"
           icon={Clock}
         />
         <StatCard
@@ -416,9 +416,9 @@ const s = {
     transition: "all 0.15s",
   },
   chipActive: {
-    background: "#D4982B",
+    background: "#FF8C42",
     color: "#fff",
-    border: "1px solid #D4982B",
+    border: "1px solid #FF8C42",
   },
   chipCount: {
     background: "rgba(255,255,255,0.25)",
@@ -476,7 +476,7 @@ const s = {
   payBtn: {
     width: "100%",
     padding: "11px 0",
-    background: "#D4982B",
+    background: "#FF8C42",
     color: "#fff",
     border: "none",
     borderRadius: 8,
@@ -513,7 +513,7 @@ const s = {
     padding: "10px 0",
     background: "none",
     border: "none",
-    color: "#D4982B",
+    color: "#FF8C42",
     fontSize: 13,
     fontWeight: 600,
     cursor: "pointer",

@@ -437,7 +437,7 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
                       status === "complete"
                         ? "#059669"
                         : status === "current"
-                          ? "#D4982B"
+                          ? "#FF8C42"
                           : status === "waiting"
                             ? "#2563EB"
                             : "#94A3B8",
@@ -484,7 +484,7 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
             background: "#F8FAFC",
             borderRadius: 8,
             padding: "16px 20px",
-            borderLeft: `3px solid ${action.isWaiting ? "#2563EB" : "#D4982B"}`,
+            borderLeft: `3px solid ${action.isWaiting ? "#2563EB" : "#FF8C42"}`,
           }}
         >
           <div style={styles.actionContent}>
@@ -492,14 +492,14 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
               {action.isWaiting ? (
                 <Clock size={18} color="#2563EB" />
               ) : (
-                <AlertCircle size={18} color="#D4982B" />
+                <AlertCircle size={18} color="#FF8C42" />
               )}
             </div>
             <div>
               <h4
                 style={{
                   ...styles.actionTitle,
-                  color: action.isWaiting ? "#1E40AF" : "#BD8724",
+                  color: action.isWaiting ? "#1E40AF" : "#E0752E",
                 }}
               >
                 {action.title}
@@ -558,7 +558,7 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
               }
               style={{
                 ...styles.cancelLink,
-                color: "#D4982B",
+                color: "#FF8C42",
                 textDecoration: "none",
                 fontWeight: 500,
               }}
@@ -671,7 +671,7 @@ const styles = {
     display: "inline-flex",
     alignItems: "center",
     padding: "10px 24px",
-    background: "#D4982B",
+    background: "#FF8C42",
     color: "#fff",
     border: "none",
     borderRadius: 8,
@@ -709,7 +709,7 @@ const styles = {
   pendingBadge: {
     fontSize: 12,
     fontWeight: 500,
-    color: "#D4982B",
+    color: "#FF8C42",
     background: "#FFF7ED",
     padding: "3px 10px",
     borderRadius: 999,
@@ -783,9 +783,9 @@ const styles = {
     boxShadow: "0 0 0 3px rgba(16, 185, 129, 0.2)",
   },
   stepCurrent: {
-    background: "linear-gradient(135deg, #D4982B 0%, #FF8C2E 100%)",
+    background: "linear-gradient(135deg, #FF8C42 0%, #FF8C2E 100%)",
     boxShadow:
-      "0 0 0 4px rgba(212, 152, 43, 0.25), 0 0 12px rgba(212, 152, 43, 0.3)",
+      "0 0 0 4px rgba(255, 140, 66, 0.25), 0 0 12px rgba(255, 140, 66, 0.3)",
   },
   stepWaiting: {
     background: "#2563EB",
@@ -848,7 +848,7 @@ const styles = {
   },
   actionButton: {
     padding: "8px 20px",
-    background: "#D4982B",
+    background: "#FF8C42",
     color: "#fff",
     border: "none",
     borderRadius: 6,

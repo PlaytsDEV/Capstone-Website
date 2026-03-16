@@ -58,9 +58,9 @@ export default function ConfirmModal({
       btnHover: "#B45309",
     },
     info: {
-      icon: "#183153",
+      icon: "#0A1628",
       iconBg: "#EFF6FF",
-      btn: "#183153",
+      btn: "#0A1628",
       btnHover: "#092d4f",
     },
     success: {

@@ -123,7 +123,7 @@ const FileUploadField = ({
       >
         {uploading ? (
           <>
-            <div style={{ fontSize: "14px", color: "#D4982B", fontWeight: 500, marginBottom: "4px" }}>
+            <div style={{ fontSize: "14px", color: "#FF8C42", fontWeight: 500, marginBottom: "4px" }}>
               Uploading… {progress}%
             </div>
             {fileMeta && (
@@ -136,7 +136,7 @@ const FileUploadField = ({
                 style={{
                   width: `${progress}%`,
                   height: "100%",
-                  background: "linear-gradient(90deg, #D4982B, #F59E0B)",
+                  background: "linear-gradient(90deg, #FF8C42, #F59E0B)",
                   borderRadius: "3px",
                   transition: "width 0.2s ease",
                 }}

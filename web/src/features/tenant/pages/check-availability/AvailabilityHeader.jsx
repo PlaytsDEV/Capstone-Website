@@ -99,13 +99,13 @@ const AvailabilityHeader = ({
           >
             <div
               className="w-9 h-9 rounded-lg flex items-center justify-center"
-              style={{ backgroundColor: "#183153" }}
+              style={{ backgroundColor: "#0A1628" }}
             >
               <Bed className="w-5 h-5 text-white" />
             </div>
             <span
               className="text-lg font-semibold"
-              style={{ color: "#183153" }}
+              style={{ color: "#0A1628" }}
             >
               Lilycrest
             </span>
@@ -185,7 +185,7 @@ const AvailabilityHeader = ({
                   style={{
                     width: "260px",
                     border: showUserMenu
-                      ? "1.5px solid #D4982B"
+                      ? "1.5px solid #FF8C42"
                       : "1.5px solid transparent",
                     backgroundColor: showUserMenu ? "#FFF7ED" : "transparent",
                   }}
@@ -208,8 +208,8 @@ const AvailabilityHeader = ({
                     className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
                     style={{
                       background:
-                        "linear-gradient(135deg, #D4982B 0%, #D35400 100%)",
-                      boxShadow: "0 1px 3px rgba(212, 152, 43, 0.3)",
+                        "linear-gradient(135deg, #FF8C42 0%, #D35400 100%)",
+                      boxShadow: "0 1px 3px rgba(255, 140, 66, 0.3)",
                     }}
                   >
                     {userInitials}
@@ -245,8 +245,8 @@ const AvailabilityHeader = ({
                           className="w-10 h-10 rounded-[10px] flex items-center justify-center text-white text-sm font-bold shrink-0"
                           style={{
                             background:
-                              "linear-gradient(135deg, #D4982B 0%, #D35400 100%)",
-                            boxShadow: "0 2px 6px rgba(212, 152, 43, 0.25)",
+                              "linear-gradient(135deg, #FF8C42 0%, #D35400 100%)",
+                            boxShadow: "0 2px 6px rgba(255, 140, 66, 0.25)",
                           }}
                         >
                           {userInitials}
@@ -346,7 +346,7 @@ const AvailabilityHeader = ({
               <Link
                 to="/signin"
                 className="flex items-center gap-2 px-5 py-2.5 rounded-full border border-gray-300 hover:border-gray-400 transition-colors text-sm font-medium"
-                style={{ color: "#183153" }}
+                style={{ color: "#0A1628" }}
               >
                 <User className="w-4 h-4" />
                 Sign In

@@ -4,7 +4,7 @@
 
 :root {
   --fi-border: #e2e8f0;
-  --fi-focus: #D4982B;
+  --fi-focus: #FF8C42;
   --fi-valid: #10b981;
   --fi-error: #ef4444;
   --fi-label: #94a3b8;
@@ -30,7 +30,7 @@
 }
 
 .floating-field__wrapper.focused {
-  box-shadow: 0 0 0 3px rgba(212, 152, 43, 0.1);
+  box-shadow: 0 0 0 3px rgba(255, 140, 66, 0.1);
 }
 
 .floating-field__wrapper.has-error {
@@ -139,9 +139,83 @@
   padding-left: 4px;
 }
 
+/* ── Character Counter ── */
+.floating-field__counter {
+  font-size: 12px;
+  margin-top: 6px;
+  padding-right: 4px;
+}
+
+/* ── Textarea Variant ── */
+.floating-field__textarea {
+  min-height: 100px;
+  line-height: 1.6;
+}
+
+.floating-field__label--textarea {
+  top: 18px;
+  transform: translateY(0);
+}
+
+.floating-field__textarea:focus ~ .floating-field__label--textarea,
+.floating-field__textarea:not(:placeholder-shown) ~ .floating-field__label--textarea {
+  top: 0;
+  transform: translateY(-50%) scale(0.72);
+}
+
+/* ── Select Variant ── */
+.floating-field__select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  padding-right: 40px;
+}
+
+/* Always float label for select when it has a value */
+.floating-field__wrapper.active .floating-field__select ~ .floating-field__label {
+  top: 0;
+  transform: translateY(-50%) scale(0.72);
+  color: var(--fi-label-active);
+  font-weight: 500;
+  background: var(--fi-bg);
+  padding: 0 6px;
+}
+
+/* ── Fix: use variable bg instead of hardcoded white ── */
+.floating-field__input:focus ~ .floating-field__label,
+.floating-field__input:not(:placeholder-shown) ~ .floating-field__label {
+  background: var(--fi-bg);
+}
+
 /* ── Password input needs right padding for adornment ── */
 .floating-field__wrapper:has(.floating-field__adornment) .floating-field__input {
   padding-right: 48px;
+}
+
+/* ============================================
+   DARK MODE — Landing Page Floating Inputs
+   ============================================ */
+.landing-page[data-theme="dark"] {
+  --fi-border: #1E293B;
+  --fi-focus: #FF8C42;
+  --fi-valid: #10b981;
+  --fi-error: #ef4444;
+  --fi-label: #64748b;
+  --fi-label-active: #94a3b8;
+  --fi-text: #f1f5f9;
+  --fi-bg: #0B1120;
+}
+
+/* Light mode for landing page (explicit, in case auth-forms sets different global) */
+.landing-page[data-theme="light"] {
+  --fi-border: #e2e8f0;
+  --fi-focus: #FF8C42;
+  --fi-valid: #10b981;
+  --fi-error: #ef4444;
+  --fi-label: #94a3b8;
+  --fi-label-active: #64748b;
+  --fi-text: #1e293b;
+  --fi-bg: #ffffff;
 }
 
 /* ============================================
@@ -169,7 +243,7 @@
 .auth-header__title {
   font-size: 32px;
   font-weight: 600;
-  color: #183153;
+  color: #0A1628;
   margin: 0 0 8px 0;
   letter-spacing: -0.5px;
   line-height: 1.2;
@@ -184,7 +258,7 @@
 
 .auth-header__subtitle a,
 .auth-header__subtitle button {
-  color: #D4982B;
+  color: #FF8C42;
   font-weight: 500;
   text-decoration: none;
   background: none;
@@ -205,7 +279,7 @@
   padding: 16px 24px;
   border: none;
   border-radius: 12px;
-  background: #D4982B;
+  background: #FF8C42;
   color: #ffffff;
   font-size: 15px;
   font-weight: 600;
@@ -221,14 +295,14 @@
 }
 
 .auth-btn-primary:hover:not(:disabled) {
-  background: #BD8724;
+  background: #E0752E;
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(212, 152, 43, 0.3);
+  box-shadow: 0 6px 20px rgba(255, 140, 66, 0.3);
 }
 
 .auth-btn-primary:active:not(:disabled) {
   transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(212, 152, 43, 0.2);
+  box-shadow: 0 2px 8px rgba(255, 140, 66, 0.2);
 }
 
 .auth-btn-primary:disabled {
@@ -319,7 +393,7 @@
   width: 16px;
   height: 16px;
   border-radius: 4px;
-  accent-color: #D4982B;
+  accent-color: #FF8C42;
   cursor: pointer;
 }
 
@@ -331,7 +405,7 @@
 
 .auth-forgot-link {
   font-size: 14px;
-  color: #D4982B;
+  color: #FF8C42;
   font-weight: 500;
   background: none;
   border: none;
@@ -355,7 +429,7 @@
   width: 18px;
   height: 18px;
   border-radius: 4px;
-  accent-color: #D4982B;
+  accent-color: #FF8C42;
   cursor: pointer;
   margin-top: 2px;
   flex-shrink: 0;
@@ -369,7 +443,7 @@
 }
 
 .auth-terms button {
-  color: #D4982B;
+  color: #FF8C42;
   font-weight: 500;
   background: none;
   border: none;

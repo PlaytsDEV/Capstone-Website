@@ -2,73 +2,106 @@ import Navbar from "../components/Navbar";
 import { ContactFooter } from "../components/ContactFooter";
 import { HeroSection } from "../components/HeroSection";
 import { BenefitsSection } from "../components/BenefitsSection";
+import { SocialProofSection } from "../components/SocialProofSection";
 import { RoomInventory } from "../components/RoomInventory";
-import { PricingSection } from "../components/PricingSection";
+
 import { FacilitiesSection } from "../components/FacilitiesSection";
 import { LocationSection } from "../components/LocationSection";
 import { RulesSection } from "../components/RulesSection";
 import { StorytellingSection } from "../components/StorytellingSection";
-import { GuaranteeSection } from "../components/GuaranteeSection";
+
 import { InquiryForm } from "../components/InquiryForm";
 import { CTASection } from "../components/CTASection";
 import ScrollReveal from "../../../shared/components/ScrollReveal";
 import ScrollToTopButton from "../../../shared/components/ScrollToTopButton";
+import { ThemeProvider, useTheme } from "../context/ThemeContext";
 
-function LandingPage() {
+function LandingPageContent() {
+  const { theme } = useTheme();
+
   return (
-    <div className="landing-page" style={{ overflowX: "hidden" }}>
+    <div className="landing-page" data-theme={theme} style={{ overflowX: "hidden", backgroundColor: "var(--lp-bg)" }}>
       <Navbar type="landing" currentPage="home" />
 
-      {/* Hero — has its own entrance animations, no ScrollReveal needed */}
+      {/* 1. HOOK — First impression */}
       <HeroSection />
 
-      {/* Each section reveals as you scroll down */}
-      <ScrollReveal variant="fade-up">
-        <BenefitsSection />
-      </ScrollReveal>
+      {/* 2. FEATURES — Why choose us */}
+      <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
+        <ScrollReveal variant="fade-up">
+          <BenefitsSection />
+        </ScrollReveal>
+      </div>
 
-      <ScrollReveal variant="fade-up" delay={0.1}>
-        <RoomInventory />
-      </ScrollReveal>
+      {/* 3. PRODUCT — What we offer */}
+      <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
+        <ScrollReveal variant="fade-up" delay={0.1}>
+          <RoomInventory />
+        </ScrollReveal>
+      </div>
 
-      <ScrollReveal variant="fade-up">
-        <PricingSection />
-      </ScrollReveal>
+      {/* 4. FACILITIES — Shared spaces */}
+      <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
+        <ScrollReveal variant="fade-up">
+          <FacilitiesSection />
+        </ScrollReveal>
+      </div>
 
-      <ScrollReveal variant="fade-up">
-        <FacilitiesSection />
-      </ScrollReveal>
+      {/* 5. CONVENIENCE — Where we are */}
+      <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
+        <ScrollReveal variant="fade-up">
+          <LocationSection />
+        </ScrollReveal>
+      </div>
 
-      <ScrollReveal variant="fade-up">
-        <LocationSection />
-      </ScrollReveal>
+      {/* 6. TRUST — Social proof */}
+      <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
+        <ScrollReveal variant="fade-up">
+          <SocialProofSection />
+        </ScrollReveal>
+      </div>
 
-      <ScrollReveal variant="fade-up">
+      {/* 7. STORY — Brand identity */}
+      <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
+        <ScrollReveal variant="fade-left">
+          <StorytellingSection />
+        </ScrollReveal>
+      </div>
+
+      {/* 8. TRANSPARENCY — House rules */}
+      <ScrollReveal variant="fade">
         <RulesSection />
       </ScrollReveal>
 
-      <ScrollReveal variant="fade-left">
-        <StorytellingSection />
-      </ScrollReveal>
+      {/* 9. ACTION — Convert the visitor */}
+      <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
+        <ScrollReveal variant="fade-up">
+          <InquiryForm />
+        </ScrollReveal>
+      </div>
 
-      <ScrollReveal variant="zoom">
-        <GuaranteeSection />
-      </ScrollReveal>
+      {/* 10. FINAL CTA */}
+      <div style={{ borderBottom: '1px solid var(--lp-border)' }}>
+        <ScrollReveal variant="zoom">
+          <CTASection />
+        </ScrollReveal>
+      </div>
 
-      <ScrollReveal variant="fade-up">
-        <InquiryForm />
-      </ScrollReveal>
-
-      <ScrollReveal variant="zoom">
-        <CTASection />
-      </ScrollReveal>
-
+      {/* FOOTER */}
       <ScrollReveal variant="fade">
         <ContactFooter />
       </ScrollReveal>
 
       <ScrollToTopButton />
     </div>
+  );
+}
+
+function LandingPage() {
+  return (
+    <ThemeProvider>
+      <LandingPageContent />
+    </ThemeProvider>
   );
 }
 

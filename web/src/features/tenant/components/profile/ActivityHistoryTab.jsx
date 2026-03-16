@@ -59,7 +59,7 @@ const buildTimeline = (r) => {
       id: "created",
       icon: Home,
       iconBg: "#EEF2FF",
-      iconColor: "#183153",
+      iconColor: "#0A1628",
       title: "Reservation Created",
       description: `Room ${r.roomId?.name || r.roomId?.roomNumber || "—"} selected`,
       date: r.createdAt,

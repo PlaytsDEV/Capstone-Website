@@ -68,7 +68,7 @@ export default function BillingRoomCard({ room, onRoomClick }) {
           <span
             style={{
               fontSize: "0.7rem",
-              color: "#D4982B",
+              color: "#FF8C42",
               fontWeight: 500,
             }}
           >

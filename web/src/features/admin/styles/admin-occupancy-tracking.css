@@ -32,7 +32,7 @@
 
 .filter-select:focus {
   outline: none;
-  border-color: #183153;
+  border-color: #0A1628;
   box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
 }
 
@@ -56,7 +56,7 @@
 
 .stat-card:hover {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  border-color: #183153;
+  border-color: #0A1628;
 }
 
 .stat-card h3 {
@@ -75,8 +75,8 @@
 }
 
 .stat-card.highlight {
-  background: linear-gradient(135deg, #183153 0%, #1a6db5 100%);
-  border-color: #183153;
+  background: linear-gradient(135deg, #0A1628 0%, #1a6db5 100%);
+  border-color: #0A1628;
   color: white;
 }
 
@@ -114,7 +114,7 @@
 
 .occupancy-fill {
   height: 100%;
-  background: linear-gradient(90deg, #183153, #1a6db5);
+  background: linear-gradient(90deg, #0A1628, #1a6db5);
   transition: width 0.3s ease;
   display: flex;
   align-items: center;
@@ -173,7 +173,7 @@
 
 .type-card .occupancy-fill {
   height: 100%;
-  background: linear-gradient(90deg, #183153, #1a6db5);
+  background: linear-gradient(90deg, #0A1628, #1a6db5);
   padding: 0;
 }
 
@@ -233,7 +233,7 @@
 
 .room-name {
   font-weight: 600;
-  color: #183153;
+  color: #0A1628;
 }
 
 .occupied-badge {
@@ -323,7 +323,7 @@
 /* Detail Button */
 
 .detail-btn {
-  background: #183153;
+  background: #0A1628;
   color: white;
   border: none;
   border-radius: 6px;
@@ -335,7 +335,7 @@
 }
 
 .detail-btn:hover {
-  background: #183153cc;
+  background: #0A1628cc;
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(79, 70, 229, 0.2);
 }

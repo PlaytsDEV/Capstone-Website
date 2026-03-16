@@ -76,13 +76,13 @@
 }
 
 .admin-users-page .stat-icon.blue {
-  background: #EBF0F7;
-  color: #183153;
+  background: #FFF4EB;
+  color: #0A1628;
 }
 
 .admin-users-page .stat-icon.orange {
   background: #fff7ed;
-  color: #BD8724;
+  color: #E0752E;
 }
 
 .admin-users-page .stat-label {
@@ -148,8 +148,8 @@
 
 .admin-users-page .search-box input:focus {
   outline: none;
-  border-color: #183153;
-  box-shadow: 0 0 0 3px rgba(24, 49, 83, 0.08);
+  border-color: #0A1628;
+  box-shadow: 0 0 0 3px rgba(10, 22, 40, 0.08);
 }
 
 .admin-users-page .search-icon {
@@ -192,8 +192,8 @@
 
 .admin-users-page select:focus {
   outline: none;
-  border-color: #183153;
-  box-shadow: 0 0 0 3px rgba(24, 49, 83, 0.08);
+  border-color: #0A1628;
+  box-shadow: 0 0 0 3px rgba(10, 22, 40, 0.08);
 }
 
 /* ── Buttons ────────────────────────────────────────────────────────────── */
@@ -214,12 +214,12 @@
 }
 
 .admin-users-page .btn-primary {
-  background: #183153;
+  background: #0A1628;
   color: white;
 }
 
 .admin-users-page .btn-primary:hover {
-  background: #0F2240;
+  background: #1E3A5F;
 }
 
 .admin-users-page .btn-secondary {
@@ -328,8 +328,8 @@
 }
 
 .admin-users-page .badge-user {
-  background: #EBF0F7;
-  color: #183153;
+  background: #FFF4EB;
+  color: #0A1628;
 }
 
 .admin-users-page .badge-tenant {
@@ -384,9 +384,9 @@
 }
 
 .admin-users-page .action-btn:hover {
-  border-color: #183153;
-  color: #183153;
-  background: #EBF0F7;
+  border-color: #0A1628;
+  color: #0A1628;
+  background: #FFF4EB;
 }
 
 .admin-users-page .action-btn.delete:hover {
@@ -398,7 +398,7 @@
 /* Account status badges */
 .admin-users-page .badge-suspended {
   background: #fff7ed;
-  color: #BD8724;
+  color: #E0752E;
 }
 
 .admin-users-page .badge-banned {
@@ -521,9 +521,9 @@
 }
 
 .admin-users-page .pagination-btn:hover:not(:disabled) {
-  background: #EBF0F7;
-  border-color: #183153;
-  color: #183153;
+  background: #FFF4EB;
+  border-color: #0A1628;
+  color: #0A1628;
 }
 
 .admin-users-page .pagination-btn:disabled {
@@ -653,8 +653,8 @@
 
 .admin-users-page .form-group input:focus,
 .admin-users-page .form-group select:focus {
-  border-color: #183153;
-  box-shadow: 0 0 0 3px rgba(24, 49, 83, 0.08);
+  border-color: #0A1628;
+  box-shadow: 0 0 0 3px rgba(10, 22, 40, 0.08);
   background: #fff;
 }
 
@@ -688,13 +688,13 @@
 }
 
 .admin-users-page .btn-save {
-  background: #183153;
+  background: #0A1628;
   border: none;
   color: white;
 }
 
 .admin-users-page .btn-save:hover {
-  background: #0F2240;
+  background: #1E3A5F;
 }
 
 .admin-users-page .btn-delete-confirm {

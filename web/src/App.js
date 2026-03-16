@@ -22,6 +22,12 @@ import ProtectedRoute from "./shared/components/ProtectedRoute";
 const LandingPage = React.lazy(
   () => import("./features/public/pages/LandingPage"),
 );
+const PrivacyPolicyPage = React.lazy(
+  () => import("./features/public/pages/PrivacyPolicyPage"),
+);
+const TermsOfServicePage = React.lazy(
+  () => import("./features/public/pages/TermsOfServicePage"),
+);
 
 // Admin Pages
 const AdminLayout = React.lazy(
@@ -121,6 +127,23 @@ function AppContent() {
                   <LandingPage />
                 </RouteErrorBoundary>
               </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/privacy-policy"
+            element={
+              <RouteErrorBoundary name="PrivacyPolicy">
+                <PrivacyPolicyPage />
+              </RouteErrorBoundary>
+            }
+          />
+          <Route
+            path="/terms-of-service"
+            element={
+              <RouteErrorBoundary name="TermsOfService">
+                <TermsOfServicePage />
+              </RouteErrorBoundary>
             }
           />
 

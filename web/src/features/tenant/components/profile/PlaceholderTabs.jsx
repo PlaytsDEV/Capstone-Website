@@ -75,7 +75,7 @@ export const NotificationsTab = () => (
   <PlaceholderTab
     icon={Bell}
     iconBg="#FFF7ED"
-    iconColor="#D4982B"
+    iconColor="#FF8C42"
     title="Notifications"
     subtitle="Stay updated on your reservation and account activity"
     description={{

@@ -70,7 +70,7 @@ const ApplicationProgressBar = ({
           width: `${(completedCount / totalSections) * 100}%`,
           height: "100%",
           backgroundColor:
-            completedCount === totalSections ? "#10B981" : "#D4982B",
+            completedCount === totalSections ? "#10B981" : "#FF8C42",
           borderRadius: "999px",
           transition: "width 0.3s ease",
         }}

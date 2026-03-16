@@ -28,7 +28,7 @@
   justify-content: center;
   width: 56px;
   height: 56px;
-  background: linear-gradient(135deg, #0f4a7f 0%, #0F2240 100%);
+  background: linear-gradient(135deg, #0f4a7f 0%, #1E3A5F 100%);
   border-radius: 12px;
   color: white;
 }
@@ -97,7 +97,7 @@
   color: #22c55e;
 }
 .stat-card-info h3.text-orange {
-  color: #D4982B;
+  color: #FF8C42;
 }
 
 .stat-card-icon {
@@ -118,7 +118,7 @@
   color: #22c55e;
 }
 .stat-card-icon.orange {
-  color: #D4982B;
+  color: #FF8C42;
 }
 
 /* Filters Section */
@@ -199,7 +199,7 @@
   align-items: center;
   gap: 8px;
   padding: 10px 20px;
-  background: linear-gradient(135deg, #0f4a7f 0%, #0F2240 100%);
+  background: linear-gradient(135deg, #0f4a7f 0%, #1E3A5F 100%);
   color: white;
   border: none;
   border-radius: 8px;
@@ -359,7 +359,7 @@
 
 .severity-badge.info {
   background: #e0ebf5;
-  color: #0F2240;
+  color: #1E3A5F;
   border-color: #bfdbfe;
 }
 
@@ -371,7 +371,7 @@
 
 .severity-badge.high {
   background: #ffedd5;
-  color: #BD8724;
+  color: #E0752E;
   border-color: #fed7aa;
 }
 
@@ -399,7 +399,7 @@
 
 .role-badge.tenant {
   background: #e0ebf5;
-  color: #0F2240;
+  color: #1E3A5F;
 }
 
 .role-badge.admin {
@@ -409,7 +409,7 @@
 
 .role-badge.superAdmin {
   background: #f3e8ff;
-  color: #183153;
+  color: #0A1628;
 }
 
 .role-badge.unknown {

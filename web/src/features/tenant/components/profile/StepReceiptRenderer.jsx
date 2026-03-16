@@ -73,7 +73,7 @@ const RoomSelectedReceipt = ({ reservation }) => (
     <ReceiptRow
       label="Monthly Rate"
       value={`₱${(reservation.roomId?.price || reservation.totalPrice || 0).toLocaleString()}`}
-      valueColor="#D4982B"
+      valueColor="#FF8C42"
       valueStyle={{ fontWeight: "600" }}
     />
     {reservation.selectedBed && (
@@ -248,7 +248,7 @@ const PaymentReceipt = ({ reservation, step }) => {
         <ReceiptRow
           label="Amount"
           value={`₱${(reservation.totalPrice || 0).toLocaleString()}`}
-          valueColor="#D4982B"
+          valueColor="#FF8C42"
           valueStyle={{ fontWeight: "600" }}
         />
         <ReceiptRow
@@ -371,7 +371,7 @@ const ConfirmedReceipt = ({ reservation, step }) => {
         <ReceiptRow
           label="Monthly Rate"
           value={`₱${(reservation.roomId?.price || reservation.totalPrice || 0).toLocaleString()}`}
-          valueColor="#D4982B"
+          valueColor="#FF8C42"
           valueStyle={{ fontWeight: "600" }}
         />
         <ReceiptRow

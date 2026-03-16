@@ -1,45 +1,35 @@
 import { useState } from "react";
 
 /**
- * FloatingInput — Material-style floating label input.
+ * FloatingSelect — Material-style floating label select dropdown.
  *
- * When empty + not focused: label sits inside the field as placeholder.
- * When focused or has value: label animates up to the top border.
+ * Matches FloatingInput styling: border-on-focus, error/valid states,
+ * floated label sits ON the border.
  *
  * Props:
- *  - label (string)      — The label / placeholder text
- *  - name (string)       — Input name attribute
- *  - type (string)       — Input type (default: "text")
+ *  - label (string)      — The label text
+ *  - name (string)       — Select name attribute
  *  - value (string)      — Controlled value
  *  - onChange (fn)        — Change handler
+ *  - options (array)     — [{ value, label }]
  *  - disabled (bool)     — Disabled state
  *  - error (string|null) — Validation error message
  *  - valid (bool)        — Show green valid state
- *  - autoComplete (str)  — autoComplete attribute
- *  - endAdornment (node) — Element rendered at end (e.g. eye toggle)
- *  - inputMode (string)  — inputMode attribute
- *  - maxLength (number)  — maxLength attribute
  */
-const FloatingInput = ({
+const FloatingSelect = ({
   label,
   name,
-  type = "text",
   value = "",
   onChange,
-  onBlur: externalBlur,
+  options = [],
   disabled = false,
   error = null,
   valid = false,
-  autoComplete,
-  endAdornment,
-  inputMode,
-  maxLength,
 }) => {
   const [focused, setFocused] = useState(false);
   const hasValue = value.length > 0;
   const showValid = valid && hasValue && !focused;
 
-  // Border color logic
   let borderColor = "var(--fi-border)";
   if (focused) borderColor = "var(--fi-focus)";
   if (showValid) borderColor = "var(--fi-valid)";
@@ -51,34 +41,37 @@ const FloatingInput = ({
         className={`floating-field__wrapper ${hasValue || focused ? "active" : ""} ${focused ? "focused" : ""} ${error ? "has-error" : ""} ${showValid ? "is-valid" : ""}`}
         style={{ "--border-color": borderColor }}
       >
-        <input
+        <select
           id={name}
           name={name}
-          type={type}
           value={value}
           onChange={onChange}
           onFocus={() => setFocused(true)}
-          onBlur={() => {
-            setFocused(false);
-            if (externalBlur) externalBlur();
-          }}
+          onBlur={() => setFocused(false)}
           disabled={disabled}
-          autoComplete={autoComplete}
-          inputMode={inputMode}
-          maxLength={maxLength}
-          className="floating-field__input"
-          placeholder=" "
-        />
+          className="floating-field__input floating-field__select"
+          style={{ cursor: "pointer" }}
+        >
+          <option value="" disabled hidden> </option>
+          {options.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
         <label htmlFor={name} className="floating-field__label">
           {label}
         </label>
-        {endAdornment && (
-          <div className="floating-field__adornment">{endAdornment}</div>
-        )}
+        {/* Dropdown arrow */}
+        <div className="floating-field__adornment" style={{ pointerEvents: "none" }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--fi-label)" }}>
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </div>
       </div>
       {error && <span className="floating-field__error">{error}</span>}
     </div>
   );
 };
 
-export default FloatingInput;
+export default FloatingSelect;

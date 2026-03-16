@@ -395,7 +395,7 @@ function SignIn() {
   return (
     <div
       className="min-h-screen grid lg:grid-cols-2"
-      style={{ backgroundColor: "#183153" }}
+      style={{ backgroundColor: "#0A1628" }}
     >
       <AuthBrandingPanel
         imageUrl={SIGNIN_IMAGE}

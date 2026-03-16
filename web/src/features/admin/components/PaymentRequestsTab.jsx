@@ -147,8 +147,8 @@ function PaymentRequestsTab() {
               value: `₱${verifiedPayments.reduce((s, p) => s + p.totalPrice, 0).toLocaleString()}`,
               bg: "#E0EBF5",
               border: "#BFDBFE",
-              labelColor: "#183153",
-              valueColor: "#183153",
+              labelColor: "#0A1628",
+              valueColor: "#0A1628",
             },
           ].map((stat) => (
             <div

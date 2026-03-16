@@ -18,8 +18,8 @@ import { jsPDF } from "jspdf";
 
 // ─── Helpers ──────────────────────────────────────────────────
 
-const BRAND_COLOR = [12, 55, 95]; // #183153
-const ACCENT_COLOR = [231, 113, 15]; // #D4982B
+const BRAND_COLOR = [12, 55, 95]; // #0A1628
+const ACCENT_COLOR = [231, 113, 15]; // #FF8C42
 const GRAY = [107, 114, 128];
 
 function addHeader(doc, title) {

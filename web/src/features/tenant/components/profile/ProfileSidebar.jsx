@@ -46,7 +46,7 @@ const NavButton = ({ item, isActive, onClick, hasActiveBadge }) => (
     onClick={onClick}
     className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150"
     style={{
-      backgroundColor: isActive ? "#D4982B" : "transparent",
+      backgroundColor: isActive ? "#FF8C42" : "transparent",
       color: isActive ? "#fff" : "#4B5563",
       fontWeight: isActive ? 600 : 500,
     }}
@@ -123,13 +123,13 @@ const ProfileSidebar = ({
       >
         <div
           className="w-9 h-9 rounded-lg flex items-center justify-center transition-transform group-hover:scale-105"
-          style={{ backgroundColor: "#183153" }}
+          style={{ backgroundColor: "#0A1628" }}
         >
           <Bed className="w-5 h-5 text-white" />
         </div>
         <span
           className="font-semibold text-lg"
-          style={{ color: "#183153", letterSpacing: "-0.01em" }}
+          style={{ color: "#0A1628", letterSpacing: "-0.01em" }}
         >
           Lilycrest
         </span>
@@ -163,7 +163,7 @@ const ProfileSidebar = ({
             <div
               className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold"
               style={{
-                background: "linear-gradient(135deg, #D4982B 0%, #D35400 100%)",
+                background: "linear-gradient(135deg, #FF8C42 0%, #D35400 100%)",
                 boxShadow: "0 2px 6px rgba(212,152,43,0.25)",
                 width: "100%",
                 height: "100%",
@@ -229,20 +229,20 @@ const ProfileSidebar = ({
         className="flex items-center gap-2.5 w-full py-2.5 px-3.5 rounded-lg text-sm font-semibold transition-all duration-200"
         style={{
           backgroundColor: "transparent",
-          color: "#183153",
+          color: "#0A1628",
           textDecoration: "none",
-          border: "1.5px solid #183153",
-          borderLeft: "3.5px solid #D4982B",
+          border: "1.5px solid #0A1628",
+          borderLeft: "3.5px solid #FF8C42",
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = "#183153";
+          e.currentTarget.style.backgroundColor = "#0A1628";
           e.currentTarget.style.color = "#fff";
           e.currentTarget.style.transform = "translateY(-1px)";
           e.currentTarget.style.boxShadow = "0 4px 12px rgba(24,49,83,0.25)";
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.backgroundColor = "transparent";
-          e.currentTarget.style.color = "#183153";
+          e.currentTarget.style.color = "#0A1628";
           e.currentTarget.style.transform = "translateY(0)";
           e.currentTarget.style.boxShadow = "none";
         }}

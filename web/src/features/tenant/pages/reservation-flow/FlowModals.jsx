@@ -199,7 +199,7 @@ export const StageConfirmModal = ({
             style={{
               flex: 1,
               padding: "12px",
-              background: "#D4982B",
+              background: "#FF8C42",
               color: "white",
               border: "none",
               borderRadius: "8px",

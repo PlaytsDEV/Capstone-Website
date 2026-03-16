@@ -241,7 +241,7 @@ export default function GenerateBillModal({
                     <span
                       style={{
                         fontWeight: 600,
-                        color: "#183153",
+                        color: "#0A1628",
                         fontSize: "0.9rem",
                       }}
                     >
@@ -286,7 +286,7 @@ export default function GenerateBillModal({
                         justifyContent: "space-between",
                         alignItems: "center",
                         fontSize: "0.78rem",
-                        color: "#D4982B",
+                        color: "#FF8C42",
                         padding: "2px 0",
                       }}
                     >
@@ -357,7 +357,7 @@ export default function GenerateBillModal({
                       <button
                         onClick={() => handleAddCharge(t.userId)}
                         style={{
-                          background: "#D4982B",
+                          background: "#FF8C42",
                           color: "#fff",
                           border: "none",
                           padding: "0.3rem 0.5rem",
@@ -398,7 +398,7 @@ export default function GenerateBillModal({
                         background: "none",
                         border: "none",
                         fontSize: "0.75rem",
-                        color: "#D4982B",
+                        color: "#FF8C42",
                         cursor: "pointer",
                         padding: "4px 0 0",
                         display: "flex",

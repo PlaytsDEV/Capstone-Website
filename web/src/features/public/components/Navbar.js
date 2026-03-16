@@ -1,12 +1,14 @@
-import { Home, Menu, User } from "lucide-react";
+import { Menu, User, X } from "lucide-react";
 import { RippleButton } from "../../../registry/magicui/ripple-button";
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
+import ThemeToggleButton from "./ThemeToggleButton";
 
-export function Navigation() {
+export function Navigation({ type } = {}) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [activeSection, setActiveSection] = useState("");
   const { user, isAuthenticated, loading } = useAuth();
 
   // Scroll listener — compact navbar after 20px
@@ -14,6 +16,34 @@ export function Navigation() {
     const onScroll = () => setIsScrolled(window.scrollY > 20);
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Scroll-spy: highlight active nav link based on visible section
+  useEffect(() => {
+    const sectionIds = ["rooms", "facilities", "location", "inquiry"];
+    const observers = [];
+
+    const handleIntersect = (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          setActiveSection(entry.target.id);
+        }
+      });
+    };
+
+    sectionIds.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) {
+        const observer = new IntersectionObserver(handleIntersect, {
+          rootMargin: "-30% 0px -60% 0px",
+          threshold: 0,
+        });
+        observer.observe(el);
+        observers.push(observer);
+      }
+    });
+
+    return () => observers.forEach((obs) => obs.disconnect());
   }, []);
 
   // Determine profile URL based on role
@@ -24,97 +54,132 @@ export function Navigation() {
   const displayName = user?.firstName || user?.email?.split("@")[0] || "User";
 
   const navLinks = [
-    { href: "#rooms", label: "Rooms" },
-    { href: "#pricing", label: "Pricing" },
-    { href: "#facilities", label: "Facilities" },
-    { href: "#location", label: "Location" },
-    { href: "#inquiry", label: "Inquiry" },
+    { href: "#rooms", label: "Rooms", id: "rooms" },
+    { href: "#facilities", label: "Facilities", id: "facilities" },
+    { href: "#location", label: "Location", id: "location" },
+    { href: "#inquiry", label: "Contact", id: "inquiry" },
   ];
+
+  // Colors adapt: transparent hero = always white text; scrolled = theme-aware
+  const textColor = isScrolled ? "var(--lp-text)" : "rgba(255,255,255,0.9)";
+  const textHoverColor = isScrolled ? "var(--lp-accent)" : "white";
+  const linkHoverBg = isScrolled ? "var(--lp-icon-bg)" : "rgba(255,255,255,0.08)";
+
+  // Ghost button styles for Sign In
+  const ghostBtnStyle = {
+    color: isScrolled ? "var(--lp-text)" : "white",
+    fontSize: "14px",
+    fontWeight: "500",
+    padding: "8px 22px",
+    borderRadius: "24px",
+    border: isScrolled ? "1px solid var(--lp-border)" : "1.5px solid rgba(255,255,255,0.3)",
+    backgroundColor: "transparent",
+    transition: "all 0.3s ease",
+    textDecoration: "none",
+    letterSpacing: "0.3px",
+  };
 
   return (
     <nav
       className="fixed top-0 left-0 right-0 z-50"
       style={{
         backgroundColor: isScrolled
-          ? "rgba(24, 49, 83, 0.97)"
-          : "rgba(24, 49, 83, 0.6)",
-        backdropFilter: isScrolled ? "blur(20px) saturate(1.2)" : "blur(8px)",
+          ? "var(--lp-bg)"
+          : "transparent",
+        backdropFilter: isScrolled ? "blur(20px) saturate(1.2)" : "none",
         boxShadow: isScrolled
-          ? "0 1px 0 rgba(255,255,255,0.05), 0 4px 20px rgba(0,0,0,0.15)"
+          ? "var(--lp-nav-shadow)"
           : "none",
         borderBottom: isScrolled
-          ? "1px solid rgba(255,255,255,0.04)"
+          ? "1px solid var(--lp-border)"
           : "1px solid transparent",
         transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
       }}
     >
       <div
-        className="max-w-7xl mx-auto px-8 lg:px-12"
+        className="max-w-screen-2xl mx-auto px-8 lg:px-12"
         style={{
-          paddingTop: isScrolled ? "12px" : "24px",
-          paddingBottom: isScrolled ? "12px" : "24px",
+          paddingTop: isScrolled ? "18px" : "24px",
+          paddingBottom: isScrolled ? "18px" : "24px",
           transition: "padding 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
         }}
       >
         <div className="flex justify-between items-center">
-          {/* Logo */}
+          {/* Logo + Theme Toggle (left side) */}
           <div className="flex items-center gap-3">
-            <div
-              className="flex items-center justify-center"
-              style={{
-                width: isScrolled ? "30px" : "32px",
-                height: isScrolled ? "30px" : "32px",
-                borderRadius: "8px",
-                backgroundColor: "rgba(255,255,255,0.9)",
-                backdropFilter: "blur(4px)",
-                transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
-              }}
-            >
-              <Home className="w-4 h-4" style={{ color: "#183153" }} />
-            </div>
             <Link
               to="/"
-              className="font-semibold text-lg text-white tracking-wide no-underline"
+              className="font-semibold tracking-wide no-underline"
               style={{
-                fontSize: isScrolled ? "17px" : "20px",
-                transition: "font-size 0.4s ease",
+                color: isScrolled ? "var(--lp-text)" : "white",
+                fontSize: isScrolled ? "18px" : "22px",
+                transition: "all 0.4s ease",
+                letterSpacing: "0.5px",
               }}
             >
               Lilycrest
             </Link>
+            {/* Theme Toggle — desktop only */}
+            {type === "landing" && (
+              <ThemeToggleButton variant={isScrolled ? "scrolled" : "hero"} />
+            )}
           </div>
 
           {/* Desktop Nav Links */}
           <div className="hidden md:flex items-center gap-1">
-            {navLinks.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                className="no-underline"
-                style={{
-                  color: "rgba(255,255,255,0.7)",
-                  fontSize: "14px",
-                  fontWeight: "400",
-                  padding: "6px 14px",
-                  borderRadius: "8px",
-                  transition: "color 0.2s ease, background-color 0.2s ease",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.color = "white";
-                  e.currentTarget.style.backgroundColor =
-                    "rgba(255,255,255,0.08)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.color = "rgba(255,255,255,0.7)";
-                  e.currentTarget.style.backgroundColor = "transparent";
-                }}
-              >
-                {link.label}
-              </a>
-            ))}
+            {navLinks.map((link) => {
+              const isActive = activeSection === link.id;
+              return (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  className="no-underline"
+                  style={{
+                    color: isActive
+                      ? (isScrolled ? "var(--lp-accent)" : "white")
+                      : textColor,
+                    fontSize: "15px",
+                    fontWeight: isActive ? "500" : "400",
+                    padding: "10px 18px",
+                    borderRadius: "8px",
+                    position: "relative",
+                    transition: "color 0.2s ease, background-color 0.2s ease, font-weight 0.2s ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.color = textHoverColor;
+                      e.currentTarget.style.backgroundColor = linkHoverBg;
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) {
+                      e.currentTarget.style.color = textColor;
+                    }
+                    e.currentTarget.style.backgroundColor = "transparent";
+                  }}
+                >
+                  {link.label}
+                  {/* Active indicator underline */}
+                  <span
+                    style={{
+                      position: "absolute",
+                      bottom: "4px",
+                      left: "50%",
+                      transform: `translateX(-50%) scaleX(${isActive ? 1 : 0})`,
+                      width: "20px",
+                      height: "2px",
+                      backgroundColor: "#FF8C42",
+                      borderRadius: "2px",
+                      transition: "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                      transformOrigin: "center",
+                    }}
+                  />
+                </a>
+              );
+            })}
           </div>
 
-          {/* Right Side */}
+          {/* Right Side: Sign In + Book Now + Mobile hamburger */}
           <div className="flex items-center gap-3">
             {!loading && (
               <>
@@ -126,42 +191,51 @@ export function Navigation() {
                       width: "36px",
                       height: "36px",
                       borderRadius: "50%",
-                      backgroundColor: "#D4982B",
-                      color: "white",
+                      backgroundColor: isScrolled ? "var(--lp-icon-bg)" : "rgba(255,255,255,0.15)",
+                      border: isScrolled ? "1px solid var(--lp-border)" : "1.5px solid rgba(255,255,255,0.3)",
+                      color: isScrolled ? "var(--lp-text)" : "white",
                       fontSize: "14px",
-                      fontWeight: "600",
+                      fontWeight: "500",
                       letterSpacing: "0.3px",
-                      transition: "box-shadow 0.2s ease, transform 0.2s ease",
+                      transition: "all 0.3s ease",
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.boxShadow =
-                        "0 0 0 3px rgba(212,152,43,0.3), 0 4px 12px rgba(212,152,43,0.2)";
-                      e.currentTarget.style.transform = "scale(1.08)";
+                      e.currentTarget.style.backgroundColor = isScrolled
+                        ? "var(--lp-accent)"
+                        : "rgba(255,255,255,0.25)";
+                      e.currentTarget.style.color = "white";
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.boxShadow = "none";
-                      e.currentTarget.style.transform = "scale(1)";
+                      e.currentTarget.style.backgroundColor = isScrolled
+                        ? "var(--lp-icon-bg)"
+                        : "rgba(255,255,255,0.15)";
+                      e.currentTarget.style.color = isScrolled ? "var(--lp-text)" : "white";
                     }}
                   >
                     {displayName.charAt(0).toUpperCase()}
                   </Link>
                 ) : (
-                  /* Not logged in: show Sign In */
+                  /* Not logged in: ghost-button Sign In */
                   <Link
                     to="/signin"
-                    className="hidden md:block no-underline"
-                    style={{
-                      color: "rgba(255,255,255,0.7)",
-                      fontSize: "14px",
-                      fontWeight: "400",
-                      transition: "color 0.2s ease",
+                    className="hidden md:inline-flex items-center justify-center no-underline"
+                    style={ghostBtnStyle}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = isScrolled
+                        ? "var(--lp-icon-bg)"
+                        : "rgba(255,255,255,0.1)";
+                      e.currentTarget.style.borderColor = isScrolled
+                        ? "var(--lp-accent)"
+                        : "rgba(255,255,255,0.5)";
+                      if (isScrolled) e.currentTarget.style.color = "var(--lp-accent)";
                     }}
-                    onMouseEnter={(e) =>
-                      (e.currentTarget.style.color = "white")
-                    }
-                    onMouseLeave={(e) =>
-                      (e.currentTarget.style.color = "rgba(255,255,255,0.7)")
-                    }
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = "transparent";
+                      e.currentTarget.style.borderColor = isScrolled
+                        ? "var(--lp-border)"
+                        : "rgba(255,255,255,0.3)";
+                      e.currentTarget.style.color = isScrolled ? "var(--lp-text)" : "white";
+                    }}
                   >
                     Sign In
                   </Link>
@@ -170,20 +244,20 @@ export function Navigation() {
             )}
             <Link to="/applicant/check-availability">
               <RippleButton
-                rippleColor="rgba(24, 49, 83, 0.4)"
+                rippleColor="rgba(10, 22, 40, 0.4)"
                 className="hidden md:block rounded-full"
                 style={{
-                  color: "#183153",
-                  backgroundColor: "white",
-                  fontSize: "14px",
+                  color: "white",
+                  backgroundColor: "#FF8C42",
+                  fontSize: "15px",
                   fontWeight: "500",
-                  padding: isScrolled ? "9px 26px" : "11px 32px",
+                  padding: isScrolled ? "10px 28px" : "12px 34px",
                   transition:
                     "all 0.4s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease",
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.boxShadow =
-                    "0 4px 16px rgba(255,255,255,0.15)";
+                    "0 4px 16px rgba(255, 140, 66, 0.35)";
                   e.currentTarget.style.transform = "translateY(-1px)";
                 }}
                 onMouseLeave={(e) => {
@@ -195,55 +269,152 @@ export function Navigation() {
               </RippleButton>
             </Link>
             <button
-              className="md:hidden text-white bg-transparent border-none cursor-pointer"
+              className="md:hidden bg-transparent border-none cursor-pointer"
+              style={{ color: isScrolled ? "var(--lp-text)" : "white" }}
               onClick={() => setIsMenuOpen(!isMenuOpen)}
             >
-              <Menu className="w-6 h-6" />
+              {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
           </div>
         </div>
 
         {/* Mobile Menu */}
         {isMenuOpen && (
-          <div className="md:hidden mt-4 bg-white/10 backdrop-blur-lg rounded-2xl p-6 space-y-4">
-            {navLinks.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                className="block text-white hover:text-white/80 transition-colors font-light"
-              >
-                {link.label}
-              </a>
-            ))}
-            {!loading &&
-              (isAuthenticated ? (
-                <Link
-                  to={profileUrl}
-                  className="flex items-center gap-2 text-white/70 hover:text-white transition-colors font-light no-underline"
+          <div
+            className="md:hidden mt-4 backdrop-blur-lg rounded-2xl p-6"
+            style={{
+              backgroundColor: isScrolled ? "var(--lp-bg-card)" : "rgba(255,255,255,0.1)",
+              border: isScrolled ? "1px solid var(--lp-border)" : "none",
+            }}
+          >
+            {/* Nav links with stagger animation */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              {navLinks.map((link, index) => (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  className="block font-light transition-colors no-underline"
+                  onClick={() => setIsMenuOpen(false)}
+                  style={{
+                    color: activeSection === link.id
+                      ? "#FF8C42"
+                      : (isScrolled ? "var(--lp-text)" : "white"),
+                    fontWeight: activeSection === link.id ? "500" : "300",
+                    padding: "12px 0",
+                    animation: `navFadeIn 0.3s ease forwards`,
+                    animationDelay: `${index * 60}ms`,
+                    opacity: 0,
+                  }}
                 >
-                  <User className="w-4 h-4" />
-                  {displayName}
-                </Link>
-              ) : (
-                <Link
-                  to="/signin"
-                  className="block text-white/70 hover:text-white transition-colors font-light no-underline"
-                >
-                  Sign In
-                </Link>
+                  {link.label}
+                </a>
               ))}
-            <Link to="/applicant/check-availability">
-              <RippleButton
-                rippleColor="rgba(24, 49, 83, 0.4)"
-                className="w-full bg-white rounded-full font-light"
-                style={{ color: "#183153" }}
+            </div>
+
+            {/* Divider */}
+            <div
+              style={{
+                height: "1px",
+                backgroundColor: isScrolled ? "var(--lp-border)" : "rgba(255,255,255,0.15)",
+                margin: "12px 0",
+              }}
+            />
+
+            {/* Action buttons — side by side */}
+            <div
+              style={{
+                display: "flex",
+                gap: "10px",
+                animation: "navFadeIn 0.3s ease forwards",
+                animationDelay: `${navLinks.length * 60}ms`,
+                opacity: 0,
+              }}
+            >
+              {!loading &&
+                (isAuthenticated ? (
+                  <Link
+                    to={profileUrl}
+                    className="flex items-center justify-center gap-2 no-underline"
+                    onClick={() => setIsMenuOpen(false)}
+                    style={{
+                      flex: 1,
+                      color: isScrolled ? "var(--lp-text)" : "white",
+                      padding: "14px 0",
+                      fontWeight: "500",
+                      fontSize: "15px",
+                      borderRadius: "12px",
+                      border: isScrolled
+                        ? "1px solid var(--lp-border)"
+                        : "1px solid rgba(255,255,255,0.25)",
+                      textAlign: "center",
+                    }}
+                  >
+                    <User className="w-4 h-4" />
+                    {displayName}
+                  </Link>
+                ) : (
+                  <Link
+                    to="/signin"
+                    className="no-underline"
+                    onClick={() => setIsMenuOpen(false)}
+                    style={{
+                      flex: 1,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: isScrolled ? "var(--lp-text)" : "white",
+                      fontSize: "15px",
+                      fontWeight: "500",
+                      padding: "14px 0",
+                      borderRadius: "12px",
+                      border: isScrolled
+                        ? "1px solid var(--lp-border)"
+                        : "1px solid rgba(255,255,255,0.25)",
+                      backgroundColor: "transparent",
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    Sign In
+                  </Link>
+                ))}
+              <Link
+                to="/applicant/check-availability"
+                className="no-underline"
+                onClick={() => setIsMenuOpen(false)}
+                style={{ flex: 1 }}
               >
-                Book Now
-              </RippleButton>
-            </Link>
+                <RippleButton
+                  rippleColor="rgba(10, 22, 40, 0.4)"
+                  className="w-full rounded-full"
+                  style={{
+                    color: "white",
+                    backgroundColor: "#FF8C42",
+                    fontWeight: "500",
+                    fontSize: "15px",
+                    padding: "14px 0",
+                  }}
+                >
+                  Book Now
+                </RippleButton>
+              </Link>
+            </div>
           </div>
         )}
       </div>
+
+      {/* Keyframe for stagger fade-in */}
+      <style>{`
+        @keyframes navFadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(-8px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </nav>
   );
 }

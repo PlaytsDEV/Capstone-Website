@@ -24,6 +24,7 @@
 import express from "express";
 import { verifyToken, verifyAdmin, verifySuperAdmin } from "../middleware/auth.js";
 import { filterByBranch } from "../middleware/branchAccess.js";
+import { inquiryLimiter } from "../middleware/rateLimiter.js";
 import { validate } from "../validation/validate.js";
 import { createInquirySchema } from "../validation/schemas.js";
 import {
@@ -110,7 +111,7 @@ router.get("/:id", verifyToken, verifyAdmin, filterByBranch, getInquiryById);
  *
  * Access: Public (no authentication required)
  */
-router.post("/", validate(createInquirySchema), createInquiry);
+router.post("/", inquiryLimiter, validate(createInquirySchema), createInquiry);
 
 // ============================================================================
 // UPDATE INQUIRY

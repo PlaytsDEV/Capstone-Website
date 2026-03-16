@@ -275,7 +275,7 @@ const SettingsTab = () => {
               }}
             >
               <Shield
-                style={{ width: "18px", height: "18px", color: "#D4982B" }}
+                style={{ width: "18px", height: "18px", color: "#FF8C42" }}
               />
             </div>
             <h3
@@ -300,7 +300,7 @@ const SettingsTab = () => {
                 padding: "6px 14px",
                 fontSize: "13px",
                 fontWeight: 500,
-                color: "#D4982B",
+                color: "#FF8C42",
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
@@ -309,7 +309,7 @@ const SettingsTab = () => {
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.backgroundColor = "#FFF7ED";
-                e.currentTarget.style.borderColor = "#D4982B";
+                e.currentTarget.style.borderColor = "#FF8C42";
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.backgroundColor = "transparent";
@@ -391,7 +391,7 @@ const SettingsTab = () => {
                   disabled={changingPassword}
                   style={inputStyle}
                   onFocus={(e) => {
-                    e.target.style.borderColor = "#D4982B";
+                    e.target.style.borderColor = "#FF8C42";
                     e.target.style.boxShadow =
                       "0 0 0 3px rgba(212,152,43,0.1)";
                   }}
@@ -431,7 +431,7 @@ const SettingsTab = () => {
                   disabled={changingPassword}
                   style={inputStyle}
                   onFocus={(e) => {
-                    e.target.style.borderColor = "#D4982B";
+                    e.target.style.borderColor = "#FF8C42";
                     e.target.style.boxShadow =
                       "0 0 0 3px rgba(212,152,43,0.1)";
                   }}
@@ -480,7 +480,7 @@ const SettingsTab = () => {
                   disabled={changingPassword}
                   style={inputStyle}
                   onFocus={(e) => {
-                    e.target.style.borderColor = "#D4982B";
+                    e.target.style.borderColor = "#FF8C42";
                     e.target.style.boxShadow =
                       "0 0 0 3px rgba(212,152,43,0.1)";
                   }}
@@ -533,7 +533,7 @@ const SettingsTab = () => {
                 onClick={handleChangePassword}
                 disabled={changingPassword}
                 style={{
-                  backgroundColor: "#D4982B",
+                  backgroundColor: "#FF8C42",
                   color: "#fff",
                   border: "none",
                   borderRadius: "10px",

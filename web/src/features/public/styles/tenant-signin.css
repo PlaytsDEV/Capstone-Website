@@ -43,7 +43,7 @@
 }
 
 .tenant-signin-back-btn:hover {
-  color: #D4982B;
+  color: #FF8C42;
 }
 
 .tenant-signin-back-btn::after {
@@ -53,7 +53,7 @@
   left: 16px;
   width: 0;
   height: 2px;
-  background-color: #D4982B;
+  background-color: #FF8C42;
   transition: width 0.3s ease;
 }
 
@@ -244,8 +244,8 @@
 
 .tenant-signin-input:focus {
   background: #fff;
-  border-color: #D4982B;
-  box-shadow: 0 0 0 3px rgba(212, 152, 43, 0.08);
+  border-color: #FF8C42;
+  box-shadow: 0 0 0 3px rgba(255, 140, 66, 0.08);
 }
 
 .tenant-signin-input::placeholder {
@@ -348,7 +348,7 @@
 }
 
 .tenant-signin-password-toggle:hover {
-  color: #D4982B;
+  color: #FF8C42;
 }
 
 .tenant-signin-password-toggle:focus {
@@ -386,7 +386,7 @@
 }
 
 .toggle-password:hover {
-  color: #D4982B;
+  color: #FF8C42;
 }
 
 .toggle-password:focus {
@@ -402,7 +402,7 @@
 /* Submit Button */
 .tenant-signin-submit {
   margin-top: 6px;
-  background: #D4982B;
+  background: #FF8C42;
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -411,13 +411,13 @@
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 12px rgba(212, 152, 43, 0.15);
+  box-shadow: 0 4px 12px rgba(255, 140, 66, 0.15);
 }
 
 .tenant-signin-submit:hover:not(:disabled) {
-  background: #BD8724;
+  background: #E0752E;
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(212, 152, 43, 0.25);
+  box-shadow: 0 8px 20px rgba(255, 140, 66, 0.25);
 }
 
 .tenant-signin-submit:active:not(:disabled) {
@@ -468,7 +468,7 @@
 .forgot-password-link button {
   background: none;
   border: none;
-  color: #D4982B;
+  color: #FF8C42;
   font-size: 12px;
   cursor: pointer;
   text-decoration: none;
@@ -478,7 +478,7 @@
 }
 
 .forgot-password-link button:hover {
-  color: #BD8724;
+  color: #E0752E;
   text-decoration: underline;
 }
 
@@ -559,14 +559,14 @@
 }
 
 .tenant-signin-link {
-  color: #D4982B;
+  color: #FF8C42;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .tenant-signin-link:hover {
-  color: #BD8724;
+  color: #E0752E;
   text-decoration: underline;
 }
 
@@ -653,13 +653,13 @@
 
 .auth-submit-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(212, 152, 43, 0.35);
+  box-shadow: 0 8px 24px rgba(255, 140, 66, 0.35);
   filter: brightness(1.05);
 }
 
 .auth-submit-btn:active:not(:disabled) {
   transform: translateY(1px) scale(0.98);
-  box-shadow: 0 2px 6px rgba(212, 152, 43, 0.2);
+  box-shadow: 0 2px 6px rgba(255, 140, 66, 0.2);
   transition-duration: 0.08s !important;
 }
 

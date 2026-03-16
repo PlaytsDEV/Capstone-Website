@@ -64,7 +64,7 @@ const S = {
   dateCard: (selected) => ({
     padding: "12px 10px",
     borderRadius: "10px",
-    border: selected ? "2px solid #D4982B" : "2px solid #E2E8F0",
+    border: selected ? "2px solid #FF8C42" : "2px solid #E2E8F0",
     background: selected ? "rgba(212,152,43,0.06)" : "#fff",
     cursor: "pointer",
     textAlign: "center",
@@ -73,14 +73,14 @@ const S = {
   dateDay: (selected) => ({
     fontSize: "11px",
     fontWeight: 600,
-    color: selected ? "#D4982B" : "#94A3B8",
+    color: selected ? "#FF8C42" : "#94A3B8",
     textTransform: "uppercase",
     marginBottom: "4px",
   }),
   dateNum: (selected) => ({
     fontSize: "16px",
     fontWeight: 700,
-    color: selected ? "#183153" : "#334155",
+    color: selected ? "#0A1628" : "#334155",
   }),
   timeGrid: {
     display: "grid",
@@ -90,13 +90,13 @@ const S = {
   timeSlot: (selected) => ({
     padding: "10px 12px",
     borderRadius: "8px",
-    border: selected ? "2px solid #D4982B" : "2px solid #E2E8F0",
+    border: selected ? "2px solid #FF8C42" : "2px solid #E2E8F0",
     background: selected ? "rgba(212,152,43,0.06)" : "#fff",
     cursor: "pointer",
     textAlign: "center",
     fontSize: "14px",
     fontWeight: selected ? 600 : 500,
-    color: selected ? "#D4982B" : "#475569",
+    color: selected ? "#FF8C42" : "#475569",
     transition: "all 0.15s ease",
   }),
   modalOverlay: {
@@ -337,7 +337,7 @@ const ReservationVisitStep = ({
                   width: "40px",
                   height: "40px",
                   borderRadius: "10px",
-                  background: "#183153",
+                  background: "#0A1628",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -353,7 +353,7 @@ const ReservationVisitStep = ({
                   style={{
                     fontSize: "14px",
                     fontWeight: 600,
-                    color: "#183153",
+                    color: "#0A1628",
                   }}
                 >
                   {fmtDate(new Date(visitDate + "T00:00:00"))} at {visitTime}
@@ -469,7 +469,7 @@ const ReservationVisitStep = ({
                   style={{
                     fontSize: "16px",
                     fontWeight: 700,
-                    color: "#183153",
+                    color: "#0A1628",
                   }}
                 >
                   {visitDate && fmtDateFull(visitDate + "T00:00:00")}
@@ -477,7 +477,7 @@ const ReservationVisitStep = ({
                 <div
                   style={{
                     fontSize: "14px",
-                    color: "#D4982B",
+                    color: "#FF8C42",
                     fontWeight: 600,
                   }}
                 >

@@ -98,7 +98,7 @@ function ForgotPassword() {
   return (
     <div
       className="min-h-screen grid lg:grid-cols-2"
-      style={{ backgroundColor: "#183153" }}
+      style={{ backgroundColor: "#0A1628" }}
     >
       <AuthBrandingPanel
         imageUrl={RESET_IMAGE}
@@ -121,7 +121,7 @@ function ForgotPassword() {
               <div className="mb-10">
                 <h1
                   className="text-4xl font-light mb-3 tracking-tight"
-                  style={{ color: "#183153" }}
+                  style={{ color: "#0A1628" }}
                 >
                   Reset password
                 </h1>
@@ -175,7 +175,7 @@ function ForgotPassword() {
                 <button
                   type="submit"
                   className="w-full py-4 rounded-xl text-white font-light hover:opacity-90 transition-opacity text-base flex items-center justify-center gap-2"
-                  style={{ backgroundColor: "#D4982B" }}
+                  style={{ backgroundColor: "#FF8C42" }}
                   disabled={!fieldValid || loading}
                 >
                   {loading ? (
@@ -223,7 +223,7 @@ function ForgotPassword() {
 
               <h1
                 className="text-3xl font-light mb-3 tracking-tight"
-                style={{ color: "#183153" }}
+                style={{ color: "#0A1628" }}
               >
                 Check your email
               </h1>
@@ -237,7 +237,7 @@ function ForgotPassword() {
                 className="mb-8"
                 style={{
                   fontWeight: "500",
-                  color: "#183153",
+                  color: "#0A1628",
                   fontSize: "15px",
                 }}
               >
@@ -257,7 +257,7 @@ function ForgotPassword() {
                 <button
                   onClick={() => navigate("/signin")}
                   className="w-full py-4 rounded-xl text-white font-light hover:opacity-90 transition-opacity text-base"
-                  style={{ backgroundColor: "#D4982B" }}
+                  style={{ backgroundColor: "#FF8C42" }}
                 >
                   Back to sign in
                 </button>

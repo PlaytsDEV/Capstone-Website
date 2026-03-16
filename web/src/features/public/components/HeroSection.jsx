@@ -1,6 +1,7 @@
-import { Sparkles, CheckCircle } from "lucide-react";
+import { Sparkles, Users, MapPin, ThumbsUp, ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, useInView } from "framer-motion";
+import { useRef, useEffect, useState } from "react";
 
 const fadeUp = (delay = 0) => ({
   initial: { opacity: 0, y: 30 },
@@ -8,137 +9,276 @@ const fadeUp = (delay = 0) => ({
   transition: { duration: 0.8, delay, ease: [0.25, 0.1, 0.25, 1] },
 });
 
-const fadeIn = (delay = 0) => ({
-  initial: { opacity: 0 },
-  animate: { opacity: 1 },
-  transition: { duration: 1, delay, ease: "easeOut" },
-});
+/* Animated counter — always replays on scroll, easeOut curve */
+function useCounter(target, duration = 2, isInView) {
+  const [count, setCount] = useState(0);
+  const [done, setDone] = useState(false);
 
-const slideIn = (delay = 0) => ({
-  initial: { opacity: 0, x: 40 },
-  animate: { opacity: 1, x: 0 },
-  transition: { duration: 0.9, delay, ease: [0.25, 0.1, 0.25, 1] },
-});
+  useEffect(() => {
+    if (!isInView) { setCount(0); setDone(false); return; }
+
+    const startTime = performance.now();
+    const ms = duration * 1000;
+    const easeOutQuart = (t) => 1 - Math.pow(1 - t, 4);
+
+    function tick(now) {
+      const progress = Math.min((now - startTime) / ms, 1);
+      setCount(Math.round(easeOutQuart(progress) * target));
+      if (progress < 1) {
+        requestAnimationFrame(tick);
+      } else {
+        setCount(target); setDone(true);
+      }
+    }
+    const raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [isInView, target, duration]);
+
+  return { count, done };
+}
+
+const stats = [
+  { icon: Users, value: 100, suffix: "+", label: "Happy Residents" },
+  { icon: MapPin, value: 2, suffix: "", label: "Branches" },
+  { icon: ThumbsUp, value: 98, suffix: "%", label: "Satisfaction Rate" },
+];
+
+const heroImages = [
+  "https://images.unsplash.com/photo-1555854877-bab0e564b8d5?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwyfHxtb2Rlcm4lMjBhcGFydG1lbnQlMjBidWlsZGluZyUyMGludGVyaW9yfGVufDF8fHx8MTc3MDI2MDY1N3ww&ixlib=rb-4.1.0&q=80&w=1920",
+  "https://images.unsplash.com/photo-1610307522657-8c0304960189?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtaW5pbWFsaXN0JTIwYmVkcm9vbSUyMGRlc2lnbnxlbnwxfHx8fDE3NzAzMDM5ODB8MA&ixlib=rb-4.1.0&q=80&w=1920",
+  "https://images.unsplash.com/photo-1764760764956-fcb78be107a5?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBiZWRyb29tJTIwaW50ZXJpb3IlMjBuYXR1cmFsJTIwbGlnaHR8ZW58MXx8fHwxNzcwMjkwMzY5fDA&ixlib=rb-4.1.0&q=80&w=1920",
+];
 
 export function HeroSection() {
+  const statRef = useRef(null);
+  const isInView = useInView(statRef, { margin: "-50px" });
+  const [currentImage, setCurrentImage] = useState(0);
+  const [readyToZoom, setReadyToZoom] = useState(() =>
+    heroImages.map((_, i) => i === 0 ? false : true)
+  );
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentImage((prev) => (prev + 1) % heroImages.length);
+    }, 6000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // When currentImage changes: start zoom on active, delay-reset others
+  useEffect(() => {
+    // Active image starts zooming (readyToZoom false = scale(1))
+    setReadyToZoom((prev) => {
+      const next = [...prev];
+      next[currentImage] = false;
+      return next;
+    });
+
+    // After fade-out completes (1.5s + buffer), silently reset inactive images
+    const timeout = setTimeout(() => {
+      setReadyToZoom((prev) => {
+        const next = [...prev];
+        for (let i = 0; i < next.length; i++) {
+          if (i !== currentImage) next[i] = true;
+        }
+        return next;
+      });
+    }, 2000);
+
+    return () => clearTimeout(timeout);
+  }, [currentImage]);
+
   return (
-    <section className="grid lg:grid-cols-2 min-h-screen overflow-hidden">
-      {/* Left Side - Content */}
-      <div
-        className="flex flex-col justify-start px-10 lg:px-20 pt-28 pb-8"
-        style={{ backgroundColor: "#183153" }}
-      >
-        <div className="max-w-xl">
-          {/* Badge */}
-          <motion.div
-            {...fadeUp(0.2)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-sm mb-5"
+    <>
+      {/* Full-bleed Hero */}
+      <section className="relative h-screen overflow-hidden flex items-center">
+        {/* Background Slideshow */}
+        {heroImages.map((src, i) => (
+          <div
+            key={i}
+            className="absolute inset-0"
+            style={{
+              opacity: currentImage === i ? 1 : 0,
+              transition: "opacity 1.5s ease-in-out",
+            }}
           >
-            <Sparkles className="w-4 h-4 text-white/90" />
-            <span className="text-white/80 text-xs font-light tracking-wider uppercase">
-              Premium Student Living
-            </span>
-          </motion.div>
-
-          {/* Headline */}
-          <motion.h1
-            {...fadeUp(0.4)}
-            className="text-6xl lg:text-7xl font-light text-white leading-[1.08] mb-4 tracking-tight"
-          >
-            Affordable, Safe, and Comfortable Dormitory
-          </motion.h1>
-
-          {/* Subheadline */}
-          <motion.p
-            {...fadeUp(0.6)}
-            className="text-white/70 text-lg mb-6 leading-relaxed font-light"
-          >
-            Browse available rooms near your campus, create your account, and
-            find your perfect home away from home.
-          </motion.p>
-
-          {/* Feature highlights */}
-          <motion.p
-            {...fadeUp(0.7)}
-            className="text-white/65 text-sm mb-6 font-normal"
-          >
-            24/7 Security · High-Speed WiFi · All-Inclusive
-          </motion.p>
-
-          {/* Primary CTA */}
-          <motion.div {...fadeUp(0.8)}>
-            <Link to="/applicant/check-availability">
-              <button
-                className="text-white px-10 py-6 gap-4 rounded-full font-normal text-base transition-all duration-300"
-                style={{
-                  backgroundColor: "#D4982B",
-                  boxShadow: "0 4px 20px rgba(212, 152, 43, 0.25)",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.boxShadow =
-                    "0 6px 30px rgba(212, 152, 43, 0.4)";
-                  e.currentTarget.style.transform =
-                    "translateY(-2px) scale(1.02)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.boxShadow =
-                    "0 4px 20px rgba(212, 152, 43, 0.25)";
-                  e.currentTarget.style.transform = "translateY(0) scale(1)";
-                }}
-              >
-                Browse Available Rooms
-              </button>
-            </Link>
-          </motion.div>
-
-          {/* Reassurance text */}
-          <motion.p
-            {...fadeUp(0.95)}
-            className="text-white/55 text-xs mt-4 font-normal"
-          >
-            ✓ No hidden fees · ✓ Flexible terms · ✓ Visit first, decide later
-          </motion.p>
-        </div>
-      </div>
-
-      {/* Right Side - Hero Image */}
-      <motion.div {...fadeIn(0.3)} className="relative overflow-hidden">
-        <motion.img
-          initial={{ scale: 1.1 }}
-          animate={{ scale: 1 }}
-          transition={{ duration: 1.5, ease: [0.25, 0.1, 0.25, 1] }}
-          src="https://images.unsplash.com/photo-1651093791347-4898d49c573a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBkb3JtaXRvcnklMjBidWlsZGluZyUyMGV4dGVyaW9yfGVufDF8fHx8MTc3MDI2MDY1N3ww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral"
-          alt="Lilycrest Dormitory - Modern student housing with comfortable rooms and facilities"
-          className="w-full h-full object-cover"
-        />
-        {/* Overlay gradient */}
-        <div className="absolute inset-0 bg-gradient-to-br from-black/20 to-transparent"></div>
-
-        {/* Floating trust badge */}
-        <motion.div
-          {...slideIn(1.0)}
-          className="absolute bottom-8 right-8 bg-white rounded-2xl p-6 shadow-2xl max-w-xs"
-        >
-          <div className="flex items-center gap-3 mb-3">
-            <div
-              className="w-12 h-12 rounded-full flex items-center justify-center"
-              style={{ backgroundColor: "#DEF7EC" }}
-            >
-              <CheckCircle className="w-6 h-6 text-green-600" />
-            </div>
-            <div>
-              <p className="font-semibold" style={{ color: "#183153" }}>
-                Trusted by Dormitory Residents
-              </p>
-              <p className="text-xs text-gray-500">500+ Happy Residents</p>
-            </div>
+            <img
+              src={src}
+              alt={`Lilycrest Dormitory ${i + 1}`}
+              className="w-full h-full object-cover"
+              style={{
+                transform: readyToZoom[i] ? "scale(1.08)" : "scale(1)",
+                transition: readyToZoom[i] ? "none" : "transform 7s ease-out",
+              }}
+            />
           </div>
-          <p className="text-xs text-gray-600 font-light">
-            Safe, clean, and affordable housing near major universities in Metro
-            Manila.
-          </p>
-        </motion.div>
-      </motion.div>
-    </section>
+        ))}
+
+        {/* Dark overlay for text readability */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "linear-gradient(to right, rgba(10, 22, 40, 0.92) 0%, rgba(10, 22, 40, 0.75) 50%, rgba(10, 22, 40, 0.4) 100%)",
+          }}
+        />
+
+        {/* Content */}
+        <div className="relative z-10 max-w-screen-2xl mx-auto px-8 lg:px-12 w-full">
+          <div className="max-w-2xl">
+            {/* Badge */}
+            <motion.div
+              {...fadeUp(0.2)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-sm mb-6"
+            >
+              <Sparkles className="w-4 h-4 text-white/90" />
+              <span className="text-white/80 text-xs font-light tracking-wider uppercase">
+                Premium Living
+              </span>
+            </motion.div>
+
+            {/* Headline */}
+            <motion.h1
+              {...fadeUp(0.4)}
+              className="text-5xl lg:text-7xl font-medium text-white leading-[1.08] mb-6 tracking-tight"
+            >
+              Affordable, Safe,{" "}
+              <span className="block">and Comfortable</span>
+              <span style={{ color: "#FF8C42" }}>Dormitory</span>
+            </motion.h1>
+
+            {/* Subheadline */}
+            <motion.p
+              {...fadeUp(0.6)}
+              className="text-white/80 text-lg mb-10 leading-relaxed font-light max-w-lg"
+            >
+              Browse available rooms, create your account, and find your perfect
+              home away from home.
+            </motion.p>
+
+            {/* CTA Buttons */}
+            <motion.div {...fadeUp(0.8)} className="flex flex-wrap gap-4 mb-6">
+              <Link to="/applicant/check-availability">
+                <button
+                  className="inline-flex items-center gap-2 text-white px-8 py-4 rounded-full font-medium text-base transition-all duration-300"
+                  style={{
+                    backgroundColor: "#FF8C42",
+                    boxShadow: "0 4px 20px rgba(255, 140, 66, 0.25)",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.boxShadow =
+                      "0 6px 30px rgba(255, 140, 66, 0.4)";
+                    e.currentTarget.style.transform =
+                      "translateY(-2px) scale(1.02)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.boxShadow =
+                      "0 4px 20px rgba(255, 140, 66, 0.25)";
+                    e.currentTarget.style.transform = "translateY(0) scale(1)";
+                  }}
+                >
+                  Browse Available Rooms
+                  <ArrowRight className="w-5 h-5" />
+                </button>
+              </Link>
+              <a
+                href="#inquiry"
+                className="inline-flex items-center gap-2 px-8 py-4 rounded-full border border-white/25 text-white font-medium text-base hover:bg-white/10 transition-all duration-300"
+              >
+                Contact Us
+              </a>
+            </motion.div>
+
+            {/* Reassurance */}
+            <motion.p
+              {...fadeUp(0.95)}
+              className="text-white/60 text-sm font-normal mb-6"
+            >
+              ✓ No hidden fees · ✓ Flexible terms · ✓ Visit first, decide later
+            </motion.p>
+
+            {/* Stats — compact inline row */}
+            <motion.div
+              {...fadeUp(1.1)}
+              ref={statRef}
+              className="flex items-center gap-0 flex-wrap"
+            >
+              {stats.map((stat, i) => {
+                const Icon = stat.icon;
+                return (
+                  <div key={i} className="flex items-center">
+                    {i > 0 && (
+                      <div
+                        className="mx-4 hidden sm:block"
+                        style={{
+                          width: '1px',
+                          height: '28px',
+                          backgroundColor: 'rgba(255,255,255,0.2)',
+                        }}
+                      />
+                    )}
+                    <StatItem
+                      icon={Icon}
+                      target={stat.value}
+                      suffix={stat.suffix}
+                      label={stat.label}
+                      isInView={isInView}
+                      delay={i * 0.15}
+                    />
+                  </div>
+                );
+              })}
+            </motion.div>
+          </div>
+        </div>
+
+        {/* Slide Indicators — right side */}
+        <div
+          className="absolute z-10 hidden md:flex flex-col items-center gap-3"
+          style={{ right: "48px", top: "50%", transform: "translateY(-50%)" }}
+        >
+          {heroImages.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setCurrentImage(i)}
+              aria-label={`Go to slide ${i + 1}`}
+              style={{
+                width: "2px",
+                height: currentImage === i ? "32px" : "20px",
+                borderRadius: "1px",
+                backgroundColor: currentImage === i ? "white" : "rgba(255,255,255,0.35)",
+                border: "none",
+                cursor: "pointer",
+                transition: "all 0.4s ease",
+                padding: 0,
+              }}
+            />
+          ))}
+        </div>
+      </section>
+    </>
+  );
+}
+
+function StatItem({ icon: Icon, target, suffix, label, isInView, delay }) {
+  const { count, done } = useCounter(target, 2, isInView);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={isInView ? { opacity: 1, y: 0 } : {}}
+      transition={{ duration: 0.5, delay, ease: "easeOut" }}
+      className="flex items-center gap-2"
+    >
+      <Icon className="w-4 h-4" style={{ color: "#FF8C42" }} />
+      <motion.span
+        animate={done ? { scale: [1, 1.15, 1] } : {}}
+        transition={{ duration: 0.3, ease: "easeOut" }}
+        className="text-lg font-medium inline-block"
+        style={{ color: done ? '#FF8C42' : 'white', transition: 'color 0.5s ease' }}
+      >
+        {count}{suffix}
+      </motion.span>
+      <span className="text-white/60 text-sm font-light">{label}</span>
+    </motion.div>
   );
 }

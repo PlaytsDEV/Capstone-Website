@@ -325,7 +325,7 @@ function CheckAvailabilityPage() {
                 height="24"
                 viewBox="0 0 24 24"
                 fill="none"
-                stroke="#D4982B"
+                stroke="#FF8C42"
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -337,7 +337,7 @@ function CheckAvailabilityPage() {
             </div>
             <h3
               className="text-xl font-semibold mb-2"
-              style={{ color: "#183153" }}
+              style={{ color: "#0A1628" }}
             >
               Sign in to continue
             </h3>
@@ -359,7 +359,7 @@ function CheckAvailabilityPage() {
                   setTimeout(() => navigate("/signin"), 300);
                 }}
                 className="flex-1 py-3 px-4 rounded-full text-white text-sm font-medium hover:opacity-90 transition-opacity cursor-pointer"
-                style={{ backgroundColor: "#D4982B" }}
+                style={{ backgroundColor: "#FF8C42" }}
               >
                 Sign In
               </button>

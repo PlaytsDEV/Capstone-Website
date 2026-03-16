@@ -9,7 +9,6 @@ const locations = [
     nearbySchools: ['De La Salle University (2.5 km)', 'Mapua University (3 km)', 'Lyceum of the Philippines (2 km)'],
     transportation: ['Gil Puyat LRT Station (5 min walk)', 'Jeepney routes to Guadalupe, Buendia', 'Bus terminal nearby'],
     landmarks: ['SM Makati (10 min walk)', '7-Eleven (2 min walk)', 'Mercury Drug (5 min walk)'],
-    color: '#D4982B'
   },
   {
     branch: 'Guadalupe',
@@ -19,21 +18,20 @@ const locations = [
     nearbySchools: ['University of Santo Tomas (4 km)', 'PUP Manila (3.5 km)', 'Adamson University (4 km)'],
     transportation: ['Guadalupe MRT Station (3 min walk)', 'Multiple jeepney routes', 'EDSA Carousel Bus Stop'],
     landmarks: ['Guadalupe Commercial Center (5 min)', 'Landmark Makati (15 min)', 'Mini Stop (1 min walk)'],
-    color: '#EDB938'
   }
 ];
 
 export function LocationSection() {
   return (
-    <section className="py-16 lg:py-20 bg-white" id="location">
-      <div className="max-w-7xl mx-auto px-8 lg:px-12">
+    <section className="py-20 lg:py-24" style={{ backgroundColor: 'var(--lp-bg)' }} id="location">
+      <div className="max-w-screen-2xl mx-auto px-8 lg:px-12">
         {/* Header */}
         <div className="text-center mb-12">
-          <p className="text-xs text-gray-500 mb-3 tracking-widest uppercase font-medium">Where We Are</p>
-          <h2 className="text-4xl lg:text-5xl font-normal mb-5 tracking-tight" style={{ color: '#183153' }}>
+          <p className="text-xs mb-3 tracking-widest uppercase font-medium" style={{ color: 'var(--lp-accent)' }}>Where We Are</p>
+          <h2 className="text-3xl lg:text-4xl font-medium mb-5 tracking-tight" style={{ color: 'var(--lp-text)' }}>
             Strategic Locations
           </h2>
-          <p className="text-gray-500 max-w-2xl mx-auto font-normal leading-relaxed">
+          <p className="max-w-2xl mx-auto font-normal leading-relaxed" style={{ color: 'var(--lp-text-secondary)' }}>
             Both branches are strategically located near universities, public transport, and essential establishments.
           </p>
         </div>
@@ -43,8 +41,14 @@ export function LocationSection() {
           {locations.map((location, index) => (
             <div key={index} className="grid lg:grid-cols-2 gap-8 items-start">
               {/* Map */}
-              <div className="rounded-3xl overflow-hidden border border-gray-100 shadow-lg order-2 lg:order-1">
-                <div className="aspect-[4/3] bg-gray-100 relative">
+              <div
+                className="rounded-2xl overflow-hidden order-2 lg:order-1"
+                style={{
+                  border: '1px solid var(--lp-border)',
+                  boxShadow: 'var(--lp-card-shadow-hover)',
+                }}
+              >
+                <div className="aspect-[4/3] relative" style={{ backgroundColor: 'var(--lp-bg-card)' }}>
                   <iframe
                     src={location.mapEmbed}
                     width="100%"
@@ -61,24 +65,30 @@ export function LocationSection() {
               {/* Details */}
               <div className="order-1 lg:order-2">
                 <div className="mb-6">
-                  <div className="inline-block px-4 py-2 rounded-full text-xs font-medium mb-4" style={{ backgroundColor: `${location.color}15`, color: location.color }}>
+                  <div
+                    className="inline-block px-4 py-2 rounded-full text-xs font-medium mb-4"
+                    style={{
+                      backgroundColor: 'var(--lp-icon-bg)',
+                      color: 'var(--lp-accent)',
+                    }}
+                  >
                     {location.branch} Branch
                   </div>
-                  <h3 className="text-2xl font-medium mb-3 tracking-tight" style={{ color: '#183153' }}>
+                  <h3 className="text-2xl font-medium mb-3 tracking-tight" style={{ color: 'var(--lp-text)' }}>
                     {location.address}
                   </h3>
-                  <p className="text-sm text-gray-500">{location.coordinates}</p>
+                  <p className="text-sm" style={{ color: 'var(--lp-text-muted)' }}>{location.coordinates}</p>
                 </div>
 
                 {/* Nearby Schools */}
                 <div className="mb-6">
                   <div className="flex items-center gap-2 mb-3">
-                    <GraduationCap className="w-5 h-5" style={{ color: location.color }} />
-                    <h4 className="text-sm font-normal" style={{ color: '#183153' }}>Nearby Universities</h4>
+                    <GraduationCap className="w-5 h-5" style={{ color: 'var(--lp-accent)' }} />
+                    <h4 className="text-sm font-normal" style={{ color: 'var(--lp-text)' }}>Nearby Universities</h4>
                   </div>
                   <ul className="space-y-2">
                     {location.nearbySchools.map((school, idx) => (
-                      <li key={idx} className="text-sm text-gray-600 pl-7">
+                      <li key={idx} className="text-sm pl-7" style={{ color: 'var(--lp-text-secondary)' }}>
                         • {school}
                       </li>
                     ))}
@@ -88,12 +98,12 @@ export function LocationSection() {
                 {/* Transportation */}
                 <div className="mb-6">
                   <div className="flex items-center gap-2 mb-3">
-                    <Bus className="w-5 h-5" style={{ color: location.color }} />
-                    <h4 className="text-sm font-normal" style={{ color: '#183153' }}>Transportation Access</h4>
+                    <Bus className="w-5 h-5" style={{ color: 'var(--lp-accent)' }} />
+                    <h4 className="text-sm font-normal" style={{ color: 'var(--lp-text)' }}>Transportation Access</h4>
                   </div>
                   <ul className="space-y-2">
                     {location.transportation.map((transport, idx) => (
-                      <li key={idx} className="text-sm text-gray-600 pl-7">
+                      <li key={idx} className="text-sm pl-7" style={{ color: 'var(--lp-text-secondary)' }}>
                         • {transport}
                       </li>
                     ))}
@@ -103,12 +113,12 @@ export function LocationSection() {
                 {/* Landmarks */}
                 <div>
                   <div className="flex items-center gap-2 mb-3">
-                    <ShoppingBag className="w-5 h-5" style={{ color: location.color }} />
-                    <h4 className="text-sm font-normal" style={{ color: '#183153' }}>Nearby Establishments</h4>
+                    <ShoppingBag className="w-5 h-5" style={{ color: 'var(--lp-accent)' }} />
+                    <h4 className="text-sm font-normal" style={{ color: 'var(--lp-text)' }}>Nearby Establishments</h4>
                   </div>
                   <ul className="space-y-2">
                     {location.landmarks.map((landmark, idx) => (
-                      <li key={idx} className="text-sm text-gray-600 pl-7">
+                      <li key={idx} className="text-sm pl-7" style={{ color: 'var(--lp-text-secondary)' }}>
                         • {landmark}
                       </li>
                     ))}

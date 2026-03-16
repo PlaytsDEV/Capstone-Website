@@ -70,8 +70,8 @@
 }
 
 .ca-filter-bar .ca-search-input:focus {
-  border-color: #183153;
-  box-shadow: 0 0 0 3px rgba(24, 49, 83, 0.08);
+  border-color: #0A1628;
+  box-shadow: 0 0 0 3px rgba(10, 22, 40, 0.08);
 }
 
 /* Filter dropdowns */
@@ -95,7 +95,7 @@
 }
 
 .ca-filter-select:focus {
-  border-color: #183153;
+  border-color: #0A1628;
 }
 
 /* Clear button */
@@ -159,24 +159,24 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #183153;
+  background: #0A1628;
   cursor: pointer;
   margin-top: -7px;
-  box-shadow: 0 1px 4px rgba(24, 49, 83, 0.3);
+  box-shadow: 0 1px 4px rgba(10, 22, 40, 0.3);
 }
 
 .ca-price-slider::-webkit-slider-thumb:hover {
-  box-shadow: 0 2px 8px rgba(24, 49, 83, 0.4);
+  box-shadow: 0 2px 8px rgba(10, 22, 40, 0.4);
 }
 
 .ca-price-slider::-moz-range-thumb {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #183153;
+  background: #0A1628;
   cursor: pointer;
   border: none;
-  box-shadow: 0 1px 4px rgba(24, 49, 83, 0.3);
+  box-shadow: 0 1px 4px rgba(10, 22, 40, 0.3);
 }
 
 .ca-price-slider::-moz-range-track {
@@ -311,7 +311,7 @@
 .ca-card-title {
   font-size: 15px;
   font-weight: 700;
-  color: #183153;
+  color: #0A1628;
   margin: 0 0 6px;
   display: flex;
   align-items: center;
@@ -383,7 +383,7 @@
 .ca-card-price {
   font-size: 17px;
   font-weight: 700;
-  color: #183153;
+  color: #0A1628;
 }
 
 .ca-card-price span {
@@ -427,7 +427,7 @@
   padding: 10px 24px;
   border-radius: 10px;
   border: none;
-  background: #D4982B;
+  background: #FF8C42;
   color: #fff;
   font-size: 14px;
   font-weight: 600;
@@ -476,7 +476,7 @@
 .ca-section-title {
   font-size: 22px;
   font-weight: 700;
-  color: #183153;
+  color: #0A1628;
   margin: 0 0 4px;
 }
 
@@ -496,7 +496,7 @@
 .ca-signin-prompt button {
   background: none;
   border: none;
-  color: #D4982B;
+  color: #FF8C42;
   font-weight: 600;
   cursor: pointer;
   padding: 0;

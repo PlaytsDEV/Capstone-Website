@@ -17,8 +17,8 @@ export function generateDepositReceipt(reservation, profile) {
   let y = 0;
 
   // ── Colors (matching email template) ──
-  const navy = [24, 49, 83]; // #183153
-  const gold = [212, 152, 43]; // #D4982B
+  const navy = [24, 49, 83]; // #0A1628
+  const gold = [212, 152, 43]; // #FF8C42
   const darkText = [17, 24, 39]; // #111827
   const bodyText = [55, 65, 81]; // #374151
   const mutedText = [156, 163, 175]; // #9CA3AF
@@ -54,7 +54,7 @@ export function generateDepositReceipt(reservation, profile) {
     : "—";
 
   // ==========================================================================
-  // HEADER — Dark navy block (matches email #183153)
+  // HEADER — Dark navy block (matches email #0A1628)
   // ==========================================================================
   const headerHeight = 38;
   fillRect(0, 0, pageWidth, headerHeight, navy);

@@ -17,7 +17,6 @@ const facilities = [
     title: "High-Speed Wi-Fi",
     description:
       "100 Mbps fiber internet throughout the building for seamless browsing and streaming",
-    color: "#D4982B",
     image:
       "https://images.unsplash.com/photo-1588501360908-30d639a70964?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjB3aWZpJTIwaW50ZXJuZXQlMjBsb3VuZ2V8ZW58MXx8fHwxNzcwNDY1OTc0fDA&ixlib=rb-4.1.0&q=80&w=1080",
   },
@@ -26,7 +25,6 @@ const facilities = [
     title: "Study Lounge",
     description:
       "Quiet, well-lit dedicated spaces perfect for focused studying and academic work",
-    color: "#183153",
     image:
       "https://images.unsplash.com/photo-1516042438821-0abd7a73c4b3?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxsaWJyYXJ5JTIwc3R1ZHklMjBsb3VuZ2UlMjBxdWlldHxlbnwxfHx8fDE3NzA0NjU5NzR8MA&ixlib=rb-4.1.0&q=80&w=1080",
   },
@@ -35,7 +33,6 @@ const facilities = [
     title: "Shared Kitchen",
     description:
       "Fully-equipped with stove, refrigerator, and cookware for preparing your meals",
-    color: "#EDB938",
     image:
       "https://images.unsplash.com/photo-1657084031100-6925483d8a7a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxzaGFyZWQlMjBraXRjaGVuJTIwZG9ybWl0b3J5JTIwY29tbXVuYWx8ZW58MXx8fHwxNzcwNDY1OTc1fDA&ixlib=rb-4.1.0&q=80&w=1080",
   },
@@ -44,7 +41,6 @@ const facilities = [
     title: "Laundry Area",
     description:
       "Coin-operated washers and dryers available 24/7 for your convenience",
-    color: "#D4982B",
     image:
       "https://images.unsplash.com/photo-1758279745240-b75977c88fa8?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxsYXVuZHJ5JTIwcm9vbSUyMHdhc2hlcnMlMjBkcnllcnN8ZW58MXx8fHwxNzcwNDY1OTc1fDA&ixlib=rb-4.1.0&q=80&w=1080",
   },
@@ -53,7 +49,6 @@ const facilities = [
     title: "Common Lounge",
     description:
       "Comfortable shared space to relax, socialize, and build community with residents",
-    color: "#183153",
     image:
       "https://images.unsplash.com/photo-1759038085939-2d32655d95ac?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjb21tb24lMjBsb3VuZ2UlMjBzZWF0aW5nJTIwYXJlYXxlbnwxfHx8fDE3NzA0NjU5NzV8MA&ixlib=rb-4.1.0&q=80&w=1080",
   },
@@ -62,7 +57,6 @@ const facilities = [
     title: "Pantry Area",
     description:
       "Water dispenser, microwave, and dining tables for quick meals and refreshments",
-    color: "#EDB938",
     image:
       "https://images.unsplash.com/photo-1758977403341-0104135995af?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxkaW5pbmclMjBhcmVhJTIwdGFibGUlMjBjaGFpcnN8ZW58MXx8fHwxNzcwNDY1OTc5fDA&ixlib=rb-4.1.0&q=80&w=1080",
   },
@@ -71,7 +65,6 @@ const facilities = [
     title: "Reception Desk",
     description:
       "Friendly staff available daily for assistance, inquiries, and 24/7 security",
-    color: "#D4982B",
     image:
       "https://images.unsplash.com/photo-1648960456182-00643d5d20eb?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxyZWNlcHRpb24lMjBkZXNrJTIwbG9iYnklMjBob3RlbHxlbnwxfHx8fDE3NzA0NjU5NzZ8MA&ixlib=rb-4.1.0&q=80&w=1080",
   },
@@ -80,7 +73,6 @@ const facilities = [
     title: "Fitness Corner",
     description:
       "Basic gym equipment including weights and cardio machines for staying active",
-    color: "#183153",
     image:
       "https://images.unsplash.com/photo-1589955898954-9c8d4bb86823?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxneW0lMjBlcXVpcG1lbnQlMjB3ZWlnaHRzJTIwZml0bmVzc3xlbnwxfHx8fDE3NzA0NjU5ODB8MA&ixlib=rb-4.1.0&q=80&w=1080",
   },
@@ -89,20 +81,29 @@ const facilities = [
 export function FacilitiesSection() {
   return (
     <section
-      className="py-16 lg:py-20"
-      style={{ backgroundColor: "#183153" }}
+      className="py-20 lg:py-24"
+      style={{ backgroundColor: "var(--lp-bg)" }}
       id="facilities"
     >
-      <div className="max-w-7xl mx-auto px-8 lg:px-12">
+      <div className="max-w-screen-2xl mx-auto px-8 lg:px-12">
         {/* Header */}
         <div className="text-center mb-12">
-          <p className="text-xs text-white/60 mb-3 tracking-widest uppercase font-medium">
+          <p
+            className="text-xs mb-3 tracking-widest uppercase font-medium"
+            style={{ color: "var(--lp-accent)" }}
+          >
             Shared Spaces
           </p>
-          <h2 className="text-4xl lg:text-5xl font-normal mb-5 tracking-tight text-white">
+          <h2
+            className="text-3xl lg:text-4xl font-medium mb-5 tracking-tight"
+            style={{ color: "var(--lp-text)" }}
+          >
             Facilities & Amenities
           </h2>
-          <p className="text-white/70 max-w-2xl mx-auto font-normal leading-relaxed">
+          <p
+            className="max-w-2xl mx-auto font-normal leading-relaxed"
+            style={{ color: "var(--lp-text-secondary)" }}
+          >
             Beyond your room, enjoy access to well-maintained common areas
             designed for studying, cooking, and relaxation.
           </p>
@@ -115,15 +116,25 @@ export function FacilitiesSection() {
             return (
               <div
                 key={index}
-                className="group rounded-2xl overflow-hidden bg-white/5 backdrop-blur-sm border border-white/10 hover:border-white/20 transition-all duration-300"
+                className="group rounded-2xl overflow-hidden transition-all duration-300"
+                style={{
+                  backgroundColor: "var(--lp-bg-card)",
+                  border: "1px solid var(--lp-border)",
+                  boxShadow: "var(--lp-card-shadow)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.boxShadow =
+                    "var(--lp-card-shadow-hover)";
+                  e.currentTarget.style.transform = "translateY(-4px)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.boxShadow = "var(--lp-card-shadow)";
+                  e.currentTarget.style.transform = "translateY(0)";
+                }}
               >
                 {/* Image */}
                 <SpotlightImage
-                  spotlightColor={
-                    index % 2 === 0
-                      ? "rgba(212, 152, 43, 0.6)"
-                      : "rgba(237, 185, 56, 0.6)"
-                  }
+                  spotlightColor="rgba(255, 140, 66, 0.5)"
                   className="h-48"
                 >
                   <div className="relative h-full overflow-hidden">
@@ -132,23 +143,29 @@ export function FacilitiesSection() {
                       alt={facility.title}
                       className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
                     {/* Icon Badge */}
                     <div
-                      className="absolute top-4 right-4 w-12 h-12 rounded-xl flex items-center justify-center backdrop-blur-md"
-                      style={{ backgroundColor: `${facility.color}90` }}
+                      className="absolute top-4 right-4 w-10 h-10 rounded-xl flex items-center justify-center backdrop-blur-md"
+                      style={{ backgroundColor: "rgba(255, 140, 66, 0.85)" }}
                     >
-                      <Icon className="w-6 h-6 text-white" />
+                      <Icon className="w-5 h-5 text-white" />
                     </div>
                   </div>
                 </SpotlightImage>
 
                 {/* Content */}
-                <div className="p-6">
-                  <h3 className="text-lg font-medium mb-2 text-white">
+                <div className="p-5">
+                  <h3
+                    className="text-base font-medium mb-1.5"
+                    style={{ color: "var(--lp-text)" }}
+                  >
                     {facility.title}
                   </h3>
-                  <p className="text-sm text-white/70 leading-relaxed">
+                  <p
+                    className="text-sm leading-relaxed"
+                    style={{ color: "var(--lp-text-secondary)" }}
+                  >
                     {facility.description}
                   </p>
                 </div>
