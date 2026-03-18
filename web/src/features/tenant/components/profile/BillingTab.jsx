@@ -256,7 +256,7 @@ const BillingTab = () => {
   /* ── Loading skeleton ── */
   if (loading) {
     return (
-      <div style={{ maxWidth: 960 }}>
+      <div style={{ maxWidth: 1200 }}>
         <div style={s.heading}>
           <h1 style={s.title}>My Bills</h1>
           <p style={s.subtitle}>Loading your billing information...</p>
@@ -279,7 +279,7 @@ const BillingTab = () => {
   /* ── Empty state ── */
   if (bills.length === 0) {
     return (
-      <div style={{ maxWidth: 960 }}>
+      <div style={{ maxWidth: 1200 }}>
         <div style={s.heading}>
           <h1 style={s.title}>My Bills</h1>
           <p style={s.subtitle}>Track your monthly charges and payments</p>
@@ -298,7 +298,7 @@ const BillingTab = () => {
   }
 
   return (
-    <div style={{ maxWidth: 960 }}>
+    <div style={{ maxWidth: 1200 }}>
       {/* Header */}
       <div style={s.heading}>
         <h1 style={s.title}>My Bills</h1>
@@ -496,8 +496,12 @@ const s = {
   },
 
   emptyState: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
     textAlign: "center",
-    padding: "48px 24px",
+    padding: "56px 24px",
     background: "#fff",
     borderRadius: 10,
     border: "1px solid #E8EBF0",

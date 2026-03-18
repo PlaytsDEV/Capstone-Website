@@ -15,6 +15,8 @@ import ScrollToTopButton from "../../../shared/components/ScrollToTopButton";
 import { ThemeProvider, useTheme } from "../context/ThemeContext";
 import RouteErrorBoundary from "../../../shared/components/RouteErrorBoundary";
 
+import SEOHead from "../../../shared/components/SEOHead";
+
 /* Lightweight section fallback — only hides the broken section, not the whole page */
 function SectionFallback({ name }) {
   return (
@@ -36,7 +38,47 @@ function LandingPageContent() {
 
   return (
     <div className="landing-page" data-theme={theme} style={{ overflowX: "hidden", backgroundColor: "var(--lp-bg)" }}>
+      <SEOHead title="Home" description="Affordable, safe, and fully-furnished dormitory rooms near universities in Makati, Philippines. Book a visit today." />
+
+      {/* A2: Skip-to-content link — visible only on keyboard focus */}
+      <a
+        href="#main-content"
+        style={{
+          position: "absolute",
+          left: "-9999px",
+          top: "auto",
+          width: "1px",
+          height: "1px",
+          overflow: "hidden",
+          zIndex: 9999,
+        }}
+        onFocus={(e) => {
+          Object.assign(e.currentTarget.style, {
+            position: "fixed", left: "16px", top: "16px",
+            width: "auto", height: "auto", overflow: "visible",
+            padding: "12px 24px", backgroundColor: "#FF8C42",
+            color: "white", borderRadius: "8px", fontWeight: "600",
+            fontSize: "14px", textDecoration: "none",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+          });
+        }}
+        onBlur={(e) => {
+          Object.assign(e.currentTarget.style, {
+            position: "absolute", left: "-9999px", top: "auto",
+            width: "1px", height: "1px", overflow: "hidden",
+            padding: "", backgroundColor: "", color: "",
+            borderRadius: "", fontWeight: "", fontSize: "",
+            textDecoration: "", boxShadow: "",
+          });
+        }}
+      >
+        Skip to main content
+      </a>
+
       <Navbar type="landing" currentPage="home" />
+
+      {/* Main content target for skip link */}
+      <main id="main-content">
 
       {/* 1. HOOK — First impression */}
       <RouteErrorBoundary name="HeroSection" fallback={<SectionFallback name="Hero" />}>
@@ -121,6 +163,8 @@ function LandingPageContent() {
           </RouteErrorBoundary>
         </ScrollReveal>
       </div>
+
+      </main>
 
       {/* FOOTER */}
       <ScrollReveal variant="fade">

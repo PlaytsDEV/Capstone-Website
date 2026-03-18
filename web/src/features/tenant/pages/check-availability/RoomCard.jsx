@@ -17,12 +17,15 @@ const RoomCard = React.memo(({ room, onClick }) => {
     setCurrentImageIndex((prev) => (prev - 1 + images.length) % images.length);
   };
 
-  // Parse bed availability for dots — show ALL slots
-  const totalBeds = room.beds?.length || parseInt(room.occupancy?.split("/")[1]) || 0;
-  const currentOccupancy = parseInt(room.occupancy?.split("/")[0]) || 0;
-  const availableBeds = room.beds
-    ? room.beds.filter((b) => b.status === "available" || (b.status === undefined && b.available !== false)).length
-    : totalBeds - currentOccupancy;
+  // Bed availability — prefer currentOccupancy/capacity (kept in sync by
+  // auto-heal logic) over the beds[].status array which can drift out of sync
+  const totalBeds = room.capacity || room.beds?.length || parseInt(room.occupancy?.split("/")[1]) || 0;
+  const occupied = room.currentOccupancy ?? (
+    room.beds
+      ? room.beds.filter((b) => b.status === "occupied" || b.available === false).length
+      : parseInt(room.occupancy?.split("/")[0]) || 0
+  );
+  const availableBeds = Math.max(0, totalBeds - occupied);
   const takenBeds = totalBeds - availableBeds;
 
   return (

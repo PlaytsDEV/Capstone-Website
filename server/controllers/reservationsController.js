@@ -8,6 +8,7 @@
  */
 
 import { Reservation, User, Room } from "../models/index.js";
+import logger from "../middleware/logger.js";
 import auditLogger from "../utils/auditLogger.js";
 import { updateOccupancyOnReservationChange } from "../utils/occupancyManager.js";
 import {
@@ -81,7 +82,7 @@ export const getReservations = async (req, res, next) => {
 
     res.json(reservations);
   } catch (error) {
-    console.error("❌ Fetch reservations error:", error);
+    logger.error({ err: error, requestId: req.id }, "Fetch reservations error");
     handleReservationError(res, error, "fetch");
   }
 };
@@ -120,7 +121,7 @@ export const getReservationById = async (req, res, next) => {
 
     res.json(reservation);
   } catch (error) {
-    console.error("❌ Fetch reservation error:", error);
+    logger.error({ err: error, requestId: req.id }, "Fetch reservation error");
     handleReservationError(res, error, "fetch");
   }
 };
@@ -148,6 +149,7 @@ export const createReservation = async (req, res, next) => {
           "You already have an active reservation. Please complete or cancel it before creating a new one.",
         code: "RESERVATION_ALREADY_EXISTS",
         existingReservationId: existingActive._id,
+        existingStatus: existingActive.status,
       });
 
     const { roomId, roomName, checkInDate, totalPrice } = req.body;
@@ -178,11 +180,32 @@ export const createReservation = async (req, res, next) => {
         error: "Room is not available for reservation",
         code: "ROOM_NOT_AVAILABLE",
       });
-    if (!room.available)
+
+    // Live occupancy check — count actual active reservations instead of
+    // trusting the cached `room.available` boolean which can drift out of sync
+    // (e.g. when reservations are cancelled/deleted without proper decrements).
+    const activeReservationCount = await Reservation.countDocuments({
+      roomId: room._id,
+      status: { $in: ["pending", "reserved", "checked-in"] },
+      isArchived: { $ne: true },
+    });
+    if (activeReservationCount >= room.capacity) {
       return res.status(400).json({
-        error: "Room is not available for reservation",
+        error: "Room is fully booked. Please choose a different room.",
         code: "ROOM_UNAVAILABLE",
       });
+    }
+    // Auto-heal: fix stale availability flag so future reads are correct
+    if (!room.available && activeReservationCount < room.capacity) {
+      await Room.findByIdAndUpdate(room._id, {
+        currentOccupancy: activeReservationCount,
+        available: true,
+      });
+      logger.info(
+        { roomId: room._id, activeReservationCount },
+        "Auto-healed stale room.available flag during reservation creation",
+      );
+    }
 
     // Create reservation with all form fields
     const b = req.body;
@@ -280,7 +303,7 @@ export const createReservation = async (req, res, next) => {
       reservation,
     });
   } catch (error) {
-    console.error("❌ Create reservation error:", error);
+    logger.error({ err: error, requestId: req.id }, "Create reservation error");
     await auditLogger.logError(req, error, "Failed to create reservation");
     handleReservationError(res, error, "create");
   }
@@ -345,7 +368,16 @@ export const updateReservation = async (req, res, next) => {
       "approvedDate", "visitApproved", "documentsApproved",
       "documentRejectionReason", "nbiApproved", "nbiRejectionReason",
       "companyIDApproved", "companyIDRejectionReason",
+      "scheduleRejected", "scheduleRejectionReason",
     ];
+
+    // Auto-set rejection metadata when admin rejects a visit schedule
+    if (req.body.scheduleRejected === true && !existingReservation.scheduleRejected) {
+      reservation.scheduleRejectedAt = new Date();
+      reservation.scheduleRejectedBy = req.adminId || null;
+      // Clear visit approval so tenant can reschedule
+      reservation.visitApproved = false;
+    }
     for (const key of ADMIN_ALLOWED) {
       if (req.body[key] !== undefined) reservation[key] = req.body[key];
     }
@@ -356,7 +388,7 @@ export const updateReservation = async (req, res, next) => {
       try {
         await updateOccupancyOnReservationChange(updatedReservation, oldData);
       } catch (e) {
-        console.error("⚠️ Occupancy update failed (non-fatal):", e);
+        logger.warn({ err: e, requestId: req.id }, "Occupancy update failed (non-fatal)");
       }
     }
 
@@ -397,10 +429,7 @@ export const updateReservation = async (req, res, next) => {
             : "TBD",
         });
       } catch (emailErr) {
-        console.error(
-          "⚠️ Confirmation email failed (non-fatal):",
-          emailErr.message,
-        );
+        logger.warn({ err: emailErr, requestId: req.id }, "Confirmation email failed (non-fatal)");
       }
     }
 
@@ -419,14 +448,28 @@ export const updateReservation = async (req, res, next) => {
           branchName: updatedReservation.roomId?.branch || "Lilycrest",
         });
       } catch (emailErr) {
-        console.error(
-          "⚠️ Visit approved email failed (non-fatal):",
-          emailErr.message,
+        logger.warn({ err: emailErr, requestId: req.id }, "Visit approved email failed (non-fatal)");
+      }
+    }
+
+    // Send visit-rejected notification when admin rejects a visit
+    if (
+      req.body.scheduleRejected === true &&
+      !oldData.scheduleRejected &&
+      updatedReservation.userId?._id
+    ) {
+      try {
+        const { notify } = await import("../utils/notificationService.js");
+        await notify.visitRejected(
+          updatedReservation.userId._id,
+          updatedReservation.scheduleRejectionReason || "Please reschedule your visit.",
         );
+      } catch (notifyErr) {
+        logger.warn({ err: notifyErr, requestId: req.id }, "Visit rejected notification failed (non-fatal)");
       }
     }
   } catch (error) {
-    console.error("❌ Update reservation error:", error);
+    logger.error({ err: error, requestId: req.id }, "Update reservation error");
     await auditLogger.logError(req, error, "Failed to update reservation");
     handleReservationError(res, error, "update");
   }
@@ -459,6 +502,22 @@ export const updateReservationByUser = async (req, res, next) => {
     // Build update payload from config-driven field mapping
     const updates = buildUserUpdatePayload(req.body);
 
+    // Generate visitCode when visitDate is first set (bypassed by findByIdAndUpdate)
+    if (updates.visitDate) {
+      const existingForCode = await Reservation.findById(reservationId).select("visitCode").lean();
+      if (!existingForCode?.visitCode) {
+        const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        let visitCode = null;
+        for (let attempt = 0; attempt < 5; attempt++) {
+          let code = "VIS-";
+          for (let i = 0; i < 6; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
+          const taken = await Reservation.findOne({ visitCode: code }).select("_id").lean();
+          if (!taken) { visitCode = code; break; }
+        }
+        updates.visitCode = visitCode || ("VIS-" + Date.now().toString(36).toUpperCase().slice(-6));
+      }
+    }
+
     // Payment proof handling
     if (req.body.proofOfPaymentUrl) {
       updates.paymentStatus = "pending";
@@ -486,7 +545,7 @@ export const updateReservationByUser = async (req, res, next) => {
       reservation: updatedReservation,
     });
   } catch (error) {
-    console.error("❌ User reservation update error:", error);
+    logger.error({ err: error, requestId: req.id }, "User reservation update error");
     handleReservationError(res, error, "update");
   }
 };
@@ -534,24 +593,27 @@ export const deleteReservation = async (req, res, next) => {
           { ...reservationData, status: "cancelled" },
           reservationData,
         );
-        console.log(`🔓 Occupancy released for reservation ${reservationId} (was ${reservation.status})`);
+        logger.info({ requestId: req.id, reservationId }, `Occupancy released (was ${reservation.status})`);
       } catch (e) {
-        console.error("⚠️ Occupancy release during deletion failed:", e);
+        logger.warn({ err: e, requestId: req.id }, "Occupancy release during deletion failed");
       }
     }
 
-    // Safety net: recalculate room occupancy from actual reservations
+    // Delete the reservation FIRST, then recalculate occupancy
+    await Reservation.findByIdAndDelete(reservationId);
+
+    // Safety net: recalculate room occupancy from remaining reservations
+    // MUST run AFTER deletion — otherwise it recounts the deleted reservation
     if (reservation.roomId?._id) {
       try {
         const { recalculateRoomOccupancy } = await import("../utils/occupancyManager.js");
         await recalculateRoomOccupancy(reservation.roomId._id);
-        console.log(`🔄 Recalculated occupancy for room ${reservation.roomId.name || reservation.roomId._id}`);
+        logger.info({ requestId: req.id, roomId: reservation.roomId._id }, "Recalculated room occupancy after deletion");
       } catch (e) {
-        console.error("⚠️ Occupancy recalculation failed:", e);
+        logger.warn({ err: e, requestId: req.id }, "Occupancy recalculation failed");
       }
     }
 
-    await Reservation.findByIdAndDelete(reservationId);
     await auditLogger.logDeletion(
       req,
       "reservation",
@@ -560,7 +622,7 @@ export const deleteReservation = async (req, res, next) => {
     );
     res.json({ message: "Reservation deleted successfully", reservationId });
   } catch (error) {
-    console.error("❌ Delete reservation error:", error);
+    logger.error({ err: error, requestId: req.id }, "Delete reservation error");
     await auditLogger.logError(req, error, "Failed to delete reservation");
     handleReservationError(res, error, "delete");
   }
@@ -621,7 +683,7 @@ export const extendReservation = async (req, res, next) => {
       reservation,
     });
   } catch (error) {
-    console.error("❌ Extend reservation error:", error);
+    logger.error({ err: error, requestId: req.id }, "Extend reservation error");
     await auditLogger.logError(req, error, "Failed to extend reservation");
     handleReservationError(res, error, "extend");
   }
@@ -689,7 +751,7 @@ export const releaseSlot = async (req, res, next) => {
       reservation,
     });
   } catch (error) {
-    console.error("❌ Release slot error:", error);
+    logger.error({ err: error, requestId: req.id }, "Release slot error");
     await auditLogger.logError(
       req,
       error,
@@ -739,7 +801,7 @@ export const archiveReservation = async (req, res, next) => {
           status: prevStatus,
         });
       } catch (e) {
-        console.error("⚠️ Occupancy update during archive failed:", e);
+        logger.warn({ err: e, requestId: req.id }, "Occupancy update during archive failed");
       }
     }
 
@@ -765,7 +827,7 @@ export const archiveReservation = async (req, res, next) => {
       reservation,
     });
   } catch (error) {
-    console.error("❌ Archive reservation error:", error);
+    logger.error({ err: error, requestId: req.id }, "Archive reservation error");
     await auditLogger.logError(req, error, "Failed to archive reservation");
     handleReservationError(res, error, "archive");
   }
@@ -848,7 +910,7 @@ export const renewContract = async (req, res, next) => {
       reservation,
     });
   } catch (error) {
-    console.error("❌ Renew contract error:", error);
+    logger.error({ err: error, requestId: req.id }, "Renew contract error");
     await auditLogger.logError(req, error, "Failed to renew contract");
     handleReservationError(res, error, "renew");
   }
@@ -938,7 +1000,7 @@ export const checkoutReservation = async (req, res, next) => {
       reservation,
     });
   } catch (error) {
-    console.error("❌ Checkout error:", error);
+    logger.error({ err: error, requestId: req.id }, "Checkout error");
     await auditLogger.logError(req, error, "Failed to checkout reservation");
     handleReservationError(res, error, "checkout");
   }
@@ -1045,7 +1107,7 @@ export const transferTenant = async (req, res, next) => {
       reservation,
     });
   } catch (error) {
-    console.error("❌ Transfer error:", error);
+    logger.error({ err: error, requestId: req.id }, "Transfer error");
     await auditLogger.logError(req, error, "Failed to transfer tenant");
     handleReservationError(res, error, "transfer");
   }
@@ -1106,7 +1168,7 @@ export const getMyContract = async (req, res) => {
       reservationId: reservation._id,
     });
   } catch (error) {
-    console.error("❌ Get contract error:", error);
+    logger.error({ err: error, requestId: req.id }, "Get contract error");
     res.status(500).json({ error: "Failed to fetch contract" });
   }
 };

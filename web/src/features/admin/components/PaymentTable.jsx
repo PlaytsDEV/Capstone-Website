@@ -82,8 +82,10 @@ const PaymentTable = ({
     </div>
 
     {payments.length === 0 ? (
-      <div style={{ padding: "40px", textAlign: "center" }}>
-        <p style={{ color: "#6B7280" }}>{emptyText}</p>
+      <div style={{ padding: "60px 24px", textAlign: "center" }}>
+        <div style={{ fontSize: "32px", marginBottom: "12px", opacity: 0.4 }}>💳</div>
+        <div style={{ fontSize: "15px", fontWeight: "500", color: "#374151", marginBottom: "6px" }}>{emptyText}</div>
+        <div style={{ fontSize: "13px", color: "#9CA3AF" }}>Payment records will appear here once tenants submit payments.</div>
       </div>
     ) : (
       <div style={{ overflowX: "auto" }}>

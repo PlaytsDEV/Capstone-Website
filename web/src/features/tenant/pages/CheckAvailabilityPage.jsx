@@ -80,15 +80,20 @@ function CheckAvailabilityPage() {
               normalizedType,
               room.currentOccupancy || 0,
             );
-        const availableBeds = beds.filter((bed) => bed.status === "available" || (bed.status === undefined && bed.available !== false)).length;
-        const totalBeds = beds.length || room.capacity || 0;
+        // Use server-tracked occupancy (kept in sync by auto-heal) instead of
+        // the unreliable beds[].status which drifts when reservations change
+        const totalBeds = room.capacity || beds.length || 0;
+        const occupied = room.currentOccupancy || 0;
+        const availableBeds = Math.max(0, totalBeds - occupied);
         return {
           id: roomNumber,
           roomId: room._id,
           title: `Room ${displayName}`,
           branch: branchLabel,
           type: mappedType,
-          occupancy: `${room.currentOccupancy || 0}/${room.capacity || totalBeds}`,
+          capacity: totalBeds,
+          currentOccupancy: occupied,
+          occupancy: `${occupied}/${totalBeds}`,
           bedsLeft:
             availableBeds === 0
               ? "Full"
@@ -242,33 +247,12 @@ function CheckAvailabilityPage() {
         await reservationApi.create(payload);
       } catch (createErr) {
         if (createErr?.response?.data?.code === "RESERVATION_ALREADY_EXISTS") {
-          const existingId = createErr?.response?.data?.existingReservationId;
-          if (existingId) {
-            // Update existing reservation with new room and clear stale step data
-            try {
-              await reservationApi.updateByUser(existingId, {
-                roomId: selectedRoom.roomId,
-                selectedBed: selectedBed
-                  ? { id: selectedBed.id, position: selectedBed.position }
-                  : null,
-                totalPrice: selectedRoom.price || 5000,
-                applianceFees: calculateApplianceFees(),
-                targetMoveInDate: null,
-                leaseDuration: null,
-                agreedToPrivacy: false,
-                agreedToCertification: false,
-              });
-              await queryClient.invalidateQueries({ queryKey: ["reservations"] });
-            } catch (updateErr) {
-              console.error("Failed to update existing reservation:", updateErr);
-            }
-          }
+          // Block ALL room changes when an active reservation exists.
+          // Users must cancel their current reservation first.
           closeRoomDetails();
           showNotification(
-            existingId
-              ? `Room updated to ${selectedRoom.title}! Continue from your dashboard.`
-              : "You already have an ongoing reservation. Please complete or cancel it before reserving another room.",
-            existingId ? "success" : "warning",
+            "You already have an active reservation. Cancel it first if you'd like a different room.",
+            "warning",
             5000,
           );
           navigate("/applicant/profile");

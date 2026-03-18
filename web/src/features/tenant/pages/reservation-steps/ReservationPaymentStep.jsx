@@ -196,7 +196,7 @@ const ReservationPaymentStep = ({
 
       {/* Pay Online Button */}
       {!readOnly && (
-        <div className="stage-buttons" style={{ justifyContent: "flex-end" }}>
+      <div className="stage-buttons" style={{ justifyContent: "flex-end", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
           <button
             onClick={onPayOnline}
             className="btn btn-primary btn-pay-online-reservation"
@@ -206,6 +206,9 @@ const ReservationPaymentStep = ({
               ? "Redirecting to PayMongo…"
               : "💳 Pay ₱2,000 Online"}
           </button>
+          <span style={{ fontSize: 12, color: "#94A3B8", textAlign: "right" }}>
+            Didn't finish paying? No worries — clicking the button will resume your session.
+          </span>
         </div>
       )}
     </div>

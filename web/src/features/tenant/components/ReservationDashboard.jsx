@@ -1,5 +1,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { showNotification } from "../../../shared/utils/notification";
 import { formatPaymentMethod } from "../../../shared/utils/formatPaymentMethod";
 import {
   Home,
@@ -112,17 +114,15 @@ function getStepStatus(stepStage, currentStage, reservation) {
         return "complete";
       }
     }
-    // Check for "waiting" states at steps 2 and 4
+    // Show "waiting" for step 2 only (visit pending admin check-in confirmation)
     if (stepStage === 2 && reservation) {
       const hasSchedule = reservation.visitDate || reservation.viewingType;
       const approved =
         reservation.visitApproved || reservation.scheduleApproved;
       if (hasSchedule && !approved) return "waiting";
     }
-    if (stepStage === 4 && reservation) {
-      if (reservation.paymentStatus === "pending" && reservation.paymongoSessionId)
-        return "waiting";
-    }
+    // Step 4: PayMongo is instant — never show "waiting"; payment is either
+    // pending (user still needs to pay) or confirmed (reservation = reserved).
     return "current";
   }
   return "locked";
@@ -163,6 +163,17 @@ function getNextAction(reservation, currentStage) {
       const hasSchedule = reservation.visitDate;
       const approved =
         reservation.visitApproved || reservation.scheduleApproved;
+      const rejected = reservation.scheduleRejected;
+      if (rejected) {
+        return {
+          title: "Visit Rejected",
+          description: reservation.scheduleRejectionReason || "Your visit schedule was rejected. Please reschedule.",
+          buttonLabel: "Reschedule Visit →",
+          route: `/applicant/reservation?step=2`,
+          isWaiting: false,
+          isRejected: true,
+        };
+      }
       if (hasSchedule && !approved) {
         const fDate = reservation.visitDate
           ? new Date(reservation.visitDate).toLocaleDateString("en-US", {
@@ -260,13 +271,10 @@ function getStepDesc(step, status, reservation) {
       }
       return step.desc;
     case 4:
-      if (status === "waiting") {
-        return "Payment under review";
-      }
       if (status === "complete") {
         return "Payment verified";
       }
-      return step.desc;
+      return step.desc; // "Pay reservation fee online" — no admin review needed
     case 5:
       if (status === "complete") {
         return "Move-in ready!";
@@ -281,11 +289,13 @@ function getStepDesc(step, status, reservation) {
 
 export default function ReservationDashboard({ reservation, visits = [] }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data: profile } = useCurrentUser();
   const currentStage = resolveCurrentStage(reservation);
   const action = getNextAction(reservation, currentStage);
   const [showCancelModal, setShowCancelModal] = React.useState(false);
   const [isCancelling, setIsCancelling] = React.useState(false);
+
   /* ── no reservation ──────────────────────────────────────────────────── */
   if (!reservation) {
     return (
@@ -321,7 +331,8 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
 
   return (
     <div style={styles.card}>
-      {/* ── Header ───────────────────────────────────────────────────────── */}
+
+      {/* ── Header — full width ──────────────────────────────────────────── */}
       <div style={styles.header}>
         <div>
           <div style={styles.headerRow}>
@@ -351,47 +362,25 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
         </div>
       </div>
 
-      {/* ── Category Labels ────────────────────────────────────────────────── */}
-      <div style={styles.categoryRow}>
-        {["Getting Started", "Verification", "Finalization"].map((cat) => {
-          const catSteps = STEPS.filter((s) => s.category === cat);
-          return (
-            <div
-              key={cat}
-              style={{ ...styles.categoryGroup, flex: catSteps.length }}
-            >
-              <span style={styles.categoryLabel}>{cat}</span>
-            </div>
-          );
-        })}
-      </div>
-
       {/* ── Step Indicator ────────────────────────────────────────────────── */}
       <div style={styles.stepperWrapper}>
         {STEPS.map((step, i) => {
           const status = getStepStatus(step.stage, currentStage, reservation);
           const Icon = step.icon;
           const isLast = i === STEPS.length - 1;
-
           return (
             <React.Fragment key={step.key}>
               <div
                 style={{
                   ...styles.stepItem,
                   cursor:
-                    status === "complete" ||
-                    status === "current" ||
-                    status === "waiting"
+                    status === "complete" || status === "current" || status === "waiting"
                       ? "pointer"
                       : "default",
                   opacity: status === "locked" ? 0.4 : 1,
                 }}
                 onClick={() => {
-                  // Completed steps: navigate to summary view
-                  if (
-                    step.stage === 1 &&
-                    (status === "complete" || status === "waiting")
-                  ) {
+                  if (step.stage === 1 && (status === "complete" || status === "waiting")) {
                     navigate(`/applicant/reservation?step=${step.stage}`);
                     return;
                   }
@@ -424,10 +413,7 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
                   ) : status === "waiting" ? (
                     <Clock size={16} color="#fff" />
                   ) : (
-                    <Icon
-                      size={16}
-                      color={status === "current" ? "#fff" : "#94A3B8"}
-                    />
+                    <Icon size={16} color={status === "current" ? "#fff" : "#94A3B8"} />
                   )}
                 </div>
                 <span
@@ -441,8 +427,7 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
                           : status === "waiting"
                             ? "#2563EB"
                             : "#94A3B8",
-                    fontWeight:
-                      status === "current" || status === "waiting" ? 600 : 400,
+                    fontWeight: status === "current" || status === "waiting" ? 600 : 400,
                   }}
                 >
                   {step.label}
@@ -461,14 +446,11 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
                   {getStepDesc(step, status, reservation)}
                 </span>
               </div>
-
-              {/* connector line */}
               {!isLast && (
                 <div
                   style={{
                     ...styles.connector,
-                    backgroundColor:
-                      status === "complete" ? "#10B981" : "#E2E8F0",
+                    backgroundColor: status === "complete" ? "#10B981" : "#E2E8F0",
                   }}
                 />
               )}
@@ -477,44 +459,50 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
         })}
       </div>
 
-      {/* ── Next Action Card ──────────────────────────────────────────────── */}
+      {/* ── Next Action Row ──────────────────────────────────────────────── */}
       {action.title && !isConfirmed && (
-        <div
-          style={{
-            background: "#F8FAFC",
-            borderRadius: 8,
-            padding: "16px 20px",
-            borderLeft: `3px solid ${action.isWaiting ? "#2563EB" : "#FF8C42"}`,
-          }}
-        >
-          <div style={styles.actionContent}>
-            <div style={styles.actionIconWrap}>
-              {action.isWaiting ? (
-                <Clock size={18} color="#2563EB" />
-              ) : (
-                <AlertCircle size={18} color="#FF8C42" />
-              )}
-            </div>
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          padding: "12px 16px",
+          borderRadius: 8,
+          background: action.isWaiting ? "#F8FAFF" : "#FFFBF7",
+          border: `1px solid ${action.isWaiting ? "#DBEAFE" : "#FDE8D0"}`,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{
+              width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
+              background: action.isWaiting ? "#2563EB" : "#FF8C42",
+            }} />
             <div>
-              <h4
-                style={{
-                  ...styles.actionTitle,
-                  color: action.isWaiting ? "#1E40AF" : "#E0752E",
-                }}
-              >
+              <span style={{
+                fontSize: 13, fontWeight: 600,
+                color: action.isWaiting ? "#1D4ED8" : "#C2611B",
+                marginRight: 6,
+              }}>
                 {action.title}
-              </h4>
-              <p style={styles.actionDescription}>{action.description}</p>
+              </span>
+              <span style={{ fontSize: 13, color: "#94A3B8" }}>
+                {action.description}
+              </span>
             </div>
           </div>
           {action.buttonLabel && action.route && (
             <button
               onClick={() => navigate(action.route)}
               style={{
-                ...styles.actionButton,
-                width: "100%",
-                marginTop: 12,
-                padding: "10px 20px",
+                flexShrink: 0,
+                padding: "6px 14px",
+                background: "#FF8C42",
+                color: "#fff",
+                border: "none",
+                borderRadius: 6,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
               }}
             >
               {action.buttonLabel}
@@ -530,8 +518,7 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
           <div style={{ marginLeft: 12, flex: 1 }}>
             <h4 style={styles.celebrationTitle}>Reservation Secured!</h4>
             <p style={styles.celebrationDesc}>
-              Your reservation is secured. Please prepare for your move-in
-              date.
+              Your reservation is secured. Please prepare for your move-in date.
             </p>
             {reservation.paymentDate && (
               <div style={{ marginTop: 8, fontSize: 12, color: "#047857" }}>
@@ -543,44 +530,36 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
         </div>
       )}
 
-      {/* ── Room change link (only before visit approval) ─────────────── */}
-      {!isConfirmed &&
-        currentStage <= 1 &&
-        !reservation.viewingType &&
-        !reservation.visitApproved &&
-        !reservation.scheduleApproved && (
-          <div style={{ textAlign: "center", marginTop: 12 }}>
-            <button
-              onClick={() =>
-                navigate(
-                  `/applicant/check-availability?changeRoom=1&reservationId=${reservation._id}`,
-                )
-              }
-              style={{
-                ...styles.cancelLink,
-                color: "#FF8C42",
-                textDecoration: "none",
-                fontWeight: 500,
-              }}
-            >
-              Change Room Selection
-            </button>
-          </div>
-        )}
-
-      {/* ── Cancel link ───────────────────────────────────────────────────── */}
+      {/* ── Footer — full width ───────────────────────────────────────────── */}
       {!isConfirmed && (
         <div style={styles.footer}>
+          <div style={styles.footerLeft}>
+            {currentStage <= 1 &&
+              !reservation.viewingType &&
+              !reservation.visitApproved &&
+              !reservation.scheduleApproved && (
+                <button
+                  onClick={() =>
+                    navigate(
+                      `/applicant/check-availability?changeRoom=1&reservationId=${reservation._id}`,
+                    )
+                  }
+                  style={styles.footerLinkSecondary}
+                >
+                  ↩ Change Room
+                </button>
+              )}
+          </div>
           <button
             onClick={() => setShowCancelModal(true)}
-            style={styles.cancelLink}
+            style={styles.footerLinkDanger}
           >
             Cancel Reservation
           </button>
         </div>
       )}
 
-      {/* ── Cancel Confirmation Modal ─────────────────────────────────── */}
+      {/* ── Cancel Confirmation Modal ─────────────────────────────────────── */}
       {showCancelModal && (
         <div style={styles.modalOverlay}>
           <div style={styles.modalCard}>
@@ -605,12 +584,13 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
                       await import("../../../shared/api/reservationApi");
                     await reservationApi.delete(reservation._id);
                     setShowCancelModal(false);
-                    window.location.reload();
+                    showNotification("Reservation cancelled successfully.", "success", 3000);
+                    queryClient.invalidateQueries({ queryKey: ["reservations"] });
                   } catch (err) {
                     console.error("Cancel failed:", err);
                     setIsCancelling(false);
                     setShowCancelModal(false);
-                    alert("Failed to cancel reservation. Please try again.");
+                    showNotification("Failed to cancel reservation. Please try again.", "error", 4000);
                   }
                 }}
                 disabled={isCancelling}
@@ -629,6 +609,7 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
   );
 }
 
+
 /* ── styles ──────────────────────────────────────────────────────────────── */
 
 const styles = {
@@ -636,9 +617,10 @@ const styles = {
     background: "#FFFFFF",
     borderRadius: 12,
     border: "1px solid #E2E8F0",
-    padding: "28px 32px",
-    marginBottom: 24,
+    padding: "24px 28px",
+    marginBottom: 0,
   },
+
 
   /* empty state */
   emptyState: {
@@ -683,7 +665,7 @@ const styles = {
 
   /* header */
   header: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   headerRow: {
     display: "flex",
@@ -881,9 +863,41 @@ const styles = {
 
   /* footer */
   footer: {
-    marginTop: 16,
-    textAlign: "center",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 20,
+    paddingTop: 16,
+    borderTop: "1px solid #F1F5F9",
   },
+  footerLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+  footerLinkSecondary: {
+    background: "none",
+    border: "none",
+    color: "#64748B",
+    fontSize: 13,
+    cursor: "pointer",
+    padding: "6px 10px",
+    borderRadius: 6,
+    fontWeight: 500,
+    transition: "background 0.15s, color 0.15s",
+  },
+  footerLinkDanger: {
+    background: "none",
+    border: "1px solid #FCA5A5",
+    color: "#DC2626",
+    fontSize: 13,
+    cursor: "pointer",
+    padding: "6px 12px",
+    borderRadius: 6,
+    fontWeight: 500,
+    transition: "background 0.15s",
+  },
+  /* keep for any legacy references */
   cancelLink: {
     background: "none",
     border: "none",

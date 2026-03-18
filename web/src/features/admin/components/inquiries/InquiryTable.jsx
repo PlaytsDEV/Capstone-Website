@@ -227,7 +227,13 @@ export default function InquiryTable({
     return <div className="admin-inquiries-error">{error}</div>;
   }
   if (inquiries.length === 0) {
-    return <div className="admin-inquiries-empty">No inquiries found.</div>;
+    return (
+      <div className="admin-inquiries-empty" style={{ padding: "60px 24px", textAlign: "center" }}>
+        <div style={{ fontSize: "32px", marginBottom: "12px", opacity: 0.4 }}>📬</div>
+        <div style={{ fontSize: "15px", fontWeight: "500", color: "#374151", marginBottom: "6px" }}>No inquiries found</div>
+        <div style={{ fontSize: "13px", color: "#9CA3AF" }}>Inquiries from the landing page contact form will appear here.</div>
+      </div>
+    );
   }
 
   return (

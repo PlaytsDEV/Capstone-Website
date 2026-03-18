@@ -1,9 +1,11 @@
 import { Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
+import SEOHead from "../../../shared/components/SEOHead";
 
 export function PrivacyPolicyPage() {
   return (
     <div className="min-h-screen bg-gray-50">
+      <SEOHead title="Privacy Policy" description="Read Lilycrest Dormitory's privacy policy — how we collect, use, and protect your personal information." />
       {/* Header */}
       <div style={{ backgroundColor: "#0A1628" }} className="py-16 lg:py-20">
         <div className="max-w-screen-2xl mx-auto px-8 lg:px-12">

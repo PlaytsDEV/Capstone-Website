@@ -25,13 +25,14 @@
  */
 
 import { getAuth } from "../config/firebase.js";
+import crypto from "crypto";
 
 /* ─── In-memory token verification cache (avoids hitting Firebase each request) ── */
 const tokenCache = new Map();
 const TOKEN_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 function getCachedToken(token) {
-  const key = token.slice(-40); // use last 40 chars as key (unique enough, avoids storing full token)
+  const key = crypto.createHash("sha256").update(token).digest("hex");
   const entry = tokenCache.get(key);
   if (!entry) return null;
   if (Date.now() - entry.ts > TOKEN_CACHE_TTL) {
@@ -42,7 +43,7 @@ function getCachedToken(token) {
 }
 
 function setCachedToken(token, decoded) {
-  const key = token.slice(-40);
+  const key = crypto.createHash("sha256").update(token).digest("hex");
   tokenCache.set(key, { decoded, ts: Date.now() });
   // Evict old entries if cache grows too large
   if (tokenCache.size > 500) {

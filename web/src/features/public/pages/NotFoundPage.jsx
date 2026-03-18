@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { Home, ArrowRight } from "lucide-react";
+import SEOHead from "../../../shared/components/SEOHead";
 
 export default function NotFoundPage() {
   return (
@@ -16,6 +17,7 @@ export default function NotFoundPage() {
         fontFamily: "'Plus Jakarta Sans', sans-serif",
       }}
     >
+      <SEOHead title="Page Not Found" description="The page you're looking for doesn't exist or has been moved." />
       {/* 404 Number */}
       <p
         style={{

@@ -1,250 +1,255 @@
-import React from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { User, Bed, ArrowRight } from "lucide-react";
+import React, { useState, useEffect } from "react";
 import ReservationDashboard from "../ReservationDashboard";
 import ProfileCompletionCard from "./ProfileCompletionCard";
+import VisitPassCard3D from "./VisitPassCard3D";
+import VisitPassEmpty from "./VisitPassEmpty";
+import { Calendar, Clock, CheckCircle, AlertCircle } from "lucide-react";
+
+/* ── Status Banner — contextual info based on reservation state ── */
+const StatusBanner = ({ reservation }) => {
+  if (!reservation) return null;
+
+  const status = reservation.reservationStatus || reservation.status;
+  const isConfirmed = status === "reserved" || reservation.paymentStatus === "paid";
+  const visitDate = reservation.visitDate;
+  const visitApproved = reservation.visitApproved || reservation.scheduleApproved;
+  const hasApplication = reservation.firstName && reservation.lastName && reservation.mobileNumber;
+
+  // Confirmed — show reservation code
+  if (isConfirmed && reservation.reservationCode) {
+    return (
+      <div style={{ ...bannerBase, background: "#F0FDF4", borderColor: "#BBF7D0" }}>
+        <CheckCircle size={18} color="#059669" style={{ flexShrink: 0 }} />
+        <div style={{ flex: 1 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "#065F46" }}>
+            Reservation Confirmed
+          </span>
+          <span style={{ fontSize: 12, color: "#047857", marginLeft: 8 }}>
+            Code: <strong>{reservation.reservationCode}</strong>
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  // Visit scheduled but not approved — countdown
+  if (visitDate && !visitApproved) {
+    const daysUntil = Math.ceil((new Date(visitDate) - new Date()) / (1000 * 60 * 60 * 24));
+    const dateStr = new Date(visitDate).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return (
+      <div style={{ ...bannerBase, background: "#EFF6FF", borderColor: "#BFDBFE" }}>
+        <Calendar size={18} color="#2563EB" style={{ flexShrink: 0 }} />
+        <div style={{ flex: 1 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "#1E40AF" }}>
+            {daysUntil > 0
+              ? `Visit in ${daysUntil} day${daysUntil !== 1 ? "s" : ""}`
+              : daysUntil === 0
+                ? "Visit is today!"
+                : `Visit was on ${dateStr}`}
+          </span>
+          <span style={{ fontSize: 12, color: "#3B82F6", marginLeft: 8 }}>
+            {dateStr}{reservation.visitTime ? ` · ${reservation.visitTime}` : ""}
+          </span>
+        </div>
+        <span style={{ fontSize: 11, color: "#D97706", fontWeight: 600, background: "#FFFBEB", padding: "3px 10px", borderRadius: 12 }}>
+          Pending Approval
+        </span>
+      </div>
+    );
+  }
+
+  // Visit approved, application not yet submitted
+  if (visitApproved && !hasApplication) {
+    return (
+      <div style={{ ...bannerBase, background: "#FFF7ED", borderColor: "#FED7AA" }}>
+        <AlertCircle size={18} color="#EA580C" style={{ flexShrink: 0 }} />
+        <span style={{ fontSize: 13, fontWeight: 600, color: "#9A3412" }}>
+          Visit approved — complete your application to continue
+        </span>
+      </div>
+    );
+  }
+
+  // Application submitted, payment pending
+  if (hasApplication && !isConfirmed) {
+    return (
+      <div style={{ ...bannerBase, background: "#FFF7ED", borderColor: "#FED7AA" }}>
+        <Clock size={18} color="#D97706" style={{ flexShrink: 0 }} />
+        <span style={{ fontSize: 13, fontWeight: 600, color: "#92400E" }}>
+          Application submitted — pay the reservation fee to secure your spot
+        </span>
+      </div>
+    );
+  }
+
+  return null;
+};
+
+const bannerBase = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  padding: "10px 16px",
+  borderRadius: 10,
+  border: "1px solid",
+  marginBottom: 16,
+};
 
 /**
- * Dashboard tab content for ProfilePage.
- * Shows welcome banner, quick action cards, and ReservationDashboard.
+ * DashboardTab — CSS Grid layout
+ *
+ *  DESKTOP (>768px):
+ *  ┌── Profile Completion ──────────┐ ┌── Visit Pass ─────────┐
+ *  │  ████░░░ 44%                   │ │                        │
+ *  └────────────────────────────────┘ │  3D card or empty      │
+ *  ┌── Reservation Progress ────────┐ │  (spans both rows)     │
+ *  │  Stepper, action, footer       │ │                        │
+ *  └────────────────────────────────┘ └────────────────────────┘
+ *
+ *  MOBILE (≤768px): single column, visit pass below reservation
  */
 const DashboardTab = ({
   profileData,
   activeReservation,
   selectedReservation,
   visits,
-  nextAction,
   onGoToPersonal,
 }) => {
-  const navigate = useNavigate();
+  const res = selectedReservation;
+  const room = res?.roomId || {};
+  const roomName = room.name;
+
+  // 3D card appears when a visit date+time exist (pending or approved)
+  const showCard = !!(res?.visitDate && res?.visitTime);
+
+  // Responsive: detect if we're on mobile
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+
+  const gridStyle = isMobile
+    ? S.gridMobile
+    : S.grid;
+
+  const rightColStyle = isMobile
+    ? S.rightColMobile
+    : S.rightCol;
 
   return (
-    <div className="max-w-5xl">
-      {/* Profile Completion Card — auto-hides at 100% */}
-      <ProfileCompletionCard
-        profileData={profileData}
-        onGoToPersonal={onGoToPersonal}
-      />
+    <div style={S.root}>
 
-      {/* Welcome Banner */}
-      <div
-        style={{
-          background: "linear-gradient(135deg, #0A1628 0%, #1E5A8E 100%)",
-          borderRadius: "16px",
-          padding: "28px 32px",
-          marginBottom: "28px",
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            position: "absolute",
-            top: "-30px",
-            right: "-30px",
-            width: "160px",
-            height: "160px",
-            borderRadius: "50%",
-            background: "rgba(212,152,43,0.12)",
-          }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            bottom: "-20px",
-            right: "60px",
-            width: "100px",
-            height: "100px",
-            borderRadius: "50%",
-            background: "rgba(255,255,255,0.05)",
-          }}
-        />
-        <h1
-          style={{
-            fontSize: "22px",
-            fontWeight: 700,
-            color: "#fff",
-            margin: "0 0 6px",
-            letterSpacing: "-0.02em",
-          }}
-        >
-          Welcome back, {profileData.firstName || "there"}!
-        </h1>
-        <p
-          style={{
-            fontSize: "14px",
-            color: "rgba(255,255,255,0.7)",
-            margin: 0,
-            lineHeight: 1.5,
-          }}
-        >
+      {/* ── Page header ─────────────────────────────────────── */}
+      <div style={S.pageHeader}>
+        <h2 style={S.pageTitle}>
           {activeReservation
-            ? "Your reservation is in progress. Continue where you left off."
-            : "Start your reservation by browsing available rooms."}
+            ? roomName
+              ? `Reservation · ${roomName}`
+              : "My Reservation"
+            : "Dashboard"}
+        </h2>
+        <p style={S.pageSubtitle}>
+          {activeReservation
+            ? "Track your progress and manage your reservation below."
+            : "Browse available rooms to start your reservation."}
         </p>
       </div>
 
-      {/* Quick Actions */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-          gap: "16px",
-          marginBottom: "28px",
-        }}
-      >
-        <QuickActionCard
-          to="/applicant/check-availability"
-          icon={<Bed className="w-5 h-5" style={{ color: "#FF8C42" }} />}
-          iconBg="#FFF7ED"
-          hoverColor="#FF8C42"
-          title="Browse Rooms"
-          subtitle="View available rooms"
-        />
+      {/* ── Context-aware status banner ─────────────────────── */}
+      <StatusBanner reservation={selectedReservation} />
 
-        {activeReservation ? (
-          <QuickActionButton
-            onClick={() => {
-              if (nextAction.reservationId && nextAction.step) {
-                navigate("/applicant/reservation", {
-                  state: {
-                    reservationId: nextAction.reservationId,
-                    continueFlow: true,
-                    step: nextAction.step,
-                  },
-                });
-              }
-            }}
-            icon={
-              <ArrowRight className="w-5 h-5" style={{ color: "#10B981" }} />
-            }
-            iconBg="#ECFDF5"
-            hoverColor="#10B981"
-            title={nextAction.title}
-            subtitle="Continue your application"
+      {/* ── Main grid: left stacks, right spans ─────────────── */}
+      <div style={gridStyle}>
+
+        {/* Left col, row 1: Profile Completion */}
+        <div style={isMobile ? {} : S.leftTop}>
+          <ProfileCompletionCard
+            profileData={profileData}
+            onGoToPersonal={onGoToPersonal}
           />
-        ) : (
-          <QuickActionButton
-            onClick={() =>
-              navigate("/applicant/profile", { state: { tab: "personal" } })
-            }
-            icon={<User className="w-5 h-5" style={{ color: "#6366F1" }} />}
-            iconBg="#EEF2FF"
-            hoverColor="#6366F1"
-            title="Complete Profile"
-            subtitle="Update your info"
+        </div>
+
+        {/* Left col, row 2: Reservation progress */}
+        <div style={isMobile ? {} : S.leftBottom}>
+          <ReservationDashboard
+            reservation={selectedReservation}
+            visits={visits}
           />
-        )}
+        </div>
+
+        {/* Right col: spans both rows on desktop, below on mobile */}
+        <div style={rightColStyle}>
+          {showCard
+            ? <VisitPassCard3D reservation={selectedReservation} />
+            : <VisitPassEmpty />
+          }
+        </div>
+
       </div>
 
-      {/* Reservation Dashboard */}
-      <ReservationDashboard reservation={selectedReservation} visits={visits} />
     </div>
   );
 };
 
-// ─── Shared quick-action primitives ──────────────────────────
+/* ── styles ─────────────────────────────────────────────── */
+const S = {
+  root: {
+    maxWidth: 960,
+  },
+  pageHeader: {
+    marginBottom: 16,
+  },
+  pageTitle: {
+    fontSize: 20,
+    fontWeight: 700,
+    color: "#0F172A",
+    margin: "0 0 2px",
+    letterSpacing: "-0.01em",
+  },
+  pageSubtitle: {
+    fontSize: 13,
+    color: "#94A3B8",
+    margin: "0 0 16px",
+  },
 
-const cardStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: "14px",
-  padding: "18px 20px",
-  backgroundColor: "#fff",
-  borderRadius: "12px",
-  border: "1px solid #E8EBF0",
-  textDecoration: "none",
-  textAlign: "left",
-  cursor: "pointer",
-  transition: "all 0.2s",
+  /* Desktop grid — enforces same proportions regardless of content height */
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 280px",
+    gridTemplateRows: "auto 1fr",
+    gap: 16,
+    minHeight: 440,   // ← locks right column height to match "active" state
+  },
+  leftTop: {
+    gridColumn: 1,
+    gridRow: 1,
+  },
+  leftBottom: {
+    gridColumn: 1,
+    gridRow: 2,
+  },
+  rightCol: {
+    gridColumn: 2,
+    gridRow: "1 / -1",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "stretch",
+    alignSelf: "stretch",
+  },
+
+  /* Mobile — single column, visit pass sits below */
+  gridMobile: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 16,
+  },
+  rightColMobile: {
+    minHeight: 220,
+    display: "flex",
+    flexDirection: "column",
+  },
 };
-
-const hoverIn = (e, color) => {
-  e.currentTarget.style.borderColor = color;
-  e.currentTarget.style.transform = "translateY(-2px)";
-  e.currentTarget.style.boxShadow = "0 4px 12px rgba(0,0,0,0.06)";
-};
-
-const hoverOut = (e) => {
-  e.currentTarget.style.borderColor = "#E8EBF0";
-  e.currentTarget.style.transform = "translateY(0)";
-  e.currentTarget.style.boxShadow = "none";
-};
-
-const IconBox = ({ bg, children }) => (
-  <div
-    style={{
-      width: "42px",
-      height: "42px",
-      borderRadius: "10px",
-      backgroundColor: bg,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      flexShrink: 0,
-    }}
-  >
-    {children}
-  </div>
-);
-
-const QuickActionCard = ({ to, icon, iconBg, hoverColor, title, subtitle }) => (
-  <Link
-    to={to}
-    style={cardStyle}
-    onMouseEnter={(e) => hoverIn(e, hoverColor)}
-    onMouseLeave={hoverOut}
-  >
-    <IconBox bg={iconBg}>{icon}</IconBox>
-    <div>
-      <p
-        style={{
-          fontSize: "14px",
-          fontWeight: 600,
-          color: "#1F2937",
-          margin: 0,
-        }}
-      >
-        {title}
-      </p>
-      <p style={{ fontSize: "12px", color: "#94A3B8", margin: "2px 0 0" }}>
-        {subtitle}
-      </p>
-    </div>
-  </Link>
-);
-
-const QuickActionButton = ({
-  onClick,
-  icon,
-  iconBg,
-  hoverColor,
-  title,
-  subtitle,
-}) => (
-  <button
-    onClick={onClick}
-    style={cardStyle}
-    onMouseEnter={(e) => hoverIn(e, hoverColor)}
-    onMouseLeave={hoverOut}
-  >
-    <IconBox bg={iconBg}>{icon}</IconBox>
-    <div>
-      <p
-        style={{
-          fontSize: "14px",
-          fontWeight: 600,
-          color: "#1F2937",
-          margin: 0,
-        }}
-      >
-        {title}
-      </p>
-      <p style={{ fontSize: "12px", color: "#94A3B8", margin: "2px 0 0" }}>
-        {subtitle}
-      </p>
-    </div>
-  </button>
-);
 
 export default DashboardTab;
