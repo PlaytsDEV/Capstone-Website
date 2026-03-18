@@ -176,7 +176,7 @@ const ActivityHistoryTab = ({ reservation }) => {
 
   if (events.length === 0) {
     return (
-      <div style={{ maxWidth: 960 }}>
+      <div style={{ maxWidth: 1200 }}>
         <div style={s.heading}>
           <h1 style={s.title}>Activity Log</h1>
           <p style={s.subtitle}>Your reservation journey at a glance</p>
@@ -195,7 +195,7 @@ const ActivityHistoryTab = ({ reservation }) => {
   }
 
   return (
-    <div style={{ maxWidth: 960 }}>
+    <div style={{ maxWidth: 1200 }}>
       <div style={s.heading}>
         <h1 style={s.title}>Activity Log</h1>
         <p style={s.subtitle}>Your reservation journey at a glance</p>

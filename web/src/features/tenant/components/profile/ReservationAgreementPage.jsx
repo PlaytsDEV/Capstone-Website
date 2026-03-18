@@ -76,7 +76,7 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
     ? dayjs(reservation.targetMoveInDate).format("MMMM D, YYYY")
     : "TBD";
   const tenantName =
-    `${reservation.firstName || profile?.firstName || ""} ${reservation.lastName || profile?.lastName || ""}`.trim() ||
+    `${profile?.firstName || reservation.firstName || ""} ${profile?.lastName || reservation.lastName || ""}`.trim() ||
     "Tenant";
   const monthlyRent = reservation.monthlyRent || reservation.totalPrice || room.price || 0;
   const paymentDate = reservation.paymentDate
@@ -117,7 +117,7 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
   };
 
   return (
-    <div style={{ maxWidth: 960, margin: "0 auto", padding: "8px 16px 24px" }}>
+    <div style={{ maxWidth: 1200, padding: "8px 16px 24px" }}>
 
       {/* ── Hero Image ──────────────────────────────── */}
       <div
@@ -134,24 +134,32 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
             src={heroImage}
             alt={room.name || "Room"}
             style={{ width: "100%", height: 340, objectFit: "cover", display: "block" }}
+            onError={(e) => {
+              // Replace with the no-photo fallback if URL is invalid
+              e.currentTarget.style.display = "none";
+              const parent = e.currentTarget.parentElement;
+              const fallback = parent.querySelector("[data-photo-fallback]");
+              if (fallback) fallback.style.display = "flex";
+            }}
           />
         ) : (
           <div
+            data-photo-fallback
             style={{
               width: "100%",
-              height: 260,
+              height: 140,
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
               color: "#475569",
-              gap: 12,
+              gap: 8,
               background: "linear-gradient(135deg, #0F172A 0%, #1E293B 100%)",
             }}
           >
-            <Building size={48} style={{ opacity: 0.4, color: "#94A3B8" }} />
-            <span style={{ fontSize: 13, color: "#94A3B8", fontWeight: 500 }}>
-              No room photos available
+            <Building size={32} style={{ opacity: 0.3, color: "#94A3B8" }} />
+            <span style={{ fontSize: 12, color: "#64748B", fontWeight: 500 }}>
+              Room photos not yet available
             </span>
           </div>
         )}
@@ -219,8 +227,8 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
                 branchDisplay,
                 `${ordinal(room.floor || 1)} Floor`,
                 roomType,
-                `${room.capacity || "—"} beds`,
-              ].map((tag) => (
+                room.capacity ? `${room.capacity} beds` : null,
+              ].filter(Boolean).map((tag) => (
                 <span
                   key={tag}
                   style={{
@@ -261,7 +269,7 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
                 <span style={{ color: "#64748B", display: "flex", alignItems: "center", gap: 6 }}>
                   <Users size={14} /> Capacity
                 </span>
-                <span style={{ color: "#0A1628", fontWeight: 600 }}>{room.capacity || "—"} beds</span>
+                <span style={{ color: "#0A1628", fontWeight: 600 }}>{room.capacity ? `${room.capacity} beds` : "N/A"}</span>
               </div>
               <div style={detailRow}>
                 <span style={{ color: "#64748B", display: "flex", alignItems: "center", gap: 6 }}>

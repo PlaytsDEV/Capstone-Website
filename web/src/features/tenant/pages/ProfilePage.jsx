@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import "../../../shared/styles/notification.css";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import ProfilePageSkeleton from "../components/profile/ProfilePageSkeleton";
@@ -13,7 +14,6 @@ import {
 } from "../utils/reservationProgress";
 import { useCurrentUser } from "../../../shared/hooks/queries/useUsers";
 import { useReservations } from "../../../shared/hooks/queries/useReservations";
-import { useMyStays } from "../../../shared/hooks/queries/useUsers";
 import { billingApi } from "../../../shared/api/billingApi";
 
 // Sub-components
@@ -29,6 +29,7 @@ import {
   ProfileCompletionCard,
   ContractTab,
   ReservationAgreementPage,
+  StaysTab,
 } from "../components/profile";
 
 // ─────────────────────────────────────────────────────────────
@@ -53,6 +54,14 @@ const ProfilePage = () => {
   const [receiptModal, setReceiptModal] = useState({ open: false, step: null });
   const [selectedReservationId, setSelectedReservationId] = useState(null);
 
+  // Mobile detection for layout
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768);
+  useEffect(() => {
+    const h = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener("resize", h);
+    return () => window.removeEventListener("resize", h);
+  }, []);
+
   const [profileData, setProfileData] = useState({
     firstName: "",
     lastName: "",
@@ -69,9 +78,7 @@ const ProfilePage = () => {
     dateOfBirth: "",
     emergencyContact: "",
     emergencyPhone: "",
-    studentId: "",
-    school: "",
-    yearLevel: "",
+
   });
 
   const [editData, setEditData] = useState({
@@ -84,15 +91,12 @@ const ProfilePage = () => {
     dateOfBirth: "",
     emergencyContact: "",
     emergencyPhone: "",
-    studentId: "",
-    school: "",
-    yearLevel: "",
+
   });
 
   // ── TanStack Query data fetching ──────────────────────────
   const { data: profile, isLoading: profileLoading } = useCurrentUser();
   const { data: reservationsData, isLoading: reservationsLoading } = useReservations();
-  const { data: stayData } = useMyStays(activeTab === "stays");
 
   // Only show full-screen loader on FIRST load (no cached data yet).
   // Refetches happen silently in background — no stutter/flash.
@@ -112,9 +116,7 @@ const ProfilePage = () => {
       dateOfBirth: profile.dateOfBirth || "",
       emergencyContact: profile.emergencyContact || "",
       emergencyPhone: profile.emergencyPhone || "",
-      studentId: profile.studentId || "",
-      school: profile.school || "",
-      yearLevel: profile.yearLevel || "",
+
     });
   }, [profile]);
 
@@ -248,6 +250,7 @@ const ProfilePage = () => {
     setSaving(true);
     setError(null);
     setSuccess(null);
+    const imageChanged = editData.profileImage && editData.profileImage !== profileData.profileImage;
     try {
       const updatedUser = await authFetch("/auth/profile", {
         method: "PUT",
@@ -259,7 +262,11 @@ const ProfilePage = () => {
       if (updateUser) updateUser(updatedUser.user);
       // Invalidate cache so sidebar/header reflect new data immediately
       queryClient.invalidateQueries({ queryKey: ["users", "currentUser"] });
-      showNotification("Profile updated successfully!", "success", 3000);
+      if (imageChanged) {
+        showNotification("Profile photo updated successfully!", "success", 3000);
+      } else {
+        showNotification("Profile updated successfully!", "success", 3000);
+      }
     } catch (err) {
       console.error("Error updating profile:", err);
       setError("Failed to update profile. Please try again.");
@@ -280,9 +287,7 @@ const ProfilePage = () => {
       dateOfBirth: profileData.dateOfBirth || "",
       emergencyContact: profileData.emergencyContact || "",
       emergencyPhone: profileData.emergencyPhone || "",
-      studentId: profileData.studentId || "",
-      school: profileData.school || "",
-      yearLevel: profileData.yearLevel || "",
+
     });
     setIsEditingProfile(false);
   };
@@ -314,10 +319,7 @@ const ProfilePage = () => {
     editData.city !== (profileData.city || "") ||
     editData.dateOfBirth !== (profileData.dateOfBirth || "") ||
     editData.emergencyContact !== (profileData.emergencyContact || "") ||
-    editData.emergencyPhone !== (profileData.emergencyPhone || "") ||
-    editData.studentId !== (profileData.studentId || "") ||
-    editData.school !== (profileData.school || "") ||
-    editData.yearLevel !== (profileData.yearLevel || "")
+    editData.emergencyPhone !== (profileData.emergencyPhone || "")
   );
 
   const handleTabChange = (newTab) => {
@@ -399,7 +401,7 @@ const ProfilePage = () => {
   // ── Render ─────────────────────────────────────────────────
   return (
     <>
-      <div className="min-h-screen flex" style={{ backgroundColor: "#F7F8FA" }}>
+      <div className="min-h-screen flex" style={{ backgroundColor: "#F7F8FA", overflow: "hidden" }}>
         <ProfileSidebar
           activeTab={activeTab}
           setActiveTab={handleTabChange}
@@ -409,10 +411,10 @@ const ProfilePage = () => {
           onLogout={handleLogout}
         />
 
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col" style={{ minWidth: 0, overflowX: "hidden" }}>
 
           <main className="flex-1 overflow-auto">
-            <div className="p-8">
+            <div style={{ padding: isMobile ? '16px 16px 16px' : 32, paddingTop: isMobile ? 72 : 32 }}>
               {activeTab === "dashboard" && (
                 <DashboardTab
                   profileData={profileData}
@@ -455,6 +457,7 @@ const ProfilePage = () => {
 
               {activeTab === "notifications" && <NotificationsTab />}
               {activeTab === "settings" && <SettingsTab />}
+              {activeTab === "stays" && <StaysTab />}
             </div>
           </main>
         </div>

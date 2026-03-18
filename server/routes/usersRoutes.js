@@ -39,6 +39,7 @@ import {
   reactivateUser,
   banUser,
   updatePermissions,
+  getMyStays,
 } from "../controllers/usersController.js";
 
 const router = express.Router();
@@ -149,6 +150,19 @@ router.patch("/:userId/permissions", verifyToken, verifySuperAdmin, updatePermis
  * - order: Sort order (asc/desc, default: desc)
  */
 router.get("/", verifyToken, verifyAdmin, filterByBranch, getUsers);
+
+// ============================================================================
+// GET MY STAY HISTORY (Tenant)
+// ============================================================================
+
+/**
+ * GET /api/users/my-stays
+ *
+ * Retrieve current user's stay history.
+ *
+ * Access: Authenticated user (tenant)
+ */
+router.get("/my-stays", verifyToken, getMyStays);
 
 // ============================================================================
 // GET SINGLE USER

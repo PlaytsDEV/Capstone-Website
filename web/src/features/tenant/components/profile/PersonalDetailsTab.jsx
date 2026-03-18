@@ -47,7 +47,7 @@ const validateField = (field, value) => {
 
 /* ── Styles ──────────────────────────────────────── */
 const s = {
-  container: { maxWidth: 960 },
+  container: { maxWidth: 1200 },
   heading: { marginBottom: 24 },
   title: { fontSize: 22, fontWeight: 700, color: "#0A1628", margin: 0 },
   subtitle: { fontSize: 13, color: "#9CA3AF", marginTop: 4 },
@@ -643,7 +643,7 @@ const PersonalDetailsTab = ({
           label="Date of Birth"
           field="dateOfBirth"
           type="date"
-          value={profileData.dateOfBirth}
+          value={isEditingProfile ? (editData?.dateOfBirth || "") : profileData.dateOfBirth}
           {...fieldProps}
         />
       </Section>

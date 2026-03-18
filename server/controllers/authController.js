@@ -5,12 +5,18 @@
 
 import { getAuth } from "../config/firebase.js";
 import { User, LoginLog } from "../models/index.js";
+import logger from "../middleware/logger.js";
 import auditLogger from "../utils/auditLogger.js";
 import {
   sendSuccess,
   sendError,
   AppError,
 } from "../middleware/errorHandler.js";
+import {
+  sanitizeName,
+  sanitizePhone,
+  sanitizeText,
+} from "../middleware/validation.js";
 
 
 const VALID_BRANCHES = ["gil-puyat", "guadalupe"];
@@ -309,14 +315,7 @@ export const getProfile = async (req, res, next) => {
   }
 };
 
-/** Sanitize a name field — strip HTML/injection characters */
-const sanitizeName = (s) => s?.trim().replace(/[<>"'&]/g, "") || "";
 
-/** Sanitize a phone field — strip non-phone characters */
-const sanitizePhone = (s) => s?.replace(/[^\d+\-() ]/g, "") || "";
-
-/** Sanitize general text — strip dangerous characters */
-const sanitizeText = (s) => s?.trim().replace(/[<>"'&]/g, "") || "";
 
 export const updateProfile = async (req, res, next) => {
   try {
@@ -328,6 +327,31 @@ export const updateProfile = async (req, res, next) => {
     const phone = req.body.phone ? sanitizePhone(req.body.phone) : undefined;
     const profileImage =
       req.body.profileImage !== undefined ? req.body.profileImage : undefined;
+
+    // S5: Validate profileImage size and MIME type if provided
+    // Only validate base64 data URLs — skip for already-uploaded external URLs (e.g. ImageKit)
+    if (profileImage && typeof profileImage === "string" && profileImage.length > 0) {
+      const isDataUrl = profileImage.startsWith("data:");
+      if (isDataUrl) {
+        const dataUrlMatch = profileImage.match(/^data:(image\/(?:jpeg|png|gif|webp));base64,/);
+        if (!dataUrlMatch) {
+          return res.status(400).json({
+            error: "Profile image must be a valid base64-encoded image (JPEG, PNG, GIF, or WebP).",
+            code: "INVALID_IMAGE_FORMAT",
+          });
+        }
+        const base64Data = profileImage.substring(dataUrlMatch[0].length);
+        const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB decoded
+        const estimatedBytes = Math.ceil(base64Data.length * 3 / 4);
+        if (estimatedBytes > MAX_IMAGE_BYTES) {
+          return res.status(400).json({
+            error: "Profile image is too large. Maximum size is 5 MB.",
+            code: "IMAGE_TOO_LARGE",
+          });
+        }
+      }
+      // External URLs (https://...) pass through without validation
+    }
 
     // Sanitize input — extended profile fields
     const gender = req.body.gender !== undefined ? req.body.gender : undefined;
@@ -580,7 +604,7 @@ export const logPasswordReset = async (req, res, next) => {
 
     res.json({ message: "Logged" });
   } catch (error) {
-    console.error("❌ Failed to log password reset:", error);
+    logger.error({ err: error, requestId: req.id }, "Failed to log password reset");
     // Don't break the flow — just acknowledge
     res.json({ message: "Logged" });
   }

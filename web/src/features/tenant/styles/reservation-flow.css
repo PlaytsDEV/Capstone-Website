@@ -1304,3 +1304,142 @@
   }
 }
 
+/* ============ MOBILE RESPONSIVE ============ */
+@media (max-width: 768px) {
+  /* Layout */
+  .reservation-layout {
+    padding: 16px 12px 32px;
+  }
+
+  /* Stepper — icons only, labels hidden */
+  .rf-stepper {
+    padding: 14px 12px;
+    margin-bottom: 16px;
+  }
+
+  .rf-stepper-label {
+    display: none;
+  }
+
+  .rf-stepper-dot {
+    width: 28px;
+    height: 28px;
+    font-size: 11px;
+  }
+
+  .rf-stepper-line {
+    min-width: 16px;
+    margin-top: 13px;
+  }
+
+  /* Room banner — stack */
+  .rf-room-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+  }
+
+  .rf-room-banner-price {
+    text-align: left;
+  }
+
+  /* Content cards */
+  .reservation-card,
+  .content-card {
+    padding: 18px 14px;
+    border-radius: 10px;
+  }
+
+  /* Form rows — single column */
+  .form-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  /* Headers */
+  .main-header-title,
+  .stage-title {
+    font-size: 20px;
+  }
+
+  .main-header-subtitle,
+  .stage-subtitle {
+    font-size: 13px;
+  }
+
+  /* Summary section */
+  .summary-section {
+    padding: 14px;
+  }
+
+  .summary-row {
+    padding: 8px 0;
+  }
+
+  .summary-label {
+    font-size: 12px;
+  }
+
+  .summary-value {
+    font-size: 13px;
+  }
+
+  .total-section {
+    margin: 0 -14px -14px;
+    padding: 12px 14px;
+  }
+
+  /* Reservation code */
+  .code-value {
+    font-size: 18px;
+  }
+
+  /* Breadcrumb */
+  .rf-breadcrumb {
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+
+  /* File upload */
+  .file-upload {
+    padding: 16px;
+  }
+
+  /* Detail list */
+  .detail-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 8px 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .reservation-layout {
+    padding: 12px 8px 24px;
+  }
+
+  .reservation-card,
+  .content-card {
+    padding: 14px 10px;
+  }
+
+  .rf-stepper-dot {
+    width: 24px;
+    height: 24px;
+    font-size: 10px;
+  }
+
+  .rf-stepper-line {
+    min-width: 12px;
+    margin-top: 11px;
+  }
+
+  .main-header-title,
+  .stage-title {
+    font-size: 18px;
+  }
+}
+

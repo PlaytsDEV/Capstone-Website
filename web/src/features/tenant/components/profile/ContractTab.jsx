@@ -136,18 +136,42 @@ const ContractTab = () => {
     return (
       <div
         style={{
-          background: "#fff",
-          borderRadius: 12,
-          padding: "48px 32px",
-          textAlign: "center",
-          border: "1px solid #E8EBF0",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minHeight: "60vh",
         }}
       >
-        <FileText className="w-12 h-12" style={{ color: "#D1D5DB", margin: "0 auto 16px" }} />
-        <h3 style={{ color: "#1F2937", fontSize: 18, fontWeight: 600, marginBottom: 8 }}>No Active Contract</h3>
-        <p style={{ color: "#94A3B8", fontSize: 14 }}>
-          You don't have an active lease yet. Your contract will appear here once you've checked in.
-        </p>
+        <div
+          style={{
+            background: "#fff",
+            borderRadius: 16,
+            padding: "56px 40px",
+            textAlign: "center",
+            border: "1px solid #E8EBF0",
+            maxWidth: 420,
+            width: "100%",
+          }}
+        >
+          <div
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: "50%",
+              background: "#F8FAFC",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 20px",
+            }}
+          >
+            <FileText className="w-7 h-7" style={{ color: "#CBD5E1" }} />
+          </div>
+          <h3 style={{ color: "#1F2937", fontSize: 18, fontWeight: 600, marginBottom: 8 }}>No Active Contract</h3>
+          <p style={{ color: "#94A3B8", fontSize: 14, lineHeight: 1.6, margin: 0 }}>
+            Your lease contract will appear here once you've been checked in by the admin. If you have questions, contact your branch manager.
+          </p>
+        </div>
       </div>
     );
   }
@@ -155,7 +179,7 @@ const ContractTab = () => {
   const monthsLeft = contract.leaseDuration - contract.monthsCompleted;
 
   return (
-    <div style={{ maxWidth: 960, margin: "0 auto" }}>
+    <div style={{ maxWidth: 1200, margin: "0 auto" }}>
       {/* ── Header ──────────────────────────────────── */}
       <div
         style={{

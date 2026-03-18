@@ -40,6 +40,13 @@ const reservationSchema = new mongoose.Schema(
       unique: true,
       sparse: true,
     },
+    // User-facing visit pass code — generated when visit is scheduled (before payment)
+    // Format: VIS-XXXXXX (6 alphanumeric chars)
+    visitCode: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
     paymentReference: {
       type: String,
       unique: true,
@@ -362,6 +369,30 @@ reservationSchema.pre("save", async function (next) {
       );
     }
   }
+
+  // Generate visitCode when visitDate is first set (visit scheduling stage)
+  if (this.visitDate && !this.visitCode) {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    const Reservation = mongoose.model("Reservation");
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      let code = "VIS-";
+      for (let i = 0; i < 6; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      const exists = await Reservation.findOne({ visitCode: code }).lean();
+      if (!exists) {
+        this.visitCode = code;
+        break;
+      }
+    }
+
+    if (!this.visitCode) {
+      // Non-fatal: fall back to a timestamp-derived code
+      this.visitCode = "VIS-" + Date.now().toString(36).toUpperCase().slice(-6);
+    }
+  }
+
   next();
 });
 

@@ -36,23 +36,12 @@ import { getAuth } from "firebase/auth";
  * - Never put service account credentials in client code
  */
 const firebaseConfig = {
-  apiKey:
-    import.meta.env.VITE_FIREBASE_API_KEY ||
-    "AIzaSyBsMEkwGFKfxp_0pItM_g5FzzG8g9Sra1o",
-  authDomain:
-    import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ||
-    "dormitorymanagement-caps-572cf.firebaseapp.com",
-  projectId:
-    import.meta.env.VITE_FIREBASE_PROJECT_ID ||
-    "dormitorymanagement-caps-572cf",
-  storageBucket:
-    import.meta.env.VITE_FIREBASE_STORAGE_BUCKET ||
-    "dormitorymanagement-caps-572cf.firebasestorage.app",
-  messagingSenderId:
-    import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "784085654130",
-  appId:
-    import.meta.env.VITE_FIREBASE_APP_ID ||
-    "1:784085654130:web:2fc1e42f23f78d665300eb",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
 /**

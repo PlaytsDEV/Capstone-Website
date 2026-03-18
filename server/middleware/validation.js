@@ -53,6 +53,15 @@ export const sanitizeString = (input) => {
 };
 
 /**
+ * Sanitize general text — strip dangerous characters while keeping readability.
+ * For profile fields like address, city, emergency contact, etc.
+ *
+ * @param {string} s - Text to sanitize
+ * @returns {string} Sanitized text
+ */
+export const sanitizeText = (s) => s?.trim().replace(/[<>"'&]/g, "") || "";
+
+/**
  * Sanitize email input
  * - Validates email format
  * - Converts to lowercase
@@ -182,7 +191,7 @@ export const validateBranch = (
  */
 export const validateRole = (
   role,
-  validRoles = ["user", "tenant", "admin", "superAdmin"],
+  validRoles = ["applicant", "tenant", "admin", "superAdmin"],
 ) => {
   if (!role || typeof role !== "string") return null;
 

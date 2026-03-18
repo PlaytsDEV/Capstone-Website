@@ -25,9 +25,7 @@ const COMPLETION_FIELDS = [
   { key: "dateOfBirth", label: "Date of Birth", required: false },
   { key: "emergencyContact", label: "Emergency Contact", required: false },
   { key: "emergencyPhone", label: "Emergency Phone", required: false },
-  { key: "studentId", label: "Student ID", required: false },
-  { key: "school", label: "School", required: false },
-  { key: "yearLevel", label: "Year Level", required: false },
+
 ];
 
 const ProfileCompletionCard = ({ profileData, onGoToPersonal }) => {

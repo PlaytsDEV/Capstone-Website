@@ -1,9 +1,11 @@
 import { Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
+import SEOHead from "../../../shared/components/SEOHead";
 
 export function TermsOfServicePage() {
   return (
     <div className="min-h-screen bg-gray-50">
+      <SEOHead title="Terms of Service" description="Terms of service for Lilycrest Dormitory — reservation, payment, cancellation, and house rules." />
       {/* Header */}
       <div style={{ backgroundColor: "#0A1628" }} className="py-16 lg:py-20">
         <div className="max-w-screen-2xl mx-auto px-8 lg:px-12">

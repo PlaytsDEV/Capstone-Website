@@ -17,6 +17,7 @@
 import dayjs from "dayjs";
 import { createCheckoutSession, getCheckoutSession } from "../config/paymongo.js";
 import { Bill, Reservation, User } from "../models/index.js";
+import logger from "../middleware/logger.js";
 import { sendPaymentApprovedEmail } from "../config/email.js";
 import { updateOccupancyOnReservationChange } from "../utils/occupancyManager.js";
 import {
@@ -169,29 +170,35 @@ export const createDepositCheckout = async (req, res, next) => {
 export const checkSessionStatus = async (req, res, next) => {
   try {
     const { sessionId } = req.params;
-    console.log(`📦 checkSessionStatus called — sessionId: ${sessionId}`);
+    logger.info({ sessionId }, "checkSessionStatus called");
     const session = await getCheckoutSession(sessionId);
     const payments = session.attributes.payments || [];
-    const isPaid = payments.length > 0;
-    console.log(`💰 Payment check — isPaid: ${isPaid}, paymentCount: ${payments.length}`);
+    // Only count payments that actually succeeded — failed/pending entries
+    // still appear in the payments array but should NOT mark as paid
+    const paidPayments = payments.filter((p) => {
+      const status = p?.attributes?.status || p?.status;
+      return status === "paid";
+    });
+    const isPaid = paidPayments.length > 0;
+    logger.info({ isPaid, totalPayments: payments.length, paidPayments: paidPayments.length }, "Payment check result");
 
     // Declare outside so it's accessible in the response
     let paymentMethod = null;
 
     if (isPaid) {
       const metadata = session.attributes.metadata || {};
-      console.log(`📋 Metadata — type: ${metadata.type}, billId: ${metadata.billId || "N/A"}, reservationId: ${metadata.reservationId || "N/A"}`);
+      logger.info({ type: metadata.type, billId: metadata.billId, reservationId: metadata.reservationId }, "Payment metadata");
 
       // Auto-mark the bill as paid
       if (metadata.type === "bill" && metadata.billId) {
         const bill = await Bill.findById(metadata.billId);
         if (bill && bill.status !== "paid") {
-          console.log(`📝 Marking bill ${metadata.billId} as paid`);
+          logger.info({ billId: metadata.billId }, "Marking bill as paid");
           bill.paidAmount = bill.totalAmount;
           bill.status = "paid";
           bill.paymentDate = new Date();
           bill.paymentMethod = "paymongo";
-          bill.paymongoPaymentId = payments[0]?.id || sessionId;
+          bill.paymongoPaymentId = paidPayments[0]?.id || sessionId;
           bill.paymentProof = {
             verificationStatus: "approved",
             verifiedAt: new Date(),
@@ -205,7 +212,7 @@ export const checkSessionStatus = async (req, res, next) => {
             if (tenant?.email) {
               const monthStr = dayjs(bill.billingMonth).format("MMMM YYYY");
               const tenantName = `${tenant.firstName || ""} ${tenant.lastName || ""}`.trim() || "Tenant";
-              console.log(`📧 Sending bill receipt to ${tenant.email}...`);
+              logger.info({ email: tenant.email }, "Sending bill receipt email");
               await sendPaymentApprovedEmail({
                 to: tenant.email,
                 tenantName,
@@ -220,44 +227,44 @@ export const checkSessionStatus = async (req, res, next) => {
                 description: `Monthly Bill — ${monthStr}`,
                 paymentMethod: "PayMongo (Online)",
                 paymentDate: dayjs().format("MMMM D, YYYY"),
-                referenceId: payments[0]?.id || sessionId,
+                referenceId: paidPayments[0]?.id || sessionId,
               });
             }
           } catch (emailErr) {
-            console.error("❌ Bill email error:", emailErr.message);
+            logger.warn({ err: emailErr }, "Bill email error");
           }
         } else {
-          console.log(`⏭️ Bill ${metadata.billId} already marked as paid — skipping`);
+          logger.info({ billId: metadata.billId }, "Bill already marked as paid — skipping");
         }
       }
 
       // Extract payment method from PayMongo's data (before saving to reservation)
-      if (isPaid && payments.length > 0) {
-        const firstPayment = payments[0];
+      if (isPaid && paidPayments.length > 0) {
+        const firstPayment = paidPayments[0];
         const payObj = firstPayment?.attributes || firstPayment;
         paymentMethod =
           payObj?.source?.type ||
           session.attributes?.payment_method_used ||
           "online";
-        console.log(`💳 Payment method detected: ${paymentMethod}`);
+        logger.info({ paymentMethod }, "Payment method detected");
       }
 
       // Auto-mark the reservation deposit as paid
       if (metadata.type === "deposit" && metadata.reservationId) {
         const reservation = await Reservation.findById(metadata.reservationId).populate("roomId", "name branch");
         if (reservation && reservation.paymentStatus !== "paid") {
-          console.log(`📝 Marking deposit for reservation ${metadata.reservationId} as paid`);
+          logger.info({ reservationId: metadata.reservationId }, "Marking deposit as paid");
           const oldStatus = reservation.status;
           reservation.paymentStatus = "paid";
           reservation.paymentDate = new Date();
           reservation.paymentMethod = paymentMethod || "paymongo";
-          reservation.paymongoPaymentId = payments[0]?.id || sessionId;
+          reservation.paymongoPaymentId = paidPayments[0]?.id || sessionId;
           reservation.status = "reserved"; // triggers reservation code generation in pre-save hook
           await reservation.save();
 
           // Lock the bed — update room occupancy (matches webhook handler)
           await updateOccupancyOnReservationChange(reservation, { status: oldStatus });
-          console.log(`🔒 Bed locked for reservation ${metadata.reservationId}`);
+          logger.info({ reservationId: metadata.reservationId }, "Bed locked for reservation");
 
           // Send receipt email for deposit
           try {
@@ -265,7 +272,7 @@ export const checkSessionStatus = async (req, res, next) => {
             if (tenant?.email) {
               const tenantName = `${tenant.firstName || ""} ${tenant.lastName || ""}`.trim() || "Tenant";
               const roomName = reservation.roomId?.name || "Room";
-              console.log(`📧 Sending deposit receipt to ${tenant.email}...`);
+              logger.info({ email: tenant.email }, "Sending deposit receipt email");
               await sendPaymentReceiptEmail({
                 to: tenant.email,
                 tenantName,
@@ -273,28 +280,28 @@ export const checkSessionStatus = async (req, res, next) => {
                 description: `Reservation Deposit — ${roomName}`,
                 paymentMethod: "PayMongo (Online)",
                 paymentDate: dayjs().format("MMMM D, YYYY"),
-                referenceId: payments[0]?.id || sessionId,
+                referenceId: paidPayments[0]?.id || sessionId,
               });
             }
           } catch (emailErr) {
-            console.error("❌ Deposit receipt email error:", emailErr.message);
+            logger.warn({ err: emailErr }, "Deposit receipt email error");
           }
         } else {
-          console.log(`⏭️ Deposit for ${metadata.reservationId} already paid — skipping`);
+          logger.info({ reservationId: metadata.reservationId }, "Deposit already paid — skipping");
         }
       }
     }
 
-    console.log(`✅ checkSessionStatus complete — status: ${isPaid ? "paid" : "pending"}`);
+    logger.info({ sessionId, status: isPaid ? "paid" : "pending" }, "checkSessionStatus complete");
 
     sendSuccess(res, {
       sessionId,
       status: isPaid ? "paid" : "pending",
-      paymentCount: payments.length,
+      paymentCount: paidPayments.length,
       paymentMethod,
     });
   } catch (error) {
-    console.error(`❌ checkSessionStatus error:`, error.message);
+    logger.error({ err: error, sessionId: req.params.sessionId }, "checkSessionStatus error");
     next(error);
   }
 };

@@ -27,6 +27,7 @@
 import React, {
   useState,
   useEffect,
+  useCallback,
   createContext,
   useContext,
   useRef,
@@ -60,40 +61,11 @@ export const AuthProvider = ({ children }) => {
   const redirectExecutedRef = useRef(false);
   const { user: firebaseUser, loading: firebaseLoading } = useFirebaseAuth();
 
-  // Sync with Firebase auth state
-  // CRITICAL: This effect syncs React state with Firebase auth state
-  // Route guards (RequireAdmin, RequireNonAdmin) handle redirects
-  useEffect(() => {
-    if (firebaseLoading) return;
-
-    if (firebaseUser) {
-      // Firebase user exists, try to get backend user data
-      // Reset logout refs when user logs in (fresh session)
-      logoutExecutedRef.current = false;
-      redirectExecutedRef.current = false;
-      logoutIntentRef.current = null; // Clear ref
-      setLogoutIntent(null); // Clear any stale logout intent
-      checkAuth();
-    } else {
-      // No Firebase user, clear state
-      setUser(null);
-      setIsAuthenticated(false);
-      setLoading(false);
-      // Clear local storage
-      localStorage.removeItem("authToken");
-      localStorage.removeItem("user");
-
-      // DO NOT clear logoutIntent here - route guards need it to show "Signing out..."
-      // The intent will be cleared when user logs in again (see firebaseUser branch above)
-      // Route guards will handle the actual redirect based on current URL
-    }
-  }, [firebaseUser, firebaseLoading]);
-
   /**
    * Check if user is authenticated by fetching profile from backend
    * @private
    */
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
     // Guard: Skip auth check during email verification resend flow.
     // The resend button temporarily signs in to Firebase just to call
     // sendEmailVerification(). We must NOT treat that transient sign-in
@@ -130,12 +102,14 @@ export const AuthProvider = ({ children }) => {
         `${userData.firstName || ""} ${userData.lastName || ""}`.trim() ||
         userData.username ||
         "Unknown";
-      console.table({
-        Name: displayName,
-        Email: userData.email || "N/A",
-        Role: userData.role || "N/A",
-        Username: userData.username || "N/A",
-      });
+      if (import.meta.env.DEV) {
+        console.table({
+          Name: displayName,
+          Email: userData.email || "N/A",
+          Role: userData.role || "N/A",
+          Username: userData.username || "N/A",
+        });
+      }
     } catch (error) {
       // User not authenticated in backend - clear state
       setUser(null);
@@ -143,7 +117,38 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Sync with Firebase auth state
+  // CRITICAL: This effect syncs React state with Firebase auth state
+  // Route guards (RequireAdmin, RequireNonAdmin) handle redirects
+  useEffect(() => {
+    if (firebaseLoading) return;
+
+    if (firebaseUser) {
+      // Firebase user exists, try to get backend user data
+      // Reset logout refs when user logs in (fresh session)
+      logoutExecutedRef.current = false;
+      redirectExecutedRef.current = false;
+      logoutIntentRef.current = null; // Clear ref
+      setLogoutIntent(null); // Clear any stale logout intent
+      checkAuth();
+    } else {
+      // No Firebase user, clear state
+      setUser(null);
+      setIsAuthenticated(false);
+      setLoading(false);
+      // Clear local storage
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("user");
+
+      // DO NOT clear logoutIntent here - route guards need it to show "Signing out..."
+      // The intent will be cleared when user logs in again (see firebaseUser branch above)
+      // Route guards will handle the actual redirect based on current URL
+    }
+  }, [firebaseUser, firebaseLoading, checkAuth]);
+
+
 
   /**
    * Login user after Firebase authentication

@@ -6,6 +6,7 @@
 import dayjs from "dayjs";
 import { User, Reservation, Room } from "../models/index.js";
 import { getAuth } from "../config/firebase.js";
+import logger from "../middleware/logger.js";
 import auditLogger from "../utils/auditLogger.js";
 import {
   sendSuccess,
@@ -485,7 +486,7 @@ export const deleteUser = async (req, res, next) => {
       const auth = getAuth();
       if (auth && user.firebaseUid) await auth.deleteUser(user.firebaseUid);
     } catch (fbErr) {
-      console.error("⚠️ Firebase deletion failed:", fbErr.message);
+      logger.warn({ err: fbErr, requestId: req.id }, "Firebase deletion failed");
     }
 
     // Hard delete from MongoDB

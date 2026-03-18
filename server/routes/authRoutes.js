@@ -14,6 +14,7 @@
 
 import express from "express";
 import { verifyToken, verifyAdmin } from "../middleware/auth.js";
+import { publicLimiter } from "../middleware/rateLimiter.js";
 import {
   validateRegisterInput,
   validateProfileUpdateInput,
@@ -117,6 +118,7 @@ router.get("/profile", verifyToken, getProfile);
 router.put(
   "/profile",
   verifyToken,
+  express.json({ limit: "8mb" }),
   createValidationMiddleware(validateProfileUpdateInput),
   updateProfile,
 );
@@ -158,7 +160,7 @@ router.post("/set-role", verifyToken, verifyAdmin, validate(setRoleSchema), setR
  * @body { email, success }
  * @returns { message }
  */
-router.post("/log-password-reset", logPasswordReset);
+router.post("/log-password-reset", publicLimiter, logPasswordReset);
 
 /**
  * POST /api/auth/revoke-sessions

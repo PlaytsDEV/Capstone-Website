@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { showNotification } from "../../../shared/utils/notification";
 import getFriendlyError from "../../../shared/utils/friendlyError";
-import { reservationApi, roomApi, billingApi } from "../../../shared/api/apiClient";
+import { reservationApi, roomApi, billingApi, authApi } from "../../../shared/api/apiClient";
 import { usePaymentRedirect } from "../hooks/usePaymentRedirect";
 import GlobalLoading from "../../../shared/components/GlobalLoading";
 import "../../../shared/styles/notification.css";
@@ -28,11 +28,11 @@ import {
 } from "./reservation-flow";
 import { uploadIfFile } from "../../../shared/utils/imageUpload";
 
-// ─────────────────────────────────────────────────────────────
-// ReservationFlowPage — orchestrator
-// 1,956 lines → ~850 lines (state, data-loading, handlers, routing)
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ReservationFlowPage â€” orchestrator
+// 1,956 lines â†’ ~850 lines (state, data-loading, handlers, routing)
 // Extracted: stepper, room banner, 3 modals, constants
-// ─────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function ReservationFlowPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -50,7 +50,7 @@ function ReservationFlowPage() {
         : null;
   const isStepMode = Boolean(stepOverride);
 
-  // ── Core state ─────────────────────────────────────────────
+  // â”€â”€ Core state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [reservationData, setReservationData] = useState(null);
   const [currentStage, setCurrentStage] = useState(1);
   const [highestStageReached, setHighestStageReached] = useState(1);
@@ -61,6 +61,7 @@ function ReservationFlowPage() {
   );
   const [visitApproved, setVisitApproved] = useState(false);
   const [visitCompleted, setVisitCompleted] = useState(false);
+  const [scheduleRejected, setScheduleRejected] = useState(false);
   const [applicationSubmitted, setApplicationSubmitted] = useState(false);
   const [editingApplication, setEditingApplication] = useState(false);
   const [paymentApproved, setPaymentApproved] = useState(false);
@@ -154,6 +155,7 @@ function ReservationFlowPage() {
 
   // Stage 5
   const [reservationCode, setReservationCode] = useState("");
+  const [visitCode, setVisitCode] = useState("");
 
   // UI state
   const [showLoginConfirm, setShowLoginConfirm] = useState(false);
@@ -169,13 +171,13 @@ function ReservationFlowPage() {
     billingEmail: "",
   });
 
-  // ── Capture payment redirect flag + status at render time (before effects clear URL) ──
+  // â”€â”€ Capture payment redirect flag + status at render time (before effects clear URL) â”€â”€
   const paymentReturnStatusRef = useRef(
     new URLSearchParams(window.location.search).get("payment")
   );
   const isPaymentReturnRef = useRef(Boolean(paymentReturnStatusRef.current));
 
-  // ── Payment redirect hook (must be after all useState) ────
+  // â”€â”€ Payment redirect hook (must be after all useState) â”€â”€â”€â”€
   const { searchParams, setSearchParams } = usePaymentRedirect({
     user,
     showNotification,
@@ -191,7 +193,7 @@ function ReservationFlowPage() {
   const isFirstRenderRef = useRef(true);
   const navigatingAwayRef = useRef(false);
 
-  // ── Warn before leaving mid-flow (skip if intentional navigation) ──
+  // â”€â”€ Warn before leaving mid-flow (skip if intentional navigation) â”€â”€
   useEffect(() => {
     const handleBeforeUnload = (e) => {
       if (navigatingAwayRef.current) return;
@@ -204,11 +206,11 @@ function ReservationFlowPage() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [isFormDirty, currentStage]);
 
-  // ── Stepper locking ────────────────────────────────────────
+  // â”€â”€ Stepper locking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const isStageLocked = (stageId) => {
     if (paymentApproved) return stageId < 5;
     if (stageId === 1) return visitCompleted;
-    if (stageId === 2) return visitApproved;
+    if (stageId === 2) return visitCompleted && !scheduleRejected; // unlock when admin rejects visit
     if (stageId === 3) return applicationSubmitted && !editingApplication;
     if (stageId === 4) return paymentSubmitted || paymentApproved;
     return false;
@@ -234,7 +236,7 @@ function ReservationFlowPage() {
     setCurrentStage(stageId);
   };
 
-  // ── Helpers to populate state from a reservation object ────
+  // â”€â”€ Helpers to populate state from a reservation object â”€â”€â”€â”€
   const populateFromReservation = (r) => {
     if (r.firstName) setFirstName(r.firstName);
     if (r.lastName) setLastName(r.lastName);
@@ -304,7 +306,31 @@ function ReservationFlowPage() {
     if (r.personalNotes) setPersonalNotes(r.personalNotes);
     if (r.validIDType) setValidIDType(r.validIDType);
     // NOTE: agreedToPrivacy / agreedToCertification are NOT restored
-    // from saved data — consent must be re-affirmed each session.
+    // from saved data â€” consent must be re-affirmed each session.
+  };
+
+  // ── Pre-fill empty fields from user profile (for new reservations) ──
+  const prefillFromProfile = async () => {
+    try {
+      const profile = await authApi.getCurrentUser();
+      if (!profile) return;
+      // Only fill fields that are still empty
+      if (!firstName && profile.firstName) setFirstName(profile.firstName);
+      if (!lastName && profile.lastName) setLastName(profile.lastName);
+      if (!mobileNumber && profile.phone) setMobileNumber(profile.phone);
+      if (!birthday && profile.dateOfBirth) {
+        const b = new Date(profile.dateOfBirth);
+        if (!isNaN(b)) setBirthday(b.toISOString().split("T")[0]);
+      }
+      if (!addressCity && profile.city) setAddressCity(profile.city);
+      if (!addressStreet && profile.address) setAddressStreet(profile.address);
+      if (!emergencyContactName && profile.emergencyContact)
+        setEmergencyContactName(profile.emergencyContact);
+      if (!emergencyContactNumber && profile.emergencyPhone)
+        setEmergencyContactNumber(profile.emergencyPhone);
+    } catch {
+      // Non-critical — silently skip if profile fetch fails
+    }
   };
 
   const computeLockingFlags = (r) => {
@@ -317,6 +343,7 @@ function ReservationFlowPage() {
 
     if (hasVisitScheduled) setVisitCompleted(true);
     if (isVisitApprovedFlag) setVisitApproved(true);
+    if (r.scheduleRejected) setScheduleRejected(true);
     if (hasApplication) setApplicationSubmitted(true);
     if (hasPayment) setPaymentSubmitted(true);
     if (isConfirmed) setPaymentApproved(true);
@@ -338,7 +365,7 @@ function ReservationFlowPage() {
     };
   };
 
-  // ── Data loading ───────────────────────────────────────────
+  // â”€â”€ Data loading â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const processedKeyRef = useRef(null);
   const paymentVerifyingRef = useRef(false);
   const justPaidRef = useRef(false);
@@ -365,7 +392,7 @@ function ReservationFlowPage() {
     const editMode = location.state?.editMode;
     const resId = location.state?.reservationId;
 
-    // ── ALWAYS reset session-specific fields first ──
+    // â”€â”€ ALWAYS reset session-specific fields first â”€â”€
     // For new reservations, these stay blank.
     // For continuing, the async load functions below will repopulate from DB.
     setTargetMoveInDate("");
@@ -378,12 +405,13 @@ function ReservationFlowPage() {
       loadExistingReservation(resId);
     } else {
       const state = location.state?.roomData;
-      // Check if this is a PayMongo return — defer stage logic to usePaymentRedirect
+      // Check if this is a PayMongo return â€” defer stage logic to usePaymentRedirect
       const paymentParam = new URLSearchParams(window.location.search).get("payment");
       if (state) {
         setReservationData(state);
+        prefillFromProfile(); // Pre-fill Step 3 from profile for new reservations
       } else if (isPaymentReturnRef.current) {
-        // Returning from PayMongo — load reservation data for display,
+        // Returning from PayMongo â€” load reservation data for display,
         // and verify payment using the reservation's stored session ID.
         paymentVerifyingRef.current = true; // block re-init from hook's setSearchParams
         isPaymentReturnRef.current = false; // consume the flag
@@ -439,6 +467,7 @@ function ReservationFlowPage() {
         const room = active.roomId || {};
         setReservationId(active._id);
         if (active.reservationCode) setReservationCode(active.reservationCode);
+        if (active.visitCode) setVisitCode(active.visitCode);
         setReservationData({
           room: {
             id: room._id || room.id,
@@ -476,6 +505,8 @@ function ReservationFlowPage() {
       setReservationId(reservation._id || resId);
       if (reservation.reservationCode)
         setReservationCode(reservation.reservationCode);
+      if (reservation.visitCode)
+        setVisitCode(reservation.visitCode);
       setReservationData({
         room: reservation.roomId,
         selectedBed: reservation.selectedBed,
@@ -523,7 +554,7 @@ function ReservationFlowPage() {
         targetStage = 2;
       }
       if (skipStageSet) {
-        // Payment redirect — verify using the reservation's stored paymongoSessionId
+        // Payment redirect â€” verify using the reservation's stored paymongoSessionId
         // Set highest to 5 immediately so the stepper renders all stages green from the start
         setHighestStageReached(5);
         // Verify payment status with PayMongo
@@ -532,7 +563,7 @@ function ReservationFlowPage() {
             const result = await billingApi.checkPaymentStatus(reservation.paymongoSessionId);
             if (result.status === "paid") {
               sessionStorage.removeItem("activeReservationId");
-              // Back button → redirect to dashboard; Return to merchant → show step 5
+              // Back button â†’ redirect to dashboard; Return to merchant â†’ show step 5
               if (paymentReturnStatusRef.current === "cancelled") {
                 showNotification("Payment successful! Your reservation is secured.", "success", 5000);
                 navigate("/applicant/profile");
@@ -547,19 +578,29 @@ function ReservationFlowPage() {
               showNotification("Payment successful! Your reservation is secured.", "success", 5000);
               return;
             } else {
+              console.warn("[PAYMENT] Session not yet paid:", reservation.paymongoSessionId, "status:", result.status);
               setCurrentStage(4);
-              showNotification("Payment is being processed. Please wait or try again.", "info", 5000);
+              // Show appropriate toast based on how the user returned
+              if (paymentReturnStatusRef.current === "cancelled") {
+                showNotification("Payment cancelled. You can try again anytime.", "info", 5000);
+              } else {
+                showNotification("Payment is being processed. Please wait or try again.", "info", 5000);
+              }
               return;
             }
           } catch (err) {
-            console.error("❌ [VERIFY] Payment check failed:", err);
+            console.error("âŒ [VERIFY] Payment check failed â€” sessionId:", reservation.paymongoSessionId, err);
             setCurrentStage(4);
-            showNotification("Could not verify payment. Please check your profile.", "warning", 5000);
+            if (paymentReturnStatusRef.current !== "cancelled") {
+              showNotification("Could not verify payment. Please check your profile.", "warning", 5000);
+            }
             return;
           }
         } else {
-          // No stored session ID — just show step 4
+          // No stored session ID â€” skip generic toast, just navigate to correct stage
+          console.warn("[PAYMENT] skipStageSet=true but paymongoSessionId is empty for reservation:", resId);
           setCurrentStage(targetStage);
+          return; // â† prevent double-toast: skip the generic notification below
         }
       } else {
         if (stepOverride && stepOverride <= highest)
@@ -574,7 +615,7 @@ function ReservationFlowPage() {
         3000,
       );
     } catch (err) {
-      console.error("Error loading reservation:", err);
+      console.error("âŒ [LOAD_RESERVATION] Failed to load reservation id:", resId, "| status:", err?.response?.status, "| message:", err?.message, err);
       const status = err?.response?.status;
       if (status === 404) {
         sessionStorage.removeItem("activeReservationId");
@@ -600,7 +641,7 @@ function ReservationFlowPage() {
     }
   };
 
-  // ── Form change tracking (Stage 1) ─────────────────────────
+  // â”€â”€ Form change tracking (Stage 1) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if (currentStage === 1) {
       setIsFormDirty(
@@ -617,7 +658,7 @@ function ReservationFlowPage() {
     currentStage,
   ]);
 
-  // ── API helpers ────────────────────────────────────────────
+  // â”€â”€ API helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const advanceStage = async (nextStage, message) => {
     setHighestStageReached((prev) => Math.max(prev, nextStage));
     await queryClient.invalidateQueries({ queryKey: ["reservations"] });
@@ -758,7 +799,7 @@ function ReservationFlowPage() {
     return response?.reservation || response;
   };
 
-  // ── Auto-save (stages 3-4) ─────────────────────────────────
+  // â”€â”€ Auto-save (stages 3-4) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const buildDraftPayload = useCallback(
     () => ({
       visitDate,
@@ -875,7 +916,7 @@ function ReservationFlowPage() {
     };
   }, [buildDraftPayload, currentStage, reservationId]);
 
-  // ── Stage handler ──────────────────────────────────────────
+  // â”€â”€ Stage handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleNextStage = async () => {
     try {
       if (currentStage === 1) {
@@ -1150,13 +1191,13 @@ function ReservationFlowPage() {
     setPendingStageAction(null);
   };
 
-  // ── Loading ────────────────────────────────────────────────
+  // â”€â”€ Loading â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (!reservationData || paymentVerifyingRef.current) return <GlobalLoading />;
 
-  // ── Render ─────────────────────────────────────────────────
+  // â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   return (
     <div className="reservation-flow-container">
-      {/* ── Success Overlay ── */}
+      {/* â”€â”€ Success Overlay â”€â”€ */}
       {successOverlay.show && (
         <div className="rf-success-overlay">
           <div className="rf-success-overlay-content">
@@ -1268,11 +1309,35 @@ function ReservationFlowPage() {
                 setVisitTime,
                 reservationData,
                 reservationCode,
+                visitCode,
                 agreedToPrivacy,
               }}
               onPrev={handlePrevStage}
               onNext={handleNextStage}
               readOnly={isStageLocked(2)}
+              onSaveVisit={async () => {
+                const result = await updateReservationDraft({
+                  agreedToPrivacy: true,
+                  viewingType: "inperson",
+                  visitDate,
+                  visitTime,
+                });
+                if (result?.visitCode) setVisitCode(result.visitCode);
+                // NOTE: setVisitCompleted deferred to onAfterClose so stage
+                // does not show as locked while the receipt is still visible
+                await queryClient.invalidateQueries({ queryKey: ["reservations"] });
+                return result?.visitCode || null;
+              }}
+              onAfterClose={() => {
+                setVisitCompleted(true);
+                setHighestStageReached((prev) => Math.max(prev, 3));
+                setSuccessOverlay({
+                  show: true,
+                  title: "Visit Booked!",
+                  subtitle: "Your visit has been scheduled. We will notify you once the admin approves.",
+                });
+                setTimeout(() => navigate("/applicant/profile"), 2200);
+              }}
             />
           )}
 
@@ -1385,7 +1450,7 @@ function ReservationFlowPage() {
               <div className="reservation-card">
                 <div style={{ textAlign: "center", padding: "32px 16px" }}>
                   <div style={{ fontSize: "56px", marginBottom: "16px" }}>
-                    ⏳
+                    â³
                   </div>
                   <h2 className="stage-title">Waiting for Visit Approval</h2>
                   <p

@@ -32,6 +32,11 @@ export function usePaymentRedirect({
       return;
     }
 
+    // NOTE: Don't show "cancelled" toast here — wait for PayMongo verification
+    // in loadExistingReservation() to determine the actual payment status.
+    // This prevents a misleading flash when the user presses browser-back
+    // after a successful payment (PayMongo sends ?payment=cancelled).
+
     // Clean URL params immediately — the init effect's
     // loadExistingReservation(resId, true) handles ALL state updates
     // (verification, stage, payment flags, notification) atomically

@@ -12,6 +12,7 @@
 
 import dayjs from "dayjs";
 import { Bill, RoomBill, Reservation, Room, User } from "../models/index.js";
+import logger from "../middleware/logger.js";
 import {
   sendSuccess,
   sendError,
@@ -513,9 +514,9 @@ export const generateRoomBill = async (req, res, next) => {
           branchName: room.branch || "Lilycrest",
         });
       } catch (emailErr) {
-        console.error(
-          `⚠️ Bill email to ${tenant.email} failed:`,
-          emailErr.message,
+        logger.warn(
+          { err: emailErr, email: tenant.email },
+          "Bill notification email failed",
         );
       }
     }
@@ -742,7 +743,7 @@ export const verifyPayment = async (req, res, next) => {
             billingMonth: monthStr,
             paidAmount: bill.paidAmount,
             branchName: bill.branch,
-          }).catch((e) => console.error("Email error:", e.message));
+          }).catch((e) => logger.warn({ err: e }, "Payment approved email failed"));
         } else {
           sendPaymentRejectedEmail({
             to: tenant.email,
@@ -751,11 +752,11 @@ export const verifyPayment = async (req, res, next) => {
             billingMonth: monthStr,
             rejectionReason: bill.paymentProof.rejectionReason,
             branchName: bill.branch,
-          }).catch((e) => console.error("Email error:", e.message));
+          }).catch((e) => logger.warn({ err: e }, "Payment rejected email failed"));
         }
       }
     } catch (emailErr) {
-      console.error("Email notification failed:", emailErr.message);
+      logger.warn({ err: emailErr }, "Email notification failed");
     }
 
     res.json({

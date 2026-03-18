@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { showNotification } from "../../../../shared/utils/notification";
 import {
@@ -10,13 +10,20 @@ import {
   Search,
   LayoutDashboard,
   CreditCard,
-  ArrowRight,
-  ChevronRight,
+  ChevronLeft,
   Settings,
   Camera,
   FileText,
+  Home,
+  Menu,
+  X,
 } from "lucide-react";
 
+/* ── Timing ─────────────────────────────────────────────────────────────── */
+const TRANSITION = "0.3s cubic-bezier(0.4, 0, 0.2, 1)";
+const MOBILE_BP = 768;
+
+/* ── Navigation structure ───────────────────────────────────────────────── */
 const NAV_SECTIONS = [
   {
     label: "Main",
@@ -27,9 +34,10 @@ const NAV_SECTIONS = [
     items: [
       { id: "personal", label: "Personal Details", icon: User },
       { id: "billing", label: "My Bills", icon: CreditCard },
-      { id: "reservation", label: "My Reservation", icon: FileText },
+      { id: "reservation", label: "My Reservation", icon: Bed },
       { id: "contract", label: "My Contract", icon: FileText },
       { id: "history", label: "Activity Log", icon: History },
+      { id: "stays", label: "My Stays", icon: Home },
     ],
   },
   {
@@ -41,34 +49,51 @@ const NAV_SECTIONS = [
   },
 ];
 
-const NavButton = ({ item, isActive, onClick, hasActiveBadge }) => (
+/* ── NavButton ──────────────────────────────────────────────────────────── */
+const NavButton = ({ item, isActive, onClick, collapsed }) => (
   <button
     onClick={onClick}
-    className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150"
+    title={collapsed ? item.label : undefined}
     style={{
-      backgroundColor: isActive ? "#FF8C42" : "transparent",
-      color: isActive ? "#fff" : "#4B5563",
+      width: "100%",
+      display: "flex",
+      alignItems: "center",
+      gap: 12,
+      padding: "8px 12px",
+      justifyContent: "flex-start",
+      borderRadius: 6,
+      border: "none",
+      cursor: "pointer",
+      backgroundColor: isActive ? "#fff" : "transparent",
+      color: isActive ? "#FF8C42" : "#374151",
       fontWeight: isActive ? 600 : 500,
+      fontSize: 14,
+      transition: "background 0.15s, color 0.15s",
+      whiteSpace: "nowrap",
+      overflow: "hidden",
     }}
     onMouseEnter={(e) => {
-      if (!isActive) e.currentTarget.style.backgroundColor = "#F3F4F6";
+      if (!isActive) e.currentTarget.style.backgroundColor = "#fff";
     }}
     onMouseLeave={(e) => {
       if (!isActive) e.currentTarget.style.backgroundColor = "transparent";
     }}
   >
-    <item.icon className="w-[18px] h-[18px]" />
-    <span>{item.label}</span>
-    {hasActiveBadge && !isActive && (
-      <span
-        className="ml-auto w-2 h-2 rounded-full"
-        style={{ backgroundColor: "#10B981" }}
-      />
-    )}
-    {isActive && <ChevronRight className="w-4 h-4 ml-auto opacity-60" />}
+    <item.icon style={{ width: 18, height: 18, flexShrink: 0 }} />
+    <span
+      style={{
+        opacity: collapsed ? 0 : 1,
+        transition: `opacity ${TRANSITION}`,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+      }}
+    >
+      {item.label}
+    </span>
   </button>
 );
 
+/* ── ProfileSidebar ─────────────────────────────────────────────────────── */
 const ProfileSidebar = ({
   activeTab,
   setActiveTab,
@@ -80,6 +105,45 @@ const ProfileSidebar = ({
 }) => {
   const fileInputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem("sidebar-collapsed") === "true"
+  );
+
+  /* ── Mobile detection ──────────────────────── */
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= MOBILE_BP);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    const handler = () => {
+      const mobile = window.innerWidth <= MOBILE_BP;
+      setIsMobile(mobile);
+      if (!mobile) setDrawerOpen(false); // close drawer if resizing to desktop
+    };
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+
+  // Lock body scroll when drawer is open
+  useEffect(() => {
+    if (drawerOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [drawerOpen]);
+
+  const handleNavClick = useCallback((tabId) => {
+    setActiveTab(tabId);
+    if (isMobile) setDrawerOpen(false);
+  }, [setActiveTab, isMobile]);
+
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      localStorage.setItem("sidebar-collapsed", !prev);
+      return !prev;
+    });
+  };
 
   const handleAvatarClick = () => {
     if (!uploading) fileInputRef.current?.click();
@@ -104,54 +168,96 @@ const ProfileSidebar = ({
     }
   };
 
-  return (
-  <aside
-    className="w-64 bg-white border-r flex flex-col"
-    style={{
-      borderColor: "#E8EBF0",
-      minHeight: "100vh",
-      position: "sticky",
-      top: 0,
-    }}
-  >
-    {/* Logo → Home */}
-    <div className="p-5 border-b" style={{ borderColor: "#E8EBF0" }}>
-      <Link
-        to="/"
-        className="flex items-center gap-3 group"
-        style={{ textDecoration: "none" }}
+  /* ── Sidebar inner content (shared between desktop & mobile drawer) ── */
+  const sidebarContent = (showCollapsed) => (
+    <div style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden", minHeight: 0 }}>
+
+      {/* ── Logo row ────────────────────────────────────────────────────── */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "16px 14px",
+          borderBottom: "1px solid #E2E8F0",
+          minHeight: 68,
+        }}
+      >
+        <Link
+          to="/"
+          style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", flexShrink: 0 }}
+          title="Lilycrest — Home"
+        >
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 8,
+              backgroundColor: "#0A1628",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <Bed style={{ width: 20, height: 20, color: "#fff" }} />
+          </div>
+          <span
+            style={{
+              fontWeight: 600,
+              fontSize: 18,
+              color: "#0A1628",
+              letterSpacing: "-0.01em",
+              whiteSpace: "nowrap",
+              opacity: showCollapsed ? 0 : 1,
+              transition: `opacity ${TRANSITION}`,
+            }}
+          >
+            Lilycrest
+          </span>
+        </Link>
+
+        {/* Close button on mobile */}
+        {isMobile && (
+          <button
+            onClick={() => setDrawerOpen(false)}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 4,
+              color: "#64748B",
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            <X size={20} />
+          </button>
+        )}
+      </div>
+
+      {/* ── User Card ───────────────────────────────────────────────────── */}
+      <div
+        style={{
+          padding: "14px 14px",
+          borderBottom: "1px solid #E2E8F0",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+        }}
       >
         <div
-          className="w-9 h-9 rounded-lg flex items-center justify-center transition-transform group-hover:scale-105"
-          style={{ backgroundColor: "#0A1628" }}
-        >
-          <Bed className="w-5 h-5 text-white" />
-        </div>
-        <span
-          className="font-semibold text-lg"
-          style={{ color: "#0A1628", letterSpacing: "-0.01em" }}
-        >
-          Lilycrest
-        </span>
-      </Link>
-    </div>
-
-    {/* User Card */}
-    <div className="px-5 py-4 border-b" style={{ borderColor: "#E8EBF0" }}>
-      <div className="flex items-center gap-3">
-        {/* Avatar with upload overlay */}
-        <div
           onClick={handleAvatarClick}
+          title={onUpdateImage ? "Click to change photo" : undefined}
           style={{
             position: "relative",
-            width: 40,
-            height: 40,
+            width: 36,
+            height: 36,
             borderRadius: "50%",
             cursor: onUpdateImage ? "pointer" : "default",
             flexShrink: 0,
             overflow: "hidden",
           }}
-          title={onUpdateImage ? "Click to change photo" : undefined}
         >
           {profileData.profileImage ? (
             <img
@@ -161,19 +267,23 @@ const ProfileSidebar = ({
             />
           ) : (
             <div
-              className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold"
               style={{
                 background: "linear-gradient(135deg, #FF8C42 0%, #D35400 100%)",
-                boxShadow: "0 2px 6px rgba(212,152,43,0.25)",
                 width: "100%",
                 height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#fff",
+                fontSize: 13,
+                fontWeight: 700,
+                borderRadius: "50%",
               }}
             >
               {(profileData.firstName?.[0] || "").toUpperCase()}
               {(profileData.lastName?.[0] || "").toUpperCase()}
             </div>
           )}
-          {/* Camera overlay (shown on hover) */}
           {onUpdateImage && (
             <div
               style={{
@@ -190,14 +300,13 @@ const ProfileSidebar = ({
               onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
               onMouseLeave={(e) => { if (!uploading) e.currentTarget.style.opacity = "0"; }}
             >
-              {uploading ? (
-                <span style={{ color: "#fff", fontSize: 10 }}>...</span>
-              ) : (
-                <Camera className="w-4 h-4" style={{ color: "#fff" }} />
-              )}
+              {uploading
+                ? <span style={{ color: "#fff", fontSize: 10 }}>...</span>
+                : <Camera style={{ width: 14, height: 14, color: "#fff" }} />}
             </div>
           )}
         </div>
+
         <input
           ref={fileInputRef}
           type="file"
@@ -205,97 +314,337 @@ const ProfileSidebar = ({
           style={{ display: "none" }}
           onChange={handleFileChange}
         />
-        <div className="flex-1 min-w-0">
-          <p
-            className="text-sm font-semibold truncate"
-            style={{ color: "#1F2937", margin: 0 }}
-          >
+
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            opacity: showCollapsed ? 0 : 1,
+            transition: `opacity ${TRANSITION}`,
+          }}
+        >
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#1F2937", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {fullName}
           </p>
-          <p
-            className="text-xs truncate"
-            style={{ color: "#94A3B8", margin: "2px 0 0" }}
-          >
+          <p style={{ margin: "2px 0 0", fontSize: 11, color: "#94A3B8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {profileData.email}
           </p>
         </div>
       </div>
-    </div>
 
-    {/* Browse Rooms CTA */}
-    <div className="px-4 pt-4 pb-2">
-      <Link
-        to="/applicant/check-availability"
-        className="flex items-center gap-2.5 w-full py-2.5 px-3.5 rounded-lg text-sm font-semibold transition-all duration-200"
-        style={{
-          backgroundColor: "transparent",
-          color: "#0A1628",
-          textDecoration: "none",
-          border: "1.5px solid #0A1628",
-          borderLeft: "3.5px solid #FF8C42",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = "#0A1628";
-          e.currentTarget.style.color = "#fff";
-          e.currentTarget.style.transform = "translateY(-1px)";
-          e.currentTarget.style.boxShadow = "0 4px 12px rgba(24,49,83,0.25)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = "transparent";
-          e.currentTarget.style.color = "#0A1628";
-          e.currentTarget.style.transform = "translateY(0)";
-          e.currentTarget.style.boxShadow = "none";
-        }}
-      >
-        <Search className="w-4 h-4" />
-        Browse Rooms
-        <ArrowRight className="w-3.5 h-3.5 ml-auto opacity-60" />
-      </Link>
-    </div>
-
-    {/* Navigation */}
-    <nav className="flex-1 px-4 py-3 space-y-5 overflow-y-auto">
-      {NAV_SECTIONS.map((section) => (
-        <div key={section.label}>
-          <p
-            className="text-[10px] font-bold uppercase tracking-widest mb-2 px-3"
-            style={{ color: "#94A3B8" }}
+      {/* ── Browse Rooms CTA ─────────────────────────────────────────────── */}
+      <div style={{ padding: "12px 8px 4px" }}>
+        <Link
+          to="/applicant/check-availability"
+          title="Browse Rooms"
+          onClick={() => isMobile && setDrawerOpen(false)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "9px 12px",
+            borderRadius: 8,
+            textDecoration: "none",
+            fontSize: 13,
+            fontWeight: 600,
+            color: "#0A1628",
+            border: "1.5px solid #0A1628",
+            borderLeft: "3.5px solid #FF8C42",
+            transition: "background 0.2s, color 0.2s, box-shadow 0.2s",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = "#0A1628";
+            e.currentTarget.style.color = "#fff";
+            e.currentTarget.style.boxShadow = "0 2px 8px rgba(10,22,40,0.18)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = "transparent";
+            e.currentTarget.style.color = "#0A1628";
+            e.currentTarget.style.boxShadow = "none";
+          }}
+        >
+          <Search style={{ width: 16, height: 16, flexShrink: 0 }} />
+          <span
+            style={{
+              opacity: showCollapsed ? 0 : 1,
+              transition: `opacity ${TRANSITION}`,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
           >
-            {section.label}
-          </p>
-          <div className="space-y-0.5">
-            {section.items.map((item) => (
-              <NavButton
-                key={item.id}
-                item={item}
-                isActive={activeTab === item.id}
-                onClick={() => setActiveTab(item.id)}
-                hasActiveBadge={item.hasBadge && hasActiveReservation}
-              />
-            ))}
-          </div>
-        </div>
-      ))}
-    </nav>
+            Browse Rooms
+          </span>
+        </Link>
+      </div>
 
-    {/* Sign Out */}
-    <div className="px-4 py-3 border-t" style={{ borderColor: "#E8EBF0" }}>
-      <button
-        onClick={onLogout}
-        className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150"
-        style={{ color: "#EF4444", fontWeight: 500 }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = "#FEF2F2";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = "transparent";
+      {/* ── Navigation ───────────────────────────────────────────────────── */}
+      <nav
+        style={{
+          flex: 1,
+          padding: "8px 8px",
+          overflowY: "auto",
+          display: "flex",
+          flexDirection: "column",
+          gap: 14,
         }}
       >
-        <LogOut className="w-[18px] h-[18px]" />
-        <span>Sign Out</span>
-      </button>
+        {NAV_SECTIONS.map((section) => (
+          <div key={section.label}>
+            {/* Section label — fades out */}
+            <p
+              style={{
+                margin: "0 0 4px 4px",
+                fontSize: 10,
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.1em",
+                color: "#94A3B8",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                opacity: showCollapsed ? 0 : 1,
+                height: showCollapsed ? 0 : 18,
+                marginBottom: showCollapsed ? 0 : 4,
+                transition: `opacity ${TRANSITION}, height ${TRANSITION}, margin ${TRANSITION}`,
+              }}
+            >
+              {section.label}
+            </p>
+            {/* Divider when collapsed */}
+            <div
+              style={{
+                height: 1,
+                backgroundColor: "#E2E8F0",
+                margin: showCollapsed ? "4px 6px 8px" : "0 6px",
+                opacity: showCollapsed ? 0.8 : 0,
+                transition: `opacity ${TRANSITION}, margin ${TRANSITION}`,
+              }}
+            />
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {section.items.map((item) => (
+                <NavButton
+                  key={item.id}
+                  item={item}
+                  isActive={activeTab === item.id}
+                  onClick={() => handleNavClick(item.id)}
+                  collapsed={showCollapsed}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </nav>
+
+      {/* ── Sign Out ──────────────────────────────────────────────────────── */}
+      <div style={{ padding: "16px 8px 12px", borderTop: "1px solid #E8EBF0" }}>
+        <button
+          onClick={onLogout}
+          title="Sign Out"
+          style={{
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-start",
+            gap: 10,
+            padding: "8px 12px",
+            border: "none",
+            borderRadius: 8,
+            cursor: "pointer",
+            backgroundColor: "transparent",
+            color: "#EF4444",
+            fontWeight: 500,
+            fontSize: 14,
+            transition: "background 0.15s",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#FEF2F2"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; }}
+        >
+          <LogOut style={{ width: 18, height: 18, flexShrink: 0 }} />
+          <span
+            style={{
+              opacity: showCollapsed ? 0 : 1,
+              transition: `opacity ${TRANSITION}`,
+            }}
+          >
+            Sign Out
+          </span>
+        </button>
+      </div>
+
+      {/* ── Collapse toggle (desktop only) ─────────────────────────────── */}
+      {!isMobile && (
+        <div style={{ padding: "8px 8px 12px", borderTop: "1px solid #E8EBF0" }}>
+          <button
+            onClick={toggleCollapsed}
+            title={showCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "flex-start",
+              gap: 10,
+              padding: "8px 12px",
+              border: "none",
+              borderRadius: 8,
+              cursor: "pointer",
+              backgroundColor: "transparent",
+              color: "#64748B",
+              fontWeight: 500,
+              fontSize: 14,
+              transition: `background 0.15s, color 0.15s`,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#F3F4F6"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; }}
+          >
+            <ChevronLeft
+              style={{
+                width: 18,
+                height: 18,
+                flexShrink: 0,
+                transition: `transform ${TRANSITION}`,
+                transform: showCollapsed ? "rotate(180deg)" : "rotate(0deg)",
+              }}
+            />
+            <span
+              style={{
+                opacity: showCollapsed ? 0 : 1,
+                transition: `opacity ${TRANSITION}`,
+              }}
+            >
+              Collapse
+            </span>
+          </button>
+        </div>
+      )}
     </div>
-  </aside>
+  );
+
+  const W = collapsed ? 64 : 256;
+
+  /* ── MOBILE: Hamburger + Drawer ─────────────────────────────────────── */
+  if (isMobile) {
+    return (
+      <>
+        {/* Fixed top bar with hamburger */}
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 56,
+            backgroundColor: "#F1F5F9",
+            borderBottom: "1px solid #E2E8F0",
+            display: "flex",
+            alignItems: "center",
+            padding: "0 16px",
+            gap: 12,
+            zIndex: 40,
+          }}
+        >
+          <button
+            onClick={() => setDrawerOpen(true)}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 4,
+              color: "#0A1628",
+              display: "flex",
+              alignItems: "center",
+            }}
+            aria-label="Open menu"
+          >
+            <Menu size={22} />
+          </button>
+          <Link
+            to="/"
+            style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none" }}
+          >
+            <div
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: 6,
+                backgroundColor: "#0A1628",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Bed style={{ width: 16, height: 16, color: "#fff" }} />
+            </div>
+            <span style={{ fontWeight: 600, fontSize: 16, color: "#0A1628" }}>
+              Lilycrest
+            </span>
+          </Link>
+        </div>
+
+        {/* Backdrop */}
+        {drawerOpen && (
+          <div
+            onClick={() => setDrawerOpen(false)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              backgroundColor: "rgba(0,0,0,0.4)",
+              zIndex: 49,
+              transition: "opacity 0.2s",
+            }}
+          />
+        )}
+
+        {/* Drawer */}
+        <aside
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            bottom: 0,
+            width: 280,
+            backgroundColor: "#F1F5F9",
+            borderRight: "1px solid #E2E8F0",
+            zIndex: 50,
+            transform: drawerOpen ? "translateX(0)" : "translateX(-100%)",
+            transition: `transform ${TRANSITION}`,
+            display: "flex",
+            flexDirection: "column",
+            overflowY: "auto",
+          }}
+        >
+          {sidebarContent(false)}
+        </aside>
+      </>
+    );
+  }
+
+  /* ── DESKTOP: Sticky sidebar ────────────────────────────────────────── */
+  return (
+    <aside
+      style={{
+        width: W,
+        minWidth: W,
+        maxWidth: W,
+        backgroundColor: "#F1F5F9",
+        borderRight: "1px solid #E2E8F0",
+        display: "flex",
+        flexDirection: "column",
+        minHeight: "100vh",
+        position: "sticky",
+        top: 0,
+        flexShrink: 0,
+        transition: `width ${TRANSITION}, min-width ${TRANSITION}, max-width ${TRANSITION}`,
+        overflow: "hidden",
+        zIndex: 10,
+      }}
+    >
+      {sidebarContent(collapsed)}
+    </aside>
   );
 };
 
