@@ -21,10 +21,10 @@ const StatusBanner = ({ reservation }) => {
     const daysUntil = Math.ceil((new Date(visitDate) - new Date()) / (1000 * 60 * 60 * 24));
     const dateStr = new Date(visitDate).toLocaleDateString("en-US", { month: "short", day: "numeric" });
     return (
-      <div style={{ ...bannerBase, background: "#EFF6FF", borderColor: "#BFDBFE" }}>
+      <div style={{ ...bannerBase, background: "rgba(37, 99, 235, 0.08)", borderColor: "rgba(37, 99, 235, 0.2)" }}>
         <Calendar size={18} color="#2563EB" style={{ flexShrink: 0 }} />
         <div style={{ flex: 1 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: "#1E40AF" }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-heading, #1E40AF)" }}>
             {daysUntil > 0
               ? `Visit in ${daysUntil} day${daysUntil !== 1 ? "s" : ""}`
               : daysUntil === 0
@@ -35,7 +35,7 @@ const StatusBanner = ({ reservation }) => {
             {dateStr}{reservation.visitTime ? ` · ${reservation.visitTime}` : ""}
           </span>
         </div>
-        <span style={{ fontSize: 11, color: "#D97706", fontWeight: 600, background: "#FFFBEB", padding: "3px 10px", borderRadius: 12 }}>
+        <span style={{ fontSize: 11, color: "#D97706", fontWeight: 600, background: "rgba(217, 119, 6, 0.1)", padding: "3px 10px", borderRadius: 12 }}>
           Pending Approval
         </span>
       </div>
@@ -45,7 +45,7 @@ const StatusBanner = ({ reservation }) => {
   // Visit approved, application not yet submitted
   if (visitApproved && !hasApplication) {
     return (
-      <div style={{ ...bannerBase, background: "#FFF7ED", borderColor: "#FED7AA" }}>
+      <div style={{ ...bannerBase, background: "rgba(234, 88, 12, 0.08)", borderColor: "rgba(234, 88, 12, 0.2)" }}>
         <AlertCircle size={18} color="#EA580C" style={{ flexShrink: 0 }} />
         <span style={{ fontSize: 13, fontWeight: 600, color: "#9A3412" }}>
           Visit approved — complete your application to continue
@@ -57,7 +57,7 @@ const StatusBanner = ({ reservation }) => {
   // Application submitted, payment pending
   if (hasApplication && !isConfirmed) {
     return (
-      <div style={{ ...bannerBase, background: "#FFF7ED", borderColor: "#FED7AA" }}>
+      <div style={{ ...bannerBase, background: "rgba(217, 119, 6, 0.08)", borderColor: "rgba(217, 119, 6, 0.2)" }}>
         <Clock size={18} color="#D97706" style={{ flexShrink: 0 }} />
         <span style={{ fontSize: 13, fontWeight: 600, color: "#92400E" }}>
           Application submitted — pay the reservation fee to secure your spot

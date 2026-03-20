@@ -5,6 +5,7 @@ import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import ScrollToTop from "./shared/components/ScrollToTop";
 import { FirebaseAuthProvider } from "./shared/hooks/FirebaseAuthContext";
 import { AuthProvider, useAuth } from "./shared/hooks/useAuth";
+import { ThemeProvider } from "./features/public/context/ThemeContext";
 import GlobalLoading from "./shared/components/GlobalLoading";
 import RouteErrorBoundary from "./shared/components/RouteErrorBoundary";
 import { useEffect } from "react";
@@ -463,7 +464,9 @@ function App() {
   return (
     <FirebaseAuthProvider>
       <AuthProvider>
-        <AppContent />
+        <ThemeProvider>
+          <AppContent />
+        </ThemeProvider>
       </AuthProvider>
     </FirebaseAuthProvider>
   );

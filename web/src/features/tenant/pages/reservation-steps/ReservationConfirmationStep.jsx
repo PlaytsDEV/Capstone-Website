@@ -281,7 +281,7 @@ const s = {
     background: "linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 50%, #fefce8 100%)",
     borderRadius: 16,
     marginBottom: 20,
-    border: "1px solid #d1fae5",
+    border: "1px solid rgba(16, 185, 129, 0.2)",
   },
   checkCircle: {
     width: 72,
@@ -313,7 +313,7 @@ const s = {
   codeCard: {
     textAlign: "center",
     padding: "20px 24px",
-    background: "#fff",
+    background: "var(--surface-card, #fff)",
     borderRadius: 12,
     border: "2px dashed #d1d5db",
     marginBottom: 20,
@@ -330,7 +330,7 @@ const s = {
     fontSize: 32,
     fontWeight: 800,
     letterSpacing: "4px",
-    color: "#111827",
+    color: "var(--text-heading, #111827)",
     fontFamily: "'Courier New', monospace",
     marginBottom: 8,
   },
@@ -350,9 +350,9 @@ const s = {
   summaryCard: {
     textAlign: "center",
     padding: "16px 12px",
-    background: "#fff",
+    background: "var(--surface-card, #fff)",
     borderRadius: 12,
-    border: "1px solid #E5E7EB",
+    border: "1px solid var(--border-card, #E5E7EB)",
   },
   summaryIcon: {
     display: "flex",
@@ -370,7 +370,7 @@ const s = {
   summaryValue: {
     fontSize: 15,
     fontWeight: 700,
-    color: "#111827",
+    color: "var(--text-heading, #111827)",
     marginBottom: 2,
   },
   summaryMeta: {
@@ -381,9 +381,9 @@ const s = {
   /* next steps */
   nextStepsCard: {
     padding: "20px 24px",
-    background: "#FFF7ED",
+    background: "rgba(255, 140, 66, 0.08)",
     borderRadius: 12,
-    border: "1px solid #FED7AA",
+    border: "1px solid rgba(255, 140, 66, 0.25)",
     marginBottom: 24,
   },
   nextStepsTitle: {
@@ -450,9 +450,9 @@ const s = {
   secondaryBtn: {
     flex: 1,
     padding: "14px 16px",
-    background: "#fff",
+    background: "var(--surface-card, #fff)",
     color: "#374151",
-    border: "1px solid #D1D5DB",
+    border: "1px solid var(--border-card, #D1D5DB)",
     borderRadius: 10,
     fontSize: 14,
     fontWeight: 600,
@@ -482,7 +482,7 @@ const s = {
     justifyContent: "center",
     gap: 12,
     padding: "10px 16px",
-    background: "#F3F4F6",
+    background: "var(--surface-muted, #F3F4F6)",
     borderRadius: 8,
   },
   redirectText: {

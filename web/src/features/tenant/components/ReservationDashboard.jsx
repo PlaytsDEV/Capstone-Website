@@ -482,8 +482,8 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
           gap: 12,
           padding: "12px 16px",
           borderRadius: 8,
-          background: action.isRejected ? "#FEF2F2" : action.isWaiting ? "#F8FAFF" : "#FFFBF7",
-          border: `1px solid ${action.isRejected ? "#FECACA" : action.isWaiting ? "#DBEAFE" : "#FDE8D0"}`,
+          background: action.isRejected ? "rgba(220, 38, 38, 0.08)" : action.isWaiting ? "rgba(37, 99, 235, 0.06)" : "rgba(255, 140, 66, 0.06)",
+          border: `1px solid ${action.isRejected ? "rgba(220, 38, 38, 0.2)" : action.isWaiting ? "rgba(37, 99, 235, 0.15)" : "rgba(255, 140, 66, 0.2)"}`,
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{
@@ -634,9 +634,9 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
 
 const styles = {
   card: {
-    background: "#FFFFFF",
+    background: "var(--surface-card, #FFFFFF)",
     borderRadius: 12,
-    border: "1px solid #E2E8F0",
+    border: "1px solid var(--border-card, #E2E8F0)",
     padding: "24px 28px",
     marginBottom: 0,
   },
@@ -651,7 +651,7 @@ const styles = {
     width: 64,
     height: 64,
     borderRadius: "50%",
-    background: "#F1F5F9",
+    background: "var(--surface-muted, #F1F5F9)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -660,12 +660,12 @@ const styles = {
   emptyTitle: {
     fontSize: 18,
     fontWeight: 600,
-    color: "#0F172A",
+    color: "var(--text-heading, #0F172A)",
     margin: "0 0 8px",
   },
   emptyDescription: {
     fontSize: 14,
-    color: "#64748B",
+    color: "var(--text-secondary, #64748B)",
     margin: "0 0 24px",
     lineHeight: 1.5,
   },
@@ -696,7 +696,7 @@ const styles = {
   roomTitle: {
     fontSize: 20,
     fontWeight: 700,
-    color: "#0F172A",
+    color: "var(--text-heading, #0F172A)",
     margin: 0,
     letterSpacing: "-0.01em",
   },
@@ -704,7 +704,7 @@ const styles = {
     fontSize: 12,
     fontWeight: 600,
     color: "#059669",
-    background: "#D1FAE5",
+    background: "rgba(16, 185, 129, 0.12)",
     padding: "3px 10px",
     borderRadius: 999,
   },
@@ -712,7 +712,7 @@ const styles = {
     fontSize: 12,
     fontWeight: 500,
     color: "#FF8C42",
-    background: "#FFF7ED",
+    background: "rgba(255, 140, 66, 0.1)",
     padding: "3px 10px",
     borderRadius: 999,
   },
@@ -724,7 +724,7 @@ const styles = {
   },
   metaItem: {
     fontSize: 13,
-    color: "#64748B",
+    color: "var(--text-secondary, #64748B)",
     display: "inline-flex",
     alignItems: "center",
   },
@@ -798,8 +798,8 @@ const styles = {
     boxShadow: "0 0 0 4px rgba(220, 38, 38, 0.2), 0 0 12px rgba(220, 38, 38, 0.15)",
   },
   stepLocked: {
-    background: "#F1F5F9",
-    border: "1px solid #E2E8F0",
+    background: "var(--surface-muted, #F1F5F9)",
+    border: "1px solid var(--border-card, #E2E8F0)",
   },
   stepLabel: {
     fontSize: 12,
@@ -824,7 +824,7 @@ const styles = {
 
   /* action card */
   actionCard: {
-    background: "#F8FAFC",
+    background: "var(--surface-muted, #F8FAFC)",
     borderRadius: 8,
     padding: "16px 20px",
     display: "flex",
@@ -848,7 +848,7 @@ const styles = {
   },
   actionDescription: {
     fontSize: 13,
-    color: "#64748B",
+    color: "var(--text-secondary, #64748B)",
     margin: 0,
     lineHeight: 1.5,
   },
@@ -868,10 +868,10 @@ const styles = {
   celebrationCard: {
     display: "flex",
     alignItems: "center",
-    background: "#F0FDF4",
+    background: "rgba(16, 185, 129, 0.08)",
     borderRadius: 8,
     padding: "16px 20px",
-    border: "1px solid #BBF7D0",
+    border: "1px solid rgba(16, 185, 129, 0.2)",
   },
   celebrationTitle: {
     fontSize: 15,
@@ -892,7 +892,7 @@ const styles = {
     justifyContent: "space-between",
     marginTop: 20,
     paddingTop: 16,
-    borderTop: "1px solid #F1F5F9",
+    borderTop: "1px solid var(--border-subtle, #F1F5F9)",
   },
   footerLeft: {
     display: "flex",
@@ -902,7 +902,7 @@ const styles = {
   footerLinkSecondary: {
     background: "none",
     border: "none",
-    color: "#64748B",
+    color: "var(--text-secondary, #64748B)",
     fontSize: 13,
     cursor: "pointer",
     padding: "6px 10px",
@@ -947,7 +947,7 @@ const styles = {
     zIndex: 1000,
   },
   modalCard: {
-    background: "#FFFFFF",
+    background: "var(--surface-card, #FFFFFF)",
     borderRadius: 16,
     padding: "32px",
     maxWidth: 400,
@@ -962,12 +962,12 @@ const styles = {
   modalTitle: {
     fontSize: 18,
     fontWeight: 700,
-    color: "#0F172A",
+    color: "var(--text-heading, #0F172A)",
     margin: "0 0 8px",
   },
   modalDesc: {
     fontSize: 14,
-    color: "#64748B",
+    color: "var(--text-secondary, #64748B)",
     margin: "0 0 24px",
     lineHeight: 1.5,
   },
@@ -978,8 +978,8 @@ const styles = {
   modalBtnSecondary: {
     flex: 1,
     padding: "12px",
-    background: "#F3F4F6",
-    color: "#374151",
+    background: "var(--surface-muted, #F3F4F6)",
+    color: "var(--text-body, #374151)",
     border: "none",
     borderRadius: 8,
     cursor: "pointer",

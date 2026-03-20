@@ -248,8 +248,8 @@ const ReservationCard = ({ reservation, isOpen, onToggle }) => {
   return (
     <div style={{
       borderRadius: 12,
-      border: `1px solid ${isOpen ? "#CBD5E1" : "#E8EBF0"}`,
-      background: "#fff",
+      border: `1px solid ${isOpen ? "var(--border-subtle, #CBD5E1)" : "var(--border-card, #E8EBF0)"}`,
+      background: "var(--surface-card, #fff)",
       overflow: "hidden",
       boxShadow: isOpen ? "0 2px 12px rgba(0,0,0,0.06)" : "none",
       transition: "box-shadow 0.2s, border-color 0.2s",
@@ -267,7 +267,7 @@ const ReservationCard = ({ reservation, isOpen, onToggle }) => {
         {/* Room thumbnail */}
         <div style={{
           width: 48, height: 48, borderRadius: 10, flexShrink: 0,
-          background: "#F1F5F9", overflow: "hidden",
+          background: "var(--surface-muted, #F1F5F9)", overflow: "hidden",
           display: "flex", alignItems: "center", justifyContent: "center",
         }}>
           {room.images?.[0]
@@ -326,9 +326,9 @@ const ReservationCard = ({ reservation, isOpen, onToggle }) => {
 
       {/* ── Expanded Timeline ── */}
       {isOpen && (
-        <div style={{ borderTop: "1px solid #F1F5F9", padding: "20px" }}>
+        <div style={{ borderTop: "1px solid var(--border-subtle, #F1F5F9)", padding: "20px" }}>
           {timeline.length === 0 ? (
-            <p style={{ fontSize: 13, color: "#94A3B8", margin: 0 }}>No activity recorded yet.</p>
+            <p style={{ fontSize: 13, color: "var(--text-muted, #94A3B8)", margin: 0 }}>No activity recorded yet.</p>
           ) : (
             <div style={{ position: "relative" }}>
               {timeline.map((ev, i) => (
@@ -339,8 +339,8 @@ const ReservationCard = ({ reservation, isOpen, onToggle }) => {
                   {/* connector */}
                   {i < timeline.length - 1 && (
                     <div style={{
-                      position: "absolute", left: 15, top: 36, bottom: 0,
-                      width: 2, background: "#E8EBF0", borderRadius: 1,
+                      position: "absolute", left: 15, top: 32, bottom: 0,
+                      width: 2, background: "var(--border-card, #E8EBF0)", borderRadius: 1,
                     }} />
                   )}
                   {/* icon */}
@@ -353,15 +353,15 @@ const ReservationCard = ({ reservation, isOpen, onToggle }) => {
                   </div>
                   {/* content */}
                   <div style={{
-                    flex: 1, background: "#FAFAFA", borderRadius: 8,
-                    border: "1px solid #F1F5F9", padding: "10px 14px",
+                    flex: 1, background: "var(--surface-muted, #FAFAFA)", borderRadius: 8,
+                    border: "1px solid var(--border-subtle, #F1F5F9)", padding: "10px 14px",
                   }}>
-                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                       <div style={{ flex: 1 }}>
-                        <p style={{ fontSize: 13, fontWeight: 600, color: "#0A1628", margin: 0 }}>
+                        <p style={{ fontSize: 13, fontWeight: 600, color: "var(--text-heading, #0A1628)", margin: 0 }}>
                           {ev.title}
                         </p>
-                        <p style={{ fontSize: 12, color: "#6B7280", margin: "2px 0 0", lineHeight: 1.4 }}>
+                        <p style={{ fontSize: 12, color: "var(--text-secondary, #6B7280)", margin: "2px 0 0", lineHeight: 1.4 }}>
                           {ev.description}
                         </p>
                       </div>
@@ -372,7 +372,7 @@ const ReservationCard = ({ reservation, isOpen, onToggle }) => {
                         {ev.status}
                       </span>
                     </div>
-                    <p style={{ display: "flex", alignItems: "center", fontSize: 11, color: "#9CA3AF", margin: "8px 0 0" }}>
+                    <p style={{ display: "flex", alignItems: "center", fontSize: 11, color: "var(--text-muted, #9CA3AF)", margin: "8px 0 0" }}>
                       <Clock size={10} style={{ marginRight: 4 }} />
                       {fmtDateTime(ev.date)}
                     </p>
@@ -413,19 +413,19 @@ const ActivityHistoryTab = ({ reservations = [] }) => {
     return (
       <div style={{ width: "100%" }}>
         <div style={{ marginBottom: 24 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: "#0A1628", margin: "0 0 4px" }}>My History</h1>
-          <p style={{ fontSize: 13, color: "#9CA3AF", margin: 0 }}>Your reservation history and activity log</p>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-heading, #0A1628)", margin: "0 0 4px" }}>My History</h1>
+          <p style={{ fontSize: 13, color: "var(--text-muted, #9CA3AF)", margin: 0 }}>Your reservation history and activity log</p>
         </div>
         <div style={{
           display: "flex", flexDirection: "column", alignItems: "center",
           justifyContent: "center", textAlign: "center", padding: "56px 24px",
-          background: "#fff", borderRadius: 10, border: "1px solid #E8EBF0",
+          background: "var(--surface-card, #fff)", borderRadius: 10, border: "1px solid var(--border-card, #E8EBF0)",
         }}>
           <History size={48} color="#D1D5DB" />
-          <h3 style={{ fontSize: 16, fontWeight: 600, color: "#374151", margin: "12px 0 4px" }}>
+          <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--text-heading, #374151)", margin: "12px 0 4px" }}>
             No history yet
           </h3>
-          <p style={{ fontSize: 13, color: "#9CA3AF", maxWidth: 280, textAlign: "center", margin: 0 }}>
+          <p style={{ fontSize: 13, color: "var(--text-muted, #9CA3AF)", maxWidth: 280, textAlign: "center", margin: 0 }}>
             Your reservations and activity milestones will appear here.
           </p>
         </div>
@@ -437,8 +437,8 @@ const ActivityHistoryTab = ({ reservations = [] }) => {
     <div style={{ width: "100%" }}>
       {/* Header */}
       <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: "#0A1628", margin: "0 0 4px" }}>My History</h1>
-        <p style={{ fontSize: 13, color: "#9CA3AF", margin: 0 }}>Your reservation history and activity log</p>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-heading, #0A1628)", margin: "0 0 4px" }}>My History</h1>
+        <p style={{ fontSize: 13, color: "var(--text-muted, #9CA3AF)", margin: 0 }}>Your reservation history and activity log</p>
       </div>
 
       {/* Stats row */}
@@ -450,11 +450,11 @@ const ActivityHistoryTab = ({ reservations = [] }) => {
           { label: "Cancelled",          value: stats.cancelled, color: "#EF4444", bg: "#FEF2F2" },
         ].map(({ label, value, color, bg }) => (
           <div key={label} style={{
-            flex: "1 1 120px", background: bg, borderRadius: 10,
-            border: "1px solid #E8EBF0", padding: "14px 18px",
+            flex: "1 1 120px", background: "var(--surface-card, " + bg + ")", borderRadius: 10,
+            border: "1px solid var(--border-card, #E8EBF0)", padding: "14px 18px",
           }}>
             <p style={{ fontSize: 22, fontWeight: 700, color, margin: "0 0 2px" }}>{value}</p>
-            <p style={{ fontSize: 11, color: "#94A3B8", fontWeight: 500, margin: 0 }}>{label}</p>
+            <p style={{ fontSize: 11, color: "var(--text-muted, #94A3B8)", fontWeight: 500, margin: 0 }}>{label}</p>
           </div>
         ))}
       </div>

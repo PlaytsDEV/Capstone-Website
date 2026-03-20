@@ -22,7 +22,7 @@ import {
   DoorOpen,
 } from "lucide-react";
 import dayjs from "dayjs";
-import { generateDepositReceipt } from "../../../../shared/utils/receiptGenerator";
+import { generateDepositReceipt, viewDepositReceipt } from "../../../../shared/utils/receiptGenerator";
 import { useCurrentUser } from "../../../../shared/hooks/queries/useUsers";
 
 /* ── Ordinal suffix helper ────────────────────────── */
@@ -148,16 +148,16 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
 
   /* ── Styles ──────────────────────────────────────── */
   const card = {
-    background: "#fff",
+    background: "var(--surface-card, #fff)",
     borderRadius: 12,
-    border: "1px solid #E8EBF0",
+    border: "1px solid var(--border-card, #E8EBF0)",
     padding: 24,
     marginBottom: 16,
   };
   const sectionTitle = {
     fontSize: 15,
     fontWeight: 700,
-    color: "#0A1628",
+    color: "var(--text-heading, #0A1628)",
     margin: "0 0 16px",
   };
   const detailRow = {
@@ -165,12 +165,12 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
     justifyContent: "space-between",
     alignItems: "center",
     padding: "10px 0",
-    borderBottom: "1px solid #F1F5F9",
+    borderBottom: "1px solid var(--border-subtle, rgba(255,255,255,0.06))",
     fontSize: 13,
   };
 
   return (
-    <div style={{ width: "100%", padding: "8px 16px 24px" }}>
+    <div style={{ width: "100%" }}>
 
       {/* ── Hero Image ──────────────────────────────── */}
       <div
@@ -186,7 +186,7 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
           <img
             src={heroImage}
             alt={room.name || "Room"}
-            style={{ width: "100%", height: 340, objectFit: "cover", display: "block" }}
+            style={{ width: "100%", height: 480, objectFit: "cover", display: "block" }}
             onError={(e) => {
               // Replace with the no-photo fallback if URL is invalid
               e.currentTarget.style.display = "none";
@@ -200,7 +200,7 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
             data-photo-fallback
             style={{
               width: "100%",
-              height: 140,
+              height: 240,
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
@@ -270,7 +270,7 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
         <div style={{ flex: "1 1 520px", minWidth: 300 }}>
           {/* Room Info Card */}
           <div style={card}>
-            <h2 style={{ fontSize: 22, fontWeight: 700, color: "#0A1628", margin: "0 0 12px" }}>
+            <h2 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-heading, #0A1628)", margin: "0 0 12px" }}>
               {room.name || "Room"}
             </h2>
 
@@ -304,31 +304,31 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
                 <span style={{ color: "#64748B", display: "flex", alignItems: "center", gap: 6 }}>
                   <MapPin size={14} /> Branch
                 </span>
-                <span style={{ color: "#0A1628", fontWeight: 600 }}>{branchDisplay}</span>
+                <span style={{ color: "var(--text-heading, #0A1628)", fontWeight: 600 }}>{branchDisplay}</span>
               </div>
               <div style={detailRow}>
                 <span style={{ color: "#64748B", display: "flex", alignItems: "center", gap: 6 }}>
                   <Layers size={14} /> Floor
                 </span>
-                <span style={{ color: "#0A1628", fontWeight: 600 }}>{ordinal(room.floor || 1)} Floor</span>
+                <span style={{ color: "var(--text-heading, #0A1628)", fontWeight: 600 }}>{ordinal(room.floor || 1)} Floor</span>
               </div>
               <div style={detailRow}>
                 <span style={{ color: "#64748B", display: "flex", alignItems: "center", gap: 6 }}>
                   <DoorOpen size={14} /> Room Type
                 </span>
-                <span style={{ color: "#0A1628", fontWeight: 600 }}>{roomType}</span>
+                <span style={{ color: "var(--text-heading, #0A1628)", fontWeight: 600 }}>{roomType}</span>
               </div>
               <div style={detailRow}>
                 <span style={{ color: "#64748B", display: "flex", alignItems: "center", gap: 6 }}>
                   <Users size={14} /> Capacity
                 </span>
-                <span style={{ color: "#0A1628", fontWeight: 600 }}>{room.capacity ? `${room.capacity} beds` : "N/A"}</span>
+                <span style={{ color: "var(--text-heading, #0A1628)", fontWeight: 600 }}>{room.capacity ? `${room.capacity} beds` : "N/A"}</span>
               </div>
               <div style={detailRow}>
                 <span style={{ color: "#64748B", display: "flex", alignItems: "center", gap: 6 }}>
                   <Bed size={14} /> Assigned Bed
                 </span>
-                <span style={{ color: "#0A1628", fontWeight: 600 }}>
+                <span style={{ color: "var(--text-heading, #0A1628)", fontWeight: 600 }}>
                   {reservation.selectedBed?.position || "TBD"}
                 </span>
               </div>
@@ -452,7 +452,7 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
           </div>
 
           {/* Receipt Download Card */}
-          <div style={{ ...card, background: "#F8FAFC" }}>
+          <div style={{ ...card, background: "var(--surface-muted, #F8FAFC)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
               <FileText size={16} color="#475569" />
               <h3 style={{ ...sectionTitle, margin: 0 }}>Payment Receipt</h3>
@@ -495,7 +495,7 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
                     <Download size={14} /> Download PDF
                   </button>
                   <button
-                    onClick={() => generateDepositReceipt(reservation, profile)}
+                    onClick={() => viewDepositReceipt(reservation, profile)}
                     style={{
                       flex: 1,
                       display: "flex",

@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import "../../../shared/styles/notification.css";
+import "../styles/profile-page.css";
+import "../styles/profile-dark-overrides.css";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import ProfilePageSkeleton from "../components/profile/ProfilePageSkeleton";
@@ -15,6 +17,7 @@ import {
 import { useCurrentUser } from "../../../shared/hooks/queries/useUsers";
 import { useReservations } from "../../../shared/hooks/queries/useReservations";
 import { billingApi } from "../../../shared/api/billingApi";
+import { ThemeProvider } from "../../../features/public/context/ThemeContext";
 
 // Sub-components
 import {
@@ -405,8 +408,9 @@ const ProfilePage = () => {
 
   // ── Render ─────────────────────────────────────────────────
   return (
+    <ThemeProvider>
     <>
-      <div className="min-h-screen flex" style={{ backgroundColor: "#F7F8FA", overflow: "hidden" }}>
+      <div className="min-h-screen flex" style={{ backgroundColor: "var(--surface-page)" }}>
         <ProfileSidebar
           activeTab={activeTab}
           setActiveTab={handleTabChange}
@@ -496,6 +500,7 @@ const ProfilePage = () => {
         cancelText="Keep Editing"
       />
     </>
+    </ThemeProvider>
   );
 };
 
