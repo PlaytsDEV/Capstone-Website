@@ -36,8 +36,7 @@ const NAV_SECTIONS = [
       { id: "billing", label: "My Bills", icon: CreditCard },
       { id: "reservation", label: "My Reservation", icon: Bed },
       { id: "contract", label: "My Contract", icon: FileText },
-      { id: "history", label: "Activity Log", icon: History },
-      { id: "stays", label: "My Stays", icon: Home },
+      { id: "history", label: "My History", icon: History },
     ],
   },
   {

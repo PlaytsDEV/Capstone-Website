@@ -70,7 +70,7 @@ const ToggleRow = ({ icon: Icon, iconColor, label, sublabel, checked = false }) 
 
 /* ── NotificationsTab ─────────────────────────────────────── */
 export const NotificationsTab = () => (
-  <div style={{ maxWidth: 720 }}>
+  <div style={{ width: "100%" }}>
     <div style={{ marginBottom: 24 }}>
       <h1
         style={{
@@ -176,7 +176,7 @@ export const NotificationsTab = () => (
 
 /* ── SettingsTab ───────────────────────────────────────────── */
 export const SettingsTab = () => (
-  <div style={{ maxWidth: 720 }}>
+  <div style={{ width: "100%" }}>
     <div style={{ marginBottom: 24 }}>
       <h1
         style={{

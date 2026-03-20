@@ -64,7 +64,41 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
   const { data: profile } = useCurrentUser();
   const [selectedImage, setSelectedImage] = useState(0);
 
-  if (!reservation) return null;
+  if (!reservation) {
+    return (
+      <div style={{ width: "100%" }}>
+        <div style={{ marginBottom: 24 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: "#0A1628", margin: "0 0 4px" }}>My Reservation</h1>
+          <p style={{ fontSize: 13, color: "#9CA3AF", margin: 0 }}>Your active reservation details</p>
+        </div>
+        <div style={{
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+          textAlign: "center", padding: "56px 24px",
+          background: "#fff", borderRadius: 10, border: "1px solid #E8EBF0",
+        }}>
+          <Building size={48} color="#D1D5DB" />
+          <h3 style={{ fontSize: 16, fontWeight: 600, color: "#374151", margin: "16px 0 8px" }}>
+            No Reservation Yet
+          </h3>
+          <p style={{ fontSize: 13, color: "#9CA3AF", maxWidth: 300, margin: "0 0 24px", lineHeight: 1.6 }}>
+            You don't have an active reservation. Browse available rooms and start your application.
+          </p>
+          <button
+            onClick={() => navigate("/applicant/check-availability")}
+            style={{
+              padding: "12px 28px", background: "#E8734A", color: "#fff",
+              border: "none", borderRadius: 10, fontSize: 14, fontWeight: 600,
+              cursor: "pointer", transition: "all 0.15s",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "#D4622F"; e.currentTarget.style.transform = "translateY(-1px)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "#E8734A"; e.currentTarget.style.transform = "translateY(0)"; }}
+          >
+            Browse Available Rooms
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const room = reservation.roomId || {};
   const images = room.images || [];
@@ -78,6 +112,25 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
   const tenantName =
     `${profile?.firstName || reservation.firstName || ""} ${profile?.lastName || reservation.lastName || ""}`.trim() ||
     "Tenant";
+  const reservationStatus = reservation.reservationStatus || reservation.status || "pending";
+  const statusDisplay = (() => {
+    const s = reservationStatus;
+    if (s === "cancelled")    return { label: "Cancelled",         bg: "#EF4444" };
+    if (s === "checked-out")  return { label: "Completed",         bg: "#6B7280" };
+    if (s === "checked-in")   return { label: "Checked In",        bg: "#6366F1" };
+    if (s === "reserved" || reservation.paymentStatus === "paid")
+                              return { label: "Reserved",          bg: "#059669" };
+    if (s === "payment_pending")
+                              return { label: "Payment Pending",   bg: "#D97706" };
+    if (s === "visit_approved" || reservation.scheduleApproved || reservation.visitApproved)
+                              return { label: "Visit Approved",    bg: "#7C3AED" };
+    if (s === "visit_pending" || (reservation.visitDate && !reservation.scheduleRejected))
+                              return { label: "Visit Pending",     bg: "#2563EB" };
+    if (reservation.scheduleRejected)
+                              return { label: "Reschedule Needed", bg: "#DC2626" };
+    return                           { label: "Room Selected",     bg: "#0EA5E9" };
+  })();
+
   const monthlyRent = reservation.monthlyRent || reservation.totalPrice || room.price || 0;
   const paymentDate = reservation.paymentDate
     ? dayjs(reservation.paymentDate).format("MMMM D, YYYY")
@@ -117,7 +170,7 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
   };
 
   return (
-    <div style={{ maxWidth: 1200, padding: "8px 16px 24px" }}>
+    <div style={{ width: "100%", padding: "8px 16px 24px" }}>
 
       {/* ── Hero Image ──────────────────────────────── */}
       <div
@@ -198,7 +251,7 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
           </span>
           <span
             style={{
-              background: "#059669",
+              background: statusDisplay.bg,
               color: "#fff",
               fontSize: 12,
               fontWeight: 600,
@@ -206,7 +259,7 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
               borderRadius: 20,
             }}
           >
-            Reserved
+            {statusDisplay.label}
           </span>
         </div>
       </div>

@@ -3,7 +3,7 @@ import ReservationDashboard from "../ReservationDashboard";
 import ProfileCompletionCard from "./ProfileCompletionCard";
 import VisitPassCard3D from "./VisitPassCard3D";
 import VisitPassEmpty from "./VisitPassEmpty";
-import { Calendar, Clock, CheckCircle, AlertCircle } from "lucide-react";
+import { Calendar, Clock, AlertCircle } from "lucide-react";
 
 /* ── Status Banner — contextual info based on reservation state ── */
 const StatusBanner = ({ reservation }) => {
@@ -15,22 +15,6 @@ const StatusBanner = ({ reservation }) => {
   const visitApproved = reservation.visitApproved || reservation.scheduleApproved;
   const hasApplication = reservation.firstName && reservation.lastName && reservation.mobileNumber;
 
-  // Confirmed — show reservation code
-  if (isConfirmed && reservation.reservationCode) {
-    return (
-      <div style={{ ...bannerBase, background: "#F0FDF4", borderColor: "#BBF7D0" }}>
-        <CheckCircle size={18} color="#059669" style={{ flexShrink: 0 }} />
-        <div style={{ flex: 1 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: "#065F46" }}>
-            Reservation Confirmed
-          </span>
-          <span style={{ fontSize: 12, color: "#047857", marginLeft: 8 }}>
-            Code: <strong>{reservation.reservationCode}</strong>
-          </span>
-        </div>
-      </div>
-    );
-  }
 
   // Visit scheduled but not approved — countdown
   if (visitDate && !visitApproved) {
@@ -196,7 +180,7 @@ const DashboardTab = ({
 /* ── styles ─────────────────────────────────────────────── */
 const S = {
   root: {
-    maxWidth: 960,
+    width: "100%",
   },
   pageHeader: {
     marginBottom: 16,

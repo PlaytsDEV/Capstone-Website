@@ -3,9 +3,14 @@
    ============================================================================= */
 
 .profile-page {
-  max-width: 1200px;
-  margin: 0 auto;
+  width: 100%;
   padding: 2rem;
+}
+
+/* Shared class for all profile tab content wrappers */
+.profile-tab-content {
+  width: 100%;
+  max-width: 100%;
 }
 
 /* Profile Alert */

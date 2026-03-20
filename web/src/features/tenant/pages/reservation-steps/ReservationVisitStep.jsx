@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Calendar, Clock, FileText, X, CheckCircle } from "lucide-react";
+import { Calendar, Clock, FileText, X, CheckCircle, AlertTriangle } from "lucide-react";
 import { showNotification } from "../../../../shared/utils/notification";
 import { PoliciesTermsModal } from "../../modals/PoliciesAndConsent";
 
@@ -190,6 +190,8 @@ const ReservationVisitStep = ({
   onAfterClose,
   readOnly,
   agreedToPrivacy,
+  scheduleRejected,
+  scheduleRejectionReason,
 }) => {
   const navigate = useNavigate();
   // Initialize from parent state; always true when read-only (already submitted)
@@ -275,6 +277,37 @@ const ReservationVisitStep = ({
           policies before confirming your booking.
         </p>
       </div>
+
+      {/* Rejection Banner */}
+      {scheduleRejected && (
+        <div
+          style={{
+            background: "#FEF2F2",
+            border: "1px solid #FECACA",
+            borderRadius: "12px",
+            padding: "16px 20px",
+            marginBottom: "16px",
+            display: "flex",
+            gap: "12px",
+            alignItems: "flex-start",
+          }}
+        >
+          <AlertTriangle size={20} color="#DC2626" style={{ flexShrink: 0, marginTop: 2 }} />
+          <div>
+            <div style={{ fontSize: "14px", fontWeight: 600, color: "#DC2626", marginBottom: "4px" }}>
+              Your previous visit schedule was rejected
+            </div>
+            {scheduleRejectionReason && (
+              <div style={{ fontSize: "13px", color: "#7F1D1D", marginBottom: "8px", lineHeight: 1.5 }}>
+                <strong>Reason:</strong> {scheduleRejectionReason}
+              </div>
+            )}
+            <div style={{ fontSize: "13px", color: "#991B1B" }}>
+              Please select a new date and time below to reschedule your visit.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Read-Only Banner */}
       {readOnly && (

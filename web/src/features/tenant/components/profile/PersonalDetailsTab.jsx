@@ -47,7 +47,7 @@ const validateField = (field, value) => {
 
 /* ── Styles ──────────────────────────────────────── */
 const s = {
-  container: { maxWidth: 1200 },
+  container: { width: "100%" },
   heading: { marginBottom: 24 },
   title: { fontSize: 22, fontWeight: 700, color: "#0A1628", margin: 0 },
   subtitle: { fontSize: 13, color: "#9CA3AF", marginTop: 4 },

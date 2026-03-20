@@ -114,6 +114,10 @@ function getStepStatus(stepStage, currentStage, reservation) {
         return "complete";
       }
     }
+    // Show "rejected" for step 2 when admin has rejected the visit schedule
+    if (stepStage === 2 && reservation?.scheduleRejected) {
+      return "rejected";
+    }
     // Show "waiting" for step 2 only (visit pending admin check-in confirmation)
     if (stepStage === 2 && reservation) {
       const hasSchedule = reservation.visitDate || reservation.viewingType;
@@ -256,6 +260,9 @@ function getStepDesc(step, status, reservation) {
       }
       return step.desc;
     case 2:
+      if (status === "rejected") {
+        return "Schedule rejected";
+      }
       if (status === "waiting") {
         return reservation.visitDate
           ? `Visit on ${formatDate(reservation.visitDate)}`
@@ -348,8 +355,7 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
               <MapPin size={13} style={{ marginRight: 4 }} />
               {branch}
             </span>
-            <span style={styles.metaDot}>·</span>
-            <span style={styles.metaItem}>Code: {code}</span>
+
             {reservation.targetMoveInDate && (
               <>
                 <span style={styles.metaDot}>·</span>
@@ -374,7 +380,7 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
                 style={{
                   ...styles.stepItem,
                   cursor:
-                    status === "complete" || status === "current" || status === "waiting"
+                    status === "complete" || status === "current" || status === "waiting" || status === "rejected"
                       ? "pointer"
                       : "default",
                   opacity: status === "locked" ? 0.4 : 1,
@@ -405,13 +411,17 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
                         ? styles.stepCurrent
                         : status === "waiting"
                           ? styles.stepWaiting
-                          : styles.stepLocked),
+                          : status === "rejected"
+                            ? styles.stepRejected
+                            : styles.stepLocked),
                   }}
                 >
                   {status === "complete" ? (
                     <CheckCircle size={16} color="#fff" />
                   ) : status === "waiting" ? (
                     <Clock size={16} color="#fff" />
+                  ) : status === "rejected" ? (
+                    <AlertCircle size={16} color="#fff" />
                   ) : (
                     <Icon size={16} color={status === "current" ? "#fff" : "#94A3B8"} />
                   )}
@@ -426,8 +436,10 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
                           ? "#FF8C42"
                           : status === "waiting"
                             ? "#2563EB"
-                            : "#94A3B8",
-                    fontWeight: status === "current" || status === "waiting" ? 600 : 400,
+                            : status === "rejected"
+                              ? "#DC2626"
+                              : "#94A3B8",
+                    fontWeight: status === "current" || status === "waiting" || status === "rejected" ? 600 : 400,
                   }}
                 >
                   {step.label}
@@ -440,7 +452,9 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
                         ? "#6EE7B7"
                         : status === "current"
                           ? "#FDBA74"
-                          : "#CBD5E1",
+                          : status === "rejected"
+                            ? "#FCA5A5"
+                            : "#CBD5E1",
                   }}
                 >
                   {getStepDesc(step, status, reservation)}
@@ -468,23 +482,23 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
           gap: 12,
           padding: "12px 16px",
           borderRadius: 8,
-          background: action.isWaiting ? "#F8FAFF" : "#FFFBF7",
-          border: `1px solid ${action.isWaiting ? "#DBEAFE" : "#FDE8D0"}`,
+          background: action.isRejected ? "#FEF2F2" : action.isWaiting ? "#F8FAFF" : "#FFFBF7",
+          border: `1px solid ${action.isRejected ? "#FECACA" : action.isWaiting ? "#DBEAFE" : "#FDE8D0"}`,
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{
               width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
-              background: action.isWaiting ? "#2563EB" : "#FF8C42",
+              background: action.isRejected ? "#DC2626" : action.isWaiting ? "#2563EB" : "#FF8C42",
             }} />
             <div>
               <span style={{
                 fontSize: 13, fontWeight: 600,
-                color: action.isWaiting ? "#1D4ED8" : "#C2611B",
+                color: action.isRejected ? "#DC2626" : action.isWaiting ? "#1D4ED8" : "#C2611B",
                 marginRight: 6,
               }}>
                 {action.title}
               </span>
-              <span style={{ fontSize: 13, color: "#94A3B8" }}>
+              <span style={{ fontSize: 13, color: action.isRejected ? "#7F1D1D" : "#94A3B8" }}>
                 {action.description}
               </span>
             </div>
@@ -495,7 +509,7 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
               style={{
                 flexShrink: 0,
                 padding: "6px 14px",
-                background: "#FF8C42",
+                background: action.isRejected ? "#DC2626" : "#FF8C42",
                 color: "#fff",
                 border: "none",
                 borderRadius: 6,
@@ -521,10 +535,16 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
               Your reservation is secured. Please prepare for your move-in date.
             </p>
             {reservation.paymentDate && (
-              <div style={{ marginTop: 8, fontSize: 12, color: "#047857" }}>
-                <div>💳 Paid: ₱2,000 via {formatPaymentMethod(reservation.paymentMethod)}</div>
-                <div>📅 Date: {formatDate(reservation.paymentDate)}</div>
-              </div>
+              <div style={{ marginTop: 8, fontSize: 12, color: "#047857", display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <CreditCard size={13} style={{ flexShrink: 0 }} />
+                    <span>Paid: ₱2,000 via {formatPaymentMethod(reservation.paymentMethod)}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <Calendar size={13} style={{ flexShrink: 0 }} />
+                    <span>Date: {formatDate(reservation.paymentDate)}</span>
+                  </div>
+                </div>
             )}
           </div>
         </div>
@@ -534,7 +554,7 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
       {!isConfirmed && (
         <div style={styles.footer}>
           <div style={styles.footerLeft}>
-            {currentStage <= 1 &&
+            {currentStage <= 2 &&
               !reservation.viewingType &&
               !reservation.visitApproved &&
               !reservation.scheduleApproved && (
@@ -582,7 +602,7 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
                   try {
                     const { reservationApi } =
                       await import("../../../shared/api/reservationApi");
-                    await reservationApi.delete(reservation._id);
+                    await reservationApi.updateByUser(reservation._id, { cancelReservation: true });
                     setShowCancelModal(false);
                     showNotification("Reservation cancelled successfully.", "success", 3000);
                     queryClient.invalidateQueries({ queryKey: ["reservations"] });
@@ -772,6 +792,10 @@ const styles = {
   stepWaiting: {
     background: "#2563EB",
     boxShadow: "0 0 0 4px rgba(37, 99, 235, 0.15)",
+  },
+  stepRejected: {
+    background: "linear-gradient(135deg, #DC2626 0%, #EF4444 100%)",
+    boxShadow: "0 0 0 4px rgba(220, 38, 38, 0.2), 0 0 12px rgba(220, 38, 38, 0.15)",
   },
   stepLocked: {
     background: "#F1F5F9",

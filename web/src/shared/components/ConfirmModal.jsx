@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import useBodyScrollLock from "../../shared/hooks/useBodyScrollLock";
 
 /**
  * Minimal, professional confirmation modal.
@@ -33,13 +34,8 @@ export default function ConfirmModal({
     return () => document.removeEventListener("keydown", handler);
   }, [isOpen, onClose]);
 
-  // Prevent body scroll when open
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-      return () => (document.body.style.overflow = "");
-    }
-  }, [isOpen]);
+  // Prevent body scroll when open — compensate for scrollbar width
+  useBodyScrollLock(isOpen);
 
   if (!isOpen) return null;
 
