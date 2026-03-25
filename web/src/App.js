@@ -76,9 +76,6 @@ const SuperAdminDashboard = React.lazy(
 const BranchManagementPage = React.lazy(
   () => import("./features/super-admin/pages/BranchManagementPage"),
 );
-const RolePermissionsPage = React.lazy(
-  () => import("./features/super-admin/pages/RolePermissionsPage"),
-);
 const SystemSettingsPage = React.lazy(
   () => import("./features/super-admin/pages/SystemSettingsPage"),
 );
@@ -342,16 +339,6 @@ function AppContent() {
                 <RequireOwner>
                   <RouteErrorBoundary name="Branches">
                     <BranchManagementPage />
-                  </RouteErrorBoundary>
-                </RequireOwner>
-              }
-            />
-            <Route
-              path="roles"
-              element={
-                <RequireOwner>
-                  <RouteErrorBoundary name="Roles">
-                    <RolePermissionsPage />
                   </RouteErrorBoundary>
                 </RequireOwner>
               }
