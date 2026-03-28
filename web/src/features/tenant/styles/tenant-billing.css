@@ -665,3 +665,312 @@
   background: rgba(5, 150, 105, 0.1);
   color: #059669;
 }
+
+/* ─── Electricity Breakdown (Phase 2) ─── */
+
+.electricity-breakdown-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.electricity-breakdown-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 1rem 1.5rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+  font-family: inherit;
+}
+
+.electricity-breakdown-toggle:hover {
+  background: #fffbeb;
+}
+
+.electricity-breakdown-toggle__label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #0A1628;
+  flex: 1;
+}
+
+.electricity-breakdown-toggle__icon {
+  color: #f59e0b;
+}
+
+.electricity-breakdown-toggle__hint {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  font-weight: 400;
+  margin-right: 6px;
+}
+
+.electricity-breakdown-body {
+  border-top: 1px solid #f1f5f9;
+  padding: 1rem 1.5rem 1.25rem;
+}
+
+/* Summary stat chips */
+.electricity-breakdown-summary {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.electricity-breakdown-stat {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 14px;
+  min-width: 90px;
+  flex: 1;
+}
+
+.electricity-breakdown-stat__label {
+  display: block;
+  font-size: 0.7rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+
+.electricity-breakdown-stat__value {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.electricity-breakdown-stat__value--accent {
+  color: #f59e0b;
+}
+
+.electricity-breakdown-stat__value--small {
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+/* Segment table */
+.electricity-segment-table-wrap {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.electricity-segment-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.83rem;
+}
+
+.electricity-segment-table th {
+  background: #f8fafc;
+  padding: 7px 12px;
+  text-align: left;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.electricity-segment-table td {
+  padding: 9px 12px;
+  color: #475569;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.electricity-segment-table tr:last-child td {
+  border-bottom: none;
+}
+
+.electricity-segment-table tr:hover td {
+  background: #fffbeb;
+}
+
+.electricity-segment-table__center { text-align: center; }
+.electricity-segment-table__num { text-align: right; font-variant-numeric: tabular-nums; }
+.electricity-segment-table__num--bold { font-weight: 600; color: #1e293b; }
+
+/* Note / footnote */
+.electricity-breakdown-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  margin: 8px 12px 0;
+  font-size: 0.75rem;
+  color: #94a3b8;
+  padding-bottom: 4px;
+}
+
+.electricity-breakdown-note svg { flex-shrink: 0; margin-top: 1px; }
+
+/* States */
+.electricity-breakdown-loading,
+.electricity-breakdown-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.83rem;
+  padding: 10px 0;
+}
+
+.electricity-breakdown-loading { color: #94a3b8; }
+.electricity-breakdown-error { color: #dc2626; }
+
+/* ─── Electricity History Section (Phase 3) ─── */
+
+.elec-history {
+  margin-top: 2rem;
+}
+
+.elec-history__title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #0A1628;
+  margin: 0 0 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.elec-history__icon {
+  color: #f59e0b;
+}
+
+.elec-history__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Period row */
+.elec-period-row {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+.elec-period-row--open {
+  border-color: #fbbf24;
+}
+
+.elec-period-row__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+
+.elec-period-row__header:hover {
+  background: #fffbeb;
+}
+
+.elec-period-row__icon {
+  color: #f59e0b;
+  flex-shrink: 0;
+}
+
+.elec-period-row__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.elec-period-row__room {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.elec-period-row__date {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.elec-period-row__stats {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.elec-period-row__kwh {
+  font-size: 0.82rem;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+}
+
+.elec-period-row__amount {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #0A1628;
+  font-variant-numeric: tabular-nums;
+  min-width: 80px;
+  text-align: right;
+}
+
+.elec-period-row__body {
+  border-top: 1px solid #f1f5f9;
+  padding: 12px 16px 14px;
+}
+
+/* Summary row inside expanded body */
+.elec-period-summary {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  font-size: 0.82rem;
+  color: #64748b;
+}
+
+.elec-period-summary strong {
+  color: #1e293b;
+}
+
+.elec-period-summary__accent {
+  color: #f59e0b !important;
+}
+
+.elec-period-row__no-segments {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  font-style: italic;
+  margin: 4px 0 0;
+}
+
+@media (max-width: 640px) {
+  .elec-period-row__stats {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+  }
+  .elec-period-summary {
+    flex-direction: column;
+    gap: 4px;
+  }
+}

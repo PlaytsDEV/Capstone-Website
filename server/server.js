@@ -52,6 +52,8 @@ import notificationRoutes from "./routes/notificationRoutes.js";
 import uploadRoutes from "./routes/uploadRoutes.js";
 import webhookRoutes from "./routes/webhookRoutes.js";
 import digitalTwinRoutes from "./routes/digitalTwinRoutes.js";
+import electricityRoutes from "./routes/electricityRoutes.js";
+import financialRoutes from "./routes/financialRoutes.js";
 
 // --- Background Jobs ---
 import { startScheduler, stopScheduler } from "./utils/scheduler.js";
@@ -208,6 +210,8 @@ app.use("/api/payments", paymentRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/digital-twin", digitalTwinRoutes);
+app.use("/api/electricity", electricityRoutes);
+app.use("/api/financial", financialRoutes);
 
 // ============================================================================
 // DEEP HEALTH CHECK

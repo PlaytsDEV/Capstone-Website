@@ -70,6 +70,9 @@ const OccupancyTrackingPage = React.lazy(
 const DigitalTwinPage = React.lazy(
   () => import("./features/admin/pages/DigitalTwinPage"),
 );
+const FinancialPage = React.lazy(
+  () => import("./features/admin/pages/FinancialPage"),
+);
 const SuperAdminDashboard = React.lazy(
   () => import("./features/super-admin/pages/SuperAdminDashboard"),
 );
@@ -329,6 +332,16 @@ function AppContent() {
                 <RouteErrorBoundary name="DigitalTwin">
                   <DigitalTwinPage />
                 </RouteErrorBoundary>
+              }
+            />
+            <Route
+              path="financial"
+              element={
+                <RequireOwner>
+                  <RouteErrorBoundary name="Financial">
+                    <FinancialPage />
+                  </RouteErrorBoundary>
+                </RequireOwner>
               }
             />
 

@@ -35,7 +35,9 @@ import Reservation from "./Reservation.js";
 import Inquiry from "./Inquiry.js";
 import AuditLog from "./AuditLog.js";
 import Bill from "./Bill.js";
-import RoomBill from "./RoomBill.js";
+import MeterReading from "./MeterReading.js";
+import BillingPeriod from "./BillingPeriod.js";
+import BillingResult from "./BillingResult.js";
 import Announcement from "./Announcement.js";
 import MaintenanceRequest from "./MaintenanceRequest.js";
 import Notification from "./Notification.js";
@@ -54,7 +56,9 @@ export {
   Inquiry,
   AuditLog,
   Bill,
-  RoomBill,
+  MeterReading,
+  BillingPeriod,
+  BillingResult,
   Announcement,
   MaintenanceRequest,
   Notification,
@@ -173,7 +177,9 @@ export default {
   Inquiry,
   AuditLog,
   Bill,
-  RoomBill,
+  MeterReading,
+  BillingPeriod,
+  BillingResult,
   Announcement,
   MaintenanceRequest,
   AcknowledgmentAccount,

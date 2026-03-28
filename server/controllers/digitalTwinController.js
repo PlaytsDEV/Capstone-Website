@@ -17,6 +17,7 @@ import Room from "../models/Room.js";
 import Reservation from "../models/Reservation.js";
 import Bill from "../models/Bill.js";
 import MaintenanceRequest from "../models/MaintenanceRequest.js";
+import BillingPeriod from "../models/BillingPeriod.js";
 
 // ============================================================================
 // HEALTH SCORE CALCULATION
@@ -90,7 +91,7 @@ export const getSnapshot = async (req, res) => {
     const [rooms, activeReservations, openMaintenance] = await Promise.all([
       Room.find(roomFilter).lean(),
       Reservation.find({
-        status: { $in: ["confirmed", "checked-in"] },
+        status: { $in: ["reserved", "checked-in"] },
         isArchived: false,
         ...(branch && branch !== "all" ? { branch } : {}),
       })
@@ -104,16 +105,34 @@ export const getSnapshot = async (req, res) => {
     ]);
 
     // Fetch bills only for active reservations (prevents past-tenant bills from skewing KPIs)
+    // Also excludes draft bills — they haven't been officially issued yet
     const activeReservationIds = activeReservations.map((r) => r._id);
     const currentBills =
       activeReservationIds.length > 0
         ? await Bill.find({
             reservationId: { $in: activeReservationIds },
+            status: { $ne: "draft" },
             isArchived: false,
           })
             .sort({ billingMonth: -1 })
             .lean()
         : [];
+
+    // Stale open billing periods (open > 20 days = past the ~15th reading window)
+    const STALE_DAYS = 20;
+    const openPeriods = await BillingPeriod.find({
+      status: "open",
+      isArchived: false,
+      ...(branch && branch !== "all" ? { branch } : {}),
+    }).lean();
+    const now = Date.now();
+    const stalePeriodsByRoom = {};
+    for (const p of openPeriods) {
+      const daysOpen = Math.floor((now - new Date(p.startDate)) / 86_400_000);
+      if (daysOpen > STALE_DAYS) {
+        stalePeriodsByRoom[String(p.roomId)] = daysOpen;
+      }
+    }
 
     // Index reservations, bills, and maintenance by roomId for fast lookup
     const reservationsByRoom = {};
@@ -142,6 +161,11 @@ export const getSnapshot = async (req, res) => {
       const roomId = String(room._id);
       const roomReservations = reservationsByRoom[roomId] || [];
       const roomBills = billsByRoom[roomId] || [];
+
+      // Separate physical occupancy (checked-in = moved in) from reservations
+      // "reserved" = paid deposit, confirmed, but NOT yet physically present
+      const physicalOccupancy = roomReservations.filter((r) => r.status === "checked-in").length;
+      const reservedCount = roomReservations.filter((r) => r.status === "reserved").length;
       const roomMaintenance = maintenanceByRoom[roomId] || [];
 
       const overdueBills = roomBills.filter((b) => b.status === "overdue");
@@ -164,27 +188,61 @@ export const getSnapshot = async (req, res) => {
         floor: room.floor,
         type: room.type,
         capacity: room.capacity,
-        currentOccupancy: room.currentOccupancy,
+        currentOccupancy: physicalOccupancy + reservedCount,  // total committed (reserved + checked-in)
+        reservedCount,     // broken down for the two-color bar
+        physicalOccupancy, // actually moved in
         available: room.available,
-        beds: room.beds.map((bed) => ({
-          id: bed.id,
-          position: bed.position,
-          status: bed.status,
-          occupant: bed.occupiedBy?.userId
-            ? (() => {
-                const res = roomReservations.find(
-                  (r) =>
-                    String(r.userId?._id) === String(bed.occupiedBy.userId),
-                );
-                return res?.userId
-                  ? {
-                      name: `${res.userId.firstName || ""} ${res.userId.lastName || ""}`.trim(),
-                      since: bed.occupiedBy.occupiedSince,
-                    }
-                  : null;
-              })()
-            : null,
-        })),
+        beds: (() => {
+          // Build enriched beds array with display status inferred from live reservations
+          const enrichedBeds = room.beds.map((bed) => {
+            const matchingRes =
+              roomReservations.find((r) => r.selectedBed?.id && r.selectedBed.id === bed.id) ||
+              roomReservations.find((r) => String(r.userId?._id) === String(bed.occupiedBy?.userId));
+
+            let displayStatus = bed.status;
+            if (matchingRes && displayStatus === "available") {
+              displayStatus = matchingRes.status === "checked-in" ? "occupied" : "reserved";
+            }
+
+            return {
+              id: bed.id,
+              position: bed.position,
+              status: displayStatus,
+              _matchedResId: matchingRes ? String(matchingRes._id) : null,
+              occupant: matchingRes?.userId
+                ? {
+                    name: `${matchingRes.userId.firstName || ""} ${matchingRes.userId.lastName || ""}`.trim(),
+                    since: bed.occupiedBy?.occupiedSince ?? null,
+                    reservationStatus: matchingRes.status,
+                  }
+                : null,
+            };
+          });
+
+          // Fallback: any reservation not matched to a bed → assign to first still-available slot
+          const matchedIds = new Set(enrichedBeds.map((b) => b._matchedResId).filter(Boolean));
+          const unmatched = roomReservations.filter((r) => !matchedIds.has(String(r._id)));
+          for (const res of unmatched) {
+            const freeBed = enrichedBeds.find((b) => b.status === "available");
+            if (freeBed) {
+              freeBed.status = res.status === "checked-in" ? "occupied" : "reserved";
+              freeBed.occupant = res.userId
+                ? {
+                    name: `${res.userId.firstName || ""} ${res.userId.lastName || ""}`.trim(),
+                    since: null,
+                    reservationStatus: res.status,
+                  }
+                : null;
+            }
+          }
+
+          // Strip internal helper field
+          return enrichedBeds.map(({ _matchedResId, ...bed }) => bed);
+        })(),
+        electricity: {
+          hasStaleOpenPeriod: !!stalePeriodsByRoom[roomId],
+          staleOpenDays: stalePeriodsByRoom[roomId] ?? null,
+        },
         maintenance: {
           openCount: roomMaintenance.length,
           highUrgencyCount: roomMaintenance.filter(
@@ -321,7 +379,7 @@ export const getRoomDetail = async (req, res) => {
     const [reservations, maintenance] = await Promise.all([
       Reservation.find({
         roomId,
-        status: { $in: ["confirmed", "checked-in"] },
+        status: { $in: ["reserved", "checked-in"] },
         isArchived: false,
       })
         .populate("userId", "firstName lastName email phone profileImage")
@@ -340,6 +398,7 @@ export const getRoomDetail = async (req, res) => {
       activeReservationIds.length > 0
         ? await Bill.find({
             reservationId: { $in: activeReservationIds },
+            status: { $ne: "draft" },
             isArchived: false,
           })
             .sort({ billingMonth: -1 })
@@ -356,14 +415,25 @@ export const getRoomDetail = async (req, res) => {
     const healthTier = getHealthTier(healthScore);
 
     // Enrich beds with tenant info
+    // Match priority: (1) bed.id matches reservation.selectedBed.id,
+    // (2) bed.occupiedBy.userId matches reservation.userId (legacy fallback)
     const enrichedBeds = room.beds.map((bed) => {
-      const reservation = reservations.find(
-        (r) => String(r.userId?._id) === String(bed.occupiedBy?.userId),
-      );
+      const reservation =
+        reservations.find((r) => r.selectedBed?.id && r.selectedBed.id === bed.id) ||
+        reservations.find((r) => String(r.userId?._id) === String(bed.occupiedBy?.userId));
+
+      // Determine correct display status:
+      // If the DB bed.status is already correct, use it;
+      // otherwise infer from reservation status (handles stale data)
+      let displayStatus = bed.status;
+      if (reservation && displayStatus === "available") {
+        displayStatus = reservation.status === "checked-in" ? "occupied" : "reserved";
+      }
+
       return {
         id: bed.id,
         position: bed.position,
-        status: bed.status,
+        status: displayStatus,
         occupant: reservation?.userId
           ? {
               _id: reservation.userId._id,
@@ -372,10 +442,37 @@ export const getRoomDetail = async (req, res) => {
               phone: reservation.userId.phone,
               since: bed.occupiedBy?.occupiedSince,
               reservationId: reservation._id,
+              reservationStatus: reservation.status,
             }
           : null,
       };
     });
+
+    // If there are more reservations than matched beds (selectedBed not set),
+    // attach unmatched tenants to the first unoccupied bed slot
+    const matchedReservationIds = new Set(
+      enrichedBeds.filter((b) => b.occupant).map((b) => String(b.occupant.reservationId))
+    );
+    const unmatchedReservations = reservations.filter(
+      (r) => !matchedReservationIds.has(String(r._id))
+    );
+    if (unmatchedReservations.length > 0) {
+      for (const res of unmatchedReservations) {
+        const freeBed = enrichedBeds.find((b) => !b.occupant && b.status === "available");
+        if (freeBed) {
+          freeBed.status = res.status === "checked-in" ? "occupied" : "reserved";
+          freeBed.occupant = {
+            _id: res.userId._id,
+            name: `${res.userId.firstName || ""} ${res.userId.lastName || ""}`.trim(),
+            email: res.userId.email,
+            phone: res.userId.phone,
+            since: null,
+            reservationId: res._id,
+            reservationStatus: res.status,
+          };
+        }
+      }
+    }
 
     // Bills grouped by tenant — skip any orphaned bills (no resolvable userId)
     const tenantBills = {};
@@ -401,6 +498,9 @@ export const getRoomDetail = async (req, res) => {
       });
     }
 
+    const physicalOccupancy = reservations.filter((r) => r.status === "checked-in").length;
+    const reservedCount = reservations.filter((r) => r.status === "reserved").length;
+
     res.json({
       success: true,
       data: {
@@ -412,7 +512,9 @@ export const getRoomDetail = async (req, res) => {
           floor: room.floor,
           type: room.type,
           capacity: room.capacity,
-          currentOccupancy: room.currentOccupancy,
+          currentOccupancy: physicalOccupancy + reservedCount,  // total committed
+          reservedCount,     // for two-color bar
+          physicalOccupancy, // actually moved in
           amenities: room.amenities,
           images: room.images,
         },

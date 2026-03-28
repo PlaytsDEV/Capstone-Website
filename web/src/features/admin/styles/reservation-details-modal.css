@@ -504,6 +504,14 @@
   appearance: textfield;
 }
 
+.rdm-extend-dialog-input--wide {
+  width: 100%;
+  padding: 10px 14px;
+  text-align: left;
+  font-size: var(--font-size-md);
+  box-sizing: border-box;
+}
+
 .rdm-extend-dialog-input::-webkit-outer-spin-button,
 .rdm-extend-dialog-input::-webkit-inner-spin-button {
   -webkit-appearance: none;

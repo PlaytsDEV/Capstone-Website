@@ -351,11 +351,28 @@ export default function TenantDetailModal({ tenant, onClose }) {
                   <button
                     className="tenant-detail-modal-contract-download"
                     onClick={async () => {
-                      if (!confirm(`Check out ${tenant.name}? This will vacate their bed and mark them as inactive.`)) return;
+                      // Capture meter reading — MANDATORY for checkout
+                      const kwhInput = prompt(
+                        `⚡ Enter the current meter reading for ${tenant.room} (kWh).\n\nThis is required to record the move-out electricity consumption.`,
+                        ''
+                      );
+                      if (kwhInput === null) return; // User cancelled
+                      const meterReading = Number(kwhInput.trim());
+                      if (!kwhInput.trim() || isNaN(meterReading) || meterReading < 0) {
+                        showNotification('A valid meter reading (kWh) is required to check out a tenant.', 'error', 4000);
+                        return;
+                      }
+                      if (!confirm(`Check out ${tenant.name} with meter reading ${meterReading} kWh? This will vacate their bed and mark them as inactive.`)) return;
                       try {
                         const { reservationApi } = await import('../../../shared/api/apiClient');
-                        const res = await reservationApi.checkout(tenant.reservationId, { reason: 'Admin checkout' });
-                        showNotification(res.message || 'Tenant checked out', 'success');
+                        const res = await reservationApi.checkout(tenant.reservationId, {
+                          notes: 'Admin checkout',
+                          meterReading,
+                        });
+                        const extra = res.electricityResult
+                          ? `\nMove-out reading recorded: ${res.electricityResult.meterReading} kWh`
+                          : '';
+                        showNotification((res.message || 'Tenant checked out') + extra, 'success');
                         onClose();
                       } catch (err) { showNotification('Checkout failed. Please try again.', 'error'); }
                     }}

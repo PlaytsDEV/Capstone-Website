@@ -84,4 +84,17 @@ export const queryKeys = {
     snapshot: (branch) => ["digital-twin", "snapshot", branch || "all"],
     roomDetail: (roomId) => ["digital-twin", "roomDetail", roomId],
   },
+
+  // ── Electricity Billing ──
+  electricity: {
+    rooms: (branch) => ["electricity", "rooms", branch || "all"],
+    readings: (roomId) => ["electricity", "readings", roomId],
+    latestReading: (roomId) => ["electricity", "latestReading", roomId],
+    periods: (roomId) => ["electricity", "periods", roomId],
+    result: (periodId) => ["electricity", "result", periodId],
+    draftBills: (periodId) => ["electricity", "draftBills", periodId],
+    breakdownByBill: (billId) => ["electricity", "breakdownByBill", billId],
+    myBills: ["electricity", "myBills"],
+    myBreakdown: (periodId) => ["electricity", "myBreakdown", periodId],
+  },
 };

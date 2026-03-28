@@ -89,7 +89,7 @@ const BillCard = ({ bill, onPay, payingOnline }) => {
             {fmtMonth(bill.billingMonth)}
           </div>
           <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 2 }}>
-            Due: {fmtDate(bill.dueDate)}
+            Due: {bill.dueDate ? fmtDate(bill.dueDate) : "—"}
           </div>
         </div>
         <span

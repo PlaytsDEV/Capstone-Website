@@ -81,18 +81,7 @@ router.get("/pending-verifications", verifyAdmin, filterByBranch, billingControl
  */
 router.get("/report", verifyAdmin, filterByBranch, billingController.getBillingReport);
 
-/**
- * POST /api/billing/generate-room
- * Generate room-based bills distributed among tenants (Admin only)
- */
-router.post("/generate-room", verifyAdmin, filterByBranch, billingController.generateRoomBill);
 
-/**
- * POST /api/billing/generate-bulk
- * Generate bills for ALL occupied rooms in the admin's branch (Admin only)
- * Body: { billingMonth?, dueDate?, defaultCharges?: { electricity, water } }
- */
-router.post("/generate-bulk", verifyAdmin, filterByBranch, billingController.generateBulkBills);
 
 /**
  * POST /api/billing/:billId/verify

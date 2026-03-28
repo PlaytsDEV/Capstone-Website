@@ -29,7 +29,7 @@
 import dayjs from "dayjs";
 import { verifyWebhookSignature } from "../config/paymongo.js";
 import { Reservation, Bill, User } from "../models/index.js";
-import { sendPaymentApprovedEmail } from "../config/email.js";
+import { sendPaymentReceiptEmail } from "../config/email.js";
 import { updateOccupancyOnReservationChange } from "../utils/occupancyManager.js";
 import { notify } from "../utils/notificationService.js";
 import logger from "../middleware/logger.js";
@@ -110,16 +110,35 @@ async function handleDepositPayment(metadata, eventData) {
     logger.error({ err: notifErr }, "Webhook: Failed to send notification");
   }
 
-  // Send confirmation email
+  // Send PayMongo-style receipt email
   try {
     const tenant = await User.findById(reservation.userId).lean();
     if (tenant?.email) {
-      await sendPaymentApprovedEmail({
+      // Use the actual amount charged through PayMongo (in centavos ÷ 100),
+      // NOT reservation.totalPrice which is the full stay cost, not the deposit.
+      const paidAmountCents =
+        eventData?.attributes?.payments?.[0]?.attributes?.amount ||
+        checkoutData?.attributes?.amount ||
+        null;
+      const actualPaidAmount = paidAmountCents
+        ? paidAmountCents / 100
+        : BUSINESS.DEPOSIT_AMOUNT;
+
+      const paymentId = extractPaymentId(eventData);
+      const paymentDate = new Date().toLocaleDateString("en-PH", {
+        month: "long", day: "numeric", year: "numeric",
+      });
+      const reservationCode = reservation.reservationCode || String(reservation._id).slice(-8).toUpperCase();
+
+      await sendPaymentReceiptEmail({
         to: tenant.email,
         tenantName: `${tenant.firstName || ""} ${tenant.lastName || ""}`.trim(),
-        billingMonth: "Reservation Deposit",
-        paidAmount: reservation.totalPrice || BUSINESS.DEPOSIT_AMOUNT,
-        branchName: reservation.roomId?.branch || "",
+        amount: actualPaidAmount,
+        description: `Lilycrest Dormitory — Reservation Deposit (${reservationCode})`,
+        billedTo: `${tenant.firstName || ""} ${tenant.lastName || ""}`.trim(),
+        paymentMethod: "GCash / Online Payment",
+        paymentDate,
+        referenceId: paymentId,
       });
     }
   } catch (emailErr) {
@@ -179,17 +198,25 @@ async function handleBillPayment(metadata, eventData) {
     logger.error({ err: notifErr }, "Webhook: Failed to send notification");
   }
 
-  // Send confirmation email
+  // Send PayMongo-style receipt email
   try {
     const tenant = await User.findById(bill.userId).lean();
     if (tenant?.email) {
       const monthStr = dayjs(bill.billingMonth).format("MMMM YYYY");
-      await sendPaymentApprovedEmail({
+      const paymentDate = new Date().toLocaleDateString("en-PH", {
+        month: "long", day: "numeric", year: "numeric",
+      });
+      const paymentId = extractPaymentId(eventData);
+
+      await sendPaymentReceiptEmail({
         to: tenant.email,
         tenantName: `${tenant.firstName || ""} ${tenant.lastName || ""}`.trim(),
-        billingMonth: monthStr,
-        paidAmount: bill.totalAmount,
-        branchName: bill.branch,
+        amount: bill.totalAmount,
+        description: `Lilycrest Dormitory — Monthly Bill (${monthStr})`,
+        billedTo: `${tenant.firstName || ""} ${tenant.lastName || ""}`.trim(),
+        paymentMethod: "GCash / Online Payment",
+        paymentDate,
+        referenceId: paymentId,
       });
     }
   } catch (emailErr) {

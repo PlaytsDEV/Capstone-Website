@@ -61,36 +61,55 @@ export const updateOccupancyOnReservationChange = async (
           logger.warn({ roomId: String(room._id) }, "Occupancy increase: no room matched atomic update");
         }
 
+        // Mark the bed as "reserved" (not yet occupied — tenant hasn't moved in)
         if (reservation.selectedBed?.id) {
           const freshRoom = await Room.findById(room._id).session(session);
           if (freshRoom) {
-            const assigned = freshRoom.occupyBed(
-              reservation.selectedBed.id,
-              reservation.userId,
-              reservation._id,
-            );
-            if (assigned) await freshRoom.save({ session });
+            const bed = freshRoom.beds.find((b) => b.id === reservation.selectedBed.id);
+            if (bed) {
+              bed.status = "reserved";
+              bed.occupiedBy = {
+                userId: reservation.userId,
+                reservationId: reservation._id,
+                occupiedSince: null, // not physically moved in yet
+              };
+              await freshRoom.save({ session });
+            }
           }
         }
       }
 
-      // Transition to checked-in directly (reserved step was skipped)
-      if (
-        newStatus === "checked-in" &&
-        oldStatus !== "reserved" &&
-        oldStatus !== "checked-in"
-      ) {
-        await Room.atomicIncreaseOccupancy(room._id, session);
+      // Transition to checked-in:
+      //  a) coming from "reserved" → upgrade bed from "reserved" → "occupied" (no occupancy count change)
+      //  b) coming from any other state → increase occupancy + occupy bed
+      if (newStatus === "checked-in" && oldStatus !== "checked-in") {
+        if (oldStatus === "reserved") {
+          // Occupancy counter was already increased at reservation time — just upgrade bed status
+          if (reservation.selectedBed?.id) {
+            const freshRoom = await Room.findById(room._id).session(session);
+            if (freshRoom) {
+              const assigned = freshRoom.occupyBed(
+                reservation.selectedBed.id,
+                reservation.userId,
+                reservation._id,
+              );
+              if (assigned) await freshRoom.save({ session });
+            }
+          }
+        } else {
+          // Skipped "reserved" stage — increase occupancy now
+          await Room.atomicIncreaseOccupancy(room._id, session);
 
-        if (reservation.selectedBed?.id) {
-          const freshRoom = await Room.findById(room._id).session(session);
-          if (freshRoom) {
-            const assigned = freshRoom.occupyBed(
-              reservation.selectedBed.id,
-              reservation.userId,
-              reservation._id,
-            );
-            if (assigned) await freshRoom.save({ session });
+          if (reservation.selectedBed?.id) {
+            const freshRoom = await Room.findById(room._id).session(session);
+            if (freshRoom) {
+              const assigned = freshRoom.occupyBed(
+                reservation.selectedBed.id,
+                reservation.userId,
+                reservation._id,
+              );
+              if (assigned) await freshRoom.save({ session });
+            }
           }
         }
       }
@@ -179,11 +198,12 @@ export const recalculateRoomOccupancy = async (roomId) => {
         (res) => res.selectedBed?.id === bed.id,
       );
       if (occupier) {
-        bed.status = "occupied";
+        // Use the correct status based on whether the tenant has physically moved in
+        bed.status = occupier.status === "checked-in" ? "occupied" : "reserved";
         bed.occupiedBy = {
           userId: occupier.userId,
           reservationId: occupier._id,
-          occupiedSince: occupier.createdAt,
+          occupiedSince: occupier.status === "checked-in" ? (occupier.createdAt || new Date()) : null,
         };
       } else {
         bed.status = "available";

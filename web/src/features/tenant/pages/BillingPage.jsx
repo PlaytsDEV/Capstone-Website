@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { billingApi } from "../../../shared/api/apiClient";
+import { useMyBillBreakdownByBillId, useMyElectricityBills, useMyBillBreakdown } from "../../../shared/hooks/queries/useElectricity";
 import { showNotification } from "../../../shared/utils/notification";
 import { formatPaymentMethod } from "../../../shared/utils/formatPaymentMethod";
 import TenantLayout from "../../../shared/layouts/TenantLayout";
@@ -16,6 +17,9 @@ import {
   Home,
   CreditCard,
   Download,
+  ChevronDown,
+  ChevronUp,
+  Activity,
 } from "lucide-react";
 import BillingPageSkeleton from "../components/billing/BillingPageSkeleton";
 import "../styles/tenant-billing.css";
@@ -186,6 +190,14 @@ const BillingPage = () => {
           <ChargeBreakdown bill={currentBill} fmtCurrency={fmtCurrency} />
         )}
 
+        {/* ─── Electricity Segment Breakdown ─── */}
+        {currentBill?.charges?.electricity > 0 && (
+          <ElectricityBreakdown
+            billId={currentBill.id || currentBill._id}
+            fmtCurrency={fmtCurrency}
+          />
+        )}
+
         {/* ─── Payment Receipt (for paid bills) ─── */}
         {currentBill && currentBill.status === "paid" && (
           <PaymentReceipt
@@ -210,7 +222,7 @@ const BillingPage = () => {
                       {fmtMonth(bill.billingMonth)}
                     </span>
                     <span className="bill-room">
-                      {bill.room} • {bill.branch}
+                      {bill.room} • {bill.branch}{bill.dueDate ? ` • Due ${fmtDate(bill.dueDate)}` : ""}
                     </span>
                   </div>
                   <div className="bill-history-right">
@@ -250,6 +262,9 @@ const BillingPage = () => {
             </div>
           </div>
         )}
+
+        {/* ─── Electricity History ─── */}
+        <ElectricityHistory fmtCurrency={fmtCurrency} />
       </div>
     </TenantLayout>
   );
@@ -282,7 +297,7 @@ function CurrentBillHero({
 
       <div className="bill-hero-amount">{fmtCurrency(bill.totalAmount)}</div>
       <div className="bill-hero-due">
-        Due: <strong>{fmtDate(bill.dueDate)}</strong>
+        Due: <strong>{bill.dueDate ? fmtDate(bill.dueDate) : "To be confirmed"}</strong>
         {bill.room && <> • Room {bill.room}</>}
       </div>
 
@@ -331,6 +346,118 @@ function CurrentBillHero({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * ElectricityBreakdown — Collapsible kWh segment detail panel
+ * Fetches the breakdown using the bill's own ID so the tenant
+ * doesn't need to know the periodId.
+ */
+function ElectricityBreakdown({ billId, fmtCurrency }) {
+  const [open, setOpen] = useState(false);
+  const { data, isLoading, isError } = useMyBillBreakdownByBillId(open ? billId : null);
+
+  const fmtKwh = (n) =>
+    `${(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 1, maximumFractionDigits: 2 })} kWh`;
+
+  const fmtDate = (d) =>
+    d ? new Date(d).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }) : "";
+
+  return (
+    <div className="charges-card electricity-breakdown-card">
+      <button
+        className="electricity-breakdown-toggle"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <span className="electricity-breakdown-toggle__label">
+          <Zap size={15} className="electricity-breakdown-toggle__icon" />
+          Electricity Breakdown
+        </span>
+        <span className="electricity-breakdown-toggle__hint">
+          {open ? "Hide details" : "How was this calculated?"}
+        </span>
+        {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+      </button>
+
+      {open && (
+        <div className="electricity-breakdown-body">
+          {isLoading && (
+            <div className="electricity-breakdown-loading">
+              <Activity size={14} /> Loading breakdown…
+            </div>
+          )}
+
+          {isError && (
+            <div className="electricity-breakdown-error">
+              <AlertCircle size={14} /> Could not load breakdown. Try again later.
+            </div>
+          )}
+
+          {data && (
+            <>
+              {/* Summary bar */}
+              <div className="electricity-breakdown-summary">
+                <div className="electricity-breakdown-stat">
+                  <span className="electricity-breakdown-stat__label">Your kWh</span>
+                  <span className="electricity-breakdown-stat__value">{fmtKwh(data.myTotalKwh)}</span>
+                </div>
+                <div className="electricity-breakdown-stat">
+                  <span className="electricity-breakdown-stat__label">Rate</span>
+                  <span className="electricity-breakdown-stat__value">₱{data.ratePerKwh}/kWh</span>
+                </div>
+                <div className="electricity-breakdown-stat">
+                  <span className="electricity-breakdown-stat__label">Your Total</span>
+                  <span className="electricity-breakdown-stat__value electricity-breakdown-stat__value--accent">
+                    {fmtCurrency(data.myBillAmount)}
+                  </span>
+                </div>
+                {data.period?.startDate && (
+                  <div className="electricity-breakdown-stat">
+                    <span className="electricity-breakdown-stat__label">Period</span>
+                    <span className="electricity-breakdown-stat__value electricity-breakdown-stat__value--small">
+                      {fmtDate(data.period.startDate)} – {fmtDate(data.period.endDate)}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Per-segment table */}
+              {data.segments?.length > 0 && (
+                <div className="electricity-segment-table-wrap">
+                  <table className="electricity-segment-table">
+                    <thead>
+                      <tr>
+                        <th>Segment</th>
+                        <th>Co-tenants</th>
+                        <th>Your kWh</th>
+                        <th>Your Share</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.segments.map((seg, i) => (
+                        <tr key={i}>
+                          <td>{seg.periodLabel}</td>
+                          <td className="electricity-segment-table__center">{seg.activeTenantCount}</td>
+                          <td className="electricity-segment-table__num">{fmtKwh(seg.sharePerTenantKwh)}</td>
+                          <td className="electricity-segment-table__num electricity-segment-table__num--bold">
+                            {fmtCurrency(seg.sharePerTenantCost)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="electricity-breakdown-note">
+                    <Info size={12} /> Electricity cost is split equally among tenants present during each interval.
+                  </p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -483,3 +610,136 @@ function PaymentReceipt({ bill, fmtCurrency, fmtMonth, fmtDate }) {
 }
 
 export default BillingPage;
+
+/* ─── Electricity History Section ──────────────────── */
+
+/**
+ * ElectricityHistory — Shows all past electricity billing periods.
+ * Each row expands to reveal the per-segment breakdown.
+ * Uses the existing tenant-scoped hooks: no new backend needed.
+ */
+function ElectricityHistory({ fmtCurrency }) {
+  const { data, isLoading } = useMyElectricityBills();
+  const periods = data?.bills || [];
+
+  const fmtDate = (d) =>
+    d
+      ? new Date(d).toLocaleDateString("en-PH", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })
+      : "—";
+
+  const fmtKwh = (n) =>
+    `${(n || 0).toLocaleString("en-PH", {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 2,
+    })} kWh`;
+
+  if (isLoading) return null;
+  if (periods.length === 0) return null;
+
+  return (
+    <div className="elec-history">
+      <h3 className="elec-history__title">
+        <Zap size={16} className="elec-history__icon" />
+        Electricity Billing History
+      </h3>
+      <div className="elec-history__list">
+        {periods.map((period) => (
+          <ElectricityPeriodRow
+            key={period.billingPeriodId || period.billingResultId}
+            period={period}
+            fmtCurrency={fmtCurrency}
+            fmtDate={fmtDate}
+            fmtKwh={fmtKwh}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ElectricityPeriodRow({ period, fmtCurrency, fmtDate, fmtKwh }) {
+  const [open, setOpen] = useState(false);
+  const { data, isLoading } = useMyBillBreakdown(open ? period.billingPeriodId : null);
+
+  const mySegments = data
+    ? data.segments || []
+    : [];
+
+  return (
+    <div className={`elec-period-row${open ? " elec-period-row--open" : ""}`}>
+      {/* Header — always visible */}
+      <button className="elec-period-row__header" onClick={() => setOpen((v) => !v)}>
+        <Zap size={13} className="elec-period-row__icon" />
+        <div className="elec-period-row__meta">
+          <span className="elec-period-row__room">{period.room}</span>
+          <span className="elec-period-row__date">{fmtDate(period.computedAt)}</span>
+        </div>
+        <div className="elec-period-row__stats">
+          <span className="elec-period-row__kwh">{fmtKwh(period.totalKwh)}</span>
+          <span className="elec-period-row__amount">{fmtCurrency(period.billAmount)}</span>
+        </div>
+        {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+      </button>
+
+      {/* Expandable breakdown */}
+      {open && (
+        <div className="elec-period-row__body">
+          {isLoading && (
+            <div className="electricity-breakdown-loading">
+              <Activity size={13} /> Loading segments…
+            </div>
+          )}
+
+          {!isLoading && data && (
+            <>
+              {/* Summary row */}
+              <div className="elec-period-summary">
+                <span>Rate: <strong>₱{data.ratePerKwh}/kWh</strong></span>
+                <span>Your kWh: <strong>{fmtKwh(data.myTotalKwh)}</strong></span>
+                <span>Your total: <strong className="elec-period-summary__accent">{fmtCurrency(data.myBillAmount)}</strong></span>
+              </div>
+
+              {/* Segment table */}
+              {mySegments.length > 0 ? (
+                <div className="electricity-segment-table-wrap">
+                  <table className="electricity-segment-table">
+                    <thead>
+                      <tr>
+                        <th>Segment</th>
+                        <th>Co-tenants</th>
+                        <th>Your kWh</th>
+                        <th>Your Share</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mySegments.map((seg, i) => (
+                        <tr key={i}>
+                          <td>{seg.periodLabel}</td>
+                          <td className="electricity-segment-table__center">{seg.activeTenantCount}</td>
+                          <td className="electricity-segment-table__num">
+                            {fmtKwh(seg.sharePerTenantKwh)}
+                          </td>
+                          <td className="electricity-segment-table__num electricity-segment-table__num--bold">
+                            {fmtCurrency(seg.sharePerTenantCost)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="elec-period-row__no-segments">
+                  No segment data available for this period.
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

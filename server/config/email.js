@@ -729,10 +729,23 @@ export const sendPaymentRejectedEmail = async ({
 // PAYMENT RECEIPT EMAIL (PayMongo-style receipt with Lilycrest branding)
 // =============================================================================
 
+/**
+ * Safe peso formatter — avoids toLocaleString("en-PH") which garbles output
+ * in Node.js environments without full ICU data (outputs Unicode separators
+ * that email clients render as garbage like "±& &2&,&0&0&0&.&0&0").
+ */
+const fmtPeso = (n) => {
+  const fixed = Number(n || 0).toFixed(2);
+  const [int, dec] = fixed.split(".");
+  const withCommas = int.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${withCommas}.${dec}`;
+};
+
 const generatePaymentReceiptHtml = ({
   tenantName,
   amount,
   description,
+  billedTo,
   paymentMethod,
   paymentDate,
   referenceId,
@@ -757,7 +770,7 @@ const generatePaymentReceiptHtml = ({
             <td style="padding:8px 0;text-align:right;"></td>
           </tr>
           <tr>
-            <td colspan="2" style="padding:0 0 16px;color:#111827;font-size:28px;font-weight:700;">₱ ${Number(amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</td>
+            <td colspan="2" style="padding:0 0 16px;color:#111827;font-size:28px;font-weight:700;">&#8369; ${fmtPeso(amount)}</td>
           </tr>
           <tr>
             <td style="padding:8px 0;color:#9CA3AF;font-size:12px;text-transform:uppercase;">Description</td>
@@ -766,6 +779,14 @@ const generatePaymentReceiptHtml = ({
           <tr>
             <td colspan="2" style="padding:0 0 16px;color:#374151;font-size:14px;">${description}</td>
           </tr>
+          <!-- Billed to -->
+          <tr style="border-top:1px solid #F3F4F6;">
+            <td colspan="2" style="padding:12px 0 4px;color:#9CA3AF;font-size:12px;text-transform:uppercase;">Billed to</td>
+          </tr>
+          <tr>
+            <td colspan="2" style="padding:0 0 16px;color:#374151;font-size:14px;font-weight:500;">${billedTo || tenantName}</td>
+          </tr>
+          <!-- Payment method + date -->
           <tr style="border-top:1px solid #F3F4F6;">
             <td style="padding:12px 0 4px;color:#9CA3AF;font-size:12px;text-transform:uppercase;width:50%;">Payment method</td>
             <td style="padding:12px 0 4px;color:#9CA3AF;font-size:12px;text-transform:uppercase;width:50%;">Date paid</td>
@@ -799,6 +820,7 @@ export const sendPaymentReceiptEmail = async ({
   tenantName,
   amount,
   description,
+  billedTo,
   paymentMethod = "Online Payment",
   paymentDate,
   referenceId,
@@ -815,6 +837,7 @@ export const sendPaymentReceiptEmail = async ({
       tenantName,
       amount,
       description,
+      billedTo,
       paymentMethod,
       paymentDate,
       referenceId,

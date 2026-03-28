@@ -191,7 +191,62 @@ function RoomAvailabilityPage() {
     {
       key: "beds",
       label: "Beds",
-      render: (r) => `${r.currentOccupancy || 0}/${r.capacity}`,
+      render: (r) => {
+        const beds = r.beds || [];
+        const count = r.currentOccupancy || 0;
+        // Exact same mapping as Digital Twin bedStatusColor()
+        const dotColor = (status) => {
+          switch (status) {
+            case "occupied":    return "var(--status-success)";
+            case "reserved":    return "var(--accent-blue)";
+            case "locked":      return "var(--accent-orange)";
+            case "maintenance": return "var(--status-error)";
+            default:            return "var(--border-default)";
+          }
+        };
+        const dotLabel = (status) => {
+          switch (status) {
+            case "occupied":    return "Moved In";
+            case "reserved":    return "Reserved";
+            case "locked":      return "Locked";
+            case "maintenance": return "Maintenance";
+            default:            return "Available";
+          }
+        };
+        return (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+              {beds.length > 0 ? beds.map((bed) => (
+                <span
+                  key={bed.id || bed._id}
+                  title={`${bed.position || "Bed"} — ${dotLabel(bed.status)}`}
+                  style={{
+                    width: 10, height: 10, borderRadius: "50%",
+                    background: dotColor(bed.status),
+                    display: "inline-block",
+                    border: "1.5px solid rgba(255,255,255,0.7)",
+                    boxShadow: "0 0 0 0.5px rgba(0,0,0,0.08)",
+                    flexShrink: 0,
+                  }}
+                />
+              )) : (
+                Array.from({ length: r.capacity || 0 }).map((_, i) => (
+                  <span key={i} style={{
+                    width: 10, height: 10, borderRadius: "50%",
+                    background: i < count ? "var(--status-success)" : "var(--border-default)",
+                    display: "inline-block",
+                    border: "1.5px solid rgba(255,255,255,0.7)",
+                    boxShadow: "0 0 0 0.5px rgba(0,0,0,0.08)",
+                  }} />
+                ))
+              )}
+            </div>
+            <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", fontWeight: 550 }}>
+              {count}/{r.capacity}
+            </span>
+          </div>
+        );
+      },
     },
     {
       key: "occupancyRate",
@@ -307,6 +362,31 @@ function RoomAvailabilityPage() {
       </PageShell.Actions>
 
       <PageShell.Content>
+          {/* Color legend — matches Digital Twin bedStatusColor() exactly */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: 16,
+            padding: "8px 12px", marginBottom: 8,
+            background: "var(--bg-inset, rgba(0,0,0,0.03))",
+            borderRadius: 8, flexWrap: "wrap",
+          }}>
+            <span style={{ fontSize: "0.72rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginRight: 4 }}>Bed Status:</span>
+            {[
+              { color: "var(--border-default)",  label: "Available" },
+              { color: "var(--accent-blue)",      label: "Reserved" },
+              { color: "var(--status-success)",   label: "Moved In" },
+              { color: "var(--status-error)",     label: "Maintenance" },
+            ].map(({ color, label }) => (
+              <span key={label} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: "0.75rem", color: "var(--text-secondary)" }}>
+                <span style={{
+                  width: 9, height: 9, borderRadius: "50%", background: color,
+                  display: "inline-block", border: "1.5px solid rgba(0,0,0,0.08)",
+                  flexShrink: 0,
+                }} />
+                {label}
+              </span>
+            ))}
+          </div>
+
           <DataTable
             columns={columns}
             data={filteredRooms}

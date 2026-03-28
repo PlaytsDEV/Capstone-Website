@@ -167,9 +167,12 @@ function ReservationFlowPage() {
                 if (result?.visitCode) flow.setVisitCode(result.visitCode);
                 return result?.visitCode || null;
               }}
-              onAfterClose={() => {
+              onAfterClose={async () => {
                 flow.setVisitCompleted(true);
                 flow.setHighestStageReached((prev) => Math.max(prev, 3));
+                // Bust the cache so the dashboard shows the new visit_pending status immediately
+                await flow.queryClient.invalidateQueries({ queryKey: ["reservations"] });
+                await flow.queryClient.invalidateQueries({ queryKey: ["dashboard"] });
                 flow.setSuccessOverlay({
                   show: true,
                   title: "Visit Booked!",

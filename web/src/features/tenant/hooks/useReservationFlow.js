@@ -1369,5 +1369,8 @@ export default function useReservationFlow() {
     paymentVerifyingRef,
     justPaidRef,
     navigatingAwayRef,
+
+    // Query client (for external cache invalidation)
+    queryClient,
   };
 }

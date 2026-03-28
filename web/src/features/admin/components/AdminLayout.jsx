@@ -14,6 +14,7 @@ const PAGE_TITLES = {
   "/admin/room-availability": "Rooms",
   "/admin/audit-logs": "Activity Log",
   "/admin/billing": "Billing",
+  "/admin/financial": "Financial Overview",
   "/admin/branches": "Branches",
   "/admin/roles": "Permissions",
   "/admin/settings": "Settings",

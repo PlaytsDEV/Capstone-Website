@@ -11,7 +11,7 @@
  */
 
 import dayjs from "dayjs";
-import { Bill, RoomBill, Reservation, Room, User } from "../models/index.js";
+import { Bill, Reservation, Room, User } from "../models/index.js";
 import logger from "../middleware/logger.js";
 import {
   sendSuccess,
@@ -171,6 +171,7 @@ export const getCurrentBilling = async (req, res, next) => {
     const currentBill = await Bill.findOne({
       reservationId: activeStay._id,
       branch,
+      status: { $ne: "draft" },
       billingMonth: {
         $gte: now.startOf("month").toDate(),
         $lt: now.add(1, "month").startOf("month").toDate(),
@@ -203,6 +204,7 @@ export const getBillingHistory = async (req, res, next) => {
     const bills = await Bill.find({
       reservationId: { $in: stayIds },
       branch,
+      status: { $ne: "draft" },
       isArchived: false,
     })
       .sort({ billingMonth: -1 })
@@ -670,6 +672,7 @@ export const getMyBills = async (req, res, next) => {
 
     const bills = await Bill.find({
       userId: dbUser._id,
+      status: { $ne: "draft" },
       isArchived: false,
     })
       .populate("roomId", "name branch type")
@@ -1254,9 +1257,6 @@ export default {
   getBillingStats,
   markBillAsPaid,
   getBillsByBranch,
-  generateRoomBill,
-  generateBulkBills,
-  getRoomsWithTenants,
   getMyBills,
   submitPaymentProof,
   verifyPayment,

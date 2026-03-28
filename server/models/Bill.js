@@ -82,7 +82,8 @@ const billSchema = new mongoose.Schema(
     },
     dueDate: {
       type: Date,
-      required: true,
+      required: false,
+      default: null,
     },
 
     // --- Charges ---
@@ -127,7 +128,7 @@ const billSchema = new mongoose.Schema(
     // --- Payment Status ---
     status: {
       type: String,
-      enum: ["pending", "paid", "overdue", "partially-paid"],
+      enum: ["draft", "pending", "paid", "overdue", "partially-paid"],
       default: "pending",
       index: true,
     },
@@ -157,6 +158,14 @@ const billSchema = new mongoose.Schema(
     notes: {
       type: String,
       default: "",
+    },
+    isManuallyAdjusted: {
+      type: Boolean,
+      default: false,
+    },
+    sentAt: {
+      type: Date,
+      default: null,
     },
     isArchived: {
       type: Boolean,

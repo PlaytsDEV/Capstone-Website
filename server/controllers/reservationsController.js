@@ -7,7 +7,8 @@
  * Eliminates ~200 lines of duplicated validation, error handling, and field mapping.
  */
 
-import { Reservation, User, Room } from "../models/index.js";
+import { Reservation, User, Room, MeterReading, BillingPeriod, BillingResult } from "../models/index.js";
+import { computeBilling } from "../utils/billingEngine.js";
 import logger from "../middleware/logger.js";
 import auditLogger from "../utils/auditLogger.js";
 import { updateOccupancyOnReservationChange } from "../utils/occupancyManager.js";
@@ -463,6 +464,46 @@ export const updateReservation = async (req, res, next) => {
       if (req.body[key] !== undefined) reservation[key] = req.body[key];
     }
     const updatedReservation = await reservation.save();
+
+    // ── Auto-record move-in meter reading when checking in ────────────────
+    if (
+      req.body.status === "checked-in" &&
+      oldData.status !== "checked-in" &&
+      req.body.meterReading != null &&
+      !isNaN(Number(req.body.meterReading))
+    ) {
+      try {
+        const roomId = updatedReservation.roomId?._id || updatedReservation.roomId;
+        const roomDoc = await Room.findById(roomId).lean();
+        const adminUser = await User.findOne({ firebaseUid: req.user.uid }).lean();
+        const activePeriod = await BillingPeriod.findOne({
+          roomId: roomId,
+          status: "open",
+          isArchived: false,
+        }).lean();
+
+        if (activePeriod && roomDoc) {
+          const moveInReading = new MeterReading({
+            roomId: roomId,
+            branch: roomDoc.branch,
+            reading: Number(req.body.meterReading),
+            date: new Date(),
+            eventType: "move-in",
+            tenantId: updatedReservation.userId?._id || updatedReservation.userId,
+            activeTenantIds: [],
+            recordedBy: adminUser?._id || null,
+            billingPeriodId: activePeriod._id,
+          });
+          await moveInReading.save();
+          logger.info(
+            { reservationId, meterReading: req.body.meterReading },
+            "Auto-recorded move-in meter reading on check-in",
+          );
+        }
+      } catch (elecErr) {
+        logger.warn({ err: elecErr, requestId: req.id }, "Auto move-in electricity record failed (non-fatal)");
+      }
+    }
 
     // Occupancy tracking
     if (oldData.status !== updatedReservation.status) {
@@ -1127,7 +1168,7 @@ export const renewContract = async (req, res, next) => {
 export const checkoutReservation = async (req, res, next) => {
   try {
     const { reservationId } = req.params;
-    const { notes: checkoutNotes = "", inspectionPassed = true } = req.body;
+    const { notes: checkoutNotes = "", inspectionPassed = true, meterReading } = req.body;
     if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
 
     const reservation = await Reservation.findById(reservationId)
@@ -1196,7 +1237,115 @@ export const checkoutReservation = async (req, res, next) => {
       }
     }
 
-    // 4. Notify tenant
+    // 4. Auto-record move-out meter reading + recompute billing (if provided)
+    let electricityResult = null;
+    if (meterReading != null && !isNaN(Number(meterReading)) && reservation.roomId?._id) {
+      try {
+        // Find the admin's DB record for recordedBy
+        const adminUser = await User.findOne({ firebaseUid: req.user.uid }).lean();
+
+        // Find active billing period for the room
+        const activePeriod = await BillingPeriod.findOne({
+          roomId: reservation.roomId._id,
+          status: "open",
+          isArchived: false,
+        }).lean();
+
+        if (activePeriod) {
+          // Record the move-out reading
+          const moveOutReading = new MeterReading({
+            roomId: reservation.roomId._id,
+            branch: reservation.roomId.branch,
+            reading: Number(meterReading),
+            date: new Date(),
+            eventType: "move-out",
+            tenantId: userId,
+            activeTenantIds: [],
+            recordedBy: adminUser?._id || null,
+            billingPeriodId: activePeriod._id,
+          });
+          await moveOutReading.save();
+
+          // Fetch all readings for re-computation
+          const allReadings = await MeterReading.find({
+            roomId: reservation.roomId._id,
+            isArchived: false,
+            date: { $gte: activePeriod.startDate },
+          }).sort({ date: 1, createdAt: 1 }).lean();
+
+          // Build tenant events from reservations
+          const reservations = await Reservation.find({
+            roomId: reservation.roomId._id,
+            status: { $in: ["checked-in", "checked-out"] },
+            isArchived: { $ne: true },
+          }).populate("userId", "firstName lastName").lean();
+
+          const tenantMap = new Map();
+          for (const res of reservations) {
+            if (!res.userId) continue;
+            const key = String(res.userId._id);
+            if (!tenantMap.has(key)) {
+              tenantMap.set(key, {
+                tenantId: key,
+                tenantName: `${res.userId.firstName || ""} ${res.userId.lastName || ""}`.trim() || "Tenant",
+                moveInReading: 0,
+                moveOutReading: null,
+              });
+            }
+          }
+          for (const r of allReadings) {
+            if (!r.tenantId) continue;
+            const key = String(r.tenantId);
+            if (r.eventType === "move-in" && tenantMap.has(key)) tenantMap.get(key).moveInReading = r.reading;
+            if (r.eventType === "move-out" && tenantMap.has(key)) tenantMap.get(key).moveOutReading = r.reading;
+          }
+
+          // Use start reading as end for partial (open period) computation
+          const lastReading = allReadings[allReadings.length - 1]?.reading || activePeriod.startReading;
+
+          const computed = computeBilling({
+            meterReadings: allReadings.map((r) => ({ date: r.date, reading: r.reading, eventType: r.eventType })),
+            tenantEvents: Array.from(tenantMap.values()),
+            ratePerKwh: activePeriod.ratePerKwh,
+            startReading: activePeriod.startReading,
+            endReading: lastReading,
+          });
+
+          // Upsert the BillingResult (partial/preview)
+          await BillingResult.findOneAndUpdate(
+            { billingPeriodId: activePeriod._id },
+            {
+              roomId: reservation.roomId._id,
+              branch: reservation.roomId.branch,
+              computedBy: adminUser?._id || null,
+              computedAt: new Date(),
+              ratePerKwh: activePeriod.ratePerKwh,
+              totalRoomKwh: computed.totalRoomKwh,
+              totalRoomCost: computed.totalRoomCost,
+              verified: computed.verified,
+              segments: computed.segments,
+              tenantSummaries: computed.tenantSummaries,
+            },
+            { upsert: true, new: true },
+          );
+
+          electricityResult = {
+            tenantName: `${reservation.userId?.firstName || ""} ${reservation.userId?.lastName || ""}`.trim(),
+            meterReading: Number(meterReading),
+            partialKwh: computed.totalRoomKwh,
+          };
+
+          logger.info({ requestId: req.id, reservationId, meterReading }, "Auto-recorded move-out reading and recomputed billing");
+        } else {
+          logger.info({ requestId: req.id }, "No open billing period found for room — move-out reading skipped");
+        }
+      } catch (elecErr) {
+        // Non-fatal — checkout still succeeds
+        logger.warn({ err: elecErr, requestId: req.id }, "Auto electricity record failed (non-fatal)");
+      }
+    }
+
+    // 5. Notify tenant
     const { notify } = await import("../utils/notificationService.js");
     const roomName = reservation.roomId?.name || "your room";
     notify.general(
@@ -1214,12 +1363,13 @@ export const checkoutReservation = async (req, res, next) => {
       reservationId,
       oldData,
       reservation.toObject(),
-      `Tenant checked out from ${roomName}`,
+      `Tenant checked out from ${roomName}${meterReading != null ? ` (meter: ${meterReading} kWh)` : ""}`,
     );
 
     res.json({
       message: "Tenant checked out successfully",
       reservation,
+      electricityResult,
     });
   } catch (error) {
     logger.error({ err: error, requestId: req.id }, "Checkout error");

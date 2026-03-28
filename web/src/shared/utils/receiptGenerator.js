@@ -1,6 +1,16 @@
 import jsPDF from "jspdf";
 
 /**
+ * Safe number formatter — avoids toLocaleString locale issues in jsPDF context.
+ * Returns e.g. "2,000.00"
+ */
+const fmtAmt = (n) => {
+  const fixed = Number(n || 0).toFixed(2);
+  const [int, dec] = fixed.split(".");
+  return int.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + "." + dec;
+};
+
+/**
  * Builds the PDF receipt, faithfully matching the server-side email template
  * (generatePaymentReceiptHtml in server/config/email.js).
  *
@@ -12,6 +22,9 @@ import jsPDF from "jspdf";
  *   Muted / labels   : #9CA3AF  → [156, 163, 175]
  *   Sub-muted        : #6B7280  → [107, 114, 128]
  *   Divider line     : #E5E7EB  → [229, 231, 235]
+ *
+ * NOTE: jsPDF's built-in Helvetica font does NOT support U+20B1 (₱).
+ * Use "PHP" as the currency prefix in all doc.text() calls.
  */
 function buildReceiptDoc(reservation, profile) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
@@ -106,7 +119,7 @@ function buildReceiptDoc(reservation, profile) {
 
   // ── Amount value  (28pt bold — matches email's 28px weight) ──
   set("helvetica", "bold", 26, darkText);
-  doc.text("\u20B1 2,000.00", margin, y);
+  doc.text(`PHP 2,000.00`, margin, y);
   y += 13;
 
   // ── Description label ──
@@ -318,11 +331,7 @@ function buildBillingReceiptDoc(bill) {
 
   const amount = bill.paidAmount || bill.totalAmount || 0;
   set("helvetica", "bold", 26, darkText);
-  doc.text(
-    `\u20B1 ${Number(amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`,
-    margin,
-    y,
-  );
+  doc.text(`PHP ${fmtAmt(amount)}`, margin, y);
   y += 13;
 
   set("helvetica", "normal", 8, muted);
@@ -398,10 +407,10 @@ function buildBillingReceiptDoc(bill) {
   addRow("Billing Period", monthLabel);
   addRow("Room", bill.room || "\u2014");
   addRow("Branch", bill.branch || "\u2014");
-  if (bill.charges?.rent) addRow("Rent", `\u20B1${Number(bill.charges.rent).toLocaleString()}`);
-  if (bill.charges?.electricity) addRow("Electricity", `\u20B1${Number(bill.charges.electricity).toLocaleString()}`);
-  if (bill.charges?.water) addRow("Water", `\u20B1${Number(bill.charges.water).toLocaleString()}`);
-  if (bill.charges?.penalty) addRow("Penalty", `\u20B1${Number(bill.charges.penalty).toLocaleString()}`);
+  if (bill.charges?.rent)        addRow("Rent",        `PHP ${fmtAmt(bill.charges.rent)}`);
+  if (bill.charges?.electricity)  addRow("Electricity",  `PHP ${fmtAmt(bill.charges.electricity)}`);
+  if (bill.charges?.water)        addRow("Water",        `PHP ${fmtAmt(bill.charges.water)}`);
+  if (bill.charges?.penalty)      addRow("Penalty",      `PHP ${fmtAmt(bill.charges.penalty)}`);
 
   y += 8;
 

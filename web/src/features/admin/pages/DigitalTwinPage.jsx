@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "../../../shared/hooks/useAuth";
-import { Wrench, DollarSign, Activity, AlertTriangle, X, ChevronRight, ChevronDown, AlertCircle, ShieldAlert, RefreshCw } from "lucide-react";
+import { Wrench, DollarSign, Activity, AlertTriangle, X, ChevronRight, ChevronDown, AlertCircle, ShieldAlert, RefreshCw, Zap } from "lucide-react";
 import { useDigitalTwinSnapshot, useDigitalTwinRoomDetail } from "../../../shared/hooks/queries/useDigitalTwin";
 import { PageShell, SummaryBar, StatusBadge } from "../components/shared";
 import { formatBranch, formatRoomType } from "../utils/formatters";
@@ -66,13 +66,19 @@ function RoomCard({ room, isSelected, onClick }) {
         ))}
       </div>
 
-      {/* Occupancy bar */}
+      {/* Occupancy bar — two colors: green (checked-in) + blue (reserved) */}
       <div className="dt-room-card__occupancy">
         <div className="dt-room-card__bar">
           <div
             className="dt-room-card__bar-fill"
-            style={{ width: `${occupancyRate}%` }}
+            style={{ width: `${room.capacity > 0 ? Math.round(((room.physicalOccupancy ?? room.currentOccupancy) / room.capacity) * 100) : 0}%` }}
           />
+          {(room.reservedCount ?? 0) > 0 && (
+            <div
+              className="dt-room-card__bar-fill dt-room-card__bar-fill--reserved"
+              style={{ width: `${room.capacity > 0 ? Math.round(((room.reservedCount ?? 0) / room.capacity) * 100) : 0}%` }}
+            />
+          )}
         </div>
         <span className="dt-room-card__occ-label">
           {room.currentOccupancy}/{room.capacity}
@@ -91,6 +97,15 @@ function RoomCard({ room, isSelected, onClick }) {
           <span className="dt-room-card__indicator dt-room-card__indicator--overdue">
             <DollarSign size={11} />
             {room.billing.overdueCount}
+          </span>
+        )}
+        {room.electricity?.hasStaleOpenPeriod && (
+          <span
+            className="dt-room-card__indicator dt-room-card__indicator--elec"
+            title={`Open billing period — ${room.electricity.staleOpenDays}d without closing`}
+          >
+            <Zap size={11} />
+            {room.electricity.staleOpenDays}d
           </span>
         )}
         <span
@@ -197,7 +212,24 @@ function RoomDetailDrawer({ roomId, onClose }) {
                       {bed.occupant ? (
                         <span className="dt-bed-row__tenant">
                           {bed.occupant.name}
-                          {bed.occupant.since && (
+                          {bed.status === "reserved" ? (
+                            <span style={{
+                              fontSize: "10px", fontWeight: 700, padding: "1px 6px",
+                              borderRadius: 8, background: "rgba(46,124,246,0.12)",
+                              color: "var(--accent-blue)", marginLeft: 6, letterSpacing: "0.02em"
+                            }}>
+                              Reserved
+                            </span>
+                          ) : bed.status === "occupied" && (
+                            <span style={{
+                              fontSize: "10px", fontWeight: 700, padding: "1px 6px",
+                              borderRadius: 8, background: "rgba(16,185,129,0.12)",
+                              color: "var(--status-success)", marginLeft: 6, letterSpacing: "0.02em"
+                            }}>
+                              Moved In
+                            </span>
+                          )}
+                          {bed.occupant.since && bed.status === "occupied" && (
                             <span className="dt-bed-row__since">
                               since {new Date(bed.occupant.since).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}
                             </span>
@@ -326,17 +358,11 @@ export default function DigitalTwinPage() {
       .map(([floor, rooms]) => ({ floor: Number(floor), rooms }));
   }, [filteredRooms]);
 
-  // KPI summary items
   const summaryItems = useMemo(() => [
     { label: "Overall Health", value: `${kpis.overallHealth || 0}/100`, color: "green" },
     { label: "Rooms At Risk", value: kpis.atRiskRooms || 0, color: "red" },
     { label: "Occupancy", value: `${kpis.occupancyRate || 0}%`, color: "blue" },
     { label: "Open Maintenance", value: kpis.openMaintenance || 0, color: "orange" },
-    {
-      label: "Revenue Due",
-      value: `₱${(kpis.totalOwed || 0).toLocaleString()}`,
-      color: "purple",
-    },
   ], [kpis]);
 
   // Active filter count for badge

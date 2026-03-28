@@ -417,17 +417,24 @@
 
 .dt-room-card__bar {
   flex: 1;
-  height: 4px;
+  height: 5px;
   background: var(--bg-inset);
-  border-radius: 2px;
+  border-radius: 3px;
   overflow: hidden;
+  display: flex;
+  gap: 1px;
 }
 
 .dt-room-card__bar-fill {
   height: 100%;
-  background: var(--accent-blue);
-  border-radius: 2px;
+  background: var(--status-success);
+  border-radius: 3px;
   transition: width 0.4s var(--ease-out);
+}
+
+.dt-room-card__bar-fill--reserved {
+  background: var(--accent-blue);
+  opacity: 0.7;
 }
 
 .dt-room-card__occ-label {
@@ -463,6 +470,11 @@
 .dt-room-card__indicator--overdue {
   background: var(--status-error-bg);
   color: var(--status-error);
+}
+
+.dt-room-card__indicator--elec {
+  background: #fef3c7;
+  color: #d97706;
 }
 
 .dt-room-card__health-badge {

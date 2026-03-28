@@ -85,6 +85,21 @@ const ACTION_MSGS = {
 
 /* ─── helpers ───────────────────────────────────── */
 const fmt = (v) => (v === null || v === undefined || v === "" ? "—" : v);
+const METHOD_LABELS = {
+  gcash:      "GCash",
+  paymaya:    "Maya",
+  maya:       "Maya",
+  grabpay:    "GrabPay",
+  grab_pay:   "GrabPay",
+  card:       "Credit/Debit Card",
+  paymongo:   "Online Payment (PayMongo)",
+  cash:       "Cash",
+  bank:       "Bank Transfer",
+};
+const fmtMethod = (v) => {
+  if (!v) return "—";
+  return METHOD_LABELS[(v || "").toLowerCase().replace(/[_\s-]/g, "")] || v;
+};
 const fmtCurrency = (v) =>
   !v && v !== 0 ? "—" : `₱${Number(v).toLocaleString()}`;
 const fmtDate = (d) => {
@@ -147,6 +162,8 @@ export default function ReservationDetailsModal({
   const [showPersonal, setShowPersonal] = useState(false);
   const [extendDays, setExtendDays] = useState(3);
   const [showExtendPrompt, setShowExtendPrompt] = useState(false);
+  const [meterReadingVal, setMeterReadingVal] = useState("");
+  const [showMeterPrompt, setShowMeterPrompt] = useState(false);
   const [confirmModal, setConfirmModal] = useState({
     open: false,
     title: "",
@@ -304,9 +321,9 @@ export default function ReservationDetailsModal({
             {/* Payment */}
             <div className="rdm-payment-bar">
               <div className="rdm-payment-amount">
-                <span className="rdm-info-label">Fee</span>
+                <span className="rdm-info-label">Deposit Paid</span>
                 <span className="rdm-payment-price">
-                  {fmtCurrency(reservation.totalPrice ?? null)}
+                  {fmtCurrency(reservation.depositAmount ?? 2000)}
                 </span>
               </div>
               <div className="rdm-payment-status-wrap">
@@ -319,7 +336,7 @@ export default function ReservationDetailsModal({
               <div className="rdm-payment-method">
                 <span className="rdm-info-label">Method</span>
                 <span className="rdm-info-value">
-                  {fmt(reservation.paymentMethod)}
+                  {fmtMethod(reservation.paymentMethod)}
                 </span>
               </div>
               {reservation.proofOfPaymentUrl && (
@@ -365,15 +382,12 @@ export default function ReservationDetailsModal({
                   <>
                     <button
                       className="rdm-action rdm-action-primary"
-                      onClick={() =>
-                        doAction(
-                          "checkin",
-                          () => reservationApi.update(reservation.id, { status: "checked-in" }),
-                          "Tenant checked in successfully",
-                        )
-                      }
+                      onClick={() => {
+                        setMeterReadingVal("");
+                        setShowMeterPrompt(true);
+                      }}
                       disabled={isSubmitting}
-                      title="Mark tenant as moved in"
+                      title="Mark tenant as moved in — requires initial meter reading"
                     >
                       ✓ Check In — Tenant Has Moved In
                     </button>
@@ -540,6 +554,70 @@ export default function ReservationDetailsModal({
           </div>
         </div>
       </div>
+
+      {/* Meter Reading Dialog */}
+      {showMeterPrompt && (
+        <div
+          className="rdm-extend-overlay"
+          onClick={() => setShowMeterPrompt(false)}
+        >
+          <div
+            className="rdm-extend-dialog"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="rdm-extend-dialog-body">
+              <h3 className="rdm-extend-dialog-title">⚡ Initial Meter Reading</h3>
+              <p style={{ fontSize: "13px", color: "#6b7280", margin: "0 0 12px" }}>
+                Enter the starting kWh reading to record this tenant's electricity baseline.
+              </p>
+              <div className="rdm-extend-dialog-input-row" style={{ width: "100%" }}>
+                <input
+                  type="number"
+                  min="0"
+                  max="99999"
+                  step="0.01"
+                  value={meterReadingVal}
+                  onChange={(e) => setMeterReadingVal(e.target.value)}
+                  className="rdm-extend-dialog-input rdm-extend-dialog-input--wide"
+                  placeholder="e.g. 1250"
+                  autoFocus
+                />
+                <span className="rdm-extend-dialog-unit">kWh</span>
+              </div>
+            </div>
+            <div className="rdm-extend-dialog-actions">
+              <button
+                className="rdm-extend-dialog-cancel"
+                onClick={() => setShowMeterPrompt(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="rdm-extend-dialog-confirm"
+                onClick={() => {
+                  const reading = Number(meterReadingVal);
+                  if (!meterReadingVal.trim() || isNaN(reading) || reading < 0) {
+                    showNotification("A valid meter reading (kWh) is required.", "error", 4000);
+                    return;
+                  }
+                  setShowMeterPrompt(false);
+                  doAction(
+                    "checkin",
+                    () => reservationApi.update(reservation.id, {
+                      status: "checked-in",
+                      meterReading: reading,
+                    }),
+                    "Tenant checked in successfully",
+                  );
+                }}
+                disabled={isSubmitting}
+              >
+                Check In
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Extend Dialog */}
       {showExtendPrompt && (
