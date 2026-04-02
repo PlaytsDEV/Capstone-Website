@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Lilycrest Dormitory Management System uses **Firebase Authentication** for user authentication and **MongoDB** for storing user data. The backend verifies Firebase tokens and manages user roles. All roles (applicants, tenants, admins, super admins) use a unified sign-in page.
+The Lilycrest Dormitory Management System uses **Firebase Authentication** for user authentication and **MongoDB** for storing user data. The backend verifies Firebase tokens and manages user roles. All roles (applicants, tenants, branch admins, and owners) use a unified sign-in page.
 
 ---
 
@@ -79,7 +79,7 @@ If branch exists → Redirect to dashboard/profile
 ### Flow 4: Unified Admin Login
 
 ```
-Admin/SuperAdmin navigates to /signin
+Branch admin/owner navigates to /signin
     ↓
 Signs in with email/password or Google
     ↓
@@ -104,9 +104,9 @@ Redirect to /admin/dashboard
 | `web/src/features/public/pages/VerifyEmail.jsx`           | Email verification page     |
 | `web/src/shared/hooks/FirebaseAuthContext.js`             | Auth context provider       |
 | `web/src/shared/hooks/useAuth.js`                         | Auth state & methods        |
-| `web/src/shared/guards/RequireAdmin.jsx`                  | Admin route guard            |
-| `web/src/shared/guards/RequireNonAdmin.jsx`               | Block admins from auth pages |
-| `web/src/shared/guards/RequireSuperAdmin.jsx`             | Super admin route guard      |
+| `web/src/shared/guards/RequireAdmin.jsx`                  | Branch admin/owner route guard |
+| `web/src/shared/guards/RequireNonAdmin.jsx`               | Block branch admins/owners from auth pages |
+| `web/src/shared/guards/RequireOwner.jsx`                  | Owner-only route guard         |
 | `web/src/shared/components/ProtectedRoute.jsx`            | Role-based route protection  |
 | `web/src/firebase/config.js`                              | Firebase SDK configuration   |
 
@@ -189,15 +189,15 @@ if (!userCredential.user.emailVerified) {
 
 ### RequireNonAdmin
 
-Prevents admin/superAdmin users from accessing auth pages (`/signin`, `/signup`, `/forgot-password`). Redirects them to `/admin/dashboard` if already authenticated.
+Prevents `branch_admin` and `owner` users from accessing auth pages (`/signin`, `/signup`, `/forgot-password`). Redirects them to `/admin/dashboard` if already authenticated.
 
 ### RequireAdmin
 
-Ensures only users with `admin` or `superAdmin` role can access `/admin/*` routes.
+Ensures only users with `branch_admin` or `owner` role can access `/admin/*` routes.
 
-### RequireSuperAdmin
+### RequireOwner
 
-Additional layer on top of RequireAdmin — ensures only `superAdmin` users can access `/admin/branches`, `/admin/roles`, `/admin/settings`.
+Additional layer on top of RequireAdmin — ensures only `owner` users can access `/admin/branches`, `/admin/roles`, `/admin/settings`.
 
 ### ProtectedRoute
 
@@ -223,7 +223,7 @@ Generic role-based route wrapper that checks `requiredRole` and optionally `requ
 
 1. **Firebase as Source of Truth** — All password handling done by Firebase
 2. **Token Verification** — Backend verifies Firebase tokens on every request
-3. **Role-Based Access** — Different routes for applicant, tenant, admin, super-admin
+3. **Role-Based Access** — Different routes for applicant, tenant, branch admin, and owner
 4. **Email Verification** — Required for email/password users before login
 5. **Rollback on Failure** — Firebase account deleted if backend registration fails
 6. **Login Tracking** — Login activity recorded via `LoginLog` model
@@ -235,9 +235,9 @@ Generic role-based route wrapper that checks `requiredRole` and optionally `requ
 
 - **Applicant/Tenant:**
   - Can create, view, and cancel their own reservations.
-- **Admin:**
+- **Branch Admin:**
   - Can view, approve, or reject reservations for their branch.
-- **Super Admin:**
+- **Owner:**
   - Can view and manage all reservations across branches.
 
 ### Reservation Workflow Authentication
@@ -287,3 +287,42 @@ FIREBASE_PROJECT_ID=your_project_id
 FIREBASE_CLIENT_EMAIL=firebase-adminsdk@your_project.iam.gserviceaccount.com
 FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 ```
+
+---
+
+## Current Frontend Route/Auth Model
+
+Authentication-aware routing now follows this structure:
+
+1. `web/src/App.js` mounts auth and theme providers.
+2. `web/src/app/routes/AppRoutes.jsx` composes public, tenant, admin, and legacy route groups.
+3. Route guards enforce navigation policy.
+4. `RouteShell` wraps route elements with route-level error boundaries.
+
+### Route Guard Summary
+
+- `RequireNonAdmin`
+  Prevents authenticated users from staying on `/signin`, `/signup`, and `/forgot-password`.
+  Admin roles redirect to `/admin/dashboard`.
+  Applicant and tenant roles redirect to the default portal route.
+  Social-auth and resend-verification flows temporarily bypass the redirect.
+
+- `RequireAdmin`
+  Allows only `branch_admin` and `owner` into `/admin/*`.
+
+- `RequireOwner`
+  Restricts owner-only admin routes such as `/admin/branches`, `/admin/roles`, `/admin/settings`, `/admin/financial`, and `/admin/dashboard/super`.
+
+- `RequireSuperAdmin`
+  Legacy alias that now delegates to `RequireOwner`.
+
+- `ProtectedRoute`
+  Shared role-aware wrapper used for applicant/tenant/public gating.
+
+### Canonical Route Files
+
+- `web/src/app/routes/AppRoutes.jsx`
+- `web/src/app/routes/publicRoutes.jsx`
+- `web/src/app/routes/tenantRoutes.jsx`
+- `web/src/app/routes/adminRoutes.jsx`
+- `web/src/app/routes/legacyRoutes.jsx`

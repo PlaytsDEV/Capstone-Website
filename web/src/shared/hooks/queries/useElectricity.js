@@ -1,5 +1,5 @@
-/**
- * Electricity Billing — React Query Hooks
+﻿/**
+ * Electricity Billing â€” React Query Hooks
  *
  * All hooks for the segment-based electricity billing module.
  * Uses electricityApi + centralized queryKeys.
@@ -86,6 +86,22 @@ export function useOpenPeriod() {
   });
 }
 
+/** Update an open billing period */
+export function useUpdatePeriod() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ periodId, ...data }) => electricityApi.updatePeriod(periodId, data),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ["electricity", "periods"] });
+      qc.invalidateQueries({ queryKey: ["electricity", "rooms"] });
+      if (variables?.periodId) {
+        qc.invalidateQueries({ queryKey: queryKeys.electricity.result(variables.periodId) });
+        qc.invalidateQueries({ queryKey: queryKeys.electricity.draftBills(variables.periodId) });
+      }
+    },
+  });
+}
+
 /** Close a billing period and trigger computation */
 export function useClosePeriod() {
   const qc = useQueryClient();
@@ -99,6 +115,18 @@ export function useClosePeriod() {
       if (periodId) {
         qc.invalidateQueries({ queryKey: queryKeys.electricity.draftBills(periodId) });
       }
+    },
+  });
+}
+
+/** Best-effort batch close for multiple open periods */
+export function useBatchClosePeriods() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data) => electricityApi.batchClose(data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["electricity"] });
+      qc.invalidateQueries({ queryKey: ["billing"] });
     },
   });
 }
@@ -124,6 +152,19 @@ export function useDeleteReading() {
       qc.invalidateQueries({ queryKey: ["electricity", "readings"] });
       qc.invalidateQueries({ queryKey: ["electricity", "latestReading"] });
       qc.invalidateQueries({ queryKey: ["electricity", "rooms"] });
+    },
+  });
+}
+
+
+/** Update an existing meter reading (fix a move-in/out entry) */
+export function useUpdateReading() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ readingId, ...data }) => electricityApi.updateReading(readingId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["electricity", "readings"] });
+      qc.invalidateQueries({ queryKey: ["electricity", "latestReading"] });
     },
   });
 }

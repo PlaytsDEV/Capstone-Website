@@ -7,8 +7,8 @@
  * Works with both Firebase Auth and the backend user database.
  *
  * SEPARATION OF CONCERNS:
- * - Admin login: /admin/login → requires admin/superAdmin role
- * - Tenant login: /tenant/signin → for regular users/tenants
+ * - Shared login: /signin -> used by applicants, tenants, branch admins, and owners
+ * - Admin area: /admin/* -> requires branch_admin or owner role
  *
  * The system starts with NO authenticated user. Users must explicitly
  * login through the appropriate login page.
@@ -35,6 +35,7 @@ import React, {
 import { authApi } from "../api/authApi";
 import { auth } from "../../firebase/config";
 import { useFirebaseAuth } from "./FirebaseAuthContext";
+import { USER_ROLES } from "../utils/constants";
 
 const AuthContext = createContext(null);
 
@@ -272,19 +273,43 @@ export const AuthProvider = ({ children }) => {
   };
 
   /**
-   * Check if current user is an admin or super admin
+   * Check if current user is a branch admin or owner
    * @returns {boolean} True if user has admin privileges
    */
   const isAdmin = () => {
-    return user?.role === "branch_admin" || user?.role === "owner";
+    return (
+      user?.role === USER_ROLES.BRANCH_ADMIN || user?.role === USER_ROLES.OWNER
+    );
   };
 
   /**
-   * Check if current user is a super admin
-   * @returns {boolean} True if user is super admin
+   * Check if current user is an owner
+   * @returns {boolean} True if user is an owner
    */
   const isOwner = () => {
-    return user?.role === "owner";
+    return user?.role === USER_ROLES.OWNER;
+  };
+
+  /**
+   * Check if current user belongs to the applicant/tenant portal
+   * @returns {boolean} True if user is not an admin role
+   */
+  const isPortalUser = () => {
+    return (
+      user?.role === USER_ROLES.APPLICANT || user?.role === USER_ROLES.TENANT
+    );
+  };
+
+  /**
+   * Get the default landing route for the current authenticated user
+   * @returns {string} Canonical post-auth destination
+   */
+  const getDefaultRoute = () => {
+    if (isOwner() || isAdmin()) {
+      return "/admin/dashboard";
+    }
+
+    return "/applicant/check-availability";
   };
 
   /**
@@ -312,6 +337,8 @@ export const AuthProvider = ({ children }) => {
         updateUser,
         isAdmin,
         isOwner,
+        isPortalUser,
+        getDefaultRoute,
       }}
     >
       {children}

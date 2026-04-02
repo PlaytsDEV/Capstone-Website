@@ -830,6 +830,14 @@
 
 /* ─── Electricity History Section (Phase 3) ─── */
 
+.water-breakdown-toggle:hover {
+  background: #eff6ff;
+}
+
+.water-breakdown-toggle__icon {
+  color: #0284c7;
+}
+
 .elec-history {
   margin-top: 2rem;
 }

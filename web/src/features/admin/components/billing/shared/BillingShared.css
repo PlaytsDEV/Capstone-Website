@@ -1,0 +1,217 @@
+.billing-room-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.billing-room-list__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.billing-room-list__title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #102542;
+  margin: 0;
+}
+
+.billing-room-list__filter {
+  width: 180px;
+  border: 1px solid #d8e1ea;
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px 12px;
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.billing-room-list__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.billing-room-list__search-wrap {
+  padding-top: 2px;
+}
+
+.billing-room-list__search {
+  width: 100%;
+  border: 1px solid #d8e1ea;
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px 12px;
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.billing-room-list__empty {
+  color: #64748b;
+  font-size: 0.92rem;
+}
+
+.billing-room-list__skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.billing-room-list__skeleton-card {
+  height: 58px;
+  border-radius: 14px;
+  background: linear-gradient(90deg, #e2e8f0 25%, #f8fafc 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+  animation: billing-room-list-shimmer 1.4s infinite linear;
+}
+
+.billing-room-card {
+  text-align: left;
+  border: 1px solid #dbe5ef;
+  border-radius: 14px;
+  background: #f8fbff;
+  padding: 12px;
+  cursor: pointer;
+  transition: 0.2s ease;
+  width: 100%;
+}
+
+.billing-room-card:hover,
+.billing-room-card.is-active {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.billing-room-card__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.billing-room-card__name {
+  font-weight: 700;
+  color: #102542;
+}
+
+.billing-room-card__badge {
+  font-size: 0.75rem;
+  color: #1d4f91;
+  background: #dbeafe;
+  padding: 3px 8px;
+  border-radius: 999px;
+  text-transform: capitalize;
+}
+
+.billing-room-card__meta {
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.billing-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.billing-status-badge--draft,
+.billing-status-badge--open {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.billing-status-badge--finalized,
+.billing-status-badge--closed {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.billing-status-badge--revised {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.billing-inline-rate {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.billing-inline-rate__input {
+  width: 110px;
+  border: 1px solid #d8e1ea;
+  border-radius: 10px;
+  background: #fff;
+  padding: 8px 10px;
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.billing-inline-rate__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.billing-content-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 100%;
+  min-height: 300px;
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+
+.billing-room-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 0;
+}
+
+.billing-room-header__title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #0a1628;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.billing-room-header__branch {
+  font-size: 0.72rem;
+  color: #6b7280;
+  padding: 2px 8px;
+  background: #f3f4f6;
+  border-radius: 4px;
+  text-transform: capitalize;
+}
+
+@keyframes billing-room-list-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (max-width: 720px) {
+  .billing-room-list__header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .billing-room-list__filter {
+    width: 100%;
+  }
+}

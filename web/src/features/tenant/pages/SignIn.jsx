@@ -171,6 +171,9 @@ function SignIn() {
 
   const isFormValid = () => fieldValid.email && fieldValid.password;
 
+  const hasAdminClaims = (tokenResult) =>
+    Boolean(tokenResult?.claims?.branch_admin || tokenResult?.claims?.owner);
+
   const validateForm = () => {
     setTouched({ email: true, password: true });
     validateField("email", formData.email);
@@ -229,9 +232,9 @@ function SignIn() {
       );
       const firebaseUser = userCredential.user;
 
-      // Check custom claims to see if user is admin (admins bypass email verification)
+      // Branch admins and owners bypass email verification checks.
       const tokenResult = await firebaseUser.getIdTokenResult();
-      const isAdmin = tokenResult.claims.admin || tokenResult.claims.superAdmin;
+      const isAdmin = hasAdminClaims(tokenResult);
 
       if (!firebaseUser.emailVerified && !isAdmin) {
         // Send a fresh verification email before signing out
@@ -325,9 +328,9 @@ function SignIn() {
       const result = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
 
-      // Check email verification (admin bypasses via custom claims)
+      // Branch admins and owners bypass email verification checks.
       const tokenResult = await firebaseUser.getIdTokenResult();
-      const isAdmin = tokenResult.claims.admin || tokenResult.claims.superAdmin;
+      const isAdmin = hasAdminClaims(tokenResult);
       if (!firebaseUser.emailVerified && !isAdmin) {
         await auth.signOut();
         showNotification(

@@ -83,8 +83,8 @@ Four roles are enforced through middleware guards:
 | ------------ | -------- | --------------------------------------------------------------------------- |
 | `applicant`  | Public   | Browse rooms, submit inquiries, create reservations                         |
 | `tenant`     | Personal | View own bills, submit maintenance requests, manage profile                 |
-| `admin`      | Branch   | Manage reservations, tenants, rooms, and billing within assigned branch     |
-| `superAdmin` | System   | Full access across all branches, user/role management, system configuration |
+| `branch_admin` | Branch | Manage reservations, tenants, rooms, and billing within assigned branch     |
+| `owner`        | System | Full access across all branches, user/role management, system configuration |
 
 **Middleware chain example:**
 
@@ -92,7 +92,7 @@ Four roles are enforced through middleware guards:
 router.put(
   "/:id",
   verifyToken, // Authenticate
-  verifyAdmin, // Authorize (admin or superAdmin)
+  verifyAdmin, // Authorize (branch_admin or owner)
   filterByBranch, // Restrict to user's branch
   controller.update, // Execute
 );
@@ -126,7 +126,7 @@ All user-supplied input is sanitized and validated before processing. The middle
 | `sanitizeName()`     | Name formatting       | 2–50 chars, letters, spaces, `-`, `'`             |
 | `sanitizePhone()`    | Phone normalization   | 7+ digits, allows `+` and `-`                     |
 | `validateBranch()`   | Branch enum check     | Only `gil-puyat` or `guadalupe`                   |
-| `validateRole()`     | Role enum check       | Only `applicant`, `tenant`, `admin`, `superAdmin` |
+| `validateRole()`     | Role enum check       | Only `applicant`, `tenant`, `branch_admin`, `owner` |
 | `isValidObjectId()`  | MongoDB ID check      | 24-character hex string                           |
 | `isValidDate()`      | Date format check     | ISO 8601 format (`YYYY-MM-DD`)                    |
 
@@ -171,7 +171,7 @@ const bills = await Bill.find({
 
 - Tenants can only view their own data within their assigned branch
 - Branch admins can only manage resources within their assigned branch
-- Super admins can access resources across all branches
+- Owners can access resources across all branches
 - No accidental data leakage between branches
 
 ---
@@ -243,7 +243,7 @@ All administrative actions are recorded with:
 | `branch`         | Which branch the action occurred in                       |
 | `timestamp`      | When the action was performed                             |
 
-Audit logs are immutable and accessible only to admin and super admin roles.
+Audit logs are immutable and accessible only to branch admin and owner roles.
 
 ---
 
@@ -258,7 +258,7 @@ Audit logs are immutable and accessible only to admin and super admin roles.
 | First/Last Name | 2        | 50  | Letters, spaces, `-`, `'`  | —                                       |
 | Phone           | 7 digits | —   | Numbers, `+`, `-`          | —                                       |
 | Branch          | —        | —   | Enum only                  | `gil-puyat` or `guadalupe`              |
-| Role            | —        | —   | Enum only                  | `user`, `tenant`, `admin`, `superAdmin` |
+| Role            | —        | —   | Enum only                  | `applicant`, `tenant`, `branch_admin`, `owner` |
 | MongoDB ID      | 24       | 24  | Hex characters             | —                                       |
 | Date            | —        | —   | ISO 8601                   | `YYYY-MM-DD`                            |
 
@@ -309,3 +309,16 @@ try {
 - [Mongoose Security Considerations](https://mongoosejs.com/docs/security.html)
 - [Helmet.js](https://helmetjs.github.io/)
 - [PayMongo Webhooks](https://developers.paymongo.com/docs/webhooks)
+
+---
+
+## Frontend Guard Model
+
+The frontend mirrors backend authorization through a centralized route-guard layer:
+
+- `RequireAdmin` protects `/admin/*`
+- `RequireOwner` protects owner-only admin pages
+- `RequireNonAdmin` redirects authenticated users away from auth-only pages
+- `ProtectedRoute` gates applicant/tenant/public route access patterns
+
+These guards improve navigation consistency and reduce accidental route leakage in the client, but backend authorization remains the actual enforcement boundary.

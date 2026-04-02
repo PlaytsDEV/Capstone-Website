@@ -38,6 +38,8 @@ import notify from "./notificationService.js";
 import { updateOccupancyOnReservationChange } from "./occupancyManager.js";
 import logger from "../middleware/logger.js";
 import { BUSINESS } from "../config/constants.js";
+import { resolveBillStatus, syncBillAmounts } from "./billingPolicy.js";
+import { getPenaltyRatePerDay, resolvePenaltyRatePerDay } from "./businessSettings.js";
 
 // ─── Job 1: Overdue Move-In Detection (daily at 08:30) ──────────────────────────
 
@@ -112,7 +114,7 @@ async function markOverdueBills() {
     const now = dayjs().toDate();
     const result = await Bill.updateMany(
       {
-        status: "pending",
+        status: { $in: ["pending", "partially-paid"] },
         dueDate: { $lt: now },
         isArchived: false,
       },
@@ -132,6 +134,7 @@ async function markOverdueBills() {
 async function computeOverduePenalties() {
   try {
     const now = dayjs();
+    const penaltyRatePerDay = await getPenaltyRatePerDay();
     const overdueBills = await Bill.find({
       status: "overdue",
       isArchived: false,
@@ -143,7 +146,10 @@ async function computeOverduePenalties() {
       const daysLate = now.diff(dayjs(bill.dueDate), "day");
       if (daysLate <= 0) continue;
 
-      const ratePerDay = bill.penaltyDetails?.ratePerDay || BUSINESS.PENALTY_RATE_PER_DAY;
+      const ratePerDay = resolvePenaltyRatePerDay(
+        bill.penaltyDetails?.ratePerDay,
+        penaltyRatePerDay,
+      );
       const newPenalty = daysLate * ratePerDay;
       const oldPenalty = bill.charges?.penalty || 0;
 
@@ -153,13 +159,8 @@ async function computeOverduePenalties() {
       bill.charges.penalty = newPenalty;
       bill.penaltyDetails.daysLate = daysLate;
       bill.penaltyDetails.appliedAt = now.toDate();
-
-      // Recalculate total: rent + electricity + water + applianceFees + corkageFees + penalty - discount + additionalCharges
-      const c = bill.charges;
-      const additionalTotal = (bill.additionalCharges || []).reduce((sum, ch) => sum + (ch.amount || 0), 0);
-      bill.totalAmount = (c.rent || 0) + (c.electricity || 0) + (c.water || 0) +
-        (c.applianceFees || 0) + (c.corkageFees || 0) + (c.penalty || 0) -
-        (c.discount || 0) + additionalTotal;
+      syncBillAmounts(bill);
+      bill.status = resolveBillStatus(bill, now.toDate());
 
       await bill.save();
       updated++;

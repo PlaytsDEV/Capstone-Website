@@ -53,6 +53,14 @@ export default function BillDetailModal({
             <span className="detail-label">Due Date</span>
             <span className="detail-value">{fmtDate(bill.dueDate)}</span>
           </div>
+          {bill.billingCycleStart && bill.billingCycleEnd && (
+            <div className="detail-row">
+              <span className="detail-label">Billing Cycle</span>
+              <span className="detail-value">
+                {fmtDate(bill.billingCycleStart)} - {fmtDate(bill.billingCycleEnd)}
+              </span>
+            </div>
+          )}
           <div className="detail-row">
             <span className="detail-label">Status</span>
             <span className={`badge status-${bill.status}`}>{bill.status}</span>
@@ -81,7 +89,7 @@ export default function BillDetailModal({
             )}
             {(bill.charges?.water || 0) > 0 && (
               <div className="charge-row">
-                <span>Water</span>
+                <span>Water (room reading)</span>
                 <span>{fmtCurrency(bill.charges.water)}</span>
               </div>
             )}
@@ -109,6 +117,18 @@ export default function BillDetailModal({
                 <span>-{fmtCurrency(bill.charges.discount)}</span>
               </div>
             )}
+            {(bill.grossAmount || 0) > 0 && bill.reservationCreditApplied > 0 && (
+              <>
+                <div className="charge-row total">
+                  <span>Gross Charges</span>
+                  <span>{fmtCurrency(bill.grossAmount)}</span>
+                </div>
+                <div className="charge-row discount">
+                  <span>Reservation Credit Applied</span>
+                  <span>-{fmtCurrency(bill.reservationCreditApplied)}</span>
+                </div>
+              </>
+            )}
             <div className="charge-row total">
               <span>Total</span>
               <span>{fmtCurrency(bill.totalAmount)}</span>
@@ -117,6 +137,12 @@ export default function BillDetailModal({
               <div className="charge-row paid">
                 <span>Amount Paid</span>
                 <span>{fmtCurrency(bill.paidAmount)}</span>
+              </div>
+            )}
+            {(bill.remainingAmount ?? 0) > 0 && (
+              <div className="charge-row total">
+                <span>Remaining Balance</span>
+                <span>{fmtCurrency(bill.remainingAmount)}</span>
               </div>
             )}
           </div>

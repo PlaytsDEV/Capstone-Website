@@ -126,9 +126,9 @@ features/{role}/
 - User management
 - Audit logs
 
-### Super Admin Feature (`features/super-admin/`)
+### Owner Feature (`features/super-admin/`)
 
-Pages nested inside the admin layout via `RequireSuperAdmin` guard:
+Pages nested inside the admin layout via `RequireOwner` guard:
 
 - System-wide dashboard with cross-branch comparisons
 - Branch management
@@ -250,8 +250,8 @@ server/
 | Guard                   | Purpose                                 |
 | ----------------------- | --------------------------------------- |
 | `RequireAuth.jsx`       | Require authenticated user              |
-| `RequireAdmin.jsx`      | Require admin or superAdmin role        |
-| `RequireSuperAdmin.jsx` | Require super admin role                |
+| `RequireAdmin.jsx`      | Require `branch_admin` or `owner` role  |
+| `RequireOwner.jsx`      | Require `owner` role                    |
 | `RequireNonAdmin.jsx`   | Block admins from auth pages (redirect) |
 
 ### Hooks (`shared/hooks/`)
@@ -331,7 +331,7 @@ server/
 | `/admin/users`             | UserManagementPage   |
 | `/admin/audit-logs`        | AuditLogsPage        |
 
-### Super Admin Routes (Protected — nested under `/admin`)
+### Owner Routes (Protected — nested under `/admin`)
 
 | Path               | Component            |
 | ------------------ | -------------------- |
@@ -348,3 +348,28 @@ server/
 | `/super-admin/*`             | `/admin/*` (equivalent)     |
 | `/applicant/dashboard`       | `/applicant/profile`        |
 | `/applicant/rooms`           | `/applicant/check-availability` |
+
+---
+
+## Canonical Route Layer
+
+The current frontend route architecture is split deliberately between a thin app shell and a canonical route layer:
+
+- `web/src/App.js`
+  Mounts providers, scroll handling, global loading UI, and the route host
+- `web/src/app/lazyPages.js`
+  Centralizes lazy page imports for route-level code splitting
+- `web/src/app/routes/AppRoutes.jsx`
+  Composes all route groups into the single runtime route tree
+- `web/src/app/routes/publicRoutes.jsx`
+  Owns public pages and auth-only routes
+- `web/src/app/routes/tenantRoutes.jsx`
+  Owns applicant and tenant-facing routes
+- `web/src/app/routes/adminRoutes.jsx`
+  Owns admin and owner-facing routes
+- `web/src/app/routes/legacyRoutes.jsx`
+  Preserves backward-compatible redirects for old bookmarked URLs
+- `web/src/app/routes/RouteShell.jsx`
+  Wraps route elements in route-level error boundaries
+
+This means `web/src/app/routes/*` is the canonical route source of truth. `App.js` should remain a composition shell, not a second place where routes are defined.

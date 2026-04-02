@@ -4,6 +4,12 @@
  * ============================================================================
  *
  * Handles all segment-based electricity billing operations.
+/**
+ * ============================================================================
+ * ELECTRICITY BILLING CONTROLLER
+ * ============================================================================
+ *
+ * Handles all segment-based electricity billing operations.
  * Separate from billingController.js to avoid breaking existing payment flows.
  *
  * MIDDLEWARE CHAIN: verifyToken → verifyAdmin → filterByBranch → handler
@@ -13,6 +19,9 @@
  */
 
 import dayjs from "dayjs";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
 import {
   Bill,
   MeterReading,
@@ -23,8 +32,33 @@ import {
   User,
 } from "../models/index.js";
 import { computeBilling, truncate4 } from "../utils/billingEngine.js";
+import { generateBillPdf } from "../utils/pdfGenerator.js";
 import logger from "../middleware/logger.js";
 import { sendBillGeneratedEmail } from "../config/email.js";
+import {
+  getUtilityTargetCloseDate,
+  isSameUtilityCycleBoundary,
+  syncBillAmounts,
+} from "../utils/billingPolicy.js";
+import {
+  getFinalizedWaterRecordForPeriod,
+  isWaterBillableRoomType,
+} from "../utils/waterBilling.js";
+import { logBillingAudit } from "../utils/billingAudit.js";
+import { getRoomLabel } from "../utils/roomLabel.js";
+import { ensureOpenElectricityPeriodForRoom } from "../utils/electricityLifecycle.js";
+import {
+  getElectricityRoomDiagnostics,
+  getUtilityDiagnostics,
+} from "../utils/utilityDiagnostics.js";
+import {
+  getDraftBillsForSummaryBillIds,
+  sendDraftUtilityBills,
+  upsertDraftBillsForUtility,
+} from "../utils/utilityBillFlow.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /* ─── shared helpers ─────────────────────────────── */
 
@@ -36,11 +70,234 @@ async function getAdminInfo(req) {
     branch: dbUser?.branch || null,
     isSuperAdmin: dbUser?.role === "owner",
     _id: dbUser?._id || null,
+    email: dbUser?.email || req.user?.email || "",
+    displayName:
+      `${dbUser?.firstName || ""} ${dbUser?.lastName || ""}`.trim() ||
+      dbUser?.email ||
+      req.user?.email ||
+      "Admin",
   };
 }
 
 /** Round to 2 decimal places for final bill amounts */
 const r2 = (n) => Math.round(n * 100) / 100;
+
+function formatClosedPeriodResponse({ billingResult, computationResult }) {
+  return {
+    id: billingResult._id,
+    totalRoomKwh: computationResult.totalRoomKwh,
+    totalRoomCost: computationResult.totalRoomCost,
+    verified: computationResult.verified,
+    segmentCount: computationResult.segments.length,
+    tenantCount: computationResult.tenantSummaries.length,
+    tenantSummaries: computationResult.tenantSummaries.map((tenant) => ({
+      tenantName: tenant.tenantName,
+      totalKwh: tenant.totalKwh,
+      billAmount: tenant.billAmount,
+    })),
+  };
+}
+
+function formatElectricityRoomDiagnostics(diag) {
+  return {
+    entityType: diag.entityType,
+    entityId: diag.entityId,
+    roomId: diag.roomId,
+    roomName: diag.roomName,
+    branch: diag.branch,
+    status: diag.status,
+    activeTenantCount: diag.activeTenantCount,
+    reservationIds: diag.reservationIds,
+    orphanReadingIds: diag.orphanReadingIds,
+    openPeriodId: diag.openPeriodId,
+    targetCloseDate: diag.targetCloseDate,
+    issueCodes: diag.issueCodes,
+    issues: diag.issues,
+  };
+}
+
+async function resolveTenantEventsForBilling(roomId, readings, periodStartReading, periodStartDate = null) {
+  const tenantEvents = await buildTenantEventsFromReadings(
+    roomId,
+    readings,
+    periodStartReading,
+    periodStartDate,
+  );
+
+  const unresolvedAnchors = tenantEvents.filter((event) => event.requiresRepair);
+  if (unresolvedAnchors.length > 0) {
+    const tenantNames = unresolvedAnchors
+      .map((event) => event.tenantName)
+      .filter(Boolean)
+      .join(", ");
+    const error = new Error(
+      `Missing move-in anchor reading for: ${tenantNames || "one or more tenants"}`,
+    );
+    error.statusCode = 409;
+    error.code = "electricity_missing_movein_anchor";
+    error.metadata = {
+      unresolvedAnchors: unresolvedAnchors.map((event) => ({
+        tenantId: event.tenantId,
+        tenantName: event.tenantName,
+        reservationId: event.reservationId || null,
+      })),
+    };
+    throw error;
+  }
+
+  return tenantEvents.map(({ requiresRepair, reservationId, ...event }) => event);
+}
+
+function buildPeriodDateFilter(from, to, field = "startDate") {
+  const filter = {};
+  if (from) {
+    const parsedFrom = new Date(from);
+    if (!Number.isNaN(parsedFrom.getTime())) {
+      filter.$gte = parsedFrom;
+    }
+  }
+  if (to) {
+    const parsedTo = new Date(to);
+    if (!Number.isNaN(parsedTo.getTime())) {
+      parsedTo.setHours(23, 59, 59, 999);
+      filter.$lte = parsedTo;
+    }
+  }
+  return Object.keys(filter).length ? { [field]: filter } : {};
+}
+
+async function closePeriodAndGenerateDrafts({
+  admin,
+  period,
+  room,
+  endReading,
+  endDate,
+  requestContext = null,
+}) {
+  const targetCloseDate = getUtilityTargetCloseDate(period.startDate);
+  const requestedClosingDate = endDate ? new Date(endDate) : targetCloseDate;
+  const closingDate = dayjs(requestedClosingDate).startOf("day").toDate();
+
+  if (!isSameUtilityCycleBoundary(closingDate, targetCloseDate)) {
+    throw new Error(
+      `This billing period must close on ${dayjs(targetCloseDate).format("MMM D, YYYY")} to stay on the 15th-to-15th cycle.`,
+    );
+  }
+
+  const endMeterReading = new MeterReading({
+    roomId: room._id,
+    branch: room.branch,
+    reading: Number(endReading),
+    date: closingDate,
+    eventType: "regular-billing",
+    recordedBy: admin._id,
+    billingPeriodId: period._id,
+    activeTenantIds: [],
+  });
+  await endMeterReading.save();
+
+  const allReadings = await MeterReading.find({
+    roomId: room._id,
+    isArchived: false,
+    date: { $gte: period.startDate, $lte: closingDate },
+  })
+    .sort({ date: 1, createdAt: 1 })
+    .lean();
+
+  const tenantEvents = await resolveTenantEventsForBilling(
+    room._id,
+    allReadings,
+    period.startReading,
+    period.startDate,
+  );
+
+  const computationResult = computeBilling({
+    meterReadings: allReadings.map((reading) => ({
+      date: reading.date,
+      reading: reading.reading,
+      eventType: reading.eventType,
+    })),
+    tenantEvents,
+    ratePerKwh: period.ratePerKwh,
+    startReading: period.startReading,
+    endReading: Number(endReading),
+  });
+
+  const billingResult = new BillingResult({
+    billingPeriodId: period._id,
+    roomId: room._id,
+    branch: room.branch,
+    computedBy: admin._id,
+    ratePerKwh: period.ratePerKwh,
+    totalRoomKwh: computationResult.totalRoomKwh,
+    totalRoomCost: computationResult.totalRoomCost,
+    verified: computationResult.verified,
+    segments: computationResult.segments,
+    tenantSummaries: computationResult.tenantSummaries,
+  });
+  await billingResult.save();
+
+  billingResult.tenantSummaries = await upsertDraftBillsForUtility({
+    period: { ...period.toObject(), endDate: closingDate },
+    room,
+    tenantSummaries: billingResult.tenantSummaries,
+    utilityType: "electricity",
+  });
+  await billingResult.save();
+
+  period.endDate = closingDate;
+  period.endReading = Number(endReading);
+  period.status = "closed";
+  period.closedAt = new Date();
+  period.closedBy = admin._id;
+  await period.save();
+
+  await logBillingAudit(requestContext || {}, {
+    admin,
+    action: "billing_period_closed",
+    severity: "medium",
+    entityId: period._id,
+    branch: period.branch,
+    details: `Closed billing period for room ${getRoomLabel(room)}`,
+    metadata: {
+      roomId: room._id,
+      roomName: getRoomLabel(room),
+      billingResultId: billingResult._id,
+      tenantCount: computationResult.tenantSummaries.length,
+      totalRoomCost: computationResult.totalRoomCost,
+      totalRoomKwh: computationResult.totalRoomKwh,
+    },
+  });
+
+  try {
+    const alreadyOpen = await BillingPeriod.findOne({
+      roomId: room._id,
+      status: "open",
+      isArchived: false,
+    });
+    if (!alreadyOpen) {
+      const nextPeriod = new BillingPeriod({
+        roomId: room._id,
+        branch: room.branch,
+        startDate: dayjs(closingDate).startOf("day").toDate(),
+        startReading: Number(endReading),
+        ratePerKwh: period.ratePerKwh,
+        status: "open",
+        createdBy: admin._id,
+      });
+      await nextPeriod.save();
+      logger.info({ roomId: room._id, nextPeriodId: nextPeriod._id }, "Auto-opened next billing period");
+    }
+  } catch (chainErr) {
+    logger.warn({ err: chainErr }, "Auto-chain billing period failed (non-fatal)");
+  }
+
+  return {
+    closingDate,
+    billingResult,
+    computationResult,
+  };
+}
 
 // ============================================================================
 // METER READING ENDPOINTS
@@ -226,6 +483,77 @@ export const getLatestReading = async (req, res, next) => {
   }
 };
 
+/**
+ * PATCH /api/electricity/readings/:id
+ * Update an existing meter reading (value, date, eventType, tenantId).
+ * Intended for fixing auto-generated move-in/move-out readings.
+ */
+export const updateMeterReading = async (req, res, next) => {
+  try {
+    const admin = await getAdminInfo(req);
+    const { id } = req.params;
+    const { reading, date, eventType, tenantId } = req.body;
+
+    const meterReading = await MeterReading.findById(id);
+    if (!meterReading) return res.status(404).json({ error: "Meter reading not found" });
+    if (!admin.isSuperAdmin && meterReading.branch !== admin.branch) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    // Validate eventType if provided
+    const validEventTypes = ["move-in", "move-out", "regular-billing"];
+    if (eventType && !validEventTypes.includes(eventType)) {
+      return res.status(400).json({ error: `Invalid event type. Must be one of: ${validEventTypes.join(", ")}` });
+    }
+
+    // Apply updates selectively
+    if (reading !== undefined && reading !== null && reading !== "") {
+      meterReading.reading = Number(reading);
+    }
+    if (date) {
+      meterReading.date = new Date(date);
+    }
+    if (eventType) {
+      meterReading.eventType = eventType;
+    }
+    // Allow clearing tenantId (null) or setting a new one
+    if ("tenantId" in req.body) {
+      meterReading.tenantId = tenantId || null;
+    }
+
+    await meterReading.save();
+
+    await logBillingAudit(req, {
+      admin,
+      action: "meter_reading_updated",
+      severity: "medium",
+      entityId: meterReading._id,
+      branch: meterReading.branch,
+      details: `Updated ${meterReading.eventType} reading for room ${meterReading.roomId}`,
+      metadata: {
+        roomId: meterReading.roomId,
+        billingPeriodId: meterReading.billingPeriodId || null,
+        eventType: meterReading.eventType,
+        reading: meterReading.reading,
+        date: meterReading.date,
+      },
+    });
+
+    res.json({
+      success: true,
+      meterReading: {
+        id: meterReading._id,
+        reading: meterReading.reading,
+        date: meterReading.date,
+        eventType: meterReading.eventType,
+        tenantId: meterReading.tenantId,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // ============================================================================
 // BILLING PERIOD ENDPOINTS
 // ============================================================================
@@ -238,6 +566,7 @@ export const openBillingPeriod = async (req, res, next) => {
   try {
     const admin = await getAdminInfo(req);
     const { roomId, startDate, startReading, ratePerKwh } = req.body;
+    const requestedStartDate = startDate ? new Date(startDate) : null;
 
     if (!roomId) return res.status(400).json({ error: "Room ID is required" });
     if (!startDate)
@@ -248,6 +577,11 @@ export const openBillingPeriod = async (req, res, next) => {
       return res
         .status(400)
         .json({ error: "Rate per kWh is required and must be positive" });
+    if (!requestedStartDate || Number.isNaN(requestedStartDate.getTime()) || dayjs(requestedStartDate).date() !== 15) {
+      return res.status(400).json({
+        error: "Billing period start date must be on the 15th to stay aligned with the monthly cycle.",
+      });
+    }
 
     const room = await Room.findById(roomId);
     if (!room) return res.status(404).json({ error: "Room not found" });
@@ -273,21 +607,20 @@ export const openBillingPeriod = async (req, res, next) => {
       roomId: room._id,
       branch: room.branch,
       reading: Number(startReading),
-      date: new Date(startDate),
+      date: dayjs(requestedStartDate).startOf("day").toDate(),
       eventType: "regular-billing",
       recordedBy: admin._id,
       activeTenantIds: [],
     });
     await meterReading.save();
 
-    const period = new BillingPeriod({
-      roomId: room._id,
-      branch: room.branch,
-      startDate: new Date(startDate),
-      startReading: Number(startReading),
-      ratePerKwh: Number(ratePerKwh),
-      status: "open",
+    const bootstrap = await ensureOpenElectricityPeriodForRoom({
+      room,
+      anchorDate: dayjs(requestedStartDate).startOf("day").toDate(),
+      anchorReading: Number(startReading),
     });
+    const period = bootstrap.period;
+    period.ratePerKwh = Number(ratePerKwh);
     await period.save();
 
     // Link the start reading to the new period
@@ -303,6 +636,7 @@ export const openBillingPeriod = async (req, res, next) => {
         startReading: period.startReading,
         ratePerKwh: period.ratePerKwh,
         status: period.status,
+        targetCloseDate: getUtilityTargetCloseDate(period.startDate),
       },
     });
   } catch (error) {
@@ -320,8 +654,9 @@ export const closeBillingPeriod = async (req, res, next) => {
     const { id } = req.params;
     const { endReading, endDate } = req.body;
 
-    if (endReading === undefined)
+    if (endReading === undefined) {
       return res.status(400).json({ error: "End reading is required" });
+    }
 
     const period = await BillingPeriod.findById(id);
     if (!period) return res.status(404).json({ error: "Billing period not found" });
@@ -329,169 +664,277 @@ export const closeBillingPeriod = async (req, res, next) => {
       return res.status(403).json({ error: "Access denied" });
     }
     if (period.status !== "open") {
-      return res
-        .status(400)
-        .json({ error: "Only open periods can be closed" });
+      return res.status(400).json({ error: "Only open periods can be closed" });
     }
     if (Number(endReading) < period.startReading) {
       return res.status(400).json({
         error: `End reading (${endReading}) cannot be lower than start reading (${period.startReading}).`,
       });
     }
+    const targetCloseDate = getUtilityTargetCloseDate(period.startDate);
+    const requestedCloseDate = endDate ? dayjs(endDate).startOf("day").toDate() : targetCloseDate;
+    if (!isSameUtilityCycleBoundary(requestedCloseDate, targetCloseDate)) {
+      return res.status(400).json({
+        error: `Open periods must close on ${dayjs(targetCloseDate).format("MMM D, YYYY")} to keep the 15th-to-15th cycle.`,
+      });
+    }
 
     const room = await Room.findById(period.roomId);
     if (!room) return res.status(404).json({ error: "Room not found" });
 
-    const closingDate = endDate ? new Date(endDate) : new Date();
-
-    // Record end-of-period meter reading
-    const endMeterReading = new MeterReading({
-      roomId: room._id,
-      branch: room.branch,
-      reading: Number(endReading),
-      date: closingDate,
-      eventType: "regular-billing",
-      recordedBy: admin._id,
-      billingPeriodId: period._id,
-      activeTenantIds: [],
+    const result = await closePeriodAndGenerateDrafts({
+      admin,
+      period,
+      room,
+      endReading,
+      endDate: requestedCloseDate,
+      requestContext: req,
     });
-    await endMeterReading.save();
-
-    // Fetch all readings for this room within the period's date range
-    const allReadings = await MeterReading.find({
-      roomId: room._id,
-      isArchived: false,
-      date: { $gte: period.startDate, $lte: closingDate },
-    })
-      .sort({ date: 1, createdAt: 1 })
-      .lean();
-
-    // Build tenant events from reservations
-    const tenantEvents = await buildTenantEventsFromReadings(
-      room._id,
-      allReadings,
-      period.startReading,
-    );
-
-    // Run the billing engine
-    const computationResult = computeBilling({
-      meterReadings: allReadings.map((r) => ({
-        date: r.date,
-        reading: r.reading,
-        eventType: r.eventType,
-      })),
-      tenantEvents,
-      ratePerKwh: period.ratePerKwh,
-      startReading: period.startReading,
-      endReading: Number(endReading),
-    });
-
-    // Save BillingResult
-    const billingResult = new BillingResult({
-      billingPeriodId: period._id,
-      roomId: room._id,
-      branch: room.branch,
-      computedBy: admin._id,
-      ratePerKwh: period.ratePerKwh,
-      totalRoomKwh: computationResult.totalRoomKwh,
-      totalRoomCost: computationResult.totalRoomCost,
-      verified: computationResult.verified,
-      segments: computationResult.segments,
-      tenantSummaries: computationResult.tenantSummaries,
-    });
-    await billingResult.save();
-
-    // Generate individual Bill documents for each tenant as DRAFT
-    // Bills remain hidden from tenants until admin clicks "Send Bills"
-    for (const summary of computationResult.tenantSummaries) {
-      const existingBill = await Bill.findOne({
-        userId: summary.tenantId,
-        billingMonth: period.startDate,
-        isArchived: false,
-      });
-      if (existingBill) continue; // Skip duplicates
-
-      const bill = new Bill({
-        userId: summary.tenantId,
-        branch: room.branch,
-        roomId: room._id,
-        billingMonth: period.startDate,
-        dueDate: null,          // Set at send time
-        charges: {
-          electricity: r2(summary.billAmount),
-          rent: 0,
-          water: 0,
-          applianceFees: 0,
-          corkageFees: 0,
-          penalty: 0,
-          discount: 0,
-        },
-        totalAmount: r2(summary.billAmount),
-        status: "draft",        // Hidden from tenants until sent
-      });
-      await bill.save();
-
-      // Update the billingResult with the billId
-      const ts = billingResult.tenantSummaries.find(
-        (t) => String(t.tenantId) === String(summary.tenantId),
-      );
-      if (ts) ts.billId = bill._id;
-    }
-    await billingResult.save();
-
-    // Update period status
-    period.endDate = closingDate;
-    period.endReading = Number(endReading);
-    period.status = "closed";
-    period.closedAt = new Date();
-    period.closedBy = admin._id;
-    await period.save();
-
-    // ── Auto-chain: open the next billing period (continuous cycle) ────────
-    // The next period starts from where this one ended, same rate, same room.
-    // This means admin never needs to manually "Open Period" again.
-    try {
-      const alreadyOpen = await BillingPeriod.findOne({
-        roomId: room._id,
-        status: "open",
-        isArchived: false,
-      });
-      if (!alreadyOpen) {
-        const nextPeriod = new BillingPeriod({
-          roomId: room._id,
-          branch: room.branch,
-          startDate: closingDate,
-          startReading: Number(endReading),
-          ratePerKwh: period.ratePerKwh,
-          status: "open",
-          createdBy: admin._id,
-        });
-        await nextPeriod.save();
-        logger.info({ roomId: room._id, nextPeriodId: nextPeriod._id }, "Auto-opened next billing period");
-      }
-    } catch (chainErr) {
-      // Non-fatal — existing period is already closed, admin can open manually
-      logger.warn({ err: chainErr }, "Auto-chain billing period failed (non-fatal)");
-    }
-
-    // Email notifications are now sent via sendBills endpoint
-    // (admin reviews draft bills first, then manually triggers send)
 
     res.json({
       success: true,
-      result: {
-        id: billingResult._id,
-        totalRoomKwh: computationResult.totalRoomKwh,
-        totalRoomCost: computationResult.totalRoomCost,
-        verified: computationResult.verified,
-        segmentCount: computationResult.segments.length,
-        tenantCount: computationResult.tenantSummaries.length,
-        tenantSummaries: computationResult.tenantSummaries.map((t) => ({
-          tenantName: t.tenantName,
-          totalKwh: t.totalKwh,
-          billAmount: t.billAmount,
-        })),
+      result: formatClosedPeriodResponse(result),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/electricity/batch-close
+ * Best-effort close for multiple open periods.
+ */
+export const batchCloseBillingPeriods = async (req, res, next) => {
+  try {
+    const admin = await getAdminInfo(req);
+    const { closures, endDate } = req.body;
+
+    if (!Array.isArray(closures) || closures.length === 0) {
+      return res.status(400).json({ error: "At least one closure item is required" });
+    }
+
+    const closed = [];
+    const failed = [];
+
+    for (const item of closures) {
+      const { periodId, endReading, roomLabel = null } = item || {};
+
+      try {
+        if (!periodId) {
+          throw new Error("Missing periodId");
+        }
+        if (endReading === undefined || endReading === null || endReading === "") {
+          throw new Error("Missing endReading");
+        }
+
+        const period = await BillingPeriod.findById(periodId);
+        if (!period || period.isArchived) {
+          throw new Error("Billing period not found");
+        }
+        if (!admin.isSuperAdmin && period.branch !== admin.branch) {
+          throw new Error("Access denied");
+        }
+        if (period.status !== "open") {
+          throw new Error("Only open periods can be closed");
+        }
+        if (Number(endReading) < period.startReading) {
+          throw new Error(
+            `End reading (${endReading}) cannot be lower than start reading (${period.startReading})`,
+          );
+        }
+
+        const room = await Room.findById(period.roomId);
+        if (!room) {
+          throw new Error("Room not found");
+        }
+
+        const result = await closePeriodAndGenerateDrafts({
+          admin,
+          period,
+          room,
+          endReading,
+          endDate: item?.endDate || endDate,
+          requestContext: req,
+        });
+
+        closed.push({
+          periodId: period._id,
+          roomId: room._id,
+          roomName: getRoomLabel(room, roomLabel || "Unknown room"),
+          branch: period.branch,
+          ...formatClosedPeriodResponse(result),
+        });
+      } catch (error) {
+        failed.push({
+          periodId: periodId || null,
+          roomName: roomLabel || null,
+          error: error.message || "Failed to close billing period",
+        });
+      }
+    }
+
+    res.status(closed.length > 0 ? 200 : 400).json({
+      success: failed.length === 0,
+      summary: {
+        requested: closures.length,
+        closed: closed.length,
+        failed: failed.length,
       },
+      closed,
+      failed,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/electricity/diagnostics
+ * Combined utility diagnostics for electricity rooms and water records.
+ */
+export const getBillingDiagnostics = async (req, res, next) => {
+  try {
+    const admin = await getAdminInfo(req);
+    const branch = admin.isSuperAdmin ? req.query.branch || null : admin.branch;
+    const diagnostics = await getUtilityDiagnostics({ branch });
+
+    res.json({
+      ...diagnostics,
+      electricityRooms: diagnostics.electricityRooms.map(formatElectricityRoomDiagnostics),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/electricity/export
+ * Export electricity billing rows for CSV download.
+ */
+export const exportElectricityBilling = async (req, res, next) => {
+  try {
+    const admin = await getAdminInfo(req);
+    const branch = admin.isSuperAdmin ? req.query.branch || null : admin.branch;
+    const status = req.query.status && req.query.status !== "all" ? req.query.status : null;
+    const roomId = req.query.roomId || null;
+
+    const periodFilter = {
+      isArchived: false,
+      ...(branch ? { branch } : {}),
+      ...(status ? { status } : {}),
+      ...(roomId ? { roomId } : {}),
+      ...buildPeriodDateFilter(req.query.from, req.query.to, "startDate"),
+    };
+
+    const periods = await BillingPeriod.find(periodFilter)
+      .sort({ startDate: -1, createdAt: -1 })
+      .lean();
+
+    const periodIds = periods.map((period) => period._id);
+    const roomIds = [...new Set(periods.map((period) => String(period.roomId)))];
+
+    const [results, rooms] = await Promise.all([
+      BillingResult.find({ billingPeriodId: { $in: periodIds } }).lean(),
+      Room.find({ _id: { $in: roomIds } }).select("name roomNumber branch type").lean(),
+    ]);
+
+    const resultMap = new Map(results.map((result) => [String(result.billingPeriodId), result]));
+    const roomMap = new Map(rooms.map((room) => [String(room._id), room]));
+    const billIds = [];
+
+    for (const result of results) {
+      for (const summary of result.tenantSummaries || []) {
+        if (summary.billId) {
+          billIds.push(summary.billId);
+        }
+      }
+    }
+
+    const bills = billIds.length
+      ? await Bill.find({ _id: { $in: billIds }, isArchived: false })
+          .select("status dueDate sentAt totalAmount")
+          .lean()
+      : [];
+    const billMap = new Map(bills.map((bill) => [String(bill._id), bill]));
+
+    const rows = periods.flatMap((period) => {
+      const room = roomMap.get(String(period.roomId));
+      const result = resultMap.get(String(period._id));
+      const baseRow = {
+        periodId: String(period._id),
+        roomId: String(period.roomId),
+        roomName: getRoomLabel(room),
+        branch: period.branch,
+        periodStart: period.startDate,
+        periodEnd: period.endDate,
+        periodStatus: period.status,
+        ratePerKwh: result?.ratePerKwh ?? period.ratePerKwh,
+      };
+
+      if (!result?.tenantSummaries?.length) {
+        return [
+          {
+            ...baseRow,
+            tenantName: "",
+            totalKwh: "",
+            billAmount: "",
+            billStatus: "",
+            dueDate: null,
+            sentAt: null,
+            totalBillAmount: "",
+          },
+        ];
+      }
+
+      return result.tenantSummaries.map((summary) => {
+        const bill = summary.billId ? billMap.get(String(summary.billId)) : null;
+        return {
+          ...baseRow,
+          tenantName: summary.tenantName || "",
+          totalKwh: summary.totalKwh ?? "",
+          billAmount: summary.billAmount ?? "",
+          billStatus: bill?.status || "",
+          dueDate: bill?.dueDate || null,
+          sentAt: bill?.sentAt || null,
+          totalBillAmount: bill?.totalAmount ?? summary.billAmount ?? "",
+        };
+      });
+    });
+
+    await logBillingAudit(req, {
+      admin,
+      action: "electricity_export_downloaded",
+      severity: "low",
+      branch,
+      details: `Exported ${rows.length} electricity billing row${rows.length === 1 ? "" : "s"}`,
+      metadata: {
+        rowCount: rows.length,
+        periodCount: periods.length,
+        filters: {
+          branch,
+          status,
+          roomId,
+          from: req.query.from || null,
+          to: req.query.to || null,
+        },
+      },
+    });
+
+    res.json({
+      success: true,
+      generatedAt: new Date(),
+      filters: {
+        branch,
+        status,
+        roomId,
+        from: req.query.from || null,
+        to: req.query.to || null,
+      },
+      summary: {
+        periodCount: periods.length,
+        rowCount: rows.length,
+      },
+      rows,
     });
   } catch (error) {
     next(error);
@@ -520,18 +963,110 @@ export const getBillingPeriods = async (req, res, next) => {
       .sort({ startDate: -1 })
       .lean();
 
+    const periodIds = periods.map((period) => period._id);
+    const results = periodIds.length
+      ? await BillingResult.find({
+          billingPeriodId: { $in: periodIds },
+          isArchived: false,
+        })
+          .select("billingPeriodId tenantSummaries.billId")
+          .lean()
+      : [];
+    const resultMap = new Map(results.map((result) => [String(result.billingPeriodId), result]));
+
+    const billIds = results.flatMap((result) =>
+      (result.tenantSummaries || []).map((summary) => summary.billId).filter(Boolean),
+    );
+    const bills = billIds.length
+      ? await Bill.find({ _id: { $in: billIds }, isArchived: false })
+          .select("_id status sentAt")
+          .lean()
+      : [];
+    const billMap = new Map(bills.map((bill) => [String(bill._id), bill]));
+
     res.json({
-      periods: periods.map((p) => ({
-        id: p._id,
-        startDate: p.startDate,
-        endDate: p.endDate,
-        startReading: p.startReading,
-        endReading: p.endReading,
-        ratePerKwh: p.ratePerKwh,
-        status: p.status,
-        revised: p.revised,
-        closedAt: p.closedAt,
-      })),
+      periods: periods.map((p) => {
+        const result = resultMap.get(String(p._id));
+        const periodBills = (result?.tenantSummaries || [])
+          .map((summary) => summary.billId)
+          .filter(Boolean)
+          .map((billId) => billMap.get(String(billId)))
+          .filter(Boolean);
+        const hasDraftBills = periodBills.some((bill) => bill.status === "draft");
+        const hasSentBills = periodBills.some((bill) => bill.status !== "draft" || bill.sentAt);
+        const displayStatus = p.status === "open"
+          ? "open"
+          : hasDraftBills
+            ? "ready"
+            : p.revised
+              ? "revised"
+              : "closed";
+
+        return {
+          id: p._id,
+          startDate: p.startDate,
+          endDate: p.endDate,
+          startReading: p.startReading,
+          endReading: p.endReading,
+          ratePerKwh: p.ratePerKwh,
+          status: p.status,
+          displayStatus,
+          revised: p.revised,
+          hasDraftBills,
+          hasSentBills,
+          closedAt: p.closedAt,
+          targetCloseDate: p.status === "open" ? getUtilityTargetCloseDate(p.startDate) : null,
+        };
+      }),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PATCH /api/electricity/periods/:id
+ * Update an open billing period.
+ */
+export const updateBillingPeriod = async (req, res, next) => {
+  try {
+    const admin = await getAdminInfo(req);
+    const { id } = req.params;
+    const { ratePerKwh } = req.body;
+
+    const parsedRate = Number(ratePerKwh);
+    if (!Number.isFinite(parsedRate) || parsedRate <= 0) {
+      return res.status(400).json({ error: "Rate per kWh must be a positive number" });
+    }
+
+    const period = await BillingPeriod.findById(id);
+    if (!period || period.isArchived) {
+      return res.status(404).json({ error: "Billing period not found" });
+    }
+    if (!admin.isSuperAdmin && period.branch !== admin.branch) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+    if (period.status !== "open") {
+      return res.status(400).json({ error: "Only open periods can be updated" });
+    }
+
+    period.ratePerKwh = parsedRate;
+    await period.save();
+
+    res.json({
+      success: true,
+      period: {
+        id: period._id,
+        roomId: period.roomId,
+        startDate: period.startDate,
+        endDate: period.endDate,
+        startReading: period.startReading,
+        endReading: period.endReading,
+        ratePerKwh: period.ratePerKwh,
+        status: period.status,
+        revised: period.revised,
+        closedAt: period.closedAt,
+      },
     });
   } catch (error) {
     next(error);
@@ -602,10 +1137,11 @@ export const reviseBillingResult = async (req, res, next) => {
       .sort({ date: 1, createdAt: 1 })
       .lean();
 
-    const tenantEvents = await buildTenantEventsFromReadings(
+    const tenantEvents = await resolveTenantEventsForBilling(
       room._id,
       allReadings,
       period.startReading,
+      period.startDate,
     );
 
     const computationResult = computeBilling({
@@ -621,7 +1157,7 @@ export const reviseBillingResult = async (req, res, next) => {
     });
 
     // Overwrite existing result
-    await BillingResult.findOneAndUpdate(
+    const updatedResult = await BillingResult.findOneAndUpdate(
       { billingPeriodId: period._id },
       {
         computedAt: new Date(),
@@ -638,12 +1174,35 @@ export const reviseBillingResult = async (req, res, next) => {
       { upsert: true, new: true },
     );
 
+    updatedResult.tenantSummaries = await upsertDraftBillsForUtility({
+      period,
+      room,
+      tenantSummaries: updatedResult.tenantSummaries,
+      utilityType: "electricity",
+    });
+    await updatedResult.save();
+
     // Update period
     period.revised = true;
     period.revisionNote = revisionNote || null;
     period.revisedAt = new Date();
     period.status = "revised";
     await period.save();
+
+    await logBillingAudit(req, {
+      admin,
+      action: "billing_period_revised",
+      severity: "high",
+      entityId: period._id,
+      branch: period.branch,
+      details: `Revised billing period for room ${getRoomLabel(room)}`,
+      metadata: {
+        roomId: room._id,
+        periodId: period._id,
+        verified: computationResult.verified,
+        revisionNote: revisionNote || "",
+      },
+    });
 
     res.json({
       success: true,
@@ -672,7 +1231,7 @@ export const getMyElectricityBills = async (req, res, next) => {
       "tenantSummaries.tenantId": dbUser._id,
       isArchived: false,
     })
-      .populate("roomId", "name branch type")
+      .populate("roomId", "name roomNumber branch type")
       .sort({ computedAt: -1 })
       .lean();
 
@@ -683,7 +1242,7 @@ export const getMyElectricityBills = async (req, res, next) => {
       return {
         billingResultId: r._id,
         billingPeriodId: r.billingPeriodId,
-        room: r.roomId?.name || "N/A",
+        room: getRoomLabel(r.roomId, "N/A"),
         branch: r.branch,
         ratePerKwh: r.ratePerKwh,
         totalKwh: mySummary?.totalKwh || 0,
@@ -715,7 +1274,7 @@ export const getMyBillBreakdown = async (req, res, next) => {
       billingPeriodId: periodId,
       isArchived: false,
     })
-      .populate("roomId", "name branch type")
+      .populate("roomId", "name roomNumber branch type")
       .lean();
 
     if (!result) {
@@ -736,7 +1295,7 @@ export const getMyBillBreakdown = async (req, res, next) => {
     );
 
     res.json({
-      room: result.roomId?.name || "N/A",
+      room: getRoomLabel(result.roomId, "N/A"),
       branch: result.branch,
       ratePerKwh: result.ratePerKwh,
       totalRoomKwh: result.totalRoomKwh,
@@ -780,7 +1339,7 @@ export const getMyBillBreakdownByBillId = async (req, res, next) => {
       "tenantSummaries.billId": bill._id,
       isArchived: false,
     })
-      .populate("roomId", "name branch type")
+      .populate("roomId", "name roomNumber branch type")
       .populate("billingPeriodId", "startDate endDate")
       .lean();
 
@@ -815,7 +1374,7 @@ export const getMyBillBreakdownByBillId = async (req, res, next) => {
       }));
 
     res.json({
-      room: result.roomId?.name || "N/A",
+      room: getRoomLabel(result.roomId, "N/A"),
       branch: result.branch,
       ratePerKwh: result.ratePerKwh,
       period: {
@@ -858,7 +1417,7 @@ export const getRoomsForBilling = async (req, res, next) => {
     const roomIds = rooms.map((r) => r._id);
 
     // Parallel: open periods, latest readings, checked-in reservations
-    const [openPeriods, latestReadings, activeReservations] = await Promise.all([
+    const [openPeriods, latestReadings, activeReservations, recentPeriods] = await Promise.all([
       BillingPeriod.find({ roomId: { $in: roomIds }, status: "open", isArchived: false }).lean(),
       MeterReading.aggregate([
         { $match: { roomId: { $in: roomIds }, isArchived: false } },
@@ -873,10 +1432,50 @@ export const getRoomsForBilling = async (req, res, next) => {
         .populate("userId", "firstName lastName")
         .select("roomId userId")
         .lean(),
+      BillingPeriod.find({
+        roomId: { $in: roomIds },
+        status: { $ne: "open" },
+        isArchived: false,
+      })
+        .sort({ startDate: -1, createdAt: -1 })
+        .lean(),
     ]);
 
     const openPeriodMap = new Map(openPeriods.map((p) => [String(p.roomId), p]));
     const readingMap = new Map(latestReadings.map((r) => [String(r._id), r]));
+    const latestClosedPeriodByRoom = new Map();
+    for (const period of recentPeriods) {
+      const key = String(period.roomId);
+      if (!latestClosedPeriodByRoom.has(key)) {
+        latestClosedPeriodByRoom.set(key, period);
+      }
+    }
+    const recentPeriodIds = [...latestClosedPeriodByRoom.values()].map((period) => period._id);
+    const recentResults = recentPeriodIds.length
+      ? await BillingResult.find({
+          billingPeriodId: { $in: recentPeriodIds },
+          isArchived: false,
+        })
+          .select("billingPeriodId tenantSummaries.billId")
+          .lean()
+      : [];
+    const recentResultMap = new Map(recentResults.map((result) => [String(result.billingPeriodId), result]));
+    const recentBillIds = recentResults.flatMap((result) =>
+      (result.tenantSummaries || []).map((summary) => summary.billId).filter(Boolean),
+    );
+    const recentBills = recentBillIds.length
+      ? await Bill.find({ _id: { $in: recentBillIds }, isArchived: false })
+          .select("_id status sentAt")
+          .lean()
+      : [];
+    const recentBillMap = new Map(recentBills.map((bill) => [String(bill._id), bill]));
+    const diagnosticsByRoom = new Map(
+      (
+        await Promise.all(rooms.map((room) => getElectricityRoomDiagnostics(room._id)))
+      )
+        .filter(Boolean)
+        .map((diag) => [String(diag.roomId), diag]),
+    );
 
     // Build per-room tenant map with masked names
     const tenantsByRoom = new Map();
@@ -897,8 +1496,27 @@ export const getRoomsForBilling = async (req, res, next) => {
       rooms: rooms.map((room) => {
         const key = String(room._id);
         const period = openPeriodMap.get(key);
+        const recentPeriod = latestClosedPeriodByRoom.get(key) || null;
         const latest = readingMap.get(key);
         const tenants = tenantsByRoom.get(key) || [];
+        const diag = diagnosticsByRoom.get(key);
+        const recentResult = recentPeriod ? recentResultMap.get(String(recentPeriod._id)) : null;
+        const recentPeriodBills = (recentResult?.tenantSummaries || [])
+          .map((summary) => summary.billId)
+          .filter(Boolean)
+          .map((billId) => recentBillMap.get(String(billId)))
+          .filter(Boolean);
+        const latestPeriodDisplayStatus = period
+          ? "open"
+          : recentPeriod
+            ? (
+                recentPeriodBills.some((bill) => bill.status === "draft")
+                  ? "ready"
+                  : recentPeriod.revised
+                    ? "revised"
+                    : "closed"
+              )
+            : null;
         return {
           id: room._id,
           name: room.name,
@@ -908,12 +1526,18 @@ export const getRoomsForBilling = async (req, res, next) => {
           capacity: room.capacity,
           hasOpenPeriod: !!period,
           openPeriodId: period?._id || null,
+          latestPeriodId: recentPeriod?._id || null,
+          latestPeriodDisplayStatus,
           ratePerKwh: period?.ratePerKwh || null,
           latestReading: latest?.latestReading || null,
           latestReadingDate: latest?.latestDate || null,
           hasActiveTenants: tenants.length > 0,
           activeTenantCount: tenants.length,
           maskedTenants: tenants,
+          requiresRepair: !!diag?.issues?.length,
+          orphanReadingCount: diag?.orphanReadingIds?.length || 0,
+          targetCloseDate: period ? getUtilityTargetCloseDate(period.startDate) : null,
+          repairIssueCodes: diag?.issueCodes || [],
         };
       }),
     });
@@ -930,7 +1554,7 @@ export const getRoomsForBilling = async (req, res, next) => {
  * Build tenant events array from meter readings and reservations.
  * Each tenant event tracks their moveInReading and optional moveOutReading.
  */
-async function buildTenantEventsFromReadings(roomId, readings, periodStartReading) {
+async function buildTenantEventsFromReadings(roomId, readings, periodStartReading, periodStartDate = null) {
   // Get all tenants who had checked-in reservations for this room
   const reservations = await Reservation.find({
     roomId,
@@ -943,18 +1567,26 @@ async function buildTenantEventsFromReadings(roomId, readings, periodStartReadin
   const tenantMap = new Map();
 
   // First: register all tenants from reservations as having moved in
-  // at or before the period start
+  // at or before the period start only when the reservation already predates
+  // the anchored period boundary. Otherwise the room requires a move-in reading.
   for (const res of reservations) {
     if (!res.userId) continue;
     const key = String(res.userId._id);
     if (!tenantMap.has(key)) {
+      const assumedPrePeriodOccupancy =
+        periodStartDate &&
+        res.checkInDate &&
+        new Date(res.checkInDate) < new Date(periodStartDate);
+
       tenantMap.set(key, {
         tenantId: key,
+        reservationId: res._id,
         tenantName:
           `${res.userId.firstName || ""} ${res.userId.lastName || ""}`.trim() ||
           "Tenant",
-        moveInReading: 0, // default: before period start
+        moveInReading: assumedPrePeriodOccupancy ? periodStartReading : null,
         moveOutReading: null,
+        requiresRepair: !assumedPrePeriodOccupancy,
       });
     }
   }
@@ -977,9 +1609,11 @@ async function buildTenantEventsFromReadings(roomId, readings, periodStartReadin
             : "Tenant",
           moveInReading: reading.reading,
           moveOutReading: null,
+          requiresRepair: false,
         });
       } else {
         tenantMap.get(key).moveInReading = reading.reading;
+        tenantMap.get(key).requiresRepair = false;
       }
     }
 
@@ -990,7 +1624,9 @@ async function buildTenantEventsFromReadings(roomId, readings, periodStartReadin
     }
   }
 
-  return Array.from(tenantMap.values());
+  return Array.from(tenantMap.values()).filter(
+    (entry) => entry.moveInReading !== null || entry.requiresRepair,
+  );
 }
 
 // ============================================================================
@@ -1014,7 +1650,24 @@ export const deleteMeterReading = async (req, res, next) => {
       return res.status(403).json({ error: "Access denied" });
     }
 
+    const deletedReading = reading.toObject();
     await MeterReading.findByIdAndDelete(id);
+
+    await logBillingAudit(req, {
+      admin,
+      action: "meter_reading_deleted",
+      severity: "high",
+      entityId: deletedReading._id,
+      branch: deletedReading.branch,
+      details: `Deleted ${deletedReading.eventType} reading for room ${deletedReading.roomId}`,
+      metadata: {
+        roomId: deletedReading.roomId,
+        billingPeriodId: deletedReading.billingPeriodId || null,
+        eventType: deletedReading.eventType,
+        reading: deletedReading.reading,
+        date: deletedReading.date,
+      },
+    });
 
     res.json({ success: true, message: "Meter reading deleted." });
   } catch (error) {
@@ -1088,7 +1741,6 @@ export const sendBills = async (req, res, next) => {
   try {
     const admin = await getAdminInfo(req);
     const { periodId } = req.params;
-    const { defaultDueDate } = req.body;
 
     const period = await BillingPeriod.findById(periodId);
     if (!period) return res.status(404).json({ error: "Billing period not found" });
@@ -1109,30 +1761,78 @@ export const sendBills = async (req, res, next) => {
     }
 
     const billIds = result.tenantSummaries.map((t) => t.billId).filter(Boolean);
-    const draftBills = await Bill.find({
-      _id: { $in: billIds },
-      status: "draft",
-      isArchived: false,
-    });
+    if (billIds.length === 0) {
+      return res.json({ success: true, sent: 0, skipped: 0, message: "No draft bills to send" });
+    }
+
+    let draftBills = await getDraftBillsForSummaryBillIds(result.tenantSummaries);
 
     if (draftBills.length === 0) {
       return res.json({ success: true, sent: 0, skipped: 0, message: "No draft bills to send" });
     }
 
-    const fallbackDueDate = defaultDueDate
-      ? new Date(defaultDueDate)
-      : new Date(Date.now() + 7 * 86_400_000);
+    const room = await Room.findById(period.roomId).lean();
+    if (!room) {
+      return res.status(404).json({ error: "Room not found" });
+    }
 
-    const sentAt = new Date();
-    let sent = 0;
+    const roomDiagnostics = await getElectricityRoomDiagnostics(room._id);
+    if (roomDiagnostics?.issueCodes?.includes("electricity_missing_movein_anchor")) {
+      return res.status(409).json({
+        error: `Repair missing move-in anchor readings for room ${getRoomLabel(room)} before sending bills.`,
+        diagnostics: formatElectricityRoomDiagnostics(roomDiagnostics),
+      });
+    }
+
+    if (isWaterBillableRoomType(room.type)) {
+      const waterRecord = await getFinalizedWaterRecordForPeriod(
+        room._id,
+        period.startDate,
+        period.endDate,
+      );
+      if (!waterRecord) {
+        return res.status(400).json({
+          error: `Finalize the water billing for room ${getRoomLabel(room)} before sending bills.`,
+        });
+      }
+    }
+
+    const { sent } = await sendDraftUtilityBills({
+      bills: draftBills,
+      period,
+      result,
+    });
 
     for (const bill of draftBills) {
-      bill.status = "pending";
-      bill.dueDate = bill.dueDate ?? fallbackDueDate;
-      bill.sentAt = sentAt;
-      await bill.save();
 
-      // Email tenant
+      // ── PDF Generation (non-fatal) ───────────────────────────────────────
+      // Generate a PDF billing statement for this tenant.
+      // If PDF generation fails for any reason, we log it and continue —
+      // the bill has already been sent and the email will still go out.
+      // Admin can regenerate via POST /api/electricity/bills/:billId/regenerate-pdf
+      try {
+        const tenant = await User.findById(bill.userId).lean();
+        if (tenant) {
+          const pdfFilePath = await generateBillPdf({
+            bill: bill.toObject ? bill.toObject() : bill,
+            billingResult: result,
+            period: period.toObject ? period.toObject() : period,
+            room,
+            tenant,
+          });
+          bill.pdfPath = pdfFilePath;
+          bill.pdfGeneratedAt = new Date();
+          await bill.save();
+          logger.info({ billId: bill._id, pdfPath: pdfFilePath }, "PDF bill generated");
+        }
+      } catch (pdfErr) {
+        logger.warn(
+          { err: pdfErr, billId: bill._id },
+          "PDF generation failed (non-fatal) — bill sent without PDF",
+        );
+      }
+
+      // ── Email notification ───────────────────────────────────────────────
       try {
         const tenant = await User.findById(bill.userId).lean();
         if (tenant?.email) {
@@ -1151,8 +1851,22 @@ export const sendBills = async (req, res, next) => {
       } catch (emailErr) {
         logger.warn({ err: emailErr }, "Bill notification email failed (non-blocking)");
       }
-      sent++;
     }
+
+    await logBillingAudit(req, {
+      admin,
+      action: "bills_sent_to_tenants",
+      severity: "info",
+      entityId: period._id,
+      branch: period.branch,
+      details: `Sent ${sent} utility bill(s) for room ${getRoomLabel(room)}`,
+      metadata: {
+        roomId: room._id,
+        periodId: period._id,
+        sent,
+        skipped: billIds.length - sent,
+      },
+    });
 
     res.json({
       success: true,
@@ -1193,23 +1907,26 @@ export const adjustDraftBill = async (req, res, next) => {
       }
     }
 
-    // Recompute total (sum of all charges minus discount)
-    const c = bill.charges;
-    bill.totalAmount = r2(
-      (c.electricity || 0) +
-      (c.water || 0) +
-      (c.rent || 0) +
-      (c.applianceFees || 0) +
-      (c.corkageFees || 0) +
-      (c.penalty || 0) -
-      (c.discount || 0)
-    );
-
     if (notes !== undefined) bill.notes = notes;
     if (dueDate) bill.dueDate = new Date(dueDate);
     bill.isManuallyAdjusted = true;
+    syncBillAmounts(bill, { preserveStatus: true });
 
     await bill.save();
+
+    await logBillingAudit(req, {
+      admin,
+      action: "draft_bill_adjusted",
+      severity: "high",
+      entityId: bill._id,
+      branch: bill.branch,
+      details: `Adjusted draft bill ${bill._id}`,
+      metadata: {
+        charges: bill.charges,
+        dueDate: bill.dueDate,
+        notes: bill.notes || "",
+      },
+    });
 
     res.json({
       success: true,
@@ -1246,6 +1963,8 @@ export const deleteBillingPeriod = async (req, res, next) => {
       return res.status(403).json({ error: "Access denied" });
     }
 
+    const deletedPeriod = period.toObject();
+
     // Find associated results to delete linked bills
     const results = await BillingResult.find({ billingPeriodId: period._id });
     for (const result of results) {
@@ -1265,8 +1984,146 @@ export const deleteBillingPeriod = async (req, res, next) => {
     // Hard delete any generated billing results linked to this period
     await BillingResult.deleteMany({ billingPeriodId: period._id });
 
+    await logBillingAudit(req, {
+      admin,
+      action: "billing_period_deleted",
+      severity: "critical",
+      entityId: deletedPeriod._id,
+      branch: deletedPeriod.branch,
+      details: `Deleted billing period ${deletedPeriod._id}`,
+      metadata: {
+        roomId: deletedPeriod.roomId,
+        startDate: deletedPeriod.startDate,
+        endDate: deletedPeriod.endDate,
+        status: deletedPeriod.status,
+      },
+    });
+
     res.json({ success: true, message: "Billing period deleted." });
   } catch (error) {
     next(error);
   }
 };
+
+// ============================================================================
+// PDF DOWNLOAD
+// ============================================================================
+
+/**
+ * GET /api/electricity/bills/:billId/pdf
+ *
+ * Streams the stored PDF file for a bill.
+ * Access: tenant (own bills only) OR any admin.
+ */
+export const downloadBillPdf = async (req, res, next) => {
+  try {
+    const dbUser = await User.findOne({ firebaseUid: req.user.uid }).lean();
+    if (!dbUser) return res.status(404).json({ error: "User not found" });
+
+    const bill = await Bill.findById(req.params.billId).lean();
+    if (!bill) return res.status(404).json({ error: "Bill not found" });
+
+    // Access control: owner or admin
+    const isOwner = String(bill.userId) === String(dbUser._id);
+    const isAdmin = dbUser.role === "branch_admin" || dbUser.role === "owner";
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    // Branch guard for admins
+    if (isAdmin && !isOwner && dbUser.role !== "owner" && bill.branch !== dbUser.branch) {
+      return res.status(403).json({ error: "Access denied to another branch's bill" });
+    }
+
+    // Tenant can only download after bill is sent (not draft)
+    if (isOwner && !isAdmin && bill.status === "draft") {
+      return res.status(403).json({ error: "Bill is not yet available" });
+    }
+
+    if (!bill.pdfPath) {
+      return res.status(404).json({ error: "PDF not yet generated for this bill" });
+    }
+
+    const absolutePath = path.resolve(path.join(__dirname, "..", bill.pdfPath));
+
+    if (!fs.existsSync(absolutePath)) {
+      return res.status(404).json({ error: "PDF file not found on server" });
+    }
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="lilycrest-bill-${String(bill._id).slice(-8)}.pdf"`,
+    );
+    fs.createReadStream(absolutePath).pipe(res);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ============================================================================
+// PDF REGENERATION (Admin)
+// ============================================================================
+
+/**
+ * POST /api/electricity/bills/:billId/regenerate-pdf
+ *
+ * Admin-only endpoint to regenerate a PDF bill.
+ * Use when PDF was not generated at send time (generation failed),
+ * or after a manual charge adjustment.
+ */
+export const regenerateBillPdf = async (req, res, next) => {
+  try {
+    const admin = await getAdminInfo(req);
+
+    const bill = await Bill.findById(req.params.billId);
+    if (!bill) return res.status(404).json({ error: "Bill not found" });
+    if (!admin.isSuperAdmin && bill.branch !== admin.branch) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    // Find the BillingResult that references this bill
+    const billingResult = await BillingResult.findOne({
+      "tenantSummaries.billId": bill._id,
+      isArchived: false,
+    }).lean();
+
+    if (!billingResult) {
+      return res.status(404).json({
+        error: "No billing result found for this bill — cannot generate PDF",
+      });
+    }
+
+    const period = await BillingPeriod.findById(billingResult.billingPeriodId).lean();
+    const room   = await Room.findById(bill.roomId).lean();
+    const tenant = await User.findById(bill.userId).lean();
+
+    if (!period || !room || !tenant) {
+      return res.status(404).json({ error: "Missing data to regenerate PDF (period, room, or tenant not found)" });
+    }
+
+    const pdfFilePath = await generateBillPdf({
+      bill: bill.toObject(),
+      billingResult,
+      period,
+      room,
+      tenant,
+    });
+
+    bill.pdfPath = pdfFilePath;
+    bill.pdfGeneratedAt = new Date();
+    await bill.save();
+
+    logger.info({ billId: bill._id, pdfPath: pdfFilePath, adminId: admin._id }, "PDF bill regenerated by admin");
+
+    res.json({
+      success: true,
+      billId: bill._id,
+      pdfPath: pdfFilePath,
+      pdfGeneratedAt: bill.pdfGeneratedAt,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

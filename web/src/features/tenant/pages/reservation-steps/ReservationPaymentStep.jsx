@@ -23,6 +23,7 @@ const ReservationPaymentStep = ({
 }) => {
   const room = reservationData?.room || {};
   const roomName = room.name || room.roomNumber || room.title || room.id || "N/A";
+  const reservationFeeAmount = Number(reservationData?.reservationFeeAmount || 2000);
 
   return (
     <div className="reservation-card">
@@ -32,7 +33,7 @@ const ReservationPaymentStep = ({
         <h2 className="main-header-title">Reservation Fee Payment</h2>
         <p className="main-header-subtitle">
           Review your reservation breakdown and pay the one-time reservation fee
-          of ₱2,000 to secure your room.
+          of ₱{reservationFeeAmount.toLocaleString()} to secure your room.
         </p>
       </div>
 
@@ -90,7 +91,7 @@ const ReservationPaymentStep = ({
             )}
             <div className="total-section">
               <span>Reservation Fee (One-time)</span>
-              <span className="total-amount">₱2,000</span>
+              <span className="total-amount">₱{reservationFeeAmount.toLocaleString()}</span>
             </div>
           </div>
         </div>
@@ -138,7 +139,7 @@ const ReservationPaymentStep = ({
               <span className="rf-pay-btn-icon"><CreditCard size={15} /> Pay via GCash, Maya, or Card</span>
             </div>
             <div className="info-text">
-              You'll be redirected to PayMongo's secure checkout to pay ₱2,000.
+              You'll be redirected to PayMongo's secure checkout to pay ₱{reservationFeeAmount.toLocaleString()}.
               Your reservation will be automatically confirmed once payment is
               received. A receipt will be available after payment.
             </div>
@@ -156,7 +157,7 @@ const ReservationPaymentStep = ({
           >
             {payingOnline
               ? "Redirecting to PayMongo…"
-              : <span className="rf-pay-btn-icon"><CreditCard size={16} /> Pay ₱2,000 Online</span>
+              : <span className="rf-pay-btn-icon"><CreditCard size={16} /> Pay ₱{reservationFeeAmount.toLocaleString()} Online</span>
             }
           </button>
           <span className="rf-pay-hint">

@@ -25,6 +25,7 @@ import {
 import { filterByBranch } from "../middleware/branchAccess.js";
 import {
   getReservations,
+  getCurrentResidents,
   getReservationById,
   createReservation,
   updateReservation,
@@ -59,6 +60,13 @@ const router = express.Router();
  * @returns {Array} List of reservations with populated user and room data
  */
 router.get("/", verifyToken, getReservations);
+
+router.get(
+  "/current-residents",
+  verifyToken,
+  verifyAdmin,
+  getCurrentResidents,
+);
 
 /**
  * GET /api/reservations/my-contract

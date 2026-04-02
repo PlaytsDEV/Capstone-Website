@@ -7,12 +7,21 @@
  * Eliminates ~200 lines of duplicated validation, error handling, and field mapping.
  */
 
-import { Reservation, User, Room, MeterReading, BillingPeriod, BillingResult } from "../models/index.js";
+import {
+  Reservation,
+  User,
+  Room,
+  MeterReading,
+  BillingPeriod,
+  BillingResult,
+  ROOM_BRANCHES,
+} from "../models/index.js";
 import { computeBilling } from "../utils/billingEngine.js";
 import { BUSINESS } from "../config/constants.js";
 import logger from "../middleware/logger.js";
 import auditLogger from "../utils/auditLogger.js";
 import { updateOccupancyOnReservationChange } from "../utils/occupancyManager.js";
+import { ensureOpenElectricityPeriodForRoom } from "../utils/electricityLifecycle.js";
 import {
   isValidObjectId,
   invalidIdResponse,
@@ -20,6 +29,7 @@ import {
   checkBranchAccess,
   validateMoveInDate,
   handleStatusTransition,
+  syncReservationUserLifecycle,
   buildUserUpdatePayload,
   getCheckinBlockers,
 } from "../utils/reservationHelpers.js";
@@ -33,8 +43,45 @@ import {
 /* ─── helpers ────────────────────────────────────── */
 const HEAVY_FIELDS =
   "-selfiePhotoUrl -validIDFrontUrl -validIDBackUrl -nbiClearanceUrl -companyIDUrl -__v";
-const POPULATE_USER = ["userId", "firstName lastName email"];
+const POPULATE_USER = ["userId", "firstName lastName email phone"];
 const POPULATE_ROOM = ["roomId", "name branch type price capacity beds floor"];
+
+const getResidentStatus = (reservation, now = new Date()) => {
+  let statusLabel = "Active";
+
+  if (
+    reservation.paymentStatus === "pending" ||
+    reservation.paymentStatus === "partial"
+  ) {
+    statusLabel = "Overdue";
+  }
+
+  if (reservation.checkOutDate) {
+    const daysLeft = Math.ceil(
+      (new Date(reservation.checkOutDate) - now) / 86_400_000,
+    );
+    if (daysLeft <= 30 && daysLeft > 0) statusLabel = "Moving Out";
+    if (daysLeft <= 0) statusLabel = "Overdue";
+  }
+
+  return statusLabel;
+};
+
+const mapCurrentResident = (reservation, now = new Date()) => {
+  return {
+    ...reservation.toObject(),
+    statusLabel: getResidentStatus(reservation, now),
+  };
+};
+
+const buildResidentStats = (residents) => ({
+  total: residents.length,
+  active: residents.filter((resident) => resident.statusLabel === "Active").length,
+  overdue: residents.filter((resident) => resident.statusLabel === "Overdue")
+    .length,
+  movingOut: residents.filter((resident) => resident.statusLabel === "Moving Out")
+    .length,
+});
 
 /* ── Cached user lookup (saves ~50-100ms per API call) ──── */
 const userCache = new Map();
@@ -88,6 +135,74 @@ export const getReservations = async (req, res, next) => {
   } catch (error) {
     logger.error({ err: error, requestId: req.id }, "Fetch reservations error");
     handleReservationError(res, error, "fetch");
+  }
+};
+
+export const getCurrentResidents = async (req, res) => {
+  try {
+    const dbUser = await findDbUser(req.user.uid);
+    if (!dbUser) {
+      return res
+        .status(404)
+        .json({ error: "User not found in database", code: "USER_NOT_FOUND" });
+    }
+
+    if (dbUser.role !== "owner" && dbUser.role !== "branch_admin") {
+      return res.status(403).json({
+        error: "Access denied. Admin privileges required.",
+        code: "ADMIN_REQUIRED",
+      });
+    }
+
+    const requestedBranch = req.query.branch;
+    if (
+      requestedBranch &&
+      requestedBranch !== "all" &&
+      !ROOM_BRANCHES.includes(requestedBranch)
+    ) {
+      return res.status(400).json({
+        error: `Invalid branch. Must be one of: ${ROOM_BRANCHES.join(", ")}`,
+        code: "INVALID_BRANCH",
+      });
+    }
+
+    let roomQuery = {};
+    if (dbUser.role === "branch_admin") {
+      roomQuery.branch = dbUser.branch;
+    } else if (requestedBranch && requestedBranch !== "all") {
+      roomQuery.branch = requestedBranch;
+    }
+
+    const roomIds = await Room.find(roomQuery).distinct("_id");
+    const reservations = await Reservation.find({
+      status: "checked-in",
+      roomId: { $in: roomIds },
+      isArchived: { $ne: true },
+    })
+      .populate(...POPULATE_USER)
+      .populate(...POPULATE_ROOM)
+      .select(HEAVY_FIELDS)
+      .sort({ createdAt: -1 });
+
+    const now = new Date();
+    const residents = reservations.map((reservation) =>
+      mapCurrentResident(reservation, now),
+    );
+
+    return sendSuccess(
+      res,
+      {
+        residents,
+        stats: buildResidentStats(residents),
+      },
+      "Current residents fetched successfully",
+    );
+  } catch (error) {
+    logger.error(
+      { err: error, requestId: req.id },
+      "Fetch current residents error",
+    );
+    return handleReservationError(res, error, "fetch");
   }
 };
 
@@ -374,12 +489,13 @@ export const updateReservation = async (req, res, next) => {
       }
     }
 
-    await handleStatusTransition(
-      req.body.status,
-      existingReservation.status,
-      existingReservation.userId,
-      existingReservation.roomId,
-    );
+    await syncReservationUserLifecycle({
+      status: req.body.status,
+      previousStatus: existingReservation.status,
+      userId: existingReservation.userId,
+      roomId: existingReservation.roomId,
+      reservationId: existingReservation._id,
+    });
 
     const reservation = await Reservation.findById(reservationId);
     if (!reservation)
@@ -467,10 +583,9 @@ export const updateReservation = async (req, res, next) => {
     const updatedReservation = await reservation.save();
 
     // ── Auto-record move-in meter reading when checking in ────────────────
-    // Always runs when a meterReading is provided at check-in.
-    // If no open BillingPeriod exists for the room, one is auto-created so that
-    // the move-in reading (and all future move-out / regular readings) are
-    // properly linked and segmented for billing computation.
+      // Always runs when a meterReading is provided at check-in.
+      // The reading is captured immediately, but the billing period and monthly
+      // rate must be created explicitly from the billing module.
     if (
       req.body.status === "checked-in" &&
       oldData.status !== "checked-in" &&
@@ -485,50 +600,12 @@ export const updateReservation = async (req, res, next) => {
         const checkinDate = new Date();
 
         if (roomDoc) {
-          // ── 1. Ensure an open BillingPeriod exists ──────────────────────
-          let activePeriod = await BillingPeriod.findOne({
-            roomId: roomId,
-            status: "open",
-            isArchived: false,
-          }).lean();
-
-          if (!activePeriod) {
-            // Inherit rate from the most recent closed/revised period for this
-            // room, or fall back to the system default (₱16/kWh).
-            const lastPeriod = await BillingPeriod.findOne({
-              roomId: roomId,
-              isArchived: false,
-            })
-              .sort({ startDate: -1 })
-              .lean();
-
-            const inheritedRate =
-              lastPeriod?.ratePerKwh ||
-              BUSINESS.DEFAULT_ELECTRICITY_RATE_PER_KWH;
-
-            const newPeriod = new BillingPeriod({
-              roomId: roomId,
-              branch: roomDoc.branch,
-              startDate: checkinDate,
-              startReading: meterValue,
-              ratePerKwh: inheritedRate,
-              status: "open",
-            });
-            await newPeriod.save();
-            activePeriod = newPeriod.toObject();
-
-            logger.info(
-              {
-                roomId,
-                periodId: newPeriod._id,
-                startReading: meterValue,
-                ratePerKwh: inheritedRate,
-              },
-              "Auto-opened BillingPeriod at check-in (no prior period existed)",
-            );
-          }
-
-          // ── 2. Record the move-in meter reading ─────────────────────────
+          const bootstrap = await ensureOpenElectricityPeriodForRoom({
+            room: roomDoc,
+            anchorDate: checkinDate,
+            anchorReading: meterValue,
+          });
+          // Record the move-in meter reading.
           const tenantUserId =
             updatedReservation.userId?._id || updatedReservation.userId;
 
@@ -551,12 +628,17 @@ export const updateReservation = async (req, res, next) => {
             tenantId: tenantUserId,
             activeTenantIds,
             recordedBy: adminUser?._id || null,
-            billingPeriodId: activePeriod._id,
+            billingPeriodId: bootstrap.period?._id || null,
           });
           await moveInReading.save();
 
           logger.info(
-            { reservationId, meterReading: meterValue, periodId: activePeriod._id },
+            {
+              reservationId,
+              meterReading: meterValue,
+              periodId: bootstrap.period?._id || null,
+              autoOpenedPeriod: bootstrap.created,
+            },
             "Auto-recorded move-in meter reading on check-in",
           );
         }
@@ -1027,12 +1109,13 @@ export const releaseSlot = async (req, res, next) => {
     await reservation.save();
 
     // Reset user
-    await handleStatusTransition(
-      "cancelled",
-      oldData.status,
-      reservation.userId,
-      reservation.roomId,
-    );
+    await syncReservationUserLifecycle({
+      status: "cancelled",
+      previousStatus: oldData.status,
+      userId: reservation.userId,
+      roomId: reservation.roomId,
+      reservationId: reservation._id,
+    });
 
     // Free room slot using proper model methods
     if (reservation.roomId) {
@@ -1121,6 +1204,14 @@ export const archiveReservation = async (req, res, next) => {
     reservation.archivedBy = dbUser?._id || null;
     reservation.notes = `${reservation.notes ? reservation.notes + " | " : ""}Archived: ${reason}`;
     await reservation.save();
+
+    await syncReservationUserLifecycle({
+      status: "archived",
+      previousStatus: oldData.status,
+      userId: reservation.userId,
+      roomId: reservation.roomId,
+      reservationId: reservation._id,
+    });
 
     await reservation.populate(...POPULATE_USER);
     await reservation.populate(...POPULATE_ROOM);
@@ -1276,29 +1367,14 @@ export const checkoutReservation = async (req, res, next) => {
       }
     }
 
-    // 3. Update user status + sync Firebase claims
     const userId = reservation.userId?._id || reservation.userId;
-    if (userId) {
-      const tenantUser = await User.findByIdAndUpdate(userId, {
-        tenantStatus: "inactive",
-        role: "applicant", // Revert to applicant so they can re-reserve
-      }, { new: true });
-      // Sync Firebase claims so token immediately reflects demotion
-      if (tenantUser?.firebaseUid) {
-        try {
-          const { getAuth } = await import("../config/firebase.js");
-          const auth = getAuth();
-          if (auth) {
-            await auth.setCustomUserClaims(tenantUser.firebaseUid, {
-              role: "applicant",
-              tenantStatus: "inactive",
-            });
-          }
-        } catch (e) {
-          logger.warn({ err: e, requestId: req.id }, "Firebase claims sync on checkout failed (non-fatal)");
-        }
-      }
-    }
+    await syncReservationUserLifecycle({
+      status: "checked-out",
+      previousStatus: oldData.status,
+      userId,
+      roomId: reservation.roomId?._id || reservation.roomId,
+      reservationId: reservation._id,
+    });
 
     // 4. Auto-record move-out meter reading + recompute billing (if provided)
     let electricityResult = null;
@@ -1516,6 +1592,15 @@ export const transferTenant = async (req, res, next) => {
     reservation.selectedBed = { id: newBedId, position: newBed.position || null };
     reservation.notes = `${reservation.notes ? reservation.notes + " | " : ""}Transferred from ${oldRoomName} to ${newRoom.name}. ${reason}`;
     await reservation.save();
+
+    await syncReservationUserLifecycle({
+      status: reservation.status,
+      previousStatus: reservation.status,
+      userId: reservation.userId?._id || reservation.userId,
+      roomId: newRoom._id,
+      reservationId: reservation._id,
+      force: true,
+    });
 
     // 4. Notify tenant
     const { notify } = await import("../utils/notificationService.js");

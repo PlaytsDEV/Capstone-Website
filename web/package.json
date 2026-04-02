@@ -36,7 +36,8 @@
     "dev:admin": "vite --config vite.admin.config.js",
     "build": "vite build",
     "build:admin": "vite build --config vite.admin.config.js",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "serve": "node scripts/serve-build.mjs"
   },
   "eslintConfig": {
     "extends": [

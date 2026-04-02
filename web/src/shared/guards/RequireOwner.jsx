@@ -7,7 +7,7 @@
  * More restrictive than RequireAdmin - only allows 'owner' role.
  *
  * Usage:
- *   <Route path="/super-admin/*" element={<RequireOwner><OwnerDashboard /></RequireOwner>} />
+ *   <Route path="/admin/settings" element={<RequireOwner><OwnerDashboard /></RequireOwner>} />
  *
  * Allowed Roles: 'owner' only
  * Redirects to: /signin (if not owner)
@@ -17,6 +17,7 @@
 import React from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+import GlobalLoading from "../components/GlobalLoading";
 
 /**
  * Guard component that requires owner role
@@ -25,16 +26,20 @@ import { useAuth } from "../hooks/useAuth";
  * @returns {React.ReactElement} Children if owner, redirect otherwise
  */
 const RequireOwner = ({ children }) => {
-  const { user, isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, isAdmin, isOwner, getDefaultRoute } =
+    useAuth();
 
-  // Show loading while checking authentication
   if (loading) {
-    return null;
+    return <GlobalLoading />;
   }
 
-  // Redirect if not authenticated or not owner
-  if (!isAuthenticated || user?.role !== "owner") {
+  if (!isAuthenticated) {
     return <Navigate to="/signin" replace />;
+  }
+
+  if (!isOwner()) {
+    const redirectPath = isAdmin() ? "/admin/dashboard" : getDefaultRoute();
+    return <Navigate to={redirectPath} replace />;
   }
 
   return children;

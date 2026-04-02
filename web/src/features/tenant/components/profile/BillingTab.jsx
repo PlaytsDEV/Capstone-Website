@@ -34,6 +34,11 @@ const fmtDate = (d) =>
     day: "numeric",
   });
 
+const fmtCycle = (bill) =>
+  bill?.billingCycleStart && bill?.billingCycleEnd
+    ? `${fmtDate(bill.billingCycleStart)} - ${fmtDate(bill.billingCycleEnd)}`
+    : null;
+
 const STATUS_STYLES = {
   overdue: { bg: "#FEF2F2", color: "#DC2626", label: "Overdue" },
   pending: { bg: "#FFFBEB", color: "#D97706", label: "Pending" },
@@ -44,7 +49,7 @@ const STATUS_STYLES = {
 const CHARGE_ITEMS = [
   { key: "rent", label: "Rent", icon: Home, color: "#0A1628" },
   { key: "electricity", label: "Electricity", icon: Zap, color: "#F59E0B" },
-  { key: "water", label: "Water", icon: Droplets, color: "#3B82F6" },
+  { key: "water", label: "Water (room reading)", icon: Droplets, color: "#3B82F6" },
   { key: "applianceFees", label: "Appliance Fee", icon: Package, color: "#8B5CF6" },
 ];
 
@@ -75,10 +80,10 @@ const StatCard = ({ label, value, accent, icon: Icon }) => (
 /* ── Bill Card ─────────────────────────────────────── */
 
 const BillCard = ({ bill, onPay, payingOnline }) => {
-  const [open, setOpen] = useState(bill.status !== "paid");
+  const [open, setOpen] = useState((bill.remainingAmount ?? bill.totalAmount) > 0);
   const status = STATUS_STYLES[bill.status] || STATUS_STYLES.pending;
   const charges = bill.charges || {};
-  const isUnpaid = bill.status !== "paid";
+  const isUnpaid = (bill.remainingAmount ?? bill.totalAmount ?? 0) > 0;
 
   return (
     <div style={{ ...s.billCard, borderLeft: `3px solid ${status.color}` }}>
@@ -91,6 +96,11 @@ const BillCard = ({ bill, onPay, payingOnline }) => {
           <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 2 }}>
             Due: {bill.dueDate ? fmtDate(bill.dueDate) : "—"}
           </div>
+          {fmtCycle(bill) && (
+            <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 2 }}>
+              Cycle: {fmtCycle(bill)}
+            </div>
+          )}
         </div>
         <span
           style={{
@@ -102,7 +112,7 @@ const BillCard = ({ bill, onPay, payingOnline }) => {
           {status.label}
         </span>
         <span style={{ fontSize: 17, fontWeight: 700, color: "#0A1628", marginLeft: 12 }}>
-          {fmt(bill.totalAmount)}
+          {fmt(bill.remainingAmount ?? bill.totalAmount)}
         </span>
         {open ? (
           <ChevronUp size={16} color="#9CA3AF" style={{ marginLeft: 8 }} />
@@ -169,18 +179,53 @@ const BillCard = ({ bill, onPay, payingOnline }) => {
             </div>
           )}
 
+          {bill.grossAmount > 0 && bill.reservationCreditApplied > 0 && (
+            <>
+              <div style={s.chargeRow}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <Package size={14} color="#0A1628" />
+                  <span style={{ color: "#4B5563", fontSize: 13 }}>Gross Charges</span>
+                </div>
+                <span style={{ color: "#0A1628", fontSize: 13, fontWeight: 500 }}>
+                  {fmt(bill.grossAmount)}
+                </span>
+              </div>
+              <div style={s.chargeRow}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <CheckCircle size={14} color="#059669" />
+                  <span style={{ color: "#059669", fontSize: 13 }}>Reservation Credit Applied</span>
+                </div>
+                <span style={{ color: "#059669", fontSize: 13, fontWeight: 500 }}>
+                  -{fmt(bill.reservationCreditApplied)}
+                </span>
+              </div>
+            </>
+          )}
+
           {/* Total divider */}
           <div style={s.totalRow}>
-            <span style={{ fontWeight: 700, color: "#0A1628", fontSize: 14 }}>Total</span>
+            <span style={{ fontWeight: 700, color: "#0A1628", fontSize: 14 }}>Net Due</span>
             <span style={{ fontWeight: 700, color: "#0A1628", fontSize: 16 }}>
               {fmt(bill.totalAmount)}
             </span>
           </div>
 
+          {(bill.remainingAmount ?? 0) > 0 && (
+            <div style={s.chargeRow}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <AlertCircle size={14} color="#E8734A" />
+                <span style={{ color: "#4B5563", fontSize: 13 }}>Remaining Balance</span>
+              </div>
+              <span style={{ color: "#0A1628", fontSize: 13, fontWeight: 600 }}>
+                {fmt(bill.remainingAmount)}
+              </span>
+            </div>
+          )}
+
           {/* Pay button for unpaid */}
           {isUnpaid && (
             <button
-              onClick={() => onPay(bill._id)}
+              onClick={() => onPay(bill.id || bill._id)}
               disabled={payingOnline}
               style={{
                 ...s.payBtn,
@@ -245,9 +290,12 @@ const BillingTab = () => {
   };
 
   /* ── Computed values ── */
-  const unpaid = bills.filter((b) => b.status !== "paid");
+  const unpaid = bills.filter((b) => (b.remainingAmount ?? b.totalAmount ?? 0) > 0);
   const paid = bills.filter((b) => b.status === "paid");
-  const totalOutstanding = unpaid.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+  const totalOutstanding = unpaid.reduce(
+    (sum, b) => sum + (b.remainingAmount ?? b.totalAmount ?? 0),
+    0,
+  );
   const totalPaid = paid.reduce((sum, b) => sum + (b.paidAmount || b.totalAmount || 0), 0);
 
   const filtered =

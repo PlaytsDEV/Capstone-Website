@@ -44,6 +44,8 @@ import Notification from "./Notification.js";
 import Payment from "./Payment.js";
 import LoginLog from "./LoginLog.js";
 import AcknowledgmentAccount from "./AcknowledgmentAccount.js";
+import BusinessSettings from "./BusinessSettings.js";
+import WaterBillingRecord from "./WaterBillingRecord.js";
 
 // ============================================================================
 // NAMED EXPORTS
@@ -65,6 +67,8 @@ export {
   Payment,
   LoginLog,
   AcknowledgmentAccount,
+  BusinessSettings,
+  WaterBillingRecord,
 };
 
 // ============================================================================
@@ -183,6 +187,8 @@ export default {
   Announcement,
   MaintenanceRequest,
   AcknowledgmentAccount,
+  BusinessSettings,
+  WaterBillingRecord,
   Notification,
   Payment,
   LoginLog,

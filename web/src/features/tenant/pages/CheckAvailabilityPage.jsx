@@ -92,6 +92,7 @@ function CheckAvailabilityPage() {
           roomId: room._id,
           title: `Room ${displayName}`,
           branch: branchLabel,
+          branchKey: room.branch,
           type: mappedType,
           capacity: totalBeds,
           currentOccupancy: occupied,
@@ -118,6 +119,8 @@ function CheckAvailabilityPage() {
             ROOM_IMAGES.gallery1,
           ],
           policies: room.policies || [],
+          applianceFeeEnabled: !!room.applianceFeeEnabled,
+          applianceFeeAmountPerUnit: Number(room.applianceFeeAmountPerUnit || 0),
         };
       }),
     [rawRooms],
@@ -198,7 +201,10 @@ function CheckAvailabilityPage() {
   };
   const calculateApplianceFees = () =>
     AVAILABLE_APPLIANCES.reduce(
-      (total, a) => total + a.price * (selectedAppliances[a.id] || 0),
+      (total, a) =>
+        total +
+        (selectedRoom?.applianceFeeAmountPerUnit || a.price) *
+          (selectedAppliances[a.id] || 0),
       0,
     );
 
@@ -509,7 +515,10 @@ function CheckAvailabilityPage() {
         selectedAppliances={selectedAppliances}
         onApplianceQuantityChange={handleApplianceQuantityChange}
         calculateApplianceFees={calculateApplianceFees}
-        availableAppliances={AVAILABLE_APPLIANCES}
+        availableAppliances={AVAILABLE_APPLIANCES.map((appliance) => ({
+          ...appliance,
+          price: selectedRoom?.applianceFeeAmountPerUnit || appliance.price,
+        }))}
       />
 
       <InquiryModal

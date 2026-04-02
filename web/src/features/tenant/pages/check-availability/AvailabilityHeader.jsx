@@ -62,8 +62,8 @@ const AvailabilityHeader = ({
 
   const roleBadge = (role) => {
     const map = {
-      superAdmin: { bg: "#FEF3C7", color: "#92400E", label: "Super Admin" },
-      admin: { bg: "#DBEAFE", color: "#1E40AF", label: "Admin" },
+      owner: { bg: "#FEF3C7", color: "#92400E", label: "Owner" },
+      branch_admin: { bg: "#DBEAFE", color: "#1E40AF", label: "Branch Admin" },
       tenant: { bg: "#E0E7FF", color: "#3730A3", label: "Tenant" },
     };
     const cfg = map[role] || {

@@ -9,6 +9,8 @@ import useBodyScrollLock from "../../../shared/hooks/useBodyScrollLock";
 import useEscapeClose from "../../../shared/hooks/useEscapeClose";
 import "../styles/reservation-details-modal.css";
 
+const WATER_BILLABLE_TYPES = ["private", "double-sharing"];
+
 /* ─── constants ─────────────────────────────────── */
 const STATUS_MAP = {
   pending: {
@@ -158,6 +160,8 @@ export default function ReservationDetailsModal({
   onClose,
   onUpdate,
 }) {
+  const reservationFeeAmount = reservation?.reservationFeeAmount || 2000;
+  const reservationFeeLabel = `PHP ${reservationFeeAmount.toLocaleString("en-PH")}`;
   const [adminNotes, setAdminNotes] = useState(reservation?.notes || "");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showDocs, setShowDocs] = useState(false);
@@ -165,6 +169,7 @@ export default function ReservationDetailsModal({
   const [extendDays, setExtendDays] = useState(3);
   const [showExtendPrompt, setShowExtendPrompt] = useState(false);
   const [meterReadingVal, setMeterReadingVal] = useState("");
+  const [waterMeterReadingVal, setWaterMeterReadingVal] = useState("");
   const [showMeterPrompt, setShowMeterPrompt] = useState(false);
   const [confirmModal, setConfirmModal] = useState({
     open: false,
@@ -198,7 +203,12 @@ export default function ReservationDetailsModal({
             confirmText: "Extend",
             variant: "info",
           }
-        : ACTION_MSGS[key];
+        : key === "cancel"
+          ? {
+              ...ACTION_MSGS.cancel,
+              message: `The ${reservationFeeLabel} reservation fee is non-refundable. The bed will be freed and user reset to applicant.`,
+            }
+          : ACTION_MSGS[key];
     setConfirmModal({
       open: true,
       ...m,
@@ -330,7 +340,7 @@ export default function ReservationDetailsModal({
                   const STAGE_GUIDANCE = {
                     pending:         { Icon: Calendar,      message: "Waiting for the tenant to schedule a site visit." },
                     visit_pending:   { Icon: Eye,           message: "Tenant has scheduled a visit — approve or reject it in the Visit Schedules tab." },
-                    visit_approved:  { Icon: ClipboardList, message: "Visit approved. Waiting for the tenant to complete their application and pay the reservation fee." },
+                    visit_approved:  { Icon: ClipboardList, message: `Visit approved. Waiting for the tenant to complete their application and pay the ${reservationFeeLabel} reservation fee.` },
                     payment_pending: { Icon: CreditCard,    message: "Payment submitted — awaiting automatic verification from the payment gateway." },
                   };
                   const guide = STAGE_GUIDANCE[status];
@@ -353,6 +363,7 @@ export default function ReservationDetailsModal({
                       className="rdm-action rdm-action-primary"
                       onClick={() => {
                         setMeterReadingVal("");
+                        setWaterMeterReadingVal("");
                         setShowMeterPrompt(true);
                       }}
                       disabled={isSubmitting}

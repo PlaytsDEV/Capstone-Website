@@ -53,11 +53,21 @@ export function useUpdateUser() {
   });
 }
 
-/** Delete user (super admin) */
+/** Delete user (owner) */
 export function useDeleteUser() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (userId) => userApi.delete(userId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+  });
+}
+
+/** Update branch admin permissions */
+export function useUpdatePermissions() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, permissions }) =>
+      userApi.updatePermissions(userId, permissions),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
   });
 }

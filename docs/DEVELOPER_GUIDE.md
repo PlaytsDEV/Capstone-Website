@@ -94,7 +94,7 @@ cd web && npm run dev
 | Model files      | PascalCase             | `User.js`                |
 | Zustand stores   | camelCase + Store      | `notificationStore.js`   |
 | Branches         | kebab-case             | `gil-puyat`, `guadalupe` |
-| Roles            | camelCase              | `superAdmin`, `tenant`   |
+| Roles            | snake_case             | `branch_admin`, `tenant` |
 
 ### File Organization
 
@@ -289,14 +289,14 @@ const session = await paymongoClient.createCheckoutSession({
 | ------------ | -------------------------- | ------------------------------------------------------------------- |
 | `applicant`  | Public pages + reservation | Browse rooms, submit inquiries, create reservations                 |
 | `tenant`     | Tenant portal              | View bills, submit maintenance requests, manage profile, pay online |
-| `admin`      | Admin dashboard            | Manage reservations, tenants, rooms, billing for their branch       |
-| `superAdmin` | Everything                 | System-wide user management, branch configuration, all admin powers |
+| `branch_admin` | Admin dashboard          | Manage reservations, tenants, rooms, and billing for their branch   |
+| `owner`        | System-wide administration | Cross-branch access, branch configuration, permission management    |
 
 Role transitions:
 
 - New signup → `applicant`
 - Reservation checked-in → automatically promoted to `tenant`
-- Manual promotion → `admin` or `superAdmin` (by superAdmin only)
+- Manual promotion → `branch_admin` or `owner` (by owner only)
 
 ---
 

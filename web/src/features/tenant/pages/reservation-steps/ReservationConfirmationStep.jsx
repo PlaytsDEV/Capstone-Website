@@ -33,6 +33,7 @@ const ReservationConfirmationStep = ({
   const receiptRef = useRef(null);
   const [countdown, setCountdown] = useState(REDIRECT_SECONDS);
   const [paused, setPaused] = useState(!isPaymentReturn);
+  const reservationFeeAmount = reservationData?.reservationFeeAmount || 2000;
 
   useEffect(() => {
     if (paused || countdown <= 0) return;
@@ -111,7 +112,7 @@ const ReservationConfirmationStep = ({
             <h3>Payment</h3>
             <div class="receipt-row"><span class="label">Method</span><span class="value">${formatPaymentMethod(paymentMethod)}</span></div>
             <div class="receipt-row"><span class="label">Status</span><span class="value" style="color: #059669;">✓ Paid</span></div>
-            <div class="receipt-total"><span>Reservation Fee</span><span>₱2,000</span></div>
+            <div class="receipt-total"><span>Reservation Fee</span><span>PHP ${reservationFeeAmount.toLocaleString("en-PH")}</span></div>
           </div>
           <div class="receipt-footer">
             <p>This is an official receipt from Lilycrest Dormitory Management System.</p>

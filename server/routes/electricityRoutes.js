@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ============================================================================
  * ELECTRICITY BILLING ROUTES
  * ============================================================================
@@ -20,7 +20,7 @@ const router = express.Router();
 router.use(verifyToken);
 
 // ============================================================================
-// TENANT ROUTES (verifyToken only — no admin required)
+// TENANT ROUTES (verifyToken only â€” no admin required)
 // ============================================================================
 
 /**
@@ -51,8 +51,10 @@ router.get("/my-bills/:periodId", electricityController.getMyBillBreakdown);
  * Get rooms with billing period status for admin dashboard
  */
 router.get("/rooms", verifyAdmin, filterByBranch, electricityController.getRoomsForBilling);
+router.get("/diagnostics", verifyAdmin, filterByBranch, electricityController.getBillingDiagnostics);
+router.get("/export", verifyAdmin, filterByBranch, electricityController.exportElectricityBilling);
 
-// ── Meter Readings ──
+// â”€â”€ Meter Readings â”€â”€
 
 /**
  * POST /api/electricity/readings
@@ -73,12 +75,18 @@ router.get("/readings/:roomId", verifyAdmin, filterByBranch, electricityControll
 router.get("/readings/:roomId/latest", verifyAdmin, filterByBranch, electricityController.getLatestReading);
 
 /**
+ * PATCH /api/electricity/readings/:id
+ * Update an existing meter reading (value, date, eventType, tenantId)
+ */
+router.patch("/readings/:id", verifyAdmin, filterByBranch, electricityController.updateMeterReading);
+
+/**
  * DELETE /api/electricity/readings/:id
  * Soft-delete a meter reading (blocks if attached to a closed period)
  */
 router.delete("/readings/:id", verifyAdmin, filterByBranch, electricityController.deleteMeterReading);
 
-// ── Billing Periods ──
+// â”€â”€ Billing Periods â”€â”€
 
 /**
  * POST /api/electricity/periods
@@ -93,10 +101,17 @@ router.post("/periods", verifyAdmin, filterByBranch, electricityController.openB
 router.get("/periods/:roomId", verifyAdmin, filterByBranch, electricityController.getBillingPeriods);
 
 /**
+ * PATCH /api/electricity/periods/:id
+ * Update an open billing period
+ */
+router.patch("/periods/:id", verifyAdmin, filterByBranch, electricityController.updateBillingPeriod);
+
+/**
  * PATCH /api/electricity/periods/:id/close
  * Close a billing period and trigger computation
  */
 router.patch("/periods/:id/close", verifyAdmin, filterByBranch, electricityController.closeBillingPeriod);
+router.post("/batch-close", verifyAdmin, filterByBranch, electricityController.batchCloseBillingPeriods);
 
 /**
  * DELETE /api/electricity/periods/:id
@@ -104,7 +119,7 @@ router.patch("/periods/:id/close", verifyAdmin, filterByBranch, electricityContr
  */
 router.delete("/periods/:id", verifyAdmin, filterByBranch, electricityController.deleteBillingPeriod);
 
-// ── Billing Results ──
+// â”€â”€ Billing Results â”€â”€
 
 /**
  * GET /api/electricity/results/:periodId
@@ -118,7 +133,7 @@ router.get("/results/:periodId", verifyAdmin, filterByBranch, electricityControl
  */
 router.post("/results/:periodId/revise", verifyAdmin, filterByBranch, electricityController.reviseBillingResult);
 
-// ── Draft Billing ──
+// â”€â”€ Draft Billing â”€â”€
 
 /**
  * GET /api/electricity/periods/:periodId/draft-bills
@@ -128,7 +143,7 @@ router.get("/periods/:periodId/draft-bills", verifyAdmin, filterByBranch, electr
 
 /**
  * PATCH /api/electricity/periods/:periodId/send-bills
- * Send all draft bills for a period — flips to pending + emails tenants
+ * Send all draft bills for a period â€” flips to pending + emails tenants
  */
 router.patch("/periods/:periodId/send-bills", verifyAdmin, filterByBranch, electricityController.sendBills);
 
@@ -137,6 +152,18 @@ router.patch("/periods/:periodId/send-bills", verifyAdmin, filterByBranch, elect
  * Admin adjusts charges on a draft bill
  */
 router.patch("/bills/:billId/adjust", verifyAdmin, filterByBranch, electricityController.adjustDraftBill);
+
+/**
+ * GET /api/electricity/bills/:billId/pdf
+ * Tenant or Admin: download the generated PDF for a specific bill
+ */
+router.get("/bills/:billId/pdf", electricityController.downloadBillPdf);
+
+/**
+ * POST /api/electricity/bills/:billId/regenerate-pdf
+ * Admin only: regenerate a bill's PDF (e.g., after PDF failed or adjustments)
+ */
+router.post("/bills/:billId/regenerate-pdf", verifyAdmin, filterByBranch, electricityController.regenerateBillPdf);
 
 // ============================================================================
 // EXPORT

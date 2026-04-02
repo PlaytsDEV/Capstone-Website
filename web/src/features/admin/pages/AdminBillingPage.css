@@ -1,0 +1,91 @@
+/* ============================================================
+   Admin Billing Page — Page Wrapper & Tab Bar
+   ============================================================ */
+
+.admin-billing-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ── Page Header ── */
+.admin-billing-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.admin-billing-page__heading {
+  margin: 0 0 3px;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-heading, #0A1628);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-billing-page__heading svg {
+  color: var(--color-info, #2563eb);
+  flex-shrink: 0;
+}
+
+.admin-billing-page__subtitle {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-muted, #6b7280);
+}
+
+/* ── Segment Tab Control ── */
+.admin-billing-tabs {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--surface-muted, #f1f5f9);
+  border: 1px solid var(--border-card, #e5e7eb);
+}
+
+.admin-billing-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-secondary, #4b5563);
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 500;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.admin-billing-tab:hover:not(.is-active) {
+  background: var(--surface-hover, #e5e7eb);
+  color: var(--text-heading, #0A1628);
+}
+
+.admin-billing-tab.is-active {
+  background: var(--surface-card, #fff);
+  color: var(--color-info, #2563eb);
+  border-color: var(--border-card, #e5e7eb);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.07), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.admin-billing-tab__icon {
+  display: flex;
+  align-items: center;
+  opacity: 0.75;
+  transition: opacity 0.15s;
+}
+
+.admin-billing-tab.is-active .admin-billing-tab__icon {
+  opacity: 1;
+}

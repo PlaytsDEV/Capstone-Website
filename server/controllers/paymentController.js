@@ -21,6 +21,8 @@ import logger from "../middleware/logger.js";
 import { sendPaymentApprovedEmail, sendPaymentReceiptEmail } from "../config/email.js";
 import { updateOccupancyOnReservationChange } from "../utils/occupancyManager.js";
 import { BUSINESS } from "../config/constants.js";
+import { getReservationFeeAmount } from "../utils/businessSettings.js";
+import { getBillRemainingAmount, resolveBillStatus } from "../utils/billingPolicy.js";
 import {
   sendSuccess,
   AppError,
@@ -76,7 +78,9 @@ export const createBillCheckout = async (req, res, next) => {
       }
     }
 
-    const amountDue = bill.totalAmount - (bill.paidAmount || 0);
+    bill.remainingAmount = getBillRemainingAmount(bill);
+    bill.status = resolveBillStatus(bill);
+    const amountDue = bill.remainingAmount;
     const monthLabel = dayjs(bill.billingMonth).format("MMMM YYYY");
 
     const { checkoutUrl, sessionId } = await createCheckoutSession({
@@ -140,7 +144,10 @@ export const createDepositCheckout = async (req, res, next) => {
       }
     }
 
-    const amount = BUSINESS.DEPOSIT_AMOUNT;
+    const amount = reservation.reservationFeeAmount || await getReservationFeeAmount();
+    if (!reservation.reservationFeeAmount || reservation.reservationFeeAmount !== amount) {
+      reservation.reservationFeeAmount = amount;
+    }
     const roomName = reservation.roomId?.name || "Room";
 
     const { checkoutUrl, sessionId } = await createCheckoutSession({
@@ -221,6 +228,7 @@ export const checkSessionStatus = async (req, res, next) => {
         if (bill && bill.status !== "paid") {
           logger.info({ billId: metadata.billId }, "Marking bill as paid");
           bill.paidAmount = bill.totalAmount;
+          bill.remainingAmount = 0;
           bill.status = "paid";
           bill.paymentDate = new Date();
           bill.paymentMethod = "paymongo";
@@ -291,7 +299,7 @@ export const checkSessionStatus = async (req, res, next) => {
               await sendPaymentReceiptEmail({
                 to: tenant.email,
                 tenantName,
-                amount: BUSINESS.DEPOSIT_AMOUNT,
+                amount: reservation.reservationFeeAmount || BUSINESS.DEPOSIT_AMOUNT,
                 description: `Reservation Deposit — ${roomName}`,
                 paymentMethod: paymentMethod || "Online Payment (PayMongo)",
                 paymentDate: dayjs().format("MMMM D, YYYY"),

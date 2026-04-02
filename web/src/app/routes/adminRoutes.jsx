@@ -1,0 +1,178 @@
+import React from "react";
+import { Navigate, Route } from "react-router-dom";
+import RequireAdmin from "../../shared/guards/RequireAdmin";
+import RequireOwner from "../../shared/guards/RequireOwner";
+import { RouteShell } from "./RouteShell";
+import {
+  AdminLayout,
+  AdminDashboardPage,
+  ReservationsPage,
+  RoomAvailabilityPage,
+  TenantsPage,
+  AuditLogsPage,
+  UserManagementPage,
+  AdminBillingPage,
+  MaintenancePage,
+  InquiriesPage,
+  DigitalTwinPage,
+  FinancialPage,
+  SuperAdminDashboard,
+  BranchManagementPage,
+  RolePermissionsPage,
+  SystemSettingsPage,
+} from "../lazyPages";
+
+export function AdminRoutes() {
+  return (
+    <Route
+      path="/admin"
+      element={
+        <RequireAdmin>
+          <RouteShell name="AdminLayout">
+            <AdminLayout />
+          </RouteShell>
+        </RequireAdmin>
+      }
+    >
+      <Route index element={<Navigate to="/admin/dashboard" replace />} />
+      <Route
+        path="dashboard"
+        element={
+          <RouteShell name="AdminDashboard">
+            <AdminDashboardPage />
+          </RouteShell>
+        }
+      />
+      <Route
+        path="dashboard/super"
+        element={
+          <RequireOwner>
+            <RouteShell name="SuperAdminDashboard">
+              <SuperAdminDashboard />
+            </RouteShell>
+          </RequireOwner>
+        }
+      />
+      <Route
+        path="reservations"
+        element={
+          <RouteShell name="Reservations">
+            <ReservationsPage />
+          </RouteShell>
+        }
+      />
+      <Route
+        path="room-availability"
+        element={
+          <RouteShell name="RoomAvailability">
+            <RoomAvailabilityPage />
+          </RouteShell>
+        }
+      />
+      <Route
+        path="tenants"
+        element={
+          <RouteShell name="Tenants">
+            <TenantsPage />
+          </RouteShell>
+        }
+      />
+      <Route
+        path="audit-logs"
+        element={
+          <RouteShell name="AuditLogs">
+            <AuditLogsPage />
+          </RouteShell>
+        }
+      />
+      <Route
+        path="users"
+        element={
+          <RouteShell name="UserManagement">
+            <UserManagementPage />
+          </RouteShell>
+        }
+      />
+      <Route
+        path="billing"
+        element={
+          <RouteShell name="AdminBilling">
+            <AdminBillingPage />
+          </RouteShell>
+        }
+      />
+      <Route
+        path="maintenance"
+        element={
+          <RouteShell name="AdminMaintenance">
+            <MaintenancePage />
+          </RouteShell>
+        }
+      />
+      <Route
+        path="inquiries"
+        element={
+          <RouteShell name="Inquiries">
+            <InquiriesPage />
+          </RouteShell>
+        }
+      />
+      <Route
+        path="room-configuration"
+        element={<Navigate to="/admin/room-availability" replace />}
+      />
+      <Route
+        path="occupancy"
+        element={<Navigate to="/admin/room-availability" replace />}
+      />
+      <Route
+        path="digital-twin"
+        element={
+          <RouteShell name="DigitalTwin">
+            <DigitalTwinPage />
+          </RouteShell>
+        }
+      />
+      <Route
+        path="financial"
+        element={
+          <RequireOwner>
+            <RouteShell name="Financial">
+              <FinancialPage />
+            </RouteShell>
+          </RequireOwner>
+        }
+      />
+      <Route
+        path="branches"
+        element={
+          <RequireOwner>
+            <RouteShell name="Branches">
+              <BranchManagementPage />
+            </RouteShell>
+          </RequireOwner>
+        }
+      />
+      <Route
+        path="settings"
+        element={
+          <RequireOwner>
+            <RouteShell name="Settings">
+              <SystemSettingsPage />
+            </RouteShell>
+          </RequireOwner>
+        }
+      />
+      <Route
+        path="roles"
+        element={
+          <RequireOwner>
+            <RouteShell name="Roles">
+              <RolePermissionsPage />
+            </RouteShell>
+          </RequireOwner>
+        }
+      />
+    </Route>
+  );
+}

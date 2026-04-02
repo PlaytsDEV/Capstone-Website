@@ -23,6 +23,15 @@ import {
   sendPaymentApprovedEmail,
   sendPaymentRejectedEmail,
 } from "../config/email.js";
+import {
+  buildBillingCycle,
+  getBillRemainingAmount,
+  getReservationCreditAvailable,
+  resolveBillStatus,
+  roundMoney,
+  syncBillAmounts,
+} from "../utils/billingPolicy.js";
+import { getPenaltyRatePerDay } from "../utils/businessSettings.js";
 
 /* ─── shared helpers ─────────────────────────────── */
 
@@ -41,8 +50,10 @@ async function getAdminInfo(req) {
 async function markOverdueBills(bills) {
   const now = dayjs().toDate();
   for (const bill of bills) {
-    if (bill.status === "pending" && bill.dueDate < now) {
-      bill.status = "overdue";
+    const nextStatus = resolveBillStatus(bill, now);
+    if (bill.status !== nextStatus) {
+      bill.status = nextStatus;
+      bill.remainingAmount = getBillRemainingAmount(bill);
       await bill.save();
     }
   }
@@ -62,13 +73,45 @@ const formatBill = (bill) => ({
   branch: bill.branch,
   billingMonth: bill.billingMonth,
   dueDate: bill.dueDate,
+  issuedAt: bill.issuedAt || bill.sentAt || null,
+  billingCycleStart: bill.billingCycleStart,
+  billingCycleEnd: bill.billingCycleEnd,
+  utilityCycleStart: bill.utilityCycleStart || null,
+  utilityCycleEnd: bill.utilityCycleEnd || null,
+  utilityReadingDate: bill.utilityReadingDate || null,
   charges: bill.charges,
+  grossAmount: bill.grossAmount,
+  reservationCreditApplied: bill.reservationCreditApplied || 0,
   totalAmount: bill.totalAmount,
   paidAmount: bill.paidAmount,
+  remainingAmount: bill.remainingAmount ?? getBillRemainingAmount(bill),
+  isFirstCycleBill: !!bill.isFirstCycleBill,
   status: bill.status,
   notes: bill.notes,
   createdAt: bill.createdAt,
 });
+
+async function getReservationBillingContext(reservationId, currentBillId = null) {
+  const reservation = await Reservation.findById(reservationId);
+  if (!reservation || !reservation.checkInDate) return null;
+
+  const existingCount = await Bill.countDocuments({
+    reservationId: reservation._id,
+    isArchived: false,
+    ...(currentBillId ? { _id: { $ne: currentBillId } } : {}),
+  });
+
+  const cycle = buildBillingCycle(reservation.checkInDate, existingCount);
+  const creditAvailable = getReservationCreditAvailable(reservation);
+
+  return {
+    reservation,
+    existingCount,
+    cycle,
+    isFirstCycleBill: existingCount === 0,
+    creditAvailable,
+  };
+}
 
 /** Build paginated bill response (shared by getBillsByBranch + getAllBills) */
 async function fetchBills(filter, query) {
@@ -194,10 +237,19 @@ export const getCurrentBilling = async (req, res, next) => {
       return res.status(404).json({ error: "No current bill found" });
 
     res.json({
-      currentBalance: currentBill.totalAmount - currentBill.paidAmount,
+      currentBalance: currentBill.remainingAmount ?? (currentBill.totalAmount - currentBill.paidAmount),
       totalAmount: currentBill.totalAmount,
+      grossAmount: currentBill.grossAmount ?? currentBill.totalAmount,
+      reservationCreditApplied: currentBill.reservationCreditApplied || 0,
       paidAmount: currentBill.paidAmount,
+      remainingAmount: currentBill.remainingAmount ?? (currentBill.totalAmount - currentBill.paidAmount),
       dueDate: currentBill.dueDate,
+      issuedAt: currentBill.issuedAt || currentBill.sentAt || null,
+      billingCycleStart: currentBill.billingCycleStart,
+      billingCycleEnd: currentBill.billingCycleEnd,
+      utilityCycleStart: currentBill.utilityCycleStart || null,
+      utilityCycleEnd: currentBill.utilityCycleEnd || null,
+      utilityReadingDate: currentBill.utilityReadingDate || null,
       status: currentBill.status,
       charges: currentBill.charges,
     });
@@ -210,7 +262,9 @@ export const getBillingHistory = async (req, res, next) => {
   try {
     const { uid, branch } = req.user;
     const limit = Math.min(parseInt(req.query.limit) || 50, 100);
-    const stayIds = (await Reservation.find({ userId: uid, branch })).map(
+    const dbUser = await User.findOne({ firebaseUid: uid }).lean();
+    if (!dbUser) return res.status(404).json({ error: "User not found" });
+    const stayIds = (await Reservation.find({ userId: dbUser._id, branch })).map(
       (s) => s._id,
     );
 
@@ -228,8 +282,15 @@ export const getBillingHistory = async (req, res, next) => {
         id: b._id,
         date: b.billingMonth,
         dueDate: b.dueDate,
+        issuedAt: b.issuedAt || b.sentAt || null,
         amount: b.totalAmount,
+        grossAmount: b.grossAmount ?? b.totalAmount,
+        reservationCreditApplied: b.reservationCreditApplied || 0,
         paidAmount: b.paidAmount,
+        remainingAmount: b.remainingAmount ?? getBillRemainingAmount(b),
+        utilityCycleStart: b.utilityCycleStart || null,
+        utilityCycleEnd: b.utilityCycleEnd || null,
+        utilityReadingDate: b.utilityReadingDate || null,
         status: b.status,
         charges: b.charges,
         paymentDate: b.paymentDate,
@@ -268,7 +329,13 @@ export const markBillAsPaid = async (req, res, next) => {
     if (!bill) return res.status(404).json({ error: "Bill not found" });
     if (!admin.isSuperAdmin && bill.branch !== admin.branch)
       return res.status(403).json({ error: "Bill not found" });
-    await bill.markAsPaid(amount || bill.totalAmount);
+    const appliedAmount = Number(amount || bill.totalAmount);
+    bill.paidAmount = appliedAmount;
+    syncBillAmounts(bill);
+    if (bill.paidAmount > 0 && !bill.paymentDate) {
+      bill.paymentDate = new Date();
+    }
+    await bill.save();
     if (note) {
       bill.notes = note;
       await bill.save();
@@ -438,9 +505,6 @@ export const generateRoomBill = async (req, res, next) => {
       water: Number(charges.water) || 0,
     };
     const totalUtilities = roomCharges.electricity + roomCharges.water;
-    const billDueDate = dueDate
-      ? dayjs(dueDate).toDate()
-      : monthDate.add(1, "month").date(15).toDate();
     const adminUser = await User.findOne({ firebaseUid: req.user.uid });
 
     const generatedBills = [];
@@ -467,15 +531,28 @@ export const generateRoomBill = async (req, res, next) => {
         0,
       );
 
-      const totalAmount = tenant.rent + utilityShare + customChargesTotal;
+      const grossAmount = roundMoney(tenant.rent + utilityShare + customChargesTotal);
+      const billingContext = tenant.reservationId
+        ? await getReservationBillingContext(tenant.reservationId)
+        : null;
+      const reservationCreditApplied = Math.min(
+        grossAmount,
+        billingContext?.creditAvailable || 0,
+      );
+      const cycleDueDate = dueDate
+        ? dayjs(dueDate).toDate()
+        : billingContext?.cycle?.dueDate || monthDate.add(1, "month").date(15).toDate();
 
       const bill = new Bill({
         reservationId: tenant.reservationId,
         userId: tenant.userId,
         branch: room.branch,
         roomId: room._id,
-        billingMonth: monthStart,
-        dueDate: billDueDate,
+        billingMonth: billingContext?.cycle?.billingMonth || monthStart,
+        billingCycleStart: billingContext?.cycle?.billingCycleStart || monthStart,
+        billingCycleEnd: billingContext?.cycle?.billingCycleEnd || cycleDueDate,
+        dueDate: cycleDueDate,
+        isFirstCycleBill: !!billingContext?.isFirstCycleBill,
         proRataDays: tenant.daysInRoom,
         charges: {
           rent: tenant.rent,
@@ -490,10 +567,19 @@ export const generateRoomBill = async (req, res, next) => {
           name: c.name,
           amount: c.amount,
         })),
-        totalAmount,
+        grossAmount,
+        reservationCreditApplied,
+        totalAmount: grossAmount,
+        remainingAmount: grossAmount,
         status: "pending",
       });
+      syncBillAmounts(bill);
       await bill.save();
+      if (billingContext?.reservation && reservationCreditApplied > 0) {
+        billingContext.reservation.reservationCreditConsumedAt = new Date();
+        billingContext.reservation.reservationCreditAppliedBillId = bill._id;
+        await billingContext.reservation.save();
+      }
       generatedBills.push(bill._id);
       tenantBreakdown.push({
         userId: tenant.userId,
@@ -503,7 +589,9 @@ export const generateRoomBill = async (req, res, next) => {
         rent: tenant.rent,
         customCharges: tenantCustomCharges,
         utilityShare,
-        totalAmount,
+        grossAmount,
+        reservationCreditApplied,
+        totalAmount: bill.totalAmount,
         billId: bill._id,
       });
     }
@@ -518,7 +606,7 @@ export const generateRoomBill = async (req, res, next) => {
       roomId: room._id,
       branch: room.branch,
       billingMonth: monthStart,
-      dueDate: billDueDate,
+      dueDate: dueDate ? dayjs(dueDate).toDate() : null,
       charges: roomCharges,
       totalCharges: totalUtilities,
       generatedBills,
@@ -681,12 +769,22 @@ export const getMyBills = async (req, res, next) => {
       bills: bills.map((b) => ({
         id: b._id,
         billingMonth: b.billingMonth,
+        billingCycleStart: b.billingCycleStart,
+        billingCycleEnd: b.billingCycleEnd,
         dueDate: b.dueDate,
+        issuedAt: b.issuedAt || b.sentAt || null,
+        utilityCycleStart: b.utilityCycleStart || null,
+        utilityCycleEnd: b.utilityCycleEnd || null,
+        utilityReadingDate: b.utilityReadingDate || null,
         charges: b.charges,
         totalAmount: b.totalAmount,
+        grossAmount: b.grossAmount ?? b.totalAmount,
+        reservationCreditApplied: b.reservationCreditApplied || 0,
         paidAmount: b.paidAmount,
-        status: b.status,
+        remainingAmount: b.remainingAmount ?? getBillRemainingAmount(b),
+        status: resolveBillStatus(b),
         proRataDays: b.proRataDays,
+        isFirstCycleBill: !!b.isFirstCycleBill,
         room: b.roomId?.name || "N/A",
         branch: b.branch,
         paymentProof: b.paymentProof || { verificationStatus: "none" },
@@ -879,14 +977,13 @@ export const getPendingVerifications = async (req, res, next) => {
 // PENALTY: Auto-apply penalties for overdue bills
 // ============================================================================
 
-const PENALTY_RATE_PER_DAY = 50; // ₱50/day per PRD
-
 export const applyPenalties = async (req, res, next) => {
   try {
     const admin = await getAdminInfo(req);
     const now = dayjs();
+    const penaltyRatePerDay = await getPenaltyRatePerDay();
     const filter = {
-      status: { $in: ["pending", "overdue"] },
+      status: { $in: ["pending", "overdue", "partially-paid"] },
       dueDate: { $lt: now.toDate() },
       isArchived: false,
     };
@@ -897,23 +994,16 @@ export const applyPenalties = async (req, res, next) => {
 
     for (const bill of overdueBills) {
       const daysLate = Math.max(1, now.diff(dayjs(bill.dueDate), "day"));
-      const penalty = daysLate * PENALTY_RATE_PER_DAY;
+      const penalty = daysLate * penaltyRatePerDay;
 
       // Recalculate total: base charges + penalty - discount
-      const baseCharges =
-        (bill.charges.rent || 0) +
-        (bill.charges.electricity || 0) +
-        (bill.charges.water || 0) +
-        (bill.charges.applianceFees || 0) +
-        (bill.charges.corkageFees || 0);
-
       bill.charges.penalty = penalty;
-      bill.totalAmount = baseCharges + penalty - (bill.charges.discount || 0);
       bill.penaltyDetails = {
         daysLate,
-        ratePerDay: PENALTY_RATE_PER_DAY,
+        ratePerDay: penaltyRatePerDay,
         appliedAt: now,
       };
+      syncBillAmounts(bill);
       bill.status = "overdue";
       await bill.save();
       updated++;
@@ -1039,10 +1129,6 @@ export const generateBulkBills = async (req, res, next) => {
     const monthDate = dayjs(billingMonth || undefined);
     const monthStart = monthDate.startOf("month").toDate();
     const monthEnd = monthDate.endOf("month").toDate();
-    const billDueDate = dueDate
-      ? dayjs(dueDate).toDate()
-      : monthDate.add(1, "month").date(15).toDate();
-
     // Find all rooms in this branch
     const rooms = await Room.find({ branch, isArchived: false });
     const adminUser = await User.findOne({ firebaseUid: req.user.uid });
@@ -1159,15 +1245,28 @@ export const generateBulkBills = async (req, res, next) => {
             (sum, c) => sum + (Number(c.amount) || 0),
             0,
           );
-          const totalAmount = tenant.rent + utilityShare + customChargesTotal;
+          const grossAmount = roundMoney(tenant.rent + utilityShare + customChargesTotal);
+          const billingContext = tenant.reservationId
+            ? await getReservationBillingContext(tenant.reservationId)
+            : null;
+          const reservationCreditApplied = Math.min(
+            grossAmount,
+            billingContext?.creditAvailable || 0,
+          );
+          const cycleDueDate = dueDate
+            ? dayjs(dueDate).toDate()
+            : billingContext?.cycle?.dueDate || monthDate.add(1, "month").date(15).toDate();
 
           const bill = new Bill({
             reservationId: tenant.reservationId,
             userId: tenant.userId,
             branch: room.branch,
             roomId: room._id,
-            billingMonth: monthStart,
-            dueDate: billDueDate,
+            billingMonth: billingContext?.cycle?.billingMonth || monthStart,
+            billingCycleStart: billingContext?.cycle?.billingCycleStart || monthStart,
+            billingCycleEnd: billingContext?.cycle?.billingCycleEnd || cycleDueDate,
+            dueDate: cycleDueDate,
+            isFirstCycleBill: !!billingContext?.isFirstCycleBill,
             proRataDays: tenant.daysInRoom,
             charges: {
               rent: tenant.rent,
@@ -1182,10 +1281,19 @@ export const generateBulkBills = async (req, res, next) => {
               name: c.name,
               amount: c.amount,
             })),
-            totalAmount,
+            grossAmount,
+            reservationCreditApplied,
+            totalAmount: grossAmount,
+            remainingAmount: grossAmount,
             status: "pending",
           });
+          syncBillAmounts(bill);
           await bill.save();
+          if (billingContext?.reservation && reservationCreditApplied > 0) {
+            billingContext.reservation.reservationCreditConsumedAt = new Date();
+            billingContext.reservation.reservationCreditAppliedBillId = bill._id;
+            await billingContext.reservation.save();
+          }
           generatedBills.push(bill._id);
           tenantBreakdown.push({
             userId: tenant.userId,
@@ -1194,7 +1302,9 @@ export const generateBulkBills = async (req, res, next) => {
             proRataShare: Math.round(share * 10000) / 10000,
             rent: tenant.rent,
             utilityShare,
-            totalAmount,
+            grossAmount,
+            reservationCreditApplied,
+            totalAmount: bill.totalAmount,
             billId: bill._id,
           });
         }
@@ -1204,7 +1314,7 @@ export const generateBulkBills = async (req, res, next) => {
             roomId: room._id,
             branch: room.branch,
             billingMonth: monthStart,
-            dueDate: billDueDate,
+            dueDate: dueDate ? dayjs(dueDate).toDate() : null,
             charges: roomCharges,
             totalCharges: totalUtilities,
             generatedBills,

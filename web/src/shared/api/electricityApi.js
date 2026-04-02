@@ -28,6 +28,13 @@ export const electricityApi = {
   deleteReading: (readingId) =>
     authFetch(`/electricity/readings/${readingId}`, { method: "DELETE" }),
 
+  /** Update an existing meter reading (fix a move-in/out entry) */
+  updateReading: (readingId, data) =>
+    authFetch(`/electricity/readings/${readingId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+
   // ── Billing Periods ──
 
   /** Open a new billing period */
@@ -44,8 +51,22 @@ export const electricityApi = {
       body: JSON.stringify(data),
     }),
 
+  /** Best-effort batch close for multiple open periods */
+  batchClose: (data) =>
+    authFetch("/electricity/batch-close", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
   /** Get all billing periods for a room */
   getPeriods: (roomId) => authFetch(`/electricity/periods/${roomId}`),
+
+  /** Update an open billing period */
+  updatePeriod: (periodId, data) =>
+    authFetch(`/electricity/periods/${periodId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
 
   /** Soft-delete a billing period (only open periods) */
   deletePeriod: (periodId) =>
@@ -68,6 +89,18 @@ export const electricityApi = {
   /** Get rooms with billing period status */
   getRooms: (branch) =>
     authFetch(`/electricity/rooms${branch ? `?branch=${branch}` : ""}`),
+
+  /** Export electricity billing rows for CSV generation */
+  exportRows: (params = {}) => {
+    const search = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") {
+        search.set(key, value);
+      }
+    });
+    const query = search.toString();
+    return authFetch(`/electricity/export${query ? `?${query}` : ""}`);
+  },
 
   // ── Tenant ──
 

@@ -167,7 +167,7 @@ const buildTimeline = (r) => {
     events.push({
       id: "payment", icon: CreditCard, iconBg: "#F0FDF4", iconColor: "#059669",
       title: "Payment Confirmed",
-      description: `₱2,000 reservation fee paid${r.paymentMethod ? ` via ${formatMethod(r.paymentMethod)}` : ""}`,
+      description: `PHP ${(r.reservationFeeAmount || 2000).toLocaleString("en-PH")} reservation fee paid${r.paymentMethod ? ` via ${formatMethod(r.paymentMethod)}` : ""}`,
       date: r.paymentDate || r.reservedAt || r.updatedAt,
       status: "Paid", statusColor: "#059669", statusBg: "#F0FDF4",
     });
