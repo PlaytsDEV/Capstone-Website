@@ -152,6 +152,63 @@ async function findUtilityPeriodForBill({ bill, utilityType }) {
   return period || null;
 }
 
+async function buildTenantUtilityBreakdown({ dbUser, bill, utilityType }) {
+  const chargeAmount = utilityType === "electricity"
+    ? Number(bill?.charges?.electricity || 0)
+    : Number(bill?.charges?.water || 0);
+  if (!bill || chargeAmount <= 0) return null;
+
+  const period = await findUtilityPeriodForBill({ bill, utilityType });
+  if (!period) return null;
+
+  const tenantSummary =
+    (period.tenantSummaries || []).find((summary) => String(summary.billId) === String(bill._id)) ||
+    (period.tenantSummaries || []).find((summary) => String(summary.tenantId) === String(dbUser._id)) ||
+    null;
+
+  if (utilityType === "electricity") {
+    const activeSegments = (period.segments || []).filter((segment) =>
+      (segment.activeTenantIds || []).some((tenantId) => String(tenantId) === String(dbUser._id)),
+    );
+
+    return {
+      period: {
+        id: period._id,
+        startDate: period.startDate,
+        endDate: period.endDate,
+      },
+      ratePerKwh: period.ratePerUnit,
+      myTotalKwh: tenantSummary?.totalUsage || 0,
+      myBillAmount: tenantSummary?.billAmount || chargeAmount,
+      segments: activeSegments.map((segment) => ({
+        periodLabel: segment.periodLabel,
+        startDate: segment.startDate,
+        endDate: segment.endDate,
+        readingFrom: segment.readingFrom,
+        readingTo: segment.readingTo,
+        segmentTotalKwh: segment.unitsConsumed,
+        activeTenantCount: segment.activeTenantCount,
+        sharePerTenantKwh: segment.sharePerTenantUnits,
+        sharePerTenantCost: segment.sharePerTenantCost,
+      })),
+    };
+  }
+
+  const firstSegment = (period.segments || [])[0] || null;
+  return {
+    record: {
+      id: period._id,
+      cycleStart: period.startDate,
+      cycleEnd: period.endDate,
+      usage: period.computedTotalUsage || 0,
+      ratePerUnit: period.ratePerUnit,
+      roomTotal: period.computedTotalCost || 0,
+      tenantsSharing: firstSegment?.activeTenantCount || period.tenantSummaries?.length || 0,
+      myShare: tenantSummary?.billAmount || chargeAmount,
+    },
+  };
+}
+
 function hasDraftLinkedSummary(period, draftBillIds) {
   return (period?.tenantSummaries || []).some((summary) =>
     summary.billId && draftBillIds.has(String(summary.billId)),
@@ -925,33 +982,50 @@ export const getMyBills = async (req, res, next) => {
       .sort({ billingMonth: -1 })
       .lean();
 
+    const billResponses = await Promise.all(
+      bills.map(async (b) => {
+        const utilityBreakdowns = {};
+        if (Number(b.charges?.electricity || 0) > 0) {
+          utilityBreakdowns.electricity =
+            await buildTenantUtilityBreakdown({ dbUser, bill: b, utilityType: "electricity" });
+        }
+        if (Number(b.charges?.water || 0) > 0) {
+          utilityBreakdowns.water =
+            await buildTenantUtilityBreakdown({ dbUser, bill: b, utilityType: "water" });
+        }
+
+        return {
+          id: b._id,
+          billingMonth: b.billingMonth,
+          billingCycleStart: b.billingCycleStart,
+          billingCycleEnd: b.billingCycleEnd,
+          dueDate: b.dueDate,
+          issuedAt: b.issuedAt || b.sentAt || null,
+          utilityCycleStart: b.utilityCycleStart || null,
+          utilityCycleEnd: b.utilityCycleEnd || null,
+          utilityReadingDate: b.utilityReadingDate || null,
+          utilityPeriodId: null,
+          charges: b.charges,
+          totalAmount: b.totalAmount,
+          grossAmount: b.grossAmount ?? b.totalAmount,
+          reservationCreditApplied: b.reservationCreditApplied || 0,
+          paidAmount: b.paidAmount,
+          remainingAmount: b.remainingAmount ?? getBillRemainingAmount(b),
+          status: resolveBillStatus(b),
+          proRataDays: b.proRataDays,
+          isFirstCycleBill: !!b.isFirstCycleBill,
+          room: b.roomId?.name || "N/A",
+          branch: b.branch,
+          paymentProof: b.paymentProof || { verificationStatus: "none" },
+          penaltyDetails: b.penaltyDetails || { daysLate: 0 },
+          createdAt: b.createdAt,
+          utilityBreakdowns,
+        };
+      }),
+    );
+
     res.json({
-      bills: bills.map((b) => ({
-        id: b._id,
-        billingMonth: b.billingMonth,
-        billingCycleStart: b.billingCycleStart,
-        billingCycleEnd: b.billingCycleEnd,
-        dueDate: b.dueDate,
-        issuedAt: b.issuedAt || b.sentAt || null,
-        utilityCycleStart: b.utilityCycleStart || null,
-        utilityCycleEnd: b.utilityCycleEnd || null,
-        utilityReadingDate: b.utilityReadingDate || null,
-        utilityPeriodId: null,
-        charges: b.charges,
-        totalAmount: b.totalAmount,
-        grossAmount: b.grossAmount ?? b.totalAmount,
-        reservationCreditApplied: b.reservationCreditApplied || 0,
-        paidAmount: b.paidAmount,
-        remainingAmount: b.remainingAmount ?? getBillRemainingAmount(b),
-        status: resolveBillStatus(b),
-        proRataDays: b.proRataDays,
-        isFirstCycleBill: !!b.isFirstCycleBill,
-        room: b.roomId?.name || "N/A",
-        branch: b.branch,
-        paymentProof: b.paymentProof || { verificationStatus: "none" },
-        penaltyDetails: b.penaltyDetails || { daysLate: 0 },
-        createdAt: b.createdAt,
-      })),
+      bills: billResponses,
     });
   } catch (error) {
     next(error);
@@ -1570,64 +1644,12 @@ export const getMyUtilityBreakdownByBillId = async (req, res, next) => {
     const { dbUser, bill } = await getTenantBillForRequest(req, billId);
     if (!dbUser) return res.status(404).json({ error: "User not found" });
     if (!bill) return res.status(404).json({ error: "Bill not found" });
-
-    const chargeAmount = utilityType === "electricity"
-      ? Number(bill.charges?.electricity || 0)
-      : Number(bill.charges?.water || 0);
-    if (chargeAmount <= 0) {
-      return res.status(404).json({ error: `No ${utilityType} charges found for this bill` });
-    }
-
-    const period = await findUtilityPeriodForBill({ bill, utilityType });
-    if (!period) {
+    const breakdown = await buildTenantUtilityBreakdown({ dbUser, bill, utilityType });
+    if (!breakdown) {
       return res.status(404).json({ error: `No ${utilityType} breakdown found for this bill` });
     }
 
-    const tenantSummary =
-      (period.tenantSummaries || []).find((summary) => String(summary.billId) === String(bill._id)) ||
-      (period.tenantSummaries || []).find((summary) => String(summary.tenantId) === String(dbUser._id)) ||
-      null;
-
-    if (utilityType === "electricity") {
-      const activeSegments = (period.segments || []).filter((segment) =>
-        (segment.activeTenantIds || []).some((tenantId) => String(tenantId) === String(dbUser._id)),
-      );
-
-      return res.json({
-        period: {
-          id: period._id,
-          startDate: period.startDate,
-          endDate: period.endDate,
-        },
-        ratePerKwh: period.ratePerUnit,
-        myTotalKwh: tenantSummary?.totalUsage || 0,
-        myBillAmount: tenantSummary?.billAmount || chargeAmount,
-        segments: activeSegments.map((segment) => ({
-          periodLabel: segment.periodLabel,
-          startDate: segment.startDate,
-          endDate: segment.endDate,
-          readingFrom: segment.readingFrom,
-          readingTo: segment.readingTo,
-          activeTenantCount: segment.activeTenantCount,
-          sharePerTenantKwh: segment.sharePerTenantUnits,
-          sharePerTenantCost: segment.sharePerTenantCost,
-        })),
-      });
-    }
-
-    const firstSegment = (period.segments || [])[0] || null;
-    return res.json({
-      record: {
-        id: period._id,
-        cycleStart: period.startDate,
-        cycleEnd: period.endDate,
-        usage: period.computedTotalUsage || 0,
-        ratePerUnit: period.ratePerUnit,
-        roomTotal: period.computedTotalCost || 0,
-        tenantsSharing: firstSegment?.activeTenantCount || period.tenantSummaries?.length || 0,
-        myShare: tenantSummary?.billAmount || chargeAmount,
-      },
-    });
+    return res.json(breakdown);
   } catch (error) {
     next(error);
   }
@@ -1690,6 +1712,7 @@ export default {
   applyPenalties,
   getBillingReport,
   deleteBill,
+  getMyUtilityBreakdownByBillId,
   getRoomReadiness,
   publishRoomBills,
 };

@@ -812,7 +812,7 @@ function ElectricityHistory({ fmtCurrency }) {
       <div className="elec-history__list">
         {periods.map((period) => (
           <ElectricityPeriodRow
-            key={period.billingPeriodId || period.billingResultId}
+            key={period.id || period._id}
             period={period}
             fmtCurrency={fmtCurrency}
             fmtDate={fmtDate}
@@ -826,7 +826,10 @@ function ElectricityHistory({ fmtCurrency }) {
 
 function ElectricityPeriodRow({ period, fmtCurrency, fmtDate, fmtKwh }) {
   const [open, setOpen] = useState(false);
-  const { data, isLoading } = useMyBillBreakdown(open ? period.billingPeriodId : null);
+  const { data, isLoading } = useMyUtilityBreakdownByBillId(
+    "electricity",
+    open ? (period.id || period._id) : null,
+  );
 
   const mySegments = data
     ? data.segments || []

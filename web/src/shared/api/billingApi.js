@@ -22,6 +22,9 @@ export const billingApi = {
    */
   getMyBills: () => authFetch("/billing/my-bills"),
 
+  getMyUtilityBreakdownByBillId: (billId, utilityType) =>
+    authFetch(`/billing/${billId}/utility-breakdown/${utilityType}`),
+
   // ── Admin Endpoints ──
 
   /**

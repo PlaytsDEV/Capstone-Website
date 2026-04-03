@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { utilityApi } from "../../api/utilityApi.js";
+import { billingApi } from "../../api/billingApi.js";
 
 // Basic key generators
 export const utilityKeys = {
@@ -12,6 +13,7 @@ export const utilityKeys = {
   diagnostics: (branch) => ["utilities", "diagnostics", branch],
   myBills: (utilityType) => [...utilityKeys.all(utilityType), "myBills"],
   myBreakdown: (utilityType, periodId) => [...utilityKeys.all(utilityType), "myBreakdown", periodId],
+  myBillBreakdown: (utilityType, billId) => [...utilityKeys.all(utilityType), "myBillBreakdown", billId],
 };
 
 export function useUtilityRooms(utilityType, branch) {
@@ -65,7 +67,14 @@ export function useUtilityDiagnostics(branch) {
 export function useMyUtilityBills(utilityType) {
   return useQuery({
     queryKey: utilityKeys.myBills(utilityType),
-    queryFn: () => utilityApi.getMyUtilityBills?.(utilityType) || Promise.resolve({ bills: [] }),
+    queryFn: async () => {
+      const data = await billingApi.getMyBills();
+      const bills = data?.bills || [];
+      if (!utilityType) return { bills };
+      return {
+        bills: bills.filter((bill) => Number(bill?.charges?.[utilityType] || 0) > 0),
+      };
+    },
     enabled: !!utilityType,
   });
 }
@@ -75,6 +84,14 @@ export function useMyUtilityBreakdown(utilityType, periodId) {
     queryKey: utilityKeys.myBreakdown(utilityType, periodId),
     queryFn: () => utilityApi.getResult(utilityType, periodId), // Use getResult for breakdown fallback
     enabled: !!utilityType && !!periodId,
+  });
+}
+
+export function useMyUtilityBreakdownByBillId(utilityType, billId) {
+  return useQuery({
+    queryKey: utilityKeys.myBillBreakdown(utilityType, billId),
+    queryFn: () => billingApi.getMyUtilityBreakdownByBillId(billId, utilityType),
+    enabled: !!utilityType && !!billId,
   });
 }
 

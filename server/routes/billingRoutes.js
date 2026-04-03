@@ -57,6 +57,8 @@ router.get("/history", billingController.getBillingHistory);
  */
 router.get("/my-bills", billingController.getMyBills);
 
+router.get("/:billId/utility-breakdown/:utilityType", billingController.getMyUtilityBreakdownByBillId);
+
 /**
  * POST /api/billing/:billId/submit-proof
  * Tenant submits payment proof (image + amount)

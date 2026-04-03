@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { billingApi } from "../../../../shared/api/apiClient";
 import { formatPaymentMethod } from "../../../../shared/utils/formatPaymentMethod";
 import {
-  useMyUtilityBreakdown,
+  useMyUtilityBreakdownByBillId,
 } from "../../../../shared/hooks/queries/useUtility";
 import { showNotification } from "../../../../shared/utils/notification";
 import {
@@ -379,14 +379,85 @@ const ElectricitySegmentCard = ({ seg, ratePerKwh }) => {
   );
 };
 
+const ElectricityReferenceSegmentCard = ({ seg, ratePerKwh }) => {
+  const totalConsumption = Number(
+    seg.segmentTotalKwh ?? seg.kwhConsumed ?? ((seg.readingTo || 0) - (seg.readingFrom || 0)),
+  );
+
+  return (
+    <div style={elecS.referenceCard}>
+      <div style={elecS.referenceIntro}>Here are the details for your reference.</div>
+      <table style={elecS.referenceTable}>
+        <tbody>
+          <tr>
+            <td style={{ ...elecS.referenceLabelCell, ...elecS.referenceSectionCell }} colSpan={2}>
+              No. of occupants in the room:
+            </td>
+            <td style={{ ...elecS.referenceValueCell, ...elecS.referenceSectionCell }}>
+              {seg.activeTenantCount}
+            </td>
+          </tr>
+          <tr>
+            <td style={elecS.referenceSpacerCell} />
+            <td style={elecS.referenceHeaderCell}>Date</td>
+            <td style={elecS.referenceHeaderCell}>kWh</td>
+          </tr>
+          <tr>
+            <td style={elecS.referenceLabelCell}>1st reading</td>
+            <td style={elecS.referenceValueCell}>{fmtDateOnly(seg.startDate)}</td>
+            <td style={elecS.referenceValueCell}>
+              {Number(seg.readingFrom || 0).toLocaleString("en-PH", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </td>
+          </tr>
+          <tr>
+            <td style={elecS.referenceLabelCell}>2nd reading</td>
+            <td style={elecS.referenceValueCell}>{fmtDateOnly(seg.endDate)}</td>
+            <td style={elecS.referenceValueCell}>
+              {Number(seg.readingTo || 0).toLocaleString("en-PH", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </td>
+          </tr>
+          <tr>
+            <td style={{ ...elecS.referenceLabelCell, fontStyle: "italic" }}>Total consumption</td>
+            <td style={elecS.referenceValueCell} />
+            <td style={elecS.referenceValueCell}>
+              {totalConsumption.toLocaleString("en-PH", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </td>
+          </tr>
+          <tr>
+            <td style={elecS.referenceLabelCell} colSpan={2}>
+              Amount due (Php {Number(ratePerKwh || 0).toLocaleString("en-PH", {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 2,
+              })} / kwh) per person
+            </td>
+            <td style={{ ...elecS.referenceValueCell, fontWeight: 700 }}>
+              {fmt(seg.sharePerTenantCost)}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
 const ElectricityPeriodRow = ({ period }) => {
   const [open, setOpen] = useState(false);
-  const { data, isLoading } = useMyUtilityBreakdown(
+  const { data: fetchedData, isLoading } = useMyUtilityBreakdownByBillId(
     "electricity",
-    open ? (period.billingPeriodId || period.utilityPeriodId || period.id || period._id) : null,
+    open ? (period.id || period._id) : null,
   );
+  const data = period.utilityBreakdowns?.electricity || fetchedData;
   const electricityAmount = period.billAmount ?? period.charges?.electricity ?? 0;
-  const electricityKwh = period.totalKwh ?? period.totalUsage ?? null;
+  const electricityKwh = period.totalKwh ?? period.totalUsage ?? data?.myTotalKwh ?? null;
 
   return (
     <div style={{ ...s.billCard, borderColor: open ? "#fcd34d" : "var(--border-card)" }}>
@@ -421,7 +492,7 @@ const ElectricityPeriodRow = ({ period }) => {
                 <span>Total Due: <strong style={{ color: "#F59E0B" }}>{fmt(data.myBillAmount)}</strong></span>
               </div>
               {(data.segments || []).map((seg, i) => (
-                <ElectricitySegmentCard key={i} seg={seg} ratePerKwh={data.ratePerKwh} />
+                <ElectricityReferenceSegmentCard key={i} seg={seg} ratePerKwh={data.ratePerKwh} />
               ))}
             </div>
           ) : (
@@ -454,7 +525,8 @@ const ElectricityTabContent = ({ bills = [], isLoading = false }) => {
 
 const WaterPeriodRow = ({ period }) => {
   const [open, setOpen] = useState(false);
-  const { data, isLoading } = useMyUtilityBreakdown("water", open ? period.id || period._id : null);
+  const { data: fetchedData, isLoading } = useMyUtilityBreakdownByBillId("water", open ? period.id || period._id : null);
+  const data = period.utilityBreakdowns?.water || fetchedData;
   const record = data?.record;
 
   return (
@@ -993,6 +1065,54 @@ const elecS = {
     padding: "12px 0 16px",
     color: "#FF8C42",
     fontSize: 13,
+  },
+  referenceCard: {
+    background: "#fffdf7",
+    border: "1px solid #ead7bc",
+    borderRadius: 10,
+    padding: "12px",
+  },
+  referenceIntro: {
+    fontSize: 13,
+    color: "#334155",
+    marginBottom: 8,
+  },
+  referenceTable: {
+    width: "100%",
+    borderCollapse: "collapse",
+    tableLayout: "fixed",
+  },
+  referenceSectionCell: {
+    background: "#f7e3c8",
+    fontWeight: 700,
+  },
+  referenceHeaderCell: {
+    border: "1px solid #7c6b58",
+    background: "#f3f4f6",
+    color: "#1e293b",
+    fontSize: 12,
+    fontWeight: 700,
+    padding: "6px 8px",
+    textAlign: "center",
+  },
+  referenceSpacerCell: {
+    border: "1px solid #7c6b58",
+    background: "#f9fafb",
+    padding: "6px 8px",
+  },
+  referenceLabelCell: {
+    border: "1px solid #7c6b58",
+    color: "#1f2937",
+    fontSize: 13,
+    padding: "6px 8px",
+  },
+  referenceValueCell: {
+    border: "1px solid #7c6b58",
+    color: "#111827",
+    fontSize: 13,
+    padding: "6px 8px",
+    textAlign: "center",
+    fontVariantNumeric: "tabular-nums",
   },
   statChip: {
     background: "#f8fafc",
