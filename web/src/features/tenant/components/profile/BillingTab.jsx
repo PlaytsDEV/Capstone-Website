@@ -1,19 +1,29 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
-import { billingApi } from "../../../../shared/api/billingApi";
+import { useSearchParams } from "react-router-dom";
+import { billingApi } from "../../../../shared/api/apiClient";
 import { formatPaymentMethod } from "../../../../shared/utils/formatPaymentMethod";
 import {
-  Home,
+  useMyElectricityBills,
+  useMyBillBreakdown,
+} from "../../../../shared/hooks/queries/useElectricity";
+import { 
+  useMyWaterBills, 
+  useMyWaterBreakdown 
+} from "../../../../shared/hooks/queries/useWaterBilling";
+import { showNotification } from "../../../../shared/utils/notification";
+import {
   Zap,
   Droplets,
   CreditCard,
   ChevronDown,
   ChevronUp,
-  ExternalLink,
   AlertCircle,
   CheckCircle,
   Clock,
   Package,
+  Download,
+  Activity,
+  Home,
 } from "lucide-react";
 
 /* ── Helpers ───────────────────────────────────────── */
@@ -34,10 +44,34 @@ const fmtDate = (d) =>
     day: "numeric",
   });
 
-const fmtCycle = (bill) =>
-  bill?.billingCycleStart && bill?.billingCycleEnd
-    ? `${fmtDate(bill.billingCycleStart)} - ${fmtDate(bill.billingCycleEnd)}`
-    : null;
+const fmtShortDate = (d) =>
+  d
+    ? new Date(d).toLocaleDateString("en-PH", {
+        month: "short",
+        day: "numeric",
+      })
+    : "";
+
+const fmtDateOnly = (d) => {
+  if (!d) return "—";
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return d;
+  return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
+};
+
+const fmtCycle = (item) => {
+  if (item?.cycleText) return item.cycleText;
+  const start = item?.billingCycleStart || item?.startDate;
+  const end = item?.billingCycleEnd || item?.endDate;
+  if (start && end) return `${fmtDate(start)} - ${fmtDate(end)}`;
+  return null;
+};
+
+const fmtKwh = (n) =>
+  `${(n || 0).toLocaleString("en-PH", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 2,
+  })} kWh`;
 
 const STATUS_STYLES = {
   overdue: { bg: "#FEF2F2", color: "#DC2626", label: "Overdue" },
@@ -46,198 +80,232 @@ const STATUS_STYLES = {
   "partially-paid": { bg: "#EFF6FF", color: "#2563EB", label: "Partial" },
 };
 
-const CHARGE_ITEMS = [
-  { key: "rent", label: "Rent", icon: Home, color: "#0A1628" },
-  { key: "electricity", label: "Electricity", icon: Zap, color: "#F59E0B" },
-  { key: "water", label: "Water (room reading)", icon: Droplets, color: "#3B82F6" },
-  { key: "applianceFees", label: "Appliance Fee", icon: Package, color: "#8B5CF6" },
-];
+/* ── Dashboard Components ─────────────────────────── */
 
-/* ── Stat Card ─────────────────────────────────────── */
-
-const StatCard = ({ label, value, accent, icon: Icon }) => (
-  <div style={s.statCard}>
-    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-      <div
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: 8,
-          background: `${accent}14`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Icon size={16} color={accent} />
+const SplitDashboard = ({ unpaidRent, unpaidElec, unpaidWater, onPay, payingOnline }) => {
+  const unpaidUtilities = unpaidElec + unpaidWater;
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "20px", marginBottom: "24px" }}>
+      
+      {/* Rent Panel */}
+      <div style={dash.wrapper}>
+        <div style={dash.headerRow}>
+          <div>
+            <h2 style={{...dash.title, color: "#F57C00", display: "flex", gap: "6px", alignItems: "center"}}>
+              <Home size={16} /> Rent & Fees Balance
+            </h2>
+            <div style={dash.amount}>{fmt(unpaidRent)}</div>
+          </div>
+        </div>
+        {unpaidRent > 0 && (
+          <button
+            onClick={() => onPay("rent")}
+            disabled={payingOnline === "rent" || payingOnline === "all"}
+            style={{
+              ...dash.payBtn,
+              width: "100%",
+              opacity: payingOnline ? 0.6 : 1,
+              cursor: payingOnline ? "not-allowed" : "pointer",
+            }}
+          >
+            <CreditCard size={18} />
+            {payingOnline === "rent" ? "Processing..." : "Pay Rent Online"}
+          </button>
+        )}
       </div>
-      <span style={{ fontSize: 12, color: "#6B7280", fontWeight: 500 }}>{label}</span>
+
+      {/* Utilities Panel */}
+      <div style={dash.wrapper}>
+        <div style={dash.headerRow}>
+          <div>
+            <h2 style={{...dash.title, color: "#3B82F6", display: "flex", gap: "6px", alignItems: "center"}}>
+              <Activity size={16} /> Utilities Balance
+            </h2>
+            <div style={dash.amount}>{fmt(unpaidUtilities)}</div>
+          </div>
+        </div>
+        
+        {unpaidUtilities > 0 && (
+          <div style={{...dash.breakdownRow, marginBottom: "16px"}}>
+            <div style={dash.breakdownItem}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#64748b" }}>
+                <Zap size={14} color="#F59E0B" /> <span style={{ fontSize: 12, fontWeight: 500 }}>Electricity</span>
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-heading)" }}>{fmt(unpaidElec)}</div>
+            </div>
+            <div style={dash.divider} />
+            <div style={dash.breakdownItem}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#64748b" }}>
+                <Droplets size={14} color="#3B82F6" /> <span style={{ fontSize: 12, fontWeight: 500 }}>Water</span>
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-heading)" }}>{fmt(unpaidWater)}</div>
+            </div>
+          </div>
+        )}
+
+        {unpaidUtilities > 0 && (
+          <button
+            onClick={() => onPay("utilities")}
+            disabled={payingOnline === "utilities" || payingOnline === "all"}
+            style={{
+              ...dash.payBtn,
+              background: "linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)",
+              boxShadow: "0 4px 12px rgba(59, 130, 246, 0.3)",
+              width: "100%",
+              opacity: payingOnline ? 0.6 : 1,
+              cursor: payingOnline ? "not-allowed" : "pointer",
+            }}
+          >
+            <CreditCard size={18} />
+            {payingOnline === "utilities" ? "Processing..." : "Pay Utilities Online"}
+          </button>
+        )}
+      </div>
+
     </div>
-    <div style={{ fontSize: 22, fontWeight: 700, color: accent }}>{value}</div>
-  </div>
-);
+  );
+};
 
-/* ── Bill Card ─────────────────────────────────────── */
+/* ── Monthly Payment View ──────────────────────────── */
 
-const BillCard = ({ bill, onPay, payingOnline }) => {
+const MonthlyPaymentView = ({ bills, filter, setFilter }) => {
+  const unpaid = bills.filter((b) => (b.remainingAmount ?? b.totalAmount ?? 0) > 0);
+  const paid = bills.filter((b) => b.status === "paid");
+  const filtered = filter === "unpaid" ? unpaid : filter === "paid" ? paid : bills;
+
+  return (
+    <div>
+      <div style={s.filterRow}>
+        {["all", "unpaid", "paid"].map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            style={{
+              ...s.chip,
+              ...(filter === f ? s.chipActive : {}),
+            }}
+          >
+            {f === "all" ? "All Bills" : f === "unpaid" ? "Unpaid" : "Paid"}
+            {f === "unpaid" && unpaid.length > 0 && <span style={s.chipCount}>{unpaid.length}</span>}
+          </button>
+        ))}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div style={s.emptyState}>
+          <CreditCard size={40} color="#D1D5DB" />
+          <h3 style={{ fontSize: 15, fontWeight: 600, color: "#374151", margin: "16px 0 8px" }}>
+            No {filter} bills found
+          </h3>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {filtered.map((bill) => (
+            <MonthlyBillCard key={bill.id || bill._id} bill={bill} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const MonthlyBillCard = ({ bill }) => {
   const [open, setOpen] = useState((bill.remainingAmount ?? bill.totalAmount) > 0);
   const status = STATUS_STYLES[bill.status] || STATUS_STYLES.pending;
   const charges = bill.charges || {};
-  const isUnpaid = (bill.remainingAmount ?? bill.totalAmount ?? 0) > 0;
+
+  // Compute the strictly Rent-focused total for this separated tab
+  const rentBase = (charges.rent || 0) + (charges.applianceFees || 0);
+  let rentOnlyTotal = rentBase + (charges.penalty || 0) - (charges.discount || 0);
+  if (bill.grossAmount > 0) {
+    rentOnlyTotal -= (bill.reservationCreditApplied || 0);
+  }
+  // Floor it at 0 just in case
+  if (rentOnlyTotal < 0) rentOnlyTotal = 0;
 
   return (
-    <div style={{ ...s.billCard, borderLeft: `3px solid ${status.color}` }}>
-      {/* Header row */}
+    <div style={{ ...s.billCard, borderColor: open ? "#cbd5e1" : "var(--border-card)" }}>
       <button onClick={() => setOpen(!open)} style={s.billHeader}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 15, fontWeight: 600, color: "#0A1628" }}>
+        <Package size={16} color="#64748b" />
+        <div style={{ flex: 1, marginLeft: 10, textAlign: "left" }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-heading)" }}>
             {fmtMonth(bill.billingMonth)}
           </div>
-          <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 2 }}>
-            Due: {bill.dueDate ? fmtDate(bill.dueDate) : "—"}
+          <div style={{ fontSize: 12, color: "#94a3b8" }}>
+            Cycle: {fmtCycle(bill) || "—"}
           </div>
-          {fmtCycle(bill) && (
-            <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 2 }}>
-              Cycle: {fmtCycle(bill)}
-            </div>
-          )}
         </div>
-        <span
-          style={{
-            ...s.badge,
-            background: status.bg,
-            color: status.color,
-          }}
-        >
-          {status.label}
-        </span>
-        <span style={{ fontSize: 17, fontWeight: 700, color: "#0A1628", marginLeft: 12 }}>
-          {fmt(bill.remainingAmount ?? bill.totalAmount)}
-        </span>
-        {open ? (
-          <ChevronUp size={16} color="#9CA3AF" style={{ marginLeft: 8 }} />
-        ) : (
-          <ChevronDown size={16} color="#9CA3AF" style={{ marginLeft: 8 }} />
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: status.color, textTransform: "uppercase" }}>
+            {status.label}
+          </span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-heading)" }}>
+            {fmt(rentOnlyTotal)}
+          </span>
+        </div>
+        {open ? <ChevronUp size={16} color="#94a3b8" style={{ marginLeft: 8 }} /> : <ChevronDown size={16} color="#94a3b8" style={{ marginLeft: 8 }} />}
       </button>
 
-      {/* Expanded breakdown */}
       {open && (
         <div style={s.breakdown}>
-          {CHARGE_ITEMS.map(({ key, label, icon: Icon, color }) => {
-            const amount = charges[key];
-            if (!amount) return null;
-            return (
-              <div key={key} style={s.chargeRow}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <Icon size={14} color={color} />
-                  <span style={{ color: "#4B5563", fontSize: 13 }}>{label}</span>
-                </div>
-                <span style={{ color: "#0A1628", fontSize: 13, fontWeight: 500 }}>
-                  {fmt(amount)}
+          <div style={{ ...elecS.segmentCard, marginBottom: 16 }}>
+            <div style={elecS.segmentHeader}>
+              <span>Statement Breakdown</span>
+              <span style={{ fontWeight: 700 }}>{fmtMonth(bill.billingMonth)}</span>
+            </div>
+            <div style={{ padding: "0 16px" }}>
+              <div style={elecS.tableHeader}>
+                <span style={{ ...elecS.tableHeaderCell, gridColumn: "span 2" }}>charge type</span>
+                <span style={{ ...elecS.tableHeaderCell, textAlign: "right" }}>amount</span>
+              </div>
+              <div style={elecS.tableRow2}>
+                <span style={elecS.tableCell2}>Rent & Fees</span>
+                <span style={{ ...elecS.tableCell2, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                  {fmt(rentBase)}
                 </span>
               </div>
-            );
-          })}
-
-          {/* Additional charges */}
-          {(bill.additionalCharges || []).map((ch, i) => (
-            <div key={i} style={s.chargeRow}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <CreditCard size={14} color="#6B7280" />
-                <span style={{ color: "#4B5563", fontSize: 13 }}>{ch.name}</span>
-              </div>
-              <span style={{ color: "#0A1628", fontSize: 13, fontWeight: 500 }}>
-                {fmt(ch.amount)}
-              </span>
-            </div>
-          ))}
-
-          {/* Penalty */}
-          {charges.penalty > 0 && (
-            <div style={s.chargeRow}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <AlertCircle size={14} color="#DC2626" />
-                <span style={{ color: "#DC2626", fontSize: 13 }}>Late Penalty</span>
-              </div>
-              <span style={{ color: "#DC2626", fontSize: 13, fontWeight: 500 }}>
-                {fmt(charges.penalty)}
-              </span>
-            </div>
-          )}
-
-          {/* Discount */}
-          {charges.discount > 0 && (
-            <div style={s.chargeRow}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <CheckCircle size={14} color="#059669" />
-                <span style={{ color: "#059669", fontSize: 13 }}>Discount</span>
-              </div>
-              <span style={{ color: "#059669", fontSize: 13, fontWeight: 500 }}>
-                −{fmt(charges.discount)}
-              </span>
-            </div>
-          )}
-
-          {bill.grossAmount > 0 && bill.reservationCreditApplied > 0 && (
-            <>
-              <div style={s.chargeRow}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <Package size={14} color="#0A1628" />
-                  <span style={{ color: "#4B5563", fontSize: 13 }}>Gross Charges</span>
+              
+              {charges.penalty > 0 && (
+                <div style={elecS.tableRow2}>
+                  <span style={{ ...elecS.tableCell2, color: "#DC2626" }}>Late Penalty</span>
+                  <span style={{ ...elecS.tableCell2, color: "#DC2626", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                    {fmt(charges.penalty)}
+                  </span>
                 </div>
-                <span style={{ color: "#0A1628", fontSize: 13, fontWeight: 500 }}>
-                  {fmt(bill.grossAmount)}
-                </span>
-              </div>
-              <div style={s.chargeRow}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <CheckCircle size={14} color="#059669" />
-                  <span style={{ color: "#059669", fontSize: 13 }}>Reservation Credit Applied</span>
+              )}
+              {charges.discount > 0 && (
+                <div style={elecS.tableRow2}>
+                  <span style={{ ...elecS.tableCell2, color: "#059669" }}>Discount</span>
+                  <span style={{ ...elecS.tableCell2, color: "#059669", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                    -{fmt(charges.discount)}
+                  </span>
                 </div>
-                <span style={{ color: "#059669", fontSize: 13, fontWeight: 500 }}>
-                  -{fmt(bill.reservationCreditApplied)}
-                </span>
+              )}
+              {bill.grossAmount > 0 && bill.reservationCreditApplied > 0 && (
+                <div style={elecS.tableRow2}>
+                  <span style={{ ...elecS.tableCell2, color: "#059669" }}>Reservation Credit Applied</span>
+                  <span style={{ ...elecS.tableCell2, color: "#059669", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                    -{fmt(bill.reservationCreditApplied)}
+                  </span>
+                </div>
+              )}
+              <div style={elecS.segmentFooter}>
+                <span>Monthly Rent Due</span>
+                <span style={{ fontSize: 14, fontWeight: 700 }}>{fmt(rentOnlyTotal)}</span>
               </div>
-            </>
-          )}
-
-          {/* Total divider */}
-          <div style={s.totalRow}>
-            <span style={{ fontWeight: 700, color: "#0A1628", fontSize: 14 }}>Net Due</span>
-            <span style={{ fontWeight: 700, color: "#0A1628", fontSize: 16 }}>
-              {fmt(bill.totalAmount)}
-            </span>
+            </div>
           </div>
 
-          {(bill.remainingAmount ?? 0) > 0 && (
-            <div style={s.chargeRow}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <AlertCircle size={14} color="#E8734A" />
-                <span style={{ color: "#4B5563", fontSize: 13 }}>Remaining Balance</span>
-              </div>
-              <span style={{ color: "#0A1628", fontSize: 13, fontWeight: 600 }}>
-                {fmt(bill.remainingAmount)}
-              </span>
-            </div>
-          )}
+          <button
+            style={s.downloadBtn}
+            onClick={async () => {
+              const { generateBillingPDF } = await import("../../../../shared/utils/pdfUtils");
+              generateBillingPDF(bill);
+            }}
+          >
+            <Download size={13} /> Download Statement
+          </button>
 
-          {/* Pay button for unpaid */}
-          {isUnpaid && (
-            <button
-              onClick={() => onPay(bill.id || bill._id)}
-              disabled={payingOnline}
-              style={{
-                ...s.payBtn,
-                opacity: payingOnline ? 0.6 : 1,
-                cursor: payingOnline ? "not-allowed" : "pointer",
-              }}
-            >
-              {payingOnline ? "Processing..." : "Pay Now →"}
-            </button>
-          )}
-
-          {/* Payment info for paid */}
           {bill.status === "paid" && bill.paymentDate && (
             <div style={s.paidInfo}>
               <CheckCircle size={14} color="#059669" />
@@ -253,14 +321,257 @@ const BillCard = ({ bill, onPay, payingOnline }) => {
   );
 };
 
+/* ── Electricity Tab (Detailed Breakdown) ──────────── */
+
+const ElectricitySegmentCard = ({ seg, ratePerKwh }) => {
+  const sDateStr = seg.startDate ? seg.startDate : seg.periodLabel ? seg.periodLabel.split(/[-–]/)[0].trim() : "";
+  const eDateStr = seg.endDate ? seg.endDate : seg.periodLabel ? seg.periodLabel.split(/[-–]/)[1]?.trim() : "";
+
+  return (
+    <div style={{ backgroundColor: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden", marginBottom: 16 }}>
+      {/* Occupants Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", backgroundColor: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
+        <span style={{ fontSize: 13, fontWeight: 500, color: "#475569" }}>
+          No. of occupants in the room
+        </span>
+        <span style={{ backgroundColor: "#ffedd5", color: "#ea580c", padding: "4px 12px", borderRadius: 999, fontSize: 13, fontWeight: 700 }}>
+          {seg.activeTenantCount}
+        </span>
+      </div>
+
+      {/* Table Data */}
+      <div style={{ padding: "8px 16px" }}>
+        {/* Readings */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px dashed #e2e8f0" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={{ fontSize: 13, fontWeight: 500, color: "#334155" }}>1st reading</span>
+            <span style={{ fontSize: 12, color: "#94a3b8" }}>{fmtDateOnly(sDateStr)}</span>
+          </div>
+          <span style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontVariantNumeric: "tabular-nums" }}>
+            {(seg.readingFrom || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })} <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 400 }}>kWh</span>
+          </span>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px dashed #e2e8f0" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={{ fontSize: 13, fontWeight: 500, color: "#334155" }}>2nd reading</span>
+            <span style={{ fontSize: 12, color: "#94a3b8" }}>{fmtDateOnly(eDateStr)}</span>
+          </div>
+          <span style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", fontVariantNumeric: "tabular-nums" }}>
+            {(seg.readingTo || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })} <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 400 }}>kWh</span>
+          </span>
+        </div>
+
+        {/* Total Consumption */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0" }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Total consumption</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: "#0f172a", fontVariantNumeric: "tabular-nums" }}>
+            {(seg.kwhConsumed || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })} <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 500 }}>kWh</span>
+          </span>
+        </div>
+      </div>
+
+      {/* Amount Due Footer */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px", backgroundColor: "#0f172a" }}>
+        <span style={{ fontSize: 13, fontWeight: 500, color: "#94a3b8" }}>
+          Amount due (₱{ratePerKwh}/kWh) per person
+        </span>
+        <span style={{ fontSize: 16, fontWeight: 700, color: "#f59e0b", fontVariantNumeric: "tabular-nums" }}>
+          {fmt(seg.sharePerTenantCost)}
+        </span>
+      </div>
+    </div>
+  );
+};
+
+const ElectricityPeriodRow = ({ period }) => {
+  const [open, setOpen] = useState(false);
+  const { data, isLoading } = useMyBillBreakdown(open ? period.billingPeriodId : null);
+
+  return (
+    <div style={{ ...s.billCard, borderColor: open ? "#fcd34d" : "var(--border-card)" }}>
+      <button onClick={() => setOpen((v) => !v)} style={s.billHeader}>
+        <Zap size={16} color="#F59E0B" />
+        <div style={{ flex: 1, marginLeft: 10, textAlign: "left" }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-heading)" }}>
+            {fmtMonth(period.billingMonth || period.endDate || period.computedAt)}
+          </div>
+          <div style={{ fontSize: 12, color: "#94a3b8" }}>
+            Cycle: {fmtCycle(period) || "—"}
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <span style={{ fontSize: 13, color: "#64748b" }}>{fmtKwh(period.totalKwh)}</span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-heading)" }}>{fmt(period.billAmount)}</span>
+        </div>
+        {open ? <ChevronUp size={16} color="#94a3b8" style={{ marginLeft: 8 }} /> : <ChevronDown size={16} color="#94a3b8" style={{ marginLeft: 8 }} />}
+      </button>
+
+      {open && (
+        <div style={s.breakdown}>
+          {isLoading ? (
+            <div style={elecS.loadingRow}><Activity size={14} /> Loading breakdown...</div>
+          ) : data ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ display: "flex", gap: 16, fontSize: 13, color: "#64748b", padding: "4px 0" }}>
+                <span>Rate: <strong style={{ color: "var(--text-heading)" }}>₱{data.ratePerKwh}/kWh</strong></span>
+                <span>Your Share: <strong style={{ color: "var(--text-heading)" }}>{fmtKwh(data.myTotalKwh)}</strong></span>
+                <span>Total Due: <strong style={{ color: "#F59E0B" }}>{fmt(data.myBillAmount)}</strong></span>
+              </div>
+              {(data.segments || []).map((seg, i) => (
+                <ElectricitySegmentCard key={i} seg={seg} ratePerKwh={data.ratePerKwh} />
+              ))}
+            </div>
+          ) : (
+            <div style={elecS.loadingRow}>Details not available.</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ElectricityTabContent = () => {
+  const { data, isLoading } = useMyElectricityBills();
+  const periods = data?.bills || [];
+
+  if (isLoading) return <div style={elecS.loadingRow}>Loading electricity history...</div>;
+  if (!periods.length) return <div style={s.emptyState}>No electricity history found.</div>;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {periods.map((p) => (
+        <ElectricityPeriodRow key={p.billingPeriodId || p.billingResultId} period={p} />
+      ))}
+    </div>
+  );
+};
+
+/* ── Water Tab (Detailed Breakdown) ────────────────── */
+
+const WaterPeriodRow = ({ period }) => {
+  const [open, setOpen] = useState(false);
+  const { data, isLoading } = useMyWaterBreakdown(open ? period.id || period._id : null);
+  const record = data?.record;
+
+  return (
+    <div style={{ ...s.billCard, borderColor: open ? "#93c5fd" : "var(--border-card)" }}>
+      <button onClick={() => setOpen((v) => !v)} style={s.billHeader}>
+        <Droplets size={16} color="#3B82F6" />
+        <div style={{ flex: 1, marginLeft: 10, textAlign: "left" }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-heading)" }}>
+            {fmtMonth(period.billingMonth || period.endDate || period.createdAt)}
+          </div>
+          <div style={{ fontSize: 12, color: "#94a3b8" }}>
+            Cycle: {fmtCycle(period) || "—"}
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <span style={{ fontSize: 13, color: "#64748b" }}>{period.myShare ? "Billed" : "Pending"}</span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-heading)" }}>{fmt(period.myShare || period.billAmount || 0)}</span>
+        </div>
+        {open ? <ChevronUp size={16} color="#94a3b8" style={{ marginLeft: 8 }} /> : <ChevronDown size={16} color="#94a3b8" style={{ marginLeft: 8 }} />}
+      </button>
+
+      {open && (
+        <div style={s.breakdown}>
+          {isLoading ? (
+            <div style={elecS.loadingRow}><Activity size={14} /> Loading breakdown...</div>
+          ) : record ? (
+            <div style={elecS.segmentCard}>
+              <div style={elecS.segmentHeader}>
+                <span>Occupants sharing:</span>
+                <span style={{ fontWeight: 700 }}>{record.tenantsSharing}</span>
+              </div>
+              <div style={{ padding: "0 16px" }}>
+                <div style={elecS.tableHeader}>
+                  <span style={{ ...elecS.tableHeaderCell, gridColumn: "span 2" }}>metric</span>
+                  <span style={{ ...elecS.tableHeaderCell, textAlign: "right" }}>value</span>
+                </div>
+                <div style={elecS.tableRow2}>
+                  <span style={elecS.tableCell2}>Total Room Usage</span>
+                  <span style={{ ...elecS.tableCell2, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                    {Number(record.usage || 0).toLocaleString("en-PH", { maximumFractionDigits: 2 })} units
+                  </span>
+                </div>
+                <div style={elecS.tableRow2}>
+                  <span style={elecS.tableCell2}>Rate per Unit</span>
+                  <span style={{ ...elecS.tableCell2, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                    {fmt(record.ratePerUnit)}
+                  </span>
+                </div>
+                <div style={{ ...elecS.tableRow2, borderBottom: "none" }}>
+                  <span style={{ ...elecS.tableCell2, color: "#0A1628", fontWeight: 600 }}>Total Room Cost</span>
+                  <span style={{ ...elecS.tableCell2, textAlign: "right", color: "#0A1628", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+                    {fmt(record.roomTotal)}
+                  </span>
+                </div>
+                <div style={{ ...elecS.segmentFooter, borderTop: "1px solid #f1f5f9", marginTop: 4 }}>
+                  <span>Your share (split among {record.tenantsSharing})</span>
+                  <span style={{ fontSize: 14, fontWeight: 700 }}>{fmt(record.myShare)}</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={elecS.loadingRow}>Details not available.</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const WaterTabContent = () => {
+  const { data, isLoading } = useMyWaterBills();
+  const periods = data?.bills || [];
+
+  if (isLoading) return <div style={elecS.loadingRow}>Loading water history...</div>;
+  if (!periods.length) return <div style={s.emptyState}>No water history found.</div>;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {periods.map((p) => (
+        <WaterPeriodRow key={p.id || p._id || p.billingPeriodId} period={p} />
+      ))}
+    </div>
+  );
+};
+
 /* ── Main Component ────────────────────────────────── */
 
 const BillingTab = () => {
-  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [bills, setBills] = useState([]);
-  const [payingOnline, setPayingOnline] = useState(false);
+  const [subTab, setSubTab] = useState("monthly"); // monthly | electricity | water
   const [filter, setFilter] = useState("all");
+  const [payingOnline, setPayingOnline] = useState(false);
+
+  // Handle PayMongo return
+  useEffect(() => {
+    const paymentStatus = searchParams.get("payment");
+    const sessionId = searchParams.get("session_id");
+
+    if (paymentStatus === "success" && sessionId) {
+      billingApi
+        .checkPaymentStatus(sessionId)
+        .then((result) => {
+          if (result.status === "paid") {
+            showNotification("Payment successful! Your bill has been paid.", "success", 5000);
+            loadBills();
+          } else {
+            showNotification("Payment is being processed.", "info", 5000);
+          }
+        })
+        .catch(() => {
+          showNotification("Could not verify payment. Please refresh.", "warning", 5000);
+        });
+      setSearchParams({}, { replace: true });
+    } else if (paymentStatus === "cancelled") {
+      showNotification("Payment was cancelled.", "info", 3000);
+      setSearchParams({}, { replace: true });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadBills = useCallback(async () => {
     try {
@@ -268,7 +579,7 @@ const BillingTab = () => {
       const data = await billingApi.getMyBills();
       setBills(data.bills || []);
     } catch {
-      // Silently fail — tenant may not have bills yet
+      // Silently fail
     } finally {
       setLoading(false);
     }
@@ -278,177 +589,238 @@ const BillingTab = () => {
     loadBills();
   }, [loadBills]);
 
-  const handlePay = async (billId) => {
+  const unpaidRent = bills.reduce(
+    (sum, b) => {
+      const r = b.charges?.rent || 0;
+      const a = b.charges?.applianceFees || 0;
+      const isRentBill = r > 0 || (r === 0 && a > 0 && (b.charges?.electricity || 0) === 0 && (b.charges?.water || 0) === 0);
+      
+      if (isRentBill && ((b.remainingAmount ?? b.totalAmount ?? 0) > 0 || b.status === "pending" || b.status === "overdue" || b.status === "partially-paid")) {
+        return sum + (b.remainingAmount ?? b.totalAmount);
+      }
+      return sum;
+    },
+    0,
+  );
+
+  const unpaidElec = bills.reduce(
+    (sum, b) => {
+      const e = b.charges?.electricity || 0;
+      if (e > 0 && ((b.remainingAmount ?? b.totalAmount ?? 0) > 0 || b.status === "pending" || b.status === "overdue" || b.status === "partially-paid")) {
+        return sum + (b.remainingAmount ?? b.totalAmount);
+      }
+      return sum;
+    },
+    0,
+  );
+
+  const unpaidWater = bills.reduce(
+    (sum, b) => {
+      const w = b.charges?.water || 0;
+      if (w > 0 && ((b.remainingAmount ?? b.totalAmount ?? 0) > 0 || b.status === "pending" || b.status === "overdue" || b.status === "partially-paid")) {
+        return sum + (b.remainingAmount ?? b.totalAmount);
+      }
+      return sum;
+    },
+    0,
+  );
+
+  const handlePay = async (type = "all") => {
     try {
-      setPayingOnline(true);
-      const { checkoutUrl } = await billingApi.createCheckout(billId);
+      setPayingOnline(type);
+      
+      let billsToPay = [];
+      if (type === "rent") {
+        billsToPay = bills.filter(b => 
+          (b.remainingAmount > 0 || b.status === "pending" || b.status === "overdue") &&
+          ((b.charges?.rent || 0) > 0 || ((b.charges?.applianceFees || 0) > 0 && !b.charges?.electricity && !b.charges?.water))
+        );
+      } else if (type === "utilities") {
+        billsToPay = bills.filter(b => 
+          (b.remainingAmount > 0 || b.status === "pending" || b.status === "overdue") &&
+          ((b.charges?.electricity || 0) > 0 || (b.charges?.water || 0) > 0)
+        );
+      } else {
+        billsToPay = bills.filter((b) => b.remainingAmount > 0 || b.status === "pending" || b.status === "overdue");
+      }
+
+      if (billsToPay.length === 0) {
+        showNotification("No unpaid bills in this category.", "info");
+        setPayingOnline(null);
+        return;
+      }
+
+      const firstUnpaid = billsToPay.sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt))[0];
+      const { checkoutUrl } = await billingApi.createCheckout(firstUnpaid.id || firstUnpaid._id);
       window.location.href = checkoutUrl;
     } catch (err) {
       console.error("Checkout error:", err);
-      setPayingOnline(false);
+      showNotification(err.message || "Failed to start online payment.", "error", 3000);
+      setPayingOnline(null);
     }
   };
 
-  /* ── Computed values ── */
-  const unpaid = bills.filter((b) => (b.remainingAmount ?? b.totalAmount ?? 0) > 0);
-  const paid = bills.filter((b) => b.status === "paid");
-  const totalOutstanding = unpaid.reduce(
-    (sum, b) => sum + (b.remainingAmount ?? b.totalAmount ?? 0),
-    0,
-  );
-  const totalPaid = paid.reduce((sum, b) => sum + (b.paidAmount || b.totalAmount || 0), 0);
-
-  const filtered =
-    filter === "unpaid" ? unpaid : filter === "paid" ? paid : bills;
-
-  /* ── Loading skeleton ── */
   if (loading) {
     return (
       <div style={{ width: "100%" }}>
-        <div style={s.heading}>
-          <h1 style={s.title}>My Bills</h1>
-          <p style={s.subtitle}>Loading your billing information...</p>
-        </div>
-        {[1, 2, 3].map((i) => (
-          <div
-            key={i}
-            style={{
-              ...s.billCard,
-              height: 72,
-              background: "#F3F4F6",
-              animation: "pulse 1.5s ease-in-out infinite",
-            }}
-          />
-        ))}
-      </div>
-    );
-  }
-
-  /* ── Empty state ── */
-  if (bills.length === 0) {
-    return (
-      <div style={{ width: "100%" }}>
-        <div style={s.heading}>
-          <h1 style={s.title}>My Bills</h1>
-          <p style={s.subtitle}>Track your monthly charges and payments</p>
-        </div>
-        <div style={s.emptyState}>
-          <CreditCard size={48} color="#D1D5DB" />
-          <h3 style={{ fontSize: 16, fontWeight: 600, color: "#374151", margin: "16px 0 8px" }}>
-            No bills yet
-          </h3>
-          <p style={{ fontSize: 13, color: "#9CA3AF", maxWidth: 280 }}>
-            Your monthly bills will appear here once you're checked in as a tenant.
-          </p>
-        </div>
+         <div style={dash.wrapper}><Activity size={24} style={{ animation: "spin 2s linear infinite" }} /></div>
       </div>
     );
   }
 
   return (
     <div style={{ width: "100%" }}>
-      {/* Header */}
-      <div style={s.heading}>
-        <h1 style={s.title}>My Bills</h1>
-        <p style={s.subtitle}>Track your monthly charges and payments</p>
-      </div>
+      {/* 1. Top Dashboard */}
+      <SplitDashboard
+        unpaidRent={unpaidRent}
+        unpaidElec={unpaidElec}
+        unpaidWater={unpaidWater}
+        onPay={handlePay}
+        payingOnline={payingOnline}
+      />
 
-      {/* Stats */}
-      <div style={s.statsRow}>
-        <StatCard
-          label="Outstanding"
-          value={fmt(totalOutstanding)}
-          accent={totalOutstanding > 0 ? "#E8734A" : "#059669"}
-          icon={AlertCircle}
-        />
-        <StatCard
-          label="Unpaid Bills"
-          value={unpaid.length}
-          accent="#FF8C42"
-          icon={Clock}
-        />
-        <StatCard
-          label="Total Paid"
-          value={fmt(totalPaid)}
-          accent="#059669"
-          icon={CheckCircle}
-        />
-      </div>
-
-      {/* Filter chips */}
-      <div style={s.filterRow}>
-        {["all", "unpaid", "paid"].map((f) => (
+      {/* 2. Embedded Sub-Tabs */}
+      <div style={nav.container}>
+        <div style={nav.pillBg}>
           <button
-            key={f}
-            onClick={() => setFilter(f)}
-            style={{
-              ...s.chip,
-              ...(filter === f ? s.chipActive : {}),
-            }}
+            style={subTab === "monthly" ? nav.tabActive : nav.tab}
+            onClick={() => setSubTab("monthly")}
           >
-            {f === "all" ? "All" : f === "unpaid" ? "Unpaid" : "Paid"}
-            {f === "unpaid" && unpaid.length > 0 && (
-              <span style={s.chipCount}>{unpaid.length}</span>
-            )}
+            Monthly Payment
           </button>
-        ))}
-      </div>
-
-      {/* Bill cards */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {filtered.map((bill) => (
-          <BillCard
-            key={bill._id}
-            bill={bill}
-            onPay={handlePay}
-            payingOnline={payingOnline}
-          />
-        ))}
-      </div>
-
-      {filtered.length === 0 && (
-        <div style={{ ...s.emptyState, padding: 32 }}>
-          <p style={{ fontSize: 13, color: "#9CA3AF" }}>
-            No {filter} bills to show.
-          </p>
+          <button
+            style={subTab === "electricity" ? nav.tabActive : nav.tab}
+            onClick={() => setSubTab("electricity")}
+          >
+            Electricity
+          </button>
+          <button
+            style={subTab === "water" ? nav.tabActive : nav.tab}
+            onClick={() => setSubTab("water")}
+          >
+            Water
+          </button>
         </div>
-      )}
+      </div>
 
-      {/* Link to full billing page */}
-      <button
-        onClick={() => navigate("/applicant/billing")}
-        style={s.viewAllLink}
-      >
-        View full billing page <ExternalLink size={13} />
-      </button>
+      {/* 3. Content */}
+      <div style={{ minHeight: 400 }}>
+        {subTab === "monthly" && <MonthlyPaymentView bills={bills} filter={filter} setFilter={setFilter} />}
+        {subTab === "electricity" && <ElectricityTabContent />}
+        {subTab === "water" && <WaterTabContent />}
+      </div>
     </div>
   );
 };
 
 /* ── Styles ─────────────────────────────────────────── */
-const s = {
-  heading: { marginBottom: 24 },
-  title: { fontSize: 22, fontWeight: 700, color: "var(--text-heading)", margin: 0 },
-  subtitle: { fontSize: 13, color: "var(--text-muted)", marginTop: 4 },
 
-  statsRow: {
-    display: "grid",
-    gridTemplateColumns: "repeat(3, 1fr)",
-    gap: 12,
+const dash = {
+  wrapper: {
+    background: "#fff",
+    borderRadius: 16,
+    border: "1px solid #e2e8f0",
+    padding: "24px",
+    boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
+  },
+  headerRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 20,
   },
-  statCard: {
-    background: "var(--surface-card)",
-    borderRadius: 10,
-    border: "1px solid var(--border-card)",
-    padding: "16px 18px",
+  title: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: "#64748b",
+    margin: "0 0 4px",
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
   },
-
-  filterRow: {
-    display: "flex",
+  amount: {
+    fontSize: 32,
+    fontWeight: 800,
+    color: "#0A1628",
+    lineHeight: 1,
+  },
+  payBtn: {
+    display: "inline-flex",
+    alignItems: "center",
     gap: 8,
-    marginBottom: 16,
+    background: "linear-gradient(135deg, #FF8C42 0%, #F57C00 100%)",
+    color: "#fff",
+    border: "none",
+    borderRadius: 8,
+    padding: "12px 24px",
+    fontSize: 14,
+    fontWeight: 700,
+    boxShadow: "0 4px 12px rgba(255, 140, 66, 0.3)",
+    transition: "transform 0.1s, box-shadow 0.1s",
   },
+  breakdownRow: {
+    display: "flex",
+    alignItems: "center",
+    background: "#f8fafc",
+    borderRadius: 10,
+    padding: "16px",
+    border: "1px solid #f1f5f9",
+  },
+  breakdownItem: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+  },
+  divider: {
+    width: 1,
+    height: 30,
+    background: "#e2e8f0",
+    margin: "0 24px",
+  },
+};
+
+const nav = {
+  container: {
+    marginBottom: 24,
+    display: "flex",
+    justifyContent: "flex-start",
+  },
+  pillBg: {
+    display: "flex",
+    background: "#f1f5f9",
+    padding: 4,
+    borderRadius: 30,
+    gap: 4,
+  },
+  tab: {
+    padding: "8px 20px",
+    borderRadius: 24,
+    border: "none",
+    background: "transparent",
+    color: "#64748b",
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: "pointer",
+    transition: "all 0.2s ease",
+  },
+  tabActive: {
+    padding: "8px 20px",
+    borderRadius: 24,
+    border: "none",
+    background: "#fff",
+    color: "#0A1628",
+    fontSize: 14,
+    fontWeight: 700,
+    boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
+    cursor: "default",
+  },
+};
+
+const s = {
+  filterRow: { display: "flex", gap: 8, marginBottom: 16 },
   chip: {
     display: "inline-flex",
     alignItems: "center",
@@ -456,7 +828,7 @@ const s = {
     padding: "6px 14px",
     borderRadius: 20,
     border: "1px solid #E5E7EB",
-    background: "var(--surface-card)",
+    background: "#fff",
     color: "var(--text-secondary)",
     fontSize: 13,
     fontWeight: 500,
@@ -464,12 +836,12 @@ const s = {
     transition: "all 0.15s",
   },
   chipActive: {
-    background: "#FF8C42",
+    background: "#0A1628",
     color: "#fff",
-    border: "1px solid #FF8C42",
+    border: "1px solid #0A1628",
   },
   chipCount: {
-    background: "rgba(255,255,255,0.25)",
+    background: "rgba(255,255,255,0.2)",
     padding: "1px 7px",
     borderRadius: 10,
     fontSize: 11,
@@ -477,99 +849,151 @@ const s = {
   },
 
   billCard: {
-    background: "var(--surface-card)",
-    borderRadius: 10,
-    border: "1px solid var(--border-card)",
+    background: "#fff",
+    borderRadius: 12,
+    border: "1px solid #e2e8f0",
     overflow: "hidden",
+    boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
+    transition: "border-color 0.2s ease",
   },
   billHeader: {
     display: "flex",
     alignItems: "center",
     width: "100%",
-    padding: "14px 18px",
+    padding: "16px 20px",
     background: "none",
     border: "none",
     cursor: "pointer",
     textAlign: "left",
+    fontFamily: "inherit",
   },
   badge: {
-    padding: "3px 10px",
+    padding: "4px 12px",
     borderRadius: 20,
     fontSize: 11,
-    fontWeight: 600,
+    fontWeight: 700,
     textTransform: "uppercase",
     letterSpacing: "0.02em",
   },
 
-  breakdown: {
-    padding: "0 18px 16px",
-    borderTop: "1px solid var(--border-divider)",
-  },
+  breakdown: { padding: "0 20px 20px", borderTop: "1px solid #f1f5f9" },
   chargeRow: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: "10px 0",
-    borderBottom: "1px solid var(--border-divider)",
+    padding: "12px 0 0",
+    fontSize: 14,
+    color: "var(--text-heading)",
   },
-  totalRow: {
+  subChargeRow: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: "14px 0 10px",
-    borderTop: "1px solid var(--border-card)",
-    marginTop: 4,
+    padding: "6px 0",
+    fontSize: 13,
+    color: "#475569",
   },
 
-  payBtn: {
+  downloadBtn: {
     width: "100%",
-    padding: "11px 0",
-    background: "#FF8C42",
-    color: "#fff",
-    border: "none",
+    padding: "10px 0",
+    background: "#f8fafc",
+    color: "#475569",
+    border: "1px solid #e2e8f0",
     borderRadius: 8,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: 600,
-    marginTop: 8,
+    marginTop: 16,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    cursor: "pointer",
     transition: "all 0.15s",
   },
   paidInfo: {
     display: "flex",
     alignItems: "center",
+    justifyContent: "center",
     gap: 6,
-    marginTop: 10,
+    marginTop: 12,
     fontSize: 12,
     color: "#059669",
-    fontWeight: 500,
+    fontWeight: 600,
   },
-
   emptyState: {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
     textAlign: "center",
-    padding: "56px 24px",
-    background: "var(--surface-card)",
-    borderRadius: 10,
-    border: "1px solid var(--border-card)",
+    padding: "64px 24px",
+    background: "#fff",
+    borderRadius: 12,
+    border: "1px dashed #cbd5e1",
   },
+};
 
-  viewAllLink: {
+const elecS = {
+  loadingRow: {
     display: "flex",
     alignItems: "center",
+    gap: 8,
+    fontSize: 13,
+    color: "#64748b",
+    padding: "16px",
     justifyContent: "center",
-    gap: 6,
-    width: "100%",
-    marginTop: 16,
-    padding: "10px 0",
-    background: "none",
-    border: "none",
+  },
+  segmentCard: {
+    border: "1px solid #e2e8f0",
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  segmentHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    padding: "10px 16px",
+    background: "#0A1628",
+    color: "#fff",
+    fontSize: 13,
+  },
+  tableHeader: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr 1fr",
+    padding: "8px 0",
+    borderBottom: "1px solid #e2e8f0",
+  },
+  tableHeaderCell: { fontSize: 11, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" },
+  tableRow: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr 1fr",
+    padding: "8px 0",
+    borderBottom: "1px solid #f1f5f9",
+  },
+  tableCell: { fontSize: 13, color: "#475569" },
+  tableRow2: {
+    display: "grid",
+    gridTemplateColumns: "1fr auto",
+    padding: "8px 0",
+    borderBottom: "1px solid #f1f5f9",
+  },
+  tableCell2: { fontSize: 13, color: "#475569" },
+  segmentFooter: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "12px 0 16px",
     color: "#FF8C42",
     fontSize: 13,
-    fontWeight: 600,
-    cursor: "pointer",
   },
+  statChip: {
+    background: "#f8fafc",
+    border: "1px solid #e2e8f0",
+    borderRadius: 8,
+    padding: "10px 12px",
+  },
+  statLabel: { display: "block", fontSize: 10, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", marginBottom: 2 },
+  statValue: { display: "block", fontSize: 13, fontWeight: 600, color: "#1e293b" },
 };
 
 export default BillingTab;

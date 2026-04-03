@@ -33,6 +33,8 @@ const segmentSchema = new mongoose.Schema(
     activeTenantCount: { type: Number, required: true },
     sharePerTenantKwh: { type: Number, required: true },
     sharePerTenantCost: { type: Number, required: true },
+    startDate: { type: Date },
+    endDate: { type: Date },
     activeTenantIds: [
       { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     ],

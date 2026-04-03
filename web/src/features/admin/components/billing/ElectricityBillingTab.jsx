@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Fragment } from "react";
 import {
   Zap, Plus, Check, AlertTriangle, RefreshCw,
-  ChevronDown, Trash2, X, Send, Pencil, Save, Download
+  ChevronDown, Trash2, X, Pencil, Save, Download
 } from "lucide-react";
 import { useAuth } from "../../../../shared/hooks/useAuth";
 import ConfirmModal from "../../../../shared/components/ConfirmModal";
@@ -20,9 +20,6 @@ import {
   useDeleteReading,
   useUpdateReading,
   useDeletePeriod,
-  useDraftBills,
-  useSendBills,
-  useAdjustBill,
 } from "../../../../shared/hooks/queries/useElectricity";
 import { electricityApi } from "../../../../shared/api/electricityApi.js";
 import { useBusinessSettings } from "../../../../shared/hooks/queries/useSettings";
@@ -152,23 +149,14 @@ const ElectricityBillingTab = () => {
   const [editingRateId, setEditingRateId] = useState(null);
   const [editingRateValue, setEditingRateValue] = useState("");
 
-  // Draft Bills state
-  const [globalDueDate, setGlobalDueDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 7);
-    return d.toISOString().slice(0, 10);
-  });
   const [batchCloseModalOpen, setBatchCloseModalOpen] = useState(false);
   const [batchCloseDate, setBatchCloseDate] = useState(getTodayInput);
   const [batchCloseRows, setBatchCloseRows] = useState([]);
   const [batchCloseFeedback, setBatchCloseFeedback] = useState(null);
   const [isExporting, setIsExporting] = useState(false);
-  const [expandedBillId, setExpandedBillId] = useState(null);
-  const [editForm, setEditForm] = useState({});
   const [detailVisibility, setDetailVisibility] = useState({
     segments: true,
     tenantSummary: true,
-    draftBills: true,
   });
 
   // Revision note modal
@@ -212,7 +200,6 @@ const ElectricityBillingTab = () => {
   const { data: latestData } = useLatestReading(selectedRoomId);
   const { data: periodsData } = useBillingPeriods(selectedRoomId);
   const { data: resultData } = useBillingResult(selectedPeriodId);
-  const { data: draftBillsData } = useDraftBills(selectedPeriodId);
 
   // Mutations
   const openPeriod = useOpenPeriod();
@@ -223,15 +210,12 @@ const ElectricityBillingTab = () => {
   const deleteReading = useDeleteReading();
   const updateReading = useUpdateReading();
   const deletePeriod = useDeletePeriod();
-  const sendBills = useSendBills();
-  const adjustBill = useAdjustBill();
 
   const rooms = roomsData?.rooms || [];
   const readings = readingsData?.readings || [];
   const movementReadings = readings.filter((r) => r.eventType === "move-in" || r.eventType === "move-out");
   const periods = periodsData?.periods || [];
   const result = resultData?.result || null;
-  const draftBills = draftBillsData?.bills || [];
   const selectedRoom = rooms.find((r) => r.id === selectedRoomId);
   const openPeriodForRoom = periods.find((p) => p.status === "open");
   const lastClosedPeriod = periods.find((p) => p.status === "closed" || p.status === "revised");
@@ -314,17 +298,12 @@ const ElectricityBillingTab = () => {
   const selectAndFocusPeriod = (periodId) => {
     if (selectedPeriodId === periodId) {
       setSelectedPeriodId(null);
-      setExpandedBillId(null);
-      setEditForm({});
       return;
     }
     setSelectedPeriodId(periodId);
-    setExpandedBillId(null);
-    setEditForm({});
     setDetailVisibility({
       segments: true,
       tenantSummary: true,
-      draftBills: true,
     });
   };
 
@@ -522,82 +501,6 @@ const ElectricityBillingTab = () => {
   };
 
   // Ã¢â€â‚¬Ã¢â€â‚¬ Draft bills handlers (expand-on-edit) Ã¢â€â‚¬Ã¢â€â‚¬
-
-  const startEditBill = (bill) => {
-    setExpandedBillId(String(bill.billId));
-    setEditForm({
-      electricity: bill.charges.electricity ?? 0,
-      water: bill.charges.water ?? 0,
-      rent: bill.charges.rent ?? 0,
-      applianceFees: bill.charges.applianceFees ?? 0,
-      corkageFees: bill.charges.corkageFees ?? 0,
-      notes: bill.notes ?? "",
-      dueDate: bill.dueDate ? new Date(bill.dueDate).toISOString().slice(0, 10) : globalDueDate,
-    });
-  };
-
-  const cancelEdit = () => {
-    setExpandedBillId(null);
-    setEditForm({});
-  };
-
-  const computeEditTotal = () => {
-    const f = editForm;
-    return (
-      (Number(f.electricity) || 0) +
-      (Number(f.water) || 0) +
-      (Number(f.rent) || 0) +
-      (Number(f.applianceFees) || 0) +
-      (Number(f.corkageFees) || 0)
-    );
-  };
-
-  const handleSaveEdit = async (billId) => {
-    try {
-      await adjustBill.mutateAsync({
-        billId,
-        periodId: selectedPeriodId,
-        charges: {
-          electricity: Number(editForm.electricity) || 0,
-          water: Number(editForm.water) || 0,
-          rent: Number(editForm.rent) || 0,
-          applianceFees: Number(editForm.applianceFees) || 0,
-          corkageFees: Number(editForm.corkageFees) || 0,
-        },
-        notes: editForm.notes,
-        dueDate: editForm.dueDate || undefined,
-      });
-      notify.success("Bill updated.");
-      cancelEdit();
-    } catch (err) {
-      notify.error(err, "Failed to update bill.");
-    }
-  };
-
-  const handleSendBills = () => {
-    setConfirmModal({
-      open: true,
-      title: "Send Bills to Tenants",
-      message: `This will send ${draftBills.length} bill${draftBills.length !== 1 ? "s" : ""} to tenants and notify them by email. This action cannot be undone.`,
-      variant: "primary",
-      confirmText: "Send Bills",
-      onConfirm: async () => {
-        setConfirmModal(prev => ({ ...prev, open: false }));
-        try {
-          const res = await sendBills.mutateAsync({
-            periodId: selectedPeriodId,
-            defaultDueDate: globalDueDate,
-          });
-          notify.success(`${res.sent} bill${res.sent !== 1 ? "s" : ""} sent to tenants.`);
-        } catch (err) {
-          notify.error(err, "Failed to send bills.");
-        }
-      },
-    });
-  };
-
-
-  // Ã¢â€â‚¬Ã¢â€â‚¬ Render Ã¢â€â‚¬Ã¢â€â‚¬
 
   const openBatchCloseModal = () => {
     setBatchCloseDate(getTodayInput());
@@ -862,156 +765,7 @@ const ElectricityBillingTab = () => {
             </div>
           )}
 
-          {draftBills.length > 0 && (
-            <div className="eb-draft-section">
-              <div className="eb-draft-header">
-                <div className="eb-draft-header__left">
-                  <div className="eb-draft-title">
-                    <Send size={14} />
-                    Draft Bills
-                  </div>
-                  <span className="eb-draft-count">
-                    {draftBills.length} bill{draftBills.length !== 1 ? "s" : ""} pending
-                  </span>
-                </div>
-                <div className="eb-due-date-row">
-                  <label htmlFor="eb-global-due-date">Default due date</label>
-                  <input
-                    id="eb-global-due-date"
-                    type="date"
-                    value={globalDueDate}
-                    onChange={(e) => setGlobalDueDate(e.target.value)}
-                  />
-                </div>
-                <button
-                  className="eb-btn eb-btn--xs eb-btn--outline"
-                  onClick={() => setDetailVisibility((current) => ({ ...current, draftBills: !current.draftBills }))}
-                >
-                  {detailVisibility.draftBills ? "Hide draft bills" : "Show draft bills"}
-                </button>
-              </div>
-
-              {detailVisibility.draftBills ? (
-              <div className="eb-table-wrap">
-                <table className="eb-table eb-table--detail">
-                  <colgroup>
-                    <col style={{ width: "48%" }} />
-                    <col style={{ width: "28%" }} />
-                    <col style={{ width: "24%" }} />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th>Tenant</th>
-                      <th style={{ textAlign: "right" }}>Total</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {draftBills.map((bill) => {
-                      const billId = String(bill.billId);
-                      const isExpanded = expandedBillId === billId;
-
-                      return (
-                        <Fragment key={billId}>
-                          <tr className="eb-draft-row--condensed">
-                            <td>
-                              {maskName(bill.tenantName)}
-                              {bill.isManuallyAdjusted ? (
-                                <span className="eb-revised-tag" title="Manually adjusted">edited</span>
-                              ) : null}
-                            </td>
-                            <td className="eb-cell--num eb-cell--bold">{fmtCurrency(bill.totalAmount)}</td>
-                            <td className="eb-cell--actions" style={{ justifyContent: "flex-end" }}>
-                              {isExpanded ? (
-                                <button className="eb-btn eb-btn--xs eb-btn--ghost" onClick={cancelEdit}>
-                                  <X size={11} /> Cancel
-                                </button>
-                              ) : (
-                                <button className="eb-btn eb-btn--xs eb-btn--outline" onClick={() => startEditBill(bill)}>
-                                  <Pencil size={11} /> Edit
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                          {isExpanded ? (
-                            <tr className="eb-draft-expand">
-                              <td colSpan={3}>
-                                <div className="eb-draft-expand-inner">
-                                  <div className="eb-draft-expand-grid">
-                                    <div className="eb-field">
-                                      <label>Electricity (PHP)</label>
-                                      <input type="number" step="0.01" className="eb-inline-input" value={editForm.electricity} onChange={e => setEditForm(f => ({ ...f, electricity: e.target.value }))} />
-                                    </div>
-                                    <div className="eb-field">
-                                      <label>Water (PHP)</label>
-                                      <input type="number" step="0.01" className="eb-inline-input" value={editForm.water} onChange={e => setEditForm(f => ({ ...f, water: e.target.value }))} />
-                                    </div>
-                                    <div className="eb-field">
-                                      <label>Rent (PHP)</label>
-                                      <input type="number" step="0.01" className="eb-inline-input" value={editForm.rent} onChange={e => setEditForm(f => ({ ...f, rent: e.target.value }))} />
-                                    </div>
-                                    <div className="eb-field">
-                                      <label>Appliance Fees (PHP)</label>
-                                      <input type="number" step="0.01" className="eb-inline-input" value={editForm.applianceFees} onChange={e => setEditForm(f => ({ ...f, applianceFees: e.target.value }))} />
-                                    </div>
-                                    <div className="eb-field">
-                                      <label>Corkage Fees (PHP)</label>
-                                      <input type="number" step="0.01" className="eb-inline-input" value={editForm.corkageFees} onChange={e => setEditForm(f => ({ ...f, corkageFees: e.target.value }))} />
-                                    </div>
-                                    <div className="eb-field">
-                                      <label>Due Date</label>
-                                      <input type="date" value={editForm.dueDate} onChange={e => setEditForm(f => ({ ...f, dueDate: e.target.value }))} className="eb-inline-input" style={{ textAlign: "left" }} />
-                                    </div>
-                                  </div>
-                                  <div className="eb-field">
-                                    <label>Adjustment Note</label>
-                                    <input type="text" value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} placeholder="Reason for adjustment..." />
-                                  </div>
-                                  <div className="eb-draft-expand-footer">
-                                    <span className="eb-draft-expand-total">New total: {fmtCurrency(computeEditTotal())}</span>
-                                    <div style={{ display: "flex", gap: "8px" }}>
-                                      <button className="eb-btn eb-btn--xs eb-btn--ghost" onClick={cancelEdit}>Cancel</button>
-                                      <button className="eb-btn eb-btn--xs eb-btn--primary" onClick={() => handleSaveEdit(billId)} disabled={adjustBill.isPending}>
-                                        <Save size={11} /> {adjustBill.isPending ? "Saving..." : "Save Changes"}
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
-                              </td>
-                            </tr>
-                          ) : null}
-                        </Fragment>
-                      );
-                    })}
-                    <tr>
-                      <td style={{ fontWeight: 600, fontSize: "0.78rem", color: "var(--text-secondary)", textAlign: "right" }}>Grand Total</td>
-                      <td className="eb-cell--num eb-cell--bold" style={{ fontSize: "0.9rem" }}>
-                        {fmtCurrency(draftBills.reduce((sum, bill) => sum + Number(bill.totalAmount), 0))}
-                      </td>
-                      <td />
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              ) : null}
-
-              <button
-                className="eb-draft-send-btn"
-                onClick={handleSendBills}
-                disabled={sendBills.isPending}
-              >
-                <Send size={15} />
-                {sendBills.isPending ? "Sending..." : `Send ${draftBills.length} Bill${draftBills.length !== 1 ? "s" : ""} to Tenants`}
-              </button>
-            </div>
-          )}
-
-          {draftBills.length === 0 && draftBillsData ? (
-            <div className="eb-bills-sent-state">
-              <Check size={18} />
-              All draft bills have been sent to tenants for this period.
-            </div>
-          ) : null}
+          {/* Draft bills are managed in the Issue Invoices tab */}
         </div>
       </div>
     );

@@ -85,6 +85,10 @@ function fmtNumber(value, digits = 2) {
     : EMPTY_VALUE;
 }
 
+function fmtShareMetric(value, digits = 2) {
+  return value == null ? "Varies" : fmtNumber(value, digits);
+}
+
 function fmtMonthYear(value) {
   return value
     ? new Date(value).toLocaleDateString(undefined, { month: "short", year: "numeric" })
@@ -646,8 +650,8 @@ export default function WaterBillingParityTab() {
                               <td className="eb-cell--num">{fmtNumber(segment.unitsConsumed, 2)}</td>
                               <td className="eb-cell--num">{fmtCurrency(segment.totalCost)}</td>
                               <td className="eb-cell--center">{segment.activeTenantCount}</td>
-                              <td className="eb-cell--num">{fmtNumber(segment.sharePerTenantUnits, 4)}</td>
-                              <td className="eb-cell--num">{fmtCurrency(segment.sharePerTenantCost)}</td>
+                              <td className="eb-cell--num">{fmtShareMetric(segment.sharePerTenantUnits, 4)}</td>
+                              <td className="eb-cell--num">{segment.sharePerTenantCost == null ? "Varies" : fmtCurrency(segment.sharePerTenantCost)}</td>
                             </tr>
                           ))}
                         </tbody>

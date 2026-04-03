@@ -34,15 +34,6 @@ export const ReservationFlowPage = React.lazy(
 export const ProfilePage = React.lazy(
   () => import("../features/tenant/pages/ProfilePage"),
 );
-export const BillingPage = React.lazy(
-  () => import("../features/tenant/pages/BillingPage"),
-);
-export const MaintenancePage = React.lazy(
-  () => import("../features/tenant/pages/MaintenancePage"),
-);
-export const AnnouncementsPage = React.lazy(
-  () => import("../features/tenant/pages/AnnouncementsPage"),
-);
 export const ContractsPage = React.lazy(
   () => import("../features/tenant/pages/ContractsPage"),
 );
@@ -79,6 +70,9 @@ export const DigitalTwinPage = React.lazy(
 );
 export const FinancialPage = React.lazy(
   () => import("../features/admin/pages/FinancialPage"),
+);
+export const MaintenancePage = React.lazy(
+  () => import("../features/tenant/pages/MaintenancePage"),
 );
 
 export const SuperAdminDashboard = React.lazy(

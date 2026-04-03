@@ -99,7 +99,7 @@ export const queryKeys = {
     result: (periodId) => ["electricity", "result", periodId],
     draftBills: (periodId) => ["electricity", "draftBills", periodId],
     breakdownByBill: (billId) => ["electricity", "breakdownByBill", billId],
-    myBills: ["electricity", "myBills"],
+    myBills: ["electricity", "myBills", "v3"],
     myBreakdown: (periodId) => ["electricity", "myBreakdown", periodId],
   },
 
@@ -111,7 +111,7 @@ export const queryKeys = {
     result: (periodId) => ["water", "result", periodId],
     draftBills: (periodId) => ["water", "draftBills", periodId],
     latestRecord: (roomId) => ["water", "latestRecord", roomId],
-    myBills: ["water", "myBills"],
+    myBills: ["water", "myBills", "v2"],
     myRecords: ["water", "myRecords"],
     myBreakdown: (periodId) => ["water", "myBreakdown", periodId],
     breakdownByBill: (billId) => ["water", "breakdownByBill", billId],

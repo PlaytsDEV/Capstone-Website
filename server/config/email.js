@@ -35,6 +35,11 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+const isEmailConfigured = Boolean(process.env.EMAIL_USER && process.env.EMAIL_PASSWORD);
+if (!isEmailConfigured || process.env.NODE_ENV === "test") {
+  transporter.verify = () => {};
+}
+
 // Verify connection on startup
 transporter.verify((error, success) => {
   if (error) {

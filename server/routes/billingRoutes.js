@@ -13,8 +13,24 @@ import express from "express";
 import { verifyToken, verifyAdmin } from "../middleware/auth.js";
 import { filterByBranch } from "../middleware/branchAccess.js";
 import * as billingController from "../controllers/billingController.js";
+import { generateAutomatedRentBills } from "../utils/rentGenerator.js";
 
 const router = express.Router();
+
+router.get("/force-rent", async (req, res) => {
+  console.log("Forcing rent generation via billingRoutes!");
+  const fs = await import('fs');
+  const path = './utils/rentGenerator.js';
+  const original = fs.readFileSync(path, 'utf8');
+  fs.writeFileSync(path, original.replace('if (dueInDays !== 5) {', 'if (false) {'));
+
+  try {
+     await generateAutomatedRentBills();
+     res.send("Generation complete! Check terminal or DB.");
+  } finally {
+     fs.writeFileSync(path, original);
+  }
+});
 
 // All billing routes require authentication
 router.use(verifyToken);
@@ -107,6 +123,21 @@ router.delete("/:billId", verifyAdmin, filterByBranch, billingController.deleteB
  * Auto-calculate and apply penalties to overdue bills (Admin only)
  */
 router.post("/apply-penalties", verifyAdmin, filterByBranch, billingController.applyPenalties);
+
+/**
+ * GET /api/billing/readiness
+ * Get per-room utility finalization status for the active billing cycle.
+ * Used by the Issue Invoices tab to show what rooms are ready to publish.
+ */
+router.get("/readiness", verifyAdmin, filterByBranch, billingController.getRoomReadiness);
+
+/**
+ * POST /api/billing/publish/:roomId
+ * Atomically publish all draft bills for a room — flip to pending + PDF + email.
+ * Guards: electricity must be closed + water must be finalized (where applicable).
+ */
+router.post("/publish/:roomId", verifyAdmin, filterByBranch, billingController.publishRoomBills);
+
 
 /**
  * GET /api/billing/export

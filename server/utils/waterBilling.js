@@ -89,29 +89,66 @@ export function computeWaterAmount(usage, ratePerUnit) {
   return roundMoney(Number(usage || 0) * rate);
 }
 
-function distributeAmount(totalAmount, recipientCount) {
+function distributeCents(totalAmount, recipientCount) {
   if (recipientCount <= 0) return [];
+
   const totalCents = Math.max(0, Math.round(Number(totalAmount || 0) * 100));
-  const base = Math.floor(totalCents / recipientCount);
-  let remainder = totalCents - base * recipientCount;
+  const baseShare = Math.floor(totalCents / recipientCount);
+  let remainder = totalCents - (baseShare * recipientCount);
 
   return Array.from({ length: recipientCount }, () => {
-    const cents = base + (remainder > 0 ? 1 : 0);
+    const share = baseShare + (remainder > 0 ? 1 : 0);
     if (remainder > 0) remainder -= 1;
-    return cents / 100;
+    return share;
   });
 }
 
-export function buildWaterShareAmounts(roomType, totalAmount, recipientCount) {
-  if (!isWaterBillableRoomType(roomType) || recipientCount <= 0) {
+export function calculateOverlapDays(checkInDate, checkOutDate, cycleStart, cycleEnd) {
+  const start = Math.max(
+    dayjs(checkInDate).startOf("day").valueOf(),
+    dayjs(cycleStart).startOf("day").valueOf(),
+  );
+  const end = Math.min(
+    dayjs(checkOutDate || cycleEnd).startOf("day").valueOf(),
+    dayjs(cycleEnd).startOf("day").valueOf(),
+  );
+
+  if (start >= end) return 0;
+  return dayjs(end).diff(dayjs(start), "day");
+}
+
+export function buildWaterShareAmounts(roomType, totalAmount, reservations, cycleStart, cycleEnd) {
+  if (!isWaterBillableRoomType(roomType) || reservations.length === 0) {
     return [];
   }
 
-  if (roomType === "private" && recipientCount === 1) {
+  if (roomType === "private" && reservations.length === 1) {
     return [roundMoney(totalAmount)];
   }
 
-  return distributeAmount(totalAmount, recipientCount);
+  const tenantDaysArray = reservations.map((res) =>
+    calculateOverlapDays(res.checkInDate, res.checkOutDate, cycleStart, cycleEnd),
+  );
+
+  const totalDays = tenantDaysArray.reduce((sum, days) => sum + days, 0);
+
+  if (totalDays <= 0) {
+    return distributeCents(totalAmount, reservations.length).map((cents) => cents / 100);
+  }
+
+  const totalCents = Math.max(0, Math.round(Number(totalAmount || 0) * 100));
+  const rawShares = tenantDaysArray.map((days) => (days / totalDays) * totalCents);
+  const baseShares = rawShares.map(Math.floor);
+
+  let remainder = totalCents - baseShares.reduce((a, b) => a + b, 0);
+  const fractionals = rawShares.map((raw, index) => ({ index, frac: raw - baseShares[index] }));
+  fractionals.sort((a, b) => b.frac - a.frac);
+
+  for (let i = 0; i < remainder; i++) {
+    baseShares[fractionals[i].index] += 1;
+  }
+
+  return baseShares.map((cents) => cents / 100);
 }
 
 function sameDayRange(expectedDate) {
@@ -143,7 +180,15 @@ export async function getFinalizedWaterRecordForPeriod(roomId, cycleStart, cycle
 
 export function buildWaterResult(record, room) {
   const tenantCount = record.tenantShares?.length || 0;
-  const shareUsage = tenantCount > 0 ? roundMoney((record.usage || 0) / tenantCount) : 0;
+  const totalCost = record.finalAmount || 0;
+  const totalUsage = record.usage || 0;
+  const tenantShares = record.tenantShares || [];
+  const billAmounts = tenantShares.map((share) => roundMoney(share.shareAmount || 0));
+  const hasUniformShare = billAmounts.length <= 1 || billAmounts.every((amount) => amount === billAmounts[0]);
+  const uniformShareCost = hasUniformShare && billAmounts.length > 0 ? billAmounts[0] : null;
+  const uniformShareUsage = hasUniformShare && tenantCount > 0
+    ? roundMoney(totalUsage / tenantCount)
+    : null;
 
   return {
     id: record._id,
@@ -153,8 +198,8 @@ export function buildWaterResult(record, room) {
     branch: record.branch,
     computedAt: record.updatedAt || record.finalizedAt || record.createdAt,
     ratePerUnit: record.ratePerUnit,
-    totalUsage: record.usage,
-    totalRoomCost: record.finalAmount,
+    totalUsage: totalUsage,
+    totalRoomCost: totalCost,
     verified: true,
     segments: [
       {
@@ -162,22 +207,27 @@ export function buildWaterResult(record, room) {
         periodLabel: `${dayjs(record.cycleStart).format("MMM D")} - ${dayjs(record.cycleEnd).format("MMM D, YYYY")}`,
         readingFrom: record.previousReading,
         readingTo: record.currentReading,
-        unitsConsumed: record.usage,
-        totalCost: record.finalAmount,
+        unitsConsumed: totalUsage,
+        totalCost: totalCost,
         activeTenantCount: tenantCount,
-        sharePerTenantUnits: shareUsage,
-        sharePerTenantCost: tenantCount > 0 ? roundMoney((record.finalAmount || 0) / tenantCount) : 0,
-        activeTenantIds: (record.tenantShares || []).map((share) => share.tenantId).filter(Boolean),
-        coveredTenantNames: (record.tenantShares || []).map((share) => share.tenantName || "Tenant"),
+        sharePerTenantUnits: uniformShareUsage,
+        sharePerTenantCost: uniformShareCost,
+        activeTenantIds: tenantShares.map((share) => share.tenantId).filter(Boolean),
+        coveredTenantNames: tenantShares.map((share) => share.tenantName || "Tenant"),
       },
     ],
-    tenantSummaries: (record.tenantShares || []).map((share) => ({
-      tenantId: share.tenantId,
-      tenantName: share.tenantName,
-      totalUsage: shareUsage,
-      billAmount: share.shareAmount || 0,
-      billId: share.billId || null,
-    })),
+    tenantSummaries: tenantShares.map((share) => {
+      const shareProportion = totalCost > 0 ? (share.shareAmount || 0) / totalCost : (1 / (tenantCount || 1));
+      const shareUsage = roundMoney(totalUsage * shareProportion);
+
+      return {
+        tenantId: share.tenantId,
+        tenantName: share.tenantName,
+        totalUsage: shareUsage,
+        billAmount: share.shareAmount || 0,
+        billId: share.billId || null,
+      };
+    }),
   };
 }
 
@@ -221,7 +271,9 @@ export async function buildWaterTenantSnapshot(room, cycleStart, cycleEnd, final
   const shareAmounts = buildWaterShareAmounts(
     room.type,
     finalAmount,
-    reservations.length,
+    reservations,
+    cycleStart,
+    cycleEnd,
   );
 
   return mapReservationShares(reservations, shareAmounts);

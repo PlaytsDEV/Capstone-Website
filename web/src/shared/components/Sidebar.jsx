@@ -32,17 +32,6 @@ const Sidebar = ({ isOpen, toggleSidebar, isCollapsed, toggleCollapse }) => {
   const tenantNavItems = [
     { path: "/applicant/profile", icon: "fas fa-home", label: "Home" },
     { path: "/applicant/profile", icon: "fas fa-user", label: "Profile" },
-    {
-      path: "/applicant/billing",
-      icon: "fas fa-file-invoice-dollar",
-      label: "Billing",
-    },
-    { path: "/applicant/maintenance", icon: "fas fa-tools", label: "Maintenance" },
-    {
-      path: "/applicant/announcements",
-      icon: "fas fa-bullhorn",
-      label: "Announcements",
-    },
   ];
 
   const navItems = isTenant ? tenantNavItems : preTenantNavItems;

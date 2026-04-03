@@ -18,6 +18,7 @@ const mockGetWaterRecordDiagnostics = jest.fn();
 
 await jest.unstable_mockModule("../models/index.js", () => ({
   Bill: {},
+  BillingPeriod: {},
   Reservation: {},
   Room: {
     findById: mockRoomFindById,
@@ -36,6 +37,7 @@ await jest.unstable_mockModule("../models/index.js", () => ({
 
 await jest.unstable_mockModule("../utils/waterBilling.js", () => ({
   applyWaterRecordToDraftBills: mockApplyWaterRecordToDraftBills,
+  buildWaterResult: jest.fn(),
   buildWaterCycle: mockBuildWaterCycle,
   buildWaterTenantSnapshot: mockBuildWaterTenantSnapshot,
   computeWaterAmount: mockComputeWaterAmount,
@@ -47,6 +49,21 @@ await jest.unstable_mockModule("../utils/waterBilling.js", () => ({
 
 await jest.unstable_mockModule("../utils/billingPolicy.js", () => ({
   roundMoney: mockRoundMoney,
+  sumBillCharges: jest.fn(),
+  getBillRemainingAmount: jest.fn(),
+  resolveBillStatus: jest.fn(),
+  syncBillAmounts: jest.fn(),
+  buildBillingCycle: jest.fn(),
+  getNextUtilityCycleBoundary: jest.fn(),
+  getPreviousUtilityCycleBoundary: jest.fn(),
+  getUtilityTargetCloseDate: jest.fn(),
+  isSameUtilityCycleBoundary: jest.fn(),
+  resolveUtilityAutoOpenStartDate: jest.fn(),
+  getUtilityCycleFromPeriod: jest.fn(),
+  getNextWorkingDay: jest.fn(),
+  getUtilityIssueDate: jest.fn(),
+  getUtilityDueDate: jest.fn(),
+  getReservationCreditAvailable: jest.fn(),
 }));
 
 await jest.unstable_mockModule("../utils/billingAudit.js", () => ({

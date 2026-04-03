@@ -1,0 +1,381 @@
+/* ============================================================================
+   InvoicePublishTab.css — Issue Invoices Tab Styles
+   ============================================================================ */
+
+/* ── Toolbar ────────────────────────────────────────────────────────────── */
+
+.ipt-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.08));
+  background: var(--surface-elevated, #1e2130);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ipt-toolbar__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ipt-toolbar__title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary, #e8eaf2);
+  letter-spacing: 0.01em;
+}
+
+.ipt-toolbar__cycle {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #8b93b0);
+}
+
+.ipt-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── Layout ─────────────────────────────────────────────────────────────── */
+
+.ipt-layout {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 200px;
+}
+
+/* ── Loading / Empty ─────────────────────────────────────────────────────── */
+
+.ipt-loading,
+.ipt-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 60px 20px;
+  color: var(--text-secondary, #8b93b0);
+  font-size: 0.85rem;
+}
+
+@keyframes ipt-spin {
+  to { transform: rotate(360deg); }
+}
+
+.ipt-spin {
+  animation: ipt-spin 0.8s linear infinite;
+}
+
+/* ── Sections ────────────────────────────────────────────────────────────── */
+
+.ipt-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.ipt-section__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary, #8b93b0);
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+  margin-bottom: 4px;
+}
+
+.ipt-section--sent .ipt-section__header { color: #6bcf7f; }
+.ipt-section--blocked .ipt-section__header { color: #8b93b0; }
+
+/* ── Room rows ────────────────────────────────────────────────────────────── */
+
+.ipt-row {
+  background: var(--surface-card, #252839);
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.07));
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+
+.ipt-row--ready {
+  border-color: rgba(107, 207, 127, 0.25);
+  background: linear-gradient(135deg,
+    var(--surface-card, #252839) 0%,
+    rgba(107, 207, 127, 0.04) 100%
+  );
+}
+
+.ipt-row--sent {
+  opacity: 0.65;
+  border-color: rgba(107, 207, 127, 0.15);
+}
+
+.ipt-row--blocked {
+  opacity: 0.7;
+}
+
+.ipt-row__main {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+}
+
+.ipt-row__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ipt-row__name {
+  font-size: 0.87rem;
+  font-weight: 600;
+  color: var(--text-primary, #e8eaf2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ipt-row__branch {
+  font-size: 0.7rem;
+  color: var(--text-secondary, #8b93b0);
+  text-transform: capitalize;
+}
+
+.ipt-row__badges {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.ipt-row__meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--text-secondary, #8b93b0);
+  flex-shrink: 0;
+  min-width: 90px;
+}
+
+.ipt-row__draft-count {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #a0a8c8;
+}
+
+.ipt-row__sent-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #6bcf7f;
+  font-weight: 600;
+}
+
+.ipt-row__blocked-reason {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #f0b040;
+}
+
+.ipt-row__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.ipt-row__tooltip {
+  font-size: 0.7rem;
+  color: #8b93b0;
+  max-width: 160px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+
+/* ── Expanded detail panel ───────────────────────────────────────────────── */
+
+.ipt-row__detail {
+  padding: 12px 16px 14px;
+  border-top: 1px solid var(--border-subtle, rgba(255,255,255,0.06));
+  background: rgba(0,0,0,0.15);
+}
+
+.ipt-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.ipt-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ipt-detail-label {
+  font-size: 0.67rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary, #8b93b0);
+}
+
+.ipt-detail-val {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary, #e8eaf2);
+  text-transform: capitalize;
+}
+
+.ipt-detail-val--closed,
+.ipt-detail-val--finalized { color: #6bcf7f; }
+.ipt-detail-val--open,
+.ipt-detail-val--pending    { color: #f0b040; }
+
+.ipt-detail-note {
+  font-size: 0.73rem;
+  color: var(--text-secondary, #8b93b0);
+  line-height: 1.5;
+  margin: 0;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+
+/* ── Utility badges ─────────────────────────────────────────────────────── */
+
+.ipt-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.ipt-badge--success {
+  background: rgba(107, 207, 127, 0.12);
+  color: #6bcf7f;
+  border: 1px solid rgba(107, 207, 127, 0.2);
+}
+
+.ipt-badge--warning {
+  background: rgba(240, 176, 64, 0.12);
+  color: #f0b040;
+  border: 1px solid rgba(240, 176, 64, 0.2);
+}
+
+.ipt-badge--neutral {
+  background: rgba(139, 147, 176, 0.1);
+  color: #8b93b0;
+  border: 1px solid rgba(139, 147, 176, 0.15);
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+.ipt-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.ipt-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ipt-btn--xs { padding: 4px 8px; font-size: 0.72rem; }
+.ipt-btn--sm { padding: 6px 12px; }
+
+.ipt-btn--primary {
+  background: var(--accent, #6c63ff);
+  color: #fff;
+}
+
+.ipt-btn--primary:hover:not(:disabled) {
+  background: var(--accent-hover, #574fd6);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(108, 99, 255, 0.3);
+}
+
+.ipt-btn--outline {
+  background: transparent;
+  color: var(--text-primary, #e8eaf2);
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.12));
+  padding: 6px 12px;
+}
+
+.ipt-btn--outline:hover:not(:disabled) {
+  background: rgba(255,255,255,0.06);
+}
+
+.ipt-btn--ghost {
+  background: transparent;
+  color: var(--text-secondary, #8b93b0);
+  padding: 4px 6px;
+}
+
+.ipt-btn--ghost:hover:not(:disabled) {
+  color: var(--text-primary, #e8eaf2);
+  background: rgba(255,255,255,0.06);
+}
+
+.ipt-btn--publish-all {
+  background: linear-gradient(135deg, #6c63ff, #4e8bff);
+  font-size: 0.82rem;
+  padding: 7px 16px;
+  box-shadow: 0 2px 8px rgba(108, 99, 255, 0.25);
+}
+
+.ipt-btn--publish-all:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(108, 99, 255, 0.35);
+}
+
+/* ── Select ─────────────────────────────────────────────────────────────── */
+
+.ipt-select {
+  background: var(--surface-card, #252839);
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.12));
+  border-radius: 6px;
+  color: var(--text-primary, #e8eaf2);
+  font-size: 0.8rem;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+/* ── Rooms container ─────────────────────────────────────────────────────── */
+
+.ipt-rooms {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}

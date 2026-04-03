@@ -846,6 +846,8 @@ export const getMyWaterBills = async (req, res, next) => {
       return {
         billingResultId: result.id,
         billingPeriodId: result.billingPeriodId,
+        startDate: record.cycleStart,
+        endDate: record.cycleEnd,
         room: getRoomLabel(record.roomId, "N/A"),
         branch: record.branch,
         ratePerUnit: result.ratePerUnit,

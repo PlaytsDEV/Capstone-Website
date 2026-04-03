@@ -38,6 +38,46 @@ import {
 import { globalErrorHandler } from "./middleware/errorHandler.js";
 
 // --- Routes ---
+/**
+ * ============================================================================
+ * LILYCREST DORMITORY MANAGEMENT SYSTEM — SERVER
+ * ============================================================================
+ *
+ * Production-grade Express.js server with:
+ * - Security headers (Helmet)
+ * - Rate limiting (tiered)
+ * - Request ID tracing
+ * - Structured JSON logging (Pino)
+ * - Response compression (gzip/brotli)
+ * - Standardized error handling
+ * - Deep health checks
+ * - Graceful shutdown
+ *
+ * ============================================================================
+ */
+
+import express from "express";
+import cors from "cors";
+import dotenv from "dotenv";
+import helmet from "helmet";
+import compression from "compression";
+import mongoose from "mongoose";
+
+// --- Config ---
+import connectDB from "./config/database.js";
+
+// --- Middleware ---
+import requestId from "./middleware/requestId.js";
+import { requestLogger } from "./middleware/logger.js";
+import logger from "./middleware/logger.js";
+import {
+  globalLimiter,
+  authLimiter,
+  publicLimiter,
+} from "./middleware/rateLimiter.js";
+import { globalErrorHandler } from "./middleware/errorHandler.js";
+
+// --- Routes ---
 import authRoutes from "./routes/authRoutes.js";
 import userRoutes from "./routes/usersRoutes.js";
 import roomRoutes from "./routes/roomsRoutes.js";
@@ -45,6 +85,8 @@ import reservationRoutes from "./routes/reservationsRoutes.js";
 import inquiryRoutes from "./routes/inquiriesRoutes.js";
 import auditRoutes from "./routes/auditRoutes.js";
 import billingRoutes from "./routes/billingRoutes.js";
+import billingPoliciesRoutes from "./routes/billingPoliciesRoutes.js";
+import forceRentRoute from "./routes/forceRentRoute.js";
 import announcementRoutes from "./routes/announcementRoutes.js";
 import maintenanceRoutes from "./routes/maintenanceRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
@@ -206,6 +248,8 @@ app.use("/api/reservations", reservationRoutes);
 app.use("/api/inquiries", publicLimiter, inquiryRoutes);
 app.use("/api/audit-logs", auditRoutes);
 app.use("/api/billing", billingRoutes);
+app.use("/api/billing-policies", billingPoliciesRoutes);
+app.use(forceRentRoute);
 app.use("/api/announcements", announcementRoutes);
 app.use("/api/maintenance", maintenanceRoutes);
 app.use("/api/payments", paymentRoutes);

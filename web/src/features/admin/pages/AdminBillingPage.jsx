@@ -1,12 +1,14 @@
 import { useState } from "react";
-import { Zap, Droplets } from "lucide-react";
+import { Zap, Droplets, Send } from "lucide-react";
 import ElectricityBillingTab from "../components/billing/ElectricityBillingTab";
 import WaterBillingTab from "../components/billing/WaterBillingParityTab";
+import InvoicePublishTab from "../components/billing/InvoicePublishTab";
 import "./AdminBillingPage.css";
 
 const tabs = [
   { id: "electricity", label: "Electricity", icon: Zap },
   { id: "water", label: "Water", icon: Droplets },
+  { id: "invoices", label: "Issue Invoices", icon: Send },
 ];
 
 const AdminBillingPage = () => {
@@ -21,7 +23,7 @@ const AdminBillingPage = () => {
             Billing Management
           </h1>
           <p className="admin-billing-page__subtitle">
-            Manage electricity and water billing periods for all rooms
+            Manage electricity and water billing — then publish invoices to tenants
           </p>
         </div>
 
@@ -34,7 +36,7 @@ const AdminBillingPage = () => {
                 type="button"
                 role="tab"
                 aria-selected={activeTab === tab.id}
-                className={`admin-billing-tab${activeTab === tab.id ? " is-active" : ""}`}
+                className={`admin-billing-tab${activeTab === tab.id ? " is-active" : ""}${tab.id === "invoices" ? " admin-billing-tab--publish" : ""}`}
                 onClick={() => setActiveTab(tab.id)}
               >
                 <span className="admin-billing-tab__icon">
@@ -47,7 +49,9 @@ const AdminBillingPage = () => {
         </div>
       </div>
 
-      {activeTab === "electricity" ? <ElectricityBillingTab /> : <WaterBillingTab />}
+      {activeTab === "electricity" && <ElectricityBillingTab />}
+      {activeTab === "water" && <WaterBillingTab />}
+      {activeTab === "invoices" && <InvoicePublishTab />}
     </div>
   );
 };

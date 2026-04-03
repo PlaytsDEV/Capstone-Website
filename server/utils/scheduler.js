@@ -185,7 +185,7 @@ async function computeOverduePenalties() {
 async function sendPaymentReminders() {
   try {
     const now = dayjs();
-    const reminderDays = [7, 3, 1];
+    const reminderDays = [5, 3, 1];
     let sent = 0;
 
     for (const daysAhead of reminderDays) {
@@ -199,6 +199,13 @@ async function sendPaymentReminders() {
       });
 
       for (const bill of bills) {
+        // Skip the 5-day reminder if the bill was literally just generated in the last 24 hours 
+        // to avoid duplicate spam with the "New Bill Generated" email.
+        const ageInDays = now.diff(dayjs(bill.createdAt || new Date()), "day", true);
+        if (daysAhead === 5 && ageInDays < 1) {
+           continue; 
+        }
+
         const month = dayjs(bill.billingMonth).format("MMMM YYYY");
         notify.billDueReminder(bill.userId, month, bill.totalAmount, daysAhead);
         sent++;
@@ -538,6 +545,14 @@ export function startScheduler() {
   // Run cleanup jobs once immediately on startup
   cleanupExpiredBedLocks();
   markOverdueBills();
+
+  // Job 0: Automated Rent Bills — daily at midnight
+  scheduledJobs.push(
+    cron.schedule('0 0 * * *', generateAutomatedRentBills, {
+      scheduled: true,
+      name: 'automated-rent-generation',
+    }),
+  );
 
   // Job 1: Overdue move-in detection — daily at 08:30
   scheduledJobs.push(

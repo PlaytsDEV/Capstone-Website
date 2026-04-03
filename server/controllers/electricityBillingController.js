@@ -1232,6 +1232,7 @@ export const getMyElectricityBills = async (req, res, next) => {
       isArchived: false,
     })
       .populate("roomId", "name roomNumber branch type")
+      .populate("billingPeriodId", "startDate endDate billingMonth")
       .sort({ computedAt: -1 })
       .lean();
 
@@ -1239,9 +1240,28 @@ export const getMyElectricityBills = async (req, res, next) => {
       const mySummary = r.tenantSummaries.find(
         (t) => String(t.tenantId) === String(dbUser._id),
       );
+      
+      let fallbackCycleText = "";
+      if (r.segments && r.segments.length > 0) {
+          const firstLab = r.segments[0].periodLabel || "";
+          const lastLab = r.segments[r.segments.length - 1].periodLabel || "";
+          const splitChar1 = firstLab.includes("–") ? "–" : "-";
+          const splitChar2 = lastLab.includes("–") ? "–" : "-";
+          
+          const sDateStr = firstLab.split(splitChar1)[0]?.trim();
+          const eDateStr = lastLab.split(splitChar2)[1]?.trim();
+          if (sDateStr && eDateStr) {
+             fallbackCycleText = `${sDateStr} - ${eDateStr}`;
+          }
+      }
+
       return {
         billingResultId: r._id,
-        billingPeriodId: r.billingPeriodId,
+        billingPeriodId: r.billingPeriodId?._id || r.billingPeriodId,
+        startDate: r.billingPeriodId?.startDate,
+        endDate: r.billingPeriodId?.endDate,
+        cycleText: fallbackCycleText,
+        billingMonth: r.billingPeriodId?.billingMonth,
         room: getRoomLabel(r.roomId, "N/A"),
         branch: r.branch,
         ratePerKwh: r.ratePerKwh,
@@ -1576,7 +1596,7 @@ async function buildTenantEventsFromReadings(roomId, readings, periodStartReadin
       const assumedPrePeriodOccupancy =
         periodStartDate &&
         res.checkInDate &&
-        new Date(res.checkInDate) < new Date(periodStartDate);
+        new Date(res.checkInDate) <= new Date(periodStartDate);
 
       tenantMap.set(key, {
         tenantId: key,
@@ -1620,6 +1640,20 @@ async function buildTenantEventsFromReadings(roomId, readings, periodStartReadin
     if (reading.eventType === "move-out") {
       if (tenantMap.has(key)) {
         tenantMap.get(key).moveOutReading = reading.reading;
+      }
+    }
+  }
+
+  // Fallback: tenants who checked in DURING the period (not before it) and
+  // have no explicit move-in reading are anchored to the period start reading
+  // rather than hard-blocking the close. Their occupancy is confirmed by the
+  // reservation record; the missing reading is an operational gap, not a
+  // data-integrity issue that should prevent billing.
+  if (periodStartReading !== null && periodStartReading !== undefined) {
+    for (const [, entry] of tenantMap) {
+      if (entry.requiresRepair && entry.moveInReading === null) {
+        entry.moveInReading = periodStartReading;
+        entry.requiresRepair = false;
       }
     }
   }

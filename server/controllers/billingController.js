@@ -531,7 +531,8 @@ export const generateRoomBill = async (req, res, next) => {
         0,
       );
 
-      const grossAmount = roundMoney(tenant.rent + utilityShare + customChargesTotal);
+      const utilityCustomCharges = room.branch === "guadalupe" ? 0 : customChargesTotal;
+      const grossAmount = roundMoney(utilityShare + utilityCustomCharges);
       const billingContext = tenant.reservationId
         ? await getReservationBillingContext(tenant.reservationId)
         : null;
@@ -555,15 +556,15 @@ export const generateRoomBill = async (req, res, next) => {
         isFirstCycleBill: !!billingContext?.isFirstCycleBill,
         proRataDays: tenant.daysInRoom,
         charges: {
-          rent: tenant.rent,
+          rent: 0,
           electricity: te,
           water: tw,
-          applianceFees: customChargesTotal,
+          applianceFees: utilityCustomCharges,
           corkageFees: 0,
           penalty: 0,
           discount: 0,
         },
-        additionalCharges: tenantCustomCharges.map((c) => ({
+        additionalCharges: room.branch === "guadalupe" ? [] : tenantCustomCharges.map((c) => ({
           name: c.name,
           amount: c.amount,
         })),
@@ -571,7 +572,7 @@ export const generateRoomBill = async (req, res, next) => {
         reservationCreditApplied,
         totalAmount: grossAmount,
         remainingAmount: grossAmount,
-        status: "pending",
+        status: "draft",
       });
       syncBillAmounts(bill);
       await bill.save();
@@ -586,8 +587,8 @@ export const generateRoomBill = async (req, res, next) => {
         reservationId: tenant.reservationId,
         daysInRoom: tenant.daysInRoom,
         proRataShare: Math.round(share * 10000) / 10000,
-        rent: tenant.rent,
-        customCharges: tenantCustomCharges,
+        rent: 0,
+        customCharges: room.branch === "guadalupe" ? [] : tenantCustomCharges,
         utilityShare,
         grossAmount,
         reservationCreditApplied,
@@ -629,7 +630,7 @@ export const generateRoomBill = async (req, res, next) => {
         totalUtilities,
         tenantsCount: tenantBreakdown.length,
         tenantBreakdown: tenantBreakdown.map((t) => ({
-          rent: t.rent,
+          rent: 0,
           utilityShare: t.utilityShare,
           totalAmount: t.totalAmount,
           daysInRoom: t.daysInRoom,
@@ -639,6 +640,7 @@ export const generateRoomBill = async (req, res, next) => {
     });
 
     // Send bill notification emails to all billed tenants
+    return;
     const monthLabel = dayjs(monthStart).format("MMMM YYYY");
     const dueDateLabel = dayjs(billDueDate).format("MMMM D, YYYY");
     for (const tenant of tenantInfos) {
