@@ -26,29 +26,27 @@ const AdminBillingPage = () => {
           </p>
         </div>
 
-        <div
-          className="admin-billing-page__hero-actions admin-billing-page__workspace-tabs"
-          role="tablist"
-          aria-label="Billing type"
-        >
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                aria-selected={activeTab === tab.id}
-                className={`admin-billing-tab${activeTab === tab.id ? " is-active" : ""}${tab.id === "invoices" ? " admin-billing-tab--publish" : ""}`}
-                onClick={() => setActiveTab(tab.id)}
-              >
-                <span className="admin-billing-tab__icon">
-                  <Icon size={14} />
-                </span>
-                {tab.label}
-              </button>
-            );
-          })}
+        <div className="admin-billing-page__hero-actions">
+          <div className="admin-billing-page__workspace-tabs" role="tablist" aria-label="Billing type">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === tab.id}
+                  className={`admin-billing-tab${activeTab === tab.id ? " is-active" : ""}${tab.id === "invoices" ? " admin-billing-tab--publish" : ""}`}
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  <span className="admin-billing-tab__icon">
+                    <Icon size={14} />
+                  </span>
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </header>
 

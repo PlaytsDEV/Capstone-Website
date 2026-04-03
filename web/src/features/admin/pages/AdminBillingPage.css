@@ -55,10 +55,13 @@
   line-height: 1.55;
 }
 
-.admin-billing-page__hero-actions,
+.admin-billing-page__hero-actions {
+  display: flex;
+  align-self: flex-start;
+}
+
 .admin-billing-page__workspace-tabs {
   display: inline-flex;
-  align-self: flex-start;
   gap: 2px;
   padding: 4px;
   border-radius: 14px;
