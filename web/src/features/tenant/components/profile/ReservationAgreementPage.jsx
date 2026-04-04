@@ -132,6 +132,7 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
   })();
 
   const monthlyRent = reservation.monthlyRent || reservation.totalPrice || room.price || 0;
+  const reservationFeeAmount = reservation.reservationFeeAmount || 2000;
   const paymentDate = reservation.paymentDate
     ? dayjs(reservation.paymentDate).format("MMMM D, YYYY")
     : null;
@@ -458,7 +459,11 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
                 value: `₱${monthlyRent.toLocaleString()}`,
                 highlight: true,
               },
-              { label: "Deposit", value: paymentDate ? "₱2,000 — Paid ✓" : "Pending", paid: !!paymentDate },
+              {
+                label: "Deposit",
+                value: paymentDate ? `PHP ${reservationFeeAmount.toLocaleString("en-PH")} — Paid ✓` : "Pending",
+                paid: !!paymentDate,
+              },
             ].map(({ label, value, highlight, paid }) => (
               <div key={label} style={detailRow}>
                 <span style={{ color: "#64748B", fontWeight: 500 }}>{label}</span>
@@ -484,7 +489,7 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
             {paymentDate ? (
               <>
                 <p style={{ color: "#475569", fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
-                  Your deposit payment of <strong>₱2,000</strong> was confirmed on{" "}
+                  Your deposit payment of <strong>{`PHP ${reservationFeeAmount.toLocaleString("en-PH")}`}</strong> was confirmed on{" "}
                   <strong>{paymentDate}</strong>. Download or view your official receipt below.
                 </p>
                 <div style={{ display: "flex", gap: 10 }}>

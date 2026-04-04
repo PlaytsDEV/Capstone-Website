@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Users } from "lucide-react";
 import { useAuth } from "../../../shared/hooks/useAuth";
-import { useReservations } from "../../../shared/hooks/queries/useReservations";
+import { useCurrentResidents } from "../../../shared/hooks/queries/useReservations";
 import {
   PageShell,
   SummaryBar,
@@ -12,6 +12,17 @@ import {
 } from "../components/shared";
 import "../styles/design-tokens.css";
 import "../styles/admin-tenants.css";
+
+const getInitials = (name) => {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
+};
 
 const fmt = (branch) =>
   branch === "gil-puyat" ? "Gil Puyat" : branch === "guadalupe" ? "Guadalupe" : "N/A";
@@ -32,14 +43,22 @@ export default function TenantsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  // Source of truth: checked-in reservations (these are the real tenants)
-  const { data: reservationsData = [], isLoading } = useReservations();
+  const currentResidentsParams = useMemo(
+    () => ({
+      ...(isOwner && branchFilter !== "all" ? { branch: branchFilter } : {}),
+    }),
+    [branchFilter, isOwner],
+  );
+
+  const { data: currentResidentsData, isLoading } =
+    useCurrentResidents(currentResidentsParams);
+  const reservationsData = currentResidentsData?.residents || [];
 
   const tenants = useMemo(() => {
     const reservations = Array.isArray(reservationsData) ? reservationsData : [];
 
     // Only checked-in reservations = current tenants
-    const checkedIn = reservations.filter((r) => r.status === "checked-in");
+    const checkedIn = reservations;
 
     return checkedIn.map((res) => {
       const u = res.userId || {};
@@ -60,19 +79,19 @@ export default function TenantsPage() {
       }
 
       return {
-        id: res._id,
-        reservationId: res._id,
+        id: res.id || res.reservationId || res._id,
+        reservationId: res.reservationId || res._id,
         reservationCode: res.reservationCode || "—",
-        userId: u._id,
-        name: fullName,
-        initials: `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase() || "?",
-        email: u.email || "N/A",
-        phone: res.mobileNumber || u.phone || "N/A",
-        status: tenantStatus,
-        room: room?.name || room?.roomNumber || "Not Assigned",
-        roomId: room?._id,
-        branch: fmt(room?.branch),
-        branchRaw: room?.branch || "",
+        userId: res.userId || u._id,
+        name: res.name || fullName,
+        initials: getInitials(res.name || fullName),
+        email: res.email || u.email || "N/A",
+        phone: res.phone || res.mobileNumber || u.phone || "N/A",
+        status: res.statusLabel || tenantStatus,
+        room: res.room || room?.name || room?.roomNumber || "Not Assigned",
+        roomId: res.roomId || room?._id,
+        branch: res.branch || fmt(room?.branch),
+        branchRaw: res.branchRaw || room?.branch || "",
         floor: room?.floor || "—",
         roomType: fmtRoomType(room?.type),
         monthlyRent: res.monthlyRent || room?.price || null,
@@ -113,7 +132,7 @@ export default function TenantsPage() {
   const paginated = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const summaryItems = [
-    { label: "Total Tenants", value: stats.total, color: "blue" },
+    { label: "Current Residents", value: stats.total, color: "blue" },
     { label: "Active", value: stats.active, color: "green" },
     { label: "Overdue", value: stats.overdue, color: "red" },
     { label: "Moving Out Soon", value: stats.movingOut, color: "orange" },
@@ -198,8 +217,8 @@ export default function TenantsPage() {
           }}
           emptyState={{
             icon: Users,
-            title: "No checked-in tenants",
-            description: "Tenants appear here once an admin completes their check-in.",
+            title: "No checked-in residents",
+            description: "Residents appear here once an admin completes their check-in.",
           }}
         />
 

@@ -3,6 +3,7 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { showNotification } from "../utils/notification";
 import GlobalLoading from "./GlobalLoading";
+import { USER_ROLES } from "../utils/constants";
 
 /**
  * Protected Route Component
@@ -23,13 +24,14 @@ import GlobalLoading from "./GlobalLoading";
  *
  * @param {Object} props
  * @param {React.ReactNode} props.children - Child components to render
- * @param {string} props.requiredRole - Required role: 'admin', 'superAdmin', or 'applicant'
+ * @param {string} props.requiredRole - Required role: 'branch_admin', 'owner', or 'applicant'
  * @param {boolean} props.requireAuth - Whether authentication is required (default: true)
  *
  * @returns {React.ReactNode} Protected content or redirect
  */
 const ProtectedRoute = ({ children, requiredRole, requireAuth = true }) => {
-  const { user, isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, isAdmin, isOwner, getDefaultRoute } =
+    useAuth();
   const notificationShown = useRef(false);
 
   // Show loading spinner while checking authentication
@@ -57,25 +59,18 @@ const ProtectedRoute = ({ children, requiredRole, requireAuth = true }) => {
 
   // Check role requirements using custom claims from ID token
   if (requiredRole) {
-    if (requiredRole === "branch_admin") {
-      // For admin routes, check if user has admin or owner role
-      if (
-        !user?.role ||
-        (user.role !== "branch_admin" && user.role !== "owner")
-      ) {
-        return <Navigate to="/signin" replace />;
+    if (requiredRole === USER_ROLES.BRANCH_ADMIN) {
+      if (!isAdmin()) {
+        return <Navigate to={getDefaultRoute()} replace />;
       }
     }
-    // For super admin routes, check for superAdmin role
-    else if (requiredRole === "owner") {
-      if (!user?.role || user.role !== "owner") {
-        return <Navigate to="/admin/dashboard" replace />;
+    else if (requiredRole === USER_ROLES.OWNER) {
+      if (!isOwner()) {
+        return <Navigate to={getDefaultRoute()} replace />;
       }
     }
-    // For applicant routes, BLOCK admin/super admin users (session lock)
-    else if (requiredRole === "applicant") {
-      const isAdmin = user?.role === "branch_admin" || user?.role === "owner";
-      if (isAdmin) {
+    else if (requiredRole === USER_ROLES.APPLICANT) {
+      if (isAdmin()) {
         return <Navigate to="/admin/dashboard" replace />;
       }
     }

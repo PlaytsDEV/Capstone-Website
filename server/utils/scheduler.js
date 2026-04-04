@@ -38,6 +38,9 @@ import notify from "./notificationService.js";
 import { updateOccupancyOnReservationChange } from "./occupancyManager.js";
 import logger from "../middleware/logger.js";
 import { BUSINESS } from "../config/constants.js";
+import { resolveBillStatus, syncBillAmounts } from "./billingPolicy.js";
+import { getPenaltyRatePerDay, resolvePenaltyRatePerDay } from "./businessSettings.js";
+import { generateAutomatedRentBills } from "./rentGenerator.js";
 
 // ─── Job 1: Overdue Move-In Detection (daily at 08:30) ──────────────────────────
 
@@ -112,7 +115,7 @@ async function markOverdueBills() {
     const now = dayjs().toDate();
     const result = await Bill.updateMany(
       {
-        status: "pending",
+        status: { $in: ["pending", "partially-paid"] },
         dueDate: { $lt: now },
         isArchived: false,
       },
@@ -132,6 +135,7 @@ async function markOverdueBills() {
 async function computeOverduePenalties() {
   try {
     const now = dayjs();
+    const penaltyRatePerDay = await getPenaltyRatePerDay();
     const overdueBills = await Bill.find({
       status: "overdue",
       isArchived: false,
@@ -143,7 +147,10 @@ async function computeOverduePenalties() {
       const daysLate = now.diff(dayjs(bill.dueDate), "day");
       if (daysLate <= 0) continue;
 
-      const ratePerDay = bill.penaltyDetails?.ratePerDay || BUSINESS.PENALTY_RATE_PER_DAY;
+      const ratePerDay = resolvePenaltyRatePerDay(
+        bill.penaltyDetails?.ratePerDay,
+        penaltyRatePerDay,
+      );
       const newPenalty = daysLate * ratePerDay;
       const oldPenalty = bill.charges?.penalty || 0;
 
@@ -153,13 +160,8 @@ async function computeOverduePenalties() {
       bill.charges.penalty = newPenalty;
       bill.penaltyDetails.daysLate = daysLate;
       bill.penaltyDetails.appliedAt = now.toDate();
-
-      // Recalculate total: rent + electricity + water + applianceFees + corkageFees + penalty - discount + additionalCharges
-      const c = bill.charges;
-      const additionalTotal = (bill.additionalCharges || []).reduce((sum, ch) => sum + (ch.amount || 0), 0);
-      bill.totalAmount = (c.rent || 0) + (c.electricity || 0) + (c.water || 0) +
-        (c.applianceFees || 0) + (c.corkageFees || 0) + (c.penalty || 0) -
-        (c.discount || 0) + additionalTotal;
+      syncBillAmounts(bill);
+      bill.status = resolveBillStatus(bill, now.toDate());
 
       await bill.save();
       updated++;
@@ -184,7 +186,7 @@ async function computeOverduePenalties() {
 async function sendPaymentReminders() {
   try {
     const now = dayjs();
-    const reminderDays = [7, 3, 1];
+    const reminderDays = [5, 3, 1];
     let sent = 0;
 
     for (const daysAhead of reminderDays) {
@@ -198,6 +200,13 @@ async function sendPaymentReminders() {
       });
 
       for (const bill of bills) {
+        // Skip the 5-day reminder if the bill was literally just generated in the last 24 hours 
+        // to avoid duplicate spam with the "New Bill Generated" email.
+        const ageInDays = now.diff(dayjs(bill.createdAt || new Date()), "day", true);
+        if (daysAhead === 5 && ageInDays < 1) {
+           continue; 
+        }
+
         const month = dayjs(bill.billingMonth).format("MMMM YYYY");
         notify.billDueReminder(bill.userId, month, bill.totalAmount, daysAhead);
         sent++;
@@ -537,6 +546,14 @@ export function startScheduler() {
   // Run cleanup jobs once immediately on startup
   cleanupExpiredBedLocks();
   markOverdueBills();
+
+  // Job 0: Automated Rent Bills — daily at midnight
+  scheduledJobs.push(
+    cron.schedule('0 0 * * *', generateAutomatedRentBills, {
+      scheduled: true,
+      name: 'automated-rent-generation',
+    }),
+  );
 
   // Job 1: Overdue move-in detection — daily at 08:30
   scheduledJobs.push(

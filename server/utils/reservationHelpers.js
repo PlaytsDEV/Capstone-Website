@@ -8,7 +8,7 @@
  */
 
 import dayjs from "dayjs";
-import { User, Room } from "../models/index.js";
+import { User, Room, Reservation } from "../models/index.js";
 
 /** Validate MongoDB ObjectId format */
 export const isValidObjectId = (id) => /^[0-9a-fA-F]{24}$/.test(id);
@@ -166,6 +166,133 @@ export const handleStatusTransition = async (
     await user.save();
     await syncFirebaseClaims({ role: "applicant", tenantStatus: "none" });
   }
+};
+
+const syncFirebaseLifecycleClaims = async (user, claims) => {
+  try {
+    const { getAuth } = await import("../config/firebase.js");
+    const auth = getAuth();
+    if (auth && user.firebaseUid) {
+      await auth.setCustomUserClaims(user.firebaseUid, claims);
+    }
+  } catch (e) {
+    console.error("Firebase claims sync failed (non-fatal):", e.message);
+  }
+};
+
+const getRoomBranch = async (roomId) => {
+  if (!roomId) return null;
+  const room = await Room.findById(roomId).select("branch");
+  return room?.branch || null;
+};
+
+const getFallbackLifecycleState = async (userId, excludedReservationId) => {
+  const findLatestReservation = async (status) =>
+    Reservation.findOne({
+      userId,
+      _id: { $ne: excludedReservationId },
+      status,
+      isArchived: { $ne: true },
+    })
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .populate("roomId", "branch");
+
+  const checkedInReservation = await findLatestReservation("checked-in");
+  if (checkedInReservation) {
+    return {
+      role: "tenant",
+      tenantStatus: "active",
+      branch: checkedInReservation.roomId?.branch || null,
+    };
+  }
+
+  const reservedReservation = await findLatestReservation("reserved");
+  if (reservedReservation) {
+    return {
+      role: "applicant",
+      tenantStatus: "none",
+      branch: reservedReservation.roomId?.branch || null,
+    };
+  }
+
+  const checkedOutReservation = await findLatestReservation("checked-out");
+  if (checkedOutReservation) {
+    return {
+      role: "applicant",
+      tenantStatus: "inactive",
+      branch: checkedOutReservation.roomId?.branch || null,
+    };
+  }
+
+  return {
+    role: "applicant",
+    tenantStatus: "none",
+    branch: null,
+  };
+};
+
+export const resolveReservationLifecycleState = async ({
+  status,
+  roomId,
+  userId,
+  reservationId,
+}) => {
+  switch (status) {
+    case "reserved":
+      return {
+        role: "applicant",
+        tenantStatus: "none",
+        branch: await getRoomBranch(roomId),
+      };
+    case "checked-in":
+      return {
+        role: "tenant",
+        tenantStatus: "active",
+        branch: await getRoomBranch(roomId),
+      };
+    case "checked-out":
+      return {
+        role: "applicant",
+        tenantStatus: "inactive",
+        branch: await getRoomBranch(roomId),
+      };
+    case "cancelled":
+    case "archived":
+      return getFallbackLifecycleState(userId, reservationId);
+    default:
+      return null;
+  }
+};
+
+export const syncReservationUserLifecycle = async ({
+  status,
+  previousStatus,
+  userId,
+  roomId,
+  reservationId,
+  force = false,
+}) => {
+  if (status === previousStatus && !force) return;
+
+  const user = await User.findById(userId);
+  if (!user) return;
+
+  const nextState = await resolveReservationLifecycleState({
+    status,
+    roomId,
+    userId,
+    reservationId,
+  });
+  if (!nextState) return;
+
+  user.role = nextState.role;
+  user.tenantStatus = nextState.tenantStatus;
+  user.branch = nextState.branch;
+  await user.save();
+  await syncFirebaseLifecycleClaims(user, {
+    role: nextState.role,
+    tenantStatus: nextState.tenantStatus,
+  });
 };
 
 /**

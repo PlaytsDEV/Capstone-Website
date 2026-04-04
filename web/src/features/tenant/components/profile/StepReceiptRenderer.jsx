@@ -242,12 +242,13 @@ const ApplicationReceipt = ({ reservation, step }) => {
 
 // ─── Payment Submitted ───────────────────────────────────────
 const PaymentReceipt = ({ reservation, step }) => {
+  const reservationFeeAmount = reservation.reservationFeeAmount || 2000;
   if (step.status === "completed") {
     return (
       <ReceiptContainer bg="#F0FDF4" border="1px solid #BBF7D0">
         <ReceiptRow
           label="Amount"
-          value={`₱${(reservation.totalPrice || 0).toLocaleString()}`}
+          value={`PHP ${reservationFeeAmount.toLocaleString("en-PH")}`}
           valueColor="#FF8C42"
           valueStyle={{ fontWeight: "600" }}
         />
@@ -309,7 +310,7 @@ const PaymentReceipt = ({ reservation, step }) => {
   if (step.status === "current") {
     return (
       <ActionNote>
-        <strong>💳 Action Required:</strong> Pay ₱2,000 online to secure your
+        <strong>💳 Action Required:</strong> Pay {`PHP ${reservationFeeAmount.toLocaleString("en-PH")}`} online to secure your
         reservation.
       </ActionNote>
     );

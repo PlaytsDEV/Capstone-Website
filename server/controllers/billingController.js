@@ -11,7 +11,7 @@
  */
 
 import dayjs from "dayjs";
-import { Bill, Reservation, Room, User } from "../models/index.js";
+import { Bill, Reservation, Room, User, UtilityPeriod } from "../models/index.js";
 import logger from "../middleware/logger.js";
 import {
   sendSuccess,
@@ -23,6 +23,17 @@ import {
   sendPaymentApprovedEmail,
   sendPaymentRejectedEmail,
 } from "../config/email.js";
+import {
+  buildBillingCycle,
+  getBillRemainingAmount,
+  getReservationCreditAvailable,
+  resolveBillStatus,
+  roundMoney,
+  syncBillAmounts,
+} from "../utils/billingPolicy.js";
+import { getPenaltyRatePerDay } from "../utils/businessSettings.js";
+import { sendDraftUtilityBills } from "../utils/utilityBillFlow.js";
+import { isWaterBillableRoom } from "../utils/utilityFlowRules.js";
 
 /* ─── shared helpers ─────────────────────────────── */
 
@@ -41,8 +52,10 @@ async function getAdminInfo(req) {
 async function markOverdueBills(bills) {
   const now = dayjs().toDate();
   for (const bill of bills) {
-    if (bill.status === "pending" && bill.dueDate < now) {
-      bill.status = "overdue";
+    const nextStatus = resolveBillStatus(bill, now);
+    if (bill.status !== nextStatus) {
+      bill.status = nextStatus;
+      bill.remainingAmount = getBillRemainingAmount(bill);
       await bill.save();
     }
   }
@@ -62,13 +75,255 @@ const formatBill = (bill) => ({
   branch: bill.branch,
   billingMonth: bill.billingMonth,
   dueDate: bill.dueDate,
+  issuedAt: bill.issuedAt || bill.sentAt || null,
+  billingCycleStart: bill.billingCycleStart,
+  billingCycleEnd: bill.billingCycleEnd,
+  utilityCycleStart: bill.utilityCycleStart || null,
+  utilityCycleEnd: bill.utilityCycleEnd || null,
+  utilityReadingDate: bill.utilityReadingDate || null,
   charges: bill.charges,
+  grossAmount: bill.grossAmount,
+  reservationCreditApplied: bill.reservationCreditApplied || 0,
   totalAmount: bill.totalAmount,
   paidAmount: bill.paidAmount,
+  remainingAmount: bill.remainingAmount ?? getBillRemainingAmount(bill),
+  isFirstCycleBill: !!bill.isFirstCycleBill,
   status: bill.status,
   notes: bill.notes,
   createdAt: bill.createdAt,
 });
+
+async function getReservationBillingContext(reservationId, currentBillId = null) {
+  const reservation = await Reservation.findById(reservationId);
+  if (!reservation || !reservation.checkInDate) return null;
+
+  const existingCount = await Bill.countDocuments({
+    reservationId: reservation._id,
+    isArchived: false,
+    ...(currentBillId ? { _id: { $ne: currentBillId } } : {}),
+  });
+
+  const cycle = buildBillingCycle(reservation.checkInDate, existingCount);
+  const creditAvailable = getReservationCreditAvailable(reservation);
+
+  return {
+    reservation,
+    existingCount,
+    cycle,
+    isFirstCycleBill: existingCount === 0,
+    creditAvailable,
+  };
+}
+
+async function getTenantBillForRequest(req, billId) {
+  const dbUser = await User.findOne({ firebaseUid: req.user.uid }).lean();
+  if (!dbUser) return { dbUser: null, bill: null };
+
+  const bill = await Bill.findOne({
+    _id: billId,
+    userId: dbUser._id,
+    isArchived: false,
+  }).lean();
+
+  return { dbUser, bill };
+}
+
+async function findUtilityPeriodForBill({ bill, utilityType }) {
+  if (!bill?.roomId) return null;
+
+  let period = await UtilityPeriod.findOne({
+    roomId: bill.roomId,
+    utilityType,
+    isArchived: false,
+    "tenantSummaries.billId": bill._id,
+  }).lean();
+
+  if (period) return period;
+
+  const cycleFilter = {
+    roomId: bill.roomId,
+    utilityType,
+    isArchived: false,
+  };
+  if (bill.utilityCycleStart) cycleFilter.startDate = bill.utilityCycleStart;
+  if (bill.utilityCycleEnd) cycleFilter.endDate = bill.utilityCycleEnd;
+
+  period = await UtilityPeriod.findOne(cycleFilter).lean();
+  return period || null;
+}
+
+async function buildTenantUtilityBreakdown({ dbUser, bill, utilityType }) {
+  const chargeAmount = utilityType === "electricity"
+    ? Number(bill?.charges?.electricity || 0)
+    : Number(bill?.charges?.water || 0);
+  if (!bill || chargeAmount <= 0) return null;
+
+  const period = await findUtilityPeriodForBill({ bill, utilityType });
+  if (!period) return null;
+
+  const tenantSummary =
+    (period.tenantSummaries || []).find((summary) => String(summary.billId) === String(bill._id)) ||
+    (period.tenantSummaries || []).find((summary) => String(summary.tenantId) === String(dbUser._id)) ||
+    null;
+
+  if (utilityType === "electricity") {
+    const activeSegments = (period.segments || []).filter((segment) =>
+      (segment.activeTenantIds || []).some((tenantId) => String(tenantId) === String(dbUser._id)),
+    );
+
+    return {
+      period: {
+        id: period._id,
+        startDate: period.startDate,
+        endDate: period.endDate,
+      },
+      ratePerKwh: period.ratePerUnit,
+      myTotalKwh: tenantSummary?.totalUsage || 0,
+      myBillAmount: tenantSummary?.billAmount || chargeAmount,
+      segments: activeSegments.map((segment) => ({
+        periodLabel: segment.periodLabel,
+        startDate: segment.startDate,
+        endDate: segment.endDate,
+        readingFrom: segment.readingFrom,
+        readingTo: segment.readingTo,
+        segmentTotalKwh: segment.unitsConsumed,
+        activeTenantCount: segment.activeTenantCount,
+        sharePerTenantKwh: segment.sharePerTenantUnits,
+        sharePerTenantCost: segment.sharePerTenantCost,
+      })),
+    };
+  }
+
+  const firstSegment = (period.segments || [])[0] || null;
+  return {
+    record: {
+      id: period._id,
+      cycleStart: period.startDate,
+      cycleEnd: period.endDate,
+      usage: period.computedTotalUsage || 0,
+      ratePerUnit: period.ratePerUnit,
+      roomTotal: period.computedTotalCost || 0,
+      tenantsSharing: firstSegment?.activeTenantCount || period.tenantSummaries?.length || 0,
+      myShare: tenantSummary?.billAmount || chargeAmount,
+    },
+  };
+}
+
+function hasDraftLinkedSummary(period, draftBillIds) {
+  return (period?.tenantSummaries || []).some((summary) =>
+    summary.billId && draftBillIds.has(String(summary.billId)),
+  );
+}
+
+function buildPublishResultFromPeriod(period) {
+  if (!period) return null;
+  return {
+    computedTotalUsage: period.computedTotalUsage,
+    computedTotalCost: period.computedTotalCost,
+    ratePerUnit: period.ratePerUnit,
+    segments: period.segments || [],
+    tenantSummaries: period.tenantSummaries || [],
+  };
+}
+
+async function getRoomPublishState(room) {
+  const [allBills, periods] = await Promise.all([
+    Bill.find({
+      roomId: room._id,
+      isArchived: false,
+    })
+      .populate("userId", "firstName lastName email")
+      .sort({ createdAt: 1 }),
+    UtilityPeriod.find({
+      roomId: room._id,
+      isArchived: false,
+    })
+      .sort({ endDate: -1, createdAt: -1 })
+      .lean(),
+  ]);
+
+  const draftBillIds = new Set(
+    allBills.filter((bill) => bill.status === "draft").map((bill) => String(bill._id)),
+  );
+  const electricityPeriods = periods.filter((period) => period.utilityType === "electricity");
+  const waterPeriods = periods.filter((period) => period.utilityType === "water");
+  const billableWater = isWaterBillableRoom(room);
+
+  const electricityPeriod =
+    electricityPeriods.find((period) => period.status !== "open" && hasDraftLinkedSummary(period, draftBillIds)) ||
+    electricityPeriods.find((period) => period.status !== "open") ||
+    null;
+  const electricityOpenPeriod =
+    electricityPeriods.find((period) => period.status === "open") || null;
+
+  const waterPeriod =
+    waterPeriods.find((period) => period.status !== "open" && hasDraftLinkedSummary(period, draftBillIds)) ||
+    waterPeriods.find((period) => period.status !== "open") ||
+    null;
+  const waterOpenPeriod =
+    waterPeriods.find((period) => period.status === "open") || null;
+  const relevantDraftIds = new Set(
+    [electricityPeriod, waterPeriod]
+      .filter(Boolean)
+      .flatMap((period) => (period.tenantSummaries || []).map((summary) => summary.billId))
+      .filter(Boolean)
+      .map((billId) => String(billId)),
+  );
+  const cycleBills = relevantDraftIds.size > 0
+    ? allBills.filter((bill) => relevantDraftIds.has(String(bill._id)))
+    : allBills;
+  const draftBills = cycleBills.filter((bill) => bill.status === "draft");
+  const issuedBills = cycleBills.filter((bill) => bill.status !== "draft");
+
+  let blockingReason = "";
+  let isReadyToPublish = true;
+  let publishState = "ready";
+
+  if (!electricityPeriod || electricityPeriod.status === "open") {
+    isReadyToPublish = false;
+    publishState = "blocked";
+    blockingReason = electricityOpenPeriod
+      ? "Electricity period is still open."
+      : "Electricity drafts have not been generated.";
+  } else if (billableWater && (!waterPeriod || waterPeriod.status === "open")) {
+    isReadyToPublish = false;
+    publishState = "blocked";
+    blockingReason = waterOpenPeriod
+      ? "Water period is still open."
+      : "Water drafts have not been generated.";
+  } else if (draftBills.length > 0) {
+    publishState = "ready";
+  } else if (issuedBills.length > 0) {
+    isReadyToPublish = false;
+    publishState = "issued";
+    blockingReason = "Invoices for this cycle have already been sent.";
+  } else if (draftBills.length === 0) {
+    isReadyToPublish = false;
+    publishState = "blocked";
+    blockingReason = "No draft bills found for this room.";
+  }
+
+  return {
+    roomId: room._id,
+    roomName: room.name || room.roomNumber || "Room",
+    branch: room.branch,
+    type: room.type,
+    waterApplicable: billableWater,
+    cycleBills,
+    draftBills,
+    draftBillCount: draftBills.length,
+    issuedBillCount: issuedBills.length,
+    electricityStatus: electricityPeriod ? "closed" : (electricityOpenPeriod ? "open" : "pending"),
+    waterStatus: billableWater
+      ? (waterPeriod ? "finalized" : (waterOpenPeriod ? "open" : "pending"))
+      : "n/a",
+    isReadyToPublish,
+    publishState,
+    blockingReason,
+    electricityPeriod,
+    waterPeriod,
+  };
+}
 
 /** Build paginated bill response (shared by getBillsByBranch + getAllBills) */
 async function fetchBills(filter, query) {
@@ -194,10 +449,19 @@ export const getCurrentBilling = async (req, res, next) => {
       return res.status(404).json({ error: "No current bill found" });
 
     res.json({
-      currentBalance: currentBill.totalAmount - currentBill.paidAmount,
+      currentBalance: currentBill.remainingAmount ?? (currentBill.totalAmount - currentBill.paidAmount),
       totalAmount: currentBill.totalAmount,
+      grossAmount: currentBill.grossAmount ?? currentBill.totalAmount,
+      reservationCreditApplied: currentBill.reservationCreditApplied || 0,
       paidAmount: currentBill.paidAmount,
+      remainingAmount: currentBill.remainingAmount ?? (currentBill.totalAmount - currentBill.paidAmount),
       dueDate: currentBill.dueDate,
+      issuedAt: currentBill.issuedAt || currentBill.sentAt || null,
+      billingCycleStart: currentBill.billingCycleStart,
+      billingCycleEnd: currentBill.billingCycleEnd,
+      utilityCycleStart: currentBill.utilityCycleStart || null,
+      utilityCycleEnd: currentBill.utilityCycleEnd || null,
+      utilityReadingDate: currentBill.utilityReadingDate || null,
       status: currentBill.status,
       charges: currentBill.charges,
     });
@@ -210,7 +474,9 @@ export const getBillingHistory = async (req, res, next) => {
   try {
     const { uid, branch } = req.user;
     const limit = Math.min(parseInt(req.query.limit) || 50, 100);
-    const stayIds = (await Reservation.find({ userId: uid, branch })).map(
+    const dbUser = await User.findOne({ firebaseUid: uid }).lean();
+    if (!dbUser) return res.status(404).json({ error: "User not found" });
+    const stayIds = (await Reservation.find({ userId: dbUser._id, branch })).map(
       (s) => s._id,
     );
 
@@ -228,8 +494,15 @@ export const getBillingHistory = async (req, res, next) => {
         id: b._id,
         date: b.billingMonth,
         dueDate: b.dueDate,
+        issuedAt: b.issuedAt || b.sentAt || null,
         amount: b.totalAmount,
+        grossAmount: b.grossAmount ?? b.totalAmount,
+        reservationCreditApplied: b.reservationCreditApplied || 0,
         paidAmount: b.paidAmount,
+        remainingAmount: b.remainingAmount ?? getBillRemainingAmount(b),
+        utilityCycleStart: b.utilityCycleStart || null,
+        utilityCycleEnd: b.utilityCycleEnd || null,
+        utilityReadingDate: b.utilityReadingDate || null,
         status: b.status,
         charges: b.charges,
         paymentDate: b.paymentDate,
@@ -268,7 +541,13 @@ export const markBillAsPaid = async (req, res, next) => {
     if (!bill) return res.status(404).json({ error: "Bill not found" });
     if (!admin.isSuperAdmin && bill.branch !== admin.branch)
       return res.status(403).json({ error: "Bill not found" });
-    await bill.markAsPaid(amount || bill.totalAmount);
+    const appliedAmount = Number(amount || bill.totalAmount);
+    bill.paidAmount = appliedAmount;
+    syncBillAmounts(bill);
+    if (bill.paidAmount > 0 && !bill.paymentDate) {
+      bill.paymentDate = new Date();
+    }
+    await bill.save();
     if (note) {
       bill.notes = note;
       await bill.save();
@@ -307,6 +586,9 @@ export const getBillsByBranch = async (req, res, next) => {
 
 export const generateRoomBill = async (req, res, next) => {
   try {
+    return res.status(410).json({
+      error: "Legacy room billing is disabled. Use the utility billing flow to generate drafts, then publish from Issue Invoices.",
+    });
     const admin = await getAdminInfo(req);
     const { roomId, billingMonth, dueDate, charges = {} } = req.body;
     if (!roomId) return res.status(400).json({ error: "Room is required" });
@@ -438,9 +720,6 @@ export const generateRoomBill = async (req, res, next) => {
       water: Number(charges.water) || 0,
     };
     const totalUtilities = roomCharges.electricity + roomCharges.water;
-    const billDueDate = dueDate
-      ? dayjs(dueDate).toDate()
-      : monthDate.add(1, "month").date(15).toDate();
     const adminUser = await User.findOne({ firebaseUid: req.user.uid });
 
     const generatedBills = [];
@@ -467,43 +746,68 @@ export const generateRoomBill = async (req, res, next) => {
         0,
       );
 
-      const totalAmount = tenant.rent + utilityShare + customChargesTotal;
+      const utilityCustomCharges = room.branch === "guadalupe" ? 0 : customChargesTotal;
+      const grossAmount = roundMoney(utilityShare + utilityCustomCharges);
+      const billingContext = tenant.reservationId
+        ? await getReservationBillingContext(tenant.reservationId)
+        : null;
+      const reservationCreditApplied = Math.min(
+        grossAmount,
+        billingContext?.creditAvailable || 0,
+      );
+      const cycleDueDate = dueDate
+        ? dayjs(dueDate).toDate()
+        : billingContext?.cycle?.dueDate || monthDate.add(1, "month").date(15).toDate();
 
       const bill = new Bill({
         reservationId: tenant.reservationId,
         userId: tenant.userId,
         branch: room.branch,
         roomId: room._id,
-        billingMonth: monthStart,
-        dueDate: billDueDate,
+        billingMonth: billingContext?.cycle?.billingMonth || monthStart,
+        billingCycleStart: billingContext?.cycle?.billingCycleStart || monthStart,
+        billingCycleEnd: billingContext?.cycle?.billingCycleEnd || cycleDueDate,
+        dueDate: cycleDueDate,
+        isFirstCycleBill: !!billingContext?.isFirstCycleBill,
         proRataDays: tenant.daysInRoom,
         charges: {
-          rent: tenant.rent,
+          rent: 0,
           electricity: te,
           water: tw,
-          applianceFees: customChargesTotal,
+          applianceFees: utilityCustomCharges,
           corkageFees: 0,
           penalty: 0,
           discount: 0,
         },
-        additionalCharges: tenantCustomCharges.map((c) => ({
+        additionalCharges: room.branch === "guadalupe" ? [] : tenantCustomCharges.map((c) => ({
           name: c.name,
           amount: c.amount,
         })),
-        totalAmount,
-        status: "pending",
+        grossAmount,
+        reservationCreditApplied,
+        totalAmount: grossAmount,
+        remainingAmount: grossAmount,
+        status: "draft",
       });
+      syncBillAmounts(bill);
       await bill.save();
+      if (billingContext?.reservation && reservationCreditApplied > 0) {
+        billingContext.reservation.reservationCreditConsumedAt = new Date();
+        billingContext.reservation.reservationCreditAppliedBillId = bill._id;
+        await billingContext.reservation.save();
+      }
       generatedBills.push(bill._id);
       tenantBreakdown.push({
         userId: tenant.userId,
         reservationId: tenant.reservationId,
         daysInRoom: tenant.daysInRoom,
         proRataShare: Math.round(share * 10000) / 10000,
-        rent: tenant.rent,
-        customCharges: tenantCustomCharges,
+        rent: 0,
+        customCharges: room.branch === "guadalupe" ? [] : tenantCustomCharges,
         utilityShare,
-        totalAmount,
+        grossAmount,
+        reservationCreditApplied,
+        totalAmount: bill.totalAmount,
         billId: bill._id,
       });
     }
@@ -518,7 +822,7 @@ export const generateRoomBill = async (req, res, next) => {
       roomId: room._id,
       branch: room.branch,
       billingMonth: monthStart,
-      dueDate: billDueDate,
+      dueDate: dueDate ? dayjs(dueDate).toDate() : null,
       charges: roomCharges,
       totalCharges: totalUtilities,
       generatedBills,
@@ -541,7 +845,7 @@ export const generateRoomBill = async (req, res, next) => {
         totalUtilities,
         tenantsCount: tenantBreakdown.length,
         tenantBreakdown: tenantBreakdown.map((t) => ({
-          rent: t.rent,
+          rent: 0,
           utilityShare: t.utilityShare,
           totalAmount: t.totalAmount,
           daysInRoom: t.daysInRoom,
@@ -551,6 +855,7 @@ export const generateRoomBill = async (req, res, next) => {
     });
 
     // Send bill notification emails to all billed tenants
+    return;
     const monthLabel = dayjs(monthStart).format("MMMM YYYY");
     const dueDateLabel = dayjs(billDueDate).format("MMMM D, YYYY");
     for (const tenant of tenantInfos) {
@@ -677,22 +982,50 @@ export const getMyBills = async (req, res, next) => {
       .sort({ billingMonth: -1 })
       .lean();
 
+    const billResponses = await Promise.all(
+      bills.map(async (b) => {
+        const utilityBreakdowns = {};
+        if (Number(b.charges?.electricity || 0) > 0) {
+          utilityBreakdowns.electricity =
+            await buildTenantUtilityBreakdown({ dbUser, bill: b, utilityType: "electricity" });
+        }
+        if (Number(b.charges?.water || 0) > 0) {
+          utilityBreakdowns.water =
+            await buildTenantUtilityBreakdown({ dbUser, bill: b, utilityType: "water" });
+        }
+
+        return {
+          id: b._id,
+          billingMonth: b.billingMonth,
+          billingCycleStart: b.billingCycleStart,
+          billingCycleEnd: b.billingCycleEnd,
+          dueDate: b.dueDate,
+          issuedAt: b.issuedAt || b.sentAt || null,
+          utilityCycleStart: b.utilityCycleStart || null,
+          utilityCycleEnd: b.utilityCycleEnd || null,
+          utilityReadingDate: b.utilityReadingDate || null,
+          utilityPeriodId: null,
+          charges: b.charges,
+          totalAmount: b.totalAmount,
+          grossAmount: b.grossAmount ?? b.totalAmount,
+          reservationCreditApplied: b.reservationCreditApplied || 0,
+          paidAmount: b.paidAmount,
+          remainingAmount: b.remainingAmount ?? getBillRemainingAmount(b),
+          status: resolveBillStatus(b),
+          proRataDays: b.proRataDays,
+          isFirstCycleBill: !!b.isFirstCycleBill,
+          room: b.roomId?.name || "N/A",
+          branch: b.branch,
+          paymentProof: b.paymentProof || { verificationStatus: "none" },
+          penaltyDetails: b.penaltyDetails || { daysLate: 0 },
+          createdAt: b.createdAt,
+          utilityBreakdowns,
+        };
+      }),
+    );
+
     res.json({
-      bills: bills.map((b) => ({
-        id: b._id,
-        billingMonth: b.billingMonth,
-        dueDate: b.dueDate,
-        charges: b.charges,
-        totalAmount: b.totalAmount,
-        paidAmount: b.paidAmount,
-        status: b.status,
-        proRataDays: b.proRataDays,
-        room: b.roomId?.name || "N/A",
-        branch: b.branch,
-        paymentProof: b.paymentProof || { verificationStatus: "none" },
-        penaltyDetails: b.penaltyDetails || { daysLate: 0 },
-        createdAt: b.createdAt,
-      })),
+      bills: billResponses,
     });
   } catch (error) {
     next(error);
@@ -879,14 +1212,13 @@ export const getPendingVerifications = async (req, res, next) => {
 // PENALTY: Auto-apply penalties for overdue bills
 // ============================================================================
 
-const PENALTY_RATE_PER_DAY = 50; // ₱50/day per PRD
-
 export const applyPenalties = async (req, res, next) => {
   try {
     const admin = await getAdminInfo(req);
     const now = dayjs();
+    const penaltyRatePerDay = await getPenaltyRatePerDay();
     const filter = {
-      status: { $in: ["pending", "overdue"] },
+      status: { $in: ["pending", "overdue", "partially-paid"] },
       dueDate: { $lt: now.toDate() },
       isArchived: false,
     };
@@ -897,23 +1229,16 @@ export const applyPenalties = async (req, res, next) => {
 
     for (const bill of overdueBills) {
       const daysLate = Math.max(1, now.diff(dayjs(bill.dueDate), "day"));
-      const penalty = daysLate * PENALTY_RATE_PER_DAY;
+      const penalty = daysLate * penaltyRatePerDay;
 
       // Recalculate total: base charges + penalty - discount
-      const baseCharges =
-        (bill.charges.rent || 0) +
-        (bill.charges.electricity || 0) +
-        (bill.charges.water || 0) +
-        (bill.charges.applianceFees || 0) +
-        (bill.charges.corkageFees || 0);
-
       bill.charges.penalty = penalty;
-      bill.totalAmount = baseCharges + penalty - (bill.charges.discount || 0);
       bill.penaltyDetails = {
         daysLate,
-        ratePerDay: PENALTY_RATE_PER_DAY,
+        ratePerDay: penaltyRatePerDay,
         appliedAt: now,
       };
+      syncBillAmounts(bill);
       bill.status = "overdue";
       await bill.save();
       updated++;
@@ -1039,10 +1364,6 @@ export const generateBulkBills = async (req, res, next) => {
     const monthDate = dayjs(billingMonth || undefined);
     const monthStart = monthDate.startOf("month").toDate();
     const monthEnd = monthDate.endOf("month").toDate();
-    const billDueDate = dueDate
-      ? dayjs(dueDate).toDate()
-      : monthDate.add(1, "month").date(15).toDate();
-
     // Find all rooms in this branch
     const rooms = await Room.find({ branch, isArchived: false });
     const adminUser = await User.findOne({ firebaseUid: req.user.uid });
@@ -1159,15 +1480,28 @@ export const generateBulkBills = async (req, res, next) => {
             (sum, c) => sum + (Number(c.amount) || 0),
             0,
           );
-          const totalAmount = tenant.rent + utilityShare + customChargesTotal;
+          const grossAmount = roundMoney(tenant.rent + utilityShare + customChargesTotal);
+          const billingContext = tenant.reservationId
+            ? await getReservationBillingContext(tenant.reservationId)
+            : null;
+          const reservationCreditApplied = Math.min(
+            grossAmount,
+            billingContext?.creditAvailable || 0,
+          );
+          const cycleDueDate = dueDate
+            ? dayjs(dueDate).toDate()
+            : billingContext?.cycle?.dueDate || monthDate.add(1, "month").date(15).toDate();
 
           const bill = new Bill({
             reservationId: tenant.reservationId,
             userId: tenant.userId,
             branch: room.branch,
             roomId: room._id,
-            billingMonth: monthStart,
-            dueDate: billDueDate,
+            billingMonth: billingContext?.cycle?.billingMonth || monthStart,
+            billingCycleStart: billingContext?.cycle?.billingCycleStart || monthStart,
+            billingCycleEnd: billingContext?.cycle?.billingCycleEnd || cycleDueDate,
+            dueDate: cycleDueDate,
+            isFirstCycleBill: !!billingContext?.isFirstCycleBill,
             proRataDays: tenant.daysInRoom,
             charges: {
               rent: tenant.rent,
@@ -1182,10 +1516,19 @@ export const generateBulkBills = async (req, res, next) => {
               name: c.name,
               amount: c.amount,
             })),
-            totalAmount,
+            grossAmount,
+            reservationCreditApplied,
+            totalAmount: grossAmount,
+            remainingAmount: grossAmount,
             status: "pending",
           });
+          syncBillAmounts(bill);
           await bill.save();
+          if (billingContext?.reservation && reservationCreditApplied > 0) {
+            billingContext.reservation.reservationCreditConsumedAt = new Date();
+            billingContext.reservation.reservationCreditAppliedBillId = bill._id;
+            await billingContext.reservation.save();
+          }
           generatedBills.push(bill._id);
           tenantBreakdown.push({
             userId: tenant.userId,
@@ -1194,7 +1537,9 @@ export const generateBulkBills = async (req, res, next) => {
             proRataShare: Math.round(share * 10000) / 10000,
             rent: tenant.rent,
             utilityShare,
-            totalAmount,
+            grossAmount,
+            reservationCreditApplied,
+            totalAmount: bill.totalAmount,
             billId: bill._id,
           });
         }
@@ -1204,7 +1549,7 @@ export const generateBulkBills = async (req, res, next) => {
             roomId: room._id,
             branch: room.branch,
             billingMonth: monthStart,
-            dueDate: billDueDate,
+            dueDate: dueDate ? dayjs(dueDate).toDate() : null,
             charges: roomCharges,
             totalCharges: totalUtilities,
             generatedBills,
@@ -1244,6 +1589,116 @@ export const generateBulkBills = async (req, res, next) => {
   }
 };
 
+export const getRoomReadiness = async (req, res, next) => {
+  try {
+    const admin = await getAdminInfo(req);
+    const branch =
+      admin.isSuperAdmin && req.query.branch ? req.query.branch : (req.branchFilter || admin.branch);
+    const roomFilter = { isArchived: false };
+    if (branch) roomFilter.branch = branch;
+
+    const rooms = await Room.find(roomFilter)
+      .select("name roomNumber branch type")
+      .sort({ name: 1 })
+      .lean();
+
+    const readiness = await Promise.all(rooms.map((room) => getRoomPublishState(room)));
+    const cycleSource = readiness.find((entry) => entry.electricityPeriod || entry.waterPeriod);
+
+    res.json({
+      cycleStart:
+        cycleSource?.electricityPeriod?.startDate ||
+        cycleSource?.waterPeriod?.startDate ||
+        null,
+      cycleEnd:
+        cycleSource?.electricityPeriod?.endDate ||
+        cycleSource?.waterPeriod?.endDate ||
+        null,
+      rooms: readiness.map((entry) => ({
+        roomId: entry.roomId,
+        roomName: entry.roomName,
+        branch: entry.branch,
+        type: entry.type,
+        waterApplicable: entry.waterApplicable,
+        draftBillCount: entry.draftBillCount,
+        issuedBillCount: entry.issuedBillCount,
+        electricityStatus: entry.electricityStatus,
+        waterStatus: entry.waterStatus,
+        isReadyToPublish: entry.isReadyToPublish,
+        publishState: entry.publishState,
+        blockingReason: entry.blockingReason,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getMyUtilityBreakdownByBillId = async (req, res, next) => {
+  try {
+    const { billId, utilityType } = req.params;
+    if (!["electricity", "water"].includes(utilityType)) {
+      return res.status(400).json({ error: "Invalid utility type" });
+    }
+
+    const { dbUser, bill } = await getTenantBillForRequest(req, billId);
+    if (!dbUser) return res.status(404).json({ error: "User not found" });
+    if (!bill) return res.status(404).json({ error: "Bill not found" });
+    const breakdown = await buildTenantUtilityBreakdown({ dbUser, bill, utilityType });
+    if (!breakdown) {
+      return res.status(404).json({ error: `No ${utilityType} breakdown found for this bill` });
+    }
+
+    return res.json(breakdown);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const publishRoomBills = async (req, res, next) => {
+  try {
+    const admin = await getAdminInfo(req);
+    const room = await Room.findById(req.params.roomId).lean();
+    if (!room || room.isArchived) {
+      return res.status(404).json({ error: "Room not found" });
+    }
+    if (!admin.isSuperAdmin && room.branch !== (req.branchFilter || admin.branch)) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    const readiness = await getRoomPublishState(room);
+    if (readiness.draftBillCount === 0) {
+      return res.status(409).json({ error: "No draft bills found for this room." });
+    }
+    if (!readiness.isReadyToPublish) {
+      return res.status(409).json({ error: readiness.blockingReason });
+    }
+
+    const referencePeriod = readiness.electricityPeriod || readiness.waterPeriod;
+    const result = buildPublishResultFromPeriod(readiness.electricityPeriod || readiness.waterPeriod);
+    const sendResult = await sendDraftUtilityBills({
+      bills: readiness.draftBills,
+      period: referencePeriod,
+      result,
+    });
+
+    res.json({
+      success: true,
+      roomId: room._id,
+      roomName: readiness.roomName,
+      published: sendResult.sent,
+      issuedAt: sendResult.issuedAt,
+      dueDate: sendResult.dueDate,
+      deliveries: sendResult.deliveries,
+      partialFailures: sendResult.deliveries.filter(
+        (entry) => entry.pdfError || entry.emailError || entry.notificationError,
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export default {
   getCurrentBilling,
   getBillingHistory,
@@ -1257,4 +1712,7 @@ export default {
   applyPenalties,
   getBillingReport,
   deleteBill,
+  getMyUtilityBreakdownByBillId,
+  getRoomReadiness,
+  publishRoomBills,
 };

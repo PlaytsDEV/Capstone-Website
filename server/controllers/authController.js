@@ -556,8 +556,8 @@ export const setRole = async (req, res, next) => {
       });
     }
 
-    // Set custom claims in Firebase Auth
-    // This allows the user to have admin/superAdmin access on the frontend
+    // Set custom claims in Firebase Auth so the frontend can recognize
+    // branch admins and owners from the token itself.
     const auth = getAuth();
 
     if (!auth) {

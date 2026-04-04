@@ -11,3 +11,5 @@ export { default as ContractTab } from "./ContractTab";
 export { default as ReservationAgreementPage } from "./ReservationAgreementPage";
 export { default as ProfileCompletionCard } from "./ProfileCompletionCard";
 export { default as StaysTab } from "./StaysTab";
+export { default as MaintenanceTab } from "./MaintenanceTab";
+export { default as AnnouncementsTab } from "./AnnouncementsTab";

@@ -34,6 +34,8 @@ import { updateOccupancyOnReservationChange } from "../utils/occupancyManager.js
 import { notify } from "../utils/notificationService.js";
 import logger from "../middleware/logger.js";
 import { BUSINESS } from "../config/constants.js";
+import { getBillRemainingAmount } from "../utils/billingPolicy.js";
+import { getReservationFeeAmount } from "../utils/businessSettings.js";
 
 /* ─── helpers ───────────────────────────────────── */
 
@@ -81,6 +83,9 @@ async function handleDepositPayment(metadata, eventData) {
 
   // Update payment fields
   const paymentId = extractPaymentId(eventData);
+  if (!reservation.reservationFeeAmount) {
+    reservation.reservationFeeAmount = await getReservationFeeAmount();
+  }
   reservation.paymentStatus = "paid";
   reservation.paymentDate = new Date();
   reservation.paymentMethod = "paymongo";
@@ -122,7 +127,7 @@ async function handleDepositPayment(metadata, eventData) {
         null;
       const actualPaidAmount = paidAmountCents
         ? paidAmountCents / 100
-        : BUSINESS.DEPOSIT_AMOUNT;
+        : reservation.reservationFeeAmount || BUSINESS.DEPOSIT_AMOUNT;
 
       const paymentId = extractPaymentId(eventData);
       const paymentDate = new Date().toLocaleDateString("en-PH", {
@@ -173,6 +178,7 @@ async function handleBillPayment(metadata, eventData) {
   // Update payment fields
   const paymentId = extractPaymentId(eventData);
   bill.paidAmount = bill.totalAmount;
+  bill.remainingAmount = 0;
   bill.status = "paid";
   bill.paymentDate = new Date();
   bill.paymentMethod = "paymongo";

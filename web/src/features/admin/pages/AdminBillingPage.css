@@ -1,0 +1,146 @@
+/* ============================================================
+   Admin Billing Page - Workspace Shell
+   ============================================================ */
+
+.admin-billing-page {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-billing-page__hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 18px 24px;
+  border: 1px solid #e8eaed;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
+}
+
+.admin-billing-page__hero-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.admin-billing-page__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.admin-billing-page__heading {
+  margin: 0;
+  color: #0f172a;
+  font-size: clamp(1.25rem, 1.8vw, 1.6rem);
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.admin-billing-page__subtitle {
+  margin: 0;
+  max-width: 60ch;
+  color: #64748b;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.admin-billing-page__hero-actions {
+  display: flex;
+  align-self: center;
+}
+
+.admin-billing-page__workspace-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+}
+
+.admin-billing-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #475569;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 7px 13px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s, box-shadow 0.12s;
+  white-space: nowrap;
+}
+
+.admin-billing-tab:hover:not(.is-active) {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.admin-billing-tab.is-active {
+  background: #fff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.07);
+}
+
+.admin-billing-tab__icon {
+  display: flex;
+  align-items: center;
+  opacity: 0.7;
+  transition: opacity 0.12s;
+}
+
+.admin-billing-tab.is-active .admin-billing-tab__icon {
+  opacity: 1;
+}
+
+.admin-billing-tab--publish.is-active {
+  color: #7c3aed;
+  border-color: #ddd6fe;
+}
+
+.admin-billing-tab--publish:hover:not(.is-active) {
+  color: #7c3aed;
+  background: #f5f3ff;
+}
+
+.admin-billing-page__workspace-panel {
+  min-height: 680px;
+}
+
+@media (max-width: 900px) {
+  .admin-billing-page__hero {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .admin-billing-page__hero-actions {
+    align-self: flex-start;
+  }
+
+  .admin-billing-page__workspace-tabs {
+    flex-wrap: wrap;
+  }
+
+  .admin-billing-tab {
+    flex: 1 1 140px;
+    justify-content: center;
+  }
+}
+
+

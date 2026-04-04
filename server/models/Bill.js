@@ -85,6 +85,30 @@ const billSchema = new mongoose.Schema(
       required: false,
       default: null,
     },
+    billingCycleStart: {
+      type: Date,
+      default: null,
+    },
+    billingCycleEnd: {
+      type: Date,
+      default: null,
+    },
+    utilityCycleStart: {
+      type: Date,
+      default: null,
+    },
+    utilityCycleEnd: {
+      type: Date,
+      default: null,
+    },
+    utilityReadingDate: {
+      type: Date,
+      default: null,
+    },
+    isFirstCycleBill: {
+      type: Boolean,
+      default: false,
+    },
 
     // --- Charges ---
     charges: {
@@ -124,6 +148,18 @@ const billSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    grossAmount: {
+      type: Number,
+      default: 0,
+    },
+    reservationCreditApplied: {
+      type: Number,
+      default: 0,
+    },
+    remainingAmount: {
+      type: Number,
+      default: 0,
+    },
 
     // --- Payment Status ---
     status: {
@@ -142,7 +178,18 @@ const billSchema = new mongoose.Schema(
     },
     paymentMethod: {
       type: String,
-      enum: ["bank", "gcash", "card", "check", "cash", "paymongo", "paymaya", "grab_pay", "maya", "online"],
+      enum: [
+        "bank",
+        "gcash",
+        "card",
+        "check",
+        "cash",
+        "paymongo",
+        "paymaya",
+        "grab_pay",
+        "maya",
+        "online",
+      ],
       default: null,
     },
     paymongoSessionId: {
@@ -167,10 +214,26 @@ const billSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    issuedAt: {
+      type: Date,
+      default: null,
+    },
     isArchived: {
       type: Boolean,
       default: false,
       index: true,
+    },
+
+    // --- PDF Bill ---
+    // Populated automatically when sendBills is triggered.
+    // Relative path from server root: "uploads/bills/BILLID.pdf"
+    pdfPath: {
+      type: String,
+      default: null,
+    },
+    pdfGeneratedAt: {
+      type: Date,
+      default: null,
     },
 
     // --- Payment Proof (tenant submission) ---
@@ -222,13 +285,17 @@ billSchema.index({ branch: 1, billingMonth: -1, status: 1 });
 
 billSchema.methods.markAsPaid = function (amount = this.totalAmount) {
   this.paidAmount = amount;
-  this.status = amount >= this.totalAmount ? "paid" : "partially-paid";
+  this.remainingAmount = Math.max(this.totalAmount - amount, 0);
+  this.status = this.remainingAmount <= 0 ? "paid" : "partially-paid";
   this.paymentDate = new Date();
   return this.save();
 };
 
 billSchema.methods.markAsOverdue = function () {
-  if (this.status === "pending") {
+  if (
+    this.status !== "draft" &&
+    (this.remainingAmount ?? this.totalAmount - this.paidAmount) > 0
+  ) {
     this.status = "overdue";
     return this.save();
   }

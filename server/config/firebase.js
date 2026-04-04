@@ -7,7 +7,7 @@
  *
  * Purpose:
  * - Verify Firebase ID tokens sent from the client
- * - Manage user custom claims (roles: admin, superAdmin)
+ * - Manage user custom claims (roles: branch_admin, owner)
  * - Access Firebase Authentication user data
  *
  * Security Notes:

@@ -11,6 +11,18 @@ export const reservationApi = {
   getAll: () => authFetch("/reservations"),
 
   /**
+   * Get current checked-in residents for admin tenants page
+   */
+  getCurrentResidents: (params = {}) => {
+    const searchParams = new URLSearchParams();
+    if (params.branch && params.branch !== "all") {
+      searchParams.set("branch", params.branch);
+    }
+    const query = searchParams.toString();
+    return authFetch(`/reservations/current-residents${query ? `?${query}` : ""}`);
+  },
+
+  /**
    * Get reservation by ID
    */
   getById: (reservationId) => authFetch(`/reservations/${reservationId}`),

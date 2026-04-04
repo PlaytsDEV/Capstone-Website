@@ -33,8 +33,10 @@ export default function BillsTable({ bills, loading, onViewBill }) {
           <tr>
             <th>Tenant</th>
             <th>Month</th>
+            <th>Cycle</th>
             <th>Rent</th>
             <th>Utilities</th>
+            <th>Credit</th>
             <th>Total</th>
             <th>Status</th>
             <th>Due</th>
@@ -59,10 +61,20 @@ export default function BillsTable({ bills, loading, onViewBill }) {
                   </div>
                 </td>
                 <td>{fmtMonth(bill.billingMonth)}</td>
+                <td>
+                  {bill.billingCycleStart && bill.billingCycleEnd
+                    ? `${fmtDate(bill.billingCycleStart)} - ${fmtDate(bill.billingCycleEnd)}`
+                    : "—"}
+                </td>
                 <td className="amount-cell">
                   {fmtCurrency(bill.charges?.rent)}
                 </td>
                 <td className="amount-cell">{fmtCurrency(utilities)}</td>
+                <td className="amount-cell">
+                  {bill.reservationCreditApplied
+                    ? `-${fmtCurrency(bill.reservationCreditApplied)}`
+                    : "—"}
+                </td>
                 <td className="amount-cell">{fmtCurrency(bill.totalAmount)}</td>
                 <td>
                   <span className={`badge status-${bill.status}`}>

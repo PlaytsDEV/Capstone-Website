@@ -1,43 +1,30 @@
 /**
  * =============================================================================
- * REQUIRE SUPER ADMIN GUARD
+ * LEGACY OWNER GUARD
  * =============================================================================
  *
- * Route protection component that requires super admin role specifically.
- * More restrictive than RequireAdmin - only allows 'superAdmin' role.
+ * Legacy route protection component that now maps to the canonical `owner` role.
+ * More restrictive than RequireAdmin - only allows `owner`.
  *
  * Usage:
- *   <Route path="/super-admin/*" element={<RequireSuperAdmin><SuperAdminDashboard /></RequireSuperAdmin>} />
+ *   <Route path="/admin/settings" element={<RequireSuperAdmin><OwnerPage /></RequireSuperAdmin>} />
  *
- * Allowed Roles: 'superAdmin' only
- * Redirects to: /admin/login (if not super admin)
+ * Allowed Roles: 'owner' only
+ * Redirects to: /signin (if not owner)
  * =============================================================================
  */
 
 import React from "react";
-import { Navigate } from "react-router-dom";
-import { useAuth } from "../hooks/useAuth";
+import RequireOwner from "./RequireOwner";
 
 /**
- * Guard component that requires super admin role
+ * Guard component that requires owner role
  * @param {Object} props - Component props
- * @param {React.ReactNode} props.children - Protected super admin content
- * @returns {React.ReactElement} Children if super admin, redirect otherwise
+ * @param {React.ReactNode} props.children - Protected owner content
+ * @returns {React.ReactElement} Children if owner, redirect otherwise
  */
 const RequireSuperAdmin = ({ children }) => {
-  const { user, isAuthenticated, loading } = useAuth();
-
-  // Show loading while checking authentication
-  if (loading) {
-    return null;
-  }
-
-  // Redirect if not authenticated or not super admin
-  if (!isAuthenticated || user?.role !== "owner") {
-    return <Navigate to="/signin" replace />;
-  }
-
-  return children;
+  return <RequireOwner>{children}</RequireOwner>;
 };
 
 export default RequireSuperAdmin;

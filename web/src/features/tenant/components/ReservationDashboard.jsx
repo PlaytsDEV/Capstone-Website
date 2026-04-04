@@ -131,6 +131,7 @@ function getStepStatus(stepStage, currentStage, reservation) {
 }
 
 function getNextAction(reservation, currentStage) {
+  const reservationFeeAmount = reservation?.reservationFeeAmount || 2000;
   if (!reservation) {
     return {
       title: "Start Your Reservation",
@@ -211,7 +212,7 @@ function getNextAction(reservation, currentStage) {
       return {
         title: "Pay Reservation Fee",
         description:
-          "Pay ₱2,000 online via GCash, Maya, or Card to secure your reservation",
+          `Pay PHP ${reservationFeeAmount.toLocaleString("en-PH")} online via GCash, Maya, or Card to secure your reservation`,
         buttonLabel: "Pay Now →",
         route: `/applicant/reservation?step=4`,
         isWaiting: false,

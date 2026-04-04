@@ -25,7 +25,7 @@ export function useExportAuditLogs() {
   });
 }
 
-/** Cleanup old logs (super admin) */
+/** Cleanup old logs (owner) */
 export function useCleanupAuditLogs() {
   const qc = useQueryClient();
   return useMutation({

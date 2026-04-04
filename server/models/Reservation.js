@@ -264,6 +264,20 @@ const reservationSchema = new mongoose.Schema(
       required: true,
       min: 0,
     },
+    reservationFeeAmount: {
+      type: Number,
+      default: 2000,
+      min: 0,
+    },
+    reservationCreditConsumedAt: {
+      type: Date,
+      default: null,
+    },
+    reservationCreditAppliedBillId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Bill",
+      default: null,
+    },
     // Monthly rent locked at booking time (snapshot of room price)
     // Admin can adjust per-tenant for discounts/promotions
     monthlyRent: {

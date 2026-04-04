@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { billingApi } from "../../../shared/api/apiClient";
-import { useMyBillBreakdownByBillId, useMyElectricityBills, useMyBillBreakdown } from "../../../shared/hooks/queries/useElectricity";
+import { useMyUtilityBills, useMyUtilityBreakdownByBillId } from "../../../shared/hooks/queries/useUtility";
 import { showNotification } from "../../../shared/utils/notification";
 import { formatPaymentMethod } from "../../../shared/utils/formatPaymentMethod";
 import TenantLayout from "../../../shared/layouts/TenantLayout";
@@ -123,6 +123,11 @@ const BillingPage = () => {
       day: "numeric",
     });
 
+  const fmtCycle = (bill) => {
+    if (!bill?.billingCycleStart || !bill?.billingCycleEnd) return null;
+    return `${fmtDate(bill.billingCycleStart)} - ${fmtDate(bill.billingCycleEnd)}`;
+  };
+
   const getStatusLabel = (status) => {
     const labels = {
       pending: "Pending",
@@ -133,10 +138,8 @@ const BillingPage = () => {
     return labels[status] || status;
   };
 
-  // Current bill = latest unpaid
   const currentBill =
-    bills.find((b) => b.status !== "paid" && b.status !== "partially-paid") ||
-    bills[0];
+    bills.find((b) => (b.remainingAmount ?? b.totalAmount ?? 0) > 0) || bills[0];
   const pastBills = bills.filter((b) => b !== currentBill);
 
   if (loading) {
@@ -179,6 +182,7 @@ const BillingPage = () => {
             fmtCurrency={fmtCurrency}
             fmtMonth={fmtMonth}
             fmtDate={fmtDate}
+            fmtCycle={fmtCycle}
             getStatusLabel={getStatusLabel}
             onPayOnline={() => handlePayOnline(currentBill.id)}
             payingOnline={payingOnline}
@@ -193,6 +197,13 @@ const BillingPage = () => {
         {/* ─── Electricity Segment Breakdown ─── */}
         {currentBill?.charges?.electricity > 0 && (
           <ElectricityBreakdown
+            billId={currentBill.id || currentBill._id}
+            fmtCurrency={fmtCurrency}
+          />
+        )}
+
+        {currentBill?.charges?.water > 0 && (
+          <WaterBreakdown
             billId={currentBill.id || currentBill._id}
             fmtCurrency={fmtCurrency}
           />
@@ -222,7 +233,9 @@ const BillingPage = () => {
                       {fmtMonth(bill.billingMonth)}
                     </span>
                     <span className="bill-room">
-                      {bill.room} • {bill.branch}{bill.dueDate ? ` • Due ${fmtDate(bill.dueDate)}` : ""}
+                      {bill.room} • {bill.branch}
+                      {fmtCycle(bill) ? ` • ${fmtCycle(bill)}` : ""}
+                      {bill.dueDate ? ` • Due ${fmtDate(bill.dueDate)}` : ""}
                     </span>
                   </div>
                   <div className="bill-history-right">
@@ -277,11 +290,12 @@ function CurrentBillHero({
   fmtCurrency,
   fmtMonth,
   fmtDate,
+  fmtCycle,
   getStatusLabel,
   onPayOnline,
   payingOnline,
 }) {
-  const canPay = bill.status !== "paid";
+  const canPay = (bill.remainingAmount ?? bill.totalAmount ?? 0) > 0;
 
   return (
     <div className="current-bill-hero">
@@ -295,11 +309,24 @@ function CurrentBillHero({
         </span>
       </div>
 
-      <div className="bill-hero-amount">{fmtCurrency(bill.totalAmount)}</div>
+      <div className="bill-hero-amount">
+        {fmtCurrency(bill.remainingAmount ?? bill.totalAmount)}
+      </div>
       <div className="bill-hero-due">
         Due: <strong>{bill.dueDate ? fmtDate(bill.dueDate) : "To be confirmed"}</strong>
         {bill.room && <> • Room {bill.room}</>}
       </div>
+      {fmtCycle(bill) && (
+        <div className="bill-hero-due">
+          Cycle: <strong>{fmtCycle(bill)}</strong>
+        </div>
+      )}
+      {bill.reservationCreditApplied > 0 && (
+        <div className="bill-hero-due">
+          First bill credit applied: <strong>-{fmtCurrency(bill.reservationCreditApplied)}</strong>
+          {" "}from your reservation fee
+        </div>
+      )}
 
       <div className="bill-hero-actions">
         {canPay && (
@@ -357,7 +384,7 @@ function CurrentBillHero({
  */
 function ElectricityBreakdown({ billId, fmtCurrency }) {
   const [open, setOpen] = useState(false);
-  const { data, isLoading, isError } = useMyBillBreakdownByBillId(open ? billId : null);
+  const { data, isLoading, isError } = useMyUtilityBreakdownByBillId("electricity", open ? billId : null);
 
   const fmtKwh = (n) =>
     `${(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 1, maximumFractionDigits: 2 })} kWh`;
@@ -462,6 +489,108 @@ function ElectricityBreakdown({ billId, fmtCurrency }) {
   );
 }
 
+function WaterBreakdown({ billId, fmtCurrency }) {
+  const [open, setOpen] = useState(false);
+  const { data, isLoading, isError } = useMyUtilityBreakdownByBillId("water", open ? billId : null);
+  const record = data?.record || null;
+
+  const fmtShortDate = (value) =>
+    value
+      ? new Date(value).toLocaleDateString("en-PH", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })
+      : "";
+
+  return (
+    <div className="charges-card electricity-breakdown-card water-breakdown-card">
+      <button
+        className="electricity-breakdown-toggle water-breakdown-toggle"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+      >
+        <span className="electricity-breakdown-toggle__label">
+          <Droplets
+            size={15}
+            className="electricity-breakdown-toggle__icon water-breakdown-toggle__icon"
+          />
+          Water Breakdown
+        </span>
+        <span className="electricity-breakdown-toggle__hint">
+          {open ? "Hide details" : "See room water split"}
+        </span>
+        {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+      </button>
+
+      {open && (
+        <div className="electricity-breakdown-body">
+          {isLoading && (
+            <div className="electricity-breakdown-loading">
+              <Activity size={14} /> Loading breakdown...
+            </div>
+          )}
+
+          {isError && (
+            <div className="electricity-breakdown-error">
+              <AlertCircle size={14} /> Could not load water breakdown. Try again later.
+            </div>
+          )}
+
+          {record && (
+            <>
+              <div className="electricity-breakdown-summary">
+                <div className="electricity-breakdown-stat">
+                  <span className="electricity-breakdown-stat__label">Cycle</span>
+                  <span className="electricity-breakdown-stat__value electricity-breakdown-stat__value--small">
+                    {fmtShortDate(record.cycleStart)} - {fmtShortDate(record.cycleEnd)}
+                  </span>
+                </div>
+                <div className="electricity-breakdown-stat">
+                  <span className="electricity-breakdown-stat__label">Room Usage</span>
+                  <span className="electricity-breakdown-stat__value">
+                    {Number(record.usage || 0).toLocaleString("en-PH", {
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 2,
+                    })} units
+                  </span>
+                </div>
+                <div className="electricity-breakdown-stat">
+                  <span className="electricity-breakdown-stat__label">Rate</span>
+                  <span className="electricity-breakdown-stat__value">
+                    {fmtCurrency(record.ratePerUnit)}/unit
+                  </span>
+                </div>
+                <div className="electricity-breakdown-stat">
+                  <span className="electricity-breakdown-stat__label">Room Total</span>
+                  <span className="electricity-breakdown-stat__value">
+                    {fmtCurrency(record.roomTotal)}
+                  </span>
+                </div>
+                <div className="electricity-breakdown-stat">
+                  <span className="electricity-breakdown-stat__label">Tenants Sharing</span>
+                  <span className="electricity-breakdown-stat__value">
+                    {record.tenantsSharing}
+                  </span>
+                </div>
+                <div className="electricity-breakdown-stat">
+                  <span className="electricity-breakdown-stat__label">Your Share</span>
+                  <span className="electricity-breakdown-stat__value electricity-breakdown-stat__value--accent">
+                    {fmtCurrency(record.myShare)}
+                  </span>
+                </div>
+              </div>
+              <p className="electricity-breakdown-note">
+                <Info size={12} /> Water is split equally among eligible tenants covered by this room cycle.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ChargeBreakdown({ bill, fmtCurrency }) {
   const c = bill.charges || {};
   return (
@@ -489,7 +618,7 @@ function ChargeBreakdown({ bill, fmtCurrency }) {
       {(c.water || 0) > 0 && (
         <div className="charge-line">
           <span className="charge-label">
-            <Droplets size={14} /> Water
+            <Droplets size={14} /> Water (room reading)
           </span>
           <span className="charge-amount">{fmtCurrency(c.water)}</span>
         </div>
@@ -520,6 +649,19 @@ function ChargeBreakdown({ bill, fmtCurrency }) {
         </div>
       )}
 
+      {(bill.grossAmount || 0) > 0 && bill.reservationCreditApplied > 0 && (
+        <>
+          <div className="charge-line total">
+            <span className="charge-label">Gross Charges</span>
+            <span className="charge-amount">{fmtCurrency(bill.grossAmount)}</span>
+          </div>
+          <div className="charge-line discount">
+            <span className="charge-label">Reservation Credit Applied</span>
+            <span className="charge-amount">-{fmtCurrency(bill.reservationCreditApplied)}</span>
+          </div>
+        </>
+      )}
+
       <div className="charge-line total">
         <span className="charge-label">Total Amount Due</span>
         <span className="charge-amount">{fmtCurrency(bill.totalAmount)}</span>
@@ -529,6 +671,15 @@ function ChargeBreakdown({ bill, fmtCurrency }) {
         <div className="charge-line" style={{ color: "#16a34a" }}>
           <span className="charge-label">Amount Paid</span>
           <span className="charge-amount">{fmtCurrency(bill.paidAmount)}</span>
+        </div>
+      )}
+
+      {(bill.remainingAmount ?? 0) > 0 && (
+        <div className="charge-line total">
+          <span className="charge-label">Remaining Balance</span>
+          <span className="charge-amount">
+            {fmtCurrency(bill.remainingAmount)}
+          </span>
         </div>
       )}
 
@@ -586,8 +737,20 @@ function PaymentReceipt({ bill, fmtCurrency, fmtMonth, fmtDate }) {
         </div>
         <div className="receipt-row">
           <span className="receipt-label">Billing Period</span>
-          <span className="receipt-value">{fmtMonth(bill.billingMonth)}</span>
+          <span className="receipt-value">
+            {bill.billingCycleStart && bill.billingCycleEnd
+              ? `${fmtDate(bill.billingCycleStart)} - ${fmtDate(bill.billingCycleEnd)}`
+              : fmtMonth(bill.billingMonth)}
+          </span>
         </div>
+        {bill.reservationCreditApplied > 0 && (
+          <div className="receipt-row">
+            <span className="receipt-label">Reservation Credit</span>
+            <span className="receipt-value">
+              -{fmtCurrency(bill.reservationCreditApplied)}
+            </span>
+          </div>
+        )}
         <div className="receipt-row">
           <span className="receipt-label">Payment Method</span>
           <span className="receipt-value">
@@ -619,7 +782,7 @@ export default BillingPage;
  * Uses the existing tenant-scoped hooks: no new backend needed.
  */
 function ElectricityHistory({ fmtCurrency }) {
-  const { data, isLoading } = useMyElectricityBills();
+  const { data, isLoading } = useMyUtilityBills("electricity");
   const periods = data?.bills || [];
 
   const fmtDate = (d) =>
@@ -649,7 +812,7 @@ function ElectricityHistory({ fmtCurrency }) {
       <div className="elec-history__list">
         {periods.map((period) => (
           <ElectricityPeriodRow
-            key={period.billingPeriodId || period.billingResultId}
+            key={period.id || period._id}
             period={period}
             fmtCurrency={fmtCurrency}
             fmtDate={fmtDate}
@@ -663,7 +826,10 @@ function ElectricityHistory({ fmtCurrency }) {
 
 function ElectricityPeriodRow({ period, fmtCurrency, fmtDate, fmtKwh }) {
   const [open, setOpen] = useState(false);
-  const { data, isLoading } = useMyBillBreakdown(open ? period.billingPeriodId : null);
+  const { data, isLoading } = useMyUtilityBreakdownByBillId(
+    "electricity",
+    open ? (period.id || period._id) : null,
+  );
 
   const mySegments = data
     ? data.segments || []

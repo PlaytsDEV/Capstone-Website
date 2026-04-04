@@ -30,6 +30,7 @@ export const queryKeys = {
   reservations: {
     all: ["reservations", "list"],
     detail: (id) => ["reservations", "detail", id],
+    currentResidents: (params) => ["reservations", "currentResidents", params || {}],
   },
 
   // ── Billing ──
@@ -79,6 +80,10 @@ export const queryKeys = {
     tenant: ["dashboard", "tenant"],
   },
 
+  settings: {
+    business: ["settings", "business"],
+  },
+
   // ── Digital Twin ──
   digitalTwin: {
     snapshot: (branch) => ["digital-twin", "snapshot", branch || "all"],
@@ -94,7 +99,21 @@ export const queryKeys = {
     result: (periodId) => ["electricity", "result", periodId],
     draftBills: (periodId) => ["electricity", "draftBills", periodId],
     breakdownByBill: (billId) => ["electricity", "breakdownByBill", billId],
-    myBills: ["electricity", "myBills"],
+    myBills: ["electricity", "myBills", "v3"],
     myBreakdown: (periodId) => ["electricity", "myBreakdown", periodId],
+  },
+
+  // —— Water Billing ——
+  water: {
+    rooms: (branch) => ["water", "rooms", branch || "all"],
+    records: (roomId) => ["water", "records", roomId],
+    periods: (roomId) => ["water", "periods", roomId],
+    result: (periodId) => ["water", "result", periodId],
+    draftBills: (periodId) => ["water", "draftBills", periodId],
+    latestRecord: (roomId) => ["water", "latestRecord", roomId],
+    myBills: ["water", "myBills", "v2"],
+    myRecords: ["water", "myRecords"],
+    myBreakdown: (periodId) => ["water", "myBreakdown", periodId],
+    breakdownByBill: (billId) => ["water", "breakdownByBill", billId],
   },
 };

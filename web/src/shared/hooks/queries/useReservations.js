@@ -12,6 +12,16 @@ export function useReservations() {
   });
 }
 
+/** Fetch current checked-in residents for admin tenants page */
+export function useCurrentResidents(params = {}) {
+  return useQuery({
+    queryKey: queryKeys.reservations.currentResidents(params),
+    queryFn: () => reservationApi.getCurrentResidents(params),
+    staleTime: 30 * 1000,
+    refetchOnMount: true,
+  });
+}
+
 /** Fetch a single reservation by ID */
 export function useReservation(reservationId) {
   return useQuery({

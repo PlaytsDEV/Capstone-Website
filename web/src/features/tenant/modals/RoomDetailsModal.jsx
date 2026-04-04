@@ -309,8 +309,7 @@ export default function RoomDetailsModal({
                 />
               )}
 
-              {/* Appliance fees only apply to Guadalupe branch */}
-              {room.branch?.toLowerCase().includes("guadalupe") && (
+              {room.applianceFeeEnabled && (
               <div>
                 <h3 className="font-semibold mb-3" style={{ color: "var(--text-heading, #0A1628)" }}>
                   Appliance Fees (Optional)

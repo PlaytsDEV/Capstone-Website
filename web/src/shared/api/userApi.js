@@ -39,7 +39,7 @@ export const userApi = {
     }),
 
   /**
-   * Delete user (super admin only)
+   * Delete user (owner only)
    */
   delete: (userId) => authFetch(`/users/${userId}`, { method: "DELETE" }),
 
@@ -75,5 +75,14 @@ export const userApi = {
   reactivate: (userId) =>
     authFetch(`/users/${userId}/reactivate`, {
       method: "PATCH",
+    }),
+
+  /**
+   * Update branch admin permissions (owner only)
+   */
+  updatePermissions: (userId, permissions) =>
+    authFetch(`/users/${userId}/permissions`, {
+      method: "PATCH",
+      body: JSON.stringify({ permissions }),
     }),
 };

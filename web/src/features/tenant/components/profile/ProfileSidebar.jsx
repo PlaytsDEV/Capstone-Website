@@ -17,6 +17,8 @@ import {
   Home,
   Menu,
   X,
+  Wrench,
+  Megaphone,
 } from "lucide-react";
 
 /* ── Timing ─────────────────────────────────────────────────────────────── */
@@ -34,6 +36,8 @@ const NAV_SECTIONS = [
     items: [
       { id: "personal", label: "Personal Details", icon: User },
       { id: "billing", label: "My Bills", icon: CreditCard },
+      { id: "maintenance", label: "Maintenance", icon: Wrench },
+      { id: "announcements", label: "Announcements", icon: Megaphone },
       { id: "reservation", label: "My Reservation", icon: Bed },
       { id: "contract", label: "My Contract", icon: FileText },
       { id: "history", label: "My History", icon: History },

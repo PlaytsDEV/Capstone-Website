@@ -7,7 +7,7 @@
  * from auth-only pages (signin/signup/forgot password).
  *
  * SESSION LOCK BEHAVIOR:
- * - Admin and super admin users are BLOCKED from accessing auth pages
+ * - Branch admins and owners are BLOCKED from accessing auth pages
  * - Authenticated regular users are BLOCKED from accessing auth pages
  * - Admins are redirected to /admin/dashboard
  * - Regular users are redirected to /check-availability
@@ -18,7 +18,7 @@
  *
  * Behavior:
  * - Unauthenticated users: Allowed access
- * - Admin/Super admin users: Redirected to /admin/dashboard
+ * - Branch admin/owner users: Redirected to /admin/dashboard
  * - Authenticated regular users: Redirected to /check-availability
  * =============================================================================
  */
@@ -26,6 +26,7 @@
 import React from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+import GlobalLoading from "../components/GlobalLoading";
 
 /**
  * Guard component that blocks admin users from accessing public/tenant pages
@@ -34,22 +35,20 @@ import { useAuth } from "../hooks/useAuth";
  * @returns {React.ReactElement} Children if non-admin, redirect if admin
  */
 const RequireNonAdmin = ({ children }) => {
-  const { user, isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, isAdmin, getDefaultRoute } = useAuth();
 
-  // Wait for auth to load
   if (loading) {
-    return null;
+    return <GlobalLoading />;
   }
 
   // If already authenticated, redirect based on role (they don't need auth pages)
   // EXCEPTION: Skip redirect while social signup is checking for duplicate accounts
-  if (isAuthenticated && user && !sessionStorage.getItem("socialAuthInProgress") && !sessionStorage.getItem("resendInProgress")) {
-    const isAdmin = user.role === "branch_admin" || user.role === "owner";
-    if (isAdmin) {
-      return <Navigate to="/admin/dashboard" replace />;
-    }
+  if (isAuthenticated && !sessionStorage.getItem("socialAuthInProgress") && !sessionStorage.getItem("resendInProgress")) {
+    const redirectPath = isAdmin()
+      ? "/admin/dashboard"
+      : getDefaultRoute();
+    return <Navigate to={redirectPath} replace />;
     // Applicant or tenant — redirect to browse rooms
-    return <Navigate to="/applicant/check-availability" replace />;
   }
 
   // Allow unauthenticated users

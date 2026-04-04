@@ -32,6 +32,8 @@ import {
   ProfileCompletionCard,
   ContractTab,
   ReservationAgreementPage,
+  MaintenanceTab,
+  AnnouncementsTab,
 } from "../components/profile";
 
 // ─────────────────────────────────────────────────────────────
@@ -464,6 +466,8 @@ const ProfilePage = () => {
                 <ActivityHistoryTab reservations={reservations} />
               )}
 
+              {activeTab === "maintenance" && <MaintenanceTab />}
+              {activeTab === "announcements" && <AnnouncementsTab />}
               {activeTab === "notifications" && <NotificationsTab />}
               {activeTab === "settings" && <SettingsTab />}
             </div>

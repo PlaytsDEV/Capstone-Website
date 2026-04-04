@@ -249,10 +249,11 @@ export function getNextAction(activeReservation, reservationProgress) {
         step: 4,
       };
     case "application_submitted":
+      const reservationFeeAmount = activeReservation.reservationFeeAmount || 2000;
       return {
         title: "Submit Your Payment",
         description:
-          "Your application has been submitted. Pay ₱2,000 online to confirm your reservation.",
+          `Your application has been submitted. Pay PHP ${reservationFeeAmount.toLocaleString("en-PH")} online to confirm your reservation.`,
         buttonText: "Pay Now",
         buttonLink: "/applicant/reservation",
         reservationId: activeReservation._id,

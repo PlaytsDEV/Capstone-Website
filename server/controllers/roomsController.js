@@ -4,6 +4,7 @@
 
 import { Room } from "../models/index.js";
 import auditLogger from "../utils/auditLogger.js";
+import { getBranchSettingsForBranch } from "../utils/businessSettings.js";
 import {
   sendSuccess,
   sendError,
@@ -71,7 +72,21 @@ export const getRooms = async (req, res, next) => {
     if (available !== undefined) filter.available = available === "true";
 
     const rooms = await Room.find(filter).select("-__v").lean();
-    const normalizedRooms = rooms.map(normalizeRoom);
+    const branches = [...new Set(rooms.map((room) => room.branch).filter(Boolean))];
+    const branchSettingsEntries = await Promise.all(
+      branches.map(async (branchName) => [branchName, await getBranchSettingsForBranch(branchName)]),
+    );
+    const branchSettingsMap = new Map(branchSettingsEntries);
+
+    const normalizedRooms = rooms.map((room) => {
+      const normalizedRoom = normalizeRoom(room);
+      const branchSettings = branchSettingsMap.get(normalizedRoom.branch) || null;
+      return {
+        ...normalizedRoom,
+        applianceFeeEnabled: !!branchSettings?.isApplianceFeeEnabled,
+        applianceFeeAmountPerUnit: branchSettings?.applianceFeeAmountPerUnit ?? 0,
+      };
+    });
 
     sendSuccess(res, normalizedRooms);
   } catch (error) {

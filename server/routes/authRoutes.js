@@ -5,7 +5,7 @@
  * - User registration with Firebase integration
  * - User login with email verification check
  * - Profile management
- * - Role management (admin only)
+ * - Role management (owner only)
  *
  * Security: Firebase Auth is the single source of truth for email verification.
  * All routes require Firebase token verification via verifyToken middleware.
@@ -13,8 +13,10 @@
  */
 
 import express from "express";
+import { getAuth } from "../config/firebase.js";
 import { verifyToken, verifyAdmin } from "../middleware/auth.js";
 import { publicLimiter } from "../middleware/rateLimiter.js";
+import auditLogger from "../utils/auditLogger.js";
 import {
   validateRegisterInput,
   validateProfileUpdateInput,
@@ -142,7 +144,7 @@ router.patch("/update-branch", verifyToken, validate(updateBranchSchema), update
 /**
  * POST /api/auth/set-role
  *
- * Set user role and Firebase custom claims (admin/superAdmin only).
+ * Set user role and Firebase custom claims (branch_admin/owner only).
  *
  * @requires Firebase token in Authorization header
  * @requires Admin privileges
@@ -179,15 +181,14 @@ router.post("/revoke-sessions", verifyToken, async (req, res) => {
     }
     await auth.revokeRefreshTokens(req.user.uid);
     await auditLogger.log({
+      req,
       type: "security",
       action: "All sessions revoked",
       severity: "warning",
-      userId: req.user.uid,
-      userName: req.user.email,
-      userRole: "user",
-      userEmail: req.user.email,
-      ipAddress: req.headers["x-forwarded-for"] || req.connection?.remoteAddress,
-      userAgent: req.headers["user-agent"],
+      details: "All refresh tokens revoked for authenticated user",
+      metadata: {
+        firebaseUid: req.user.uid,
+      },
     });
     res.json({ message: "All sessions revoked successfully" });
   } catch (error) {
