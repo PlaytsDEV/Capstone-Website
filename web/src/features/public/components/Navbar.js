@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import ThemeToggleButton from "./ThemeToggleButton";
 import { useTheme } from "../context/ThemeContext";
+import logo from "../../../assets/images/LOGO.svg";
 
 export function Navigation({ type } = {}) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -123,7 +124,7 @@ export function Navigation({ type } = {}) {
           <div className="flex items-center gap-3">
             <Link
               to="/"
-              className="font-semibold tracking-wide no-underline"
+              className="font-semibold tracking-wide no-underline inline-flex items-center gap-2"
               style={{
                 color: isScrolled ? "var(--lp-text)" : (isDark ? "white" : "var(--lp-navy)"),
                 fontSize: isScrolled ? "18px" : "22px",
@@ -131,6 +132,15 @@ export function Navigation({ type } = {}) {
                 letterSpacing: "0.5px",
               }}
             >
+              <img
+                src={logo}
+                alt="Lilycrest logo"
+                style={{
+                  width: isScrolled ? "24px" : "28px",
+                  height: isScrolled ? "24px" : "28px",
+                  transition: "all 0.4s ease",
+                }}
+              />
               Lilycrest
             </Link>
             {/* Theme Toggle — desktop only */}
