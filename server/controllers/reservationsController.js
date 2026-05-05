@@ -1551,8 +1551,17 @@ export const updateReservation = async (req, res, next) => {
     );
     if (denied) return;
 
-    // Enforce 3-month window on moveInDate update
-    if (req.body.moveInDate && !validateMoveInDate(req.body.moveInDate)) {
+    const isMoveInTransition =
+      hasReservationStatus(req.body.status, "moveIn") &&
+      !hasReservationStatus(existingReservation.status, "moveIn");
+
+    // Enforce the 3-month window only while scheduling/rescheduling a target
+    // move-in. Actual move-in uses the server timestamp below.
+    if (
+      req.body.moveInDate &&
+      !isMoveInTransition &&
+      !validateMoveInDate(req.body.moveInDate)
+    ) {
       return res.status(400).json({
         error: "Move-in date must be within 3 months from today.",
         code: "MOVEIN_DATE_OUT_OF_RANGE",
@@ -1609,10 +1618,7 @@ export const updateReservation = async (req, res, next) => {
     // ── Move-in gate: enforce full prerequisite checklist ─────────────
     // Prevents admins from bypassing the proper flow (visit → payment →
     // reservation confirmed) and jumping straight to moveIn.
-    if (
-      req.body.status === "moveIn" &&
-      !hasReservationStatus(existingReservation.status, "moveIn")
-    ) {
+    if (isMoveInTransition) {
       const blockers = getMoveInBlockers(existingReservation);
       if (blockers.length > 0) {
         return res.status(400).json({
@@ -1634,10 +1640,9 @@ export const updateReservation = async (req, res, next) => {
         });
       }
 
-      // Use explicit lifecycle datetime when provided to avoid same-day ambiguity.
       const moveInDate = combineLifecycleDateTime({
-        dateInput: req.body.moveInDate,
-        timeInput: req.body.moveInTime,
+        dateInput: null,
+        timeInput: null,
         fallbackDate: new Date(),
       });
       if (!moveInDate) {
@@ -1799,12 +1804,13 @@ export const updateReservation = async (req, res, next) => {
         const adminUser = await User.findOne({
           firebaseUid: req.user.uid,
         }).lean();
+        const recordedBy = req.adminId || adminUser?._id;
         const meterValue = Number(req.body.meterReading);
         const moveInDate = new Date(
           readMoveInDate(updatedReservation) || new Date(),
         );
 
-        if (roomDoc) {
+        if (roomDoc && recordedBy) {
           const tenantUserId =
             updatedReservation.userId?._id || updatedReservation.userId;
 
@@ -1829,7 +1835,7 @@ export const updateReservation = async (req, res, next) => {
             eventType: "moveIn",
             tenantId: tenantUserId,
             activeTenantIds,
-            recordedBy: adminUser?._id || null,
+            recordedBy,
             utilityPeriodId: null,
           });
           await moveInReading.save();
