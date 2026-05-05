@@ -180,7 +180,19 @@ export default function RoomConfigModal({
                 <strong>Base Price</strong>
                 ₱{Number(draftRoom.price || 0).toLocaleString()}
               </div>
+              <div>
+                <strong>Monthly Price</strong>
+                ₱{Number(draftRoom.monthlyPrice || 0).toLocaleString()}
+              </div>
             </div>
+            {draftRoom.description && (
+              <div className="info-description mt-3">
+                <strong>Description</strong>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {draftRoom.description}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Room Images */}
