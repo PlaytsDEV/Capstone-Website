@@ -35,7 +35,20 @@ function ReservationFlowPage() {
   const flow = useReservationFlow();
 
   // ΓöÇΓöÇ Loading ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-  if (!flow.reservationData || flow.paymentVerifyingRef.current) return <GlobalLoading />;
+  if (
+    !flow.reservationData ||
+    flow.isLoading ||
+    flow.paymentReturnLoading ||
+    flow.paymentVerifyingRef.current
+  ) {
+    const isConfirmingPayment =
+      flow.paymentReturnLoading || flow.paymentVerifyingRef.current;
+    return (
+      <GlobalLoading
+        message={isConfirmingPayment ? "Confirming your payment..." : ""}
+      />
+    );
+  }
 
   // ΓöÇΓöÇ Render ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   return (
@@ -344,20 +357,12 @@ function ReservationFlowPage() {
               {...{
                 reservationData: flow.reservationData,
                 leaseDuration: flow.leaseDuration,
-                finalMoveInDate: flow.finalMoveInDate,
-                setFinalMoveInDate: flow.setFinalMoveInDate,
+                targetMoveInDate: flow.targetMoveInDate,
                 isLoading: flow.isLoading,
                 payingOnline: flow.payingOnline,
                 agreedToFeePolicy: flow.agreedToFeePolicy,
                 setAgreedToFeePolicy: flow.setAgreedToFeePolicy,
               }}
-              onMoveInDateUpdate={() =>
-                showNotification(
-                  "Move-in date updated. Availability will be checked.",
-                  "info",
-                  2000,
-                )
-              }
               onPrev={flow.handlePrevStage}
               onNext={flow.handleNextStage}
               onPayOnline={async () => {
@@ -371,7 +376,7 @@ function ReservationFlowPage() {
                   if (flow.finalMoveInDate) {
                     await flow.updateReservationDraft({ finalMoveInDate: flow.finalMoveInDate });
                   }
-                  const { checkoutUrl } = await billingApi.createDepositCheckout(flow.reservationId);
+                  const { checkoutUrl, sessionId } = await billingApi.createDepositCheckout(flow.reservationId);
                   flow.navigatingAwayRef.current = true;
                   // Persist reservation ID so we can reload on return from PayMongo.
                   // Key is scoped to the Firebase UID to prevent cross-user contamination
@@ -381,6 +386,10 @@ function ReservationFlowPage() {
                     uid ? `activeReservationId_${uid}` : "activeReservationId",
                     flow.reservationId,
                   );
+                  if (sessionId) {
+                    sessionStorage.setItem("activeReservationPaymongoSessionId", sessionId);
+                  }
+                  sessionStorage.setItem("activeReservationPaymentReturnPending", "1");
                   window.location.href = checkoutUrl;
                 } catch (error) {
                   console.error("Failed to create deposit checkout:", error);

@@ -13,9 +13,7 @@ import { CreditCard } from "lucide-react";
 const ReservationPaymentStep = ({
  reservationData,
  leaseDuration,
- finalMoveInDate,
- setFinalMoveInDate,
- onMoveInDateUpdate,
+ targetMoveInDate,
  isLoading,
  onPayOnline,
  payingOnline,
@@ -79,7 +77,7 @@ const ReservationPaymentStep = ({
  </div>
  <div className="summary-row">
  <span className="summary-label">Target Move-In Date</span>
- <span className="summary-value">{fmtDate(finalMoveInDate)}</span>
+ <span className="summary-value">{fmtDate(targetMoveInDate)}</span>
  </div>
  {reservationData?.selectedBed && (
  <div className="summary-row">
@@ -92,38 +90,6 @@ const ReservationPaymentStep = ({
  <div className="total-section">
  <span>Reservation Fee (One-time)</span>
  <span className="total-amount">₱{reservationFeeAmount.toLocaleString()}</span>
- </div>
- </div>
- </div>
-
- {/* Move-In Date Adjustment */}
- <div className="content-card">
- <div className="card-section-title">
- <div className="icon"></div>
- Adjust Move-In Date
- <span className="rf-optional-label">Optional</span>
- </div>
- <div className="form-group">
- <label className="form-label">Move-In Date</label>
- <div className="rf-date-input-row">
- <input
- type="date"
- className="form-input"
- value={finalMoveInDate}
- onChange={(e) => setFinalMoveInDate(e.target.value)}
- />
- <button
- type="button"
- className="btn btn-secondary"
- onClick={onMoveInDateUpdate}
- style={{ whiteSpace: "nowrap" }}
- >
- Re-Check Availability
- </button>
- </div>
- <div className="form-helper">
- If you need to change your move-in date, select a new date and
- click "Re-Check" to verify room availability.
  </div>
  </div>
  </div>

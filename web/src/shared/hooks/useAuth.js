@@ -34,6 +34,7 @@ import React, {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { authApi } from "../api/authApi";
+import { reservationApi } from "../api/reservationApi";
 import {
   clearSessionId,
   getOtpPending,
@@ -42,8 +43,33 @@ import {
 import { auth } from "../../firebase/config";
 import { useFirebaseAuth } from "./FirebaseAuthContext";
 import { USER_ROLES } from "../utils/constants";
+import { queryKeys } from "../lib/queryKeys";
 
 const AuthContext = createContext(null);
+
+const TENANT_WARM_ROUTES = ["/applicant/profile", "/applicant/reservation"];
+
+const warmTenantRouteData = (queryClient, userData) => {
+  const isTenantPortalUser =
+    userData?.role === USER_ROLES.APPLICANT || userData?.role === USER_ROLES.TENANT;
+  const pathname = window.location.pathname;
+
+  if (!isTenantPortalUser || !TENANT_WARM_ROUTES.includes(pathname)) {
+    return;
+  }
+
+  queryClient.prefetchQuery({
+    queryKey: queryKeys.reservations.all({}),
+    queryFn: () => reservationApi.getAll({}),
+    staleTime: 30 * 1000,
+  });
+
+  if (pathname === "/applicant/profile") {
+    import("../../features/tenant/pages/ProfilePage").catch(() => {});
+  } else if (pathname === "/applicant/reservation") {
+    import("../../features/tenant/pages/ReservationFlowPage").catch(() => {});
+  }
+};
 
 /**
  * Auth Provider Component
@@ -114,6 +140,8 @@ export const AuthProvider = ({ children }) => {
       setUser(userData);
       setIsAuthenticated(true);
       localStorage.setItem("user", JSON.stringify(userData));
+      queryClient.setQueryData(["users", "currentUser"], userData);
+      warmTenantRouteData(queryClient, userData);
 
       // Log current user info to console
       const displayName =
@@ -141,13 +169,14 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [queryClient]);
 
   const refreshUser = useCallback(async () => {
     if (!auth.currentUser) return null;
 
     try {
       const userData = await authApi.getCurrentUser();
+      queryClient.setQueryData(["users", "currentUser"], userData);
       setUser((prev) => {
         if (
           prev?.role &&
@@ -165,7 +194,7 @@ export const AuthProvider = ({ children }) => {
       console.error("Failed to refresh user:", error);
       return null;
     }
-  }, [getFreshIdToken]);
+  }, [getFreshIdToken, queryClient]);
 
   // Sync with Firebase auth state
   // CRITICAL: This effect syncs React state with Firebase auth state
@@ -215,6 +244,8 @@ export const AuthProvider = ({ children }) => {
       const resolvedUser = userData.user || userData;
       setUser(resolvedUser);
       setIsAuthenticated(true);
+      queryClient.setQueryData(["users", "currentUser"], resolvedUser);
+      warmTenantRouteData(queryClient, resolvedUser);
 
       // Log login info to console
       const displayName =

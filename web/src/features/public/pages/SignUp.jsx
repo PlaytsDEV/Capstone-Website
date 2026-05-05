@@ -35,6 +35,7 @@ import {
   generateUsername,
   getFirebaseErrorMessage,
 } from "../../../shared/utils/authValidation";
+import { AUTH_TOAST_DURATION } from "../../../shared/utils/authToasts";
 import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
 import SocialAuthButtons from "../../../shared/components/SocialAuthButtons";
 import FloatingInput from "../../../shared/components/FloatingInput";
@@ -401,12 +402,12 @@ function SignUp() {
             } catch (e) {
               /* proceed anyway */
             }
-            appNavigate("/applicant/check-availability", {
-              flash: {
-                type: "success",
-                message: `Welcome to Lilycrest, ${firstName}!`,
-              },
-            });
+            showNotification(
+              `Welcome to Lilycrest, ${firstName}!`,
+              "success",
+              AUTH_TOAST_DURATION,
+            );
+            appNavigate("/applicant/check-availability");
           } catch (regError) {
             const errMsg =
               regError.response?.data?.error || regError.message || "";
