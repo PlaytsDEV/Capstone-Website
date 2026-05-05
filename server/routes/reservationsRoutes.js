@@ -42,6 +42,9 @@ import {
   updateReservation,
   updateReservationByUser,
   cancelReservationByUser,
+  requestCancellationByUser,
+  approveCancellationRequest,
+  rejectCancellationRequest,
   deleteReservation,
   extendReservation,
   releaseSlot,
@@ -273,6 +276,48 @@ router.patch(
   verifyToken,
   verifyApplicant,
   cancelReservationByUser,
+);
+
+/**
+ * POST /api/reservations/:reservationId/cancel-request
+ *
+ * Tenant submits a cancellation request for a paid reservation.
+ * Reservation fee is non-refundable. Bed is NOT released until admin approves.
+ */
+router.post(
+  "/:reservationId/cancel-request",
+  verifyToken,
+  verifyApplicant,
+  requestCancellationByUser,
+);
+
+/**
+ * POST /api/reservations/:reservationId/cancel-request/approve
+ *
+ * Admin approves a pending cancellation request.
+ * Cancels the reservation and releases the bed. No refund.
+ */
+router.post(
+  "/:reservationId/cancel-request/approve",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageReservations"),
+  approveCancellationRequest,
+);
+
+/**
+ * POST /api/reservations/:reservationId/cancel-request/reject
+ *
+ * Admin rejects a pending cancellation request. Reservation stays active.
+ */
+router.post(
+  "/:reservationId/cancel-request/reject",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageReservations"),
+  rejectCancellationRequest,
 );
 
 /**

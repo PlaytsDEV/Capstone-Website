@@ -304,6 +304,8 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
  const action = getNextAction(reservation, currentStage);
  const [showCancelModal, setShowCancelModal] = React.useState(false);
  const [isCancelling, setIsCancelling] = React.useState(false);
+ const [showRequestCancelModal, setShowRequestCancelModal] = React.useState(false);
+ const [isRequesting, setIsRequesting] = React.useState(false);
 
  React.useEffect(() => {
  if (!showCancelModal) return undefined;
@@ -581,10 +583,11 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
  })()}
 
  {/* ── Footer — full width ───────────────────────────────────────────── */}
- {!isConfirmed && (
+ {(reservation.reservationStatus || reservation.status) !== "cancelled" &&
+  (reservation.reservationStatus || reservation.status) !== "moveIn" && (
  <div style={styles.footer}>
  <div style={styles.footerLeft}>
- {currentStage <= 2 &&
+ {!isConfirmed && currentStage <= 2 &&
  !reservation.viewingType &&
  !reservation.visitApproved &&
  !reservation.scheduleApproved && (
@@ -600,12 +603,27 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
  </button>
  )}
  </div>
- <button
- onClick={() => setShowCancelModal(true)}
- style={styles.footerLinkDanger}
- >
- Cancel reservation
- </button>
+ {isConfirmed ? (
+   reservation.cancellationRequested && reservation.cancellationStatus === "pending" ? (
+     <span style={{ ...styles.footerLinkDanger, opacity: 0.5, cursor: "default", fontSize: "0.8rem" }}>
+       Cancellation pending review
+     </span>
+   ) : (
+     <button
+       onClick={() => setShowRequestCancelModal(true)}
+       style={styles.footerLinkDanger}
+     >
+       Request Cancellation
+     </button>
+   )
+ ) : (
+   <button
+     onClick={() => setShowCancelModal(true)}
+     style={styles.footerLinkDanger}
+   >
+     Cancel reservation
+   </button>
+ )}
  </div>
  )}
 
@@ -654,6 +672,56 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
  </button>
  <button
  onClick={() => setShowCancelModal(false)}
+ style={styles.modalBtnSecondary}
+ >
+ Keep it
+ </button>
+ </div>
+ <p style={styles.modalHint}>Press Esc or click outside to dismiss</p>
+ </div>
+ </div>
+ )}
+
+ {/* ── Request Cancellation Modal (paid reservations) ───────────────── */}
+ {showRequestCancelModal && (
+ <div
+ style={styles.modalOverlay}
+ onClick={() => { if (!isRequesting) setShowRequestCancelModal(false); }}
+ >
+ <div style={styles.modalCard} onClick={(e) => e.stopPropagation()}>
+ <div style={styles.modalIcon}>
+ <AlertCircle size={36} strokeWidth={2.2} color="#B91C1C" aria-hidden="true" />
+ </div>
+ <h3 style={styles.modalTitle}>Request Cancellation?</h3>
+ <p style={styles.modalDesc}>
+   Your reservation fee for <strong>{roomName}</strong> is <strong>non-refundable</strong>.
+   Submitting this request will place it under admin review.
+   Your bed will only be released once an admin approves.
+ </p>
+ <div style={styles.modalActions}>
+ <button
+ onClick={async () => {
+ setIsRequesting(true);
+ try {
+ const { reservationApi } = await import("../../../shared/api/reservationApi");
+ await reservationApi.requestCancellation(reservation._id);
+ setShowRequestCancelModal(false);
+ showNotification("Cancellation request submitted. Pending admin review.", "success", 4000);
+ queryClient.invalidateQueries({ queryKey: ["reservations"] });
+ } catch (err) {
+ console.error("Cancellation request failed:", err);
+ setIsRequesting(false);
+ setShowRequestCancelModal(false);
+ showNotification("Failed to submit cancellation request. Please try again.", "error", 4000);
+ }
+ }}
+ disabled={isRequesting}
+ style={{ ...styles.modalBtnDanger, opacity: isRequesting ? 0.6 : 1 }}
+ >
+ {isRequesting ? "Submitting..." : "Submit Request"}
+ </button>
+ <button
+ onClick={() => setShowRequestCancelModal(false)}
  style={styles.modalBtnSecondary}
  >
  Keep it

@@ -29,6 +29,20 @@ const ACTION_MSGS = {
  confirmText: "Cancel reservation",
  variant: "danger",
  },
+ approveCancellation: {
+ title: "Approve Cancellation Request",
+ message:
+ "Approving will cancel the reservation and release the bed. The reservation fee is non-refundable.",
+ confirmText: "Approve & Cancel",
+ variant: "danger",
+ },
+ rejectCancellation: {
+ title: "Reject Cancellation Request",
+ message:
+ "The cancellation request will be dismissed. The reservation stays active.",
+ confirmText: "Reject Request",
+ variant: "info",
+ },
 };
 
 const fmt = (value) =>
@@ -157,6 +171,8 @@ export default function ReservationDetailsModal({
  const appearance = getReservationStatusAppearance(status);
  const allowedActions = getAllowedReservationActions(status);
  const moveInDate = readMoveInDate(reservation);
+ const cancellationPending =
+   reservation.cancellationRequested && reservation.cancellationStatus === "pending";
  const isMovedOut = status === "moveOut";
  const isOverdue =
  status === "reserved" && moveInDate && new Date(moveInDate) < new Date();
@@ -479,7 +495,26 @@ export default function ReservationDetailsModal({
 
  {status !== "cancelled" && !isMovedOut && (
  <div className="rdm-side-card">
- <h4 className="rdm-side-title">Quick Actions</h4>
+ <h4 className="rdm-side-title">
+   Quick Actions
+   {cancellationPending && (
+     <span
+       style={{
+         marginLeft: "0.5rem",
+         fontSize: "0.7rem",
+         fontWeight: 700,
+         background: "#B91C1C",
+         color: "#fff",
+         borderRadius: "4px",
+         padding: "2px 6px",
+         verticalAlign: "middle",
+         letterSpacing: "0.03em",
+       }}
+     >
+       CANCEL REQUEST
+     </span>
+   )}
+ </h4>
  <div className="rdm-actions-card rdm-actions-card-dark">
  {stageGuide && (
  <div className="rdm-stage-guide rdm-stage-guide-dark">
@@ -514,7 +549,38 @@ export default function ReservationDetailsModal({
  </button>
  )}
 
- {allowedActions.includes("cancelled") && (
+ {cancellationPending && (
+   <>
+     <button
+       className="rdm-action rdm-action-dark rdm-action-dark-cancel"
+       onClick={() =>
+         doAction(
+           "approveCancellation",
+           () => reservationApi.approveCancellationRequest(reservation.id),
+           "Cancellation approved. Reservation cancelled and bed released.",
+         )
+       }
+       disabled={isSubmitting}
+     >
+       Approve Cancellation
+     </button>
+     <button
+       className="rdm-action rdm-action-dark"
+       onClick={() =>
+         doAction(
+           "rejectCancellation",
+           () => reservationApi.rejectCancellationRequest(reservation.id),
+           "Cancellation request rejected. Reservation remains active.",
+         )
+       }
+       disabled={isSubmitting}
+     >
+       Reject Request
+     </button>
+   </>
+ )}
+
+ {allowedActions.includes("cancelled") && !cancellationPending && (
  <button
  className="rdm-action rdm-action-dark rdm-action-dark-cancel"
  onClick={() =>
