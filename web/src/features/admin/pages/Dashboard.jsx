@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   MessageSquare,
@@ -24,6 +24,48 @@ import OccupancyTrendCard from "../components/dashboard/OccupancyTrendCard";
 import RevenueTrendCard from "../components/dashboard/RevenueTrendCard";
 import "../styles/design-tokens.css";
 import "../styles/admin-dashboard.css";
+
+function AlertBanner({ activeTickets, pendingReservations, unresolvedInquiries }) {
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed) return null;
+
+  const alerts = [];
+  if (activeTickets > 0)
+    alerts.push({ text: `${activeTickets} active maintenance ticket${activeTickets === 1 ? "" : "s"} need attention`, to: "/admin/maintenance" });
+  if (pendingReservations > 0)
+    alerts.push({ text: `${pendingReservations} reservation${pendingReservations === 1 ? "" : "s"} awaiting approval`, to: "/admin/reservations" });
+  if (unresolvedInquiries > 0)
+    alerts.push({ text: `${unresolvedInquiries} inquiry${unresolvedInquiries === 1 ? "" : "ies"} without a response`, to: "/admin/inquiries" });
+
+  if (alerts.length === 0) return null;
+
+  return (
+    <div
+      className="mb-6 rounded-xl border px-4 py-3 text-sm"
+      style={{ borderColor: "#FDE68A", backgroundColor: "#FFFBEB", color: "#92400E" }}
+    >
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+        <div>
+          <p style={{ fontWeight: 600, margin: "0 0 6px" }}>Action required</p>
+          <ul style={{ margin: 0, paddingLeft: 16, display: "flex", flexDirection: "column", gap: 2 }}>
+            {alerts.map((a) => (
+              <li key={a.to}>
+                <Link to={a.to} style={{ color: "#B45309", textDecoration: "underline" }}>{a.text}</Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <button
+          onClick={() => setDismissed(true)}
+          aria-label="Dismiss"
+          style={{ background: "none", border: "none", cursor: "pointer", color: "#B45309", fontSize: 18, lineHeight: 1, flexShrink: 0, padding: "0 2px" }}
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const { data, isLoading, isError } = useDashboardData();
@@ -187,6 +229,12 @@ export default function Dashboard() {
               </span>
             </div>
           )}
+
+          <AlertBanner
+            activeTickets={kpis.activeTickets || 0}
+            pendingReservations={reservationStatus.pending || 0}
+            unresolvedInquiries={unresolvedInquiryCount}
+          />
 
           <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
             {summaryItems.map((item) => {

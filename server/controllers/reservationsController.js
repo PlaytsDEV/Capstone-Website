@@ -81,6 +81,12 @@ import {
   updateVisitAvailabilitySettings,
   validateVisitSelection,
 } from "../utils/visitAvailability.js";
+import { ROOM_BRANCH_LABELS } from "../config/branches.js";
+import {
+  getBranchSettings,
+  getBusinessSettings,
+  RESERVATION_APPLIANCES,
+} from "../utils/businessSettings.js";
 /* ─── helpers ────────────────────────────────────── */
 const HEAVY_FIELDS =
   "-selfiePhotoUrl -validIDFrontUrl -validIDBackUrl -nbiClearanceUrl -companyIDUrl -__v";
@@ -172,6 +178,408 @@ const TENANT_WORKSPACE_USER = [
 ];
 const TENANT_WORKSPACE_ROOM = ["roomId", "name roomNumber branch type price floor"];
 const TIME_24H_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const BED_UNAVAILABLE_MESSAGE =
+  "This bed is no longer available. Please select another bed.";
+const ACTIVE_BED_HOLD_STATUSES = Object.freeze(
+  reservationStatusesForQuery(
+    "pending",
+    "visit_pending",
+    "visit_approved",
+    "payment_pending",
+    "reserved",
+    "moveIn",
+  ),
+);
+const APPLICANT_CREATE_ALLOWED_FIELDS = Object.freeze([
+  "roomId",
+  "roomName",
+  "roomNumber",
+  "selectedBed",
+  "selectedAppliances",
+  "targetMoveInDate",
+  "leaseDuration",
+  "billingEmail",
+  "roomConfirmed",
+  "viewingType",
+  "visitDate",
+  "visitTime",
+  "visitScheduledAt",
+  "isOutOfTown",
+  "currentLocation",
+  "visitApproved",
+  "selfiePhotoUrl",
+  "firstName",
+  "lastName",
+  "middleName",
+  "nickname",
+  "mobileNumber",
+  "birthday",
+  "maritalStatus",
+  "nationality",
+  "educationLevel",
+  "addressUnitHouseNo",
+  "addressStreet",
+  "addressBarangay",
+  "addressCity",
+  "addressProvince",
+  "validIDFrontUrl",
+  "validIDBackUrl",
+  "validIDType",
+  "idType",
+  "nbiClearanceUrl",
+  "nbiReason",
+  "companyIDUrl",
+  "companyIDReason",
+  "personalNotes",
+  "emergencyContactName",
+  "emergencyRelationship",
+  "emergencyContactNumber",
+  "healthConcerns",
+  "employerSchool",
+  "employerAddress",
+  "employerContact",
+  "startDate",
+  "occupation",
+  "previousEmployment",
+  "roomType",
+  "preferredRoomNumber",
+  "referralSource",
+  "referrerName",
+  "estimatedMoveInTime",
+  "workSchedule",
+  "workScheduleOther",
+  "agreedToPrivacy",
+  "agreedToCertification",
+  "proofOfPaymentUrl",
+  "moveInDate",
+  "moveOutDate",
+  "notes",
+]);
+const CLIENT_PRICING_FIELDS = Object.freeze([
+  "totalPrice",
+  "reservationFee",
+  "reservationFeeAmount",
+  "amount",
+  "fees",
+  "applianceFees",
+  "monthlyRent",
+  "deposit",
+]);
+
+const pickAllowedFields = (source = {}, allowedFields = []) =>
+  allowedFields.reduce((acc, key) => {
+    if (source[key] !== undefined) acc[key] = source[key];
+    return acc;
+  }, {});
+
+const roundMoney = (value) =>
+  Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+
+const TRUSTED_RESERVATION_APPLIANCES = Object.freeze(
+  RESERVATION_APPLIANCES.map((appliance) => ({
+    id: String(appliance.id || "").trim().toLowerCase(),
+    name: String(appliance.name || "").trim(),
+  })).filter((appliance) => appliance.id && appliance.name),
+);
+const TRUSTED_RESERVATION_APPLIANCE_MAP = new Map(
+  TRUSTED_RESERVATION_APPLIANCES.map((appliance) => [appliance.id, appliance]),
+);
+
+const normalizeSelectedApplianceEntries = (selectedAppliances) => {
+  if (selectedAppliances == null) return [];
+
+  if (Array.isArray(selectedAppliances)) {
+    return selectedAppliances.map((entry) => ({
+      id: entry?.id ?? entry?.applianceId,
+      quantity: entry?.quantity,
+    }));
+  }
+
+  if (
+    typeof selectedAppliances === "object" &&
+    selectedAppliances.constructor === Object
+  ) {
+    return Object.entries(selectedAppliances).map(([id, quantity]) => ({
+      id,
+      quantity,
+    }));
+  }
+
+  throw new AppError(
+    "Invalid selected appliances payload.",
+    400,
+    "INVALID_SELECTED_APPLIANCES",
+  );
+};
+
+const validateSelectedAppliancesForReservation = ({
+  selectedAppliances,
+  branchId,
+  branchSettings,
+}) => {
+  const normalizedBranchId = String(branchId || "").toLowerCase();
+  const applianceFeesEnabled =
+    normalizedBranchId === "guadalupe" && branchSettings?.isApplianceFeeEnabled;
+
+  if (!applianceFeesEnabled) {
+    return [];
+  }
+
+  const entries = normalizeSelectedApplianceEntries(selectedAppliances);
+  const validatedAppliances = [];
+  const quantitiesById = new Map();
+
+  for (const entry of entries) {
+    const applianceId = String(entry?.id || "").trim().toLowerCase();
+    const trustedAppliance = TRUSTED_RESERVATION_APPLIANCE_MAP.get(applianceId);
+
+    if (!trustedAppliance) {
+      throw new AppError(
+        "Unknown appliance selection. Please review your appliance choices and try again.",
+        400,
+        "INVALID_APPLIANCE_ID",
+      );
+    }
+
+    if (!Number.isInteger(entry?.quantity) || entry.quantity < 0) {
+      throw new AppError(
+        `Invalid quantity for ${trustedAppliance.name}. Quantity must be a non-negative whole number.`,
+        400,
+        "INVALID_APPLIANCE_QUANTITY",
+      );
+    }
+
+    quantitiesById.set(
+      applianceId,
+      (quantitiesById.get(applianceId) || 0) + entry.quantity,
+    );
+  }
+
+  for (const appliance of TRUSTED_RESERVATION_APPLIANCES) {
+    const quantity = quantitiesById.get(appliance.id) || 0;
+    if (quantity > 0) {
+      validatedAppliances.push({
+        id: appliance.id,
+        name: appliance.name,
+        quantity,
+      });
+    }
+  }
+
+  return validatedAppliances;
+};
+
+const resolveReservationRent = ({ room, leaseDuration }) => {
+  const parsedLeaseDuration = Number(leaseDuration);
+  const roomPrice = Number(room?.price ?? 0);
+  const roomMonthlyPrice = Number(room?.monthlyPrice ?? room?.price ?? 0);
+  const shouldUseMonthlyPrice =
+    Number.isFinite(parsedLeaseDuration) && parsedLeaseDuration >= 6;
+
+  const preferredRent = shouldUseMonthlyPrice ? roomMonthlyPrice : roomPrice;
+  if (Number.isFinite(preferredRent) && preferredRent >= 0) {
+    return roundMoney(preferredRent);
+  }
+
+  const fallbackRent = shouldUseMonthlyPrice ? roomPrice : roomMonthlyPrice;
+  return Number.isFinite(fallbackRent) && fallbackRent >= 0
+    ? roundMoney(fallbackRent)
+    : 0;
+};
+
+const buildReservationPricing = async ({
+  room,
+  leaseDuration,
+  selectedAppliances,
+}) => {
+  const settings = await getBusinessSettings();
+  const branchId = String(room?.branch || "").toLowerCase();
+  const branchSettings = getBranchSettings(branchId, settings);
+  const monthlyRent = resolveReservationRent({ room, leaseDuration });
+  const validatedSelectedAppliances = validateSelectedAppliancesForReservation({
+    selectedAppliances,
+    branchId,
+    branchSettings,
+  });
+  const totalApplianceQuantity = validatedSelectedAppliances.reduce(
+    (total, appliance) => total + appliance.quantity,
+    0,
+  );
+  const applianceFeeAmountPerUnit = roundMoney(
+    Number(branchSettings?.applianceFeeAmountPerUnit ?? 0),
+  );
+  const applianceFees =
+    branchId === "guadalupe" && branchSettings?.isApplianceFeeEnabled
+      ? roundMoney(applianceFeeAmountPerUnit * totalApplianceQuantity)
+      : 0;
+  const totalPrice = roundMoney(monthlyRent + applianceFees);
+  const reservationFeeAmount = roundMoney(
+    settings?.reservationFeeAmount ?? BUSINESS.DEPOSIT_AMOUNT,
+  );
+
+  return {
+    selectedAppliances: validatedSelectedAppliances,
+    monthlyRent,
+    applianceFees,
+    totalPrice,
+    reservationFeeAmount,
+    breakdown: {
+      monthlyRent,
+      selectedAppliances: validatedSelectedAppliances,
+      applianceFees,
+      totalPrice,
+      reservationFeeAmount,
+      branchId,
+      branchName: ROOM_BRANCH_LABELS[branchId] || room?.branch || "",
+      pricingSource: {
+        roomPrice: roundMoney(Number(room?.price ?? 0)),
+        roomMonthlyPrice: roundMoney(
+          Number(room?.monthlyPrice ?? room?.price ?? 0),
+        ),
+        leaseDuration: Number.isFinite(Number(leaseDuration))
+          ? Number(leaseDuration)
+          : null,
+      },
+      appliancePolicy: {
+        branch: branchId,
+        enabled: !!branchSettings?.isApplianceFeeEnabled,
+        amountPerUnit: applianceFeeAmountPerUnit,
+        selectedQuantity: totalApplianceQuantity,
+        appliedAmount: applianceFees,
+      },
+      authoritative: true,
+      ignoredClientFields: CLIENT_PRICING_FIELDS,
+    },
+  };
+};
+
+const loadReservableRoom = async ({ roomId, roomNumber, roomName }) => {
+  if (roomId) {
+    return Room.findById(roomId);
+  }
+
+  const legacyRoomFilter = { isArchived: false };
+  if (roomNumber) {
+    legacyRoomFilter.roomNumber = roomNumber;
+  } else {
+    legacyRoomFilter.name = roomName;
+  }
+
+  const matchedRooms = await Room.find(legacyRoomFilter).limit(2);
+  if (matchedRooms.length > 1) {
+    throw new AppError(
+      "Room reference is ambiguous. Please retry using the room ID or branch-scoped room number.",
+      400,
+      "AMBIGUOUS_ROOM_REFERENCE",
+    );
+  }
+
+  return matchedRooms[0] || null;
+};
+
+const ensureRoomReservationCapacity = async ({
+  roomId,
+  excludeReservationId = null,
+}) => {
+  const query = {
+    roomId,
+    status: { $in: ["pending", ...ACTIVE_OCCUPANCY_STATUS_QUERY] },
+    isArchived: { $ne: true },
+  };
+
+  if (excludeReservationId) {
+    query._id = { $ne: excludeReservationId };
+  }
+
+  return Reservation.countDocuments(query);
+};
+
+const findActiveBedReservationConflict = async ({
+  roomId,
+  bedId,
+  excludeReservationId = null,
+}) => {
+  if (!roomId || !bedId) return null;
+
+  const query = {
+    roomId,
+    "selectedBed.id": String(bedId),
+    status: { $in: ACTIVE_BED_HOLD_STATUSES },
+    isArchived: { $ne: true },
+  };
+
+  if (excludeReservationId) {
+    query._id = { $ne: excludeReservationId };
+  }
+
+  return Reservation.findOne(query).select("_id status selectedBed").lean();
+};
+
+const isActiveBedAssignmentDuplicateError = (error) => {
+  if (!error || error.code !== 11000) return false;
+
+  const selectedBedKey =
+    error?.keyPattern?.["selectedBed.id"] ||
+    error?.keyValue?.["selectedBed.id"] ||
+    String(error?.message || "").includes("unique_active_room_bed_assignment");
+
+  return Boolean(error?.keyPattern?.roomId && selectedBedKey);
+};
+
+const validateSelectedBedForReservation = async ({
+  room,
+  submittedBed,
+  excludeReservationId = null,
+  requireBedSelection = Array.isArray(room?.beds) && room.beds.length > 0,
+}) => {
+  if (!room) {
+    throw new AppError("Room not found", 404, "ROOM_NOT_FOUND");
+  }
+
+  const unlockedCount =
+    typeof room.unlockExpiredBeds === "function" ? room.unlockExpiredBeds() : 0;
+  if (unlockedCount > 0) {
+    await room.save();
+  }
+
+  if (!submittedBed?.id) {
+    if (requireBedSelection) {
+      throw new AppError(
+        "Please select an available bed to continue.",
+        400,
+        "BED_SELECTION_REQUIRED",
+      );
+    }
+    return null;
+  }
+
+  const roomBed = (room.beds || []).find(
+    (bed) => String(bed.id || bed._id) === String(submittedBed.id),
+  );
+
+  if (!roomBed) {
+    throw new AppError(BED_UNAVAILABLE_MESSAGE, 409, "BED_NOT_FOUND");
+  }
+
+  if (roomBed.status !== "available") {
+    throw new AppError(BED_UNAVAILABLE_MESSAGE, 409, "BED_UNAVAILABLE");
+  }
+
+  const conflictingReservation = await findActiveBedReservationConflict({
+    roomId: room._id,
+    bedId: roomBed.id || roomBed._id,
+    excludeReservationId,
+  });
+
+  if (conflictingReservation) {
+    throw new AppError(BED_UNAVAILABLE_MESSAGE, 409, "BED_UNAVAILABLE");
+  }
+
+  return {
+    id: roomBed.id || String(roomBed._id),
+    position: roomBed.position || submittedBed.position || null,
+  };
+};
 
 const combineLifecycleDateTime = ({
   dateInput,
@@ -892,7 +1300,9 @@ export const getReservationById = async (req, res, next) => {
 /* ─── CREATE reservation ─────────────────────────── */
 export const createReservation = async (req, res, next) => {
   try {
-    const payload = normalizeReservationPayload(req.body);
+    const payload = normalizeReservationPayload(
+      pickAllowedFields(req.body, APPLICANT_CREATE_ALLOWED_FIELDS),
+    );
     const dbUser = await findDbUser(req.user.uid);
     if (!dbUser)
       return res.status(404).json({
@@ -918,11 +1328,11 @@ export const createReservation = async (req, res, next) => {
         existingStatus: existingActive.status,
       });
 
-    const { roomId, roomName, roomNumber, moveInDate, totalPrice } = payload;
-    if ((!roomId && !roomNumber && !roomName) || !moveInDate || !totalPrice)
+    const { roomId, roomName, roomNumber, moveInDate } = payload;
+    if ((!roomId && !roomNumber && !roomName) || !moveInDate)
       return res.status(400).json({
         error:
-          "Missing required fields: roomId, roomNumber, or roomName plus moveInDate and totalPrice are required",
+          "Missing required fields: roomId, roomNumber, or roomName plus moveInDate are required",
         code: "MISSING_REQUIRED_FIELDS",
       });
 
@@ -942,25 +1352,16 @@ export const createReservation = async (req, res, next) => {
 
     // Verify room
     let room = null;
-    if (roomId) {
-      room = await Room.findById(roomId);
-    } else {
-      const legacyRoomFilter = { isArchived: false };
-      if (roomNumber) {
-        legacyRoomFilter.roomNumber = roomNumber;
-      } else {
-        legacyRoomFilter.name = roomName;
-      }
-
-      const matchedRooms = await Room.find(legacyRoomFilter).limit(2);
-      if (matchedRooms.length > 1) {
-        return res.status(400).json({
-          error:
-            "Room reference is ambiguous. Please retry using the room ID or branch-scoped room number.",
-          code: "AMBIGUOUS_ROOM_REFERENCE",
+    try {
+      room = await loadReservableRoom({ roomId, roomNumber, roomName });
+    } catch (error) {
+      if (error?.code === "AMBIGUOUS_ROOM_REFERENCE") {
+        return res.status(error.statusCode || 400).json({
+          error: error.message,
+          code: error.code,
         });
       }
-      [room] = matchedRooms;
+      throw error;
     }
     if (!room)
       return res
@@ -975,10 +1376,8 @@ export const createReservation = async (req, res, next) => {
     // Live occupancy check — count actual active reservations instead of
     // trusting the cached `room.available` boolean which can drift out of sync
     // (e.g. when reservations are cancelled/deleted without proper decrements).
-    const activeReservationCount = await Reservation.countDocuments({
+    const activeReservationCount = await ensureRoomReservationCapacity({
       roomId: room._id,
-      status: { $in: ["pending", ...ACTIVE_OCCUPANCY_STATUS_QUERY] },
-      isArchived: { $ne: true },
     });
     if (activeReservationCount >= room.capacity) {
       return res.status(400).json({
@@ -998,17 +1397,34 @@ export const createReservation = async (req, res, next) => {
       );
     }
 
+    let selectedBed = null;
+    try {
+      selectedBed = await validateSelectedBedForReservation({
+        room,
+        submittedBed: payload.selectedBed,
+      });
+    } catch (error) {
+      if (error?.code === "BED_SELECTION_REQUIRED") {
+        return res.status(400).json({ error: error.message, code: error.code });
+      }
+      if (error?.code === "BED_NOT_FOUND" || error?.code === "BED_UNAVAILABLE") {
+        return res.status(409).json({ error: error.message, code: error.code });
+      }
+      throw error;
+    }
+
+    const pricing = await buildReservationPricing({
+      room,
+      leaseDuration: payload.leaseDuration,
+      selectedAppliances: payload.selectedAppliances,
+    });
+
     // Create reservation with all form fields
     const b = payload;
     const reservation = new Reservation({
       userId: dbUser._id,
       roomId: room._id,
-      selectedBed: b.selectedBed
-        ? {
-            id: b.selectedBed.id || null,
-            position: b.selectedBed.position || null,
-          }
-        : null,
+      selectedBed,
       targetMoveInDate: b.targetMoveInDate
         ? new Date(b.targetMoveInDate)
         : null,
@@ -1067,10 +1483,13 @@ export const createReservation = async (req, res, next) => {
       agreedToPrivacy: b.agreedToPrivacy || false,
       agreedToCertification: b.agreedToCertification || false,
       proofOfPaymentUrl: b.proofOfPaymentUrl || null,
-      applianceFees: b.applianceFees || 0,
+      reservationFeeAmount: pricing.reservationFeeAmount,
+      monthlyRent: pricing.monthlyRent,
+      selectedAppliances: pricing.selectedAppliances,
+      applianceFees: pricing.applianceFees,
       moveInDate: b.moveInDate,
       moveOutDate: b.moveOutDate || null,
-      totalPrice: b.totalPrice,
+      totalPrice: pricing.totalPrice,
       notes: b.notes || "",
       status: "pending",
       paymentStatus: "pending",
@@ -1093,8 +1512,15 @@ export const createReservation = async (req, res, next) => {
       reservationId: reservation._id,
       reservationCode: reservation.reservationCode,
       reservation: serializeReservation(reservation),
+      pricing: pricing.breakdown,
     });
   } catch (error) {
+    if (isActiveBedAssignmentDuplicateError(error)) {
+      return res.status(409).json({
+        error: BED_UNAVAILABLE_MESSAGE,
+        code: "BED_UNAVAILABLE",
+      });
+    }
     logger.error({ err: error, requestId: req.id }, "Create reservation error");
     await auditLogger.logError(req, error, "Failed to create reservation");
     handleReservationError(res, error, "create");
@@ -1263,6 +1689,7 @@ export const updateReservation = async (req, res, next) => {
       "status",
       "paymentStatus",
       "paymentDate",
+      "proofOfPaymentUrl",
       "notes",
       "moveInDate",
       "moveOutDate",
@@ -1501,6 +1928,22 @@ export const updateReservation = async (req, res, next) => {
       reservation: serializeReservation(updatedReservation),
     });
 
+    // Broadcast real-time update to all connected admins
+    try {
+      const { emitToAdmins } = await import("../utils/socket.js");
+      const socketPayload = {
+        reservationId: String(updatedReservation._id),
+        status: updatedReservation.status,
+        paymentStatus: updatedReservation.paymentStatus,
+      };
+      emitToAdmins("reservation:updated", socketPayload);
+      if (req.body.paymentStatus !== undefined || req.body.proofOfPaymentUrl !== undefined) {
+        emitToAdmins("payment:updated", socketPayload);
+      }
+    } catch (socketErr) {
+      logger.warn({ err: socketErr }, "Socket emit failed after admin reservation update (non-fatal)");
+    }
+
     // Send confirmation email if status just changed to "reserved"
     if (
       req.body.status === "reserved" &&
@@ -1597,6 +2040,32 @@ export const updateReservation = async (req, res, next) => {
         logger.warn(
           { err: notifyErr, requestId: req.id },
           "Visit rejected notification failed (non-fatal)",
+        );
+      }
+    }
+
+    // In-app notification — payment proof rejected by admin
+    if (
+      req.body.proofOfPaymentUrl === null &&
+      oldData.proofOfPaymentUrl &&
+      req.body.paymentStatus === "pending" &&
+      updatedReservation.userId?._id
+    ) {
+      try {
+        const { notify } = await import("../utils/notificationService.js");
+        const rawNotes = req.body.notes || "";
+        const reason = rawNotes.startsWith("Payment rejected: ")
+          ? rawNotes.slice("Payment rejected: ".length)
+          : rawNotes;
+        await notify.paymentRejected(
+          updatedReservation.userId._id,
+          updatedReservation.reservationCode || "your reservation",
+          reason || "Please resubmit your payment proof.",
+        );
+      } catch (notifyErr) {
+        logger.warn(
+          { err: notifyErr, requestId: req.id },
+          "Payment rejected notification failed (non-fatal)",
         );
       }
     }
@@ -1753,6 +2222,7 @@ export const updateReservationByUser = async (req, res, next) => {
 
     // Build update payload from config-driven field mapping
     const updates = buildUserUpdatePayload(req.body);
+    let appliedPricing = null;
 
     // ── Legacy soft-cancel path: redirect to dedicated cancel endpoint ─────
     // The new PATCH /:id/cancel endpoint is the canonical path.
@@ -1766,6 +2236,83 @@ export const updateReservationByUser = async (req, res, next) => {
 
     // Notification for cancellation now fires inside cancelReservationByUser,
     // which is called above when cancelReservation=true. No dead code here.
+
+    const requestedRoomId = updates.roomId || reservation.roomId;
+    const shouldRevalidateBedSelection =
+      req.body.roomId !== undefined ||
+      req.body.selectedBed !== undefined ||
+      req.body.selectedAppliances !== undefined ||
+      req.body.leaseDuration !== undefined ||
+      req.body.moveInDate !== undefined ||
+      CLIENT_PRICING_FIELDS.some((field) => req.body[field] !== undefined);
+
+    if (shouldRevalidateBedSelection) {
+      const room = await Room.findById(requestedRoomId);
+      if (!room) {
+        return res.status(404).json({
+          error: "Room not found",
+          code: "ROOM_NOT_FOUND",
+        });
+      }
+      if (room.isArchived) {
+        return res.status(400).json({
+          error: "Room is not available for reservation",
+          code: "ROOM_NOT_AVAILABLE",
+        });
+      }
+
+      const activeReservationCount = await ensureRoomReservationCapacity({
+        roomId: room._id,
+        excludeReservationId: reservationId,
+      });
+      if (activeReservationCount >= room.capacity) {
+        return res.status(400).json({
+          error: "Room is fully booked. Please choose a different room.",
+          code: "ROOM_UNAVAILABLE",
+        });
+      }
+
+      try {
+        const submittedBed =
+          req.body.selectedBed !== undefined
+            ? req.body.selectedBed
+            : reservation.selectedBed;
+        updates.selectedBed = await validateSelectedBedForReservation({
+          room,
+          submittedBed,
+          excludeReservationId: reservationId,
+        });
+      } catch (error) {
+        if (error?.code === "BED_SELECTION_REQUIRED") {
+          return res.status(400).json({
+            error: error.message,
+            code: error.code,
+          });
+        }
+        if (error?.code === "BED_NOT_FOUND" || error?.code === "BED_UNAVAILABLE") {
+          return res.status(409).json({
+            error: error.message,
+            code: error.code,
+          });
+        }
+        throw error;
+      }
+
+      appliedPricing = await buildReservationPricing({
+        room,
+        leaseDuration: updates.leaseDuration ?? reservation.leaseDuration,
+        selectedAppliances:
+          req.body.selectedAppliances !== undefined
+            ? req.body.selectedAppliances
+            : reservation.selectedAppliances,
+      });
+      updates.roomId = room._id;
+      updates.monthlyRent = appliedPricing.monthlyRent;
+      updates.selectedAppliances = appliedPricing.selectedAppliances;
+      updates.applianceFees = appliedPricing.applianceFees;
+      updates.totalPrice = appliedPricing.totalPrice;
+      updates.reservationFeeAmount = appliedPricing.reservationFeeAmount;
+    }
 
     // Generate visitCode when visitDate is first set (bypassed by findByIdAndUpdate)
     if (updates.visitDate) {
@@ -2027,8 +2574,28 @@ export const updateReservationByUser = async (req, res, next) => {
     res.json({
       message: "Reservation updated successfully",
       reservation: updatedReservation,
+      ...(appliedPricing ? { pricing: appliedPricing.breakdown } : {}),
     });
+
+    // Notify admins when tenant submits payment proof so the payment tab refreshes
+    if (req.body.proofOfPaymentUrl) {
+      try {
+        const { emitToAdmins } = await import("../utils/socket.js");
+        emitToAdmins("payment:updated", {
+          reservationId: String(updatedReservation._id),
+          paymentStatus: updatedReservation.paymentStatus,
+        });
+      } catch (socketErr) {
+        logger.warn({ err: socketErr }, "Socket emit failed after tenant proof upload (non-fatal)");
+      }
+    }
   } catch (error) {
+    if (isActiveBedAssignmentDuplicateError(error)) {
+      return res.status(409).json({
+        error: BED_UNAVAILABLE_MESSAGE,
+        code: "BED_UNAVAILABLE",
+      });
+    }
     logger.error(
       { err: error, requestId: req.id },
       "User reservation update error",

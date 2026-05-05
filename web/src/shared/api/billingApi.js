@@ -87,6 +87,13 @@ export const billingApi = {
   getPendingVerifications: (branch = null) =>
     authFetch(`/billing/pending-verifications${branch ? `?branch=${branch}` : ""}`),
 
+  getAdminPayments: (params = {}) => {
+    const query = new URLSearchParams(
+      Object.entries(params).filter(([, value]) => value != null && value !== ""),
+    ).toString();
+    return authFetch(`/payments/admin/ledger${query ? `?${query}` : ""}`);
+  },
+
   getRentBills: (params = {}) => {
     const query = new URLSearchParams(params).toString();
     return authFetch(`/billing/rent${query ? `?${query}` : ""}`);
@@ -118,6 +125,12 @@ export const billingApi = {
   sendRentBill: (billId) =>
     authFetch(`/billing/rent/${billId}/send`, {
       method: "POST",
+    }),
+
+  sendBillReminder: (billId, payload = {}) =>
+    authFetch(`/billing/${billId}/remind`, {
+      method: "POST",
+      body: JSON.stringify(payload),
     }),
 
   downloadBillPdf: async (billId, fallbackFilename = "billing-statement.pdf") => {

@@ -27,6 +27,7 @@ const FloatingInput = ({
  value = "",
  onChange,
  onBlur: externalBlur,
+ onPaste,
  disabled = false,
  error = null,
  valid = false,
@@ -63,6 +64,7 @@ const FloatingInput = ({
  onChange={onChange}
  onFocus={() => setFocused(true)}
  onBlur={handleBlur}
+ onPaste={onPaste}
  disabled={disabled}
  autoComplete={autoComplete}
  inputMode={inputMode}

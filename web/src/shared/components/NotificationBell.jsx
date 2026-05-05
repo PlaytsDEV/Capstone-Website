@@ -8,6 +8,7 @@ import {
  useMarkAllAsRead,
 } from "../hooks/queries/useNotifications";
 import useNotificationStore from "../stores/notificationStore";
+import { useAuth } from "../hooks/useAuth";
 import "./NotificationBell.css";
 
 const TYPE_ICONS = {
@@ -78,6 +79,7 @@ export default function NotificationBell() {
  const buttonRef = useRef(null);
  const navigate = useNavigate();
  const prefersReducedMotion = useReducedMotion();
+ const { isAdmin } = useAuth();
 
  const { data: unreadData } = useUnreadCount();
  const { data: notifData, isLoading } = useNotifications(1, {
@@ -230,9 +232,12 @@ export default function NotificationBell() {
  <div className="nb-dropdown-footer">
  <button
  className="nb-view-all-btn"
- onClick={() => setIsOpen(false)}
+ onClick={() => {
+  setIsOpen(false);
+  navigate(isAdmin() ? "/admin/notifications" : "/applicant/notifications");
+ }}
  >
- Close
+ View all notifications
  </button>
  </div>
  ) : null}

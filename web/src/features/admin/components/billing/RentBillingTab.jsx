@@ -4,6 +4,7 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  Clock3,
   Download,
   Eye,
   FileText,
@@ -14,9 +15,17 @@ import {
   Users,
 } from "lucide-react";
 import { billingApi } from "../../../../shared/api/apiClient";
+import { useAdminPayments } from "../../../../shared/hooks/queries/useBilling";
 import { useAuth } from "../../../../shared/hooks/useAuth";
 import { showConfirmation, showNotification } from "../../../../shared/utils/notification";
 import { fmtCurrency, fmtDate, fmtMonth, formatBranch, formatRoomType } from "../../utils/formatters";
+import {
+  buildPaymentLedgerByBillId as buildSharedPaymentLedgerByBillId,
+  formatAdminPaymentMode,
+  getNormalizedBillSnapshot as getSharedNormalizedBillSnapshot,
+  getNormalizedPaidState as getSharedNormalizedPaidState,
+  resolvePaymentDetails as resolveSharedPaymentDetails,
+} from "./paymentDisplay";
 
 const OWNER_ROLES = new Set(["owner", "superadmin"]);
 const ROOMS_PER_PAGE = 10;
@@ -84,22 +93,103 @@ const isBillSent = (bill) =>
       bill?.delivery?.notification?.status === "sent",
   );
 
+const getBillDaysOverdue = (bill) => {
+  if (!bill?.dueDate || bill?.status === "paid") return 0;
+  const dueDate = new Date(bill.dueDate);
+  if (Number.isNaN(dueDate.getTime())) return 0;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  dueDate.setHours(0, 0, 0, 0);
+  const diffDays = Math.floor((today.getTime() - dueDate.getTime()) / 86400000);
+  return diffDays > 0 ? diffDays : 0;
+};
+
+const canSendReminder = (bill, paymentRecord = null) => {
+  const normalized = getSharedNormalizedBillSnapshot(bill, paymentRecord, {
+    isSent: isBillSent,
+    getDaysOverdue: getBillDaysOverdue,
+  });
+  return Boolean(
+    bill &&
+      !normalized.isPaid &&
+      ["pending", "partially-paid", "overdue"].includes(normalized.rawStatus),
+  );
+};
+const LEGACY_PAID_FALLBACK_LABEL = "Paid — legacy/no ledger record";
+const PAYMENT_STATUS_PRIORITY = {
+  paid: 3,
+  approved: 3,
+  pending: 2,
+  rejected: 1,
+};
+const formatPaymentMethodLabel = (value) => {
+  if (!value) return "—";
+  return formatAdminPaymentMode({ paymentMethod: value });
+};
+const formatPaymentDateTime = (value) => {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+const buildPaymentLedgerByBillId = (payments = []) => {
+  return buildSharedPaymentLedgerByBillId(payments);
+};
+const getBillPenaltyAmount = (bill) => Number(bill?.charges?.penalty || 0);
+const getNormalizedPaidState = (bill, paymentRecord = null) => {
+  return getSharedNormalizedPaidState(bill, paymentRecord);
+};
+const getNormalizedBillSnapshot = (bill, paymentRecord = null) => {
+  return getSharedNormalizedBillSnapshot(bill, paymentRecord, {
+    isSent: isBillSent,
+    getDaysOverdue: getBillDaysOverdue,
+  });
+};
+const canSendPenaltyNotice = (bill, paymentRecord = null) =>
+  Boolean(bill && !getNormalizedPaidState(bill, paymentRecord).isPaid && getBillPenaltyAmount(bill) > 0);
+const getPenaltyReason = (bill) => {
+  if (!canSendPenaltyNotice(bill)) return "";
+  const daysLate = Number(bill?.penaltyDetails?.daysLate || 0);
+  const ratePerDay = Number(bill?.penaltyDetails?.ratePerDay || 0);
+  if (daysLate > 0 && ratePerDay > 0) {
+    return `Late payment penalty for ${daysLate} day${daysLate === 1 ? "" : "s"} at PHP ${ratePerDay.toFixed(2)}/day`;
+  }
+  if (daysLate > 0) {
+    return `Late payment penalty for ${daysLate} day${daysLate === 1 ? "" : "s"} overdue`;
+  }
+  return "Late payment penalty applied";
+};
+const resolvePaymentDetails = (bill, paymentRecord) => {
+  const details = resolveSharedPaymentDetails(bill, paymentRecord);
+  return {
+    paymentMethod: details.paymentMethodLabel,
+    paymentRecordedAt: details.paymentRecordedAt,
+    paymentFallbackLabel: details.paymentFallbackLabel,
+  };
+};
+const getPrimaryNoticeLabel = (bill, paymentRecord = null) =>
+  getNormalizedBillSnapshot(bill, paymentRecord).daysOverdue > 0 ||
+  String(bill?.status || "").trim().toLowerCase() === "overdue"
+    ? "Send Overdue Notice"
+    : "Send Payment Reminder";
+
 const getTenantBill = (tenant, billsById) => {
   const billId = getId(tenant?.currentMonthBill?.id || tenant?.currentMonthBill?._id);
   return billId ? billsById.get(billId) || tenant.currentMonthBill : null;
 };
 
-const getTenantStatus = (tenant, bill) => {
+const getTenantStatus = (tenant, bill, paymentRecord = null) => {
   if (!tenant?.currentMonthBill) {
     return tenant?.billStatus === "missing_data" ? "missing_data" : "ready";
   }
 
-  const status = bill?.status || tenant.currentMonthBill?.status;
-  if (status === "paid") return "paid";
-  if (status === "overdue") return "overdue";
-  if (status === "partially-paid") return "partially_paid";
-  if (isBillSent(bill)) return "sent";
-  return "generated";
+  return getNormalizedBillSnapshot(bill, paymentRecord).status;
 };
 
 const pickSharedDateLabel = (tenants, picker) => {
@@ -237,16 +327,20 @@ function PreviewModal({
 
         {/* Breakdown */}
         <div className="space-y-2 border-t border-border px-5 py-4">
-          {[
-            { label: "Monthly rent", value: fmtCurrency(preview.charges?.rent || 0) },
-            { label: "Appliance fee", value: fmtCurrency(preview.charges?.applianceFees || 0) },
-            { label: "Credit / advance applied", value: `-${fmtCurrency(preview.creditApplied || 0)}` },
-          ].map(({ label, value }) => (
-            <div key={label} className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">{label}</span>
-              <span className="font-medium text-card-foreground">{value}</span>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Monthly rent</span>
+            <span className="font-medium text-card-foreground">{fmtCurrency(preview.charges?.rent || 0)}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Appliance fee</span>
+            <span className="font-medium text-card-foreground">{fmtCurrency(preview.charges?.applianceFees || 0)}</span>
+          </div>
+          {Number(preview.creditApplied || 0) > 0 && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Reservation deposit applied</span>
+              <span className="font-medium text-card-foreground">−{fmtCurrency(preview.creditApplied)}</span>
             </div>
-          ))}
+          )}
           <div className="flex items-center justify-between border-t border-border pt-2 text-sm">
             <span className="font-semibold text-card-foreground">Total amount due</span>
             <span className="text-base font-bold text-[color:var(--color-accent,#D4AF37)]">
@@ -321,6 +415,7 @@ export default function RentBillingTab({ isActive }) {
   const [previewLoadingId, setPreviewLoadingId] = useState(null);
   const [generatingId, setGeneratingId] = useState(null);
   const [sendingId, setSendingId] = useState(null);
+  const [activeNoticeKey, setActiveNoticeKey] = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
   const [batchAction, setBatchAction] = useState("");
   const [preview, setPreview] = useState(null);
@@ -362,6 +457,21 @@ export default function RentBillingTab({ isActive }) {
   useEffect(() => {
     if (isActive) loadData();
   }, [isActive, loadData]);
+
+  const paymentParams = useMemo(
+    () => ({
+      branch: branchParam,
+      limit: 500,
+    }),
+    [branchParam],
+  );
+  const { data: paymentLedgerData } = useAdminPayments(paymentParams, {
+    enabled: Boolean(isActive && canLoad),
+  });
+  const paymentsByBillId = useMemo(
+    () => buildPaymentLedgerByBillId(paymentLedgerData?.data || []),
+    [paymentLedgerData?.data],
+  );
 
   const billsById = useMemo(
     () => new Map(bills.map((bill) => [getId(bill.id || bill._id), bill])),
@@ -407,14 +517,16 @@ export default function RentBillingTab({ isActive }) {
         );
         const hasOverdue = generated.some((t) => {
           const bill = t.currentBill;
-          return (bill?.status || t.currentMonthBill?.status) === "overdue";
+          const paymentRecord = bill ? paymentsByBillId.get(getId(bill.id || bill._id)) : null;
+          return getNormalizedBillSnapshot(bill, paymentRecord).status === "overdue";
         });
         const allGenerated = activeTenants.length > 0 && generated.length === activeTenants.length;
         const allPaid =
           allGenerated &&
           generated.every((t) => {
             const bill = t.currentBill;
-            return (bill?.status || t.currentMonthBill?.status) === "paid";
+            const paymentRecord = bill ? paymentsByBillId.get(getId(bill.id || bill._id)) : null;
+            return getNormalizedBillSnapshot(bill, paymentRecord).isPaid;
           });
         const allSent = allGenerated && generated.every((t) => isBillSent(t.currentBill));
 
@@ -437,7 +549,7 @@ export default function RentBillingTab({ isActive }) {
         if (bc) return bc;
         return getRoomName(l).localeCompare(getRoomName(r), undefined, { numeric: true });
       });
-  }, [amounts, billsById, rooms, tenants]);
+  }, [amounts, billsById, paymentsByBillId, rooms, tenants]);
 
   const filteredRooms = useMemo(() => {
     const search = sidebarSearch.trim().toLowerCase();
@@ -494,7 +606,10 @@ export default function RentBillingTab({ isActive }) {
       0,
     );
     const outstandingBalance = generatedBills.reduce(
-      (sum, bill) => sum + (bill.status === "paid" ? 0 : Number(bill.remainingAmount ?? bill.totalAmount ?? 0)),
+      (sum, bill) => {
+        const paymentRecord = paymentsByBillId.get(getId(bill.id || bill._id)) || null;
+        return sum + getNormalizedBillSnapshot(bill, paymentRecord).balance;
+      },
       0,
     );
 
@@ -510,7 +625,7 @@ export default function RentBillingTab({ isActive }) {
       unsentBills: generatedBills.filter((bill) => !isBillSent(bill)),
       downloadableBills: generatedBills,
     };
-  }, [amounts, billsById, dueDate, selectedTenants]);
+  }, [amounts, billsById, dueDate, paymentsByBillId, selectedTenants]);
 
   const formError = useMemo(() => {
     if (!canLoad) return "Branch is required.";
@@ -613,6 +728,49 @@ export default function RentBillingTab({ isActive }) {
       showNotification(error?.message || "Failed to send rent bill.", "error");
     } finally {
       setSendingId(null);
+    }
+  };
+
+  const handleSendReminder = async (bill, noticeType = "reminder", paymentRecord = null) => {
+    const billId = getId(bill?.id || bill?._id);
+    if (!billId) {
+      showNotification("Bill not found.", "error");
+      return;
+    }
+    if (noticeType === "penalty") {
+      if (!canSendPenaltyNotice(bill, paymentRecord)) {
+        showNotification("Penalty notice is only available when a penalty exists.", "error");
+        return;
+      }
+    } else if (!canSendReminder(bill, paymentRecord)) {
+      showNotification("Reminder is only available for unpaid bills.", "error");
+      return;
+    }
+
+    setActiveNoticeKey(`${billId}:${noticeType}`);
+    try {
+      await billingApi.sendBillReminder(billId, { noticeType });
+      showNotification(
+        noticeType === "penalty"
+          ? "Penalty notice sent successfully."
+          : noticeType === "overdue"
+            ? "Overdue notice sent successfully."
+            : "Reminder sent successfully.",
+        "success",
+      );
+      await loadData();
+    } catch (error) {
+      showNotification(
+        error?.message ||
+          (noticeType === "penalty"
+            ? "Failed to send penalty notice."
+            : noticeType === "overdue"
+              ? "Failed to send overdue notice."
+              : "Failed to send reminder."),
+        "error",
+      );
+    } finally {
+      setActiveNoticeKey(null);
     }
   };
 
@@ -974,7 +1132,7 @@ export default function RentBillingTab({ isActive }) {
                 </div>
 
                 {/* Cycle grid */}
-                <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
+                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
                   {[
                     { label: "Billing month", value: fmtMonth(getBillingMonthDate(month)) },
                     { label: "Cycle start", value: pickSharedDateLabel(selectedTenants, (t) => t.billingCycleStart) },
@@ -1083,12 +1241,24 @@ export default function RentBillingTab({ isActive }) {
               No active tenant found.
             </div>
           ) : (
-            <div className="mt-3 overflow-x-auto">
-              <table className="w-full text-left text-xs">
+            <div className="mt-3 overflow-x-auto pb-1">
+              <table className="min-w-[1180px] text-left text-xs">
                 <thead>
                   <tr className="border-b border-border">
-                    {["Tenant", "Bed / Room", "Move-in", "Monthly Rent", "Billing Cycle", "Next Due", "Status", "Outstanding", "Actions"].map((h) => (
-                      <th key={h} className="py-2 pr-4 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                    {[
+                      "Tenant",
+                      "Bed / Room",
+                      "Move-in",
+                      "Monthly Rent",
+                      "Billing Cycle",
+                      "Next Due",
+                      "Status",
+                      "Balance",
+                      "Payment Method",
+                      "Paid / Processed",
+                      "Actions",
+                    ].map((h) => (
+                      <th key={h} className="whitespace-nowrap py-2 pr-5 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
                         {h}
                       </th>
                     ))}
@@ -1101,11 +1271,18 @@ export default function RentBillingTab({ isActive }) {
                     const amountInvalid = normalizeAmount(amount) <= 0;
                     const bill = getTenantBill(tenant, billsById);
                     const billId = getId(bill?.id || bill?._id);
-                    const tenantStatus = getTenantStatus(tenant, bill);
+                    const paymentRecord = billId ? paymentsByBillId.get(billId) : null;
+                    const normalizedBill = getNormalizedBillSnapshot(bill, paymentRecord);
+                    const paymentDetails = resolvePaymentDetails(bill, paymentRecord);
+                    const daysOverdue = normalizedBill.daysOverdue;
+                    const tenantStatus = bill ? normalizedBill.status : getTenantStatus(tenant, bill, paymentRecord);
                     const rowBusy =
                       previewLoadingId === reservationId ||
                       generatingId === reservationId ||
                       sendingId === billId ||
+                      activeNoticeKey === `${billId}:reminder` ||
+                      activeNoticeKey === `${billId}:overdue` ||
+                      activeNoticeKey === `${billId}:penalty` ||
                       downloadingId === billId ||
                       Boolean(batchAction);
 
@@ -1123,24 +1300,30 @@ export default function RentBillingTab({ isActive }) {
                           {tenant.moveInDate ? fmtDate(tenant.moveInDate) : "Missing"}
                         </td>
                         <td className="py-3 pr-4">
-                          <div className="space-y-1">
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={amount}
-                              onChange={(e) =>
-                                setAmounts((cur) => ({ ...cur, [reservationId]: e.target.value }))
-                              }
-                              aria-invalid={amountInvalid}
-                              className={`w-24 rounded-lg border px-2 py-1 text-xs text-card-foreground focus:outline-none focus:ring-2 focus:ring-amber-100 ${
-                                amountInvalid ? "border-danger bg-danger-light" : "border-border bg-card focus:border-amber-400"
-                              }`}
-                            />
-                            {amountInvalid && (
-                              <p className="text-[10px] text-danger">Missing rent amount.</p>
-                            )}
-                          </div>
+                          {bill ? (
+                            <span className="text-xs font-semibold text-card-foreground">
+                              {fmtCurrency(bill.totalAmount || normalizeAmount(amount))}
+                            </span>
+                          ) : (
+                            <div className="space-y-1">
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={amount}
+                                onChange={(e) =>
+                                  setAmounts((cur) => ({ ...cur, [reservationId]: e.target.value }))
+                                }
+                                aria-invalid={amountInvalid}
+                                className={`w-24 rounded-lg border px-2 py-1 text-xs text-card-foreground focus:outline-none focus:ring-2 focus:ring-amber-100 ${
+                                  amountInvalid ? "border-danger bg-danger-light" : "border-border bg-card focus:border-amber-400"
+                                }`}
+                              />
+                              {amountInvalid && (
+                                <p className="text-[10px] text-danger">Missing rent amount.</p>
+                              )}
+                            </div>
+                          )}
                         </td>
                         <td className="py-3 pr-4 text-muted-foreground">
                           {formatCycle(tenant.billingCycleStart, tenant.billingCycleEnd)}
@@ -1149,14 +1332,33 @@ export default function RentBillingTab({ isActive }) {
                           {fmtDate(dueDate || tenant.dueDate || tenant.billingCycle?.dueDate)}
                         </td>
                         <td className="py-3 pr-4">
-                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${getTenantStatusClasses(tenantStatus)}`}>
-                            {TENANT_STATUS_LABELS[tenantStatus] || tenantStatus}
-                          </span>
+                          <div className="space-y-1">
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${getTenantStatusClasses(tenantStatus)}`}>
+                              {TENANT_STATUS_LABELS[tenantStatus] || tenantStatus}
+                            </span>
+                            {daysOverdue > 0 && (
+                              <div className="inline-flex items-center gap-1 rounded-full bg-danger-light px-2 py-0.5 text-[10px] font-semibold text-danger-dark">
+                                <Clock3 size={10} />
+                                {daysOverdue} day{daysOverdue === 1 ? "" : "s"} overdue
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="hidden py-3 pr-4 text-muted-foreground">
+                          {bill
+                            ? fmtCurrency(normalizedBill.balance)
+                            : fmtCurrency(0)}
                         </td>
                         <td className="py-3 pr-4 text-muted-foreground">
-                          {bill
-                            ? fmtCurrency(bill.status === "paid" ? 0 : bill.remainingAmount ?? bill.totalAmount ?? 0)
-                            : fmtCurrency(0)}
+                          {paymentDetails.paymentFallbackLabel || formatPaymentMethodLabel(paymentDetails.paymentMethod)}
+                        </td>
+                        <td className="py-3 pr-4 text-muted-foreground">
+                          <div className="hidden max-w-[170px] truncate" title="">
+                            {paymentDetails.paymentReference || "—"}
+                          </div>
+                        </td>
+                        <td className="py-3 pr-4 text-muted-foreground">
+                          {formatPaymentDateTime(paymentDetails.paymentRecordedAt)}
                         </td>
                         <td className="py-3">
                           <div className="flex items-center gap-1.5">
@@ -1188,7 +1390,7 @@ export default function RentBillingTab({ isActive }) {
                                 Generate
                               </button>
                             )}
-                            {bill && bill.status !== "paid" && (
+                            {bill && !normalizedBill.isPaid && (
                               <button
                                 type="button"
                                 className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-semibold text-muted-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
@@ -1201,6 +1403,38 @@ export default function RentBillingTab({ isActive }) {
                                   <Send size={11} />
                                 )}
                                 Send
+                              </button>
+                            )}
+                            {bill && (canSendPenaltyNotice(bill, paymentRecord) || canSendReminder(bill, paymentRecord)) && (
+                              <button
+                                type="button"
+                                className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${
+                                  canSendPenaltyNotice(bill, paymentRecord)
+                                    ? "border-danger text-danger-dark hover:bg-danger-light"
+                                    : "border-border text-muted-foreground hover:bg-muted"
+                                }`}
+                                onClick={() =>
+                                  handleSendReminder(
+                                    bill,
+                                    canSendPenaltyNotice(bill, paymentRecord) ? "penalty" : daysOverdue > 0 ? "overdue" : "reminder",
+                                    paymentRecord,
+                                  )
+                                }
+                                disabled={rowBusy}
+                                title={canSendPenaltyNotice(bill, paymentRecord) ? getPenaltyReason(bill) : undefined}
+                              >
+                                {activeNoticeKey?.startsWith(`${billId}:`) ? (
+                                  <LoaderCircle size={11} className="animate-spin" />
+                                ) : canSendPenaltyNotice(bill, paymentRecord) ? (
+                                  <AlertCircle size={11} />
+                                ) : (
+                                  <Send size={11} />
+                                )}
+                                {canSendPenaltyNotice(bill, paymentRecord)
+                                  ? "Send Penalty Notice"
+                                  : daysOverdue > 0
+                                    ? "Send Overdue Notice"
+                                    : "Send Payment Reminder"}
                               </button>
                             )}
                             {bill && (
@@ -1240,48 +1474,80 @@ export default function RentBillingTab({ isActive }) {
                 Rent Bill History
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Generated rent bills for the selected room and billing month.
+                Archive view only. Use Tenant Rent Billing above for sending, reminders, and PDFs.
               </p>
             </div>
             <span className="text-xs text-muted-foreground">
-              {selectedSummary.generatedBills.length} bill{selectedSummary.generatedBills.length === 1 ? "" : "s"}
+              {selectedSummary.generatedBills.length} archive entr{selectedSummary.generatedBills.length === 1 ? "y" : "ies"}
             </span>
           </div>
 
           <div className="mt-3 space-y-2">
             {selectedSummary.generatedBills.length === 0 ? (
               <div className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
-                No generated rent bills for this room yet.
+                No archived rent bills for this room yet.
               </div>
             ) : (
               selectedSummary.generatedBills.map((bill) => {
                 const deliveryStatus = getBillDeliveryStatus(bill);
                 const sent = isBillSent(bill);
+                const billId = getId(bill.id || bill._id);
+                const paymentRecord = paymentsByBillId.get(billId) || null;
+                const normalizedBill = getNormalizedBillSnapshot(bill, paymentRecord);
+                const paymentDetails = resolvePaymentDetails(bill, paymentRecord);
+                const daysOverdue = normalizedBill.daysOverdue;
                 return (
                   <div
                     key={getId(bill.id || bill._id)}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2"
+                    className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2"
                   >
                     <div>
                       <p className="text-sm font-semibold text-card-foreground">{bill.tenant?.name || "Tenant"}</p>
                       <p className="text-xs text-muted-foreground">
-                        {formatCycle(bill.billingCycleStart, bill.billingCycleEnd)}
+                        {bill.billReference || `Bill ${billId.slice(-6).toUpperCase()}`} • {formatCycle(bill.billingCycleStart, bill.billingCycleEnd)}
                       </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Due {fmtDate(bill.dueDate)} • Balance {fmtCurrency(normalizedBill.balance)} • Total {fmtCurrency(bill.totalAmount || 0)}
+                      </p>
+                      {Number(bill.creditApplied || 0) > 0 && (
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          Reservation deposit applied: −{fmtCurrency(bill.creditApplied)}
+                        </p>
+                      )}
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Method {paymentDetails.paymentFallbackLabel || formatPaymentMethodLabel(paymentDetails.paymentMethod)}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Paid / processed {formatPaymentDateTime(paymentDetails.paymentRecordedAt)}
+                      </p>
+                      {daysOverdue > 0 && (
+                        <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-danger-light px-2 py-0.5 text-[10px] font-semibold text-danger-dark">
+                          <Clock3 size={10} />
+                          {daysOverdue} day{daysOverdue === 1 ? "" : "s"} overdue
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center gap-3">
                       <span
                         className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                          sent
-                            ? "bg-info-light text-info-dark"
-                            : deliveryStatus === "failed"
-                            ? "bg-danger-light text-danger-dark"
-                            : "bg-warning-light text-warning-dark"
+                          normalizedBill.isPaid
+                            ? "bg-success-light text-success-dark"
+                            : normalizedBill.status === "overdue"
+                              ? "bg-danger-light text-danger-dark"
+                              : normalizedBill.status === "partially_paid"
+                                ? "bg-warning-light text-warning-dark"
+                                : sent
+                                  ? "bg-info-light text-info-dark"
+                                  : deliveryStatus === "failed"
+                                    ? "bg-danger-light text-danger-dark"
+                                    : "bg-warning-light text-warning-dark"
                         }`}
                       >
-                        {sent ? "Sent" : deliveryStatus === "failed" ? "Email failed" : "Generated"}
+                        {TENANT_STATUS_LABELS[normalizedBill.status] ||
+                          (normalizedBill.status ? normalizedBill.status.replace(/_/g, " ") : "Generated")}
                       </span>
-                      <span className="text-sm font-semibold text-card-foreground">
-                        {fmtCurrency(bill.totalAmount || 0)}
+                      <span className="text-[11px] text-muted-foreground">
+                        {sent ? "Delivery sent" : deliveryStatus === "failed" ? "Delivery failed" : "Generated only"}
                       </span>
                     </div>
                   </div>

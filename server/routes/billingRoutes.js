@@ -196,6 +196,18 @@ router.post(
 );
 
 /**
+ * POST /api/billing/:billId/remind
+ * Send a reminder for an unpaid bill (Admin only)
+ */
+router.post(
+  "/:billId/remind",
+  verifyAdmin,
+  requirePermission("manageBilling"),
+  filterByBranch,
+  billingController.sendBillReminder,
+);
+
+/**
  * POST /api/billing/:billId/verify
  * Admin approves or rejects payment proof
  */

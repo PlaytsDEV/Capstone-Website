@@ -79,7 +79,7 @@ const ProtectedRoute = ({ children, requiredRole, requireAuth = true }) => {
  return <Navigate to={getDefaultRoute()} replace />;
  }
  } else if (requiredRole === USER_ROLES.APPLICANT) {
- if (isAdmin()) {
+ if (isAdmin() || isOwner()) {
  return <Navigate to="/admin/dashboard" replace />;
  }
  }

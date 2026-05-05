@@ -11,6 +11,7 @@ import {
   TenantBillingPage,
   TenantMaintenancePage,
   TenantAnnouncementsPage,
+  TenantNotificationsPage,
 } from "../lazyPages";
 
 export function TenantRoutes() {
@@ -98,6 +99,14 @@ export function TenantRoutes() {
           element={
             <RouteShell name="Announcements">
               <TenantAnnouncementsPage />
+            </RouteShell>
+          }
+        />
+        <Route
+          path="notifications"
+          element={
+            <RouteShell name="Notifications">
+              <TenantNotificationsPage />
             </RouteShell>
           }
         />

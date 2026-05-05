@@ -32,10 +32,11 @@ export function useBillingStats() {
 }
 
 /** Get bills by branch */
-export function useBillsByBranch(params) {
+export function useBillsByBranch(params, options = {}) {
   return useQuery({
     queryKey: queryKeys.billing.byBranch(params),
     queryFn: () => billingApi.getBillsByBranch(params),
+    ...options,
   });
 }
 
@@ -52,6 +53,14 @@ export function useBillingReport() {
   return useQuery({
     queryKey: queryKeys.billing.report,
     queryFn: () => billingApi.getBillingReport(),
+  });
+}
+
+export function useAdminPayments(params, options = {}) {
+  return useQuery({
+    queryKey: queryKeys.billing.payments(params),
+    queryFn: () => billingApi.getAdminPayments(params),
+    ...options,
   });
 }
 

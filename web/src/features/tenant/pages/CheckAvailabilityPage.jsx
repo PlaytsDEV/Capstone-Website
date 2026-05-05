@@ -229,6 +229,12 @@ function CheckAvailabilityPage() {
  [id]: Math.max(0, parseInt(qty, 10) || 0),
  }));
  };
+ const buildSelectedAppliancesPayload = () =>
+ Object.fromEntries(
+ Object.entries(selectedAppliances).filter(
+ ([, quantity]) => Number.isInteger(quantity) && quantity > 0,
+ ),
+ );
  const calculateApplianceFees = () =>
  AVAILABLE_APPLIANCES.reduce(
  (total, a) =>
@@ -257,6 +263,7 @@ function CheckAvailabilityPage() {
  selectedBed: selectedBed
  ? { id: selectedBed.id, position: selectedBed.position }
  : null,
+ selectedAppliances: buildSelectedAppliancesPayload(),
  totalPrice: selectedRoom.price || 5000,
  applianceFees: calculateApplianceFees(),
  });
@@ -289,6 +296,7 @@ function CheckAvailabilityPage() {
  selectedBed: selectedBed
  ? { id: selectedBed.id, position: selectedBed.position }
  : null,
+ selectedAppliances: buildSelectedAppliancesPayload(),
  moveInDate: checkInDate.toISOString(),
  totalPrice: selectedRoom.price || 5000,
  applianceFees: calculateApplianceFees(),

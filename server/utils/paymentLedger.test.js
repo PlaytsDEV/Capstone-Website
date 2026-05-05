@@ -47,7 +47,7 @@ describe("applyBillPayment", () => {
     expect(result.bill.remainingAmount).toBe(1000);
     expect(result.bill.status).toBe("partially-paid");
     expect(result.payment.amount).toBe(500);
-    expect(result.payment.status).toBe("approved");
+    expect(result.payment.status).toBe("paid");
     expect(result.payment.billId).toBe("bill-1");
     expect(paymentModel.create).toHaveBeenCalledTimes(1);
     expect(bill.save).toHaveBeenCalledTimes(1);

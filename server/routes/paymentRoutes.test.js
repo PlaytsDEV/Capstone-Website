@@ -35,6 +35,7 @@ await jest.unstable_mockModule("../controllers/paymentController.js", () => ({
   createDepositCheckout,
   checkSessionStatus,
   getPaymentsForBill: getPaymentsForBillController,
+  getAdminPaymentLedger: jest.fn(noop),
 }));
 
 await jest.unstable_mockModule("../models/Payment.js", () => ({
@@ -57,8 +58,38 @@ await jest.unstable_mockModule("../models/Reservation.js", () => ({
 }));
 
 await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
-  CURRENT_RESIDENT_STATUS_QUERY: ["moveIn"],
+  USER_ROLE_NAMES: Object.freeze(["applicant", "tenant", "branch_admin", "owner"]),
+  CANONICAL_RESERVATION_STATUSES: Object.freeze(["pending", "visit_pending", "visit_approved", "payment_pending", "reserved", "moveIn", "moveOut", "cancelled", "archived"]),
+  LEGACY_RESERVATION_STATUS_MAP: Object.freeze({}),
+  ALLOWED_RESERVATION_STATUS_TRANSITIONS: Object.freeze({}),
+  CANONICAL_UTILITY_EVENT_TYPES: Object.freeze(["moveIn", "moveOut", "regularBilling", "periodStart", "periodEnd", "manualAdjustment"]),
+  LEGACY_UTILITY_EVENT_TYPE_MAP: Object.freeze({}),
+  normalizeReservationStatus: (s) => s,
+  reservationStatusesForQuery: (...s) => s.flat(),
+  ACTIVE_OCCUPANCY_STATUS_QUERY: Object.freeze(["reserved", "moveIn"]),
+  CURRENT_RESIDENT_STATUS_QUERY: Object.freeze(["moveIn"]),
+  BILLABLE_RESERVATION_STATUS_QUERY: Object.freeze(["moveIn", "moveOut"]),
+  ACTIVE_STAY_STATUS_QUERY: Object.freeze(["reserved", "moveIn"]),
+  PAST_STAY_STATUS_QUERY: Object.freeze(["moveOut", "cancelled"]),
+  isReservationStatus: () => false,
+  hasReservationStatus: () => false,
+  canTransitionReservationStatus: () => false,
+  normalizeUtilityEventType: (v) => v,
+  utilityEventTypesForQuery: (...v) => v.flat(),
+  LIFECYCLE_UTILITY_EVENT_QUERY: Object.freeze([]),
+  isUtilityEventType: () => false,
+  hasUtilityEventType: () => false,
   readMoveInDate,
+  readMoveOutDate: (v) => v?.moveOutDate ?? null,
+  buildMoveInBeforeQuery: (d) => ({ moveInDate: { $lt: d } }),
+  buildMoveOutAfterOrMissingQuery: (d) => ({}),
+  ensureReservationDateAliases: (v) => v,
+  normalizeReservationPayload: (p) => p,
+  serializeReservation: (r) => r,
+  serializeReservations: (rs) => rs,
+  serializeUtilityReading: (r) => r,
+  serializeUtilityReadings: (rs) => rs,
+  serializeUtilityPeriod: (p) => p,
 }));
 
 const paymentRoutes = (await import("./paymentRoutes.js")).default;

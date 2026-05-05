@@ -18,6 +18,12 @@ export const DEFAULT_BRANCH_OVERRIDES = Object.freeze({
   },
 });
 
+export const RESERVATION_APPLIANCES = Object.freeze([
+  { id: "fan", name: "Electric Fan" },
+  { id: "ricecooker", name: "Rice Cooker" },
+  { id: "laptop", name: "Laptop" },
+]);
+
 export const DEFAULT_POLICY_SETTINGS = Object.freeze({
   noShowGraceDays: BUSINESS.NOSHOW_GRACE_DAYS,
   stalePendingHours: BUSINESS.STALE_PENDING_HOURS,

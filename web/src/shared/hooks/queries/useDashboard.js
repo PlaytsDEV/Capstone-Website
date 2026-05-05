@@ -9,6 +9,8 @@ export function useDashboardData(params = { range: "30d" }) {
   return useQuery({
     queryKey: queryKeys.dashboard.admin(params),
     queryFn: () => analyticsApi.getDashboard(params),
+    staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000,
     retry: 2,
     retryDelay: 1000,
   });

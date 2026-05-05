@@ -68,6 +68,14 @@ function SignIn() {
  const [resendCooldown, setResendCooldown] = useState(0);
  const [verifiedSuccess, setVerifiedSuccess] = useState(false);
 
+ // Show notification when redirected here due to session expiry
+ useEffect(() => {
+ if (sessionStorage.getItem("lc_session_expired")) {
+ sessionStorage.removeItem("lc_session_expired");
+ showNotification("Your session has expired. Please sign in again.", "info", 5000);
+ }
+ }, []);
+
  // Load remembered email on mount
  useEffect(() => {
  const savedEmail = localStorage.getItem("lilycrest_remember_email");
@@ -161,8 +169,10 @@ function SignIn() {
  const validateField = (fieldName, value) => {
  let error = null;
  if (fieldName === "email") error = validateEmail(value);
- else if (fieldName === "password" && (!value || !value.trim()))
- error = "Password is required";
+ else if (fieldName === "password") {
+ if (!value || !value.trim()) error = "Password is required";
+ else if (/\s/.test(value)) error = "Password cannot contain spaces";
+ }
  setValidationErrors((prev) => ({ ...prev, [fieldName]: error }));
  setFieldValid((prev) => ({ ...prev, [fieldName]: !error }));
  };
@@ -222,6 +232,17 @@ function SignIn() {
  }
  if (!formData.password.trim()) {
  showNotification("Password is required", "error");
+ setTimeout(() => {
+ const el = document.getElementById("password");
+ if (el) {
+ el.scrollIntoView({ behavior: "smooth", block: "center" });
+ el.focus();
+ }
+ }, 100);
+ return false;
+ }
+ if (/\s/.test(formData.password)) {
+ showNotification("Password cannot contain spaces", "error");
  setTimeout(() => {
  const el = document.getElementById("password");
  if (el) {
@@ -607,6 +628,7 @@ function SignIn() {
  type={showPassword ? "text" : "password"}
  value={formData.password}
  onChange={handleChange}
+ onPaste={(e) => { if (/\s/.test(e.clipboardData.getData("text"))) e.preventDefault(); }}
  disabled={submitting}
  autoComplete="current-password"
  error={touched.password ? validationErrors.password : null}

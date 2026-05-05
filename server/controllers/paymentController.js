@@ -550,3 +550,98 @@ export const getPaymentsForBill = async (req, res, next) => {
     next(error);
   }
 };
+
+export const getAdminPaymentLedger = async (req, res, next) => {
+  try {
+    const status = String(req.query.status || "").trim();
+    const branch =
+      req.branchFilter ||
+      (req.isOwner && req.query.branch ? String(req.query.branch).trim() : "");
+    const search = String(req.query.search || "").trim().toLowerCase();
+    const dateFrom = String(req.query.dateFrom || "").trim();
+    const dateTo = String(req.query.dateTo || "").trim();
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500);
+
+    const filter = {};
+    if (branch) filter.branch = branch;
+    if (status && status !== "all") filter.status = status;
+
+    const createdAtFilter = {};
+    if (dateFrom) {
+      const parsed = new Date(dateFrom);
+      if (!Number.isNaN(parsed.getTime())) {
+        createdAtFilter.$gte = parsed;
+      }
+    }
+    if (dateTo) {
+      const parsed = new Date(dateTo);
+      if (!Number.isNaN(parsed.getTime())) {
+        parsed.setHours(23, 59, 59, 999);
+        createdAtFilter.$lte = parsed;
+      }
+    }
+    if (Object.keys(createdAtFilter).length > 0) {
+      filter.createdAt = createdAtFilter;
+    }
+
+    const payments = await Payment.find(filter)
+      .populate("tenantId", "firstName lastName email")
+      .populate("billId", "billingMonth totalAmount status branch")
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean();
+
+    const filteredPayments = search
+      ? payments.filter((payment) => {
+          const tenantName =
+            `${payment.tenantId?.firstName || ""} ${payment.tenantId?.lastName || ""}`.trim();
+          const haystack = [
+            payment.paymentId,
+            payment.referenceNumber,
+            payment.externalPaymentId,
+            payment.source,
+            payment.method,
+            payment.status,
+            payment.billId?._id,
+            payment.tenantId?._id,
+            payment.tenantId?.email,
+            tenantName,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+          return haystack.includes(search);
+        })
+      : payments;
+
+    sendSuccess(res, {
+      data: filteredPayments.map((payment) => ({
+        id: payment._id,
+        paymentId: payment.paymentId,
+        billId: payment.billId?._id || payment.billId || null,
+        billNumber: payment.billId?._id || null,
+        billStatus: payment.billId?.status || null,
+        branch: payment.branch || payment.billId?.branch || null,
+        tenant: payment.tenantId
+          ? {
+              id: payment.tenantId._id,
+              name:
+                `${payment.tenantId.firstName || ""} ${payment.tenantId.lastName || ""}`.trim() ||
+                "Tenant",
+              email: payment.tenantId.email || "",
+            }
+          : null,
+        amount: payment.amount || 0,
+        paymentMethod: payment.method || null,
+        status: payment.status || null,
+        externalPaymentId: payment.externalPaymentId || null,
+        referenceNumber: payment.referenceNumber || null,
+        source: payment.source || null,
+        createdAt: payment.createdAt || null,
+        processedAt: payment.processedAt || null,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+};

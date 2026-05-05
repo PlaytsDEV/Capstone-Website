@@ -450,8 +450,6 @@ export const USER_UPDATE_FLAT_FIELDS = [
   "proofOfPaymentUrl",
   "moveInDate",
   "moveOutDate",
-  "totalPrice",
-  "applianceFees",
   "notes",
 ];
 

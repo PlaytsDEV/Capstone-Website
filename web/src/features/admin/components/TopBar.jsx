@@ -130,6 +130,7 @@ export default function TopBar({
       }
     } catch (error) {
       console.error("Admin logout error:", error);
+      showNotification("Sign out failed. Please try again.", "error");
     } finally {
       setLogoutInProgress(false);
       setShowLogoutConfirm(false);

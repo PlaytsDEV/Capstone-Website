@@ -172,6 +172,83 @@ async function ensureLiveChatRequest(db, sessionId, userId, userName, userEmail,
 
   liveChatQueue.set(sessionId, liveChatRequest);
   await db.collection('live_chat_requests').insertOne(liveChatRequest);
+
+  // Bridge escalation to the web admin chat (chatconversations collection)
+  try {
+    const alreadyBridged = await db.collection('chatconversations').findOne(
+      { mobileSessionId: sessionId },
+      { projection: { _id: 1 } },
+    );
+    if (!alreadyBridged) {
+      const dbUser = await db.collection('users').findOne(
+        { firebaseUid: userId },
+        { projection: { _id: 1 } },
+      );
+
+      let branch = 'gil-puyat';
+      if (dbUser?._id) {
+        const activeRes = await db.collection('reservations').findOne(
+          { userId: dbUser._id, status: { $in: ['moveIn', 'reserved'] }, isArchived: { $ne: true } },
+          { projection: { roomId: 1 } },
+        );
+        if (activeRes?.roomId) {
+          const room = await db.collection('rooms').findOne(
+            { _id: activeRes.roomId },
+            { projection: { branch: 1 } },
+          );
+          if (room?.branch && ['gil-puyat', 'guadalupe'].includes(room.branch)) {
+            branch = room.branch;
+          }
+        }
+      }
+
+      const now = new Date();
+      const convDoc = {
+        tenantId: dbUser?._id || null,
+        tenantUserId: userId,
+        tenantName: userName || 'Mobile Tenant',
+        tenantEmail: userEmail || '',
+        branch,
+        roomNumber: '',
+        roomBed: '',
+        status: 'open',
+        category: 'general_inquiry',
+        priority: 'normal',
+        assignedAdminId: null,
+        assignedAdminName: '',
+        lastMessage: (reason || 'AI escalation').slice(0, 200),
+        lastMessageAt: now,
+        unreadAdminCount: chatHistory.filter((h) => h.role === 'user').length || 1,
+        unreadTenantCount: 0,
+        closedAt: null,
+        closedBy: null,
+        closingNote: '',
+        statusHistory: [],
+        mobileSessionId: sessionId,
+        createdAt: now,
+        updatedAt: now,
+      };
+      const { insertedId: convId } = await db.collection('chatconversations').insertOne(convDoc);
+
+      if (chatHistory.length > 0) {
+        const messages = chatHistory.map((h) => ({
+          conversationId: convId,
+          senderId: h.role === 'user' ? (dbUser?._id || null) : null,
+          senderUserId: h.role === 'user' ? userId : 'system',
+          senderName: h.role === 'user' ? (userName || 'Tenant') : 'Lily (AI)',
+          senderRole: h.role === 'user' ? 'tenant' : 'admin',
+          message: h.content.slice(0, 1000),
+          readAt: null,
+          createdAt: now,
+          updatedAt: now,
+        }));
+        await db.collection('chat_messages').insertMany(messages);
+      }
+    }
+  } catch (bridgeErr) {
+    console.error('[chatbot] Web admin conversation bridge failed (non-fatal):', bridgeErr.message);
+  }
+
   return liveChatRequest;
 }
 

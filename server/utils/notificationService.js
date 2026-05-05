@@ -19,7 +19,7 @@ import {
   buildMaintenanceNotificationTitle,
 } from "../config/maintenance.js";
 import logger from "../middleware/logger.js";
-import { sendMobilePushBill } from "./mobilePushService.js";
+import { sendMobilePushBill, sendMobilePushToRecipients } from "./mobilePushService.js";
 
 /**
  * Create a notification (generic)
@@ -131,6 +131,40 @@ const notify = {
     createNotification(userId, "payment_approved", "Payment Approved",
       `Your payment of ₱${amount} for ${billingMonth} has been approved.`,
       { entityType: "bill" }),
+
+  billingNotice: (
+    userId,
+    {
+      notificationType = "bill_due_reminder",
+      title = "Billing Notice",
+      message = "You have a billing update.",
+      billId = null,
+      actionUrl = "/billing",
+      pushType = "billing_notice",
+    } = {},
+  ) =>
+    createNotificationWithPush(
+      userId,
+      notificationType,
+      title,
+      message,
+      {
+        entityType: "bill",
+        entityId: billId ? String(billId) : null,
+        actionUrl,
+      },
+      () =>
+        sendMobilePushToRecipients([userId], {
+          title,
+          body: message,
+          data: {
+            type: pushType,
+            billing_id: billId ? String(billId) : "",
+            screen: "billing",
+            url: billId ? `/bill-details?billId=${String(billId)}` : "/(tabs)/billing",
+          },
+        }),
+    ),
 
   /**
    * Payment rejected
