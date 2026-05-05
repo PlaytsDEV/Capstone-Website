@@ -5,6 +5,7 @@ import {
   getAnalyticsInsights,
   getBillingReport,
   getDashboardAnalytics,
+  getDemographicsReport,
   getFinancialsReport,
   getOccupancyForecast,
   getOccupancyReport,
@@ -20,6 +21,7 @@ router.get("/dashboard", getDashboardAnalytics);
 router.get("/reports/occupancy", getOccupancyReport);
 router.get("/reports/billing", getBillingReport);
 router.get("/reports/operations", getOperationsReport);
+router.get("/reports/demographics", getDemographicsReport);
 router.get("/forecast/occupancy", getOccupancyForecast);
 router.post("/insights", getAnalyticsInsights);
 router.get("/financials", verifyOwner, getFinancialsReport);
@@ -27,3 +29,4 @@ router.get("/audit", verifyOwner, getAuditSummary);
 router.get("/system-performance", verifyOwner, getSystemPerformance);
 
 export default router;
+

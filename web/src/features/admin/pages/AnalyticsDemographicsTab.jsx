@@ -1,0 +1,336 @@
+import { useMemo, useState } from "react";
+import dayjs from "dayjs";
+import { useDemographicsReport } from "../../../shared/hooks/queries/useAnalyticsReports";
+import {
+ AnalyticsBarChart,
+ AnalyticsDonutChart,
+ AnalyticsTabLayout,
+ AnalyticsToolbar,
+ DataTable,
+ DetailDrawer,
+ ReportChartPanel,
+} from "../components/shared";
+import { buildRangeLabel, formatBranch } from "./reportCommon";
+import {
+ AnalyticsInsightSection,
+ buildInsightPdfSections,
+ buildBranchControl,
+ ExportButtons,
+ handleCsvExport,
+ handlePdfExport,
+ MetricGrid,
+ RANGE_OPTIONS_LONG,
+ unwrapTableRows,
+ useReportInsights,
+} from "./analyticsTabShared";
+
+const GEO_COLUMNS = [
+ { key: "province", label: "Province", sortable: true },
+ { key: "city", label: "City", sortable: true },
+ { key: "count", label: "Tenants", sortable: true },
+];
+
+const DRILLDOWN_COLUMNS = [
+ { key: "name", label: "Tenant Name", sortable: true },
+ { key: "room", label: "Room", sortable: true },
+ { key: "roomType", label: "Room Type", sortable: true },
+ { key: "status", label: "Status", sortable: true },
+ { key: "createdAt", label: "Reserved On", sortable: true, render: (row) => row.createdAt ? dayjs(row.createdAt).format("MMM D, YYYY") : "—" },
+];
+
+export default function AnalyticsDemographicsTab({
+ branch,
+ range,
+ isOwner,
+ onBranchChange,
+ onRangeChange,
+}) {
+ const [page, setPage] = useState(1);
+ const [drilldown, setDrilldown] = useState(null);
+ const [drilldownPage, setDrilldownPage] = useState(1);
+
+ const params = useMemo(
+  () => ({
+   range,
+   ...(isOwner ? { branch } : {}),
+  }),
+  [branch, isOwner, range],
+ );
+ const { data, isLoading, isError } = useDemographicsReport(params);
+ const {
+  data: insightData,
+  isLoading: isInsightLoading,
+  isError: isInsightError,
+ } = useReportInsights({
+  reportType: "demographics",
+  range,
+  branch: isOwner ? branch : undefined,
+ });
+
+ const kpis = data?.kpis || {};
+ const kpiDetails = data?.kpiDetails || {};
+ const occupationMix = data?.series?.occupationMix || [];
+ const reservationsByMonth = data?.series?.reservationsByMonth || [];
+ const roomTypePref = data?.series?.roomTypePreference || [];
+ const bookingByHour = data?.series?.bookingByHour || [];
+ const bookingByWeekday = data?.series?.bookingByWeekday || [];
+ const referralSources = data?.series?.referralSources || [];
+ const workScheduleMix = data?.series?.workScheduleMix || [];
+ const ageDistribution = data?.series?.ageDistribution || [];
+ const leaseDuration = data?.series?.leaseDuration || [];
+ const geographicOrigin = unwrapTableRows(data?.tables?.geographicOrigin);
+
+ const openDrilldown = (title, rows, subtitle) => {
+  setDrilldown({ title, rows: rows || [], subtitle });
+  setDrilldownPage(1);
+ };
+
+ const metricCards = [
+  {
+   label: "Tenants Analyzed",
+   value: kpis.totalAnalyzed || 0,
+   tone: "blue",
+   onClick: () => openDrilldown(
+    "All Analyzed Tenants",
+    kpiDetails.allTenants,
+    `${kpis.totalAnalyzed || 0} confirmed tenants in this period`,
+   ),
+  },
+  {
+   label: "Student %",
+   value: kpis.studentPercentageLabel || "0%",
+   tone: "green",
+   onClick: () => openDrilldown(
+    "Student Tenants",
+    kpiDetails.students,
+    `${kpiDetails.students?.length || 0} tenants classified as students`,
+   ),
+  },
+  {
+   label: "Top Room Type",
+   value: kpis.topRoomType || "N/A",
+   tone: "amber",
+   onClick: () => openDrilldown(
+    `${kpis.topRoomType || "Room Type"} Reservations`,
+    kpiDetails.topRoomType,
+    `${kpiDetails.topRoomType?.length || 0} tenants preferred ${kpis.topRoomType || "this room type"}`,
+   ),
+  },
+  {
+   label: "Peak Month",
+   value: kpis.peakMonth || "N/A",
+   tone: "rose",
+   onClick: () => openDrilldown(
+    `Reservations in ${kpis.peakMonth || "Peak Month"}`,
+    kpiDetails.peakMonth,
+    `${kpiDetails.peakMonth?.length || 0} reservations created in ${kpis.peakMonth || "the peak month"}`,
+   ),
+  },
+ ];
+
+ const exportCsv = () => {
+  handleCsvExport(
+   geographicOrigin,
+   [
+    { key: "province", label: "Province" },
+    { key: "city", label: "City" },
+    { key: "count", label: "Tenant Count" },
+   ],
+   `demographics-report-${range}`,
+  );
+ };
+
+ const exportPdf = () => {
+  handlePdfExport({
+   title: "Tenant Demographics Report",
+   subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
+   filename: `demographics-report-${range}.pdf`,
+   kpis: metricCards.map((item) => ({ label: item.label, value: item.value })),
+   sections: [
+    ...buildInsightPdfSections(insightData, "AI Demographics Summary"),
+    {
+     title: "Occupation Mix",
+     rows: occupationMix.map((item) => `${item.label}: ${item.value} tenants`),
+    },
+    {
+     title: "Reservation Volume by Month",
+     rows: reservationsByMonth
+      .filter((item) => item.count > 0)
+      .map((item) => `${item.label}: ${item.count} reservations`),
+    },
+    {
+     title: "Top Geographic Origins",
+     rows: geographicOrigin
+      .slice(0, 10)
+      .map((item) => `${item.province}${item.city ? ` (${item.city})` : ""}: ${item.count}`),
+    },
+   ],
+  });
+ };
+
+ return (
+  <AnalyticsTabLayout
+   header={
+    <AnalyticsToolbar
+     title="Tenant Demographics"
+     subtitle={`Scope: ${formatBranch(data?.scope?.branch || branch)} • ${buildRangeLabel(range)}`}
+     range={{ value: range, onChange: (value) => { setPage(1); onRangeChange(value); }, options: RANGE_OPTIONS_LONG }}
+     branch={buildBranchControl({
+      isOwner,
+      branch,
+      onChange: (value) => {
+       setPage(1);
+       onBranchChange(value);
+      },
+     })}
+     actions={<ExportButtons onCsv={exportCsv} onPdf={exportPdf} />}
+    />
+   }
+  >
+   <MetricGrid items={metricCards} />
+
+   <AnalyticsInsightSection
+    reportLabel="demographics"
+    summaryTitle="Tenant Demographics Summary"
+    data={insightData}
+    isLoading={isInsightLoading}
+    isError={isInsightError}
+   />
+
+   <div className="admin-reports__grid">
+    <ReportChartPanel title="Occupation mix" subtitle="Student vs professional vs unspecified breakdown">
+     <AnalyticsDonutChart
+      data={occupationMix}
+      centerLabel={{ value: kpis.totalAnalyzed || 0, label: "Total" }}
+      emptyTitle="No occupation data"
+      emptyDescription="Occupation data will appear once tenant applications include employment details."
+     />
+    </ReportChartPanel>
+
+    <ReportChartPanel title="Room type preferences" subtitle="What room types tenants prefer when booking">
+     <AnalyticsDonutChart
+      data={roomTypePref}
+      centerLabel={{ value: roomTypePref.reduce((sum, item) => sum + item.value, 0), label: "Bookings" }}
+      emptyTitle="No room preference data"
+      emptyDescription="Room type preferences will appear once reservations include preferred room type."
+     />
+    </ReportChartPanel>
+   </div>
+
+   <ReportChartPanel title="Peak reservation months" subtitle="Which months have the most reservation activity (all reservations)">
+    <AnalyticsBarChart
+     data={reservationsByMonth}
+     bars={[{ key: "count", label: "Reservations" }]}
+     emptyTitle="No monthly data"
+     emptyDescription="Monthly reservation volumes will appear once booking history exists."
+    />
+   </ReportChartPanel>
+
+   <div className="admin-reports__grid">
+    <ReportChartPanel title="Booking time of day" subtitle="When applicants create their reservations (2-hour windows)">
+     <AnalyticsBarChart
+      data={bookingByHour}
+      bars={[{ key: "count", label: "Bookings", color: "#6366f1" }]}
+      emptyTitle="No timing data"
+      emptyDescription="Booking time patterns require reservation history."
+     />
+    </ReportChartPanel>
+
+    <ReportChartPanel title="Booking day of week" subtitle="Which days applicants tend to create reservations">
+     <AnalyticsBarChart
+      data={bookingByWeekday}
+      bars={[{ key: "count", label: "Bookings", color: "#0ea5e9" }]}
+      emptyTitle="No weekday data"
+      emptyDescription="Day-of-week patterns require reservation history."
+     />
+    </ReportChartPanel>
+   </div>
+
+   <div className="admin-reports__grid">
+    <ReportChartPanel title="Referral sources" subtitle="How confirmed tenants discovered Lilycrest">
+     <AnalyticsDonutChart
+      data={referralSources}
+      centerLabel={{ value: referralSources.reduce((sum, item) => sum + item.value, 0), label: "Referrals" }}
+      emptyTitle="No referral data"
+      emptyDescription="Referral sources will appear once tenants fill in this field."
+     />
+    </ReportChartPanel>
+
+    <ReportChartPanel title="Work schedule" subtitle="Day, night, or variable shift distribution among tenants">
+     <AnalyticsDonutChart
+      data={workScheduleMix}
+      centerLabel={{ value: workScheduleMix.reduce((sum, item) => sum + item.value, 0), label: "Tenants" }}
+      emptyTitle="No schedule data"
+      emptyDescription="Work schedule data requires tenant application details."
+     />
+    </ReportChartPanel>
+   </div>
+
+   <div className="admin-reports__grid">
+    <ReportChartPanel title="Age distribution" subtitle="Age bracket breakdown from application birthday fields">
+     <AnalyticsBarChart
+      data={ageDistribution}
+      bars={[{ key: "count", label: "Tenants", color: "#f59e0b" }]}
+      emptyTitle="No age data"
+      emptyDescription="Age distribution requires birthday data in tenant applications."
+     />
+    </ReportChartPanel>
+
+    <ReportChartPanel title="Lease duration" subtitle="How long tenants commit to when reserving">
+     <AnalyticsBarChart
+      data={leaseDuration}
+      bars={[{ key: "count", label: "Tenants", color: "#10b981" }]}
+      emptyTitle="No lease data"
+      emptyDescription="Lease duration data will appear once reservations include duration."
+     />
+    </ReportChartPanel>
+   </div>
+
+   <ReportChartPanel title="Geographic origin" subtitle="Where tenants come from — top provinces and cities">
+    <DataTable
+     columns={GEO_COLUMNS}
+     data={geographicOrigin}
+     loading={isLoading}
+     pagination={{
+      page,
+      pageSize: 10,
+      total: geographicOrigin.length,
+      onPageChange: setPage,
+     }}
+     emptyState={{
+      title: isError ? "Demographics report unavailable" : "No geographic data",
+      description: isError
+       ? "The demographics report could not be loaded."
+       : "Geographic origin data requires address details in tenant applications.",
+     }}
+    />
+   </ReportChartPanel>
+
+   {/* KPI Drill-Down Modal */}
+   <DetailDrawer
+    open={Boolean(drilldown)}
+    onClose={() => setDrilldown(null)}
+    title={drilldown?.title || "Details"}
+    subtitle={drilldown?.subtitle}
+    width={840}
+   >
+    {drilldown && (
+     <DataTable
+      columns={DRILLDOWN_COLUMNS}
+      data={drilldown.rows}
+      pagination={{
+       page: drilldownPage,
+       pageSize: 8,
+       total: drilldown.rows.length,
+       onPageChange: setDrilldownPage,
+      }}
+      emptyState={{
+       title: "No records",
+       description: "No tenant records match this category.",
+      }}
+     />
+    )}
+   </DetailDrawer>
+  </AnalyticsTabLayout>
+ );
+}

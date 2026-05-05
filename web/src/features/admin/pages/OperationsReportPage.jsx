@@ -6,6 +6,7 @@ import { useOperationsReport } from "../../../shared/hooks/queries/useAnalyticsR
 import { exportToCSV } from "../../../shared/utils/exportUtils";
 import { exportReportPdf } from "../../../shared/utils/reportPdf";
 import { OWNER_BRANCH_FILTER_OPTIONS } from "../../../shared/utils/constants";
+import { unwrapTableRows } from "./analyticsTabShared";
 import {
  ActionBar,
  DataTable,
@@ -85,9 +86,9 @@ export default function OperationsReportPage() {
  );
 
  const { data, isLoading, isError } = useOperationsReport(params);
- const maintenanceIssues = data?.tables?.maintenanceIssues || [];
- const reservations = data?.tables?.reservations || [];
- const inquiryWindows = data?.tables?.peakInquiryWindows || [];
+ const maintenanceIssues = unwrapTableRows(data?.tables?.maintenanceIssues);
+ const reservations = unwrapTableRows(data?.tables?.reservations);
+ const inquiryWindows = unwrapTableRows(data?.tables?.peakInquiryWindows);
  const reservationsByPeriod = data?.series?.reservationsByPeriod || [];
  const maintenanceByType = data?.series?.maintenanceByType || [];
  const maintenanceResolution = data?.series?.maintenanceResolution || [];

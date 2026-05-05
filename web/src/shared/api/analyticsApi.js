@@ -37,4 +37,8 @@ export const analyticsApi = {
       },
       body: JSON.stringify(payload),
     }),
+  getDemographicsReport: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return authFetch(`/analytics/reports/demographics${query ? `?${query}` : ""}`);
+  },
 };

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { Calendar, ClipboardList, CreditCard, Eye } from "lucide-react";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
 import { reservationApi } from "../../../shared/api/apiClient";
@@ -47,6 +48,8 @@ const ACTION_MSGS = {
 
 const fmt = (value) =>
  value === null || value === undefined || value === "" ? "\u2014" : value;
+
+
 
 const fmtDate = (value) => {
  if (!value) return "\u2014";
@@ -146,6 +149,7 @@ export default function ReservationDetailsModal({
 }) {
  const reservationFeeAmount = reservation?.reservationFeeAmount || 2000;
  const reservationFeeLabel = `PHP ${reservationFeeAmount.toLocaleString("en-PH")}`;
+ const queryClient = useQueryClient();
  const [adminNotes, setAdminNotes] = useState(reservation?.notes || "");
  const [isSubmitting, setIsSubmitting] = useState(false);
  const [showDocs, setShowDocs] = useState(false);
@@ -631,11 +635,25 @@ export default function ReservationDetailsModal({
  onClick={(event) => event.stopPropagation()}
  >
  <div className="rdm-extend-dialog-body">
- <h3 className="rdm-extend-dialog-title">Move-In Meter Reading</h3>
+ <h3 className="rdm-extend-dialog-title">Move-In Details</h3>
  <p className="rdm-extend-dialog-copy">
- Enter the starting kWh reading to record this tenant&apos;s
- move-in electricity baseline.
+  Enter the starting kWh meter reading to confirm this tenant&apos;s
+  occupancy baseline. Move-in date and time will be recorded
+  automatically as today.
  </p>
+
+ {/* Meter reading */}
+ <label
+ style={{
+ display: "block",
+ fontSize: "0.75rem",
+ fontWeight: 600,
+ marginBottom: 4,
+ color: "var(--muted-foreground, #6b7280)",
+ }}
+ >
+ Starting Meter Reading (kWh) <span style={{ color: "var(--danger, #ef4444)" }}>*</span>
+ </label>
  <div
  className="rdm-extend-dialog-input-row"
  style={{ width: "100%" }}
@@ -677,11 +695,25 @@ export default function ReservationDetailsModal({
  setShowMeterPrompt(false);
  doAction(
  "moveIn",
- () =>
- reservationApi.update(reservation.id, {
+ async () => {
+ try {
+ await reservationApi.update(reservation.id, {
  status: "moveIn",
  meterReading: reading,
- }),
+ });
+  // Invalidate utility caches so the billing timeline auto-updates.
+  await queryClient.invalidateQueries({ queryKey: ["utilities"] });
+ } catch (apiErr) {
+ // Surface backend blocker reasons if available
+ const blockers = apiErr?.response?.data?.missing || apiErr?.data?.missing;
+ if (blockers && blockers.length > 0) {
+ throw new Error(
+ "Move-in prerequisites not met:\n• " + blockers.join("\n• "),
+ );
+ }
+ throw apiErr;
+ }
+ },
  "Tenant moved in successfully",
  );
  }}

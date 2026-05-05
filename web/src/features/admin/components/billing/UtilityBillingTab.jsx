@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   Zap,
@@ -19,6 +19,7 @@ import {
   FileX,
   ClipboardX,
   LoaderCircle,
+  RefreshCw,
 } from "lucide-react";
 import { useAuth } from "../../../../shared/hooks/useAuth";
 import ConfirmModal from "../../../../shared/components/ConfirmModal";
@@ -488,7 +489,16 @@ const UtilityBillingTab = ({ utilityType, isActive = true }) => {
     branchFilter,
     utilityQueryOptions,
   );
-  const { data: readingsData } = useUtilityReadings(
+  const {
+    data: roomHistoryData,
+    isFetching: isHistoryFetching,
+    refetch: refetchRoomHistory,
+  } = useRoomHistory(
+    utilityType,
+    selectedRoomId,
+    utilityQueryOptions,
+  );
+  const { data: readingsData, refetch: refetchReadings } = useUtilityReadings(
     utilityType,
     selectedRoomId,
     utilityQueryOptions,
@@ -519,13 +529,28 @@ const UtilityBillingTab = ({ utilityType, isActive = true }) => {
     selectedResultPeriodId,
     utilityQueryOptions,
   );
-  const { data: roomHistoryData } = useRoomHistory(
-    utilityType,
-    selectedRoomId,
-    utilityQueryOptions,
-  );
 
   // Mutations
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const handleTimelineRefresh = useCallback(async () => {
+    if (!selectedRoomId || !utilityType) return;
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        queryClient.refetchQueries({
+          queryKey: [...utilityKeys.all(utilityType), "roomHistory", selectedRoomId],
+          type: "all",
+        }),
+        queryClient.refetchQueries({
+          queryKey: utilityKeys.readings(utilityType, selectedRoomId),
+          type: "all",
+        }),
+      ]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [queryClient, selectedRoomId, utilityType]);
+
   const updatePeriod = useUpdateUtilityPeriod(utilityType);
   const sendPeriod = useSendUtilityPeriod(utilityType);
   const deleteReading = useDeleteUtilityReading(utilityType);
@@ -698,13 +723,16 @@ const UtilityBillingTab = ({ utilityType, isActive = true }) => {
     };
 
     for (const entry of roomHistory) {
-      if (entry.moveInDate) {
-        const moveInKey = `${entry.tenantId || entry.id || entry.tenantName}-moveIn-${getEventDayKey(entry.moveInDate)}`;
+      // Use the reservation's moveInDate; fall back to the meter reading date
+      // if the reservation date wasn't stamped (edge case for admin-created entries).
+      const moveInDate = entry.moveInDate || entry.moveInReading?.date || null;
+      if (moveInDate) {
+        const moveInKey = `${entry.tenantId || entry.id || entry.tenantName}-moveIn-${getEventDayKey(moveInDate)}`;
         upsertRow({
-          id: `occ-in-${entry.id || entry.tenantId}-${entry.moveInDate}`,
+          id: `occ-in-${entry.id || entry.tenantId}-${moveInDate}`,
           mergeKey: moveInKey,
           source: "occupancy",
-          date: entry.moveInDate,
+          date: moveInDate,
           eventType: "moveIn",
           tenantName: entry.tenantName || EMPTY_VALUE,
           tenantEmail: entry.tenantEmail || null,
@@ -2677,6 +2705,16 @@ const UtilityBillingTab = ({ utilityType, isActive = true }) => {
             <span className="text-xs text-muted-foreground">
               {billingTimelineRows.length} events
             </span>
+            <button
+              type="button"
+              className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50"
+              onClick={handleTimelineRefresh}
+              disabled={isRefreshing || !selectedRoomId}
+              title="Refresh timeline to show recent move-in events"
+            >
+              <RefreshCw size={12} className={isRefreshing ? "animate-spin" : ""} />
+              {isRefreshing ? "Refreshing…" : "Refresh"}
+            </button>
             <button
               type="button"
               className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50"
