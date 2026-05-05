@@ -94,8 +94,8 @@ export default function AnalyticsOccupancyTab({
  branch: isOwner ? branch : undefined,
  });
 
- const inventory = data?.tables?.inventory || [];
- const roomTypes = data?.tables?.roomTypes || [];
+ const inventory = Array.isArray(data?.tables?.inventory) ? data?.tables?.inventory : [];
+ const roomTypes = Array.isArray(data?.tables?.roomTypes) ? data?.tables?.roomTypes : [];
  const trend = data?.series?.occupancyTrend || [];
  const forecast = forecastData?.forecast || {};
  const forecastSeries = (forecast.projected || []).map((item) => ({

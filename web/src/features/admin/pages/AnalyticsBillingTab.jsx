@@ -56,8 +56,8 @@ export default function AnalyticsBillingTab({
  range,
  branch: isOwner ? branch : undefined,
  });
- const overdueAccounts = data?.tables?.overdueAccounts || [];
- const unpaidBalances = data?.tables?.unpaidBalances || [];
+ const overdueAccounts = Array.isArray(data?.tables?.overdueAccounts) ? data?.tables?.overdueAccounts : [];
+ const unpaidBalances = Array.isArray(data?.tables?.unpaidBalances) ? data?.tables?.unpaidBalances : [];
  const revenueByMonth = data?.series?.revenueByMonth || [];
  const statusDistribution = data?.series?.statusDistribution || [];
  const overdueAging = data?.series?.overdueAging || [];

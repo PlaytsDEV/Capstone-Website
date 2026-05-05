@@ -49,7 +49,7 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
  const branchComparison = data?.series?.branchComparison || [];
  const revenueByMonth = data?.series?.revenueByMonth || [];
  const overdueAging = data?.series?.overdueAging || [];
- const overdueRooms = data?.tables?.overdueRooms || [];
+ const overdueRooms = Array.isArray(data?.tables?.overdueRooms) ? data?.tables?.overdueRooms : [];
  const pagedRooms = overdueRooms.slice((page - 1) * 10, page * 10);
 
  const metricCards = [

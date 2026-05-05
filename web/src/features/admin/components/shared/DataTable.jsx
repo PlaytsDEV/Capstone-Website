@@ -34,6 +34,8 @@ export default function DataTable({
  serverPagination = false,
  disableRowInteraction = false,
 }) {
+ // Ensure data is always an array
+ const safeData = Array.isArray(data) ? data : [];
  const [sortKey, setSortKey] = useState(null);
  const [sortDir, setSortDir] = useState("asc");
  const activeSortKey = sorting === "external" ? externalSortKey : sortKey;
@@ -55,8 +57,8 @@ export default function DataTable({
  };
 
  const sortedData = useMemo(() => {
- if (sorting === "external" || !sortKey) return data;
- return [...data].sort((a, b) => {
+ if (sorting === "external" || !sortKey) return safeData;
+ return [...safeData].sort((a, b) => {
  const aVal = a[sortKey];
  const bVal = b[sortKey];
  if (aVal == null) return 1;
@@ -65,12 +67,12 @@ export default function DataTable({
  typeof aVal === "string" ? aVal.localeCompare(bVal) : aVal - bVal;
  return sortDir === "asc" ? cmp : -cmp;
  });
- }, [data, sortKey, sortDir, sorting]);
+ }, [safeData, sortKey, sortDir, sorting]);
 
  // Pagination
- const pageSize = pagination?.pageSize || data.length || 1;
+ const pageSize = pagination?.pageSize || safeData.length || 1;
  const currentPage = pagination?.page || 1;
- const total = pagination?.total ?? data.length;
+ const total = pagination?.total ?? safeData.length;
  const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
  // Slice data for the current page
@@ -80,7 +82,7 @@ export default function DataTable({
  : sortedData.slice((currentPage - 1) * pageSize, currentPage * pageSize)
  : sortedData;
 
- if (!loading && data.length === 0 && emptyState) {
+ if (!loading && safeData.length === 0 && emptyState) {
  return (
  <EmptyState
  icon={emptyState.icon}
