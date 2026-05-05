@@ -264,6 +264,61 @@ describe("paymentController", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  test("auto-reserves a paid deposit when PayMongo nests payments under payment_intent", async () => {
+    const reservation = {
+      _id: "res_2",
+      userId: "tenant_1",
+      roomId: { name: "GD-102", branch: "guadalupe" },
+      status: "payment_pending",
+      paymentStatus: "pending",
+      reservationFeeAmount: 2000,
+      save: jest.fn(async function save() {
+        return this;
+      }),
+    };
+
+    userFindOne.mockReturnValue(mockLean({ _id: "tenant_1" }));
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockResolvedValue(reservation),
+    });
+    userFindById.mockReturnValue({
+      lean: jest.fn().mockResolvedValue(null),
+    });
+    getCheckoutSession.mockResolvedValue({
+      attributes: {
+        metadata: {
+          type: "deposit",
+          reservationId: "res_2",
+          userId: "tenant_1",
+        },
+        payment_intent: {
+          payments: [
+            {
+              id: "pay_nested",
+              attributes: { status: "paid", source: { type: "gcash" } },
+            },
+          ],
+        },
+        payments: [],
+      },
+    });
+
+    const req = { params: { sessionId: "cs_nested" }, user: { uid: "firebase-1" } };
+    const res = {};
+    const next = jest.fn();
+
+    await checkSessionStatus(req, res, next);
+
+    expect(reservation.paymentStatus).toBe("paid");
+    expect(reservation.status).toBe("reserved");
+    expect(reservation.paymongoPaymentId).toBe("pay_nested");
+    expect(sendSuccess).toHaveBeenCalledWith(
+      res,
+      expect.objectContaining({ sessionId: "cs_nested", status: "paid" }),
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
   test("settles a paid bill session through the shared bill-settlement helper", async () => {
     const bill = {
       _id: "bill_2",

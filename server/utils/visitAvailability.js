@@ -194,6 +194,83 @@ const getRoomConflictsForDate = async ({
   return new Set(reservations.map((reservation) => reservation.visitTime).filter(Boolean));
 };
 
+const buildVisitReservationQuery = ({
+  roomIds,
+  start,
+  end,
+  excludeReservationId = null,
+}) => {
+  const query = {
+    roomId: { $in: roomIds },
+    visitDate: { $gte: start, $lt: end },
+    status: { $in: ACTIVE_VISIT_STATUSES },
+    isArchived: { $ne: true },
+  };
+  if (excludeReservationId) {
+    query._id = { $ne: excludeReservationId };
+  }
+  return query;
+};
+
+const loadVisitAvailabilityLookups = async ({
+  branch,
+  startDate,
+  days,
+  roomId = null,
+  excludeReservationId = null,
+}) => {
+  const start = new Date(startDate);
+  start.setHours(0, 0, 0, 0);
+
+  const end = new Date(start);
+  end.setDate(end.getDate() + days);
+
+  const roomIds = await Room.find({ branch }).distinct("_id");
+  if (!roomIds.length) {
+    return {
+      countsByDate: new Map(),
+      roomConflictsByDate: new Map(),
+    };
+  }
+
+  const reservations = await Reservation.find(
+    buildVisitReservationQuery({
+      roomIds,
+      start,
+      end,
+      excludeReservationId,
+    }),
+  )
+    .select("visitDate visitTime roomId")
+    .lean();
+
+  const countsByDate = new Map();
+  const roomConflictsByDate = new Map();
+  const roomIdText = roomId ? String(roomId) : "";
+
+  for (const reservation of reservations) {
+    const dateKey = toDateKey(reservation.visitDate);
+    const visitTime = reservation.visitTime || "";
+    if (!dateKey || !visitTime) continue;
+
+    if (!countsByDate.has(dateKey)) countsByDate.set(dateKey, new Map());
+    const counts = countsByDate.get(dateKey);
+    counts.set(visitTime, (counts.get(visitTime) || 0) + 1);
+
+    if (roomIdText && String(reservation.roomId) === roomIdText) {
+      if (!roomConflictsByDate.has(dateKey)) {
+        roomConflictsByDate.set(dateKey, new Set());
+      }
+      roomConflictsByDate.get(dateKey).add(visitTime);
+    }
+  }
+
+  return {
+    countsByDate,
+    roomConflictsByDate,
+  };
+};
+
 export function getDateClosureReason({ dateKey, settings, now = new Date() }) {
   const today = todayDateKey(now);
   if (dateKey < today) {
@@ -243,16 +320,19 @@ export async function buildVisitAvailability({
   const slots = normalizeSlots(settings.slots);
   const dates = [];
   let cursor = dateKeyToLocalDate(startKey) || dateKeyToLocalDate(tomorrowDateKey(now));
+  const { countsByDate, roomConflictsByDate } = await loadVisitAvailabilityLookups({
+    branch,
+    startDate: cursor,
+    days: count,
+    roomId,
+    excludeReservationId,
+  });
 
   for (let index = 0; index < count; index += 1) {
     const dateKey = toDateKey(cursor);
     const closure = getDateClosureReason({ dateKey, settings, now });
-    const counts = await countVisitsForDate({ branch, dateKey, excludeReservationId });
-    const roomConflicts = await getRoomConflictsForDate({
-      dateKey,
-      roomId,
-      excludeReservationId,
-    });
+    const counts = countsByDate.get(dateKey) || new Map();
+    const roomConflicts = roomConflictsByDate.get(dateKey) || new Set();
 
     const slotRows = slots.map((slot) => {
       const countForSlot = counts.get(slot.label) || 0;

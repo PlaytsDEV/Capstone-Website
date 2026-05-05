@@ -101,14 +101,21 @@ function CheckAvailabilityPage() {
  normalizedType,
  room.currentOccupancy || 0,
  );
+ const reservedBeds = beds.filter(
+ (bed) => String(bed.status || "").toLowerCase() === "reserved",
+ ).length;
  const unavailableBeds = beds.filter((bed) =>
- ["locked", "maintenance"].includes(String(bed.status || "")),
+ ["locked", "maintenance"].includes(String(bed.status || "").toLowerCase()),
+ ).length;
+ const occupiedFromBeds = beds.filter((bed) =>
+ String(bed.status || "").toLowerCase() === "occupied" ||
+ (bed.status === undefined && bed.available === false),
  ).length;
  // Use server-tracked occupancy for tenant presence, then subtract explicit
- // bed blocks such as maintenance/temporary locks.
+ // bed blocks such as reserved/maintenance/temporary locks.
  const totalBeds = room.capacity || beds.length || 0;
- const occupied = room.currentOccupancy || 0;
- const availableBeds = Math.max(0, totalBeds - occupied - unavailableBeds);
+ const occupied = Math.max(room.currentOccupancy || 0, occupiedFromBeds);
+ const availableBeds = Math.max(0, totalBeds - occupied - reservedBeds - unavailableBeds);
  return {
  id: roomNumber,
  roomId: room._id,
@@ -118,6 +125,7 @@ function CheckAvailabilityPage() {
  type: mappedType,
  capacity: totalBeds,
  currentOccupancy: occupied,
+ reservedBeds,
  unavailableBeds,
  availableBeds,
  occupancy: `${occupied}/${totalBeds}`,

@@ -18,6 +18,8 @@ const invalidateReservationSideEffects = (qc, reservationId = null) =>
     qc.invalidateQueries({ queryKey: ["rooms", "occupancy"] }),
     // Current user's own reservation/profile state
     qc.invalidateQueries({ queryKey: ["users", "currentUser"] }),
+    // Visit scheduling capacity changes whenever active visit reservations move.
+    qc.invalidateQueries({ queryKey: ["reservations", "visitAvailability"] }),
     // Specific detail if known
     ...(reservationId
       ? [qc.invalidateQueries({ queryKey: queryKeys.reservations.detail(reservationId) })]

@@ -357,6 +357,10 @@
   background: #EF4444;
 }
 
+.ca-bed-dot.reserved {
+  background: #D97706;
+}
+
 .ca-bed-dot.locked {
   background: #9CA3AF;
 }

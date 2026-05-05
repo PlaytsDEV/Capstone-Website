@@ -36,12 +36,22 @@ import {
 // falling back to the legacy unscoped key for backward compatibility.
 const getActiveResKey = (uid) =>
   uid ? `activeReservationId_${uid}` : "activeReservationId";
+const PAYMENT_RETURN_PENDING_KEY = "activeReservationPaymentReturnPending";
+const PAYMENT_SESSION_KEY = "activeReservationPaymongoSessionId";
 
-const PAYMENT_RETURN_MIN_LOADING_MS = 900;
-const PAYMENT_RETURN_POLL_INTERVAL_MS = 1500;
+const PAYMENT_RETURN_MIN_LOADING_MS = 150;
+const PAYMENT_RETURN_POLL_INTERVAL_MS = 500;
 const PAYMENT_RETURN_MAX_WAIT_MS = 60000;
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const getValidPaymentReturnSessionId = () => {
+  const sessionId = new URLSearchParams(window.location.search).get("session_id");
+  if (!sessionId || sessionId === "{id}" || !sessionId.startsWith("cs_")) {
+    return null;
+  }
+  return sessionId;
+};
 
 const isReservationPaymentConfirmed = (reservation) => {
   const status = normalizeReservationStatus(reservation?.status);
@@ -77,12 +87,15 @@ export default function useReservationFlow() {
   const [isLoading, setIsLoading] = useState(
     () =>
       new URLSearchParams(window.location.search).has("payment") ||
+      sessionStorage.getItem(PAYMENT_RETURN_PENDING_KEY) === "1" ||
       Boolean(sessionStorage.getItem("activeReservationId")) ||
       // Also check user-scoped keys (set after login is known)
       Object.keys(sessionStorage).some((k) => k.startsWith("activeReservationId_"))
   );
   const [paymentReturnLoading, setPaymentReturnLoading] = useState(
-    () => new URLSearchParams(window.location.search).has("payment")
+    () =>
+      new URLSearchParams(window.location.search).has("payment") ||
+      sessionStorage.getItem(PAYMENT_RETURN_PENDING_KEY) === "1"
   );
   const [visitApproved, setVisitApproved] = useState(false);
   const [visitCompleted, setVisitCompleted] = useState(false);
@@ -205,6 +218,7 @@ export default function useReservationFlow() {
   const paymentReturnStatusRef = useRef(
     new URLSearchParams(window.location.search).get("payment")
   );
+  const paymentReturnSessionIdRef = useRef(getValidPaymentReturnSessionId());
   const isPaymentReturnRef = useRef(Boolean(paymentReturnStatusRef.current));
 
   // ΓöÇΓöÇ Payment redirect hook (must be after all useState) ΓöÇΓöÇΓöÇΓöÇ
@@ -469,8 +483,17 @@ export default function useReservationFlow() {
     setAgreedToPrivacy(false);
     setAgreedToCertification(false);
 
+    const shouldVerifyPaymentReturn =
+      isPaymentReturnRef.current ||
+      sessionStorage.getItem(PAYMENT_RETURN_PENDING_KEY) === "1";
+
     if ((continueReservation || editMode) && resId) {
-      loadExistingReservation(resId);
+      if (shouldVerifyPaymentReturn) {
+        paymentVerifyingRef.current = true;
+        setPaymentReturnLoading(true);
+        isPaymentReturnRef.current = false;
+      }
+      loadExistingReservation(resId, shouldVerifyPaymentReturn);
     } else {
       const state = location.state?.roomData;
       // Check if this is a PayMongo return ΓÇö defer stage logic to usePaymentRedirect
@@ -478,7 +501,7 @@ export default function useReservationFlow() {
       if (state) {
         setReservationData(state);
         prefillFromProfile(); // Pre-fill Step 3 from profile for new reservations
-      } else if (isPaymentReturnRef.current) {
+      } else if (shouldVerifyPaymentReturn) {
         // Returning from PayMongo ΓÇö load reservation data for display,
         // and verify payment using the reservation's stored session ID.
         paymentVerifyingRef.current = true; // block re-init from hook's setSearchParams
@@ -585,15 +608,25 @@ export default function useReservationFlow() {
     let lastReservation = null;
 
     while (Date.now() - startedAt < PAYMENT_RETURN_MAX_WAIT_MS) {
-      if (sessionId) {
-        lastResult = await billingApi.checkPaymentStatus(sessionId);
+      const [statusResult, reservationResult] = await Promise.allSettled([
+        sessionId
+          ? billingApi.checkPaymentStatus(sessionId)
+          : Promise.resolve(null),
+        reservationApi.getById(resId),
+      ]);
+
+      if (statusResult.status === "fulfilled") {
+        lastResult = statusResult.value;
         if (lastResult?.status === "paid") {
-          return { result: lastResult, reservation: null };
+          return {
+            result: lastResult,
+            reservation: lastResult.reservation || null,
+          };
         }
       }
 
-      try {
-        lastReservation = await reservationApi.getById(resId);
+      if (reservationResult.status === "fulfilled") {
+        lastReservation = reservationResult.value;
         if (isReservationPaymentConfirmed(lastReservation)) {
           return {
             result: {
@@ -606,8 +639,6 @@ export default function useReservationFlow() {
             reservation: lastReservation,
           };
         }
-      } catch {
-        // A transient refresh error should not stop PayMongo polling.
       }
 
       await wait(PAYMENT_RETURN_POLL_INTERVAL_MS);
@@ -713,8 +744,17 @@ export default function useReservationFlow() {
         // Payment redirect ΓÇö verify using the reservation's stored paymongoSessionId
         // Set highest to 5 immediately so the stepper renders all stages green from the start
         setHighestStageReached(5);
+        const verificationSessionId =
+          paymentReturnSessionIdRef.current ||
+          reservation.paymongoSessionId ||
+          sessionStorage.getItem(PAYMENT_SESSION_KEY) ||
+          null;
         // Verify payment status with PayMongo/webhook state before leaving the loader.
-        if (reservation.paymongoSessionId || isReservationPaymentConfirmed(reservation)) {
+        if (
+          verificationSessionId ||
+          isReservationPaymentConfirmed(reservation) ||
+          paymentReturnStatusRef.current === "success"
+        ) {
           try {
             const { result, reservation: validatedReservation } =
               isReservationPaymentConfirmed(reservation)
@@ -727,17 +767,22 @@ export default function useReservationFlow() {
                   }
                 : await waitForDepositPaymentValidation(
                     resId,
-                    reservation.paymongoSessionId,
+                    verificationSessionId,
                   );
             if (result?.status === "paid") {
               sessionStorage.removeItem(getActiveResKey(user?.firebaseUid));
               sessionStorage.removeItem("activeReservationId"); // legacy cleanup
+              sessionStorage.removeItem(PAYMENT_SESSION_KEY);
+              sessionStorage.removeItem(PAYMENT_RETURN_PENDING_KEY);
               // Re-fetch reservation to get the newly generated reservationCode
               // (the pre-save hook creates it when status transitions to "reserved")
               try {
                 const updated =
-                  validatedReservation || (await reservationApi.getById(resId));
+                  validatedReservation ||
+                  result.reservation ||
+                  (await reservationApi.getById(resId));
                 if (updated?.reservationCode) setReservationCode(updated.reservationCode);
+                if (updated?.paymentMethod) setPaymentMethod(updated.paymentMethod);
               } catch { /* non-critical ΓÇö code just won't display */ }
               await wait(PAYMENT_RETURN_MIN_LOADING_MS);
               setCurrentStage(5);
@@ -749,7 +794,8 @@ export default function useReservationFlow() {
               showNotification("Payment successful! Your reservation is secured.", "success", 5000);
               return;
             } else {
-              console.warn("[PAYMENT] Session not yet paid:", reservation.paymongoSessionId, "status:", result?.status);
+              console.warn("[PAYMENT] Session not yet paid:", verificationSessionId, "status:", result?.status);
+              sessionStorage.removeItem(PAYMENT_RETURN_PENDING_KEY);
               setCurrentStage(4);
               // Show appropriate toast based on how the user returned
               if (paymentReturnStatusRef.current === "cancelled") {
@@ -760,7 +806,8 @@ export default function useReservationFlow() {
               return;
             }
           } catch (err) {
-            console.error("Γ¥î [VERIFY] Payment check failed ΓÇö sessionId:", reservation.paymongoSessionId, err);
+            console.error("Γ¥î [VERIFY] Payment check failed ΓÇö sessionId:", verificationSessionId, err);
+            sessionStorage.removeItem(PAYMENT_RETURN_PENDING_KEY);
             setCurrentStage(4);
             if (paymentReturnStatusRef.current !== "cancelled") {
               showNotification("Could not verify payment. Please check your profile.", "warning", 5000);
@@ -1290,6 +1337,12 @@ export default function useReservationFlow() {
               label: "Move-in Time",
               isMissing: !validateEstimatedTime(estimatedMoveInTime).valid,
               message: "Please select a valid move-in time to continue.",
+            },
+            {
+              key: "leaseDuration",
+              label: "Duration of Lease",
+              isMissing: !hasText(leaseDuration),
+              message: "Please select a lease duration to continue.",
             },
             { key: "workSchedule", label: "Work Schedule", isMissing: !hasText(workSchedule) },
             {
