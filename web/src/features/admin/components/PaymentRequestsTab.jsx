@@ -2,14 +2,28 @@ import { useState, useMemo } from "react";
 import { reservationApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
+import RejectPaymentModal from "./RejectPaymentModal";
 import PaymentTable from "./PaymentTable";
 import { useReservations } from "../../../shared/hooks/queries/useReservations";
 import { useQueryClient } from "@tanstack/react-query";
 import { readMoveInDate } from "../../../shared/utils/lifecycleNaming";
+import { exportToCSV } from "../../../shared/utils/exportUtils";
+
+function formatUpdatedAt(ts) {
+ if (!ts) return "";
+ const diff = Date.now() - ts;
+ const secs = Math.floor(diff / 1000);
+ if (secs < 10) return "just now";
+ if (secs < 60) return `${secs}s ago`;
+ const mins = Math.floor(secs / 60);
+ if (mins < 60) return `${mins}m ago`;
+ return `${Math.floor(mins / 60)}h ago`;
+}
 
 function PaymentRequestsTab() {
  const queryClient = useQueryClient();
  const [actionLoading, setActionLoading] = useState(null);
+ const [branchFilter, setBranchFilter] = useState("all");
  const [confirmModal, setConfirmModal] = useState({
  open: false,
  title: "",
@@ -17,8 +31,9 @@ function PaymentRequestsTab() {
  variant: "info",
  onConfirm: null,
  });
+ const [rejectModal, setRejectModal] = useState({ open: false, paymentId: null });
 
- const { data: rawReservations = [], isLoading: loading } = useReservations();
+ const { data: rawReservations = [], isLoading: loading, dataUpdatedAt } = useReservations();
 
  const payments = useMemo(
  () =>
@@ -41,6 +56,9 @@ function PaymentRequestsTab() {
  status: res.status,
  submittedDate: res.updatedAt,
  moveInDate: readMoveInDate(res),
+ isOnlinePayment: Boolean(
+  res.paymongoSessionId || res.paymongoPaymentId || res.paymentMethod === "paymongo",
+ ),
  })),
  [rawReservations],
  );
@@ -50,6 +68,7 @@ function PaymentRequestsTab() {
  };
 
  const handleVerifyPayment = (paymentId) => {
+ if (actionLoading) return;
  setConfirmModal({
  open: true,
  title: "Verify Payment",
@@ -59,6 +78,7 @@ function PaymentRequestsTab() {
  confirmText: "Verify Payment",
  onConfirm: async () => {
  setConfirmModal((p) => ({ ...p, open: false }));
+ if (actionLoading) return;
  try {
  setActionLoading(paymentId);
  await reservationApi.update(paymentId, {
@@ -81,9 +101,14 @@ function PaymentRequestsTab() {
  });
  };
 
- const handleRejectPayment = async (paymentId) => {
- const reason = window.prompt("Enter reason for rejection:");
- if (!reason) return;
+ const handleRejectPayment = (paymentId) => {
+ if (actionLoading) return;
+ setRejectModal({ open: true, paymentId });
+ };
+
+ const handleRejectConfirm = async (reason) => {
+ const { paymentId } = rejectModal;
+ setRejectModal({ open: false, paymentId: null });
  try {
  setActionLoading(paymentId);
  await reservationApi.update(paymentId, {
@@ -92,7 +117,7 @@ function PaymentRequestsTab() {
  notes: `Payment rejected: ${reason}`,
  });
  showNotification(
- "Payment rejected. User will need to resubmit.",
+ "Payment rejected. Tenant will need to resubmit proof.",
  "warning",
  3000,
  );
@@ -109,10 +134,34 @@ function PaymentRequestsTab() {
  if (url) window.open(url, "_blank");
  };
 
- const pendingPayments = payments.filter(
- (p) => p.paymentStatus === "pending" || p.paymentStatus === "partial",
+ const PAYMENT_CSV_COLUMNS = [
+ { key: "reservationCode", label: "Reservation Code" },
+ { key: "customer", label: "Tenant" },
+ { key: "email", label: "Email" },
+ { key: "phone", label: "Phone" },
+ { key: "room", label: "Room" },
+ { key: "branch", label: "Branch" },
+ { key: "totalPrice", label: "Amount (₱)", formatter: (v) => (v || 0).toFixed(2) },
+ { key: "paymentStatus", label: "Payment Status" },
+ { key: "isOnlinePayment", label: "Source", formatter: (v) => (v ? "Online" : "Manual") },
+ { key: "moveInDate", label: "Move-in Date", formatter: (v) => v ? new Date(v).toLocaleDateString("en-PH") : "" },
+ { key: "submittedDate", label: "Submitted", formatter: (v) => v ? new Date(v).toLocaleDateString("en-PH") : "" },
+ ];
+
+ const handleExportCSV = () => {
+ const rows = byBranch(payments);
+ exportToCSV(rows, PAYMENT_CSV_COLUMNS, `payment_requests_${new Date().toISOString().slice(0, 10)}`);
+ };
+
+ const byBranch = (list) =>
+ branchFilter === "all" ? list : list.filter((p) => p.branch === branchFilter);
+
+ const pendingPayments = byBranch(
+ payments.filter((p) => p.paymentStatus === "pending" || p.paymentStatus === "partial"),
  );
- const verifiedPayments = payments.filter((p) => p.paymentStatus === "paid");
+ const verifiedPayments = byBranch(
+ payments.filter((p) => p.paymentStatus === "paid"),
+ );
 
  if (loading)
  return (
@@ -124,8 +173,78 @@ function PaymentRequestsTab() {
  return (
  <>
  <div>
+ {/* Branch filter + export */}
+ <div style={{ display: "flex", gap: "8px", marginBottom: "20px", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }}>
+  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+  {["all", "Gil Puyat", "Guadalupe"].map((b) => (
+  <button
+   key={b}
+   onClick={() => setBranchFilter(b)}
+   style={{
+   padding: "6px 16px",
+   borderRadius: "20px",
+   border: "1px solid",
+   fontSize: "13px",
+   fontWeight: "500",
+   cursor: "pointer",
+   backgroundColor: branchFilter === b ? "#0A1628" : "white",
+   color: branchFilter === b ? "white" : "#374151",
+   borderColor: branchFilter === b ? "#0A1628" : "#D1D5DB",
+   transition: "all 0.15s",
+   }}
+  >
+   {b === "all" ? "All Branches" : b}
+  </button>
+  ))}
+  </div>
+  <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+  {dataUpdatedAt > 0 && (
+   <span style={{ fontSize: "12px", color: "#9CA3AF" }}>
+   Updated {formatUpdatedAt(dataUpdatedAt)}
+   </span>
+  )}
+  <button
+   onClick={() => queryClient.invalidateQueries({ queryKey: ["reservations"] })}
+   title="Refresh"
+   style={{
+   padding: "6px 10px",
+   borderRadius: "8px",
+   border: "1px solid #D1D5DB",
+   fontSize: "13px",
+   cursor: "pointer",
+   backgroundColor: "white",
+   color: "#374151",
+   display: "flex",
+   alignItems: "center",
+   }}
+  >
+   ↻
+  </button>
+  <button
+  onClick={handleExportCSV}
+  disabled={payments.length === 0}
+  style={{
+   padding: "6px 16px",
+   borderRadius: "8px",
+   border: "1px solid #D1D5DB",
+   fontSize: "13px",
+   fontWeight: "500",
+   cursor: payments.length === 0 ? "not-allowed" : "pointer",
+   backgroundColor: "white",
+   color: "#374151",
+   opacity: payments.length === 0 ? 0.5 : 1,
+   display: "flex",
+   alignItems: "center",
+   gap: "6px",
+  }}
+  >
+  ⬇ Export CSV
+  </button>
+  </div>
+ </div>
+
  {/* Stats */}
- <div style={{ display: "flex", gap: "16px", marginBottom: "24px" }}>
+ <div style={{ display: "flex", gap: "16px", marginBottom: "24px", flexWrap: "wrap" }}>
  {[
  {
  label: "Pending Verification",
@@ -156,6 +275,7 @@ function PaymentRequestsTab() {
  key={stat.label}
  style={{
  flex: 1,
+ minWidth: "140px",
  padding: "20px",
  backgroundColor: stat.bg,
  borderRadius: "12px",
@@ -193,6 +313,7 @@ function PaymentRequestsTab() {
  emptyText="No pending payment verifications"
  payments={pendingPayments}
  showActions
+ showSource
  actionLoading={actionLoading}
  onVerify={handleVerifyPayment}
  onReject={handleRejectPayment}
@@ -212,12 +333,19 @@ function PaymentRequestsTab() {
 
  <ConfirmModal
  isOpen={confirmModal.open}
- onClose={() => setConfirmModal((p) => ({ ...p, open: false }))}
+ onClose={() => !actionLoading && setConfirmModal((p) => ({ ...p, open: false }))}
  onConfirm={confirmModal.onConfirm}
  title={confirmModal.title}
  message={confirmModal.message}
  variant={confirmModal.variant}
  confirmText={confirmModal.confirmText || "Confirm"}
+ loading={actionLoading !== null}
+ />
+ <RejectPaymentModal
+ isOpen={rejectModal.open}
+ onClose={() => !actionLoading && setRejectModal({ open: false, paymentId: null })}
+ onConfirm={handleRejectConfirm}
+ loading={actionLoading !== null}
  />
  </>
  );

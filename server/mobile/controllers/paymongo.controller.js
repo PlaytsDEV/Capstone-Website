@@ -82,6 +82,80 @@ function paymongoHeaders() {
   };
 }
 
+function resolveLedgerAmount(realBill) {
+  const paidAmount = Number(realBill?.paidAmount ?? 0);
+  if (paidAmount > 0) return paidAmount;
+
+  const remainingAmount = Number(realBill?.remainingAmount ?? NaN);
+  if (Number.isFinite(remainingAmount) && remainingAmount > 0) return remainingAmount;
+
+  return Number(realBill?.totalAmount ?? 0);
+}
+
+function resolveLegacyLedgerAmount(legacyBill) {
+  const amount = Number(
+    legacyBill?.remaining_amount ??
+    legacyBill?.total ??
+    legacyBill?.amount ??
+    0,
+  );
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+async function recordMobilePaymongoPayment(db, {
+  billId,
+  tenantId,
+  branch,
+  amount,
+  externalPaymentId,
+  referenceNumber = null,
+  source = 'paymongo-polling',
+  metadata = {},
+}) {
+  if (!billId || !tenantId || !externalPaymentId) {
+    return { created: false, reason: 'missing_fields' };
+  }
+
+  const payments = db.collection('payments');
+  const existing = await payments.findOne({ externalPaymentId });
+  if (existing) {
+    return { created: false, reason: 'duplicate' };
+  }
+
+  const now = new Date();
+  const paymentDoc = {
+    paymentId: `PAY-${uuidv4().slice(0, 8).toUpperCase()}`,
+    tenantId,
+    billId,
+    amount: Number(amount) || 0,
+    method: 'paymongo',
+    status: 'paid',
+    source,
+    referenceNumber,
+    externalPaymentId,
+    processedAt: now,
+    branch,
+    metadata: {
+      provider: 'paymongo',
+      mobileBridge: true,
+      ...metadata,
+    },
+    notes: '',
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  try {
+    await payments.insertOne(paymentDoc);
+    return { created: true, reason: 'inserted' };
+  } catch (error) {
+    if (error?.code === 11000) {
+      return { created: false, reason: 'duplicate' };
+    }
+    throw error;
+  }
+}
+
 // ── Resolve a bill from any of the three sources ─────────────────────────────
 // Returns { bill, source } so callers know which collection to update.
 // source: 'legacy' | 'real' | 'presentation'
@@ -149,7 +223,7 @@ async function saveCheckoutRef(db, billingId, userId, mongoId, checkoutId, refer
 
 // ── Mark a bill as paid in the correct collection ────────────────────────────
 // Returns the bill document (pre-update) for push notification context
-async function markBillPaid(db, billingId, userId, { paymentId, eventType } = {}) {
+async function markBillPaid(db, billingId, userId, { paymentId, eventType, referenceNumber = null } = {}) {
   // 1. Try legacy 'billing' collection
   const legacyBill = await db.collection('billing').findOne({ billing_id: billingId, user_id: userId });
   if (legacyBill) {
@@ -167,6 +241,25 @@ async function markBillPaid(db, billingId, userId, { paymentId, eventType } = {}
         },
       }
     );
+    if (paymentId) {
+      const legacyUser = await db.collection('users').findOne({ user_id: userId });
+      if (legacyUser?._id && legacyBill?._id && legacyUser?.branch) {
+        await recordMobilePaymongoPayment(db, {
+          billId: legacyBill._id,
+          tenantId: legacyUser._id,
+          branch: legacyBill.branch || legacyUser.branch,
+          amount: resolveLegacyLedgerAmount(legacyBill),
+          externalPaymentId: paymentId,
+          referenceNumber,
+          source: eventType ? 'paymongo-webhook' : 'paymongo-polling',
+          metadata: {
+            eventType: eventType || null,
+            billingId,
+            legacyBilling: true,
+          },
+        });
+      }
+    }
     return { existing: legacyBill, alreadyPaid };
   }
 
@@ -203,6 +296,21 @@ async function markBillPaid(db, billingId, userId, { paymentId, eventType } = {}
           },
         }
       );
+      if (paymentId) {
+        await recordMobilePaymongoPayment(db, {
+          billId: realBill._id,
+          tenantId: mongoId,
+          branch: realBill.branch,
+          amount: resolveLedgerAmount(realBill),
+          externalPaymentId: paymentId,
+          referenceNumber,
+          source: eventType ? 'paymongo-webhook' : 'paymongo-polling',
+          metadata: {
+            eventType: eventType || null,
+            billingId,
+          },
+        });
+      }
       console.log(`[markBillPaid] Bill ${billingId} marked paid in bills collection`);
       return { existing: mapRealBill(realBill, userId), alreadyPaid };
     }
@@ -408,6 +516,7 @@ async function getCheckoutStatus(req, res) {
         const db = getDb();
         const { existing, alreadyPaid } = await markBillPaid(db, billingId, userId, {
           paymentId,
+          referenceNumber,
         });
         // Push only once
         if (!alreadyPaid && existing) {
@@ -460,6 +569,7 @@ async function handleWebhook(req, res) {
         const { existing, alreadyPaid } = await markBillPaid(db, billingId, userId, {
           paymentId,
           eventType,
+          referenceNumber,
         });
         console.log(`[PayMongo Webhook] Bill ${billingId} marked as paid`);
         if (!alreadyPaid && existing) {

@@ -27,9 +27,9 @@ const AdminBillingPage = () => {
           className="flex flex-col gap-4 rounded-xl border border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
           style={{ background: "color-mix(in srgb, var(--primary) 8%, transparent)" }}
         >
-          <div className="flex items-start gap-3">
+          <div className="flex min-w-0 items-start gap-3">
             <Zap size={20} style={{ color: "var(--warning-dark)", marginTop: "2px", flexShrink: 0 }} />
-            <div>
+            <div className="min-w-0">
               <span
                 className="text-xs font-semibold uppercase tracking-[0.2em]"
                 style={{ color: "var(--warning-dark)" }}
@@ -47,7 +47,7 @@ const AdminBillingPage = () => {
           </div>
 
           <div
-            className="inline-flex items-center gap-1 rounded-lg border border-border bg-card p-1"
+            className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border bg-card p-1"
             role="tablist"
             aria-label="Billing type"
           >

@@ -158,7 +158,11 @@ function SignUp() {
         }
         break;
       case "password":
-        error = validatePassword(value);
+        if (/\s/.test(value)) {
+          error = "Password cannot contain spaces";
+        } else {
+          error = validatePassword(value);
+        }
         if (formData.confirmPassword)
           validateField("confirmPassword", formData.confirmPassword);
         break;
@@ -233,6 +237,9 @@ function SignUp() {
         "Enter a valid phone number with country code",
       );
     }
+    if (/\s/.test(formData.password)) {
+      return scrollToField("password", "Password cannot contain spaces");
+    }
     const passwordError = validatePassword(formData.password);
     if (passwordError) {
       return scrollToField("password", passwordError);
@@ -288,7 +295,6 @@ function SignUp() {
         formData.password,
       );
       firebaseUser = userCredential.user;
-      console.log("✅ Firebase account created:", firebaseUser.uid);
       try {
         await registerUserInBackend(
           firebaseUser,
@@ -298,15 +304,12 @@ function SignUp() {
         );
         try {
           const continueUrl = `${getWebBaseUrl()}/auth-action`;
-          console.log("📧 Sending verification email, continueUrl:", continueUrl);
           const actionCodeSettings = {
             url: continueUrl,
             handleCodeInApp: true,
           };
           await sendEmailVerification(firebaseUser, actionCodeSettings);
-          console.log("✅ Verification email sent successfully");
         } catch (emailError) {
-          console.error("⚠️ Failed to send verification email:", emailError);
           showNotification(
             "Account created, but we couldn't send the verification email. Please try signing in — you can request a new verification email from there.",
             "warning",
@@ -582,6 +585,7 @@ function SignUp() {
                   type={showPassword ? "text" : "password"}
                   value={formData.password}
                   onChange={handleChange}
+                  onPaste={(e) => { if (/\s/.test(e.clipboardData.getData("text"))) e.preventDefault(); }}
                   disabled={loading}
                   error={touched.password ? validationErrors.password : null}
                   valid={touched.password && fieldValid.password}
@@ -682,6 +686,7 @@ function SignUp() {
                 type={showConfirmPassword ? "text" : "password"}
                 value={formData.confirmPassword}
                 onChange={handleChange}
+                onPaste={(e) => { if (/\s/.test(e.clipboardData.getData("text"))) e.preventDefault(); }}
                 disabled={loading}
                 error={
                   touched.confirmPassword

@@ -358,6 +358,19 @@ const reservationSchema = new mongoose.Schema(
       ],
       default: [],
     },
+    selectedAppliances: {
+      type: [
+        new mongoose.Schema(
+          {
+            id: { type: String, required: true },
+            name: { type: String, required: true },
+            quantity: { type: Number, required: true, min: 0 },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
     applianceFees: {
       type: Number,
       default: 0,
@@ -567,6 +580,27 @@ reservationSchema.index({ roomId: 1, moveInDate: 1 });
 reservationSchema.index({ status: 1, isArchived: 1 });
 // Room-level status queries (e.g. find all moved-in reservations for a room)
 reservationSchema.index({ roomId: 1, status: 1 });
+reservationSchema.index(
+  { roomId: 1, "selectedBed.id": 1 },
+  {
+    name: "unique_active_room_bed_assignment",
+    unique: true,
+    partialFilterExpression: {
+      isArchived: false,
+      "selectedBed.id": { $type: "string" },
+      status: {
+        $in: [
+          "pending",
+          "visit_pending",
+          "visit_approved",
+          "payment_pending",
+          "reserved",
+          "moveIn",
+        ],
+      },
+    },
+  },
+);
 // Overdue move-in cron: finds reserved + non-archived by move-in date
 reservationSchema.index({ status: 1, targetMoveInDate: 1 });
 reservationSchema.index(

@@ -72,7 +72,7 @@ async function finalizeBillPayment({
       amount: appliedAmount,
       method,
       referenceNumber,
-      status: "approved",
+      status: "paid",
       verifiedBy: actorId,
       verifiedAt: actorId ? now : null,
       source,

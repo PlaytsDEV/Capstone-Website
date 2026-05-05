@@ -92,7 +92,8 @@ export default function useReservationFlow() {
   const [editingApplication, setEditingApplication] = useState(false);
   const [paymentApproved, setPaymentApproved] = useState(false);
   const [reservationId, setReservationId] = useState(null);
-  const [devBypassValidation, setDevBypassValidation] = useState(false);
+  const [_devBypassValidation, setDevBypassValidation] = useState(false);
+  const devBypassValidation = import.meta.env.DEV ? _devBypassValidation : false;
   const [payingOnline, setPayingOnline] = useState(false);
   const [successOverlay, setSuccessOverlay] = useState({
     show: false,
@@ -558,6 +559,7 @@ export default function useReservationFlow() {
             roomNumber: room.name || "",
           },
           selectedBed: active.selectedBed || null,
+          selectedAppliances: active.selectedAppliances || [],
           applianceFees: active.applianceFees || 0,
         });
         if (active.visitDate) setVisitDate(active.visitDate.split("T")[0]);
@@ -626,7 +628,8 @@ export default function useReservationFlow() {
       setReservationData({
         room: reservation.roomId,
         selectedBed: reservation.selectedBed,
-        appliances: reservation.selectedAppliances || [],
+        selectedAppliances: reservation.selectedAppliances || [],
+        applianceFees: reservation.applianceFees || 0,
       });
       if (reservation.targetMoveInDate) {
         const d = new Date(reservation.targetMoveInDate);
@@ -889,6 +892,14 @@ export default function useReservationFlow() {
       return null;
     }
     const totalPrice = getTotalPrice();
+    if (!totalPrice || totalPrice <= 0) {
+      showNotification(
+        "Room pricing is unavailable. Please go back and reselect a room.",
+        "error",
+        4000,
+      );
+      return null;
+    }
     try {
       const response = await reservationApi.create({
         roomId,
@@ -905,7 +916,8 @@ export default function useReservationFlow() {
           user?.email || "test@example.com",
         ),
         moveInDate,
-        totalPrice: totalPrice > 0 ? totalPrice : 5000,
+        selectedAppliances: reservationData?.selectedAppliances || [],
+        totalPrice,
         applianceFees: reservationData?.applianceFees || 0,
         viewingType: null,
         agreedToPrivacy: false,
@@ -942,6 +954,7 @@ export default function useReservationFlow() {
               user?.email || "test@example.com",
             ),
             moveInDate,
+            selectedAppliances: reservationData?.selectedAppliances || [],
             totalPrice: totalPrice > 0 ? totalPrice : 5000,
             applianceFees: reservationData?.applianceFees || 0,
             agreedToPrivacy: false,
@@ -1172,6 +1185,7 @@ export default function useReservationFlow() {
 
   // ΓöÇΓöÇ Stage handler ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   const handleNextStage = async () => {
+    clearTimeout(autoSaveTimerRef.current);
     try {
       if (currentStage === 1) {
         if (!reservationData?.room) {
@@ -1181,51 +1195,6 @@ export default function useReservationFlow() {
         setPendingStageAction("stage1");
         setShowStageConfirm(true);
         return;
-      } else if (currentStage === 2) {
-        if (!devBypassValidation && !visitDate) {
-          showNotification("Please select a visit date", "error", 3000);
-          setTimeout(() => {
-            const el = document.getElementById("visit-date-section");
-            if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-          }, 100);
-          return;
-        }
-        if (!devBypassValidation && !visitTime) {
-          showNotification("Please select a time slot", "error", 3000);
-          setTimeout(() => {
-            const el = document.getElementById("visit-time-section");
-            if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-          }, 100);
-          return;
-        }
-        await updateReservationDraft({
-          agreedToPrivacy: true,
-          viewingType: "inperson",
-          visitDate,
-          visitTime,
-          // Reset rejection state when rescheduling
-          ...(scheduleRejected ? {
-            scheduleRejected: false,
-            scheduleRejectionReason: null,
-          } : {}),
-        });
-        setVisitCompleted(true);
-        setScheduleRejected(false);
-        setScheduleRejectionReason("");
-        setHighestStageReached((prev) => Math.max(prev, 3));
-        await queryClient.invalidateQueries({ queryKey: ["reservations"] });
-        setSuccessOverlay({
-          show: true,
-          title: "Visit Scheduled!",
-          subtitle: "Your visit request has been submitted. Track progress on your dashboard.",
-        });
-        appNavigate("/applicant/profile", {
-          flash: {
-            type: "success",
-            title: "Visit Scheduled!",
-            message: "Your visit request has been submitted. Track progress on your dashboard.",
-          },
-        });
       } else if (currentStage === 3) {
         if (!devBypassValidation) {
           const hasText = (value) => Boolean(value?.trim?.() || value);

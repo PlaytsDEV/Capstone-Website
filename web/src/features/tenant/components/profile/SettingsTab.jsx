@@ -31,6 +31,7 @@ import {
 import { auth } from "../../../../firebase/config";
 import { useAppNavigation } from "../../../../shared/hooks/useAppNavigation";
 import { showNotification } from "../../../../shared/utils/notification";
+import { validatePassword } from "../../../../shared/utils/authValidation";
 
 // ─── Helpers ──────────────────────────────────────────────────
 
@@ -82,11 +83,13 @@ const SettingsTab = () => {
  showNotification("Current password is required", "error");
  return;
  }
- if (!newPassword || newPassword.length < 8) {
- showNotification(
- "New password must be at least 8 characters",
- "error",
- );
+ if (/\s/.test(newPassword)) {
+ showNotification("New password cannot contain spaces", "error");
+ return;
+ }
+ const strengthError = validatePassword(newPassword);
+ if (strengthError) {
+ showNotification(strengthError, "error");
  return;
  }
  if (newPassword !== confirmPassword) {
@@ -539,6 +542,8 @@ const SettingsTab = () => {
  name="newPassword"
  value={passwordData.newPassword}
  onChange={handlePasswordInput}
+ onKeyDown={(e) => { if (e.key === " ") e.preventDefault(); }}
+ onPaste={(e) => { if (/\s/.test(e.clipboardData.getData("text"))) e.preventDefault(); }}
  placeholder="Enter new password"
  disabled={changingPassword}
  style={inputStyle}
@@ -572,7 +577,7 @@ const SettingsTab = () => {
  margin: "4px 0 0",
  }}
  >
- Must be at least 8 characters with uppercase, lowercase, and number
+ Must be 8+ characters with uppercase, lowercase, number, and special character
  </p>
  </div>
 
@@ -588,6 +593,8 @@ const SettingsTab = () => {
  name="confirmPassword"
  value={passwordData.confirmPassword}
  onChange={handlePasswordInput}
+ onKeyDown={(e) => { if (e.key === " ") e.preventDefault(); }}
+ onPaste={(e) => { if (/\s/.test(e.clipboardData.getData("text"))) e.preventDefault(); }}
  placeholder="Confirm new password"
  disabled={changingPassword}
  style={inputStyle}

@@ -92,10 +92,22 @@ export const authFetch = async (url, options = {}, _isRetry = false) => {
         .json()
         .catch(() => ({ message: response.statusText }));
 
-      if (response.status === 401 && !_isRetry) {
-        const freshToken = await getFreshToken(true);
-        if (freshToken) {
-          return authFetch(url, options, true);
+      if (response.status === 401) {
+        if (!_isRetry) {
+          const freshToken = await getFreshToken(true);
+          if (freshToken) {
+            return authFetch(url, options, true);
+          }
+        }
+        // Persistent 401 — token refresh failed or retry still rejected.
+        // Sign out and redirect unless already on an auth page.
+        const isAuthPage = ["/", "/signin", "/signup", "/reset-password"].some(
+          (p) => window.location.pathname === p || window.location.pathname.startsWith(p + "/"),
+        );
+        if (!isAuthPage) {
+          sessionStorage.setItem("lc_session_expired", "1");
+          try { await auth.signOut(); } catch { /* ignore */ }
+          window.location.replace("/signin");
         }
       }
 

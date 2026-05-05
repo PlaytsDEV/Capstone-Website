@@ -12,6 +12,7 @@ const rules = [
   { label: "At least 1 lowercase letter", test: (value) => /[a-z]/.test(value) },
   { label: "At least 1 number", test: (value) => /\d/.test(value) },
   { label: "At least 1 special character", test: (value) => /[^A-Za-z0-9]/.test(value) },
+  { label: "No spaces allowed", test: (value) => !/\s/.test(value) },
 ];
 
 function ResetPassword() {
@@ -95,6 +96,8 @@ function ResetPassword() {
           type={visible ? "text" : "password"}
           value={value}
           onChange={onChange}
+          onKeyDown={(e) => { if (e.key === " ") e.preventDefault(); }}
+          onPaste={(e) => { if (/\s/.test(e.clipboardData.getData("text"))) e.preventDefault(); }}
           autoComplete={autoComplete}
           className="w-full px-4 py-4 pr-12 rounded-xl bg-gray-50 border border-gray-200 focus:border-gray-300 focus:outline-none text-gray-900 font-light placeholder:text-gray-400 transition-colors"
           disabled={submitting}

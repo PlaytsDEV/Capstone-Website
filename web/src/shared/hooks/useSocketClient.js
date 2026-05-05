@@ -61,6 +61,25 @@ export default function useSocketClient() {
         }
       });
 
+      socket.on("payment:updated", () => {
+        qc.invalidateQueries({ queryKey: ["reservations"] });
+      });
+
+      socket.on("reservation:updated", () => {
+        qc.invalidateQueries({ queryKey: ["reservations"] });
+        qc.invalidateQueries({ queryKey: ["dashboard"] });
+      });
+
+      socket.on("ticket:updated", () => {
+        qc.invalidateQueries({ queryKey: ["maintenance"] });
+        qc.invalidateQueries({ queryKey: ["dashboard"] });
+      });
+
+      socket.on("inquiry:updated", () => {
+        qc.invalidateQueries({ queryKey: ["inquiries"] });
+        qc.invalidateQueries({ queryKey: ["dashboard"] });
+      });
+
       socket.on("room:updated", () => {
         qc.invalidateQueries({ queryKey: ["rooms"] });
       });

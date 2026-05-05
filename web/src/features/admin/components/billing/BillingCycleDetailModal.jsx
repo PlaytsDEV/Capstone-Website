@@ -1,4 +1,6 @@
-import { X, Check, AlertTriangle, Download } from "lucide-react";
+import { X, Check, AlertTriangle, Download, LoaderCircle, Send } from "lucide-react";
+
+import { formatAdminPaymentMode } from "./paymentDisplay";
 
 const BillingCycleDetailModal = ({
   isOpen,
@@ -11,11 +13,33 @@ const BillingCycleDetailModal = ({
   formatters,
   eventTypeLabels,
   onExport,
+  onSendReminder,
+  activeNoticeKey,
 }) => {
   if (!isOpen || !period) return null;
 
   const { fmtCurrency, fmtNumber, fmtShortDate, getSegmentPeriodLabel } =
     formatters;
+  const formatPaymentMethodLabel = (value) => {
+    if (!value) return "-";
+    return formatAdminPaymentMode({ paymentMethod: value });
+  };
+  const formatDateTime = (value) => {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "-";
+    return date.toLocaleString("en-PH", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  };
+  const getPrimaryNoticeLabel = (tenant) =>
+    tenant?.daysOverdue > 0 || tenant?.billStatus === "overdue"
+      ? "Send Overdue Notice"
+      : "Send Payment Reminder";
 
   const unitLabel = utilityType === "electricity" ? "kWh" : "cu.m.";
   const periodEnd = period.endDate || period.targetCloseDate;
@@ -24,7 +48,6 @@ const BillingCycleDetailModal = ({
   }`;
   const summaryTotalLabel =
     utilityType === "electricity" ? "TOTAL KWH" : "TOTAL CU.M.";
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
@@ -172,8 +195,8 @@ const BillingCycleDetailModal = ({
                       No. of occupants in the room: {seg.activeTenantCount ?? 0}
                     </div>
 
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full text-sm">
+                    <div className="overflow-x-auto pb-1">
+                      <table className="min-w-[980px] text-sm">
                         <thead>
                           <tr className="bg-muted">
                             {["Item", "Date", unitLabel].map((h, i) => (
@@ -333,8 +356,8 @@ const BillingCycleDetailModal = ({
                 Covered Tenants
               </p>
             </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
+            <div className="overflow-x-auto pb-1">
+              <table className="min-w-[1120px] text-sm">
                 <thead>
                   <tr className="bg-muted">
                     {[
@@ -342,6 +365,13 @@ const BillingCycleDetailModal = ({
                       { label: "Duration Range", align: "left" },
                       { label: `Total ${unitLabel}`, align: "right" },
                       { label: "Bill Amount", align: "right" },
+                      { label: "Balance", align: "right" },
+                      { label: "Status", align: "left" },
+                      { label: "Due Date", align: "left" },
+                      { label: "Payment Method", align: "left" },
+                      { label: "Payment Ref", align: "left" },
+                      { label: "Paid / Processed", align: "left" },
+                      { label: "Action", align: "left" },
                     ].map(({ label, align }) => (
                       <th
                         key={label}
@@ -358,7 +388,7 @@ const BillingCycleDetailModal = ({
                     <tr>
                       <td
                         className="px-4 py-6 text-center text-sm text-muted-foreground"
-                        colSpan={4}
+                        colSpan={11}
                       >
                         No covered tenants for this billing cycle.
                       </td>
@@ -385,6 +415,77 @@ const BillingCycleDetailModal = ({
                         </td>
                         <td className="px-4 py-2 text-right font-semibold text-card-foreground">
                           {fmtCurrency(tenant.billAmount)}
+                        </td>
+                        <td className="px-4 py-2 text-right text-muted-foreground">
+                          {fmtCurrency(tenant.remainingAmount)}
+                        </td>
+                        <td className="px-4 py-2">
+                          {tenant.billStatus ? (
+                            <div className="space-y-1">
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                                  tenant.billStatus === "paid"
+                                    ? "bg-success-light text-success-dark"
+                                    : tenant.daysOverdue > 0 || tenant.billStatus === "overdue"
+                                      ? "bg-danger-light text-danger-dark"
+                                      : tenant.billStatus === "partially-paid"
+                                        ? "bg-warning-light text-warning-dark"
+                                        : "bg-info-light text-info-dark"
+                                }`}
+                              >
+                                {String(tenant.billStatus).replace(/-/g, " ")}
+                              </span>
+                              {tenant.daysOverdue > 0 && (
+                                <div className="text-[11px] font-medium text-danger-dark">
+                                  {tenant.daysOverdue} day{tenant.daysOverdue === 1 ? "" : "s"} overdue
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-muted-foreground">
+                          {tenant.dueDate ? fmtShortDate(tenant.dueDate) : "-"}
+                        </td>
+                        <td className="px-4 py-2 text-muted-foreground">
+                          {tenant.paymentFallbackLabel || formatPaymentMethodLabel(tenant.paymentMethod)}
+                        </td>
+                        <td className="px-4 py-2 text-muted-foreground">
+                          <div className="max-w-[170px] truncate" title={tenant.paymentReference || ""}>
+                            {tenant.paymentReference || "-"}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2 text-muted-foreground">
+                          {formatDateTime(tenant.paymentRecordedAt)}
+                        </td>
+                        <td className="px-4 py-2">
+                          {tenant.billId && (tenant.canSendPenaltyNotice || tenant.canSendReminder) && onSendReminder ? (
+                            <button
+                              type="button"
+                              className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${
+                                tenant.canSendPenaltyNotice
+                                  ? "border-danger text-danger-dark hover:bg-danger-light"
+                                  : "border-border text-muted-foreground hover:bg-muted"
+                              }`}
+                              onClick={() => onSendReminder(tenant.billId, tenant.canSendPenaltyNotice ? "penalty" : tenant.daysOverdue > 0 ? "overdue" : "reminder")}
+                              disabled={activeNoticeKey?.startsWith(`${tenant.billId}:`)}
+                              title={tenant.canSendPenaltyNotice ? (tenant.penaltyReason || "Send penalty notice") : undefined}
+                            >
+                              {activeNoticeKey?.startsWith(`${tenant.billId}:`) ? (
+                                <LoaderCircle size={11} className="animate-spin" />
+                              ) : (
+                                <Send size={11} />
+                              )}
+                              {tenant.canSendPenaltyNotice
+                                ? "Send Penalty Notice"
+                                : getPrimaryNoticeLabel(tenant)}
+                            </button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">
+                              {tenant.billStatus === "paid" ? "Paid" : "-"}
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ))

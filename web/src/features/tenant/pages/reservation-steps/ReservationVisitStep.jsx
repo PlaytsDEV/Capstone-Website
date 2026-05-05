@@ -147,16 +147,23 @@ const ReservationVisitStep = ({
  data: availability,
  isError: availabilityError,
  isLoading: loadingAvailability,
+ refetch: refetchAvailability,
  } = useVisitAvailability(
  availabilityParams,
  { enabled: canLoadAvailability },
  );
  const availableDates = useMemo(
  () => {
+ if (availabilityError) return [];
+ if (loadingAvailability) return [];
  if (availability?.dates?.length) return availability.dates;
- return getFallbackAvailabilityDates(14);
+ // Only show fallback dates when the query was never enabled (no branch/auth).
+ // When the API loaded successfully but returned nothing, keep the list empty
+ // so the UI shows a real "no availability" state instead of fake slots.
+ if (!canLoadAvailability) return getFallbackAvailabilityDates(14);
+ return [];
  },
- [availability],
+ [availability, availabilityError, loadingAvailability, canLoadAvailability],
  );
  const calendarDateCells = useMemo(
  () => buildCalendarCells(availableDates),
@@ -168,7 +175,7 @@ const ReservationVisitStep = ({
  );
  const selectedTimeSlots = selectedDateAvailability?.slots?.length
  ? selectedDateAvailability.slots
- : TIME_SLOTS;
+ : [];
 
  useEffect(() => {
  if (visitCode) setResolvedVisitCode(visitCode);
@@ -216,16 +223,22 @@ const ReservationVisitStep = ({
  else navigate("/applicant/profile");
  };
 
- const canSubmit = policiesAccepted && visitDate && visitTime && !isSubmitted;
+ const canSubmit = policiesAccepted && visitDate && visitTime && !isSubmitted && !availabilityError;
 
  const ctaLabel = useCallback(() => {
+ if (availabilityError) return "Availability unavailable";
  if (!visitDate) return "Select a date to continue";
  if (!visitTime) return "Select a time to continue";
  if (!policiesAccepted) return "Accept policies to continue";
  return "Confirm Visit";
- }, [visitDate, visitTime, policiesAccepted]);
+ }, [visitDate, visitTime, policiesAccepted, availabilityError]);
 
  const handleSubmitWithValidation = () => {
+ if (availabilityError) {
+ showNotification("Cannot schedule a visit while availability data is unavailable. Please use the retry button above.", "error", 4000);
+ document.getElementById("visit-date-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
+ return;
+ }
  if (!visitDate) {
  showNotification("Please select a visit date to continue.", "error", 3000);
  document.getElementById("visit-date-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -296,6 +309,24 @@ const ReservationVisitStep = ({
 
  {/* Form content wrapper */}
  <div className={readOnly ? "rf-readonly-wrapper" : ""}>
+ {/* Availability API error banner */}
+ {availabilityError && !readOnly && (
+ <div className="rf-locked-banner" style={{ borderColor: "#EF4444", backgroundColor: "rgba(239,68,68,0.06)", alignItems: "center" }}>
+ <AlertTriangle size={16} style={{ color: "#DC2626", flexShrink: 0 }} />
+ <div style={{ flex: 1 }}>
+ <div className="info-box-title" style={{ color: "#DC2626" }}>Availability unavailable</div>
+ <div className="info-text">Could not load visit schedule. Retry or refresh the page.</div>
+ </div>
+ <button
+ type="button"
+ onClick={() => refetchAvailability()}
+ style={{ flexShrink: 0, padding: "4px 12px", borderRadius: 6, border: "1px solid #DC2626", background: "transparent", color: "#DC2626", cursor: "pointer", fontSize: 13, fontWeight: 500 }}
+ >
+ Retry
+ </button>
+ </div>
+ )}
+
  {/* ── Card 1: Select Date ── */}
  <div className="content-card" id="visit-date-section">
  <div className="card-section-title">

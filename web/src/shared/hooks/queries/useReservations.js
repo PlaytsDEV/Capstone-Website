@@ -29,8 +29,9 @@ export function useReservations(params = {}) {
   return useQuery({
     queryKey: queryKeys.reservations.all(params),
     queryFn: () => reservationApi.getAll(params),
-    staleTime: 30 * 1000,        // data stays fresh 30s — prevents rapid refetches
-    refetchOnMount: true,         // refetch if stale, but NOT if fresh
+    staleTime: 30 * 1000,
+    refetchInterval: 30 * 1000,
+    refetchOnMount: true,
   });
 }
 
