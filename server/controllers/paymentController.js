@@ -106,7 +106,10 @@ async function resolveSessionResourceAccess(metadata, dbUser) {
 }
 
 const readPaidPayments = (session) => {
-  const payments = session.attributes.payments || [];
+  const payments = [
+    ...(session.attributes.payments || []),
+    ...(session.attributes.payment_intent?.payments || []),
+  ];
   return payments.filter((payment) => {
     const status = payment?.attributes?.status || payment?.status;
     return status === "paid";
@@ -300,6 +303,7 @@ export const checkSessionStatus = async (req, res, next) => {
       session,
       paidPayments,
     );
+    let paidReservationSnapshot = null;
 
     if (isPaid) {
       logger.info(
@@ -436,6 +440,15 @@ export const checkSessionStatus = async (req, res, next) => {
             reservation.status = "reserved";
           }
           await reservation.save();
+          paidReservationSnapshot = {
+            _id: reservation._id,
+            reservationCode: reservation.reservationCode,
+            status: reservation.status,
+            paymentStatus: reservation.paymentStatus,
+            paymentMethod: reservation.paymentMethod,
+            paymentDate: reservation.paymentDate,
+            paymongoPaymentId: reservation.paymongoPaymentId,
+          };
 
           if (canAutoReserve) {
             await updateOccupancyOnReservationChange(reservation, {
@@ -469,6 +482,15 @@ export const checkSessionStatus = async (req, res, next) => {
             logger.warn({ err: emailErr }, "Deposit receipt email error");
           }
         } else if (reservation) {
+          paidReservationSnapshot = {
+            _id: reservation._id,
+            reservationCode: reservation.reservationCode,
+            status: reservation.status,
+            paymentStatus: reservation.paymentStatus,
+            paymentMethod: reservation.paymentMethod,
+            paymentDate: reservation.paymentDate,
+            paymongoPaymentId: reservation.paymongoPaymentId,
+          };
           logger.info(
             { reservationId: metadata.reservationId },
             "Deposit already paid - skipping",
@@ -487,6 +509,7 @@ export const checkSessionStatus = async (req, res, next) => {
       status: isPaid ? "paid" : "pending",
       paymentCount: paidPayments.length,
       paymentMethod,
+      ...(paidReservationSnapshot && { reservation: paidReservationSnapshot }),
     });
   } catch (error) {
     logger.error(

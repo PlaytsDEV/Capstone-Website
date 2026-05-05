@@ -17,6 +17,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .global-spinner {
@@ -27,6 +29,13 @@
   border-radius: 50%;
   animation: global-loading-spin 1s linear infinite !important;
   will-change: transform;
+}
+
+.global-loading-message {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+  letter-spacing: 0;
 }
 
 @keyframes global-loading-spin {
@@ -42,4 +51,8 @@ html[data-theme="dark"] .global-loading-overlay {
 html[data-theme="dark"] .global-spinner {
   border-color: rgba(148, 163, 184, 0.18);
   border-top-color: #d4af37;
+}
+
+html[data-theme="dark"] .global-loading-message {
+  color: #e5e7eb;
 }

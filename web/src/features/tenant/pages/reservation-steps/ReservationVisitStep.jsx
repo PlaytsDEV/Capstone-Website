@@ -100,6 +100,19 @@ const VISIT_ERROR_MESSAGES = {
  VISIT_SLOT_CLOSED: "This time is outside working hours.",
 };
 
+function formatRemainingSlots(slot) {
+ const remaining = Number(slot?.remaining);
+ if (!Number.isFinite(remaining)) return "";
+ if (remaining <= 0) return "Full";
+ return `${remaining} ${remaining === 1 ? "slot" : "slots"} left`;
+}
+
+function getSlotStatusText(slot) {
+ if (slot?.available) return formatRemainingSlots(slot);
+ if (slot?.disabledCode === "VISIT_CAPACITY_REACHED" || Number(slot?.remaining) <= 0) return "Full";
+ return slot?.disabledReason || "";
+}
+
 /**
  * Step 2 — Visit Scheduling & Policies
  */
@@ -124,6 +137,8 @@ const ReservationVisitStep = ({
  const [isSaving, setIsSaving] = useState(false);
  const [hoveredDate, setHoveredDate] = useState(null);
  const [hoveredTime, setHoveredTime] = useState(null);
+ const scheduleLocked = (readOnly || isSubmitted) && !scheduleRejected;
+ const canEditSchedule = !scheduleLocked;
 
  const branch = normalizeBranchKey(
  reservationData?.room?.branchKey ||
@@ -132,7 +147,7 @@ const ReservationVisitStep = ({
  );
  const roomId = reservationData?.room?._id || reservationData?.roomId || "";
  const reservationId = reservationData?._id || "";
- const canLoadAvailability = Boolean(branch) && !readOnly && !authLoading && Boolean(firebaseUser);
+ const canLoadAvailability = Boolean(branch) && canEditSchedule && !authLoading && Boolean(firebaseUser);
  const availabilityParams = useMemo(
  () => ({
  branch,
@@ -151,12 +166,14 @@ const ReservationVisitStep = ({
  availabilityParams,
  { enabled: canLoadAvailability },
  );
+ const availabilityUnavailable = canLoadAvailability && availabilityError;
  const availableDates = useMemo(
  () => {
  if (availability?.dates?.length) return availability.dates;
+ if (availabilityUnavailable || loadingAvailability || authLoading) return [];
  return getFallbackAvailabilityDates(14);
  },
- [availability],
+ [authLoading, availability, availabilityUnavailable, loadingAvailability],
  );
  const calendarDateCells = useMemo(
  () => buildCalendarCells(availableDates),
@@ -177,9 +194,11 @@ const ReservationVisitStep = ({
  const handleConfirmSubmit = async () => {
  setShowConfirmModal(false);
  setIsSaving(true);
+ let saveSucceeded = false;
  let shouldOpenReceipt = false;
  try {
  const code = onSaveVisit ? await onSaveVisit() : null;
+ saveSucceeded = true;
  const finalCode = code || visitCode || null;
  if (finalCode) {
  setResolvedVisitCode(finalCode);
@@ -204,8 +223,11 @@ const ReservationVisitStep = ({
  setIsSaving(false);
  }
 
- if (shouldOpenReceipt) {
+ if (saveSucceeded) {
  setIsSubmitted(true);
+ }
+
+ if (shouldOpenReceipt) {
  setShowReceiptModal(true);
  }
  };
@@ -287,15 +309,40 @@ const ReservationVisitStep = ({
  )}
 
  {/* Read-Only Banner */}
- {readOnly && (
+ {scheduleLocked && (
  <div className="rf-locked-banner">
  <div className="info-box-title">This section is locked</div>
  <div className="info-text">Your visit has been scheduled. This step can no longer be edited.</div>
  </div>
  )}
 
+ {scheduleLocked ? (
+ <div className="content-card">
+ <div className="card-section-title">
+ <CheckCircle size={15} style={{ marginRight: 6, flexShrink: 0 }} />
+ Scheduled Visit
+ </div>
+ <div className="rf-receipt-rows">
+ <div className="rf-receipt-row">
+ <span className="rf-receipt-row__label">Date</span>
+ <span className="rf-receipt-row__value">{fmtDateFull(visitDate)}</span>
+ </div>
+ <div className="rf-receipt-row">
+ <span className="rf-receipt-row__label">Time</span>
+ <span className="rf-receipt-row__value">{visitTime || "N/A"}</span>
+ </div>
+ {resolvedVisitCode && (
+ <div className="rf-receipt-row rf-receipt-row--highlighted">
+ <span className="rf-receipt-row__label">Visit Code</span>
+ <span className="rf-receipt-row__code">{resolvedVisitCode}</span>
+ </div>
+ )}
+ </div>
+ </div>
+ ) : (
+ <>
  {/* Form content wrapper */}
- <div className={readOnly ? "rf-readonly-wrapper" : ""}>
+ <div className={scheduleLocked ? "rf-readonly-wrapper" : ""}>
  {/* ── Card 1: Select Date ── */}
  <div className="content-card" id="visit-date-section">
  <div className="card-section-title">
@@ -305,6 +352,11 @@ const ReservationVisitStep = ({
  <p className="rf-section-hint">
  {authLoading || loadingAvailability ? "Checking branch availability..." : "Future visit dates for the next 2 weeks"}
  </p>
+ {availabilityUnavailable && (
+ <div className="rf-availability-alert" role="alert">
+ Unable to load live visit availability. Please refresh before choosing a schedule.
+ </div>
+ )}
  <div className="rf-calendar-grid" aria-label="Visit dates by week">
  {WEEKDAY_LABELS.map((weekday) => (
  <div key={weekday} className="rf-calendar-weekday">
@@ -341,11 +393,6 @@ const ReservationVisitStep = ({
  <div className="rf-date-num">
  {date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
  </div>
- {disabled && (
- <div className="rf-date-reason">
- {dateRow.disabledReason || "Unavailable"}
- </div>
- )}
  </div>
  </button>
  );
@@ -357,7 +404,7 @@ const ReservationVisitStep = ({
  <div
  className="content-card rf-visit-time-card"
  id="visit-time-section"
- style={{ opacity: visitDate ? 1 : 0.45, transition: "opacity 0.2s ease", pointerEvents: readOnly ? "none" : (visitDate ? "auto" : "none") }}
+ style={{ opacity: visitDate ? 1 : 0.45, transition: "opacity 0.2s ease", pointerEvents: visitDate ? "auto" : "none" }}
  >
  <div className="card-section-title">
  <Clock size={15} style={{ marginRight: 6, flexShrink: 0 }} />
@@ -369,9 +416,15 @@ const ReservationVisitStep = ({
  : "Select a date first to see available times"}
  </p>
  <div className="rf-time-grid">
+ {availabilityUnavailable && (
+ <div className="rf-time-grid__message">
+ Live slot counts are unavailable right now.
+ </div>
+ )}
  {selectedTimeSlots.map((slot) => {
  const selected = visitTime === slot.label;
  const disabled = readOnly || !slot.available;
+ const statusText = getSlotStatusText(slot);
  return (
  <button
  key={slot.label}
@@ -387,13 +440,9 @@ const ReservationVisitStep = ({
  >
  <div className={`rf-time-slot${selected ? " selected" : ""}${disabled ? " disabled" : ""}`}>
  <span>{slot.label}</span>
- <small>
- {disabled
- ? slot.disabledReason || "Unavailable"
- : slot.remaining != null
- ? `${slot.remaining} of ${slot.capacity ?? slot.remaining} slots left`
- : ""}
- </small>
+ {statusText && (
+ <small>{statusText}</small>
+ )}
  </div>
  </button>
  );
@@ -434,6 +483,8 @@ const ReservationVisitStep = ({
  </button>
  </div>
  </div>
+ </>
+ )}
 
  {/* Confirmation Modal */}
  {showConfirmModal && (

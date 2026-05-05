@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CalendarOff, Clock, Plus, Save, Trash2 } from "lucide-react";
 import {
   useUpdateVisitAvailabilitySettings,
+  useVisitAvailability,
   useVisitAvailabilitySettings,
 } from "../../../shared/hooks/queries/useReservations";
 import { useCurrentUser } from "../../../shared/hooks/queries/useUsers";
@@ -41,6 +42,26 @@ const createDefaultDraft = () => ({
   blackoutDates: [],
 });
 
+function toISODate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getTomorrowISO() {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  return toISODate(date);
+}
+
+function formatRemainingSlots(slot) {
+  const remaining = Number(slot?.remaining);
+  if (!Number.isFinite(remaining)) return "";
+  if (remaining <= 0) return "Full";
+  return `${remaining} ${remaining === 1 ? "slot" : "slots"} left`;
+}
+
 function VisitAvailabilityTab() {
   const { data: currentUser } = useCurrentUser();
   const isBranchAdmin = currentUser?.role === "branch_admin";
@@ -62,11 +83,17 @@ function VisitAvailabilityTab() {
 
   const [branch, setBranch] = useState(branchOptions[0]?.value || "gil-puyat");
   const [draft, setDraft] = useState(createDefaultDraft);
+  const [usageDate, setUsageDate] = useState(getTomorrowISO);
   const canLoadSettings =
     Boolean(currentUser) && (!isBranchAdmin || branch === currentUser.branch);
   const { data: settings, isLoading } = useVisitAvailabilitySettings(branch, {
     enabled: canLoadSettings,
   });
+  const { data: liveAvailability, isError: liveUsageError, isLoading: liveUsageLoading } =
+    useVisitAvailability(
+      { branch, from: usageDate, days: 1 },
+      { enabled: canLoadSettings && Boolean(usageDate) },
+    );
   const updateSettings = useUpdateVisitAvailabilitySettings();
 
   useEffect(() => {
@@ -89,6 +116,14 @@ function VisitAvailabilityTab() {
     (sum, slot) => sum + (Number(slot.capacity) || 0),
     0,
   );
+  const liveDate = liveAvailability?.dates?.[0] || null;
+  const liveSlotsByLabel = useMemo(() => {
+    const slots = new Map();
+    for (const slot of liveDate?.slots || []) {
+      slots.set(slot.label, slot);
+    }
+    return slots;
+  }, [liveDate]);
 
   const toggleWeekday = (day) => {
     setDraft((previous) => {
@@ -267,6 +302,62 @@ function VisitAvailabilityTab() {
                 />
               </div>
             ))}
+          </div>
+        </section>
+
+        <section className="visit-rule-section visit-rule-section--wide">
+          <div className="visit-rule-section__title">
+            <Clock size={18} />
+            <div>
+              <h3>Live Slot Usage</h3>
+              <p>Review available visit slots for the selected date.</p>
+            </div>
+            <label className="visit-live-date">
+              <span>Date</span>
+              <input
+                type="date"
+                value={usageDate}
+                onChange={(event) => setUsageDate(event.target.value)}
+              />
+            </label>
+          </div>
+          <div className="visit-live-slot-grid">
+            {liveUsageLoading && (
+              <div className="visit-empty-state">Loading live slot usage...</div>
+            )}
+            {liveUsageError && (
+              <div className="visit-empty-state">Unable to load live slot usage.</div>
+            )}
+            {!liveUsageLoading &&
+              !liveUsageError &&
+              draft.slots.map((configuredSlot) => {
+                const liveSlot = liveSlotsByLabel.get(configuredSlot.label);
+                const isFull =
+                  liveSlot?.disabledCode === "VISIT_CAPACITY_REACHED" ||
+                  Number(liveSlot?.remaining) <= 0;
+                const isClosed =
+                  liveSlot &&
+                  (!liveSlot.available || liveSlot.enabled === false) &&
+                  !isFull;
+                return (
+                  <div
+                    key={configuredSlot.label}
+                    className={`visit-live-slot${isFull ? " visit-live-slot--full" : ""}${isClosed ? " visit-live-slot--closed" : ""}`}
+                  >
+                    <div>
+                      <strong>{configuredSlot.label}</strong>
+                      <span>{liveSlot?.count || 0} reserved</span>
+                    </div>
+                    <em>
+                      {liveSlot
+                        ? isClosed
+                          ? liveSlot.disabledReason || "Closed"
+                          : formatRemainingSlots(liveSlot)
+                        : "No data"}
+                    </em>
+                  </div>
+                );
+              })}
           </div>
         </section>
 

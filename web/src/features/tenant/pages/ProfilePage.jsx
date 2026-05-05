@@ -142,7 +142,10 @@ const ProfilePage = () => {
  return;
  }
 
- const urlSessionId = rawSessionId && rawSessionId !== "{id}" ? rawSessionId : null;
+ const urlSessionId =
+ rawSessionId && rawSessionId !== "{id}" && rawSessionId.startsWith("cs_")
+ ? rawSessionId
+ : null;
  if (!urlSessionId && !reservationsData) return;
 
  navigate(location.pathname, { replace: true });
