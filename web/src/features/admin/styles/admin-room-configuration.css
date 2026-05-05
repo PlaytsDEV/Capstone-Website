@@ -1,52 +1,144 @@
 /* =============================================================================
-   ROOM CONFIGURATION — Refined light-mode design
+   ROOM CONFIGURATION — Synced to design-tokens.css
    ============================================================================= */
 @import "design-tokens.css";
 
-/* Modal Styles */
+/* =============================================================================
+   MODAL OVERLAY
+   =============================================================================
+   ROOT CAUSE OF THE BLUR GAP:
+   ----------------------------
+   When any ancestor has transform, will-change:transform, filter,
+   perspective, or overflow (other than visible), the browser creates a
+   new containing block for position:fixed children. The overlay then
+   anchors to that ancestor — not the viewport — leaving unblurred gaps
+   wherever the ancestor doesn't reach (e.g. above a sidebar).
+
+   THE FIX — use a React Portal:
+   ------------------------------
+   Render both modals with ReactDOM.createPortal(…, document.body).
+   That makes the overlay a direct child of <body>, with no transformed
+   ancestors, so position:fixed + inset:0 truly covers 100% of the
+   viewport. The CSS below is written assuming portal rendering.
+
+   SCROLL LOCK:
+   ------------
+   Apply .modal-open to <body> when any modal is open to prevent
+   background scroll. Remove it on close. See useBodyScrollLock hook.
+   ============================================================================= */
+
+/* Applied to <body> when a modal is open */
+body.modal-open {
+  overflow: hidden;
+}
+
 .admin-modal-overlay {
+  /* Cover the entire viewport — never scrolls itself */
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.35);
+  inset: 0;
+
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+
+  /* Above sidebars, navbars, dropdowns, toasts */
+  z-index: 9999;
+
+  /* Overlay is NOT a scroll container — the modal body scrolls instead */
+  overflow: hidden;
+
+  /* Centre the card both axes within the fixed viewport */
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
-  backdrop-filter: blur(4px);
-  animation: rcFadeIn 0.2s var(--ease-out);
+  padding: clamp(1rem, 4vh, 2.5rem) clamp(0.75rem, 3vw, 1.5rem);
+
+  animation: rcFadeIn var(--duration-normal) var(--ease-out);
 }
 
 @keyframes rcFadeIn {
   from { opacity: 0; }
-  to { opacity: 1; }
+  to   { opacity: 1; }
 }
+
+/* =============================================================================
+   MODAL CARD
+   =============================================================================
+   Fixed to viewport height via max-height. The card itself never grows
+   beyond the padded viewport. The header and footer are position:sticky
+   inside the card's own scroll context (.admin-modal-body overflows).
+   ============================================================================= */
 
 .admin-modal-content {
   background: var(--bg-card);
   border-radius: var(--radius-xl);
-  max-width: 600px;
-  width: 90%;
-  max-height: 85vh;
+  width: min(600px, 100%);
+
+  /* Card height is capped — never taller than the padded viewport */
+  max-height: calc(100vh - clamp(2rem, 8vh, 5rem));
+
+  /*
+   * The card is a flex column. Header and footer are fixed-height flex
+   * children (flex-shrink: 0). The body takes remaining space and scrolls.
+   */
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
+
   box-shadow: var(--shadow-xl);
-  animation: rcSlideUp 0.25s var(--ease-out);
+  animation: rcSlideUp var(--duration-slow) var(--ease-out);
+  /* overflow:hidden clips the card to its border-radius */
+  overflow: hidden;
 }
 
 @keyframes rcSlideUp {
-  from { opacity: 0; transform: translateY(8px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
 }
+
+/* Wide variant — RoomFormModal */
+.room-form-wide {
+  width: min(680px, 100%);
+}
+
+/* Narrow variant — DeleteRoomModal */
+.room-delete-modal {
+  width: min(440px, 100%);
+}
+
+/* Small screens — sheet-style: card fills width, anchors to bottom */
+@media (max-width: 640px) {
+  .admin-modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .admin-modal-content,
+  .admin-modal-content.room-form-wide {
+    width: 100%;
+    max-height: 92dvh;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  }
+}
+
+/* =============================================================================
+   MODAL HEADER
+   =============================================================================
+   Direct flex child of .admin-modal-content.
+   position:sticky + top:0 sticks to the overlay scroll viewport.
+   ============================================================================= */
 
 .admin-modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px 24px;
+  gap: var(--spacing-md);
+  padding: 18px 24px;
   border-bottom: 1px solid var(--border-light);
+  /* flex-shrink:0 — header never compresses; body absorbs remaining height */
+  flex-shrink: 0;
+  background: var(--bg-card);
+  z-index: 2;
 }
 
 .admin-modal-header h2 {
@@ -54,12 +146,16 @@
   font-size: var(--font-size-xl);
   font-weight: 700;
   color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .room-config-modal__header-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-sm);
+  flex-shrink: 0;
 }
 
 .room-config-modal__icon-btn {
@@ -82,23 +178,23 @@
 }
 
 .room-config-modal__icon-btn--danger:hover {
-  border-color: #fecaca;
-  background: #fef2f2;
+  border-color: var(--danger-light);
+  background: var(--status-error-bg);
   color: var(--status-error);
 }
 
 .modal-close-btn {
   background: none;
   border: none;
-  font-size: 20px;
   color: var(--text-muted);
   cursor: pointer;
   width: 34px;
   height: 34px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-md);
+  flex-shrink: 0;
   transition: all var(--duration-fast) var(--ease-out);
 }
 
@@ -107,24 +203,71 @@
   color: var(--text-primary);
 }
 
+/* =============================================================================
+   MODAL BODY
+   =============================================================================
+   Must NOT have overflow:auto — the overlay is the scroll container.
+   ============================================================================= */
+
 .admin-modal-body {
   padding: 24px;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: var(--spacing-xl);
+  /*
+   * flex:1 1 0 — body expands to fill remaining card height after
+   * header and footer claim their space, then scrolls when content
+   * exceeds the available height.
+   * min-height:0 is required on flex children to allow shrinking
+   * below content size so overflow-y actually activates.
+   * min-height on the value side gives the body a floor so the card
+   * never looks collapsed on short content.
+   */
+  flex: 1 1 0;
+  min-height: min(500px, 70vh);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
 }
+
+/* =============================================================================
+   MODAL FOOTER
+   =============================================================================
+   Direct flex child of .admin-modal-content (never inside .admin-modal-body).
+   position:sticky + bottom:0 sticks to the overlay scroll viewport.
+   ============================================================================= */
+
+.admin-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-light);
+  /* flex-shrink:0 — footer never compresses */
+  flex-shrink: 0;
+  background: var(--bg-card);
+  z-index: 2;
+}
+
+/* =============================================================================
+   SECTION HEADINGS
+   ============================================================================= */
 
 .room-info-section h3,
 .bed-config-section h3,
 .occupancy-info h3 {
-  margin: 0 0 12px 0;
-  font-size: var(--font-size-md);
-  font-weight: 650;
+  margin: 0 0 var(--spacing-md) 0;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
 }
+
+/* =============================================================================
+   INFO GRID
+   ============================================================================= */
 
 .info-grid {
   display: grid;
@@ -135,7 +278,7 @@
 
 .info-grid div {
   background: var(--bg-inset);
-  padding: 12px;
+  padding: var(--spacing-md);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
 }
@@ -143,24 +286,45 @@
 .info-grid strong {
   display: block;
   color: var(--text-muted);
-  font-weight: 550;
-  margin-bottom: 2px;
+  font-weight: 600;
+  margin-bottom: 3px;
   font-size: var(--font-size-xs);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
 }
+
+/* =============================================================================
+   BED CONFIG SECTION HEADER
+   ============================================================================= */
+
+.bed-config-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.bed-config-section__header h3 {
+  margin: 0;
+}
+
+/* =============================================================================
+   BED LIST
+   ============================================================================= */
 
 .bed-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--spacing-sm);
 }
 
 .bed-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md) var(--spacing-lg);
   background: var(--bg-card);
   border-radius: var(--radius-md);
   border: 1px solid var(--border-light);
@@ -174,21 +338,145 @@
 .bed-info {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.bed-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex-shrink: 0;
 }
 
 .bed-id {
   font-weight: 650;
   color: var(--text-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  font-size: var(--font-size-sm);
+  background: var(--bg-card);
+  max-width: 90px;
+}
+
+.bed-id:focus {
+  outline: none;
+  border-color: var(--ring);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 18%, transparent);
 }
 
 .bed-position {
   font-size: var(--font-size-sm);
   color: var(--text-muted);
   background: var(--bg-inset);
-  padding: 2px 8px;
-  border-radius: 10px;
+  border: 1px solid var(--border-light);
+  padding: 2px var(--spacing-sm);
+  border-radius: var(--radius-sm);
 }
+
+.bed-position:focus {
+  outline: none;
+  border-color: var(--ring);
+}
+
+.no-beds {
+  text-align: center;
+  color: var(--text-muted);
+  padding: var(--spacing-xl);
+  font-size: var(--font-size-md);
+  margin: 0;
+}
+
+/* Empty state with icon */
+.no-beds--with-icon {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+  justify-content: center;
+}
+
+/* =============================================================================
+   BED ACTION BUTTONS — compact variants
+   ============================================================================= */
+
+.bed-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  transition: all var(--duration-fast) var(--ease-out);
+  white-space: nowrap;
+}
+
+.bed-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Square icon-only button (move/remove) */
+.bed-btn--icon {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+/* Labeled button (maintenance toggle) */
+.bed-btn--labeled {
+  gap: var(--spacing-xs);
+  padding: 4px 10px;
+  height: 30px;
+}
+
+.bed-btn--remove {
+  color: var(--status-error);
+}
+
+.bed-btn--remove:hover:not(:disabled) {
+  border-color: var(--status-error);
+  background: var(--status-error-bg);
+}
+
+.bed-btn--active {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: transparent;
+}
+
+.bed-btn--active:hover:not(:disabled) {
+  filter: brightness(0.93);
+}
+
+/* =============================================================================
+   ROOM IMAGES GRID
+   ============================================================================= */
+
+.room-images-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.room-image-thumb {
+  width: 100%;
+  height: 108px;
+  border-radius: var(--radius-lg);
+  object-fit: cover;
+  border: 1px solid var(--border-light);
+  display: block;
+}
+
+/* =============================================================================
+   OCCUPANCY BAR
+   ============================================================================= */
 
 .occupancy-bar {
   width: 100%;
@@ -196,43 +484,56 @@
   background: var(--bg-inset);
   border-radius: 4px;
   overflow: hidden;
-  margin: 12px 0;
+  margin: var(--spacing-md) 0;
 }
 
 .occupancy-fill {
   height: 100%;
-  background: var(--accent-blue);
-  transition: width 0.3s var(--ease-out);
+  background: var(--primary);
+  transition: width var(--duration-slow) var(--ease-out);
   border-radius: 4px;
 }
 
-.admin-modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 16px 24px;
-  border-top: 1px solid var(--border-light);
+.occupancy-label {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  margin: 0;
 }
 
+/* =============================================================================
+   BUTTONS
+   ============================================================================= */
+
 .btn-primary,
-.btn-secondary {
+.btn-secondary,
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
   padding: 9px 18px;
   border-radius: var(--radius-md);
   border: none;
   font-size: var(--font-size-md);
-  font-weight: 550;
+  font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
   transition: all var(--duration-fast) var(--ease-out);
 }
 
 .btn-primary {
-  background: var(--accent-blue);
-  color: white;
+  background: var(--primary);
+  color: var(--primary-foreground);
 }
 
-.btn-primary:hover {
-  background: #2468d6;
-  box-shadow: 0 2px 10px rgba(46, 124, 246, 0.22);
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(0.93);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .btn-secondary {
@@ -241,39 +542,72 @@
   color: var(--text-primary);
 }
 
-.btn-secondary:hover {
+.btn-secondary:hover:not(:disabled) {
   background: var(--bg-hover);
+  border-color: var(--border-strong);
 }
 
-.no-beds {
-  text-align: center;
-  color: var(--text-muted);
-  padding: 24px;
-  font-size: var(--font-size-md);
+.btn-secondary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-danger {
+  background: var(--status-error);
+  color: var(--danger-foreground);
+}
+
+.btn-danger:hover:not(:disabled) {
+  filter: brightness(0.9);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--danger) 22%, transparent);
+}
+
+.btn-danger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 /* =============================================================================
-   ROOM FORM MODAL — Create / Edit
+   ACTION BUTTONS ROW (per-row in DataTable)
    ============================================================================= */
 
-.room-form-wide {
-  max-width: 680px;
+.room-action-buttons {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
 }
+
+.btn-icon-danger:hover {
+  border-color: var(--status-error);
+  color: var(--status-error);
+  background: var(--status-error-bg);
+}
+
+/* =============================================================================
+   ROOM FORM — Create / Edit
+   ============================================================================= */
 
 .room-form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: var(--spacing-lg);
 }
 
 .room-form-row-3 {
   grid-template-columns: 1fr 1fr 1fr;
 }
 
+@media (max-width: 560px) {
+  .room-form-row,
+  .room-form-row-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
 .room-form-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
 }
 
 .room-form-group label {
@@ -285,22 +619,30 @@
 .room-form-group input,
 .room-form-group select,
 .room-form-group textarea {
-  padding: 9px 12px;
+  padding: 9px var(--spacing-md);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   font-size: var(--font-size-base);
   background: var(--bg-card);
   color: var(--text-primary);
-  transition: border-color var(--duration-fast) var(--ease-out);
   font-family: inherit;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              box-shadow var(--duration-fast) var(--ease-out);
 }
 
 .room-form-group input:focus,
 .room-form-group select:focus,
 .room-form-group textarea:focus {
   outline: none;
-  border-color: var(--accent-blue);
-  box-shadow: 0 0 0 3px rgba(46, 124, 246, 0.1);
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 18%, transparent);
+}
+
+.room-form-group input:disabled,
+.room-form-group select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: var(--bg-inset);
 }
 
 .room-form-group textarea {
@@ -326,7 +668,7 @@
   padding: 10px 14px;
   font-size: var(--font-size-sm);
   color: var(--text-muted);
-  line-height: 1.5;
+  line-height: 1.6;
 }
 
 .room-form-hint strong {
@@ -334,66 +676,131 @@
 }
 
 /* =============================================================================
-   DELETE ROOM MODAL
+   CAPACITY HINT (below locked capacity field)
    ============================================================================= */
 
-.room-delete-modal {
-  max-width: 440px;
+.capacity-hint {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin-top: 3px;
+  display: block;
+  line-height: 1.4;
 }
+
+/* =============================================================================
+   IMAGE UPLOAD AREA
+   ============================================================================= */
+
+.image-upload-area {
+  display: grid;
+  gap: var(--spacing-md);
+}
+
+.image-upload-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: fit-content;
+  padding: 10px 14px;
+  border-radius: var(--radius-lg);
+  border: 1px dashed var(--border-default);
+  cursor: pointer;
+  color: var(--text-secondary);
+  background: transparent;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+}
+
+.image-upload-trigger:hover {
+  border-color: var(--ring);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.image-upload-hint {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+/* Form image preview grid */
+.image-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.image-preview-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-light);
+  background: var(--bg-card);
+}
+
+.image-preview-card__img {
+  width: 100%;
+  height: 112px;
+  object-fit: cover;
+  display: block;
+}
+
+.image-preview-card__footer {
+  padding: var(--spacing-sm) 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.image-preview-card__name {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.image-preview-card__remove {
+  border: 0;
+  background: transparent;
+  color: var(--status-error);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  transition: background var(--duration-fast) var(--ease-out);
+  flex-shrink: 0;
+}
+
+.image-preview-card__remove:hover {
+  background: var(--status-error-bg);
+}
+
+/* =============================================================================
+   DELETE ROOM MODAL
+   ============================================================================= */
 
 .room-delete-warning {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 12px 14px;
-  background: #fff8e1;
-  border: 1px solid #ffe082;
+  padding: var(--spacing-md) 14px;
+  background: var(--warning-light);
+  border: 1px solid var(--warning);
   border-radius: var(--radius-md);
-  color: #b8860b;
+  color: var(--warning-dark);
   font-size: var(--font-size-sm);
   line-height: 1.5;
-  margin-bottom: 12px;
+  margin-bottom: var(--spacing-md);
 }
 
 .room-delete-warning svg {
   flex-shrink: 0;
   margin-top: 2px;
-}
-
-.btn-danger {
-  padding: 9px 18px;
-  border-radius: var(--radius-md);
-  border: none;
-  font-size: var(--font-size-md);
-  font-weight: 550;
-  cursor: pointer;
-  background: var(--status-error);
-  color: white;
-  transition: all var(--duration-fast) var(--ease-out);
-}
-
-.btn-danger:hover {
-  background: #d32f2f;
-  box-shadow: 0 2px 10px rgba(211, 47, 47, 0.22);
-}
-
-.btn-danger:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* =============================================================================
-   ACTION BUTTONS ROW (per-row in DataTable)
-   ============================================================================= */
-
-.room-action-buttons {
-  display: flex;
-  gap: 6px;
-  justify-content: flex-end;
-}
-
-.btn-icon-danger:hover {
-  border-color: var(--status-error);
-  color: var(--status-error);
-  background: #fef2f2;
 }
