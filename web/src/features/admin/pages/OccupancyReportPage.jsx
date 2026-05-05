@@ -9,6 +9,7 @@ import {
 import { exportToCSV } from "../../../shared/utils/exportUtils";
 import { exportReportPdf } from "../../../shared/utils/reportPdf";
 import { OWNER_BRANCH_FILTER_OPTIONS } from "../../../shared/utils/constants";
+import { unwrapTableRows } from "./analyticsTabShared";
 import {
  ActionBar,
  DataTable,
@@ -86,8 +87,8 @@ export default function OccupancyReportPage() {
  months: 3,
  ...(isOwner ? { branch } : {}),
  });
- const inventory = data?.tables?.inventory || [];
- const roomTypes = data?.tables?.roomTypes || [];
+ const inventory = unwrapTableRows(data?.tables?.inventory);
+ const roomTypes = unwrapTableRows(data?.tables?.roomTypes);
  const trend = data?.series?.occupancyTrend || [];
  const forecast = forecastData?.forecast || {};
  const projectedMonths = forecast.projected || [];

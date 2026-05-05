@@ -47,6 +47,14 @@ export function useFinancialsAnalytics(params) {
   });
 }
 
+export function useDemographicsReport(params) {
+  return useQuery({
+    queryKey: queryKeys.analytics.demographicsReport(params),
+    queryFn: () => analyticsApi.getDemographicsReport(params),
+    ...DEFAULT_OPTIONS,
+  });
+}
+
 export function useAuditAnalytics(params) {
   return useQuery({
     queryKey: queryKeys.analytics.audit(params),
