@@ -63,9 +63,9 @@ export default function AnalyticsOperationsTab({
  range,
  branch: isOwner ? branch : undefined,
  });
- const maintenanceIssues = data?.tables?.maintenanceIssues || [];
- const reservations = data?.tables?.reservations || [];
- const inquiryWindows = data?.tables?.peakInquiryWindows || [];
+ const maintenanceIssues = Array.isArray(data?.tables?.maintenanceIssues) ? data?.tables?.maintenanceIssues : [];
+ const reservations = Array.isArray(data?.tables?.reservations) ? data?.tables?.reservations : [];
+ const inquiryWindows = Array.isArray(data?.tables?.peakInquiryWindows) ? data?.tables?.peakInquiryWindows : [];
  const reservationsByPeriod = data?.series?.reservationsByPeriod || [];
  const maintenanceByType = data?.series?.maintenanceByType || [];
  const maintenanceResolution = data?.series?.maintenanceResolution || [];

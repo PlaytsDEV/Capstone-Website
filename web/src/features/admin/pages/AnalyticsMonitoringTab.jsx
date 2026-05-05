@@ -53,10 +53,10 @@ export default function AnalyticsMonitoringTab({ branch, range, onBranchChange, 
  });
 
  const kpis = data?.kpis || {};
- const branchSummary = data?.series?.branchSummary || [];
- const severityDistribution = data?.series?.severityDistribution || [];
- const recentSecurityEvents = data?.tables?.recentSecurityEvents || [];
- const suspiciousIps = data?.tables?.suspiciousIps || [];
+ const branchSummary = Array.isArray(data?.series?.branchSummary) ? data?.series?.branchSummary : [];
+ const severityDistribution = Array.isArray(data?.series?.severityDistribution) ? data?.series?.severityDistribution : [];
+ const recentSecurityEvents = Array.isArray(data?.tables?.recentSecurityEvents) ? data?.tables?.recentSecurityEvents : [];
+ const suspiciousIps = Array.isArray(data?.tables?.suspiciousIps) ? data?.tables?.suspiciousIps : [];
 
  const metricCards = [
  { label: "Failed Logins", value: kpis.failedLogins || 0, tone: "rose" },
