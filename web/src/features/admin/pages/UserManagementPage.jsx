@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Users,
   UserPlus,
@@ -11,6 +11,7 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
+  MoreVertical,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
@@ -41,6 +42,174 @@ import {
 } from "../../../shared/utils/branchFilterQuery.mjs";
 import "../styles/design-tokens.css";
 import "../styles/admin-users.css";
+
+function UserActionMenu({
+  u,
+  user,
+  setAccessDrawerUser,
+  handleOpenPermissions,
+  handleEditClick,
+  setSelectedUser,
+  setAccountAction,
+  handleArchiveClick,
+  handleHardDeleteClick,
+  canManageUsers,
+  isOwner,
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isOpen]);
+
+  const currentUserId = user?._id || user?.uid || user?.id;
+  const isCurrentUser = String(u._id || u.id) === String(currentUserId || "");
+  const isArchived = u.isArchived === true;
+  const isPrivilegedAccount = ["branch_admin", "owner"].includes(u.role);
+  const canEditAccount =
+    canManageUsers && !isArchived && (isOwner || !isPrivilegedAccount);
+  const status = u.accountStatus || (u.isActive ? "active" : "suspended");
+  const canBlockAccount =
+    canManageUsers && !isCurrentUser && !isArchived && status === "active";
+  const canUnblockAccount =
+    canManageUsers &&
+    !isCurrentUser &&
+    !isArchived &&
+    (status === "suspended" || (status === "banned" && isOwner));
+  const canDeleteAccount =
+    canManageUsers && !isCurrentUser && !isArchived && (isOwner || !isPrivilegedAccount);
+  const canForceDeleteAccount =
+    canManageUsers && isOwner && !isCurrentUser && (!isPrivilegedAccount || isOwner);
+
+  // If there are literally no actions available, render nothing
+  if (!canEditAccount && !canBlockAccount && !canUnblockAccount && !canDeleteAccount && !canForceDeleteAccount && u.role !== "branch_admin") {
+    return <div className="w-16" />;
+  }
+
+  return (
+    <div
+      ref={menuRef}
+      className="relative flex items-center justify-end"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {canEditAccount ? (
+        <button
+          onClick={() => handleEditClick(u)}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          title="Edit User"
+        >
+          <Edit2 className="h-4 w-4" />
+        </button>
+      ) : (
+        <button
+          onClick={() => setAccessDrawerUser(u)}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-primary/30 bg-primary/5 text-primary transition-colors hover:bg-primary/10"
+          title="View Access"
+        >
+          <Shield className="h-4 w-4" />
+        </button>
+      )}
+
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="ml-1 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted"
+        title="More actions"
+      >
+        <MoreVertical className="h-4 w-4" />
+      </button>
+
+      {isOpen && (
+        <div className="absolute right-0 top-10 z-50 min-w-[170px] rounded-lg border border-border bg-card p-1 shadow-lg animate-in fade-in zoom-in-95 duration-100">
+          {u.role === "branch_admin" && (
+            <button
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
+              onClick={() => {
+                setIsOpen(false);
+                handleOpenPermissions(u);
+              }}
+            >
+              <Key className="h-4 w-4" /> Permissions
+            </button>
+          )}
+          
+          {canEditAccount && (
+            <button
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
+              onClick={() => {
+                setIsOpen(false);
+                setAccessDrawerUser(u);
+              }}
+            >
+              <Shield className="h-4 w-4" /> View Access
+            </button>
+          )}
+
+          {canBlockAccount && (
+            <button
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-danger hover:bg-danger/10"
+              onClick={() => {
+                setIsOpen(false);
+                setSelectedUser(u);
+                setAccountAction({ type: "ban", user: u });
+              }}
+            >
+              <Lock className="h-4 w-4" /> Block Account
+            </button>
+          )}
+
+          {canUnblockAccount && (
+            <button
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-primary hover:bg-primary/10"
+              onClick={() => {
+                setIsOpen(false);
+                setSelectedUser(u);
+                setAccountAction({ type: "reactivate", user: u });
+              }}
+            >
+              <Unlock className="h-4 w-4" /> Unblock Account
+            </button>
+          )}
+
+          {canDeleteAccount && (
+            <button
+              className="mt-1 flex w-full items-center gap-2 border-t border-border pt-1.5 px-2 py-1.5 text-sm font-medium text-danger hover:bg-danger/10"
+              onClick={() => {
+                setIsOpen(false);
+                handleArchiveClick(u);
+              }}
+            >
+              <Trash2 className="h-4 w-4" /> Archive / Delete
+            </button>
+          )}
+
+          {canForceDeleteAccount && (
+            <button
+              className="mt-1 flex w-full items-center gap-2 border-t border-danger/20 pt-1.5 px-2 py-1.5 text-sm font-bold text-danger hover:bg-danger-light"
+              onClick={() => {
+                setIsOpen(false);
+                handleHardDeleteClick(u);
+              }}
+            >
+              <Trash2 className="h-4 w-4" /> Force Delete
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function UserManagementPage() {
   const { user, refreshUser } = useAuth();
@@ -992,152 +1161,19 @@ function getAvatarColor(user) {
                     })()}
                   </td>
                   <td className="px-6 py-4">
-                    <div
-                      className="flex items-center justify-end gap-2"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {(() => {
-                        const currentUserId = user?._id || user?.uid || user?.id;
-                        const isCurrentUser = String(u._id || u.id) === String(currentUserId || "");
-                        const isArchived = u.isArchived === true;
-                        const isPrivilegedAccount = ["branch_admin", "owner"].includes(u.role);
-                        const canEditAccount =
-                          canManageUsers &&
-                          !isArchived &&
-                          (isOwner || !isPrivilegedAccount);
-                        const status =
-                          u.accountStatus ||
-                          (u.isActive ? "active" : "suspended");
-                        const canBlockAccount =
-                          canManageUsers &&
-                          !isCurrentUser &&
-                          !isArchived &&
-                          status === "active";
-                        const canUnblockAccount =
-                          canManageUsers &&
-                          !isCurrentUser &&
-                          !isArchived &&
-                          (status === "suspended" ||
-                            (status === "banned" && isOwner));
-                        const canDeleteAccount =
-                          canManageUsers &&
-                          !isCurrentUser &&
-                          !isArchived &&
-                          (isOwner || !isPrivilegedAccount);
-                        const canForceDeleteAccount =
-                          canManageUsers &&
-                          isOwner &&
-                          !isCurrentUser &&
-                          (!isPrivilegedAccount || isOwner);
-
-                        return (
-                          <>
-                      {u.role === "branch_admin" && (
-                        <button
-                          className="h-8 px-3 flex items-center gap-2 text-sm rounded-lg"
-                          onClick={() => handleOpenPermissions(u)}
-                          style={{
-                            border: "1px solid var(--color-border-default)",
-                            color: "var(--color-text-primary)",
-                            backgroundColor: "var(--card)",
-                          }}
-                        >
-                          <Key className="h-4 w-4" />
-                          Permissions
-                        </button>
-                      )}
-                      <button
-                        onClick={() => setAccessDrawerUser(u)}
-                        className="h-8 px-3 flex items-center gap-2 text-sm rounded-lg"
-                        style={{
-                          border: `1px solid var(--primary)`,
-                          color: "var(--primary)",
-                          backgroundColor: "var(--card)",
-                        }}
-                      >
-                        <Shield className="h-4 w-4" />
-                        Access
-                      </button>
-                      {canEditAccount && (
-                        <button
-                          onClick={() => handleEditClick(u)}
-                          className="h-8 px-3 flex items-center gap-2 text-sm rounded-lg"
-                          style={{
-                            border: "1px solid var(--color-border-default)",
-                            color: "var(--color-text-primary)",
-                            backgroundColor: "var(--card)",
-                          }}
-                        >
-                          <Edit2 className="h-4 w-4" />
-                          Edit
-                        </button>
-                      )}
-                      {canBlockAccount && (
-                        <button
-                          onClick={() => {
-                            setSelectedUser(u);
-                            setAccountAction({ type: "ban", user: u });
-                          }}
-                          className="h-8 px-3 flex items-center gap-2 text-sm rounded-lg"
-                          style={{
-                            border: "1px solid var(--danger-light)",
-                            color: "var(--color-danger)",
-                            backgroundColor: "var(--card)",
-                          }}
-                        >
-                          <Lock className="h-4 w-4" />
-                          Block
-                        </button>
-                      )}
-                      {canUnblockAccount && (
-                        <button
-                          onClick={() => {
-                            setSelectedUser(u);
-                            setAccountAction({ type: "reactivate", user: u });
-                          }}
-                          className="h-8 px-3 flex items-center gap-2 text-sm rounded-lg"
-                          style={{
-                            border: "1px solid var(--primary)",
-                            color: "var(--primary)",
-                            backgroundColor: "var(--card)",
-                          }}
-                        >
-                          <Unlock className="h-4 w-4" />
-                          Unblock
-                        </button>
-                      )}
-                      {canDeleteAccount && (
-                        <button
-                          onClick={() => handleArchiveClick(u)}
-                          className="h-8 px-3 flex items-center gap-2 text-sm rounded-lg"
-                          style={{
-                            border: "1px solid var(--danger-light)",
-                            color: "var(--color-danger)",
-                            backgroundColor: "var(--card)",
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          Delete
-                        </button>
-                      )}
-                      {canForceDeleteAccount && (
-                        <button
-                          onClick={() => handleHardDeleteClick(u)}
-                          className="h-8 px-3 flex items-center gap-2 text-sm rounded-lg"
-                          style={{
-                            border: "1px solid var(--danger-light)",
-                            color: "var(--color-danger)",
-                            backgroundColor: "var(--card)",
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          Force Delete
-                        </button>
-                      )}
-                          </>
-                        );
-                      })()}
-                    </div>
+                    <UserActionMenu
+                      u={u}
+                      user={user}
+                      setAccessDrawerUser={setAccessDrawerUser}
+                      handleOpenPermissions={handleOpenPermissions}
+                      handleEditClick={handleEditClick}
+                      setSelectedUser={setSelectedUser}
+                      setAccountAction={setAccountAction}
+                      handleArchiveClick={handleArchiveClick}
+                      handleHardDeleteClick={handleHardDeleteClick}
+                      canManageUsers={canManageUsers}
+                      isOwner={isOwner}
+                    />
                   </td>
                 </tr>
               ))}
