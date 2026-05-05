@@ -12,6 +12,7 @@
 import express from "express";
 import { verifyToken, verifyAdmin } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/permissions.js";
+import { filterByBranch } from "../middleware/branchAccess.js";
 import * as paymentController from "../controllers/paymentController.js";
 import Payment from "../models/Payment.js";
 import User from "../models/User.js";
@@ -75,6 +76,19 @@ router.get("/history", verifyToken, async (req, res) => {
  * Get all payments for a specific bill
  */
 router.get("/bill/:billId/payments", verifyToken, paymentController.getPaymentsForBill);
+
+/**
+ * GET /api/payments/admin/ledger
+ * Get payment ledger records for billing admins/owners.
+ */
+router.get(
+  "/admin/ledger",
+  verifyToken,
+  verifyAdmin,
+  requirePermission("manageBilling"),
+  filterByBranch,
+  paymentController.getAdminPaymentLedger,
+);
 
 /**
  * GET /api/payments/vacancy-dates

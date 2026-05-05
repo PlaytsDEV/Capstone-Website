@@ -54,6 +54,7 @@ const paymentSchema = new mongoose.Schema(
       type: String,
       enum: PAYMENT_METHODS,
       required: true,
+      alias: "paymentMethod",
     },
     source: {
       type: String,
@@ -85,7 +86,7 @@ const paymentSchema = new mongoose.Schema(
     // --- Status ---
     status: {
       type: String,
-      enum: ["pending", "approved", "rejected"],
+      enum: ["pending", "approved", "paid", "rejected"],
       default: "pending",
       index: true,
     },

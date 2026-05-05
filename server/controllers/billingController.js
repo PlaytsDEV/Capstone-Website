@@ -23,7 +23,9 @@ import {
 } from "../middleware/errorHandler.js";
 import {
   sendBillGeneratedEmail,
+  sendOverdueNoticeEmail,
   sendPaymentApprovedEmail,
+  sendPaymentReminderEmail,
   sendPaymentRejectedEmail,
 } from "../config/email.js";
 import { applyBillPayment } from "../utils/paymentLedger.js";
@@ -181,7 +183,14 @@ const formatBill = (bill) => {
     paidAmount: bill.paidAmount || 0,
     remainingAmount: visible.remainingAmount,
     isFirstCycleBill: !!bill.isFirstCycleBill,
+    billType: resolveRentBillType(bill),
     status: visible.status,
+    paymentMethod: bill.paymentMethod || null,
+    paymentDate: bill.paymentDate || null,
+    paymongoPaymentId: bill.paymongoPaymentId || null,
+    penaltyDetails: bill.penaltyDetails || { daysLate: 0, ratePerDay: null, appliedAt: null },
+    legacyPaymentFallbackLabel:
+      visible.status === "paid" ? "Paid — legacy/no ledger record" : null,
     paymentProof: bill.paymentProof || { verificationStatus: "none" },
     paymentFlow: buildBillPaymentFlow(bill, visible),
     delivery: bill.delivery || {},
@@ -484,9 +493,10 @@ async function getRoomPublishState(room) {
 
 /** Build paginated bill response (shared by getBillsByBranch + getAllBills) */
 async function fetchBills(filter, query) {
-  const { status, month, page = 1, limit = 20, search } = query;
+  const { status, month, page = 1, limit = 20, search, roomId } = query;
   const skip = (parseInt(page) - 1) * parseInt(limit);
   if (status && status !== "all") filter.status = status;
+  if (roomId) filter.roomId = roomId;
   if (month) {
     const d = dayjs(month);
     filter.billingMonth = {
@@ -593,6 +603,23 @@ function createBillingError(message, statusCode = 400, code = null) {
   error.statusCode = statusCode;
   if (code) error.code = code;
   return error;
+}
+
+function getBillDaysOverdue(bill, referenceDate = new Date()) {
+  const dueDate = bill?.dueDate ? dayjs(bill.dueDate) : null;
+  if (!dueDate?.isValid()) return 0;
+  const daysOverdue = dayjs(referenceDate)
+    .startOf("day")
+    .diff(dueDate.startOf("day"), "day");
+  return daysOverdue > 0 ? daysOverdue : 0;
+}
+
+function canSendBillReminder(bill) {
+  const visible = getVisibleBillSnapshot(bill);
+  return Boolean(
+    visible?.dueDate &&
+      ["pending", "partially-paid", "overdue"].includes(visible?.status),
+  );
 }
 
 function formatBillReference(bill = {}) {
@@ -739,6 +766,27 @@ async function loadRentBillForAdmin({ billId, branch }) {
     _id: billId,
     isArchived: false,
     "charges.rent": { $gt: 0 },
+  });
+
+  if (!bill) {
+    throw createBillingError("Bill not found", 404, "BILL_NOT_FOUND");
+  }
+
+  if (branch && bill.branch !== branch) {
+    throw createBillingError("Access denied.", 403, "ACCESS_DENIED");
+  }
+
+  return bill;
+}
+
+async function loadBillForAdmin({ billId, branch }) {
+  if (!billId) {
+    throw createBillingError("Bill not found", 404, "BILL_NOT_FOUND");
+  }
+
+  const bill = await Bill.findOne({
+    _id: billId,
+    isArchived: false,
   });
 
   if (!bill) {
@@ -1000,6 +1048,31 @@ function resolveRentBillType(bill = {}) {
   return "bill";
 }
 
+function formatBillTypeLabel(bill = {}) {
+  const billType = resolveRentBillType(bill);
+  if (billType === "rent") return "Rent";
+  if (billType === "water") return "Water";
+  if (billType === "electricity") return "Electricity";
+  if (billType === "utilities") return "Utilities";
+  return "Bill";
+}
+
+function buildPenaltyNoticeReason(bill = {}) {
+  const penaltyAmount = Number(bill?.charges?.penalty || 0);
+  if (penaltyAmount <= 0) return "";
+
+  const daysLate = Number(bill?.penaltyDetails?.daysLate || 0);
+  const ratePerDay = Number(bill?.penaltyDetails?.ratePerDay || 0);
+
+  if (daysLate > 0 && ratePerDay > 0) {
+    return `Late payment penalty for ${daysLate} day${daysLate === 1 ? "" : "s"} at PHP ${ratePerDay.toFixed(2)} per day.`;
+  }
+  if (daysLate > 0) {
+    return `Late payment penalty for ${daysLate} day${daysLate === 1 ? "" : "s"} overdue.`;
+  }
+  return "Late payment penalty applied to the bill.";
+}
+
 async function deliverBillNotification({ bill, tenant, room, billType = null }) {
   const tenantName =
     [tenant?.firstName, tenant?.lastName].filter(Boolean).join(" ").trim() ||
@@ -1056,6 +1129,113 @@ async function deliverBillNotification({ bill, tenant, room, billType = null }) 
 
   bill.delivery = delivery;
   await bill.save();
+  return delivery;
+}
+
+async function deliverBillReminder({ bill, tenant, room, noticeType = "reminder" }) {
+  const visible = getVisibleBillSnapshot(bill);
+  const reminderAmount = Number(
+    visible?.remainingAmount ?? visible?.totalAmount ?? bill.totalAmount ?? 0,
+  );
+  const penaltyAmount = Number(visible?.charges?.penalty || 0);
+  const billTypeLabel = formatBillTypeLabel(bill);
+  const tenantName =
+    [tenant?.firstName, tenant?.lastName].filter(Boolean).join(" ").trim() ||
+    "Tenant";
+  const billingMonthLabel = dayjs(bill.billingMonth).format("MMMM YYYY");
+  const dueDateLabel = bill.dueDate
+    ? dayjs(bill.dueDate).format("MMMM D, YYYY")
+    : "the due date";
+  const daysOverdue = getBillDaysOverdue(bill);
+  const penaltyReason = buildPenaltyNoticeReason(bill);
+  const resolvedNoticeType =
+    noticeType === "penalty" ? "penalty" : daysOverdue > 0 ? "overdue" : "reminder";
+  const delivery = {
+    email: { status: "not_attempted", sentAt: null, error: "" },
+    notification: { status: "not_attempted", sentAt: null, error: "" },
+    daysOverdue,
+    noticeType: resolvedNoticeType,
+    penaltyAmount,
+  };
+
+  if (tenant?.email) {
+    const emailResult =
+      resolvedNoticeType === "reminder"
+        ? await sendPaymentReminderEmail({
+            to: tenant.email,
+            tenantName,
+            billingMonth: billingMonthLabel,
+            totalAmount: reminderAmount,
+            dueDate: dueDateLabel,
+            billType: billTypeLabel,
+            branchName: room?.branch || bill.branch || "Lilycrest",
+          })
+        : await sendOverdueNoticeEmail({
+            to: tenant.email,
+            tenantName,
+            billingMonth: billingMonthLabel,
+            totalAmount: reminderAmount,
+            daysLate: daysOverdue,
+            penalty: penaltyAmount,
+            dueDate: dueDateLabel,
+            billType: billTypeLabel,
+            reason: resolvedNoticeType === "penalty" ? penaltyReason : "",
+            noticeVariant: resolvedNoticeType,
+            branchName: room?.branch || bill.branch || "Lilycrest",
+          });
+
+    if (emailResult?.success) {
+      delivery.email.status = "sent";
+      delivery.email.sentAt = new Date();
+    } else {
+      delivery.email.status = "failed";
+      delivery.email.error =
+        emailResult?.error || emailResult?.message || "Email delivery failed";
+    }
+  }
+
+  try {
+    const baseMessage = `Your ${billTypeLabel.toLowerCase()} bill for ${billingMonthLabel} has a remaining balance of PHP ${reminderAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. Due date: ${dueDateLabel}.`;
+    const overdueMessage =
+      daysOverdue > 0
+        ? ` Overdue by ${daysOverdue} day${daysOverdue === 1 ? "" : "s"}.`
+        : "";
+
+    if (resolvedNoticeType === "penalty") {
+      await notify.billingNotice(bill.userId, {
+        notificationType: "penalty_applied",
+        title: "Penalty Notice",
+        message: `${baseMessage}${overdueMessage} Penalty amount: PHP ${penaltyAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.${penaltyReason ? ` Reason: ${penaltyReason}` : ""}`,
+        billId: bill._id,
+        actionUrl: "/billing",
+        pushType: "billing_penalty_notice",
+      });
+    } else if (resolvedNoticeType === "overdue") {
+      await notify.billingNotice(bill.userId, {
+        notificationType: "bill_due_reminder",
+        title: "Overdue Bill Notice",
+        message: `${baseMessage}${overdueMessage}`,
+        billId: bill._id,
+        actionUrl: "/billing",
+        pushType: "billing_overdue_notice",
+      });
+    } else {
+      await notify.billingNotice(bill.userId, {
+        notificationType: "bill_due_reminder",
+        title: "Payment Reminder",
+        message: baseMessage,
+        billId: bill._id,
+        actionUrl: "/billing",
+        pushType: "billing_due_notice",
+      });
+    }
+    delivery.notification.status = "sent";
+    delivery.notification.sentAt = new Date();
+  } catch (error) {
+    delivery.notification.status = "failed";
+    delivery.notification.error = error.message || "Notification failed";
+  }
+
   return delivery;
 }
 
@@ -1799,6 +1979,103 @@ export const sendRentBill = async (req, res, next) => {
   } catch (error) {
     if (error.statusCode) {
       return res.status(error.statusCode).json({ error: error.message, code: error.code });
+    }
+    next(error);
+  }
+};
+
+export const sendBillReminder = async (req, res, next) => {
+  try {
+    const admin = await getAdminInfo(req);
+    const branch = req.branchFilter || (admin.isOwner ? null : admin.branch);
+    const requestedNoticeType = String(req.body?.noticeType || "reminder")
+      .trim()
+      .toLowerCase();
+
+    if (!branch && !admin.isOwner) {
+      return res.status(400).json({ error: "Branch is required." });
+    }
+
+    const bill = await loadBillForAdmin({
+      billId: req.params.billId,
+      branch,
+    });
+
+    if (!canSendBillReminder(bill)) {
+      return res.status(400).json({
+        error: "Reminders can only be sent for unpaid bills with a due date.",
+        code: "REMINDER_NOT_ALLOWED",
+      });
+    }
+    if (requestedNoticeType === "penalty" && Number(bill?.charges?.penalty || 0) <= 0) {
+      return res.status(400).json({
+        error: "Penalty notice is only available when the bill has a recorded penalty.",
+        code: "PENALTY_NOTICE_NOT_AVAILABLE",
+      });
+    }
+
+    const [tenant, room] = await Promise.all([
+      User.findById(bill.userId).select("firstName lastName email"),
+      bill.roomId
+        ? Room.findById(bill.roomId).select("name roomNumber branch type")
+        : null,
+    ]);
+
+    if (!tenant) {
+      return res.status(404).json({ error: "Tenant not found" });
+    }
+
+    const delivery = await deliverBillReminder({
+      bill,
+      tenant,
+      room,
+      noticeType: requestedNoticeType,
+    });
+    const visible = getVisibleBillSnapshot(bill);
+    const noticeAction =
+      delivery.noticeType === "penalty" ? "Penalty notice sent" : "Billing notice sent";
+    const noticeLabel =
+      delivery.noticeType === "penalty" ? "Penalty notice" : "Reminder";
+
+    await logBillingAudit(req, {
+      admin,
+      action: noticeAction,
+      details: `Sent ${delivery.noticeType} notice for ${formatBillReference(bill)}`,
+      entityId: bill._id,
+      branch: bill.branch,
+      metadata: {
+        billId: String(bill._id),
+        tenantId: String(bill.userId),
+        emailStatus: delivery.email?.status,
+        notificationStatus: delivery.notification?.status,
+        daysOverdue: delivery.daysOverdue || 0,
+        noticeType: delivery.noticeType,
+        penaltyAmount: delivery.penaltyAmount || 0,
+      },
+    });
+
+    res.json({
+      success: true,
+      message:
+        delivery.noticeType === "penalty"
+          ? "Penalty notice sent successfully."
+          : "Reminder sent successfully.",
+      reminder: {
+        billId: String(bill._id),
+        noticeType: delivery.noticeType,
+        label: noticeLabel,
+        status: visible.status,
+        dueDate: visible.dueDate,
+        daysOverdue: delivery.daysOverdue || 0,
+        penaltyAmount: delivery.penaltyAmount || 0,
+      },
+      delivery,
+    });
+  } catch (error) {
+    if (error.statusCode) {
+      return res
+        .status(error.statusCode)
+        .json({ error: error.message, code: error.code });
     }
     next(error);
   }
@@ -2692,6 +2969,7 @@ export default {
   generateRentBill,
   generateAllRentBills,
   sendRentBill,
+  sendBillReminder,
   downloadBillPdf,
   getMyBills,
   submitPaymentProof,

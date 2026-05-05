@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { billingApi } from "../../../../shared/api/apiClient";
 import { formatPaymentMethod } from "../../../../shared/utils/formatPaymentMethod";
 import SkeletonPulse from "../../../../shared/components/SkeletonPulse";
+import StatusChip from "../../../../shared/components/StatusChip";
 import {
  useMyUtilityBreakdownByBillId,
 } from "../../../../shared/hooks/queries/useUtility";
@@ -82,12 +83,6 @@ const fmtKwh = (n) =>
  maximumFractionDigits: 2,
  })} kWh`;
 
-const STATUS_STYLES = {
- overdue: { bg: "#FEF2F2", color: "#DC2626", label: "Overdue" },
- pending: { bg: "#FFFBEB", color: "#D97706", label: "Pending" },
- paid: { bg: "#F0FDF4", color: "#059669", label: "Paid" },
- "partially-paid": { bg: "#EFF6FF", color: "#2563EB", label: "Partial" },
-};
 
 const DASHBOARD_SKELETON_CARDS = [1, 2];
 const BILL_SKELETON_ROWS = [1, 2, 3];
@@ -477,7 +472,6 @@ const MonthlyPaymentView = ({ bills, filter, setFilter }) => {
 
 const MonthlyBillCard = ({ bill }) => {
  const [open, setOpen] = useState((bill.remainingAmount ?? bill.totalAmount) > 0);
- const status = STATUS_STYLES[bill.status] || STATUS_STYLES.pending;
  const charges = bill.charges || {};
  const summary = getBillChargeSummary(bill);
 
@@ -503,13 +497,11 @@ const MonthlyBillCard = ({ bill }) => {
  Cycle: {fmtCycle(bill) || "—"}
  </div>
  <div style={{ fontSize: 12, color: "#94a3b8" }}>
- Due: {bill.dueDate ? fmtDate(bill.dueDate) : "â€”"}
+ Due: {bill.dueDate ? fmtDate(bill.dueDate) : "—"}
  </div>
  </div>
  <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
- <span style={{ fontSize: 13, fontWeight: 600, color: status.color, textTransform: "uppercase" }}>
- {status.label}
- </span>
+ <StatusChip status={bill.status || "pending"} variant="text" />
  <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-heading)" }}>
  {fmt(rentOnlyTotal)}
  </span>
@@ -1034,6 +1026,9 @@ const BillingTab = () => {
  const [electricityFilter, setElectricityFilter] = useState("all");
  const [waterFilter, setWaterFilter] = useState("all");
  const [payingOnline, setPayingOnline] = useState(false);
+ const [verifyingPayment, setVerifyingPayment] = useState(
+ searchParams.get("payment") === "success" && Boolean(searchParams.get("session_id")),
+ );
 
  // Handle PayMongo return
  useEffect(() => {
@@ -1052,7 +1047,10 @@ const BillingTab = () => {
  }
  })
  .catch(() => {
- showNotification("Could not verify payment. Please refresh.", "warning", 5000);
+ showNotification("Could not verify payment status. Please refresh.", "warning", 5000);
+ })
+ .finally(() => {
+ setVerifyingPayment(false);
  });
  setSearchParams({}, { replace: true });
  } else if (paymentStatus === "cancelled") {
@@ -1067,7 +1065,7 @@ const BillingTab = () => {
  const data = await billingApi.getMyBills();
  setBills(data.bills || []);
  } catch {
- // Silently fail
+ showNotification("Could not load your bills. Please refresh the page.", "error", 5000);
  } finally {
  setLoading(false);
  }
@@ -1161,7 +1159,7 @@ const BillingTab = () => {
  }
  };
 
- if (loading) {
+ if (loading || verifyingPayment) {
  return <BillingTabSkeleton />;
  }
 

@@ -1,4 +1,5 @@
 import React from "react";
+import StatusChip from "../../../shared/components/StatusChip";
 
 /* ─── reusable inline-style constants ──────────── */
 const TH_STYLE = {
@@ -45,6 +46,7 @@ const PaymentTable = ({
  emptyText,
  payments,
  showActions = false,
+ showSource = false,
  actionLoading,
  onVerify,
  onReject,
@@ -95,6 +97,7 @@ const PaymentTable = ({
  <th style={TH_STYLE}>Customer</th>
  <th style={TH_STYLE}>Room</th>
  <th style={TH_STYLE}>Amount</th>
+ {showSource ? <th style={TH_STYLE}>Source</th> : null}
  {showActions ? <th style={TH_STYLE}>Move-in Date</th> : null}
  {showActions ? <th style={TH_STYLE}>Proof</th> : null}
  {showActions ? (
@@ -119,6 +122,25 @@ const PaymentTable = ({
  <td style={TD}>
  <p style={AMOUNT}>₱{p.totalPrice.toLocaleString()}</p>
  </td>
+
+ {showSource && (
+ <td style={TD}>
+  <span
+  style={{
+   display: "inline-block",
+   padding: "3px 9px",
+   borderRadius: "12px",
+   fontSize: "11px",
+   fontWeight: "500",
+   backgroundColor: p.isOnlinePayment ? "#EFF6FF" : "#F3F4F6",
+   color: p.isOnlinePayment ? "#1D4ED8" : "#6B7280",
+   border: `1px solid ${p.isOnlinePayment ? "#BFDBFE" : "#E5E7EB"}`,
+  }}
+  >
+  {p.isOnlinePayment ? "Online" : "Manual"}
+  </span>
+ </td>
+ )}
 
  {showActions && (
  <td style={TD}>
@@ -208,19 +230,7 @@ const PaymentTable = ({
  </td>
  ) : (
  <td style={TD}>
- <span
- style={{
- display: "inline-block",
- padding: "4px 10px",
- borderRadius: "20px",
- fontSize: "12px",
- fontWeight: "500",
- backgroundColor: "#D1FAE5",
- color: "#059669",
- }}
- >
- ✓ Paid & Confirmed
- </span>
+ <StatusChip status="paid" />
  </td>
  )}
  </tr>

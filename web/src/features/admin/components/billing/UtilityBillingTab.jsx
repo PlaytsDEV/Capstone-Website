@@ -18,6 +18,7 @@ import {
   Calendar,
   FileX,
   ClipboardX,
+  LoaderCircle,
 } from "lucide-react";
 import { useAuth } from "../../../../shared/hooks/useAuth";
 import ConfirmModal from "../../../../shared/components/ConfirmModal";
@@ -36,7 +37,12 @@ import {
   useRoomHistory,
   utilityKeys,
 } from "../../../../shared/hooks/queries/useUtility";
+import {
+  useAdminPayments,
+  useBillsByBranch,
+} from "../../../../shared/hooks/queries/useBilling";
 import { utilityApi } from "../../../../shared/api/utilityApi.js";
+import { billingApi } from "../../../../shared/api/billingApi.js";
 import { useBusinessSettings } from "../../../../shared/hooks/queries/useSettings";
 import { exportToCSV } from "../../../../shared/utils/exportUtils.js";
 import {
@@ -49,6 +55,13 @@ import { getRoomLabel } from "../../../../shared/utils/roomLabel.js";
 import { fmtDate } from "../../utils/formatters";
 import useBillingNotifier from "./shared/useBillingNotifier";
 import BillingCycleDetailModal from "./BillingCycleDetailModal";
+import {
+  buildPaymentLedgerByBillId as buildSharedPaymentLedgerByBillId,
+  formatAdminPaymentMode,
+  getNormalizedBillSnapshot as getSharedNormalizedBillSnapshot,
+  getNormalizedPaidState as getSharedNormalizedPaidState,
+  resolvePaymentDetails as resolveSharedPaymentDetails,
+} from "./paymentDisplay";
 
 const EMPTY_VALUE = "-";
 const WATER_BILLABLE_ROOM_TYPES = new Set(["private", "double-sharing"]);
@@ -218,6 +231,95 @@ const toInputDate = (value) => {
 };
 
 const getTodayInput = () => new Date().toISOString().slice(0, 10);
+
+const getBillDaysOverdue = (bill) => {
+  if (!bill?.dueDate || bill?.status === "paid") return 0;
+  const dueDate = new Date(bill.dueDate);
+  if (Number.isNaN(dueDate.getTime())) return 0;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  dueDate.setHours(0, 0, 0, 0);
+  const diffDays = Math.floor((today.getTime() - dueDate.getTime()) / 86400000);
+  return diffDays > 0 ? diffDays : 0;
+};
+
+const canSendBillReminder = (bill) =>
+  Boolean(
+    bill &&
+      !getSharedNormalizedPaidState(bill).isPaid &&
+      ["pending", "partially-paid", "overdue"].includes(bill.status),
+  );
+const LEGACY_PAID_FALLBACK_LABEL = "Paid — legacy/no ledger record";
+const PAYMENT_STATUS_PRIORITY = {
+  paid: 3,
+  approved: 3,
+  pending: 2,
+  rejected: 1,
+};
+const formatPaymentMethodLabel = (value) => {
+  if (!value) return EMPTY_VALUE;
+  return formatAdminPaymentMode({ paymentMethod: value });
+};
+const formatDateTime = (value) => {
+  if (!value) return EMPTY_VALUE;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return EMPTY_VALUE;
+  return date.toLocaleString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+const getPaymentReference = (payment) =>
+  payment?.externalPaymentId || payment?.referenceNumber || null;
+const getPaymentSortTime = (payment) => {
+  const raw = payment?.processedAt || payment?.createdAt || null;
+  const timestamp = raw ? new Date(raw).getTime() : 0;
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+const pickLatestPaymentRecord = (records = []) =>
+  [...records].sort((left, right) => {
+    const priorityDelta =
+      (PAYMENT_STATUS_PRIORITY[right?.status] || 0) -
+      (PAYMENT_STATUS_PRIORITY[left?.status] || 0);
+    if (priorityDelta !== 0) return priorityDelta;
+    return getPaymentSortTime(right) - getPaymentSortTime(left);
+  })[0] || null;
+const buildPaymentLedgerByBillId = (payments = []) => {
+  return buildSharedPaymentLedgerByBillId(payments);
+};
+const getBillPenaltyAmount = (bill) => Number(bill?.charges?.penalty || 0);
+const canSendPenaltyNotice = (bill) =>
+  Boolean(bill && !getSharedNormalizedPaidState(bill).isPaid && getBillPenaltyAmount(bill) > 0);
+const getPenaltyReason = (bill) => {
+  if (!canSendPenaltyNotice(bill)) return "";
+  const daysLate = Number(bill?.penaltyDetails?.daysLate || 0);
+  const ratePerDay = Number(bill?.penaltyDetails?.ratePerDay || 0);
+  if (daysLate > 0 && ratePerDay > 0) {
+    return `Late payment penalty for ${daysLate} day${daysLate === 1 ? "" : "s"} at PHP ${ratePerDay.toFixed(2)}/day`;
+  }
+  if (daysLate > 0) {
+    return `Late payment penalty for ${daysLate} day${daysLate === 1 ? "" : "s"} overdue`;
+  }
+  return "Late payment penalty applied";
+};
+const resolvePaymentDetails = (bill, paymentRecord) => {
+  const details = resolveSharedPaymentDetails(bill, paymentRecord);
+  return {
+    paymentMethod: details.paymentMethodLabel,
+    paymentRecordedAt: details.paymentRecordedAt,
+    paymentFallbackLabel: details.paymentFallbackLabel,
+    paymentSource: null,
+  };
+};
+const getPrimaryNoticeLabel = (bill) =>
+  getSharedNormalizedBillSnapshot(bill, null, {
+    getDaysOverdue: getBillDaysOverdue,
+  }).daysOverdue > 0 || bill?.status === "overdue"
+    ? "Send Overdue Notice"
+    : "Send Payment Reminder";
 
 const ELECTRICITY_EXPORT_COLUMNS = [
   { key: "roomName", label: "Room" },
@@ -431,6 +533,7 @@ const UtilityBillingTab = ({ utilityType, isActive = true }) => {
   const deletePeriod = useDeleteUtilityPeriod(utilityType);
   const [sendingByPeriodId, setSendingByPeriodId] = useState({});
   const [isSendingAllReady, setIsSendingAllReady] = useState(false);
+  const [activeNoticeKey, setActiveNoticeKey] = useState(null);
   const [periodStatusFilter, setPeriodStatusFilter] = useState("");
   const [periodStartDate, setPeriodStartDate] = useState("");
   const [periodEndDate, setPeriodEndDate] = useState("");
@@ -460,6 +563,83 @@ const UtilityBillingTab = ({ utilityType, isActive = true }) => {
   );
   const periods = periodList;
   const result = resultData?.result || null;
+  const selectedRoom = rooms.find((r) => r.id === selectedRoomId);
+  const selectedBillingBranch = isOwner
+    ? selectedRoom?.branch || branchFilter || undefined
+    : user?.branch || selectedRoom?.branch || undefined;
+  const { data: roomBillsData } = useBillsByBranch(
+    {
+      branch: selectedBillingBranch,
+      roomId: selectedRoomId || undefined,
+      limit: 500,
+    },
+    {
+      enabled: Boolean(isActive && selectedRoomId && selectedBillingBranch),
+    },
+  );
+  const roomBills = roomBillsData?.bills || [];
+  const utilityPaymentParams = useMemo(
+    () => ({
+      branch: selectedBillingBranch,
+      limit: 500,
+    }),
+    [selectedBillingBranch],
+  );
+  const { data: utilityPaymentsData } = useAdminPayments(utilityPaymentParams, {
+    enabled: Boolean(isActive && selectedBillingBranch),
+  });
+  const utilityPaymentsByBillId = useMemo(
+    () => buildPaymentLedgerByBillId(utilityPaymentsData?.data || []),
+    [utilityPaymentsData?.data],
+  );
+  const utilityBillsById = useMemo(
+    () =>
+      new Map(
+        roomBills
+          .filter((bill) => Number(bill?.charges?.[utilityType] || 0) > 0)
+          .map((bill) => [String(bill.id || bill._id || ""), bill]),
+      ),
+    [roomBills, utilityType],
+  );
+  const resultWithBilling = useMemo(() => {
+    if (!result) return null;
+    return {
+      ...result,
+      tenantSummaries: (result.tenantSummaries || []).map((tenant) => {
+        const bill = tenant?.billId
+          ? utilityBillsById.get(String(tenant.billId))
+          : null;
+        const paymentRecord = bill
+          ? utilityPaymentsByBillId.get(String(bill.id || bill._id || ""))
+          : null;
+        const normalizedBill = getSharedNormalizedBillSnapshot(bill, paymentRecord, {
+          getDaysOverdue: getBillDaysOverdue,
+        });
+        const paymentDetails = resolvePaymentDetails(bill, paymentRecord);
+        return {
+          ...tenant,
+          billId: bill?.id || bill?._id || tenant.billId || null,
+          billStatus: normalizedBill.status || "",
+          dueDate: bill?.dueDate || null,
+          remainingAmount: bill ? normalizedBill.balance : Number(tenant.billAmount ?? 0),
+          daysOverdue: normalizedBill.daysOverdue,
+          canSendReminder: canSendBillReminder(bill, paymentRecord),
+          canSendPenaltyNotice: canSendPenaltyNotice(bill, paymentRecord),
+          penaltyAmount: getBillPenaltyAmount(bill),
+          penaltyReason: getPenaltyReason(bill),
+          paymentMethod: paymentDetails.paymentMethod,
+          paymentRecordedAt: paymentDetails.paymentRecordedAt,
+          paymentFallbackLabel: paymentDetails.paymentFallbackLabel,
+        };
+      }),
+    };
+  }, [result, utilityBillsById, utilityPaymentsByBillId]);
+  const selectedMonitoringResult =
+    selectedPeriodFromList &&
+    (selectedPeriodFromList.status === "closed" ||
+      selectedPeriodFromList.status === "revised")
+      ? resultWithBilling
+      : null;
   const roomHistory = roomHistoryData?.history || [];
   const billingTimelineRows = useMemo(() => {
     const mergeRow = (current, next) => {
@@ -596,7 +776,6 @@ const UtilityBillingTab = ({ utilityType, isActive = true }) => {
 
     return combined;
   }, [roomHistory, meterTimelineEvents]);
-  const selectedRoom = rooms.find((r) => r.id === selectedRoomId);
   const currentPeriod = periods[0] || null;
   const openPeriodForRoom = periods.find((p) => p.status === "open");
   const lastClosedPeriod = periods.find(
@@ -798,10 +977,6 @@ const UtilityBillingTab = ({ utilityType, isActive = true }) => {
   // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Handlers ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
 
   const selectAndFocusPeriod = (periodId) => {
-    if (selectedPeriodId === periodId) {
-      setSelectedPeriodId(null);
-      return;
-    }
     setSelectedPeriodId(periodId);
   };
 
@@ -814,7 +989,6 @@ const UtilityBillingTab = ({ utilityType, isActive = true }) => {
   const closeHistoryModal = () => {
     setIsHistoryModalOpen(false);
     setHistoryModalPeriodId(null);
-    setSelectedPeriodId(null);
   };
 
   const openPanel = (panel) => {
@@ -1236,6 +1410,37 @@ const UtilityBillingTab = ({ utilityType, isActive = true }) => {
         }
       },
     });
+  };
+
+  const handleSendReminder = async (billId, noticeType = "reminder") => {
+    if (!billId) {
+      notify.error(new Error("Bill not found."), "Bill not found.");
+      return;
+    }
+
+    const noticeKey = `${billId}:${noticeType}`;
+    setActiveNoticeKey(noticeKey);
+    try {
+      await billingApi.sendBillReminder(billId, { noticeType });
+      notify.success(
+        noticeType === "penalty"
+          ? "Penalty notice sent successfully."
+          : "Reminder sent successfully.",
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: utilityKeys.all(utilityType) }),
+        queryClient.invalidateQueries({ queryKey: ["billing", "branch"] }),
+      ]);
+    } catch (error) {
+      notify.error(
+        error,
+        noticeType === "penalty"
+          ? "Failed to send penalty notice."
+          : "Failed to send reminder.",
+      );
+    } finally {
+      setActiveNoticeKey(null);
+    }
   };
 
   const handleExportRows = async () => {
@@ -1838,18 +2043,19 @@ const UtilityBillingTab = ({ utilityType, isActive = true }) => {
           ) : (
             pagedPeriods.map((p) => {
               const status = getDisplayStatus(p);
-              const isClickable =
+              const canOpenHistory =
                 p.status === "closed" || p.status === "revised";
+              const isSelectedPeriod = selectedPeriodId === p.id;
               return (
                 <div
                   key={p.id}
-                  className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 ${
-                    isClickable ? "cursor-pointer" : "cursor-default"
+                  className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3 ${
+                    isSelectedPeriod
+                      ? "border-amber-300 bg-amber-50/40"
+                      : "border-border bg-card"
                   }`}
-                  onClick={() => isClickable && openHistoryModal(p.id)}
-                  title={
-                    isClickable ? "Click to view this billing cycle" : undefined
-                  }
+                  onClick={() => selectAndFocusPeriod(p.id)}
+                  title="Click to monitor this billing cycle"
                 >
                   <div>
                     <p className="text-sm font-semibold text-card-foreground">
@@ -1929,7 +2135,7 @@ const UtilityBillingTab = ({ utilityType, isActive = true }) => {
                           <Trash2 size={12} />
                         </button>
                       )}
-                      {(p.status === "closed" || p.status === "revised") && (
+                      {canOpenHistory && (
                         <button
                           type="button"
                           className="rounded-md border border-border px-2 py-1 text-[11px] font-semibold text-muted-foreground hover:bg-muted"
@@ -1952,6 +2158,159 @@ const UtilityBillingTab = ({ utilityType, isActive = true }) => {
           onChange={setPeriodsPage}
           countLabel={`${filteredPeriods.length} of ${periods.length} period${periods.length !== 1 ? "s" : ""}`}
         />
+      </section>
+
+      <section className="rounded-xl border border-border bg-card p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--color-accent,#D4AF37)]">
+              <Check size={12} className="shrink-0" />
+              Tenant Billing & Payments
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Payment monitoring stays attached to the selected room and billing cycle.
+            </p>
+          </div>
+          <div className="text-right text-xs text-muted-foreground">
+            <p>
+              {selectedPeriodFromList
+                ? getCycleLabel(selectedPeriodFromList)
+                : "No billing cycle selected"}
+            </p>
+            {selectedPeriodFromList ? (
+              <p className="mt-1">
+                {getDisplayStatusLabel(selectedPeriodFromList)}
+              </p>
+            ) : null}
+          </div>
+        </div>
+
+        {!selectedPeriodFromList ? (
+          <div className="mt-4 rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+            Select a billing cycle to review tenant bill and payment details.
+          </div>
+        ) : !selectedMonitoringResult ? (
+          <div className="mt-4 rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+            Tenant bill and payment details appear after this cycle is closed or revised.
+          </div>
+        ) : (selectedMonitoringResult.tenantSummaries || []).length === 0 ? (
+          <div className="mt-4 rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+            No covered tenants were found for this billing cycle.
+          </div>
+        ) : (
+          <div className="mt-4 overflow-x-auto pb-1">
+            <table className="min-w-[1120px] text-left text-xs">
+              <thead>
+                <tr className="border-b border-border">
+                  {[
+                    "Tenant",
+                    "Usage",
+                    "Bill Amount",
+                    "Balance",
+                    "Status",
+                    "Due Date",
+                    "Payment Method",
+                    "Paid / Processed",
+                    "Action",
+                  ].map((label) => (
+                    <th
+                      key={label}
+                      className="whitespace-nowrap py-2 pr-5 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground"
+                    >
+                      {label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/50">
+                {(selectedMonitoringResult.tenantSummaries || []).map((tenant, index) => (
+                  <tr key={`${selectedPeriodFromList.id}-monitor-${index}`}>
+                    <td className="py-3 pr-4">
+                      <p className="font-semibold text-card-foreground">
+                        {tenant.tenantName || EMPTY_VALUE}
+                      </p>
+                      <p className="text-muted-foreground">
+                        {tenant.tenantEmail || EMPTY_VALUE}
+                      </p>
+                    </td>
+                    <td className="py-3 pr-4 text-muted-foreground">
+                      {fmtNumber(tenant.totalUsage, 4)}
+                    </td>
+                    <td className="py-3 pr-4 font-semibold text-card-foreground">
+                      {fmtCurrency(tenant.billAmount)}
+                    </td>
+                    <td className="py-3 pr-4 text-muted-foreground">
+                      {fmtCurrency(tenant.remainingAmount)}
+                    </td>
+                    <td className="py-3 pr-4">
+                      <div className="space-y-1">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                            tenant.billStatus === "paid"
+                              ? "bg-success-light text-success-dark"
+                              : tenant.daysOverdue > 0 || tenant.billStatus === "overdue"
+                                ? "bg-danger-light text-danger-dark"
+                                : tenant.billStatus === "partially-paid"
+                                  ? "bg-warning-light text-warning-dark"
+                                  : "bg-info-light text-info-dark"
+                          }`}
+                        >
+                          {tenant.billStatus
+                            ? String(tenant.billStatus).replace(/-/g, " ")
+                            : "no bill"}
+                        </span>
+                        {tenant.daysOverdue > 0 ? (
+                          <div className="text-[11px] font-medium text-danger-dark">
+                            {tenant.daysOverdue} day{tenant.daysOverdue === 1 ? "" : "s"} overdue
+                          </div>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="py-3 pr-4 text-muted-foreground">
+                      {tenant.dueDate ? fmtShortDate(tenant.dueDate) : EMPTY_VALUE}
+                    </td>
+                    <td className="py-3 pr-4 text-muted-foreground">
+                      {tenant.paymentFallbackLabel || formatPaymentMethodLabel(tenant.paymentMethod)}
+                    </td>
+                    <td className="py-3 pr-4 text-muted-foreground">
+                      {formatDateTime(tenant.paymentRecordedAt)}
+                    </td>
+                    <td className="py-3 pr-4">
+                      {tenant.billId && (tenant.canSendPenaltyNotice || tenant.canSendReminder) ? (
+                        <button
+                          type="button"
+                          className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${
+                            tenant.canSendPenaltyNotice
+                              ? "border-danger text-danger-dark hover:bg-danger-light"
+                              : "border-border text-muted-foreground hover:bg-muted"
+                          }`}
+                          onClick={() => handleSendReminder(tenant.billId, tenant.canSendPenaltyNotice ? "penalty" : tenant.daysOverdue > 0 ? "overdue" : "reminder")}
+                          disabled={activeNoticeKey?.startsWith(`${tenant.billId}:`)}
+                          title={tenant.canSendPenaltyNotice ? (tenant.penaltyReason || "Send penalty notice") : undefined}
+                        >
+                          {activeNoticeKey?.startsWith(`${tenant.billId}:`) ? (
+                            <LoaderCircle size={11} className="animate-spin" />
+                          ) : (
+                            <Send size={11} />
+                          )}
+                          {tenant.canSendPenaltyNotice
+                            ? "Send Penalty Notice"
+                            : tenant.daysOverdue > 0
+                              ? "Send Overdue Notice"
+                              : "Send Payment Reminder"}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">
+                          {tenant.billStatus === "paid" ? "Paid" : EMPTY_VALUE}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
       {/* Edit Reading Modal */}
       {editReadingModal.open && (
@@ -2419,7 +2778,7 @@ const UtilityBillingTab = ({ utilityType, isActive = true }) => {
         isOpen={isHistoryModalOpen}
         onClose={closeHistoryModal}
         period={historyModalPeriod}
-        result={result}
+        result={resultWithBilling}
         utilityType={utilityType}
         statusLabel={
           historyModalPeriod ? getDisplayStatusLabel(historyModalPeriod) : ""
@@ -2435,10 +2794,12 @@ const UtilityBillingTab = ({ utilityType, isActive = true }) => {
         }}
         eventTypeLabels={EVENT_TYPE_LABELS}
         onExport={
-          historyModalPeriod && result
-            ? () => handleExportTenantSummary(historyModalPeriod, result)
+          historyModalPeriod && resultWithBilling
+            ? () => handleExportTenantSummary(historyModalPeriod, resultWithBilling)
             : null
         }
+        onSendReminder={handleSendReminder}
+        activeNoticeKey={activeNoticeKey}
       />
 
       {/* New Billing Period Modal */}

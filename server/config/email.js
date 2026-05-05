@@ -656,10 +656,12 @@ export const sendPaymentReminderEmail = async ({
   billingMonth,
   totalAmount,
   dueDate,
+  billType = "Bill",
   branchName = "Lilycrest",
 }) => {
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD)
     return { success: false, message: "Email service not configured" };
+  const billTypeLabel = String(billType || "Bill");
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
 <body style="margin:0;padding:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:#f5f5f5;">
   <table role="presentation" style="width:100%;border-collapse:collapse;"><tr><td style="padding:40px 20px;">
@@ -676,8 +678,11 @@ export const sendPaymentReminderEmail = async ({
         </div>
         <h2 style="color:#111827;margin:0 0 20px;font-size:22px;text-align:center;">Payment Reminder</h2>
         <p style="color:#555;font-size:16px;line-height:1.6;">Hello <strong>${tenantName}</strong>,</p>
-        <p style="color:#555;font-size:16px;line-height:1.6;">This is a friendly reminder that your dormitory payment is due soon.</p>
+        <p style="color:#555;font-size:16px;line-height:1.6;">Bill type: <strong>${billTypeLabel}</strong></p>
+        <p style="color:#555;font-size:16px;line-height:1.6;">This is a friendly reminder that your ${billTypeLabel.toLowerCase()} payment is due soon.</p>
         <div style="background:#f8f9fa;border-radius:8px;padding:20px;margin:20px 0;text-align:center;">
+          <p style="color:#6B7280;font-size:12px;text-transform:uppercase;margin:0 0 6px;">Bill Type</p>
+          <p style="color:#111827;font-size:16px;font-weight:600;margin:0 0 12px;">${billTypeLabel}</p>
           <p style="color:#6B7280;font-size:12px;text-transform:uppercase;margin:0 0 6px;">Amount Due</p>
           <p style="color:#E7710F;font-size:28px;font-weight:700;margin:0 0 12px;">₱${Number(totalAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p>
           <p style="color:#6B7280;font-size:12px;text-transform:uppercase;margin:0 0 6px;">Due Date</p>
@@ -695,9 +700,9 @@ export const sendPaymentReminderEmail = async ({
     const info = await transporter.sendMail({
       from: { name: "Lilycrest Dormitory", address: process.env.EMAIL_USER },
       to,
-      subject: `Payment Reminder — Due ${dueDate} | Lilycrest Dormitory`,
+      subject: `${billTypeLabel} Reminder — Due ${dueDate} | Lilycrest Dormitory`,
       html,
-      text: `Hello ${tenantName}, reminder: your payment of ₱${totalAmount} is due on ${dueDate}. — Lilycrest Dormitory`,
+      text: `Hello ${tenantName}, reminder: your ${billTypeLabel.toLowerCase()} balance of ₱${totalAmount} is due on ${dueDate}. — Lilycrest Dormitory`,
     });
     return { success: true, messageId: info.messageId };
   } catch (error) {
@@ -717,10 +722,23 @@ export const sendOverdueNoticeEmail = async ({
   totalAmount,
   daysLate,
   penalty,
+  dueDate = "the due date",
+  billType = "Bill",
+  reason = "",
+  noticeVariant = "overdue",
   branchName = "Lilycrest",
 }) => {
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD)
     return { success: false, message: "Email service not configured" };
+  const billTypeLabel = String(billType || "Bill");
+  const isPenaltyNotice = noticeVariant === "penalty";
+  const headline = isPenaltyNotice ? "Penalty Notice" : "Payment Overdue";
+  const intro = isPenaltyNotice
+    ? `A late-payment penalty update is now attached to your <strong>${billTypeLabel.toLowerCase()}</strong> bill.`
+    : `Your <strong>${billTypeLabel.toLowerCase()}</strong> payment is <strong>${daysLate} day${daysLate !== 1 ? "s" : ""} overdue</strong>. Penalties are being applied.`;
+  const reasonBlock = reason
+    ? `<p style="color:#991B1B;font-size:14px;margin:12px 0 0;">Reason: ${reason}</p>`
+    : "";
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
 <body style="margin:0;padding:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:#f5f5f5;">
   <table role="presentation" style="width:100%;border-collapse:collapse;"><tr><td style="padding:40px 20px;">
@@ -735,13 +753,18 @@ export const sendOverdueNoticeEmail = async ({
             <span style="font-size:28px;">⚠️</span>
           </div>
         </div>
-        <h2 style="color:#991B1B;margin:0 0 20px;font-size:22px;text-align:center;">Payment Overdue</h2>
+        <h2 style="color:#991B1B;margin:0 0 20px;font-size:22px;text-align:center;">${headline}</h2>
         <p style="color:#555;font-size:16px;line-height:1.6;">Hello <strong>${tenantName}</strong>,</p>
-        <p style="color:#555;font-size:16px;line-height:1.6;">Your payment is <strong>${daysLate} day${daysLate !== 1 ? "s" : ""} overdue</strong>. Penalties are being applied.</p>
+        <p style="color:#555;font-size:16px;line-height:1.6;">Bill type: <strong>${billTypeLabel}</strong></p>
+        <p style="color:#555;font-size:16px;line-height:1.6;">${intro}</p>
         <div style="background:#FEF2F2;border-radius:8px;padding:20px;margin:20px 0;text-align:center;">
+          <p style="color:#6B7280;font-size:12px;text-transform:uppercase;margin:0 0 6px;">Due Date</p>
+          <p style="color:#111827;font-size:16px;font-weight:600;margin:0 0 12px;">${dueDate}</p>
+          ${daysLate > 0 ? `<p style="color:#6B7280;font-size:12px;text-transform:uppercase;margin:0 0 6px;">Days Overdue</p><p style="color:#991B1B;font-size:16px;font-weight:600;margin:0 0 12px;">${daysLate} day${daysLate !== 1 ? "s" : ""}</p>` : ""}
           <p style="color:#6B7280;font-size:12px;text-transform:uppercase;margin:0 0 6px;">Total Amount (incl. penalty)</p>
           <p style="color:#DC2626;font-size:28px;font-weight:700;margin:0 0 12px;">₱${Number(totalAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p>
           <p style="color:#991B1B;font-size:14px;margin:0;">Includes ₱${Number(penalty).toLocaleString("en-PH", { minimumFractionDigits: 2 })} in late penalties</p>
+          ${reasonBlock}
         </div>
         <p style="color:#555;font-size:14px;line-height:1.6;">Please settle your payment immediately to avoid further charges.</p>
       </td></tr>
@@ -755,9 +778,13 @@ export const sendOverdueNoticeEmail = async ({
     const info = await transporter.sendMail({
       from: { name: "Lilycrest Dormitory", address: process.env.EMAIL_USER },
       to,
-      subject: `⚠️ Payment Overdue — Penalties Applying | Lilycrest Dormitory`,
+      subject: isPenaltyNotice
+        ? `Penalty Notice — ${billTypeLabel} | Lilycrest Dormitory`
+        : `Overdue Notice — ${billTypeLabel} | Lilycrest Dormitory`,
       html,
-      text: `Hello ${tenantName}, your payment is ${daysLate} days overdue. Total due: ₱${totalAmount} (includes ₱${penalty} penalty). — Lilycrest Dormitory`,
+      text: isPenaltyNotice
+        ? `Hello ${tenantName}, a penalty update has been applied to your ${billTypeLabel.toLowerCase()} bill. Due date: ${dueDate}. Total due: ₱${totalAmount}. Penalty: ₱${penalty}.${reason ? ` Reason: ${reason}.` : ""} — Lilycrest Dormitory`
+        : `Hello ${tenantName}, your ${billTypeLabel.toLowerCase()} bill is ${daysLate} days overdue. Due date: ${dueDate}. Total due: ₱${totalAmount} (includes ₱${penalty} penalty).${reason ? ` Reason: ${reason}.` : ""} — Lilycrest Dormitory`,
     });
     return { success: true, messageId: info.messageId };
   } catch (error) {

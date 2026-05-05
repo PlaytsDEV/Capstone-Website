@@ -48,6 +48,7 @@ export const queryKeys = {
     roomsWithTenants: (branch) => ["billing", "roomsWithTenants", branch],
     pendingVerifications: ["billing", "pendingVerifications"],
     report: ["billing", "report"],
+    payments: (params) => ["billing", "payments", params || {}],
   },
 
   // ── Inquiries ──

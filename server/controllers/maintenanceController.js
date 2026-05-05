@@ -914,6 +914,16 @@ export const updateAdminRequestStatus = async (req, res, next) => {
         serializeTenantSummary(tenantUser, request),
       ),
     });
+
+    try {
+      const { emitToAdmins } = await import("../utils/socket.js");
+      emitToAdmins("ticket:updated", {
+        requestId: String(request._id),
+        status: request.status,
+      });
+    } catch (socketErr) {
+      // non-fatal
+    }
   } catch (error) {
     next(error);
   }

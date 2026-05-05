@@ -11,7 +11,9 @@ const utilityPeriodFindOne = jest.fn();
 const ensureCurrentCycleRentBill = jest.fn();
 const userFindById = jest.fn();
 const sendBillGeneratedEmail = jest.fn();
+const sendOverdueNoticeEmail = jest.fn();
 const sendPaymentApprovedEmail = jest.fn();
+const sendPaymentReminderEmail = jest.fn();
 const sendPaymentRejectedEmail = jest.fn();
 const applyBillPayment = jest.fn();
 const generateBillPdf = jest.fn();
@@ -81,7 +83,9 @@ await jest.unstable_mockModule("../middleware/errorHandler.js", () => ({
 
 await jest.unstable_mockModule("../config/email.js", () => ({
   sendBillGeneratedEmail,
+  sendOverdueNoticeEmail,
   sendPaymentApprovedEmail,
+  sendPaymentReminderEmail,
   sendPaymentRejectedEmail,
 }));
 
@@ -133,6 +137,8 @@ await jest.unstable_mockModule("../utils/businessSettings.js", () => ({
 await jest.unstable_mockModule("../utils/notificationService.js", () => ({
   default: {
     billGenerated: notifyBillGenerated,
+    billDueReminder: jest.fn(),
+    general: jest.fn(),
   },
 }));
 
@@ -203,14 +209,18 @@ describe("billingController tenant endpoints", () => {
     ensureCurrentCycleRentBill.mockReset();
     userFindById.mockReset();
     sendBillGeneratedEmail.mockReset();
+    sendOverdueNoticeEmail.mockReset();
     sendPaymentApprovedEmail.mockReset();
+    sendPaymentReminderEmail.mockReset();
     sendPaymentRejectedEmail.mockReset();
     applyBillPayment.mockReset();
     generateBillPdf.mockReset();
     logBillingAudit.mockReset();
     notifyBillGenerated.mockReset();
     sendBillGeneratedEmail.mockResolvedValue({ success: true });
+    sendOverdueNoticeEmail.mockResolvedValue({ success: true });
     sendPaymentApprovedEmail.mockResolvedValue({ success: true });
+    sendPaymentReminderEmail.mockResolvedValue({ success: true });
     sendPaymentRejectedEmail.mockResolvedValue({ success: true });
     generateBillPdf.mockResolvedValue("uploads/bills/bill-1.pdf");
     notifyBillGenerated.mockResolvedValue({});

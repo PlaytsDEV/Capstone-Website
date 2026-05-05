@@ -329,6 +329,16 @@ export const updateInquiry = async (req, res, next) => {
       message: "Inquiry updated successfully",
       inquiry,
     });
+
+    try {
+      const { emitToAdmins } = await import("../utils/socket.js");
+      emitToAdmins("inquiry:updated", {
+        inquiryId: String(id),
+        status: inquiry?.status,
+      });
+    } catch (socketErr) {
+      // non-fatal
+    }
   } catch (error) {
     next(error);
   }
