@@ -128,12 +128,18 @@ const DormPreferencesSection = ({
  </div>
 
  {/* Lease Duration */}
- <div className="form-group">
- <label className="form-label">Duration of Lease <span style={{ fontSize: "11px", color: "#6B7280", fontWeight: 400 }}>(optional)</span></label>
+ <div className="form-group" data-field="leaseDuration">
+ <label className="form-label">
+ Duration of Lease <span className="rf-required">*</span>
+ </label>
  <select
  className="form-select"
  value={leaseDuration}
  onChange={(e) => setLeaseDuration(e.target.value)}
+ required
+ style={{
+ border: errBorder(showValidationErrors, leaseDuration),
+ }}
  >
  <option value="">Select duration...</option>
  {LEASE_OPTIONS.map((opt) => (
@@ -142,6 +148,7 @@ const DormPreferencesSection = ({
  </option>
  ))}
  </select>
+ <FieldError error={showValidationErrors && !leaseDuration ? "Please select a lease duration" : null} />
  </div>
 
  {/* Work Schedule */}

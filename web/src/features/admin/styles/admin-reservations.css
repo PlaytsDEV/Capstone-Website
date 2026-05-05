@@ -602,6 +602,71 @@
   gap: 10px;
 }
 
+.visit-live-date {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.visit-live-date input {
+  min-width: 150px;
+  padding: 0 10px;
+  text-transform: none;
+}
+
+.visit-live-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.visit-live-slot {
+  min-height: 78px;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 12px;
+  background: var(--bg-card);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.visit-live-slot strong,
+.visit-live-slot span,
+.visit-live-slot em {
+  display: block;
+}
+
+.visit-live-slot strong {
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.visit-live-slot span {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.visit-live-slot em {
+  color: var(--success);
+  font-size: var(--font-size-sm);
+  font-style: normal;
+  font-weight: 700;
+  text-align: right;
+}
+
+.visit-live-slot--full em,
+.visit-live-slot--closed em {
+  color: var(--danger);
+}
+
 .visit-blackout-row {
   display: grid;
   grid-template-columns: 180px minmax(220px, 1fr) 36px;
@@ -674,6 +739,12 @@
   .visit-availability-header__actions select,
   .visit-availability-header__actions .res-action-btn {
     width: 100%;
+  }
+
+  .visit-live-date {
+    width: 100%;
+    margin-left: 0;
+    justify-content: space-between;
   }
 
   .visit-availability-summary {

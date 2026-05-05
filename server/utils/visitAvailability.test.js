@@ -42,9 +42,14 @@ const mockRoomIds = () => {
 };
 
 const mockReservations = (rows = []) => {
+  const normalizedRows = rows.map((row) => ({
+    visitDate: "2026-05-05T09:00:00.000Z",
+    roomId: "room-1",
+    ...row,
+  }));
   reservationFind.mockReturnValue({
     select: jest.fn().mockReturnValue({
-      lean: jest.fn().mockResolvedValue(rows),
+      lean: jest.fn().mockResolvedValue(normalizedRows),
     }),
   });
 };
@@ -152,6 +157,52 @@ describe("visitAvailability", () => {
       ["2026-05-10", false],
       ["2026-05-11", true],
     ]);
+  });
+
+  test("deducts active reservations from returned slot remaining counts", async () => {
+    visitAvailabilityFindOne.mockResolvedValue(
+      buildSettings({ slots: [{ label: "09:00 AM", enabled: true, capacity: 5 }] }),
+    );
+    mockReservations([{ visitTime: "09:00 AM" }]);
+
+    const result = await buildVisitAvailability({
+      branch: "gil-puyat",
+      from: "2026-05-05",
+      days: 1,
+      now: new Date("2026-05-04T08:00:00"),
+    });
+
+    expect(result.dates[0].slots[0]).toEqual(
+      expect.objectContaining({
+        count: 1,
+        capacity: 5,
+        remaining: 4,
+        available: true,
+      }),
+    );
+  });
+
+  test("marks full slots unavailable in returned availability", async () => {
+    visitAvailabilityFindOne.mockResolvedValue(
+      buildSettings({ slots: [{ label: "09:00 AM", enabled: true, capacity: 2 }] }),
+    );
+    mockReservations([{ visitTime: "09:00 AM" }, { visitTime: "09:00 AM" }]);
+
+    const result = await buildVisitAvailability({
+      branch: "gil-puyat",
+      from: "2026-05-05",
+      days: 1,
+      now: new Date("2026-05-04T08:00:00"),
+    });
+
+    expect(result.dates[0].slots[0]).toEqual(
+      expect.objectContaining({
+        count: 2,
+        remaining: 0,
+        available: false,
+        disabledCode: "VISIT_CAPACITY_REACHED",
+      }),
+    );
   });
 
   test("rejects configured capacity when slot is full", async () => {

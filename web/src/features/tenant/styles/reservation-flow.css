@@ -351,6 +351,20 @@ html[data-theme="dark"] .rf-policies-link { color: var(--color-success); }
   grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
   gap: 8px;
 }
+.rf-time-grid__message,
+.rf-availability-alert {
+  grid-column: 1 / -1;
+  border: 1px solid var(--rf-error-border, #fecaca);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--rf-error-bg, #fef2f2);
+  color: var(--rf-error-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+.rf-availability-alert {
+  margin-bottom: 14px;
+}
 .rf-time-btn {
   all: unset;
   box-sizing: border-box;

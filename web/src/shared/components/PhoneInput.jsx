@@ -226,7 +226,7 @@ const PhoneInput = ({
  /* ── Placeholder ─────────────────────────────────────────────── */
  const getPlaceholder = () => {
  if (!selectedCountry) return "Pick a country first";
- if (selectedCountry.code === "PH") return "9171234567 or 09171234567";
+ if (selectedCountry.code === "PH") return "9XXXXXXXXX";
  return "Local number or +[code]…";
  };
 

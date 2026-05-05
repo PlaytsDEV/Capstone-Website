@@ -15,9 +15,14 @@ export default defineConfig({
       output: {
         manualChunks: {
           // Split heavy vendor libs into separately cacheable chunks
-          "vendor-react": ["react", "react-dom", "react-router-dom"],
+          "vendor-react": [
+            "react",
+            "react-dom",
+            "react/jsx-runtime",
+            "react/jsx-dev-runtime",
+            "react-router-dom",
+          ],
           "vendor-firebase": ["firebase/app", "firebase/auth"],
-          "vendor-motion": ["framer-motion"],
           "vendor-icons": ["lucide-react"],
         },
       },

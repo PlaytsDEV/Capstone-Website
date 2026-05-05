@@ -17,20 +17,23 @@ const RoomCard = React.memo(({ room, onClick }) => {
  setCurrentImageIndex((prev) => (prev - 1 + images.length) % images.length);
  };
 
- // Bed availability — prefer currentOccupancy/capacity (kept in sync by
- // auto-heal logic) over the beds[].status array which can drift out of sync
+ // Reserved beds are not open, even when room occupancy has not changed yet.
  const totalBeds = room.capacity || room.beds?.length || parseInt(room.occupancy?.split("/")[1]) || 0;
- const occupied = room.currentOccupancy ?? (
+ const occupiedFromBeds = room.beds
+ ? room.beds.filter((b) => String(b.status || "").toLowerCase() === "occupied" || (b.status === undefined && b.available === false)).length
+ : parseInt(room.occupancy?.split("/")[0]) || 0;
+ const occupied = Math.max(room.currentOccupancy ?? 0, occupiedFromBeds);
+ const reservedBeds = room.reservedBeds ?? (
  room.beds
- ? room.beds.filter((b) => b.status === "occupied" || b.available === false).length
- : parseInt(room.occupancy?.split("/")[0]) || 0
+ ? room.beds.filter((b) => String(b.status || "").toLowerCase() === "reserved").length
+ : 0
  );
  const lockedBeds = room.unavailableBeds ?? (
  room.beds
- ? room.beds.filter((b) => ["locked", "maintenance"].includes(String(b.status || ""))).length
+ ? room.beds.filter((b) => ["locked", "maintenance"].includes(String(b.status || "").toLowerCase())).length
  : 0
  );
- const availableBeds = Math.max(0, totalBeds - occupied - lockedBeds);
+ const availableBeds = room.availableBeds ?? Math.max(0, totalBeds - occupied - reservedBeds - lockedBeds);
  const takenBeds = Math.min(totalBeds, occupied);
  const availabilityLabel =
  availableBeds === 0 && lockedBeds > 0 ? "Unavailable" : "Full";
@@ -97,6 +100,9 @@ const RoomCard = React.memo(({ room, onClick }) => {
  {/* Taken beds (red) */}
  {Array.from({ length: takenBeds }).map((_, i) => (
  <div key={`t-${i}`} className="ca-bed-dot taken" />
+ ))}
+ {Array.from({ length: reservedBeds }).map((_, i) => (
+ <div key={`r-${i}`} className="ca-bed-dot reserved" />
  ))}
  {Array.from({ length: lockedBeds }).map((_, i) => (
  <div key={`l-${i}`} className="ca-bed-dot locked" />

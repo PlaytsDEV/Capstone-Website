@@ -26,7 +26,6 @@ const DashboardTab = ({
  selectedReservation,
  visits,
  onGoToPersonal,
- onGoToBilling,
 }) => {
  const navigate = useNavigate();
  const res = selectedReservation;
@@ -145,13 +144,7 @@ const DashboardTab = ({
 
  <button
  type="button"
- onClick={() => {
- if (onGoToBilling) {
- onGoToBilling();
- return;
- }
- navigate("/applicant/profile", { state: { tab: "billing" } });
- }}
+ onClick={() => navigate("/applicant/billing")}
  style={shortcutCardStyle}
  >
  <span
