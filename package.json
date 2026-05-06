@@ -8,7 +8,8 @@
     "start:local": "powershell -ExecutionPolicy Bypass -File .\\start-local.ps1",
     "dev:web": "npm --prefix web run dev",
     "kill:server-port": "npm --prefix server run kill-port",
-    "kill:web-port": "npm --prefix server run kill-port -- 3000"
+    "kill:web-port": "npm --prefix server run kill-port -- 3000",
+    "seed:analytics-demo": "npm --prefix server run seed:analytics-demo"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

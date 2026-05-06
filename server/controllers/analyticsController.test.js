@@ -133,16 +133,24 @@ describe("analyticsController", () => {
       totalOccupancy: 15,
       overallOccupancyRate: "75%",
     });
-    roomFind.mockReturnValue(createLeanChain([{ _id: "room-1" }]));
+    roomFind.mockReturnValue(
+      createLeanChain([
+        {
+          _id: "room-1",
+          branch: "gil-puyat",
+          type: "private",
+          roomNumber: "101",
+          capacity: 1,
+        },
+      ]),
+    );
     userCountDocuments.mockResolvedValue(12);
     maintenanceCountDocuments.mockResolvedValue(3);
     inquiryCountDocuments
       .mockResolvedValueOnce(5)
       .mockResolvedValueOnce(2)
       .mockResolvedValueOnce(1);
-    billFind
-      .mockReturnValueOnce(createLeanChain([]))
-      .mockReturnValueOnce(createLeanChain([]));
+    billFind.mockReturnValue(createLeanChain([]));
     billAggregate
       .mockResolvedValueOnce([{ total: 42000 }])
       .mockResolvedValueOnce([{ total: 42000 }]);
@@ -201,6 +209,10 @@ describe("analyticsController", () => {
           revenueCollected: 42000,
           activeTickets: 3,
           inquiries: 5,
+          revenueTrend: expect.any(Array),
+        }),
+        occupancy: expect.objectContaining({
+          trend: expect.any(Array),
         }),
       }),
     );
@@ -234,7 +246,24 @@ describe("analyticsController", () => {
         totalOccupancy: 14,
         overallOccupancyRate: "70%",
       });
-    roomFind.mockReturnValue(createLeanChain([{ _id: "room-1" }, { _id: "room-2" }]));
+    roomFind.mockReturnValue(
+      createLeanChain([
+        {
+          _id: "room-1",
+          branch: "gil-puyat",
+          type: "private",
+          roomNumber: "101",
+          capacity: 1,
+        },
+        {
+          _id: "room-2",
+          branch: "guadalupe",
+          type: "quadruple-sharing",
+          roomNumber: "201",
+          capacity: 4,
+        },
+      ]),
+    );
     userCountDocuments.mockResolvedValue(20);
     maintenanceCountDocuments
       .mockResolvedValueOnce(6)
@@ -244,9 +273,7 @@ describe("analyticsController", () => {
       .mockResolvedValueOnce(8)
       .mockResolvedValueOnce(3)
       .mockResolvedValueOnce(5);
-    billFind
-      .mockReturnValueOnce(createLeanChain([]))
-      .mockReturnValueOnce(createLeanChain([]));
+    billFind.mockReturnValue(createLeanChain([]));
     billAggregate
       .mockResolvedValueOnce([{ total: 81000 }])
       .mockResolvedValueOnce([{ total: 45000 }])

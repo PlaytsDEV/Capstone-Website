@@ -9,91 +9,45 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import { TrendingUp, ArrowUp, DollarSign } from "lucide-react";
+import { ArrowUp, DollarSign } from "lucide-react";
 
 /**
- * RevenueTrendCard — Monthly revenue trend chart
- * Shows Target Revenue vs Actual Revenue comparison
+ * RevenueTrendCard — Monthly billing and collections trend chart
+ * Shows billed amounts vs collected payments using real report history.
  */
 export default function RevenueTrendCard({ data = {} }) {
-  const revenueTrendData = useMemo(() => {
-    const trend = data.revenueTrend || [];
+  const revenueTrendData = useMemo(
+    () =>
+      (data.revenueTrend || []).slice(-6).map((item) => ({
+        period: item.label || "",
+        billed: Number(item.billedAmount || 0),
+        collected: Number(item.actualRevenue || item.collectedRevenue || 0),
+      })),
+    [data.revenueTrend],
+  );
 
-    if (trend.length === 0) {
-      // Generate sample 6-month trend data
-      const currentMonthRevenue = data.revenueCollected || 1890000;
-      const targetRevenue = currentMonthRevenue / 1.18; // 118% of target
-
-      return [
-        {
-          period: "Nov",
-          target: targetRevenue * 0.85,
-          actual: targetRevenue * 0.88,
-        },
-        {
-          period: "Dec",
-          target: targetRevenue * 0.9,
-          actual: targetRevenue * 0.98,
-        },
-        {
-          period: "Jan",
-          target: targetRevenue * 0.95,
-          actual: targetRevenue * 1.05,
-        },
-        {
-          period: "Feb",
-          target: targetRevenue * 1.0,
-          actual: targetRevenue * 1.08,
-        },
-        {
-          period: "Mar",
-          target: targetRevenue * 1.0,
-          actual: targetRevenue * 1.12,
-        },
-        {
-          period: "Apr",
-          target: targetRevenue * 1.0,
-          actual: currentMonthRevenue,
-        },
-      ];
-    }
-
-    return trend.slice(-6).map((item) => ({
-      period: item.label || "",
-      target: item.targetRevenue || 0,
-      actual: item.actualRevenue || item.collectedRevenue || 0,
-    }));
-  }, [data.revenueTrend, data.revenueCollected]);
-
-  const currentMonthRevenue = data.revenueCollected || 1890000;
-  const lastMonthRevenue =
+  const latestMonth = revenueTrendData[revenueTrendData.length - 1] || null;
+  const previousMonth =
     revenueTrendData.length > 1
-      ? revenueTrendData[revenueTrendData.length - 2]?.actual || 0
-      : currentMonthRevenue * 0.92;
-  const revenueChange = currentMonthRevenue - lastMonthRevenue;
+      ? revenueTrendData[revenueTrendData.length - 2]
+      : null;
+  const currentMonthRevenue = latestMonth?.collected ?? Number(data.revenueCollected || 0);
+  const lastMonthRevenue = previousMonth?.collected ?? null;
+  const revenueChange =
+    lastMonthRevenue == null ? 0 : currentMonthRevenue - lastMonthRevenue;
   const changePercentage =
-    lastMonthRevenue > 0
+    lastMonthRevenue && lastMonthRevenue > 0
       ? Math.round((revenueChange / lastMonthRevenue) * 100 * 10) / 10
-      : 0;
-
-  const targetRevenue =
-    revenueTrendData.length > 0
-      ? revenueTrendData[revenueTrendData.length - 1]?.target || 1600000
-      : 1600000;
-  const performancePercent =
-    targetRevenue > 0
-      ? Math.round((currentMonthRevenue / targetRevenue) * 100)
-      : 100;
-
-  const formatPeso = (value) => {
-    if (value >= 1000000) {
-      return `₱${(value / 1000000).toFixed(2)}M`;
-    }
-    if (value >= 1000) {
-      return `₱${(value / 1000).toFixed(1)}K`;
-    }
-    return `₱${value}`;
-  };
+      : null;
+  const collectionRate =
+    latestMonth?.billed > 0
+      ? Math.round((currentMonthRevenue / latestMonth.billed) * 100)
+      : null;
+  const hasTrend = revenueTrendData.length > 0;
+  const insightText =
+    latestMonth && previousMonth
+      ? `Collected payments moved from ${formatPeso(previousMonth.collected)} to ${formatPeso(latestMonth.collected)} in the latest visible month.`
+      : "More than one billing month is needed before month-over-month movement can be called confidently.";
 
   return (
     <div
@@ -128,7 +82,7 @@ export default function RevenueTrendCard({ data = {} }) {
               className="text-sm mb-4"
               style={{ color: "var(--color-text-secondary)" }}
             >
-              Monthly revenue performance vs target
+              Monthly billed amounts vs collected payments
             </p>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -136,7 +90,7 @@ export default function RevenueTrendCard({ data = {} }) {
                   className="text-xs uppercase tracking-wide mb-1"
                   style={{ color: "var(--color-text-muted)" }}
                 >
-                  Current Month
+                  Latest Collections
                 </p>
                 <div className="flex items-baseline gap-2">
                   <span
@@ -145,7 +99,7 @@ export default function RevenueTrendCard({ data = {} }) {
                   >
                     {formatPeso(currentMonthRevenue)}
                   </span>
-                  {changePercentage !== 0 && (
+                  {changePercentage != null && changePercentage !== 0 ? (
                     <span
                       className="flex items-center gap-1 text-xs"
                       style={{ color: "var(--success)" }}
@@ -153,7 +107,7 @@ export default function RevenueTrendCard({ data = {} }) {
                       <ArrowUp className="w-3 h-3" />
                       {Math.abs(changePercentage).toFixed(1)}%
                     </span>
-                  )}
+                  ) : null}
                 </div>
               </div>
 
@@ -162,20 +116,22 @@ export default function RevenueTrendCard({ data = {} }) {
                   className="text-xs uppercase tracking-wide mb-1"
                   style={{ color: "var(--color-text-muted)" }}
                 >
-                  Vs Target
+                  Latest Collection Rate
                 </p>
                 <div className="flex items-baseline gap-2">
                   <span
                     className="text-3xl font-semibold"
                     style={{ color: "var(--success)" }}
                   >
-                    {performancePercent}%
+                    {collectionRate == null ? "--" : `${collectionRate}%`}
                   </span>
                   <span
                     className="text-xs"
                     style={{ color: "var(--color-text-muted)" }}
                   >
-                    on track
+                    {latestMonth?.billed
+                      ? `from ${formatPeso(latestMonth.billed)} billed`
+                      : "No billed month yet"}
                   </span>
                 </div>
               </div>
@@ -184,59 +140,72 @@ export default function RevenueTrendCard({ data = {} }) {
         </div>
       </div>
       <div className="p-6">
-        <ResponsiveContainer width="100%" height={280}>
-          <BarChart data={revenueTrendData}>
-            <CartesianGrid
-              strokeDasharray="3 3"
-              stroke="var(--color-border-default)"
-              key="dashboard-revenue-grid"
-            />
-            <XAxis
-              dataKey="period"
-              stroke="var(--color-text-muted)"
-              style={{ fontSize: "12px" }}
-              key="dashboard-revenue-xaxis"
-            />
-            <YAxis
-              stroke="var(--color-text-muted)"
-              style={{ fontSize: "12px" }}
-              tickFormatter={(value) => `₱${(value / 1000000).toFixed(1)}M`}
-              key="dashboard-revenue-yaxis"
-            />
-            <Tooltip
-              key="dashboard-revenue-tooltip"
-              contentStyle={{
-                backgroundColor: "var(--popover)",
-                border: "1px solid var(--color-border-default)",
-                borderRadius: "0.5rem",
-                fontSize: "12px",
-              }}
-              formatter={(value) => formatPeso(value)}
-            />
-            <Legend
-              payload={[
-                { value: "Target Revenue", color: "var(--chart-blue)" },
-                { value: "Actual Revenue", color: "var(--chart-gold)" },
-              ]}
-              wrapperStyle={{ fontSize: "12px" }}
-              key="dashboard-revenue-legend"
-            />
-            <Bar
-              dataKey="target"
-              fill="var(--chart-blue)"
-              name="Target Revenue"
-              radius={[8, 8, 0, 0]}
-              key="dashboard-revenue-bar-target"
-            />
-            <Bar
-              dataKey="actual"
-              fill="var(--chart-gold)"
-              name="Actual Revenue"
-              radius={[8, 8, 0, 0]}
-              key="dashboard-revenue-bar-actual"
-            />
-          </BarChart>
-        </ResponsiveContainer>
+        {hasTrend ? (
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={revenueTrendData}>
+              <CartesianGrid
+                strokeDasharray="3 3"
+                stroke="var(--color-border-default)"
+                key="dashboard-revenue-grid"
+              />
+              <XAxis
+                dataKey="period"
+                stroke="var(--color-text-muted)"
+                style={{ fontSize: "12px" }}
+                key="dashboard-revenue-xaxis"
+              />
+              <YAxis
+                stroke="var(--color-text-muted)"
+                style={{ fontSize: "12px" }}
+                tickFormatter={(value) => `PHP ${(value / 1000000).toFixed(1)}M`}
+                key="dashboard-revenue-yaxis"
+              />
+              <Tooltip
+                key="dashboard-revenue-tooltip"
+                contentStyle={{
+                  backgroundColor: "var(--popover)",
+                  border: "1px solid var(--color-border-default)",
+                  borderRadius: "0.5rem",
+                  fontSize: "12px",
+                }}
+                formatter={(value) => formatPeso(value)}
+              />
+              <Legend
+                payload={[
+                  { value: "Billed", color: "var(--chart-blue)" },
+                  { value: "Collected", color: "var(--chart-gold)" },
+                ]}
+                wrapperStyle={{ fontSize: "12px" }}
+                key="dashboard-revenue-legend"
+              />
+              <Bar
+                dataKey="billed"
+                fill="var(--chart-blue)"
+                name="Billed"
+                radius={[8, 8, 0, 0]}
+                key="dashboard-revenue-bar-billed"
+              />
+              <Bar
+                dataKey="collected"
+                fill="var(--chart-gold)"
+                name="Collected"
+                radius={[8, 8, 0, 0]}
+                key="dashboard-revenue-bar-collected"
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <div
+            className="flex h-[280px] items-center justify-center rounded-lg text-sm"
+            style={{
+              backgroundColor:
+                "color-mix(in srgb, var(--color-bg-elevated) 60%, transparent)",
+              color: "var(--color-text-muted)",
+            }}
+          >
+            No billing history is available for the selected range yet.
+          </div>
+        )}
         <div
           className="mt-4 p-3 rounded-lg"
           style={{ backgroundColor: "var(--color-bg-elevated)" }}
@@ -251,12 +220,20 @@ export default function RevenueTrendCard({ data = {} }) {
             >
               Insight:
             </span>{" "}
-            Revenue has consistently exceeded targets for 6 consecutive months,
-            with an average growth of 8.2% month-over-month. April revenue is{" "}
-            {performancePercent - 100}% above target.
+            {insightText}
           </p>
         </div>
       </div>
     </div>
   );
+}
+
+function formatPeso(value) {
+  if (value >= 1000000) {
+    return `PHP ${(value / 1000000).toFixed(2)}M`;
+  }
+  if (value >= 1000) {
+    return `PHP ${(value / 1000).toFixed(1)}K`;
+  }
+  return `PHP ${Number(value || 0)}`;
 }
