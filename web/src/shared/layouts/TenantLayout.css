@@ -13,6 +13,12 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
+  margin-left: 280px; /* ← matches sidebar width */
+  transition: margin-left 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.tenant-layout-main.sidebar-collapsed {
+  margin-left: 72px; /* ← matches .sidebar.collapsed width */
 }
 
 .tenant-content {
@@ -26,6 +32,15 @@
 }
 
 @media (max-width: 768px) {
+  .tenant-layout-main {
+    margin-left: 0;        /* sidebar overlays on mobile, no push */
+    padding-top: 54px;     /* clears the fixed mobile topbar */
+  }
+
+  .tenant-layout-main.sidebar-collapsed {
+    margin-left: 0;        /* collapsed state irrelevant on mobile */
+  }
+
   .tenant-content {
     padding: 72px 16px 16px;
   }
