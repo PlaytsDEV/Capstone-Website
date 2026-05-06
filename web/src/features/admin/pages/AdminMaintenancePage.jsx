@@ -7,9 +7,11 @@ import {
  ClipboardList,
  Clock3,
  FileDown,
+ FileText,
  Image as ImageIcon,
  Loader2,
  MessageSquare,
+ Paperclip,
  RefreshCcw,
  Search,
  UserRound,
@@ -25,13 +27,19 @@ import {
 } from "../../../shared/hooks/queries/useMaintenance";
 import { showNotification } from "../../../shared/utils/notification";
 import {
- ADMIN_MAINTENANCE_STATUS_OPTIONS,
+ LOCKED_ADMIN_MAINTENANCE_STATUSES,
  MAINTENANCE_REQUEST_TYPES,
  MAINTENANCE_URGENCY_LEVELS,
  formatMaintenanceStatus,
+ getAllowedAdminMaintenanceStatuses,
  getMaintenanceTypeMeta,
  getMaintenanceUrgencyMeta,
 } from "../../../shared/utils/maintenanceConfig";
+import {
+ getMaintenanceAttachmentKind,
+ getMaintenanceAttachmentLabel,
+ getMaintenanceAttachmentName,
+} from "../../../shared/utils/maintenanceAttachments";
 import { exportToCSV } from "../../../shared/utils/exportUtils";
 import { BRANCH_OPTIONS, BRANCH_DISPLAY_NAMES } from "../../../shared/utils/constants";
 import {
@@ -100,7 +108,13 @@ const urgencyRank = {
  low: 2,
 };
 
-const TERMINAL_STATUSES = new Set(["completed", "rejected", "cancelled"]);
+const TERMINAL_STATUSES = new Set([
+ "resolved",
+ "completed",
+ "rejected",
+ "cancelled",
+ "closed",
+]);
 
 const SUMMARY_STATUSES = [
  { key: "pending", label: "Pending" },
@@ -110,6 +124,7 @@ const SUMMARY_STATUSES = [
  { key: "completed", label: "Completed" },
  { key: "rejected", label: "Rejected" },
  { key: "cancelled", label: "Cancelled" },
+ { key: "closed", label: "Closed" },
 ];
 
 const MANAGEMENT_SUMMARY_CARDS = [
@@ -320,6 +335,32 @@ const getAvatarPalette = (name = "") => {
   return AVATAR_PALETTES[index];
 };
 
+function AttachmentThumbnail({ attachment, index }) {
+ const [failed, setFailed] = useState(false);
+ const kind = getMaintenanceAttachmentKind(attachment);
+ const name = getMaintenanceAttachmentName(attachment, index);
+
+ if (kind === "image" && !failed) {
+ return (
+ <img
+ src={attachment?.uri}
+ alt={name}
+ className="h-12 w-12 rounded-md object-cover"
+ onError={() => setFailed(true)}
+ />
+ );
+ }
+
+ const Icon =
+ kind === "pdf" ? FileText : kind === "image" ? ImageIcon : Paperclip;
+
+ return (
+ <div className="flex h-12 w-12 items-center justify-center rounded-md bg-muted text-muted-foreground">
+ <Icon size={18} />
+ </div>
+ );
+}
+
 export default function AdminMaintenancePage() {
  const { user } = useAuth();
  const isOwner = user?.role === "owner";
@@ -398,6 +439,19 @@ export default function AdminMaintenancePage() {
  const requests = requestsData?.requests || [];
  const summaryRequests = summaryData?.requests || requests;
  const selectedRequest = requestDetailData?.request || null;
+ const selectedRequestStatusOptions = useMemo(
+ () => getAllowedAdminMaintenanceStatuses(selectedRequest?.status),
+ [selectedRequest?.status],
+ );
+ const isSelectedRequestLocked = LOCKED_ADMIN_MAINTENANCE_STATUSES.includes(
+ selectedRequest?.status || "",
+ );
+ const hasDraftChanges = Boolean(selectedRequest) && (
+ draftStatus !== (selectedRequest.status || "") ||
+ draftNotes !== (selectedRequest.notes || "") ||
+ draftAssignedTo !== (selectedRequest.assigned_to || "") ||
+ Boolean(draftWorkLogNote.trim())
+ );
 
  const summaryItems = useMemo(
  () =>
@@ -608,15 +662,16 @@ export default function AdminMaintenancePage() {
  useEffect(() => {
  if (!selectedRequest) return;
 
- const initialStatus = ADMIN_MAINTENANCE_STATUS_OPTIONS.includes(selectedRequest.status)
- ? selectedRequest.status
- : "viewed";
+ const initialStatus =
+ selectedRequest.status ||
+ selectedRequestStatusOptions[0] ||
+ "viewed";
 
  setDraftStatus(initialStatus);
  setDraftNotes(selectedRequest.notes || "");
  setDraftAssignedTo(selectedRequest.assigned_to || "");
  setDraftWorkLogNote("");
- }, [selectedRequest]);
+ }, [selectedRequest, selectedRequestStatusOptions]);
 
  const handleResetFilters = () => {
  setStatusFilter("all");
@@ -1107,7 +1162,8 @@ export default function AdminMaintenancePage() {
  }}
  disabled={
  updateRequestMutation.isPending ||
- selectedRequest.status === "cancelled"
+ isSelectedRequestLocked ||
+ !hasDraftChanges
  }
  >
  {updateRequestMutation.isPending ? "Saving..." : "Save Update"}
@@ -1245,20 +1301,21 @@ export default function AdminMaintenancePage() {
  <div className="grid gap-3 md:grid-cols-2">
  {selectedRequest.attachments.map((attachment, index) => (
  <a
- key={`${attachment.name}-${index}`}
+ key={`${attachment.uri || attachment.name}-${index}`}
  href={attachment.uri}
  target="_blank"
  rel="noreferrer"
  className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 hover:bg-muted"
  >
- <img
- src={attachment.uri}
- alt={attachment.name || `Attachment ${index + 1}`}
- className="h-12 w-12 rounded-md object-cover"
- />
- <span className="text-sm font-medium text-card-foreground">
- {attachment.name || `Attachment ${index + 1}`}
+ <AttachmentThumbnail attachment={attachment} index={index} />
+ <div className="min-w-0">
+ <span className="block truncate text-sm font-medium text-card-foreground">
+ {getMaintenanceAttachmentName(attachment, index)}
  </span>
+ <span className="text-xs text-muted-foreground">
+ {getMaintenanceAttachmentLabel(attachment)}
+ </span>
+ </div>
  </a>
  ))}
  </div>
@@ -1392,9 +1449,9 @@ export default function AdminMaintenancePage() {
  </>
  )}
  >
- {selectedRequest.status === "cancelled" ? (
+ {isSelectedRequestLocked ? (
  <div className="rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-warning-dark">
- Cancelled requests are tenant-only terminal records. Admin notes,
+ Closed and cancelled requests are locked records. Admin notes,
  assignments, and status changes are disabled.
  </div>
  ) : null}
@@ -1411,10 +1468,10 @@ export default function AdminMaintenancePage() {
  <select
  value={draftStatus}
  onChange={(event) => setDraftStatus(event.target.value)}
- disabled={selectedRequest.status === "cancelled"}
+ disabled={isSelectedRequestLocked}
  className="mt-2 h-11 w-full rounded-lg border border-border bg-card px-3 text-sm text-card-foreground focus:border-border focus:outline-none focus:ring-2 focus:ring-border"
  >
- {ADMIN_MAINTENANCE_STATUS_OPTIONS.map((status) => (
+ {selectedRequestStatusOptions.map((status) => (
  <option key={status} value={status}>
  {formatMaintenanceStatus(status)}
  </option>
@@ -1431,7 +1488,7 @@ export default function AdminMaintenancePage() {
  placeholder="Staff member or team"
  value={draftAssignedTo}
  onChange={(event) => setDraftAssignedTo(event.target.value)}
- disabled={selectedRequest.status === "cancelled"}
+ disabled={isSelectedRequestLocked}
  className="mt-2 h-11 w-full rounded-lg border border-border bg-card px-3 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-border focus:outline-none focus:ring-2 focus:ring-border"
  />
  </label>
@@ -1445,7 +1502,7 @@ export default function AdminMaintenancePage() {
  placeholder="This note is shown to the tenant in the mobile app."
  value={draftNotes}
  onChange={(event) => setDraftNotes(event.target.value)}
- disabled={selectedRequest.status === "cancelled"}
+ disabled={isSelectedRequestLocked}
  className="mt-2 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-border focus:outline-none focus:ring-2 focus:ring-border"
  />
  </label>
@@ -1459,7 +1516,7 @@ export default function AdminMaintenancePage() {
  placeholder="Optional internal progress note for the status timeline and work log."
  value={draftWorkLogNote}
  onChange={(event) => setDraftWorkLogNote(event.target.value)}
- disabled={selectedRequest.status === "cancelled"}
+ disabled={isSelectedRequestLocked}
  className="mt-2 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-border focus:outline-none focus:ring-2 focus:ring-border"
  />
  </label>

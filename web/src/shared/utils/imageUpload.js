@@ -23,6 +23,7 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_TYPES = [
   "image/jpeg",
   "image/png",
+  "image/webp",
   "application/pdf",
 ];
 
@@ -40,7 +41,11 @@ export function validateFile(file) {
     return { valid: false, error: `File too large (${sizeMB}MB). Maximum is 5MB.` };
   }
   if (!ALLOWED_TYPES.includes(file.type)) {
-    return { valid: false, error: "Only JPEG, PNG, and PDF files are allowed. Please convert HEIC or WebP images before uploading." };
+    return {
+      valid: false,
+      error:
+        "Only JPEG, PNG, WebP, and PDF files are allowed. Please convert HEIC images before uploading.",
+    };
   }
   return { valid: true };
 }

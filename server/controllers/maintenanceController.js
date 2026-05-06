@@ -317,14 +317,6 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
     throw new AppError("Assigned staff name is too short", 400, "INVALID_ASSIGNEE");
   }
 
-  if (!nextStatus || !isAdminMutableMaintenanceStatus(nextStatus)) {
-    throw new AppError(
-      `Status must be one of: ${ADMIN_MAINTENANCE_STATUSES.join(", ")}`,
-      400,
-      "INVALID_ADMIN_STATUS",
-    );
-  }
-
   if (!canAdminTransitionMaintenanceStatus(request.status, nextStatus)) {
     throw new AppError(
       `Invalid maintenance status transition: ${request.status} -> ${nextStatus}`,
@@ -349,6 +341,20 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
   }
 
   const statusChanged = request.status !== nextStatus;
+  const isSameStatusUpdate =
+    normalizeMaintenanceStatus(request.status) === nextStatus;
+
+  if (
+    !nextStatus ||
+    (!isAdminMutableMaintenanceStatus(nextStatus) && !isSameStatusUpdate)
+  ) {
+    throw new AppError(
+      `Status must be one of: ${ADMIN_MAINTENANCE_STATUSES.join(", ")}`,
+      400,
+      "INVALID_ADMIN_STATUS",
+    );
+  }
+
   let assignmentChanged =
     hasAssignedField && request.assigned_to !== nextAssignedTo;
   const notesChanged = nextNotes !== undefined && request.notes !== nextNotes;

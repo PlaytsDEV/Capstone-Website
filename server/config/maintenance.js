@@ -150,7 +150,7 @@ export const canAdminTransitionMaintenanceStatus = (currentStatus, nextStatus) =
 
   if (!current || !next) return false;
   if (current === next) {
-    return ADMIN_MAINTENANCE_STATUSES.includes(current);
+    return current !== "cancelled" && current !== "closed";
   }
 
   return (ADMIN_STATUS_TRANSITIONS[current] || []).includes(next);
