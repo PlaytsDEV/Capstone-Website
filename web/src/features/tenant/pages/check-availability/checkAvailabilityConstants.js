@@ -86,9 +86,9 @@ export const checkRoomOverbooking = (room) => {
 
 export const mapRoomType = (type) => {
  const v = typeof type === "string" ? type.toLowerCase() : "";
- if (v === "private") return "Private";
- if (v === "double-sharing") return "Shared";
- if (v === "quadruple-sharing") return "Quadruple";
+ if (v === "private" || v.includes("private")) return "Private";
+ if (v === "double-sharing" || v.includes("shared") || v.includes("double")) return "Shared";
+ if (v === "quadruple-sharing" || v.includes("quad")) return "Quadruple";
  return "Unknown";
 };
 
