@@ -259,8 +259,7 @@ export default function TenantDetailModal({ tenant, onClose }) {
  const paymentConfig = getPaymentStatusConfig(paymentStatus);
  const occupancyConfig = getOccupancyStatusConfig(occupancyStatus);
 
- return (
- <>
+ return (<>
  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
  <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-7xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
  <div className="px-6 py-3 border-b border-border bg-card rounded-t-xl flex-shrink-0">
@@ -389,7 +388,7 @@ export default function TenantDetailModal({ tenant, onClose }) {
  </div>
  <div className="flex justify-between text-xs">
  <span className="text-muted-foreground">Current Balance</span>
- <span className={`font-medium ${(tenant.balance || 0) > 0 ? "text-error dark:text-error-dark" : "text-success dark:text-success-dark"}`}>
+ <span className={"font-medium " + ((tenant.balance || 0) > 0 ? "text-error dark:text-error-dark" : "text-success dark:text-success-dark")}>
  {formatMoney(tenant.balance || 0)}
  </span>
  </div>
