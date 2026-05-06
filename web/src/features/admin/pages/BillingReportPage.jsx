@@ -6,6 +6,7 @@ import { useBillingReport } from "../../../shared/hooks/queries/useAnalyticsRepo
 import { exportToCSV } from "../../../shared/utils/exportUtils";
 import { exportReportPdf } from "../../../shared/utils/reportPdf";
 import { OWNER_BRANCH_FILTER_OPTIONS } from "../../../shared/utils/constants";
+import { unwrapTableRows } from "./analyticsTabShared";
 import {
  ActionBar,
  DataTable,
@@ -80,8 +81,8 @@ export default function BillingReportPage() {
  );
 
  const { data, isLoading, isError } = useBillingReport(params);
- const overdueAccounts = data?.tables?.overdueAccounts || [];
- const unpaidBalances = data?.tables?.unpaidBalances || [];
+ const overdueAccounts = unwrapTableRows(data?.tables?.overdueAccounts);
+ const unpaidBalances = unwrapTableRows(data?.tables?.unpaidBalances);
  const revenueByMonth = data?.series?.revenueByMonth || [];
  const statusDistribution = data?.series?.statusDistribution || [];
  const overdueAging = data?.series?.overdueAging || [];

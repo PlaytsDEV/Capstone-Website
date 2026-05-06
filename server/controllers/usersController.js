@@ -53,6 +53,7 @@ const LIST_USER_FIELDS = [
   "phone",
   "role",
   "branch",
+  "permissions",
   "accountStatus",
   "isActive",
   "isArchived",

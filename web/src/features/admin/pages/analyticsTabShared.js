@@ -6,6 +6,18 @@ import { OWNER_BRANCH_FILTER_OPTIONS } from "../../../shared/utils/constants";
 import { useAnalyticsInsights } from "../../../shared/hooks/queries/useAnalyticsReports";
 import { AnalyticsInsightPanel, ReportChartPanel, ReportMetricCard } from "../components/shared";
 
+/**
+ * Safely unwrap a table field from the analytics API.
+ * The backend's `buildPaginatedTable` returns `{ rows, pagination }`,
+ * but some table fields are plain arrays. This helper normalizes both
+ * shapes to a plain array so `.slice()` / `.length` never crash.
+ */
+export function unwrapTableRows(value) {
+ if (Array.isArray(value)) return value;
+ if (value && Array.isArray(value.rows)) return value.rows;
+ return [];
+}
+
 export const RANGE_OPTIONS_SHORT = [
  { value: "30d", label: "Last 30 days" },
  { value: "60d", label: "Last 60 days" },
@@ -44,10 +56,11 @@ export function MetricGrid({ items }) {
  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
  {items.map((item) => (
  <ReportMetricCard
- key={item.label}
- label={item.label}
- value={item.value}
- tone={item.tone}
+  key={item.label}
+  label={item.label}
+  value={item.value}
+  tone={item.tone}
+  onClick={item.onClick}
  />
  ))}
  </div>

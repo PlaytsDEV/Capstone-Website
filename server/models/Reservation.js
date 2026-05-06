@@ -456,6 +456,42 @@ const reservationSchema = new mongoose.Schema(
       default: false,
     },
 
+    // --- Post-Payment Cancellation Request ---
+    // Tenant submits a request; admin confirms before bed is released.
+    // Fee is strictly non-refundable regardless of outcome.
+    cancellationRequested: {
+      type: Boolean,
+      default: false,
+    },
+    cancellationRequestedAt: {
+      type: Date,
+      default: null,
+    },
+    cancellationRequestedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    // "pending" | "approved" | "rejected"
+    cancellationStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: null,
+    },
+    cancellationReviewedAt: {
+      type: Date,
+      default: null,
+    },
+    cancellationReviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    cancellationAdminNote: {
+      type: String,
+      default: null,
+    },
+
     // --- Soft Delete ---
     isArchived: {
       type: Boolean,

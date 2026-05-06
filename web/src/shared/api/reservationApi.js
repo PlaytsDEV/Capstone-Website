@@ -131,6 +131,24 @@ export const reservationApi = {
       }),
     ),
 
+  requestCancellation: (reservationId, reason = "") =>
+    authFetch(`/reservations/${reservationId}/cancel-request`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+
+  approveCancellationRequest: (reservationId, note = "") =>
+    authFetch(`/reservations/${reservationId}/cancel-request/approve`, {
+      method: "POST",
+      body: JSON.stringify({ note }),
+    }),
+
+  rejectCancellationRequest: (reservationId, note = "") =>
+    authFetch(`/reservations/${reservationId}/cancel-request/reject`, {
+      method: "POST",
+      body: JSON.stringify({ note }),
+    }),
+
   /**
    * Cancel reservation — legacy alias kept for backward compatibility.
    * New code should use cancelByUser instead.

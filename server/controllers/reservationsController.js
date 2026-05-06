@@ -1557,8 +1557,17 @@ export const updateReservation = async (req, res, next) => {
     );
     if (denied) return;
 
-    // Enforce 3-month window on moveInDate update
-    if (req.body.moveInDate && !validateMoveInDate(req.body.moveInDate)) {
+    const isMoveInTransition =
+      hasReservationStatus(req.body.status, "moveIn") &&
+      !hasReservationStatus(existingReservation.status, "moveIn");
+
+    // Enforce the 3-month window only while scheduling/rescheduling a target
+    // move-in. Actual move-in uses the server timestamp below.
+    if (
+      req.body.moveInDate &&
+      !isMoveInTransition &&
+      !validateMoveInDate(req.body.moveInDate)
+    ) {
       return res.status(400).json({
         error: "Move-in date must be within 3 months from today.",
         code: "MOVEIN_DATE_OUT_OF_RANGE",
@@ -1615,10 +1624,7 @@ export const updateReservation = async (req, res, next) => {
     // ── Move-in gate: enforce full prerequisite checklist ─────────────
     // Prevents admins from bypassing the proper flow (visit → payment →
     // reservation confirmed) and jumping straight to moveIn.
-    if (
-      req.body.status === "moveIn" &&
-      !hasReservationStatus(existingReservation.status, "moveIn")
-    ) {
+    if (isMoveInTransition) {
       const blockers = getMoveInBlockers(existingReservation);
       if (blockers.length > 0) {
         return res.status(400).json({
@@ -1640,10 +1646,9 @@ export const updateReservation = async (req, res, next) => {
         });
       }
 
-      // Use explicit lifecycle datetime when provided to avoid same-day ambiguity.
       const moveInDate = combineLifecycleDateTime({
-        dateInput: req.body.moveInDate,
-        timeInput: req.body.moveInTime,
+        dateInput: null,
+        timeInput: null,
         fallbackDate: new Date(),
       });
       if (!moveInDate) {
@@ -1805,12 +1810,13 @@ export const updateReservation = async (req, res, next) => {
         const adminUser = await User.findOne({
           firebaseUid: req.user.uid,
         }).lean();
+        const recordedBy = req.adminId || adminUser?._id;
         const meterValue = Number(req.body.meterReading);
         const moveInDate = new Date(
           readMoveInDate(updatedReservation) || new Date(),
         );
 
-        if (roomDoc) {
+        if (roomDoc && recordedBy) {
           const tenantUserId =
             updatedReservation.userId?._id || updatedReservation.userId;
 
@@ -1835,7 +1841,7 @@ export const updateReservation = async (req, res, next) => {
             eventType: "moveIn",
             tenantId: tenantUserId,
             activeTenantIds,
-            recordedBy: adminUser?._id || null,
+            recordedBy,
             utilityPeriodId: null,
           });
           await moveInReading.save();
@@ -2117,6 +2123,14 @@ export const cancelReservationByUser = async (req, res, next) => {
       return res.status(409).json({
         error: "This reservation is already cancelled.",
         code: "ALREADY_CANCELLED",
+      });
+    }
+
+    // Paid reservations must go through the request flow (admin review required, no refund).
+    if (reservation.paymentStatus === "paid") {
+      return res.status(409).json({
+        error: "This reservation has a paid reservation fee. Please use the cancellation request process.",
+        code: "PAID_RESERVATION_MUST_USE_REQUEST_FLOW",
       });
     }
 
@@ -3281,6 +3295,224 @@ export const transferTenant = async (req, res, next) => {
 };
 
 /* ─── GET MY CONTRACT (tenant) ─────────────────────── */
+// ============================================================================
+// POST-PAYMENT CANCELLATION REQUEST FLOW
+// ============================================================================
+
+/**
+ * Tenant: submit a cancellation request for a paid reservation.
+ * Does NOT cancel the reservation yet — marks it as pending admin review.
+ * Bed is NOT released until admin approves.
+ */
+export const requestCancellationByUser = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const dbUser = await findDbUser(req.user.uid);
+    if (!dbUser)
+      return res.status(404).json({ error: "User not found.", code: "USER_NOT_FOUND" });
+
+    const reservation = await Reservation.findById(reservationId);
+    if (!reservation)
+      return res.status(404).json({ error: "Reservation not found.", code: "NOT_FOUND" });
+
+    if (String(reservation.userId) !== String(dbUser._id))
+      return res.status(403).json({ error: "Unauthorized.", code: "UNAUTHORIZED" });
+
+    if (reservation.paymentStatus !== "paid") {
+      return res.status(409).json({
+        error: "This reservation has not been paid. Use the direct cancel instead.",
+        code: "NOT_PAID_USE_DIRECT_CANCEL",
+      });
+    }
+
+    const normalizedStatus = normalizeReservationStatus(reservation.status);
+    if (!APPLICANT_CANCELLABLE_STATUSES.has(normalizedStatus)) {
+      return res.status(409).json({
+        error: `A reservation with status "${reservation.status}" cannot be cancelled.`,
+        code: "CANCELLATION_NOT_ALLOWED",
+      });
+    }
+
+    if (reservation.cancellationRequested && reservation.cancellationStatus === "pending") {
+      return res.status(409).json({
+        error: "A cancellation request is already pending review.",
+        code: "CANCELLATION_REQUEST_ALREADY_PENDING",
+      });
+    }
+
+    const now = new Date();
+    reservation.cancellationRequested = true;
+    reservation.cancellationRequestedAt = now;
+    reservation.cancellationRequestedBy = dbUser._id;
+    reservation.cancellationStatus = "pending";
+    reservation.cancellationReason = req.body.reason || null;
+    await reservation.save();
+
+    // Notify tenant
+    await notify.cancellationRequested(dbUser._id, reservation.reservationCode);
+
+    // Notify all admins for this branch
+    try {
+      const room = await Room.findById(reservation.roomId).select("branch").lean();
+      const adminUsers = await User.find({
+        role: { $in: ["admin", "superadmin"] },
+        ...(room?.branch ? { branch: room.branch } : {}),
+        isActive: true,
+      }).select("_id").lean();
+
+      const tenantName = `${dbUser.firstName || ""} ${dbUser.lastName || ""}`.trim() || dbUser.email;
+      await Promise.all(
+        adminUsers.map((admin) =>
+          notify.cancellationRequestAlert(admin._id, tenantName, reservation.reservationCode),
+        ),
+      );
+    } catch (notifyErr) {
+      logger.warn({ err: notifyErr }, "[CancelRequest] Admin notification failed (non-fatal)");
+    }
+
+    res.json({ message: "Cancellation request submitted. Pending admin review.", reservation });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "requestCancellationByUser error");
+    next(error);
+  }
+};
+
+/**
+ * Admin: approve a pending cancellation request.
+ * Cancels the reservation + releases the bed. No refund issued.
+ */
+export const approveCancellationRequest = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const dbUser = await findDbUser(req.user.uid);
+    if (!dbUser)
+      return res.status(404).json({ error: "User not found.", code: "USER_NOT_FOUND" });
+
+    const reservation = await Reservation.findById(reservationId).populate("roomId");
+    if (!reservation)
+      return res.status(404).json({ error: "Reservation not found.", code: "NOT_FOUND" });
+
+    if (!reservation.cancellationRequested || reservation.cancellationStatus !== "pending") {
+      return res.status(409).json({
+        error: "No pending cancellation request found for this reservation.",
+        code: "NO_PENDING_REQUEST",
+      });
+    }
+
+    const now = new Date();
+    const adminNote = req.body.note || null;
+
+    // Archive any active visit to history
+    const visitHistoryUpdate = [];
+    if (reservation.visitDate) {
+      visitHistoryUpdate.push(...(reservation.visitHistory || []), {
+        visitDate: reservation.visitDate,
+        visitTime: reservation.visitTime,
+        viewingType: reservation.viewingType || "inperson",
+        status: "cancelled",
+        scheduledAt: reservation.visitScheduledAt || reservation.createdAt,
+      });
+    }
+
+    reservation.status = "cancelled";
+    reservation.cancelledAt = now;
+    reservation.cancelledBy = dbUser._id;
+    reservation.cancellationSource = "admin";
+    reservation.reservationFeeRefundable = false;
+    reservation.reservationFeeForfeited = true;
+    reservation.cancellationStatus = "approved";
+    reservation.cancellationReviewedAt = now;
+    reservation.cancellationReviewedBy = dbUser._id;
+    reservation.cancellationAdminNote = adminNote;
+    if (visitHistoryUpdate.length > 0) reservation.visitHistory = visitHistoryUpdate;
+    reservation.visitDate = null;
+    reservation.visitTime = null;
+    reservation.visitScheduledAt = null;
+    await reservation.save();
+
+    // Release the bed in the room (same pattern as releaseSlot)
+    if (reservation.roomId) {
+      try {
+        const room = await Room.findById(reservation.roomId._id);
+        if (room) {
+          if (reservation.selectedBed?.id) {
+            room.vacateBed(reservation.selectedBed.id);
+          }
+          room.decreaseOccupancy();
+          room.updateAvailability();
+          await room.save();
+        }
+      } catch (bedErr) {
+        logger.warn({ err: bedErr }, "[ApproveCancellation] Bed release failed (non-fatal)");
+      }
+    }
+
+    // Sync user lifecycle to reflect cancellation
+    await syncReservationUserLifecycle({
+      status: "cancelled",
+      previousStatus: reservation.status,
+      userId: reservation.userId,
+      roomId: reservation.roomId,
+      reservationId: reservation._id,
+    }).catch((err) => logger.warn({ err }, "[ApproveCancellation] User lifecycle sync failed (non-fatal)"));
+
+    await notify.cancellationApproved(reservation.userId, reservation.reservationCode);
+
+    res.json({ message: "Cancellation request approved. Reservation cancelled and bed released.", reservation });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "approveCancellationRequest error");
+    next(error);
+  }
+};
+
+/**
+ * Admin: reject a pending cancellation request.
+ * Reservation remains active — no status change, bed not released.
+ */
+export const rejectCancellationRequest = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const dbUser = await findDbUser(req.user.uid);
+    if (!dbUser)
+      return res.status(404).json({ error: "User not found.", code: "USER_NOT_FOUND" });
+
+    const reservation = await Reservation.findById(reservationId);
+    if (!reservation)
+      return res.status(404).json({ error: "Reservation not found.", code: "NOT_FOUND" });
+
+    if (!reservation.cancellationRequested || reservation.cancellationStatus !== "pending") {
+      return res.status(409).json({
+        error: "No pending cancellation request found for this reservation.",
+        code: "NO_PENDING_REQUEST",
+      });
+    }
+
+    const now = new Date();
+    const adminNote = req.body.note || null;
+
+    reservation.cancellationStatus = "rejected";
+    reservation.cancellationReviewedAt = now;
+    reservation.cancellationReviewedBy = dbUser._id;
+    reservation.cancellationAdminNote = adminNote;
+    // Reset the request flag so tenant can re-request if needed
+    reservation.cancellationRequested = false;
+    await reservation.save();
+
+    await notify.cancellationRejected(reservation.userId, reservation.reservationCode, adminNote);
+
+    res.json({ message: "Cancellation request rejected. Reservation remains active.", reservation });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "rejectCancellationRequest error");
+    next(error);
+  }
+};
+
 export const getMyContract = async (req, res) => {
   try {
     const firebaseUid = req.user.uid;

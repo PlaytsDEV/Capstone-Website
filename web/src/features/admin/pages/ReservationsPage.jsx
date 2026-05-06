@@ -24,9 +24,7 @@ import {
 import ConfirmModal from "../../../shared/components/ConfirmModal";
 import { useReservations } from "../../../shared/hooks/queries/useReservations";
 import {
-  CANONICAL_RESERVATION_STATUSES,
   RESERVATION_STATUS_LABELS,
-  getReservationStatusLabel,
   hasReservationStatus,
   readMoveInDate,
 } from "../../../shared/utils/lifecycleNaming";
@@ -299,10 +297,9 @@ function ReservationsPage() {
           { value: "all", label: "All Status" },
           { value: "in_progress", label: "In Progress" },
           { value: "overdue", label: "Overdue" },
-          ...CANONICAL_RESERVATION_STATUSES.map((status) => ({
-            value: status,
-            label: getReservationStatusLabel(status),
-          })),
+          { value: "reserved", label: "Reserved" },
+          { value: "moveIn", label: "Move In" },
+          { value: "cancelled", label: "Cancelled" },
         ],
         value: statusFilter,
         onChange: (value) => {

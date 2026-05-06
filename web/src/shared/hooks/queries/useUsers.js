@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-query";
 import { userApi, authApi } from "../../api/apiClient";
 import { queryKeys } from "../../lib/queryKeys";
+import { showNotification } from "../../utils/notification";
 
 /** Fetch the currently authenticated user's profile */
 export function useCurrentUser() {
@@ -74,6 +75,12 @@ export function useUpdatePermissions() {
   return useMutation({
     mutationFn: ({ userId, permissions }) =>
       userApi.updatePermissions(userId, permissions),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["users"] });
+      showNotification("Permissions updated successfully", "success");
+    },
+    onError: (err) => {
+      showNotification(err.message || "Failed to update permissions", "error");
+    },
   });
 }

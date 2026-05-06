@@ -1,4 +1,4 @@
-﻿import dayjs from "dayjs";
+import dayjs from "dayjs";
 import mongoose from "mongoose";
 import {
   AuditLog,
@@ -1618,11 +1618,333 @@ const buildAnalyticsHubReportData = async (scope, rangeKey, options = {}) => {
   };
 };
 
+// ============================================================================
+// DEMOGRAPHICS & RESERVATION BEHAVIOR ANALYTICS
+// ============================================================================
+
+const STUDENT_KEYWORDS = /student|school|college|university|academy|institute|scholar/i;
+
+const classifyOccupation = (reservation) => {
+  const occupation = reservation?.employment?.occupation || "";
+  const employer = reservation?.employment?.employerSchool || "";
+  const education = reservation?.educationLevel || "";
+  const combined = `${occupation} ${employer} ${education}`;
+
+  if (!combined.trim()) return "Unspecified";
+  if (STUDENT_KEYWORDS.test(combined)) return "Student";
+  return "Professional";
+};
+
+const buildOccupationDistribution = (reservations) => {
+  const counts = { Student: 0, Professional: 0, Unspecified: 0 };
+
+  for (const reservation of reservations) {
+    const category = classifyOccupation(reservation);
+    counts[category] = (counts[category] || 0) + 1;
+  }
+
+  return Object.entries(counts)
+    .map(([label, value]) => ({ label, value }))
+    .filter((item) => item.value > 0);
+};
+
+const buildReservationsByMonth = (reservations) => {
+  const months = Array.from({ length: 12 }, (_, index) => ({
+    label: dayjs().month(index).format("MMM"),
+    monthIndex: index,
+    count: 0,
+  }));
+
+  for (const reservation of reservations) {
+    const created = dayjs(reservation.createdAt);
+    if (created.isValid()) {
+      months[created.month()].count += 1;
+    }
+  }
+
+  return months.map(({ label, count }) => ({ label, count }));
+};
+
+const buildRoomTypePreferences = (reservations) => {
+  const counts = new Map();
+
+  for (const reservation of reservations) {
+    const pref = reservation.preferredRoomType || null;
+    if (!pref) continue;
+    const label = ROOM_TYPE_LABELS[pref] || formatBranchLabel(pref);
+    counts.set(label, (counts.get(label) || 0) + 1);
+  }
+
+  return Array.from(counts.entries())
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value);
+};
+
+const buildBookingByHour = (reservations) => {
+  const windows = Array.from({ length: 12 }, (_, index) => {
+    const start = index * 2;
+    const end = start + 2;
+    const startLabel = start === 0 ? "12AM" : start < 12 ? `${start}AM` : start === 12 ? "12PM" : `${start - 12}PM`;
+    const endLabel = end === 0 ? "12AM" : end < 12 ? `${end}AM` : end === 12 ? "12PM" : `${end - 12}PM`;
+    return { label: `${startLabel}–${endLabel}`, startHour: start, count: 0 };
+  });
+
+  for (const reservation of reservations) {
+    const created = dayjs(reservation.createdAt);
+    if (created.isValid()) {
+      const hour = created.hour();
+      const windowIndex = Math.floor(hour / 2);
+      if (windowIndex < windows.length) {
+        windows[windowIndex].count += 1;
+      }
+    }
+  }
+
+  return windows.map(({ label, count }) => ({ label, count }));
+};
+
+const buildBookingByWeekday = (reservations) => {
+  const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const counts = new Map(days.map((d) => [d, 0]));
+
+  for (const reservation of reservations) {
+    const created = dayjs(reservation.createdAt);
+    if (created.isValid()) {
+      const label = created.format("dddd");
+      counts.set(label, (counts.get(label) || 0) + 1);
+    }
+  }
+
+  return days.map((label) => ({ label, count: counts.get(label) || 0 }));
+};
+
+const buildReferralSourceDistribution = (reservations) => {
+  const counts = new Map();
+
+  for (const reservation of reservations) {
+    const source = (reservation.referralSource || "").trim();
+    if (!source) continue;
+    const label = formatBranchLabel(source);
+    counts.set(label, (counts.get(label) || 0) + 1);
+  }
+
+  return Array.from(counts.entries())
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value);
+};
+
+const buildWorkScheduleDistribution = (reservations) => {
+  const LABELS = { day: "Day Shift", night: "Night Shift", variable: "Variable", others: "Others" };
+  const counts = new Map();
+
+  for (const reservation of reservations) {
+    const schedule = (reservation.workSchedule || "").trim().toLowerCase();
+    if (!schedule) continue;
+    const label = LABELS[schedule] || formatBranchLabel(schedule);
+    counts.set(label, (counts.get(label) || 0) + 1);
+  }
+
+  return Array.from(counts.entries())
+    .map(([label, value]) => ({ label, value }))
+    .sort((a, b) => b.value - a.value);
+};
+
+const buildAgeDistribution = (reservations) => {
+  const brackets = [
+    { label: "18–22", min: 18, max: 22, count: 0 },
+    { label: "23–27", min: 23, max: 27, count: 0 },
+    { label: "28–35", min: 28, max: 35, count: 0 },
+    { label: "36–45", min: 36, max: 45, count: 0 },
+    { label: "46+", min: 46, max: 200, count: 0 },
+  ];
+  const now = dayjs();
+
+  for (const reservation of reservations) {
+    const bday = reservation.birthday;
+    if (!bday) continue;
+    const age = now.diff(dayjs(bday), "year");
+    if (age < 0) continue;
+    const bracket = brackets.find((b) => age >= b.min && age <= b.max);
+    if (bracket) bracket.count += 1;
+  }
+
+  return brackets.map(({ label, count }) => ({ label, count }));
+};
+
+const buildGeographicOriginRows = (reservations) => {
+  const counts = new Map();
+
+  for (const reservation of reservations) {
+    const province = (reservation.address?.province || "").trim();
+    const city = (reservation.address?.city || "").trim();
+    if (!province && !city) continue;
+    const key = province || city;
+    const existing = counts.get(key);
+    if (existing) {
+      existing.count += 1;
+      if (city && !existing.city) existing.city = city;
+    } else {
+      counts.set(key, { province: province || "Unknown", city: city || "", count: 1 });
+    }
+  }
+
+  return Array.from(counts.values())
+    .sort((a, b) => b.count - a.count)
+    .map((item, index) => ({ id: index, ...item }));
+};
+
+const buildLeaseDurationDistribution = (reservations) => {
+  const brackets = [
+    { label: "1 month", min: 1, max: 1, count: 0 },
+    { label: "2–3 months", min: 2, max: 3, count: 0 },
+    { label: "4–6 months", min: 4, max: 6, count: 0 },
+    { label: "7–12 months", min: 7, max: 12, count: 0 },
+    { label: "12+ months", min: 13, max: 999, count: 0 },
+  ];
+
+  for (const reservation of reservations) {
+    const duration = reservation.leaseDuration;
+    if (!duration || duration <= 0) continue;
+    const bracket = brackets.find((b) => duration >= b.min && duration <= b.max);
+    if (bracket) bracket.count += 1;
+  }
+
+  return brackets.map(({ label, count }) => ({ label, count }));
+};
+
+const buildDemographicsReportData = async (scope, rangeKey, tableRequest = parseTableRequest()) => {
+  const rangeMonths = parseReportMonths(rangeKey);
+  const sinceDate = dayjs().subtract(rangeMonths, "month").startOf("day").toDate();
+
+  const rooms = await Room.find({
+    isArchived: false,
+    branch: { $in: scope.branchesIncluded },
+  })
+    .select("_id branch type")
+    .lean();
+  const roomIds = rooms.map((room) => room._id);
+
+  // For demographics: confirmed+ reservations (actual tenants)
+  const confirmedReservations = roomIds.length
+    ? await Reservation.find({
+        roomId: { $in: roomIds },
+        isArchived: false,
+        status: { $in: ["reserved", "moveIn", "moveOut"] },
+        createdAt: { $gte: sinceDate },
+      })
+        .select(
+          "createdAt preferredRoomType referralSource workSchedule birthday " +
+          "leaseDuration educationLevel employment address maritalStatus nationality " +
+          "firstName lastName status roomId userId",
+        )
+        .populate("userId", "firstName lastName email")
+        .populate("roomId", "name roomNumber branch type")
+        .lean()
+    : [];
+
+  // For timing/demand: ALL reservations (shows interest patterns)
+  const allReservations = roomIds.length
+    ? await Reservation.find({
+        roomId: { $in: roomIds },
+        isArchived: false,
+        createdAt: { $gte: sinceDate },
+      })
+        .select("createdAt preferredRoomType firstName lastName status roomId userId")
+        .populate("userId", "firstName lastName")
+        .populate("roomId", "name roomNumber type")
+        .lean()
+    : [];
+
+  const occupationMix = buildOccupationDistribution(confirmedReservations);
+  const studentCount = occupationMix.find((item) => item.label === "Student")?.value || 0;
+  const totalAnalyzed = confirmedReservations.length;
+  const studentPct = totalAnalyzed > 0 ? Math.round((studentCount / totalAnalyzed) * 100) : 0;
+
+  const reservationsByMonth = buildReservationsByMonth(allReservations);
+  const peakMonth = [...reservationsByMonth].sort((a, b) => b.count - a.count)[0];
+  const peakMonthIndex = peakMonth
+    ? dayjs().month(0).format("MMM") === peakMonth.label ? 0
+      : Array.from({ length: 12 }, (_, i) => dayjs().month(i).format("MMM")).indexOf(peakMonth.label)
+    : -1;
+
+  const roomTypePref = buildRoomTypePreferences(confirmedReservations);
+  const topRoomType = roomTypePref.length > 0 ? roomTypePref[0].label : "N/A";
+
+  const geographicRows = buildGeographicOriginRows(confirmedReservations);
+
+  // Build a concise tenant row for drill-down lists
+  const formatTenantRow = (r) => ({
+    id: String(r._id),
+    name: `${r.userId?.firstName || r.firstName || ""} ${r.userId?.lastName || r.lastName || ""}`.trim() || "Unknown",
+    room: r.roomId?.name || r.roomId?.roomNumber || "—",
+    roomType: ROOM_TYPE_LABELS[r.roomId?.type] || r.roomId?.type || "—",
+    status: r.status,
+    createdAt: r.createdAt,
+    occupation: classifyOccupation(r),
+  });
+
+  // KPI detail lists — each card's drill-down
+  const allTenantRows = confirmedReservations.map(formatTenantRow);
+  const studentRows = allTenantRows.filter((r) => r.occupation === "Student");
+
+  // Top room type — find the raw key matching the label
+  const topRoomTypeRaw = Object.entries(ROOM_TYPE_LABELS).find(([, v]) => v === topRoomType)?.[0] || topRoomType;
+  const topRoomTypeRows = confirmedReservations
+    .filter((r) => r.preferredRoomType === topRoomTypeRaw || ROOM_TYPE_LABELS[r.preferredRoomType] === topRoomType)
+    .map(formatTenantRow);
+
+  // Peak month rows
+  const peakMonthRows = peakMonthIndex >= 0
+    ? allReservations
+        .filter((r) => dayjs(r.createdAt).month() === peakMonthIndex)
+        .map(formatTenantRow)
+    : [];
+
+  return {
+    ...buildRangeEnvelope(scope, {
+      range: rangeKey,
+      since: sinceDate.toISOString(),
+    }),
+    kpis: {
+      totalAnalyzed,
+      studentPercentage: studentPct,
+      studentPercentageLabel: `${studentPct}%`,
+      peakMonth: peakMonth?.label || "N/A",
+      peakMonthCount: peakMonth?.count || 0,
+      topRoomType,
+    },
+    kpiDetails: {
+      allTenants: allTenantRows,
+      students: studentRows,
+      topRoomType: topRoomTypeRows,
+      peakMonth: peakMonthRows,
+    },
+    series: {
+      occupationMix,
+      reservationsByMonth,
+      roomTypePreference: buildRoomTypePreferences(allReservations),
+      bookingByHour: buildBookingByHour(allReservations),
+      bookingByWeekday: buildBookingByWeekday(allReservations),
+      referralSources: buildReferralSourceDistribution(confirmedReservations),
+      workScheduleMix: buildWorkScheduleDistribution(confirmedReservations),
+      ageDistribution: buildAgeDistribution(confirmedReservations),
+      leaseDuration: buildLeaseDurationDistribution(confirmedReservations),
+    },
+    tables: {
+      geographicOrigin: buildPaginatedTable(geographicRows, tableRequest, {
+        sort: "count",
+        direction: "desc",
+      }),
+    },
+  };
+};
+
 const REPORT_BUILDERS = Object.freeze({
   hub: { defaultRange: "30d", build: buildAnalyticsHubReportData },
   occupancy: { defaultRange: "30d", build: buildOccupancyReportData },
   billing: { defaultRange: "3m", build: buildBillingReportData },
   operations: { defaultRange: "30d", build: buildOperationsReportData },
+  demographics: { defaultRange: "12m", build: buildDemographicsReportData },
   financials: { defaultRange: "3m", build: buildFinancialsReportData },
   audit: { defaultRange: "30d", build: buildAuditSummaryData },
 });
@@ -1954,6 +2276,17 @@ export const getOccupancyForecast = async (req, res, next) => {
   }
 };
 
+export const getDemographicsReport = async (req, res, next) => {
+  try {
+    const scope = await resolveAnalyticsScope(req);
+    const rangeKey = String(req.query.range || "12m").trim().toLowerCase();
+    const tableRequest = parseTableRequest(req.query);
+    sendSuccess(res, await buildDemographicsReportData(scope, rangeKey, tableRequest));
+  } catch (error) {
+    next(error);
+  }
+};
+
 export default {
   getDashboardAnalytics,
   getOccupancyReport,
@@ -1964,4 +2297,5 @@ export default {
   getSystemPerformance,
   getAnalyticsInsights,
   getOccupancyForecast,
+  getDemographicsReport,
 };
