@@ -345,6 +345,46 @@ const buildHubSnapshot = (reportData) => {
   };
 };
 
+const buildDemographicsSnapshot = (reportData) => {
+  const kpis = reportData?.kpis || {};
+  const series = reportData?.series || {};
+
+  return {
+    metrics: {
+      totalAnalyzed: Number(kpis.totalAnalyzed || 0),
+      studentPercentage: Number(kpis.studentPercentage || 0),
+      peakMonth: kpis.peakMonth || "N/A",
+      peakMonthCount: Number(kpis.peakMonthCount || 0),
+      topRoomType: kpis.topRoomType || "N/A",
+    },
+    occupationMix: (series.occupationMix || []).slice(0, 5).map((entry) => ({
+      label: entry.label,
+      value: Number(entry.value || 0),
+    })),
+    topMonths: (series.reservationsByMonth || [])
+      .filter((m) => m.count > 0)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3)
+      .map((m) => ({ label: m.label, count: m.count })),
+    roomTypePreference: (series.roomTypePreference || []).slice(0, 4).map((entry) => ({
+      label: entry.label,
+      value: Number(entry.value || 0),
+    })),
+    referralSources: (series.referralSources || []).slice(0, 5).map((entry) => ({
+      label: entry.label,
+      value: Number(entry.value || 0),
+    })),
+    workScheduleMix: (series.workScheduleMix || []).slice(0, 4).map((entry) => ({
+      label: entry.label,
+      value: Number(entry.value || 0),
+    })),
+    ageDistribution: (series.ageDistribution || [])
+      .filter((b) => b.count > 0)
+      .slice(0, 5)
+      .map((b) => ({ label: b.label, count: b.count })),
+  };
+};
+
 const SNAPSHOT_BUILDERS = Object.freeze({
   hub: buildHubSnapshot,
   occupancy: buildOccupancySnapshot,
@@ -352,6 +392,7 @@ const SNAPSHOT_BUILDERS = Object.freeze({
   financials: buildFinancialsSnapshot,
   operations: buildOperationsSnapshot,
   audit: buildAuditSnapshot,
+  demographics: buildDemographicsSnapshot,
 });
 
 const heuristicInsightBuilders = {
@@ -707,6 +748,66 @@ const heuristicInsightBuilders = {
         hottestBranch ? `Check ${hottestBranch.label} first because it has the most serious activity in this summary.` : null,
       ].filter(Boolean).slice(0, MAX_ACTIONS),
       confidence: "medium",
+    };
+  },
+  demographics: ({ snapshot, scope, question }) => {
+    const metrics = snapshot.metrics || {};
+    const occupationMix = snapshot.occupationMix || [];
+    const topMonths = snapshot.topMonths || [];
+    const referralSources = snapshot.referralSources || [];
+    const ageDistribution = snapshot.ageDistribution || [];
+    const roomTypePref = snapshot.roomTypePreference || [];
+    const branchLabel =
+      scope.branch === "all"
+        ? "all branches"
+        : String(scope.branch || "the selected branch").replace(/-/g, " ");
+
+    if (Number(metrics.totalAnalyzed || 0) === 0) {
+      return {
+        headline: "There is not enough tenant demographic data yet.",
+        summary: `The demographics report for ${branchLabel} does not have enough confirmed reservations to generate meaningful insights.`,
+        keyFindings: ["More confirmed reservations are needed before demographic patterns can be identified."],
+        anomalies: [],
+        recommendedActions: ["Continue processing tenant applications to build demographic history."],
+        confidence: "low",
+      };
+    }
+
+    const topOccupation = occupationMix.length > 0
+      ? occupationMix.sort((a, b) => b.value - a.value)[0]
+      : null;
+    const topReferral = referralSources.length > 0 ? referralSources[0] : null;
+    const topAgeGroup = ageDistribution.length > 0
+      ? ageDistribution.sort((a, b) => b.count - a.count)[0]
+      : null;
+
+    return {
+      headline: `${metrics.totalAnalyzed} tenant(s) analyzed — ${safePercent(metrics.studentPercentage)} are students.`,
+      summary: [
+        topOccupation ? `The largest occupation group is ${topOccupation.label} with ${topOccupation.value} tenant(s).` : null,
+        topMonths.length > 0 ? `Peak booking month is ${topMonths[0].label} with ${topMonths[0].count} reservation(s).` : null,
+        `The most preferred room type is ${metrics.topRoomType}.`,
+        question ? `You asked: ${question}` : null,
+      ].filter(Boolean).join(" "),
+      keyFindings: [
+        topOccupation ? `${topOccupation.label} tenants make up the majority of confirmed bookings.` : null,
+        roomTypePref.length > 0 ? `${roomTypePref[0].label} is the most popular room type preference.` : null,
+        topReferral ? `${topReferral.label} is the top referral source with ${topReferral.value} referral(s).` : null,
+        topAgeGroup ? `The ${topAgeGroup.label} age bracket has the most tenants.` : null,
+        topMonths.length >= 2 ? `${topMonths[0].label} and ${topMonths[1].label} are the busiest booking months.` : null,
+      ].filter(Boolean).slice(0, MAX_FINDINGS),
+      anomalies: [
+        Number(metrics.studentPercentage || 0) >= 90 ? "Nearly all tenants are students — consider diversifying marketing to working professionals." : null,
+        Number(metrics.studentPercentage || 0) <= 10 && Number(metrics.totalAnalyzed || 0) > 5 ? "Very few student tenants — check if pricing or location is a factor." : null,
+        occupationMix.find((m) => m.label === "Unspecified" && m.value > metrics.totalAnalyzed * 0.3) ? "A significant portion of tenants have unspecified occupation — encourage applicants to fill in employment details." : null,
+      ].filter(Boolean).slice(0, MAX_ANOMALIES),
+      recommendedActions: [
+        topMonths.length > 0 ? `Prepare marketing and room readiness before ${topMonths[0].label} to capture peak demand.` : null,
+        topReferral ? `Double down on ${topReferral.label} as a referral channel — it is driving the most confirmed bookings.` : null,
+        referralSources.length < 3 ? "Diversify referral sources to reduce dependence on a single channel." : null,
+        topAgeGroup ? `Tailor amenities and communication for the ${topAgeGroup.label} age group, which is the largest segment.` : null,
+      ].filter(Boolean).slice(0, MAX_ACTIONS),
+      confidence: Number(metrics.totalAnalyzed || 0) >= 10 ? "medium" : "low",
     };
   },
 };

@@ -94,6 +94,7 @@ export const queryKeys = {
     occupancyReport: (params) => ["analytics", "occupancy-report", params || {}],
     billingReport: (params) => ["analytics", "billing-report", params || {}],
     operationsReport: (params) => ["analytics", "operations-report", params || {}],
+    demographicsReport: (params) => ["analytics", "demographics-report", params || {}],
     occupancyForecast: (params) => ["analytics", "occupancy-forecast", params || {}],
     financials: (params) => ["analytics", "financials", params || {}],
     audit: (params) => ["analytics", "audit", params || {}],

@@ -4,6 +4,7 @@ import {
  ArrowLeft,
  BedDouble,
  Receipt,
+ Users,
  Wrench,
  DollarSign,
  ShieldAlert,
@@ -21,12 +22,14 @@ import AnalyticsOperationsTab from "./AnalyticsOperationsTab";
 import AnalyticsConsolidatedTab from "./AnalyticsConsolidatedTab";
 import AnalyticsFinancialsTab from "./AnalyticsFinancialsTab";
 import AnalyticsMonitoringTab from "./AnalyticsMonitoringTab";
+import AnalyticsDemographicsTab from "./AnalyticsDemographicsTab";
 import "../styles/admin-reports.css";
 
 const BASE_TABS = [
  { key: "occupancy", label: "Occupancy", icon: BedDouble },
  { key: "billing", label: "Billing", icon: Receipt },
  { key: "operations", label: "Operations", icon: Wrench },
+ { key: "demographics", label: "Demographics", icon: Users },
 ];
 
 const OWNER_TABS = [
@@ -41,6 +44,8 @@ function resolveTabComponent(tabKey, sharedProps) {
  return <AnalyticsBillingTab {...sharedProps} />;
  case "operations":
  return <AnalyticsOperationsTab {...sharedProps} />;
+ case "demographics":
+ return <AnalyticsDemographicsTab {...sharedProps} />;
  case "consolidated":
  return <AnalyticsConsolidatedTab {...sharedProps} />;
  case "financials":

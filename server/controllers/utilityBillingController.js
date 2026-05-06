@@ -17,6 +17,7 @@ import {
   UtilityPeriod,
   UtilityReading,
   Bill,
+  BedHistory,
 } from "../models/index.js";
 import { computeBilling } from "../utils/billingEngine.js";
 import { logBillingAudit } from "../utils/billingAudit.js";
@@ -60,6 +61,7 @@ import {
   normalizeUtilityEventType,
   readMoveInDate,
   readMoveOutDate,
+  reservationStatusesForQuery,
   serializeUtilityPeriod,
   serializeUtilityReading,
   utilityEventTypesForQuery,
@@ -1786,15 +1788,30 @@ export const getRoomHistory = async (req, res, next) => {
       return res.status(403).json({ error: "Access denied" });
     }
 
-    // Get all move-in / move-out reservations for this room
-    const reservations = await Reservation.find({
-      roomId: room._id,
-      status: { $in: BILLABLE_RESERVATION_STATUS_QUERY },
-      isArchived: { $ne: true },
-    })
-      .populate("userId", "firstName lastName email")
-      .sort({ moveInDate: -1 })
-      .lean();
+    // Get all active and past occupancy records for this room.
+    // Include 'reserved' so tenants who physically moved in but whose reservation
+    // status has not yet been transitioned to 'moveIn' still appear in the timeline.
+    const ROOM_HISTORY_STATUS_QUERY = reservationStatusesForQuery(
+      "reserved",
+      "moveIn",
+      "moveOut",
+    );
+    const [reservations, bedHistoryRecords] = await Promise.all([
+      Reservation.find({
+        roomId: room._id,
+        status: { $in: ROOM_HISTORY_STATUS_QUERY },
+        isArchived: { $ne: true },
+      })
+        .populate("userId", "firstName lastName email")
+        .sort({ moveInDate: -1 })
+        .lean(),
+      BedHistory.find({
+        roomId: room._id,
+      })
+        .populate("tenantId", "firstName lastName email")
+        .sort({ moveInDate: -1 })
+        .lean(),
+    ]);
 
     // Get all move-in / move-out meter readings for this room
     const readings = await UtilityReading.find({
@@ -1827,7 +1844,31 @@ export const getRoomHistory = async (req, res, next) => {
     }
 
     const now = new Date();
-    const history = reservations.map((res) => {
+    const historyBySourceKey = new Map();
+
+    const addHistoryEntry = (entry) => {
+      const sourceKey = [
+        entry.tenantId || entry.id || entry.tenantName || "unknown",
+        entry.bedId || entry.bedName || "bed",
+        entry.moveInDate ? new Date(entry.moveInDate).toISOString() : "no-move-in",
+        entry.moveOutDate ? new Date(entry.moveOutDate).toISOString() : "active",
+      ].join(":");
+
+      if (!historyBySourceKey.has(sourceKey)) {
+        historyBySourceKey.set(sourceKey, entry);
+        return;
+      }
+
+      const existing = historyBySourceKey.get(sourceKey);
+      historyBySourceKey.set(sourceKey, {
+        ...existing,
+        ...entry,
+        moveInReading: existing.moveInReading || entry.moveInReading,
+        moveOutReading: existing.moveOutReading || entry.moveOutReading,
+      });
+    };
+
+    reservations.forEach((res) => {
       const tenant = resolveReferencedUser(res.userId, {
         unknownLabel: UNKNOWN_TENANT_LABEL,
       });
@@ -1851,7 +1892,7 @@ export const getRoomHistory = async (req, res, next) => {
       const bedName =
         (bedId && bedLabelMap[bedId]) || res.selectedBed?.position || "—";
 
-      return {
+      addHistoryEntry({
         id: res._id,
         tenantName: tenant.name,
         tenantEmail: tenant.email || res.billingEmail || null,
@@ -1860,7 +1901,7 @@ export const getRoomHistory = async (req, res, next) => {
         bedId: bedId || null,
         moveInDate: moveIn,
         moveOutDate: moveOut || null,
-        isActive: hasReservationStatus(res.status, "moveIn"),
+        isActive: hasReservationStatus(res.status, "moveIn", "reserved"),
         durationDays,
         moveInReading: moveInReading
           ? {
@@ -1876,7 +1917,59 @@ export const getRoomHistory = async (req, res, next) => {
               date: moveOutReading.date,
             }
           : null,
-      };
+      });
+    });
+
+    bedHistoryRecords.forEach((record) => {
+      const tenant = resolveReferencedUser(record.tenantId, {
+        unknownLabel: UNKNOWN_TENANT_LABEL,
+      });
+      const tenantId = tenant.id;
+      const moveInReading = tenantId ? readingMap[`${tenantId}_moveIn`] : null;
+      const moveOutReading = tenantId
+        ? readingMap[`${tenantId}_moveOut`]
+        : null;
+      const moveIn = record.moveInDate ? new Date(record.moveInDate) : null;
+      const moveOut = record.moveOutDate ? new Date(record.moveOutDate) : null;
+      const endDate = moveOut || now;
+      const durationDays = moveIn
+        ? Math.max(1, Math.ceil((endDate - moveIn) / 86_400_000))
+        : 0;
+      const bedId = record.bedId || null;
+      const bedName = (bedId && bedLabelMap[bedId]) || bedId || "-";
+
+      addHistoryEntry({
+        id: record.reservationId || record._id,
+        tenantName: tenant.name,
+        tenantEmail: tenant.email || null,
+        tenantId: tenantId || null,
+        bedName,
+        bedId,
+        moveInDate: moveIn,
+        moveOutDate: moveOut,
+        isActive: !moveOut && record.status === "active",
+        durationDays,
+        moveInReading: moveInReading
+          ? {
+              id: moveInReading._id,
+              reading: moveInReading.reading,
+              date: moveInReading.date,
+            }
+          : null,
+        moveOutReading: moveOutReading
+          ? {
+              id: moveOutReading._id,
+              reading: moveOutReading.reading,
+              date: moveOutReading.date,
+            }
+          : null,
+      });
+    });
+
+    const history = [...historyBySourceKey.values()].sort((left, right) => {
+      const leftDate = left.moveInDate ? new Date(left.moveInDate).getTime() : 0;
+      const rightDate = right.moveInDate ? new Date(right.moveInDate).getTime() : 0;
+      return rightDate - leftDate;
     });
 
     res.json({ history, roomName: room.name || room.roomNumber });

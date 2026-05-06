@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
  X,
  Users,
@@ -188,6 +189,61 @@ const getWarningSeverityConfig = (severity) => {
 
 export default function TenantDetailModal({ tenant, onClose }) {
  useEscapeClose(!!tenant, onClose);
+
+ const [dialogState, setDialogState] = useState({ type: null, loading: false, error: null });
+ const [dialogInputs, setDialogInputs] = useState({});
+
+ const closeDialog = () => {
+ setDialogState({ type: null, loading: false, error: null });
+ setDialogInputs({});
+ };
+
+ const handleAction = async () => {
+ setDialogState((s) => ({ ...s, loading: true, error: null }));
+ try {
+ const { reservationApi } = await import("../../../shared/api/apiClient");
+
+ if (dialogState.type === "renew") {
+ const m = parseInt(dialogInputs.months, 10);
+ if (Number.isNaN(m) || m < 1 || m > 24) throw new Error("Enter 1-24 months");
+ const res = await reservationApi.renew(tenant.reservationId, { additionalMonths: m });
+ showNotification(res.message || "Contract renewed!", "success");
+ onClose();
+ } else if (dialogState.type === "moveOut") {
+ const meterReading = Number(dialogInputs.kwh);
+ if (dialogInputs.kwh === undefined || dialogInputs.kwh.trim() === "" || Number.isNaN(meterReading) || meterReading < 0) {
+ throw new Error("A valid meter reading (kWh) is required.");
+ }
+ const res = await reservationApi.moveOut(tenant.reservationId, {
+ notes: "Admin move-out",
+ meterReading,
+ });
+ const extra = res.electricityResult
+ ? `\nMove-out reading recorded: ${res.electricityResult.meterReading} kWh`
+ : "";
+ showNotification((res.message || "Tenant moved out") + extra, "success");
+ onClose();
+ } else if (dialogState.type === "transfer") {
+ if (!dialogInputs.newRoomId) throw new Error("Room ID is required");
+ if (!dialogInputs.newBedId) throw new Error("Bed ID is required");
+
+ const res = await reservationApi.transfer(tenant.reservationId, {
+ newRoomId: dialogInputs.newRoomId,
+ newBedId: dialogInputs.newBedId,
+ reason: dialogInputs.reason || "Room maintenance / accommodation change",
+ });
+ showNotification(res.message || "Transfer complete", "success");
+ onClose();
+ }
+ } catch (err) {
+ setDialogState((s) => ({
+ ...s,
+ loading: false,
+ error: err.message || "Action failed. Please try again.",
+ }));
+ }
+ };
+
  if (!tenant) return null;
 
  const contractStatus = tenant.contractStatus || tenant.status || "active";
@@ -204,6 +260,7 @@ export default function TenantDetailModal({ tenant, onClose }) {
  const occupancyConfig = getOccupancyStatusConfig(occupancyStatus);
 
  return (
+ <>
  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
  <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-7xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
  <div className="px-6 py-3 border-b border-border bg-card rounded-t-xl flex-shrink-0">
@@ -453,19 +510,9 @@ export default function TenantDetailModal({ tenant, onClose }) {
  <div className="flex flex-col gap-2">
  <button
  className="w-full flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 px-3 py-2 text-sm font-semibold"
- onClick={async () => {
- const months = prompt("Extend lease by how many months? (1-24)", "12");
- if (!months) return;
- const m = parseInt(months, 10);
- if (Number.isNaN(m) || m < 1 || m > 24) return alert("Enter 1-24");
- try {
- const { reservationApi } = await import("../../../shared/api/apiClient");
- const res = await reservationApi.renew(tenant.reservationId, { additionalMonths: m });
- showNotification(res.message || "Contract renewed!", "success");
- onClose();
- } catch (err) {
- showNotification("Renewal failed. Please try again.", "error");
- }
+ onClick={() => {
+ setDialogState({ type: "renew", loading: false, error: null });
+ setDialogInputs({ months: "12" });
  }}
  >
  <RefreshCw className="w-4 h-4" />
@@ -474,36 +521,9 @@ export default function TenantDetailModal({ tenant, onClose }) {
 
  <button
  className="w-full flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 text-red-600 px-3 py-2 text-sm font-semibold"
- onClick={async () => {
- const kwhInput = prompt(
- `Enter the current meter reading for ${tenant.room} (kWh).\n\nThis is required to record the move-out electricity consumption.`,
- "",
- );
- if (kwhInput === null) return;
- const meterReading = Number(kwhInput.trim());
- if (!kwhInput.trim() || Number.isNaN(meterReading) || meterReading < 0) {
- showNotification(
- "A valid meter reading (kWh) is required to move out a tenant.",
- "error",
- 4000,
- );
- return;
- }
- if (!confirm(`Move out ${tenant.name} with meter reading ${meterReading} kWh? This will vacate their bed and mark them as inactive.`)) return;
- try {
- const { reservationApi } = await import("../../../shared/api/apiClient");
- const res = await reservationApi.moveOut(tenant.reservationId, {
- notes: "Admin move-out",
- meterReading,
- });
- const extra = res.electricityResult
- ? `\nMove-out reading recorded: ${res.electricityResult.meterReading} kWh`
- : "";
- showNotification((res.message || "Tenant moved out") + extra, "success");
- onClose();
- } catch (err) {
- showNotification("Move-out failed. Please try again.", "error");
- }
+ onClick={() => {
+ setDialogState({ type: "moveOut", loading: false, error: null });
+ setDialogInputs({ kwh: "" });
  }}
  >
  <LogOut className="w-4 h-4" />
@@ -512,20 +532,9 @@ export default function TenantDetailModal({ tenant, onClose }) {
 
  <button
  className="w-full flex items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 text-orange-600 px-3 py-2 text-sm font-semibold"
- onClick={async () => {
- const newRoomId = prompt("Enter new Room ID (ObjectId):");
- if (!newRoomId) return;
- const newBedId = prompt("Enter new Bed ID (ObjectId):");
- if (!newBedId) return;
- const reason = prompt("Reason for transfer:", "Room maintenance / accommodation change");
- try {
- const { reservationApi } = await import("../../../shared/api/apiClient");
- const res = await reservationApi.transfer(tenant.reservationId, { newRoomId, newBedId, reason });
- showNotification(res.message || "Transfer complete", "success");
- onClose();
- } catch (err) {
- showNotification("Transfer failed. Please try again.", "error");
- }
+ onClick={() => {
+ setDialogState({ type: "transfer", loading: false, error: null });
+ setDialogInputs({ newRoomId: "", newBedId: "", reason: "Room maintenance / accommodation change" });
  }}
  >
  <ArrowRightLeft className="w-4 h-4" />
@@ -544,6 +553,113 @@ export default function TenantDetailModal({ tenant, onClose }) {
  </button>
  </div>
  </div>
+
+ {dialogState.type && (
+ <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={closeDialog}>
+ <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden animate-in fade-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
+ <div className="px-5 py-4 border-b border-border bg-muted/30">
+ <h3 className="font-semibold text-foreground">
+ {dialogState.type === "renew" ? "Renew Contract" : 
+ dialogState.type === "moveOut" ? "Move Out Tenant" : 
+ "Transfer Room"}
+ </h3>
  </div>
+ <div className="p-5 space-y-4">
+ {dialogState.error && (
+ <div className="p-3 text-xs bg-error-light text-error-dark border border-error/20 rounded">
+ {dialogState.error}
+ </div>
+ )}
+ 
+ {dialogState.type === "renew" && (
+ <div>
+ <label className="block text-xs font-medium text-muted-foreground mb-1.5">Extend lease by (months)</label>
+ <input 
+ type="number" 
+ min="1" max="24"
+ value={dialogInputs.months || ""}
+ onChange={e => setDialogInputs({...dialogInputs, months: e.target.value})}
+ className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+ placeholder="e.g. 12"
+ autoFocus
+ />
+ </div>
+ )}
+
+ {dialogState.type === "moveOut" && (
+ <div>
+ <div className="text-sm text-foreground mb-4">
+ Move out <strong>{tenant.name}</strong>? This will vacate their bed and mark them as inactive.
+ </div>
+ <label className="block text-xs font-medium text-muted-foreground mb-1.5">Current meter reading for {tenant.room} (kWh)</label>
+ <input 
+ type="number" 
+ value={dialogInputs.kwh || ""}
+ onChange={e => setDialogInputs({...dialogInputs, kwh: e.target.value})}
+ className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+ placeholder="Required to record electricity consumption"
+ autoFocus
+ />
+ </div>
+ )}
+
+ {dialogState.type === "transfer" && (
+ <div className="space-y-3">
+ <div>
+ <label className="block text-xs font-medium text-muted-foreground mb-1.5">New Room ID</label>
+ <input 
+ type="text" 
+ value={dialogInputs.newRoomId || ""}
+ onChange={e => setDialogInputs({...dialogInputs, newRoomId: e.target.value})}
+ className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+ autoFocus
+ />
+ </div>
+ <div>
+ <label className="block text-xs font-medium text-muted-foreground mb-1.5">New Bed ID</label>
+ <input 
+ type="text" 
+ value={dialogInputs.newBedId || ""}
+ onChange={e => setDialogInputs({...dialogInputs, newBedId: e.target.value})}
+ className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+ />
+ </div>
+ <div>
+ <label className="block text-xs font-medium text-muted-foreground mb-1.5">Reason for transfer</label>
+ <input 
+ type="text" 
+ value={dialogInputs.reason || ""}
+ onChange={e => setDialogInputs({...dialogInputs, reason: e.target.value})}
+ className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+ placeholder="Room maintenance / accommodation change"
+ />
+ </div>
+ </div>
+ )}
+ </div>
+ <div className="px-5 py-4 border-t border-border bg-muted/30 flex justify-end gap-2">
+ <button 
+ onClick={closeDialog}
+ disabled={dialogState.loading}
+ className="px-4 py-2 border border-border rounded-md hover:bg-muted transition-colors text-sm font-medium disabled:opacity-50"
+ >
+ Cancel
+ </button>
+ <button 
+ onClick={handleAction}
+ disabled={dialogState.loading}
+ className={`px-4 py-2 rounded-md text-sm font-medium text-white transition-colors disabled:opacity-50 ${
+ dialogState.type === 'moveOut' ? 'bg-error hover:bg-error-dark' : 
+ dialogState.type === 'transfer' ? 'bg-warning hover:bg-warning-dark' : 
+ 'bg-primary hover:bg-primary/90'
+ }`}
+ >
+ {dialogState.loading ? "Processing..." : "Confirm"}
+ </button>
+ </div>
+ </div>
+ </div>
+ )}
+ </>
  );
 }

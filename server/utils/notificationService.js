@@ -108,6 +108,26 @@ const notify = {
       `Your reservation ${reservationCode} has been cancelled. ${reason ? `Reason: ${reason}` : ""}`,
       { entityType: "reservation" }),
 
+  cancellationRequested: (userId, reservationCode) =>
+    createNotification(userId, "reservation_cancellation_requested", "Cancellation Request Submitted",
+      `Your cancellation request for reservation ${reservationCode} is pending admin review.`,
+      { entityType: "reservation" }),
+
+  cancellationApproved: (userId, reservationCode) =>
+    createNotification(userId, "reservation_cancelled", "Reservation Cancelled",
+      `Your reservation ${reservationCode} has been cancelled. The reservation fee is non-refundable.`,
+      { entityType: "reservation" }),
+
+  cancellationRejected: (userId, reservationCode, note) =>
+    createNotification(userId, "reservation_cancellation_rejected", "Cancellation Request Not Approved",
+      `Your cancellation request for reservation ${reservationCode} was not approved.${note ? ` Admin note: ${note}` : ""}`,
+      { entityType: "reservation" }),
+
+  cancellationRequestAlert: (adminUserId, tenantName, reservationCode) =>
+    createNotification(adminUserId, "reservation_cancellation_requested", "Cancellation Request Received",
+      `${tenantName} has requested cancellation for reservation ${reservationCode}. Review required. The reservation fee is non-refundable.`,
+      { entityType: "reservation" }),
+
   /**
    * Visit approved
    */

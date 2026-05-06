@@ -44,6 +44,7 @@ const INITIAL_FORM = {
   floor: 1,
   capacity: 1,
   price: 0,
+  monthlyPrice: 0,
   description: "",
   amenities: "",
   policies: "",
@@ -87,6 +88,7 @@ export default function RoomFormModal({ room, onClose, onSave }) {
         floor: room.floor || 1,
         capacity: room.capacity || 1,
         price: room.price || 0,
+        monthlyPrice: room.monthlyPrice || 0,
         description: room.description || "",
         amenities: (room.amenities || []).join(", "),
         policies: (room.policies || []).join(", "),
@@ -136,6 +138,7 @@ export default function RoomFormModal({ room, onClose, onSave }) {
         floor: Number(form.floor),
         capacity: Number(form.capacity),
         price: Number(form.price),
+        monthlyPrice: Number(form.monthlyPrice),
         description: form.description.trim(),
         amenities: form.amenities
           ? form.amenities.split(",").map((s) => s.trim()).filter(Boolean)
@@ -346,8 +349,12 @@ export default function RoomFormModal({ room, onClose, onSave }) {
                   <span className="field-error">{errors.capacity}</span>
                 )}
               </div>
+            </div>
+
+            {/* Row 3.5: Prices */}
+            <div className="room-form-row">
               <div className={`room-form-group ${errors.price ? "has-error" : ""}`}>
-                <label>Monthly Price (₱) *</label>
+                <label>Base Price (₱) *</label>
                 <input
                   type="number"
                   min="0"
@@ -356,6 +363,18 @@ export default function RoomFormModal({ room, onClose, onSave }) {
                 />
                 {errors.price && (
                   <span className="field-error">{errors.price}</span>
+                )}
+              </div>
+              <div className={`room-form-group ${errors.monthlyPrice ? "has-error" : ""}`}>
+                <label>Monthly Price (₱)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={form.monthlyPrice}
+                  onChange={(e) => handleChange("monthlyPrice", e.target.value)}
+                />
+                {errors.monthlyPrice && (
+                  <span className="field-error">{errors.monthlyPrice}</span>
                 )}
               </div>
             </div>

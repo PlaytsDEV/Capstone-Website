@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Users,
   UserPlus,
@@ -7,8 +7,11 @@ import {
   Shield,
   Edit2,
   Lock,
+  Unlock,
+  Trash2,
   ChevronLeft,
   ChevronRight,
+  MoreVertical,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
@@ -20,6 +23,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useUsers, useUserStats } from "../../../shared/hooks/queries/useUsers";
 import EditUserModal from "../components/users/EditUserModal";
 import AddUserModal from "../components/users/AddUserModal";
+import ArchiveUserModal from "../components/users/ArchiveUserModal";
 import HardDeleteUserModal from "../components/users/HardDeleteUserModal";
 import RestoreUserModal from "../components/users/RestoreUserModal";
 import AccountActionModal from "../components/users/AccountActionModal";
@@ -39,6 +43,174 @@ import {
 import "../styles/design-tokens.css";
 import "../styles/admin-users.css";
 
+function UserActionMenu({
+  u,
+  user,
+  setAccessDrawerUser,
+  handleOpenPermissions,
+  handleEditClick,
+  setSelectedUser,
+  setAccountAction,
+  handleArchiveClick,
+  handleHardDeleteClick,
+  canManageUsers,
+  isOwner,
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isOpen]);
+
+  const currentUserId = user?._id || user?.uid || user?.id;
+  const isCurrentUser = String(u._id || u.id) === String(currentUserId || "");
+  const isArchived = u.isArchived === true;
+  const isPrivilegedAccount = ["branch_admin", "owner"].includes(u.role);
+  const canEditAccount =
+    canManageUsers && !isArchived && (isOwner || !isPrivilegedAccount);
+  const status = u.accountStatus || (u.isActive ? "active" : "suspended");
+  const canBlockAccount =
+    canManageUsers && !isCurrentUser && !isArchived && status === "active";
+  const canUnblockAccount =
+    canManageUsers &&
+    !isCurrentUser &&
+    !isArchived &&
+    (status === "suspended" || (status === "banned" && isOwner));
+  const canDeleteAccount =
+    canManageUsers && !isCurrentUser && !isArchived && (isOwner || !isPrivilegedAccount);
+  const canForceDeleteAccount =
+    canManageUsers && isOwner && !isCurrentUser && (!isPrivilegedAccount || isOwner);
+
+  // If there are literally no actions available, render nothing
+  if (!canEditAccount && !canBlockAccount && !canUnblockAccount && !canDeleteAccount && !canForceDeleteAccount && u.role !== "branch_admin") {
+    return <div className="w-16" />;
+  }
+
+  return (
+    <div
+      ref={menuRef}
+      className="relative flex items-center justify-end"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {canEditAccount ? (
+        <button
+          onClick={() => handleEditClick(u)}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          title="Edit User"
+        >
+          <Edit2 className="h-4 w-4" />
+        </button>
+      ) : (
+        <button
+          onClick={() => setAccessDrawerUser(u)}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-primary/30 bg-primary/5 text-primary transition-colors hover:bg-primary/10"
+          title="View Access"
+        >
+          <Shield className="h-4 w-4" />
+        </button>
+      )}
+
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="ml-1 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted"
+        title="More actions"
+      >
+        <MoreVertical className="h-4 w-4" />
+      </button>
+
+      {isOpen && (
+        <div className="absolute right-0 top-10 z-50 min-w-[170px] rounded-lg border border-border bg-card p-1 shadow-lg animate-in fade-in zoom-in-95 duration-100">
+          {u.role === "branch_admin" && (
+            <button
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
+              onClick={() => {
+                setIsOpen(false);
+                handleOpenPermissions(u);
+              }}
+            >
+              <Key className="h-4 w-4" /> Permissions
+            </button>
+          )}
+          
+          {canEditAccount && (
+            <button
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
+              onClick={() => {
+                setIsOpen(false);
+                setAccessDrawerUser(u);
+              }}
+            >
+              <Shield className="h-4 w-4" /> View Access
+            </button>
+          )}
+
+          {canBlockAccount && (
+            <button
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-danger hover:bg-danger/10"
+              onClick={() => {
+                setIsOpen(false);
+                setSelectedUser(u);
+                setAccountAction({ type: "ban", user: u });
+              }}
+            >
+              <Lock className="h-4 w-4" /> Block Account
+            </button>
+          )}
+
+          {canUnblockAccount && (
+            <button
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-primary hover:bg-primary/10"
+              onClick={() => {
+                setIsOpen(false);
+                setSelectedUser(u);
+                setAccountAction({ type: "reactivate", user: u });
+              }}
+            >
+              <Unlock className="h-4 w-4" /> Unblock Account
+            </button>
+          )}
+
+          {canDeleteAccount && (
+            <button
+              className="mt-1 flex w-full items-center gap-2 border-t border-border pt-1.5 px-2 py-1.5 text-sm font-medium text-danger hover:bg-danger/10"
+              onClick={() => {
+                setIsOpen(false);
+                handleArchiveClick(u);
+              }}
+            >
+              <Trash2 className="h-4 w-4" /> Archive / Delete
+            </button>
+          )}
+
+          {canForceDeleteAccount && (
+            <button
+              className="mt-1 flex w-full items-center gap-2 border-t border-danger/20 pt-1.5 px-2 py-1.5 text-sm font-bold text-danger hover:bg-danger-light"
+              onClick={() => {
+                setIsOpen(false);
+                handleHardDeleteClick(u);
+              }}
+            >
+              <Trash2 className="h-4 w-4" /> Force Delete
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function UserManagementPage() {
   const { user, refreshUser } = useAuth();
   const { can, isOwner: permissionOwner } = usePermissions();
@@ -52,6 +224,7 @@ function UserManagementPage() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [accessDrawerUser, setAccessDrawerUser] = useState(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isArchiveModalOpen, setIsArchiveModalOpen] = useState(false);
   const [isHardDeleteModalOpen, setIsHardDeleteModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [accountAction, setAccountAction] = useState({
@@ -321,6 +494,11 @@ function getAvatarColor(user) {
     setIsHardDeleteModalOpen(true);
   };
 
+  const handleArchiveClick = (userData) => {
+    setSelectedUser(userData);
+    setIsArchiveModalOpen(true);
+  };
+
   const handleDeleteUser = async ({
     hardDelete = false,
     forceDelete = false,
@@ -364,7 +542,7 @@ function getAvatarColor(user) {
         );
       }
 
-      setIsDeleteModalOpen(false);
+      setIsArchiveModalOpen(false);
       setIsHardDeleteModalOpen(false);
       refetchAll();
     } catch (error) {
@@ -667,7 +845,7 @@ function getAvatarColor(user) {
           canManageUsers &&
           !isCurrentUser &&
           !isArchived &&
-          ["suspended", "banned"].includes(status);
+          (status === "suspended" || (status === "banned" && isOwner));
         const canRestore =
           canManageUsers &&
           !isCurrentUser &&
@@ -676,7 +854,7 @@ function getAvatarColor(user) {
         const canHardDelete =
           canManageUsers &&
           !isCurrentUser &&
-          isArchived &&
+          (isArchived || isOwner) &&
           (!isPrivilegedAccount || isOwner);
 
         return (
@@ -938,81 +1116,64 @@ function getAvatarColor(user) {
                     {u.branch || "—"}
                   </td>
                   <td className="px-6 py-4">
+                    {(() => {
+                      const status =
+                        u.accountStatus ||
+                        (u.isActive ? "active" : "suspended");
+                      const statusMeta = {
+                        active: {
+                          label: "Active",
+                          color: "var(--color-success)",
+                        },
+                        pending_verification: {
+                          label: "Pending",
+                          color: "var(--color-warning)",
+                        },
+                        suspended: {
+                          label: "Suspended",
+                          color: "var(--color-warning)",
+                        },
+                        banned: {
+                          label: "Blocked account",
+                          color: "var(--color-danger)",
+                        },
+                      }[status] || {
+                        label: u.isActive ? "Active" : "Inactive",
+                        color: u.isActive
+                          ? "var(--color-success)"
+                          : "var(--color-warning)",
+                      };
+
+                      return (
                     <span className="inline-flex items-center gap-2 text-sm">
                       <span
                         className="w-2.5 h-2.5 rounded-full inline-block"
-                        style={{ backgroundColor: "var(--color-success)" }}
+                        style={{ backgroundColor: statusMeta.color }}
                       />
                       <span
                         className="leading-none"
-                        style={{ color: "var(--color-success)" }}
+                        style={{ color: statusMeta.color }}
                       >
-                        {u.isActive ? "Active" : "Inactive"}
+                        {statusMeta.label}
                       </span>
                     </span>
+                      );
+                    })()}
                   </td>
                   <td className="px-6 py-4">
-                    <div
-                      className="flex items-center justify-end gap-2"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {u.role === "branch_admin" && (
-                        <button
-                          className="h-8 px-3 flex items-center gap-2 text-sm rounded-lg"
-                          onClick={() => handleOpenPermissions(u)}
-                          style={{
-                            border: "1px solid var(--color-border-default)",
-                            color: "var(--color-text-primary)",
-                            backgroundColor: "var(--card)",
-                          }}
-                        >
-                          <Key className="h-4 w-4" />
-                          Permissions
-                        </button>
-                      )}
-                      <button
-                        onClick={() => setAccessDrawerUser(u)}
-                        className="h-8 px-3 flex items-center gap-2 text-sm rounded-lg"
-                        style={{
-                          border: `1px solid var(--primary)`,
-                          color: "var(--primary)",
-                          backgroundColor: "var(--card)",
-                        }}
-                      >
-                        <Shield className="h-4 w-4" />
-                        Access
-                      </button>
-                      <button
-                        onClick={() => {
-                          setSelectedUser(u);
-                          setIsEditModalOpen(true);
-                        }}
-                        className="h-8 px-3 flex items-center gap-2 text-sm rounded-lg"
-                        style={{
-                          border: "1px solid var(--color-border-default)",
-                          color: "var(--color-text-primary)",
-                          backgroundColor: "var(--card)",
-                        }}
-                      >
-                        <Edit2 className="h-4 w-4" />
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => {
-                          setSelectedUser(u);
-                          setAccountAction({ type: "ban", user: u });
-                        }}
-                        className="h-8 px-3 flex items-center gap-2 text-sm rounded-lg"
-                        style={{
-                          border: "1px solid var(--danger-light)",
-                          color: "var(--color-danger)",
-                          backgroundColor: "var(--card)",
-                        }}
-                      >
-                        <Lock className="h-4 w-4" />
-                        Block
-                      </button>
-                    </div>
+                    <UserActionMenu
+                      u={u}
+                      user={user}
+                      setAccessDrawerUser={setAccessDrawerUser}
+                      handleOpenPermissions={handleOpenPermissions}
+                      handleEditClick={handleEditClick}
+                      setSelectedUser={setSelectedUser}
+                      setAccountAction={setAccountAction}
+                      handleArchiveClick={handleArchiveClick}
+                      handleHardDeleteClick={handleHardDeleteClick}
+                      canManageUsers={canManageUsers}
+                      isOwner={isOwner}
+                    />
                   </td>
                 </tr>
               ))}
@@ -1090,6 +1251,14 @@ function getAvatarColor(user) {
           onFormChange={handleAddFormChange}
           onSubmit={handleCreateUser}
           onClose={() => setIsAddModalOpen(false)}
+        />
+      )}
+      {isArchiveModalOpen && (
+        <ArchiveUserModal
+          user={selectedUser}
+          isOwner={isOwner}
+          onDelete={handleDeleteUser}
+          onClose={() => setIsArchiveModalOpen(false)}
         />
       )}
       {isHardDeleteModalOpen && (
