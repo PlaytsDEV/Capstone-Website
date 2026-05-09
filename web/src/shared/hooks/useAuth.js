@@ -319,8 +319,8 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem("user");
 
       // Return branch for caller to handle navigation
-      // NOTE: Don't turn off globalLoading here - page will reload and clear it
-      // This keeps the loading overlay visible during navigation for smooth UX
+      // NOTE: Don't turn off globalLoading here - the route transition clears it.
+      // This keeps the loading overlay visible during navigation for smooth UX.
       return { success: true, branch: branchHome };
     } catch (error) {
       console.error("Logout error:", error);

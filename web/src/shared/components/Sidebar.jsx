@@ -725,7 +725,7 @@ function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleCollapse }) {
  onConfirm={confirmLogout}
  title="Log Out"
  message="Are you sure you want to log out of your account?"
- variant="warning"
+ variant="danger"
  confirmText="Log Out"
  loading={isLoggingOut}
  />

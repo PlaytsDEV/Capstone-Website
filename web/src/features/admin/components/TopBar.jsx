@@ -290,7 +290,7 @@ export default function TopBar({
         onConfirm={handleLogout}
         title="Sign Out"
         message="Are you sure you want to sign out of your account?"
-        variant="warning"
+        variant="danger"
         confirmText="Sign Out"
         cancelText="Cancel"
         loading={logoutInProgress}

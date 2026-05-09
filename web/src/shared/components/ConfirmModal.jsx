@@ -43,10 +43,10 @@ export default function ConfirmModal({
  // Variant-based color mapping — muted, professional tones
  const palette = {
  danger: {
- icon: "#DC2626",
- iconBg: "rgba(220, 38, 38, 0.08)",
- btn: "#DC2626",
- btnHover: "#B91C1C",
+ icon: "var(--color-danger, #DC2626)",
+ iconBg: "var(--color-danger-bg, rgba(220, 38, 38, 0.08))",
+ btn: "var(--color-danger, #DC2626)",
+ btnHover: "var(--color-danger-text, #991b1b)",
  },
  warning: {
  icon: "#D97706",
