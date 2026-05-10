@@ -22,6 +22,10 @@ import {
  getMaintenanceUrgencyMeta,
 } from "../../../../shared/utils/maintenanceConfig";
 import { uploadToImageKit } from "../../../../shared/utils/imageUpload";
+import {
+ ListSkeleton,
+ StatGridSkeleton,
+} from "../../../../shared/components/LoadingSkeletons";
 import "../../styles/tenant-common.css";
 
 const fmtDate = (value) => {
@@ -356,7 +360,10 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
  <div className="section-card">
  <h2>Request History</h2>
  {isLoading ? (
- <p>Loading maintenance requests...</p>
+ <>
+ <StatGridSkeleton count={3} style={{ marginBottom: 16 }} />
+ <ListSkeleton rows={4} />
+ </>
  ) : requests.length === 0 ? (
  <div className="maintenance-empty-state">
  <ClipboardList size={30} />

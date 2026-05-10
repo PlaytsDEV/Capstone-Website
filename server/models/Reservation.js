@@ -195,6 +195,11 @@ const reservationSchema = new mongoose.Schema(
     nickname: String,
     mobileNumber: String,
     birthday: Date,
+    gender: {
+      type: String,
+      enum: ["male", "female", "other", "prefer-not-to-say", "", null],
+      default: null,
+    },
     maritalStatus: String, // "single", "married", "divorced", "widowed"
     nationality: String,
     educationLevel: String, // "highschool", "college", "graduate", "other"

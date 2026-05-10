@@ -261,19 +261,6 @@ const AddressCascadeFields = ({
  const errBorder = (show, value) =>
  show && !value ? "1.5px solid #dc2626" : undefined;
 
- // ── Shared styles ───────────────────────────────────────────
- const selectStyle = (disabled) => ({
- width: "100%",
- padding: "10px 12px",
- borderRadius: "8px",
- border: "1.5px solid #d1d5db",
- fontSize: "14px",
- background: disabled ? "#f3f4f6" : "white",
- cursor: disabled ? "not-allowed" : "pointer",
- color: disabled ? "#9CA3AF" : "#1F2937",
- opacity: disabled ? 0.7 : 1,
- });
-
  return (
  <>
  {/* Unit / House No. */}
@@ -294,7 +281,7 @@ const AddressCascadeFields = ({
  error: v?.trim() ? null : "This field is required",
  }))
  }
- style={{ border: errBorder(showValidationErrors, addressUnitHouseNo) || "1.5px solid #999" }}
+ style={{ border: errBorder(showValidationErrors, addressUnitHouseNo) }}
  />
  {(showValidationErrors && !addressUnitHouseNo) || fieldErrors.addressUnitHouseNo ? (
  <div className="rf-field-error">
@@ -323,7 +310,7 @@ const AddressCascadeFields = ({
  error: v?.trim() ? null : "This field is required",
  }))
  }
- style={{ border: errBorder(showValidationErrors, addressStreet) || "1.5px solid #999" }}
+ style={{ border: errBorder(showValidationErrors, addressStreet) }}
  />
  {(showValidationErrors && !addressStreet) || fieldErrors.addressStreet ? (
  <div className="rf-field-error">
@@ -340,9 +327,9 @@ const AddressCascadeFields = ({
  Region <span className="rf-required">*</span>
  </label>
  <select
+ className="form-select"
  style={{
- ...selectStyle(false),
- border: errBorder(showValidationErrors, addressRegion) || "1.5px solid #d1d5db",
+ border: errBorder(showValidationErrors, addressRegion),
  }}
  value={selectedRegionCode}
  onChange={(e) => handleRegionChange(e.target.value)}
@@ -371,9 +358,9 @@ const AddressCascadeFields = ({
  Province <span className="rf-required">*</span>
  </label>
  <select
+ className="form-select"
  style={{
- ...selectStyle(!regionSelected),
- border: errBorder(showValidationErrors && regionSelected, addressProvince) || "1.5px solid #d1d5db",
+ border: errBorder(showValidationErrors && regionSelected, addressProvince),
  }}
  value={selectedProvinceCode}
  onChange={(e) => handleProvinceChange(e.target.value)}
@@ -406,9 +393,9 @@ const AddressCascadeFields = ({
  City / Municipality <span className="rf-required">*</span>
  </label>
  <select
+ className="form-select"
  style={{
- ...selectStyle(!provinceReady || !regionSelected),
- border: errBorder(showValidationErrors && provinceReady && regionSelected, addressCity) || "1.5px solid #d1d5db",
+ border: errBorder(showValidationErrors && provinceReady && regionSelected, addressCity),
  }}
  value={selectedCityCode}
  onChange={(e) => handleCityChange(e.target.value)}
@@ -442,9 +429,9 @@ const AddressCascadeFields = ({
  Barangay <span className="rf-required">*</span>
  </label>
  <select
+ className="form-select"
  style={{
- ...selectStyle(!cityReady),
- border: errBorder(showValidationErrors && cityReady, addressBarangay) || "1.5px solid #d1d5db",
+ border: errBorder(showValidationErrors && cityReady, addressBarangay),
  }}
  value={addressBarangay}
  onChange={(e) => handleBarangayChange(e.target.value)}

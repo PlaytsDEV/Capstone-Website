@@ -21,6 +21,7 @@ import { useAuth } from "../../../shared/hooks/useAuth";
 import useChatSocket from "../../../shared/hooks/useChatSocket.js";
 import { showConfirmation, showNotification } from "../../../shared/utils/notification";
 import { BRANCH_DISPLAY_NAMES, BRANCH_OPTIONS } from "../../../shared/utils/constants";
+import { ListSkeleton } from "../../../shared/components/LoadingSkeletons";
 import "../styles/design-tokens.css";
 import "../styles/admin-common.css";
 import "../styles/admin-chat.css";
@@ -706,10 +707,7 @@ export default function AdminChatPage() {
           </div>
 
           {listLoading ? (
-            <div className="chat-panel-state">
-              <LoaderCircle className="spin" size={22} />
-              <span>Loading conversations...</span>
-            </div>
+            <ListSkeleton rows={8} avatar style={{ padding: 12 }} />
           ) : listError ? (
             <div className="chat-panel-state chat-panel-state--error">
               <XCircle size={22} />
@@ -880,10 +878,7 @@ export default function AdminChatPage() {
 
               <div className="chat-message-feed">
                 {messagesLoading ? (
-                  <div className="chat-panel-state">
-                    <LoaderCircle className="spin" size={22} />
-                    <span>Loading messages...</span>
-                  </div>
+                  <ListSkeleton rows={5} avatar style={{ padding: 12 }} />
                 ) : messages.length === 0 ? (
                   <div className="chat-panel-state">
                     <Inbox size={24} />

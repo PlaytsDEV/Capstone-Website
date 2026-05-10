@@ -29,9 +29,7 @@ export default function useBodyScrollLock(isLocked) {
     document.body.style.overflow = "hidden";
 
     const scrollContainers = Array.from(
-      document.querySelectorAll(
-        ".admin-content, .tenant-layout-main, .tenant-content",
-      ),
+      document.querySelectorAll(".tenant-layout-main, .tenant-content"),
     );
     const previousContainerStyles = scrollContainers.map((el) => ({
       el,

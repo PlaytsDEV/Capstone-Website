@@ -62,11 +62,24 @@ const isReservationPaymentConfirmed = (reservation) => {
   );
 };
 
+const getProfileName = (profile) => {
+  const displayParts = String(profile?.displayName || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  return {
+    firstName: profile?.firstName || displayParts[0] || "",
+    lastName: profile?.lastName || displayParts.slice(1).join(" ") || "",
+  };
+};
+
 export default function useReservationFlow() {
   const navigate = useNavigate();
   const appNavigate = useAppNavigation();
   const location = useLocation();
   const { user } = useAuth();
+  const profileName = getProfileName(user);
   const queryClient = useQueryClient();
   const stepFromState = Number(location.state?.step);
   const stepFromQuery = Number(
@@ -133,16 +146,13 @@ export default function useReservationFlow() {
   const [selfiePhoto, setSelfiePhoto] = useState(null);
 
   // Stage 3: Personal
-  const [firstName, setFirstName] = useState(
-    user?.displayName?.split(" ")[0] || "",
-  );
-  const [lastName, setLastName] = useState(
-    user?.displayName?.split(" ")[1] || "",
-  );
+  const [firstName, setFirstName] = useState(profileName.firstName);
+  const [lastName, setLastName] = useState(profileName.lastName);
   const [middleName, setMiddleName] = useState("");
   const [nickname, setNickname] = useState("");
   const [mobileNumber, setMobileNumber] = useState("");
   const [birthday, setBirthday] = useState("");
+  const [gender, setGender] = useState("");
   const [maritalStatus, setMaritalStatus] = useState("");
   const [nationality, setNationality] = useState("");
   const [educationLevel, setEducationLevel] = useState("");
@@ -237,6 +247,20 @@ export default function useReservationFlow() {
   const isFirstRenderRef = useRef(true);
   const navigatingAwayRef = useRef(false);
 
+  useEffect(() => {
+    if (!profileName.firstName && !profileName.lastName) return;
+    if (!firstName && profileName.firstName) setFirstName(profileName.firstName);
+    if (!lastName && profileName.lastName) setLastName(profileName.lastName);
+  }, [
+    user?.firstName,
+    user?.lastName,
+    user?.displayName,
+    firstName,
+    lastName,
+    profileName.firstName,
+    profileName.lastName,
+  ]);
+
   // ΓöÇΓöÇ Warn before leaving mid-flow (skip if intentional navigation) ΓöÇΓöÇ
   useEffect(() => {
     const handleBeforeUnload = (e) => {
@@ -291,6 +315,7 @@ export default function useReservationFlow() {
       const b = new Date(r.birthday);
       if (!isNaN(b)) setBirthday(b.toISOString().split("T")[0]);
     }
+    if (r.gender) setGender(r.gender);
     if (r.maritalStatus) setMaritalStatus(r.maritalStatus);
     if (r.nationality) setNationality(r.nationality);
     if (r.educationLevel) setEducationLevel(r.educationLevel);
@@ -377,14 +402,16 @@ export default function useReservationFlow() {
     try {
       const profile = await authApi.getCurrentUser();
       if (!profile) return;
+      const profileName = getProfileName(profile);
       // Only fill fields that are still empty
-      if (!firstName && profile.firstName) setFirstName(profile.firstName);
-      if (!lastName && profile.lastName) setLastName(profile.lastName);
+      if (!firstName && profileName.firstName) setFirstName(profileName.firstName);
+      if (!lastName && profileName.lastName) setLastName(profileName.lastName);
       if (!mobileNumber && profile.phone) setMobileNumber(profile.phone);
       if (!birthday && profile.dateOfBirth) {
         const b = new Date(profile.dateOfBirth);
         if (!isNaN(b)) setBirthday(b.toISOString().split("T")[0]);
       }
+      if (!gender && profile.gender) setGender(profile.gender);
       if (!addressCity && profile.city) setAddressCity(profile.city);
       if (!addressStreet && profile.address) setAddressStreet(profile.address);
       if (!emergencyContactName && profile.emergencyContact)
@@ -1127,6 +1154,7 @@ export default function useReservationFlow() {
       nickname,
       mobileNumber,
       birthday,
+      gender,
       maritalStatus,
       nationality,
       educationLevel,
@@ -1173,6 +1201,7 @@ export default function useReservationFlow() {
       nickname,
       mobileNumber,
       birthday,
+      gender,
       maritalStatus,
       nationality,
       educationLevel,
@@ -1263,6 +1292,7 @@ export default function useReservationFlow() {
               isMissing: !validateBirthday(birthday).valid,
               message: "Please enter a valid birthday to continue.",
             },
+            { key: "gender", label: "Gender", isMissing: !hasText(gender) },
             { key: "maritalStatus", label: "Marital Status", isMissing: !hasText(maritalStatus) },
             { key: "nationality", label: "Nationality", isMissing: !hasText(nationality) },
             { key: "educationLevel", label: "Educational Attainment", isMissing: !hasText(educationLevel) },
@@ -1402,6 +1432,7 @@ export default function useReservationFlow() {
           nickname,
           mobileNumber,
           birthday,
+          gender,
           maritalStatus,
           nationality,
           educationLevel,
@@ -1611,6 +1642,7 @@ export default function useReservationFlow() {
     nickname, setNickname,
     mobileNumber, setMobileNumber,
     birthday, setBirthday,
+    gender, setGender,
     maritalStatus, setMaritalStatus,
     nationality, setNationality,
     educationLevel, setEducationLevel,

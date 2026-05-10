@@ -3,6 +3,7 @@ import {
  normalizeReservationStatus,
  readMoveInDate,
 } from "../../../../shared/utils/lifecycleNaming";
+import { TableSkeleton } from "../../../../shared/components/LoadingSkeletons";
 
 const toStatusKey = (status) =>
  String(normalizeReservationStatus(status) || status || "")
@@ -76,7 +77,7 @@ export default function ReservationTable({
  onView,
  onDelete,
 }) {
- if (loading) return <LoadingComponent />;
+ if (loading) return LoadingComponent ? <LoadingComponent /> : <TableSkeleton rows={6} columns={6} />;
  if (error) return <div className="ar-error">Error: {error}</div>;
  if (reservations.length === 0) {
  return (

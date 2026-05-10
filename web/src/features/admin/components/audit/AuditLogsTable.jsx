@@ -9,6 +9,7 @@ import {
  Activity,
 } from "lucide-react";
 import { formatTimestamp } from "../../utils/formatters";
+import { TableSkeleton } from "../../../../shared/components/LoadingSkeletons";
 
 function getActivityIcon(type) {
  switch (type) {
@@ -29,12 +30,7 @@ function getActivityIcon(type) {
 
 export default function AuditLogsTable({ logs, loading }) {
  if (loading) {
- return (
- <div className="audit-loading">
- <div className="audit-loading-spinner"></div>
- <p>Loading audit logs...</p>
- </div>
- );
+ return <TableSkeleton rows={7} columns={6} />;
  }
 
  if (logs.length === 0) {

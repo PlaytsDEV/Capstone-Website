@@ -1691,7 +1691,8 @@ html[data-theme="dark"] .rf-policy-link { color: var(--color-success); }
 }
 
 .form-input,
-.form-select {
+.form-select,
+.form-textarea {
   width: 100%;
   padding: 10px 14px;
   border: 1.5px solid var(--rf-border);
@@ -1704,16 +1705,23 @@ html[data-theme="dark"] .rf-policy-link { color: var(--color-success); }
 }
 
 .form-input:focus,
-.form-select:focus {
+.form-input:focus-visible,
+.form-select:focus,
+.form-select:focus-visible,
+.form-textarea:focus,
+.form-textarea:focus-visible {
   outline: none;
   border-color: #94a3b8;
   box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.15);
 }
 
-.form-input:disabled {
+.form-input:disabled,
+.form-select:disabled,
+.form-textarea:disabled {
   background: var(--rf-surface-alt);
   color: var(--rf-text-muted);
   cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .form-group {
@@ -1725,6 +1733,21 @@ html[data-theme="dark"] .rf-policy-link { color: var(--color-success); }
   color: var(--rf-text-muted);
   margin-top: 4px;
   line-height: 1.4;
+}
+
+.rf-date-part-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 1.25fr) minmax(82px, 0.75fr) minmax(96px, 0.85fr);
+  gap: 8px;
+}
+
+.rf-date-part-row--error .form-select,
+.rf-date-part-select {
+  min-height: 42px;
+}
+
+.rf-date-part-select--month {
+  min-width: 0;
 }
 
 .form-row {
@@ -2423,16 +2446,18 @@ html[data-theme="dark"] .rf-policy-link { color: var(--color-success); }
   line-height: 1.5;
 }
 
-.form-textarea:focus {
+.form-textarea:focus,
+.form-textarea:focus-visible {
   outline: none;
-  border-color: var(--rf-border-focus);
-  box-shadow: 0 0 0 1.5px rgba(27, 77, 74, 0.07);
+  border-color: #94a3b8;
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.15);
 }
 
 .form-textarea:disabled {
   background: var(--rf-surface-alt);
   color: var(--rf-text-muted);
   cursor: not-allowed;
+  opacity: 0.7;
 }
 
 /* ============ RESPONSIVE ============ */
@@ -2874,6 +2899,10 @@ html[data-theme="dark"] .rf-policy-link { color: var(--color-success); }
 
   .rf-time-grid {
     grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  }
+
+  .rf-date-part-row {
+    grid-template-columns: 1fr;
   }
 
   .rf-visit-summary-rows {

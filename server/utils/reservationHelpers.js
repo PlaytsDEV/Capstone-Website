@@ -424,6 +424,7 @@ export const USER_UPDATE_FLAT_FIELDS = [
   "nickname",
   "mobileNumber",
   "birthday",
+  "gender",
   "maritalStatus",
   "nationality",
   "educationLevel",

@@ -18,6 +18,10 @@ import {
 import { useMyStays } from "../../../../shared/hooks/queries/useUsers";
 import dayjs from "dayjs";
 import { hasReservationStatus } from "../../../../shared/utils/lifecycleNaming";
+import {
+ ListSkeleton,
+ StatGridSkeleton,
+} from "../../../../shared/components/LoadingSkeletons";
 
 // Shared empty state style — matches My Bills
 const emptyStyle = {
@@ -195,11 +199,10 @@ const StaysTab = () => {
  <div style={{ maxWidth: 1200 }}>
  <div style={{ marginBottom: 24 }}>
  <h1 style={{ fontSize: 22, fontWeight: 700, color: "#1F2937", margin: "0 0 4px" }}>My Stays</h1>
- <p style={{ fontSize: 14, color: "#94A3B8", margin: 0 }}>Loading your stay history...</p>
+ <p style={{ fontSize: 14, color: "#94A3B8", margin: 0 }}>Your room history and stay statistics</p>
  </div>
- <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 200 }}>
- <div className="animate-spin" style={{ width: 24, height: 24, border: "3px solid #E8EBF0", borderTop: "3px solid #E8734A", borderRadius: "50%" }} />
- </div>
+ <StatGridSkeleton count={3} minWidth={200} style={{ marginBottom: 28 }} />
+ <ListSkeleton rows={4} avatar />
  </div>
  );
  }

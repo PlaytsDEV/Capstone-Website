@@ -5,6 +5,12 @@ import { validatePHPhoneOrLandline } from "../../../utils/reservationValidation"
 const errBorder = (show, value) =>
  show && !value ? "1.5px solid #dc2626" : undefined;
 
+const EMPLOYER_CONTACT_MAX_LENGTH = 13;
+
+const openDatePicker = (event) => {
+ event.currentTarget.showPicker?.();
+};
+
 /**
  * Section 4: Employment / School — employer info, occupation, company ID.
  */
@@ -92,9 +98,10 @@ const EmploymentSection = ({
  className="form-input"
  placeholder="09XXXXXXXXX or 02-XXXXXXXX"
  value={employerContact}
+ maxLength={EMPLOYER_CONTACT_MAX_LENGTH}
  onChange={(e) => {
  const cleaned = e.target.value.replace(/[^0-9\s\-()+]/g, "");
- setEmployerContact(cleaned.slice(0, 20));
+ setEmployerContact(cleaned.slice(0, EMPLOYER_CONTACT_MAX_LENGTH));
  }}
  style={{
  border:
@@ -118,7 +125,9 @@ const EmploymentSection = ({
  type="date"
  className="form-input"
  value={startDate}
+ onClick={openDatePicker}
  onChange={(e) => setStartDate(e.target.value)}
+ style={{ cursor: "pointer" }}
  />
  </div>
 

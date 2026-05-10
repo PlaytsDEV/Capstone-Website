@@ -553,6 +553,7 @@ export default function TenantDetailModal({ tenant, onClose }) {
  </button>
  </div>
  </div>
+ </div>
 
  {dialogState.type && (
  <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={closeDialog}>

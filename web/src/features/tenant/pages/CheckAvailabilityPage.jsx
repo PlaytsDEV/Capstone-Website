@@ -471,11 +471,11 @@ function CheckAvailabilityPage() {
 
  <div style={{ marginBottom: "8px" }}>
  {!isChangeRoomMode && <h1 className="ca-section-title">Available Rooms</h1>}
+ {!roomsLoading && (
  <p className="ca-room-count">
- {roomsLoading
- ? "Loading rooms..."
- : `${filteredRooms.length} room${filteredRooms.length !== 1 ? "s" : ""} found`}
+ {`${filteredRooms.length} room${filteredRooms.length !== 1 ? "s" : ""} found`}
  </p>
+ )}
  {!user && (
  <p className="ca-signin-prompt">
  <button onClick={() => navigate("/signin")}>Sign in</button>{" "}

@@ -247,6 +247,8 @@ function ReservationFlowPage() {
                   setMobileNumber: flow.setMobileNumber,
                   birthday: flow.birthday,
                   setBirthday: flow.setBirthday,
+                  gender: flow.gender,
+                  setGender: flow.setGender,
                   maritalStatus: flow.maritalStatus,
                   setMaritalStatus: flow.setMaritalStatus,
                   nationality: flow.nationality,

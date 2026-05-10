@@ -17,6 +17,7 @@ import PageShell from "../components/shared/PageShell";
 import { reservationApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
 import { useInquiries } from "../../../shared/hooks/queries/useInquiries";
+import { ListSkeleton } from "../../../shared/components/LoadingSkeletons";
 import InquiryDetailsModal from "../components/InquiryDetailsModal";
 
 const getAvatarColor = (initials = "") => {
@@ -159,11 +160,7 @@ function InquiriesPage() {
 
           <div className="space-y-4">
             {loading ? (
-              <div className="p-12 text-center">
-                <p className="text-sm text-muted-foreground">
-                  Loading inquiries...
-                </p>
-              </div>
+              <ListSkeleton rows={6} avatar />
             ) : inquiries.length === 0 ? (
               <div className="p-12 text-center">
                 <MessageSquare className="mx-auto mb-3 h-12 w-12 text-muted-foreground" />

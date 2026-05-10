@@ -19,6 +19,7 @@ import {
   useMarkAllAsRead,
   useUnreadCount,
 } from "../../../shared/hooks/queries/useNotifications";
+import { ListSkeleton } from "../../../shared/components/LoadingSkeletons";
 import "../styles/design-tokens.css";
 import "../styles/admin-notifications.css";
 
@@ -192,10 +193,7 @@ export default function AdminNotificationsPage() {
       {/* ── List ── */}
       <div className="admin-notif-page__list">
         {isLoading ? (
-          <div className="admin-notif-page__state">
-            <Loader2 size={22} className="admin-notif__spin" />
-            <span>Loading notifications…</span>
-          </div>
+          <ListSkeleton rows={6} avatar />
         ) : filtered.length === 0 ? (
           <div className="admin-notif-page__state">
             <Inbox size={28} />

@@ -2,6 +2,7 @@ import { BedDouble, Lock, Settings, Unlock, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { formatRoomType } from "../../utils/formatters";
 import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
+import { DrawerSkeleton } from "../../../../shared/components/LoadingSkeletons";
 
 export default function OccupancyRoomModal({ room, loadingDetails, onClose }) {
  useEscapeClose(true, onClose);
@@ -90,9 +91,7 @@ export default function OccupancyRoomModal({ room, loadingDetails, onClose }) {
 
  <div className="p-4 sm:p-5 space-y-4">
  {loadingDetails ? (
- <div className="text-center py-10 text-sm text-muted-foreground">
- <p>Loading bed details...</p>
- </div>
+ <DrawerSkeleton rows={4} />
  ) : (
  <>
  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

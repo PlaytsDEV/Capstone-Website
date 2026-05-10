@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, CheckCheck, Loader2 } from "lucide-react";
+import { Bell, CheckCheck } from "lucide-react";
 import {
   useNotifications,
   useMarkAsRead,
   useMarkAllAsRead,
   useUnreadCount,
 } from "../../../shared/hooks/queries/useNotifications";
+import { ListSkeleton } from "../../../shared/components/LoadingSkeletons";
 
 const TYPE_ICONS = {
   reservation_confirmed:  "✅",
@@ -172,12 +173,8 @@ export default function NotificationsPage() {
       {/* List */}
       <div style={{ backgroundColor: "white", borderRadius: 12, border: "1px solid #E5E7EB", overflow: "hidden" }}>
         {isLoading ? (
-          <div style={{ padding: 48, textAlign: "center" }}>
-            <Loader2
-              size={28}
-              style={{ color: "#D4AF37", margin: "0 auto", display: "block" }}
-              className="animate-spin"
-            />
+          <div style={{ padding: 12 }}>
+            <ListSkeleton rows={5} avatar />
           </div>
         ) : filtered.length === 0 ? (
           <div style={{ padding: "56px 24px", textAlign: "center" }}>

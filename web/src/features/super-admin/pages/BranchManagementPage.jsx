@@ -15,6 +15,10 @@ import {
 } from "lucide-react";
 import { useApiClient } from "../../../shared/api/apiClient";
 import { buildBranchScopedHref } from "../../../shared/utils/branchFilterQuery.mjs";
+import {
+  CardSkeleton,
+  StatGridSkeleton,
+} from "../../../shared/components/LoadingSkeletons";
 import "../styles/superadmin-dashboard.css";
 import "../styles/superadmin-branches.css";
 
@@ -198,13 +202,10 @@ export default function BranchManagementPage() {
       </div>
 
       {isLoading ? (
-        <section className="sa-branches-state">
-          <Loader2 size={20} className="sa-branches-state-spinner" />
-          <div>
-            <strong>Loading branch summaries</strong>
-            <p>Fetching owner branch metrics from the summary endpoint.</p>
-          </div>
-        </section>
+        <div className="sa-branches-grid">
+          <CardSkeleton lines={6} height={420} />
+          <CardSkeleton lines={6} height={420} />
+        </div>
       ) : error ? (
         <section className="sa-branches-state sa-branches-state--error">
           <AlertTriangle size={20} />

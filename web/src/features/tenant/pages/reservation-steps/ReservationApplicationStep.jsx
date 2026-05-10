@@ -48,6 +48,7 @@ const ReservationApplicationStep = ({
  lastName, setLastName, firstName, setFirstName,
  middleName, setMiddleName, nickname, setNickname,
  mobileNumber, setMobileNumber, birthday, setBirthday,
+ gender, setGender,
  maritalStatus, setMaritalStatus, nationality, setNationality,
  educationLevel, setEducationLevel,
  addressUnitHouseNo, setAddressUnitHouseNo,
@@ -157,7 +158,7 @@ const ReservationApplicationStep = ({
  setReferrerName, setTargetMoveInDate, setEstimatedMoveInTime, setWorkSchedule,
  setWorkScheduleOther, setPersonalNotes, setPreferredRoomNumber,
  ].forEach((s) => s(""));
- setMaritalStatus(""); setNationality(""); setEducationLevel(""); setLeaseDuration(""); setValidIDType("");
+ setGender(""); setMaritalStatus(""); setNationality(""); setEducationLevel(""); setLeaseDuration(""); setValidIDType("");
  [setSelfiePhoto, setValidIDFront, setValidIDBack, setNbiClearance, setCompanyID].forEach((s) => s(null));
  setAgreedToPrivacy(false); setAgreedToCertification(false);
  setFieldErrors({});
@@ -166,7 +167,7 @@ const ReservationApplicationStep = ({
  const devAutoFill = () => {
  setFirstName("Juan"); setLastName("Dela Cruz"); setMiddleName("Santos"); setNickname("JD");
  setMobileNumber("+639171234567"); setBirthday("2000-05-15");
- setMaritalStatus("single"); setNationality("Filipino"); setEducationLevel("college");
+ setGender("male"); setMaritalStatus("single"); setNationality("Filipino"); setEducationLevel("college");
  setValidIDType("national_id");
  setAddressUnitHouseNo("Unit 12-B"); setAddressStreet("Rizal Avenue");
  setPersonalNotes("Test applicant - dev auto-fill");
@@ -234,6 +235,7 @@ const ReservationApplicationStep = ({
  lastName, setLastName, firstName, setFirstName,
  middleName, setMiddleName, nickname, setNickname,
  mobileNumber, setMobileNumber, birthday, setBirthday,
+ gender, setGender,
  maritalStatus, setMaritalStatus, nationality, setNationality,
  educationLevel, setEducationLevel,
  addressUnitHouseNo, setAddressUnitHouseNo,

@@ -35,6 +35,7 @@ import {
  useMarkAsRead,
  useMarkAllAsRead,
 } from "../../../../shared/hooks/queries/useNotifications";
+import { ListSkeleton } from "../../../../shared/components/LoadingSkeletons";
 
 // ── Notification type → icon + color mapping ──
 const TYPE_CONFIG = {
@@ -198,9 +199,7 @@ const NotificationsTab = () => {
 
  {/* Loading */}
  {isLoading && (
- <div style={{ ...cardStyle, padding: "48px", textAlign: "center" }}>
- <p style={{ color: "#94A3B8", fontSize: "14px" }}>Loading notifications...</p>
- </div>
+ <ListSkeleton rows={5} avatar />
  )}
 
  {/* Error */}
