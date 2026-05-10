@@ -138,6 +138,19 @@ function ReservationFlowPage() {
             <ReservationSummaryStep
               reservationData={flow.reservationData}
               onNext={flow.handleNextStage}
+              onChangeRoom={() => {
+                const activeReservationId =
+                  flow.reservationId ||
+                  flow.reservationData?._id ||
+                  flow.reservationData?.id;
+                if (activeReservationId) {
+                  flow.navigate(
+                    `/applicant/check-availability?changeRoom=1&reservationId=${activeReservationId}`,
+                  );
+                  return;
+                }
+                flow.navigate("/applicant/check-availability");
+              }}
               readOnly={flow.isStageLocked(1)}
             />
           )}

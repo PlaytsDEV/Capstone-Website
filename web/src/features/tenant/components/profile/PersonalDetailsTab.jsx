@@ -76,9 +76,9 @@ const s = {
  width: 72, height: 72, borderRadius: "50%",
  border: "3px solid var(--surface-card, #fff)",
  display: "flex", alignItems: "center", justifyContent: "center",
- background: "linear-gradient(135deg, #0A1628 0%, #1E3A5F 100%)",
- color: "#fff", fontSize: 24, fontWeight: 700, letterSpacing: "1px",
- boxShadow: "0 2px 12px rgba(0,0,0,0.15)",
+ background: "linear-gradient(135deg, #D4AF37 0%, #B88A1A 100%)",
+ color: "#0F172A", fontSize: 24, fontWeight: 700, letterSpacing: "1px",
+ boxShadow: "0 2px 12px rgba(184,138,26,0.24)",
  },
  profileMeta: { paddingTop: 12, flex: 1, minWidth: 0 },
  profileName: {
@@ -92,6 +92,25 @@ const s = {
  },
  profileChips: {
  display: "flex", alignItems: "center", gap: 8, marginTop: 6, flexWrap: "wrap",
+ },
+ completionWrap: {
+ display: "flex", alignItems: "center", gap: 10, marginTop: 10, maxWidth: 360,
+ },
+ completionTrack: {
+ height: 6, flex: 1, minWidth: 120,
+ background: "var(--surface-muted, #F1F5F9)",
+ borderRadius: 999, overflow: "hidden",
+ },
+ completionFill: {
+ height: "100%",
+ background: "linear-gradient(90deg, #0A2463, #FF8C42)",
+ borderRadius: 999,
+ transition: "width 0.2s ease",
+ },
+ completionText: {
+ fontSize: 11, fontWeight: 600,
+ color: "var(--text-secondary, #64748B)",
+ whiteSpace: "nowrap",
  },
  chip: {
  display: "inline-flex", alignItems: "center", gap: 4,
@@ -114,17 +133,17 @@ const s = {
  saveBtn: {
  display: "flex", alignItems: "center", gap: 6,
  padding: "9px 20px", border: "none", borderRadius: 10,
- background: "linear-gradient(135deg, #FF8C42, #e07030)",
+ background: "#16A34A",
  fontSize: 13, fontWeight: 600, color: "#fff",
  cursor: "pointer", transition: "all 0.15s", whiteSpace: "nowrap",
- boxShadow: "0 2px 8px rgba(255,140,66,0.3)",
+ boxShadow: "0 2px 8px rgba(22,163,74,0.28)",
  },
  cancelBtn: {
  display: "flex", alignItems: "center", gap: 6,
  padding: "9px 16px",
- border: "1px solid var(--border-card, #E8EBF0)",
+ border: "1px solid #D0D5DD",
  borderRadius: 10, background: "var(--surface-card, #fff)",
- fontSize: 13, fontWeight: 500, color: "var(--text-secondary, #6B7280)",
+ fontSize: 13, fontWeight: 500, color: "#344054",
  cursor: "pointer", transition: "all 0.15s", whiteSpace: "nowrap",
  },
 
@@ -185,6 +204,14 @@ const s = {
  fontSize: 14, color: "var(--text-muted, #CBD5E1)",
  fontStyle: "italic", margin: 0,
  },
+ emptyLine: {
+ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+ },
+ addNowBtn: {
+ border: "none", background: "transparent", padding: 0,
+ fontSize: 12, fontWeight: 700, color: "#FF8C42",
+ cursor: "pointer",
+ },
 
  /* ── Inputs ── */
  input: {
@@ -230,7 +257,7 @@ const s = {
 ───────────────────────────────────────────────────────────────────────────── */
 
 const Field = ({ label, value, field, type = "text", editing, editData,
- setEditData, errors, onBlur, required, locked }) => {
+ setEditData, errors, onBlur, required, locked, onAdd }) => {
  const [focused, setFocused] = useState(false);
  const hasError = errors?.[field];
 
@@ -267,17 +294,27 @@ const Field = ({ label, value, field, type = "text", editing, editData,
  </div>
  )
  ) : (
- <p style={value && value !== "Not provided" ? s.fieldValue : s.fieldEmpty}>
- {type === "date" && value ? fmtDate(value) : value || "Not provided"}
- </p>
+ value && value !== "Not provided" ? (
+ <p style={s.fieldValue}>{type === "date" ? fmtDate(value) : value}</p>
+ ) : (
+ <div style={s.emptyLine}>
+ <p style={s.fieldEmpty}>Not provided</p>
+ {onAdd && (
+ <button type="button" style={s.addNowBtn} onClick={onAdd}>
+ Add now
+ </button>
+ )}
+ </div>
+ )
  )}
  </div>
  );
 };
 
-const SelectField = ({ label, field, options, editing, editData, setEditData }) => {
+const SelectField = ({ label, field, options, editing, editData, setEditData, value, onAdd }) => {
  const currentValue = editData?.[field] || "";
- const displayLabel = options.find((o) => o.value === currentValue)?.label;
+ const displayValue = editing ? currentValue : (value || currentValue);
+ const readLabel = options.find((o) => o.value === displayValue)?.label;
  return (
  <div>
  <div style={s.fieldLabel}>{label}</div>
@@ -299,9 +336,18 @@ const SelectField = ({ label, field, options, editing, editData, setEditData }) 
  }} />
  </div>
  ) : (
- <p style={currentValue ? s.fieldValue : s.fieldEmpty}>
- {currentValue ? displayLabel : "Not provided"}
- </p>
+ displayValue ? (
+ <p style={s.fieldValue}>{readLabel || displayValue}</p>
+ ) : (
+ <div style={s.emptyLine}>
+ <p style={s.fieldEmpty}>Not provided</p>
+ {onAdd && (
+ <button type="button" style={s.addNowBtn} onClick={onAdd}>
+ Add now
+ </button>
+ )}
+ </div>
+ )
  )}
  </div>
  );
@@ -346,6 +392,36 @@ const PersonalDetailsTab = ({
  }),
  [profileData.role, profileData.tenantStatus],
  );
+
+ const completeness = useMemo(() => {
+ const hasText = (value) => String(value || "").trim().length > 0;
+ const items = [
+ hasText(profileData.firstName) && hasText(profileData.lastName),
+ Boolean(profileData.dateOfBirth),
+ hasText(profileData.gender),
+ hasText(profileData.civilStatus),
+ hasText(profileData.nationality),
+ hasText(profileData.occupation),
+ hasText(profileData.profileImage),
+ ];
+ const completed = items.filter(Boolean).length;
+ return {
+ completed,
+ total: items.length,
+ percent: Math.round((completed / items.length) * 100),
+ };
+ }, [
+ profileData.firstName,
+ profileData.lastName,
+ profileData.dateOfBirth,
+ profileData.gender,
+ profileData.civilStatus,
+ profileData.nationality,
+ profileData.occupation,
+ profileData.profileImage,
+ ]);
+
+ const handleStartEditing = () => setIsEditingProfile(true);
 
  const handleFileSelect = (e) => {
  const file = e.target.files?.[0];
@@ -538,6 +614,14 @@ const PersonalDetailsTab = ({
  </span>
  )}
  </div>
+ <div style={s.completionWrap} aria-label={`Profile completeness: ${completeness.completed} of ${completeness.total} details completed`}>
+ <div style={s.completionTrack}>
+ <div style={{ ...s.completionFill, width: `${completeness.percent}%` }} />
+ </div>
+ <span style={s.completionText}>
+ Profile completeness: {completeness.completed} of {completeness.total} details completed
+ </span>
+ </div>
  </div>
 
  {/* Buttons */}
@@ -545,8 +629,14 @@ const PersonalDetailsTab = ({
  {isEditingProfile ? (
  <>
  <button onClick={handleCancel} style={s.cancelBtn}
- onMouseEnter={(e) => e.currentTarget.style.background = "var(--surface-muted,#F8FAFC)"}
- onMouseLeave={(e) => e.currentTarget.style.background = "var(--surface-card,#fff)"}>
+ onMouseEnter={(e) => {
+ e.currentTarget.style.background = "#F8FAFC";
+ e.currentTarget.style.borderColor = "#98A2B3";
+ }}
+ onMouseLeave={(e) => {
+ e.currentTarget.style.background = "var(--surface-card,#fff)";
+ e.currentTarget.style.borderColor = "#D0D5DD";
+ }}>
  <X size={14} /> Discard
  </button>
  <button
@@ -556,13 +646,22 @@ const PersonalDetailsTab = ({
  ...s.saveBtn,
  opacity: (saving || uploading || !hasChanges) ? 0.55 : 1,
  cursor: (saving || uploading || !hasChanges) ? "not-allowed" : "pointer",
+ }}
+ onMouseEnter={(e) => {
+ if (saving || uploading || !hasChanges) return;
+ e.currentTarget.style.background = "#15803D";
+ e.currentTarget.style.boxShadow = "0 3px 10px rgba(21,128,61,0.3)";
+ }}
+ onMouseLeave={(e) => {
+ e.currentTarget.style.background = s.saveBtn.background;
+ e.currentTarget.style.boxShadow = s.saveBtn.boxShadow;
  }}>
  <Save size={14} />
  {uploading ? "Uploading…" : saving ? "Saving…" : "Save Changes"}
  </button>
  </>
  ) : (
- <button onClick={() => setIsEditingProfile(true)} style={s.editBtn}
+ <button onClick={handleStartEditing} style={s.editBtn}
  onMouseEnter={(e) => {
  e.currentTarget.style.background = "rgba(255,140,66,0.06)";
  e.currentTarget.style.borderColor = "#FF8C42";
@@ -602,7 +701,7 @@ const PersonalDetailsTab = ({
  </>
  ) : (
  <>
- <Field label="Full Name" field="firstName" value={fullName} {...fp} />
+ <Field label="Full Name" field="firstName" value={fullName} onAdd={handleStartEditing} {...fp} />
  <Field label="Email Address" field="email" value={profileData.email} {...fp} />
  </>
  )}
@@ -625,7 +724,7 @@ const PersonalDetailsTab = ({
  <div style={s.grid2}>
  {!isEditingProfile && (
  <Field label="Date of Birth" field="dateOfBirth" type="date"
- value={profileData.dateOfBirth} {...fp} />
+ value={profileData.dateOfBirth} onAdd={handleStartEditing} {...fp} />
  )}
  <SelectField label="Gender" field="gender"
  options={[
@@ -634,7 +733,8 @@ const PersonalDetailsTab = ({
  { value: "other", label: "Other" },
  { value: "prefer-not-to-say", label: "Prefer not to say" },
  ]}
- editing={isEditingProfile} editData={editData} setEditData={setEditData} />
+ editing={isEditingProfile} editData={editData} setEditData={setEditData}
+ value={profileData.gender} onAdd={handleStartEditing} />
  <SelectField label="Civil Status" field="civilStatus"
  options={[
  { value: "single", label: "Single" },
@@ -643,7 +743,8 @@ const PersonalDetailsTab = ({
  { value: "separated", label: "Separated" },
  { value: "divorced", label: "Divorced" },
  ]}
- editing={isEditingProfile} editData={editData} setEditData={setEditData} />
+ editing={isEditingProfile} editData={editData} setEditData={setEditData}
+ value={profileData.civilStatus} onAdd={handleStartEditing} />
  </div>
 
  <div style={s.rowSep} />
@@ -652,19 +753,17 @@ const PersonalDetailsTab = ({
  <div style={s.grid2}>
  <Field label="Nationality" field="nationality"
  value={isEditingProfile ? (editData?.nationality || "") : profileData.nationality}
- {...fp} />
+ onAdd={handleStartEditing} {...fp} />
  <Field label="Occupation / Profession" field="occupation"
  value={isEditingProfile ? (editData?.occupation || "") : profileData.occupation}
- {...fp} />
+ onAdd={handleStartEditing} {...fp} />
  </div>
 
  {/* Note banner */}
  <div style={s.noteBanner}>
  <Sparkles size={14} color="#FF8C42" style={{ flexShrink: 0, marginTop: 1 }} />
  <p style={s.noteText}>
- Contact details (phone, address) and emergency contacts are collected
- when you submit a reservation application — keeping your profile focused
- on who you are, not what you're booking.
+ Contact details and emergency contacts are collected during reservation applications.
  </p>
  </div>
 

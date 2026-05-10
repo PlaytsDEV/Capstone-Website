@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { User, LogOut, Moon, Sun, ChevronDown, Clock, Menu } from "lucide-react";
 import NotificationBell from "../../../shared/components/NotificationBell";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
+import ProfileAvatar, { getProfileInitials } from "../../../shared/components/ProfileAvatar";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { useAppNavigation } from "../../../shared/hooks/useAppNavigation";
 import { useTheme } from "../../public/context/ThemeContext";
@@ -46,12 +47,7 @@ export default function TopBar({
     return "Administrator";
   }, [user]);
 
-  const initials = useMemo(() => {
-    if (!user) return "A";
-    const first = (user.firstName || "A")[0];
-    const last = (user.lastName || "")[0] || "";
-    return `${first}${last}`.toUpperCase();
-  }, [user]);
+  const initials = useMemo(() => getProfileInitials(user, "A"), [user]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -228,12 +224,7 @@ export default function TopBar({
             aria-expanded={showUserMenu}
             className="flex items-center gap-2 rounded-xl border border-transparent px-2 py-1.5 transition-colors hover:bg-[var(--bg-hover)] sm:px-3"
           >
-            <div
-              className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold text-white"
-              style={{ backgroundColor: "var(--accent-blue)" }}
-            >
-              {initials}
-            </div>
+            <ProfileAvatar user={user} initials={initials} size={32} />
             <div className="hidden min-w-0 text-left md:block">
               <div className="truncate text-sm font-semibold text-[var(--text-primary)]">
                 {displayName}

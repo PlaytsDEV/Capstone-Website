@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Calendar, Clock, FileText, X, CheckCircle, AlertTriangle } from "lucide-react";
+import { Calendar, Clock, X, CheckCircle, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
 import { showNotification } from "../../../../shared/utils/notification";
 import { PoliciesTermsModal } from "../../modals/PoliciesAndConsent";
 import { useVisitAvailability } from "../../../../shared/hooks/queries/useReservations";
@@ -107,10 +107,95 @@ function formatRemainingSlots(slot) {
  return `${remaining} ${remaining === 1 ? "slot" : "slots"} left`;
 }
 
-function getSlotStatusText(slot) {
- if (slot?.available) return formatRemainingSlots(slot);
+function getSlotDisplayStatus(slot) {
+ if (slot?.available) {
+ const remaining = Number(slot?.remaining);
+ if (!Number.isFinite(remaining) || remaining > 2) return "";
+ return formatRemainingSlots(slot);
+ }
  if (slot?.disabledCode === "VISIT_CAPACITY_REACHED" || Number(slot?.remaining) <= 0) return "Full";
  return slot?.disabledReason || "";
+}
+
+function hasAvailableSlots(dateRow) {
+ return Boolean(dateRow?.slots?.some((slot) => slot.available));
+}
+
+function getDisabledDateLabel(dateRow) {
+ if (hasAvailableSlots(dateRow)) return "";
+ if (dateRow?.disabledReason) return dateRow.disabledReason;
+ const disabledCodes = new Set((dateRow?.slots || []).map((slot) => slot.disabledCode).filter(Boolean));
+ if (disabledCodes.has("VISIT_CAPACITY_REACHED")) return "Full";
+ if (disabledCodes.has("VISIT_SLOT_CONFLICT")) return "Room conflict";
+ if (disabledCodes.has("VISIT_DATE_CLOSED")) return "Closed";
+ return dateRow?.disabledReason || "No available times";
+}
+
+function getSlotAriaStatus(slot) {
+ if (slot?.available) {
+ const status = getSlotDisplayStatus(slot);
+ return status ? `, ${status}` : ", available";
+ }
+ if (slot?.disabledCode === "VISIT_SLOT_CONFLICT") return ", room conflict";
+ if (slot?.disabledCode === "VISIT_CAPACITY_REACHED" || Number(slot?.remaining) <= 0) return ", full";
+ return slot?.disabledReason ? `, ${slot.disabledReason}` : ", unavailable";
+}
+
+function groupSlotsByPeriod(slots = []) {
+ return [
+ { label: "Morning", slots: slots.filter((slot) => String(slot.label).includes("AM")) },
+ { label: "Afternoon", slots: slots.filter((slot) => String(slot.label).includes("PM")) },
+ ].filter((group) => group.slots.length);
+}
+
+function formatMoney(value) {
+ const amount = Number(value || 0);
+ return `PHP ${amount.toLocaleString()}/mo`;
+}
+
+function getSelectedVisitSummary({ visitDate, visitTime, reservationData }) {
+ const room = reservationData?.room || {};
+ const roomName = room.roomNumber || room.name || room.title || "Selected room";
+ const branch = room.branch || reservationData?.branch || "Branch";
+ const price = formatMoney(room.price);
+
+ if (!visitDate) {
+ return {
+ status: "empty",
+ title: "Select a date and time to continue",
+ detail: `${roomName} - ${branch} - ${price}`,
+ mobile: "No visit selected",
+ rows: [],
+ };
+ }
+
+ const fullDate = fmtDateFull(visitDate);
+ if (!visitTime) {
+ return {
+ status: "partial",
+ title: fullDate,
+ detail: "Choose an available time slot",
+ mobile: fullDate,
+ rows: [
+ { label: "Date", value: fullDate },
+ { label: "Time", value: "Not selected" },
+ ],
+ };
+ }
+
+ return {
+ status: "complete",
+ title: `${fullDate} at ${visitTime}`,
+ detail: `${roomName} - ${branch} - ${price}`,
+ mobile: `${fmtDate(new Date(visitDate + "T00:00:00"))} - ${visitTime}`,
+ rows: [
+ { label: "Date", value: fullDate },
+ { label: "Time", value: visitTime },
+ { label: "Room", value: roomName },
+ { label: "Branch", value: branch },
+ { label: "Price", value: price },
+ ],
+ };
 }
 
 /**
@@ -135,8 +220,7 @@ const ReservationVisitStep = ({
  const [isSubmitted, setIsSubmitted] = useState(false);
  const [resolvedVisitCode, setResolvedVisitCode] = useState(visitCode || null);
  const [isSaving, setIsSaving] = useState(false);
- const [hoveredDate, setHoveredDate] = useState(null);
- const [hoveredTime, setHoveredTime] = useState(null);
+ const [dateWindowDays, setDateWindowDays] = useState(14);
  const scheduleLocked = (readOnly || isSubmitted) && !scheduleRejected;
  const canEditSchedule = !scheduleLocked;
 
@@ -152,11 +236,11 @@ const ReservationVisitStep = ({
  () => ({
  branch,
  from: getTomorrowISO(),
- days: 14,
+ days: dateWindowDays,
  roomId,
  reservationId,
  }),
- [branch, roomId, reservationId],
+ [branch, dateWindowDays, roomId, reservationId],
  );
  const {
  data: availability,
@@ -176,10 +260,10 @@ const ReservationVisitStep = ({
  // Only show fallback dates when the query was never enabled (no branch/auth).
  // When the API loaded successfully but returned nothing, keep the list empty
  // so the UI shows a real "no availability" state instead of fake slots.
- if (!canLoadAvailability) return getFallbackAvailabilityDates(14);
+ if (!canLoadAvailability) return getFallbackAvailabilityDates(dateWindowDays);
  return [];
  },
- [availability, availabilityError, loadingAvailability, canLoadAvailability],
+ [availability, availabilityError, loadingAvailability, canLoadAvailability, dateWindowDays],
  );
  const calendarDateCells = useMemo(
  () => buildCalendarCells(availableDates),
@@ -192,6 +276,14 @@ const ReservationVisitStep = ({
  const selectedTimeSlots = selectedDateAvailability?.slots?.length
  ? selectedDateAvailability.slots
  : [];
+ const groupedTimeSlots = useMemo(
+ () => groupSlotsByPeriod(selectedTimeSlots),
+ [selectedTimeSlots],
+ );
+ const selectedVisitSummary = useMemo(
+ () => getSelectedVisitSummary({ visitDate, visitTime, reservationData }),
+ [visitDate, visitTime, reservationData],
+ );
 
  useEffect(() => {
  if (visitCode) setResolvedVisitCode(visitCode);
@@ -243,16 +335,6 @@ const ReservationVisitStep = ({
  if (onAfterClose) onAfterClose();
  else navigate("/applicant/profile");
  };
-
- const canSubmit = policiesAccepted && visitDate && visitTime && !isSubmitted && !availabilityError;
-
- const ctaLabel = useCallback(() => {
- if (availabilityError) return "Availability unavailable";
- if (!visitDate) return "Select a date to continue";
- if (!visitTime) return "Select a time to continue";
- if (!policiesAccepted) return "Accept policies to continue";
- return "Confirm Visit";
- }, [visitDate, visitTime, policiesAccepted, availabilityError]);
 
  const handleSubmitWithValidation = () => {
  if (availabilityError) {
@@ -354,7 +436,7 @@ const ReservationVisitStep = ({
  ) : (
  <>
  {/* Form content wrapper */}
- <div className={scheduleLocked ? "rf-readonly-wrapper" : ""}>
+ <div className={`rf-visit-form-stack${scheduleLocked ? " rf-readonly-wrapper" : ""}`}>
  {/* Availability API error banner */}
  {availabilityError && !scheduleLocked && (
  <div className="rf-locked-banner" style={{ borderColor: "#EF4444", backgroundColor: "rgba(239,68,68,0.06)", alignItems: "center" }}>
@@ -374,19 +456,50 @@ const ReservationVisitStep = ({
  )}
 
  {/* ── Card 1: Select Date ── */}
+ <div className={`content-card rf-visit-summary-card rf-visit-summary-card--${selectedVisitSummary.status}`}>
+ <div className="rf-visit-summary-main">
+ <div>
+ <div className="rf-visit-summary-eyebrow">Visit Summary</div>
+ <div className="rf-visit-summary-title">{selectedVisitSummary.title}</div>
+ <div className="rf-visit-summary-detail">{selectedVisitSummary.detail}</div>
+ </div>
+ {selectedVisitSummary.status === "complete" && (
+ <CheckCircle className="rf-visit-summary-icon" size={22} aria-hidden="true" />
+ )}
+ </div>
+ {selectedVisitSummary.rows.length > 0 && (
+ <div className="rf-visit-summary-rows">
+ {selectedVisitSummary.rows.map((row) => (
+ <div key={row.label} className="rf-visit-summary-row">
+ <span>{row.label}</span>
+ <strong>{row.value}</strong>
+ </div>
+ ))}
+ </div>
+ )}
+ </div>
+
  <div className="content-card" id="visit-date-section">
  <div className="card-section-title">
  <Calendar size={15} style={{ marginRight: 6, flexShrink: 0 }} />
  Choose a Date
  </div>
  <p className="rf-section-hint">
- {authLoading || loadingAvailability ? "Checking branch availability..." : "Future visit dates for the next 2 weeks"}
+ {authLoading || loadingAvailability
+ ? "Checking branch availability..."
+ : `Future visit dates for the next ${dateWindowDays === 14 ? "2" : "4"} weeks`}
  </p>
  {availabilityUnavailable && (
  <div className="rf-availability-alert" role="alert">
  Unable to load live visit availability. Please refresh before choosing a schedule.
  </div>
  )}
+ {availableDates.length === 0 && !authLoading && !loadingAvailability ? (
+ <div className="rf-empty-availability" role="status">
+ <strong>No visit dates are available right now.</strong>
+ <span>Please retry or check again later for updated branch availability.</span>
+ </div>
+ ) : (
  <div className="rf-calendar-grid" aria-label="Visit dates by week">
  {WEEKDAY_LABELS.map((weekday) => (
  <div key={weekday} className="rf-calendar-weekday">
@@ -401,33 +514,51 @@ const ReservationVisitStep = ({
  const iso = dateRow.date;
  const date = new Date(iso + "T00:00:00");
  const selected = visitDate === iso;
- const disabled = readOnly || !dateRow.slots?.some((slot) => slot.available);
+ const disabledLabel = getDisabledDateLabel(dateRow);
+ const disabled = readOnly || Boolean(disabledLabel);
+ const dateLabel = date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
  return (
  <button
  key={iso}
  type="button"
  className="rf-date-btn"
  disabled={disabled}
- title={dateRow.disabledReason || ""}
+ title={disabledLabel}
  onClick={() => { setVisitDate(iso); if (visitTime) setVisitTime(""); }}
- onMouseEnter={() => setHoveredDate(iso)}
- onMouseLeave={() => setHoveredDate(null)}
  aria-pressed={selected}
- aria-label={date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+ aria-label={`${dateLabel}${selected ? ", selected" : ""}${disabledLabel ? `, ${disabledLabel}` : ", available"}`}
  >
  <div className={`rf-date-card${selected ? " selected" : ""}${disabled ? " disabled" : ""}`}>
  {iso === getTomorrowISO() && <span className="rf-today-pill">Tomorrow</span>}
+ {selected && (
+ <span className="rf-selection-mark" aria-hidden="true">
+ <CheckCircle size={15} />
+ </span>
+ )}
  <div className="rf-date-day">
  {date.toLocaleDateString("en-US", { weekday: "short" })}
  </div>
  <div className="rf-date-num">
  {date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
  </div>
+ {disabledLabel && <small className="rf-date-status">{disabledLabel}</small>}
+ {selected && <span className="sr-only">Selected</span>}
  </div>
  </button>
  );
  })}
  </div>
+ )}
+ <button
+ type="button"
+ className="rf-show-more-dates"
+ onClick={() => setDateWindowDays((days) => (days === 14 ? 28 : 14))}
+ disabled={loadingAvailability}
+ aria-expanded={dateWindowDays > 14}
+ >
+ {dateWindowDays === 14 ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+ {dateWindowDays === 14 ? "Show more dates" : "Show fewer dates"}
+ </button>
  </div>
 
  {/* ── Card 2: Select Time ── */}
@@ -445,16 +576,30 @@ const ReservationVisitStep = ({
  ? <><span>Available time slots for </span><strong>{fmtDate(new Date(visitDate + "T00:00:00"))}</strong></>
  : "Select a date first to see available times"}
  </p>
- <div className="rf-time-grid">
+ {!visitDate ? (
+ <div className="rf-empty-availability rf-empty-availability--quiet" role="status">
+ Select a date first to see available visit times.
+ </div>
+ ) : selectedTimeSlots.length === 0 || !selectedTimeSlots.some((slot) => slot.available) ? (
+ <div className="rf-empty-availability" role="status">
+ <strong>No available times for this date.</strong>
+ <span>Try another date.</span>
+ </div>
+ ) : (
+ <div className="rf-time-groups">
  {availabilityUnavailable && (
  <div className="rf-time-grid__message">
  Live slot counts are unavailable right now.
  </div>
  )}
- {selectedTimeSlots.map((slot) => {
+ {groupedTimeSlots.map((group) => (
+ <div key={group.label} className="rf-time-group">
+ <div className="rf-time-group-label">{group.label}</div>
+ <div className="rf-time-grid">
+ {group.slots.map((slot) => {
  const selected = visitTime === slot.label;
  const disabled = readOnly || !slot.available;
- const statusText = getSlotStatusText(slot);
+ const statusText = getSlotDisplayStatus(slot);
  return (
  <button
  key={slot.label}
@@ -463,29 +608,33 @@ const ReservationVisitStep = ({
  disabled={disabled}
  title={slot.disabledReason || ""}
  onClick={() => setVisitTime(slot.label)}
- onMouseEnter={() => setHoveredTime(slot.label)}
- onMouseLeave={() => setHoveredTime(null)}
  aria-pressed={selected}
- aria-label={slot.label}
+ aria-label={`${slot.label}${selected ? ", selected" : ""}${getSlotAriaStatus(slot)}`}
  >
  <div className={`rf-time-slot${selected ? " selected" : ""}${disabled ? " disabled" : ""}`}>
+ {selected && (
+ <span className="rf-selection-mark" aria-hidden="true">
+ <CheckCircle size={15} />
+ </span>
+ )}
  <span>{slot.label}</span>
  {statusText && (
  <small>{statusText}</small>
  )}
+ {selected && <span className="sr-only">Selected</span>}
  </div>
  </button>
  );
  })}
  </div>
  </div>
+ ))}
+ </div>
+ )}
+ </div>
 
  {/* ── Card 3: Policies & Terms ── */}
- <div className="content-card" id="visit-policies-section">
- <div className="card-section-title">
- <FileText size={15} style={{ marginRight: 6, flexShrink: 0 }} />
- Policies, Terms & Conditions
- </div>
+ <div className="rf-inline-policy" id="visit-policies-section">
  <div className="checkbox-group">
  <input
  type="checkbox"
@@ -503,13 +652,17 @@ const ReservationVisitStep = ({
  </div>
 
  {/* ── Actions ── */}
- <div className="stage-buttons" style={{ justifyContent: "flex-end" }}>
+ <div className="stage-buttons rf-visit-actions" style={{ justifyContent: "flex-end" }}>
+ <div className="rf-mobile-action-summary">
+ <span>Selected visit</span>
+ <strong>{selectedVisitSummary.mobile}</strong>
+ </div>
  <button
  onClick={handleSubmitWithValidation}
  className="btn btn-primary"
  disabled={isSubmitted || isSaving}
  >
- {isSaving ? "Booking..." : ctaLabel()}
+ {isSaving ? "Booking..." : "Confirm Visit"}
  </button>
  </div>
  </div>

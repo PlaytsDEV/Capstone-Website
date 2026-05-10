@@ -61,8 +61,8 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  background: #ebeff8;
-  color: #536b89;
+  background: linear-gradient(135deg, #D4AF37 0%, #B88A1A 100%);
+  color: #0F172A;
   font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.02em;

@@ -20,6 +20,7 @@ import {
  Wrench,
  Megaphone,
 } from "lucide-react";
+import ProfileAvatar, { getProfileInitials } from "../../../../shared/components/ProfileAvatar";
 
 /* ── Timing ─────────────────────────────────────────────────────────────── */
 const TRANSITION = "0.3s cubic-bezier(0.4, 0, 0.2, 1)";
@@ -119,6 +120,7 @@ const ProfileSidebar = ({
  /* ── Mobile detection ──────────────────────── */
  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= MOBILE_BP);
  const [drawerOpen, setDrawerOpen] = useState(false);
+ const initials = getProfileInitials(profileData, "U");
 
  useEffect(() => {
  const handler = () => {
@@ -255,41 +257,17 @@ const ProfileSidebar = ({
  }}
  >
  <div
+ onClick={onUpdateImage ? handleAvatarClick : undefined}
  style={{
  position: "relative",
  width: 36,
  height: 36,
  borderRadius: "50%",
- pointerEvents: "none",
+ cursor: onUpdateImage ? "pointer" : "default",
  flexShrink: 0,
- overflow: "hidden",
  }}
  >
- {profileData.profileImage ? (
- <img
- src={profileData.profileImage}
- alt="Profile"
- style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }}
- />
- ) : (
- <div
- style={{
- background: "linear-gradient(135deg, #FF8C42 0%, #D35400 100%)",
- width: "100%",
- height: "100%",
- display: "flex",
- alignItems: "center",
- justifyContent: "center",
- color: "#fff",
- fontSize: 13,
- fontWeight: 700,
- borderRadius: "50%",
- }}
- >
- {(profileData.firstName?.[0] || "").toUpperCase()}
- {(profileData.lastName?.[0] || "").toUpperCase()}
- </div>
- )}
+ <ProfileAvatar user={profileData} initials={initials} size={36} />
  {onUpdateImage && (
  <div
  style={{

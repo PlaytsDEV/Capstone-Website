@@ -45,7 +45,11 @@ import { useFirebaseAuth } from "./FirebaseAuthContext";
 import { USER_ROLES } from "../utils/constants";
 import { queryKeys } from "../lib/queryKeys";
 
-const AuthContext = createContext(null);
+const AuthContext =
+  import.meta.env.DEV
+    ? (globalThis.__CAPSTONE_AUTH_CONTEXT__ ??=
+        createContext(null))
+    : createContext(null);
 
 const TENANT_WARM_ROUTES = ["/applicant/profile", "/applicant/reservation"];
 

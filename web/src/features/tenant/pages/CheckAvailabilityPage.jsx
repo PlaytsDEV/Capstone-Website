@@ -451,8 +451,26 @@ function CheckAvailabilityPage() {
 
  <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
+ {isChangeRoomMode && (
+ <div className="ca-change-room-banner">
+ <div>
+ <h1 className="ca-section-title">Change Selected Room</h1>
+ <p className="ca-change-room-copy">
+ Choose a replacement room for your current reservation. Confirming a room here updates your existing reservation instead of creating a new one.
+ </p>
+ </div>
+ <button
+ type="button"
+ className="ca-change-room-back"
+ onClick={() => navigate("/applicant/profile")}
+ >
+ Back to profile
+ </button>
+ </div>
+ )}
+
  <div style={{ marginBottom: "8px" }}>
- <h1 className="ca-section-title">Available Rooms</h1>
+ {!isChangeRoomMode && <h1 className="ca-section-title">Available Rooms</h1>}
  <p className="ca-room-count">
  {roomsLoading
  ? "Loading rooms..."
