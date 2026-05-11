@@ -246,7 +246,7 @@ export function getNextAction(activeReservation, reservationProgress) {
  buttonText: "Fill Application Form",
  buttonLink: "/applicant/reservation",
  reservationId: activeReservation._id,
- step: 4,
+ step: 3,
  };
  case "application_submitted":
  const reservationFeeAmount = activeReservation.reservationFeeAmount || 2000;
@@ -257,7 +257,7 @@ export function getNextAction(activeReservation, reservationProgress) {
  buttonText: "Pay Now",
  buttonLink: "/applicant/reservation",
  reservationId: activeReservation._id,
- step: 5,
+ step: 4,
  };
  case "payment_submitted":
  case "reserved":

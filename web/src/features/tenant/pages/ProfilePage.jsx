@@ -9,10 +9,6 @@ import ConfirmModal from "../../../shared/components/ConfirmModal";
 import { authFetch } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
 import { useQueryClient } from "@tanstack/react-query";
-import {
- getReservationProgress,
- getNextAction,
-} from "../utils/reservationProgress";
 import { useCurrentUser } from "../../../shared/hooks/queries/useUsers";
 import { useReservations } from "../../../shared/hooks/queries/useReservations";
 import { billingApi } from "../../../shared/api/billingApi";
@@ -86,7 +82,11 @@ const ProfilePage = () => {
  });
 
  const { data: profile, isLoading: profileLoading } = useCurrentUser();
- const { data: reservationsData, isLoading: reservationsLoading } = useReservations();
+ const {
+ data: reservationsData,
+ isLoading: reservationsLoading,
+ refetch: refetchReservations,
+ } = useReservations();
  const loading = (!profile && profileLoading) || (!reservationsData && reservationsLoading);
 
  useEffect(() => {
@@ -113,6 +113,29 @@ const ProfilePage = () => {
 
  setActiveTab(nextTab);
  }, [canViewAnnouncements, location.state]);
+
+ useEffect(() => {
+ const refreshReservations = () => {
+ void refetchReservations();
+ };
+
+ refreshReservations();
+
+ const handlePageShow = () => {
+ refreshReservations();
+ };
+ const handleVisibilityChange = () => {
+ if (!document.hidden) refreshReservations();
+ };
+
+ window.addEventListener("pageshow", handlePageShow);
+ document.addEventListener("visibilitychange", handleVisibilityChange);
+
+ return () => {
+ window.removeEventListener("pageshow", handlePageShow);
+ document.removeEventListener("visibilitychange", handleVisibilityChange);
+ };
+ }, [refetchReservations]);
 
  useEffect(() => {
  if (activeTab === "announcements" && !canViewAnnouncements) {
@@ -163,6 +186,15 @@ const ProfilePage = () => {
  if (sessionId) {
  try {
  const result = await billingApi.checkPaymentStatus(sessionId);
+ if (result?.requiresReview) {
+ showNotification(
+ "Payment was received but needs admin review before your reservation can be secured.",
+ "warning",
+ 5000,
+ );
+ queryClient.invalidateQueries({ queryKey: ["reservations"] });
+ return;
+ }
  if (result?.status === "paid") {
  showNotification(
  "Payment successful! Your reservation is confirmed.",
@@ -347,9 +379,6 @@ const ProfilePage = () => {
  activeReservations[0]
  : activeReservations[0];
 
- const reservationProgress = getReservationProgress(selectedReservation);
- const nextAction = getNextAction(activeReservation, reservationProgress);
-
  const isReservationConfirmed =
  selectedReservation &&
  (selectedReservation.reservationStatus === "reserved" ||
@@ -385,7 +414,6 @@ const ProfilePage = () => {
  activeReservation={activeReservation}
  selectedReservation={selectedReservation}
  visits={visits}
- nextAction={nextAction}
  onGoToPersonal={() => handleTabChange("personal")}
  />
  )}

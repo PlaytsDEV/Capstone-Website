@@ -413,10 +413,8 @@ export const USER_UPDATE_FLAT_FIELDS = [
   "viewingType",
   "visitDate",
   "visitTime",
-  "visitScheduledAt",
   "isOutOfTown",
   "currentLocation",
-  "visitApproved",
   "selfiePhotoUrl",
   "firstName",
   "lastName",
@@ -447,12 +445,41 @@ export const USER_UPDATE_FLAT_FIELDS = [
   "agreedToPrivacy",
   "agreedToCertification",
   "finalMoveInDate",
-  "paymentMethod",
-  "proofOfPaymentUrl",
-  "moveInDate",
-  "moveOutDate",
   "notes",
 ];
+
+export const TENANT_FORBIDDEN_UPDATE_FIELDS = Object.freeze([
+  "status",
+  "paymentStatus",
+  "reservationCode",
+  "visitCode",
+  "paymentReference",
+  "paymentMethod",
+  "paymentDate",
+  "proofOfPaymentUrl",
+  "paymongoSessionId",
+  "paymongoPaymentId",
+  "receiptSentAt",
+  "approvedDate",
+  "moveInDate",
+  "moveOutDate",
+  "checkInDate",
+  "checkOutDate",
+  "visitApproved",
+  "scheduleApproved",
+  "scheduleApprovedAt",
+  "scheduleRejected",
+  "scheduleRejectedAt",
+  "scheduleRejectedBy",
+  "scheduleRejectionReason",
+  "visitScheduledAt",
+  "applicationSubmittedAt",
+]);
+
+const TENANT_FORBIDDEN_UPDATE_FIELD_SET = new Set(TENANT_FORBIDDEN_UPDATE_FIELDS);
+
+export const getForbiddenTenantUpdateFields = (body = {}) =>
+  Object.keys(body).filter((key) => TENANT_FORBIDDEN_UPDATE_FIELD_SET.has(key));
 
 /** Maps for body fields that target nested doc paths */
 export const USER_UPDATE_NESTED_FIELDS = {

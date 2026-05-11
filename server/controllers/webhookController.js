@@ -36,6 +36,7 @@ import { settlePaymongoBill } from "../utils/billSettlement.js";
 import logger from "../middleware/logger.js";
 import { BUSINESS } from "../config/constants.js";
 import { getReservationFeeAmount } from "../utils/businessSettings.js";
+import { normalizeReservationStatus } from "../utils/lifecycleNaming.js";
 
 /* ─── helpers ───────────────────────────────────── */
 
@@ -54,7 +55,37 @@ function extractPaidAmount(eventData) {
 }
 
 function canAutoReserveReservation(status) {
-  return status === "pending" || status === "payment_pending";
+  return normalizeReservationStatus(status) === "payment_pending";
+}
+
+async function notifyAdminsOfDepositReview(reservation, paymentReference) {
+  try {
+    const branch = reservation?.roomId?.branch || null;
+    const admins = await User.find({
+      accountStatus: "active",
+      $or: [
+        ...(branch ? [{ role: "branch_admin", branch }] : [{ role: "branch_admin" }]),
+        { role: "owner" },
+      ],
+    }).select("_id").lean();
+
+    await Promise.all(
+      admins.map((admin) =>
+        notify.general(
+          admin._id,
+          "Reservation Payment Needs Review",
+          `A reservation deposit was paid before the reservation reached payment stage. Reference: ${paymentReference}.`,
+          {
+            entityType: "reservation",
+            entityId: reservation?._id ? String(reservation._id) : null,
+            actionUrl: "/admin/reservations",
+          },
+        ),
+      ),
+    );
+  } catch (error) {
+    logger.warn({ err: error }, "Webhook: Failed to notify admins about deposit review");
+  }
 }
 
 /* ─── handlers ───────────────────────────────────── */
@@ -99,26 +130,41 @@ async function handleDepositPayment(metadata, eventData) {
   const oldStatus = reservation.status;
   const oldData = { status: oldStatus };
 
-  // Update payment fields
   if (!reservation.reservationFeeAmount) {
     reservation.reservationFeeAmount = await getReservationFeeAmount();
   }
+
+  const canAutoReserve = canAutoReserveReservation(reservation.status);
+  if (!canAutoReserve) {
+    reservation.paymentDate = new Date();
+    reservation.paymentMethod = "paymongo";
+    reservation.paymongoPaymentId = paymentId;
+    reservation.notes = `${reservation.notes ? `${reservation.notes} | ` : ""}PayMongo deposit ${paymentId} requires manual review because it arrived before payment stage.`;
+    await reservation.save();
+    await notifyAdminsOfDepositReview(reservation, paymentId);
+
+    logger.warn(
+      {
+        reservationId,
+        oldStatus,
+        paymentId,
+        userId: String(reservation.userId),
+        requiresReview: true,
+      },
+      "Webhook: Deposit payment requires manual review",
+    );
+    return;
+  }
+
   reservation.paymentStatus = "paid";
   reservation.paymentDate = new Date();
   reservation.paymentMethod = "paymongo";
   reservation.paymongoPaymentId = paymentId;
-
-  const canAutoReserve = canAutoReserveReservation(reservation.status);
-  if (canAutoReserve) {
-    reservation.status = "reserved";
-  }
+  reservation.status = "reserved";
 
   await reservation.save();
 
-  // Update room occupancy only if status actually moved to reserved.
-  if (canAutoReserve) {
-    await updateOccupancyOnReservationChange(reservation, oldData);
-  }
+  await updateOccupancyOnReservationChange(reservation, oldData);
 
   logger.info(
     {
@@ -127,7 +173,7 @@ async function handleDepositPayment(metadata, eventData) {
       newStatus: reservation.status,
       paymentId,
       userId: String(reservation.userId),
-      autoReserved: canAutoReserve,
+      autoReserved: true,
     },
     "Webhook: Deposit payment processed",
   );

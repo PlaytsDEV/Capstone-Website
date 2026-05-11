@@ -10,7 +10,7 @@ import "./StatusBadge.css";
 export default function StatusBadge({ status, label: customLabel }) {
   const getStatusVariant = (s) => {
     const successStatuses = ["month", "moveIn", "approved", "completed", "resolved", "active", "paid", "confirmed"];
-    const warningStatuses = ["pending", "visit_pending", "partial", "aced-pending", "missed"];
+    const warningStatuses = ["pending", "visit_pending", "partial", "aced-pending", "missed", "cancellation_requested"];
     const errorStatuses = ["cancelled", "rejected", "overdue", "no-show", "banned", "suspended"];
     const infoStatuses = ["reserved", "responded", "new"];
 
@@ -27,6 +27,7 @@ export default function StatusBadge({ status, label: customLabel }) {
     if (s === "no-show") return "No Show";
     if (s === "month" || s === "moveIn") return "Move In";
     if (s === "visit_pending") return "Visit Pending";
+    if (s === "cancellation_requested") return "Cancellation Requested";
     if (!s) return "Pending";
     
     // Convert to proper case: capitalize each word

@@ -23,6 +23,7 @@ import { BUSINESS } from "../config/constants.js";
 import logger from "../middleware/logger.js";
 import auditLogger from "../utils/auditLogger.js";
 import { updateOccupancyOnReservationChange } from "../utils/occupancyManager.js";
+import { notify } from "../utils/notificationService.js";
 
 import {
   isValidObjectId,
@@ -34,6 +35,7 @@ import {
   syncReservationUserLifecycle,
   reconcileTenantUsersForScope,
   buildUserUpdatePayload,
+  getForbiddenTenantUpdateFields,
   getMoveInBlockers,
 } from "../utils/reservationHelpers.js";
 import {
@@ -73,6 +75,7 @@ import {
   transferStayWorkflow,
 } from "../utils/tenantActionService.js";
 import { ensureCurrentCycleRentBill } from "../utils/rentGenerator.js";
+import { emitToUser } from "../utils/socket.js";
 import {
   buildVisitAvailability,
   getVisitAvailabilitySettings,
@@ -115,6 +118,13 @@ const ADMIN_LIST_FIELDS = [
   "cancelledBy",
   "cancellationSource",
   "cancellationReason",
+  "cancellationRequested",
+  "cancellationRequestedAt",
+  "cancellationRequestedBy",
+  "cancellationStatus",
+  "cancellationReviewedAt",
+  "cancellationReviewedBy",
+  "cancellationAdminNote",
   "reservationFeeRefundable",
   "reservationFeeForfeited",
   "isArchived",
@@ -174,6 +184,40 @@ const TENANT_WORKSPACE_FIELDS = [
   "userId",
   "roomId",
 ].join(" ");
+
+async function notifyAdminsOfCancellationRequest(reservation, dbUser) {
+  const room = await Room.findById(reservation.roomId).select("branch").lean();
+  const adminRecipients = room?.branch
+    ? [
+        { role: "branch_admin", branch: room.branch },
+        { role: "owner" },
+      ]
+    : [
+        { role: "branch_admin" },
+        { role: "owner" },
+      ];
+
+  const adminUsers = await User.find({
+    $or: adminRecipients,
+    accountStatus: "active",
+    isArchived: { $ne: true },
+  }).select("_id").lean();
+
+  const tenantName = `${dbUser.firstName || ""} ${dbUser.lastName || ""}`.trim() || dbUser.email;
+  await Promise.all(
+    adminUsers.map(async (admin) => {
+      const notification = await notify.cancellationRequestAlert(
+        admin._id,
+        tenantName,
+        reservation.reservationCode,
+        reservation._id,
+      );
+      if (notification) {
+        emitToUser(admin._id, "notification:new", notification);
+      }
+    }),
+  );
+}
 const TENANT_WORKSPACE_USER = [
   "userId",
   "firstName lastName email phone role tenantStatus branch",
@@ -205,10 +249,8 @@ const APPLICANT_CREATE_ALLOWED_FIELDS = Object.freeze([
   "viewingType",
   "visitDate",
   "visitTime",
-  "visitScheduledAt",
   "isOutOfTown",
   "currentLocation",
-  "visitApproved",
   "selfiePhotoUrl",
   "firstName",
   "lastName",
@@ -220,6 +262,7 @@ const APPLICANT_CREATE_ALLOWED_FIELDS = Object.freeze([
   "maritalStatus",
   "nationality",
   "educationLevel",
+  "addressRegion",
   "addressUnitHouseNo",
   "addressStreet",
   "addressBarangay",
@@ -253,9 +296,7 @@ const APPLICANT_CREATE_ALLOWED_FIELDS = Object.freeze([
   "workScheduleOther",
   "agreedToPrivacy",
   "agreedToCertification",
-  "proofOfPaymentUrl",
   "moveInDate",
-  "moveOutDate",
   "notes",
 ]);
 const CLIENT_PRICING_FIELDS = Object.freeze([
@@ -1436,7 +1477,6 @@ export const createReservation = async (req, res, next) => {
       viewingType: b.viewingType || null,
       isOutOfTown: b.isOutOfTown || false,
       currentLocation: b.currentLocation || null,
-      visitApproved: b.visitApproved === true,
       selfiePhotoUrl: b.selfiePhotoUrl || null,
       firstName: b.firstName || null,
       lastName: b.lastName || null,
@@ -1449,6 +1489,7 @@ export const createReservation = async (req, res, next) => {
       nationality: b.nationality || null,
       educationLevel: b.educationLevel || null,
       address: {
+        region: b.addressRegion || null,
         unitHouseNo: b.addressUnitHouseNo || null,
         street: b.addressStreet || null,
         barangay: b.addressBarangay || null,
@@ -1486,13 +1527,13 @@ export const createReservation = async (req, res, next) => {
       workScheduleOther: b.workScheduleOther || null,
       agreedToPrivacy: b.agreedToPrivacy || false,
       agreedToCertification: b.agreedToCertification || false,
-      proofOfPaymentUrl: b.proofOfPaymentUrl || null,
+      proofOfPaymentUrl: null,
       reservationFeeAmount: pricing.reservationFeeAmount,
       monthlyRent: pricing.monthlyRent,
       selectedAppliances: pricing.selectedAppliances,
       applianceFees: pricing.applianceFees,
       moveInDate: b.moveInDate,
-      moveOutDate: b.moveOutDate || null,
+      moveOutDate: null,
       totalPrice: pricing.totalPrice,
       notes: b.notes || "",
       status: "pending",
@@ -2238,6 +2279,15 @@ export const updateReservationByUser = async (req, res, next) => {
         code: "RESERVATION_ACCESS_DENIED",
       });
 
+    const forbiddenFields = getForbiddenTenantUpdateFields(req.body);
+    if (forbiddenFields.length > 0) {
+      return res.status(400).json({
+        error: `Tenant updates cannot set protected reservation fields: ${forbiddenFields.join(", ")}.`,
+        code: "TENANT_FIELD_NOT_ALLOWED",
+        fields: forbiddenFields,
+      });
+    }
+
     // Build update payload from config-driven field mapping
     const updates = buildUserUpdatePayload(req.body);
     let appliedPricing = null;
@@ -2261,7 +2311,6 @@ export const updateReservationByUser = async (req, res, next) => {
       req.body.selectedBed !== undefined ||
       req.body.selectedAppliances !== undefined ||
       req.body.leaseDuration !== undefined ||
-      req.body.moveInDate !== undefined ||
       CLIENT_PRICING_FIELDS.some((field) => req.body[field] !== undefined);
 
     if (shouldRevalidateBedSelection) {
@@ -2459,11 +2508,17 @@ export const updateReservationByUser = async (req, res, next) => {
       }
     }
     // visit_approved → payment_pending: when tenant submits full application
-    const isApplicationSubmission =
-      req.body.submitApplication === true ||
-      normalizeReservationStatus(updates.status) === "payment_pending";
+    const isApplicationSubmission = req.body.submitApplication === true;
 
     if (isApplicationSubmission) {
+      if (!hasReservationStatus(reservation.status, "visit_approved")) {
+        return res.status(409).json({
+          error: "Application can only be submitted after the visit is approved.",
+          code: "APPLICATION_NOT_READY",
+          currentStatus: normalizeReservationStatus(reservation.status),
+        });
+      }
+
       // Enforce minimum required fields before accepting the application.
       // Mirrors client-side validation in useReservationFlow stage 3 so direct
       // API calls cannot bypass the form.
@@ -2475,12 +2530,63 @@ export const updateReservationByUser = async (req, res, next) => {
       // keys ("emergencyContact.name") for MongoDB $set — NOT as flat JS props.
       const missingRequired = [];
       const hasVal = (v) => v != null && String(v).trim().length > 0;
-      const isValidPHPhone = (v) => v != null && /^09\d{9}$/.test(String(v));
+      const effective = (updateKey, currentValue) =>
+        updates[updateKey] ?? currentValue;
+      const isValidPHMobile = (value) => {
+        if (!hasVal(value)) return false;
+        const digits = String(value).replace(/\D/g, "");
+        return /^09\d{9}$/.test(digits) || /^639\d{9}$/.test(digits);
+      };
+      const isValidDateValue = (value) =>
+        hasVal(value) && dayjs(value).isValid();
+      const isValidTargetMoveInDate = (value) => {
+        if (!isValidDateValue(value)) return false;
+        const selected = dayjs(value);
+        return (
+          validateMoveInDate(value) &&
+          !selected.isBefore(dayjs().add(3, "day").startOf("day"))
+        );
+      };
+      const isValidEstimatedMoveInTime = (value) => {
+        if (!hasVal(value) || !TIME_24H_REGEX.test(String(value))) return false;
+        const [hours, minutes] = String(value).split(":").map(Number);
+        const totalMinutes = hours * 60 + minutes;
+        return totalMinutes >= 8 * 60 && totalMinutes <= 18 * 60;
+      };
 
       if (!hasVal(updates.selfiePhotoUrl || reservation.selfiePhotoUrl))          missingRequired.push("profile photo");
       if (!hasVal(updates["emergencyContact.name"] || reservation.emergencyContact?.name))    missingRequired.push("emergency contact name");
-      if (!hasVal(updates["emergencyContact.contactNumber"] || reservation.emergencyContact?.contactNumber))  missingRequired.push("emergency contact phone");
       if (!hasVal(updates.validIDFrontUrl || reservation.validIDFrontUrl))         missingRequired.push("valid ID (front)");
+      if (!hasVal(effective("firstName", reservation.firstName)))
+        missingRequired.push("first name");
+      if (!hasVal(effective("lastName", reservation.lastName)))
+        missingRequired.push("last name");
+      if (!isValidPHMobile(effective("mobileNumber", reservation.mobileNumber)))
+        missingRequired.push("mobile number");
+      if (!isValidDateValue(effective("birthday", reservation.birthday)))
+        missingRequired.push("birthday");
+      if (!hasVal(effective("gender", reservation.gender)))
+        missingRequired.push("gender");
+      if (!hasVal(effective("maritalStatus", reservation.maritalStatus)))
+        missingRequired.push("marital status");
+      if (!hasVal(effective("nationality", reservation.nationality)))
+        missingRequired.push("nationality");
+      if (!hasVal(effective("educationLevel", reservation.educationLevel)))
+        missingRequired.push("education level");
+      if (!hasVal(effective("address.region", reservation.address?.region)))
+        missingRequired.push("address region");
+      if (!hasVal(effective("address.unitHouseNo", reservation.address?.unitHouseNo)))
+        missingRequired.push("unit / house number");
+      if (!hasVal(effective("address.street", reservation.address?.street)))
+        missingRequired.push("street");
+      if (!hasVal(effective("address.province", reservation.address?.province)))
+        missingRequired.push("province");
+      if (!hasVal(effective("address.city", reservation.address?.city)))
+        missingRequired.push("city / municipality");
+      if (!hasVal(effective("address.barangay", reservation.address?.barangay)))
+        missingRequired.push("barangay");
+      if (!hasVal(effective("validIDBackUrl", reservation.validIDBackUrl)))
+        missingRequired.push("valid ID (back)");
       const submittedIdType =
         updates.idType ||
         updates.validIDType ||
@@ -2496,6 +2602,19 @@ export const updateReservationByUser = async (req, res, next) => {
         missingRequired.push("NBI clearance (upload or provide a reason)");
 
       // — Company ID: upload or written reason required
+      if (!hasVal(effective("emergencyContact.relationship", reservation.emergencyContact?.relationship)))
+        missingRequired.push("emergency contact relationship");
+      if (!isValidPHMobile(effective("emergencyContact.contactNumber", reservation.emergencyContact?.contactNumber)))
+        missingRequired.push("emergency contact phone");
+      if (!hasVal(effective("healthConcerns", reservation.healthConcerns)))
+        missingRequired.push("health concerns");
+      if (!hasVal(effective("employment.employerSchool", reservation.employment?.employerSchool)))
+        missingRequired.push("current employer / school");
+      if (!hasVal(effective("employment.employerAddress", reservation.employment?.employerAddress)))
+        missingRequired.push("employer / school address");
+      if (!hasVal(effective("employment.occupation", reservation.employment?.occupation)))
+        missingRequired.push("occupation");
+
       const effectiveCompanyUrl = updates.companyIDUrl ?? reservation.companyIDUrl;
       const effectiveCompanyReason = updates.companyIDReason ?? reservation.companyIDReason;
       if (!hasVal(effectiveCompanyUrl) && !hasVal(effectiveCompanyReason))
@@ -2515,6 +2634,30 @@ export const updateReservationByUser = async (req, res, next) => {
       }
 
       // — Agreements must be explicitly true
+      if (!hasVal(effective("referralSource", reservation.referralSource)))
+        missingRequired.push("referral source");
+      if (!isValidTargetMoveInDate(effective("targetMoveInDate", reservation.targetMoveInDate)))
+        missingRequired.push("target move-in date");
+      if (!isValidEstimatedMoveInTime(effective("estimatedMoveInTime", reservation.estimatedMoveInTime)))
+        missingRequired.push("estimated move-in time");
+      const effectiveLeaseDuration = effective("leaseDuration", reservation.leaseDuration);
+      if (
+        !hasVal(effectiveLeaseDuration) ||
+        !Number.isFinite(Number(effectiveLeaseDuration)) ||
+        Number(effectiveLeaseDuration) <= 0
+      ) {
+        missingRequired.push("lease duration");
+      }
+      const effectiveWorkSchedule = effective("workSchedule", reservation.workSchedule);
+      if (!hasVal(effectiveWorkSchedule))
+        missingRequired.push("work schedule");
+      if (
+        effectiveWorkSchedule === "others" &&
+        !hasVal(effective("workScheduleOther", reservation.workScheduleOther))
+      ) {
+        missingRequired.push("work schedule details");
+      }
+
       const effectivePrivacy = updates.agreedToPrivacy ?? reservation.agreedToPrivacy;
       const effectiveCert = updates.agreedToCertification ?? reservation.agreedToCertification;
       if (effectivePrivacy !== true)
@@ -2535,31 +2678,9 @@ export const updateReservationByUser = async (req, res, next) => {
         updates.validIDType = submittedIdType;
       }
 
-      if (updates.firstName && updates.lastName && updates.mobileNumber) {
-        if (hasReservationStatus(reservation.status, "visit_approved")) {
-          updates.status = "payment_pending";
-        }
-        if (!reservation.applicationSubmittedAt) {
-          updates.applicationSubmittedAt = new Date();
-        }
-      }
-    }
-
-    // Payment proof handling
-    if (req.body.proofOfPaymentUrl) {
-      updates.paymentStatus = "pending";
-      updates.paymentDate = new Date();
-      // Ensure status reflects payment stage
-      if (hasReservationStatus(reservation.status, ["visit_approved", "payment_pending"])) {
-        updates.status = "payment_pending";
-      }
-      const existing = await Reservation.findById(reservationId);
-      if (!existing.paymentReference) {
-        const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-        let ref = "PAY-";
-        for (let i = 0; i < 6; i++)
-          ref += chars.charAt(Math.floor(Math.random() * chars.length));
-        updates.paymentReference = ref;
+      updates.status = "payment_pending";
+      if (!reservation.applicationSubmittedAt) {
+        updates.applicationSubmittedAt = new Date();
       }
     }
 
@@ -3334,12 +3455,16 @@ export const requestCancellationByUser = async (req, res, next) => {
     }
 
     if (reservation.cancellationRequested && reservation.cancellationStatus === "pending") {
+      notifyAdminsOfCancellationRequest(reservation, dbUser).catch((notifyErr) => {
+        logger.warn({ err: notifyErr }, "[CancelRequest] Pending request admin notification failed (non-fatal)");
+      });
       return res.status(409).json({
         error: "A cancellation request is already pending review.",
         code: "CANCELLATION_REQUEST_ALREADY_PENDING",
       });
     }
 
+    const oldData = reservation.toObject();
     const now = new Date();
     reservation.cancellationRequested = true;
     reservation.cancellationRequestedAt = now;
@@ -3348,24 +3473,23 @@ export const requestCancellationByUser = async (req, res, next) => {
     reservation.cancellationReason = req.body.reason || null;
     await reservation.save();
 
-    // Notify tenant
-    await notify.cancellationRequested(dbUser._id, reservation.reservationCode);
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservation._id,
+      oldData,
+      reservation.toObject(),
+      "Cancellation request submitted",
+    );
+
+    // Notify tenant. Do not fail the already-saved request if notification delivery breaks.
+    await notify.cancellationRequested(dbUser._id, reservation.reservationCode).catch((notifyErr) => {
+      logger.warn({ err: notifyErr }, "[CancelRequest] Tenant notification failed (non-fatal)");
+    });
 
     // Notify all admins for this branch
     try {
-      const room = await Room.findById(reservation.roomId).select("branch").lean();
-      const adminUsers = await User.find({
-        role: { $in: ["admin", "superadmin"] },
-        ...(room?.branch ? { branch: room.branch } : {}),
-        isActive: true,
-      }).select("_id").lean();
-
-      const tenantName = `${dbUser.firstName || ""} ${dbUser.lastName || ""}`.trim() || dbUser.email;
-      await Promise.all(
-        adminUsers.map((admin) =>
-          notify.cancellationRequestAlert(admin._id, tenantName, reservation.reservationCode),
-        ),
-      );
+      await notifyAdminsOfCancellationRequest(reservation, dbUser);
     } catch (notifyErr) {
       logger.warn({ err: notifyErr }, "[CancelRequest] Admin notification failed (non-fatal)");
     }
@@ -3403,6 +3527,8 @@ export const approveCancellationRequest = async (req, res, next) => {
 
     const now = new Date();
     const adminNote = req.body.note || null;
+    const oldData = reservation.toObject();
+    const previousStatus = reservation.status;
 
     // Archive any active visit to history
     const visitHistoryUpdate = [];
@@ -3452,13 +3578,24 @@ export const approveCancellationRequest = async (req, res, next) => {
     // Sync user lifecycle to reflect cancellation
     await syncReservationUserLifecycle({
       status: "cancelled",
-      previousStatus: reservation.status,
+      previousStatus,
       userId: reservation.userId,
       roomId: reservation.roomId,
       reservationId: reservation._id,
     }).catch((err) => logger.warn({ err }, "[ApproveCancellation] User lifecycle sync failed (non-fatal)"));
 
-    await notify.cancellationApproved(reservation.userId, reservation.reservationCode);
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservation._id,
+      oldData,
+      reservation.toObject(),
+      "Cancellation request approved",
+    );
+
+    await notify.cancellationApproved(reservation.userId, reservation.reservationCode).catch((notifyErr) => {
+      logger.warn({ err: notifyErr }, "[ApproveCancellation] Tenant notification failed (non-fatal)");
+    });
 
     res.json({ message: "Cancellation request approved. Reservation cancelled and bed released.", reservation });
   } catch (error) {
@@ -3493,6 +3630,7 @@ export const rejectCancellationRequest = async (req, res, next) => {
 
     const now = new Date();
     const adminNote = req.body.note || null;
+    const oldData = reservation.toObject();
 
     reservation.cancellationStatus = "rejected";
     reservation.cancellationReviewedAt = now;
@@ -3502,7 +3640,18 @@ export const rejectCancellationRequest = async (req, res, next) => {
     reservation.cancellationRequested = false;
     await reservation.save();
 
-    await notify.cancellationRejected(reservation.userId, reservation.reservationCode, adminNote);
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservation._id,
+      oldData,
+      reservation.toObject(),
+      "Cancellation request rejected",
+    );
+
+    await notify.cancellationRejected(reservation.userId, reservation.reservationCode, adminNote).catch((notifyErr) => {
+      logger.warn({ err: notifyErr }, "[RejectCancellation] Tenant notification failed (non-fatal)");
+    });
 
     res.json({ message: "Cancellation request rejected. Reservation remains active.", reservation });
   } catch (error) {
@@ -3519,6 +3668,10 @@ export const getMyContract = async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
+    if (user.role !== "tenant" || user.tenantStatus !== "active") {
+      return res.status(404).json({ error: "No active contract found" });
+    }
+
     // Find the tenant's active moved-in reservation
     const reservation = await Reservation.findOne({
       userId: user._id,
@@ -3530,9 +3683,14 @@ export const getMyContract = async (req, res) => {
       return res.status(404).json({ error: "No active contract found" });
     }
 
+    const moveInDate = readMoveInDate(reservation);
+    if (!moveInDate) {
+      return res.status(404).json({ error: "No active contract found" });
+    }
+
     const dayjs = (await import("dayjs")).default;
     const now = dayjs();
-    const leaseStart = dayjs(readMoveInDate(reservation));
+    const leaseStart = dayjs(moveInDate);
     const leaseDuration = reservation.leaseDuration || 12;
     const leaseEnd = leaseStart.add(leaseDuration, "month");
     const monthsCompleted = Math.min(

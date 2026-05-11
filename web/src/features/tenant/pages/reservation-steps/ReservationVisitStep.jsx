@@ -46,6 +46,18 @@ function addDays(date, days) {
  return next;
 }
 
+function startOfWeek(date) {
+ const weekStart = new Date(date);
+ weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+ return weekStart;
+}
+
+function endOfWeek(date) {
+ const weekEnd = new Date(date);
+ weekEnd.setDate(weekEnd.getDate() + (6 - weekEnd.getDay()));
+ return weekEnd;
+}
+
 function getTomorrowISO() {
  return toISODate(addDays(new Date(), 1));
 }
@@ -76,19 +88,31 @@ function normalizeBranchKey(value) {
 
 function buildCalendarCells(dateRows) {
  if (!dateRows?.length) return [];
+ const dateByIso = new Map(dateRows.map((dateRow) => [dateRow.date, dateRow]));
  const firstDate = new Date(dateRows[0].date + "T00:00:00");
- const leadingDays = firstDate.getDay();
- return [
- ...Array.from({ length: leadingDays }, (_, index) => ({
- type: "empty",
- key: `empty-start-${index}`,
- })),
- ...dateRows.map((dateRow) => ({
+ const lastDate = new Date(dateRows[dateRows.length - 1].date + "T00:00:00");
+ const calendarStart = startOfWeek(firstDate);
+ const calendarEnd = endOfWeek(lastDate);
+ const cells = [];
+
+ for (let date = new Date(calendarStart); date <= calendarEnd; date = addDays(date, 1)) {
+ const iso = toISODate(date);
+ const dateRow = dateByIso.get(iso) || {
+ date: iso,
+ available: false,
+ disabledReason: "Not available",
+ slots: [],
+ };
+
+ cells.push({
  type: "date",
- key: dateRow.date,
+ key: iso,
  dateRow,
- })),
- ];
+ isOutsideWindow: !dateByIso.has(iso),
+ });
+ }
+
+ return cells;
 }
 
 const VISIT_ERROR_MESSAGES = {
@@ -109,8 +133,6 @@ function formatRemainingSlots(slot) {
 
 function getSlotDisplayStatus(slot) {
  if (slot?.available) {
- const remaining = Number(slot?.remaining);
- if (!Number.isFinite(remaining) || remaining > 2) return "";
  return formatRemainingSlots(slot);
  }
  if (slot?.disabledCode === "VISIT_CAPACITY_REACHED" || Number(slot?.remaining) <= 0) return "Full";
@@ -507,14 +529,11 @@ const ReservationVisitStep = ({
  </div>
  ))}
  {calendarDateCells.map((cell) => {
- if (cell.type === "empty") {
- return <div key={cell.key} className="rf-date-empty" aria-hidden="true" />;
- }
  const dateRow = cell.dateRow;
  const iso = dateRow.date;
  const date = new Date(iso + "T00:00:00");
  const selected = visitDate === iso;
- const disabledLabel = getDisabledDateLabel(dateRow);
+ const disabledLabel = cell.isOutsideWindow ? "Not available" : getDisabledDateLabel(dateRow);
  const disabled = readOnly || Boolean(disabledLabel);
  const dateLabel = date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
  return (
@@ -528,7 +547,7 @@ const ReservationVisitStep = ({
  aria-pressed={selected}
  aria-label={`${dateLabel}${selected ? ", selected" : ""}${disabledLabel ? `, ${disabledLabel}` : ", available"}`}
  >
- <div className={`rf-date-card${selected ? " selected" : ""}${disabled ? " disabled" : ""}`}>
+ <div className={`rf-date-card${selected ? " selected" : ""}${disabled ? " disabled" : ""}${cell.isOutsideWindow ? " outside-window" : ""}`}>
  {iso === getTomorrowISO() && <span className="rf-today-pill">Tomorrow</span>}
  {selected && (
  <span className="rf-selection-mark" aria-hidden="true">

@@ -335,6 +335,74 @@
   letter-spacing: 0.06em;
 }
 
+.rdm-cancellation-request {
+  border-color: color-mix(in srgb, var(--danger, #b91c1c) 34%, #dbe3ee);
+  background: color-mix(in srgb, var(--danger, #b91c1c) 5%, #ffffff);
+}
+
+.rdm-cancellation-request--focused {
+  animation: rdm-cancellation-focus 1.2s ease-out;
+}
+
+.rdm-cancellation-request__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.rdm-cancellation-request__title {
+  margin-bottom: 4px;
+}
+
+.rdm-cancellation-request__copy {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.rdm-cancellation-request__badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #b91c1c;
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.rdm-cancellation-request__details {
+  margin-bottom: 12px;
+}
+
+.rdm-cancellation-request__impact {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(185, 28, 28, 0.18);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.64);
+  color: #7f1d1d;
+  font-size: 0.85rem;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.rdm-cancellation-request__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.rdm-cancellation-request__actions .rdm-action {
+  width: auto;
+}
+
 .rdm-notes-form {
   display: flex;
   flex-direction: column;
@@ -743,6 +811,17 @@
   }
 }
 
+@keyframes rdm-cancellation-focus {
+  0% {
+    box-shadow: 0 0 0 0 rgba(185, 28, 28, 0.28),
+      0 10px 25px rgba(15, 23, 42, 0.05);
+  }
+  100% {
+    box-shadow: 0 0 0 12px rgba(185, 28, 28, 0),
+      0 10px 25px rgba(15, 23, 42, 0.05);
+  }
+}
+
 /* Modern modal layout refresh */
 .rdm {
   max-width: 1080px;
@@ -986,6 +1065,15 @@
 
   .rdm-info-grid {
     grid-template-columns: 1fr;
+  }
+
+  .rdm-cancellation-request__header,
+  .rdm-cancellation-request__actions {
+    flex-direction: column;
+  }
+
+  .rdm-cancellation-request__actions .rdm-action {
+    width: 100%;
   }
 
   .rdm-body {

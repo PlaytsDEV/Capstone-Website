@@ -32,6 +32,7 @@ import {
 } from "../utils/billingPolicy.js";
 import { notify } from "../utils/notificationService.js";
 import { sendSuccess, AppError } from "../middleware/errorHandler.js";
+import { normalizeReservationStatus } from "../utils/lifecycleNaming.js";
 
 const FRONTEND_URL =
   process.env.FRONTEND_URL?.split(",")[0]?.trim() || "http://localhost:5173";
@@ -49,7 +50,14 @@ const PAYMENT_METHOD_LABELS = Object.freeze({
 });
 
 function canAutoReserveReservation(status) {
-  return status === "pending" || status === "payment_pending";
+  return normalizeReservationStatus(status) === "payment_pending";
+}
+
+function isDepositCheckoutReady(reservation) {
+  return (
+    normalizeReservationStatus(reservation?.status) === "payment_pending" &&
+    Boolean(reservation?.applicationSubmittedAt)
+  );
 }
 
 async function getDbUser(firebaseUid) {
@@ -61,6 +69,67 @@ const hasBillingPermission = (user) =>
   (user?.role === "branch_admin" &&
     Array.isArray(user.permissions) &&
     user.permissions.includes("manageBilling"));
+
+async function notifyAdminsOfDepositReview(reservation, paymentReference) {
+  try {
+    const branch = reservation?.roomId?.branch || null;
+    const admins = await User.find({
+      accountStatus: "active",
+      $or: [
+        ...(branch ? [{ role: "branch_admin", branch }] : [{ role: "branch_admin" }]),
+        { role: "owner" },
+      ],
+    }).select("_id").lean();
+
+    await Promise.all(
+      admins.map((admin) =>
+        notify.general(
+          admin._id,
+          "Reservation Payment Needs Review",
+          `A reservation deposit was paid before the reservation reached payment stage. Reference: ${paymentReference}.`,
+          {
+            entityType: "reservation",
+            entityId: reservation?._id ? String(reservation._id) : null,
+            actionUrl: "/admin/reservations",
+          },
+        ),
+      ),
+    );
+  } catch (error) {
+    logger.warn({ err: error }, "Failed to notify admins about deposit review");
+  }
+}
+
+async function markDepositForManualReview(reservation, paymentReference, paymentMethod) {
+  if (!reservation) return null;
+  if (!reservation.paymongoPaymentId) {
+    reservation.paymongoPaymentId = paymentReference;
+    reservation.paymentDate = new Date();
+    reservation.paymentMethod = paymentMethod || "paymongo";
+    reservation.notes = `${reservation.notes ? `${reservation.notes} | ` : ""}PayMongo deposit ${paymentReference} requires manual review because it arrived before payment stage.`;
+    await reservation.save();
+  }
+  logger.warn(
+    {
+      reservationId: reservation?._id ? String(reservation._id) : null,
+      status: normalizeReservationStatus(reservation.status),
+      paymentReference,
+      requiresReview: true,
+    },
+    "Deposit payment requires manual review",
+  );
+  await notifyAdminsOfDepositReview(reservation, paymentReference);
+  return {
+    _id: reservation._id,
+    reservationCode: reservation.reservationCode,
+    status: reservation.status,
+    paymentStatus: reservation.paymentStatus,
+    paymentMethod: reservation.paymentMethod,
+    paymentDate: reservation.paymentDate,
+    paymongoPaymentId: reservation.paymongoPaymentId,
+    requiresReview: true,
+  };
+}
 
 async function resolveSessionResourceAccess(metadata, dbUser) {
   if (metadata.userId && String(metadata.userId) !== String(dbUser._id)) {
@@ -226,6 +295,18 @@ export const createDepositCheckout = async (req, res, next) => {
 
     if (reservation.paymentStatus === "paid") {
       throw new AppError("Deposit is already paid", 400, "ALREADY_PAID");
+    }
+
+    if (!isDepositCheckoutReady(reservation)) {
+      throw new AppError(
+        "Deposit checkout is available only after application submission.",
+        409,
+        "DEPOSIT_NOT_READY",
+        {
+          status: normalizeReservationStatus(reservation.status),
+          applicationSubmittedAt: reservation.applicationSubmittedAt || null,
+        },
+      );
     }
 
     if (reservation.paymongoSessionId) {
@@ -432,23 +513,29 @@ export const checkSessionStatus = async (req, res, next) => {
           const paymentReference = paidPayments[0]?.id || sessionId;
           const canAutoReserve = canAutoReserveReservation(reservation.status);
 
-          reservation.paymentStatus = "paid";
-          reservation.paymentDate = new Date();
-          reservation.paymentMethod = rawPaymentType || "paymongo";
-          reservation.paymongoPaymentId = paymentReference;
-          if (canAutoReserve) {
+          if (!canAutoReserve) {
+            paidReservationSnapshot = await markDepositForManualReview(
+              reservation,
+              paymentReference,
+              rawPaymentType || "paymongo",
+            );
+          } else {
+            reservation.paymentStatus = "paid";
+            reservation.paymentDate = new Date();
+            reservation.paymentMethod = rawPaymentType || "paymongo";
+            reservation.paymongoPaymentId = paymentReference;
             reservation.status = "reserved";
+            await reservation.save();
+            paidReservationSnapshot = {
+              _id: reservation._id,
+              reservationCode: reservation.reservationCode,
+              status: reservation.status,
+              paymentStatus: reservation.paymentStatus,
+              paymentMethod: reservation.paymentMethod,
+              paymentDate: reservation.paymentDate,
+              paymongoPaymentId: reservation.paymongoPaymentId,
+            };
           }
-          await reservation.save();
-          paidReservationSnapshot = {
-            _id: reservation._id,
-            reservationCode: reservation.reservationCode,
-            status: reservation.status,
-            paymentStatus: reservation.paymentStatus,
-            paymentMethod: reservation.paymentMethod,
-            paymentDate: reservation.paymentDate,
-            paymongoPaymentId: reservation.paymongoPaymentId,
-          };
 
           if (canAutoReserve) {
             await updateOccupancyOnReservationChange(reservation, {
@@ -460,26 +547,28 @@ export const checkSessionStatus = async (req, res, next) => {
             );
           }
 
-          try {
-            const tenant = await User.findById(reservation.userId).lean();
-            if (tenant?.email) {
-              const tenantName =
-                `${tenant.firstName || ""} ${tenant.lastName || ""}`.trim() ||
-                "Tenant";
-              const roomName = reservation.roomId?.name || "Room";
-              await sendPaymentReceiptEmail({
-                to: tenant.email,
-                tenantName,
-                amount:
-                  reservation.reservationFeeAmount || BUSINESS.DEPOSIT_AMOUNT,
-                description: `Reservation Deposit - ${roomName}`,
-                paymentMethod: paymentMethod || "Online Payment (PayMongo)",
-                paymentDate: dayjs().format("MMMM D, YYYY"),
-                referenceId: paymentReference,
-              });
+          if (canAutoReserve) {
+            try {
+              const tenant = await User.findById(reservation.userId).lean();
+              if (tenant?.email) {
+                const tenantName =
+                  `${tenant.firstName || ""} ${tenant.lastName || ""}`.trim() ||
+                  "Tenant";
+                const roomName = reservation.roomId?.name || "Room";
+                await sendPaymentReceiptEmail({
+                  to: tenant.email,
+                  tenantName,
+                  amount:
+                    reservation.reservationFeeAmount || BUSINESS.DEPOSIT_AMOUNT,
+                  description: `Reservation Deposit - ${roomName}`,
+                  paymentMethod: paymentMethod || "Online Payment (PayMongo)",
+                  paymentDate: dayjs().format("MMMM D, YYYY"),
+                  referenceId: paymentReference,
+                });
+              }
+            } catch (emailErr) {
+              logger.warn({ err: emailErr }, "Deposit receipt email error");
             }
-          } catch (emailErr) {
-            logger.warn({ err: emailErr }, "Deposit receipt email error");
           }
         } else if (reservation) {
           paidReservationSnapshot = {
@@ -510,6 +599,7 @@ export const checkSessionStatus = async (req, res, next) => {
       paymentCount: paidPayments.length,
       paymentMethod,
       ...(paidReservationSnapshot && { reservation: paidReservationSnapshot }),
+      ...(paidReservationSnapshot?.requiresReview ? { requiresReview: true } : {}),
     });
   } catch (error) {
     logger.error(

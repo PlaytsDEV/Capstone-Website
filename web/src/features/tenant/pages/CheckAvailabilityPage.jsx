@@ -302,7 +302,6 @@ function CheckAvailabilityPage() {
  applianceFees: calculateApplianceFees(),
  viewingType: null,
  agreedToPrivacy: false,
- visitApproved: false,
  };
  try {
  await reservationApi.create(payload);

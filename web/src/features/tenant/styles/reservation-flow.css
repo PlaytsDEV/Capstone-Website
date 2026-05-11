@@ -196,6 +196,17 @@ html[data-theme="dark"] {
 .rf-success-banner .info-box-title { color: var(--rf-success-text); }
 .rf-success-banner .info-text      { color: var(--rf-success-text-alt); }
 
+.rf-payment-complete-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.rf-payment-complete-banner svg {
+  flex: 0 0 auto;
+  color: var(--rf-success);
+}
+
 /* ── Payment info box (Step 4 PayMongo) ── */
 .rf-payment-info-box {
   background: var(--rf-success-bg);
@@ -357,10 +368,6 @@ html[data-theme="dark"] .rf-policies-link { color: var(--color-success); }
   color: var(--rf-text-muted);
   text-transform: uppercase;
 }
-.rf-date-empty {
-  min-height: 74px;
-  border-radius: 10px;
-}
 .rf-date-btn {
   all: unset;
   box-sizing: border-box;
@@ -397,6 +404,9 @@ html[data-theme="dark"] .rf-policies-link { color: var(--color-success); }
 .rf-date-card.disabled:hover {
   background: var(--rf-muted-bg, #f3f4f6);
   border-color: var(--rf-border-card);
+}
+.rf-date-card.outside-window {
+  opacity: 0.5;
 }
 .rf-date-card.selected {
   border-color: var(--rf-selection-border);
@@ -533,7 +543,7 @@ html[data-theme="dark"] .rf-policies-link { color: var(--color-success); }
 }
 .rf-time-slot {
   position: relative;
-  min-height: 58px;
+  min-height: 66px;
   padding: 10px 12px 9px;
   border-radius: 8px;
   border: 1.5px solid var(--rf-border-card);
@@ -554,7 +564,7 @@ html[data-theme="dark"] .rf-policies-link { color: var(--color-success); }
 }
 .rf-time-slot small {
   min-height: 0;
-  margin-top: 3px;
+  margin-top: 4px;
   font-size: 11px;
   font-weight: 600;
   line-height: 1.25;
@@ -838,7 +848,160 @@ html[data-theme="dark"] .rf-receipt-header__badge { color: var(--color-success);
   color: var(--rf-text-muted);
   text-align: right;
 }
-.rf-pay-btn-icon { display: flex; align-items: center; gap: 6px; justify-content: center; }
+.rf-pay-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+}
+
+.rf-payment-stage .card-section-title .icon svg {
+  color: var(--rf-primary);
+}
+
+.rf-payment-summary {
+  margin-bottom: 0;
+}
+
+.rf-payment-room-row .summary-value {
+  font-size: 15px;
+  color: var(--rf-text-heading);
+}
+
+.rf-payment-rent {
+  color: var(--rf-accent);
+}
+
+.rf-payment-total .total-amount {
+  white-space: nowrap;
+}
+
+.rf-payment-trust-card .rf-payment-info-box {
+  margin-bottom: 16px;
+}
+
+.rf-payment-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.rf-payment-fact {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--rf-border);
+  border-radius: var(--rf-radius-sm);
+  background: var(--rf-surface-alt);
+}
+
+.rf-payment-fact-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  color: var(--rf-success-text);
+  background: var(--rf-success-bg);
+}
+
+.rf-payment-fact strong,
+.rf-payment-fact small {
+  display: block;
+}
+
+.rf-payment-fact strong {
+  color: var(--rf-text);
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.rf-payment-fact small {
+  color: var(--rf-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.rf-payment-action-card {
+  border-color: rgba(5, 150, 105, 0.22);
+  margin-bottom: 0;
+}
+
+.rf-fee-policy-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 13px 14px;
+  border: 1px solid var(--rf-warning);
+  border-radius: var(--rf-radius-sm);
+  background: var(--rf-warning-bg);
+  color: var(--rf-warning-text-alt);
+  font-size: 13px;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.rf-fee-policy-check input {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: var(--rf-success);
+}
+
+.rf-fee-policy-check:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.rf-payment-actions {
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.rf-payment-action-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.rf-payment-action-copy strong {
+  color: var(--rf-text);
+  font-size: 14px;
+}
+
+.rf-payment-action-copy span {
+  color: var(--rf-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.rf-payment-state-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  color: var(--rf-warning-text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.rf-payment-state-hint svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.rf-payment-state-hint--ready {
+  color: var(--rf-info-text);
+}
 
 /* ── Confirmation step ── */
 .rf-confirmation-wrapper {
@@ -2512,6 +2675,25 @@ html[data-theme="dark"] .rf-policy-link { color: var(--color-success); }
   .reservation-card {
     padding: 20px 16px;
   }
+
+  .rf-payment-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .rf-payment-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .btn-pay-online-reservation {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .rf-payment-action-copy,
+  .rf-payment-state-hint {
+    text-align: left;
+  }
 }
 
 @media (max-width: 480px) {
@@ -2539,6 +2721,19 @@ html[data-theme="dark"] .rf-policy-link { color: var(--color-success); }
 
   .rf-room-banner-icon {
     display: none;
+  }
+
+  .rf-payment-actions {
+    flex-direction: column;
+  }
+
+  .rf-fee-policy-check {
+    padding: 12px;
+  }
+
+  .rf-payment-total {
+    align-items: flex-start;
+    gap: 6px;
   }
 }
 
@@ -2640,14 +2835,18 @@ html[data-theme="dark"] .rf-policy-link { color: var(--color-success); }
 }
 
 .btn-pay-online-reservation {
-  background: none, #10b981) !important;
+  background: #059669 !important;
+  border: 1px solid #047857 !important;
   color: white !important;
   font-weight: 600 !important;
   font-size: 15px !important;
   padding: 14px 28px !important;
+  flex: 0 0 auto;
+  min-width: 260px;
 }
 
 .btn-pay-online-reservation:hover:not(:disabled) {
+  background: #047857 !important;
   box-shadow: 0 6px 20px rgba(5, 150, 105, 0.35);
   transform: translateY(-2px);
 }
@@ -2670,6 +2869,21 @@ html[data-theme="dark"] .rf-policy-link { color: var(--color-success); }
   }
   .payment-path-option {
     padding: 12px 14px;
+  }
+  .rf-payment-facts {
+    grid-template-columns: 1fr;
+  }
+  .rf-payment-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .btn-pay-online-reservation {
+    width: 100%;
+    min-width: 0;
+  }
+  .rf-payment-action-copy,
+  .rf-payment-state-hint {
+    text-align: left;
   }
 }
 

@@ -40,8 +40,8 @@ const PAYMENT_RETURN_PENDING_KEY = "activeReservationPaymentReturnPending";
 const PAYMENT_SESSION_KEY = "activeReservationPaymongoSessionId";
 
 const PAYMENT_RETURN_MIN_LOADING_MS = 150;
-const PAYMENT_RETURN_POLL_INTERVAL_MS = 500;
-const PAYMENT_RETURN_MAX_WAIT_MS = 60000;
+const PAYMENT_RETURN_POLL_INTERVAL_MS = 1000;
+const PAYMENT_RETURN_MAX_WAIT_MS = 20000;
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -72,6 +72,47 @@ const getProfileName = (profile) => {
     firstName: profile?.firstName || displayParts[0] || "",
     lastName: profile?.lastName || displayParts.slice(1).join(" ") || "",
   };
+};
+
+const mergeReservationIntoQueryData = (currentData, updatedReservation) => {
+  if (!updatedReservation?._id) return currentData;
+
+  const patchList = (items) => {
+    if (!Array.isArray(items)) return items;
+
+    let changed = false;
+    const nextItems = items.map((item) => {
+      if (item?._id !== updatedReservation._id) return item;
+      changed = true;
+      return { ...item, ...updatedReservation };
+    });
+
+    return changed ? nextItems : items;
+  };
+
+  if (Array.isArray(currentData)) {
+    return patchList(currentData);
+  }
+
+  if (Array.isArray(currentData?.reservations)) {
+    const nextReservations = patchList(currentData.reservations);
+    return nextReservations === currentData.reservations
+      ? currentData
+      : { ...currentData, reservations: nextReservations };
+  }
+
+  if (Array.isArray(currentData?.data)) {
+    const nextData = patchList(currentData.data);
+    return nextData === currentData.data
+      ? currentData
+      : { ...currentData, data: nextData };
+  }
+
+  if (currentData?._id === updatedReservation._id) {
+    return { ...currentData, ...updatedReservation };
+  }
+
+  return currentData;
 };
 
 export default function useReservationFlow() {
@@ -111,7 +152,7 @@ export default function useReservationFlow() {
       sessionStorage.getItem(PAYMENT_RETURN_PENDING_KEY) === "1"
   );
   const [visitApproved, setVisitApproved] = useState(false);
-  const [visitCompleted, setVisitCompleted] = useState(false);
+  const [visitScheduled, setVisitScheduled] = useState(false);
   const [scheduleRejected, setScheduleRejected] = useState(false);
   const [scheduleRejectionReason, setScheduleRejectionReason] = useState("");
   const [applicationSubmitted, setApplicationSubmitted] = useState(false);
@@ -277,8 +318,8 @@ export default function useReservationFlow() {
   // ΓöÇΓöÇ Stepper locking ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   const isStageLocked = (stageId) => {
     if (paymentApproved) return stageId < 5;
-    if (stageId === 1) return visitCompleted;
-    if (stageId === 2) return visitCompleted && !scheduleRejected; // unlock when admin rejects visit
+    if (stageId === 1) return visitScheduled;
+    if (stageId === 2) return visitScheduled && !scheduleRejected; // unlock when admin rejects visit
     if (stageId === 3) return applicationSubmitted && !editingApplication;
     if (stageId === 4) return paymentSubmitted || paymentApproved;
     return false;
@@ -437,7 +478,7 @@ export default function useReservationFlow() {
     const hasPayment = Boolean(r.proofOfPaymentUrl);
     const isConfirmed = status === "reserved" || r.paymentStatus === "paid";
 
-    if (hasVisitScheduled) setVisitCompleted(true);
+    if (hasVisitScheduled) setVisitScheduled(true);
     if (isVisitApprovedFlag) setVisitApproved(true);
     if (r.scheduleRejected) setScheduleRejected(true);
     if (r.scheduleRejectionReason) setScheduleRejectionReason(r.scheduleRejectionReason);
@@ -632,46 +673,44 @@ export default function useReservationFlow() {
   const waitForDepositPaymentValidation = async (resId, sessionId) => {
     const startedAt = Date.now();
     let lastResult = null;
-    let lastReservation = null;
+
+    if (!sessionId) {
+      return { result: null, reservation: null };
+    }
 
     while (Date.now() - startedAt < PAYMENT_RETURN_MAX_WAIT_MS) {
-      const [statusResult, reservationResult] = await Promise.allSettled([
-        sessionId
-          ? billingApi.checkPaymentStatus(sessionId)
-          : Promise.resolve(null),
-        reservationApi.getById(resId),
-      ]);
-
-      if (statusResult.status === "fulfilled") {
-        lastResult = statusResult.value;
-        if (lastResult?.status === "paid") {
+      try {
+        lastResult = await billingApi.checkPaymentStatus(sessionId);
+        if (lastResult?.requiresReview) {
           return {
-            result: lastResult,
+            result: {
+              ...lastResult,
+              status: lastResult.status || "requires_review",
+              requiresReview: true,
+            },
             reservation: lastResult.reservation || null,
           };
         }
-      }
-
-      if (reservationResult.status === "fulfilled") {
-        lastReservation = reservationResult.value;
-        if (isReservationPaymentConfirmed(lastReservation)) {
+        if (lastResult?.status === "paid") {
+          let confirmedReservation = lastResult.reservation || null;
+          try {
+            confirmedReservation = await reservationApi.getById(resId);
+          } catch {
+            // The payment is confirmed; profile/dashboard refresh can catch up.
+          }
           return {
-            result: {
-              status: "paid",
-              paymentMethod:
-                lastResult?.paymentMethod ||
-                lastReservation.paymentMethod ||
-                "paymongo",
-            },
-            reservation: lastReservation,
+            result: lastResult,
+            reservation: confirmedReservation,
           };
         }
+      } catch (error) {
+        console.warn("[PAYMENT] Session validation attempt failed:", error);
       }
 
       await wait(PAYMENT_RETURN_POLL_INTERVAL_MS);
     }
 
-    return { result: lastResult, reservation: lastReservation };
+    return { result: lastResult, reservation: null };
   };
 
   const loadExistingReservation = async (resId, skipStageSet = false) => {
@@ -743,7 +782,7 @@ export default function useReservationFlow() {
         setVisitTime("");
         setScheduleRejected(true);
         setScheduleRejectionReason(reservation.scheduleRejectionReason || "");
-        setVisitCompleted(false);
+        setVisitScheduled(false);
       }
 
       // Fallback for legacy records still at "pending" with data beyond step 1
@@ -796,21 +835,46 @@ export default function useReservationFlow() {
                     resId,
                     verificationSessionId,
                   );
+            if (result?.requiresReview) {
+              sessionStorage.removeItem(PAYMENT_SESSION_KEY);
+              sessionStorage.removeItem(PAYMENT_RETURN_PENDING_KEY);
+              await queryClient.invalidateQueries({ queryKey: ["reservations"] });
+              await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+              appNavigate("/applicant/profile", {
+                flash: {
+                  type: "warning",
+                  message:
+                    "Payment was received but needs admin review before your reservation can be secured.",
+                },
+              });
+              return;
+            }
+
             if (result?.status === "paid") {
               sessionStorage.removeItem(getActiveResKey(user?.firebaseUid));
               sessionStorage.removeItem("activeReservationId"); // legacy cleanup
               sessionStorage.removeItem(PAYMENT_SESSION_KEY);
               sessionStorage.removeItem(PAYMENT_RETURN_PENDING_KEY);
-              // Re-fetch reservation to get the newly generated reservationCode
-              // (the pre-save hook creates it when status transitions to "reserved")
-              try {
-                const updated =
-                  validatedReservation ||
-                  result.reservation ||
-                  (await reservationApi.getById(resId));
-                if (updated?.reservationCode) setReservationCode(updated.reservationCode);
-                if (updated?.paymentMethod) setPaymentMethod(updated.paymentMethod);
+              let updatedReservation = validatedReservation || result.reservation || null;
+              if (!updatedReservation?._id) {
+                try {
+                updatedReservation = await reservationApi.getById(resId);
+                if (updatedReservation?.reservationCode) setReservationCode(updatedReservation.reservationCode);
+                if (updatedReservation?.paymentMethod) setPaymentMethod(updatedReservation.paymentMethod);
               } catch { /* non-critical ΓÇö code just won't display */ }
+              }
+              if (updatedReservation?._id) {
+                queryClient.setQueryData(
+                  ["reservations", "detail", updatedReservation._id],
+                  (current) => ({ ...(current || {}), ...updatedReservation }),
+                );
+                queryClient.setQueriesData(
+                  { queryKey: ["reservations", "list"] },
+                  (current) => mergeReservationIntoQueryData(current, updatedReservation),
+                );
+              }
+              await queryClient.invalidateQueries({ queryKey: ["reservations"] });
+              await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
               await wait(PAYMENT_RETURN_MIN_LOADING_MS);
               setCurrentStage(5);
               setHighestStageReached(5);
@@ -828,7 +892,13 @@ export default function useReservationFlow() {
               if (paymentReturnStatusRef.current === "cancelled") {
                 showNotification("Payment was not confirmed yet. You can try again from the payment step.", "info", 5000);
               } else {
-                showNotification("Payment is still being validated. Please try again in a moment.", "info", 5000);
+                appNavigate("/applicant/profile", {
+                  flash: {
+                    type: "info",
+                    message:
+                      "Payment is still being validated. You can retry from the payment step if needed.",
+                  },
+                });
               }
               return;
             }
@@ -996,7 +1066,6 @@ export default function useReservationFlow() {
         viewingType: null,
         agreedToPrivacy: false,
         roomConfirmed: true,
-        visitApproved: false,
         ...payloadOverrides,
       });
       const created = response?.reservation || response;
@@ -1027,7 +1096,6 @@ export default function useReservationFlow() {
               billingEmail,
               user?.email || "test@example.com",
             ),
-            moveInDate,
             selectedAppliances: reservationData?.selectedAppliances || [],
             totalPrice: totalPrice > 0 ? totalPrice : 5000,
             applianceFees: reservationData?.applianceFees || 0,
@@ -1425,7 +1493,7 @@ export default function useReservationFlow() {
         const validIDBackUrl = await uploadIfFile(validIDBack);
         const nbiClearanceUrl = await uploadIfFile(nbiClearance);
         const companyIDUrl = await uploadIfFile(companyID);
-        await updateReservationDraft({
+        const applicationPayload = {
           firstName,
           lastName,
           middleName,
@@ -1473,8 +1541,11 @@ export default function useReservationFlow() {
           companyIDReason,
           validIDType,
           idType: validIDType,
-          submitApplication: true,
-        });
+        };
+        if (!applicationSubmitted) {
+          applicationPayload.submitApplication = true;
+        }
+        await updateReservationDraft(applicationPayload);
         setApplicationSubmitted(true);
         setEditingApplication(false);
         await queryClient.invalidateQueries({ queryKey: ["reservations"] });
@@ -1608,7 +1679,7 @@ export default function useReservationFlow() {
     isLoading,
     paymentReturnLoading,
     visitApproved,
-    visitCompleted, setVisitCompleted,
+    visitScheduled, setVisitScheduled,
     scheduleRejected,
     scheduleRejectionReason,
     applicationSubmitted,

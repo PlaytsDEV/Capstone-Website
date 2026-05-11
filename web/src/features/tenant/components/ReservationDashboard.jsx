@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { showNotification } from "../../../shared/utils/notification";
 import { formatPaymentMethod } from "../../../shared/utils/formatPaymentMethod";
+import { normalizeReservationStatus } from "../../../shared/utils/lifecycleNaming";
 import {
  Home,
  Calendar,
@@ -76,10 +77,15 @@ const STEPS = [
 
 function resolveCurrentStage(reservation) {
  if (!reservation) return 0;
- const status = reservation.reservationStatus || reservation.status;
+ const status = normalizeReservationStatus(
+ reservation.reservationStatus || reservation.status,
+ );
 
- if (status === "reserved") return 5;
+ if (status === "reserved" || status === "moveIn") return 5;
  if (reservation.paymentStatus === "paid") return 5;
+ if (status === "payment_pending") return 4;
+ if (status === "visit_approved") return 3;
+ if (status === "visit_pending") return 2;
 
  // application submitted
  if (
@@ -158,7 +164,7 @@ function getNextAction(reservation, currentStage) {
  return {
  title: "Confirm Room & Continue",
  description: "Review your selected room and confirm your choice",
- buttonLabel: "Continue →",
+ buttonLabel: "Continue ->",
  route: `/applicant/reservation?step=1`,
  isWaiting: false,
  };
@@ -171,7 +177,7 @@ function getNextAction(reservation, currentStage) {
  return {
  title: "Visit Rejected",
  description: reservation.scheduleRejectionReason || "Your visit schedule was rejected. Please reschedule.",
- buttonLabel: "Reschedule Visit →",
+ buttonLabel: "Reschedule Visit ->",
  route: `/applicant/reservation?step=2`,
  isWaiting: false,
  isRejected: true,
@@ -195,7 +201,7 @@ function getNextAction(reservation, currentStage) {
  return {
  title: "Schedule Your Visit",
  description: "Pick a date and time to visit the dormitory",
- buttonLabel: "Book Visit →",
+ buttonLabel: "Book Visit ->",
  route: `/applicant/reservation?step=2`,
  isWaiting: false,
  };
@@ -204,7 +210,7 @@ function getNextAction(reservation, currentStage) {
  return {
  title: "Complete Your Application",
  description: "Fill in personal details and upload required documents",
- buttonLabel: "Fill Application →",
+ buttonLabel: "Fill Application ->",
  route: `/applicant/reservation?step=3`,
  isWaiting: false,
  };
@@ -213,7 +219,7 @@ function getNextAction(reservation, currentStage) {
  title: "Pay Reservation Fee",
  description:
  `Pay PHP ${reservationFeeAmount.toLocaleString("en-PH")} online via GCash, Maya, or Card to secure your reservation`,
- buttonLabel: "Pay Now →",
+ buttonLabel: "Pay Now ->",
  route: `/applicant/reservation?step=4`,
  isWaiting: false,
  };
@@ -230,7 +236,7 @@ function getNextAction(reservation, currentStage) {
 }
 
 function formatDate(dateStr) {
- if (!dateStr) return "—";
+ if (!dateStr) return "-";
  try {
  return new Date(dateStr).toLocaleDateString("en-US", {
  month: "short",
@@ -238,7 +244,7 @@ function formatDate(dateStr) {
  year: "numeric",
  });
  } catch {
- return "—";
+ return "-";
  }
 }
 
@@ -709,6 +715,31 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
  showNotification("Cancellation request submitted. Pending admin review.", "success", 4000);
  queryClient.invalidateQueries({ queryKey: ["reservations"] });
  } catch (err) {
+ const errorCode = err?.response?.data?.code;
+ if (errorCode === "CANCELLATION_REQUEST_ALREADY_PENDING") {
+ setIsRequesting(false);
+ setShowRequestCancelModal(false);
+ showNotification("Cancellation request is already pending admin review.", "info", 4000);
+ queryClient.invalidateQueries({ queryKey: ["reservations"] });
+ return;
+ }
+ try {
+ const { reservationApi } = await import("../../../shared/api/reservationApi");
+ const latest = await reservationApi.getById(reservation._id);
+ const latestReservation = latest?.reservation || latest;
+ if (
+ latestReservation?.cancellationRequested &&
+ latestReservation?.cancellationStatus === "pending"
+ ) {
+ setIsRequesting(false);
+ setShowRequestCancelModal(false);
+ showNotification("Cancellation request submitted. Pending admin review.", "success", 4000);
+ queryClient.invalidateQueries({ queryKey: ["reservations"] });
+ return;
+ }
+ } catch (refreshErr) {
+ console.warn("Failed to verify cancellation request state:", refreshErr);
+ }
  console.error("Cancellation request failed:", err);
  setIsRequesting(false);
  setShowRequestCancelModal(false);

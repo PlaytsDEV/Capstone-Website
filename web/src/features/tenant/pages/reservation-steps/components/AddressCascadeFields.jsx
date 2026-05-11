@@ -446,7 +446,7 @@ const AddressCascadeFields = ({
  </option>
  {barangays.map((b) => (
  <option key={b.code} value={b.name}>
- {b.name}
+ {b.label || b.name}
  </option>
  ))}
  </select>

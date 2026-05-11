@@ -17,6 +17,13 @@ export function getBranchLabel(branch) {
  return BRANCH_DISPLAY_NAMES[branch] || branch || "Unknown";
 }
 
+export function hasPendingCancellationRequest(reservation) {
+ return Boolean(
+ reservation?.cancellationRequested &&
+ reservation?.cancellationStatus === "pending",
+ );
+}
+
 export function mapReservationAdminRow(reservation) {
  const branchCode = reservation.roomId?.branch || "";
 
@@ -37,6 +44,12 @@ export function mapReservationAdminRow(reservation) {
  totalPrice: reservation.totalPrice,
  paymentStatus: reservation.paymentStatus,
  createdAt: reservation.createdAt,
+ cancellationRequested: reservation.cancellationRequested,
+ cancellationRequestedAt: reservation.cancellationRequestedAt,
+ cancellationRequestedBy: reservation.cancellationRequestedBy,
+ cancellationStatus: reservation.cancellationStatus,
+ cancellationReason: reservation.cancellationReason,
+ cancellationAdminNote: reservation.cancellationAdminNote,
  _raw: reservation,
  };
 }

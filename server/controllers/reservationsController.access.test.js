@@ -8,6 +8,8 @@ const utilityReadingFindOne = jest.fn();
 const ensureCurrentCycleRentBill = jest.fn();
 const moveOutStayWorkflow = jest.fn();
 const notifyGeneral = jest.fn();
+const buildUserUpdatePayload = jest.fn(() => ({}));
+const getForbiddenTenantUpdateFields = jest.fn(() => []);
 
 await jest.unstable_mockModule("../models/index.js", () => ({
   Reservation: { findById: reservationFindById },
@@ -51,7 +53,8 @@ await jest.unstable_mockModule("../utils/reservationHelpers.js", () => ({
   handleStatusTransition: jest.fn(),
   syncReservationUserLifecycle: jest.fn(),
   reconcileTenantUsersForScope: jest.fn(async () => []),
-  buildUserUpdatePayload: jest.fn(() => ({})),
+  buildUserUpdatePayload,
+  getForbiddenTenantUpdateFields,
   getMoveInBlockers: jest.fn(() => []),
 }));
 await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
@@ -91,6 +94,7 @@ await jest.unstable_mockModule("../utils/notificationService.js", () => ({
 const {
   moveOutReservation,
   updateReservation,
+  updateReservationByUser,
   updateVisitAvailabilityRules,
 } = await import("./reservationsController.js");
 
@@ -117,7 +121,88 @@ describe("reservationsController.updateReservation access hardening", () => {
     ensureCurrentCycleRentBill.mockReset();
     moveOutStayWorkflow.mockReset();
     notifyGeneral.mockReset();
+    buildUserUpdatePayload.mockReset();
+    buildUserUpdatePayload.mockReturnValue({});
+    getForbiddenTenantUpdateFields.mockReset();
+    getForbiddenTenantUpdateFields.mockReturnValue([]);
     userFindOne.mockResolvedValue(null);
+  });
+
+  test("rejects protected fields from tenant self-updates", async () => {
+    userFindOne.mockResolvedValue({ _id: "user-1" });
+    reservationFindById.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439011",
+      userId: "user-1",
+      status: "visit_approved",
+    });
+    getForbiddenTenantUpdateFields.mockReturnValue(["status", "proofOfPaymentUrl"]);
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439011" },
+      user: { uid: "firebase-1" },
+      body: { status: "reserved", proofOfPaymentUrl: "https://example.test/proof.jpg" },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await updateReservationByUser(req, res, next);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body.code).toBe("TENANT_FIELD_NOT_ALLOWED");
+    expect(res.body.fields).toEqual(["status", "proofOfPaymentUrl"]);
+    expect(buildUserUpdatePayload).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("rejects application submission before visit approval", async () => {
+    userFindOne.mockResolvedValue({ _id: "user-1" });
+    reservationFindById.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439011",
+      userId: "user-1",
+      status: "visit_pending",
+    });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439011" },
+      user: { uid: "firebase-1" },
+      body: { submitApplication: true },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await updateReservationByUser(req, res, next);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body.code).toBe("APPLICATION_NOT_READY");
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("rejects incomplete final application submission", async () => {
+    userFindOne.mockResolvedValue({ _id: "user-1" });
+    reservationFindById.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439011",
+      userId: "user-1",
+      status: "visit_approved",
+      address: {},
+      emergencyContact: {},
+      employment: {},
+    });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439011" },
+      user: { uid: "firebase-1" },
+      body: { submitApplication: true },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await updateReservationByUser(req, res, next);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body.code).toBe("APPLICATION_INCOMPLETE");
+    expect(res.body.missingFields).toContain("first name");
+    expect(res.body.missingFields).toContain("valid ID (front)");
+    expect(next).not.toHaveBeenCalled();
   });
 
   test("rejects invalid lifecycle jumps before mutating reservation", async () => {

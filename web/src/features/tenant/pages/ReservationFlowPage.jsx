@@ -213,7 +213,7 @@ function ReservationFlowPage() {
                 return null;
               }}
               onAfterClose={async () => {
-                flow.setVisitCompleted(true);
+                flow.setVisitScheduled(true);
                 flow.setHighestStageReached((prev) => Math.max(prev, 3));
                 // Bust the cache so the dashboard shows the new visit_pending status immediately
                 await flow.queryClient.invalidateQueries({ queryKey: ["reservations"] });
