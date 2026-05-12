@@ -1659,32 +1659,13 @@ const UtilityBillingTab = ({
           </div>
 
           <div className="mt-2 grid grid-cols-2 gap-2">
-            <select
-              value={branchFilter}
-              onChange={(e) => {
-                if (!isOwner) return;
-                setBranchFilter(e.target.value);
-                setSelectedRoomId(null);
-                setSelectedPeriodId(null);
-                setRoomsPage(1);
-              }}
-              disabled={!isOwner}
-              className="rounded-lg border border-border bg-card px-2 py-2 text-xs text-muted-foreground disabled:bg-muted focus:outline-none"
-              style={{ outlineColor: "var(--ring)" }}
-              onFocus={(e) => {
-                e.currentTarget.style.borderColor = "var(--primary)";
-                e.currentTarget.style.boxShadow =
-                  "0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent)";
-              }}
-              onBlur={(e) => {
-                e.currentTarget.style.borderColor = "";
-                e.currentTarget.style.boxShadow = "";
-              }}
-            >
-              <option value="">All branches</option>
-              <option value="gil-puyat">Gil-Puyat</option>
-              <option value="guadalupe">Guadalupe</option>
-            </select>
+            <div className="flex items-center rounded-lg border border-border bg-muted px-2 py-2 text-xs text-muted-foreground">
+              {branchFilter === "gil-puyat"
+                ? "Gil Puyat"
+                : branchFilter === "guadalupe"
+                ? "Guadalupe"
+                : "All branches"}
+            </div>
             <select
               defaultValue="all"
               disabled
