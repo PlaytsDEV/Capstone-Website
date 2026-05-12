@@ -909,6 +909,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                       key={`${getMaintenanceAttachmentUri(attachment) || attachment.name}-${index}`}
                       attachment={attachment}
                       index={index}
+                      onPreview={setPreviewAttachment}
                     />
                   ))}
                 </div>
@@ -941,6 +942,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                               key={`${getMaintenanceAttachmentUri(attachment) || attachment.name}-${attachmentIndex}`}
                               attachment={attachment}
                               index={attachmentIndex}
+                              onPreview={setPreviewAttachment}
                             />
                           ))}
                         </div>
@@ -1024,6 +1026,58 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               ) : null}
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {previewAttachment ? (
+        <div
+          onClick={() => setPreviewAttachment(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            background: "rgba(0,0,0,0.85)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 16,
+            padding: 24,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setPreviewAttachment(null)}
+            style={{
+              position: "absolute",
+              top: 20,
+              right: 20,
+              background: "rgba(255,255,255,0.15)",
+              border: "none",
+              borderRadius: "50%",
+              width: 40,
+              height: 40,
+              display: "grid",
+              placeItems: "center",
+              cursor: "pointer",
+              color: "#fff",
+            }}
+          >
+            <X size={20} />
+          </button>
+          <img
+            src={previewAttachment.uri}
+            alt={previewAttachment.name}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: "90vw",
+              maxHeight: "80vh",
+              borderRadius: 12,
+              boxShadow: "0 24px 64px rgba(0,0,0,0.6)",
+              objectFit: "contain",
+            }}
+          />
+          <span style={{ color: "#CBD5E1", fontSize: 13 }}>{previewAttachment.name}</span>
         </div>
       ) : null}
     </div>
