@@ -20,6 +20,7 @@ import {
 } from "../config/maintenance.js";
 import logger from "../middleware/logger.js";
 import { sendMobilePushBill, sendMobilePushToRecipients } from "./mobilePushService.js";
+import { emitToUser } from "./socket.js";
 
 /**
  * Create a notification (generic)
@@ -86,6 +87,47 @@ async function createNotificationWithPush(
 
   return notification;
 }
+
+const buildRealtimeNotificationPayload = (notification) => {
+  if (!notification) return null;
+
+  const payload = notification?.toObject ? notification.toObject() : notification;
+  return {
+    ...payload,
+    _id: payload?._id ? String(payload._id) : payload?._id,
+    userId: payload?.userId ? String(payload.userId) : payload?.userId,
+    isRead: Boolean(payload?.isRead),
+  };
+};
+
+const buildMaintenanceUpdateMessage = (
+  requestType,
+  status,
+  {
+    statusChanged = true,
+    hasAdminNote = false,
+    hasProgressEntry = false,
+    hasProgressAttachments = false,
+  } = {},
+) => {
+  if (statusChanged) {
+    return buildMaintenanceNotificationBody(requestType, status);
+  }
+
+  if (hasProgressEntry && hasProgressAttachments) {
+    return "Admin replied with a progress update and attachment(s) for your maintenance request.";
+  }
+
+  if (hasProgressAttachments) {
+    return "Admin added new attachment(s) to your maintenance request.";
+  }
+
+  if (hasAdminNote || hasProgressEntry) {
+    return "Admin replied to your maintenance request.";
+  }
+
+  return "Your maintenance request has been updated.";
+};
 
 // ============================================================================
 // PRE-BUILT NOTIFICATION HELPERS
@@ -341,17 +383,25 @@ const notify = {
   /**
    * Maintenance request status update
    */
-  maintenanceUpdated: (userId, requestType, status, requestId) =>
-    createNotification(
+  maintenanceUpdated: async (userId, requestType, status, requestId, options = {}) => {
+    const notification = await createNotification(
       userId,
       "maintenance_update",
       buildMaintenanceNotificationTitle(requestType),
-      buildMaintenanceNotificationBody(requestType, status),
+      buildMaintenanceUpdateMessage(requestType, status, options),
       {
         entityType: "maintenance",
         entityId: requestId || null,
+        actionUrl: "/applicant/maintenance",
       },
-    ),
+    );
+
+    if (notification) {
+      emitToUser(userId, "notification:new", buildRealtimeNotificationPayload(notification));
+    }
+
+    return notification;
+  },
 };
 
 export { createNotification, notify };

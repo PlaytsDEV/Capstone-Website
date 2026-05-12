@@ -36,6 +36,8 @@ import {
   getMaintenanceAttachmentKind,
   getMaintenanceAttachmentLabel,
   getMaintenanceAttachmentName,
+  getMaintenanceAttachmentUri,
+  normalizeMaintenanceAttachments,
 } from "../../../../shared/utils/maintenanceAttachments";
 import { uploadToImageKit } from "../../../../shared/utils/imageUpload";
 import "../../styles/tenant-common.css";
@@ -77,24 +79,20 @@ const formatSlaLabel = (slaState) => {
   return "On Track";
 };
 
-const cloneAttachments = (attachments) =>
-  Array.isArray(attachments)
-    ? attachments.map((entry) => ({
-        name: entry?.name || "",
-        uri: entry?.uri || "",
-        type: entry?.type || "application/octet-stream",
-      }))
-    : [];
+const cloneAttachments = (attachments) => normalizeMaintenanceAttachments(attachments);
 
 function AttachmentLink({ attachment, index }) {
   const kind = getMaintenanceAttachmentKind(attachment);
   const label = getMaintenanceAttachmentLabel(attachment);
   const name = getMaintenanceAttachmentName(attachment, index);
+  const uri = getMaintenanceAttachmentUri(attachment);
   const Icon = kind === "image" ? ImageIcon : kind === "pdf" ? FileText : Paperclip;
+
+  if (!uri) return null;
 
   return (
     <a
-      href={attachment?.uri}
+      href={uri}
       target="_blank"
       rel="noreferrer"
       style={{
@@ -214,7 +212,9 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
   const handleRemoveAttachment = (uri) => {
     setFormData((current) => ({
       ...current,
-      attachments: (current.attachments || []).filter((entry) => entry.uri !== uri),
+      attachments: (current.attachments || []).filter(
+        (entry) => getMaintenanceAttachmentUri(entry) !== uri,
+      ),
     }));
   };
 
@@ -423,12 +423,17 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               {formData.attachments?.length ? (
                 <div className="maintenance-attachment-list">
                   {formData.attachments.map((attachment, index) => (
-                    <div key={`${attachment.uri}-${index}`} className="maintenance-attachment-row">
+                    <div
+                      key={`${getMaintenanceAttachmentUri(attachment) || attachment.name}-${index}`}
+                      className="maintenance-attachment-row"
+                    >
                       <span>{getMaintenanceAttachmentName(attachment, index)}</span>
                       <button
                         type="button"
                         className="btn btn-secondary"
-                        onClick={() => handleRemoveAttachment(attachment.uri)}
+                        onClick={() =>
+                          handleRemoveAttachment(getMaintenanceAttachmentUri(attachment))
+                        }
                         style={{ padding: "6px 10px" }}
                       >
                         <Trash2 size={14} />
@@ -763,7 +768,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                 <div className="maintenance-detail-links">
                   {selectedRequest.attachments.map((attachment, index) => (
                     <AttachmentLink
-                      key={`${attachment.uri}-${index}`}
+                      key={`${getMaintenanceAttachmentUri(attachment) || attachment.name}-${index}`}
                       attachment={attachment}
                       index={index}
                     />
@@ -791,6 +796,17 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                       <strong>{fmtDateTime(entry.logged_at)}</strong>
                       <span>{entry.actor_name || "Staff update"}</span>
                       <p>{entry.note}</p>
+                      {entry.attachments?.length ? (
+                        <div className="maintenance-detail-links" style={{ marginTop: 10 }}>
+                          {entry.attachments.map((attachment, attachmentIndex) => (
+                            <AttachmentLink
+                              key={`${getMaintenanceAttachmentUri(attachment) || attachment.name}-${attachmentIndex}`}
+                              attachment={attachment}
+                              index={attachmentIndex}
+                            />
+                          ))}
+                        </div>
+                      ) : null}
                     </article>
                   ))}
                 </div>

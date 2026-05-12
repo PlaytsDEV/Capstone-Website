@@ -39,9 +39,12 @@ import {
  getMaintenanceAttachmentKind,
  getMaintenanceAttachmentLabel,
  getMaintenanceAttachmentName,
+ getMaintenanceAttachmentUri,
+ normalizeMaintenanceAttachments,
 } from "../../../shared/utils/maintenanceAttachments";
 import { exportToCSV } from "../../../shared/utils/exportUtils";
 import { BRANCH_OPTIONS, BRANCH_DISPLAY_NAMES } from "../../../shared/utils/constants";
+import { uploadToImageKit } from "../../../shared/utils/imageUpload";
 import {
  normalizeBranchFilterValue,
  syncBranchSearchParam,
@@ -339,11 +342,12 @@ function AttachmentThumbnail({ attachment, index }) {
  const [failed, setFailed] = useState(false);
  const kind = getMaintenanceAttachmentKind(attachment);
  const name = getMaintenanceAttachmentName(attachment, index);
+ const uri = getMaintenanceAttachmentUri(attachment);
 
- if (kind === "image" && !failed) {
+ if (kind === "image" && !failed && uri) {
  return (
  <img
- src={attachment?.uri}
+ src={uri}
  alt={name}
  className="h-12 w-12 rounded-md object-cover"
  onError={() => setFailed(true)}
@@ -389,6 +393,8 @@ export default function AdminMaintenancePage() {
  const [draftNotes, setDraftNotes] = useState("");
  const [draftAssignedTo, setDraftAssignedTo] = useState("");
  const [draftWorkLogNote, setDraftWorkLogNote] = useState("");
+ const [draftWorkLogAttachments, setDraftWorkLogAttachments] = useState([]);
+ const [uploadingUpdateAttachment, setUploadingUpdateAttachment] = useState(false);
 
  const listFilters = useMemo(
  () =>
@@ -450,7 +456,8 @@ export default function AdminMaintenancePage() {
  draftStatus !== (selectedRequest.status || "") ||
  draftNotes !== (selectedRequest.notes || "") ||
  draftAssignedTo !== (selectedRequest.assigned_to || "") ||
- Boolean(draftWorkLogNote.trim())
+ Boolean(draftWorkLogNote.trim()) ||
+ draftWorkLogAttachments.length > 0
  );
 
  const summaryItems = useMemo(
@@ -671,7 +678,45 @@ export default function AdminMaintenancePage() {
  setDraftNotes(selectedRequest.notes || "");
  setDraftAssignedTo(selectedRequest.assigned_to || "");
  setDraftWorkLogNote("");
+ setDraftWorkLogAttachments([]);
  }, [selectedRequest, selectedRequestStatusOptions]);
+
+ const handleWorkLogAttachmentUpload = async (event) => {
+ const files = Array.from(event.target.files || []).filter(Boolean);
+ if (files.length === 0) return;
+
+ setUploadingUpdateAttachment(true);
+
+ try {
+ const uploaded = [];
+
+ for (const file of files) {
+ const uri = await uploadToImageKit(file);
+ uploaded.push({
+ name: file.name,
+ uri,
+ type: file.type || "application/octet-stream",
+ });
+ }
+
+ setDraftWorkLogAttachments((current) => [...current, ...uploaded]);
+ showNotification("Update attachment uploaded.", "success");
+ } catch (uploadError) {
+ showNotification(
+ uploadError.message || "Failed to upload update attachment.",
+ "error",
+ );
+ } finally {
+ setUploadingUpdateAttachment(false);
+ event.target.value = "";
+ }
+ };
+
+ const handleRemoveWorkLogAttachment = (uri) => {
+ setDraftWorkLogAttachments((current) =>
+ current.filter((attachment) => getMaintenanceAttachmentUri(attachment) !== uri),
+ );
+ };
 
  const handleResetFilters = () => {
  setStatusFilter("all");
@@ -739,10 +784,12 @@ export default function AdminMaintenancePage() {
  notes: draftNotes,
  assigned_to: draftAssignedTo,
  work_log_note: draftWorkLogNote,
+ work_log_attachments: draftWorkLogAttachments,
  },
  });
  showNotification("Maintenance request updated.", "success");
  setDraftWorkLogNote("");
+ setDraftWorkLogAttachments([]);
  } catch (submitError) {
  showNotification(
  submitError.message || "Failed to update maintenance request.",
@@ -1162,6 +1209,7 @@ export default function AdminMaintenancePage() {
  }}
  disabled={
  updateRequestMutation.isPending ||
+ uploadingUpdateAttachment ||
  isSelectedRequestLocked ||
  !hasDraftChanges
  }
@@ -1299,10 +1347,14 @@ export default function AdminMaintenancePage() {
  >
  {selectedRequest.attachments?.length ? (
  <div className="grid gap-3 md:grid-cols-2">
- {selectedRequest.attachments.map((attachment, index) => (
+ {selectedRequest.attachments.map((attachment, index) => {
+ const attachmentUri = getMaintenanceAttachmentUri(attachment);
+ if (!attachmentUri) return null;
+
+ return (
  <a
- key={`${attachment.uri || attachment.name}-${index}`}
- href={attachment.uri}
+ key={`${attachmentUri}-${index}`}
+ href={attachmentUri}
  target="_blank"
  rel="noreferrer"
  className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 hover:bg-muted"
@@ -1317,7 +1369,8 @@ export default function AdminMaintenancePage() {
  </span>
  </div>
  </a>
- ))}
+ );
+ })}
  </div>
  ) : (
  <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -1428,6 +1481,34 @@ export default function AdminMaintenancePage() {
  {entry.actor_name || "Staff update"}
  </span>
  <p className="mt-2 text-sm text-muted-foreground">{entry.note}</p>
+ {entry.attachments?.length ? (
+ <div className="mt-3 grid gap-3">
+ {entry.attachments.map((attachment, attachmentIndex) => {
+ const attachmentUri = getMaintenanceAttachmentUri(attachment);
+ if (!attachmentUri) return null;
+
+ return (
+ <a
+ key={`${attachmentUri}-${attachmentIndex}`}
+ href={attachmentUri}
+ target="_blank"
+ rel="noreferrer"
+ className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 hover:bg-muted"
+ >
+ <AttachmentThumbnail attachment={attachment} index={attachmentIndex} />
+ <div className="min-w-0">
+ <span className="block truncate text-sm font-medium text-card-foreground">
+ {getMaintenanceAttachmentName(attachment, attachmentIndex)}
+ </span>
+ <span className="text-xs text-muted-foreground">
+ {getMaintenanceAttachmentLabel(attachment)}
+ </span>
+ </div>
+ </a>
+ );
+ })}
+ </div>
+ ) : null}
  </article>
  ))}
  </div>
@@ -1513,12 +1594,66 @@ export default function AdminMaintenancePage() {
  </span>
  <textarea
  rows="3"
- placeholder="Optional internal progress note for the status timeline and work log."
+ placeholder="Optional progress note that the tenant can reference together with any update attachment."
  value={draftWorkLogNote}
  onChange={(event) => setDraftWorkLogNote(event.target.value)}
  disabled={isSelectedRequestLocked}
  className="mt-2 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-border focus:outline-none focus:ring-2 focus:ring-border"
  />
+ </label>
+
+ <label className="block">
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Progress Attachments
+ </span>
+ <div className="mt-2 flex flex-wrap items-center gap-3">
+ <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-card-foreground hover:bg-muted">
+ <Paperclip size={14} />
+ {uploadingUpdateAttachment ? "Uploading..." : "Upload photo or PDF"}
+ <input
+ type="file"
+ hidden
+ multiple
+ accept="image/jpeg,image/png,image/webp,application/pdf"
+ onChange={handleWorkLogAttachmentUpload}
+ disabled={isSelectedRequestLocked || uploadingUpdateAttachment}
+ />
+ </label>
+ <span className="text-xs text-muted-foreground">
+ Send progress files that the tenant can open from the request timeline.
+ </span>
+ </div>
+
+ {draftWorkLogAttachments.length ? (
+ <div className="mt-3 grid gap-2">
+ {normalizeMaintenanceAttachments(draftWorkLogAttachments).map((attachment, index) => {
+ const attachmentUri = getMaintenanceAttachmentUri(attachment);
+ return (
+ <div
+ key={`${attachmentUri || attachment.name}-${index}`}
+ className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2"
+ >
+ <div className="min-w-0">
+ <div className="truncate text-sm font-medium text-card-foreground">
+ {getMaintenanceAttachmentName(attachment, index)}
+ </div>
+ <div className="text-xs text-muted-foreground">
+ {getMaintenanceAttachmentLabel(attachment)}
+ </div>
+ </div>
+ <button
+ type="button"
+ className="text-xs font-medium text-rose-600 hover:text-rose-700"
+ onClick={() => handleRemoveWorkLogAttachment(attachmentUri)}
+ disabled={isSelectedRequestLocked}
+ >
+ Remove
+ </button>
+ </div>
+ );
+ })}
+ </div>
+ ) : null}
  </label>
  </form>
  </DetailDrawer.Section>

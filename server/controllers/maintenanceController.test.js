@@ -244,6 +244,12 @@ describe("maintenanceController", () => {
       "plumbing",
       "viewed",
       requestDoc.request_id,
+      {
+        statusChanged: true,
+        hasAdminNote: true,
+        hasProgressEntry: false,
+        hasProgressAttachments: false,
+      },
     );
     expect(sendSuccess).toHaveBeenCalledTimes(1);
     expect(next).not.toHaveBeenCalled();
@@ -287,7 +293,7 @@ describe("maintenanceController", () => {
     expect(next.mock.calls[0][0].code).toBe("INVALID_STATUS_TRANSITION");
   });
 
-  test("updateAdminRequestStatus allows same-status note updates for pending requests", async () => {
+  test("updateAdminRequestStatus notifies tenants about same-status admin updates", async () => {
     const requestDoc = buildRequestDoc({ status: "pending" });
     maintenanceFindOne.mockResolvedValue(requestDoc);
     userFindOne.mockImplementation(({ firebaseUid, user_id }) => {
@@ -340,7 +346,18 @@ describe("maintenanceController", () => {
     expect(requestDoc.notes).toBe("Queued for morning inspection");
     expect(requestDoc.assigned_to).toBe("Morning team");
     expect(requestDoc.save).toHaveBeenCalledTimes(1);
-    expect(maintenanceUpdated).not.toHaveBeenCalled();
+    expect(maintenanceUpdated).toHaveBeenCalledWith(
+      "mongo_user_1",
+      "plumbing",
+      "pending",
+      requestDoc.request_id,
+      {
+        statusChanged: false,
+        hasAdminNote: true,
+        hasProgressEntry: false,
+        hasProgressAttachments: false,
+      },
+    );
     expect(sendSuccess).toHaveBeenCalledTimes(1);
     expect(next).not.toHaveBeenCalled();
   });
