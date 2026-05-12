@@ -618,6 +618,10 @@ const ReservationVisitStep = ({
 
           {selectedVisit === "remote_2d_viewing" && (
             <>
+              <div className="rf-selection-confirm">
+                <CheckCircle size={14} />
+                <span>You selected: <strong>Remote Viewing</strong></span>
+              </div>
               <div className="content-card">
                 <div className="card-section-title">
                   <Camera size={15} style={{ marginRight: 6, flexShrink: 0 }} />
@@ -630,8 +634,8 @@ const ReservationVisitStep = ({
                   )}
                 </div>
                 <p className="rf-section-hint">
-                  Browse the available room photos to get a detailed look before
-                  deciding. Tap any photo to view it in full size.
+                  Review the available room photos below. Tap any photo to view it in
+                  full size. Your questions will be forwarded to the admin for follow-up.
                 </p>
                 {roomImages.length > 0 ? (
                   <div className="rf-room-gallery">
@@ -661,10 +665,10 @@ const ReservationVisitStep = ({
                     <div className="rf-empty-state__icon">
                       <ImageIcon size={32} />
                     </div>
-                    <p className="rf-empty-state__title">No photos available yet</p>
+                    <p className="rf-empty-state__title">No room photos available</p>
                     <p className="rf-empty-state__desc">
-                      Room photos are still being prepared. You may schedule a
-                      physical visit or contact admin for assistance.
+                      No room photos are currently available. Please schedule a physical
+                      visit or contact admin for assistance.
                     </p>
                   </div>
                 )}
@@ -673,7 +677,7 @@ const ReservationVisitStep = ({
               <div className="content-card">
                 <div className="card-section-title">
                   <Home size={15} style={{ marginRight: 6, flexShrink: 0 }} />
-                  Room Details
+                  Selected Room Summary
                 </div>
                 <div className="rf-room-details-grid">
                   {roomDetails.map(([label, value]) => (
@@ -711,12 +715,12 @@ const ReservationVisitStep = ({
                     rows={4}
                     value={remoteViewingQuestions}
                     onChange={(event) => setRemoteViewingQuestions(event.target.value)}
-                    placeholder="Ask about the room setup, amenities, move-in reminders, or other photo-based viewing questions."
+                    placeholder="Ask about the room setup, amenities, layout, or anything you would like the admin to clarify before your application."
                   />
                   <div className="form-helper">
-                    Your questions will be forwarded to the admin for review alongside
-                    your reservation. Payment is only available after your application
-                    and documents are approved.
+                    Your questions will be forwarded to the admin for review. Payment
+                    is only available after your application and required documents are
+                    approved.
                   </div>
                 </div>
               </div>
@@ -725,15 +729,22 @@ const ReservationVisitStep = ({
 
           {selectedVisit === "urgent_move_in_review" && (
             <div className="content-card">
+              <div className="rf-selection-confirm rf-selection-confirm--inline">
+                <CheckCircle size={14} />
+                <span>You selected: <strong>Priority Viewing Review</strong></span>
+              </div>
+
               <div className="rf-urgent-banner">
                 <div className="rf-urgent-banner__icon">
                   <Zap size={22} />
                 </div>
                 <div className="rf-urgent-banner__body">
-                  <div className="rf-urgent-banner__title">Urgent Move-in Review Requested</div>
+                  <div className="rf-urgent-banner__title">Priority Viewing Review Requested</div>
                   <div className="rf-urgent-banner__subtitle">
-                    Your reservation will be flagged for priority admin attention.
-                    Document review and room availability checks still apply.
+                    Your request has been recorded. An admin will review your room
+                    selection and reservation details sooner. Your tenant application
+                    and required documents must still be submitted and approved before
+                    payment becomes available.
                   </div>
                 </div>
               </div>
@@ -741,9 +752,9 @@ const ReservationVisitStep = ({
               <div className="rf-urgent-steps">
                 <div className="rf-urgent-steps__label">What happens next</div>
                 {[
-                  "Admin receives an urgent flag on your reservation.",
-                  "Your documents are reviewed on priority.",
-                  "Room availability is confirmed before any approval.",
+                  "Your priority viewing request is sent to the admin.",
+                  "Admin reviews your selected room and reservation details sooner.",
+                  "You still need to submit your tenant application and required documents.",
                   "Payment becomes available only after your application is approved.",
                 ].map((step, idx) => (
                   <div key={idx} className="rf-urgent-step-row">
@@ -758,7 +769,7 @@ const ReservationVisitStep = ({
                 style={{ paddingTop: 0, marginTop: 4, borderTop: "none" }}
               >
                 <Home size={15} style={{ marginRight: 6, flexShrink: 0 }} />
-                Room Details
+                Selected Room Summary
               </div>
               <div className="rf-room-details-grid">
                 {roomDetails.map(([label, value]) => (
@@ -781,11 +792,7 @@ const ReservationVisitStep = ({
               onClick={handleContinue}
               disabled={isSaving}
             >
-              {isSaving
-                ? "Saving..."
-                : selectedVisit === "physical_visit"
-                  ? "Save Physical Visit"
-                  : "Save Viewing Preference"}
+              {isSaving ? "Saving..." : "Save and Continue to Tenant Application"}
             </button>
           </div>
         </>
