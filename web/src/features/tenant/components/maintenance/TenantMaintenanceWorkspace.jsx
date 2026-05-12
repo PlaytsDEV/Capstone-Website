@@ -642,6 +642,8 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               const TypeIcon = typeMeta.icon;
               const isPending = request.status === "pending";
               const isReopenable = REOPENABLE_MAINTENANCE_STATUSES.includes(request.status);
+              const latestProgressEntry = getLatestProgressEntry(request);
+              const latestProgressSummary = getProgressSummary(latestProgressEntry);
 
               return (
                 <article
@@ -736,6 +738,42 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                           Admin Response
                         </strong>
                         <span>{request.notes}</span>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {latestProgressEntry ? (
+                    <div
+                      style={{
+                        marginTop: 14,
+                        borderRadius: 12,
+                        padding: "12px 14px",
+                        background: "#DBEAFE",
+                        color: "#1D4ED8",
+                        display: "flex",
+                        gap: 10,
+                        alignItems: "flex-start",
+                      }}
+                    >
+                      <Wrench size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+                      <div style={{ width: "100%" }}>
+                        <strong style={{ display: "block", marginBottom: 4 }}>
+                          Latest Progress Update
+                        </strong>
+                        <span>{latestProgressSummary}</span>
+
+                        {latestProgressEntry.attachments?.length ? (
+                          <div className="maintenance-detail-links" style={{ marginTop: 12 }}>
+                            {latestProgressEntry.attachments.map((attachment, index) => (
+                              <AttachmentLink
+                                key={`${getMaintenanceAttachmentUri(attachment) || attachment.name}-${index}`}
+                                attachment={attachment}
+                                index={index}
+                                onPreview={setPreviewAttachment}
+                              />
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   ) : null}
