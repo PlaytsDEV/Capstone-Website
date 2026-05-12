@@ -1577,6 +1577,37 @@ const UtilityBillingTab = ({ utilityType, isActive = true }) => {
   if (isGuadaUtility) {
     return (
       <section className="space-y-4" aria-label={`${utilityType} billing workspace`}>
+        {isOwner && (
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-semibold text-muted-foreground">
+              Branch
+            </span>
+            <select
+              value={branchFilter}
+              onChange={(e) => {
+                setBranchFilter(e.target.value);
+                setSelectedRoomId(null);
+                setSelectedPeriodId(null);
+                setRoomsPage(1);
+              }}
+              className="rounded-lg border border-border bg-card px-2 py-2 text-xs text-muted-foreground focus:outline-none"
+              style={{ outlineColor: "var(--ring)" }}
+              onFocus={(e) => {
+                e.currentTarget.style.borderColor = "var(--primary)";
+                e.currentTarget.style.boxShadow =
+                  "0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent)";
+              }}
+              onBlur={(e) => {
+                e.currentTarget.style.borderColor = "";
+                e.currentTarget.style.boxShadow = "";
+              }}
+            >
+              <option value="">All branches</option>
+              <option value="gil-puyat">Gil Puyat</option>
+              <option value="guadalupe">Guadalupe</option>
+            </select>
+          </div>
+        )}
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-800 dark:bg-amber-950/30">
           <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
             Utility billing not applicable for Guadalupe
