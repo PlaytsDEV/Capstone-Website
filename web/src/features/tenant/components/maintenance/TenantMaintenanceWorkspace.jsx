@@ -80,8 +80,25 @@ const formatSlaLabel = (slaState) => {
 };
 
 const cloneAttachments = (attachments) => normalizeMaintenanceAttachments(attachments);
+const getLatestProgressEntry = (request) => {
+  const workLog = Array.isArray(request?.workLog) ? request.workLog : [];
+  return workLog.length ? workLog[workLog.length - 1] : null;
+};
+const getProgressSummary = (entry) => {
+  if (!entry) return "";
 
-function AttachmentLink({ attachment, index }) {
+  const note = typeof entry.note === "string" ? entry.note.trim() : "";
+  if (note) return note;
+
+  const attachmentCount = Array.isArray(entry.attachments) ? entry.attachments.length : 0;
+  if (attachmentCount > 0) {
+    return `Admin added ${attachmentCount} progress ${attachmentCount === 1 ? "photo" : "photos"}.`;
+  }
+
+  return "Admin posted a progress update.";
+};
+
+function AttachmentLink({ attachment, index, onPreview }) {
   const kind = getMaintenanceAttachmentKind(attachment);
   const label = getMaintenanceAttachmentLabel(attachment);
   const name = getMaintenanceAttachmentName(attachment, index);
@@ -89,6 +106,82 @@ function AttachmentLink({ attachment, index }) {
   const Icon = kind === "image" ? ImageIcon : kind === "pdf" ? FileText : Paperclip;
 
   if (!uri) return null;
+
+  if (kind === "image") {
+    return (
+      <div
+        style={{
+          display: "grid",
+          gap: 8,
+          minWidth: 160,
+          maxWidth: 220,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => onPreview?.({ uri, name })}
+          style={{
+            border: "1px solid #CBD5E1",
+            borderRadius: 16,
+            overflow: "hidden",
+            padding: 0,
+            background: "#F8FAFC",
+            cursor: "pointer",
+            boxShadow: "0 8px 24px rgba(15, 23, 42, 0.08)",
+          }}
+        >
+          <img
+            src={uri}
+            alt={name}
+            style={{
+              display: "block",
+              width: "100%",
+              height: 148,
+              objectFit: "cover",
+              background: "#E2E8F0",
+            }}
+          />
+        </button>
+
+        <div style={{ display: "grid", gap: 4 }}>
+          <span
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: "#0F172A",
+              wordBreak: "break-word",
+            }}
+          >
+            {name}
+          </span>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 12 }}>
+            <button
+              type="button"
+              onClick={() => onPreview?.({ uri, name })}
+              style={{
+                border: "none",
+                background: "none",
+                color: "#2563EB",
+                padding: 0,
+                cursor: "pointer",
+                fontWeight: 600,
+              }}
+            >
+              Preview Photo
+            </button>
+            <a
+              href={uri}
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: "#475569", fontWeight: 500 }}
+            >
+              Open Original
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <a
@@ -98,15 +191,21 @@ function AttachmentLink({ attachment, index }) {
       style={{
         display: "inline-flex",
         alignItems: "center",
-        gap: 8,
+        gap: 10,
         color: "#2563EB",
         fontSize: 13,
         width: "fit-content",
+        padding: "10px 12px",
+        borderRadius: 12,
+        border: "1px solid #CBD5E1",
+        background: "#F8FAFC",
       }}
     >
       <Icon size={14} />
-      <span>{name}</span>
-      <span style={{ color: "#64748B" }}>({label})</span>
+      <div style={{ display: "grid", gap: 2 }}>
+        <span style={{ fontWeight: 600 }}>{name}</span>
+        <span style={{ color: "#64748B" }}>{label}</span>
+      </div>
     </a>
   );
 }
@@ -116,6 +215,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [editingRequestId, setEditingRequestId] = useState(null);
   const [selectedRequestId, setSelectedRequestId] = useState(null);
+  const [previewAttachment, setPreviewAttachment] = useState(null);
   const [reopenNote, setReopenNote] = useState("");
   const [formData, setFormData] = useState({ ...EMPTY_FORM_DATA });
 
