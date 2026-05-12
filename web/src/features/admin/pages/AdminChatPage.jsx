@@ -130,7 +130,7 @@ function addWrappedPdfText(doc, text, x, y, maxWidth, lineHeight = 5) {
 
 export default function AdminChatPage() {
   const { user } = useAuth();
-  const isOwner = user?.role === "owner" || user?.role === "superadmin";
+  const isOwner = user?.role === "owner" || user?.role === "superadmin" /* legacy */;
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [branchFilter, setBranchFilter] = useState("all");

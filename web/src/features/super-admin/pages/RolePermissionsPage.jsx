@@ -48,7 +48,7 @@ export default function RolePermissionsPage() {
     <div className="sa2">
       <div className="sa2-header">
         <div>
-          <p className="sa2-eyebrow">Super Admin</p>
+          <p className="sa2-eyebrow">Owner</p>
           <h1 className="sa2-title">Role Permissions</h1>
         </div>
       </div>

@@ -20,6 +20,7 @@ import {
   ROOM_BRANCHES,
 } from "../models/index.js";
 import { BUSINESS } from "../config/constants.js";
+import { isOwnerRole, isAdminRole, OWNER_ROLE_VALUES } from "../config/roles.js";
 import logger from "../middleware/logger.js";
 import auditLogger from "../utils/auditLogger.js";
 import { updateOccupancyOnReservationChange } from "../utils/occupancyManager.js";
@@ -958,8 +959,8 @@ export const getReservations = async (req, res, next) => {
           : { isArchived: { $ne: true } };
 
     let query;
-    if (dbUser.role === "owner" || dbUser.role === "superadmin") {
-      // Owner/superadmin: see all branches
+    if (isOwnerRole(dbUser.role)) {
+      // Owner: see all branches (accepts legacy superadmin role during migration)
       query = { ...archiveQuery };
     } else if (dbUser.role === "branch_admin") {
       const roomIds = (
@@ -1279,9 +1280,7 @@ export const getReservationById = async (req, res, next) => {
       });
 
     if (
-      dbUser.role !== "branch_admin" &&
-      dbUser.role !== "owner" &&
-      dbUser.role !== "superadmin" &&
+      !isAdminRole(dbUser.role) &&
       String(reservation.userId?._id) !== String(dbUser._id)
     ) {
       return res.status(403).json({
@@ -2639,9 +2638,7 @@ export const deleteReservation = async (req, res, next) => {
 
     const isOwner = String(reservation.userId) === String(dbUser._id);
     const isAdmin =
-      dbUser.role === "branch_admin" ||
-      dbUser.role === "owner" ||
-      dbUser.role === "superadmin";
+      isAdminRole(dbUser.role);
     if (!isOwner && !isAdmin)
       return res.status(403).json({
         error: "Access denied. You can only delete your own reservation.",
@@ -3351,7 +3348,7 @@ export const requestCancellationByUser = async (req, res, next) => {
     try {
       const room = await Room.findById(reservation.roomId).select("branch").lean();
       const adminUsers = await User.find({
-        role: { $in: ["admin", "superadmin"] },
+        role: { $in: ["branch_admin", ...OWNER_ROLE_VALUES] },
         ...(room?.branch ? { branch: room.branch } : {}),
         isActive: true,
       }).select("_id").lean();

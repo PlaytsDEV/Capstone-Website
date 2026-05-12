@@ -29,6 +29,7 @@ import crypto from "crypto";
 import { User, UserSession } from "../models/index.js";
 
 import { CACHE } from "../config/constants.js";
+import { isAdminRole, isOwnerRole } from "../config/roles.js";
 import {
   getCachedAccountStatus as _getCachedAccountStatus,
   setCachedAccountStatus as _setCachedAccountStatus,
@@ -89,8 +90,7 @@ const OTP_SESSION_EXEMPT_PATHS = [
 const isOtpSessionExempt = (req) =>
   OTP_SESSION_EXEMPT_PATHS.some((path) => req.originalUrl?.startsWith(path));
 
-const isAdminRole = (role) =>
-  role === "branch_admin" || role === "owner" || role === "superadmin";
+// isAdminRole and isOwnerRole imported from config/roles.js
 
 /**
  * Verify Firebase ID Token

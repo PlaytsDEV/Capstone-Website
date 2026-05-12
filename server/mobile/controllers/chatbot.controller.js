@@ -630,7 +630,7 @@ async function closeLiveChat(req, res) {
     if (liveChat) {
       const isOwner = liveChat.user_id === req.user.user_id;
       const role = (req.user?.role || '').toLowerCase();
-      const isAdmin = role === 'admin' || role === 'superadmin';
+      const isAdmin = role === 'admin' || role === 'owner' || role === 'branch_admin' || role === 'superadmin' /* legacy */;
       if (!isOwner && !isAdmin) {
         return res.status(403).json({ error: 'Only the session owner or an admin can close this chat' });
       }
