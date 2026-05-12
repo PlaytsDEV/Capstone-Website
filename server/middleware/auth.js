@@ -261,10 +261,10 @@ export const verifyAdmin = async (req, res, next) => {
     // Fallback: Check MongoDB role (handles missing Firebase custom claims)
     const dbUser = await User.findOne({ firebaseUid: req.user.uid });
 
-    if (dbUser && (dbUser.role === "branch_admin" || dbUser.role === "owner")) {
+    if (dbUser && isAdminRole(dbUser.role)) {
       // Attach role info to req.user for downstream middleware
-      req.user.branch_admin = dbUser.role === "branch_admin" || dbUser.role === "owner";
-      req.user.owner = dbUser.role === "owner";
+      req.user.branch_admin = true;
+      req.user.owner = isOwnerRole(dbUser.role);
       req.user.dbRole = dbUser.role;
       return next();
     }
@@ -319,7 +319,7 @@ export const verifyOwner = async (req, res, next) => {
     // Fallback: Check MongoDB role (handles missing Firebase custom claims)
     const dbUser = await User.findOne({ firebaseUid: req.user.uid });
 
-    if (dbUser && dbUser.role === "owner") {
+    if (dbUser && isOwnerRole(dbUser.role)) {
       req.user.owner = true;
       req.user.branch_admin = true;
       req.user.dbRole = dbUser.role;

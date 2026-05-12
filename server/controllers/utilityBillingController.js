@@ -707,6 +707,10 @@ export const batchCloseUtilityPeriods = async (req, res, next) => {
     for (const item of closures) {
       try {
         const period = await UtilityPeriod.findById(item.periodId);
+        if (!period) {
+          failed.push({ periodId: item.periodId, error: "Period not found" });
+          continue;
+        }
         if (!branchSupportsSeparateUtilityBilling(period.branch, utilityType)) {
           failed.push({
             periodId: item.periodId,

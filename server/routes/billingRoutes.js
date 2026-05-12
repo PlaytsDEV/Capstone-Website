@@ -290,7 +290,7 @@ router.post(
  * Get flattened billing data for CSV export (Admin only).
  * Query: ?branch=gil-puyat&status=overdue&month=2026-01
  */
-router.get("/export", verifyAdmin, requirePermission("manageBilling"), filterByBranch, async (req, res) => {
+router.get("/export", verifyAdmin, requirePermission("manageBilling"), filterByBranch, async (req, res, next) => {
   try {
     const { Bill } = await import("../models/index.js");
     // Branch admins: branch is forced from req.branchFilter (their assigned branch)
@@ -335,8 +335,7 @@ router.get("/export", verifyAdmin, requirePermission("manageBilling"), filterByB
 
     res.json({ success: true, data });
   } catch (error) {
-    console.error("❌ Billing export error:", error);
-    res.status(500).json({ error: "Failed to export billing data" });
+    next(error);
   }
 });
 

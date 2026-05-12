@@ -33,6 +33,7 @@ import {
 import { hasReservationStatus } from "../utils/lifecycleNaming.js";
 import { notify } from "../utils/notificationService.js";
 import { sendSuccess, AppError } from "../middleware/errorHandler.js";
+import { isOwnerRole } from "../config/roles.js";
 
 const FRONTEND_URL =
   process.env.FRONTEND_URL?.split(",")[0]?.trim() || "http://localhost:5173";
@@ -58,7 +59,7 @@ async function getDbUser(firebaseUid) {
 }
 
 const hasBillingPermission = (user) =>
-  user?.role === "owner" ||
+  isOwnerRole(user?.role) ||
   (user?.role === "branch_admin" &&
     Array.isArray(user.permissions) &&
     user.permissions.includes("manageBilling"));
@@ -548,7 +549,7 @@ export const getPaymentsForBill = async (req, res, next) => {
     if (!bill) throw new AppError("Bill not found", 404, "BILL_NOT_FOUND");
 
     const isOwnBill = String(bill.userId) === String(dbUser._id);
-    const isOwner = dbUser.role === "owner";
+    const isOwner = isOwnerRole(dbUser.role);
     const isBranchBillingAdmin =
       dbUser.role === "branch_admin" &&
       hasBillingPermission(dbUser) &&

@@ -54,6 +54,7 @@ import {
   readMoveInDate,
 } from "../utils/lifecycleNaming.js";
 import { resolveAdminAccessContext } from "../utils/adminAccess.js";
+import { isOwnerRole, isAdminRole } from "../config/roles.js";
 
 const getAdminInfo = resolveAdminAccessContext;
 const __filename = fileURLToPath(import.meta.url);
@@ -2098,11 +2099,11 @@ export const downloadBillPdf = async (req, res, next) => {
 
     if (!bill) return res.status(404).json({ error: "Bill not found" });
 
-    const isAdmin = requester.role === "owner" || requester.role === "branch_admin";
+    const isAdmin = isAdminRole(requester.role);
     const isTenantOwner = String(bill.userId?._id || bill.userId) === String(requester._id);
     const canAccess =
       isTenantOwner ||
-      (isAdmin && (requester.role === "owner" || requester.branch === bill.branch));
+      (isAdmin && (isOwnerRole(requester.role) || requester.branch === bill.branch));
 
     if (!canAccess) {
       return res.status(403).json({ error: "Access denied" });
