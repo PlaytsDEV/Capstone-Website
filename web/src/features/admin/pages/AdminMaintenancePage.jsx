@@ -338,13 +338,23 @@ const getAvatarPalette = (name = "") => {
   return AVATAR_PALETTES[index];
 };
 
+const isRemoteUri = (uri) => {
+  if (!uri) return false;
+  try {
+    const { protocol } = new URL(uri);
+    return protocol === "https:" || protocol === "http:";
+  } catch {
+    return false;
+  }
+};
+
 function AttachmentThumbnail({ attachment, index }) {
  const [failed, setFailed] = useState(false);
  const kind = getMaintenanceAttachmentKind(attachment);
  const name = getMaintenanceAttachmentName(attachment, index);
  const uri = getMaintenanceAttachmentUri(attachment);
 
- if (kind === "image" && !failed && uri) {
+ if (kind === "image" && !failed && isRemoteUri(uri)) {
  return (
  <img
  src={uri}
@@ -1349,7 +1359,7 @@ export default function AdminMaintenancePage() {
  <div className="grid gap-3 md:grid-cols-2">
  {selectedRequest.attachments.map((attachment, index) => {
  const attachmentUri = getMaintenanceAttachmentUri(attachment);
- if (!attachmentUri) return null;
+ if (!attachmentUri || !isRemoteUri(attachmentUri)) return null;
 
  return (
  <a
@@ -1485,7 +1495,7 @@ export default function AdminMaintenancePage() {
  <div className="mt-3 grid gap-3">
  {entry.attachments.map((attachment, attachmentIndex) => {
  const attachmentUri = getMaintenanceAttachmentUri(attachment);
- if (!attachmentUri) return null;
+ if (!attachmentUri || !isRemoteUri(attachmentUri)) return null;
 
  return (
  <a

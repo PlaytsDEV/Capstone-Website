@@ -166,9 +166,18 @@ const deriveAttachmentName = (uri, index = 0) => {
   }
 };
 
+const isRemoteUri = (uri) => {
+  try {
+    const { protocol } = new URL(uri);
+    return protocol === "https:" || protocol === "http:";
+  } catch {
+    return false;
+  }
+};
+
 const normalizeAttachmentEntry = (entry, index = 0) => {
   const uri = getAttachmentUri(entry);
-  if (!uri) return null;
+  if (!uri || !isRemoteUri(uri)) return null;
 
   const name =
     (typeof entry === "object" && entry
