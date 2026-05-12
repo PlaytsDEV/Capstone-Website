@@ -195,6 +195,29 @@ const ReservationConfirmationStep = ({
  </div>
 
 
+ {/* ── What Happens Next ── */}
+ <div className="rf-next-steps-card">
+ <div className="rf-next-steps-title">
+  What happens next
+ </div>
+ <div className="rf-steps-list">
+  {[
+  { step: "Check your email for the reservation confirmation and receipt.", detail: "Keep it handy — you may need it during move-in." },
+  { step: "Wait for admin to finalize your move-in schedule.", detail: "You'll be notified once your move-in date is confirmed." },
+  { step: "Bring a valid government-issued ID on move-in day.", detail: "Also have your reservation code ready for verification." },
+  { step: "Contact admin for any questions or changes.", detail: "Use the messaging feature in the app or email us directly." },
+  ].map(({ step, detail }, idx) => (
+  <div key={idx} className="rf-next-step">
+   <div className="rf-step-number">{idx + 1}</div>
+   <div>
+   <div className="rf-step-text">{step}</div>
+   <div className="rf-step-detail">{detail}</div>
+   </div>
+  </div>
+  ))}
+ </div>
+ </div>
+
  {/* ── Action Buttons ── */}
  <div className="rf-conf-buttons-row">
  <button

@@ -90,6 +90,25 @@ export default function ReservationSidePanel({ reservation, onClick }) {
   hasVisit,
  );
 
+ const viewingPreference =
+  reservation.viewingPreference ||
+  (reservation.viewingType === "virtual"
+    ? "remote_2d_viewing"
+    : reservation.viewingType === "inperson"
+    ? "physical_visit"
+    : reservation.isUrgentMoveIn
+    ? "urgent_move_in_review"
+    : null);
+
+ const viewingPrefLabel =
+  viewingPreference === "physical_visit"
+    ? "Physical Visit"
+    : viewingPreference === "remote_2d_viewing"
+    ? "2D Remote Viewing"
+    : viewingPreference === "urgent_move_in_review"
+    ? "Urgent Move-in Review"
+    : null;
+
  const room = reservation.roomId || {};
  const roomName = room.name || "Room";
  const branch = room.branch || "-";
@@ -148,10 +167,17 @@ export default function ReservationSidePanel({ reservation, onClick }) {
  }
  : panelState === "preference"
  ? {
- accent: "#2563EB",
- soft: "rgba(37, 99, 235, 0.10)",
- border: "rgba(37, 99, 235, 0.24)",
- label: "Preference Selected",
+ accent: viewingPreference === "urgent_move_in_review" ? "#DC2626" : "#2563EB",
+ soft: viewingPreference === "urgent_move_in_review" ? "rgba(220, 38, 38, 0.10)" : "rgba(37, 99, 235, 0.10)",
+ border: viewingPreference === "urgent_move_in_review" ? "rgba(220, 38, 38, 0.24)" : "rgba(37, 99, 235, 0.24)",
+ label:
+  viewingPreference === "remote_2d_viewing"
+   ? "2D Viewing Saved"
+   : viewingPreference === "urgent_move_in_review"
+   ? "Urgent Review Requested"
+   : viewingPreference === "physical_visit"
+   ? "Physical Visit Preference Saved"
+   : "Viewing Preference Saved",
  }
  : {
  accent: "var(--text-secondary, #64748B)",
@@ -219,6 +245,14 @@ export default function ReservationSidePanel({ reservation, onClick }) {
  </>
  )}
 
+ {panelState === "preference" && viewingPrefLabel && (
+ <DetailRow
+ icon={<Calendar size={15} color="var(--text-secondary, #94A3B8)" />}
+ label="Preference"
+ value={viewingPrefLabel}
+ />
+ )}
+
  {reservation.visitCode && (
  <DetailRow
  icon={<Ticket size={15} color="var(--text-secondary, #94A3B8)" />}
@@ -277,6 +311,20 @@ export default function ReservationSidePanel({ reservation, onClick }) {
  <div style={S.pendingBanner}>
  <Clock size={14} color="#7C3AED" />
  <span style={S.pendingText}>Saved for viewing coordination only</span>
+ </div>
+ )}
+
+ {panelState === "preference" && viewingPreference === "remote_2d_viewing" && (
+ <div style={{ ...S.pendingBanner, background: "rgba(37, 99, 235, 0.08)", border: "1px solid rgba(37, 99, 235, 0.2)" }}>
+ <Clock size={14} color="#2563EB" />
+ <span style={{ ...S.pendingText, color: "#2563EB" }}>Admin will arrange a 2D remote viewing session</span>
+ </div>
+ )}
+
+ {panelState === "preference" && viewingPreference === "urgent_move_in_review" && (
+ <div style={{ ...S.pendingBanner, background: "rgba(220, 38, 38, 0.08)", border: "1px solid rgba(220, 38, 38, 0.2)" }}>
+ <Clock size={14} color="#DC2626" />
+ <span style={{ ...S.pendingText, color: "#DC2626" }}>Urgent move-in request is under review</span>
  </div>
  )}
 

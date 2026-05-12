@@ -5,13 +5,16 @@ import {
   Camera,
   CheckCircle,
   Clock,
+  Eye,
   Home,
   Image as ImageIcon,
   X,
+  Zap,
 } from "lucide-react";
 import { showNotification } from "../../../../shared/utils/notification";
 import { useVisitAvailability } from "../../../../shared/hooks/queries/useReservations";
 import { useFirebaseAuth } from "../../../../shared/hooks/FirebaseAuthContext";
+import { getRemoteViewingImages } from "../check-availability/checkAvailabilityConstants";
 
 const TIME_SLOTS = [
   { label: "08:00 AM", available: true, capacity: 5, remaining: 5 },
@@ -26,7 +29,7 @@ const TIME_SLOTS = [
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-const VIEWING_OPTIONS = [
+const VISIT_OPTIONS = [
   {
     value: "physical_visit",
     title: "Schedule Physical Visit",
@@ -43,6 +46,12 @@ const VIEWING_OPTIONS = [
     description: "Mark your reservation for faster admin attention without bypassing document review.",
   },
 ];
+
+const OPTION_ICONS = {
+  physical_visit: Calendar,
+  remote_2d_viewing: Camera,
+  urgent_move_in_review: Zap,
+};
 
 const REMOTE_ACKNOWLEDGEMENT =
   "I reviewed the available room photos and understand that this is a photo-based viewing option, not a 3D or 360 tour.";
@@ -137,9 +146,11 @@ const ReservationVisitStep = ({
   setVisitTime,
   reservationData,
   visitCode,
+  visitCompleted,
   onPrev,
   onSaveVisit,
-  onAfterClose,
+  onVisitSaved,
+  onReturnToDashboard,
   readOnly,
   scheduleRejected,
   scheduleRejectionReason,
@@ -147,12 +158,20 @@ const ReservationVisitStep = ({
   const { user: firebaseUser, loading: authLoading } = useFirebaseAuth();
   const [isSaving, setIsSaving] = useState(false);
   const [previewImage, setPreviewImage] = useState(null);
+  const [isEditingPhysicalVisit, setIsEditingPhysicalVisit] = useState(false);
 
-  const selectedPreference = viewingType || "physical_visit";
+  const selectedVisit = viewingType || "physical_visit";
   const room = reservationData?.room || {};
-  const roomImages = Array.isArray(room.images)
+  const uploadedRoomImages = Array.isArray(room.images)
     ? room.images.filter((entry) => typeof entry === "string" && entry.trim())
     : [];
+  const roomImages =
+    uploadedRoomImages.length > 0
+      ? uploadedRoomImages
+      : getRemoteViewingImages(
+          room.type,
+          room.branchKey || room.branch || reservationData?.branch,
+        );
   const roomCapacity = Number(room.capacity || 0);
   const currentOccupancy = Number(room.currentOccupancy || 0);
   const availableSlots = Number.isFinite(roomCapacity)
@@ -164,13 +183,10 @@ const ReservationVisitStep = ({
     ["Room Number", room.roomNumber || room.name || "N/A"],
     ["Room Type", room.type || "N/A"],
     ["Capacity", room.capacity ? `${room.capacity} occupants` : "N/A"],
-    [
-      "Available Slots",
-      availableSlots == null ? "N/A" : String(availableSlots),
-    ],
+    ["Available Slots", availableSlots == null ? "N/A" : String(availableSlots)],
     [
       "Monthly Rate",
-      room.price ? `₱${Number(room.price).toLocaleString()}` : "N/A",
+      room.price ? `PHP ${Number(room.price).toLocaleString()}` : "N/A",
     ],
     ["Notes / Reminders", room.description || "None provided"],
   ];
@@ -178,9 +194,16 @@ const ReservationVisitStep = ({
   const branch = normalizeBranchKey(room.branchKey || room.branch || reservationData?.branch);
   const roomId = room._id || room.roomId || reservationData?.roomId || "";
   const reservationId = reservationData?._id || "";
+  const hasSavedPhysicalVisit =
+    selectedVisit === "physical_visit" &&
+    Boolean(visitCompleted && visitDate && visitTime) &&
+    !scheduleRejected;
+  const showPhysicalVisitSummary =
+    !readOnly && hasSavedPhysicalVisit && !isEditingPhysicalVisit;
   const shouldLoadAvailability =
-    selectedPreference === "physical_visit" &&
+    selectedVisit === "physical_visit" &&
     !readOnly &&
+    !showPhysicalVisitSummary &&
     Boolean(branch) &&
     !authLoading &&
     Boolean(firebaseUser);
@@ -226,16 +249,22 @@ const ReservationVisitStep = ({
     : [];
 
   useEffect(() => {
-    if (selectedPreference !== "urgent_move_in_review" && isUrgentMoveIn) {
+    if (selectedVisit !== "urgent_move_in_review" && isUrgentMoveIn) {
       setIsUrgentMoveIn(false);
     }
-    if (selectedPreference === "urgent_move_in_review" && !isUrgentMoveIn) {
+    if (selectedVisit === "urgent_move_in_review" && !isUrgentMoveIn) {
       setIsUrgentMoveIn(true);
     }
-  }, [isUrgentMoveIn, selectedPreference, setIsUrgentMoveIn]);
+  }, [isUrgentMoveIn, selectedVisit, setIsUrgentMoveIn]);
+
+  useEffect(() => {
+    if (!hasSavedPhysicalVisit) {
+      setIsEditingPhysicalVisit(false);
+    }
+  }, [hasSavedPhysicalVisit]);
 
   const handleContinue = async () => {
-    if (selectedPreference === "physical_visit") {
+    if (selectedVisit === "physical_visit") {
       if (!visitDate) {
         showNotification("Please select a preferred visit date.", "error", 3000);
         return;
@@ -254,10 +283,7 @@ const ReservationVisitStep = ({
       }
     }
 
-    if (
-      selectedPreference === "remote_2d_viewing" &&
-      remoteViewingAcknowledged !== true
-    ) {
+    if (selectedVisit === "remote_2d_viewing" && remoteViewingAcknowledged !== true) {
       showNotification(
         "Please acknowledge the photo-based 2D remote viewing notice before continuing.",
         "error",
@@ -268,8 +294,17 @@ const ReservationVisitStep = ({
 
     setIsSaving(true);
     try {
-      await onSaveVisit?.();
-      await onAfterClose?.();
+      const savedVisitCode = await onSaveVisit?.();
+      await onVisitSaved?.({
+        viewingPreference: selectedVisit,
+        visitCode: savedVisitCode,
+        visitDate,
+        visitTime,
+      });
+
+      if (selectedVisit === "physical_visit") {
+        setIsEditingPhysicalVisit(false);
+      }
     } catch (error) {
       showNotification(
         error?.response?.data?.error ||
@@ -282,27 +317,28 @@ const ReservationVisitStep = ({
     }
   };
 
-  const renderReadOnlySummary = () => {
-    const option = VIEWING_OPTIONS.find((entry) => entry.value === selectedPreference);
+  const renderVisitSummary = ({ title, withActions = false }) => {
+    const option = VISIT_OPTIONS.find((entry) => entry.value === selectedVisit);
+
     return (
       <div className="content-card">
         <div className="card-section-title">
           <CheckCircle size={15} style={{ marginRight: 6, flexShrink: 0 }} />
-          Viewing / Move-in Preference
+          {title}
         </div>
         <div className="rf-receipt-rows">
           <div className="rf-receipt-row">
             <span className="rf-receipt-row__label">Selected Option</span>
             <span className="rf-receipt-row__value">{option?.title || "Not selected"}</span>
           </div>
-          {selectedPreference === "physical_visit" && (
+          {selectedVisit === "physical_visit" && (
             <>
               <div className="rf-receipt-row">
-                <span className="rf-receipt-row__label">Preferred Date</span>
+                <span className="rf-receipt-row__label">Preferred Visit Date</span>
                 <span className="rf-receipt-row__value">{fmtDateFull(visitDate)}</span>
               </div>
               <div className="rf-receipt-row">
-                <span className="rf-receipt-row__label">Preferred Time</span>
+                <span className="rf-receipt-row__label">Preferred Visit Time</span>
                 <span className="rf-receipt-row__value">{visitTime || "Not scheduled"}</span>
               </div>
               {visitCode && (
@@ -313,7 +349,7 @@ const ReservationVisitStep = ({
               )}
             </>
           )}
-          {selectedPreference === "remote_2d_viewing" && (
+          {selectedVisit === "remote_2d_viewing" && (
             <>
               <div className="rf-receipt-row">
                 <span className="rf-receipt-row__label">Acknowledgement</span>
@@ -329,7 +365,7 @@ const ReservationVisitStep = ({
               </div>
             </>
           )}
-          {selectedPreference === "urgent_move_in_review" && (
+          {selectedVisit === "urgent_move_in_review" && (
             <div className="rf-receipt-row">
               <span className="rf-receipt-row__label">Urgent Review</span>
               <span className="rf-receipt-row__value">
@@ -338,6 +374,28 @@ const ReservationVisitStep = ({
             </div>
           )}
         </div>
+
+        {withActions && (
+          <div className="stage-buttons">
+            <button type="button" className="btn btn-secondary" onClick={onPrev}>
+              Back
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setIsEditingPhysicalVisit(true)}
+            >
+              Edit Visit
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => onReturnToDashboard?.()}
+            >
+              Return to Dashboard
+            </button>
+          </div>
+        )}
       </div>
     );
   };
@@ -345,8 +403,10 @@ const ReservationVisitStep = ({
   return (
     <div className="rf-visit-step">
       <div className="main-header">
-        <div className="main-header-badge"><span>Step 2 · Verification</span></div>
-        <h2 className="main-header-title">Viewing / Move-in Preference</h2>
+        <div className="main-header-badge">
+          <span>Step 2 · Viewing Preference</span>
+        </div>
+        <h2 className="main-header-title">Viewing Preference</h2>
         <p className="main-header-subtitle">
           Choose how you want to proceed with room viewing or move-in coordination.
           Payment will only be available after your application and documents are approved.
@@ -355,55 +415,74 @@ const ReservationVisitStep = ({
 
       {scheduleRejected && (
         <div className="rf-rejection-banner">
-          <AlertTriangle size={20} color="var(--rf-error-text)" style={{ flexShrink: 0, marginTop: 2 }} />
+          <AlertTriangle
+            size={20}
+            color="var(--rf-error-text)"
+            style={{ flexShrink: 0, marginTop: 2 }}
+          />
           <div>
-            <div className="rf-rejection-banner__title">Your previous visit schedule was rejected</div>
+            <div className="rf-rejection-banner__title">
+              Your previous physical visit schedule was rejected
+            </div>
             {scheduleRejectionReason && (
               <div className="rf-rejection-banner__reason">
                 <strong>Reason:</strong> {scheduleRejectionReason}
               </div>
             )}
             <div className="rf-rejection-banner__hint">
-              Please update your viewing / move-in preference below.
+              Please update your visit details below.
             </div>
           </div>
         </div>
       )}
 
       {readOnly ? (
-        renderReadOnlySummary()
+        renderVisitSummary({ title: "Viewing Preference Summary" })
+      ) : showPhysicalVisitSummary ? (
+        renderVisitSummary({ title: "Viewing Preference Summary", withActions: true })
       ) : (
         <>
           <div className="content-card">
             <div className="card-section-title">
-              <Home size={15} style={{ marginRight: 6, flexShrink: 0 }} />
-              Choose an Option
+              <Eye size={15} style={{ marginRight: 6, flexShrink: 0 }} />
+              Choose a Viewing Preference
             </div>
-            <div className="radio-group">
-              {VIEWING_OPTIONS.map((option) => (
-                <label key={option.value} className="radio-option">
-                  <input
-                    type="radio"
-                    name="viewingPreference"
-                    checked={selectedPreference === option.value}
-                    onChange={() => {
+            <div className="rf-option-cards">
+              {VISIT_OPTIONS.map((option) => {
+                const OptionIcon = OPTION_ICONS[option.value];
+                const isSelected = selectedVisit === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`rf-option-card${isSelected ? " selected" : ""}`}
+                    onClick={() => {
                       setViewingType(option.value);
+                      setIsEditingPhysicalVisit(false);
                       if (option.value !== "physical_visit") {
                         setVisitDate("");
                         setVisitTime("");
                       }
                     }}
-                  />
-                  <span className="radio-label">
-                    <span className="radio-title">{option.title}</span>
-                    <span className="radio-desc">{option.description}</span>
-                  </span>
-                </label>
-              ))}
+                    aria-pressed={isSelected}
+                  >
+                    <div className="rf-option-card__icon">
+                      <OptionIcon size={20} />
+                    </div>
+                    <div className="rf-option-card__body">
+                      <span className="rf-option-card__title">{option.title}</span>
+                      <span className="rf-option-card__desc">{option.description}</span>
+                    </div>
+                    <div className="rf-option-card__check">
+                      {isSelected && <CheckCircle size={12} color="white" />}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {selectedPreference === "physical_visit" && (
+          {selectedVisit === "physical_visit" && (
             <>
               <div className="content-card">
                 <div className="card-section-title">
@@ -429,13 +508,21 @@ const ReservationVisitStep = ({
                 )}
                 <div className="rf-calendar-grid" aria-label="Available visit dates">
                   {WEEKDAY_LABELS.map((weekday) => (
-                    <div key={weekday} className="rf-calendar-weekday">{weekday}</div>
+                    <div key={weekday} className="rf-calendar-weekday">
+                      {weekday}
+                    </div>
                   ))}
                   {calendarDateCells.map((cell) => {
                     if (cell.type === "empty") {
-                      return <div key={cell.key} className="rf-date-empty" aria-hidden="true" />;
+                      return (
+                        <div
+                          key={cell.key}
+                          className="rf-date-empty"
+                          aria-hidden="true"
+                        />
+                      );
                     }
-                    const dateRow = cell.dateRow;
+                    const { dateRow } = cell;
                     const iso = dateRow.date;
                     const date = new Date(`${iso}T00:00:00`);
                     const selected = visitDate === iso;
@@ -453,15 +540,21 @@ const ReservationVisitStep = ({
                         }}
                         aria-pressed={selected}
                       >
-                        <div className={`rf-date-card${selected ? " selected" : ""}${disabled ? " disabled" : ""}`}>
-                          {iso === getTomorrowISO() && <span className="rf-today-pill">Tomorrow</span>}
-                          <div className="rf-date-day">{date.getDate()}</div>
-                          <div className="rf-date-month">
-                            {date.toLocaleDateString("en-US", { month: "short" })}
-                          </div>
-                          <div className="rf-date-capacity">
-                            {disabled ? "Closed" : "Open"}
-                          </div>
+                        <div
+                          className={`rf-date-card${selected ? " selected" : ""}${
+                            disabled ? " disabled" : ""
+                          }`}
+                        >
+                          {iso === getTomorrowISO() && (
+                            <span className="rf-today-pill">Tomorrow</span>
+                          )}
+                          <div className="rf-date-day">{WEEKDAY_LABELS[date.getDay()]}</div>
+                          <div className="rf-date-num">{date.getDate()}</div>
+                          <small>
+                            {disabled
+                              ? "Closed"
+                              : date.toLocaleDateString("en-US", { month: "short" })}
+                          </small>
                         </div>
                       </button>
                     );
@@ -474,34 +567,52 @@ const ReservationVisitStep = ({
                   <Clock size={15} style={{ marginRight: 6, flexShrink: 0 }} />
                   Choose a Time Slot
                 </div>
-                <div className="rf-time-grid">
-                  {timeSlots.map((slot) => (
-                    <button
-                      key={slot.label}
-                      type="button"
-                      className={`rf-time-slot${visitTime === slot.label ? " selected" : ""}`}
-                      disabled={!slot.available}
-                      onClick={() => setVisitTime(slot.label)}
-                    >
-                      <span>{slot.label}</span>
-                      <small>{formatRemainingSlots(slot) || slot.disabledReason || ""}</small>
-                    </button>
-                  ))}
-                </div>
+                {visitDate ? (
+                  <div className="rf-time-grid">
+                    {timeSlots.length === 0 ? (
+                      <div className="rf-time-grid__message" role="alert">
+                        No time slots are available for the selected date.
+                      </div>
+                    ) : (
+                      timeSlots.map((slot) => (
+                        <button
+                          key={slot.label}
+                          type="button"
+                          className={`rf-time-slot${visitTime === slot.label ? " selected" : ""}`}
+                          disabled={!slot.available}
+                          onClick={() => setVisitTime(slot.label)}
+                        >
+                          <span>{slot.label}</span>
+                          <small>{formatRemainingSlots(slot) || slot.disabledReason || ""}</small>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                ) : (
+                  <p className="rf-section-hint">
+                    Select a date above to see available time slots.
+                  </p>
+                )}
               </div>
             </>
           )}
 
-          {selectedPreference === "remote_2d_viewing" && (
+          {selectedVisit === "remote_2d_viewing" && (
             <>
               <div className="content-card">
                 <div className="card-section-title">
                   <Camera size={15} style={{ marginRight: 6, flexShrink: 0 }} />
-                  2D Remote Viewing
+                  Room Photos
+                  {roomImages.length > 0 && (
+                    <span className="rf-gallery-count-badge">
+                      <ImageIcon size={11} />
+                      {roomImages.length} {roomImages.length === 1 ? "photo" : "photos"}
+                    </span>
+                  )}
                 </div>
                 <p className="rf-section-hint">
-                  Review the available room photos before proceeding. This is a photo-based
-                  viewing option, not a 3D or 360 tour.
+                  Browse the available room photos to get a detailed look before
+                  deciding. Tap any photo to view it in full size.
                 </p>
                 {roomImages.length > 0 ? (
                   <div className="rf-room-gallery">
@@ -512,7 +623,17 @@ const ReservationVisitStep = ({
                         className="rf-room-gallery__item"
                         onClick={() => setPreviewImage(image)}
                       >
-                        <img src={image} alt={`Room photo ${index + 1}`} className="rf-room-gallery__image" />
+                        <img
+                          src={image}
+                          alt={`Room photo ${index + 1}`}
+                          className="rf-room-gallery__image"
+                        />
+                        <div className="rf-room-gallery__hover-overlay">
+                          <span className="rf-room-gallery__hover-label">
+                            <Eye size={12} />
+                            View
+                          </span>
+                        </div>
                       </button>
                     ))}
                   </div>
@@ -520,7 +641,8 @@ const ReservationVisitStep = ({
                   <div className="rf-empty-state">
                     <ImageIcon size={20} />
                     <p>
-                      No room photos are currently available. Please schedule a physical visit or contact admin for assistance.
+                      No room photos are currently available. Please schedule a
+                      physical visit or contact admin for assistance.
                     </p>
                   </div>
                 )}
@@ -529,7 +651,7 @@ const ReservationVisitStep = ({
               <div className="content-card">
                 <div className="card-section-title">
                   <Home size={15} style={{ marginRight: 6, flexShrink: 0 }} />
-                  Room Details Summary
+                  Room Details
                 </div>
                 <div className="rf-room-details-grid">
                   {roomDetails.map(([label, value]) => (
@@ -539,48 +661,82 @@ const ReservationVisitStep = ({
                     </div>
                   ))}
                 </div>
-                <label className="checkbox-group rf-remote-ack">
+
+                <label
+                  className={`rf-ack-card${remoteViewingAcknowledged ? " ack-checked" : ""}`}
+                  htmlFor="remote-ack-check"
+                >
                   <input
+                    id="remote-ack-check"
                     type="checkbox"
+                    className="rf-ack-card__checkbox"
                     checked={remoteViewingAcknowledged}
                     onChange={(event) => setRemoteViewingAcknowledged(event.target.checked)}
                   />
-                  <span>{REMOTE_ACKNOWLEDGEMENT}</span>
+                  <span className="rf-ack-card__text">{REMOTE_ACKNOWLEDGEMENT}</span>
                 </label>
+
                 <div className="form-group">
                   <label className="form-label" htmlFor="remote-viewing-questions">
-                    Questions / Concerns for Admin (Optional)
+                    Questions or Concerns{" "}
+                    <span style={{ fontWeight: 400, color: "var(--rf-text-muted)" }}>
+                      (Optional)
+                    </span>
                   </label>
                   <textarea
                     id="remote-viewing-questions"
-                    className="form-input rf-textarea"
+                    className="form-textarea rf-textarea"
                     rows={4}
                     value={remoteViewingQuestions}
                     onChange={(event) => setRemoteViewingQuestions(event.target.value)}
                     placeholder="Ask about the room setup, amenities, move-in reminders, or other photo-based viewing questions."
                   />
                   <div className="form-helper">
-                    If you cannot visit physically, you may review the available room photos and
-                    request remote viewing assistance. Payment will only be available after your
-                    application and documents are approved.
+                    Your questions will be forwarded to the admin for review alongside
+                    your reservation. Payment is only available after your application
+                    and documents are approved.
                   </div>
                 </div>
               </div>
             </>
           )}
 
-          {selectedPreference === "urgent_move_in_review" && (
+          {selectedVisit === "urgent_move_in_review" && (
             <div className="content-card">
-              <div className="card-section-title">
-                <AlertTriangle size={15} style={{ marginRight: 6, flexShrink: 0 }} />
-                Request Urgent Move-in Review
-              </div>
-              <div className="rf-payment-info-box">
-                <div className="info-box-title">Urgent move-in request recorded</div>
-                <div className="info-text">
-                  Urgent move-in requests are subject to admin document review and room
-                  availability. Payment will only be available after approval.
+              <div className="rf-urgent-banner">
+                <div className="rf-urgent-banner__icon">
+                  <Zap size={22} />
                 </div>
+                <div className="rf-urgent-banner__body">
+                  <div className="rf-urgent-banner__title">Urgent Move-in Review Requested</div>
+                  <div className="rf-urgent-banner__subtitle">
+                    Your reservation will be flagged for priority admin attention.
+                    Document review and room availability checks still apply.
+                  </div>
+                </div>
+              </div>
+
+              <div className="rf-urgent-steps">
+                <div className="rf-urgent-steps__label">What happens next</div>
+                {[
+                  "Admin receives an urgent flag on your reservation.",
+                  "Your documents are reviewed on priority.",
+                  "Room availability is confirmed before any approval.",
+                  "Payment becomes available only after your application is approved.",
+                ].map((step, idx) => (
+                  <div key={idx} className="rf-urgent-step-row">
+                    <div className="rf-urgent-step-num">{idx + 1}</div>
+                    <div className="rf-urgent-step-text">{step}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div
+                className="card-section-title"
+                style={{ paddingTop: 0, marginTop: 4, borderTop: "none" }}
+              >
+                <Home size={15} style={{ marginRight: 6, flexShrink: 0 }} />
+                Room Details
               </div>
               <div className="rf-room-details-grid">
                 {roomDetails.map(([label, value]) => (
@@ -603,7 +759,11 @@ const ReservationVisitStep = ({
               onClick={handleContinue}
               disabled={isSaving}
             >
-              {isSaving ? "Saving…" : "Continue to Tenant Application"}
+              {isSaving
+                ? "Saving..."
+                : selectedVisit === "physical_visit"
+                  ? "Save Physical Visit"
+                  : "Save Viewing Preference"}
             </button>
           </div>
         </>

@@ -4,7 +4,7 @@ import {
   formatRoomType,
   fmtDate,
 } from "../../../../shared/utils/formatDate";
-import { CreditCard, Lock } from "lucide-react";
+import { CreditCard, FileText, Lock } from "lucide-react";
 
 const ReservationPaymentStep = ({
   reservationData,
@@ -44,7 +44,7 @@ const ReservationPaymentStep = ({
       <div className={readOnly ? "rf-readonly-wrapper" : ""}>
         <div className="content-card">
           <div className="card-section-title">
-            <div className="icon"></div>
+            <FileText size={15} style={{ marginRight: 6, flexShrink: 0 }} />
             Reservation Breakdown
           </div>
 
@@ -92,13 +92,13 @@ const ReservationPaymentStep = ({
 
         <div className="content-card">
           <div className="card-section-title">
-            <div className="icon"></div>
+            <CreditCard size={15} style={{ marginRight: 6, flexShrink: 0 }} />
             Secure Online Payment
           </div>
           {!paymentAvailable && !readOnly ? (
-            <div className="rf-payment-info-box">
+            <div className="rf-locked-banner">
               <div className="info-box-title">
-                <span className="rf-pay-btn-icon"><Lock size={15} /> Payment Locked Pending Review</span>
+                <span className="rf-pay-btn-icon"><Lock size={15} /> Payment Locked — Pending Review</span>
               </div>
               <div className="info-text">
                 Your application is still under review. Payment will become available once
@@ -123,16 +123,9 @@ const ReservationPaymentStep = ({
       </div>
 
       {!readOnly && paymentAvailable && (
-        <div
-          className="stage-buttons"
-          style={{
-            justifyContent: "flex-end",
-            flexDirection: "column",
-            alignItems: "flex-end",
-            gap: 8,
-          }}
-        >
+        <div className="stage-buttons" style={{ justifyContent: "flex-end", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
           <button
+            type="button"
             onClick={onPayOnline}
             className="btn btn-primary btn-pay-online-reservation"
             disabled={isLoading || payingOnline}

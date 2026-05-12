@@ -23,6 +23,7 @@ import useReservationFlow from "../hooks/useReservationFlow";
 import { showNotification } from "../../../shared/utils/notification";
 import { billingApi } from "../../../shared/api/apiClient";
 import { reservationApi } from "../../../shared/api/reservationApi";
+import { queryKeys } from "../../../shared/lib/queryKeys";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -171,6 +172,7 @@ function ReservationFlowPage() {
                 reservationData: flow.reservationData,
                 reservationCode: flow.reservationCode,
                 visitCode: flow.visitCode,
+                visitCompleted: flow.visitCompleted,
                 agreedToPrivacy: flow.agreedToPrivacy,
                 scheduleRejected: flow.scheduleRejected,
                 scheduleRejectionReason: flow.scheduleRejectionReason,
@@ -220,13 +222,56 @@ function ReservationFlowPage() {
 
                 return null;
               }}
-              onAfterClose={async () => {
+              onVisitSaved={async ({ visitCode, viewingPreference, visitDate, visitTime } = {}) => {
+                // Optimistically patch the list cache so the side panel and
+                // dashboard show the correct preference state the moment
+                // ProfilePage mounts — no visible flicker of the old state.
+                const listKey = queryKeys.reservations.all({});
+                const cachedList = flow.queryClient.getQueryData(listKey);
+                if (Array.isArray(cachedList) && flow.reservationId) {
+                  flow.queryClient.setQueryData(
+                    listKey,
+                    cachedList.map((r) => {
+                      if (r._id !== flow.reservationId) return r;
+                      return {
+                        ...r,
+                        viewingPreference,
+                        visitDate:
+                          viewingPreference === "physical_visit"
+                            ? visitDate || r.visitDate
+                            : null,
+                        visitTime:
+                          viewingPreference === "physical_visit"
+                            ? visitTime || r.visitTime
+                            : null,
+                        isUrgentMoveIn: viewingPreference === "urgent_move_in_review",
+                        remoteViewingAcknowledged:
+                          viewingPreference === "remote_2d_viewing"
+                            ? (flow.remoteViewingAcknowledged ?? r.remoteViewingAcknowledged)
+                            : false,
+                        reservationStatus:
+                          r.reservationStatus === "pending" ||
+                          r.reservationStatus === "viewing_preference_selected"
+                            ? "viewing_preference_selected"
+                            : r.reservationStatus,
+                      };
+                    }),
+                  );
+                }
+
                 flow.setVisitCompleted(true);
                 flow.setHighestStageReached((prev) => Math.max(prev, 3));
-                await flow.queryClient.invalidateQueries({ queryKey: ["reservations"] });
-                await flow.queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-                flow.setCurrentStage(3);
+                // Background re-fetch to sync with authoritative server state.
+                flow.queryClient.invalidateQueries({ queryKey: ["reservations"] });
+                flow.queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+                flow.returnToDashboardAfterViewingPreference({
+                  viewingPreference,
+                  visitCode,
+                  visitDate,
+                  visitTime,
+                });
               }}
+              onReturnToDashboard={flow.returnToDashboardAfterViewingPreference}
             />
           )}
 
@@ -275,6 +320,9 @@ function ReservationFlowPage() {
                   idValidationResult: flow.idValidationResult,
                   isValidatingId: flow.isValidatingId,
                   onValidateIdDocument: flow.validateApplicantIdDocument,
+                  documentPrechecks: flow.documentPrechecks,
+                  runningDocumentChecks: flow.runningDocumentChecks,
+                  onRunDocumentPrecheck: flow.runDocumentPrecheck,
                   nbiClearance: flow.nbiClearance,
                   setNbiClearance: flow.setNbiClearance,
                   nbiReason: flow.nbiReason,

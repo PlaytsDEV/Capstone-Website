@@ -178,14 +178,14 @@ function getStepStatus(stepStage, currentStage, reservation) {
  if (stepStage < currentStage) return "complete";
  if (stepStage === currentStage) {
  // Step 5 is the final step — if reservation is confirmed, mark as complete (green)
- if (stepStage === 5 && reservation) {
  if (
- status === "reserved" ||
- hasReservationStatus(status, "moveIn", "moveOut") ||
- reservation.paymentStatus === "paid"
+ stepStage === 5 &&
+ reservation &&
+ (status === "reserved" ||
+  hasReservationStatus(status, "moveIn", "moveOut") ||
+  reservation.paymentStatus === "paid")
  ) {
  return "complete";
- }
  }
  if (stepStage === 3 && hasReservationStatus(status, "pending_application_review")) {
  return "waiting";
@@ -305,9 +305,17 @@ function getNextAction(reservation, currentStage) {
  isWaiting: false,
  };
  case 2: {
- const hasSchedule = reservation.visitDate;
- const approved =
- reservation.visitApproved || reservation.scheduleApproved;
+ const viewPref =
+ reservation.viewingPreference ||
+ (reservation.viewingType === "virtual"
+  ? "remote_2d_viewing"
+  : reservation.viewingType === "inperson"
+  ? "physical_visit"
+  : reservation.isUrgentMoveIn
+  ? "urgent_move_in_review"
+  : null);
+ const hasSchedule = reservation.visitDate || viewPref;
+ const approved = reservation.visitApproved || reservation.scheduleApproved;
  const rejected = reservation.scheduleRejected;
  if (rejected) {
  return {
@@ -322,6 +330,24 @@ function getNextAction(reservation, currentStage) {
  };
  }
  if (hasSchedule && !approved) {
+ if (viewPref === "remote_2d_viewing") {
+ return {
+  title: "2D Remote Viewing Requested",
+  description: "Admin will arrange a remote viewing session for your selected room.",
+  buttonLabel: null,
+  route: null,
+  isWaiting: true,
+ };
+ }
+ if (viewPref === "urgent_move_in_review") {
+ return {
+  title: "Urgent Move-in Under Review",
+  description: "Your urgent move-in request has been saved. Proceed to complete your application.",
+  buttonLabel: "Fill Application →",
+  route: `/applicant/reservation?step=3`,
+  isWaiting: false,
+ };
+ }
  const fDate = reservation.visitDate
  ? new Date(reservation.visitDate).toLocaleDateString("en-US", {
  month: "short",
@@ -405,19 +431,31 @@ function getStepDesc(step, status, reservation) {
  return `${roomName} selected`;
  }
  return step.desc;
- case 2:
+ case 2: {
  if (status === "rejected") {
  return "Physical visit needs rescheduling";
  }
  if (status === "waiting") {
+ const vp =
+ reservation.viewingPreference ||
+ (reservation.viewingType === "virtual"
+  ? "remote_2d_viewing"
+  : reservation.viewingType === "inperson"
+  ? "physical_visit"
+  : reservation.isUrgentMoveIn
+  ? "urgent_move_in_review"
+  : null);
+ if (vp === "remote_2d_viewing") return "2D remote viewing requested";
+ if (vp === "urgent_move_in_review") return "Urgent move-in review pending";
  return reservation.visitDate
- ? `Physical visit on ${formatDate(reservation.visitDate)}`
- : "Physical visit scheduled";
+  ? `Physical visit on ${formatDate(reservation.visitDate)}`
+  : "Viewing preference saved";
  }
  if (status === "complete") {
  return viewingPreferenceLabel;
  }
  return step.desc;
+ }
  case 3:
  if (status === "waiting") {
  return "Pending admin review";
@@ -463,7 +501,12 @@ function getStepDesc(step, status, reservation) {
 
 /* ── component ───────────────────────────────────────────────────────────── */
 
-export default function ReservationDashboard({ reservation, visits = [] }) {
+export default function ReservationDashboard({
+ reservation,
+ visits = [],
+ feedback = null,
+ onDismissFeedback,
+}) {
  const navigate = useNavigate();
  const queryClient = useQueryClient();
  const currentStage = resolveCurrentStage(reservation);
@@ -555,6 +598,52 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
  </div>
 
  {/* ── Step Indicator ────────────────────────────────────────────────── */}
+ {feedback && (
+ <div style={styles.feedbackCard}>
+ <div style={styles.feedbackBody}>
+ <div style={styles.feedbackIconWrap}>
+ <CheckCircle size={18} color="#059669" />
+ </div>
+ <div style={{ minWidth: 0 }}>
+ <div style={styles.feedbackTitle}>
+ {feedback.title || "Viewing preference saved"}
+ </div>
+ <div style={styles.feedbackMessage}>{feedback.message}</div>
+ {feedback.viewingPreference === "physical_visit" && (
+ <div style={styles.feedbackMetaGrid}>
+ {feedback.visitCode ? (
+ <div style={styles.feedbackMetaItem}>
+ <span style={styles.feedbackMetaLabel}>Visit Code</span>
+ <strong style={styles.feedbackMetaValue}>{feedback.visitCode}</strong>
+ </div>
+ ) : null}
+ {feedback.visitDate ? (
+ <div style={styles.feedbackMetaItem}>
+ <span style={styles.feedbackMetaLabel}>Preferred Date</span>
+ <strong style={styles.feedbackMetaValue}>{formatDate(feedback.visitDate)}</strong>
+ </div>
+ ) : null}
+ {feedback.visitTime ? (
+ <div style={styles.feedbackMetaItem}>
+ <span style={styles.feedbackMetaLabel}>Preferred Time</span>
+ <strong style={styles.feedbackMetaValue}>{feedback.visitTime}</strong>
+ </div>
+ ) : null}
+ </div>
+ )}
+ <div style={styles.feedbackHint}>
+ Payment stays locked until admin reviews and approves the application and documents.
+ </div>
+ </div>
+ </div>
+ {onDismissFeedback ? (
+ <button type="button" onClick={onDismissFeedback} style={styles.feedbackDismiss}>
+ Dismiss
+ </button>
+ ) : null}
+ </div>
+ )}
+
  <div style={styles.stepperWrapper}>
  <div style={styles.stepperProgressRail}>
  <div
@@ -1007,6 +1096,87 @@ const styles = {
  fontSize: 13,
  color: "#CBD5E1",
  margin: "0 4px",
+ },
+
+ feedbackCard: {
+ display: "flex",
+ alignItems: "flex-start",
+ justifyContent: "space-between",
+ gap: 16,
+ marginBottom: 18,
+ padding: "16px 18px",
+ borderRadius: 10,
+ background: "rgba(16, 185, 129, 0.08)",
+ border: "1px solid rgba(16, 185, 129, 0.2)",
+ },
+ feedbackBody: {
+ display: "flex",
+ alignItems: "flex-start",
+ gap: 12,
+ minWidth: 0,
+ flex: 1,
+ },
+ feedbackIconWrap: {
+ width: 36,
+ height: 36,
+ borderRadius: 999,
+ background: "rgba(16, 185, 129, 0.12)",
+ display: "flex",
+ alignItems: "center",
+ justifyContent: "center",
+ flexShrink: 0,
+ },
+ feedbackTitle: {
+ fontSize: 15,
+ fontWeight: 700,
+ color: "#065F46",
+ marginBottom: 4,
+ },
+ feedbackMessage: {
+ fontSize: 13,
+ lineHeight: 1.5,
+ color: "#14532D",
+ },
+ feedbackMetaGrid: {
+ display: "grid",
+ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+ gap: 10,
+ marginTop: 12,
+ },
+ feedbackMetaItem: {
+ display: "flex",
+ flexDirection: "column",
+ gap: 3,
+ padding: "10px 12px",
+ borderRadius: 8,
+ background: "rgba(255, 255, 255, 0.78)",
+ border: "1px solid rgba(16, 185, 129, 0.16)",
+ },
+ feedbackMetaLabel: {
+ fontSize: 11,
+ textTransform: "uppercase",
+ letterSpacing: "0.06em",
+ color: "#059669",
+ fontWeight: 700,
+ },
+ feedbackMetaValue: {
+ fontSize: 13,
+ color: "#0F172A",
+ },
+ feedbackHint: {
+ marginTop: 10,
+ fontSize: 12,
+ color: "#166534",
+ },
+ feedbackDismiss: {
+ flexShrink: 0,
+ background: "transparent",
+ border: "none",
+ color: "#047857",
+ fontSize: 12,
+ fontWeight: 700,
+ cursor: "pointer",
+ padding: "2px 0",
  },
 
  /* category row */
