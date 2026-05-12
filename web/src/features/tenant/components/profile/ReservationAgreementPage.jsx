@@ -25,6 +25,7 @@ import dayjs from "dayjs";
 import { generateDepositReceipt, viewDepositReceipt } from "../../../../shared/utils/receiptGenerator";
 import { useCurrentUser } from "../../../../shared/hooks/queries/useUsers";
 import {
+ canReservationAccessPayment,
  hasReservationStatus,
  readMoveInDate,
 } from "../../../../shared/utils/lifecycleNaming";
@@ -125,12 +126,20 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
  if (hasReservationStatus(s, "moveIn")) return { label: "Moved In", bg: "#6366F1" };
  if (s === "reserved" || reservation.paymentStatus === "paid")
  return { label: "Reserved", bg: "#059669" };
+ if (s === "pending_application_review")
+ return { label: "Pending Review", bg: "#D97706" };
+ if (s === "needs_revision")
+ return { label: "Needs Revision", bg: "#EA580C" };
+ if (s === "approved_for_payment" || canReservationAccessPayment(s))
+ return { label: "Approved for Payment", bg: "#0F766E" };
  if (s === "payment_pending")
  return { label: "Payment Pending", bg: "#D97706" };
+ if (s === "viewing_preference_selected")
+ return { label: "Preference Selected", bg: "#2563EB" };
  if (s === "visit_approved" || reservation.scheduleApproved || reservation.visitApproved)
- return { label: "Visit Approved", bg: "#7C3AED" };
+ return { label: "Legacy Visit Approved", bg: "#7C3AED" };
  if (s === "visit_pending" || (reservation.visitDate && !reservation.scheduleRejected))
- return { label: "Visit Pending", bg: "#2563EB" };
+ return { label: "Visit Scheduled", bg: "#2563EB" };
  if (reservation.scheduleRejected)
  return { label: "Reschedule Needed", bg: "#DC2626" };
  return { label: "Room Selected", bg: "#0EA5E9" };

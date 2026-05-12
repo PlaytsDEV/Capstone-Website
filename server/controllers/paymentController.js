@@ -30,6 +30,7 @@ import {
   getVisibleBillSnapshot,
   resolveBillStatus,
 } from "../utils/billingPolicy.js";
+import { hasReservationStatus } from "../utils/lifecycleNaming.js";
 import { notify } from "../utils/notificationService.js";
 import { sendSuccess, AppError } from "../middleware/errorHandler.js";
 
@@ -49,7 +50,7 @@ const PAYMENT_METHOD_LABELS = Object.freeze({
 });
 
 function canAutoReserveReservation(status) {
-  return status === "pending" || status === "payment_pending";
+  return hasReservationStatus(status, "approved_for_payment", "payment_pending");
 }
 
 async function getDbUser(firebaseUid) {
@@ -228,12 +229,25 @@ export const createDepositCheckout = async (req, res, next) => {
       throw new AppError("Deposit is already paid", 400, "ALREADY_PAID");
     }
 
+    if (!hasReservationStatus(reservation.status, "approved_for_payment", "payment_pending")) {
+      throw new AppError(
+        "Payment is still locked. It will only be available after your application and documents are approved.",
+        403,
+        "PAYMENT_LOCKED_PENDING_APPLICATION_REVIEW",
+      );
+    }
+
     if (reservation.paymongoSessionId) {
       try {
         const existing = await getCheckoutSession(reservation.paymongoSessionId);
         const existingUrl = existing?.attributes?.checkout_url;
         const existingPayments = existing?.attributes?.payments || [];
         if (existingUrl && existingPayments.length === 0) {
+          if (!hasReservationStatus(reservation.status, "payment_pending")) {
+            reservation.status = "payment_pending";
+            reservation.paymentStatus = "pending";
+            await reservation.save();
+          }
           return sendSuccess(res, {
             checkoutUrl: existingUrl,
             sessionId: reservation.paymongoSessionId,
@@ -268,6 +282,8 @@ export const createDepositCheckout = async (req, res, next) => {
     });
 
     reservation.paymongoSessionId = sessionId;
+    reservation.status = "payment_pending";
+    reservation.paymentStatus = "pending";
     await reservation.save();
 
     sendSuccess(res, { checkoutUrl, sessionId });
@@ -438,6 +454,8 @@ export const checkSessionStatus = async (req, res, next) => {
           reservation.paymongoPaymentId = paymentReference;
           if (canAutoReserve) {
             reservation.status = "reserved";
+            reservation.reservedAt = new Date();
+            reservation.approvedDate = reservation.approvedDate || new Date();
           }
           await reservation.save();
           paidReservationSnapshot = {

@@ -44,6 +44,27 @@ const ACTION_MSGS = {
  confirmText: "Reject Request",
  variant: "info",
  },
+ approveForPayment: {
+ title: "Approve for Payment",
+ message:
+ "This confirms the tenant's application and documents are approved. Payment will be unlocked for the applicant.",
+ confirmText: "Approve for Payment",
+ variant: "info",
+ },
+ requestRevision: {
+ title: "Request Revision",
+ message:
+ "This keeps payment locked and asks the applicant to correct their application or documents.",
+ confirmText: "Request Revision",
+ variant: "info",
+ },
+ rejectApplication: {
+ title: "Reject Application",
+ message:
+ "This rejects the application and keeps payment locked.",
+ confirmText: "Reject Application",
+ variant: "danger",
+ },
 };
 
 const fmt = (value) =>
@@ -123,17 +144,42 @@ const getInitials = (name) => {
 const STAGE_GUIDANCE = {
  pending: {
  Icon: Calendar,
- message: "Waiting for the tenant to schedule a site visit.",
+ message: "Waiting for the tenant to select a viewing or move-in preference.",
+ },
+ viewing_preference_selected: {
+ Icon: Eye,
+ message:
+ "Viewing / move-in preference recorded. Waiting for the tenant to submit the application and required documents.",
  },
  visit_pending: {
  Icon: Eye,
  message:
- "Tenant has scheduled a visit. Approve or reject it in the Visit Schedules tab.",
+ "Legacy visit schedule pending approval. Visit approval no longer unlocks payment.",
  },
  visit_approved: {
  Icon: ClipboardList,
  message:
- "Visit approved. Waiting for the tenant to complete their application and pay the reservation fee.",
+ "Legacy visit approved. Waiting for the tenant to complete the application.",
+ },
+ pending_application_review: {
+ Icon: ClipboardList,
+ message:
+ "Application and documents are under review. Payment remains locked until admin approval.",
+ },
+ needs_revision: {
+ Icon: ClipboardList,
+ message:
+ "Application needs corrections. Payment stays locked until the tenant resubmits and admin approves it.",
+ },
+ approved_for_payment: {
+ Icon: CreditCard,
+ message:
+ "Application approved. The applicant can now proceed to reservation payment.",
+ },
+ rejected: {
+ Icon: ClipboardList,
+ message:
+ "Application rejected. Payment stays locked unless the reservation is reopened.",
  },
  payment_pending: {
  Icon: CreditCard,
@@ -187,10 +233,36 @@ export default function ReservationDetailsModal({
  const guestName = reservation.customer ?? "Unknown";
  const guestInitials = getInitials(guestName);
  const stageGuide = STAGE_GUIDANCE[status];
+ const viewingPreferenceLabel =
+ reservation.viewingPreference === "remote_2d_viewing"
+ ? "2D Remote Viewing"
+ : reservation.viewingPreference === "urgent_move_in_review"
+ ? "Urgent Move-in Review"
+ : reservation.viewingPreference === "physical_visit" ||
+   reservation.viewingType === "inperson" ||
+   reservation.visitDate
+ ? "Schedule Physical Visit"
+ : "\u2014";
+ const roomImages = Array.isArray(reservation.roomId?.images)
+ ? reservation.roomId.images.filter(Boolean)
+ : [];
  const bookingDetails = [
  ["Room", reservation.room ?? "\u2014"],
  ["Room type", reservation.roomType ?? "\u2014"],
  ["Branch", reservation.branch ?? "\u2014"],
+ ["Viewing Preference", viewingPreferenceLabel],
+ [
+ "Application Review",
+ reservation.status === "pending_application_review"
+ ? "Pending Application Review"
+ : reservation.status === "needs_revision"
+ ? "Needs Revision"
+ : reservation.status === "approved_for_payment"
+ ? "Approved for Payment"
+ : reservation.status === "rejected"
+ ? "Rejected"
+ : "\u2014",
+ ],
  ["Move-in", fmtDate(moveInDate)],
  ["Contact", reservation.phone ?? reservation.mobileNumber ?? "\u2014"],
  [
@@ -349,6 +421,56 @@ export default function ReservationDetailsModal({
  </div>
  ))}
  </div>
+ </div>
+
+ <div className="rdm-section rdm-surface-card">
+ <h4 className="rdm-section-title">Viewing / Move-in Preference</h4>
+ <div className="rdm-info-grid">
+ <div className="rdm-info-item">
+ <span className="rdm-info-label">Selected Option</span>
+ <span className="rdm-info-value">{viewingPreferenceLabel}</span>
+ </div>
+ <div className="rdm-info-item">
+ <span className="rdm-info-label">Preferred Visit Date</span>
+ <span className="rdm-info-value">{fmtDate(reservation.visitDate)}</span>
+ </div>
+ <div className="rdm-info-item">
+ <span className="rdm-info-label">Preferred Visit Time</span>
+ <span className="rdm-info-value">{fmt(reservation.visitTime)}</span>
+ </div>
+ <div className="rdm-info-item">
+ <span className="rdm-info-label">Remote Viewing Acknowledgement</span>
+ <span className="rdm-info-value">
+ {reservation.remoteViewingAcknowledged ? "Yes" : "No"}
+ </span>
+ </div>
+ <div className="rdm-info-item">
+ <span className="rdm-info-label">Urgent Move-in Review</span>
+ <span className="rdm-info-value">
+ {reservation.isUrgentMoveIn ? "Requested" : "No"}
+ </span>
+ </div>
+ <div className="rdm-info-item">
+ <span className="rdm-info-label">Applicant Questions / Concerns</span>
+ <span className="rdm-info-value">
+ {fmt(reservation.remoteViewingQuestions || reservation.applicationReviewReason)}
+ </span>
+ </div>
+ </div>
+ {roomImages.length > 0 && (
+ <div className="rdm-doc-links" style={{ marginTop: 12 }}>
+ {roomImages.map((image, index) => (
+ <button
+ key={`${image}-${index}`}
+ type="button"
+ className="rdm-doc-view"
+ onClick={() => openImage(image, `Room photo ${index + 1}`)}
+ >
+ Room Photo {index + 1}
+ </button>
+ ))}
+ </div>
+ )}
  </div>
 
  <div className="rdm-section rdm-surface-card">
@@ -550,6 +672,74 @@ export default function ReservationDetailsModal({
  disabled={isSubmitting}
  >
  Reschedule move-in
+ </button>
+ )}
+
+ {allowedActions.includes("approve_for_payment") && (
+ <button
+ className="rdm-action rdm-action-dark"
+ onClick={() =>
+ doAction(
+ "approveForPayment",
+ () =>
+ reservationApi.update(reservation.id, {
+ status: "approved_for_payment",
+ applicationReviewReason: null,
+ }),
+ "Application approved for payment",
+ )
+ }
+ disabled={isSubmitting}
+ >
+ Approve for Payment
+ </button>
+ )}
+
+ {allowedActions.includes("needs_revision") && (
+ <button
+ className="rdm-action rdm-action-dark"
+ onClick={() => {
+ if (!adminNotes.trim()) {
+ showNotification("Add a reason in Admin Notes before requesting revision.", "warning");
+ return;
+ }
+ doAction(
+ "requestRevision",
+ () =>
+ reservationApi.update(reservation.id, {
+ status: "needs_revision",
+ applicationReviewReason: adminNotes.trim(),
+ }),
+ "Revision request sent to applicant",
+ );
+ }}
+ disabled={isSubmitting}
+ >
+ Request Revision
+ </button>
+ )}
+
+ {allowedActions.includes("rejected") && (
+ <button
+ className="rdm-action rdm-action-dark rdm-action-dark-cancel"
+ onClick={() => {
+ if (!adminNotes.trim()) {
+ showNotification("Add a reason in Admin Notes before rejecting.", "warning");
+ return;
+ }
+ doAction(
+ "rejectApplication",
+ () =>
+ reservationApi.update(reservation.id, {
+ status: "rejected",
+ applicationReviewReason: adminNotes.trim(),
+ }),
+ "Application rejected",
+ );
+ }}
+ disabled={isSubmitting}
+ >
+ Reject
  </button>
  )}
 

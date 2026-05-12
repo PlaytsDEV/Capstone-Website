@@ -2,7 +2,6 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { showNotification } from "../../../shared/utils/notification";
-import { formatPaymentMethod } from "../../../shared/utils/formatPaymentMethod";
 import {
  Home,
  Calendar,
@@ -14,7 +13,65 @@ import {
  AlertCircle,
  MapPin,
 } from "lucide-react";
-import { useCurrentUser } from "../../../shared/hooks/queries/useUsers";
+import {
+ canReservationAccessPayment,
+ hasReservationStatus,
+} from "../../../shared/utils/lifecycleNaming";
+
+const getReservationStatus = (reservation) =>
+ reservation?.reservationStatus || reservation?.status || "pending";
+
+const getViewingPreferenceLabel = (reservation) => {
+ const preference =
+ reservation?.viewingPreference ||
+ (reservation?.viewingType === "virtual"
+ ? "remote_2d_viewing"
+ : reservation?.viewingType === "inperson"
+ ? "physical_visit"
+ : reservation?.isUrgentMoveIn
+ ? "urgent_move_in_review"
+ : null);
+
+ switch (preference) {
+ case "physical_visit":
+  return "Physical Visit";
+ case "remote_2d_viewing":
+  return "2D Remote Viewing";
+ case "urgent_move_in_review":
+  return "Urgent Move-in Review";
+ default:
+  return "Viewing Preference";
+ }
+};
+
+const hasViewingPreference = (reservation) =>
+ Boolean(
+ reservation?.viewingPreference ||
+  reservation?.viewingType ||
+  reservation?.visitDate ||
+  reservation?.visitTime ||
+  reservation?.remoteViewingAcknowledged ||
+  reservation?.isUrgentMoveIn,
+ );
+
+const hasSubmittedApplication = (reservation) =>
+ Boolean(
+ reservation?.applicationSubmittedAt ||
+  (reservation?.agreedToCertification &&
+   reservation?.firstName &&
+   reservation?.lastName) ||
+  hasReservationStatus(
+   getReservationStatus(reservation),
+   "pending_application_review",
+   "needs_revision",
+   "approved_for_payment",
+   "payment_pending",
+   "reserved",
+   "moveIn",
+   "moveOut",
+   "rejected",
+  ),
+ );
 
 /**
  * ─── RESERVATION DASHBOARD ──────────────────────────────────────────────────
@@ -39,17 +96,17 @@ const STEPS = [
  category: "Getting Started",
  },
  {
- key: "visit_approved",
- label: "Visit & Policies",
- desc: "Schedule a visit and review policies",
+ key: "viewing_preference",
+ label: "Viewing Preference",
+ desc: "Choose a physical visit, 2D remote viewing, or urgent review",
  icon: Calendar,
  stage: 2,
  category: "Getting Started",
  },
  {
- key: "application_submitted",
- label: "Tenant Application",
- desc: "Submit personal details and documents",
+ key: "application_review",
+ label: "Application Review",
+ desc: "Submit your application and documents for admin review",
  icon: FileText,
  stage: 3,
  category: "Verification",
@@ -57,7 +114,7 @@ const STEPS = [
  {
  key: "payment_submitted",
  label: "Payment",
- desc: "Pay reservation fee online",
+ desc: "Available after your application is approved",
  icon: CreditCard,
  stage: 4,
  category: "Finalization",
@@ -76,10 +133,24 @@ const STEPS = [
 
 function resolveCurrentStage(reservation) {
  if (!reservation) return 0;
- const status = reservation.reservationStatus || reservation.status;
+ const status = getReservationStatus(reservation);
 
- if (status === "reserved") return 5;
+ if (hasReservationStatus(status, "reserved", "moveIn", "moveOut")) return 5;
  if (reservation.paymentStatus === "paid") return 5;
+ if (canReservationAccessPayment(status)) return 4;
+ if (hasReservationStatus(status, "payment_pending")) return 4;
+ if (hasSubmittedApplication(reservation)) return 3;
+ if (
+  hasViewingPreference(reservation) ||
+  hasReservationStatus(
+   status,
+   "viewing_preference_selected",
+   "visit_pending",
+   "visit_approved",
+  )
+ ) {
+  return 3;
+ }
 
  // application submitted
  if (
@@ -103,17 +174,30 @@ function resolveCurrentStage(reservation) {
 }
 
 function getStepStatus(stepStage, currentStage, reservation) {
+ const status = getReservationStatus(reservation);
  if (stepStage < currentStage) return "complete";
  if (stepStage === currentStage) {
  // Step 5 is the final step — if reservation is confirmed, mark as complete (green)
  if (stepStage === 5 && reservation) {
- const status = reservation.reservationStatus || reservation.status;
- if (status === "reserved" || reservation.paymentStatus === "paid") {
+ if (
+ status === "reserved" ||
+ hasReservationStatus(status, "moveIn", "moveOut") ||
+ reservation.paymentStatus === "paid"
+ ) {
  return "complete";
  }
  }
+ if (stepStage === 3 && hasReservationStatus(status, "pending_application_review")) {
+ return "waiting";
+ }
+ if (stepStage === 3 && hasReservationStatus(status, "needs_revision", "rejected")) {
+ return "rejected";
+ }
+ if (stepStage === 4 && hasReservationStatus(status, "payment_pending")) {
+ return "waiting";
+ }
  // Show "rejected" for step 2 when admin has rejected the visit schedule
- if (stepStage === 2 && reservation?.scheduleRejected) {
+ if (stepStage === 2 && reservation?.scheduleRejected && !hasSubmittedApplication(reservation)) {
  return "rejected";
  }
  // Show "waiting" for step 2 only (visit pending admin move-in confirmation)
@@ -142,14 +226,72 @@ function getNextAction(reservation, currentStage) {
  };
  }
 
- const status = reservation.reservationStatus || reservation.status;
- if (status === "reserved") {
+ const status = getReservationStatus(reservation);
+ if (hasReservationStatus(status, "reserved", "moveIn", "moveOut")) {
  return {
  title: "Reservation Secured",
  description: "Your reservation is secured. You're all set for move-in!",
  buttonLabel: null,
  route: null,
  isWaiting: false,
+ };
+ }
+
+ if (hasReservationStatus(status, "rejected")) {
+ return {
+ title: "Application Rejected",
+ description:
+ reservation.applicationReviewReason ||
+ "Your application was not approved. Payment remains locked.",
+ buttonLabel: null,
+ route: null,
+ isWaiting: false,
+ isRejected: true,
+ };
+ }
+
+ if (hasReservationStatus(status, "needs_revision")) {
+ return {
+ title: "Application Needs Revision",
+ description:
+ reservation.applicationReviewReason ||
+ "Please update your application or documents so admin can review them again.",
+ buttonLabel: "Update Application ->",
+ route: "/applicant/reservation?step=3",
+ isWaiting: false,
+ isRejected: true,
+ };
+ }
+
+ if (hasReservationStatus(status, "pending_application_review")) {
+ return {
+ title: "Application Under Review",
+ description:
+ "Payment will be available once your application and documents are approved.",
+ buttonLabel: null,
+ route: null,
+ isWaiting: true,
+ };
+ }
+
+ if (canReservationAccessPayment(status)) {
+ return {
+ title: "Pay Reservation Fee",
+ description: `Pay PHP ${reservationFeeAmount.toLocaleString("en-PH")} online to secure your reservation.`,
+ buttonLabel: "Pay Now ->",
+ route: "/applicant/reservation?step=4",
+ isWaiting: false,
+ };
+ }
+
+ if (hasReservationStatus(status, "payment_pending")) {
+ return {
+ title: "Payment In Progress",
+ description:
+ "Your checkout was started. We'll confirm the reservation once payment is completed.",
+ buttonLabel: "Review Payment ->",
+ route: "/applicant/reservation?step=4",
+ isWaiting: true,
  };
  }
 
@@ -169,8 +311,10 @@ function getNextAction(reservation, currentStage) {
  const rejected = reservation.scheduleRejected;
  if (rejected) {
  return {
- title: "Visit Rejected",
- description: reservation.scheduleRejectionReason || "Your visit schedule was rejected. Please reschedule.",
+ title: "Physical Visit Needs Update",
+ description:
+ reservation.scheduleRejectionReason ||
+ "Please reschedule your physical visit or choose another viewing preference.",
  buttonLabel: "Reschedule Visit →",
  route: `/applicant/reservation?step=2`,
  isWaiting: false,
@@ -185,17 +329,18 @@ function getNextAction(reservation, currentStage) {
  })
  : "";
  return {
- title: "Visit Scheduled",
- description: `Your visit${fDate ? ` on ${fDate}` : ""} is booked. The admin will verify your attendance on-site.`,
+ title: "Physical Visit Scheduled",
+ description: `Your physical visit${fDate ? ` on ${fDate}` : ""} was saved for viewing coordination only.`,
  buttonLabel: null,
  route: null,
  isWaiting: true,
  };
  }
  return {
- title: "Schedule Your Visit",
- description: "Pick a date and time to visit the dormitory",
- buttonLabel: "Book Visit →",
+ title: "Choose Your Viewing Preference",
+ description:
+ "Select a physical visit, 2D remote viewing, or urgent move-in review before submitting your application.",
+ buttonLabel: "Continue ->",
  route: `/applicant/reservation?step=2`,
  isWaiting: false,
  };
@@ -213,7 +358,7 @@ function getNextAction(reservation, currentStage) {
  title: "Pay Reservation Fee",
  description:
  `Pay PHP ${reservationFeeAmount.toLocaleString("en-PH")} online via GCash, Maya, or Card to secure your reservation`,
- buttonLabel: "Pay Now →",
+ buttonLabel: "Pay Now ->",
  route: `/applicant/reservation?step=4`,
  isWaiting: false,
  };
@@ -247,6 +392,8 @@ function getStepDesc(step, status, reservation) {
 
  const room = reservation.roomId || {};
  const roomName = room.name || "Room";
+ const reservationStatus = getReservationStatus(reservation);
+ const viewingPreferenceLabel = getViewingPreferenceLabel(reservation);
 
  switch (step.stage) {
  case 1:
@@ -260,23 +407,46 @@ function getStepDesc(step, status, reservation) {
  return step.desc;
  case 2:
  if (status === "rejected") {
- return "Schedule rejected";
+ return "Physical visit needs rescheduling";
  }
  if (status === "waiting") {
  return reservation.visitDate
- ? `Visit on ${formatDate(reservation.visitDate)}`
- : "Visit scheduled";
+ ? `Physical visit on ${formatDate(reservation.visitDate)}`
+ : "Physical visit scheduled";
  }
  if (status === "complete") {
- return "Visit approved";
+ return viewingPreferenceLabel;
  }
  return step.desc;
  case 3:
+ if (status === "waiting") {
+ return "Pending admin review";
+ }
+ if (status === "rejected") {
+ return hasReservationStatus(reservationStatus, "rejected")
+ ? "Application rejected"
+ : "Revision requested";
+ }
  if (status === "complete") {
- return "Application submitted";
+ return hasReservationStatus(
+ reservationStatus,
+ "approved_for_payment",
+ "payment_pending",
+ "reserved",
+ "moveIn",
+ "moveOut",
+ )
+ ? "Approved for payment"
+ : "Application submitted";
  }
  return step.desc;
  case 4:
+ if (status === "waiting") {
+ return "Payment processing";
+ }
+ if (status === "current") {
+ return "Ready for payment";
+ }
  if (status === "complete") {
  return "Payment verified";
  }
@@ -296,7 +466,6 @@ function getStepDesc(step, status, reservation) {
 export default function ReservationDashboard({ reservation, visits = [] }) {
  const navigate = useNavigate();
  const queryClient = useQueryClient();
- const { data: profile } = useCurrentUser();
  const currentStage = resolveCurrentStage(reservation);
  const totalSegments = Math.max(STEPS.length - 1, 1);
  const progressSegments = Math.max(0, Math.min(totalSegments, currentStage - 1));
@@ -350,7 +519,7 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
  const branch = room.branch || "Lilycrest";
  const code = reservation.reservationCode || "—";
  const isConfirmed =
- (reservation.reservationStatus || reservation.status) === "reserved" ||
+ hasReservationStatus(getReservationStatus(reservation), "reserved", "moveIn", "moveOut") ||
  reservation.paymentStatus === "paid";
 
  return (
@@ -587,7 +756,8 @@ export default function ReservationDashboard({ reservation, visits = [] }) {
   (reservation.reservationStatus || reservation.status) !== "moveIn" && (
  <div style={styles.footer}>
  <div style={styles.footerLeft}>
- {!isConfirmed && currentStage <= 2 &&
+{!isConfirmed && currentStage <= 2 &&
+ !reservation.viewingPreference &&
  !reservation.viewingType &&
  !reservation.visitApproved &&
  !reservation.scheduleApproved && (

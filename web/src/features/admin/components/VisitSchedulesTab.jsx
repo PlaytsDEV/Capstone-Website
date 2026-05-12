@@ -164,7 +164,6 @@ function VisitSchedulesTab() {
           await reservationApi.update(id, {
             scheduleApproved: true,
             visitApproved: true,
-            status: "visit_approved",
           });
         } finally {
           setActionLoading(null);

@@ -84,8 +84,6 @@ export default function VisitDetailsModal({ schedule, onClose, onUpdate }) {
  scheduleRejected: true,
  scheduleRejectionReason: rejectReason.trim(),
  scheduleRejectedAt: new Date().toISOString(),
- viewingType: null,
- agreedToPrivacy: false,
  scheduleApproved: false,
  });
  showNotification("Visit schedule rejected successfully", "success");
@@ -189,12 +187,21 @@ export default function VisitDetailsModal({ schedule, onClose, onUpdate }) {
  borderRadius: 20,
  fontSize: "12px",
  fontWeight: 600,
- background: schedule.viewingType === "inperson" ? "#E0EBF5" : "#F3E8FF",
+ background:
+ schedule.viewingType === "inperson" || schedule.viewingType === "physical_visit"
+ ? "#E0EBF5"
+ : schedule.viewingType === "remote_2d" || schedule.viewingType === "remote_2d_viewing"
+ ? "#FFF7ED"
+ : "#F3E8FF",
  color: "#1a1a1a",
  marginTop: 2,
  }}
  >
- {schedule.viewingType === "inperson" ? "In-Person" : "Virtual"}
+ {schedule.viewingType === "inperson" || schedule.viewingType === "physical_visit"
+ ? "Physical Visit"
+ : schedule.viewingType === "remote_2d" || schedule.viewingType === "remote_2d_viewing"
+ ? "2D Remote Viewing"
+ : "Urgent Move-in Review"}
  </span>
  </span>
  </div>

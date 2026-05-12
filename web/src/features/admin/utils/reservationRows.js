@@ -6,8 +6,12 @@ import {
 
 export const IN_PROGRESS_STATUSES = [
  "pending",
+ "viewing_preference_selected",
  "visit_pending",
  "visit_approved",
+ "pending_application_review",
+ "needs_revision",
+ "approved_for_payment",
  "payment_pending",
 ];
 
@@ -55,6 +59,7 @@ export function mapVisitScheduleRows(rawReservations = []) {
  rawReservations
  .filter(
  (reservation) =>
+ (reservation.visitDate && reservation.viewingPreference === "physical_visit") ||
  reservation.status === "visit_pending" ||
  (reservation.visitDate && reservation.visitApproved) ||
  reservation.scheduleRejected ||

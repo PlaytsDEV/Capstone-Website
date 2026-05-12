@@ -7,9 +7,11 @@
  *
  * WORKFLOW:
  * 1. User creates reservation (status: pending)
- * 2. User completes visit + details + payment (status: reserved)
- * 3. Admin verifies move-in (status: moveIn)
- * 4. Tenant moves out (status: moveOut)
+ * 2. User selects a viewing preference and submits application documents
+ * 3. Admin reviews the application and approves it for payment
+ * 4. User completes deposit payment (status: reserved)
+ * 5. Admin verifies move-in (status: moveIn)
+ * 6. Tenant moves out (status: moveOut)
  *
  * CANCELLATION:
  * - Reservations can be cancelled before move-in
@@ -112,12 +114,31 @@ const reservationSchema = new mongoose.Schema(
     // =========================================================================
     // STAGE 2: VISIT
     // =========================================================================
+    viewingPreference: {
+      type: String,
+      enum: ["physical_visit", "remote_2d_viewing", "urgent_move_in_review", null],
+      default: null,
+    },
     viewingType: {
       type: String,
       default: "inperson",
     },
     visitDate: Date,
     visitTime: String,
+    remoteViewingAcknowledged: {
+      type: Boolean,
+      default: false,
+    },
+    remoteViewingQuestions: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 1500,
+    },
+    isUrgentMoveIn: {
+      type: Boolean,
+      default: false,
+    },
     // When the tenant submitted the visit schedule request (≠ the visit appointment date)
     visitScheduledAt: {
       type: Date,
@@ -271,6 +292,33 @@ const reservationSchema = new mongoose.Schema(
     },
     // When the tenant submitted the application form (personal details step)
     applicationSubmittedAt: {
+      type: Date,
+      default: null,
+    },
+    applicationReviewReason: {
+      type: String,
+      default: null,
+      trim: true,
+      maxlength: 1500,
+    },
+    applicationReviewedAt: {
+      type: Date,
+      default: null,
+    },
+    applicationReviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    approvedForPaymentAt: {
+      type: Date,
+      default: null,
+    },
+    approvedDate: {
+      type: Date,
+      default: null,
+    },
+    reservedAt: {
       type: Date,
       default: null,
     },
@@ -627,8 +675,12 @@ reservationSchema.index(
       status: {
         $in: [
           "pending",
+          "viewing_preference_selected",
           "visit_pending",
           "visit_approved",
+          "pending_application_review",
+          "needs_revision",
+          "approved_for_payment",
           "payment_pending",
           "reserved",
           "moveIn",

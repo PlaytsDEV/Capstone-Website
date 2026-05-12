@@ -388,16 +388,16 @@ const generateVisitApprovedEmailHtml = (tenantName, branchName) => `
     <div style="padding:32px 24px;background:#fff;">
       <p style="font-size:16px;margin:0 0 16px;">Hello <strong>${tenantName}</strong>,</p>
       <p style="font-size:14px;line-height:1.6;margin:0 0 16px;">
-        Great news! Your visit to <strong>${branchName}</strong> has been <strong>approved</strong> by our admin team.
+        Your physical visit schedule for <strong>${branchName}</strong> has been confirmed by our admin team.
       </p>
       <div style="background:#ECFDF5;border-left:4px solid #10B981;padding:16px 20px;border-radius:8px;margin:0 0 16px;">
         <p style="margin:0;font-size:14px;color:#065F46;">
-          <strong>✓ Visit Approved</strong><br/>
-          You can now proceed to the <strong>Tenant Application</strong> step in your reservation flow.
+          <strong>✓ Visit Schedule Confirmed</strong><br/>
+          Your visit schedule is confirmed for viewing coordination only.
         </p>
       </div>
       <p style="font-size:14px;line-height:1.6;margin:0 0 24px;">
-        Log in to your account and continue your application from your profile dashboard.
+        Please continue your tenant application and document upload in the portal. Payment will only become available after your application and documents are approved.
       </p>
     </div>
     <div style="padding:16px 24px;background:#F9FAFB;border-top:1px solid #E5E7EB;text-align:center;border-radius:0 0 12px 12px;">
@@ -418,9 +418,9 @@ export const sendVisitApprovedEmail = async ({
   const mailOptions = {
     from: { name: "Lilycrest Dormitory", address: process.env.EMAIL_USER },
     to,
-    subject: "Visit Approved — Continue Your Application | Lilycrest Dormitory",
+    subject: "Visit Schedule Confirmed — Continue Your Application | Lilycrest Dormitory",
     html: generateVisitApprovedEmailHtml(tenantName, branchName),
-    text: `Hello ${tenantName}, your visit to ${branchName} has been approved. You can now proceed to the Tenant Application step. — Lilycrest Dormitory`,
+    text: `Hello ${tenantName}, your physical visit schedule for ${branchName} has been confirmed for viewing coordination only. Please continue your tenant application and document upload. Payment will only be available after your application and documents are approved. — Lilycrest Dormitory`,
   };
   try {
     const info = await transporter.sendMail(mailOptions);

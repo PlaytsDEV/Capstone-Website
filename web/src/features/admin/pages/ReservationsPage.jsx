@@ -81,8 +81,9 @@ function formatShortDate(value) {
 
 const SUMMARY_FILTERS = [
   "all",
-  "visit_pending",
-  "visit_approved",
+  "pending_application_review",
+  "needs_revision",
+  "approved_for_payment",
   "reserved",
   "cancelled",
   "moveIn",
@@ -131,11 +132,14 @@ function ReservationsPage() {
   const counts = useMemo(
     () => ({
       total: reservations.length,
-      visitPending: reservations.filter((reservation) =>
-        reservation.status === "visit_pending",
+      pendingApplicationReview: reservations.filter((reservation) =>
+        reservation.status === "pending_application_review",
       ).length,
-      visitApproved: reservations.filter((reservation) =>
-        reservation.status === "visit_approved",
+      needsRevision: reservations.filter((reservation) =>
+        reservation.status === "needs_revision",
+      ).length,
+      approvedForPayment: reservations.filter((reservation) =>
+        reservation.status === "approved_for_payment",
       ).length,
       reserved: reservations.filter(
         (reservation) => reservation.status === "reserved",
@@ -237,14 +241,20 @@ function ReservationsPage() {
     () => [
       { label: "All", value: counts.total, icon: Calendar, color: "blue" },
       {
-        label: "Visit Pending",
-        value: counts.visitPending,
+        label: "Pending Review",
+        value: counts.pendingApplicationReview,
         icon: Clock,
         color: "orange",
       },
       {
-        label: "Visit Approved",
-        value: counts.visitApproved,
+        label: "Needs Revision",
+        value: counts.needsRevision,
+        icon: Clock,
+        color: "orange",
+      },
+      {
+        label: "Approved for Payment",
+        value: counts.approvedForPayment,
         icon: CheckCircle,
         color: "neutral",
       },
@@ -297,8 +307,14 @@ function ReservationsPage() {
           { value: "all", label: "All Status" },
           { value: "in_progress", label: "In Progress" },
           { value: "overdue", label: "Overdue" },
+          { value: "viewing_preference_selected", label: "Preference Selected" },
+          { value: "pending_application_review", label: "Pending Review" },
+          { value: "needs_revision", label: "Needs Revision" },
+          { value: "approved_for_payment", label: "Approved for Payment" },
+          { value: "payment_pending", label: "Payment Pending" },
           { value: "reserved", label: "Reserved" },
           { value: "moveIn", label: "Move In" },
+          { value: "rejected", label: "Rejected" },
           { value: "cancelled", label: "Cancelled" },
         ],
         value: statusFilter,

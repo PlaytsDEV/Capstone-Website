@@ -1,702 +1,635 @@
-import React, { useState, useMemo, useCallback, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { Calendar, Clock, FileText, X, CheckCircle, AlertTriangle } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  Calendar,
+  Camera,
+  CheckCircle,
+  Clock,
+  Home,
+  Image as ImageIcon,
+  X,
+} from "lucide-react";
 import { showNotification } from "../../../../shared/utils/notification";
-import { PoliciesTermsModal } from "../../modals/PoliciesAndConsent";
 import { useVisitAvailability } from "../../../../shared/hooks/queries/useReservations";
 import { useFirebaseAuth } from "../../../../shared/hooks/FirebaseAuthContext";
 
-/* ── Available time slots ─────────────────────────────────────────────── */
 const TIME_SLOTS = [
- { label: "08:00 AM", available: true, capacity: 5, remaining: 5 },
- { label: "09:00 AM", available: true, capacity: 5, remaining: 5 },
- { label: "10:00 AM", available: true, capacity: 5, remaining: 5 },
- { label: "11:00 AM", available: true, capacity: 5, remaining: 5 },
- { label: "01:00 PM", available: true, capacity: 5, remaining: 5 },
- { label: "02:00 PM", available: true, capacity: 5, remaining: 5 },
- { label: "03:00 PM", available: true, capacity: 5, remaining: 5 },
- { label: "04:00 PM", available: true, capacity: 5, remaining: 5 },
+  { label: "08:00 AM", available: true, capacity: 5, remaining: 5 },
+  { label: "09:00 AM", available: true, capacity: 5, remaining: 5 },
+  { label: "10:00 AM", available: true, capacity: 5, remaining: 5 },
+  { label: "11:00 AM", available: true, capacity: 5, remaining: 5 },
+  { label: "01:00 PM", available: true, capacity: 5, remaining: 5 },
+  { label: "02:00 PM", available: true, capacity: 5, remaining: 5 },
+  { label: "03:00 PM", available: true, capacity: 5, remaining: 5 },
+  { label: "04:00 PM", available: true, capacity: 5, remaining: 5 },
 ];
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-/* ── Helper: generate next N weekdays ───────────────────────────────── */
-function fmtDate(date) {
- return date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-}
+const VIEWING_OPTIONS = [
+  {
+    value: "physical_visit",
+    title: "Schedule Physical Visit",
+    description: "Choose a preferred date and time for in-person viewing coordination.",
+  },
+  {
+    value: "remote_2d_viewing",
+    title: "Request 2D Remote Viewing",
+    description: "Review available room photos and request photo-based viewing assistance.",
+  },
+  {
+    value: "urgent_move_in_review",
+    title: "Request Urgent Move-in Review",
+    description: "Mark your reservation for faster admin attention without bypassing document review.",
+  },
+];
 
-function fmtDateFull(dateStr) {
- if (!dateStr) return "N/A";
- const cleanDate = String(dateStr).split("T")[0];
- return new Date(cleanDate + "T12:00:00").toLocaleDateString("en-US", {
- weekday: "long", month: "long", day: "numeric", year: "numeric",
- });
-}
+const REMOTE_ACKNOWLEDGEMENT =
+  "I reviewed the available room photos and understand that this is a photo-based viewing option, not a 3D or 360 tour.";
 
 function toISODate(date) {
- const year = date.getFullYear();
- const month = String(date.getMonth() + 1).padStart(2, "0");
- const day = String(date.getDate()).padStart(2, "0");
- return `${year}-${month}-${day}`;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function addDays(date, days) {
- const next = new Date(date);
- next.setDate(next.getDate() + days);
- return next;
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
 }
 
 function getTomorrowISO() {
- return toISODate(addDays(new Date(), 1));
+  return toISODate(addDays(new Date(), 1));
 }
 
-function getFallbackAvailabilityDates(count = 14) {
- return Array.from({ length: count }, (_, index) => {
- const date = addDays(new Date(), index + 1);
- const isWeekend = [0, 6].includes(date.getDay());
- return {
- date: toISODate(date),
- available: !isWeekend,
- disabledReason: isWeekend ? "Visits are closed on that date." : "",
- slots: TIME_SLOTS.map((slot) => ({
- ...slot,
- available: !isWeekend,
- disabledReason: isWeekend ? "Visits are closed on that date." : "",
- disabledCode: isWeekend ? "VISIT_DATE_CLOSED" : "",
- })),
- };
- });
+function fmtDateFull(dateStr) {
+  if (!dateStr) return "Not scheduled";
+  const cleanDate = String(dateStr).split("T")[0];
+  return new Date(`${cleanDate}T12:00:00`).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function normalizeBranchKey(value) {
- const normalized = String(value || "").trim().toLowerCase().replace(/\s+/g, "-");
- if (normalized === "gil-puyat" || normalized === "guadalupe") return normalized;
- return "";
+  const normalized = String(value || "").trim().toLowerCase().replace(/\s+/g, "-");
+  if (normalized === "gil-puyat" || normalized === "guadalupe") return normalized;
+  return "";
+}
+
+function getFallbackAvailabilityDates(count = 14) {
+  return Array.from({ length: count }, (_, index) => {
+    const date = addDays(new Date(), index + 1);
+    const isWeekend = [0, 6].includes(date.getDay());
+    return {
+      date: toISODate(date),
+      available: !isWeekend,
+      disabledReason: isWeekend ? "Visits are closed on that date." : "",
+      slots: TIME_SLOTS.map((slot) => ({
+        ...slot,
+        available: !isWeekend,
+        disabledReason: isWeekend ? "Visits are closed on that date." : "",
+      })),
+    };
+  });
 }
 
 function buildCalendarCells(dateRows) {
- if (!dateRows?.length) return [];
- const firstDate = new Date(dateRows[0].date + "T00:00:00");
- const leadingDays = firstDate.getDay();
- return [
- ...Array.from({ length: leadingDays }, (_, index) => ({
- type: "empty",
- key: `empty-start-${index}`,
- })),
- ...dateRows.map((dateRow) => ({
- type: "date",
- key: dateRow.date,
- dateRow,
- })),
- ];
+  if (!dateRows?.length) return [];
+  const firstDate = new Date(`${dateRows[0].date}T00:00:00`);
+  const leadingDays = firstDate.getDay();
+  return [
+    ...Array.from({ length: leadingDays }, (_, index) => ({
+      type: "empty",
+      key: `empty-start-${index}`,
+    })),
+    ...dateRows.map((dateRow) => ({
+      type: "date",
+      key: dateRow.date,
+      dateRow,
+    })),
+  ];
 }
-
-const VISIT_ERROR_MESSAGES = {
- VISIT_DATE_SAME_DAY: "Visits must be scheduled at least one day in advance.",
- VISIT_DATE_IN_PAST: "That date has already passed.",
- VISIT_DATE_CLOSED: "Visits are closed on that date.",
- VISIT_CAPACITY_REACHED: "That time slot is full.",
- VISIT_SLOT_CONFLICT: "That room already has a visit at that time.",
- VISIT_SLOT_CLOSED: "This time is outside working hours.",
-};
 
 function formatRemainingSlots(slot) {
- const remaining = Number(slot?.remaining);
- if (!Number.isFinite(remaining)) return "";
- if (remaining <= 0) return "Full";
- return `${remaining} ${remaining === 1 ? "slot" : "slots"} left`;
+  const remaining = Number(slot?.remaining);
+  if (!Number.isFinite(remaining)) return "";
+  if (remaining <= 0) return "Full";
+  return `${remaining} ${remaining === 1 ? "slot" : "slots"} left`;
 }
 
-function getSlotStatusText(slot) {
- if (slot?.available) return formatRemainingSlots(slot);
- if (slot?.disabledCode === "VISIT_CAPACITY_REACHED" || Number(slot?.remaining) <= 0) return "Full";
- return slot?.disabledReason || "";
-}
-
-/**
- * Step 2 — Visit Scheduling & Policies
- */
 const ReservationVisitStep = ({
- targetMoveInDate, viewingType, setViewingType,
- isOutOfTown, setIsOutOfTown, currentLocation, setCurrentLocation,
- visitApproved, onPrev, onNext,
- visitorName, setVisitorName, visitorPhone, setVisitorPhone, visitorEmail, setVisitorEmail,
- visitDate, setVisitDate, visitTime, setVisitTime,
- reservationData, reservationCode, visitCode,
- onSaveVisit, onAfterClose, readOnly, agreedToPrivacy,
- scheduleRejected, scheduleRejectionReason,
+  viewingType,
+  setViewingType,
+  remoteViewingAcknowledged,
+  setRemoteViewingAcknowledged,
+  remoteViewingQuestions,
+  setRemoteViewingQuestions,
+  isUrgentMoveIn,
+  setIsUrgentMoveIn,
+  visitDate,
+  setVisitDate,
+  visitTime,
+  setVisitTime,
+  reservationData,
+  visitCode,
+  onPrev,
+  onSaveVisit,
+  onAfterClose,
+  readOnly,
+  scheduleRejected,
+  scheduleRejectionReason,
 }) => {
- const navigate = useNavigate();
- const { user: firebaseUser, loading: authLoading } = useFirebaseAuth();
- const [policiesAccepted, setPoliciesAccepted] = useState(agreedToPrivacy || readOnly || false);
- const [showReceiptModal, setShowReceiptModal] = useState(false);
- const [showConfirmModal, setShowConfirmModal] = useState(false);
- const [showPoliciesModal, setShowPoliciesModal] = useState(false);
- const [isSubmitted, setIsSubmitted] = useState(false);
- const [resolvedVisitCode, setResolvedVisitCode] = useState(visitCode || null);
- const [isSaving, setIsSaving] = useState(false);
- const [hoveredDate, setHoveredDate] = useState(null);
- const [hoveredTime, setHoveredTime] = useState(null);
- const scheduleLocked = (readOnly || isSubmitted) && !scheduleRejected;
- const canEditSchedule = !scheduleLocked;
+  const { user: firebaseUser, loading: authLoading } = useFirebaseAuth();
+  const [isSaving, setIsSaving] = useState(false);
+  const [previewImage, setPreviewImage] = useState(null);
 
- const branch = normalizeBranchKey(
- reservationData?.room?.branchKey ||
- reservationData?.room?.branch ||
- reservationData?.branch,
- );
- const roomId = reservationData?.room?._id || reservationData?.roomId || "";
- const reservationId = reservationData?._id || "";
- const canLoadAvailability = Boolean(branch) && canEditSchedule && !authLoading && Boolean(firebaseUser);
- const availabilityParams = useMemo(
- () => ({
- branch,
- from: getTomorrowISO(),
- days: 14,
- roomId,
- reservationId,
- }),
- [branch, roomId, reservationId],
- );
- const {
- data: availability,
- isError: availabilityError,
- isLoading: loadingAvailability,
- refetch: refetchAvailability,
- } = useVisitAvailability(
- availabilityParams,
- { enabled: canLoadAvailability },
- );
- const availabilityUnavailable = canLoadAvailability && availabilityError;
- const availableDates = useMemo(
- () => {
- if (availabilityError) return [];
- if (loadingAvailability) return [];
- if (availability?.dates?.length) return availability.dates;
- // Only show fallback dates when the query was never enabled (no branch/auth).
- // When the API loaded successfully but returned nothing, keep the list empty
- // so the UI shows a real "no availability" state instead of fake slots.
- if (!canLoadAvailability) return getFallbackAvailabilityDates(14);
- return [];
- },
- [availability, availabilityError, loadingAvailability, canLoadAvailability],
- );
- const calendarDateCells = useMemo(
- () => buildCalendarCells(availableDates),
- [availableDates],
- );
- const selectedDateAvailability = useMemo(
- () => availableDates.find((date) => date.date === visitDate) || null,
- [availableDates, visitDate],
- );
- const selectedTimeSlots = selectedDateAvailability?.slots?.length
- ? selectedDateAvailability.slots
- : [];
+  const selectedPreference = viewingType || "physical_visit";
+  const room = reservationData?.room || {};
+  const roomImages = Array.isArray(room.images)
+    ? room.images.filter((entry) => typeof entry === "string" && entry.trim())
+    : [];
+  const roomCapacity = Number(room.capacity || 0);
+  const currentOccupancy = Number(room.currentOccupancy || 0);
+  const availableSlots = Number.isFinite(roomCapacity)
+    ? Math.max(roomCapacity - currentOccupancy, 0)
+    : null;
+  const roomDetails = [
+    ["Branch", room.branch || "N/A"],
+    ["Floor", room.floor || "N/A"],
+    ["Room Number", room.roomNumber || room.name || "N/A"],
+    ["Room Type", room.type || "N/A"],
+    ["Capacity", room.capacity ? `${room.capacity} occupants` : "N/A"],
+    [
+      "Available Slots",
+      availableSlots == null ? "N/A" : String(availableSlots),
+    ],
+    [
+      "Monthly Rate",
+      room.price ? `₱${Number(room.price).toLocaleString()}` : "N/A",
+    ],
+    ["Notes / Reminders", room.description || "None provided"],
+  ];
 
- useEffect(() => {
- if (visitCode) setResolvedVisitCode(visitCode);
- }, [visitCode]);
+  const branch = normalizeBranchKey(room.branchKey || room.branch || reservationData?.branch);
+  const roomId = room._id || room.roomId || reservationData?.roomId || "";
+  const reservationId = reservationData?._id || "";
+  const shouldLoadAvailability =
+    selectedPreference === "physical_visit" &&
+    !readOnly &&
+    Boolean(branch) &&
+    !authLoading &&
+    Boolean(firebaseUser);
 
- const handleConfirmSubmit = async () => {
- setShowConfirmModal(false);
- setIsSaving(true);
- let saveSucceeded = false;
- let shouldOpenReceipt = false;
- try {
- const code = onSaveVisit ? await onSaveVisit() : null;
- saveSucceeded = true;
- const finalCode = code || visitCode || null;
- if (finalCode) {
- setResolvedVisitCode(finalCode);
- shouldOpenReceipt = true;
- } else {
- showNotification(
- "Your visit was saved, but the pass is still being prepared. Please reopen it from your dashboard in a moment.",
- "info",
- 4000,
- );
- }
- } catch (err) {
- console.error("Failed to save visit:", err);
- // Fallback message ensures we don't dump raw technical errors
- const errorCode = err?.response?.data?.code;
- const errorMessage =
- VISIT_ERROR_MESSAGES[errorCode] ||
- err?.response?.data?.error ||
- "We encountered an unexpected issue while scheduling your visit. Please try again.";
- showNotification(errorMessage, "error", 5000);
- } finally {
- setIsSaving(false);
- }
+  const availabilityParams = useMemo(
+    () => ({
+      branch,
+      from: getTomorrowISO(),
+      days: 14,
+      roomId,
+      reservationId,
+    }),
+    [branch, reservationId, roomId],
+  );
 
- if (saveSucceeded) {
- setIsSubmitted(true);
- }
+  const {
+    data: availability,
+    isError: availabilityError,
+    isLoading: loadingAvailability,
+    refetch: refetchAvailability,
+  } = useVisitAvailability(availabilityParams, { enabled: shouldLoadAvailability });
 
- if (shouldOpenReceipt) {
- setShowReceiptModal(true);
- }
- };
+  const availableDates = useMemo(() => {
+    if (availabilityError) return [];
+    if (loadingAvailability) return [];
+    if (availability?.dates?.length) return availability.dates;
+    if (!shouldLoadAvailability) return getFallbackAvailabilityDates(14);
+    return [];
+  }, [availability, availabilityError, loadingAvailability, shouldLoadAvailability]);
 
- const handleReturnToDashboard = () => {
- setShowReceiptModal(false);
- if (onAfterClose) onAfterClose();
- else navigate("/applicant/profile");
- };
+  const calendarDateCells = useMemo(
+    () => buildCalendarCells(availableDates),
+    [availableDates],
+  );
 
- const canSubmit = policiesAccepted && visitDate && visitTime && !isSubmitted && !availabilityError;
+  const selectedDateAvailability = useMemo(
+    () => availableDates.find((entry) => entry.date === visitDate) || null,
+    [availableDates, visitDate],
+  );
 
- const ctaLabel = useCallback(() => {
- if (availabilityError) return "Availability unavailable";
- if (!visitDate) return "Select a date to continue";
- if (!visitTime) return "Select a time to continue";
- if (!policiesAccepted) return "Accept policies to continue";
- return "Confirm Visit";
- }, [visitDate, visitTime, policiesAccepted, availabilityError]);
+  const timeSlots = selectedDateAvailability?.slots?.length
+    ? selectedDateAvailability.slots
+    : [];
 
- const handleSubmitWithValidation = () => {
- if (availabilityError) {
- showNotification("Cannot schedule a visit while availability data is unavailable. Please use the retry button above.", "error", 4000);
- document.getElementById("visit-date-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
- return;
- }
- if (!visitDate) {
- showNotification("Please select a visit date to continue.", "error", 3000);
- document.getElementById("visit-date-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
- return;
- }
- const dateAvailability = availableDates.find((date) => date.date === visitDate);
- if (dateAvailability && !dateAvailability.slots?.some((slot) => slot.available)) {
- showNotification(dateAvailability.disabledReason || "Visits are closed on that date.", "error", 3000);
- document.getElementById("visit-date-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
- return;
- }
- if (!visitTime) {
- showNotification("Please select a time slot for your visit.", "error", 3000);
- document.getElementById("visit-time-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
- return;
- }
- const slotAvailability = dateAvailability?.slots?.find((slot) => slot.label === visitTime);
- if (slotAvailability && !slotAvailability.available) {
- showNotification(slotAvailability.disabledReason || "That time slot is unavailable.", "error", 3000);
- document.getElementById("visit-time-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
- return;
- }
- if (!policiesAccepted) {
- showNotification("Please agree to the policies and terms to continue.", "error", 3000);
- document.getElementById("visit-policies-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
- return;
- }
- setShowConfirmModal(true);
- };
+  useEffect(() => {
+    if (selectedPreference !== "urgent_move_in_review" && isUrgentMoveIn) {
+      setIsUrgentMoveIn(false);
+    }
+    if (selectedPreference === "urgent_move_in_review" && !isUrgentMoveIn) {
+      setIsUrgentMoveIn(true);
+    }
+  }, [isUrgentMoveIn, selectedPreference, setIsUrgentMoveIn]);
 
- return (
- <div className="rf-visit-step">
- {/* Step Header */}
- <div className="main-header">
- <div className="main-header-badge"><span>Step 2 · Verification</span></div>
- <h2 className="main-header-title">Schedule Your Visit</h2>
- <p className="main-header-subtitle">
- Pick an available date and time to visit the dormitory. Review our
- policies before confirming your booking.
- </p>
- </div>
+  const handleContinue = async () => {
+    if (selectedPreference === "physical_visit") {
+      if (!visitDate) {
+        showNotification("Please select a preferred visit date.", "error", 3000);
+        return;
+      }
+      if (!visitTime) {
+        showNotification("Please select a preferred visit time slot.", "error", 3000);
+        return;
+      }
+      if (availabilityError) {
+        showNotification(
+          "Live visit availability is unavailable right now. Please retry before continuing.",
+          "error",
+          3500,
+        );
+        return;
+      }
+    }
 
- {/* Rejection Banner */}
- {scheduleRejected && (
- <div className="rf-rejection-banner">
- <AlertTriangle size={20} color="var(--rf-error-text)" style={{ flexShrink: 0, marginTop: 2 }} />
- <div>
- <div className="rf-rejection-banner__title">Your previous visit schedule was rejected</div>
- {scheduleRejectionReason && (
- <div className="rf-rejection-banner__reason">
- <strong>Reason:</strong> {scheduleRejectionReason}
- </div>
- )}
- <div className="rf-rejection-banner__hint">
- Please select a new date and time below to reschedule your visit.
- </div>
- </div>
- </div>
- )}
+    if (
+      selectedPreference === "remote_2d_viewing" &&
+      remoteViewingAcknowledged !== true
+    ) {
+      showNotification(
+        "Please acknowledge the photo-based 2D remote viewing notice before continuing.",
+        "error",
+        3500,
+      );
+      return;
+    }
 
- {/* Read-Only Banner */}
- {scheduleLocked && (
- <div className="rf-locked-banner">
- <div className="info-box-title">This section is locked</div>
- <div className="info-text">Your visit has been scheduled. This step can no longer be edited.</div>
- </div>
- )}
+    setIsSaving(true);
+    try {
+      await onSaveVisit?.();
+      await onAfterClose?.();
+    } catch (error) {
+      showNotification(
+        error?.response?.data?.error ||
+          "We couldn't save your viewing preference. Please try again.",
+        "error",
+        4000,
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
- {scheduleLocked ? (
- <div className="content-card">
- <div className="card-section-title">
- <CheckCircle size={15} style={{ marginRight: 6, flexShrink: 0 }} />
- Scheduled Visit
- </div>
- <div className="rf-receipt-rows">
- <div className="rf-receipt-row">
- <span className="rf-receipt-row__label">Date</span>
- <span className="rf-receipt-row__value">{fmtDateFull(visitDate)}</span>
- </div>
- <div className="rf-receipt-row">
- <span className="rf-receipt-row__label">Time</span>
- <span className="rf-receipt-row__value">{visitTime || "N/A"}</span>
- </div>
- {resolvedVisitCode && (
- <div className="rf-receipt-row rf-receipt-row--highlighted">
- <span className="rf-receipt-row__label">Visit Code</span>
- <span className="rf-receipt-row__code">{resolvedVisitCode}</span>
- </div>
- )}
- </div>
- </div>
- ) : (
- <>
- {/* Form content wrapper */}
- <div className={scheduleLocked ? "rf-readonly-wrapper" : ""}>
- {/* Availability API error banner */}
- {availabilityError && !scheduleLocked && (
- <div className="rf-locked-banner" style={{ borderColor: "#EF4444", backgroundColor: "rgba(239,68,68,0.06)", alignItems: "center" }}>
- <AlertTriangle size={16} style={{ color: "#DC2626", flexShrink: 0 }} />
- <div style={{ flex: 1 }}>
- <div className="info-box-title" style={{ color: "#DC2626" }}>Availability unavailable</div>
- <div className="info-text">Could not load visit schedule. Retry or refresh the page.</div>
- </div>
- <button
- type="button"
- onClick={() => refetchAvailability()}
- style={{ flexShrink: 0, padding: "4px 12px", borderRadius: 6, border: "1px solid #DC2626", background: "transparent", color: "#DC2626", cursor: "pointer", fontSize: 13, fontWeight: 500 }}
- >
- Retry
- </button>
- </div>
- )}
+  const renderReadOnlySummary = () => {
+    const option = VIEWING_OPTIONS.find((entry) => entry.value === selectedPreference);
+    return (
+      <div className="content-card">
+        <div className="card-section-title">
+          <CheckCircle size={15} style={{ marginRight: 6, flexShrink: 0 }} />
+          Viewing / Move-in Preference
+        </div>
+        <div className="rf-receipt-rows">
+          <div className="rf-receipt-row">
+            <span className="rf-receipt-row__label">Selected Option</span>
+            <span className="rf-receipt-row__value">{option?.title || "Not selected"}</span>
+          </div>
+          {selectedPreference === "physical_visit" && (
+            <>
+              <div className="rf-receipt-row">
+                <span className="rf-receipt-row__label">Preferred Date</span>
+                <span className="rf-receipt-row__value">{fmtDateFull(visitDate)}</span>
+              </div>
+              <div className="rf-receipt-row">
+                <span className="rf-receipt-row__label">Preferred Time</span>
+                <span className="rf-receipt-row__value">{visitTime || "Not scheduled"}</span>
+              </div>
+              {visitCode && (
+                <div className="rf-receipt-row rf-receipt-row--highlighted">
+                  <span className="rf-receipt-row__label">Visit Code</span>
+                  <span className="rf-receipt-row__code">{visitCode}</span>
+                </div>
+              )}
+            </>
+          )}
+          {selectedPreference === "remote_2d_viewing" && (
+            <>
+              <div className="rf-receipt-row">
+                <span className="rf-receipt-row__label">Acknowledgement</span>
+                <span className="rf-receipt-row__value">
+                  {remoteViewingAcknowledged ? "Confirmed" : "Pending"}
+                </span>
+              </div>
+              <div className="rf-receipt-row">
+                <span className="rf-receipt-row__label">Questions / Concerns</span>
+                <span className="rf-receipt-row__value">
+                  {remoteViewingQuestions || "None provided"}
+                </span>
+              </div>
+            </>
+          )}
+          {selectedPreference === "urgent_move_in_review" && (
+            <div className="rf-receipt-row">
+              <span className="rf-receipt-row__label">Urgent Review</span>
+              <span className="rf-receipt-row__value">
+                {isUrgentMoveIn ? "Requested" : "Not requested"}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
- {/* ── Card 1: Select Date ── */}
- <div className="content-card" id="visit-date-section">
- <div className="card-section-title">
- <Calendar size={15} style={{ marginRight: 6, flexShrink: 0 }} />
- Choose a Date
- </div>
- <p className="rf-section-hint">
- {authLoading || loadingAvailability ? "Checking branch availability..." : "Future visit dates for the next 2 weeks"}
- </p>
- {availabilityUnavailable && (
- <div className="rf-availability-alert" role="alert">
- Unable to load live visit availability. Please refresh before choosing a schedule.
- </div>
- )}
- <div className="rf-calendar-grid" aria-label="Visit dates by week">
- {WEEKDAY_LABELS.map((weekday) => (
- <div key={weekday} className="rf-calendar-weekday">
- {weekday}
- </div>
- ))}
- {calendarDateCells.map((cell) => {
- if (cell.type === "empty") {
- return <div key={cell.key} className="rf-date-empty" aria-hidden="true" />;
- }
- const dateRow = cell.dateRow;
- const iso = dateRow.date;
- const date = new Date(iso + "T00:00:00");
- const selected = visitDate === iso;
- const disabled = readOnly || !dateRow.slots?.some((slot) => slot.available);
- return (
- <button
- key={iso}
- type="button"
- className="rf-date-btn"
- disabled={disabled}
- title={dateRow.disabledReason || ""}
- onClick={() => { setVisitDate(iso); if (visitTime) setVisitTime(""); }}
- onMouseEnter={() => setHoveredDate(iso)}
- onMouseLeave={() => setHoveredDate(null)}
- aria-pressed={selected}
- aria-label={date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
- >
- <div className={`rf-date-card${selected ? " selected" : ""}${disabled ? " disabled" : ""}`}>
- {iso === getTomorrowISO() && <span className="rf-today-pill">Tomorrow</span>}
- <div className="rf-date-day">
- {date.toLocaleDateString("en-US", { weekday: "short" })}
- </div>
- <div className="rf-date-num">
- {date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
- </div>
- </div>
- </button>
- );
- })}
- </div>
- </div>
+  return (
+    <div className="rf-visit-step">
+      <div className="main-header">
+        <div className="main-header-badge"><span>Step 2 · Verification</span></div>
+        <h2 className="main-header-title">Viewing / Move-in Preference</h2>
+        <p className="main-header-subtitle">
+          Choose how you want to proceed with room viewing or move-in coordination.
+          Payment will only be available after your application and documents are approved.
+        </p>
+      </div>
 
- {/* ── Card 2: Select Time ── */}
- <div
- className="content-card rf-visit-time-card"
- id="visit-time-section"
- style={{ opacity: visitDate ? 1 : 0.45, transition: "opacity 0.2s ease", pointerEvents: visitDate ? "auto" : "none" }}
- >
- <div className="card-section-title">
- <Clock size={15} style={{ marginRight: 6, flexShrink: 0 }} />
- Choose a Time
- </div>
- <p className="rf-section-hint">
- {visitDate
- ? <><span>Available time slots for </span><strong>{fmtDate(new Date(visitDate + "T00:00:00"))}</strong></>
- : "Select a date first to see available times"}
- </p>
- <div className="rf-time-grid">
- {availabilityUnavailable && (
- <div className="rf-time-grid__message">
- Live slot counts are unavailable right now.
- </div>
- )}
- {selectedTimeSlots.map((slot) => {
- const selected = visitTime === slot.label;
- const disabled = readOnly || !slot.available;
- const statusText = getSlotStatusText(slot);
- return (
- <button
- key={slot.label}
- type="button"
- className="rf-time-btn"
- disabled={disabled}
- title={slot.disabledReason || ""}
- onClick={() => setVisitTime(slot.label)}
- onMouseEnter={() => setHoveredTime(slot.label)}
- onMouseLeave={() => setHoveredTime(null)}
- aria-pressed={selected}
- aria-label={slot.label}
- >
- <div className={`rf-time-slot${selected ? " selected" : ""}${disabled ? " disabled" : ""}`}>
- <span>{slot.label}</span>
- {statusText && (
- <small>{statusText}</small>
- )}
- </div>
- </button>
- );
- })}
- </div>
- </div>
+      {scheduleRejected && (
+        <div className="rf-rejection-banner">
+          <AlertTriangle size={20} color="var(--rf-error-text)" style={{ flexShrink: 0, marginTop: 2 }} />
+          <div>
+            <div className="rf-rejection-banner__title">Your previous visit schedule was rejected</div>
+            {scheduleRejectionReason && (
+              <div className="rf-rejection-banner__reason">
+                <strong>Reason:</strong> {scheduleRejectionReason}
+              </div>
+            )}
+            <div className="rf-rejection-banner__hint">
+              Please update your viewing / move-in preference below.
+            </div>
+          </div>
+        </div>
+      )}
 
- {/* ── Card 3: Policies & Terms ── */}
- <div className="content-card" id="visit-policies-section">
- <div className="card-section-title">
- <FileText size={15} style={{ marginRight: 6, flexShrink: 0 }} />
- Policies, Terms & Conditions
- </div>
- <div className="checkbox-group">
- <input
- type="checkbox"
- id="policies-accepted"
- checked={policiesAccepted || readOnly}
- onChange={(e) => setPoliciesAccepted(e.target.checked)}
- />
- <label htmlFor="policies-accepted" className="checkbox-label">
- I have read and agree to the{" "}
- <span className="rf-policies-link" onClick={() => setShowPoliciesModal(true)}>
- dormitory policies, terms & conditions, and privacy policy
- </span>
- </label>
- </div>
- </div>
+      {readOnly ? (
+        renderReadOnlySummary()
+      ) : (
+        <>
+          <div className="content-card">
+            <div className="card-section-title">
+              <Home size={15} style={{ marginRight: 6, flexShrink: 0 }} />
+              Choose an Option
+            </div>
+            <div className="radio-group">
+              {VIEWING_OPTIONS.map((option) => (
+                <label key={option.value} className="radio-option">
+                  <input
+                    type="radio"
+                    name="viewingPreference"
+                    checked={selectedPreference === option.value}
+                    onChange={() => {
+                      setViewingType(option.value);
+                      if (option.value !== "physical_visit") {
+                        setVisitDate("");
+                        setVisitTime("");
+                      }
+                    }}
+                  />
+                  <span className="radio-label">
+                    <span className="radio-title">{option.title}</span>
+                    <span className="radio-desc">{option.description}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
 
- {/* ── Actions ── */}
- <div className="stage-buttons" style={{ justifyContent: "flex-end" }}>
- <button
- onClick={handleSubmitWithValidation}
- className="btn btn-primary"
- disabled={isSubmitted || isSaving}
- >
- {isSaving ? "Booking..." : ctaLabel()}
- </button>
- </div>
- </div>
- </>
- )}
+          {selectedPreference === "physical_visit" && (
+            <>
+              <div className="content-card">
+                <div className="card-section-title">
+                  <Calendar size={15} style={{ marginRight: 6, flexShrink: 0 }} />
+                  Schedule Physical Visit
+                </div>
+                <p className="rf-section-hint">
+                  This option is for viewing coordination only. It does not unlock payment.
+                  You still need to submit your tenant application and required documents.
+                </p>
+                {availabilityError && (
+                  <div className="rf-availability-alert" role="alert">
+                    Unable to load live visit availability right now.
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ marginLeft: 12 }}
+                      onClick={() => refetchAvailability()}
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+                <div className="rf-calendar-grid" aria-label="Available visit dates">
+                  {WEEKDAY_LABELS.map((weekday) => (
+                    <div key={weekday} className="rf-calendar-weekday">{weekday}</div>
+                  ))}
+                  {calendarDateCells.map((cell) => {
+                    if (cell.type === "empty") {
+                      return <div key={cell.key} className="rf-date-empty" aria-hidden="true" />;
+                    }
+                    const dateRow = cell.dateRow;
+                    const iso = dateRow.date;
+                    const date = new Date(`${iso}T00:00:00`);
+                    const selected = visitDate === iso;
+                    const disabled = !dateRow.slots?.some((slot) => slot.available);
+                    return (
+                      <button
+                        key={iso}
+                        type="button"
+                        className="rf-date-btn"
+                        disabled={disabled}
+                        title={dateRow.disabledReason || ""}
+                        onClick={() => {
+                          setVisitDate(iso);
+                          if (visitTime) setVisitTime("");
+                        }}
+                        aria-pressed={selected}
+                      >
+                        <div className={`rf-date-card${selected ? " selected" : ""}${disabled ? " disabled" : ""}`}>
+                          {iso === getTomorrowISO() && <span className="rf-today-pill">Tomorrow</span>}
+                          <div className="rf-date-day">{date.getDate()}</div>
+                          <div className="rf-date-month">
+                            {date.toLocaleDateString("en-US", { month: "short" })}
+                          </div>
+                          <div className="rf-date-capacity">
+                            {disabled ? "Closed" : "Open"}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
- {/* Confirmation Modal */}
- {showConfirmModal && (
- <ConfirmModal
- visitDate={visitDate}
- visitTime={visitTime}
- onConfirm={handleConfirmSubmit}
- onClose={() => setShowConfirmModal(false)}
- />
- )}
+              <div className="content-card">
+                <div className="card-section-title">
+                  <Clock size={15} style={{ marginRight: 6, flexShrink: 0 }} />
+                  Choose a Time Slot
+                </div>
+                <div className="rf-time-grid">
+                  {timeSlots.map((slot) => (
+                    <button
+                      key={slot.label}
+                      type="button"
+                      className={`rf-time-slot${visitTime === slot.label ? " selected" : ""}`}
+                      disabled={!slot.available}
+                      onClick={() => setVisitTime(slot.label)}
+                    >
+                      <span>{slot.label}</span>
+                      <small>{formatRemainingSlots(slot) || slot.disabledReason || ""}</small>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
 
- {isSaving && <SavingVisitModal />}
+          {selectedPreference === "remote_2d_viewing" && (
+            <>
+              <div className="content-card">
+                <div className="card-section-title">
+                  <Camera size={15} style={{ marginRight: 6, flexShrink: 0 }} />
+                  2D Remote Viewing
+                </div>
+                <p className="rf-section-hint">
+                  Review the available room photos before proceeding. This is a photo-based
+                  viewing option, not a 3D or 360 tour.
+                </p>
+                {roomImages.length > 0 ? (
+                  <div className="rf-room-gallery">
+                    {roomImages.map((image, index) => (
+                      <button
+                        key={`${image}-${index}`}
+                        type="button"
+                        className="rf-room-gallery__item"
+                        onClick={() => setPreviewImage(image)}
+                      >
+                        <img src={image} alt={`Room photo ${index + 1}`} className="rf-room-gallery__image" />
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rf-empty-state">
+                    <ImageIcon size={20} />
+                    <p>
+                      No room photos are currently available. Please schedule a physical visit or contact admin for assistance.
+                    </p>
+                  </div>
+                )}
+              </div>
 
- {/* Receipt Modal */}
- {showReceiptModal && (
- <ReceiptModal
- visitDate={visitDate}
- visitTime={visitTime}
- visitCode={resolvedVisitCode}
- reservationCode={reservationCode}
- reservationData={reservationData}
- onClose={handleReturnToDashboard}
- />
- )}
+              <div className="content-card">
+                <div className="card-section-title">
+                  <Home size={15} style={{ marginRight: 6, flexShrink: 0 }} />
+                  Room Details Summary
+                </div>
+                <div className="rf-room-details-grid">
+                  {roomDetails.map(([label, value]) => (
+                    <div key={label} className="rf-room-details-grid__item">
+                      <span className="rf-room-details-grid__label">{label}</span>
+                      <strong className="rf-room-details-grid__value">{value}</strong>
+                    </div>
+                  ))}
+                </div>
+                <label className="checkbox-group rf-remote-ack">
+                  <input
+                    type="checkbox"
+                    checked={remoteViewingAcknowledged}
+                    onChange={(event) => setRemoteViewingAcknowledged(event.target.checked)}
+                  />
+                  <span>{REMOTE_ACKNOWLEDGEMENT}</span>
+                </label>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="remote-viewing-questions">
+                    Questions / Concerns for Admin (Optional)
+                  </label>
+                  <textarea
+                    id="remote-viewing-questions"
+                    className="form-input rf-textarea"
+                    rows={4}
+                    value={remoteViewingQuestions}
+                    onChange={(event) => setRemoteViewingQuestions(event.target.value)}
+                    placeholder="Ask about the room setup, amenities, move-in reminders, or other photo-based viewing questions."
+                  />
+                  <div className="form-helper">
+                    If you cannot visit physically, you may review the available room photos and
+                    request remote viewing assistance. Payment will only be available after your
+                    application and documents are approved.
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
 
- {/* Policies Modal */}
- <PoliciesTermsModal
- isOpen={showPoliciesModal}
- onClose={() => setShowPoliciesModal(false)}
- />
- </div>
- );
+          {selectedPreference === "urgent_move_in_review" && (
+            <div className="content-card">
+              <div className="card-section-title">
+                <AlertTriangle size={15} style={{ marginRight: 6, flexShrink: 0 }} />
+                Request Urgent Move-in Review
+              </div>
+              <div className="rf-payment-info-box">
+                <div className="info-box-title">Urgent move-in request recorded</div>
+                <div className="info-text">
+                  Urgent move-in requests are subject to admin document review and room
+                  availability. Payment will only be available after approval.
+                </div>
+              </div>
+              <div className="rf-room-details-grid">
+                {roomDetails.map(([label, value]) => (
+                  <div key={label} className="rf-room-details-grid__item">
+                    <span className="rf-room-details-grid__label">{label}</span>
+                    <strong className="rf-room-details-grid__value">{value}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="stage-buttons">
+            <button type="button" className="btn btn-secondary" onClick={onPrev}>
+              Back
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleContinue}
+              disabled={isSaving}
+            >
+              {isSaving ? "Saving…" : "Continue to Tenant Application"}
+            </button>
+          </div>
+        </>
+      )}
+
+      {previewImage && (
+        <div className="rf-modal-overlay" role="dialog" aria-modal="true">
+          <div className="rf-modal-card rf-photo-preview-modal">
+            <button
+              type="button"
+              className="rf-modal-close-btn"
+              onClick={() => setPreviewImage(null)}
+              aria-label="Close image preview"
+            >
+              <X size={18} />
+            </button>
+            <img
+              src={previewImage}
+              alt="Room preview"
+              className="rf-photo-preview-modal__image"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
-
-/* ══════════════════════════════════════════════════════════════
- ConfirmModal — extracted sub-component
- ══════════════════════════════════════════════════════════════ */
-function ConfirmModal({ visitDate, visitTime, onConfirm, onClose }) {
- useEffect(() => {
- const handler = (e) => { if (e.key === "Escape") onClose(); };
- document.addEventListener("keydown", handler);
- return () => document.removeEventListener("keydown", handler);
- }, [onClose]);
-
- return (
- <div className="rf-modal-overlay" onClick={onClose}>
- <div
- className="rf-modal-card"
- style={{ maxWidth: "420px", textAlign: "center" }}
- onClick={(e) => e.stopPropagation()}
- >
- <button type="button" onClick={onClose} className="rf-modal-close-btn" aria-label="Close">
- <X size={18} />
- </button>
-
- <div className="rf-modal-icon-wrap">
- <Calendar size={24} color="#3B82F6" />
- </div>
-
- <h3 className="rf-modal-title">Confirm Your Visit</h3>
- <p className="rf-modal-subtitle">You're booking a visit on:</p>
-
- <div className="rf-confirm-date-box">
- <div className="rf-confirm-date-box__date">
- {visitDate && fmtDateFull(visitDate + "T00:00:00")}
- </div>
- <div className="rf-confirm-date-box__time">
- <Clock size={13} />{visitTime}
- </div>
- </div>
-
- <div className="rf-modal-actions">
- <button onClick={onClose} className="btn btn-secondary" style={{ flex: 1 }}>Go Back</button>
- <button onClick={onConfirm} className="btn btn-primary" style={{ flex: 1 }}>Yes, Book Visit</button>
- </div>
- </div>
- </div>
- );
-}
-
-function SavingVisitModal() {
- return (
- <div className="rf-modal-overlay">
- <div
- className="rf-modal-card"
- style={{ maxWidth: 420, textAlign: "center", paddingTop: 36, paddingBottom: 36 }}
- >
- <div
- style={{
- width: 52,
- height: 52,
- borderRadius: "50%",
- border: "3px solid rgba(59,130,246,0.14)",
- borderTopColor: "#2563EB",
- margin: "0 auto 16px",
- animation: "rf-spin 0.9s linear infinite",
- }}
- />
- <h3 className="rf-modal-title">Preparing Your Visit Pass</h3>
- <p className="rf-modal-subtitle">
- Saving your schedule and generating your visit code.
- </p>
- </div>
- </div>
- );
-}
-
-/* ══════════════════════════════════════════════════════════════
- ReceiptModal — extracted sub-component
- ══════════════════════════════════════════════════════════════ */
-function ReceiptModal({ visitDate, visitTime, visitCode, reservationCode, reservationData, onClose }) {
- useEffect(() => {
- const handler = (e) => { if (e.key === "Escape") onClose(); };
- document.addEventListener("keydown", handler);
- return () => document.removeEventListener("keydown", handler);
- }, [onClose]);
-
- const room = reservationData?.room?.roomNumber || reservationData?.room?.name || reservationData?.room?.title || "N/A";
- const branch = reservationData?.room?.branch || "N/A";
-
- return (
- <div className="rf-modal-overlay">
- <div className="rf-modal-card" style={{ maxWidth: 420 }}>
- <button type="button" onClick={onClose} className="rf-modal-close-btn" aria-label="Close">
- <X size={18} />
- </button>
-
- {/* Success header */}
- <div style={{ textAlign: "center", marginBottom: "24px" }}>
- <div style={{ width: "52px", height: "52px", borderRadius: "50%", background: "rgba(22,163,74,0.08)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
- <CheckCircle size={28} color="#16A34A" strokeWidth={2.5} />
- </div>
- <h3 className="rf-modal-title">Visit Confirmed!</h3>
- <p className="rf-modal-subtitle">Your visit has been booked successfully</p>
- </div>
-
- {/* Receipt card */}
- <div className="rf-receipt-card">
- <div className="rf-receipt-header">
- <span className="rf-receipt-header__label">Booking Summary</span>
- <span className="rf-receipt-header__badge">Visit Scheduled</span>
- </div>
- <div className="rf-receipt-rows">
- {/* Visit code — highlighted row */}
- <div className="rf-receipt-row rf-receipt-row--highlighted">
- <span className="rf-receipt-row__label">Visit Code</span>
- {visitCode
- ? <span className="rf-receipt-row__code">{visitCode}</span>
- : <span className="rf-receipt-row__code rf-receipt-row__code--pending">Generating…</span>
- }
- </div>
- {[
- { label: "Date", value: fmtDateFull(visitDate), capitalize: false },
- { label: "Time", value: visitTime, capitalize: false },
- { label: "Room", value: room, capitalize: false },
- { label: "Branch", value: branch, capitalize: true },
- ].map((row) => (
- <div key={row.label} className="rf-receipt-row">
- <span className="rf-receipt-row__label">{row.label}</span>
- <span
- className="rf-receipt-row__value"
- style={{ textTransform: row.capitalize ? "capitalize" : "none" }}
- >
- {row.value}
- </span>
- </div>
- ))}
- </div>
- </div>
-
- {/* Note */}
- <div className="rf-visit-note">
- <Clock size={15} color="var(--rf-info-icon)" style={{ flexShrink: 0, marginTop: "2px" }} />
- <p className="rf-visit-note__text">
- Please arrive on time. After your visit, the admin will verify your attendance and approve your reservation to proceed.
- </p>
- </div>
-
- <button onClick={onClose} className="btn btn-primary btn-full">Return to Dashboard</button>
- </div>
- </div>
- );
-}
 
 export default ReservationVisitStep;

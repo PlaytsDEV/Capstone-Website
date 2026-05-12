@@ -15,7 +15,7 @@ const ReservationSummaryStep = ({ reservationData, onNext, readOnly }) => {
  <h2 className="main-header-title">Room Summary</h2>
  <p className="main-header-subtitle">
  Review the details of your selected room below. Once confirmed, you'll
- proceed to schedule your visit.
+ proceed to choose your viewing or move-in preference.
  </p>
  </div>
 
@@ -68,8 +68,9 @@ const ReservationSummaryStep = ({ reservationData, onNext, readOnly }) => {
  <div className="info-box">
  <div className="info-box-title">What happens next?</div>
  <div className="info-text">
- After confirming, you'll be asked to schedule a dormitory visit so you
- can see the room in person before finalizing your application.
+ After confirming, you'll choose between a physical visit, 2D remote
+ viewing, or an urgent move-in review request before submitting your
+ tenant application.
  </div>
  </div>
 

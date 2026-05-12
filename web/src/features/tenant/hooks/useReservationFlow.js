@@ -21,7 +21,11 @@ import { useAppNavigation } from "../../../shared/hooks/useAppNavigation";
 import { showNotification } from "../../../shared/utils/notification";
 import getFriendlyError from "../../../shared/utils/friendlyError";
 import { reservationApi, roomApi, billingApi, authApi } from "../../../shared/api/apiClient";
-import { normalizeReservationStatus } from "../../../shared/utils/lifecycleNaming";
+import {
+  canReservationAccessPayment,
+  hasReservationStatus,
+  normalizeReservationStatus,
+} from "../../../shared/utils/lifecycleNaming";
 import { usePaymentRedirect } from "./usePaymentRedirect";
 import { uploadIfFile } from "../../../shared/utils/imageUpload";
 import {
@@ -120,7 +124,11 @@ export default function useReservationFlow() {
   const [billingEmail, setBillingEmail] = useState(user?.email || "");
 
   // Stage 2
-  const [viewingType, setViewingType] = useState("inperson");
+  const [viewingType, setViewingType] = useState("physical_visit");
+  const [remoteViewingAcknowledged, setRemoteViewingAcknowledged] = useState(false);
+  const [remoteViewingQuestions, setRemoteViewingQuestions] = useState("");
+  const [isUrgentMoveIn, setIsUrgentMoveIn] = useState(false);
+  const [applicationReviewReason, setApplicationReviewReason] = useState("");
   const [isOutOfTown, setIsOutOfTown] = useState(false);
   const [currentLocation, setCurrentLocation] = useState("");
   const [visitorName, setVisitorName] = useState(user?.displayName || "");
@@ -252,18 +260,24 @@ export default function useReservationFlow() {
 
   // ΓöÇΓöÇ Stepper locking ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   const isStageLocked = (stageId) => {
+    const reservationStatus = normalizeReservationStatus(reservationData?.status);
+    const needsRevision = hasReservationStatus(reservationStatus, "needs_revision");
     if (paymentApproved) return stageId < 5;
     if (stageId === 1) return visitCompleted;
-    if (stageId === 2) return visitCompleted && !scheduleRejected; // unlock when admin rejects visit
-    if (stageId === 3) return applicationSubmitted && !editingApplication;
+    if (stageId === 2)
+      return applicationSubmitted && !needsRevision && !scheduleRejected;
+    if (stageId === 3)
+      return applicationSubmitted && !editingApplication && !needsRevision;
     if (stageId === 4) return paymentSubmitted || paymentApproved;
     return false;
   };
 
   const isStageClickable = (stageId) => {
+    const reservationStatus = normalizeReservationStatus(reservationData?.status);
+    const paymentUnlocked = canReservationAccessPayment(reservationStatus);
     if (stageId === 1) return highestStageReached >= 2;
     if (stageId <= highestStageReached) return true;
-    if (stageId === 4 && applicationSubmitted) return true;
+    if (stageId === 4 && (paymentUnlocked || paymentSubmitted || paymentApproved)) return true;
     if (stageId === 5 && paymentSubmitted) return true;
     return false;
   };
@@ -399,46 +413,77 @@ export default function useReservationFlow() {
   const computeLockingFlags = (r) => {
     const status = normalizeReservationStatus(r.status);
     // Status-driven flags (primary) with data-presence fallback (backward compat)
-    const VISIT_SCHEDULED_STATUSES = ["visit_pending","visit_approved","payment_pending","reserved","moveIn"];
-    const VISIT_APPROVED_STATUSES = ["visit_approved","payment_pending","reserved","moveIn"];
-    const APPLICATION_STATUSES = ["payment_pending","reserved","moveIn"];
+    const VIEWING_SELECTED_STATUSES = [
+      "viewing_preference_selected",
+      "visit_pending",
+      "visit_approved",
+      "pending_application_review",
+      "needs_revision",
+      "approved_for_payment",
+      "payment_pending",
+      "reserved",
+      "moveIn",
+    ];
+    const APPLICATION_STATUSES = [
+      "pending_application_review",
+      "needs_revision",
+      "approved_for_payment",
+      "payment_pending",
+      "reserved",
+      "moveIn",
+    ];
 
-    const hasVisitScheduled = VISIT_SCHEDULED_STATUSES.includes(status) || Boolean(r.viewingType && r.agreedToPrivacy);
-    const isVisitApprovedFlag = VISIT_APPROVED_STATUSES.includes(status) || Boolean(r.visitApproved === true);
+    const hasViewingPreference =
+      VIEWING_SELECTED_STATUSES.includes(status) ||
+      Boolean(r.viewingPreference || r.viewingType || r.visitDate);
+    const isVisitApprovedFlag =
+      ["visit_approved"].includes(status) || Boolean(r.visitApproved === true);
     const hasApplication =
       APPLICATION_STATUSES.includes(status) || Boolean(r.applicationSubmittedAt);
-    const hasPayment = Boolean(r.proofOfPaymentUrl);
+    const paymentUnlocked = canReservationAccessPayment(status);
+    const hasPayment =
+      status === "payment_pending" ||
+      status === "reserved" ||
+      status === "moveIn" ||
+      Boolean(r.proofOfPaymentUrl);
     const isConfirmed = status === "reserved" || r.paymentStatus === "paid";
 
-    if (hasVisitScheduled) setVisitCompleted(true);
+    if (hasViewingPreference) setVisitCompleted(true);
     if (isVisitApprovedFlag) setVisitApproved(true);
     if (r.scheduleRejected) setScheduleRejected(true);
     if (r.scheduleRejectionReason) setScheduleRejectionReason(r.scheduleRejectionReason);
     if (hasApplication) setApplicationSubmitted(true);
     if (hasPayment) setPaymentSubmitted(true);
     if (isConfirmed) setPaymentApproved(true);
+    if (r.applicationReviewReason) setApplicationReviewReason(r.applicationReviewReason);
 
     // Status-driven highest stage
     const STAGE_BY_STATUS = {
       pending: 1,
+      viewing_preference_selected: 2,
       visit_pending: 2,
       visit_approved: 3,
+      pending_application_review: 3,
+      needs_revision: 3,
+      approved_for_payment: 4,
       payment_pending: 4,
       reserved: 5,
       moveIn: 5,
+      rejected: 3,
     };
     let highest = STAGE_BY_STATUS[status] || 1;
     // Fallback: data-presence checks for legacy records still at "pending"
     if (highest === 1) {
-      if (hasVisitScheduled) highest = 2;
+      if (hasViewingPreference) highest = 2;
       if (isVisitApprovedFlag) highest = 3;
-      if (hasApplication) highest = Math.max(highest, 4);
+      if (hasApplication) highest = Math.max(highest, 3);
+      if (paymentUnlocked) highest = Math.max(highest, 4);
       if (hasPayment) highest = Math.max(highest, 4);
       if (isConfirmed) highest = 5;
     }
 
     return {
-      hasVisitScheduled,
+      hasVisitScheduled: hasViewingPreference,
       isVisitApprovedFlag,
       hasApplication,
       hasPayment,
@@ -571,6 +616,8 @@ export default function useReservationFlow() {
         if (active.reservationCode) setReservationCode(active.reservationCode);
         if (active.visitCode) setVisitCode(active.visitCode);
         setReservationData({
+          _id: active._id,
+          status: active.status,
           room: {
             id: room._id || room.id,
             roomId: room._id || room.id,
@@ -580,14 +627,25 @@ export default function useReservationFlow() {
             type: room.type || "",
             price: room.monthlyRate || room.price || 0,
             roomNumber: room.name || "",
+            floor: room.floor || "",
+            images: room.images || [],
+            capacity: room.capacity || 0,
+            currentOccupancy: room.currentOccupancy || 0,
+            description: room.description || "",
           },
           selectedBed: active.selectedBed || null,
           selectedAppliances: active.selectedAppliances || [],
           applianceFees: active.applianceFees || 0,
+          applicationReviewReason: active.applicationReviewReason || "",
         });
         if (active.visitDate) setVisitDate(active.visitDate.split("T")[0]);
         if (active.visitTime) setVisitTime(active.visitTime);
-        if (active.viewingType) setViewingType(active.viewingType);
+        if (active.viewingPreference || active.viewingType) {
+          setViewingType(active.viewingPreference || active.viewingType);
+        }
+        setRemoteViewingAcknowledged(Boolean(active.remoteViewingAcknowledged));
+        setRemoteViewingQuestions(active.remoteViewingQuestions || "");
+        setIsUrgentMoveIn(Boolean(active.isUrgentMoveIn));
         if (active.visitApproved) setVisitApproved(true);
         populateFromReservation(active);
         const { highest } = computeLockingFlags(active);
@@ -657,10 +715,13 @@ export default function useReservationFlow() {
       if (reservation.visitCode)
         setVisitCode(reservation.visitCode);
       setReservationData({
+        _id: reservation._id || resId,
+        status: reservation.status,
         room: reservation.roomId,
         selectedBed: reservation.selectedBed,
         selectedAppliances: reservation.selectedAppliances || [],
         applianceFees: reservation.applianceFees || 0,
+        applicationReviewReason: reservation.applicationReviewReason || "",
       });
       if (reservation.targetMoveInDate) {
         const d = new Date(reservation.targetMoveInDate);
@@ -669,7 +730,12 @@ export default function useReservationFlow() {
       if (reservation.leaseDuration)
         setLeaseDuration(reservation.leaseDuration);
       if (reservation.billingEmail) setBillingEmail(reservation.billingEmail);
-      if (reservation.viewingType) setViewingType(reservation.viewingType);
+      if (reservation.viewingPreference || reservation.viewingType) {
+        setViewingType(reservation.viewingPreference || reservation.viewingType);
+      }
+      setRemoteViewingAcknowledged(Boolean(reservation.remoteViewingAcknowledged));
+      setRemoteViewingQuestions(reservation.remoteViewingQuestions || "");
+      setIsUrgentMoveIn(Boolean(reservation.isUrgentMoveIn));
       if (reservation.isOutOfTown !== undefined)
         setIsOutOfTown(reservation.isOutOfTown);
       if (reservation.currentLocation)
@@ -690,8 +756,13 @@ export default function useReservationFlow() {
       const reservationStatus = normalizeReservationStatus(reservation.status);
       const STAGE_BY_STATUS = {
         pending: 1,
+        viewing_preference_selected: 2,
         visit_pending: 2,
         visit_approved: 3,
+        pending_application_review: 3,
+        needs_revision: 3,
+        rejected: 3,
+        approved_for_payment: 4,
         payment_pending: 4,
         reserved: 5,
         moveIn: 5,
@@ -699,7 +770,7 @@ export default function useReservationFlow() {
       let targetStage = STAGE_BY_STATUS[reservationStatus] || 1;
 
       // visit_pending: tenant must wait ΓÇö redirect to profile (unless rejected)
-      if (reservationStatus === "visit_pending" && !reservation.scheduleRejected) {
+      if (false && reservationStatus === "visit_pending" && !reservation.scheduleRejected) {
         appNavigate("/applicant/profile", {
           flash: {
             type: "info",
@@ -723,18 +794,9 @@ export default function useReservationFlow() {
       if (targetStage === 1) {
         if (isConfirmed) targetStage = 5;
         else if (hasPayment) targetStage = 5;
-        else if (hasApplication) targetStage = 4;
+        else if (hasApplication) targetStage = 3;
         else if (isVisitApprovedFlag) targetStage = 3;
-        else if (hasVisitScheduled) {
-          appNavigate("/applicant/profile", {
-            flash: {
-              type: "info",
-              message:
-                "Waiting for admin to approve your visit. Track progress on your profile.",
-            },
-          });
-          return;
-        }
+        else if (hasVisitScheduled) targetStage = 2;
       }
 
       if (reservation.roomConfirmed && targetStage === 1) {
@@ -966,10 +1028,10 @@ export default function useReservationFlow() {
         selectedAppliances: reservationData?.selectedAppliances || [],
         totalPrice,
         applianceFees: reservationData?.applianceFees || 0,
+        viewingPreference: null,
         viewingType: null,
         agreedToPrivacy: false,
         roomConfirmed: true,
-        visitApproved: false,
         ...payloadOverrides,
       });
       const created = response?.reservation || response;
@@ -1026,7 +1088,23 @@ export default function useReservationFlow() {
       reservationId,
       payloadOverrides,
     );
-    return response?.reservation || response;
+    const updated = response?.reservation || response;
+    if (updated?._id) setReservationId(updated._id);
+    if (updated?.status || updated?.roomId) {
+      setReservationData((previous) => ({
+        ...(previous || {}),
+        _id: updated._id || previous?._id,
+        status: updated.status || previous?.status,
+        room: updated.roomId || previous?.room,
+        selectedBed: updated.selectedBed ?? previous?.selectedBed,
+        selectedAppliances:
+          updated.selectedAppliances ?? previous?.selectedAppliances ?? [],
+        applianceFees: updated.applianceFees ?? previous?.applianceFees ?? 0,
+        applicationReviewReason:
+          updated.applicationReviewReason ?? previous?.applicationReviewReason ?? "",
+      }));
+    }
+    return updated;
   };
 
   // ΓöÇΓöÇ Auto-save (stages 3-4) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -1117,7 +1195,18 @@ export default function useReservationFlow() {
     () => ({
       visitDate,
       visitTime,
-      viewingType,
+      viewingPreference: viewingType,
+      viewingType:
+        viewingType === "physical_visit"
+          ? "inperson"
+          : viewingType === "remote_2d_viewing"
+            ? "remote_2d"
+            : viewingType === "urgent_move_in_review"
+              ? "urgent_move_in"
+              : viewingType,
+      remoteViewingAcknowledged,
+      remoteViewingQuestions,
+      isUrgentMoveIn,
       visitorName,
       visitorPhone,
       visitorEmail,
@@ -1164,6 +1253,9 @@ export default function useReservationFlow() {
       visitDate,
       visitTime,
       viewingType,
+      remoteViewingAcknowledged,
+      remoteViewingQuestions,
+      isUrgentMoveIn,
       visitorName,
       visitorPhone,
       visitorEmail,
@@ -1450,13 +1542,15 @@ export default function useReservationFlow() {
         setSuccessOverlay({
           show: true,
           title: "Application Submitted!",
-          subtitle: "Payment step is now unlocked. Continue from your dashboard.",
+          subtitle:
+            "Your application is pending review. Payment will be available once your application and documents are approved.",
         });
         appNavigate("/applicant/profile", {
           flash: {
             type: "success",
             title: "Application Submitted!",
-            message: "Payment step is now unlocked. Continue from your dashboard.",
+            message:
+              "Your application is pending review. Payment will be available once your application and documents are approved.",
           },
         });
       } else if (currentStage === 4) {
@@ -1573,6 +1667,7 @@ export default function useReservationFlow() {
     // Core state
     reservationData,
     currentStage,
+    setCurrentStage,
     highestStageReached, setHighestStageReached,
     isLoading,
     paymentReturnLoading,
@@ -1595,6 +1690,9 @@ export default function useReservationFlow() {
 
     // Stage 2
     viewingType, setViewingType,
+    remoteViewingAcknowledged, setRemoteViewingAcknowledged,
+    remoteViewingQuestions, setRemoteViewingQuestions,
+    isUrgentMoveIn, setIsUrgentMoveIn,
     isOutOfTown, setIsOutOfTown,
     currentLocation, setCurrentLocation,
     visitorName, setVisitorName,
@@ -1654,6 +1752,10 @@ export default function useReservationFlow() {
     finalMoveInDate, setFinalMoveInDate,
     paymentMethod,
     paymentSubmitted,
+    paymentAvailable: canReservationAccessPayment(
+      normalizeReservationStatus(reservationData?.status),
+    ),
+    applicationReviewReason,
     agreedToFeePolicy, setAgreedToFeePolicy,
 
     // Stage 5

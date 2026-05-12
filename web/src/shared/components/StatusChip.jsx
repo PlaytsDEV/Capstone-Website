@@ -21,8 +21,12 @@ const STATUS_MAP = {
   partial:          { label: "Partial",        bg: "#EFF6FF", color: "#2563EB" },
 
   // ── Reservation statuses ───────────────────────────────────
+  viewing_preference_selected: { label: "Preference Selected", bg: "#EFF6FF", color: "#2563EB" },
   visit_pending:    { label: "Visit Pending",  bg: "#FFFBEB", color: "#D97706" },
-  visit_approved:   { label: "Visit Approved", bg: "#EFF6FF", color: "#2563EB" },
+  visit_approved:   { label: "Legacy Visit Approved", bg: "#EFF6FF", color: "#2563EB" },
+  pending_application_review: { label: "Pending Review", bg: "#FFFBEB", color: "#D97706" },
+  needs_revision:   { label: "Needs Revision", bg: "#FFF7ED", color: "#EA580C" },
+  approved_for_payment: { label: "Approved for Payment", bg: "#ECFEFF", color: "#0F766E" },
   payment_pending:  { label: "Payment Due",    bg: "#FFFBEB", color: "#D97706" },
   reserved:         { label: "Reserved",       bg: "#F0FDF4", color: "#059669" },
   moveIn:           { label: "Moved In",       bg: "#ECFDF5", color: "#047857" },

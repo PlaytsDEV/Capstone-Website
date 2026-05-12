@@ -13,6 +13,10 @@ import {
 } from "lucide-react";
 import { generateDepositReceipt } from "../../../../shared/utils/receiptGenerator";
 import { useCurrentUser } from "../../../../shared/hooks/queries/useUsers";
+import {
+ canReservationAccessPayment,
+ hasReservationStatus,
+} from "../../../../shared/utils/lifecycleNaming";
 
 function parseSafeDate(dateStr) {
  if (!dateStr) return null;
@@ -68,10 +72,23 @@ export default function ReservationSidePanel({ reservation, onClick }) {
  if (!reservation) return <EmptyState />;
 
  const status = reservation.reservationStatus || reservation.status;
- const isConfirmed = status === "reserved" || reservation.paymentStatus === "paid";
+ const isConfirmed =
+ hasReservationStatus(status, "reserved", "moveIn", "moveOut") ||
+ reservation.paymentStatus === "paid";
  const hasVisit = !!(reservation.visitDate && reservation.visitTime);
  const visitApproved = reservation.visitApproved || reservation.scheduleApproved;
- const hasApplication = !!(reservation.firstName && reservation.lastName && reservation.mobileNumber);
+  const hasApplication = !!(reservation.firstName && reservation.lastName && reservation.mobileNumber);
+ const paymentReady =
+ canReservationAccessPayment(status) ||
+ hasReservationStatus(status, "payment_pending");
+ const pendingReview = hasReservationStatus(status, "pending_application_review");
+ const needsRevision = hasReservationStatus(status, "needs_revision");
+ const preferenceSelected = Boolean(
+ reservation.viewingPreference ||
+  reservation.viewingType ||
+  reservation.isUrgentMoveIn ||
+  hasVisit,
+ );
 
  const room = reservation.roomId || {};
  const roomName = room.name || "Room";
@@ -79,9 +96,12 @@ export default function ReservationSidePanel({ reservation, onClick }) {
 
  let panelState = "pending";
  if (isConfirmed) panelState = "confirmed";
- else if (hasApplication) panelState = "application";
+ else if (paymentReady) panelState = "payment_ready";
+ else if (needsRevision) panelState = "needs_revision";
+ else if (pendingReview || hasApplication) panelState = "application_review";
  else if (visitApproved) panelState = "approved";
  else if (hasVisit) panelState = "scheduled";
+ else if (preferenceSelected) panelState = "preference";
 
  const panelTone =
  panelState === "confirmed"
@@ -91,26 +111,47 @@ export default function ReservationSidePanel({ reservation, onClick }) {
  border: "rgba(16, 185, 129, 0.28)",
  label: "Reservation Details",
  }
- : panelState === "application"
+ : panelState === "payment_ready"
+ ? {
+ accent: "#0F766E",
+ soft: "rgba(15, 118, 110, 0.10)",
+ border: "rgba(15, 118, 110, 0.24)",
+ label: "Approved for Payment",
+ }
+ : panelState === "application_review"
  ? {
  accent: "var(--color-primary, #D4AF37)",
  soft: "rgba(212, 175, 55, 0.12)",
  border: "rgba(212, 175, 55, 0.34)",
- label: "Payment Pending",
+ label: "Pending Review",
+ }
+ : panelState === "needs_revision"
+ ? {
+ accent: "#EA580C",
+ soft: "rgba(234, 88, 12, 0.10)",
+ border: "rgba(234, 88, 12, 0.24)",
+ label: "Needs Revision",
  }
  : panelState === "approved"
  ? {
  accent: "#2563EB",
  soft: "rgba(37, 99, 235, 0.10)",
  border: "rgba(37, 99, 235, 0.24)",
- label: "Visit Approved",
+ label: "Legacy Visit Approved",
  }
  : panelState === "scheduled"
  ? {
  accent: "#7C3AED",
  soft: "rgba(124, 58, 237, 0.10)",
  border: "rgba(124, 58, 237, 0.24)",
- label: "Visit Scheduled",
+ label: "Physical Visit Scheduled",
+ }
+ : panelState === "preference"
+ ? {
+ accent: "#2563EB",
+ soft: "rgba(37, 99, 235, 0.10)",
+ border: "rgba(37, 99, 235, 0.24)",
+ label: "Preference Selected",
  }
  : {
  accent: "var(--text-secondary, #64748B)",
@@ -200,8 +241,16 @@ export default function ReservationSidePanel({ reservation, onClick }) {
  <DetailRow
  icon={<FileText size={15} color="var(--text-secondary, #94A3B8)" />}
  label="Application"
- value="Submitted"
- success
+ value={
+ pendingReview
+ ? "Pending Review"
+ : needsRevision
+ ? "Needs Revision"
+ : paymentReady
+ ? "Approved"
+ : "Submitted"
+ }
+ success={paymentReady}
  />
  )}
 
@@ -227,7 +276,7 @@ export default function ReservationSidePanel({ reservation, onClick }) {
  {panelState === "scheduled" && (
  <div style={S.pendingBanner}>
  <Clock size={14} color="#7C3AED" />
- <span style={S.pendingText}>Awaiting admin approval</span>
+ <span style={S.pendingText}>Saved for viewing coordination only</span>
  </div>
  )}
 

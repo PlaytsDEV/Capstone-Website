@@ -174,8 +174,8 @@ const notify = {
    * Visit approved
    */
   visitApproved: (userId, branchName) =>
-    createNotification(userId, "visit_approved", "Visit Approved",
-      `Your visit to ${branchName} has been approved. Please proceed to the dormitory.`,
+    createNotification(userId, "visit_approved", "Visit Schedule Confirmed",
+      `Your physical visit schedule for ${branchName} has been confirmed for viewing coordination only. Payment will remain locked until your application and documents are approved.`,
       { entityType: "reservation" }),
 
   /**

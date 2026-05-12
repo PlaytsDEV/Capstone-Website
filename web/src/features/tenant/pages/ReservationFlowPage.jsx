@@ -1,5 +1,4 @@
 import GlobalLoading from "../../../shared/components/GlobalLoading";
-import { Clock } from "lucide-react";
 import "../../../shared/styles/notification.css";
 import "../styles/reservation-flow.css";
 
@@ -148,6 +147,12 @@ function ReservationFlowPage() {
                 targetMoveInDate: flow.targetMoveInDate,
                 viewingType: flow.viewingType,
                 setViewingType: flow.setViewingType,
+                remoteViewingAcknowledged: flow.remoteViewingAcknowledged,
+                setRemoteViewingAcknowledged: flow.setRemoteViewingAcknowledged,
+                remoteViewingQuestions: flow.remoteViewingQuestions,
+                setRemoteViewingQuestions: flow.setRemoteViewingQuestions,
+                isUrgentMoveIn: flow.isUrgentMoveIn,
+                setIsUrgentMoveIn: flow.setIsUrgentMoveIn,
                 isOutOfTown: flow.isOutOfTown,
                 setIsOutOfTown: flow.setIsOutOfTown,
                 currentLocation: flow.currentLocation,
@@ -174,11 +179,27 @@ function ReservationFlowPage() {
               onNext={flow.handleNextStage}
               readOnly={flow.isStageLocked(2)}
               onSaveVisit={async () => {
+                const viewingPreference = flow.viewingType;
                 const result = await flow.updateReservationDraft({
                   agreedToPrivacy: true,
-                  viewingType: "inperson",
-                  visitDate: flow.visitDate,
-                  visitTime: flow.visitTime,
+                  viewingPreference,
+                  remoteViewingAcknowledged:
+                    viewingPreference === "remote_2d_viewing"
+                      ? flow.remoteViewingAcknowledged
+                      : false,
+                  remoteViewingQuestions:
+                    viewingPreference === "remote_2d_viewing"
+                      ? flow.remoteViewingQuestions
+                      : "",
+                  isUrgentMoveIn: viewingPreference === "urgent_move_in_review",
+                  visitDate:
+                    viewingPreference === "physical_visit"
+                      ? flow.visitDate
+                      : null,
+                  visitTime:
+                    viewingPreference === "physical_visit"
+                      ? flow.visitTime
+                      : null,
                 });
                 let resolvedCode = result?.visitCode || flow.visitCode || null;
                 const reservationId = result?._id || flow.reservationId || null;
@@ -202,21 +223,14 @@ function ReservationFlowPage() {
               onAfterClose={async () => {
                 flow.setVisitCompleted(true);
                 flow.setHighestStageReached((prev) => Math.max(prev, 3));
-                // Bust the cache so the dashboard shows the new visit_pending status immediately
                 await flow.queryClient.invalidateQueries({ queryKey: ["reservations"] });
                 await flow.queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-                flow.setSuccessOverlay({
-                  show: true,
-                  title: "Visit Booked!",
-                  subtitle: "Your visit has been scheduled. We will notify you once the admin approves.",
-                });
-                setTimeout(() => flow.navigate("/applicant/profile"), 2200);
+                flow.setCurrentStage(3);
               }}
             />
           )}
 
-          {flow.currentStage === 3 &&
-            (flow.visitApproved ? (
+          {flow.currentStage === 3 && (
               <ReservationApplicationStep
                 {...{
                   billingEmail: flow.billingEmail,
@@ -320,37 +334,12 @@ function ReservationFlowPage() {
                   scrollToSection: flow.scrollToSection,
                   onClearScrollToSection: () => flow.setScrollToSection(null),
                 }}
-                onPrev={() => flow.navigate("/applicant/profile")}
+                onPrev={flow.handlePrevStage}
                 onNext={() => flow.handleNextStage()}
                 readOnly={flow.isStageLocked(3)}
                 onEditApplication={() => flow.setEditingApplication(true)}
               />
-            ) : (
-              <div className="reservation-card">
-                <div style={{ textAlign: "center", padding: "32px 16px" }}>
-                  <div style={{ marginBottom: "16px", display: "flex", justifyContent: "center" }}>
-                    <div style={{ width: 72, height: 72, borderRadius: "50%", background: "#EFF6FF", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <Clock size={36} color="#2563EB" />
-                    </div>
-                  </div>
-                  <h2 className="stage-title">Waiting for Visit Approval</h2>
-                  <p
-                    className="main-header-subtitle"
-                    style={{ marginBottom: "24px" }}
-                  >
-                    Your visit has been scheduled but is not yet approved by
-                    admin. Please check your profile for updates.
-                  </p>
-                  <button
-                    onClick={() => flow.navigate("/applicant/profile")}
-                    className="btn btn-primary"
-                    style={{ maxWidth: "280px", margin: "0 auto" }}
-                  >
-                    Go to Profile
-                  </button>
-                </div>
-              </div>
-            ))}
+            )}
 
           {flow.currentStage === 4 && (
             <ReservationPaymentStep
@@ -360,6 +349,8 @@ function ReservationFlowPage() {
                 targetMoveInDate: flow.targetMoveInDate,
                 isLoading: flow.isLoading,
                 payingOnline: flow.payingOnline,
+                paymentAvailable: flow.paymentAvailable,
+                applicationReviewReason: flow.applicationReviewReason,
                 agreedToFeePolicy: flow.agreedToFeePolicy,
                 setAgreedToFeePolicy: flow.setAgreedToFeePolicy,
               }}
@@ -368,6 +359,14 @@ function ReservationFlowPage() {
               onPayOnline={async () => {
                 if (!flow.reservationId) {
                   showNotification("Reservation not found. Please try again.", "error", 3000);
+                  return;
+                }
+                if (!flow.paymentAvailable) {
+                  showNotification(
+                    "Payment is still locked. It will only be available after your application and documents are approved.",
+                    "info",
+                    3500,
+                  );
                   return;
                 }
                 try {
@@ -394,7 +393,9 @@ function ReservationFlowPage() {
                 } catch (error) {
                   console.error("Failed to create deposit checkout:", error);
                   showNotification(
-                    error?.message || "Failed to start online payment. Try again.",
+                    error?.response?.data?.error ||
+                      error?.message ||
+                      "Failed to start online payment. Try again.",
                     "error",
                     3000,
                   );

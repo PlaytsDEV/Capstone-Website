@@ -59,7 +59,7 @@ await jest.unstable_mockModule("../models/Reservation.js", () => ({
 
 await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
   USER_ROLE_NAMES: Object.freeze(["applicant", "tenant", "branch_admin", "owner"]),
-  CANONICAL_RESERVATION_STATUSES: Object.freeze(["pending", "visit_pending", "visit_approved", "payment_pending", "reserved", "moveIn", "moveOut", "cancelled", "archived"]),
+  CANONICAL_RESERVATION_STATUSES: Object.freeze(["pending", "viewing_preference_selected", "visit_pending", "visit_approved", "pending_application_review", "needs_revision", "approved_for_payment", "payment_pending", "reserved", "moveIn", "moveOut", "cancelled", "archived"]),
   LEGACY_RESERVATION_STATUS_MAP: Object.freeze({}),
   ALLOWED_RESERVATION_STATUS_TRANSITIONS: Object.freeze({}),
   CANONICAL_UTILITY_EVENT_TYPES: Object.freeze(["moveIn", "moveOut", "regularBilling", "periodStart", "periodEnd", "manualAdjustment"]),
