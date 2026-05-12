@@ -396,7 +396,7 @@ const TENANT_SUMMARY_EXPORT_COLUMNS = [
 
 const UtilityBillingTab = ({ utilityType, isActive = true }) => {
   const { user } = useAuth();
-  const isOwner = user?.role === "owner";
+  const isOwner = user?.role === "owner" || user?.role === "superadmin" /* legacy */;
   const notify = useBillingNotifier();
 
   /** Mask tenant name for privacy: "Leander Ponce" -> "Leander *****" */
@@ -1568,6 +1568,27 @@ const UtilityBillingTab = ({ utilityType, isActive = true }) => {
       emptyMessage: `No ${utilityType} tenant summary rows available for export.`,
     });
   };
+
+  const effectiveBranch = isOwner ? branchFilter : (user?.branch || "");
+  const isGuadaElectricity =
+    utilityType === "electricity" && effectiveBranch === "guadalupe";
+
+  if (isGuadaElectricity) {
+    return (
+      <section className="space-y-4" aria-label="electricity billing workspace">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-800 dark:bg-amber-950/30">
+          <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+            Electricity billing not applicable for Guadalupe
+          </p>
+          <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+            Guadalupe branch does not use submeter-based electricity billing.
+            Guadalupe tenants are billed for appliances/devices declared at
+            reservation — this is handled automatically in Rent Billing.
+          </p>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section

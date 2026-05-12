@@ -68,6 +68,7 @@ import {
 } from "../utils/lifecycleNaming.js";
 import logger from "../middleware/logger.js";
 import { resolveAdminAccessContext } from "../utils/adminAccess.js";
+import { branchSupportsElectricityBilling } from "../config/branches.js";
 
 const getAdminInfo = resolveAdminAccessContext;
 
@@ -542,6 +543,14 @@ export const openUtilityPeriod = async (req, res, next) => {
 
     const room = await Room.findById(roomId);
     if (!room) return res.status(404).json({ error: "Room not found" });
+
+    if (utilityType === "electricity" && !branchSupportsElectricityBilling(room.branch)) {
+      return res.status(422).json({
+        error: `${room.branch} does not use submeter-based electricity billing.`,
+        code: "BRANCH_ELECTRICITY_NOT_SUPPORTED",
+      });
+    }
+
     assertUtilityRoomEligibility(room, utilityType);
 
     // Temp: Clean up old soft-deleted periods to avoid legacy unique index conflicts
