@@ -68,7 +68,7 @@ import {
 } from "../utils/lifecycleNaming.js";
 import logger from "../middleware/logger.js";
 import { resolveAdminAccessContext } from "../utils/adminAccess.js";
-import { branchSupportsElectricityBilling } from "../config/branches.js";
+import { branchSupportsSeparateUtilityBilling } from "../config/branches.js";
 
 const getAdminInfo = resolveAdminAccessContext;
 
@@ -544,10 +544,11 @@ export const openUtilityPeriod = async (req, res, next) => {
     const room = await Room.findById(roomId);
     if (!room) return res.status(404).json({ error: "Room not found" });
 
-    if (utilityType === "electricity" && !branchSupportsElectricityBilling(room.branch)) {
+    if (!branchSupportsSeparateUtilityBilling(room.branch, utilityType)) {
       return res.status(422).json({
-        error: `${room.branch} does not use submeter-based electricity billing.`,
-        code: "BRANCH_ELECTRICITY_NOT_SUPPORTED",
+        error:
+          "Guadalupe uses a fixed-rate billing setup. Separate electricity and water utility billing are not used for this branch.",
+        code: "BRANCH_UTILITY_NOT_SUPPORTED",
       });
     }
 
@@ -619,6 +620,13 @@ export const recordUtilityReading = async (req, res, next) => {
 
     const room = await Room.findById(roomId);
     if (!room) return res.status(404).json({ error: "Room not found" });
+    if (!branchSupportsSeparateUtilityBilling(room.branch, utilityType)) {
+      return res.status(422).json({
+        error:
+          "Guadalupe uses a fixed-rate billing setup. Separate electricity and water utility billing are not used for this branch.",
+        code: "BRANCH_UTILITY_NOT_SUPPORTED",
+      });
+    }
     assertUtilityRoomEligibility(room, utilityType);
 
     const openPeriod = await UtilityPeriod.findOne({
@@ -663,6 +671,14 @@ export const closeUtilityPeriod = async (req, res, next) => {
         .status(400)
         .json({ error: "Invalid or already closed period" });
 
+    if (!branchSupportsSeparateUtilityBilling(period.branch, utilityType)) {
+      return res.status(422).json({
+        error:
+          "Guadalupe uses a fixed-rate billing setup. Separate electricity and water utility billing are not used for this branch.",
+        code: "BRANCH_UTILITY_NOT_SUPPORTED",
+      });
+    }
+
     const room = await Room.findById(period.roomId);
     const result = await closePeriodAndGenerateDrafts({
       admin,
@@ -691,6 +707,14 @@ export const batchCloseUtilityPeriods = async (req, res, next) => {
     for (const item of closures) {
       try {
         const period = await UtilityPeriod.findById(item.periodId);
+        if (!branchSupportsSeparateUtilityBilling(period.branch, utilityType)) {
+          failed.push({
+            periodId: item.periodId,
+            error:
+              "Guadalupe uses a fixed-rate billing setup. Separate electricity and water utility billing are not used for this branch.",
+          });
+          continue;
+        }
         const room = await Room.findById(period.roomId);
         const result = await closePeriodAndGenerateDrafts({
           admin,
@@ -727,6 +751,14 @@ export const deleteUtilityPeriod = async (req, res, next) => {
     const period = await UtilityPeriod.findById(id);
     if (!period)
       return res.status(404).json({ error: "Period not found" });
+
+    if (!branchSupportsSeparateUtilityBilling(period.branch, utilityType)) {
+      return res.status(422).json({
+        error:
+          "Guadalupe uses a fixed-rate billing setup. Separate electricity and water utility billing are not used for this branch.",
+        code: "BRANCH_UTILITY_NOT_SUPPORTED",
+      });
+    }
 
     // Reset charges for associated bills and hard delete if empty
     if (period.tenantSummaries && period.tenantSummaries.length > 0) {
@@ -816,6 +848,13 @@ export const updateUtilityPeriod = async (req, res, next) => {
     if (!room) return res.status(404).json({ error: "Room not found" });
     if (!admin.isOwner && room.branch !== admin.branch) {
       return res.status(403).json({ error: "Access denied" });
+    }
+    if (!branchSupportsSeparateUtilityBilling(room.branch, utilityType)) {
+      return res.status(422).json({
+        error:
+          "Guadalupe uses a fixed-rate billing setup. Separate electricity and water utility billing are not used for this branch.",
+        code: "BRANCH_UTILITY_NOT_SUPPORTED",
+      });
     }
     assertUtilityRoomEligibility(room, utilityType);
 
@@ -998,6 +1037,14 @@ export const deleteUtilityReading = async (req, res, next) => {
     if (!reading || reading.isArchived)
       return res.status(404).json({ error: "Reading not found" });
 
+    if (!branchSupportsSeparateUtilityBilling(reading.branch, utilityType)) {
+      return res.status(422).json({
+        error:
+          "Guadalupe uses a fixed-rate billing setup. Separate electricity and water utility billing are not used for this branch.",
+        code: "BRANCH_UTILITY_NOT_SUPPORTED",
+      });
+    }
+
     reading.isArchived = true;
     await reading.save();
 
@@ -1025,6 +1072,14 @@ export const updateUtilityReading = async (req, res, next) => {
     if (!readingDoc || readingDoc.isArchived)
       return res.status(404).json({ error: "Reading not found" });
 
+    if (!branchSupportsSeparateUtilityBilling(readingDoc.branch, utilityType)) {
+      return res.status(422).json({
+        error:
+          "Guadalupe uses a fixed-rate billing setup. Separate electricity and water utility billing are not used for this branch.",
+        code: "BRANCH_UTILITY_NOT_SUPPORTED",
+      });
+    }
+
     if (reading !== undefined) readingDoc.reading = Number(reading);
     if (date !== undefined) readingDoc.date = new Date(date);
     if (eventType !== undefined) readingDoc.eventType = eventType;
@@ -1047,6 +1102,13 @@ export const reviseUtilityResult = async (req, res, next) => {
     await assertUtilityPeriodNotSent(period, utilityType);
 
     const room = await Room.findById(period.roomId);
+    if (!branchSupportsSeparateUtilityBilling(period.branch, utilityType)) {
+      return res.status(422).json({
+        error:
+          "Guadalupe uses a fixed-rate billing setup. Separate electricity and water utility billing are not used for this branch.",
+        code: "BRANCH_UTILITY_NOT_SUPPORTED",
+      });
+    }
     assertUtilityRoomEligibility(room, utilityType);
 
     const allReadings = await UtilityReading.find({
@@ -1167,6 +1229,13 @@ export const sendUtilityPeriod = async (req, res, next) => {
     }
     if (!admin.isOwner && room.branch !== admin.branch) {
       return res.status(403).json({ error: "Access denied" });
+    }
+    if (!branchSupportsSeparateUtilityBilling(room.branch, utilityType)) {
+      return res.status(422).json({
+        error:
+          "Guadalupe uses a fixed-rate billing setup. Separate electricity and water utility billing are not used for this branch.",
+        code: "BRANCH_UTILITY_NOT_SUPPORTED",
+      });
     }
     assertUtilityRoomEligibility(room, utilityType);
 

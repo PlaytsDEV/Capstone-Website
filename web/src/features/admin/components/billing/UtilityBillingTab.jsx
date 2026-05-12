@@ -1570,20 +1570,22 @@ const UtilityBillingTab = ({ utilityType, isActive = true }) => {
   };
 
   const effectiveBranch = isOwner ? branchFilter : (user?.branch || "");
-  const isGuadaElectricity =
-    utilityType === "electricity" && effectiveBranch === "guadalupe";
+  const isGuadaUtility =
+    (utilityType === "electricity" || utilityType === "water") &&
+    effectiveBranch === "guadalupe";
 
-  if (isGuadaElectricity) {
+  if (isGuadaUtility) {
     return (
-      <section className="space-y-4" aria-label="electricity billing workspace">
+      <section className="space-y-4" aria-label={`${utilityType} billing workspace`}>
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-800 dark:bg-amber-950/30">
           <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
-            Electricity billing not applicable for Guadalupe
+            Utility billing not applicable for Guadalupe
           </p>
           <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-            Guadalupe branch does not use submeter-based electricity billing.
-            Guadalupe tenants are billed for appliances/devices declared at
-            reservation — this is handled automatically in Rent Billing.
+            Guadalupe uses a fixed-rate billing setup. Separate electricity and
+            water utility billing are not used for this branch. Optional
+            appliance/device fees are handled through reservation recurring fees
+            when applicable.
           </p>
         </div>
       </section>

@@ -25,6 +25,9 @@ export const BRANCH_RULES = Object.freeze({
     displayName: "Gil Puyat",
     hasSubmeter: true,
     electricityBillingMode: "submetered",
+    billingMode: "separate_utilities",
+    supportsSeparateUtilities: true,
+    separateUtilityBilling: { electricity: true, water: true },
     applianceDeviceFeeEnabled: false,
     applianceDeviceFeePerUnit: 0,
     allowedRoomTypes: ["private", "double", "quadruple"],
@@ -33,6 +36,9 @@ export const BRANCH_RULES = Object.freeze({
     displayName: "Guadalupe",
     hasSubmeter: false,
     electricityBillingMode: "none",
+    billingMode: "fixed_rate",
+    supportsSeparateUtilities: false,
+    separateUtilityBilling: { electricity: false, water: false },
     applianceDeviceFeeEnabled: true,
     applianceDeviceFeePerUnit: 200,
     applianceDeviceFeeOptional: true,
@@ -46,6 +52,13 @@ export const BRANCH_RULES = Object.freeze({
 export const branchHasSubmeter = (branch) =>
   !!BRANCH_RULES[String(branch || "").toLowerCase()]?.hasSubmeter;
 
-/** Returns true if electricity utility periods are supported for this branch. */
-export const branchSupportsElectricityBilling = (branch) =>
-  branchHasSubmeter(branch);
+/**
+ * Returns true if the branch supports separate utility billing for the given
+ * utility type ("electricity" or "water"). Guadalupe uses fixed-rate billing
+ * and does not support either.
+ */
+export const branchSupportsSeparateUtilityBilling = (branch, utilityType) => {
+  const rules = BRANCH_RULES[String(branch || "").toLowerCase()];
+  if (!rules) return false;
+  return !!rules.separateUtilityBilling?.[utilityType];
+};
