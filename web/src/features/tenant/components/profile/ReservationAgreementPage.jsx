@@ -135,7 +135,7 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
  if (s === "payment_pending")
  return { label: "Payment Pending", bg: "#D97706" };
  if (s === "viewing_preference_selected")
- return { label: "Preference Selected", bg: "#2563EB" };
+ return { label: "Viewing Preference Selected", bg: "#2563EB" };
  if (s === "visit_approved" || reservation.scheduleApproved || reservation.visitApproved)
  return { label: "Legacy Visit Approved", bg: "#7C3AED" };
  if (s === "visit_pending" || (reservation.visitDate && !reservation.scheduleRejected))

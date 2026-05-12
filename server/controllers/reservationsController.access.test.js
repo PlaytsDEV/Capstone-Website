@@ -78,6 +78,7 @@ await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
 await jest.unstable_mockModule("../config/email.js", () => ({
   sendReservationConfirmedEmail: jest.fn(),
   sendVisitApprovedEmail: jest.fn(),
+  sendDocumentsRejectedEmail: jest.fn(),
 }));
 await jest.unstable_mockModule("../middleware/errorHandler.js", () => ({
   sendSuccess: jest.fn(),

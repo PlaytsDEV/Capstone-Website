@@ -41,6 +41,14 @@ const AddressCascadeFields = ({
  fieldErrors,
  showValidationErrors,
 }) => {
+  const requiredValidator = useCallback(
+    (value, message = "This field is required") => ({
+      valid: Boolean(value?.trim?.() || value),
+      error: value?.trim?.() || value ? null : message,
+    }),
+    [],
+  );
+
  // ── PSGC data caches ────────────────────────────────────────
  const [regions, setRegions] = useState([]);
  const [provinces, setProvinces] = useState([]);
@@ -139,8 +147,8 @@ const AddressCascadeFields = ({
  }, [regions, addressRegion, addressProvince, addressCity]);
 
  // ── Region change → load provinces (or cities for NCR) ──────
- const handleRegionChange = useCallback(
- async (code) => {
+  const handleRegionChange = useCallback(
+  async (code) => {
  setSelectedRegionCode(code);
  setSelectedProvinceCode("");
  setSelectedCityCode("");
@@ -151,15 +159,21 @@ const AddressCascadeFields = ({
  setAddressCity("");
  setAddressBarangay("");
 
- if (!code) {
- setAddressRegion("");
- setIsNCR(false);
- return;
- }
+  if (!code) {
+  setAddressRegion("");
+  setIsNCR(false);
+  validateField("addressRegion", "", (value) =>
+   requiredValidator(value, "Region is required"),
+  );
+  return;
+  }
 
- const regionObj = regions.find((r) => r.code === code);
- setAddressRegion(regionObj?.name || "");
- const isNcrRegion = code === NCR_CODE;
+  const regionObj = regions.find((r) => r.code === code);
+  setAddressRegion(regionObj?.name || "");
+  validateField("addressRegion", regionObj?.name || "", (value) =>
+   requiredValidator(value, "Region is required"),
+  );
+  const isNcrRegion = code === NCR_CODE;
  setIsNCR(isNcrRegion);
 
  if (isNcrRegion) {
@@ -184,8 +198,16 @@ const AddressCascadeFields = ({
  setLoadingProvinces(false);
  }
  },
- [regions, setAddressRegion, setAddressProvince, setAddressCity, setAddressBarangay],
- );
+  [
+   regions,
+   requiredValidator,
+   setAddressRegion,
+   setAddressProvince,
+   setAddressCity,
+   setAddressBarangay,
+   validateField,
+  ],
+  );
 
  // ── Province change → load cities ───────────────────────────
  const handleProvinceChange = useCallback(
@@ -197,13 +219,19 @@ const AddressCascadeFields = ({
  setAddressCity("");
  setAddressBarangay("");
 
- if (!code) {
- setAddressProvince("");
- return;
- }
+  if (!code) {
+  setAddressProvince("");
+  validateField("addressProvince", "", (value) =>
+   requiredValidator(value, "Province is required"),
+  );
+  return;
+  }
 
- const provObj = provinces.find((p) => p.code === code);
- setAddressProvince(provObj?.name || "");
+  const provObj = provinces.find((p) => p.code === code);
+  setAddressProvince(provObj?.name || "");
+  validateField("addressProvince", provObj?.name || "", (value) =>
+   requiredValidator(value, "Province is required"),
+  );
 
  setLoadingCities(true);
  try {
@@ -214,8 +242,15 @@ const AddressCascadeFields = ({
  }
  setLoadingCities(false);
  },
- [provinces, setAddressProvince, setAddressCity, setAddressBarangay],
- );
+  [
+   provinces,
+   requiredValidator,
+   setAddressProvince,
+   setAddressCity,
+   setAddressBarangay,
+   validateField,
+  ],
+  );
 
  // ── City change → load barangays ────────────────────────────
  const handleCityChange = useCallback(
@@ -224,13 +259,19 @@ const AddressCascadeFields = ({
  setBarangays([]);
  setAddressBarangay("");
 
- if (!code) {
- setAddressCity("");
- return;
- }
+  if (!code) {
+  setAddressCity("");
+  validateField("addressCity", "", (value) =>
+   requiredValidator(value, "City is required"),
+  );
+  return;
+  }
 
- const cityObj = cities.find((c) => c.code === code);
- setAddressCity(cityObj?.name || "");
+  const cityObj = cities.find((c) => c.code === code);
+  setAddressCity(cityObj?.name || "");
+  validateField("addressCity", cityObj?.name || "", (value) =>
+   requiredValidator(value, "City is required"),
+  );
 
  setLoadingBarangays(true);
  try {
@@ -241,16 +282,19 @@ const AddressCascadeFields = ({
  }
  setLoadingBarangays(false);
  },
- [cities, setAddressCity, setAddressBarangay],
- );
+  [cities, requiredValidator, setAddressCity, setAddressBarangay, validateField],
+  );
 
  // ── Barangay change ─────────────────────────────────────────
  const handleBarangayChange = useCallback(
- (name) => {
- setAddressBarangay(name);
- },
- [setAddressBarangay],
- );
+  (name) => {
+  setAddressBarangay(name);
+  validateField("addressBarangay", name, (value) =>
+   requiredValidator(value, "Barangay is required"),
+  );
+  },
+  [requiredValidator, setAddressBarangay, validateField],
+  );
 
  // ── Derived lock states ─────────────────────────────────────
  const regionSelected = Boolean(selectedRegionCode);
@@ -287,14 +331,23 @@ const AddressCascadeFields = ({
  placeholder="e.g., 123-A"
  maxLength={64}
  value={addressUnitHouseNo}
- onChange={(e) => handleGeneralInput(e.target.value, setAddressUnitHouseNo, 64)}
+ onChange={(e) => {
+ handleGeneralInput(e.target.value, setAddressUnitHouseNo, 64);
+ validateField("addressUnitHouseNo", e.target.value, (v) =>
+  requiredValidator(v, "Unit / House No. is required"),
+ );
+ }}
  onBlur={() =>
  validateField("addressUnitHouseNo", addressUnitHouseNo, (v) => ({
  valid: Boolean(v?.trim()),
  error: v?.trim() ? null : "This field is required",
  }))
  }
- style={{ border: errBorder(showValidationErrors, addressUnitHouseNo) || "1.5px solid #999" }}
+ style={{
+ border: fieldErrors.addressUnitHouseNo
+ ? "1.5px solid #dc2626"
+ : errBorder(showValidationErrors, addressUnitHouseNo) || "1.5px solid #999",
+ }}
  />
  {(showValidationErrors && !addressUnitHouseNo) || fieldErrors.addressUnitHouseNo ? (
  <div className="rf-field-error">
@@ -316,14 +369,23 @@ const AddressCascadeFields = ({
  placeholder="e.g., Rizal Street"
  maxLength={64}
  value={addressStreet}
- onChange={(e) => handleGeneralInput(e.target.value, setAddressStreet, 64)}
+ onChange={(e) => {
+ handleGeneralInput(e.target.value, setAddressStreet, 64);
+ validateField("addressStreet", e.target.value, (v) =>
+  requiredValidator(v, "Street is required"),
+ );
+ }}
  onBlur={() =>
  validateField("addressStreet", addressStreet, (v) => ({
  valid: Boolean(v?.trim()),
  error: v?.trim() ? null : "This field is required",
  }))
  }
- style={{ border: errBorder(showValidationErrors, addressStreet) || "1.5px solid #999" }}
+ style={{
+ border: fieldErrors.addressStreet
+ ? "1.5px solid #dc2626"
+ : errBorder(showValidationErrors, addressStreet) || "1.5px solid #999",
+ }}
  />
  {(showValidationErrors && !addressStreet) || fieldErrors.addressStreet ? (
  <div className="rf-field-error">
@@ -341,8 +403,10 @@ const AddressCascadeFields = ({
  </label>
  <select
  style={{
- ...selectStyle(false),
- border: errBorder(showValidationErrors, addressRegion) || "1.5px solid #d1d5db",
+  ...selectStyle(false),
+  border: fieldErrors.addressRegion
+  ? "1.5px solid #dc2626"
+  : errBorder(showValidationErrors, addressRegion) || "1.5px solid #d1d5db",
  }}
  value={selectedRegionCode}
  onChange={(e) => handleRegionChange(e.target.value)}
@@ -357,11 +421,11 @@ const AddressCascadeFields = ({
  </option>
  ))}
  </select>
- {showValidationErrors && !addressRegion && (
- <div className="rf-field-error">
- Region is required
- </div>
- )}
+ {(showValidationErrors && !addressRegion) || fieldErrors.addressRegion ? (
+  <div className="rf-field-error">
+  {showValidationErrors && !addressRegion ? "Region is required" : fieldErrors.addressRegion}
+  </div>
+ ) : null}
  </div>
 
  {/* Province (disabled until region is selected, hidden for NCR) */}
@@ -372,8 +436,11 @@ const AddressCascadeFields = ({
  </label>
  <select
  style={{
- ...selectStyle(!regionSelected),
- border: errBorder(showValidationErrors && regionSelected, addressProvince) || "1.5px solid #d1d5db",
+  ...selectStyle(!regionSelected),
+  border: fieldErrors.addressProvince
+  ? "1.5px solid #dc2626"
+  : errBorder(showValidationErrors && regionSelected, addressProvince) ||
+    "1.5px solid #d1d5db",
  }}
  value={selectedProvinceCode}
  onChange={(e) => handleProvinceChange(e.target.value)}
@@ -392,11 +459,14 @@ const AddressCascadeFields = ({
  </option>
  ))}
  </select>
- {showValidationErrors && regionSelected && !addressProvince && (
- <div className="rf-field-error">
- Province is required
- </div>
- )}
+ {(showValidationErrors && regionSelected && !addressProvince) ||
+ fieldErrors.addressProvince ? (
+  <div className="rf-field-error">
+  {showValidationErrors && regionSelected && !addressProvince
+   ? "Province is required"
+   : fieldErrors.addressProvince}
+  </div>
+ ) : null}
  </div>
  )}
 
@@ -407,8 +477,11 @@ const AddressCascadeFields = ({
  </label>
  <select
  style={{
- ...selectStyle(!provinceReady || !regionSelected),
- border: errBorder(showValidationErrors && provinceReady && regionSelected, addressCity) || "1.5px solid #d1d5db",
+  ...selectStyle(!provinceReady || !regionSelected),
+  border: fieldErrors.addressCity
+  ? "1.5px solid #dc2626"
+  : errBorder(showValidationErrors && provinceReady && regionSelected, addressCity) ||
+    "1.5px solid #d1d5db",
  }}
  value={selectedCityCode}
  onChange={(e) => handleCityChange(e.target.value)}
@@ -429,11 +502,14 @@ const AddressCascadeFields = ({
  </option>
  ))}
  </select>
- {showValidationErrors && provinceReady && regionSelected && !addressCity && (
- <div className="rf-field-error">
- City is required
- </div>
- )}
+ {(showValidationErrors && provinceReady && regionSelected && !addressCity) ||
+ fieldErrors.addressCity ? (
+  <div className="rf-field-error">
+  {showValidationErrors && provinceReady && regionSelected && !addressCity
+   ? "City is required"
+   : fieldErrors.addressCity}
+  </div>
+ ) : null}
  </div>
 
  {/* Barangay (disabled until city is selected) */}
@@ -443,8 +519,11 @@ const AddressCascadeFields = ({
  </label>
  <select
  style={{
- ...selectStyle(!cityReady),
- border: errBorder(showValidationErrors && cityReady, addressBarangay) || "1.5px solid #d1d5db",
+  ...selectStyle(!cityReady),
+  border: fieldErrors.addressBarangay
+  ? "1.5px solid #dc2626"
+  : errBorder(showValidationErrors && cityReady, addressBarangay) ||
+    "1.5px solid #d1d5db",
  }}
  value={addressBarangay}
  onChange={(e) => handleBarangayChange(e.target.value)}
@@ -463,11 +542,14 @@ const AddressCascadeFields = ({
  </option>
  ))}
  </select>
- {showValidationErrors && cityReady && !addressBarangay && (
- <div className="rf-field-error">
- Barangay is required
- </div>
- )}
+ {(showValidationErrors && cityReady && !addressBarangay) ||
+ fieldErrors.addressBarangay ? (
+  <div className="rf-field-error">
+  {showValidationErrors && cityReady && !addressBarangay
+   ? "Barangay is required"
+   : fieldErrors.addressBarangay}
+  </div>
+ ) : null}
  </div>
  </>
  );

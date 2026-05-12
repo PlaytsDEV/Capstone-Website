@@ -89,6 +89,7 @@ import {
   getBusinessSettings,
   RESERVATION_APPLIANCES,
 } from "../utils/businessSettings.js";
+import { runReservationDocumentPrecheck } from "../services/reservationDocumentPrecheckService.js";
 /* ─── helpers ────────────────────────────────────── */
 const HEAVY_FIELDS =
   "-selfiePhotoUrl -validIDFrontUrl -validIDBackUrl -nbiClearanceUrl -companyIDUrl -__v";
@@ -206,6 +207,30 @@ const PAYMENT_GATED_STATUSES = Object.freeze(
 );
 const MAX_REMOTE_VIEWING_QUESTION_LENGTH = 1500;
 const MAX_APPLICATION_REVIEW_REASON_LENGTH = 1500;
+const DOCUMENT_PRECHECK_TYPES = Object.freeze({
+  selfie_photo: {
+    reservationField: "selfiePhotoUrl",
+    precheckField: "selfiePhoto",
+  },
+  valid_id_front: {
+    reservationField: "validIDFrontUrl",
+    precheckField: "validIDFront",
+    requiresIdType: true,
+  },
+  valid_id_back: {
+    reservationField: "validIDBackUrl",
+    precheckField: "validIDBack",
+    requiresIdType: true,
+  },
+  nbi_clearance: {
+    reservationField: "nbiClearanceUrl",
+    precheckField: "nbiClearance",
+  },
+  company_id: {
+    reservationField: "companyIDUrl",
+    precheckField: "companyID",
+  },
+});
 const ACTIVE_BED_HOLD_STATUSES = Object.freeze(
   reservationStatusesForQuery(
     "pending",
@@ -317,6 +342,30 @@ const normalizeViewingPreferenceInput = (value, fallback = null) => {
   }
 
   return null;
+};
+
+const normalizeDocumentPrecheckType = (value) => {
+  if (value == null || value === "") return null;
+  const normalized = String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+
+  if (DOCUMENT_PRECHECK_TYPES[normalized]) return normalized;
+  if (normalized === "valididfront") return "valid_id_front";
+  if (normalized === "valididback") return "valid_id_back";
+  if (normalized === "nbiclearance") return "nbi_clearance";
+  if (normalized === "companyid" || normalized === "school_id")
+    return "company_id";
+  if (normalized === "selfie" || normalized === "selfiephoto")
+    return "selfie_photo";
+  return null;
+};
+
+const mapAiStatusToLegacyValidationStatus = (aiCheckStatus) => {
+  if (aiCheckStatus === "passed") return "passed";
+  if (aiCheckStatus === "failed") return "failed";
+  return "manual_review";
 };
 
 const deriveViewingPreference = (reservation, updates = {}) =>
@@ -1388,6 +1437,92 @@ export const getReservationById = async (req, res, next) => {
   } catch (error) {
     logger.error({ err: error, requestId: req.id }, "Fetch reservation error");
     handleReservationError(res, error, "fetch");
+  }
+};
+
+export const precheckReservationDocument = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const dbUser = await findDbUser(req.user.uid);
+    if (!dbUser) {
+      return res.status(404).json({
+        error: "User not found in database",
+        code: "USER_NOT_FOUND",
+      });
+    }
+
+    const reservation = await Reservation.findById(reservationId);
+    if (!reservation) {
+      return res.status(404).json({
+        error: "Reservation not found",
+        code: "RESERVATION_NOT_FOUND",
+      });
+    }
+
+    if (String(reservation.userId) !== String(dbUser._id)) {
+      return res.status(403).json({
+        error:
+          "Access denied. You can only pre-check your own reservation documents.",
+        code: "RESERVATION_ACCESS_DENIED",
+      });
+    }
+
+    const documentType = normalizeDocumentPrecheckType(
+      req.body.documentType || req.body.type || "valid_id_front",
+    );
+    if (!documentType) {
+      return res.status(400).json({
+        error: "Unsupported document type for AI pre-check.",
+        code: "INVALID_DOCUMENT_PRECHECK_TYPE",
+      });
+    }
+
+    const config = DOCUMENT_PRECHECK_TYPES[documentType];
+    const documentUrl =
+      req.body.documentUrl || reservation[config.reservationField] || "";
+    const idType =
+      req.body.idType || reservation.idType || reservation.validIDType || "";
+
+    if (!documentUrl) {
+      return res.status(422).json({
+        error: "Document URL is required before running the pre-check.",
+        code: "DOCUMENT_URL_REQUIRED",
+      });
+    }
+
+    if (config.requiresIdType && !String(idType || "").trim()) {
+      return res.status(422).json({
+        error: "Please select the ID type before running the document pre-check.",
+        code: "DOCUMENT_ID_TYPE_REQUIRED",
+      });
+    }
+
+    const result = await runReservationDocumentPrecheck({
+      documentType,
+      documentUrl,
+      idType,
+    });
+
+    reservation.set(`documentPrechecks.${config.precheckField}`, result);
+    await reservation.save();
+
+    return res.json({
+      documentType,
+      ...result,
+      message:
+        result.summaryMessage ||
+        "Document pre-check completed. Admin will still review the upload.",
+      validationStatus: mapAiStatusToLegacyValidationStatus(result.aiCheckStatus),
+      warnings: result.aiCheckWarnings,
+    });
+  } catch (error) {
+    logger.error(
+      { err: error, requestId: req.id },
+      "Reservation document pre-check error",
+    );
+    return next(error);
   }
 };
 
@@ -2673,6 +2808,22 @@ export const updateReservationByUser = async (req, res, next) => {
       updates.remoteViewingAcknowledged ?? reservation.remoteViewingAcknowledged;
     const effectiveVisitDate = updates.visitDate ?? reservation.visitDate;
     const effectiveVisitTime = updates.visitTime ?? reservation.visitTime;
+    const resetDocumentPrecheck = (bodyField, precheckField) => {
+      if (!hasBodyField(bodyField)) return;
+      updates[`documentPrechecks.${precheckField}`] = {
+        aiCheckStatus: "not_checked",
+        aiCheckWarnings: [],
+        aiCheckedAt: null,
+        requiresAdminAttention: false,
+        summaryMessage: "",
+        provider: "system",
+      };
+    };
+
+    resetDocumentPrecheck("validIDFrontUrl", "validIDFront");
+    resetDocumentPrecheck("validIDBackUrl", "validIDBack");
+    resetDocumentPrecheck("nbiClearanceUrl", "nbiClearance");
+    resetDocumentPrecheck("companyIDUrl", "companyID");
 
     if (
       effectiveViewingPreference === "physical_visit" &&

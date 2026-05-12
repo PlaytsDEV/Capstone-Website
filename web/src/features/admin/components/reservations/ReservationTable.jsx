@@ -48,7 +48,7 @@ export function statusLabel(status) {
  case "pending":
  return "Pending";
  case "viewing_preference_selected":
-  return "Preference Selected";
+  return "Viewing Preference Selected";
  case "visit_pending":
  return "Visit Pending";
  case "visit_approved":

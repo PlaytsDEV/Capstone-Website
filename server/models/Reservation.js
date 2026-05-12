@@ -48,6 +48,48 @@ const generateRandomCode = (prefix, length = 6) => {
   return code;
 };
 
+const documentPrecheckSchema = new mongoose.Schema(
+  {
+    aiCheckStatus: {
+      type: String,
+      enum: [
+        "not_checked",
+        "checking",
+        "passed",
+        "warning",
+        "failed",
+        "error",
+      ],
+      default: "not_checked",
+    },
+    aiCheckWarnings: {
+      type: [String],
+      default: [],
+    },
+    aiCheckedAt: {
+      type: Date,
+      default: null,
+    },
+    requiresAdminAttention: {
+      type: Boolean,
+      default: false,
+    },
+    summaryMessage: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 500,
+    },
+    provider: {
+      type: String,
+      default: "system",
+      trim: true,
+      maxlength: 80,
+    },
+  },
+  { _id: false },
+);
+
 // ============================================================================
 // SCHEMA DEFINITION
 // ============================================================================
@@ -253,6 +295,28 @@ const reservationSchema = new mongoose.Schema(
     companyIDUrl: String,
     companyIDReason: String,
     personalNotes: String,
+    documentPrechecks: {
+      selfiePhoto: {
+        type: documentPrecheckSchema,
+        default: () => ({}),
+      },
+      validIDFront: {
+        type: documentPrecheckSchema,
+        default: () => ({}),
+      },
+      validIDBack: {
+        type: documentPrecheckSchema,
+        default: () => ({}),
+      },
+      nbiClearance: {
+        type: documentPrecheckSchema,
+        default: () => ({}),
+      },
+      companyID: {
+        type: documentPrecheckSchema,
+        default: () => ({}),
+      },
+    },
 
     // Emergency Contact
     emergencyContact: {

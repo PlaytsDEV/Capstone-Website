@@ -33,17 +33,19 @@ const VISIT_OPTIONS = [
   {
     value: "physical_visit",
     title: "Schedule Physical Visit",
-    description: "Choose a preferred date and time for in-person viewing coordination.",
+    description: "Choose a preferred date and time for an in-person room viewing.",
   },
   {
     value: "remote_2d_viewing",
-    title: "Request 2D Remote Viewing",
-    description: "Review available room photos and request photo-based viewing assistance.",
+    title: "Request Remote Viewing",
+    description:
+      "Review available room photos and ask the admin for viewing assistance without visiting in person.",
   },
   {
     value: "urgent_move_in_review",
-    title: "Request Urgent Move-in Review",
-    description: "Mark your reservation for faster admin attention without bypassing document review.",
+    title: "Request Priority Viewing Review",
+    description:
+      "Ask the admin to review your selected room and reservation sooner. Approval and required documents are still required before payment.",
   },
 ];
 
@@ -54,7 +56,7 @@ const OPTION_ICONS = {
 };
 
 const REMOTE_ACKNOWLEDGEMENT =
-  "I reviewed the available room photos and understand that this is a photo-based viewing option, not a 3D or 360 tour.";
+  "I have reviewed the available room photos and understand that this is a photo-based viewing option, not a 3D or 360-degree tour.";
 
 function toISODate(date) {
   const year = date.getFullYear();
@@ -88,6 +90,13 @@ function normalizeBranchKey(value) {
   const normalized = String(value || "").trim().toLowerCase().replace(/\s+/g, "-");
   if (normalized === "gil-puyat" || normalized === "guadalupe") return normalized;
   return "";
+}
+
+function toTitleCase(value) {
+  return String(value || "")
+    .split(/[-_\s]+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
 }
 
 function getFallbackAvailabilityDates(count = 14) {
@@ -178,15 +187,15 @@ const ReservationVisitStep = ({
     ? Math.max(roomCapacity - currentOccupancy, 0)
     : null;
   const roomDetails = [
-    ["Branch", room.branch || "N/A"],
+    ["Branch", room.branch ? toTitleCase(room.branch) : "N/A"],
     ["Floor", room.floor || "N/A"],
     ["Room Number", room.roomNumber || room.name || "N/A"],
-    ["Room Type", room.type || "N/A"],
+    ["Room Type", room.type ? toTitleCase(room.type) : "N/A"],
     ["Capacity", room.capacity ? `${room.capacity} occupants` : "N/A"],
     ["Available Slots", availableSlots == null ? "N/A" : String(availableSlots)],
     [
       "Monthly Rate",
-      room.price ? `PHP ${Number(room.price).toLocaleString()}` : "N/A",
+      room.price ? `₱${Number(room.price).toLocaleString()}` : "N/A",
     ],
     ["Notes / Reminders", room.description || "None provided"],
   ];
@@ -406,10 +415,11 @@ const ReservationVisitStep = ({
         <div className="main-header-badge">
           <span>Step 2 · Viewing Preference</span>
         </div>
-        <h2 className="main-header-title">Viewing Preference</h2>
+        <h2 className="main-header-title">Choose Your Viewing Preference</h2>
         <p className="main-header-subtitle">
-          Choose how you want to proceed with room viewing or move-in coordination.
-          Payment will only be available after your application and documents are approved.
+          Select how you would like to view the room before completing your tenant
+          application. Payment will only be available after your application and
+          required documents are approved.
         </p>
       </div>
 
@@ -445,7 +455,7 @@ const ReservationVisitStep = ({
           <div className="content-card">
             <div className="card-section-title">
               <Eye size={15} style={{ marginRight: 6, flexShrink: 0 }} />
-              Choose a Viewing Preference
+              How would you like to view the room?
             </div>
             <div className="rf-option-cards">
               {VISIT_OPTIONS.map((option) => {
@@ -456,6 +466,7 @@ const ReservationVisitStep = ({
                     key={option.value}
                     type="button"
                     className={`rf-option-card${isSelected ? " selected" : ""}`}
+                    data-option={option.value}
                     onClick={() => {
                       setViewingType(option.value);
                       setIsEditingPhysicalVisit(false);
@@ -484,14 +495,18 @@ const ReservationVisitStep = ({
 
           {selectedVisit === "physical_visit" && (
             <>
+              <div className="rf-selection-confirm">
+                <CheckCircle size={14} />
+                <span>You selected: <strong>Physical Visit</strong></span>
+              </div>
               <div className="content-card">
                 <div className="card-section-title">
                   <Calendar size={15} style={{ marginRight: 6, flexShrink: 0 }} />
-                  Schedule Physical Visit
+                  Schedule Your Visit
                 </div>
                 <p className="rf-section-hint">
-                  This option is for viewing coordination only. It does not unlock payment.
-                  You still need to submit your tenant application and required documents.
+                  Choose a preferred date and time below. This is for viewing coordination
+                  only and does not unlock payment or confirm occupancy.
                 </p>
                 {availabilityError && (
                   <div className="rf-availability-alert" role="alert">
@@ -578,12 +593,16 @@ const ReservationVisitStep = ({
                         <button
                           key={slot.label}
                           type="button"
-                          className={`rf-time-slot${visitTime === slot.label ? " selected" : ""}`}
+                          className={`rf-time-slot${visitTime === slot.label ? " selected" : ""}${slot.available ? "" : " disabled"}`}
                           disabled={!slot.available}
                           onClick={() => setVisitTime(slot.label)}
                         >
                           <span>{slot.label}</span>
-                          <small>{formatRemainingSlots(slot) || slot.disabledReason || ""}</small>
+                          {formatRemainingSlots(slot) ? (
+                            <small className="rf-slot-badge">{formatRemainingSlots(slot)}</small>
+                          ) : slot.disabledReason ? (
+                            <small className="rf-slot-badge rf-slot-badge--full">{slot.disabledReason}</small>
+                          ) : null}
                         </button>
                       ))
                     )}
@@ -638,10 +657,13 @@ const ReservationVisitStep = ({
                     ))}
                   </div>
                 ) : (
-                  <div className="rf-empty-state">
-                    <ImageIcon size={20} />
-                    <p>
-                      No room photos are currently available. Please schedule a
+                  <div className="rf-empty-state rf-empty-state--centered">
+                    <div className="rf-empty-state__icon">
+                      <ImageIcon size={32} />
+                    </div>
+                    <p className="rf-empty-state__title">No photos available yet</p>
+                    <p className="rf-empty-state__desc">
+                      Room photos are still being prepared. You may schedule a
                       physical visit or contact admin for assistance.
                     </p>
                   </div>

@@ -373,7 +373,7 @@ const deriveStage = (r) => {
  return { color: "#2563EB", bg: "#DBEAFE", label: "Visit Scheduled" };
 
  if (hasReservationStatus(s, "viewing_preference_selected") || r.viewingPreference)
- return { color: "#2563EB", bg: "#DBEAFE", label: "Preference Selected" };
+ return { color: "#2563EB", bg: "#DBEAFE", label: "Viewing Preference Selected" };
 
  if (r.scheduleRejected)
  return { color: "#DC2626", bg: "#FEF2F2", label: "Reschedule Needed" };

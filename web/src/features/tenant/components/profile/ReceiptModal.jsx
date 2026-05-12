@@ -252,11 +252,11 @@ const VisitReceipt = ({ reservation }) => (
  label={
  reservation?.scheduleApproved
  ? "Confirmed Date"
- : "Preferred Move-in Date"
+ : "Preferred Visit Date"
  }
  value={
- reservation?.targetMoveInDate
- ? new Date(reservation.targetMoveInDate).toLocaleDateString(
+ reservation?.visitDate
+ ? new Date(reservation.visitDate).toLocaleDateString(
  "en-US",
  {
  weekday: "short",
@@ -268,6 +268,13 @@ const VisitReceipt = ({ reservation }) => (
  : "To be confirmed"
  }
  />
+ <ReceiptRow
+ label="Preferred Visit Time"
+ value={reservation?.visitTime || "To be confirmed"}
+ />
+ {reservation?.visitCode && (
+ <ReceiptRow label="Visit Code" value={reservation.visitCode} />
+ )}
  <ReceiptRow
  label="Schedule Status"
  value={

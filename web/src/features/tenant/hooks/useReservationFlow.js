@@ -66,6 +66,37 @@ const isReservationPaymentConfirmed = (reservation) => {
   );
 };
 
+const EMPTY_DOCUMENT_PRECHECK = Object.freeze({
+  aiCheckStatus: "not_checked",
+  aiCheckWarnings: [],
+  aiCheckedAt: null,
+  requiresAdminAttention: false,
+  summaryMessage: "",
+  provider: "system",
+});
+
+const createEmptyDocumentPrechecks = () => ({
+  validIDFront: { ...EMPTY_DOCUMENT_PRECHECK },
+  validIDBack: { ...EMPTY_DOCUMENT_PRECHECK },
+  nbiClearance: { ...EMPTY_DOCUMENT_PRECHECK },
+  companyID: { ...EMPTY_DOCUMENT_PRECHECK },
+});
+
+const normalizeDocumentPrecheckEntry = (entry) => ({
+  ...EMPTY_DOCUMENT_PRECHECK,
+  ...(entry || {}),
+  aiCheckWarnings: Array.isArray(entry?.aiCheckWarnings)
+    ? entry.aiCheckWarnings.filter(Boolean)
+    : [],
+});
+
+const normalizeDocumentPrechecks = (prechecks = {}) => ({
+  validIDFront: normalizeDocumentPrecheckEntry(prechecks.validIDFront),
+  validIDBack: normalizeDocumentPrecheckEntry(prechecks.validIDBack),
+  nbiClearance: normalizeDocumentPrecheckEntry(prechecks.nbiClearance),
+  companyID: normalizeDocumentPrecheckEntry(prechecks.companyID),
+});
+
 export default function useReservationFlow() {
   const navigate = useNavigate();
   const appNavigate = useAppNavigation();
@@ -165,6 +196,10 @@ export default function useReservationFlow() {
   const [validIDType, setValidIDType] = useState("");
   const [idValidationResult, setIdValidationResult] = useState(null);
   const [isValidatingId, setIsValidatingId] = useState(false);
+  const [documentPrechecks, setDocumentPrechecks] = useState(
+    createEmptyDocumentPrechecks,
+  );
+  const [runningDocumentChecks, setRunningDocumentChecks] = useState({});
   const [nbiClearance, setNbiClearance] = useState(null);
   const [nbiReason, setNbiReason] = useState("");
   const [personalNotes, setPersonalNotes] = useState("");
@@ -382,6 +417,11 @@ export default function useReservationFlow() {
         notes: r.idValidationNotes || [],
       });
     }
+    setDocumentPrechecks(
+      r.documentPrechecks
+        ? normalizeDocumentPrechecks(r.documentPrechecks)
+        : createEmptyDocumentPrechecks(),
+    );
     // NOTE: agreedToPrivacy / agreedToCertification are NOT restored
     // from saved data ΓÇö consent must be re-affirmed each session.
   };
@@ -1107,6 +1147,65 @@ export default function useReservationFlow() {
     return updated;
   };
 
+  const returnToDashboardAfterViewingPreference = useCallback(
+    ({
+      viewingPreference,
+      visitCode: savedVisitCode,
+      visitDate: savedVisitDate,
+      visitTime: savedVisitTime,
+    } = {}) => {
+      const feedbackByPreference = {
+        physical_visit: {
+          toastMessage:
+            "Viewing preference saved. You may now complete your tenant application.",
+          title: "Viewing preference saved",
+          message:
+            "Your physical visit schedule has been saved. Please complete your tenant application and upload the required documents for admin review.",
+        },
+        remote_2d_viewing: {
+          toastMessage:
+            "Viewing preference saved. You may now complete your tenant application.",
+          title: "Viewing preference saved",
+          message:
+            "Your 2D remote viewing request has been saved. Please complete your tenant application and upload the required documents for admin review.",
+        },
+        urgent_move_in_review: {
+          toastMessage:
+            "Viewing preference saved. You may now complete your tenant application.",
+          title: "Viewing preference saved",
+          message:
+            "Your urgent move-in request has been saved. Please complete your tenant application so admin can review your request.",
+        },
+      };
+
+      const selectedPreference = viewingPreference || viewingType;
+      const feedback =
+        feedbackByPreference[selectedPreference] ||
+        feedbackByPreference.remote_2d_viewing;
+
+      appNavigate("/applicant/profile", {
+        state: {
+          tab: "dashboard",
+          reservationFeedback: {
+            variant: "success",
+            viewingPreference: selectedPreference,
+            title: feedback.title,
+            message: feedback.message,
+            visitCode: savedVisitCode || visitCode || "",
+            visitDate: savedVisitDate || visitDate || "",
+            visitTime: savedVisitTime || visitTime || "",
+            paymentLocked: true,
+          },
+        },
+        flash: {
+          type: "success",
+          message: feedback.toastMessage,
+        },
+      });
+    },
+    [appNavigate, viewingType, visitCode, visitDate, visitTime],
+  );
+
   // ΓöÇΓöÇ Auto-save (stages 3-4) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   const validateApplicantIdDocument = useCallback(
     async ({ documentUrl, idType } = {}) => {
@@ -1189,6 +1288,80 @@ export default function useReservationFlow() {
       reservationId,
       validIDType,
     ],
+  );
+
+  const runDocumentPrecheck = useCallback(
+    async ({ documentType, documentUrl, idType } = {}) => {
+      const targetReservationId =
+        reservationId || reservationData?._id || reservationData?.id;
+
+      if (!targetReservationId || !documentType || !documentUrl) {
+        return null;
+      }
+
+      const stateKeyMap = {
+        valid_id_front: "validIDFront",
+        valid_id_back: "validIDBack",
+        nbi_clearance: "nbiClearance",
+        company_id: "companyID",
+      };
+      const stateKey = stateKeyMap[documentType];
+      if (!stateKey) {
+        return null;
+      }
+
+      setRunningDocumentChecks((previous) => ({
+        ...previous,
+        [stateKey]: true,
+      }));
+      setDocumentPrechecks((previous) => ({
+        ...previous,
+        [stateKey]: {
+          ...normalizeDocumentPrecheckEntry(previous?.[stateKey]),
+          aiCheckStatus: "checking",
+          summaryMessage: "Checking document quality...",
+        },
+      }));
+
+      try {
+        const result = await reservationApi.precheckDocument(targetReservationId, {
+          documentType,
+          documentUrl,
+          idType: idType || validIDType,
+        });
+        const normalized = normalizeDocumentPrecheckEntry(result);
+        setDocumentPrechecks((previous) => ({
+          ...previous,
+          [stateKey]: normalized,
+        }));
+        return normalized;
+      } catch (error) {
+        const fallback = normalizeDocumentPrecheckEntry({
+          aiCheckStatus: "error",
+          aiCheckWarnings: [
+            "Automatic document pre-check could not be completed. Your documents will still be reviewed by admin.",
+          ],
+          summaryMessage: getFriendlyError(
+            error,
+            "Automatic document pre-check could not be completed.",
+          ),
+          requiresAdminAttention: true,
+          aiCheckedAt: new Date().toISOString(),
+          provider: "error",
+        });
+        setDocumentPrechecks((previous) => ({
+          ...previous,
+          [stateKey]: fallback,
+        }));
+        return fallback;
+      } finally {
+        setRunningDocumentChecks((previous) => ({
+          ...previous,
+          [stateKey]: false,
+        }));
+      }
+    },
+    [reservationData, reservationId, validIDType],
   );
 
   const buildDraftPayload = useCallback(
@@ -1323,6 +1496,29 @@ export default function useReservationFlow() {
   }, [buildDraftPayload, currentStage, reservationId]);
 
   // ΓöÇΓöÇ Stage handler ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  const focusFieldByDataKey = (fieldKey) => {
+    if (!fieldKey || typeof document === "undefined") return false;
+
+    const container = document.querySelector(`[data-field="${fieldKey}"]`);
+    if (!container) return false;
+
+    container.scrollIntoView({ behavior: "smooth", block: "center" });
+
+    const focusTarget = container.matches(
+      'input, select, textarea, button, [tabindex]:not([tabindex="-1"])',
+    )
+      ? container
+      : container.querySelector(
+          'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        );
+
+    if (focusTarget && typeof focusTarget.focus === "function") {
+      focusTarget.focus({ preventScroll: true });
+    }
+
+    return true;
+  };
+
   const handleNextStage = async () => {
     clearTimeout(autoSaveTimerRef.current);
     try {
@@ -1366,18 +1562,6 @@ export default function useReservationFlow() {
             { key: "addressBarangay", label: "Barangay", isMissing: !hasText(addressBarangay) },
             { key: "validIDType", label: "ID Type", isMissing: !hasText(validIDType) },
             { key: "validIDFront", label: "Valid ID (Front)", isMissing: !validIDFront },
-            {
-              key: "validIDFront",
-              label: "Valid ID validation",
-              isMissing: idValidationResult?.validationStatus === "failed",
-              message: "ID image is unclear. Please upload a clearer photo.",
-            },
-            {
-              key: "validIDFront",
-              label: "Valid ID validation",
-              isMissing: isValidatingId,
-              message: "Please wait until ID validation finishes.",
-            },
             { key: "validIDBack", label: "Valid ID (Back)", isMissing: !validIDBack },
             {
               key: "nbiClearance",
@@ -1453,12 +1637,7 @@ export default function useReservationFlow() {
 
             if (firstInvalid) {
               setTimeout(() => {
-                const el = document.querySelector(
-                  `[data-field="${firstInvalid.key}"]`,
-                );
-                if (el) {
-                  el.scrollIntoView({ behavior: "smooth", block: "center" });
-                }
+                focusFieldByDataKey(firstInvalid.key);
               }, 100);
               showNotification(
                 firstInvalid.message ||
@@ -1471,6 +1650,10 @@ export default function useReservationFlow() {
                 const el = document.getElementById("section-agreements");
                 if (el) {
                   el.scrollIntoView({ behavior: "smooth", block: "center" });
+                }
+                const checkbox = document.getElementById("privacy-consent");
+                if (checkbox && typeof checkbox.focus === "function") {
+                  checkbox.focus({ preventScroll: true });
                 }
               }, 100);
               showNotification(
@@ -1723,6 +1906,8 @@ export default function useReservationFlow() {
     validIDType, setValidIDType,
     idValidationResult,
     isValidatingId,
+    documentPrechecks,
+    runningDocumentChecks,
     nbiClearance, setNbiClearance,
     nbiReason, setNbiReason,
     personalNotes, setPersonalNotes,
@@ -1782,7 +1967,9 @@ export default function useReservationFlow() {
     handlePrevStage,
     handleStageConfirm,
     validateApplicantIdDocument,
+    runDocumentPrecheck,
     updateReservationDraft,
+    returnToDashboardAfterViewingPreference,
     setEditingApplication,
     setScrollToSection,
     setShowStageConfirm,

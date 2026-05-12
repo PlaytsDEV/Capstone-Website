@@ -37,6 +37,7 @@ import {
   getVisitAvailability,
   getVisitAvailabilityRules,
   getReservationById,
+  precheckReservationDocument,
   createReservation,
   updateVisitAvailabilityRules,
   updateReservation,
@@ -209,6 +210,20 @@ router.get("/my-contract", verifyToken, getMyContract);
  * @returns {Object} Reservation with populated user and room data
  */
 router.get("/:reservationId", verifyToken, getReservationById);
+
+router.post(
+  "/:reservationId/document-precheck",
+  verifyToken,
+  verifyApplicant,
+  precheckReservationDocument,
+);
+
+router.post(
+  "/:reservationId/id-validation",
+  verifyToken,
+  verifyApplicant,
+  precheckReservationDocument,
+);
 
 /**
  * POST /api/reservations

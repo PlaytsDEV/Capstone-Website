@@ -26,7 +26,7 @@ export default function StatusBadge({ status, label: customLabel }) {
     if (s === "aced-pending") return "Aced Pending";
     if (s === "no-show") return "No Show";
     if (s === "month" || s === "moveIn") return "Move In";
-    if (s === "viewing_preference_selected") return "Preference Selected";
+    if (s === "viewing_preference_selected") return "Viewing Preference Selected";
     if (s === "visit_pending") return "Visit Pending";
     if (s === "visit_approved") return "Legacy Visit Approved";
     if (s === "pending_application_review") return "Pending Review";

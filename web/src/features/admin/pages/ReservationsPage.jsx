@@ -307,7 +307,7 @@ function ReservationsPage() {
           { value: "all", label: "All Status" },
           { value: "in_progress", label: "In Progress" },
           { value: "overdue", label: "Overdue" },
-          { value: "viewing_preference_selected", label: "Preference Selected" },
+          { value: "viewing_preference_selected", label: "Viewing Preference Selected" },
           { value: "pending_application_review", label: "Pending Review" },
           { value: "needs_revision", label: "Needs Revision" },
           { value: "approved_for_payment", label: "Approved for Payment" },

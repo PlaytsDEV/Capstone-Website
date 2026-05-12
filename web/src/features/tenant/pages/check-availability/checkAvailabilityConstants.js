@@ -6,6 +6,25 @@ import gpDoubleCommonCr1 from "../../../../assets/images/branches/gil-puyat/Doub
 import gpDoubleCommonCr2 from "../../../../assets/images/branches/gil-puyat/Double - GP/Quad & double Common CR2.jpg";
 import gpPrivateRoom from "../../../../assets/images/branches/gil-puyat/Private - GP/private room copy.jpg";
 import gpPrivateTnb from "../../../../assets/images/branches/gil-puyat/Private - GP/Private Rm T&B.JPG";
+import gp2dDoubleRoom1 from "../../../../assets/images/branches/gil-puyat/2d-viewing/Double sharing room1.jpg";
+import gp2dDoubleRoom2 from "../../../../assets/images/branches/gil-puyat/2d-viewing/Double sharing rm3.jpg";
+import gp2dElevatorLobby from "../../../../assets/images/branches/gil-puyat/2d-viewing/G_F elevator lobby.jpg";
+import gp2dSeatingArea from "../../../../assets/images/branches/gil-puyat/2d-viewing/G_F seating area.jpg";
+import gp2dSecurityCounter from "../../../../assets/images/branches/gil-puyat/2d-viewing/G_F security counter.jpg";
+import gp2dLoungeCommon from "../../../../assets/images/branches/gil-puyat/2d-viewing/Lounge common.jpg";
+import gp2dQuadRoom from "../../../../assets/images/branches/gil-puyat/2d-viewing/Pic quad.jpg";
+import gp2dPrivateBath from "../../../../assets/images/branches/gil-puyat/2d-viewing/Private Rm T&B.JPG";
+import gp2dPrivateRoom from "../../../../assets/images/branches/gil-puyat/2d-viewing/private room copy.jpg";
+import gp2dCommonCr1 from "../../../../assets/images/branches/gil-puyat/2d-viewing/Quad & double Common CR.jpg";
+import gp2dCommonCr2 from "../../../../assets/images/branches/gil-puyat/2d-viewing/Quad & double Common CR2.jpg";
+import gp2dRdLoungeArea1 from "../../../../assets/images/branches/gil-puyat/2d-viewing/RD Lounge Area.jpg";
+import gp2dRdLoungeArea2 from "../../../../assets/images/branches/gil-puyat/2d-viewing/RD Lounge Area 2.jpg";
+import gd2dCr from "../../../../assets/images/branches/guadalupe/2d-viewing/Guadalupe CR.JPG";
+import gd2dDiningKit from "../../../../assets/images/branches/guadalupe/2d-viewing/Guadalupe dining_kit.JPG";
+import gd2dFacade from "../../../../assets/images/branches/guadalupe/2d-viewing/Guadalupe facade.JPG";
+import gd2dLivingArea from "../../../../assets/images/branches/guadalupe/2d-viewing/Guadalupe living area.jpg";
+import gd2dSharedRoom1 from "../../../../assets/images/branches/guadalupe/2d-viewing/Guadalupe shared room.jpg";
+import gd2dSharedRoom2 from "../../../../assets/images/branches/guadalupe/2d-viewing/Guadalupe shared room2.jpg";
 
 export const AVAILABLE_APPLIANCES = [
  { id: "fan", name: "Electric Fan", price: 200 },
@@ -133,6 +152,87 @@ export const getRoomImages = (type, branch) => {
  return [getPrimaryImage(type), gpDoubleRoom, gpQuadRoom];
 };
 
+const isGilPuyatBranch = (branch) => {
+ const normalizedBranch =
+ typeof branch === "string" ? branch.toLowerCase().trim() : "";
+ return normalizedBranch === "gil-puyat" || normalizedBranch === "gil puyat";
+};
+
+const isGuadalupeBranch = (branch) => {
+ const normalizedBranch =
+ typeof branch === "string" ? branch.toLowerCase().trim() : "";
+ return normalizedBranch === "guadalupe";
+};
+
+const uniqueImages = (...collections) =>
+ collections
+ .flat()
+ .filter((image, index, images) => image && images.indexOf(image) === index);
+
+const GIL_PUYAT_COMMON_AREA_IMAGES = [
+ gp2dElevatorLobby,
+ gp2dSecurityCounter,
+ gp2dSeatingArea,
+ gp2dLoungeCommon,
+ gp2dRdLoungeArea1,
+ gp2dRdLoungeArea2,
+];
+
+const GIL_PUYAT_SHARED_CR_IMAGES = [gp2dCommonCr1, gp2dCommonCr2];
+const GUADALUPE_COMMON_AREA_IMAGES = [
+ gd2dFacade,
+ gd2dLivingArea,
+ gd2dDiningKit,
+];
+const GUADALUPE_ROOM_IMAGES = [gd2dSharedRoom1, gd2dSharedRoom2];
+const GUADALUPE_CR_IMAGES = [gd2dCr];
+
+export const getRemoteViewingImages = (type, branch) => {
+ const normalizedType = typeof type === "string" ? type.toLowerCase() : "";
+
+ if (isGuadalupeBranch(branch)) {
+ return uniqueImages(
+ GUADALUPE_ROOM_IMAGES,
+ GUADALUPE_CR_IMAGES,
+ GUADALUPE_COMMON_AREA_IMAGES,
+ );
+ }
+
+ if (!isGilPuyatBranch(branch)) {
+ return getRoomImages(type, branch);
+ }
+
+ if (normalizedType === "double-sharing") {
+ return uniqueImages(
+ [gp2dDoubleRoom1, gp2dDoubleRoom2],
+ GIL_PUYAT_SHARED_CR_IMAGES,
+ GIL_PUYAT_COMMON_AREA_IMAGES,
+ );
+ }
+
+ if (normalizedType === "quadruple-sharing") {
+ return uniqueImages(
+ [gp2dQuadRoom],
+ GIL_PUYAT_SHARED_CR_IMAGES,
+ GIL_PUYAT_COMMON_AREA_IMAGES,
+ );
+ }
+
+ if (normalizedType === "private") {
+ return uniqueImages(
+ [gp2dPrivateRoom, gp2dPrivateBath],
+ GIL_PUYAT_COMMON_AREA_IMAGES,
+ );
+ }
+
+ return uniqueImages(
+ [gp2dPrivateRoom, gp2dDoubleRoom1, gp2dDoubleRoom2, gp2dQuadRoom],
+ [gp2dPrivateBath],
+ GIL_PUYAT_SHARED_CR_IMAGES,
+ GIL_PUYAT_COMMON_AREA_IMAGES,
+ );
+};
+
 export const ROOM_IMAGES = {
  gpQuadRoom,
  gpQuadCommonCr1,
@@ -142,6 +242,25 @@ export const ROOM_IMAGES = {
  gpDoubleCommonCr2,
  gpPrivateRoom,
  gpPrivateTnb,
+ gp2dDoubleRoom1,
+ gp2dDoubleRoom2,
+ gp2dElevatorLobby,
+ gp2dSeatingArea,
+ gp2dSecurityCounter,
+ gp2dLoungeCommon,
+ gp2dQuadRoom,
+ gp2dPrivateBath,
+ gp2dPrivateRoom,
+ gp2dCommonCr1,
+ gp2dCommonCr2,
+ gp2dRdLoungeArea1,
+ gp2dRdLoungeArea2,
+ gd2dCr,
+ gd2dDiningKit,
+ gd2dFacade,
+ gd2dLivingArea,
+ gd2dSharedRoom1,
+ gd2dSharedRoom2,
 };
 
 export const buildBedsFromCapacity = (roomNumber, type, occupiedCount = 0) => {

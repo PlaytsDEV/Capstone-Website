@@ -1111,7 +1111,59 @@ html[data-theme="dark"] .rf-receipt-header__badge { color: var(--color-success);
   gap: 4px;
 }
 
+.rf-upload-ai-status {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--rf-border-card);
+  font-size: 12px;
+  line-height: 1.55;
+  text-align: left;
+}
+
+.rf-upload-ai-status--info {
+  background: var(--rf-info-bg);
+  border-color: var(--rf-info-border);
+  color: var(--rf-info-text);
+}
+
+.rf-upload-ai-status--success {
+  background: var(--rf-success-bg);
+  border-color: rgba(16, 185, 129, 0.22);
+  color: var(--rf-success-text);
+}
+
+.rf-upload-ai-status--warning {
+  background: var(--rf-warning-bg);
+  border-color: rgba(217, 119, 6, 0.24);
+  color: var(--rf-warning-text);
+}
+
+.rf-upload-ai-status__list {
+  margin: 6px 0 0 18px;
+  padding: 0;
+}
+
+.rf-upload-ai-status__footnote {
+  display: block;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--rf-text-secondary);
+}
+
 /* ============ FORM SUB-COMPONENTS ============ */
+.rf-form-alert {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--rf-error-border);
+  background: var(--rf-error-bg);
+  color: var(--rf-error-text-dark);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
 .rf-field-error {
   font-size: 12px;
   color: var(--rf-error-text);
@@ -2909,5 +2961,220 @@ html[data-theme="dark"] .rf-policy-link { color: var(--color-success); }
   font-size: 13px;
   color: var(--rf-text-secondary);
   line-height: 1.55;
+}
+
+/* ============================================================
+   PREMIUM VISIT STEP UPGRADES
+   ============================================================ */
+
+/* ── Option cards: per-type icon colors ── */
+.rf-option-card[data-option="physical_visit"] .rf-option-card__icon {
+  background: rgba(2, 132, 199, 0.1);
+  color: #0284c7;
+}
+.rf-option-card[data-option="physical_visit"]:hover .rf-option-card__icon,
+.rf-option-card[data-option="physical_visit"].selected .rf-option-card__icon {
+  background: rgba(2, 132, 199, 0.16);
+  color: #0284c7;
+}
+
+.rf-option-card[data-option="remote_2d_viewing"] .rf-option-card__icon {
+  background: rgba(13, 148, 136, 0.1);
+  color: #0d9488;
+}
+.rf-option-card[data-option="remote_2d_viewing"]:hover .rf-option-card__icon,
+.rf-option-card[data-option="remote_2d_viewing"].selected .rf-option-card__icon {
+  background: rgba(13, 148, 136, 0.16);
+  color: #0d9488;
+}
+
+.rf-option-card[data-option="urgent_move_in_review"] .rf-option-card__icon {
+  background: rgba(217, 119, 6, 0.1);
+  color: #d97706;
+}
+.rf-option-card[data-option="urgent_move_in_review"]:hover .rf-option-card__icon,
+.rf-option-card[data-option="urgent_move_in_review"].selected .rf-option-card__icon {
+  background: rgba(217, 119, 6, 0.16);
+  color: #d97706;
+}
+
+/* Selected state: override accent color per option type */
+.rf-option-card[data-option="physical_visit"].selected {
+  border-color: #0284c7;
+  background: rgba(2, 132, 199, 0.05);
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.1), var(--rf-shadow-sm);
+}
+.rf-option-card[data-option="physical_visit"].selected .rf-option-card__title {
+  color: #0284c7;
+}
+.rf-option-card[data-option="physical_visit"].selected .rf-option-card__check {
+  background: #0284c7;
+  border-color: #0284c7;
+}
+
+.rf-option-card[data-option="remote_2d_viewing"].selected {
+  border-color: #0d9488;
+  background: rgba(13, 148, 136, 0.05);
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.1), var(--rf-shadow-sm);
+}
+.rf-option-card[data-option="remote_2d_viewing"].selected .rf-option-card__title {
+  color: #0d9488;
+}
+.rf-option-card[data-option="remote_2d_viewing"].selected .rf-option-card__check {
+  background: #0d9488;
+  border-color: #0d9488;
+}
+
+.rf-option-card[data-option="urgent_move_in_review"].selected {
+  border-color: #d97706;
+  background: rgba(217, 119, 6, 0.05);
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.12), var(--rf-shadow-sm);
+}
+.rf-option-card[data-option="urgent_move_in_review"].selected .rf-option-card__title {
+  color: #d97706;
+}
+.rf-option-card[data-option="urgent_move_in_review"].selected .rf-option-card__check {
+  background: #d97706;
+  border-color: #d97706;
+}
+
+/* Dark mode per-option overrides */
+html[data-theme="dark"] .rf-option-card[data-option="physical_visit"] .rf-option-card__icon { background: rgba(56, 189, 248, 0.12); color: #38bdf8; }
+html[data-theme="dark"] .rf-option-card[data-option="physical_visit"].selected { border-color: #38bdf8; background: rgba(56, 189, 248, 0.07); box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12); }
+html[data-theme="dark"] .rf-option-card[data-option="physical_visit"].selected .rf-option-card__title { color: #38bdf8; }
+html[data-theme="dark"] .rf-option-card[data-option="physical_visit"].selected .rf-option-card__check { background: #38bdf8; border-color: #38bdf8; }
+
+html[data-theme="dark"] .rf-option-card[data-option="remote_2d_viewing"] .rf-option-card__icon { background: rgba(45, 212, 191, 0.12); color: #2dd4bf; }
+html[data-theme="dark"] .rf-option-card[data-option="remote_2d_viewing"].selected { border-color: #2dd4bf; background: rgba(45, 212, 191, 0.07); box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.12); }
+html[data-theme="dark"] .rf-option-card[data-option="remote_2d_viewing"].selected .rf-option-card__title { color: #2dd4bf; }
+html[data-theme="dark"] .rf-option-card[data-option="remote_2d_viewing"].selected .rf-option-card__check { background: #2dd4bf; border-color: #2dd4bf; }
+
+html[data-theme="dark"] .rf-option-card[data-option="urgent_move_in_review"] .rf-option-card__icon { background: rgba(251, 191, 36, 0.12); color: #fbbf24; }
+html[data-theme="dark"] .rf-option-card[data-option="urgent_move_in_review"].selected { border-color: #fbbf24; background: rgba(251, 191, 36, 0.07); box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.14); }
+html[data-theme="dark"] .rf-option-card[data-option="urgent_move_in_review"].selected .rf-option-card__title { color: #fbbf24; }
+html[data-theme="dark"] .rf-option-card[data-option="urgent_move_in_review"].selected .rf-option-card__check { background: #fbbf24; border-color: #fbbf24; }
+
+/* ── Calendar: rich selected-date fill ── */
+.rf-date-card.selected {
+  border-color: var(--rf-text-heading) !important;
+  background: var(--rf-text-heading) !important;
+  box-shadow: 0 4px 14px rgba(10, 22, 40, 0.22);
+}
+.rf-date-card.selected .rf-date-day { color: rgba(255, 255, 255, 0.65) !important; }
+.rf-date-card.selected .rf-date-num { color: #fff !important; font-size: 18px; }
+.rf-date-card.selected small { color: rgba(255, 255, 255, 0.65) !important; }
+.rf-date-card.selected .rf-today-pill {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+/* ── Time slot: slot-count badge pill ── */
+.rf-slot-badge {
+  display: inline-block;
+  margin-top: 5px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: rgba(5, 150, 105, 0.1);
+  color: var(--rf-success-text-alt);
+  line-height: 1.4;
+}
+.rf-slot-badge--full {
+  background: rgba(220, 38, 38, 0.08);
+  color: var(--rf-error-text);
+}
+.rf-time-slot.selected .rf-slot-badge {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+.rf-time-slot.selected {
+  background: var(--rf-text-heading);
+  border-color: var(--rf-text-heading);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(10, 22, 40, 0.2);
+}
+.rf-time-slot.selected span { color: #fff; font-weight: 700; }
+
+/* ── Empty state: centered hero layout ── */
+.rf-empty-state--centered {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 24px;
+  gap: 12px;
+  border: 1.5px dashed var(--rf-border);
+  border-radius: var(--rf-radius-lg);
+  background: var(--rf-surface-alt);
+}
+.rf-empty-state__icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  background: var(--rf-icon-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--rf-text-muted);
+  margin-bottom: 4px;
+}
+.rf-empty-state__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--rf-text);
+  margin: 0;
+}
+.rf-empty-state__desc {
+  font-size: 13px;
+  color: var(--rf-text-secondary);
+  line-height: 1.6;
+  margin: 0;
+  max-width: 340px;
+}
+
+/* ── Visit step cards: staggered slide-in ── */
+.rf-visit-step .content-card:nth-child(1) { animation-delay: 0.00s; }
+.rf-visit-step .content-card:nth-child(2) { animation-delay: 0.07s; }
+.rf-visit-step .content-card:nth-child(3) { animation-delay: 0.14s; }
+.rf-visit-step .content-card:nth-child(4) { animation-delay: 0.21s; }
+
+/* ── Urgent banner: pulsing ring via pseudo-element (compositor-only) ── */
+@keyframes rfUrgentPulse {
+  0%   { transform: scale(0.9); opacity: 0.55; }
+  60%  { transform: scale(1.55); opacity: 0; }
+  100% { transform: scale(1.55); opacity: 0; }
+}
+.rf-urgent-banner__icon {
+  position: relative;
+  overflow: visible;
+}
+.rf-urgent-banner__icon::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 15px;
+  background: rgba(217, 119, 6, 0.32);
+  animation: rfUrgentPulse 2.4s ease-out infinite;
+  will-change: transform, opacity;
+  pointer-events: none;
+}
+
+/* ── Calendar: tighter weekday row ── */
+.rf-calendar-weekday {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+/* ── Main header badge: subtle accent dot ── */
+.main-header-badge {
+  background: rgba(10, 22, 40, 0.07);
+  border: 1px solid rgba(10, 22, 40, 0.1);
+}
+html[data-theme="dark"] .main-header-badge {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
 }
 

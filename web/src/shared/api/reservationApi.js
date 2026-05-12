@@ -123,6 +123,14 @@ export const reservationApi = {
       }),
     ),
 
+  precheckDocument: (reservationId, data) =>
+    withLifecycleNormalization(
+      authFetch(`/reservations/${reservationId}/document-precheck`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    ),
+
   cancelByUser: (reservationId, reason = "") =>
     withLifecycleNormalization(
       authFetch(`/reservations/${reservationId}/cancel`, {

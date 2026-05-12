@@ -99,23 +99,54 @@ const openImage = (url, title) => {
 };
 
 const buildDocs = (reservation) => [
- { label: "Selfie Photo", url: reservation.selfiePhotoUrl },
+ {
+ label: "Selfie Photo",
+ url: reservation.selfiePhotoUrl,
+ precheck: reservation.documentPrechecks?.selfiePhoto,
+ },
  {
  label: `Valid ID Front${reservation.validIDType ? ` (${reservation.validIDType})` : ""}`,
  url: reservation.validIDFrontUrl,
+ precheck: reservation.documentPrechecks?.validIDFront,
  },
- { label: "Valid ID Back", url: reservation.validIDBackUrl },
+ {
+ label: "Valid ID Back",
+ url: reservation.validIDBackUrl,
+ precheck: reservation.documentPrechecks?.validIDBack,
+ },
  {
  label: "NBI Clearance",
  url: reservation.nbiClearanceUrl,
  reason: reservation.nbiReason,
+ precheck: reservation.documentPrechecks?.nbiClearance,
  },
  {
  label: "Company/School ID",
  url: reservation.companyIDUrl,
  reason: reservation.companyIDReason,
+ precheck: reservation.documentPrechecks?.companyID,
  },
 ];
+
+const getPrecheckAppearance = (precheck) => {
+ const status = String(precheck?.aiCheckStatus || "not_checked").toLowerCase();
+ if (status === "passed") {
+ return { label: "Pre-check Passed", color: "#047857", bg: "#D1FAE5" };
+ }
+ if (status === "checking") {
+ return { label: "Checking", color: "#1D4ED8", bg: "#DBEAFE" };
+ }
+ if (status === "warning") {
+ return { label: "Needs Attention", color: "#B45309", bg: "#FEF3C7" };
+ }
+ if (status === "failed") {
+ return { label: "Pre-check Failed", color: "#B91C1C", bg: "#FEE2E2" };
+ }
+ if (status === "error") {
+ return { label: "Manual Review", color: "#7C3AED", bg: "#EDE9FE" };
+ }
+ return null;
+};
 
 const PERSONAL_FIELDS = (reservation) => [
  ["First Name", fmt(reservation.firstName || reservation.userId?.firstName)],
@@ -144,12 +175,12 @@ const getInitials = (name) => {
 const STAGE_GUIDANCE = {
  pending: {
  Icon: Calendar,
- message: "Waiting for the tenant to select a viewing or move-in preference.",
+ message: "Waiting for the tenant to select a viewing preference.",
  },
  viewing_preference_selected: {
  Icon: Eye,
  message:
- "Viewing / move-in preference recorded. Waiting for the tenant to submit the application and required documents.",
+ "Viewing preference recorded. Waiting for the tenant to submit the application and required documents.",
  },
  visit_pending: {
  Icon: Eye,
@@ -424,7 +455,7 @@ export default function ReservationDetailsModal({
  </div>
 
  <div className="rdm-section rdm-surface-card">
- <h4 className="rdm-section-title">Viewing / Move-in Preference</h4>
+ <h4 className="rdm-section-title">Viewing Preference</h4>
  <div className="rdm-info-grid">
  <div className="rdm-info-item">
  <span className="rdm-info-label">Selected Option</span>
@@ -437,6 +468,10 @@ export default function ReservationDetailsModal({
  <div className="rdm-info-item">
  <span className="rdm-info-label">Preferred Visit Time</span>
  <span className="rdm-info-value">{fmt(reservation.visitTime)}</span>
+ </div>
+ <div className="rdm-info-item">
+ <span className="rdm-info-label">Visit Code</span>
+ <span className="rdm-info-value">{fmt(reservation.visitCode)}</span>
  </div>
  <div className="rdm-info-item">
  <span className="rdm-info-label">Remote Viewing Acknowledgement</span>
@@ -580,7 +615,45 @@ export default function ReservationDetailsModal({
  <div className="rdm-expand-content">
  {docs.map((doc, index) => (
  <div key={`${doc.label}-${index}`} className="rdm-doc-row">
+ <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
  <span className="rdm-doc-label">{doc.label}</span>
+ {(() => {
+ const appearance = getPrecheckAppearance(doc.precheck);
+ const warnings = Array.isArray(doc.precheck?.aiCheckWarnings)
+ ? doc.precheck.aiCheckWarnings.filter(Boolean)
+ : [];
+ if (!appearance && warnings.length === 0) return null;
+ return (
+ <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+ {appearance ? (
+ <span
+ style={{
+ display: "inline-flex",
+ alignItems: "center",
+ width: "fit-content",
+ padding: "2px 8px",
+ borderRadius: 999,
+ fontSize: "0.72rem",
+ fontWeight: 700,
+ background: appearance.bg,
+ color: appearance.color,
+ }}
+ >
+ {appearance.label}
+ </span>
+ ) : null}
+ {warnings.slice(0, 2).map((warning, warningIndex) => (
+ <span
+ key={`${doc.label}-warning-${warningIndex}`}
+ style={{ fontSize: "0.78rem", color: "#6B7280", lineHeight: 1.4 }}
+ >
+ {warning}
+ </span>
+ ))}
+ </div>
+ );
+ })()}
+ </div>
  {doc.url ? (
  <button
  type="button"

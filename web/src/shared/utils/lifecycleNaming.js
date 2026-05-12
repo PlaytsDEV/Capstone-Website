@@ -67,7 +67,7 @@ export const ALLOWED_RESERVATION_STATUS_TRANSITIONS = Object.freeze({
 
 export const RESERVATION_STATUS_LABELS = Object.freeze({
   pending: "Room Selected",
-  viewing_preference_selected: "Preference Selected",
+  viewing_preference_selected: "Viewing Preference Selected",
   visit_pending: "Visit Pending",
   visit_approved: "Legacy Visit Approved",
   pending_application_review: "Pending Application Review",
@@ -198,7 +198,7 @@ export const RESERVATION_STAGE_GUIDANCE = Object.freeze({
   pending:
     "Waiting for the tenant to confirm a room and select a viewing preference.",
   viewing_preference_selected:
-    "Viewing / move-in preference selected. Waiting for the tenant to submit the application and documents.",
+    "Viewing preference selected. Waiting for the tenant to submit the application and documents.",
   visit_pending:
     "Legacy visit schedule pending approval. Review it in the Visit Schedules tab.",
   visit_approved:

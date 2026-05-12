@@ -59,6 +59,9 @@ const ReservationApplicationStep = ({
  validIDFront, setValidIDFront,
  validIDBack, setValidIDBack,
  validIDType, setValidIDType,
+ documentPrechecks,
+ runningDocumentChecks,
+ onRunDocumentPrecheck,
  nbiClearance, setNbiClearance,
  nbiReason, setNbiReason,
  personalNotes, setPersonalNotes,
@@ -124,6 +127,12 @@ const ReservationApplicationStep = ({
  const result = validator(value);
  setFieldErrors((prev) => ({ ...prev, [fieldName]: result.error }));
  return result.valid;
+ };
+ const clearFieldError = (fieldName) => {
+ setFieldErrors((prev) => {
+ if (!prev[fieldName]) return prev;
+ return { ...prev, [fieldName]: null };
+ });
  };
  const handleTimeInput = (value) => {
  validateField("estimatedMoveInTime", value, validateEstimatedTime);
@@ -195,6 +204,12 @@ const ReservationApplicationStep = ({
  </p>
  </div>
 
+ {showValidationErrors && !applicationSubmitted && (
+ <div className="rf-form-alert" role="alert">
+ Please complete the highlighted required fields before submitting.
+ </div>
+ )}
+
  {/* Read-Only Banner */}
  {readOnly && (
  <div className="rf-locked-banner">
@@ -245,11 +260,14 @@ const ReservationApplicationStep = ({
  validIDFront, setValidIDFront,
  validIDBack, setValidIDBack,
  validIDType, setValidIDType,
+ documentPrechecks,
+ runningDocumentChecks,
+ onRunDocumentPrecheck,
  nbiClearance, setNbiClearance,
  nbiReason, setNbiReason,
  personalNotes, setPersonalNotes,
  handleNameInput, handlePhoneInput, handleGeneralInput,
- validateField, fieldErrors,
+ validateField, fieldErrors, clearFieldError,
  birthdayMin, birthdayMax,
  showValidationErrors,
  }}
@@ -279,11 +297,17 @@ const ReservationApplicationStep = ({
  employerContact, setEmployerContact,
  startDate, setStartDate,
  occupation, setOccupation,
- previousEmployment, setPreviousEmployment,
- companyID, setCompanyID,
- companyIDReason, setCompanyIDReason,
- handleGeneralInput,
- showValidationErrors,
+  previousEmployment, setPreviousEmployment,
+  companyID, setCompanyID,
+  companyIDReason, setCompanyIDReason,
+  documentPrechecks,
+  runningDocumentChecks,
+  onRunDocumentPrecheck,
+  handleGeneralInput,
+  validateField,
+  fieldErrors,
+  clearFieldError,
+  showValidationErrors,
  }}
  />
 
@@ -296,12 +320,12 @@ const ReservationApplicationStep = ({
  referrerName, setReferrerName,
  targetMoveInDate, setTargetMoveInDate,
  estimatedMoveInTime, setEstimatedMoveInTime,
- leaseDuration, setLeaseDuration,
- workSchedule, setWorkSchedule,
- workScheduleOther, setWorkScheduleOther,
- handleTargetDateInput, handleTimeInput,
- readOnly, moveInMin, moveInMax, fieldErrors,
- showValidationErrors,
+  leaseDuration, setLeaseDuration,
+  workSchedule, setWorkSchedule,
+  workScheduleOther, setWorkScheduleOther,
+  handleTargetDateInput, handleTimeInput,
+  readOnly, moveInMin, moveInMax, fieldErrors, validateField,
+  showValidationErrors,
  }}
  />
 
@@ -329,7 +353,7 @@ const ReservationApplicationStep = ({
  {!readOnly && (
  <div className="stage-buttons" style={{ justifyContent: "flex-end" }}>
  <button onClick={onNext} className="btn btn-primary">
- {applicationSubmitted ? "Save Changes" : "Continue to Payment"}
+ {applicationSubmitted ? "Save Changes" : "Submit Application"}
  </button>
  </div>
  )}
