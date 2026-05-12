@@ -175,20 +175,24 @@ const isRemoteUri = (uri) => {
   }
 };
 
+const extractAttachmentName = (entry, uri, index) =>
+  (typeof entry === "object" && entry
+    ? toOptionalText(entry?.name) ||
+      toOptionalText(entry?.filename) ||
+      toOptionalText(entry?.fileName) ||
+      toOptionalText(entry?.label) ||
+      toOptionalText(entry?.title)
+    : null) || deriveAttachmentName(uri || "", index);
+
+/**
+ * Used when SAVING new attachments — rejects non-HTTP(S) URIs entirely
+ * so local file paths from mobile devices never reach the database.
+ */
 const normalizeAttachmentEntry = (entry, index = 0) => {
   const uri = getAttachmentUri(entry);
   if (!uri || !isRemoteUri(uri)) return null;
 
-  const name =
-    (typeof entry === "object" && entry
-      ? toOptionalText(entry?.name) ||
-        toOptionalText(entry?.filename) ||
-        toOptionalText(entry?.fileName) ||
-        toOptionalText(entry?.label) ||
-        toOptionalText(entry?.title)
-      : null) ||
-    deriveAttachmentName(uri, index);
-
+  const name = extractAttachmentName(entry, uri, index);
   return {
     name,
     uri,
@@ -203,11 +207,44 @@ const normalizeAttachmentEntry = (entry, index = 0) => {
   };
 };
 
+/**
+ * Used when READING attachments from the DB — preserves every attachment
+ * record but nulls out URIs that are not safe HTTP(S) URLs so the frontend
+ * can show an "unavailable" state instead of silently hiding the attachment.
+ */
+const sanitizeAttachmentForOutput = (entry, index = 0) => {
+  const rawUri = getAttachmentUri(entry);
+  if (!rawUri && typeof entry !== "object") return null;
+
+  const safeUri = rawUri && isRemoteUri(rawUri) ? rawUri : null;
+  const name = extractAttachmentName(entry, safeUri || rawUri, index);
+  if (!name) return null;
+
+  return {
+    name,
+    uri: safeUri,
+    type: inferAttachmentType({
+      name,
+      uri: safeUri || "",
+      fallbackType:
+        typeof entry === "object" && entry
+          ? entry?.type || entry?.mimeType || entry?.mime
+          : null,
+    }),
+  };
+};
+
 const normalizeAttachments = (attachments) => {
   if (!Array.isArray(attachments)) return [];
-
   return attachments
     .map((entry, index) => normalizeAttachmentEntry(entry, index))
+    .filter(Boolean);
+};
+
+const sanitizeAttachmentsForOutput = (attachments) => {
+  if (!Array.isArray(attachments)) return [];
+  return attachments
+    .map((entry, index) => sanitizeAttachmentForOutput(entry, index))
     .filter(Boolean);
 };
 
@@ -283,7 +320,7 @@ const serializeMaintenanceRequest = (request, tenant = null) => ({
   status: request.status,
   assigned_to: request.assigned_to ?? null,
   notes: request.notes ?? null,
-  attachments: normalizeAttachments(request.attachments),
+  attachments: sanitizeAttachmentsForOutput(request.attachments),
   reopen_note: request.reopen_note ?? null,
   reopen_history: Array.isArray(request.reopen_history) ? request.reopen_history : [],
   statusHistory: Array.isArray(request.statusHistory) ? request.statusHistory : [],
@@ -297,7 +334,7 @@ const serializeMaintenanceRequest = (request, tenant = null) => ({
   workLog: Array.isArray(request.work_log)
     ? request.work_log.map((entry) => ({
         ...entry,
-        attachments: normalizeAttachments(entry?.attachments),
+        attachments: sanitizeAttachmentsForOutput(entry?.attachments),
       }))
     : [],
   resolutionNote: request.resolution_note ?? null,

@@ -1359,11 +1359,14 @@ export default function AdminMaintenancePage() {
  <div className="grid gap-3 md:grid-cols-2">
  {selectedRequest.attachments.map((attachment, index) => {
  const attachmentUri = getMaintenanceAttachmentUri(attachment);
- if (!attachmentUri || !isRemoteUri(attachmentUri)) return null;
+ const isViewable = isRemoteUri(attachmentUri);
+ const attachmentName = getMaintenanceAttachmentName(attachment, index);
+ const key = `${attachmentUri || attachmentName}-${index}`;
 
+ if (isViewable) {
  return (
  <a
- key={`${attachmentUri}-${index}`}
+ key={key}
  href={attachmentUri}
  target="_blank"
  rel="noreferrer"
@@ -1372,13 +1375,29 @@ export default function AdminMaintenancePage() {
  <AttachmentThumbnail attachment={attachment} index={index} />
  <div className="min-w-0">
  <span className="block truncate text-sm font-medium text-card-foreground">
- {getMaintenanceAttachmentName(attachment, index)}
+ {attachmentName}
  </span>
  <span className="text-xs text-muted-foreground">
  {getMaintenanceAttachmentLabel(attachment)}
  </span>
  </div>
  </a>
+ );
+ }
+
+ return (
+ <div
+ key={key}
+ className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 opacity-50"
+ >
+ <AttachmentThumbnail attachment={attachment} index={index} />
+ <div className="min-w-0">
+ <span className="block truncate text-sm font-medium text-card-foreground">
+ {attachmentName}
+ </span>
+ <span className="text-xs text-destructive">Photo unavailable</span>
+ </div>
+ </div>
  );
  })}
  </div>
@@ -1495,11 +1514,14 @@ export default function AdminMaintenancePage() {
  <div className="mt-3 grid gap-3">
  {entry.attachments.map((attachment, attachmentIndex) => {
  const attachmentUri = getMaintenanceAttachmentUri(attachment);
- if (!attachmentUri || !isRemoteUri(attachmentUri)) return null;
+ const isViewable = isRemoteUri(attachmentUri);
+ const attachmentName = getMaintenanceAttachmentName(attachment, attachmentIndex);
+ const key = `${attachmentUri || attachmentName}-${attachmentIndex}`;
 
+ if (isViewable) {
  return (
  <a
- key={`${attachmentUri}-${attachmentIndex}`}
+ key={key}
  href={attachmentUri}
  target="_blank"
  rel="noreferrer"
@@ -1508,13 +1530,29 @@ export default function AdminMaintenancePage() {
  <AttachmentThumbnail attachment={attachment} index={attachmentIndex} />
  <div className="min-w-0">
  <span className="block truncate text-sm font-medium text-card-foreground">
- {getMaintenanceAttachmentName(attachment, attachmentIndex)}
+ {attachmentName}
  </span>
  <span className="text-xs text-muted-foreground">
  {getMaintenanceAttachmentLabel(attachment)}
  </span>
  </div>
  </a>
+ );
+ }
+
+ return (
+ <div
+ key={key}
+ className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 opacity-50"
+ >
+ <AttachmentThumbnail attachment={attachment} index={attachmentIndex} />
+ <div className="min-w-0">
+ <span className="block truncate text-sm font-medium text-card-foreground">
+ {attachmentName}
+ </span>
+ <span className="text-xs text-destructive">Photo unavailable</span>
+ </div>
+ </div>
  );
  })}
  </div>
