@@ -27,7 +27,7 @@ import {
   resolvePaymentDetails as resolveSharedPaymentDetails,
 } from "./paymentDisplay";
 
-const OWNER_ROLES = new Set(["owner", "superadmin"]);
+const OWNER_ROLES = new Set(["owner"]);
 
 const BRANCH_OPTIONS = [
   { value: "", label: "All Branches" },

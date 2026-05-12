@@ -11,7 +11,7 @@ router.get('/live-status/:sessionId', authMiddleware, chatbotController.getLiveS
 router.post('/close-live-chat', authMiddleware, chatbotController.closeLiveChat);
 router.get('/history', authMiddleware, chatbotController.getChatHistory);
 
-// Admin routes — adminMiddleware enforces admin/superadmin role
+// Admin routes — adminMiddleware enforces owner/branch_admin role
 router.get('/admin/live-chats', authMiddleware, adminMiddleware, chatbotController.getLiveChats);
 router.post('/admin/live-chat/accept', authMiddleware, adminMiddleware, chatbotController.acceptLiveChat);
 router.post('/admin/live-chat/message', authMiddleware, adminMiddleware, chatbotController.sendAdminMessage);

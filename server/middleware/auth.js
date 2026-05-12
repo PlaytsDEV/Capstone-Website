@@ -90,7 +90,7 @@ const isOtpSessionExempt = (req) =>
   OTP_SESSION_EXEMPT_PATHS.some((path) => req.originalUrl?.startsWith(path));
 
 const isAdminRole = (role) =>
-  role === "branch_admin" || role === "owner" || role === "superadmin";
+  role === "branch_admin" || role === "owner";
 
 /**
  * Verify Firebase ID Token

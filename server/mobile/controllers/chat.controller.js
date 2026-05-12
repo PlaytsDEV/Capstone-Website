@@ -14,7 +14,7 @@ const MAX_MESSAGE_CHARS = 1000;
 const CHAT_CONVERSATIONS = 'chat_conversations';
 const CHAT_MESSAGES = 'chat_messages';
 const ACTIVE_RESERVATION_STATUSES = ['moveIn', 'active', 'confirmed', 'completed'];
-const ADMIN_ROLES = new Set(['admin', 'superadmin', 'owner', 'branch_admin']);
+const ADMIN_ROLES = new Set(['admin', 'owner', 'branch_admin']);
 const VALID_BRANCHES = new Set(['gil-puyat', 'guadalupe']);
 const ACTIVE_CONVERSATION_STATUSES = ['open', 'in_review', 'waiting_tenant', 'resolved'];
 const VALID_CATEGORIES = new Set([
@@ -305,7 +305,7 @@ async function notifyAdminsOfTenantMessage(db, conversation) {
       isArchived: { $ne: true },
       accountStatus: { $ne: 'banned' },
       $or: [
-        { role: { $in: ['owner', 'superadmin', 'admin'] } },
+        { role: { $in: ['owner', 'branch_admin'] } },
         { role: 'branch_admin', branch: conversation.branch },
       ],
     }, { projection: { _id: 1 } }).toArray();
@@ -438,7 +438,7 @@ async function getConversationMessages(req, res) {
       db.collection(CHAT_MESSAGES).updateMany(
         {
           conversationId: conversation._id,
-          senderRole: { $in: ['admin', 'owner', 'superadmin'] },
+          senderRole: { $in: ['admin', 'owner'] },
           readAt: null,
         },
         { $set: { readAt: now } },

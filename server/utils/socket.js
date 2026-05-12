@@ -23,13 +23,12 @@ import { ROOM_BRANCHES } from "../config/branches.js";
 
 let io = null;
 
-const ADMIN_ROLES = new Set(["branch_admin", "owner", "superadmin"]);
+const ADMIN_ROLES = new Set(["branch_admin", "owner"]);
 
 const adminBranchRoom = (branch) => `admins:branch:${branch}`;
 const isOwnerLike = (role, claims = {}) =>
   role === "owner" ||
-  role === "superadmin" ||
-  Boolean(claims.owner || claims.superadmin);
+  Boolean(claims.owner);
 
 /**
  * Initialize Socket.IO on an existing HTTP server
@@ -85,7 +84,7 @@ export function initSocket(httpServer, allowedOrigins = []) {
       socket.join(`user:${userId}`);
     }
 
-    if (ADMIN_ROLES.has(role) || claims.branch_admin || claims.owner || claims.superadmin) {
+    if (ADMIN_ROLES.has(role) || claims.branch_admin || claims.owner) {
       socket.join("admins");
 
       if (isOwnerLike(role, claims)) {

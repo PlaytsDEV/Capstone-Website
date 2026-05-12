@@ -958,8 +958,8 @@ export const getReservations = async (req, res, next) => {
           : { isArchived: { $ne: true } };
 
     let query;
-    if (dbUser.role === "owner" || dbUser.role === "superadmin") {
-      // Owner/superadmin: see all branches
+    if (dbUser.role === "owner") {
+      // Owner: see all branches
       query = { ...archiveQuery };
     } else if (dbUser.role === "branch_admin") {
       const roomIds = (
@@ -1281,7 +1281,6 @@ export const getReservationById = async (req, res, next) => {
     if (
       dbUser.role !== "branch_admin" &&
       dbUser.role !== "owner" &&
-      dbUser.role !== "superadmin" &&
       String(reservation.userId?._id) !== String(dbUser._id)
     ) {
       return res.status(403).json({
@@ -2640,8 +2639,7 @@ export const deleteReservation = async (req, res, next) => {
     const isOwner = String(reservation.userId) === String(dbUser._id);
     const isAdmin =
       dbUser.role === "branch_admin" ||
-      dbUser.role === "owner" ||
-      dbUser.role === "superadmin";
+      dbUser.role === "owner";
     if (!isOwner && !isAdmin)
       return res.status(403).json({
         error: "Access denied. You can only delete your own reservation.",
@@ -3351,7 +3349,7 @@ export const requestCancellationByUser = async (req, res, next) => {
     try {
       const room = await Room.findById(reservation.roomId).select("branch").lean();
       const adminUsers = await User.find({
-        role: { $in: ["admin", "superadmin"] },
+        role: { $in: ["branch_admin", "owner"] },
         ...(room?.branch ? { branch: room.branch } : {}),
         isActive: true,
       }).select("_id").lean();

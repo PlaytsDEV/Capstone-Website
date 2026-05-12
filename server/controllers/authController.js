@@ -23,7 +23,7 @@ import auditLogger from "../utils/auditLogger.js";
 
 const VALID_BRANCHES = ROOM_BRANCHES;
 const VALID_ROLES = ["applicant", "tenant", "branch_admin", "owner"];
-const ADMIN_ROLES = ["branch_admin", "owner", "superadmin"];
+const ADMIN_ROLES = ["branch_admin", "owner"];
 const OTP_EXPIRES_MINUTES = 10;
 const OTP_EXPIRES_MS = OTP_EXPIRES_MINUTES * 60 * 1000;
 const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
