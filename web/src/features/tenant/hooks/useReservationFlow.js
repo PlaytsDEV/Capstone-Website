@@ -63,11 +63,7 @@ const getValidPaymentReturnSessionId = () => {
 
 const isReservationPaymentConfirmed = (reservation) => {
   const status = normalizeReservationStatus(reservation?.status);
-  return (
-    reservation?.paymentStatus === "paid" ||
-    status === "reserved" ||
-    status === "moveIn"
-  );
+  return hasReservationStatus(status, "reserved", "moveIn", "moveOut");
 };
 
 const EMPTY_DOCUMENT_PRECHECK = Object.freeze({
@@ -588,7 +584,7 @@ export default function useReservationFlow() {
       status === "reserved" ||
       status === "moveIn" ||
       Boolean(r.proofOfPaymentUrl);
-    const isConfirmed = status === "reserved" || r.paymentStatus === "paid";
+    const isConfirmed = hasReservationStatus(status, "reserved", "moveIn", "moveOut");
 
     if (hasViewingPreference) setVisitCompleted(applicationUnlockedByVisit);
     if (isVisitApprovedFlag) setVisitApproved(true);

@@ -1,7 +1,7 @@
 import {
   hasReservationStatus,
   normalizeReservationStatus,
-} from "../../../shared/utils/lifecycleNaming";
+} from "../../../shared/utils/lifecycleNaming.js";
 
 const APPLICATION_UNLOCK_VISIT_STATUSES = new Set([
   "visit_completed",

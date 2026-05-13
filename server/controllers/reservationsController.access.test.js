@@ -472,6 +472,86 @@ describe("reservationsController.updateReservation access hardening", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  test("tenant application submission requires fresh final agreements", async () => {
+    reservationFindById.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439015",
+      userId: "tenant-1",
+      roomId: "room-1",
+      status: "viewing_preference_selected",
+      viewingPreference: "remote_2d_viewing",
+      remoteViewingAcknowledged: true,
+      agreedToPrivacy: true,
+      agreedToCertification: true,
+      firstName: "Tala",
+      lastName: "Applicant",
+      mobileNumber: "09123456789",
+      birthday: new Date("1998-01-01T00:00:00.000Z"),
+      maritalStatus: "single",
+      nationality: "Filipino",
+      educationLevel: "college",
+      address: {
+        region: "NCR",
+        unitHouseNo: "Unit 1",
+        street: "Roxas Blvd",
+        province: "Metro Manila",
+        city: "Pasay",
+        barangay: "Barangay 1",
+      },
+      selfiePhotoUrl: "https://example.com/selfie.jpg",
+      emergencyContact: {
+        name: "Parent Contact",
+        relationship: "Parent",
+        contactNumber: "09123456789",
+      },
+      healthConcerns: "None",
+      employment: {
+        employerSchool: "Lilycrest Co",
+        employerAddress: "Makati",
+        occupation: "Analyst",
+      },
+      referralSource: "facebook",
+      targetMoveInDate: new Date("2099-06-01T00:00:00.000Z"),
+      estimatedMoveInTime: "09:00",
+      leaseDuration: 12,
+      workSchedule: "day",
+      validIDFrontUrl: "https://example.com/id-front.jpg",
+      validIDBackUrl: "https://example.com/id-back.jpg",
+      nbiReason: "To follow",
+      companyIDReason: "Student applicant",
+      idType: "Passport",
+      validIDType: "Passport",
+      applicationSubmittedAt: null,
+    });
+    buildUserUpdatePayload.mockReturnValue({});
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439015" },
+      user: { uid: "tenant-firebase-uid" },
+      body: { submitApplication: true },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    userFindOne.mockResolvedValue({
+      _id: "tenant-1",
+      firebaseUid: "tenant-firebase-uid",
+      role: "applicant",
+    });
+
+    await updateReservationByUser(req, res, next);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body?.code).toBe("APPLICATION_INCOMPLETE");
+    expect(res.body?.missingFields).toEqual(
+      expect.arrayContaining([
+        "privacy policy agreement",
+        "certification agreement",
+      ]),
+    );
+    expect(reservationFindByIdAndUpdate).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
   test("admin can allow application progress without a completed physical visit", async () => {
     const save = jest.fn().mockResolvedValue(undefined);
     const populate = jest.fn().mockResolvedValue(undefined);

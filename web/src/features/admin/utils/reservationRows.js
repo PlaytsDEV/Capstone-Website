@@ -1,8 +1,8 @@
-import { BRANCH_DISPLAY_NAMES } from "../../../shared/utils/constants";
+import { BRANCH_DISPLAY_NAMES } from "../../../shared/utils/constants.js";
 import {
  RESERVATION_STAGE_MAP,
  hasReservationStatus,
-} from "../../../shared/utils/lifecycleNaming";
+} from "../../../shared/utils/lifecycleNaming.js";
 
 export const IN_PROGRESS_STATUSES = [
  "pending",
@@ -37,9 +37,31 @@ export function mapReservationAdminRow(reservation) {
  branchCode,
  branch: getBranchLabel(branchCode),
  moveInDate: reservation.moveInDate,
+ moveOutDate: reservation.moveOutDate,
  status: reservation.status || "pending",
  totalPrice: reservation.totalPrice,
  paymentStatus: reservation.paymentStatus,
+ viewingPreference: reservation.viewingPreference,
+ viewingType: reservation.viewingType,
+ visitDate: reservation.visitDate,
+ visitTime: reservation.visitTime,
+ visitApproved: Boolean(reservation.visitApproved),
+ visitScheduledAt: reservation.visitScheduledAt,
+ visitStatus: reservation.visitStatus || null,
+ visitOutcomeNotes: reservation.visitOutcomeNotes || "",
+ visitOutcomeUpdatedAt: reservation.visitOutcomeUpdatedAt || null,
+ visitOutcomeUpdatedByName: reservation.visitOutcomeUpdatedByName || "",
+ visitHistory: reservation.visitHistory || [],
+ scheduleApproved: Boolean(reservation.scheduleApproved),
+ scheduleApprovedAt: reservation.scheduleApprovedAt || null,
+ scheduleRejected: Boolean(reservation.scheduleRejected),
+ scheduleRejectedAt: reservation.scheduleRejectedAt || null,
+ scheduleRejectionReason: reservation.scheduleRejectionReason || "",
+ cancellationRequested: Boolean(reservation.cancellationRequested),
+ cancellationStatus: reservation.cancellationStatus || null,
+ cancellationReason: reservation.cancellationReason || null,
+ cancellationRequestedAt: reservation.cancellationRequestedAt || null,
+ cancellationAdminNote: reservation.cancellationAdminNote || null,
  createdAt: reservation.createdAt,
  _raw: reservation,
  };
@@ -78,8 +100,18 @@ export function mapVisitScheduleRows(rawReservations = []) {
  visitHistory: reservation.visitHistory || [],
  };
 
+ const hasActiveVisitRow =
+ reservation.visitDate &&
+ !reservation.scheduleRejected &&
+ !reservation.visitApproved &&
+ reservation.status !== "cancelled";
+
  if (reservation.visitHistory && reservation.visitHistory.length > 0) {
  reservation.visitHistory.forEach((historyEntry, index) => {
+ if (hasActiveVisitRow && historyEntry.status === "schedule_approved") {
+ return;
+ }
+
  const actionedAt =
  historyEntry.approvedAt || historyEntry.rejectedAt || historyEntry.updatedAt || null;
  const actionedLabel =
@@ -119,10 +151,7 @@ export function mapVisitScheduleRows(rawReservations = []) {
  }
 
  if (
- reservation.visitDate &&
- !reservation.scheduleRejected &&
- !reservation.visitApproved &&
- reservation.status !== "cancelled"
+ hasActiveVisitRow
  ) {
  rows.push({
  ...base,

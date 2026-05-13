@@ -136,7 +136,6 @@ function resolveCurrentStage(reservation) {
  const physicalVisitState = getPhysicalVisitApplicantState(reservation);
 
  if (hasReservationStatus(status, "reserved", "moveIn", "moveOut")) return 5;
- if (reservation.paymentStatus === "paid") return 5;
  if (canReservationAccessPayment(status)) return 4;
  if (hasReservationStatus(status, "payment_pending")) return 4;
  if (hasSubmittedApplication(reservation)) return 3;
@@ -169,9 +168,7 @@ function getStepStatus(stepStage, currentStage, reservation) {
  if (
  stepStage === 5 &&
  reservation &&
- (status === "reserved" ||
-  hasReservationStatus(status, "moveIn", "moveOut") ||
-  reservation.paymentStatus === "paid")
+ hasReservationStatus(status, "reserved", "moveIn", "moveOut")
  ) {
  return "complete";
  }
@@ -255,16 +252,6 @@ function getNextAction(reservation, currentStage) {
  };
  }
 
- if (canReservationAccessPayment(status)) {
- return {
- title: "Pay Reservation Fee",
- description: `Pay PHP ${reservationFeeAmount.toLocaleString("en-PH")} online to secure your reservation.`,
- buttonLabel: "Pay Now ->",
- route: "/applicant/reservation?step=4",
- isWaiting: false,
- };
- }
-
  if (hasReservationStatus(status, "payment_pending")) {
   return {
  title: "Payment In Progress",
@@ -273,6 +260,16 @@ function getNextAction(reservation, currentStage) {
  buttonLabel: "Review Payment ->",
  route: "/applicant/reservation?step=4",
  isWaiting: true,
+ };
+ }
+
+ if (canReservationAccessPayment(status)) {
+ return {
+ title: "Pay Reservation Fee",
+ description: `Pay PHP ${reservationFeeAmount.toLocaleString("en-PH")} online to secure your reservation.`,
+ buttonLabel: "Pay Now ->",
+ route: "/applicant/reservation?step=4",
+ isWaiting: false,
  };
  }
 
@@ -542,8 +539,7 @@ export default function ReservationDashboard({
  const physicalVisitState = getPhysicalVisitApplicantState(reservation);
  const visitStatusKey = getReservationVisitStatus(reservation);
  const isConfirmed =
- hasReservationStatus(getReservationStatus(reservation), "reserved", "moveIn", "moveOut") ||
- reservation.paymentStatus === "paid";
+ hasReservationStatus(getReservationStatus(reservation), "reserved", "moveIn", "moveOut");
 
  return (
  <div style={styles.card}>

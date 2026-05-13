@@ -110,7 +110,9 @@ const ADMIN_LIST_FIELDS = [
   "visitApproved",
   "visitScheduledAt",
   "scheduleApproved",
+  "scheduleApprovedAt",
   "scheduleRejected",
+  "scheduleRejectedAt",
   "scheduleRejectionReason",
   "visitStatus",
   "visitOutcomeNotes",
@@ -134,6 +136,13 @@ const ADMIN_LIST_FIELDS = [
   "cancelledBy",
   "cancellationSource",
   "cancellationReason",
+  "cancellationRequested",
+  "cancellationRequestedAt",
+  "cancellationRequestedBy",
+  "cancellationStatus",
+  "cancellationReviewedAt",
+  "cancellationReviewedBy",
+  "cancellationAdminNote",
   "reservationFeeRefundable",
   "reservationFeeForfeited",
   "isArchived",
@@ -469,6 +478,9 @@ const deriveViewingType = (viewingPreference) => {
 
 const shouldAllowPaymentAccess = (status) =>
   hasReservationStatus(status, PAYMENT_GATED_STATUSES);
+
+const hasSubmittedField = (body, field) =>
+  Object.prototype.hasOwnProperty.call(body || {}, field);
 
 const pickAllowedFields = (source = {}, allowedFields = []) =>
   allowedFields.reduce((acc, key) => {
@@ -2175,14 +2187,6 @@ export const updateReservation = async (req, res, next) => {
       req.body.moveInDate = moveInDate;
     }
 
-    await syncReservationUserLifecycle({
-      status: req.body.status,
-      previousStatus: existingReservation.status,
-      userId: existingReservation.userId,
-      roomId: existingReservation.roomId,
-      reservationId: existingReservation._id,
-    });
-
     const reservation = await Reservation.findById(reservationId);
     if (!reservation)
       return res.status(404).json({
@@ -2378,6 +2382,23 @@ export const updateReservation = async (req, res, next) => {
         logger.warn(
           { err: e, requestId: req.id },
           "Occupancy update failed (non-fatal)",
+        );
+      }
+    }
+
+    if (req.body.status !== undefined) {
+      try {
+        await syncReservationUserLifecycle({
+          status: updatedReservation.status,
+          previousStatus: oldData.status,
+          userId: updatedReservation.userId?._id || updatedReservation.userId,
+          roomId: updatedReservation.roomId?._id || updatedReservation.roomId,
+          reservationId: updatedReservation._id,
+        });
+      } catch (lifecycleErr) {
+        logger.warn(
+          { err: lifecycleErr, requestId: req.id, reservationId },
+          "Reservation user lifecycle sync failed after admin update",
         );
       }
     }
@@ -3700,11 +3721,83 @@ export const updateReservationByUser = async (req, res, next) => {
       const missingRequired = [];
       const hasVal = (v) => v != null && String(v).trim().length > 0;
       const isValidPHPhone = (v) => v != null && /^09\d{9}$/.test(String(v));
+      const isValidTargetMoveInDate = (value) => {
+        if (!hasVal(value)) return false;
+        const date = dayjs(value);
+        if (!date.isValid()) return false;
+        const minDate = dayjs().add(3, "day").startOf("day");
+        return validateMoveInDate(value) && !date.isBefore(minDate);
+      };
+      const isAdultBirthday = (value) => {
+        if (!hasVal(value)) return false;
+        const birthdayDate = dayjs(value);
+        if (!birthdayDate.isValid()) return false;
+        return !birthdayDate.isAfter(dayjs().subtract(18, "year"), "day");
+      };
+      const isValidMoveInTime = (value) => {
+        if (!hasVal(value)) return false;
+        const match = /^(\d{2}):(\d{2})$/.exec(String(value).trim());
+        if (!match) return false;
+        const hours = Number(match[1]);
+        const minutes = Number(match[2]);
+        const totalMinutes = hours * 60 + minutes;
+        return minutes >= 0 && minutes < 60 && totalMinutes >= 480 && totalMinutes <= 1080;
+      };
       const effectiveFirstName = updates.firstName ?? reservation.firstName;
       const effectiveLastName = updates.lastName ?? reservation.lastName;
       const effectiveMobileNumber = updates.mobileNumber ?? reservation.mobileNumber;
-      const effectivePrivacy = updates.agreedToPrivacy ?? reservation.agreedToPrivacy;
-      const effectiveCert = updates.agreedToCertification ?? reservation.agreedToCertification;
+      const effectiveBirthday = updates.birthday ?? reservation.birthday;
+      const effectiveMaritalStatus = updates.maritalStatus ?? reservation.maritalStatus;
+      const effectiveNationality = updates.nationality ?? reservation.nationality;
+      const effectiveEducationLevel = updates.educationLevel ?? reservation.educationLevel;
+      const effectiveAddressRegion =
+        updates["address.region"] ?? reservation.address?.region;
+      const effectiveAddressUnit =
+        updates["address.unitHouseNo"] ?? reservation.address?.unitHouseNo;
+      const effectiveAddressStreet =
+        updates["address.street"] ?? reservation.address?.street;
+      const effectiveAddressProvince =
+        updates["address.province"] ?? reservation.address?.province;
+      const effectiveAddressCity =
+        updates["address.city"] ?? reservation.address?.city;
+      const effectiveAddressBarangay =
+        updates["address.barangay"] ?? reservation.address?.barangay;
+      const effectiveEmergencyName =
+        updates["emergencyContact.name"] ?? reservation.emergencyContact?.name;
+      const effectiveEmergencyRelationship =
+        updates["emergencyContact.relationship"] ??
+        reservation.emergencyContact?.relationship;
+      const effectiveEmergencyPhone =
+        updates["emergencyContact.contactNumber"] ??
+        reservation.emergencyContact?.contactNumber;
+      const effectiveHealthConcerns =
+        updates.healthConcerns ?? reservation.healthConcerns;
+      const effectiveEmployerSchool =
+        updates["employment.employerSchool"] ??
+        reservation.employment?.employerSchool;
+      const effectiveEmployerAddress =
+        updates["employment.employerAddress"] ??
+        reservation.employment?.employerAddress;
+      const effectiveOccupation =
+        updates["employment.occupation"] ?? reservation.employment?.occupation;
+      const effectiveReferralSource =
+        updates.referralSource ?? reservation.referralSource;
+      const effectiveTargetMoveInDate =
+        updates.targetMoveInDate ?? reservation.targetMoveInDate;
+      const effectiveEstimatedMoveInTime =
+        updates.estimatedMoveInTime ?? reservation.estimatedMoveInTime;
+      const effectiveLeaseDuration =
+        updates.leaseDuration ?? reservation.leaseDuration;
+      const effectiveWorkSchedule =
+        updates.workSchedule ?? reservation.workSchedule;
+      const effectiveWorkScheduleOther =
+        updates.workScheduleOther ?? reservation.workScheduleOther;
+      const submittedPrivacyAgreement =
+        hasSubmittedField(req.body, "agreedToPrivacy") &&
+        req.body.agreedToPrivacy === true;
+      const submittedCertificationAgreement =
+        hasSubmittedField(req.body, "agreedToCertification") &&
+        req.body.agreedToCertification === true;
 
       if (!hasVal(effectiveViewingPreference))
         missingRequired.push("viewing / move-in preference");
@@ -3712,12 +3805,49 @@ export const updateReservationByUser = async (req, res, next) => {
       if (!hasVal(effectiveLastName)) missingRequired.push("last name");
       if (!isValidPHPhone(effectiveMobileNumber))
         missingRequired.push("mobile number");
+      if (!isAdultBirthday(effectiveBirthday))
+        missingRequired.push("birthday (applicant must be at least 18)");
+      if (!hasVal(effectiveMaritalStatus)) missingRequired.push("marital status");
+      if (!hasVal(effectiveNationality)) missingRequired.push("nationality");
+      if (!hasVal(effectiveEducationLevel))
+        missingRequired.push("educational attainment");
+      if (!hasVal(effectiveAddressUnit)) missingRequired.push("unit / house no.");
+      if (!hasVal(effectiveAddressStreet)) missingRequired.push("street");
+      if (!hasVal(effectiveAddressRegion)) missingRequired.push("region");
+      if (!hasVal(effectiveAddressProvince)) missingRequired.push("province");
+      if (!hasVal(effectiveAddressCity)) missingRequired.push("city / municipality");
+      if (!hasVal(effectiveAddressBarangay)) missingRequired.push("barangay");
       if (!hasVal(updates.selfiePhotoUrl || reservation.selfiePhotoUrl))
         missingRequired.push("profile photo");
-      if (!hasVal(updates["emergencyContact.name"] || reservation.emergencyContact?.name))
+      if (!hasVal(effectiveEmergencyName))
         missingRequired.push("emergency contact name");
-      if (!hasVal(updates["emergencyContact.contactNumber"] || reservation.emergencyContact?.contactNumber))
+      if (!hasVal(effectiveEmergencyRelationship))
+        missingRequired.push("emergency contact relationship");
+      if (!isValidPHPhone(effectiveEmergencyPhone))
         missingRequired.push("emergency contact phone");
+      if (!hasVal(effectiveHealthConcerns)) missingRequired.push("health concerns");
+      if (!hasVal(effectiveEmployerSchool))
+        missingRequired.push("current employer / school");
+      if (!hasVal(effectiveEmployerAddress)) missingRequired.push("employer address");
+      if (!hasVal(effectiveOccupation)) missingRequired.push("occupation");
+      if (!hasVal(effectiveReferralSource)) missingRequired.push("referral source");
+      if (!isValidTargetMoveInDate(effectiveTargetMoveInDate))
+        missingRequired.push("target move-in date");
+      if (!isValidMoveInTime(effectiveEstimatedMoveInTime))
+        missingRequired.push("estimated move-in time");
+      if (
+        !Number.isFinite(Number(effectiveLeaseDuration)) ||
+        Number(effectiveLeaseDuration) <= 0
+      ) {
+        missingRequired.push("duration of lease");
+      }
+      if (!hasVal(effectiveWorkSchedule)) missingRequired.push("work schedule");
+      if (
+        effectiveWorkSchedule === "others" &&
+        !hasVal(effectiveWorkScheduleOther)
+      ) {
+        missingRequired.push("work schedule details");
+      }
       const effectiveValidIDFrontUrl =
         updates.validIDFrontUrl ?? reservation.validIDFrontUrl;
       const effectiveValidIDBackUrl =
@@ -3773,9 +3903,9 @@ export const updateReservationByUser = async (req, res, next) => {
       }
 
       // — Agreements must be explicitly true
-      if (effectivePrivacy !== true)
+      if (!submittedPrivacyAgreement)
         missingRequired.push("privacy policy agreement");
-      if (effectiveCert !== true)
+      if (!submittedCertificationAgreement)
         missingRequired.push("certification agreement");
 
       if (missingRequired.length > 0) {
@@ -4382,17 +4512,19 @@ export const releaseSlot = async (req, res, next) => {
       reservationId: reservation._id,
     });
 
-    // Free room slot using proper model methods
-    if (reservation.roomId) {
-      const room = await Room.findById(reservation.roomId._id);
-      if (room) {
-        if (reservation.selectedBed?.id) {
-          room.vacateBed(reservation.selectedBed.id);
-        }
-        room.decreaseOccupancy();
-        room.updateAvailability();
-        await room.save();
-      }
+    try {
+      await updateOccupancyOnReservationChange(
+        {
+          ...reservation.toObject(),
+          roomId: reservation.roomId?._id || reservation.roomId,
+        },
+        oldData,
+      );
+    } catch (occupancyErr) {
+      logger.warn(
+        { err: occupancyErr, requestId: req.id },
+        "Occupancy update during slot release failed",
+      );
     }
 
     await reservation.populate(...POPULATE_USER);
@@ -4790,6 +4922,7 @@ export const requestCancellationByUser = async (req, res, next) => {
     await reservation.save();
 
     // Notify tenant
+    const { notify } = await import("../utils/notificationService.js");
     await notify.cancellationRequested(dbUser._id, reservation.reservationCode);
 
     // Notify all admins for this branch
@@ -4844,6 +4977,7 @@ export const approveCancellationRequest = async (req, res, next) => {
 
     const now = new Date();
     const adminNote = req.body.note || null;
+    const oldData = reservation.toObject();
 
     // Archive any active visit to history
     const visitHistoryUpdate = [];
@@ -4873,32 +5007,31 @@ export const approveCancellationRequest = async (req, res, next) => {
     reservation.visitScheduledAt = null;
     await reservation.save();
 
-    // Release the bed in the room (same pattern as releaseSlot)
-    if (reservation.roomId) {
-      try {
-        const room = await Room.findById(reservation.roomId._id);
-        if (room) {
-          if (reservation.selectedBed?.id) {
-            room.vacateBed(reservation.selectedBed.id);
-          }
-          room.decreaseOccupancy();
-          room.updateAvailability();
-          await room.save();
-        }
-      } catch (bedErr) {
-        logger.warn({ err: bedErr }, "[ApproveCancellation] Bed release failed (non-fatal)");
-      }
+    try {
+      await updateOccupancyOnReservationChange(
+        {
+          ...reservation.toObject(),
+          roomId: reservation.roomId?._id || reservation.roomId,
+        },
+        oldData,
+      );
+    } catch (occupancyErr) {
+      logger.warn(
+        { err: occupancyErr, requestId: req.id },
+        "[ApproveCancellation] Occupancy update failed (non-fatal)",
+      );
     }
 
     // Sync user lifecycle to reflect cancellation
     await syncReservationUserLifecycle({
       status: "cancelled",
-      previousStatus: reservation.status,
+      previousStatus: oldData.status,
       userId: reservation.userId,
       roomId: reservation.roomId,
       reservationId: reservation._id,
     }).catch((err) => logger.warn({ err }, "[ApproveCancellation] User lifecycle sync failed (non-fatal)"));
 
+    const { notify } = await import("../utils/notificationService.js");
     await notify.cancellationApproved(reservation.userId, reservation.reservationCode);
 
     res.json({ message: "Cancellation request approved. Reservation cancelled and bed released.", reservation });
@@ -4943,6 +5076,7 @@ export const rejectCancellationRequest = async (req, res, next) => {
     reservation.cancellationRequested = false;
     await reservation.save();
 
+    const { notify } = await import("../utils/notificationService.js");
     await notify.cancellationRejected(reservation.userId, reservation.reservationCode, adminNote);
 
     res.json({ message: "Cancellation request rejected. Reservation remains active.", reservation });

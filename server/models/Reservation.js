@@ -334,6 +334,7 @@ const reservationSchema = new mongoose.Schema(
             type: String,
             enum: [
               "pending",
+              "schedule_approved",
               "rejected",
               "approved",
               "cancelled",

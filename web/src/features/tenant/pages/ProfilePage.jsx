@@ -364,13 +364,16 @@ const ProfilePage = () => {
  : activeReservations[0];
 
  const reservationProgress = getReservationProgress(selectedReservation);
- const nextAction = getNextAction(activeReservation, reservationProgress);
+ const nextAction = getNextAction(selectedReservation, reservationProgress);
 
  const isReservationConfirmed =
  selectedReservation &&
- (selectedReservation.reservationStatus === "reserved" ||
- selectedReservation.status === "reserved" ||
- selectedReservation.paymentStatus === "paid");
+ hasReservationStatus(
+ selectedReservation.reservationStatus || selectedReservation.status,
+ "reserved",
+ "moveIn",
+ "moveOut",
+ );
 
  const confirmedReservation = isReservationConfirmed
  ? selectedReservation || activeReservation

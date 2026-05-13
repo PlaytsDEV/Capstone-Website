@@ -98,6 +98,12 @@ const getTomorrowISO = () => {
 };
 
 const VISIT_STATUS_CONFIG = {
+ schedule_approved: {
+ label: "Schedule Approved",
+ color: "#0A5C9B",
+ bg: "#E0EBF5",
+ dot: "#3B82F6",
+ },
  physical_visit_scheduled: {
   label: "Physical Visit Scheduled",
   color: "#1D4ED8",

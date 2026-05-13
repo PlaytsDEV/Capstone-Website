@@ -761,6 +761,7 @@ const ReservationVisitStep = ({
                     className="form-textarea rf-textarea"
                     rows={4}
                     value={remoteViewingQuestions}
+                    maxLength={1500}
                     onChange={(event) => setRemoteViewingQuestions(event.target.value)}
                     placeholder="Ask about the room setup, amenities, layout, or anything you would like the admin to clarify before your application."
                   />
