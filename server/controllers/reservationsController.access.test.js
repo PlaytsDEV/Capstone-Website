@@ -182,6 +182,44 @@ describe("reservationsController.updateReservation access hardening", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  test("rejects direct admin visit updates after a visit is completed", async () => {
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockResolvedValue({
+        _id: "507f1f77bcf86cd799439099",
+        status: "visit_approved",
+        visitStatus: "visit_completed",
+        visitApproved: true,
+        userId: "user-1",
+        roomId: { _id: "room-1", branch: "gil-puyat" },
+        toObject: () => ({
+          status: "visit_approved",
+          visitStatus: "visit_completed",
+          visitApproved: true,
+          userId: "user-1",
+          roomId: { _id: "room-1", branch: "gil-puyat" },
+        }),
+      }),
+    });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439099" },
+      body: { visitStatus: "no_show" },
+      branchFilter: "gil-puyat",
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await updateReservation(req, res, next);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toEqual({
+      error: "Visit is already completed and cannot be changed.",
+      code: "VISIT_ALREADY_COMPLETED",
+    });
+    expect(reservationFindByIdAndUpdate).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
   test("move-out reads meterReading from request body before running workflow", async () => {
     const reservation = {
       _id: "507f1f77bcf86cd799439011",
@@ -721,6 +759,72 @@ describe("reservationsController.updateReservation access hardening", () => {
     expect(res.body?.reservation?.visitStatus).toBe("allowed_without_visit");
     expect(sendPhysicalVisitStatusEmail).toHaveBeenCalled();
     expect(save).toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["mark_visited", {}],
+    ["mark_no_show", {}],
+    ["cancel_visit", {}],
+    ["reschedule", { visitDate: "2026-05-21", visitTime: "02:00 PM" }],
+  ])("rejects normal visit action %s after completion", async (action, payload) => {
+    const save = jest.fn().mockResolvedValue(undefined);
+    const reservation = {
+      _id: "507f1f77bcf86cd799439020",
+      status: "visit_approved",
+      viewingPreference: "physical_visit",
+      visitStatus: "visit_completed",
+      visitApproved: true,
+      visitDate: new Date("2026-05-20T00:00:00.000Z"),
+      visitTime: "01:00 PM",
+      visitHistory: [],
+      roomId: { _id: "room-1", branch: "gil-puyat", roomNumber: "301", name: "Room 301" },
+      userId: {
+        _id: "tenant-1",
+        firstName: "Tala",
+        lastName: "Applicant",
+        email: "tala@example.com",
+      },
+      toObject: () => ({
+        _id: "507f1f77bcf86cd799439020",
+        status: "visit_approved",
+        viewingPreference: "physical_visit",
+        visitStatus: "visit_completed",
+        visitApproved: true,
+      }),
+      save,
+    };
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockReturnThis(),
+      then: (resolve) => Promise.resolve(resolve(reservation)),
+    });
+    userFindOne.mockResolvedValue({
+      _id: "admin-1",
+      firebaseUid: "admin-uid",
+      role: "branch_admin",
+      firstName: "Branch",
+      lastName: "Admin",
+      email: "admin@example.com",
+    });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439020" },
+      body: { action, ...payload },
+      branchFilter: "gil-puyat",
+      user: { uid: "admin-uid", email: "admin@example.com" },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await manageReservationVisit(req, res, next);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toEqual({
+      error: "Visit is already completed and cannot be changed.",
+      code: "VISIT_ALREADY_COMPLETED",
+    });
+    expect(save).not.toHaveBeenCalled();
+    expect(sendPhysicalVisitStatusEmail).not.toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
   });
 

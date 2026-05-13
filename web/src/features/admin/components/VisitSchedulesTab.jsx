@@ -5,7 +5,6 @@ import {
   Check,
   CheckCircle,
   Clock,
-  RotateCcw,
   Search,
   Trash2,
   X as XIcon,
@@ -184,24 +183,6 @@ function VisitSchedulesTab() {
       },
       "Visit marked as completed. Tenant can now submit their application.",
       "Failed to mark visit as completed. Please try again.",
-    );
-  };
-
-  const handleRevoke = (id) => {
-    confirmAction(
-      "Revoke Visit Completion",
-      "Revoke this applicant's visit completion? They will no longer be able to submit their application until the visit is confirmed again.",
-      "danger",
-      "Revoke",
-      async () => {
-        await reservationApi.update(id, {
-          scheduleApproved: false,
-          visitApproved: false,
-          visitStatus: "physical_visit_scheduled",
-        });
-      },
-      "Visit completion revoked successfully.",
-      "Failed to revoke visit completion. Please try again.",
     );
   };
 
@@ -787,16 +768,6 @@ function VisitSchedulesTab() {
                                     No-Show
                                   </button>
                                 </>
-                              )}
-                              {/* Visit Completed: Revoke */}
-                              {(row.visitApproved || row.visitStatus === "visit_completed") && (
-                                <button
-                                  className="p-1.5 hover:bg-muted rounded-md transition-colors"
-                                  title="Revoke visit completion"
-                                  onClick={() => handleRevoke(row.id)}
-                                >
-                                  <RotateCcw className="w-4 h-4 text-muted-foreground" />
-                                </button>
                               )}
                               <button
                                 className="p-1.5 hover:bg-red-50 text-red-500 hover:text-red-600 rounded-md transition-colors"

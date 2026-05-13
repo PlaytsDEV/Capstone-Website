@@ -42,6 +42,20 @@ async function createNotification(userId, type, title, message, options = {}) {
       entityId: options.entityId || null,
     });
     await notification.save();
+    if (options.emitRealtime !== false) {
+      try {
+        emitToUser(userId, "notification:new", buildRealtimeNotificationPayload(notification));
+      } catch (emitError) {
+        logger.warn(
+          {
+            err: emitError,
+            userId: String(userId || ""),
+            type,
+          },
+          "[Notification] Realtime delivery failed",
+        );
+      }
+    }
     return notification;
   } catch (error) {
     // Non-fatal — don't break the calling flow
@@ -395,10 +409,6 @@ const notify = {
         actionUrl: "/applicant/maintenance",
       },
     );
-
-    if (notification) {
-      emitToUser(userId, "notification:new", buildRealtimeNotificationPayload(notification));
-    }
 
     return notification;
   },

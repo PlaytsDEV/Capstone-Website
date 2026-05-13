@@ -242,10 +242,40 @@ const VISIT_OUTCOME_STATUSES = Object.freeze([
   "visit_cancelled",
   "allowed_without_visit",
 ]);
+const VISIT_STATUS_ALIASES = Object.freeze({
+  scheduled: "physical_visit_scheduled",
+  completed: "visit_completed",
+  cancelled: "visit_cancelled",
+  not_required: "allowed_without_visit",
+});
 const VISIT_APPLICATION_UNLOCK_STATUSES = Object.freeze([
   "visit_completed",
   "allowed_without_visit",
 ]);
+const VISIT_MANAGEMENT_ACTIONS_BY_STATUS = Object.freeze({
+  physical_visit_scheduled: Object.freeze([
+    "approve_schedule",
+    "reject_schedule",
+    "mark_visited",
+    "mark_no_show",
+    "reschedule",
+    "cancel_visit",
+    "allow_without_visit",
+  ]),
+  rescheduled: Object.freeze([
+    "approve_schedule",
+    "reject_schedule",
+    "mark_visited",
+    "mark_no_show",
+    "reschedule",
+    "cancel_visit",
+    "allow_without_visit",
+  ]),
+  no_show: Object.freeze(["reschedule", "allow_without_visit"]),
+  visit_cancelled: Object.freeze(["reschedule", "allow_without_visit"]),
+  visit_completed: Object.freeze([]),
+  allowed_without_visit: Object.freeze([]),
+});
 const DOCUMENT_PRECHECK_TYPES = Object.freeze({
   selfie_photo: {
     reservationField: "selfiePhotoUrl",
@@ -1120,11 +1150,142 @@ const applyVisitOutcome = ({
 const normalizeVisitStatusKey = (value) => {
   if (!value) return "";
   const normalized = String(value).trim().toLowerCase();
-  return VISIT_OUTCOME_STATUSES.includes(normalized) ? normalized : "";
+  const canonical = VISIT_STATUS_ALIASES[normalized] || normalized;
+  return VISIT_OUTCOME_STATUSES.includes(canonical) ? canonical : "";
 };
 
 const isVisitApplicationUnlocked = (visitStatus) =>
   VISIT_APPLICATION_UNLOCK_STATUSES.includes(normalizeVisitStatusKey(visitStatus));
+
+const getEffectiveVisitStatusKey = (reservation = {}) => {
+  const explicit = normalizeVisitStatusKey(reservation.visitStatus);
+  if (explicit) return explicit;
+  if (reservation.visitApproved) return "visit_completed";
+  if (reservation.scheduleRejected) return "visit_cancelled";
+  if (hasPhysicalVisitPreference(reservation)) return "physical_visit_scheduled";
+  return "";
+};
+
+const visitTransitionError = (error, code = "INVALID_VISIT_STATUS_TRANSITION") => ({
+  ok: false,
+  status: 409,
+  code,
+  error,
+});
+
+const validateVisitManagementAction = (reservation, action) => {
+  const currentStatus = getEffectiveVisitStatusKey(reservation);
+  const allowedActions =
+    VISIT_MANAGEMENT_ACTIONS_BY_STATUS[currentStatus] ||
+    VISIT_MANAGEMENT_ACTIONS_BY_STATUS.physical_visit_scheduled;
+
+  if (allowedActions.includes(action)) {
+    return { ok: true, currentStatus };
+  }
+
+  if (currentStatus === "visit_completed") {
+    return visitTransitionError(
+      "Visit is already completed and cannot be changed.",
+      "VISIT_ALREADY_COMPLETED",
+    );
+  }
+
+  if (currentStatus === "no_show" && action === "mark_visited") {
+    return visitTransitionError(
+      "Visit is already marked as no-show. Reschedule the visit or allow the applicant to proceed without a visit.",
+    );
+  }
+
+  if (currentStatus === "visit_cancelled" && action !== "reschedule") {
+    return visitTransitionError(
+      "Visit schedule is already cancelled. Reschedule the visit before recording an outcome.",
+    );
+  }
+
+  if (currentStatus === "allowed_without_visit") {
+    return visitTransitionError(
+      "Applicant has already been allowed to proceed without a visit.",
+    );
+  }
+
+  return visitTransitionError("This visit action is not valid for the current visit status.");
+};
+
+const validateDirectVisitUpdate = (reservation, body = {}) => {
+  const visitFields = [
+    "visitStatus",
+    "visitApproved",
+    "scheduleApproved",
+    "scheduleRejected",
+    "visitDate",
+    "visitTime",
+  ];
+  if (!visitFields.some((field) => Object.prototype.hasOwnProperty.call(body, field))) {
+    return { ok: true };
+  }
+
+  const currentStatus = getEffectiveVisitStatusKey(reservation);
+  const nextStatus =
+    Object.prototype.hasOwnProperty.call(body, "visitStatus")
+      ? normalizeVisitStatusKey(body.visitStatus)
+      : currentStatus;
+
+  if (
+    body.visitStatus !== undefined &&
+    body.visitStatus !== null &&
+    body.visitStatus !== "" &&
+    !nextStatus
+  ) {
+    return {
+      ok: false,
+      status: 400,
+      code: "INVALID_VISIT_STATUS",
+      error: "Invalid visit status.",
+    };
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, "visitStatus")) {
+    body.visitStatus = nextStatus || null;
+  }
+
+  const changesCompletedVisit =
+    currentStatus === "visit_completed" &&
+    ((Object.prototype.hasOwnProperty.call(body, "visitStatus") &&
+      nextStatus !== "visit_completed") ||
+      body.visitApproved === false ||
+      body.scheduleRejected === true ||
+      Object.prototype.hasOwnProperty.call(body, "visitDate") ||
+      Object.prototype.hasOwnProperty.call(body, "visitTime"));
+
+  if (changesCompletedVisit) {
+    return visitTransitionError(
+      "Visit is already completed and cannot be changed.",
+      "VISIT_ALREADY_COMPLETED",
+    );
+  }
+
+  if (
+    currentStatus === "no_show" &&
+    (nextStatus === "visit_completed" || body.visitApproved === true)
+  ) {
+    return visitTransitionError(
+      "Visit is already marked as no-show. Reschedule the visit before recording a completed outcome.",
+    );
+  }
+
+  if (
+    currentStatus === "visit_cancelled" &&
+    (nextStatus === "visit_completed" ||
+      nextStatus === "no_show" ||
+      body.visitApproved === true)
+  ) {
+    return visitTransitionError(
+      "Visit schedule is already cancelled. Reschedule the visit before recording an outcome.",
+    );
+  }
+
+  return { ok: true };
+};
 
 const buildVisitEmailContext = ({
   reservation,
@@ -2068,6 +2229,17 @@ export const updateReservation = async (req, res, next) => {
       });
     }
 
+    const directVisitUpdateValidation = validateDirectVisitUpdate(
+      existingReservation,
+      req.body,
+    );
+    if (!directVisitUpdateValidation.ok) {
+      return res.status(directVisitUpdateValidation.status).json({
+        error: directVisitUpdateValidation.error,
+        code: directVisitUpdateValidation.code,
+      });
+    }
+
     if (req.body.visitDate || req.body.visitTime) {
       const validation = await validateVisitSelection({
         branch: existingReservation.roomId?.branch,
@@ -2770,6 +2942,14 @@ export const manageReservationVisit = async (req, res, next) => {
     let applicantNotificationTitle = "";
     let applicantNotificationMessage = "";
     let applicantEmailStatus = "";
+
+    const visitActionValidation = validateVisitManagementAction(reservation, action);
+    if (!visitActionValidation.ok) {
+      return res.status(visitActionValidation.status).json({
+        error: visitActionValidation.error,
+        code: visitActionValidation.code,
+      });
+    }
 
     if (
       (action === "mark_visited" || action === "mark_no_show" || action === "approve_schedule") &&

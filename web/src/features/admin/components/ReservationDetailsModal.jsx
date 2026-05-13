@@ -18,6 +18,7 @@ import {
  fmtDateTime as sharedFmtDateTime,
 } from "../../../shared/utils/dateFormat";
 import { showNotification } from "../../../shared/utils/notification";
+import { getVisitManagementAvailability } from "../utils/visitStatusRules";
 import "../styles/reservation-details-modal.css";
 
 const ACTION_MSGS = {
@@ -90,6 +91,20 @@ const toDateInputValue = (value) => {
  return `${year}-${month}-${day}`;
 };
 
+const isSafeDocumentUrl = (url) =>
+ /^https:\/\//i.test(String(url || "").trim());
+
+const isTemporaryLocalUrl = (url) =>
+ /^(file|content|blob):/i.test(String(url || "").trim());
+
+const formatSelectedBed = (selectedBed) => {
+ if (!selectedBed) return "\u2014";
+ const position = selectedBed.position
+ ? `${String(selectedBed.position).charAt(0).toUpperCase()}${String(selectedBed.position).slice(1)}`
+ : "Bed";
+ return `${position}${selectedBed.id ? ` (${selectedBed.id})` : ""}`;
+};
+
 const getTomorrowISO = () => {
  const tomorrow = new Date();
  tomorrow.setHours(0, 0, 0, 0);
@@ -156,9 +171,17 @@ const getVisitStatusKey = (reservation) => {
  return "";
 };
 
-const openImage = (url, title) => {
+const openImage = (url, title, options = {}) => {
  if (!url) {
  showNotification("No file available", "error");
+ return;
+ }
+ if (options.requireHttps && !isSafeDocumentUrl(url)) {
+ showNotification("This file link is invalid or temporary. Ask the applicant to re-upload the document.", "error");
+ return;
+ }
+ if (!options.requireHttps && isTemporaryLocalUrl(url)) {
+ showNotification("This file link is invalid or temporary.", "error");
  return;
  }
 
@@ -353,6 +376,11 @@ export default function ReservationDetailsModal({
  const visitStatusAppearance = visitStatusKey
  ? VISIT_STATUS_CONFIG[visitStatusKey]
  : null;
+ const hasVisitSchedule = Boolean(reservation?.visitDate && reservation?.visitTime);
+ const visitActionAvailability = getVisitManagementAvailability({
+ visitStatusKey,
+ hasVisitSchedule,
+ });
  const visitBranch = reservation?.roomId?.branch || reservation?.branch || "";
  const visitRoomId = reservation?.roomId?._id || reservation?.roomId || "";
  const appearance = getReservationStatusAppearance(status);
@@ -423,6 +451,7 @@ export default function ReservationDetailsModal({
  const bookingDetails = [
  ["Room", reservation.room ?? "\u2014"],
  ["Room type", reservation.roomType ?? "\u2014"],
+ ["Bed / Slot", formatSelectedBed(reservation.selectedBed)],
  ["Branch", reservation.branch ?? "\u2014"],
  ["Viewing Preference", viewingPreferenceLabel],
  ["Move-in", fmtDate(moveInDate)],
@@ -556,6 +585,14 @@ export default function ReservationDetailsModal({
  };
 
  const handleRescheduleVisit = async () => {
+ if (!visitActionAvailability.canReschedule) {
+ showNotification(
+ visitActionAvailability.helperMessage ||
+ "This visit cannot be rescheduled from its current status.",
+ "warning",
+ );
+ return;
+ }
  if (!rescheduleDate) {
  showNotification("Select a new visit date before rescheduling.", "warning");
  return;
@@ -875,104 +912,80 @@ export default function ReservationDetailsModal({
  </div>
  )}
 
- <div className="rdm-visit-management-panel">
- <label className="rdm-visit-field">
- <span className="rdm-info-label">Visit Remarks</span>
- <textarea
- className="rdm-notes-input"
- placeholder="Add optional visit remarks for the next action..."
- value={visitRemarks}
- onChange={(event) => setVisitRemarks(event.target.value)}
- rows="2"
- />
- </label>
+                 <div className="rdm-visit-management-panel">
+                 {visitActionAvailability.completed ? (
+                 <div className="rdm-visit-action-helper rdm-visit-action-helper-success">
+                 {visitActionAvailability.helperMessage}
+                 </div>
+                 ) : visitStatusKey === "allowed_without_visit" ? (
+                 <div className="rdm-visit-action-helper rdm-visit-action-helper-info">
+                 Visit requirement has been waived. Applicant may proceed without a physical visit.
+                 </div>
+                 ) : (
+                 <>
+                 <label className="rdm-visit-field">
+                 <span className="rdm-info-label">Visit Remarks</span>
+                 <textarea
+                 className="rdm-notes-input"
+                 placeholder="Add optional visit remarks for the next action..."
+                 value={visitRemarks}
+                 onChange={(event) => setVisitRemarks(event.target.value)}
+                 rows="2"
+                 />
+                 </label>
 
- <div className="rdm-visit-actions-grid">
- <button
- type="button"
- className="rdm-action rdm-action-outline"
- disabled={isSubmitting || !reservation.visitDate || !reservation.visitTime}
- onClick={() =>
- runVisitManagementAction({
- action: "mark_visited",
- successMsg: "Visit marked as completed",
- modalTitle: "Mark As Visited",
- modalMessage:
- "Record that the applicant attended the scheduled physical visit. This will not approve the application or unlock payment.",
- confirmText: "Mark as Visited",
- })
- }
- >
- Mark as Visited
- </button>
- <button
- type="button"
- className="rdm-action rdm-action-outline"
- disabled={isSubmitting || !reservation.visitDate || !reservation.visitTime}
- onClick={() =>
- runVisitManagementAction({
- action: "mark_no_show",
- successMsg: "Visit marked as no-show",
- modalTitle: "Mark As No-Show",
- modalMessage:
- "Record that the applicant missed the scheduled physical visit. The reservation and application review will remain separate.",
- confirmText: "Mark No-Show",
- variant: "warning",
- })
- }
- >
- Mark as No-Show
- </button>
- <button
- type="button"
- className={`rdm-action rdm-action-outline${visitActionMode === "reschedule" ? " rdm-action-outline-active" : ""}`}
- disabled={isSubmitting}
- onClick={() =>
- setVisitActionMode((previous) =>
- previous === "reschedule" ? "" : "reschedule",
- )
- }
- >
- Reschedule Visit
- </button>
- <button
- type="button"
- className="rdm-action rdm-action-outline rdm-action-outline-danger"
- disabled={isSubmitting}
- onClick={() =>
- runVisitManagementAction({
- action: "cancel_visit",
- successMsg: "Visit schedule cancelled",
- modalTitle: "Cancel Visit Schedule",
- modalMessage:
- "Cancel only the physical visit schedule. This will not cancel the reservation or unlock payment.",
- confirmText: "Cancel Visit",
- variant: "danger",
- })
- }
- >
- Cancel Visit Schedule
- </button>
- <button
- type="button"
- className="rdm-action rdm-action-outline"
- disabled={isSubmitting}
- onClick={() =>
- runVisitManagementAction({
- action: "allow_without_visit",
- successMsg: "Applicant may proceed without a completed visit",
- modalTitle: "Allow Application Without Visit",
- modalMessage:
- "Allow the applicant to continue to the tenant application without a completed physical visit. This will not approve the application or unlock payment.",
- confirmText: "Allow Application",
- })
- }
- >
- Allow Application Without Visit
- </button>
- </div>
+                 <div className="rdm-visit-actions-grid">
+                 <button type="button" className="rdm-action rdm-action-outline"
+                 disabled={isSubmitting || !visitActionAvailability.canMarkVisited}
+                 onClick={() => runVisitManagementAction({
+                   action: "mark_visited", successMsg: "Visit marked as completed",
+                   modalTitle: "Mark As Visited",
+                   modalMessage: "Record that the applicant attended the scheduled physical visit. This will not approve the application or unlock payment.",
+                   confirmText: "Mark as Visited",
+                 })}>
+                 Mark as Visited
+                 </button>
+                 <button type="button" className="rdm-action rdm-action-outline"
+                 disabled={isSubmitting || !visitActionAvailability.canMarkNoShow}
+                 onClick={() => runVisitManagementAction({
+                   action: "mark_no_show", successMsg: "Visit marked as no-show",
+                   modalTitle: "Mark As No-Show",
+                   modalMessage: "Record that the applicant missed the scheduled physical visit. The reservation and application review will remain separate.",
+                   confirmText: "Mark No-Show", variant: "warning",
+                 })}>
+                 Mark as No-Show
+                 </button>
+                 <button type="button"
+                 className={`rdm-action rdm-action-outline${visitActionMode === "reschedule" ? " rdm-action-outline-active" : ""}`}
+                 disabled={isSubmitting || !visitActionAvailability.canReschedule}
+                 onClick={() => setVisitActionMode((p) => p === "reschedule" ? "" : "reschedule")}>
+                 Reschedule Visit
+                 </button>
+                 <button type="button" className="rdm-action rdm-action-outline rdm-action-outline-danger"
+                 disabled={isSubmitting || !visitActionAvailability.canCancelVisit}
+                 onClick={() => runVisitManagementAction({
+                   action: "cancel_visit", successMsg: "Visit schedule cancelled",
+                   modalTitle: "Cancel Visit Schedule",
+                   modalMessage: "Cancel only the physical visit schedule. This will not cancel the reservation or unlock payment.",
+                   confirmText: "Cancel Visit", variant: "danger",
+                 })}>
+                 Cancel Visit Schedule
+                 </button>
+                 <button type="button" className="rdm-action rdm-action-outline"
+                 disabled={isSubmitting || !visitActionAvailability.canAllowWithoutVisit}
+                 onClick={() => runVisitManagementAction({
+                   action: "allow_without_visit", successMsg: "Applicant may proceed without a completed visit",
+                   modalTitle: "Allow Application Without Visit",
+                   modalMessage: "Allow the applicant to continue to the tenant application without a completed physical visit. This will not approve the application or unlock payment.",
+                   confirmText: "Allow Application",
+                 })}>
+                 Allow Application Without Visit
+                 </button>
+                 </div>
+                 </>
+                 )}
 
- {visitActionMode === "reschedule" && (
+ {visitActionMode === "reschedule" && visitActionAvailability.canReschedule && (
  <div className="rdm-visit-reschedule">
  <div className="rdm-visit-reschedule-grid">
  <label className="rdm-visit-field">
@@ -1197,17 +1210,21 @@ export default function ReservationDetailsModal({
  );
  })()}
  </div>
- {doc.url ? (
+ {doc.url && isSafeDocumentUrl(doc.url) ? (
  <button
  type="button"
  className="rdm-doc-view"
- onClick={() => openImage(doc.url, doc.label)}
+ onClick={() => openImage(doc.url, doc.label, { requireHttps: true })}
  >
  View
  </button>
  ) : (
  <span className="rdm-doc-na">
- {doc.reason ? `Skipped: ${doc.reason}` : "Not submitted"}
+ {doc.url
+ ? "Invalid file link. Ask applicant to re-upload."
+ : doc.reason
+   ? `Skipped: ${doc.reason}`
+   : "Not submitted"}
  </span>
  )}
  </div>

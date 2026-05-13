@@ -34,6 +34,7 @@ export function mapReservationAdminRow(reservation) {
  phone: reservation.mobileNumber || reservation.phone || "-",
  room: reservation.roomId?.name || reservation.roomId?.roomNumber || "-",
  roomType: reservation.roomId?.type || "",
+ selectedBed: reservation.selectedBed || null,
  branchCode,
  branch: getBranchLabel(branchCode),
  moveInDate: reservation.moveInDate,

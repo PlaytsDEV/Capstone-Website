@@ -21,6 +21,7 @@ const baseReservation = {
   visitTime: "01:00 PM",
   viewingPreference: "physical_visit",
   viewingType: "inperson",
+  selectedBed: { id: "bed-a", position: "upper" },
   createdAt: "2026-05-12T00:00:00.000Z",
 };
 
@@ -35,6 +36,7 @@ test("mapReservationAdminRow keeps admin modal live-state fields", () => {
 
   assert.equal(row.visitDate, baseReservation.visitDate);
   assert.equal(row.visitTime, baseReservation.visitTime);
+  assert.deepEqual(row.selectedBed, baseReservation.selectedBed);
   assert.equal(row.scheduleApproved, true);
   assert.equal(row.cancellationRequested, true);
   assert.equal(row.cancellationStatus, "pending");
