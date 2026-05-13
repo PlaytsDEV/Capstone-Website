@@ -13,7 +13,7 @@
  * =============================================================================
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
@@ -38,6 +38,7 @@ import {
 import {
   canProceedToApplicationAfterVisit,
   getReservationViewingPreference,
+  isPhysicalVisitApplicationLocked,
 } from "../utils/physicalVisitFlow";
 
 // Returns a sessionStorage key scoped to the Firebase UID when known,
@@ -349,6 +350,41 @@ export default function useReservationFlow() {
   const autoSaveTimerRef = useRef(null);
   const isFirstRenderRef = useRef(true);
   const navigatingAwayRef = useRef(false);
+
+  const visitGateReservation = useMemo(() => {
+    const merged = {
+      ...(reservationData || {}),
+      viewingPreference:
+        reservationData?.viewingPreference ||
+        viewingType,
+      viewingType:
+        reservationData?.viewingType ||
+        viewingType,
+      visitDate:
+        reservationData?.visitDate ||
+        visitDate,
+      visitTime:
+        reservationData?.visitTime ||
+        visitTime,
+      visitStatus: reservationData?.visitStatus || "",
+      status: normalizeReservationStatus(reservationData?.status),
+      scheduleRejected:
+        reservationData?.scheduleRejected ?? scheduleRejected,
+    };
+    return {
+      ...merged,
+      viewingPreference:
+        getReservationViewingPreference(merged) ||
+        merged.viewingPreference ||
+        merged.viewingType ||
+        "",
+    };
+  }, [reservationData, viewingType, visitDate, visitTime, scheduleRejected]);
+
+  const physicalVisitApplicationLocked = useMemo(
+    () => isPhysicalVisitApplicationLocked(visitGateReservation),
+    [visitGateReservation],
+  );
 
   // ΓöÇΓöÇ Warn before leaving mid-flow (skip if intentional navigation) ΓöÇΓöÇ
   useEffect(() => {
@@ -765,6 +801,9 @@ export default function useReservationFlow() {
           visitDate: active.visitDate || "",
           visitTime: active.visitTime || "",
           visitStatus: active.visitStatus || "",
+          visitApproved: Boolean(active.visitApproved),
+          scheduleApproved: Boolean(active.scheduleApproved),
+          scheduleRejected: Boolean(active.scheduleRejected),
           visitCode: active.visitCode || "",
           selectedBed: active.selectedBed || null,
           selectedAppliances: active.selectedAppliances || [],
@@ -858,6 +897,9 @@ export default function useReservationFlow() {
         visitDate: reservation.visitDate || "",
         visitTime: reservation.visitTime || "",
         visitStatus: reservation.visitStatus || "",
+        visitApproved: Boolean(reservation.visitApproved),
+        scheduleApproved: Boolean(reservation.scheduleApproved),
+        scheduleRejected: Boolean(reservation.scheduleRejected),
         visitCode: reservation.visitCode || "",
         selectedBed: reservation.selectedBed,
         selectedAppliances: reservation.selectedAppliances || [],
@@ -1243,6 +1285,12 @@ export default function useReservationFlow() {
           updated.visitTime ?? previous?.visitTime ?? "",
         visitStatus:
           updated.visitStatus ?? previous?.visitStatus ?? "",
+        visitApproved:
+          updated.visitApproved ?? previous?.visitApproved ?? false,
+        scheduleApproved:
+          updated.scheduleApproved ?? previous?.scheduleApproved ?? false,
+        scheduleRejected:
+          updated.scheduleRejected ?? previous?.scheduleRejected ?? false,
         visitCode:
           updated.visitCode ?? previous?.visitCode ?? "",
         selectedBed: updated.selectedBed ?? previous?.selectedBed,
@@ -1664,7 +1712,7 @@ export default function useReservationFlow() {
         // draft and stay on step 3.  Full submission is only allowed once the
         // visit is marked completed/approved by admin.
         const visitStillPending =
-          viewingType === "physical_visit" && !visitCompleted && !applicationSubmitted;
+          physicalVisitApplicationLocked && !applicationSubmitted;
 
         if (visitStillPending) {
           const selfiePhotoUrl = await uploadIfFile(selfiePhoto);
@@ -2153,6 +2201,7 @@ export default function useReservationFlow() {
     scrollToSection,
     saveStatus,
     isFormDirty,
+    physicalVisitApplicationLocked,
 
     // Stepper
     isStageLocked,

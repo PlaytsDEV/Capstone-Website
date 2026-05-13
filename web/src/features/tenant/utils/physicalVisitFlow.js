@@ -77,6 +77,10 @@ export const canProceedToApplicationAfterVisit = (reservation = {}) => {
   );
 };
 
+export const isPhysicalVisitApplicationLocked = (reservation = {}) =>
+  isPhysicalVisitPreference(reservation) &&
+  !canProceedToApplicationAfterVisit(reservation);
+
 export const getPhysicalVisitApplicantState = (reservation = {}) => {
   if (!isPhysicalVisitPreference(reservation)) return null;
 
