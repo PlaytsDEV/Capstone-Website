@@ -6,7 +6,7 @@ const { createWorker } = Tesseract;
 
 const DEFAULT_PRECHECK_TIMEOUT_MS = 15000;
 const MAX_DOWNLOAD_BYTES = 5 * 1024 * 1024;
-const DEFAULT_DOCUMENT_UPLOAD_URL_ENDPOINT = "https://ik.imagekit.io/g5vnq9bvb";
+const DEFAULT_DOCUMENT_UPLOAD_URL_ENDPOINT = "https://firebasestorage.googleapis.com";
 
 const DOCUMENT_LABELS = Object.freeze({
   selfie_photo: "selfie photo",
@@ -104,8 +104,6 @@ const parseAllowedUrlBase = (value) => {
 const getAllowedDocumentUrlBases = () =>
   [
     process.env.RESERVATION_DOCUMENT_UPLOAD_URL_ENDPOINT,
-    process.env.IMAGEKIT_URL_ENDPOINT,
-    process.env.VITE_IMAGEKIT_URL_ENDPOINT,
     DEFAULT_DOCUMENT_UPLOAD_URL_ENDPOINT,
   ]
     .flatMap((value) => String(value || "").split(","))

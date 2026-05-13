@@ -44,7 +44,7 @@ import {
 } from "../../../shared/utils/maintenanceAttachments";
 import { exportToCSV } from "../../../shared/utils/exportUtils";
 import { BRANCH_OPTIONS, BRANCH_DISPLAY_NAMES } from "../../../shared/utils/constants";
-import { uploadToImageKit } from "../../../shared/utils/imageUpload";
+import { uploadToFirebaseStorage } from "../../../shared/utils/firebaseStorageUpload";
 import {
  normalizeBranchFilterValue,
  syncBranchSearchParam,
@@ -701,7 +701,7 @@ export default function AdminMaintenancePage() {
  const uploaded = [];
 
  for (const file of files) {
- const uri = await uploadToImageKit(file);
+ const { downloadUrl: uri } = await uploadToFirebaseStorage(file, { documentType: "maintenance-attachment" });
  uploaded.push({
  name: file.name,
  uri,

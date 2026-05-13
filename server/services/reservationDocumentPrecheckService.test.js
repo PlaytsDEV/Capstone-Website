@@ -29,7 +29,7 @@ const {
 const originalEnv = { ...process.env };
 const originalFetch = global.fetch;
 const allowedDocumentUrl = (name) =>
-  `https://ik.imagekit.io/g5vnq9bvb/lilycrest/${name}`;
+  `https://firebasestorage.googleapis.com/v0/b/dormitorymanagement-caps-572cf.firebasestorage.app/o/applicant-documents%2F${name}`;
 
 const createImageResponse = (bytes = [1, 2, 3], mimeType = "image/jpeg", extraHeaders = {}) => ({
   ok: true,
@@ -60,8 +60,7 @@ describe("reservationDocumentPrecheckService", () => {
     delete process.env.GEMINI_API_KEY;
     delete process.env.GOOGLE_AI_API_KEY;
     delete process.env.RESERVATION_DOCUMENT_UPLOAD_URL_ENDPOINT;
-    delete process.env.IMAGEKIT_URL_ENDPOINT;
-    delete process.env.VITE_IMAGEKIT_URL_ENDPOINT;
+
     delete process.env.RESERVATION_DOCUMENT_PRECHECK_TIMEOUT_MS;
     global.fetch = jest.fn().mockResolvedValue(createImageResponse());
     createWorker.mockReset();

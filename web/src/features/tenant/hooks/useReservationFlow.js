@@ -27,7 +27,7 @@ import {
   normalizeReservationStatus,
 } from "../../../shared/utils/lifecycleNaming";
 import { usePaymentRedirect } from "./usePaymentRedirect";
-import { uploadIfFile } from "../../../shared/utils/imageUpload";
+import { uploadIfFile } from "../../../shared/utils/firebaseStorageUpload";
 import {
   validateBirthday,
   validateEstimatedTime,

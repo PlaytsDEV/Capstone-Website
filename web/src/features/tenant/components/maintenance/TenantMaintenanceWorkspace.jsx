@@ -39,7 +39,7 @@ import {
   getMaintenanceAttachmentUri,
   normalizeMaintenanceAttachments,
 } from "../../../../shared/utils/maintenanceAttachments";
-import { uploadToImageKit } from "../../../../shared/utils/imageUpload";
+import { uploadToFirebaseStorage } from "../../../../shared/utils/firebaseStorageUpload";
 import "../../styles/tenant-common.css";
 
 const EMPTY_FORM_DATA = Object.freeze({
@@ -285,7 +285,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
       const uploaded = [];
 
       for (const file of files) {
-        const uri = await uploadToImageKit(file);
+        const { downloadUrl: uri } = await uploadToFirebaseStorage(file, { documentType: "maintenance-attachment" });
         uploaded.push({
           name: file.name,
           uri,
