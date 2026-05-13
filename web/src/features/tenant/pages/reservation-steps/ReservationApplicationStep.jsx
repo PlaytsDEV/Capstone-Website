@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
+﻿import React, { useState, useCallback, useEffect, useRef } from "react";
 import ConfirmModal from "../../../../shared/components/ConfirmModal";
 import {
  PoliciesTermsModal,
@@ -226,7 +226,7 @@ const ReservationApplicationStep = ({
  <div className="rf-draft-banner">
  <div className="info-box-title">You can continue completing your application</div>
  <div className="info-text">
- Your physical visit is still pending. You can fill in your details now — submission will be available once admin confirms your visit or grants access.
+ Your physical visit is still pending. You can fill in your details and save your progress now — submission will be available once admin confirms your visit or grants access.
  </div>
  </div>
  )}
@@ -366,7 +366,7 @@ const ReservationApplicationStep = ({
  {!readOnly && (
  <div className="stage-buttons" style={{ justifyContent: "flex-end" }}>
  <button onClick={onNext} className="btn btn-primary">
- {applicationSubmitted ? "Save Changes" : "Submit Application"}
+ {applicationSubmitted ? "Save Changes" : visitPending ? "Save Progress" : "Submit Application"}
  </button>
  </div>
  )}

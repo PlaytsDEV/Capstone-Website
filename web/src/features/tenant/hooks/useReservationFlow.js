@@ -1657,6 +1657,41 @@ export default function useReservationFlow() {
         setShowStageConfirm(true);
         return;
       } else if (currentStage === 3) {
+        // When the physical visit hasn't been confirmed yet, save progress as a
+        // draft and stay on step 3.  Full submission is only allowed once the
+        // visit is marked completed/approved by admin.
+        const visitStillPending =
+          viewingType === "physical_visit" && !visitCompleted && !applicationSubmitted;
+
+        if (visitStillPending) {
+          const selfiePhotoUrl = await uploadIfFile(selfiePhoto);
+          const validIDFrontUrl = await uploadIfFile(validIDFront);
+          const validIDBackUrl = await uploadIfFile(validIDBack);
+          const nbiClearanceUrl = await uploadIfFile(nbiClearance);
+          const companyIDUrl = await uploadIfFile(companyID);
+          await updateReservationDraft({
+            firstName, lastName, middleName, nickname, mobileNumber, birthday,
+            maritalStatus, nationality, educationLevel,
+            addressUnitHouseNo, addressStreet, addressRegion,
+            addressBarangay, addressCity, addressProvince,
+            emergencyContactName, emergencyRelationship, emergencyContactNumber,
+            healthConcerns, employerSchool, employerAddress, employerContact,
+            startDate, occupation, previousEmployment, roomType, preferredRoomNumber,
+            referralSource, referrerName, estimatedMoveInTime, workSchedule,
+            workScheduleOther, targetMoveInDate, leaseDuration,
+            agreedToPrivacy, agreedToCertification,
+            selfiePhotoUrl, validIDFrontUrl, validIDBackUrl,
+            nbiClearanceUrl, nbiReason, personalNotes,
+            companyIDUrl, companyIDReason, validIDType, idType: validIDType,
+          });
+          showNotification(
+            "Your application details have been saved. You can submit once your visit is confirmed by admin.",
+            "success",
+            5000,
+          );
+          return;
+        }
+
         if (!devBypassValidation) {
           const hasText = (value) => Boolean(value?.trim?.() || value);
           // 09XXXXXXXXX format ΓÇö matches backend normalization and new input constraint.
