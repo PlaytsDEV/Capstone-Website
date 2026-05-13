@@ -160,6 +160,7 @@ const ReservationVisitStep = ({
   visitCode,
   visitCompleted,
   onPrev,
+  onNext,
   onSaveVisit,
   onVisitSaved,
   onReturnToDashboard,
@@ -413,10 +414,17 @@ const ReservationVisitStep = ({
             </button>
             <button
               type="button"
-              className="btn btn-primary"
+              className="btn btn-secondary"
               onClick={() => onReturnToDashboard?.()}
             >
               Return to Dashboard
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => onNext?.()}
+            >
+              Proceed to Application
             </button>
           </div>
         )}

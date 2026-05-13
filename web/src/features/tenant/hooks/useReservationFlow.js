@@ -1652,6 +1652,13 @@ export default function useReservationFlow() {
         setPendingStageAction("stage1");
         setShowStageConfirm(true);
         return;
+      } else if (currentStage === 2) {
+        // Advance from the viewing-preference summary to the application form.
+        // For physical-visit reservations the visit is still pending, but tenants
+        // are allowed to fill in the application as a draft while they wait.
+        setHighestStageReached((prev) => Math.max(prev, 3));
+        setCurrentStage(3);
+        return;
       } else if (currentStage === 3) {
         // When the physical visit hasn't been confirmed yet, save progress as a
         // draft and stay on step 3.  Full submission is only allowed once the

@@ -949,9 +949,9 @@
 
 .rdm-body.rdm-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.9fr);
-  gap: 14px;
-  padding: 0 14px 14px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.9fr);
+  gap: 18px;
+  padding: 0 16px 16px;
   overflow: visible;
   background: transparent;
 }
@@ -960,7 +960,7 @@
 .rdm-side-column {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .rdm-surface-card,
@@ -968,7 +968,7 @@
   border: 1px solid #dbe3ee;
   background: #ffffff;
   border-radius: 16px;
-  padding: 14px 15px;
+  padding: 20px 22px;
   box-shadow: 0 10px 25px rgba(15, 23, 42, 0.05);
 }
 
@@ -1052,6 +1052,23 @@
 
 .rdm-info-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 24px;
+}
+
+.rdm-info-item {
+  gap: 6px;
+}
+
+.rdm-info-item--wide {
+  grid-column: span 2;
+}
+
+.rdm-section-title {
+  margin: 0 0 16px;
+}
+
+.rdm-top-section-label {
+  margin: 0 0 16px;
 }
 
 .rdm-info-grid-dark {

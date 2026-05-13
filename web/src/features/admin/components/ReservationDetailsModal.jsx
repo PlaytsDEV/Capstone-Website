@@ -425,6 +425,9 @@ export default function ReservationDetailsModal({
  ["Room type", reservation.roomType ?? "\u2014"],
  ["Branch", reservation.branch ?? "\u2014"],
  ["Viewing Preference", viewingPreferenceLabel],
+ ["Move-in", fmtDate(moveInDate)],
+ ["Lease term", reservation.leaseDuration ? `${reservation.leaseDuration} months` : "\u2014"],
+ ["Contact", reservation.phone ?? reservation.mobileNumber ?? "\u2014"],
  [
  "Application Review",
  reservation.status === "pending_application_review"
@@ -436,12 +439,7 @@ export default function ReservationDetailsModal({
  : reservation.status === "rejected"
  ? "Rejected"
  : "\u2014",
- ],
- ["Move-in", fmtDate(moveInDate)],
- ["Contact", reservation.phone ?? reservation.mobileNumber ?? "\u2014"],
- [
- "Lease term",
- reservation.leaseDuration ? `${reservation.leaseDuration} months` : "\u2014",
+ { wide: true },
  ],
  ];
  const activityTimeline = [
@@ -678,8 +676,8 @@ export default function ReservationDetailsModal({
  <div className="rdm-section rdm-surface-card">
  <h3 className="rdm-top-section-label">Booking Details</h3>
  <div className="rdm-info-grid rdm-info-grid-dark">
- {bookingDetails.map(([label, value]) => (
- <div className="rdm-info-item" key={label}>
+ {bookingDetails.map(([label, value, opts = {}]) => (
+ <div className={`rdm-info-item${opts.wide ? " rdm-info-item--wide" : ""}`} key={label}>
  <span className="rdm-info-label">{label}</span>
  <span
  className={`rdm-info-value ${label === "Move-in" && isOverdue ? "rdm-danger" : ""}`}
@@ -710,19 +708,19 @@ export default function ReservationDetailsModal({
  <span className="rdm-info-label">Visit Code</span>
  <span className="rdm-info-value">{fmt(reservation.visitCode)}</span>
  </div>
- <div className="rdm-info-item">
+ <div className="rdm-info-item rdm-info-item--wide">
  <span className="rdm-info-label">Remote Viewing Acknowledgement</span>
  <span className="rdm-info-value">
  {reservation.remoteViewingAcknowledged ? "Yes" : "No"}
  </span>
  </div>
- <div className="rdm-info-item">
+ <div className="rdm-info-item rdm-info-item--wide">
  <span className="rdm-info-label">Urgent Move-in Review</span>
  <span className="rdm-info-value">
  {reservation.isUrgentMoveIn ? "Requested" : "No"}
  </span>
  </div>
- <div className="rdm-info-item">
+ <div className="rdm-info-item rdm-info-item--wide">
  <span className="rdm-info-label">Applicant Questions / Concerns</span>
  <span className="rdm-info-value">
  {fmt(reservation.remoteViewingQuestions || reservation.applicationReviewReason)}
