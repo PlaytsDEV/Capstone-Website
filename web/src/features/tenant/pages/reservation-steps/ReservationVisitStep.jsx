@@ -18,6 +18,7 @@ import { useVisitAvailability } from "../../../../shared/hooks/queries/useReserv
 import { useFirebaseAuth } from "../../../../shared/hooks/FirebaseAuthContext";
 import { getRemoteViewingImages } from "../check-availability/checkAvailabilityConstants";
 import { APP_LOCALE } from "../../../../shared/utils/dateFormat";
+import { getPersistedPhysicalVisitState } from "../../utils/reservationVisitState";
 
 const TIME_SLOTS = [
   { label: "08:00 AM", available: true, capacity: 5, remaining: 5 },
@@ -208,10 +209,11 @@ const ReservationVisitStep = ({
   const branch = normalizeBranchKey(room.branchKey || room.branch || reservationData?.branch);
   const roomId = room._id || room.roomId || reservationData?.roomId || "";
   const reservationId = reservationData?._id || "";
-  const hasSavedPhysicalVisit =
-    selectedVisit === "physical_visit" &&
-    Boolean(visitDate && visitTime) &&
-    !scheduleRejected;
+  const { hasSavedPhysicalVisit } = getPersistedPhysicalVisitState(
+    reservationData,
+    selectedVisit,
+    scheduleRejected,
+  );
   const showPhysicalVisitSummary =
     !readOnly && hasSavedPhysicalVisit && !isEditingPhysicalVisit;
   const shouldLoadAvailability =

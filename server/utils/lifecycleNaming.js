@@ -34,6 +34,7 @@ export const ALLOWED_RESERVATION_STATUS_TRANSITIONS = Object.freeze({
     "archived",
   ],
   viewing_preference_selected: [
+    "visit_pending",
     "pending_application_review",
     "cancelled",
     "archived",

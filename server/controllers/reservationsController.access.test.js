@@ -77,8 +77,8 @@ await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
     }
     return true;
   }),
-  hasReservationStatus: jest.fn((status, expected) => {
-    const values = Array.isArray(expected) ? expected : [expected];
+  hasReservationStatus: jest.fn((status, ...expected) => {
+    const values = expected.flat();
     return values.includes(status);
   }),
   normalizeReservationPayload: jest.fn((payload) => payload),
@@ -395,6 +395,121 @@ describe("reservationsController.updateReservation access hardening", () => {
           visitTime: "",
           visitCode: null,
           remoteViewingAcknowledged: true,
+        }),
+      }),
+      { new: true, runValidators: true },
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("tenant physical visit schedule is persisted for admin review", async () => {
+    const existingReservation = {
+      _id: "507f1f77bcf86cd799439011",
+      userId: "tenant-1",
+      roomId: "room-1",
+      status: "pending",
+      viewingPreference: null,
+      viewingType: null,
+      visitDate: null,
+      visitTime: "",
+      visitCode: null,
+      remoteViewingAcknowledged: false,
+      agreedToPrivacy: false,
+      scheduleRejected: false,
+      validIDFrontUrl: null,
+      nbiClearanceUrl: null,
+      companyIDUrl: null,
+      emergencyContact: {},
+      employment: {},
+      idType: null,
+      validIDType: null,
+    };
+    const updatedReservation = {
+      ...existingReservation,
+      status: "visit_pending",
+      userId: { _id: "tenant-1", email: "tala@example.com" },
+      roomId: { _id: "room-1", branch: "gil-puyat", name: "Room 1" },
+      viewingPreference: "physical_visit",
+      viewingType: "inperson",
+      visitDate: new Date("2099-06-01T00:00:00.000Z"),
+      visitTime: "09:00 AM",
+      visitCode: "VIS-ABC123",
+    };
+
+    reservationFindById.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockResolvedValue({ visitCode: null, visitScheduledAt: null }),
+      then: (resolve) => Promise.resolve(resolve(existingReservation)),
+    });
+    roomFindById.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockResolvedValue({ branch: "gil-puyat" }),
+    });
+    visitAvailabilityFindOne.mockResolvedValue({
+      branch: "gil-puyat",
+      enabledWeekdays: [0, 1, 2, 3, 4, 5, 6],
+      slots: [{ label: "09:00 AM", enabled: true, capacity: 5 }],
+      blackoutDates: [],
+      weekdaySystem: "js-get-day",
+    });
+    roomFind.mockReturnValue({
+      distinct: jest.fn().mockResolvedValue(["room-1"]),
+    });
+    reservationFind.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockResolvedValue([]),
+    });
+    reservationFindOne.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockResolvedValue(null),
+    });
+    buildUserUpdatePayload.mockReturnValue({
+      agreedToPrivacy: true,
+      viewingPreference: "physical_visit",
+      visitDate: "2099-06-01",
+      visitTime: "09:00 AM",
+    });
+    reservationFindByIdAndUpdate.mockReturnValue({
+      populate: jest.fn().mockReturnThis(),
+      then: (resolve) => Promise.resolve(resolve(updatedReservation)),
+    });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439011" },
+      user: { uid: "tenant-firebase-uid" },
+      body: {
+        agreedToPrivacy: true,
+        viewingPreference: "physical_visit",
+        visitDate: "2099-06-01",
+        visitTime: "09:00 AM",
+      },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    userFindOne.mockResolvedValue({
+      _id: "tenant-1",
+      firebaseUid: "tenant-firebase-uid",
+      role: "applicant",
+    });
+
+    await updateReservationByUser(req, res, next);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body?.reservation?.viewingPreference).toBe("physical_visit");
+    expect(reservationFindByIdAndUpdate).toHaveBeenCalledWith(
+      "507f1f77bcf86cd799439011",
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          agreedToPrivacy: true,
+          viewingPreference: "physical_visit",
+          viewingType: "inperson",
+          visitDate: expect.any(Date),
+          visitTime: "09:00 AM",
+          visitCode: expect.stringMatching(/^VIS-/),
+          visitScheduledAt: expect.any(Date),
+          visitStatus: "physical_visit_scheduled",
+          status: "visit_pending",
         }),
       }),
       { new: true, runValidators: true },

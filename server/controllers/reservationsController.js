@@ -3665,7 +3665,25 @@ export const updateReservationByUser = async (req, res, next) => {
       // Only terminal outcomes (rejected, approved, cancelled) belong in visitHistory.
     }
     // pending → visit_pending: when tenant first schedules a visit
+    const effectiveAgreedToPrivacy =
+      updates.agreedToPrivacy ?? reservation.agreedToPrivacy;
+    const submittedPhysicalVisitSchedule =
+      effectiveViewingPreference === "physical_visit" &&
+      preferenceRelatedUpdate &&
+      Boolean(effectiveVisitDate && effectiveVisitTime) &&
+      effectiveAgreedToPrivacy === true;
+
     if (
+      submittedPhysicalVisitSchedule &&
+      hasReservationStatus(
+        reservation.status,
+        "pending",
+        "viewing_preference_selected",
+        LEGACY_VISIT_STATUSES,
+      )
+    ) {
+      updates.status = "visit_pending";
+    } else if (
       effectiveViewingPreference &&
       preferenceRelatedUpdate &&
       hasReservationStatus(reservation.status, "pending")
