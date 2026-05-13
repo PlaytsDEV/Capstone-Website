@@ -103,7 +103,11 @@ export async function uploadToFirebaseStorage(file, opts = {}, onProgress) {
   const validation = validateFile(file);
   if (!validation.valid) throw new Error(validation.error);
 
-  const { uid = auth?.currentUser?.uid ?? "anonymous", documentType = "document" } = opts;
+  if (!auth?.currentUser) {
+    throw new Error("You must be signed in to upload files. Please refresh and try again.");
+  }
+
+  const { uid = auth.currentUser.uid, documentType = "document" } = opts;
 
   // Sanitise the filename for storage path safety
   const safeFilename = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -127,12 +131,16 @@ export async function uploadToFirebaseStorage(file, opts = {}, onProgress) {
           onProgress(pct);
         }
       },
-      () => {
-        reject(
-          new Error(
-            "Upload failed. Please check your connection and try again.",
-          ),
-        );
+      (storageError) => {
+        const code = storageError?.code ?? "unknown";
+        console.error("[firebaseStorage] upload error:", code, storageError);
+        let message = "Upload failed. Please check your connection and try again.";
+        if (code === "storage/unauthorized") {
+          message = "Upload permission denied. Please refresh the page and try again.";
+        } else if (code === "storage/canceled") {
+          message = "Upload was cancelled.";
+        }
+        reject(new Error(message));
       },
       async () => {
         try {
