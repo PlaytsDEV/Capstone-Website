@@ -35,7 +35,7 @@ export default function useSocketClient() {
 
       const socket = io(SOCKET_URL, {
         auth: { token },
-        transports: ["websocket", "polling"],
+        transports: ["polling", "websocket"],
         reconnectionAttempts: 5,
         reconnectionDelay: 3000,
       });

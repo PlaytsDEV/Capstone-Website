@@ -41,7 +41,7 @@ export function initSocket(httpServer, allowedOrigins = []) {
       origin: allowedOrigins,
       credentials: true,
     },
-    transports: ["websocket", "polling"],
+    transports: ["polling", "websocket"],
   });
 
   io.use(async (socket, next) => {
