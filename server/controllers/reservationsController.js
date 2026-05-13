@@ -217,6 +217,8 @@ const MAX_REMOTE_VIEWING_QUESTION_LENGTH = 1500;
 const MAX_APPLICATION_REVIEW_REASON_LENGTH = 1500;
 const MAX_VISIT_MANAGEMENT_NOTE_LENGTH = 1500;
 const VISIT_MANAGEMENT_ACTIONS = Object.freeze([
+  "approve_schedule",
+  "reject_schedule",
   "mark_visited",
   "mark_no_show",
   "reschedule",
@@ -2213,6 +2215,7 @@ export const updateReservation = async (req, res, next) => {
       "companyIDRejectionReason",
       "scheduleRejected",
       "scheduleRejectionReason",
+      "visitStatus",
     ];
 
     // Remove a single visitHistory entry by index
@@ -2748,13 +2751,86 @@ export const manageReservationVisit = async (req, res, next) => {
     let applicantEmailStatus = "";
 
     if (
-      (action === "mark_visited" || action === "mark_no_show") &&
+      (action === "mark_visited" || action === "mark_no_show" || action === "approve_schedule") &&
       (!reservation.visitDate || !reservation.visitTime)
     ) {
       return res.status(422).json({
-        error: "A preferred visit date and time must be set before recording the visit outcome.",
+        error: "A visit date and time must be set before this action.",
         code: "VISIT_SCHEDULE_REQUIRED",
       });
+    }
+
+    if (action === "approve_schedule") {
+      if (reservation.scheduleApproved) {
+        return res.status(409).json({
+          error: "Visit schedule has already been approved.",
+          code: "SCHEDULE_ALREADY_APPROVED",
+        });
+      }
+      if (reservation.scheduleRejected) {
+        return res.status(409).json({
+          error: "Visit schedule was rejected and cannot be approved. Use reschedule instead.",
+          code: "SCHEDULE_REJECTED",
+        });
+      }
+      reservation.scheduleApproved = true;
+      reservation.scheduleApprovedAt = reservation.scheduleApprovedAt || now;
+      if (hasReservationStatus(reservation.status, LEGACY_VISIT_STATUSES, "pending")) {
+        reservation.status = "visit_approved";
+      }
+      appendVisitHistoryEntry({
+        reservation,
+        status: "schedule_approved",
+        actorId,
+        actorName,
+        note,
+        updatedAt: now,
+      });
+      applicantNotificationTitle = "Visit Schedule Confirmed";
+      applicantNotificationMessage = `Your physical visit on ${
+        reservation.visitDate
+          ? new Date(reservation.visitDate).toLocaleDateString("en-PH", {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            })
+          : "the scheduled date"
+      }${reservation.visitTime ? ` at ${reservation.visitTime}` : ""} has been confirmed. Please be on time.`;
+      applicantEmailStatus = "approved";
+    }
+
+    if (action === "reject_schedule") {
+      if (reservation.scheduleRejected) {
+        return res.status(409).json({
+          error: "Visit schedule has already been rejected.",
+          code: "SCHEDULE_ALREADY_REJECTED",
+        });
+      }
+      reservation.scheduleRejected = true;
+      reservation.scheduleRejectedAt = now;
+      reservation.scheduleRejectedBy = actorId || null;
+      reservation.scheduleRejectionReason = note || "";
+      reservation.visitApproved = false;
+      reservation.scheduleApproved = false;
+      reservation.scheduleApprovedAt = null;
+      if (hasReservationStatus(reservation.status, LEGACY_VISIT_STATUSES, "approved")) {
+        reservation.status = "visit_pending";
+      }
+      if (reservation.visitDate) {
+        appendVisitHistoryEntry({
+          reservation,
+          status: "rejected",
+          actorId,
+          actorName,
+          note,
+          updatedAt: now,
+        });
+      }
+      applicantNotificationTitle = "Visit Schedule Rejected";
+      applicantNotificationMessage = note
+        ? `Your scheduled visit was rejected: ${note} Please reschedule.`
+        : "Your scheduled visit was rejected. Please choose a new date and time.";
+      applicantEmailStatus = "rejected";
     }
 
     if (action === "reschedule") {
@@ -2947,15 +3023,19 @@ export const manageReservationVisit = async (req, res, next) => {
     await reservation.populate(...POPULATE_ROOM);
 
     const successMessage =
-      action === "mark_visited"
-        ? "Visit marked as completed"
-        : action === "mark_no_show"
-          ? "Visit marked as no-show"
-          : action === "reschedule"
-            ? "Visit schedule updated"
-            : action === "allow_without_visit"
-              ? "Applicant may proceed without a completed visit"
-              : "Visit schedule cancelled";
+      action === "approve_schedule"
+        ? "Visit schedule approved. Tenant has been notified."
+        : action === "reject_schedule"
+          ? "Visit schedule rejected. Tenant has been notified."
+          : action === "mark_visited"
+            ? "Visit marked as completed"
+            : action === "mark_no_show"
+              ? "Visit marked as no-show"
+              : action === "reschedule"
+                ? "Visit schedule updated"
+                : action === "allow_without_visit"
+                  ? "Applicant may proceed without a completed visit"
+                  : "Visit schedule cancelled";
 
     await auditLogger.logModification(
       req,

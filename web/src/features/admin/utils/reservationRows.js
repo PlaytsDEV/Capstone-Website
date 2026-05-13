@@ -81,13 +81,17 @@ export function mapVisitScheduleRows(rawReservations = []) {
  if (reservation.visitHistory && reservation.visitHistory.length > 0) {
  reservation.visitHistory.forEach((historyEntry, index) => {
  const actionedAt =
- historyEntry.approvedAt || historyEntry.rejectedAt || null;
+ historyEntry.approvedAt || historyEntry.rejectedAt || historyEntry.updatedAt || null;
  const actionedLabel =
- historyEntry.status === "approved"
+ historyEntry.status === "approved" || historyEntry.status === "completed"
+ ? "Completed"
+ : historyEntry.status === "schedule_approved"
  ? "Approved"
  : historyEntry.status === "rejected"
  ? "Rejected"
- : historyEntry.status === "cancelled"
+ : historyEntry.status === "no_show"
+ ? "No-Show"
+ : historyEntry.status === "cancelled" || historyEntry.status === "visit_cancelled"
  ? "Cancelled"
  : null;
 
@@ -96,8 +100,8 @@ export function mapVisitScheduleRows(rawReservations = []) {
  id: `${reservation._id}-history-${index}`,
  visitDate: historyEntry.visitDate,
  visitTime: historyEntry.visitTime || "-",
- visitApproved: historyEntry.status === "approved",
- scheduleApproved: historyEntry.status === "approved",
+ visitApproved: historyEntry.status === "approved" || historyEntry.status === "completed",
+ scheduleApproved: historyEntry.status === "approved" || historyEntry.status === "completed",
  scheduleRejected: historyEntry.status === "rejected",
  scheduleRejectionReason: historyEntry.rejectionReason || "",
  scheduledDate:
@@ -126,9 +130,10 @@ export function mapVisitScheduleRows(rawReservations = []) {
  visitDate: reservation.visitDate,
  visitTime: reservation.visitTime || "-",
  visitApproved: reservation.visitApproved,
- scheduleApproved: reservation.scheduleApproved,
+ scheduleApproved: Boolean(reservation.scheduleApproved),
  scheduleRejected: false,
  scheduleRejectionReason: "",
+ visitStatus: reservation.visitStatus || null,
  status: reservation.status,
  scheduledDate: reservation.visitScheduledAt || reservation.createdAt,
  actionedAt: null,

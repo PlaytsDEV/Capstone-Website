@@ -352,7 +352,11 @@ function ReservationsPage() {
       if (
         previous.status === liveReservation.status &&
         previous.moveInDate === liveReservation.moveInDate &&
-        previous.moveOutDate === liveReservation.moveOutDate
+        previous.moveOutDate === liveReservation.moveOutDate &&
+        previous.visitStatus === liveReservation.visitStatus &&
+        previous.visitApproved === liveReservation.visitApproved &&
+        previous.scheduleApproved === liveReservation.scheduleApproved &&
+        previous.scheduleRejected === liveReservation.scheduleRejected
       ) {
         return previous;
       }
@@ -370,6 +374,14 @@ function ReservationsPage() {
         moveInDate: liveReservation.moveInDate,
         moveOutDate: liveReservation.moveOutDate,
         createdAt: liveReservation.createdAt,
+        visitStatus: liveReservation.visitStatus,
+        visitApproved: liveReservation.visitApproved,
+        visitDate: liveReservation.visitDate,
+        visitTime: liveReservation.visitTime,
+        visitHistory: liveReservation.visitHistory,
+        scheduleApproved: liveReservation.scheduleApproved,
+        scheduleRejected: liveReservation.scheduleRejected,
+        scheduleRejectionReason: liveReservation.scheduleRejectionReason,
       };
     });
   }, [reservations, selectedReservation]);

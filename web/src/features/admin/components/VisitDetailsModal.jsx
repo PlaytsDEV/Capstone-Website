@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { reservationApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
 import {
@@ -70,6 +71,7 @@ const SectionCard = ({ icon: Icon, title, children }) => (
 
 /* ─── main component ──────────────────────────────────── */
 export default function VisitDetailsModal({ schedule, onClose, onUpdate }) {
+ const queryClient = useQueryClient();
  const [rejectMode, setRejectMode] = useState(false);
  const [rejectReason, setRejectReason] = useState("");
  const [isSubmitting, setIsSubmitting] = useState(false);
@@ -86,12 +88,11 @@ export default function VisitDetailsModal({ schedule, onClose, onUpdate }) {
  }
  setIsSubmitting(true);
  try {
- await reservationApi.update(schedule.id, {
- scheduleRejected: true,
- scheduleRejectionReason: rejectReason.trim(),
- scheduleRejectedAt: new Date().toISOString(),
- scheduleApproved: false,
+ await reservationApi.manageVisit(schedule.id, {
+ action: "reject_schedule",
+ note: rejectReason.trim(),
  });
+ queryClient.invalidateQueries({ queryKey: ["reservations"] });
  showNotification("Visit schedule rejected successfully", "success");
  onUpdate?.();
  onClose();
@@ -251,8 +252,9 @@ export default function VisitDetailsModal({ schedule, onClose, onUpdate }) {
  .map((entry, idx) => {
  const MAP = {
   pending: { bg: "#FEF3C7", color: "#92400E", label: "Scheduled" },
+  schedule_approved: { bg: "#D1FAE5", color: "#047857", label: "Schedule Approved" },
   rejected: { bg: "#FEE2E2", color: "#DC2626", label: "Rejected" },
-  approved: { bg: "#D1FAE5", color: "#047857", label: "Approved" },
+  approved: { bg: "#D1FAE5", color: "#047857", label: "Completed" },
   cancelled: { bg: "#F3F4F6", color: "#6B7280", label: "Cancelled" },
   rescheduled: { bg: "#EDE9FE", color: "#7C3AED", label: "Rescheduled" },
   completed: { bg: "#D1FAE5", color: "#047857", label: "Completed" },
@@ -262,7 +264,7 @@ export default function VisitDetailsModal({ schedule, onClose, onUpdate }) {
  };
  const s = MAP[entry.status] || MAP.pending;
  const entryDate = entry.visitDate ? fmtShortDate(entry.visitDate) : "N/A";
- const actionDate = entry.rejectedAt || entry.approvedAt || entry.scheduledAt;
+ const actionDate = entry.rejectedAt || entry.approvedAt || entry.updatedAt || entry.scheduledAt;
  const actionDateStr = actionDate
  ? new Date(actionDate).toLocaleDateString(APP_LOCALE, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
  : "";
