@@ -4,6 +4,8 @@ import {
   Calendar,
   Camera,
   CheckCircle,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Eye,
   Home,
@@ -161,13 +163,14 @@ const ReservationVisitStep = ({
   onVisitSaved,
   onReturnToDashboard,
   readOnly,
+  forceEditMode,
   scheduleRejected,
   scheduleRejectionReason,
 }) => {
   const { user: firebaseUser, loading: authLoading } = useFirebaseAuth();
   const [isSaving, setIsSaving] = useState(false);
-  const [previewImage, setPreviewImage] = useState(null);
-  const [isEditingPhysicalVisit, setIsEditingPhysicalVisit] = useState(false);
+  const [previewImageIndex, setPreviewImageIndex] = useState(null);
+  const [isEditingPhysicalVisit, setIsEditingPhysicalVisit] = useState(() => Boolean(forceEditMode));
 
   const selectedVisit = viewingType || "physical_visit";
   const room = reservationData?.room || {};
@@ -271,6 +274,17 @@ const ReservationVisitStep = ({
       setIsEditingPhysicalVisit(false);
     }
   }, [hasSavedPhysicalVisit]);
+
+  useEffect(() => {
+    if (previewImageIndex === null) return undefined;
+    const handleKey = (e) => {
+      if (e.key === "Escape") setPreviewImageIndex(null);
+      if (e.key === "ArrowLeft") setPreviewImageIndex((i) => Math.max(0, i - 1));
+      if (e.key === "ArrowRight") setPreviewImageIndex((i) => Math.min(roomImages.length - 1, i + 1));
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [previewImageIndex, roomImages.length]);
 
   const handleContinue = async () => {
     if (selectedVisit === "physical_visit") {
@@ -394,7 +408,7 @@ const ReservationVisitStep = ({
               className="btn btn-secondary"
               onClick={() => setIsEditingPhysicalVisit(true)}
             >
-              Edit Visit
+              Change Viewing Preference
             </button>
             <button
               type="button"
@@ -411,18 +425,6 @@ const ReservationVisitStep = ({
 
   return (
     <div className="rf-visit-step">
-      <div className="main-header">
-        <div className="main-header-badge">
-          <span>Step 2 · Viewing Preference</span>
-        </div>
-        <h2 className="main-header-title">Choose Your Viewing Preference</h2>
-        <p className="main-header-subtitle">
-          Select how you would like to view the room before completing your tenant
-          application. Payment will only be available after your application and
-          required documents are approved.
-        </p>
-      </div>
-
       {scheduleRejected && (
         <div className="rf-rejection-banner">
           <AlertTriangle
@@ -447,12 +449,55 @@ const ReservationVisitStep = ({
       )}
 
       {readOnly ? (
-        renderVisitSummary({ title: "Viewing Preference Summary" })
+        <>
+          <div className="main-header">
+            <div className="main-header-badge"><span>Step 2 · Viewing Preference</span></div>
+            <h2 className="main-header-title">Choose Your Viewing Preference</h2>
+            <p className="main-header-subtitle">
+              Select how you would like to view the room before completing your tenant
+              application. Payment will only be available after your application and
+              required documents are approved.
+            </p>
+          </div>
+          <div className="rf-rejection-banner" style={{ background: "rgba(37, 99, 235, 0.06)", border: "1px solid rgba(37, 99, 235, 0.18)" }}>
+            <AlertTriangle size={18} color="#2563EB" style={{ flexShrink: 0, marginTop: 2 }} />
+            <div>
+              <div className="rf-rejection-banner__title" style={{ color: "#1D4ED8" }}>
+                Viewing preference is locked
+              </div>
+              <div className="rf-rejection-banner__hint" style={{ color: "#3B82F6" }}>
+                Your application has been submitted. Contact admin if you need to make changes.
+              </div>
+            </div>
+          </div>
+          {renderVisitSummary({ title: "Viewing Preference Summary" })}
+        </>
       ) : showPhysicalVisitSummary ? (
-        renderVisitSummary({ title: "Viewing Preference Summary", withActions: true })
+        <>
+          <div className="main-header">
+            <div className="main-header-badge"><span>Step 2 · Viewing Preference</span></div>
+            <h2 className="main-header-title">Choose Your Viewing Preference</h2>
+            <p className="main-header-subtitle">
+              Select how you would like to view the room before completing your tenant
+              application. Payment will only be available after your application and
+              required documents are approved.
+            </p>
+          </div>
+          {renderVisitSummary({ title: "Viewing Preference Summary", withActions: true })}
+        </>
       ) : (
         <>
-          <div className="content-card">
+          <div className="content-card rf-step2-main-card">
+            <div className="rf-step2-inner-header">
+              <div className="main-header-badge"><span>Step 2 · Viewing Preference</span></div>
+              <h2 className="main-header-title">Choose Your Viewing Preference</h2>
+              <p className="main-header-subtitle">
+                Select how you would like to view the room before completing your tenant
+                application. Payment will only be available after your application and
+                required documents are approved.
+              </p>
+            </div>
+            <div className="rf-step2-header-sep" />
             <div className="card-section-title">
               <Eye size={15} style={{ marginRight: 6, flexShrink: 0 }} />
               How would you like to view the room?
@@ -491,13 +536,13 @@ const ReservationVisitStep = ({
                 );
               })}
             </div>
-          </div>
+          </div>{/* end rf-step2-main-card */}
 
           {selectedVisit === "physical_visit" && (
             <>
               <div className="rf-selection-confirm">
                 <CheckCircle size={14} />
-                <span>You selected: <strong>Physical Visit</strong></span>
+                <span>Current selection: <strong>Physical Visit</strong></span>
               </div>
               <div className="content-card">
                 <div className="card-section-title">
@@ -505,8 +550,8 @@ const ReservationVisitStep = ({
                   Schedule Your Visit
                 </div>
                 <p className="rf-section-hint">
-                  Choose a preferred date and time below. This is for viewing coordination
-                  only and does not unlock payment or confirm occupancy.
+                  Choose your preferred visit date and time. This schedule is for room
+                  viewing only and does not confirm occupancy or unlock payment.
                 </p>
                 {availabilityError && (
                   <div className="rf-availability-alert" role="alert">
@@ -620,12 +665,12 @@ const ReservationVisitStep = ({
             <>
               <div className="rf-selection-confirm">
                 <CheckCircle size={14} />
-                <span>You selected: <strong>Remote Viewing</strong></span>
+                <span>Current selection: <strong>Remote Viewing</strong></span>
               </div>
               <div className="content-card">
                 <div className="card-section-title">
                   <Camera size={15} style={{ marginRight: 6, flexShrink: 0 }} />
-                  Room Photos
+                  Room Photo Review
                   {roomImages.length > 0 && (
                     <span className="rf-gallery-count-badge">
                       <ImageIcon size={11} />
@@ -634,8 +679,8 @@ const ReservationVisitStep = ({
                   )}
                 </div>
                 <p className="rf-section-hint">
-                  Review the available room photos below. Tap any photo to view it in
-                  full size. Your questions will be forwarded to the admin for follow-up.
+                  Browse available room photos before continuing. This is a photo-based
+                  viewing option and does not include a 3D or 360° tour.
                 </p>
                 {roomImages.length > 0 ? (
                   <div className="rf-room-gallery">
@@ -644,7 +689,8 @@ const ReservationVisitStep = ({
                         key={`${image}-${index}`}
                         type="button"
                         className="rf-room-gallery__item"
-                        onClick={() => setPreviewImage(image)}
+                        onClick={() => setPreviewImageIndex(index)}
+                        aria-label={`View photo ${index + 1} of ${roomImages.length}`}
                       >
                         <img
                           src={image}
@@ -654,7 +700,7 @@ const ReservationVisitStep = ({
                         <div className="rf-room-gallery__hover-overlay">
                           <span className="rf-room-gallery__hover-label">
                             <Eye size={12} />
-                            View
+                            View photo
                           </span>
                         </div>
                       </button>
@@ -731,7 +777,7 @@ const ReservationVisitStep = ({
             <div className="content-card">
               <div className="rf-selection-confirm rf-selection-confirm--inline">
                 <CheckCircle size={14} />
-                <span>You selected: <strong>Priority Viewing Review</strong></span>
+                <span>Current selection: <strong>Priority Viewing Review</strong></span>
               </div>
 
               <div className="rf-urgent-banner">
@@ -798,20 +844,55 @@ const ReservationVisitStep = ({
         </>
       )}
 
-      {previewImage && (
-        <div className="rf-modal-overlay" role="dialog" aria-modal="true">
-          <div className="rf-modal-card rf-photo-preview-modal">
+      {previewImageIndex !== null && (
+        <div
+          className="rf-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setPreviewImageIndex(null)}
+        >
+          <div
+            className="rf-modal-card rf-photo-preview-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
             <button
               type="button"
               className="rf-modal-close-btn"
-              onClick={() => setPreviewImage(null)}
+              onClick={() => setPreviewImageIndex(null)}
               aria-label="Close image preview"
             >
               <X size={18} />
             </button>
+
+            {roomImages.length > 1 && (
+              <div className="rf-photo-nav">
+                <button
+                  type="button"
+                  className="rf-photo-nav__btn"
+                  onClick={() => setPreviewImageIndex((i) => Math.max(0, i - 1))}
+                  disabled={previewImageIndex === 0}
+                  aria-label="Previous photo"
+                >
+                  <ChevronLeft size={20} />
+                </button>
+                <span className="rf-photo-nav__counter">
+                  {previewImageIndex + 1} of {roomImages.length}
+                </span>
+                <button
+                  type="button"
+                  className="rf-photo-nav__btn"
+                  onClick={() => setPreviewImageIndex((i) => Math.min(roomImages.length - 1, i + 1))}
+                  disabled={previewImageIndex === roomImages.length - 1}
+                  aria-label="Next photo"
+                >
+                  <ChevronRight size={20} />
+                </button>
+              </div>
+            )}
+
             <img
-              src={previewImage}
-              alt="Room preview"
+              src={roomImages[previewImageIndex]}
+              alt={`Room photo ${previewImageIndex + 1}`}
               className="rf-photo-preview-modal__image"
             />
           </div>

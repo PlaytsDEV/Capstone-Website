@@ -3208,3 +3208,165 @@ html[data-theme="dark"] .rf-selection-confirm {
   transform: translateY(-1px);
 }
 
+/* ============================================================
+   STEP 2 — UNIFIED CARD HEADER
+   ============================================================ */
+
+/* Inner header section inside the combined card */
+.rf-step2-inner-header {
+  margin-bottom: 0;
+}
+.rf-step2-inner-header .main-header-badge {
+  margin-bottom: 10px;
+}
+.rf-step2-inner-header .main-header-title {
+  font-size: 22px;
+  margin-bottom: 4px;
+}
+.rf-step2-inner-header .main-header-subtitle {
+  margin-bottom: 0;
+  max-width: 560px;
+}
+
+/* Divider between header area and option selector */
+.rf-step2-header-sep {
+  border: none;
+  border-top: 1px solid var(--rf-border);
+  margin: 20px 0 22px;
+}
+
+/* ============================================================
+   CALENDAR — HOVER / SELECTED / TOMORROW BADGE POLISH
+   ============================================================ */
+
+/* Available date hover: light navy tint, lift, border darkening — NOT dark fill */
+.rf-date-card:not(.disabled):not(.selected):hover {
+  background: rgba(15, 23, 42, 0.04) !important;
+  border-color: rgba(15, 23, 42, 0.28) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.07);
+  cursor: pointer;
+}
+
+/* Selected date: navy fill + LilyCrest accent ring */
+.rf-date-card.selected {
+  border-color: var(--rf-text-heading) !important;
+  background: var(--rf-text-heading) !important;
+  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.5), 0 4px 14px rgba(10, 22, 40, 0.22) !important;
+}
+
+/* Today/Tomorrow badge — highly readable on selected navy background */
+.rf-date-card.selected .rf-today-pill {
+  background: rgba(255, 255, 255, 0.94) !important;
+  color: #0F172A !important;
+  font-weight: 700 !important;
+}
+
+/* ============================================================
+   TIME SLOTS — HOVER LIGHTER THAN SELECTED
+   ============================================================ */
+
+.rf-time-slot:not(.disabled):not(.selected):hover {
+  background: rgba(15, 23, 42, 0.04) !important;
+  border-color: rgba(15, 23, 42, 0.28) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+  color: var(--rf-text);
+}
+
+/* ============================================================
+   SELECTION CONFIRM BAR — NEUTRAL (NOT GREEN)
+   ============================================================ */
+
+.rf-selection-confirm {
+  background: rgba(15, 23, 42, 0.05) !important;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
+  color: var(--rf-text-secondary) !important;
+}
+.rf-selection-confirm svg {
+  color: var(--rf-text-muted);
+  flex-shrink: 0;
+}
+.rf-selection-confirm strong {
+  color: var(--rf-text);
+}
+html[data-theme="dark"] .rf-selection-confirm {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: var(--rf-text-muted) !important;
+}
+html[data-theme="dark"] .rf-selection-confirm strong {
+  color: var(--rf-text);
+}
+
+/* ============================================================
+   GALLERY — ZOOM ON HOVER + FOCUS AFFORDANCE
+   ============================================================ */
+
+.rf-room-gallery__image {
+  transition: transform 0.25s ease;
+}
+.rf-room-gallery__item:hover .rf-room-gallery__image {
+  transform: scale(1.05);
+}
+.rf-room-gallery__item:focus-visible {
+  outline: 2px solid var(--rf-border-focus);
+  outline-offset: 2px;
+}
+
+/* ============================================================
+   PHOTO PREVIEW MODAL — NAVIGATION
+   ============================================================ */
+
+.rf-photo-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.rf-photo-nav__btn {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1.5px solid var(--rf-border-card);
+  background: var(--rf-surface);
+  color: var(--rf-text-secondary);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  flex-shrink: 0;
+}
+.rf-photo-nav__btn:hover:not(:disabled) {
+  background: var(--rf-surface-alt);
+  border-color: var(--rf-text-muted);
+  color: var(--rf-text);
+}
+.rf-photo-nav__btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.rf-photo-nav__counter {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--rf-text-muted);
+  min-width: 48px;
+  text-align: center;
+}
+
+/* Dark mode calendar/time slot hover overrides */
+html[data-theme="dark"] .rf-date-card:not(.disabled):not(.selected):hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+html[data-theme="dark"] .rf-time-slot:not(.disabled):not(.selected):hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+

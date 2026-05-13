@@ -1,7 +1,7 @@
-const DOCUMENT_PRECHECK_MODEL =
-  process.env.RESERVATION_DOCUMENT_PRECHECK_MODEL || "gemini-1.5-flash";
-const GEMINI_API_KEY =
-  process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || "";
+import logger from "../middleware/logger.js";
+
+const DEFAULT_DOCUMENT_PRECHECK_MODEL = "gemini-1.5-flash";
+const DEFAULT_PRECHECK_TIMEOUT_MS = 15000;
 const MAX_INLINE_BYTES = 5 * 1024 * 1024;
 
 const JSON_FENCE_REGEX = /```(?:json)?\s*([\s\S]*?)```/i;
@@ -78,17 +78,75 @@ const buildPrompt = ({ documentType, idType }) => {
     .join("\n");
 };
 
-const downloadDocument = async (documentUrl) => {
+export const getDocumentPrecheckApiKey = () =>
+  String(process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || "").trim();
+
+export const getDocumentPrecheckModel = () =>
+  String(
+    process.env.RESERVATION_DOCUMENT_PRECHECK_MODEL ||
+      process.env.GEMINI_MODEL ||
+      DEFAULT_DOCUMENT_PRECHECK_MODEL,
+  ).trim() || DEFAULT_DOCUMENT_PRECHECK_MODEL;
+
+export const getDocumentPrecheckTimeoutMs = () => {
+  const parsed = Number(process.env.RESERVATION_DOCUMENT_PRECHECK_TIMEOUT_MS);
+  if (!Number.isFinite(parsed) || parsed < 1000) {
+    return DEFAULT_PRECHECK_TIMEOUT_MS;
+  }
+  return Math.floor(parsed);
+};
+
+export const getDocumentPrecheckStartupStatus = () => ({
+  enabled: Boolean(getDocumentPrecheckApiKey()),
+  model: getDocumentPrecheckModel(),
+  timeoutMs: getDocumentPrecheckTimeoutMs(),
+});
+
+export const logDocumentPrecheckStartupStatus = () => {
+  const status = getDocumentPrecheckStartupStatus();
+  if (status.enabled) {
+    logger.info(
+      {
+        model: status.model,
+        timeoutMs: status.timeoutMs,
+      },
+      "Document pre-check: enabled",
+    );
+  } else {
+    logger.info("Document pre-check: manual review fallback");
+  }
+  return status;
+};
+
+const fetchWithTimeout = async (url, options = {}, timeoutMs = getDocumentPrecheckTimeoutMs()) => {
   if (typeof fetch !== "function") {
     throw new Error("Global fetch is not available for document pre-checking.");
   }
 
-  const response = await fetch(documentUrl, {
-    method: "GET",
-    headers: {
-      Accept: "image/*,application/pdf",
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const downloadDocument = async (documentUrl) => {
+  const response = await fetchWithTimeout(
+    documentUrl,
+    {
+      method: "GET",
+      headers: {
+        Accept: "image/*,application/pdf",
+      },
     },
-  });
+    getDocumentPrecheckTimeoutMs(),
+  );
 
   if (!response.ok) {
     throw new Error(`Document download failed with status ${response.status}.`);
@@ -130,6 +188,9 @@ const callGeminiDocumentCheck = async ({
   documentType,
   idType,
 }) => {
+  const apiKey = getDocumentPrecheckApiKey();
+  const model = getDocumentPrecheckModel();
+  const timeoutMs = getDocumentPrecheckTimeoutMs();
   const downloaded = await downloadDocument(documentUrl);
 
   if (downloaded.unsupported) {
@@ -154,8 +215,8 @@ const callGeminiDocumentCheck = async ({
     });
   }
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${DOCUMENT_PRECHECK_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+  const response = await fetchWithTimeout(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
     {
       method: "POST",
       headers: {
@@ -183,13 +244,21 @@ const callGeminiDocumentCheck = async ({
         },
       }),
     },
+    timeoutMs,
   );
 
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Document pre-check request failed with ${response.status}: ${errorText.slice(0, 180)}`,
+    const errorText = await response.text().catch(() => "");
+    logger.warn(
+      {
+        status: response.status,
+        documentType,
+        model,
+        detail: errorText.slice(0, 180),
+      },
+      "Gemini document pre-check request failed",
     );
+    throw new Error(`Document pre-check request failed with status ${response.status}.`);
   }
 
   const payload = await response.json();
@@ -214,6 +283,22 @@ const callGeminiDocumentCheck = async ({
   });
 };
 
+const buildGenericFailureFallback = (error) => {
+  const timedOut = error?.name === "AbortError";
+  return buildResult({
+    status: "error",
+    warnings: [
+      timedOut
+        ? "Automatic document pre-check timed out. Admin will review this file manually."
+        : "Automatic document pre-check could not be completed. Admin will review this file manually.",
+    ],
+    summary: timedOut
+      ? "Automatic document pre-check timed out. Admin will review this file manually."
+      : "Automatic document pre-check is temporarily unavailable. Admin will review this file manually.",
+    provider: "error",
+  });
+};
+
 export const runReservationDocumentPrecheck = async ({
   documentType,
   documentUrl,
@@ -228,14 +313,12 @@ export const runReservationDocumentPrecheck = async ({
     });
   }
 
-  if (!GEMINI_API_KEY) {
+  if (!getDocumentPrecheckApiKey()) {
     return buildResult({
       status: "error",
-      warnings: [
-        "AI document pre-check is not configured. Your documents will still be reviewed by admin.",
-      ],
+      warnings: [],
       summary:
-        "Automatic pre-check is unavailable until a Gemini API key is configured on the server.",
+        "Automatic document pre-check is unavailable right now. Admin will review this file manually.",
       provider: "unconfigured",
     });
   }
@@ -247,15 +330,14 @@ export const runReservationDocumentPrecheck = async ({
       idType,
     });
   } catch (error) {
-    return buildResult({
-      status: "error",
-      warnings: [
-        "Automatic document pre-check could not be completed. Admin will review this file manually.",
-      ],
-      summary:
-        error?.message ||
-        "Automatic document pre-check could not be completed.",
-      provider: "error",
-    });
+    logger.warn(
+      {
+        err: error,
+        documentType,
+        model: getDocumentPrecheckModel(),
+      },
+      "Document pre-check fell back to manual review",
+    );
+    return buildGenericFailureFallback(error);
   }
 };

@@ -131,6 +131,14 @@ export const reservationApi = {
       }),
     ),
 
+  manageVisit: (reservationId, data) =>
+    withLifecycleNormalization(
+      authFetch(`/reservations/${reservationId}/visit-management`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    ),
+
   cancelByUser: (reservationId, reason = "") =>
     withLifecycleNormalization(
       authFetch(`/reservations/${reservationId}/cancel`, {

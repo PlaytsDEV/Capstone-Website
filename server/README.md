@@ -144,6 +144,11 @@ PAYMONGO_WEBHOOK_SECRET=your-webhook-signing-key
 
 # ImageKit
 IMAGEKIT_PRIVATE_KEY=your-imagekit-private-key
+
+# Optional: reservation document pre-check (backend only)
+GEMINI_API_KEY=your_google_ai_studio_gemini_api_key
+RESERVATION_DOCUMENT_PRECHECK_MODEL=gemini-1.5-flash
+RESERVATION_DOCUMENT_PRECHECK_TIMEOUT_MS=15000
 ```
 
 ### 3. Run Server
@@ -157,6 +162,33 @@ npm start
 ```
 
 Server runs on: **http://localhost:5000**
+
+---
+
+## Reservation Document Pre-check
+
+The reservation document pre-check reads Gemini credentials from **server-side environment variables only**.
+Do not expose these values through Vite env files, frontend bundles, or mobile client config.
+
+- Preferred key: `GEMINI_API_KEY`
+- Supported fallback key: `GOOGLE_AI_API_KEY`
+- Optional model override: `RESERVATION_DOCUMENT_PRECHECK_MODEL`
+- Optional timeout override: `RESERVATION_DOCUMENT_PRECHECK_TIMEOUT_MS`
+
+Startup logging is intentionally limited to:
+
+- `Document pre-check: enabled`
+- `Document pre-check: manual review fallback`
+
+The backend never logs the Gemini API key itself.
+
+### Render / Server Setup
+
+1. Add `GEMINI_API_KEY` to your Render backend environment variables.
+2. Optionally add `RESERVATION_DOCUMENT_PRECHECK_MODEL` and `RESERVATION_DOCUMENT_PRECHECK_TIMEOUT_MS`.
+3. Redeploy or restart the backend service after saving the environment variables.
+
+If the Gemini key is missing or Gemini fails at runtime, uploads still succeed and the system safely falls back to manual admin review.
 
 ---
 
@@ -393,6 +425,8 @@ curl -X POST http://localhost:5000/api/auth/register \
 - Use production Firebase credentials
 - Set production PayMongo keys and webhook secret
 - Configure ImageKit production credentials
+- Add `GEMINI_API_KEY` on the backend service if you want reservation document pre-check enabled
+- Redeploy or restart the backend after changing Gemini-related environment variables
 
 ### Production Mode
 

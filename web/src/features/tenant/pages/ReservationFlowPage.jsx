@@ -180,6 +180,7 @@ function ReservationFlowPage() {
               onPrev={flow.handlePrevStage}
               onNext={flow.handleNextStage}
               readOnly={flow.isStageLocked(2)}
+              forceEditMode={flow.forceEditMode}
               onSaveVisit={async () => {
                 const viewingPreference = flow.viewingType;
                 const result = await flow.updateReservationDraft({

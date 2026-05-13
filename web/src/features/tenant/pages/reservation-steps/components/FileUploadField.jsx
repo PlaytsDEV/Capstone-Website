@@ -55,15 +55,14 @@ const FileUploadField = ({
  setUploading(false);
  setProgress(100);
  onChange(url);
- try {
- await onUploadComplete?.(url, file);
- } catch (postUploadError) {
- console.error("Document pre-check failed after upload:", postUploadError);
- setError(
- postUploadError?.response?.data?.error ||
+  try {
+  await onUploadComplete?.(url, file);
+  } catch (postUploadError) {
+ console.warn("Document pre-check fell back to manual review after upload.");
+  setError(
   "Document uploaded, but the automatic pre-check could not be completed. Admin will still review this file.",
- );
- }
+  );
+  }
  } catch (err) {
  setUploading(false);
  setProgress(0);
@@ -97,10 +96,13 @@ const FileUploadField = ({
  ? aiCheck.aiCheckWarnings.filter(Boolean)
  : [];
  const aiStatus = isChecking ? "checking" : aiCheck?.aiCheckStatus || "not_checked";
+ const suppressApplicantAiFeedback =
+ !isChecking && aiCheck?.provider === "unconfigured";
  const showAiFeedback =
- aiStatus !== "not_checked" ||
+ !suppressApplicantAiFeedback &&
+ (aiStatus !== "not_checked" ||
  Boolean(aiCheck?.summaryMessage) ||
- aiWarnings.length > 0;
+ aiWarnings.length > 0);
 
  const zoneClass = [
  "rf-upload-zone",

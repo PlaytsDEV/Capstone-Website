@@ -108,6 +108,10 @@ const ADMIN_LIST_FIELDS = [
   "scheduleApproved",
   "scheduleRejected",
   "scheduleRejectionReason",
+  "visitStatus",
+  "visitOutcomeNotes",
+  "visitOutcomeUpdatedAt",
+  "visitOutcomeUpdatedByName",
   "mobileNumber",
   "billingEmail",
   "viewingPreference",
@@ -207,6 +211,20 @@ const PAYMENT_GATED_STATUSES = Object.freeze(
 );
 const MAX_REMOTE_VIEWING_QUESTION_LENGTH = 1500;
 const MAX_APPLICATION_REVIEW_REASON_LENGTH = 1500;
+const MAX_VISIT_MANAGEMENT_NOTE_LENGTH = 1500;
+const VISIT_MANAGEMENT_ACTIONS = Object.freeze([
+  "mark_visited",
+  "mark_no_show",
+  "reschedule",
+  "cancel_visit",
+]);
+const VISIT_OUTCOME_STATUSES = Object.freeze([
+  "physical_visit_scheduled",
+  "visit_completed",
+  "no_show",
+  "rescheduled",
+  "visit_cancelled",
+]);
 const DOCUMENT_PRECHECK_TYPES = Object.freeze({
   selfie_photo: {
     reservationField: "selfiePhotoUrl",
@@ -954,6 +972,73 @@ const findDbUser = async (uid) => {
 
 /** Invalidate a cached user entry (call when user data changes) */
 export const invalidateUserCache = (uid) => userCache.delete(uid);
+
+const buildActorDisplayName = (user, fallbackEmail = "") => {
+  const fullName =
+    `${user?.firstName || ""} ${user?.lastName || ""}`.trim();
+  return fullName || user?.email || fallbackEmail || "Admin";
+};
+
+const normalizeVisitManagementNote = (value) => {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (normalized.length > MAX_VISIT_MANAGEMENT_NOTE_LENGTH) {
+    const error = new Error(
+      `Visit remarks must be ${MAX_VISIT_MANAGEMENT_NOTE_LENGTH} characters or fewer.`,
+    );
+    error.statusCode = 400;
+    error.code = "VISIT_NOTE_TOO_LONG";
+    throw error;
+  }
+  return normalized;
+};
+
+const hasPhysicalVisitPreference = (reservation) =>
+  reservation?.viewingPreference === "physical_visit" ||
+  reservation?.viewingType === "inperson" ||
+  Boolean(reservation?.visitDate);
+
+const appendVisitHistoryEntry = ({
+  reservation,
+  status,
+  actorId = null,
+  actorName = "",
+  note = "",
+  updatedAt = new Date(),
+  visitDate = null,
+  visitTime = "",
+  rescheduledToDate = null,
+  rescheduledToTime = "",
+}) => {
+  if (!reservation.visitHistory) reservation.visitHistory = [];
+  reservation.visitHistory.push({
+    visitDate: visitDate || reservation.visitDate || null,
+    visitTime: visitTime || reservation.visitTime || "",
+    viewingType: reservation.viewingType || "inperson",
+    status,
+    notes: note || "",
+    scheduledAt: reservation.visitScheduledAt || reservation.createdAt || updatedAt,
+    updatedAt,
+    updatedBy: actorId || null,
+    updatedByName: actorName || "",
+    rescheduledToDate: rescheduledToDate || null,
+    rescheduledToTime: rescheduledToTime || "",
+  });
+};
+
+const applyVisitOutcome = ({
+  reservation,
+  status,
+  actorId = null,
+  actorName = "",
+  note = "",
+  updatedAt = new Date(),
+}) => {
+  reservation.visitStatus = status;
+  reservation.visitOutcomeNotes = note;
+  reservation.visitOutcomeUpdatedAt = updatedAt;
+  reservation.visitOutcomeUpdatedBy = actorId || null;
+  reservation.visitOutcomeUpdatedByName = actorName || "";
+};
 
 const buildVisitAvailabilityActor = (req, dbUser) => ({
   userId: dbUser?._id ? String(dbUser._id) : req?.user?.uid || null,
@@ -2062,6 +2147,12 @@ export const updateReservation = async (req, res, next) => {
       if (hasReservationStatus(existingReservation.status, LEGACY_VISIT_STATUSES, "pending")) {
         reservation.status = "visit_approved";
       }
+      if (
+        hasPhysicalVisitPreference(existingReservation) &&
+        !VISIT_OUTCOME_STATUSES.includes(existingReservation.visitStatus)
+      ) {
+        reservation.visitStatus = "physical_visit_scheduled";
+      }
       // Stamp the approval time so the activity timeline can show it
       reservation.scheduleApprovedAt = new Date();
 
@@ -2485,6 +2576,293 @@ export const updateReservation = async (req, res, next) => {
 
 /* ─── CANCEL reservation (applicant self-cancel) ───── */
 // Statuses the applicant is allowed to cancel from.
+export const manageReservationVisit = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const reservation = await Reservation.findById(reservationId)
+      .populate("roomId")
+      .populate("userId", "firstName lastName email");
+    if (!reservation) {
+      return res.status(404).json({
+        error: "Reservation not found",
+        code: "RESERVATION_NOT_FOUND",
+      });
+    }
+
+    const denied = checkBranchAccess(
+      res,
+      req.branchFilter,
+      reservation.roomId?.branch,
+    );
+    if (denied) return;
+
+    if (!hasPhysicalVisitPreference(reservation)) {
+      return res.status(409).json({
+        error: "Visit outcome tracking is only available for physical visit reservations.",
+        code: "VISIT_MANAGEMENT_NOT_APPLICABLE",
+      });
+    }
+
+    const action = String(req.body?.action || "").trim().toLowerCase();
+    if (!VISIT_MANAGEMENT_ACTIONS.includes(action)) {
+      return res.status(400).json({
+        error:
+          "Invalid visit action. Use mark_visited, mark_no_show, reschedule, or cancel_visit.",
+        code: "INVALID_VISIT_MANAGEMENT_ACTION",
+      });
+    }
+
+    const actor = await findDbUser(req.user.uid);
+    const actorId = actor?._id || null;
+    const actorName = buildActorDisplayName(actor, req.user?.email);
+    const note = normalizeVisitManagementNote(req.body?.note);
+    const now = new Date();
+    const previousSnapshot = reservation.toObject();
+    const roomId = reservation.roomId?._id || reservation.roomId || null;
+    const branch = reservation.roomId?.branch || "";
+
+    if (
+      (action === "mark_visited" || action === "mark_no_show") &&
+      (!reservation.visitDate || !reservation.visitTime)
+    ) {
+      return res.status(422).json({
+        error: "A preferred visit date and time must be set before recording the visit outcome.",
+        code: "VISIT_SCHEDULE_REQUIRED",
+      });
+    }
+
+    if (action === "reschedule") {
+      const nextVisitDate = req.body?.visitDate;
+      const nextVisitTime =
+        typeof req.body?.visitTime === "string" ? req.body.visitTime.trim() : "";
+
+      if (!nextVisitDate || !nextVisitTime) {
+        return res.status(422).json({
+          error: "A new visit date and time slot are required when rescheduling a physical visit.",
+          code: "VISIT_RESCHEDULE_DETAILS_REQUIRED",
+        });
+      }
+
+      const validation = await validateVisitSelection({
+        branch,
+        visitDate: nextVisitDate,
+        visitTime: nextVisitTime,
+        roomId,
+        excludeReservationId: reservationId,
+      });
+
+      if (!validation.ok) {
+        return res.status(validation.status).json({
+          error: validation.error,
+          code: validation.code,
+        });
+      }
+
+      if (reservation.visitDate || reservation.visitTime) {
+        appendVisitHistoryEntry({
+          reservation,
+          status: "rescheduled",
+          actorId,
+          actorName,
+          note,
+          updatedAt: now,
+          visitDate: reservation.visitDate,
+          visitTime: reservation.visitTime,
+          rescheduledToDate: validation.date,
+          rescheduledToTime: nextVisitTime,
+        });
+      }
+
+      reservation.visitDate = validation.date;
+      reservation.visitTime = nextVisitTime;
+      reservation.visitScheduledAt = now;
+      reservation.scheduleApproved = true;
+      reservation.scheduleApprovedAt = reservation.scheduleApprovedAt || now;
+      reservation.visitApproved = false;
+      reservation.scheduleRejected = false;
+      reservation.scheduleRejectedAt = null;
+      reservation.scheduleRejectedBy = null;
+      reservation.scheduleRejectionReason = null;
+      applyVisitOutcome({
+        reservation,
+        status: "rescheduled",
+        actorId,
+        actorName,
+        note,
+        updatedAt: now,
+      });
+    }
+
+    if (action === "mark_visited") {
+      reservation.scheduleApproved = true;
+      reservation.scheduleApprovedAt = reservation.scheduleApprovedAt || now;
+      reservation.visitApproved = true;
+      appendVisitHistoryEntry({
+        reservation,
+        status: "completed",
+        actorId,
+        actorName,
+        note,
+        updatedAt: now,
+      });
+      applyVisitOutcome({
+        reservation,
+        status: "visit_completed",
+        actorId,
+        actorName,
+        note,
+        updatedAt: now,
+      });
+    }
+
+    if (action === "mark_no_show") {
+      reservation.visitApproved = false;
+      appendVisitHistoryEntry({
+        reservation,
+        status: "no_show",
+        actorId,
+        actorName,
+        note,
+        updatedAt: now,
+      });
+      applyVisitOutcome({
+        reservation,
+        status: "no_show",
+        actorId,
+        actorName,
+        note,
+        updatedAt: now,
+      });
+    }
+
+    if (action === "cancel_visit") {
+      if (reservation.visitDate || reservation.visitTime) {
+        appendVisitHistoryEntry({
+          reservation,
+          status: "visit_cancelled",
+          actorId,
+          actorName,
+          note,
+          updatedAt: now,
+        });
+      }
+
+      reservation.visitDate = null;
+      reservation.visitTime = "";
+      reservation.visitScheduledAt = null;
+      reservation.scheduleApproved = false;
+      reservation.scheduleApprovedAt = null;
+      reservation.visitApproved = false;
+      reservation.scheduleRejected = false;
+      reservation.scheduleRejectedAt = null;
+      reservation.scheduleRejectedBy = null;
+      reservation.scheduleRejectionReason = null;
+      applyVisitOutcome({
+        reservation,
+        status: "visit_cancelled",
+        actorId,
+        actorName,
+        note,
+        updatedAt: now,
+      });
+    }
+
+    await reservation.save();
+    await reservation.populate(...POPULATE_USER);
+    await reservation.populate(...POPULATE_ROOM);
+
+    const successMessage =
+      action === "mark_visited"
+        ? "Visit marked as completed"
+        : action === "mark_no_show"
+          ? "Visit marked as no-show"
+          : action === "reschedule"
+            ? "Visit schedule updated"
+            : "Visit schedule cancelled";
+
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservationId,
+      previousSnapshot,
+      reservation.toObject(),
+      `Visit management action: ${action}`,
+    );
+
+    res.json({
+      message: successMessage,
+      reservation: serializeReservation(reservation),
+    });
+
+    try {
+      const { emitToAdmins } = await import("../utils/socket.js");
+      emitToAdmins("reservation:updated", {
+        reservationId: String(reservation._id),
+        status: reservation.status,
+        paymentStatus: reservation.paymentStatus,
+      });
+    } catch (socketErr) {
+      logger.warn(
+        { err: socketErr, requestId: req.id },
+        "Socket emit failed after visit management update (non-fatal)",
+      );
+    }
+
+    if (reservation.userId?._id && (action === "reschedule" || action === "cancel_visit")) {
+      try {
+        const { notify } = await import("../utils/notificationService.js");
+        if (action === "reschedule") {
+          const formattedDate = reservation.visitDate
+            ? new Date(reservation.visitDate).toLocaleDateString("en-PH", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })
+            : "a new date";
+          await notify.general(
+            reservation.userId._id,
+            "Physical Visit Rescheduled",
+            `Your physical visit for ${branch || "Lilycrest"} was moved to ${formattedDate}${reservation.visitTime ? ` at ${reservation.visitTime}` : ""}. Please note that payment will remain locked until your application and documents are approved.`,
+            {
+              entityType: "reservation",
+              entityId: String(reservation._id),
+              actionUrl: "/applicant/reservation",
+            },
+          );
+        } else {
+          await notify.general(
+            reservation.userId._id,
+            "Physical Visit Cancelled",
+            `Your physical visit schedule was cancelled by admin${note ? `. Note: ${note}` : ""}. Your reservation is still active, and payment remains locked until your application and documents are approved.`,
+            {
+              entityType: "reservation",
+              entityId: String(reservation._id),
+              actionUrl: "/applicant/reservation",
+            },
+          );
+        }
+      } catch (notifyErr) {
+        logger.warn(
+          { err: notifyErr, requestId: req.id },
+          "Visit management notification failed (non-fatal)",
+        );
+      }
+    }
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "Manage visit error");
+    await auditLogger.logError(req, error, "Failed to manage reservation visit");
+    if (error?.statusCode) {
+      return res.status(error.statusCode).json({
+        error: error.message,
+        code: error.code || "VISIT_MANAGEMENT_FAILED",
+      });
+    }
+    handleReservationError(res, error, "manage visit");
+  }
+};
+
 const APPLICANT_CANCELLABLE_STATUSES = new Set([
   "pending",
   "viewing_preference_selected",
@@ -2868,6 +3246,11 @@ export const updateReservationByUser = async (req, res, next) => {
       updates.scheduleRejectedAt = null;
       updates.scheduleRejectedBy = null;
       updates.scheduleRejectionReason = null;
+      updates.visitStatus = null;
+      updates.visitOutcomeNotes = "";
+      updates.visitOutcomeUpdatedAt = null;
+      updates.visitOutcomeUpdatedBy = null;
+      updates.visitOutcomeUpdatedByName = "";
     }
 
     // Generate visitCode when visitDate is first set (bypassed by findByIdAndUpdate)
@@ -2896,6 +3279,11 @@ export const updateReservationByUser = async (req, res, next) => {
       // Stamp the submission time — this is "when the tenant scheduled the visit",
       // NOT the visit appointment date. Always refresh on rescheduling too.
       updates.visitScheduledAt = new Date();
+      updates.visitStatus = "physical_visit_scheduled";
+      updates.visitOutcomeNotes = "";
+      updates.visitOutcomeUpdatedAt = null;
+      updates.visitOutcomeUpdatedBy = null;
+      updates.visitOutcomeUpdatedByName = "";
     }
 
     if (

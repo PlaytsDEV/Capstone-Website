@@ -90,6 +90,7 @@ await jest.unstable_mockModule("../utils/notificationService.js", () => ({
 }));
 
 const {
+  manageReservationVisit,
   moveOutReservation,
   updateReservation,
   updateVisitAvailabilityRules,
@@ -248,6 +249,46 @@ describe("reservationsController.updateReservation access hardening", () => {
 
     expect(res.statusCode).toBe(200);
     expect(save).toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("visit management stays unavailable for non-physical viewing preferences", async () => {
+    const reservation = {
+      _id: "507f1f77bcf86cd799439011",
+      status: "pending_application_review",
+      viewingPreference: "remote_2d_viewing",
+      visitDate: null,
+      visitTime: "",
+      roomId: { _id: "room-1", branch: "gil-puyat" },
+      userId: { _id: "tenant-1", email: "tala@example.com" },
+      toObject: () => ({
+        _id: "507f1f77bcf86cd799439011",
+        status: "pending_application_review",
+        viewingPreference: "remote_2d_viewing",
+        roomId: { _id: "room-1", branch: "gil-puyat" },
+      }),
+      populate: jest.fn().mockResolvedValue(undefined),
+      save: jest.fn(),
+    };
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockReturnThis(),
+      then: (resolve) => Promise.resolve(resolve(reservation)),
+    });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439011" },
+      body: { action: "mark_visited" },
+      branchFilter: "gil-puyat",
+      user: { uid: "admin-uid", email: "admin@example.com" },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await manageReservationVisit(req, res, next);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body.code).toBe("VISIT_MANAGEMENT_NOT_APPLICABLE");
+    expect(reservation.save).not.toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
   });
 });

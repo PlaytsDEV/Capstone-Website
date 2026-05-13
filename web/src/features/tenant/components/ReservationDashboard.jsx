@@ -36,9 +36,9 @@ const getViewingPreferenceLabel = (reservation) => {
  case "physical_visit":
   return "Physical Visit";
  case "remote_2d_viewing":
-  return "2D Remote Viewing";
+  return "Remote Viewing";
  case "urgent_move_in_review":
-  return "Urgent Move-in Review";
+  return "Priority Viewing Review";
  default:
   return "Viewing Preference";
  }
@@ -98,7 +98,7 @@ const STEPS = [
  {
  key: "viewing_preference",
  label: "Viewing Preference",
- desc: "Choose a physical visit, 2D remote viewing, or urgent review",
+ desc: "Choose a physical visit, remote viewing, or priority review",
  icon: Calendar,
  stage: 2,
  category: "Getting Started",
@@ -332,8 +332,8 @@ function getNextAction(reservation, currentStage) {
  if (hasSchedule && !approved) {
  if (viewPref === "remote_2d_viewing") {
  return {
-  title: "2D Remote Viewing Requested",
-  description: "Admin will arrange a remote viewing session for your selected room.",
+  title: "Remote Viewing Requested",
+  description: "Admin will arrange a remote viewing for your selected room.",
   buttonLabel: null,
   route: null,
   isWaiting: true,
@@ -341,8 +341,8 @@ function getNextAction(reservation, currentStage) {
  }
  if (viewPref === "urgent_move_in_review") {
  return {
-  title: "Urgent Move-in Under Review",
-  description: "Your urgent move-in request has been saved. Proceed to complete your application.",
+  title: "Priority Review Requested",
+  description: "Your priority viewing request has been saved. Proceed to complete your application.",
   buttonLabel: "Fill Application →",
   route: `/applicant/reservation?step=3`,
   isWaiting: false,
@@ -365,7 +365,7 @@ function getNextAction(reservation, currentStage) {
  return {
  title: "Choose Your Viewing Preference",
  description:
- "Select a physical visit, 2D remote viewing, or urgent move-in review before submitting your application.",
+ "Select a physical visit, remote viewing, or priority review before submitting your application.",
  buttonLabel: "Continue ->",
  route: `/applicant/reservation?step=2`,
  isWaiting: false,
@@ -445,8 +445,8 @@ function getStepDesc(step, status, reservation) {
   : reservation.isUrgentMoveIn
   ? "urgent_move_in_review"
   : null);
- if (vp === "remote_2d_viewing") return "2D remote viewing requested";
- if (vp === "urgent_move_in_review") return "Urgent move-in review pending";
+ if (vp === "remote_2d_viewing") return "Remote viewing requested";
+ if (vp === "urgent_move_in_review") return "Priority review pending";
  return reservation.visitDate
   ? `Physical visit on ${formatDate(reservation.visitDate)}`
   : "Viewing preference saved";
@@ -597,50 +597,96 @@ export default function ReservationDashboard({
  </div>
  </div>
 
- {/* ── Step Indicator ────────────────────────────────────────────────── */}
+ {/* ── Viewing Preference Receipt ───────────────────────────────────── */}
  {feedback && (
- <div style={styles.feedbackCard}>
- <div style={styles.feedbackBody}>
- <div style={styles.feedbackIconWrap}>
- <CheckCircle size={18} color="#059669" />
+ <div style={styles.receiptCard}>
+ <div style={styles.receiptCardHeader}>
+ <div style={styles.receiptCardHeaderLeft}>
+ <span style={styles.receiptCardTitle}>Viewing Preference Saved</span>
+ <span style={{
+ ...styles.receiptStatusPill,
+ ...(feedback.viewingPreference === "physical_visit"
+  ? styles.receiptPillPhysical
+  : feedback.viewingPreference === "urgent_move_in_review"
+  ? styles.receiptPillUrgent
+  : styles.receiptPillRemote),
+ }}>
+ {feedback.viewingPreference === "physical_visit"
+  ? "Physical Visit"
+  : feedback.viewingPreference === "urgent_move_in_review"
+  ? "Priority Review"
+  : "Remote Viewing"}
+ </span>
  </div>
- <div style={{ minWidth: 0 }}>
- <div style={styles.feedbackTitle}>
- {feedback.title || "Viewing preference saved"}
+ {onDismissFeedback && (
+ <button type="button" onClick={onDismissFeedback} style={styles.receiptDismissBtn}>✕</button>
+ )}
  </div>
- <div style={styles.feedbackMessage}>{feedback.message}</div>
- {feedback.viewingPreference === "physical_visit" && (
- <div style={styles.feedbackMetaGrid}>
- {feedback.visitCode ? (
- <div style={styles.feedbackMetaItem}>
- <span style={styles.feedbackMetaLabel}>Visit Code</span>
- <strong style={styles.feedbackMetaValue}>{feedback.visitCode}</strong>
+ <div style={styles.receiptRows}>
+ <div style={styles.receiptRow}>
+ <span style={styles.receiptRowLabel}>Room</span>
+ <span style={styles.receiptRowValue}>{roomName}</span>
  </div>
- ) : null}
- {feedback.visitDate ? (
- <div style={styles.feedbackMetaItem}>
- <span style={styles.feedbackMetaLabel}>Preferred Date</span>
- <strong style={styles.feedbackMetaValue}>{formatDate(feedback.visitDate)}</strong>
+ <div style={styles.receiptRow}>
+ <span style={styles.receiptRowLabel}>Branch</span>
+ <span style={styles.receiptRowValue}>{branch}</span>
  </div>
- ) : null}
- {feedback.visitTime ? (
- <div style={styles.feedbackMetaItem}>
- <span style={styles.feedbackMetaLabel}>Preferred Time</span>
- <strong style={styles.feedbackMetaValue}>{feedback.visitTime}</strong>
- </div>
- ) : null}
+ {feedback.viewingPreference === "physical_visit" ? (
+ <>
+ {feedback.visitDate && (
+ <div style={styles.receiptRow}>
+ <span style={styles.receiptRowLabel}>Preferred Date</span>
+ <span style={styles.receiptRowValue}>{formatDate(feedback.visitDate)}</span>
  </div>
  )}
- <div style={styles.feedbackHint}>
- Payment stays locked until admin reviews and approves the application and documents.
+ {feedback.visitTime && (
+ <div style={styles.receiptRow}>
+ <span style={styles.receiptRowLabel}>Preferred Time</span>
+ <span style={styles.receiptRowValue}>{feedback.visitTime}</span>
+ </div>
+ )}
+ {feedback.visitCode && (
+ <div style={styles.receiptRow}>
+ <span style={styles.receiptRowLabel}>Visit Code</span>
+ <span style={{ ...styles.receiptRowValue, ...styles.receiptCode }}>{feedback.visitCode}</span>
+ </div>
+ )}
+ </>
+ ) : feedback.viewingPreference === "urgent_move_in_review" ? (
+ <div style={styles.receiptRow}>
+ <span style={styles.receiptRowLabel}>Request Type</span>
+ <span style={styles.receiptRowValue}>Priority Viewing Review</span>
+ </div>
+ ) : (
+ <div style={styles.receiptRow}>
+ <span style={styles.receiptRowLabel}>Viewing Type</span>
+ <span style={styles.receiptRowValue}>Remote Viewing</span>
+ </div>
+ )}
+ <div style={styles.receiptRow}>
+ <span style={styles.receiptRowLabel}>Status</span>
+ <span style={styles.receiptRowValue}>Pending Application Review</span>
  </div>
  </div>
+ <div style={styles.receiptNote}>
+ Payment is locked until your application and documents are reviewed and approved by admin.
  </div>
- {onDismissFeedback ? (
- <button type="button" onClick={onDismissFeedback} style={styles.feedbackDismiss}>
- Dismiss
+ <div style={styles.receiptActions}>
+ <button
+ type="button"
+ onClick={() => navigate("/applicant/reservation?step=3")}
+ style={styles.receiptPrimaryBtn}
+ >
+ Complete Application
  </button>
- ) : null}
+ <button
+ type="button"
+ onClick={() => navigate("/applicant/reservation?step=2&edit=1")}
+ style={styles.receiptSecondaryBtn}
+ >
+ Change Viewing Preference
+ </button>
+ </div>
  </div>
  )}
 
@@ -1177,6 +1223,130 @@ const styles = {
  fontWeight: 700,
  cursor: "pointer",
  padding: "2px 0",
+ },
+
+ /* receipt card */
+ receiptCard: {
+ marginBottom: 18,
+ padding: "14px 16px",
+ borderRadius: 10,
+ background: "rgba(15, 23, 42, 0.03)",
+ border: "1px solid rgba(15, 23, 42, 0.1)",
+ },
+ receiptCardHeader: {
+ display: "flex",
+ alignItems: "center",
+ justifyContent: "space-between",
+ marginBottom: 10,
+ },
+ receiptCardHeaderLeft: {
+ display: "flex",
+ alignItems: "center",
+ gap: 8,
+ flexWrap: "wrap",
+ },
+ receiptCardTitle: {
+ fontSize: 13,
+ fontWeight: 700,
+ color: "var(--text-heading, #0F172A)",
+ letterSpacing: "-0.01em",
+ },
+ receiptStatusPill: {
+ fontSize: 11,
+ fontWeight: 600,
+ padding: "2px 8px",
+ borderRadius: 999,
+ letterSpacing: "0.02em",
+ },
+ receiptPillPhysical: {
+ background: "rgba(212, 175, 55, 0.14)",
+ color: "#92650a",
+ },
+ receiptPillRemote: {
+ background: "rgba(37, 99, 235, 0.1)",
+ color: "#1D4ED8",
+ },
+ receiptPillUrgent: {
+ background: "rgba(99, 102, 241, 0.1)",
+ color: "#4F46E5",
+ },
+ receiptDismissBtn: {
+ background: "transparent",
+ border: "none",
+ color: "#94A3B8",
+ fontSize: 13,
+ cursor: "pointer",
+ padding: "2px 4px",
+ lineHeight: 1,
+ },
+ receiptRows: {
+ display: "flex",
+ flexDirection: "column",
+ gap: 0,
+ marginBottom: 10,
+ },
+ receiptRow: {
+ display: "flex",
+ alignItems: "baseline",
+ justifyContent: "space-between",
+ gap: 8,
+ fontSize: 12,
+ padding: "5px 0",
+ borderBottom: "1px solid rgba(15, 23, 42, 0.05)",
+ },
+ receiptRowLabel: {
+ color: "#94A3B8",
+ fontWeight: 500,
+ whiteSpace: "nowrap",
+ flexShrink: 0,
+ },
+ receiptRowValue: {
+ color: "var(--text-heading, #0F172A)",
+ fontWeight: 500,
+ textAlign: "right",
+ },
+ receiptCode: {
+ fontFamily: "monospace",
+ fontSize: 12,
+ letterSpacing: "0.05em",
+ },
+ receiptNote: {
+ fontSize: 11,
+ color: "#64748B",
+ lineHeight: 1.5,
+ marginBottom: 10,
+ paddingTop: 2,
+ },
+ receiptActions: {
+ display: "flex",
+ gap: 8,
+ flexWrap: "wrap",
+ },
+ receiptPrimaryBtn: {
+ flex: 1,
+ minWidth: 140,
+ padding: "7px 12px",
+ background: "var(--text-heading, #0F172A)",
+ color: "#fff",
+ border: "none",
+ borderRadius: 6,
+ fontSize: 12,
+ fontWeight: 600,
+ cursor: "pointer",
+ textAlign: "center",
+ },
+ receiptSecondaryBtn: {
+ flex: 1,
+ minWidth: 140,
+ padding: "7px 12px",
+ background: "transparent",
+ color: "var(--text-secondary, #64748B)",
+ border: "1px solid rgba(15, 23, 42, 0.15)",
+ borderRadius: 6,
+ fontSize: 12,
+ fontWeight: 500,
+ cursor: "pointer",
+ textAlign: "center",
  },
 
  /* category row */

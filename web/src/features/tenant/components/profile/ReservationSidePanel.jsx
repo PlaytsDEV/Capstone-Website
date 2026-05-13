@@ -104,9 +104,9 @@ export default function ReservationSidePanel({ reservation, onClick }) {
   viewingPreference === "physical_visit"
     ? "Physical Visit"
     : viewingPreference === "remote_2d_viewing"
-    ? "2D Remote Viewing"
+    ? "Remote Viewing"
     : viewingPreference === "urgent_move_in_review"
-    ? "Urgent Move-in Review"
+    ? "Priority Viewing Review"
     : null;
 
  const room = reservation.roomId || {};
@@ -172,9 +172,9 @@ export default function ReservationSidePanel({ reservation, onClick }) {
  border: viewingPreference === "urgent_move_in_review" ? "rgba(220, 38, 38, 0.24)" : "rgba(37, 99, 235, 0.24)",
  label:
   viewingPreference === "remote_2d_viewing"
-   ? "2D Viewing Saved"
+   ? "Remote Viewing Selected"
    : viewingPreference === "urgent_move_in_review"
-   ? "Urgent Review Requested"
+   ? "Priority Review Requested"
    : viewingPreference === "physical_visit"
    ? "Physical Visit Preference Saved"
    : "Viewing Preference Saved",
@@ -317,14 +317,14 @@ export default function ReservationSidePanel({ reservation, onClick }) {
  {panelState === "preference" && viewingPreference === "remote_2d_viewing" && (
  <div style={{ ...S.pendingBanner, background: "rgba(37, 99, 235, 0.08)", border: "1px solid rgba(37, 99, 235, 0.2)" }}>
  <Clock size={14} color="#2563EB" />
- <span style={{ ...S.pendingText, color: "#2563EB" }}>Admin will arrange a 2D remote viewing session</span>
+ <span style={{ ...S.pendingText, color: "#2563EB" }}>Admin will arrange a remote viewing for your room</span>
  </div>
  )}
 
  {panelState === "preference" && viewingPreference === "urgent_move_in_review" && (
  <div style={{ ...S.pendingBanner, background: "rgba(220, 38, 38, 0.08)", border: "1px solid rgba(220, 38, 38, 0.2)" }}>
  <Clock size={14} color="#DC2626" />
- <span style={{ ...S.pendingText, color: "#DC2626" }}>Urgent move-in request is under review</span>
+ <span style={{ ...S.pendingText, color: "#DC2626" }}>Priority review request is under review</span>
  </div>
  )}
 

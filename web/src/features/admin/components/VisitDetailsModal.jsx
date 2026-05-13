@@ -23,6 +23,10 @@ const formatDate = (d) =>
  : "—";
 
 const STATUS_CONFIGS = [
+ { test: (s) => s.visitStatus === "visit_completed", bg: "#D1FAE5", color: "#047857", dot: "#10b981", label: "Visit Completed" },
+ { test: (s) => s.visitStatus === "no_show", bg: "#FEF3C7", color: "#92400E", dot: "#f59e0b", label: "No-Show" },
+ { test: (s) => s.visitStatus === "rescheduled", bg: "#EDE9FE", color: "#7C3AED", dot: "#8b5cf6", label: "Rescheduled" },
+ { test: (s) => s.visitStatus === "visit_cancelled", bg: "#FEE2E2", color: "#DC2626", dot: "#ef4444", label: "Visit Cancelled" },
  { test: (s) => s.visitApproved, bg: "#D1FAE5", color: "#047857", dot: "#10b981", label: "Visit Completed" },
  { test: (s) => s.scheduleApproved, bg: "#E0EBF5", color: "#0A5C9B", dot: "#3b82f6", label: "Awaiting Visit" },
  { test: (s) => s.scheduleRejected, bg: "#FEE2E2", color: "#DC2626", dot: "#ef4444", label: "Schedule Rejected" },
@@ -97,7 +101,12 @@ export default function VisitDetailsModal({ schedule, onClose, onUpdate }) {
  }
  };
 
- const showRejectBtn = !schedule.visitApproved && !schedule.scheduleRejected;
+ const showRejectBtn =
+  !schedule.visitApproved &&
+  !schedule.scheduleRejected &&
+  !["visit_completed", "no_show", "visit_cancelled"].includes(
+    schedule.visitStatus,
+  );
  const cfg = getStatusCfg(schedule);
 
  const REJECT_PRESETS = [
@@ -243,6 +252,10 @@ export default function VisitDetailsModal({ schedule, onClose, onUpdate }) {
  rejected: { bg: "#FEE2E2", color: "#DC2626", label: "Rejected" },
  approved: { bg: "#D1FAE5", color: "#047857", label: "Approved" },
  cancelled: { bg: "#F3F4F6", color: "#6B7280", label: "Cancelled" },
+ rescheduled: { bg: "#EDE9FE", color: "#7C3AED", label: "Rescheduled" },
+ completed: { bg: "#D1FAE5", color: "#047857", label: "Completed" },
+ no_show: { bg: "#FEF3C7", color: "#92400E", label: "No-Show" },
+ visit_cancelled: { bg: "#FEE2E2", color: "#DC2626", label: "Visit Cancelled" },
  };
  const s = MAP[entry.status] || MAP.pending;
  const entryDate = entry.visitDate

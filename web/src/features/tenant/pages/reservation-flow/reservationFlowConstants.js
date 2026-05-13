@@ -12,7 +12,7 @@ export const RESERVATION_STAGES = [
  {
  id: 2,
  label: "Viewing Preference",
- desc: "Choose a physical visit, 2D remote viewing, or urgent move-in review",
+ desc: "Choose a physical visit, remote viewing, or priority review",
  category: "Verification",
  },
  {

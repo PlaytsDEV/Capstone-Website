@@ -107,6 +107,7 @@ export default function useReservationFlow() {
   const stepFromQuery = Number(
     new URLSearchParams(location.search).get("step"),
   );
+  const forceEditMode = new URLSearchParams(location.search).get("edit") === "1";
   const stepOverride =
     Number.isInteger(stepFromState) && stepFromState > 0
       ? stepFromState
@@ -1167,7 +1168,7 @@ export default function useReservationFlow() {
             "Viewing preference saved. You may now complete your tenant application.",
           title: "Viewing preference saved",
           message:
-            "Your 2D remote viewing request has been saved. Please complete your tenant application and upload the required documents for admin review.",
+            "Your remote viewing request has been saved. Please complete your tenant application and upload the required documents for admin review.",
         },
         urgent_move_in_review: {
           toastMessage:
@@ -1335,20 +1336,18 @@ export default function useReservationFlow() {
           [stateKey]: normalized,
         }));
         return normalized;
-      } catch (error) {
-        const fallback = normalizeDocumentPrecheckEntry({
-          aiCheckStatus: "error",
-          aiCheckWarnings: [
-            "Automatic document pre-check could not be completed. Your documents will still be reviewed by admin.",
-          ],
-          summaryMessage: getFriendlyError(
-            error,
-            "Automatic document pre-check could not be completed.",
-          ),
-          requiresAdminAttention: true,
-          aiCheckedAt: new Date().toISOString(),
-          provider: "error",
-        });
+        } catch (error) {
+          const fallback = normalizeDocumentPrecheckEntry({
+            aiCheckStatus: "error",
+            aiCheckWarnings: [
+              "Automatic document pre-check could not be completed. Your documents will still be reviewed by admin.",
+            ],
+           summaryMessage:
+              "Automatic document pre-check could not be completed. Your documents will still be reviewed by admin.",
+            requiresAdminAttention: true,
+            aiCheckedAt: new Date().toISOString(),
+            provider: "error",
+          });
         setDocumentPrechecks((previous) => ({
           ...previous,
           [stateKey]: fallback,
@@ -1970,6 +1969,7 @@ export default function useReservationFlow() {
     runDocumentPrecheck,
     updateReservationDraft,
     returnToDashboardAfterViewingPreference,
+    forceEditMode,
     setEditingApplication,
     setScrollToSection,
     setShowStageConfirm,

@@ -37,6 +37,7 @@ import {
   getVisitAvailability,
   getVisitAvailabilityRules,
   getReservationById,
+  manageReservationVisit,
   precheckReservationDocument,
   createReservation,
   updateVisitAvailabilityRules,
@@ -223,6 +224,15 @@ router.post(
   verifyToken,
   verifyApplicant,
   precheckReservationDocument,
+);
+
+router.post(
+  "/:reservationId/visit-management",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageReservations"),
+  manageReservationVisit,
 );
 
 /**

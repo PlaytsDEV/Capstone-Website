@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Calendar, ClipboardList, CreditCard, Eye } from "lucide-react";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
 import { reservationApi } from "../../../shared/api/apiClient";
+import { useVisitAvailability } from "../../../shared/hooks/queries/useReservations";
 import useBodyScrollLock from "../../../shared/hooks/useBodyScrollLock";
 import useEscapeClose from "../../../shared/hooks/useEscapeClose";
 import getFriendlyError from "../../../shared/utils/friendlyError";
@@ -84,6 +85,85 @@ const fmtDate = (value) => {
  } catch {
  return value;
  }
+};
+
+const fmtDateTime = (value) => {
+ if (!value) return "\u2014";
+
+ try {
+ return new Date(value).toLocaleString("en-US", {
+ month: "short",
+ day: "numeric",
+ year: "numeric",
+ hour: "2-digit",
+ minute: "2-digit",
+ });
+ } catch {
+ return value;
+ }
+};
+
+const toDateInputValue = (value) => {
+ if (!value) return "";
+ const date = new Date(value);
+ if (Number.isNaN(date.getTime())) return "";
+ const year = date.getFullYear();
+ const month = String(date.getMonth() + 1).padStart(2, "0");
+ const day = String(date.getDate()).padStart(2, "0");
+ return `${year}-${month}-${day}`;
+};
+
+const getTomorrowISO = () => {
+ const tomorrow = new Date();
+ tomorrow.setHours(0, 0, 0, 0);
+ tomorrow.setDate(tomorrow.getDate() + 1);
+ return toDateInputValue(tomorrow);
+};
+
+const VISIT_STATUS_CONFIG = {
+ physical_visit_scheduled: {
+ label: "Physical Visit Scheduled",
+ color: "#1D4ED8",
+ bg: "#DBEAFE",
+ dot: "#3B82F6",
+ },
+ visit_completed: {
+ label: "Visit Completed",
+ color: "#047857",
+ bg: "#D1FAE5",
+ dot: "#10B981",
+ },
+ no_show: {
+ label: "No-Show",
+ color: "#B45309",
+ bg: "#FEF3C7",
+ dot: "#F59E0B",
+ },
+ rescheduled: {
+ label: "Rescheduled",
+ color: "#7C3AED",
+ bg: "#EDE9FE",
+ dot: "#8B5CF6",
+ },
+ visit_cancelled: {
+ label: "Visit Cancelled",
+ color: "#B91C1C",
+ bg: "#FEE2E2",
+ dot: "#EF4444",
+ },
+};
+
+const hasPhysicalVisit = (reservation) =>
+ reservation?.viewingPreference === "physical_visit" ||
+ reservation?.viewingType === "inperson" ||
+ Boolean(reservation?.visitDate);
+
+const getVisitStatusKey = (reservation) => {
+ const explicit = String(reservation?.visitStatus || "").trim();
+ if (VISIT_STATUS_CONFIG[explicit]) return explicit;
+ if (reservation?.scheduleRejected) return "visit_cancelled";
+ if (hasPhysicalVisit(reservation)) return "physical_visit_scheduled";
+ return "";
 };
 
 const openImage = (url, title) => {
@@ -224,10 +304,21 @@ export default function ReservationDetailsModal({
  onClose,
  onUpdate,
 }) {
+ const reservationId = reservation?.id || reservation?._id || "";
  const reservationFeeAmount = reservation?.reservationFeeAmount || 2000;
  const reservationFeeLabel = `PHP ${reservationFeeAmount.toLocaleString("en-PH")}`;
  const queryClient = useQueryClient();
  const [adminNotes, setAdminNotes] = useState(reservation?.notes || "");
+ const [visitRemarks, setVisitRemarks] = useState(
+ reservation?.visitOutcomeNotes || "",
+ );
+ const [visitActionMode, setVisitActionMode] = useState("");
+ const [rescheduleDate, setRescheduleDate] = useState(
+ toDateInputValue(reservation?.visitDate),
+ );
+ const [rescheduleTime, setRescheduleTime] = useState(
+ reservation?.visitTime || "",
+ );
  const [isSubmitting, setIsSubmitting] = useState(false);
  const [showDocs, setShowDocs] = useState(false);
  const [showPersonal, setShowPersonal] = useState(false);
@@ -246,24 +337,57 @@ export default function ReservationDetailsModal({
  useBodyScrollLock(Boolean(reservation));
  useEscapeClose(Boolean(reservation), onClose);
 
- if (!reservation) return null;
-
- const status = reservation.status || "pending";
+ const status = reservation?.status || "pending";
+ const physicalVisitSelected = hasPhysicalVisit(reservation);
+ const visitStatusKey = getVisitStatusKey(reservation);
+ const visitStatusAppearance = visitStatusKey
+ ? VISIT_STATUS_CONFIG[visitStatusKey]
+ : null;
+ const visitBranch = reservation?.roomId?.branch || reservation?.branch || "";
+ const visitRoomId = reservation?.roomId?._id || reservation?.roomId || "";
  const appearance = getReservationStatusAppearance(status);
  const allowedActions = getAllowedReservationActions(status);
  const moveInDate = readMoveInDate(reservation);
  const cancellationPending =
-   reservation.cancellationRequested && reservation.cancellationStatus === "pending";
+   reservation?.cancellationRequested && reservation?.cancellationStatus === "pending";
  const isMovedOut = status === "moveOut";
  const isOverdue =
  status === "reserved" && moveInDate && new Date(moveInDate) < new Date();
  const daysOverdue = isOverdue
  ? Math.floor((new Date() - new Date(moveInDate)) / 86400000)
  : 0;
- const docs = buildDocs(reservation);
- const guestName = reservation.customer ?? "Unknown";
+ const docs = reservation ? buildDocs(reservation) : [];
+ const guestName = reservation?.customer ?? "Unknown";
  const guestInitials = getInitials(guestName);
  const stageGuide = STAGE_GUIDANCE[status];
+ const availabilityParams = useMemo(
+ () => ({
+ branch: visitBranch,
+ from: getTomorrowISO(),
+ days: 30,
+ roomId: visitRoomId,
+ reservationId,
+ }),
+ [reservationId, visitBranch, visitRoomId],
+ );
+ const {
+ data: visitAvailability,
+ isLoading: loadingVisitAvailability,
+ } = useVisitAvailability(availabilityParams, {
+ enabled: physicalVisitSelected && Boolean(visitBranch),
+ });
+ const rescheduleDateOption = useMemo(
+ () =>
+ Array.isArray(visitAvailability?.dates)
+ ? visitAvailability.dates.find((entry) => entry.date === rescheduleDate) || null
+ : null,
+ [rescheduleDate, visitAvailability],
+ );
+ const rescheduleSlots = rescheduleDateOption?.slots?.length
+ ? rescheduleDateOption.slots
+ : [];
+
+ if (!reservation) return null;
  const viewingPreferenceLabel =
  reservation.viewingPreference === "remote_2d_viewing"
  ? "2D Remote Viewing"
@@ -363,12 +487,100 @@ export default function ReservationDetailsModal({
  });
  };
 
+ const runVisitManagementAction = ({
+ action,
+ payload = {},
+ successMsg,
+ modalTitle,
+ modalMessage,
+ confirmText,
+ variant = "info",
+ }) => {
+ setConfirmModal({
+ open: true,
+ title: modalTitle,
+ message: modalMessage,
+ confirmText,
+ variant,
+ onConfirm: async () => {
+ setConfirmModal((previous) => ({ ...previous, open: false }));
+ setIsSubmitting(true);
+
+ try {
+ await reservationApi.manageVisit(reservationId, {
+ action,
+ note: visitRemarks.trim(),
+ ...payload,
+ });
+ await Promise.all([
+ queryClient.invalidateQueries({ queryKey: ["reservations", "list"] }),
+ queryClient.invalidateQueries({ queryKey: ["reservations", "visitAvailability"] }),
+ reservationId
+ ? queryClient.invalidateQueries({ queryKey: ["reservations", "detail", reservationId] })
+ : Promise.resolve(),
+ ]);
+ showNotification(successMsg, "success");
+ onUpdate?.();
+ onClose();
+ } catch (error) {
+ console.error(error);
+ showNotification(
+ getFriendlyError(error, "Visit update failed. Please try again."),
+ "error",
+ );
+ } finally {
+ setIsSubmitting(false);
+ }
+ },
+ });
+ };
+
+ const handleRescheduleVisit = async () => {
+ if (!rescheduleDate) {
+ showNotification("Select a new visit date before rescheduling.", "warning");
+ return;
+ }
+ if (!rescheduleTime) {
+ showNotification("Select a new visit time slot before rescheduling.", "warning");
+ return;
+ }
+
+ setIsSubmitting(true);
+
+ try {
+ await reservationApi.manageVisit(reservationId, {
+ action: "reschedule",
+ note: visitRemarks.trim(),
+ visitDate: rescheduleDate,
+ visitTime: rescheduleTime,
+ });
+ await Promise.all([
+ queryClient.invalidateQueries({ queryKey: ["reservations", "list"] }),
+ queryClient.invalidateQueries({ queryKey: ["reservations", "visitAvailability"] }),
+ reservationId
+ ? queryClient.invalidateQueries({ queryKey: ["reservations", "detail", reservationId] })
+ : Promise.resolve(),
+ ]);
+ showNotification("Visit schedule updated", "success");
+ onUpdate?.();
+ onClose();
+ } catch (error) {
+ console.error(error);
+ showNotification(
+ getFriendlyError(error, "Unable to reschedule the visit right now."),
+ "error",
+ );
+ } finally {
+ setIsSubmitting(false);
+ }
+ };
+
  const saveNotes = async (event) => {
  event.preventDefault();
  setIsSubmitting(true);
 
  try {
- await reservationApi.update(reservation.id, { notes: adminNotes });
+ await reservationApi.update(reservationId, { notes: adminNotes });
  showNotification("Notes saved", "success");
  onUpdate?.();
  } catch {
@@ -507,6 +719,234 @@ export default function ReservationDetailsModal({
  </div>
  )}
  </div>
+
+ {physicalVisitSelected && (
+ <div className="rdm-section rdm-surface-card">
+ <div className="rdm-visit-management-header">
+ <div>
+ <h4 className="rdm-section-title" style={{ marginBottom: 6 }}>
+ Visit Management
+ </h4>
+ <p className="rdm-visit-management-copy">
+ Track the physical visit separately from application review. Completing a
+ visit does not unlock payment.
+ </p>
+ </div>
+ {visitStatusAppearance && (
+ <div
+ className="rdm-status-chip"
+ style={{
+ background: visitStatusAppearance.bg,
+ color: visitStatusAppearance.color,
+ padding: "5px 12px",
+ }}
+ >
+ <span
+ className="rdm-status-dot"
+ style={{ background: visitStatusAppearance.dot }}
+ />
+ {visitStatusAppearance.label}
+ </div>
+ )}
+ </div>
+
+ <div className="rdm-info-grid">
+ <div className="rdm-info-item">
+ <span className="rdm-info-label">Preferred Visit Date</span>
+ <span className="rdm-info-value">{fmtDate(reservation.visitDate)}</span>
+ </div>
+ <div className="rdm-info-item">
+ <span className="rdm-info-label">Preferred Visit Time</span>
+ <span className="rdm-info-value">{fmt(reservation.visitTime)}</span>
+ </div>
+ <div className="rdm-info-item">
+ <span className="rdm-info-label">Visit Code</span>
+ <span className="rdm-info-value">{fmt(reservation.visitCode)}</span>
+ </div>
+ <div className="rdm-info-item">
+ <span className="rdm-info-label">Current Visit Status</span>
+ <span className="rdm-info-value">
+ {visitStatusAppearance?.label || "\u2014"}
+ </span>
+ </div>
+ {reservation.visitOutcomeUpdatedAt && (
+ <div className="rdm-info-item">
+ <span className="rdm-info-label">Last Updated</span>
+ <span className="rdm-info-value">
+ {fmtDateTime(reservation.visitOutcomeUpdatedAt)}
+ </span>
+ </div>
+ )}
+ {reservation.visitOutcomeUpdatedByName && (
+ <div className="rdm-info-item">
+ <span className="rdm-info-label">Updated By</span>
+ <span className="rdm-info-value">
+ {fmt(reservation.visitOutcomeUpdatedByName)}
+ </span>
+ </div>
+ )}
+ </div>
+
+ {reservation.visitOutcomeNotes && (
+ <div className="rdm-visit-management-note">
+ <span className="rdm-info-label">Latest Visit Remarks</span>
+ <p>{reservation.visitOutcomeNotes}</p>
+ </div>
+ )}
+
+ <div className="rdm-visit-management-panel">
+ <label className="rdm-visit-field">
+ <span className="rdm-info-label">Visit Remarks</span>
+ <textarea
+ className="rdm-notes-input"
+ placeholder="Add optional visit remarks for the next action..."
+ value={visitRemarks}
+ onChange={(event) => setVisitRemarks(event.target.value)}
+ rows="2"
+ />
+ </label>
+
+ <div className="rdm-visit-actions-grid">
+ <button
+ type="button"
+ className="rdm-action rdm-action-outline"
+ disabled={isSubmitting || !reservation.visitDate || !reservation.visitTime}
+ onClick={() =>
+ runVisitManagementAction({
+ action: "mark_visited",
+ successMsg: "Visit marked as completed",
+ modalTitle: "Mark As Visited",
+ modalMessage:
+ "Record that the applicant attended the scheduled physical visit. This will not approve the application or unlock payment.",
+ confirmText: "Mark as Visited",
+ })
+ }
+ >
+ Mark as Visited
+ </button>
+ <button
+ type="button"
+ className="rdm-action rdm-action-outline"
+ disabled={isSubmitting || !reservation.visitDate || !reservation.visitTime}
+ onClick={() =>
+ runVisitManagementAction({
+ action: "mark_no_show",
+ successMsg: "Visit marked as no-show",
+ modalTitle: "Mark As No-Show",
+ modalMessage:
+ "Record that the applicant missed the scheduled physical visit. The reservation and application review will remain separate.",
+ confirmText: "Mark No-Show",
+ variant: "warning",
+ })
+ }
+ >
+ Mark as No-Show
+ </button>
+ <button
+ type="button"
+ className={`rdm-action rdm-action-outline${visitActionMode === "reschedule" ? " rdm-action-outline-active" : ""}`}
+ disabled={isSubmitting}
+ onClick={() =>
+ setVisitActionMode((previous) =>
+ previous === "reschedule" ? "" : "reschedule",
+ )
+ }
+ >
+ Reschedule Visit
+ </button>
+ <button
+ type="button"
+ className="rdm-action rdm-action-outline rdm-action-outline-danger"
+ disabled={isSubmitting}
+ onClick={() =>
+ runVisitManagementAction({
+ action: "cancel_visit",
+ successMsg: "Visit schedule cancelled",
+ modalTitle: "Cancel Visit Schedule",
+ modalMessage:
+ "Cancel only the physical visit schedule. This will not cancel the reservation or unlock payment.",
+ confirmText: "Cancel Visit",
+ variant: "danger",
+ })
+ }
+ >
+ Cancel Visit Schedule
+ </button>
+ </div>
+
+ {visitActionMode === "reschedule" && (
+ <div className="rdm-visit-reschedule">
+ <div className="rdm-visit-reschedule-grid">
+ <label className="rdm-visit-field">
+ <span className="rdm-info-label">New Visit Date</span>
+ <input
+ type="date"
+ className="rdm-notes-input"
+ value={rescheduleDate}
+ onChange={(event) => {
+ setRescheduleDate(event.target.value);
+ if (rescheduleTime) setRescheduleTime("");
+ }}
+ min={getTomorrowISO()}
+ />
+ </label>
+ <div className="rdm-visit-field">
+ <span className="rdm-info-label">New Visit Time</span>
+ <div className="rdm-visit-slot-grid">
+ {loadingVisitAvailability ? (
+ <span className="rdm-visit-slot-empty">Loading available slots...</span>
+ ) : rescheduleDate && rescheduleSlots.length > 0 ? (
+ rescheduleSlots.map((slot) => (
+ <button
+ key={slot.label}
+ type="button"
+ className={`rdm-visit-slot${rescheduleTime === slot.label ? " selected" : ""}`}
+ disabled={!slot.available}
+ onClick={() => setRescheduleTime(slot.label)}
+ >
+ <span>{slot.label}</span>
+ {!slot.available && slot.disabledReason ? (
+ <small>{slot.disabledReason}</small>
+ ) : slot.available && slot.remaining != null ? (
+ <small>{slot.remaining} left</small>
+ ) : null}
+ </button>
+ ))
+ ) : rescheduleDate ? (
+ <span className="rdm-visit-slot-empty">
+ No available time slots for the selected date.
+ </span>
+ ) : (
+ <span className="rdm-visit-slot-empty">
+ Select a new date to load available visit time slots.
+ </span>
+ )}
+ </div>
+ </div>
+ </div>
+ <div className="rdm-visit-reschedule-actions">
+ <button
+ type="button"
+ className="rdm-action rdm-action-outline"
+ disabled={isSubmitting}
+ onClick={() => setVisitActionMode("")}
+ >
+ Keep Current Schedule
+ </button>
+ <button
+ type="button"
+ className="rdm-action rdm-action-dark"
+ disabled={isSubmitting || !rescheduleDate || !rescheduleTime}
+ onClick={handleRescheduleVisit}
+ >
+ Save Reschedule
+ </button>
+ </div>
+ </div>
+ )}
+ </div>
+ </div>
+ )}
 
  <div className="rdm-section rdm-surface-card">
  <h4 className="rdm-section-title">Admin Notes</h4>

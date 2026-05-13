@@ -25,6 +25,7 @@ import mongoose from "mongoose";
 
 import connectDB from "./config/database.js";
 import validateStartupConfig from "./config/startupValidation.js";
+import { logDocumentPrecheckStartupStatus } from "./services/reservationDocumentPrecheckService.js";
 import requestId from "./middleware/requestId.js";
 import { requestLogger } from "./middleware/logger.js";
 import logger from "./middleware/logger.js";
@@ -347,6 +348,7 @@ process.on("unhandledRejection", (reason) => {
 
 const bootstrap = async () => {
   validateStartupConfig();
+  logDocumentPrecheckStartupStatus();
 
   const mongoConnected = await connectDB();
 
