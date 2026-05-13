@@ -10,7 +10,7 @@
  */
 
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import app from "../../firebase/config";
+import app, { auth } from "../../firebase/config";
 
 // ── File validation ────────────────────────────────────────────────────────
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -103,7 +103,7 @@ export async function uploadToFirebaseStorage(file, opts = {}, onProgress) {
   const validation = validateFile(file);
   if (!validation.valid) throw new Error(validation.error);
 
-  const { uid = "anonymous", documentType = "document" } = opts;
+  const { uid = auth?.currentUser?.uid ?? "anonymous", documentType = "document" } = opts;
 
   // Sanitise the filename for storage path safety
   const safeFilename = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
