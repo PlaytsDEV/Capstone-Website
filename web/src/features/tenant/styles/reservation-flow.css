@@ -2967,92 +2967,102 @@ html[data-theme="dark"] .rf-policy-link { color: var(--color-success); }
    PREMIUM VISIT STEP UPGRADES
    ============================================================ */
 
-/* ── Option cards: per-type icon colors ── */
+/* ── Option card body: block layout so title and description never run inline ── */
+.rf-option-card__title,
+.rf-option-card__desc {
+  display: block;
+  word-break: break-word;
+}
+.rf-option-card__body {
+  gap: 5px;
+}
+
+/* ── Option cards: per-type icon colors — muted, brand-consistent ── */
 .rf-option-card[data-option="physical_visit"] .rf-option-card__icon {
-  background: rgba(2, 132, 199, 0.1);
-  color: #0284c7;
+  background: rgba(10, 22, 40, 0.07);
+  color: #3b7cb8;
 }
 .rf-option-card[data-option="physical_visit"]:hover .rf-option-card__icon,
 .rf-option-card[data-option="physical_visit"].selected .rf-option-card__icon {
-  background: rgba(2, 132, 199, 0.16);
-  color: #0284c7;
+  background: rgba(59, 124, 184, 0.12);
+  color: #2c6399;
 }
 
 .rf-option-card[data-option="remote_2d_viewing"] .rf-option-card__icon {
-  background: rgba(13, 148, 136, 0.1);
-  color: #0d9488;
+  background: rgba(10, 22, 40, 0.07);
+  color: #2e8b7a;
 }
 .rf-option-card[data-option="remote_2d_viewing"]:hover .rf-option-card__icon,
 .rf-option-card[data-option="remote_2d_viewing"].selected .rf-option-card__icon {
-  background: rgba(13, 148, 136, 0.16);
-  color: #0d9488;
+  background: rgba(46, 139, 122, 0.12);
+  color: #236b5d;
 }
 
 .rf-option-card[data-option="urgent_move_in_review"] .rf-option-card__icon {
-  background: rgba(217, 119, 6, 0.1);
-  color: #d97706;
+  background: rgba(10, 22, 40, 0.07);
+  color: #b5760d;
 }
 .rf-option-card[data-option="urgent_move_in_review"]:hover .rf-option-card__icon,
 .rf-option-card[data-option="urgent_move_in_review"].selected .rf-option-card__icon {
-  background: rgba(217, 119, 6, 0.16);
-  color: #d97706;
+  background: rgba(181, 118, 13, 0.12);
+  color: #92590a;
 }
 
-/* Selected state: override accent color per option type */
+/* Selected state: soft border ring, very light tint — no heavy glow ── */
 .rf-option-card[data-option="physical_visit"].selected {
-  border-color: #0284c7;
-  background: rgba(2, 132, 199, 0.05);
-  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.1), var(--rf-shadow-sm);
+  border-color: #3b7cb8;
+  background: rgba(59, 124, 184, 0.04);
+  box-shadow: 0 0 0 2px rgba(59, 124, 184, 0.12);
 }
 .rf-option-card[data-option="physical_visit"].selected .rf-option-card__title {
-  color: #0284c7;
+  color: #2c6399;
 }
 .rf-option-card[data-option="physical_visit"].selected .rf-option-card__check {
-  background: #0284c7;
-  border-color: #0284c7;
+  background: #3b7cb8;
+  border-color: #3b7cb8;
 }
 
 .rf-option-card[data-option="remote_2d_viewing"].selected {
-  border-color: #0d9488;
-  background: rgba(13, 148, 136, 0.05);
-  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.1), var(--rf-shadow-sm);
+  border-color: #2e8b7a;
+  background: rgba(46, 139, 122, 0.04);
+  box-shadow: 0 0 0 2px rgba(46, 139, 122, 0.12);
 }
 .rf-option-card[data-option="remote_2d_viewing"].selected .rf-option-card__title {
-  color: #0d9488;
+  color: #236b5d;
 }
 .rf-option-card[data-option="remote_2d_viewing"].selected .rf-option-card__check {
-  background: #0d9488;
-  border-color: #0d9488;
+  background: #2e8b7a;
+  border-color: #2e8b7a;
 }
 
 .rf-option-card[data-option="urgent_move_in_review"].selected {
-  border-color: #d97706;
-  background: rgba(217, 119, 6, 0.05);
-  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.12), var(--rf-shadow-sm);
+  border-color: #b5760d;
+  background: rgba(181, 118, 13, 0.04);
+  box-shadow: 0 0 0 2px rgba(181, 118, 13, 0.12);
 }
 .rf-option-card[data-option="urgent_move_in_review"].selected .rf-option-card__title {
-  color: #d97706;
+  color: #92590a;
 }
 .rf-option-card[data-option="urgent_move_in_review"].selected .rf-option-card__check {
-  background: #d97706;
-  border-color: #d97706;
+  background: #b5760d;
+  border-color: #b5760d;
 }
 
 /* Dark mode per-option overrides */
-html[data-theme="dark"] .rf-option-card[data-option="physical_visit"] .rf-option-card__icon { background: rgba(56, 189, 248, 0.12); color: #38bdf8; }
-html[data-theme="dark"] .rf-option-card[data-option="physical_visit"].selected { border-color: #38bdf8; background: rgba(56, 189, 248, 0.07); box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12); }
-html[data-theme="dark"] .rf-option-card[data-option="physical_visit"].selected .rf-option-card__title { color: #38bdf8; }
-html[data-theme="dark"] .rf-option-card[data-option="physical_visit"].selected .rf-option-card__check { background: #38bdf8; border-color: #38bdf8; }
+html[data-theme="dark"] .rf-option-card[data-option="physical_visit"] .rf-option-card__icon { background: rgba(255,255,255,0.06); color: #7ab3e0; }
+html[data-theme="dark"] .rf-option-card[data-option="physical_visit"].selected { border-color: #7ab3e0; background: rgba(122,179,224,0.06); box-shadow: 0 0 0 2px rgba(122,179,224,0.14); }
+html[data-theme="dark"] .rf-option-card[data-option="physical_visit"].selected .rf-option-card__title { color: #9ecae8; }
+html[data-theme="dark"] .rf-option-card[data-option="physical_visit"].selected .rf-option-card__check { background: #7ab3e0; border-color: #7ab3e0; }
 
-html[data-theme="dark"] .rf-option-card[data-option="remote_2d_viewing"] .rf-option-card__icon { background: rgba(45, 212, 191, 0.12); color: #2dd4bf; }
-html[data-theme="dark"] .rf-option-card[data-option="remote_2d_viewing"].selected { border-color: #2dd4bf; background: rgba(45, 212, 191, 0.07); box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.12); }
-html[data-theme="dark"] .rf-option-card[data-option="remote_2d_viewing"].selected .rf-option-card__title { color: #2dd4bf; }
-html[data-theme="dark"] .rf-option-card[data-option="remote_2d_viewing"].selected .rf-option-card__check { background: #2dd4bf; border-color: #2dd4bf; }
+html[data-theme="dark"] .rf-option-card[data-option="remote_2d_viewing"] .rf-option-card__icon { background: rgba(255,255,255,0.06); color: #5fada0; }
+html[data-theme="dark"] .rf-option-card[data-option="remote_2d_viewing"].selected { border-color: #5fada0; background: rgba(95,173,160,0.06); box-shadow: 0 0 0 2px rgba(95,173,160,0.14); }
+html[data-theme="dark"] .rf-option-card[data-option="remote_2d_viewing"].selected .rf-option-card__title { color: #7dc4b9; }
+html[data-theme="dark"] .rf-option-card[data-option="remote_2d_viewing"].selected .rf-option-card__check { background: #5fada0; border-color: #5fada0; }
 
-html[data-theme="dark"] .rf-option-card[data-option="urgent_move_in_review"] .rf-option-card__icon { background: rgba(251, 191, 36, 0.12); color: #fbbf24; }
-html[data-theme="dark"] .rf-option-card[data-option="urgent_move_in_review"].selected { border-color: #fbbf24; background: rgba(251, 191, 36, 0.07); box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.14); }
-html[data-theme="dark"] .rf-option-card[data-option="urgent_move_in_review"].selected .rf-option-card__title { color: #fbbf24; }
-html[data-theme="dark"] .rf-option-card[data-option="urgent_move_in_review"].selected .rf-option-card__check { background: #fbbf24; border-color: #fbbf24; }
+html[data-theme="dark"] .rf-option-card[data-option="urgent_move_in_review"] .rf-option-card__icon { background: rgba(255,255,255,0.06); color: #d4a017; }
+html[data-theme="dark"] .rf-option-card[data-option="urgent_move_in_review"].selected { border-color: #d4a017; background: rgba(212,160,23,0.06); box-shadow: 0 0 0 2px rgba(212,160,23,0.14); }
+html[data-theme="dark"] .rf-option-card[data-option="urgent_move_in_review"].selected .rf-option-card__title { color: #e8be45; }
+html[data-theme="dark"] .rf-option-card[data-option="urgent_move_in_review"].selected .rf-option-card__check { background: #d4a017; border-color: #d4a017; }
 
 /* ── Calendar: rich selected-date fill ── */
 .rf-date-card.selected {
@@ -3140,25 +3150,10 @@ html[data-theme="dark"] .rf-option-card[data-option="urgent_move_in_review"].sel
 .rf-visit-step .content-card:nth-child(3) { animation-delay: 0.14s; }
 .rf-visit-step .content-card:nth-child(4) { animation-delay: 0.21s; }
 
-/* ── Urgent banner: pulsing ring via pseudo-element (compositor-only) ── */
-@keyframes rfUrgentPulse {
-  0%   { transform: scale(0.9); opacity: 0.55; }
-  60%  { transform: scale(1.55); opacity: 0; }
-  100% { transform: scale(1.55); opacity: 0; }
-}
+/* ── Urgent banner: static icon, no animation ── */
 .rf-urgent-banner__icon {
-  position: relative;
-  overflow: visible;
-}
-.rf-urgent-banner__icon::before {
-  content: '';
-  position: absolute;
-  inset: -4px;
-  border-radius: 15px;
-  background: rgba(217, 119, 6, 0.32);
-  animation: rfUrgentPulse 2.4s ease-out infinite;
-  will-change: transform, opacity;
-  pointer-events: none;
+  position: static;
+  overflow: hidden;
 }
 
 /* ── Calendar: tighter weekday row ── */
@@ -3176,5 +3171,40 @@ html[data-theme="dark"] .rf-option-card[data-option="urgent_move_in_review"].sel
 html[data-theme="dark"] .main-header-badge {
   background: rgba(255, 255, 255, 0.06);
   border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* ── Selection confirm bar ── */
+.rf-selection-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: var(--rf-radius);
+  background: var(--rf-success-bg);
+  border: 1px solid rgba(5, 150, 105, 0.2);
+  color: var(--rf-success-text);
+  font-size: 13px;
+  margin-bottom: 12px;
+  animation: rfSlideIn 0.25s ease both;
+}
+.rf-selection-confirm strong {
+  font-weight: 700;
+}
+/* When the confirm bar is inside a card (priority viewing) give it breathing room */
+.rf-selection-confirm--inline {
+  margin-bottom: 18px;
+}
+html[data-theme="dark"] .rf-selection-confirm {
+  background: rgba(5, 150, 105, 0.1);
+  border-color: rgba(5, 150, 105, 0.25);
+  color: #6ee7b7;
+}
+
+/* ── Option card: remove generic accent override so per-type rules take precedence ── */
+.rf-option-card.selected {
+  border-color: var(--rf-border-card);
+  background: var(--rf-surface);
+  box-shadow: var(--rf-shadow-sm);
+  transform: translateY(-1px);
 }
 
