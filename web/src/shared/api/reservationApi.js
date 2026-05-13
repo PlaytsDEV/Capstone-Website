@@ -113,7 +113,7 @@ export const reservationApi = {
     ),
 
   /**
-   * Validate applicant valid ID using backend OCR/Google Vision.
+   * Validate applicant valid ID using backend OCR/manual review fallback.
    */
   validateIdDocument: (reservationId, data) =>
     withLifecycleNormalization(

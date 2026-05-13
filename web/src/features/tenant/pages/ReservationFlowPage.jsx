@@ -181,33 +181,32 @@ function ReservationFlowPage() {
               onNext={flow.handleNextStage}
               readOnly={flow.isStageLocked(2)}
               forceEditMode={flow.forceEditMode}
-              onSaveVisit={async () => {
-                const viewingPreference = flow.viewingType;
-                const result = await flow.updateReservationDraft({
-                  agreedToPrivacy: true,
-                  viewingPreference,
-                  remoteViewingAcknowledged:
-                    viewingPreference === "remote_2d_viewing"
+                onSaveVisit={async () => {
+                  const viewingPreference = flow.viewingType;
+                  const isPhysicalVisit = viewingPreference === "physical_visit";
+                  const result = await flow.updateReservationDraft({
+                    agreedToPrivacy: true,
+                    viewingPreference,
+                    remoteViewingAcknowledged:
+                      viewingPreference === "remote_2d_viewing"
                       ? flow.remoteViewingAcknowledged
                       : false,
-                  remoteViewingQuestions:
-                    viewingPreference === "remote_2d_viewing"
-                      ? flow.remoteViewingQuestions
-                      : "",
-                  isUrgentMoveIn: viewingPreference === "urgent_move_in_review",
-                  visitDate:
-                    viewingPreference === "physical_visit"
-                      ? flow.visitDate
-                      : null,
-                  visitTime:
-                    viewingPreference === "physical_visit"
-                      ? flow.visitTime
-                      : null,
-                });
+                    remoteViewingQuestions:
+                      viewingPreference === "remote_2d_viewing"
+                        ? flow.remoteViewingQuestions
+                        : "",
+                    isUrgentMoveIn: viewingPreference === "urgent_move_in_review",
+                    ...(isPhysicalVisit
+                      ? {
+                          visitDate: flow.visitDate,
+                          visitTime: flow.visitTime,
+                        }
+                      : {}),
+                  });
                 let resolvedCode = result?.visitCode || flow.visitCode || null;
                 const reservationId = result?._id || flow.reservationId || null;
 
-                if (!resolvedCode && reservationId) {
+                if (viewingPreference === "physical_visit" && !resolvedCode && reservationId) {
                   for (let attempt = 0; attempt < 10; attempt += 1) {
                     await sleep(250);
                     const freshReservation = await reservationApi.getById(reservationId);
@@ -260,8 +259,13 @@ function ReservationFlowPage() {
                   );
                 }
 
-                flow.setVisitCompleted(true);
-                flow.setHighestStageReached((prev) => Math.max(prev, 3));
+                if (viewingPreference === "physical_visit") {
+                  flow.setVisitCompleted(false);
+                  flow.setHighestStageReached((prev) => Math.max(prev, 2));
+                } else {
+                  flow.setVisitCompleted(true);
+                  flow.setHighestStageReached((prev) => Math.max(prev, 3));
+                }
                 // Background re-fetch to sync with authoritative server state.
                 flow.queryClient.invalidateQueries({ queryKey: ["reservations"] });
                 flow.queryClient.invalidateQueries({ queryKey: ["dashboard"] });

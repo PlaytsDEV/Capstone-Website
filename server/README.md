@@ -144,10 +144,10 @@ PAYMONGO_WEBHOOK_SECRET=your-webhook-signing-key
 
 # ImageKit
 IMAGEKIT_PRIVATE_KEY=your-imagekit-private-key
+IMAGEKIT_URL_ENDPOINT=https://ik.imagekit.io/your-imagekit-id
 
-# Optional: reservation document pre-check (backend only)
-GEMINI_API_KEY=your_google_ai_studio_gemini_api_key
-RESERVATION_DOCUMENT_PRECHECK_MODEL=gemini-1.5-flash
+# Optional: reservation document OCR pre-check timeout
+RESERVATION_DOCUMENT_UPLOAD_URL_ENDPOINT=https://ik.imagekit.io/your-imagekit-id
 RESERVATION_DOCUMENT_PRECHECK_TIMEOUT_MS=15000
 ```
 
@@ -167,28 +167,27 @@ Server runs on: **http://localhost:5000**
 
 ## Reservation Document Pre-check
 
-The reservation document pre-check reads Gemini credentials from **server-side environment variables only**.
-Do not expose these values through Vite env files, frontend bundles, or mobile client config.
+The reservation document pre-check uses server-side OCR through `tesseract.js` plus conservative readability and document-type checks. It does not use Google Vision or Gemini for reservation document checking, and it does not require any OCR API key.
 
-- Preferred key: `GEMINI_API_KEY`
-- Supported fallback key: `GOOGLE_AI_API_KEY`
-- Optional model override: `RESERVATION_DOCUMENT_PRECHECK_MODEL`
 - Optional timeout override: `RESERVATION_DOCUMENT_PRECHECK_TIMEOUT_MS`
+- Optional trusted upload endpoint override: `RESERVATION_DOCUMENT_UPLOAD_URL_ENDPOINT`
+- Default timeout: `15000` milliseconds
 
 Startup logging is intentionally limited to:
 
-- `Document pre-check: enabled`
-- `Document pre-check: manual review fallback`
+- `Document OCR pre-check: enabled`
+- `Document OCR pre-check: manual review fallback`
 
-The backend never logs the Gemini API key itself.
+The backend does not store full OCR text and does not treat OCR as identity verification. Admin review remains required.
 
 ### Render / Server Setup
 
-1. Add `GEMINI_API_KEY` to your Render backend environment variables.
-2. Optionally add `RESERVATION_DOCUMENT_PRECHECK_MODEL` and `RESERVATION_DOCUMENT_PRECHECK_TIMEOUT_MS`.
-3. Redeploy or restart the backend service after saving the environment variables.
+1. Deploy the backend with dependencies installed so `tesseract.js` is available.
+2. Set `IMAGEKIT_URL_ENDPOINT` or `RESERVATION_DOCUMENT_UPLOAD_URL_ENDPOINT` if production uploads use a different ImageKit endpoint than the checked-in default.
+3. Optionally add `RESERVATION_DOCUMENT_PRECHECK_TIMEOUT_MS`.
+4. Redeploy or restart the backend service after changing OCR-related values.
 
-If the Gemini key is missing or Gemini fails at runtime, uploads still succeed and the system safely falls back to manual admin review.
+If OCR cannot complete or times out, uploads still succeed and the system safely falls back to manual admin review.
 
 ---
 
@@ -425,8 +424,8 @@ curl -X POST http://localhost:5000/api/auth/register \
 - Use production Firebase credentials
 - Set production PayMongo keys and webhook secret
 - Configure ImageKit production credentials
-- Add `GEMINI_API_KEY` on the backend service if you want reservation document pre-check enabled
-- Redeploy or restart the backend after changing Gemini-related environment variables
+- Ensure backend dependencies are installed so OCR pre-check can run
+- Redeploy or restart the backend after changing OCR-related environment variables
 
 ### Production Mode
 

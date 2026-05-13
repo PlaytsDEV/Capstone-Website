@@ -1,6 +1,7 @@
 import React, { useRef, useState } from "react";
 import { uploadToImageKit, validateFile } from "../../../../../shared/utils/imageUpload";
 import { CheckCircle, AlertTriangle, Upload } from "lucide-react";
+import { getPrecheckStatus } from "../../../utils/documentPrecheckUtils";
 
 function formatFileSize(bytes) {
  if (!bytes) return "";
@@ -13,6 +14,57 @@ function truncateName(name, max = 28) {
  if (!name || name.length <= max) return name;
  const ext = name.includes(".") ? name.slice(name.lastIndexOf(".")) : "";
  return name.slice(0, max - ext.length - 3) + "..." + ext;
+}
+
+function normalizePrecheckStatus(check, isChecking) {
+ if (isChecking) return "checking";
+ return getPrecheckStatus(check);
+}
+
+function getPrecheckDisplay(check, status) {
+ if (status === "checking") {
+ return { tone: "info", label: "Checking document quality...", text: "" };
+ }
+ if (status === "ready_for_submission") {
+ return {
+ tone: "success",
+ label: "Ready for submission",
+ text:
+ check?.applicantMessage ||
+ "Readable text was detected. Admin will still review this document.",
+ };
+ }
+ if (status === "manual_review_fallback") {
+ return {
+ tone: "info",
+ label: "Manual review required",
+ text:
+ check?.applicantMessage ||
+ "We could not complete the readability check. Admin will review this manually.",
+ };
+ }
+ if (
+ status === "needs_reupload" &&
+ check?.documentTypeStatus === "possible_mismatch"
+ ) {
+ return {
+ tone: "warning",
+ label: "Check document type",
+ text:
+ check?.applicantMessage ||
+ "This file may not match the required document type. Please review and re-upload if needed.",
+ };
+ }
+ if (status === "needs_reupload") {
+ return {
+ tone: "warning",
+ label: "Needs clearer upload",
+ text:
+ check?.applicantMessage ||
+ "Please upload a clearer and readable copy before submitting.",
+ };
+ }
+ return null;
 }
 
 const FileUploadField = ({
@@ -31,7 +83,7 @@ const FileUploadField = ({
 
  const isUploaded = typeof value === "string" && value.startsWith("http");
  const isFile = value instanceof File;
- const showFieldError = hasError && !isUploaded && !isFile;
+ const showFieldError = Boolean(hasError);
 
  const handleClick = () => {
  if (!uploading) inputRef.current?.click();
@@ -59,9 +111,6 @@ const FileUploadField = ({
   await onUploadComplete?.(url, file);
   } catch (postUploadError) {
  console.warn("Document pre-check fell back to manual review after upload.");
-  setError(
-  "Document uploaded, but the automatic pre-check could not be completed. Admin will still review this file.",
-  );
   }
  } catch (err) {
  setUploading(false);
@@ -95,14 +144,12 @@ const FileUploadField = ({
  const aiWarnings = Array.isArray(aiCheck?.aiCheckWarnings)
  ? aiCheck.aiCheckWarnings.filter(Boolean)
  : [];
- const aiStatus = isChecking ? "checking" : aiCheck?.aiCheckStatus || "not_checked";
- const suppressApplicantAiFeedback =
- !isChecking && aiCheck?.provider === "unconfigured";
+ const aiStatus = normalizePrecheckStatus(aiCheck, isChecking);
+ const precheckDisplay = getPrecheckDisplay(aiCheck, aiStatus);
  const showAiFeedback =
- !suppressApplicantAiFeedback &&
- (aiStatus !== "not_checked" ||
- Boolean(aiCheck?.summaryMessage) ||
- aiWarnings.length > 0);
+ Boolean(precheckDisplay) ||
+ (aiStatus !== "not_checked" &&
+ (Boolean(aiCheck?.summaryMessage) || aiWarnings.length > 0));
 
  const zoneClass = [
  "rf-upload-zone",
@@ -114,8 +161,7 @@ const FileUploadField = ({
  .filter(Boolean)
  .join(" ");
 
- const aiStatusTone =
- aiStatus === "passed" ? "success" : aiStatus === "checking" ? "info" : "warning";
+ const aiStatusTone = precheckDisplay?.tone || "warning";
 
  return (
  <div className="form-group">
@@ -190,8 +236,11 @@ const FileUploadField = ({
 
  {showAiFeedback && !error ? (
  <div className={`rf-upload-ai-status rf-upload-ai-status--${aiStatusTone}`}>
- {aiStatus === "checking" ? (
- <span>Checking document quality...</span>
+ {precheckDisplay ? (
+ <>
+ <strong>{precheckDisplay.label}</strong>
+ {precheckDisplay.text ? <span>{precheckDisplay.text}</span> : null}
+ </>
  ) : (
  <>
  {aiCheck?.summaryMessage ? <span>{aiCheck.summaryMessage}</span> : null}
@@ -202,9 +251,9 @@ const FileUploadField = ({
  ))}
  </ul>
  ) : null}
- {aiStatus === "passed" ? (
+ {aiStatus === "ready_for_submission" ? (
  <span className="rf-upload-ai-status__footnote">
- Your documents will still be reviewed by admin before payment becomes available.
+ Admin will still review this document before payment becomes available.
  </span>
  ) : null}
  </>

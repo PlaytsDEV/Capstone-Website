@@ -55,6 +55,7 @@ import {
 import {
   sendReservationConfirmedEmail,
   sendVisitApprovedEmail,
+  sendPhysicalVisitStatusEmail,
   sendDocumentsRejectedEmail,
 } from "../config/email.js";
 import {
@@ -89,7 +90,10 @@ import {
   getBusinessSettings,
   RESERVATION_APPLIANCES,
 } from "../utils/businessSettings.js";
-import { runReservationDocumentPrecheck } from "../services/reservationDocumentPrecheckService.js";
+import {
+  isAllowedReservationDocumentUrl,
+  runReservationDocumentPrecheck,
+} from "../services/reservationDocumentPrecheckService.js";
 /* ─── helpers ────────────────────────────────────── */
 const HEAVY_FIELDS =
   "-selfiePhotoUrl -validIDFrontUrl -validIDBackUrl -nbiClearanceUrl -companyIDUrl -__v";
@@ -217,6 +221,7 @@ const VISIT_MANAGEMENT_ACTIONS = Object.freeze([
   "mark_no_show",
   "reschedule",
   "cancel_visit",
+  "allow_without_visit",
 ]);
 const VISIT_OUTCOME_STATUSES = Object.freeze([
   "physical_visit_scheduled",
@@ -224,6 +229,11 @@ const VISIT_OUTCOME_STATUSES = Object.freeze([
   "no_show",
   "rescheduled",
   "visit_cancelled",
+  "allowed_without_visit",
+]);
+const VISIT_APPLICATION_UNLOCK_STATUSES = Object.freeze([
+  "visit_completed",
+  "allowed_without_visit",
 ]);
 const DOCUMENT_PRECHECK_TYPES = Object.freeze({
   selfie_photo: {
@@ -380,10 +390,63 @@ const normalizeDocumentPrecheckType = (value) => {
   return null;
 };
 
-const mapAiStatusToLegacyValidationStatus = (aiCheckStatus) => {
+const buildEmptyDocumentPrecheck = () => ({
+  precheckProvider: "ocr",
+  precheckStatus: "not_checked",
+  readabilityStatus: "unknown",
+  documentTypeStatus: "unknown",
+  canSubmit: true,
+  requiresManualReview: true,
+  applicantMessage: "",
+  adminNote: "",
+  confidence: null,
+  flags: [],
+  aiCheckStatus: "not_checked",
+  aiCheckWarnings: [],
+  aiCheckedAt: null,
+  requiresAdminAttention: false,
+  summaryMessage: "",
+  provider: "ocr",
+});
+
+const mapAiStatusToLegacyValidationStatus = (precheckOrStatus) => {
+  const precheckStatus = precheckOrStatus?.precheckStatus;
+  if (precheckStatus === "ready_for_submission") return "passed";
+  if (precheckStatus === "needs_reupload") return "failed";
+  if (precheckStatus === "manual_review_fallback") return "manual_review";
+
+  const aiCheckStatus =
+    typeof precheckOrStatus === "string"
+      ? precheckOrStatus
+      : precheckOrStatus?.aiCheckStatus;
   if (aiCheckStatus === "passed") return "passed";
   if (aiCheckStatus === "failed") return "failed";
   return "manual_review";
+};
+
+const getDocumentPrecheckStatus = (precheck = {}) => {
+  const normalized = String(precheck?.precheckStatus || "").trim();
+  if (normalized && normalized !== "not_checked") return normalized;
+  if (precheck?.aiCheckStatus === "passed") return "ready_for_submission";
+  if (precheck?.aiCheckStatus === "failed" || precheck?.aiCheckStatus === "warning")
+    return "needs_reupload";
+  if (precheck?.aiCheckStatus === "error") return "manual_review_fallback";
+  return "not_checked";
+};
+
+const shouldBlockDocumentSubmission = (precheck = {}) => {
+  const status = getDocumentPrecheckStatus(precheck);
+  if (status === "manual_review_fallback") {
+    return false;
+  }
+
+  return (
+    status === "needs_reupload" ||
+    precheck?.readabilityStatus === "low_readability" ||
+    precheck?.readabilityStatus === "unreadable" ||
+    precheck?.documentTypeStatus === "possible_mismatch" ||
+    precheck?.canSubmit === false
+  );
 };
 
 const deriveViewingPreference = (reservation, updates = {}) =>
@@ -1040,6 +1103,49 @@ const applyVisitOutcome = ({
   reservation.visitOutcomeUpdatedByName = actorName || "";
 };
 
+const normalizeVisitStatusKey = (value) => {
+  if (!value) return "";
+  const normalized = String(value).trim().toLowerCase();
+  return VISIT_OUTCOME_STATUSES.includes(normalized) ? normalized : "";
+};
+
+const isVisitApplicationUnlocked = (visitStatus) =>
+  VISIT_APPLICATION_UNLOCK_STATUSES.includes(normalizeVisitStatusKey(visitStatus));
+
+const buildVisitEmailContext = ({
+  reservation,
+  status,
+  previousVisitDate = null,
+  previousVisitTime = "",
+  note = "",
+}) => {
+  const usePreviousSchedule =
+    status === "visit_cancelled" &&
+    !reservation.visitDate &&
+    (previousVisitDate || previousVisitTime);
+
+  return {
+    to: reservation.userId?.email || "",
+    tenantName:
+      `${reservation.userId?.firstName || ""} ${reservation.userId?.lastName || ""}`.trim() ||
+      reservation.userId?.email ||
+      "Applicant",
+    roomName:
+      reservation.roomId?.roomNumber ||
+      reservation.roomId?.name ||
+      reservation.roomName ||
+      "your room",
+    branchName: reservation.roomId?.branch || reservation.branch || "Lilycrest",
+    visitCode: reservation.visitCode || "",
+    visitDate: usePreviousSchedule ? previousVisitDate : reservation.visitDate || null,
+    visitTime: usePreviousSchedule ? previousVisitTime : reservation.visitTime || "",
+    previousVisitDate,
+    previousVisitTime,
+    remarks: note || "",
+    status,
+  };
+};
+
 const buildVisitAvailabilityActor = (req, dbUser) => ({
   userId: dbUser?._id ? String(dbUser._id) : req?.user?.uid || null,
   email: dbUser?.email || req?.user?.email || "",
@@ -1559,7 +1665,7 @@ export const precheckReservationDocument = async (req, res, next) => {
     );
     if (!documentType) {
       return res.status(400).json({
-        error: "Unsupported document type for AI pre-check.",
+        error: "Unsupported document type for document pre-check.",
         code: "INVALID_DOCUMENT_PRECHECK_TYPE",
       });
     }
@@ -1576,6 +1682,12 @@ export const precheckReservationDocument = async (req, res, next) => {
         code: "DOCUMENT_URL_REQUIRED",
       });
     }
+    if (!isAllowedReservationDocumentUrl(documentUrl)) {
+      return res.status(400).json({
+        error: "Please upload the document through the portal before running the pre-check.",
+        code: "INVALID_DOCUMENT_URL",
+      });
+    }
 
     if (config.requiresIdType && !String(idType || "").trim()) {
       return res.status(422).json({
@@ -1590,6 +1702,11 @@ export const precheckReservationDocument = async (req, res, next) => {
       idType,
     });
 
+    reservation.set(config.reservationField, documentUrl);
+    if (config.requiresIdType && String(idType || "").trim()) {
+      reservation.idType = idType;
+      reservation.validIDType = idType;
+    }
     reservation.set(`documentPrechecks.${config.precheckField}`, result);
     await reservation.save();
 
@@ -1597,9 +1714,10 @@ export const precheckReservationDocument = async (req, res, next) => {
       documentType,
       ...result,
       message:
+        result.applicantMessage ||
         result.summaryMessage ||
         "Document pre-check completed. Admin will still review the upload.",
-      validationStatus: mapAiStatusToLegacyValidationStatus(result.aiCheckStatus),
+      validationStatus: mapAiStatusToLegacyValidationStatus(result),
       warnings: result.aiCheckWarnings,
     });
   } catch (error) {
@@ -1764,6 +1882,7 @@ export const createReservation = async (req, res, next) => {
       nationality: b.nationality || null,
       educationLevel: b.educationLevel || null,
       address: {
+        region: b.addressRegion || null,
         unitHouseNo: b.addressUnitHouseNo || null,
         street: b.addressStreet || null,
         barangay: b.addressBarangay || null,
@@ -2609,7 +2728,7 @@ export const manageReservationVisit = async (req, res, next) => {
     if (!VISIT_MANAGEMENT_ACTIONS.includes(action)) {
       return res.status(400).json({
         error:
-          "Invalid visit action. Use mark_visited, mark_no_show, reschedule, or cancel_visit.",
+          "Invalid visit action. Use mark_visited, mark_no_show, reschedule, cancel_visit, or allow_without_visit.",
         code: "INVALID_VISIT_MANAGEMENT_ACTION",
       });
     }
@@ -2622,6 +2741,11 @@ export const manageReservationVisit = async (req, res, next) => {
     const previousSnapshot = reservation.toObject();
     const roomId = reservation.roomId?._id || reservation.roomId || null;
     const branch = reservation.roomId?.branch || "";
+    const previousVisitDate = reservation.visitDate || null;
+    const previousVisitTime = reservation.visitTime || "";
+    let applicantNotificationTitle = "";
+    let applicantNotificationMessage = "";
+    let applicantEmailStatus = "";
 
     if (
       (action === "mark_visited" || action === "mark_no_show") &&
@@ -2678,8 +2802,8 @@ export const manageReservationVisit = async (req, res, next) => {
       reservation.visitDate = validation.date;
       reservation.visitTime = nextVisitTime;
       reservation.visitScheduledAt = now;
-      reservation.scheduleApproved = true;
-      reservation.scheduleApprovedAt = reservation.scheduleApprovedAt || now;
+      reservation.scheduleApproved = false;
+      reservation.scheduleApprovedAt = null;
       reservation.visitApproved = false;
       reservation.scheduleRejected = false;
       reservation.scheduleRejectedAt = null;
@@ -2693,6 +2817,17 @@ export const manageReservationVisit = async (req, res, next) => {
         note,
         updatedAt: now,
       });
+      applicantNotificationTitle = "Physical Visit Rescheduled";
+      applicantNotificationMessage = `Your physical visit was rescheduled to ${
+        validation.date
+          ? new Date(validation.date).toLocaleDateString("en-PH", {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            })
+          : "a new date"
+      }${nextVisitTime ? ` at ${nextVisitTime}` : ""}. Your tenant application will stay locked until the visit is completed or admin allows you to proceed.`;
+      applicantEmailStatus = "rescheduled";
     }
 
     if (action === "mark_visited") {
@@ -2715,9 +2850,14 @@ export const manageReservationVisit = async (req, res, next) => {
         note,
         updatedAt: now,
       });
+      applicantNotificationTitle = "Physical Visit Completed";
+      applicantNotificationMessage =
+        "Your physical visit has been recorded. You may now continue to your tenant application. Payment remains locked until your application and required documents are approved.";
+      applicantEmailStatus = "visit_completed";
     }
 
     if (action === "mark_no_show") {
+      reservation.scheduleApproved = false;
       reservation.visitApproved = false;
       appendVisitHistoryEntry({
         reservation,
@@ -2735,6 +2875,10 @@ export const manageReservationVisit = async (req, res, next) => {
         note,
         updatedAt: now,
       });
+      applicantNotificationTitle = "Missed Physical Visit";
+      applicantNotificationMessage =
+        "You missed your scheduled visit. Please reschedule your visit or contact admin before continuing. Your tenant application remains locked.";
+      applicantEmailStatus = "no_show";
     }
 
     if (action === "cancel_visit") {
@@ -2767,6 +2911,35 @@ export const manageReservationVisit = async (req, res, next) => {
         note,
         updatedAt: now,
       });
+      applicantNotificationTitle = "Physical Visit Cancelled";
+      applicantNotificationMessage =
+        "Your physical visit schedule was cancelled. Your reservation is still active, but your tenant application remains locked unless admin separately allows you to proceed without a visit.";
+      applicantEmailStatus = "visit_cancelled";
+    }
+
+    if (action === "allow_without_visit") {
+      appendVisitHistoryEntry({
+        reservation,
+        status: "allowed_without_visit",
+        actorId,
+        actorName,
+        note,
+        updatedAt: now,
+      });
+      reservation.scheduleApproved = false;
+      reservation.visitApproved = false;
+      applyVisitOutcome({
+        reservation,
+        status: "allowed_without_visit",
+        actorId,
+        actorName,
+        note,
+        updatedAt: now,
+      });
+      applicantNotificationTitle = "You May Continue Your Tenant Application";
+      applicantNotificationMessage =
+        "Admin has allowed you to continue your tenant application without a completed physical visit. Payment remains locked until your application and required documents are approved.";
+      applicantEmailStatus = "allowed_without_visit";
     }
 
     await reservation.save();
@@ -2780,7 +2953,9 @@ export const manageReservationVisit = async (req, res, next) => {
           ? "Visit marked as no-show"
           : action === "reschedule"
             ? "Visit schedule updated"
-            : "Visit schedule cancelled";
+            : action === "allow_without_visit"
+              ? "Applicant may proceed without a completed visit"
+              : "Visit schedule cancelled";
 
     await auditLogger.logModification(
       req,
@@ -2791,9 +2966,56 @@ export const manageReservationVisit = async (req, res, next) => {
       `Visit management action: ${action}`,
     );
 
+    let emailWarning = "";
+
+    if (reservation.userId?._id && applicantNotificationTitle && applicantNotificationMessage) {
+      try {
+        const { notify } = await import("../utils/notificationService.js");
+        await notify.general(
+          reservation.userId._id,
+          applicantNotificationTitle,
+          applicantNotificationMessage,
+          {
+            entityType: "reservation",
+            entityId: String(reservation._id),
+            actionUrl: "/applicant/reservation",
+          },
+        );
+      } catch (notifyErr) {
+        logger.warn(
+          { err: notifyErr, requestId: req.id },
+          "Visit management notification failed (non-fatal)",
+        );
+      }
+    }
+
+    if (reservation.userId?.email && applicantEmailStatus) {
+      try {
+        const emailResult = await sendPhysicalVisitStatusEmail(
+          buildVisitEmailContext({
+            reservation,
+            status: applicantEmailStatus,
+            previousVisitDate,
+            previousVisitTime,
+            note,
+          }),
+        );
+        if (!emailResult?.success) {
+          emailWarning = "Visit status updated, but email notification could not be sent.";
+        }
+      } catch (emailErr) {
+        logger.warn(
+          { err: emailErr, requestId: req.id },
+          "Visit management email failed (non-fatal)",
+        );
+        emailWarning = "Visit status updated, but email notification could not be sent.";
+      }
+    }
+
     res.json({
       message: successMessage,
       reservation: serializeReservation(reservation),
+      ...(emailWarning ? { emailWarning } : {}),
     });
 
     try {
@@ -2808,47 +3030,6 @@ export const manageReservationVisit = async (req, res, next) => {
         { err: socketErr, requestId: req.id },
         "Socket emit failed after visit management update (non-fatal)",
       );
-    }
-
-    if (reservation.userId?._id && (action === "reschedule" || action === "cancel_visit")) {
-      try {
-        const { notify } = await import("../utils/notificationService.js");
-        if (action === "reschedule") {
-          const formattedDate = reservation.visitDate
-            ? new Date(reservation.visitDate).toLocaleDateString("en-PH", {
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })
-            : "a new date";
-          await notify.general(
-            reservation.userId._id,
-            "Physical Visit Rescheduled",
-            `Your physical visit for ${branch || "Lilycrest"} was moved to ${formattedDate}${reservation.visitTime ? ` at ${reservation.visitTime}` : ""}. Please note that payment will remain locked until your application and documents are approved.`,
-            {
-              entityType: "reservation",
-              entityId: String(reservation._id),
-              actionUrl: "/applicant/reservation",
-            },
-          );
-        } else {
-          await notify.general(
-            reservation.userId._id,
-            "Physical Visit Cancelled",
-            `Your physical visit schedule was cancelled by admin${note ? `. Note: ${note}` : ""}. Your reservation is still active, and payment remains locked until your application and documents are approved.`,
-            {
-              entityType: "reservation",
-              entityId: String(reservation._id),
-              actionUrl: "/applicant/reservation",
-            },
-          );
-        }
-      } catch (notifyErr) {
-        logger.warn(
-          { err: notifyErr, requestId: req.id },
-          "Visit management notification failed (non-fatal)",
-        );
-      }
     }
   } catch (error) {
     logger.error({ err: error, requestId: req.id }, "Manage visit error");
@@ -3147,6 +3328,10 @@ export const updateReservationByUser = async (req, res, next) => {
       updates.remoteViewingQuestions = normalizedQuestions;
     }
 
+    if (hasBodyField("visitTime") && req.body.visitTime == null) {
+      updates.visitTime = "";
+    }
+
     const effectiveViewingPreference = deriveViewingPreference(reservation, updates);
     const preferenceRelatedUpdate =
       rawViewingPreference !== undefined ||
@@ -3188,14 +3373,10 @@ export const updateReservationByUser = async (req, res, next) => {
     const effectiveVisitTime = updates.visitTime ?? reservation.visitTime;
     const resetDocumentPrecheck = (bodyField, precheckField) => {
       if (!hasBodyField(bodyField)) return;
-      updates[`documentPrechecks.${precheckField}`] = {
-        aiCheckStatus: "not_checked",
-        aiCheckWarnings: [],
-        aiCheckedAt: null,
-        requiresAdminAttention: false,
-        summaryMessage: "",
-        provider: "system",
-      };
+      const nextUrl = updates[bodyField] ?? req.body[bodyField] ?? "";
+      const currentUrl = reservation[bodyField] ?? "";
+      if (String(nextUrl || "") === String(currentUrl || "")) return;
+      updates[`documentPrechecks.${precheckField}`] = buildEmptyDocumentPrecheck();
     };
 
     resetDocumentPrecheck("validIDFrontUrl", "validIDFront");
@@ -3236,7 +3417,7 @@ export const updateReservationByUser = async (req, res, next) => {
       effectiveViewingPreference !== "physical_visit"
     ) {
       updates.visitDate = null;
-      updates.visitTime = null;
+      updates.visitTime = "";
       updates.visitCode = null;
       updates.visitScheduledAt = null;
       updates.visitApproved = false;
@@ -3409,6 +3590,24 @@ export const updateReservationByUser = async (req, res, next) => {
     const isApplicationSubmission = req.body.submitApplication === true;
 
     if (isApplicationSubmission) {
+      const previouslySubmittedApplication = Boolean(reservation.applicationSubmittedAt);
+      const effectiveVisitStatus = normalizeVisitStatusKey(
+        updates.visitStatus ?? reservation.visitStatus,
+      );
+
+      if (
+        effectiveViewingPreference === "physical_visit" &&
+        !previouslySubmittedApplication &&
+        !isVisitApplicationUnlocked(effectiveVisitStatus)
+      ) {
+        return res.status(403).json({
+          error:
+            "Please attend your scheduled room visit first. You may continue to the tenant application after admin confirms your visit or allows you to proceed.",
+          code: "PHYSICAL_VISIT_APPLICATION_LOCKED",
+          visitStatus: effectiveVisitStatus || "physical_visit_scheduled",
+        });
+      }
+
       // Enforce minimum required fields before accepting the application.
       // Mirrors client-side validation in useReservationFlow stage 3 so direct
       // API calls cannot bypass the form.
@@ -3439,8 +3638,14 @@ export const updateReservationByUser = async (req, res, next) => {
         missingRequired.push("emergency contact name");
       if (!hasVal(updates["emergencyContact.contactNumber"] || reservation.emergencyContact?.contactNumber))
         missingRequired.push("emergency contact phone");
-      if (!hasVal(updates.validIDFrontUrl || reservation.validIDFrontUrl))
+      const effectiveValidIDFrontUrl =
+        updates.validIDFrontUrl ?? reservation.validIDFrontUrl;
+      const effectiveValidIDBackUrl =
+        updates.validIDBackUrl ?? reservation.validIDBackUrl;
+      if (!hasVal(effectiveValidIDFrontUrl))
         missingRequired.push("valid ID (front)");
+      if (!hasVal(effectiveValidIDBackUrl))
+        missingRequired.push("valid ID (back)");
       const submittedIdType =
         updates.idType ||
         updates.validIDType ||
@@ -3498,6 +3703,102 @@ export const updateReservationByUser = async (req, res, next) => {
           error: `Application cannot be submitted. The following required fields are missing or invalid: ${missingRequired.join(", ")}.`,
           code: "APPLICATION_INCOMPLETE",
           missingFields: missingRequired,
+        });
+      }
+
+      const runRequiredDocumentPrecheck = async ({
+        documentType,
+        documentUrl,
+        idType,
+      }) => {
+        const config = DOCUMENT_PRECHECK_TYPES[documentType];
+        if (!config || !documentUrl) return null;
+
+        const nextUrl = String(documentUrl || "");
+        const currentUrl = String(reservation[config.reservationField] || "");
+        const urlChanged = nextUrl !== currentUrl;
+        let precheck =
+          updates[`documentPrechecks.${config.precheckField}`] ||
+          reservation.documentPrechecks?.[config.precheckField] ||
+          buildEmptyDocumentPrecheck();
+        const status = getDocumentPrecheckStatus(precheck);
+        const urlAllowed = isAllowedReservationDocumentUrl(nextUrl);
+
+        if (
+          !urlAllowed ||
+          urlChanged ||
+          status === "not_checked" ||
+          status === "checking"
+        ) {
+          precheck = await runReservationDocumentPrecheck({
+            documentType,
+            documentUrl: nextUrl,
+            idType,
+          });
+          updates[`documentPrechecks.${config.precheckField}`] = precheck;
+        }
+
+        return precheck;
+      };
+
+      const requiredDocumentPrechecks = [
+        {
+          key: "validIDFront",
+          label: "Valid ID (Front)",
+          documentType: "valid_id_front",
+          documentUrl: effectiveValidIDFrontUrl,
+          idType: submittedIdType,
+        },
+        {
+          key: "validIDBack",
+          label: "Valid ID (Back)",
+          documentType: "valid_id_back",
+          documentUrl: effectiveValidIDBackUrl,
+          idType: submittedIdType,
+        },
+        effectiveNbiUrl
+          ? {
+              key: "nbiClearance",
+              label: "NBI Clearance",
+              documentType: "nbi_clearance",
+              documentUrl: effectiveNbiUrl,
+            }
+          : null,
+        effectiveCompanyUrl
+          ? {
+              key: "companyID",
+              label: "Company ID",
+              documentType: "company_id",
+              documentUrl: effectiveCompanyUrl,
+            }
+          : null,
+      ].filter(Boolean);
+
+      const documentIssues = [];
+      for (const target of requiredDocumentPrechecks) {
+        const precheck = await runRequiredDocumentPrecheck(target);
+        if (shouldBlockDocumentSubmission(precheck)) {
+          documentIssues.push({
+            key: target.key,
+            label: target.label,
+            precheckStatus: precheck?.precheckStatus || "needs_reupload",
+            readabilityStatus: precheck?.readabilityStatus || "unknown",
+            documentTypeStatus: precheck?.documentTypeStatus || "unknown",
+            message:
+              precheck?.applicantMessage ||
+              precheck?.summaryMessage ||
+              `${target.label} needs a clearer upload before submission.`,
+          });
+        }
+      }
+
+      if (documentIssues.length > 0) {
+        return res.status(422).json({
+          error: `Please fix the following document before submitting: ${documentIssues
+            .map((issue) => `${issue.label} - ${issue.message}`)
+            .join("; ")}`,
+          code: "DOCUMENT_PRECHECK_BLOCKED",
+          documentIssues,
         });
       }
 
@@ -3610,13 +3911,21 @@ export const updateReservationByUser = async (req, res, next) => {
             await notify.general(
               updatedReservation.userId._id,
               "Physical Visit Preference Saved",
-              `Your preferred visit schedule for ${visitDateLabel} at ${visitTimeLabel} was recorded. Payment will remain locked until your application and documents are approved.`,
+              `Your preferred visit schedule for ${visitDateLabel} at ${visitTimeLabel} was recorded. Please attend your scheduled room visit first. You may continue to the tenant application after admin confirms your visit or allows you to proceed.`,
               {
                 entityType: "reservation",
                 entityId: String(updatedReservation._id),
                 actionUrl: "/applicant/reservation",
               },
             );
+            if (updatedReservation.userId?.email) {
+              await sendPhysicalVisitStatusEmail(
+                buildVisitEmailContext({
+                  reservation: updatedReservation,
+                  status: "scheduled",
+                }),
+              );
+            }
           } else if (effectiveViewingPreference === "remote_2d_viewing") {
             await notify.general(
               updatedReservation.userId._id,

@@ -1,94 +1,80 @@
+import Tesseract from "tesseract.js";
+
 import logger from "../middleware/logger.js";
 
-const DEFAULT_DOCUMENT_PRECHECK_MODEL = "gemini-1.5-flash";
-const DEFAULT_PRECHECK_TIMEOUT_MS = 15000;
-const MAX_INLINE_BYTES = 5 * 1024 * 1024;
+const { createWorker } = Tesseract;
 
-const JSON_FENCE_REGEX = /```(?:json)?\s*([\s\S]*?)```/i;
+const DEFAULT_PRECHECK_TIMEOUT_MS = 15000;
+const MAX_DOWNLOAD_BYTES = 5 * 1024 * 1024;
+const DEFAULT_DOCUMENT_UPLOAD_URL_ENDPOINT = "https://ik.imagekit.io/g5vnq9bvb";
 
 const DOCUMENT_LABELS = Object.freeze({
   selfie_photo: "selfie photo",
-  valid_id_front: "valid ID front",
-  valid_id_back: "valid ID back",
+  valid_id_front: "valid ID (front)",
+  valid_id_back: "valid ID (back)",
   nbi_clearance: "NBI clearance",
   company_id: "company or school ID",
 });
 
-const buildResult = ({
-  status = "not_checked",
-  warnings = [],
-  summary = "",
-  provider = "system",
-}) => ({
-  aiCheckStatus: status,
-  aiCheckWarnings: warnings.filter(Boolean),
-  aiCheckedAt: new Date(),
-  requiresAdminAttention: status !== "passed",
-  summaryMessage: summary,
-  provider,
+const ID_TYPE_KEYWORDS = Object.freeze({
+  national_id: ["PHILIPPINE", "IDENTIFICATION", "NATIONAL", "PSN"],
+  drivers_license: ["DRIVER", "LICENSE", "LTO"],
+  passport: ["PASSPORT", "REPUBLIC", "PHILIPPINES"],
+  sss_id: ["SSS", "SOCIAL", "SECURITY"],
+  umid: ["UMID"],
+  school_id: ["SCHOOL", "UNIVERSITY", "COLLEGE", "STUDENT"],
+  other: [],
 });
 
-const parseJsonText = (text) => {
-  const match = JSON_FENCE_REGEX.exec(String(text || ""));
-  const raw = match?.[1] || text;
-  return JSON.parse(raw);
-};
+const GENERAL_ID_KEYWORDS = Object.freeze([
+  "REPUBLIC",
+  "PHILIPPINES",
+  "IDENTIFICATION",
+  "ID",
+  "CARD",
+  "PASSPORT",
+  "LICENSE",
+  "DRIVER",
+  "NATIONAL",
+  "BIRTH",
+  "ADDRESS",
+  "NAME",
+]);
 
-const extractGeminiText = (payload) =>
-  payload?.candidates?.[0]?.content?.parts
-    ?.map((part) => part?.text || "")
-    .join("")
-    .trim() || "";
+const NBI_KEYWORDS = Object.freeze([
+  "NBI",
+  "CLEARANCE",
+  "BUREAU",
+  "INVESTIGATION",
+  "CRIMINAL",
+  "REPUBLIC",
+  "PHILIPPINES",
+]);
 
-const normalizeWarnings = (warnings) =>
-  Array.isArray(warnings)
-    ? warnings
-        .map((warning) => String(warning || "").trim())
-        .filter(Boolean)
-        .slice(0, 5)
-    : [];
+const COMPANY_OR_SCHOOL_KEYWORDS = Object.freeze([
+  "COMPANY",
+  "EMPLOYEE",
+  "EMPLOYMENT",
+  "SCHOOL",
+  "UNIVERSITY",
+  "COLLEGE",
+  "STUDENT",
+  "FACULTY",
+  "DEPARTMENT",
+  "BADGE",
+]);
 
-const normalizeAiStatus = (status, warnings) => {
-  const normalized = String(status || "").trim().toLowerCase();
-  if (normalized === "passed") return "passed";
-  if (normalized === "failed") return "failed";
-  if (normalized === "warning") return "warning";
-  return warnings.length > 0 ? "warning" : "passed";
-};
+const OCR_SUPPORTED_DOCUMENT_TYPES = new Set([
+  "valid_id_front",
+  "valid_id_back",
+  "nbi_clearance",
+  "company_id",
+]);
 
-const buildPrompt = ({ documentType, idType }) => {
-  const label = DOCUMENT_LABELS[documentType] || "document";
-  const idTypeLine =
-    documentType === "valid_id_front" || documentType === "valid_id_back"
-      ? `The applicant selected the document type: ${idType || "unknown"}.`
-      : "";
+const isObject = (value) =>
+  value != null && typeof value === "object" && !Array.isArray(value);
 
-  return [
-    "You are assisting a dormitory reservation system with document pre-checking.",
-    "Do not approve or reject applicants.",
-    "Only assess obvious document-quality and document-type issues visible in the uploaded file.",
-    "Check for: blurry image, cropped edges, document too dark, document too bright, rotated or hard to read, unreadable text, wrong document type, incomplete document view, or missing expected visible content.",
-    "If the document looks usable but has minor concerns, return warning.",
-    "If the document is obviously unreadable or unusable, return failed.",
-    `Review this ${label}.`,
-    idTypeLine,
-    'Return strict JSON only with this shape: {"status":"passed|warning|failed","warnings":["short warning"],"summary":"short summary","documentTypeMatch":true,"fullDocumentVisible":true,"readability":"clear|partially_unreadable|unreadable"}.',
-  ]
-    .filter(Boolean)
-    .join("\n");
-};
-
-export const getDocumentPrecheckApiKey = () =>
-  String(process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || "").trim();
-
-export const getDocumentPrecheckModel = () =>
-  String(
-    process.env.RESERVATION_DOCUMENT_PRECHECK_MODEL ||
-      process.env.GEMINI_MODEL ||
-      DEFAULT_DOCUMENT_PRECHECK_MODEL,
-  ).trim() || DEFAULT_DOCUMENT_PRECHECK_MODEL;
-
-export const getDocumentPrecheckTimeoutMs = () => {
+const getDocumentPrecheckTimeoutMs = () => {
   const parsed = Number(process.env.RESERVATION_DOCUMENT_PRECHECK_TIMEOUT_MS);
   if (!Number.isFinite(parsed) || parsed < 1000) {
     return DEFAULT_PRECHECK_TIMEOUT_MS;
@@ -96,31 +82,237 @@ export const getDocumentPrecheckTimeoutMs = () => {
   return Math.floor(parsed);
 };
 
-export const getDocumentPrecheckStartupStatus = () => ({
-  enabled: Boolean(getDocumentPrecheckApiKey()),
-  model: getDocumentPrecheckModel(),
+const getDocumentPrecheckStartupStatus = () => ({
+  enabled: typeof createWorker === "function",
   timeoutMs: getDocumentPrecheckTimeoutMs(),
 });
 
-export const logDocumentPrecheckStartupStatus = () => {
+const parseAllowedUrlBase = (value) => {
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "https:") return null;
+    const pathname = parsed.pathname.replace(/\/+$/, "") || "/";
+    return {
+      origin: parsed.origin,
+      pathname,
+    };
+  } catch {
+    return null;
+  }
+};
+
+const getAllowedDocumentUrlBases = () =>
+  [
+    process.env.RESERVATION_DOCUMENT_UPLOAD_URL_ENDPOINT,
+    process.env.IMAGEKIT_URL_ENDPOINT,
+    process.env.VITE_IMAGEKIT_URL_ENDPOINT,
+    DEFAULT_DOCUMENT_UPLOAD_URL_ENDPOINT,
+  ]
+    .flatMap((value) => String(value || "").split(","))
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .map(parseAllowedUrlBase)
+    .filter(Boolean);
+
+const isAllowedReservationDocumentUrl = (documentUrl) => {
+  try {
+    const parsed = new URL(documentUrl);
+    if (parsed.protocol !== "https:") return false;
+    return getAllowedDocumentUrlBases().some((base) => {
+      if (parsed.origin !== base.origin) return false;
+      if (base.pathname === "/") return true;
+      return (
+        parsed.pathname === base.pathname ||
+        parsed.pathname.startsWith(`${base.pathname}/`)
+      );
+    });
+  } catch {
+    return false;
+  }
+};
+
+const logDocumentPrecheckStartupStatus = () => {
   const status = getDocumentPrecheckStartupStatus();
   if (status.enabled) {
     logger.info(
       {
-        model: status.model,
         timeoutMs: status.timeoutMs,
       },
-      "Document pre-check: enabled",
+      "Document OCR pre-check: enabled",
     );
   } else {
-    logger.info("Document pre-check: manual review fallback");
+    logger.info("Document OCR pre-check: manual review fallback");
   }
   return status;
 };
 
+const normalizeFlags = (flags) =>
+  Array.isArray(flags)
+    ? [...new Set(flags.map((flag) => String(flag || "").trim()).filter(Boolean))].slice(0, 6)
+    : [];
+
+const mapPrecheckStatusToLegacy = ({ precheckStatus, documentTypeStatus }) => {
+  if (precheckStatus === "ready_for_submission") return "passed";
+  if (
+    precheckStatus === "needs_reupload" &&
+    documentTypeStatus === "possible_mismatch"
+  ) {
+    return "warning";
+  }
+  if (precheckStatus === "needs_reupload") return "failed";
+  if (precheckStatus === "manual_review_fallback") return "error";
+  return "not_checked";
+};
+
+const buildLegacyWarnings = ({
+  precheckStatus,
+  readabilityStatus,
+  documentTypeStatus,
+  applicantMessage,
+  adminNote,
+}) => {
+  if (precheckStatus === "ready_for_submission") {
+    return ["OCR detected readable text. Manual review is still required."];
+  }
+  if (documentTypeStatus === "possible_mismatch") {
+    return ["OCR flagged a possible document type mismatch. Please inspect manually."];
+  }
+  if (readabilityStatus === "unreadable") {
+    return ["OCR could not detect enough readable text. Please inspect manually."];
+  }
+  if (readabilityStatus === "low_readability") {
+    return ["OCR flagged low readability. Please inspect manually."];
+  }
+  if (precheckStatus === "manual_review_fallback") {
+    return [adminNote || applicantMessage || "OCR could not complete. Manual review required."];
+  }
+  return [];
+};
+
+const buildResult = ({
+  precheckProvider = "ocr",
+  precheckStatus = "not_checked",
+  readabilityStatus = "unknown",
+  documentTypeStatus = "unknown",
+  canSubmit = precheckStatus !== "needs_reupload",
+  applicantMessage = "",
+  adminNote = "",
+  confidence = null,
+  flags = [],
+}) => {
+  const normalizedFlags = normalizeFlags(flags);
+  const normalizedConfidence =
+    Number.isFinite(Number(confidence)) ? Math.round(Number(confidence) * 100) / 100 : null;
+  const warnings = buildLegacyWarnings({
+    precheckStatus,
+    readabilityStatus,
+    documentTypeStatus,
+    applicantMessage,
+    adminNote,
+  });
+  const legacyStatus = mapPrecheckStatusToLegacy({
+    precheckStatus,
+    documentTypeStatus,
+  });
+
+  return {
+    precheckProvider,
+    precheckStatus,
+    readabilityStatus,
+    documentTypeStatus,
+    canSubmit: Boolean(canSubmit),
+    requiresManualReview: true,
+    applicantMessage: String(applicantMessage || "").trim(),
+    adminNote: String(adminNote || "").trim(),
+    confidence: normalizedConfidence,
+    flags: normalizedFlags,
+    aiCheckStatus: legacyStatus,
+    aiCheckWarnings: warnings,
+    aiCheckedAt: new Date(),
+    requiresAdminAttention: precheckStatus !== "ready_for_submission",
+    summaryMessage:
+      String(applicantMessage || "").trim() ||
+      String(adminNote || "").trim() ||
+      warnings[0] ||
+      "",
+    provider: precheckProvider,
+  };
+};
+
+const buildManualFallbackResult = ({
+  applicantMessage = "Document uploaded successfully. We could not complete the readability check, so this document will be reviewed manually.",
+  adminNote = "OCR could not complete. Manual review required.",
+  flags = ["ocr_manual_fallback"],
+} = {}) =>
+  buildResult({
+    precheckStatus: "manual_review_fallback",
+    readabilityStatus: "ocr_unavailable",
+    documentTypeStatus: "unknown",
+    canSubmit: true,
+    applicantMessage,
+    adminNote,
+    flags,
+  });
+
+const buildNeedsReuploadResult = ({
+  readabilityStatus,
+  documentTypeStatus = "unknown",
+  applicantMessage,
+  adminNote,
+  confidence = null,
+  flags = [],
+}) =>
+  buildResult({
+    precheckStatus: "needs_reupload",
+    readabilityStatus,
+    documentTypeStatus,
+    canSubmit: false,
+    applicantMessage,
+    adminNote,
+    confidence,
+    flags,
+  });
+
+const buildReadyResult = ({
+  documentTypeStatus = "unknown",
+  confidence = null,
+  flags = [],
+}) =>
+  buildResult({
+    precheckStatus: "ready_for_submission",
+    readabilityStatus: "readable",
+    documentTypeStatus,
+    canSubmit: true,
+    applicantMessage:
+      "Document uploaded successfully. Readable text was detected. This document is ready for submission and will still be reviewed by admin.",
+    adminNote: "OCR detected readable text. Manual review is still required.",
+    confidence,
+    flags,
+  });
+
+const createTimeoutError = () => {
+  const error = new Error("OCR pre-check timed out.");
+  error.name = "OcrTimeoutError";
+  return error;
+};
+
+const withTimeout = async (promise, timeoutMs) => {
+  let timeout = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(createTimeoutError()), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+};
+
 const fetchWithTimeout = async (url, options = {}, timeoutMs = getDocumentPrecheckTimeoutMs()) => {
   if (typeof fetch !== "function") {
-    throw new Error("Global fetch is not available for document pre-checking.");
+    throw new Error("Global fetch is not available for OCR pre-checking.");
   }
 
   const controller = new AbortController();
@@ -155,148 +347,205 @@ const downloadDocument = async (documentUrl) => {
   const mimeType =
     response.headers.get("content-type")?.split(";")[0]?.trim() ||
     "application/octet-stream";
-
-  if (!mimeType.startsWith("image/") && mimeType !== "application/pdf") {
+  const unsupported = !mimeType.startsWith("image/");
+  if (unsupported) {
     return {
       mimeType,
+      buffer: Buffer.alloc(0),
       unsupported: true,
-      buffer: null,
+      oversized: false,
+    };
+  }
+
+  const contentLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > MAX_DOWNLOAD_BYTES) {
+    return {
+      mimeType,
+      buffer: Buffer.alloc(0),
+      unsupported: false,
+      oversized: true,
     };
   }
 
   const arrayBuffer = await response.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
 
-  if (buffer.length > MAX_INLINE_BYTES) {
+  return {
+    mimeType,
+    buffer,
+    unsupported: false,
+    oversized: buffer.length > MAX_DOWNLOAD_BYTES,
+  };
+};
+
+const normalizeOcrText = (text) =>
+  String(text || "")
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const toUpperText = (text) => normalizeOcrText(text).toUpperCase();
+
+const stripNonAlphanumeric = (text) => toUpperText(text).replace(/[^A-Z0-9]/g, "");
+
+const countKeywordMatches = (text, keywords = []) =>
+  keywords.reduce(
+    (total, keyword) => (text.includes(String(keyword).toUpperCase()) ? total + 1 : total),
+    0,
+  );
+
+const getExpectedKeywords = (documentType, idType = "") => {
+  if (documentType === "valid_id_front" || documentType === "valid_id_back") {
+    const typeKeywords =
+      ID_TYPE_KEYWORDS[String(idType || "").trim().toLowerCase()] || [];
+    return [...GENERAL_ID_KEYWORDS, ...typeKeywords];
+  }
+  if (documentType === "nbi_clearance") return [...NBI_KEYWORDS];
+  if (documentType === "company_id") return [...COMPANY_OR_SCHOOL_KEYWORDS];
+  return [];
+};
+
+const getConflictingKeywordGroups = (documentType) => {
+  if (documentType === "valid_id_front" || documentType === "valid_id_back") {
+    return [
+      { status: "possible_mismatch", keywords: NBI_KEYWORDS },
+    ];
+  }
+  if (documentType === "nbi_clearance") {
+    return [
+      { status: "possible_mismatch", keywords: COMPANY_OR_SCHOOL_KEYWORDS },
+    ];
+  }
+  if (documentType === "company_id") {
+    return [
+      { status: "possible_mismatch", keywords: NBI_KEYWORDS },
+    ];
+  }
+  return [];
+};
+
+const evaluateReadability = ({ text, confidence }) => {
+  const normalizedText = normalizeOcrText(text);
+  const condensed = stripNonAlphanumeric(normalizedText);
+  const charCount = condensed.length;
+  const numericConfidence = Number.isFinite(Number(confidence)) ? Number(confidence) : null;
+
+  if (!charCount) {
     return {
-      mimeType,
-      oversized: true,
-      buffer: null,
+      readabilityStatus: "unreadable",
+      flags: ["no_readable_text", "blank_or_unreadable_image"],
+      charCount,
+    };
+  }
+
+  if (charCount < 8) {
+    return {
+      readabilityStatus: "unreadable",
+      flags: ["insufficient_readable_text", "possible_blurry_or_cropped_image"],
+      charCount,
+    };
+  }
+
+  if ((numericConfidence != null && numericConfidence < 25) || charCount < 18) {
+    return {
+      readabilityStatus: "low_readability",
+      flags: ["low_ocr_confidence", "possible_blurry_or_cropped_image"],
+      charCount,
     };
   }
 
   return {
-    mimeType,
-    buffer,
-    oversized: false,
-    unsupported: false,
+    readabilityStatus: "readable",
+    flags: [],
+    charCount,
   };
 };
 
-const callGeminiDocumentCheck = async ({
-  documentUrl,
-  documentType,
-  idType,
-}) => {
-  const apiKey = getDocumentPrecheckApiKey();
-  const model = getDocumentPrecheckModel();
-  const timeoutMs = getDocumentPrecheckTimeoutMs();
-  const downloaded = await downloadDocument(documentUrl);
-
-  if (downloaded.unsupported) {
-    return buildResult({
-      status: "warning",
-      warnings: [
-        "This file type could not be analyzed automatically. Admin will review it manually.",
-      ],
-      summary: "Automatic analysis skipped because the file type is unsupported.",
-      provider: "basic_checks",
-    });
+const evaluateDocumentType = ({ documentType, text, idType }) => {
+  const upperText = toUpperText(text);
+  if (!upperText) {
+    return { documentTypeStatus: "unknown", flags: [] };
   }
 
-  if (downloaded.oversized) {
-    return buildResult({
-      status: "warning",
-      warnings: [
-        "This file is too large for automatic pre-checking. Admin will review it manually.",
-      ],
-      summary: "Automatic analysis skipped because the uploaded file is too large.",
-      provider: "basic_checks",
-    });
-  }
+  const expectedKeywords = getExpectedKeywords(documentType, idType);
+  const expectedMatchCount = countKeywordMatches(upperText, expectedKeywords);
 
-  const response = await fetchWithTimeout(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text: buildPrompt({ documentType, idType }),
-              },
-              {
-                inlineData: {
-                  mimeType: downloaded.mimeType,
-                  data: downloaded.buffer.toString("base64"),
-                },
-              },
-            ],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.1,
-          responseMimeType: "application/json",
-        },
-      }),
+  const conflictingGroups = getConflictingKeywordGroups(documentType);
+  const strongestConflict = conflictingGroups.reduce(
+    (best, group) => {
+      const matchCount = countKeywordMatches(upperText, group.keywords);
+      if (matchCount > best.matchCount) {
+        return { matchCount, status: group.status };
+      }
+      return best;
     },
-    timeoutMs,
+    { matchCount: 0, status: "unknown" },
   );
 
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => "");
-    logger.warn(
-      {
-        status: response.status,
-        documentType,
-        model,
-        detail: errorText.slice(0, 180),
-      },
-      "Gemini document pre-check request failed",
-    );
-    throw new Error(`Document pre-check request failed with status ${response.status}.`);
+  if (expectedMatchCount >= 2) {
+    return { documentTypeStatus: "possible_match", flags: [] };
   }
 
-  const payload = await response.json();
-  const text = extractGeminiText(payload);
-  if (!text) {
-    throw new Error("Document pre-check returned an empty response.");
+  if (expectedMatchCount === 0 && strongestConflict.matchCount >= 2) {
+    return {
+      documentTypeStatus: "possible_mismatch",
+      flags: ["possible_wrong_document_type"],
+    };
   }
 
-  const parsed = parseJsonText(text);
-  const warnings = normalizeWarnings(parsed?.warnings);
-  const status = normalizeAiStatus(parsed?.status, warnings);
-
-  return buildResult({
-    status,
-    warnings,
-    summary:
-      String(parsed?.summary || "").trim() ||
-      (status === "passed"
-        ? "Document appears usable for admin review."
-        : "Document may need applicant attention before admin review."),
-    provider: "gemini",
-  });
+  return { documentTypeStatus: "unknown", flags: [] };
 };
 
-const buildGenericFailureFallback = (error) => {
-  const timedOut = error?.name === "AbortError";
-  return buildResult({
-    status: "error",
-    warnings: [
-      timedOut
-        ? "Automatic document pre-check timed out. Admin will review this file manually."
-        : "Automatic document pre-check could not be completed. Admin will review this file manually.",
-    ],
-    summary: timedOut
-      ? "Automatic document pre-check timed out. Admin will review this file manually."
-      : "Automatic document pre-check is temporarily unavailable. Admin will review this file manually.",
-    provider: "error",
-  });
+const runOcr = async (buffer) => {
+  let worker = null;
+  try {
+    worker = await withTimeout(
+      createWorker("eng"),
+      getDocumentPrecheckTimeoutMs(),
+    );
+    const result = await withTimeout(
+      worker.recognize(buffer),
+      getDocumentPrecheckTimeoutMs(),
+    );
+
+    return {
+      text: result?.data?.text || "",
+      confidence: result?.data?.confidence ?? null,
+    };
+  } finally {
+    if (worker && typeof worker.terminate === "function") {
+      await worker.terminate().catch(() => {});
+    }
+  }
+};
+
+const buildNeedsReuploadMessage = ({
+  readabilityStatus,
+  documentTypeStatus,
+}) => {
+  if (documentTypeStatus === "possible_mismatch") {
+    return {
+      applicantMessage:
+        "Document uploaded successfully, but it may not match the required document type. Please check the file and re-upload the correct document before submitting.",
+      adminNote:
+        "OCR flagged a possible document type mismatch. Please inspect manually.",
+    };
+  }
+
+  if (readabilityStatus === "unreadable") {
+    return {
+      applicantMessage:
+        "Document uploaded successfully, but the image appears unclear or unreadable. Please re-upload a clearer copy before submitting your application.",
+      adminNote:
+        "OCR could not detect enough readable text. Please inspect manually.",
+    };
+  }
+
+  return {
+    applicantMessage:
+      "Document uploaded successfully, but the image appears unclear or unreadable. Please re-upload a clearer copy before submitting your application.",
+    adminNote: "OCR flagged low readability. Please inspect manually.",
+  };
 };
 
 export const runReservationDocumentPrecheck = async ({
@@ -305,39 +554,111 @@ export const runReservationDocumentPrecheck = async ({
   idType = "",
 }) => {
   if (!documentUrl) {
-    return buildResult({
-      status: "failed",
-      warnings: ["No document was uploaded for checking."],
-      summary: "Upload a document first before running the pre-check.",
-      provider: "basic_checks",
+    return buildNeedsReuploadResult({
+      readabilityStatus: "unreadable",
+      applicantMessage:
+        "Document uploaded successfully, but the image appears unclear or unreadable. Please re-upload a clearer copy before submitting your application.",
+      adminNote: "No document URL was provided for OCR pre-check.",
+      flags: ["missing_document_url"],
     });
   }
 
-  if (!getDocumentPrecheckApiKey()) {
-    return buildResult({
-      status: "error",
-      warnings: [],
-      summary:
-        "Automatic document pre-check is unavailable right now. Admin will review this file manually.",
-      provider: "unconfigured",
+  if (!OCR_SUPPORTED_DOCUMENT_TYPES.has(documentType)) {
+    return buildManualFallbackResult({
+      flags: ["ocr_not_supported_for_document_type"],
+    });
+  }
+
+  if (!isAllowedReservationDocumentUrl(documentUrl)) {
+    return buildNeedsReuploadResult({
+      readabilityStatus: "unreadable",
+      applicantMessage:
+        "Please upload this document through the portal before running the readability check.",
+      adminNote:
+        "Document URL was not from an allowed upload source. OCR fetch was skipped.",
+      flags: ["invalid_document_url"],
     });
   }
 
   try {
-    return await callGeminiDocumentCheck({
-      documentUrl,
+    const downloaded = await downloadDocument(documentUrl);
+
+    if (downloaded.unsupported) {
+      return buildManualFallbackResult({
+        flags: ["unsupported_file_type_for_ocr"],
+      });
+    }
+
+    if (downloaded.oversized) {
+      return buildManualFallbackResult({
+        flags: ["file_too_large_for_ocr"],
+      });
+    }
+
+    const ocrResult = await runOcr(downloaded.buffer);
+    const readability = evaluateReadability(ocrResult);
+    const typeCheck = evaluateDocumentType({
       documentType,
+      text: ocrResult.text,
       idType,
+    });
+
+    if (readability.readabilityStatus !== "readable") {
+      const messages = buildNeedsReuploadMessage({
+        readabilityStatus: readability.readabilityStatus,
+        documentTypeStatus: typeCheck.documentTypeStatus,
+      });
+      return buildNeedsReuploadResult({
+        readabilityStatus: readability.readabilityStatus,
+        documentTypeStatus: typeCheck.documentTypeStatus,
+        applicantMessage: messages.applicantMessage,
+        adminNote: messages.adminNote,
+        confidence: ocrResult.confidence,
+        flags: [...readability.flags, ...typeCheck.flags],
+      });
+    }
+
+    if (typeCheck.documentTypeStatus === "possible_mismatch") {
+      const messages = buildNeedsReuploadMessage({
+        readabilityStatus: readability.readabilityStatus,
+        documentTypeStatus: typeCheck.documentTypeStatus,
+      });
+      return buildNeedsReuploadResult({
+        readabilityStatus: "readable",
+        documentTypeStatus: "possible_mismatch",
+        applicantMessage: messages.applicantMessage,
+        adminNote: messages.adminNote,
+        confidence: ocrResult.confidence,
+        flags: typeCheck.flags,
+      });
+    }
+
+    return buildReadyResult({
+      documentTypeStatus: typeCheck.documentTypeStatus,
+      confidence: ocrResult.confidence,
+      flags: typeCheck.flags,
     });
   } catch (error) {
     logger.warn(
       {
         err: error,
         documentType,
-        model: getDocumentPrecheckModel(),
       },
-      "Document pre-check fell back to manual review",
+      "Document OCR pre-check fell back to manual review",
     );
-    return buildGenericFailureFallback(error);
+
+    return buildManualFallbackResult({
+      flags:
+        error?.name === "OcrTimeoutError" || error?.name === "AbortError"
+          ? ["ocr_timeout"]
+          : ["ocr_runtime_fallback"],
+    });
   }
+};
+
+export {
+  getDocumentPrecheckStartupStatus,
+  getDocumentPrecheckTimeoutMs,
+  isAllowedReservationDocumentUrl,
+  logDocumentPrecheckStartupStatus,
 };

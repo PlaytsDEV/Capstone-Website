@@ -17,6 +17,7 @@ import { showNotification } from "../../../../shared/utils/notification";
 import { useVisitAvailability } from "../../../../shared/hooks/queries/useReservations";
 import { useFirebaseAuth } from "../../../../shared/hooks/FirebaseAuthContext";
 import { getRemoteViewingImages } from "../check-availability/checkAvailabilityConstants";
+import { APP_LOCALE } from "../../../../shared/utils/dateFormat";
 
 const TIME_SLOTS = [
   { label: "08:00 AM", available: true, capacity: 5, remaining: 5 },
@@ -80,7 +81,7 @@ function getTomorrowISO() {
 function fmtDateFull(dateStr) {
   if (!dateStr) return "Not scheduled";
   const cleanDate = String(dateStr).split("T")[0];
-  return new Date(`${cleanDate}T12:00:00`).toLocaleDateString("en-US", {
+  return new Date(`${cleanDate}T12:00:00`).toLocaleDateString(APP_LOCALE, {
     weekday: "long",
     month: "long",
     day: "numeric",
@@ -208,7 +209,7 @@ const ReservationVisitStep = ({
   const reservationId = reservationData?._id || "";
   const hasSavedPhysicalVisit =
     selectedVisit === "physical_visit" &&
-    Boolean(visitCompleted && visitDate && visitTime) &&
+    Boolean(visitDate && visitTime) &&
     !scheduleRejected;
   const showPhysicalVisitSummary =
     !readOnly && hasSavedPhysicalVisit && !isEditingPhysicalVisit;
@@ -613,7 +614,7 @@ const ReservationVisitStep = ({
                           <small>
                             {disabled
                               ? "Closed"
-                              : date.toLocaleDateString("en-US", { month: "short" })}
+                              : date.toLocaleDateString(APP_LOCALE, { month: "short" })}
                           </small>
                         </div>
                       </button>
@@ -838,7 +839,13 @@ const ReservationVisitStep = ({
               onClick={handleContinue}
               disabled={isSaving}
             >
-              {isSaving ? "Saving..." : "Save and Continue to Tenant Application"}
+              {isSaving
+                ? "Saving..."
+                : selectedVisit === "physical_visit"
+                  ? "Save Visit Schedule"
+                  : selectedVisit === "urgent_move_in_review"
+                    ? "Save and Return to Dashboard"
+                    : "Save and Return to Dashboard"}
             </button>
           </div>
         </>

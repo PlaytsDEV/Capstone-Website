@@ -50,6 +50,69 @@ const generateRandomCode = (prefix, length = 6) => {
 
 const documentPrecheckSchema = new mongoose.Schema(
   {
+    precheckProvider: {
+      type: String,
+      default: "ocr",
+      trim: true,
+      maxlength: 40,
+    },
+    precheckStatus: {
+      type: String,
+      enum: [
+        "not_checked",
+        "checking",
+        "ready_for_submission",
+        "needs_reupload",
+        "manual_review_fallback",
+      ],
+      default: "not_checked",
+    },
+    readabilityStatus: {
+      type: String,
+      enum: [
+        "unknown",
+        "readable",
+        "low_readability",
+        "unreadable",
+        "ocr_unavailable",
+      ],
+      default: "unknown",
+    },
+    documentTypeStatus: {
+      type: String,
+      enum: ["possible_match", "possible_mismatch", "unknown"],
+      default: "unknown",
+    },
+    canSubmit: {
+      type: Boolean,
+      default: true,
+    },
+    requiresManualReview: {
+      type: Boolean,
+      default: true,
+    },
+    applicantMessage: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 500,
+    },
+    adminNote: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 500,
+    },
+    confidence: {
+      type: Number,
+      default: null,
+      min: 0,
+      max: 100,
+    },
+    flags: {
+      type: [String],
+      default: [],
+    },
     aiCheckStatus: {
       type: String,
       enum: [
@@ -233,6 +296,7 @@ const reservationSchema = new mongoose.Schema(
         "no_show",
         "rescheduled",
         "visit_cancelled",
+        "allowed_without_visit",
         null,
       ],
       default: null,
@@ -277,6 +341,7 @@ const reservationSchema = new mongoose.Schema(
               "completed",
               "no_show",
               "visit_cancelled",
+              "allowed_without_visit",
             ],
             default: "pending",
           },

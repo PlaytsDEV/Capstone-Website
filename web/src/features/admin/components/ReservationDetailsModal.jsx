@@ -13,6 +13,10 @@ import {
  getReservationStatusAppearance,
  readMoveInDate,
 } from "../../../shared/utils/lifecycleNaming";
+import {
+ fmtDate as sharedFmtDate,
+ fmtDateTime as sharedFmtDateTime,
+} from "../../../shared/utils/dateFormat";
 import { showNotification } from "../../../shared/utils/notification";
 import "../styles/reservation-details-modal.css";
 
@@ -73,35 +77,8 @@ const fmt = (value) =>
 
 
 
-const fmtDate = (value) => {
- if (!value) return "\u2014";
-
- try {
- return new Date(value).toLocaleDateString("en-US", {
- year: "numeric",
- month: "short",
- day: "numeric",
- });
- } catch {
- return value;
- }
-};
-
-const fmtDateTime = (value) => {
- if (!value) return "\u2014";
-
- try {
- return new Date(value).toLocaleString("en-US", {
- month: "short",
- day: "numeric",
- year: "numeric",
- hour: "2-digit",
- minute: "2-digit",
- });
- } catch {
- return value;
- }
-};
+const fmtDate = sharedFmtDate;
+const fmtDateTime = sharedFmtDateTime;
 
 const toDateInputValue = (value) => {
  if (!value) return "";
@@ -122,9 +99,9 @@ const getTomorrowISO = () => {
 
 const VISIT_STATUS_CONFIG = {
  physical_visit_scheduled: {
- label: "Physical Visit Scheduled",
- color: "#1D4ED8",
- bg: "#DBEAFE",
+  label: "Physical Visit Scheduled",
+  color: "#1D4ED8",
+  bg: "#DBEAFE",
  dot: "#3B82F6",
  },
  visit_completed: {
@@ -146,10 +123,16 @@ const VISIT_STATUS_CONFIG = {
  dot: "#8B5CF6",
  },
  visit_cancelled: {
- label: "Visit Cancelled",
- color: "#B91C1C",
- bg: "#FEE2E2",
- dot: "#EF4444",
+  label: "Visit Cancelled",
+  color: "#B91C1C",
+  bg: "#FEE2E2",
+  dot: "#EF4444",
+ },
+ allowed_without_visit: {
+  label: "Allowed to Proceed Without Visit",
+  color: "#0F766E",
+  bg: "#CCFBF1",
+  dot: "#14B8A6",
  },
 };
 
@@ -162,6 +145,7 @@ const getVisitStatusKey = (reservation) => {
  const explicit = String(reservation?.visitStatus || "").trim();
  if (VISIT_STATUS_CONFIG[explicit]) return explicit;
  if (reservation?.scheduleRejected) return "visit_cancelled";
+ if (reservation?.visitApproved) return "visit_completed";
  if (hasPhysicalVisit(reservation)) return "physical_visit_scheduled";
  return "";
 };
@@ -209,21 +193,41 @@ const buildDocs = (reservation) => [
 ];
 
 const getPrecheckAppearance = (precheck) => {
+ const precheckStatus = String(precheck?.precheckStatus || "").toLowerCase();
+ if (precheckStatus === "ready_for_submission") {
+ return { label: "Ready for Submission", color: "#047857", bg: "#D1FAE5" };
+ }
+ if (precheckStatus === "checking") {
+ return { label: "Checking", color: "#1D4ED8", bg: "#DBEAFE" };
+ }
+ if (
+ precheckStatus === "needs_reupload" &&
+ precheck?.documentTypeStatus === "possible_mismatch"
+ ) {
+ return { label: "Check Document Type", color: "#B45309", bg: "#FEF3C7" };
+ }
+ if (precheckStatus === "needs_reupload") {
+ return { label: "Needs Clearer Upload", color: "#B91C1C", bg: "#FEE2E2" };
+ }
+ if (precheckStatus === "manual_review_fallback") {
+ return { label: "Manual Review Required", color: "#7C3AED", bg: "#EDE9FE" };
+ }
+
  const status = String(precheck?.aiCheckStatus || "not_checked").toLowerCase();
  if (status === "passed") {
- return { label: "Pre-check Passed", color: "#047857", bg: "#D1FAE5" };
+ return { label: "Ready for Submission", color: "#047857", bg: "#D1FAE5" };
  }
  if (status === "checking") {
  return { label: "Checking", color: "#1D4ED8", bg: "#DBEAFE" };
  }
  if (status === "warning") {
- return { label: "Needs Attention", color: "#B45309", bg: "#FEF3C7" };
+ return { label: "Check Document Type", color: "#B45309", bg: "#FEF3C7" };
  }
  if (status === "failed") {
- return { label: "Pre-check Failed", color: "#B91C1C", bg: "#FEE2E2" };
+ return { label: "Needs Clearer Upload", color: "#B91C1C", bg: "#FEE2E2" };
  }
  if (status === "error") {
- return { label: "Manual Review", color: "#7C3AED", bg: "#EDE9FE" };
+ return { label: "Manual Review Required", color: "#7C3AED", bg: "#EDE9FE" };
  }
  return null;
 };
@@ -386,6 +390,15 @@ export default function ReservationDetailsModal({
  const rescheduleSlots = rescheduleDateOption?.slots?.length
  ? rescheduleDateOption.slots
  : [];
+ const visitHistory = Array.isArray(reservation?.visitHistory)
+ ? reservation.visitHistory
+     .slice()
+     .sort(
+       (a, b) =>
+         new Date(b?.updatedAt || b?.scheduledAt || 0) -
+         new Date(a?.updatedAt || a?.scheduledAt || 0),
+     )
+ : [];
 
  if (!reservation) return null;
  const viewingPreferenceLabel =
@@ -506,8 +519,8 @@ export default function ReservationDetailsModal({
  setConfirmModal((previous) => ({ ...previous, open: false }));
  setIsSubmitting(true);
 
- try {
- await reservationApi.manageVisit(reservationId, {
+     try {
+ const result = await reservationApi.manageVisit(reservationId, {
  action,
  note: visitRemarks.trim(),
  ...payload,
@@ -519,7 +532,10 @@ export default function ReservationDetailsModal({
  ? queryClient.invalidateQueries({ queryKey: ["reservations", "detail", reservationId] })
  : Promise.resolve(),
  ]);
- showNotification(successMsg, "success");
+ showNotification(result?.message || successMsg, "success");
+ if (result?.emailWarning) {
+ showNotification(result.emailWarning, "warning");
+ }
  onUpdate?.();
  onClose();
  } catch (error) {
@@ -547,8 +563,8 @@ export default function ReservationDetailsModal({
 
  setIsSubmitting(true);
 
- try {
- await reservationApi.manageVisit(reservationId, {
+  try {
+ const result = await reservationApi.manageVisit(reservationId, {
  action: "reschedule",
  note: visitRemarks.trim(),
  visitDate: rescheduleDate,
@@ -561,7 +577,10 @@ export default function ReservationDetailsModal({
  ? queryClient.invalidateQueries({ queryKey: ["reservations", "detail", reservationId] })
  : Promise.resolve(),
  ]);
- showNotification("Visit schedule updated", "success");
+ showNotification(result?.message || "Visit schedule updated", "success");
+ if (result?.emailWarning) {
+ showNotification(result.emailWarning, "warning");
+ }
  onUpdate?.();
  onClose();
  } catch (error) {
@@ -729,7 +748,7 @@ export default function ReservationDetailsModal({
  </h4>
  <p className="rdm-visit-management-copy">
  Track the physical visit separately from application review. Completing a
- visit does not unlock payment.
+ visit or allowing the applicant to proceed will not unlock payment.
  </p>
  </div>
  {visitStatusAppearance && (
@@ -791,6 +810,64 @@ export default function ReservationDetailsModal({
  <div className="rdm-visit-management-note">
  <span className="rdm-info-label">Latest Visit Remarks</span>
  <p>{reservation.visitOutcomeNotes}</p>
+ </div>
+ )}
+
+ {visitHistory.length > 0 && (
+ <div className="rdm-visit-management-note" style={{ marginTop: 12 }}>
+ <span className="rdm-info-label">Visit History</span>
+ <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
+ {visitHistory.slice(0, 5).map((entry, index) => (
+ <div
+ key={`${entry.status || "visit"}-${entry.updatedAt || entry.scheduledAt || index}`}
+ style={{
+ padding: "10px 12px",
+ borderRadius: 10,
+ background: "rgba(15, 23, 42, 0.03)",
+ border: "1px solid rgba(15, 23, 42, 0.08)",
+ }}
+ >
+ <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+ <strong style={{ fontSize: "0.84rem", color: "#0F172A" }}>
+ {VISIT_STATUS_CONFIG[entry.status]?.label ||
+  (entry.status === "completed"
+    ? "Visit Completed"
+    : entry.status === "no_show"
+      ? "No-Show"
+      : entry.status === "visit_cancelled"
+        ? "Visit Cancelled"
+        : entry.status === "rescheduled"
+          ? "Rescheduled"
+          : entry.status === "allowed_without_visit"
+            ? "Allowed to Proceed Without Visit"
+            : "Visit Updated")}
+ </strong>
+ <span style={{ fontSize: "0.78rem", color: "#64748B" }}>
+ {fmtDateTime(entry.updatedAt || entry.scheduledAt)}
+ </span>
+ </div>
+ <div style={{ fontSize: "0.8rem", color: "#334155", marginTop: 6 }}>
+ Old: {fmtDate(entry.visitDate)} {entry.visitTime ? `at ${entry.visitTime}` : ""}
+ </div>
+ {(entry.rescheduledToDate || entry.rescheduledToTime) && (
+ <div style={{ fontSize: "0.8rem", color: "#334155", marginTop: 4 }}>
+ New: {fmtDate(entry.rescheduledToDate)}{" "}
+ {entry.rescheduledToTime ? `at ${entry.rescheduledToTime}` : ""}
+ </div>
+ )}
+ {entry.updatedByName && (
+ <div style={{ fontSize: "0.78rem", color: "#64748B", marginTop: 4 }}>
+ Updated by {entry.updatedByName}
+ </div>
+ )}
+ {entry.notes && (
+ <div style={{ fontSize: "0.8rem", color: "#475569", marginTop: 6 }}>
+ {entry.notes}
+ </div>
+ )}
+ </div>
+ ))}
+ </div>
  </div>
  )}
 
@@ -871,6 +948,23 @@ export default function ReservationDetailsModal({
  }
  >
  Cancel Visit Schedule
+ </button>
+ <button
+ type="button"
+ className="rdm-action rdm-action-outline"
+ disabled={isSubmitting}
+ onClick={() =>
+ runVisitManagementAction({
+ action: "allow_without_visit",
+ successMsg: "Applicant may proceed without a completed visit",
+ modalTitle: "Allow Application Without Visit",
+ modalMessage:
+ "Allow the applicant to continue to the tenant application without a completed physical visit. This will not approve the application or unlock payment.",
+ confirmText: "Allow Application",
+ })
+ }
+ >
+ Allow Application Without Visit
  </button>
  </div>
 
@@ -1059,10 +1153,15 @@ export default function ReservationDetailsModal({
  <span className="rdm-doc-label">{doc.label}</span>
  {(() => {
  const appearance = getPrecheckAppearance(doc.precheck);
- const warnings = Array.isArray(doc.precheck?.aiCheckWarnings)
- ? doc.precheck.aiCheckWarnings.filter(Boolean)
- : [];
- if (!appearance && warnings.length === 0) return null;
+ const notes = [
+ doc.precheck?.adminNote,
+ ...(Array.isArray(doc.precheck?.aiCheckWarnings)
+ ? doc.precheck.aiCheckWarnings
+ : []),
+ ]
+ .map((note) => String(note || "").trim())
+ .filter(Boolean);
+ if (!appearance && notes.length === 0) return null;
  return (
  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
  {appearance ? (
@@ -1082,7 +1181,7 @@ export default function ReservationDetailsModal({
  {appearance.label}
  </span>
  ) : null}
- {warnings.slice(0, 2).map((warning, warningIndex) => (
+ {notes.slice(0, 2).map((warning, warningIndex) => (
  <span
  key={`${doc.label}-warning-${warningIndex}`}
  style={{ fontSize: "0.78rem", color: "#6B7280", lineHeight: 1.4 }}

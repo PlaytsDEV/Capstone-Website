@@ -14,7 +14,7 @@ import { verifyToken } from "../middleware/auth.js";
 const router = express.Router();
 
 // ── ImageKit credentials ──────────────────────────────────────
-const IMAGEKIT_PRIVATE_KEY = process.env.IMAGEKIT_PRIVATE_KEY || "private_o9ryYhjsKuLWMHMOTFzTp5Oq6K8=";
+const IMAGEKIT_PRIVATE_KEY = String(process.env.IMAGEKIT_PRIVATE_KEY || "").trim();
 
 /**
  * GET /api/upload/imagekit-auth
@@ -25,6 +25,14 @@ const IMAGEKIT_PRIVATE_KEY = process.env.IMAGEKIT_PRIVATE_KEY || "private_o9ryYh
  * Returns: { token, expire, signature }
  */
 router.get("/imagekit-auth", verifyToken, (req, res) => {
+  if (!IMAGEKIT_PRIVATE_KEY) {
+    return res.status(503).json({
+      success: false,
+      error: "ImageKit uploads are not configured.",
+      code: "IMAGEKIT_NOT_CONFIGURED",
+    });
+  }
+
   const token = crypto.randomUUID();
   const expire = Math.floor(Date.now() / 1000) + 60 * 30; // 30 min validity
   const privateKey = IMAGEKIT_PRIVATE_KEY;

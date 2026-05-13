@@ -7,6 +7,7 @@ import {
  validateNameField,
  validatePHPhoneLocal,
 } from "../../../utils/reservationValidation";
+import { hasBlockingPrecheck } from "../../../utils/documentPrecheckUtils";
 
 const errBorder = (show, value) =>
  show && !value ? "1.5px solid #dc2626" : undefined;
@@ -321,7 +322,10 @@ const PersonalInfoSection = ({
  aiCheck={documentPrechecks?.validIDFront}
  isChecking={Boolean(runningDocumentChecks?.validIDFront)}
  hint="Government-issued ID (Front side)"
- hasError={showValidationErrors && !validIDFront}
+ hasError={
+ showValidationErrors &&
+ (!validIDFront || hasBlockingPrecheck(documentPrechecks?.validIDFront))
+ }
  required
  />
  </div>
@@ -341,7 +345,10 @@ const PersonalInfoSection = ({
  aiCheck={documentPrechecks?.validIDBack}
  isChecking={Boolean(runningDocumentChecks?.validIDBack)}
  hint="Government-issued ID (Back side)"
- hasError={showValidationErrors && !validIDBack}
+ hasError={
+ showValidationErrors &&
+ (!validIDBack || hasBlockingPrecheck(documentPrechecks?.validIDBack))
+ }
  required
  />
  </div>
@@ -360,7 +367,11 @@ const PersonalInfoSection = ({
  aiCheck={documentPrechecks?.nbiClearance}
  isChecking={Boolean(runningDocumentChecks?.nbiClearance)}
  hint="NBI Clearance or additional valid ID"
- hasError={showValidationErrors && !nbiClearance && !nbiReason}
+ hasError={
+ showValidationErrors &&
+ ((!nbiClearance && !nbiReason) ||
+ (Boolean(nbiClearance) && hasBlockingPrecheck(documentPrechecks?.nbiClearance)))
+ }
  />
  </div>
 

@@ -1,6 +1,7 @@
 import React from "react";
 import FileUploadField from "./FileUploadField";
 import { validatePHPhoneOrLandline } from "../../../utils/reservationValidation";
+import { hasBlockingPrecheck } from "../../../utils/documentPrecheckUtils";
 
 const errBorder = (show, value) =>
  show && !value ? "1.5px solid #dc2626" : undefined;
@@ -209,7 +210,11 @@ const EmploymentSection = ({
  aiCheck={documentPrechecks?.companyID}
  isChecking={Boolean(runningDocumentChecks?.companyID)}
  hint="Company ID or employee badge"
- hasError={showValidationErrors && !companyID && !companyIDReason}
+ hasError={
+ showValidationErrors &&
+ ((!companyID && !companyIDReason) ||
+ (Boolean(companyID) && hasBlockingPrecheck(documentPrechecks?.companyID)))
+ }
  />
  </div>
 

@@ -45,6 +45,7 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   Bill: {
     find: billFind,
   },
+  BedHistory: {},
 }));
 
 await jest.unstable_mockModule("../utils/adminAccess.js", () => ({
@@ -113,6 +114,7 @@ await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
   normalizeUtilityEventType: jest.fn((eventType) => eventType),
   readMoveInDate: jest.fn((reservation) => reservation?.moveInDate || null),
   readMoveOutDate: jest.fn((reservation) => reservation?.moveOutDate || null),
+  reservationStatusesForQuery: jest.fn((...statuses) => statuses),
   serializeUtilityPeriod: jest.fn((period) => period),
   serializeUtilityReading: jest.fn((reading) => reading),
   utilityEventTypesForQuery: jest.fn(() => []),

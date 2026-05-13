@@ -35,6 +35,10 @@ import {
   validatePHPhoneLocal,
   validatePHPhoneOrLandline,
 } from "../utils/reservationValidation";
+import {
+  canProceedToApplicationAfterVisit,
+  getReservationViewingPreference,
+} from "../utils/physicalVisitFlow";
 
 // Returns a sessionStorage key scoped to the Firebase UID when known,
 // falling back to the legacy unscoped key for backward compatibility.
@@ -67,12 +71,29 @@ const isReservationPaymentConfirmed = (reservation) => {
 };
 
 const EMPTY_DOCUMENT_PRECHECK = Object.freeze({
+  precheckProvider: "ocr",
+  precheckStatus: "not_checked",
+  readabilityStatus: "unknown",
+  documentTypeStatus: "unknown",
+  canSubmit: true,
+  requiresManualReview: true,
+  applicantMessage: "",
+  adminNote: "",
+  confidence: null,
+  flags: [],
   aiCheckStatus: "not_checked",
   aiCheckWarnings: [],
   aiCheckedAt: null,
   requiresAdminAttention: false,
   summaryMessage: "",
-  provider: "system",
+  provider: "ocr",
+});
+
+const DOCUMENT_PRECHECK_LABELS = Object.freeze({
+  validIDFront: "Valid ID (Front)",
+  validIDBack: "Valid ID (Back)",
+  nbiClearance: "NBI Clearance",
+  companyID: "Company ID",
 });
 
 const createEmptyDocumentPrechecks = () => ({
@@ -82,9 +103,26 @@ const createEmptyDocumentPrechecks = () => ({
   companyID: { ...EMPTY_DOCUMENT_PRECHECK },
 });
 
+const resolveDocumentPrecheckStatus = (entry = {}) => {
+  const explicitStatus = String(entry?.precheckStatus || "").trim();
+  if (explicitStatus && explicitStatus !== "not_checked") return explicitStatus;
+  if (entry?.aiCheckStatus === "passed") return "ready_for_submission";
+  if (entry?.aiCheckStatus === "failed" || entry?.aiCheckStatus === "warning") {
+    return "needs_reupload";
+  }
+  if (entry?.aiCheckStatus === "error") return "manual_review_fallback";
+  return "not_checked";
+};
+
 const normalizeDocumentPrecheckEntry = (entry) => ({
   ...EMPTY_DOCUMENT_PRECHECK,
   ...(entry || {}),
+  precheckStatus: resolveDocumentPrecheckStatus(entry),
+  readabilityStatus: entry?.readabilityStatus || EMPTY_DOCUMENT_PRECHECK.readabilityStatus,
+  documentTypeStatus:
+    entry?.documentTypeStatus || EMPTY_DOCUMENT_PRECHECK.documentTypeStatus,
+  canSubmit: entry?.canSubmit !== false,
+  flags: Array.isArray(entry?.flags) ? entry.flags.filter(Boolean) : [],
   aiCheckWarnings: Array.isArray(entry?.aiCheckWarnings)
     ? entry.aiCheckWarnings.filter(Boolean)
     : [],
@@ -96,6 +134,41 @@ const normalizeDocumentPrechecks = (prechecks = {}) => ({
   nbiClearance: normalizeDocumentPrecheckEntry(prechecks.nbiClearance),
   companyID: normalizeDocumentPrecheckEntry(prechecks.companyID),
 });
+
+const isBlockingDocumentPrecheck = (precheck = {}) => {
+  const status = resolveDocumentPrecheckStatus(precheck);
+  if (status === "manual_review_fallback") return false;
+  return (
+    status === "needs_reupload" ||
+    precheck?.readabilityStatus === "low_readability" ||
+    precheck?.readabilityStatus === "unreadable" ||
+    precheck?.documentTypeStatus === "possible_mismatch" ||
+    precheck?.canSubmit === false
+  );
+};
+
+const getDocumentPrecheckBlockMessage = (label, precheck = {}) =>
+  precheck?.applicantMessage ||
+  precheck?.summaryMessage ||
+  `${label} needs a clearer readable upload before submission.`;
+
+const resolveTargetStage = (status, viewingPreference, applicationUnlockedByVisit) => {
+  const map = {
+    pending: 1,
+    viewing_preference_selected:
+      viewingPreference === "physical_visit" && !applicationUnlockedByVisit ? 2 : 3,
+    visit_pending: 2,
+    visit_approved: applicationUnlockedByVisit ? 3 : 2,
+    pending_application_review: 3,
+    needs_revision: 3,
+    rejected: 3,
+    approved_for_payment: 4,
+    payment_pending: 4,
+    reserved: 5,
+    moveIn: 5,
+  };
+  return map[status] || 1;
+};
 
 export default function useReservationFlow() {
   const navigate = useNavigate();
@@ -298,12 +371,31 @@ export default function useReservationFlow() {
   const isStageLocked = (stageId) => {
     const reservationStatus = normalizeReservationStatus(reservationData?.status);
     const needsRevision = hasReservationStatus(reservationStatus, "needs_revision");
+    const applicationUnlockedByVisit = canProceedToApplicationAfterVisit({
+      ...reservationData,
+      viewingPreference:
+        reservationData?.viewingPreference || getReservationViewingPreference({
+          ...reservationData,
+          viewingPreference: viewingType,
+          viewingType,
+          visitDate,
+          visitTime,
+        }),
+      viewingType,
+      visitDate,
+      visitTime,
+      visitStatus: reservationData?.visitStatus,
+      status: reservationStatus,
+    });
     if (paymentApproved) return stageId < 5;
     if (stageId === 1) return visitCompleted;
     if (stageId === 2)
       return applicationSubmitted && !needsRevision && !scheduleRejected;
     if (stageId === 3)
-      return applicationSubmitted && !editingApplication && !needsRevision;
+      return (
+        !applicationUnlockedByVisit ||
+        (applicationSubmitted && !editingApplication && !needsRevision)
+      );
     if (stageId === 4) return paymentSubmitted || paymentApproved;
     return false;
   };
@@ -453,6 +545,12 @@ export default function useReservationFlow() {
 
   const computeLockingFlags = (r) => {
     const status = normalizeReservationStatus(r.status);
+    const viewingPreference = getReservationViewingPreference(r);
+    const applicationUnlockedByVisit = canProceedToApplicationAfterVisit({
+      ...r,
+      status,
+      viewingPreference,
+    });
     // Status-driven flags (primary) with data-presence fallback (backward compat)
     const VIEWING_SELECTED_STATUSES = [
       "viewing_preference_selected",
@@ -476,9 +574,11 @@ export default function useReservationFlow() {
 
     const hasViewingPreference =
       VIEWING_SELECTED_STATUSES.includes(status) ||
-      Boolean(r.viewingPreference || r.viewingType || r.visitDate);
+      Boolean(viewingPreference || r.visitDate);
     const isVisitApprovedFlag =
-      ["visit_approved"].includes(status) || Boolean(r.visitApproved === true);
+      ["visit_approved"].includes(status) ||
+      Boolean(r.visitApproved === true) ||
+      applicationUnlockedByVisit;
     const hasApplication =
       APPLICATION_STATUSES.includes(status) || Boolean(r.applicationSubmittedAt);
     const paymentUnlocked = canReservationAccessPayment(status);
@@ -489,7 +589,7 @@ export default function useReservationFlow() {
       Boolean(r.proofOfPaymentUrl);
     const isConfirmed = status === "reserved" || r.paymentStatus === "paid";
 
-    if (hasViewingPreference) setVisitCompleted(true);
+    if (hasViewingPreference) setVisitCompleted(applicationUnlockedByVisit);
     if (isVisitApprovedFlag) setVisitApproved(true);
     if (r.scheduleRejected) setScheduleRejected(true);
     if (r.scheduleRejectionReason) setScheduleRejectionReason(r.scheduleRejectionReason);
@@ -499,24 +599,12 @@ export default function useReservationFlow() {
     if (r.applicationReviewReason) setApplicationReviewReason(r.applicationReviewReason);
 
     // Status-driven highest stage
-    const STAGE_BY_STATUS = {
-      pending: 1,
-      viewing_preference_selected: 2,
-      visit_pending: 2,
-      visit_approved: 3,
-      pending_application_review: 3,
-      needs_revision: 3,
-      approved_for_payment: 4,
-      payment_pending: 4,
-      reserved: 5,
-      moveIn: 5,
-      rejected: 3,
-    };
-    let highest = STAGE_BY_STATUS[status] || 1;
+    let highest = resolveTargetStage(status, viewingPreference, applicationUnlockedByVisit);
     // Fallback: data-presence checks for legacy records still at "pending"
     if (highest === 1) {
       if (hasViewingPreference) highest = 2;
-      if (isVisitApprovedFlag) highest = 3;
+      if (hasViewingPreference && applicationUnlockedByVisit) highest = 3;
+      if (isVisitApprovedFlag) highest = Math.max(highest, 3);
       if (hasApplication) highest = Math.max(highest, 3);
       if (paymentUnlocked) highest = Math.max(highest, 4);
       if (hasPayment) highest = Math.max(highest, 4);
@@ -529,6 +617,7 @@ export default function useReservationFlow() {
       hasApplication,
       hasPayment,
       isConfirmed,
+      applicationUnlockedByVisit,
       highest,
     };
   };
@@ -674,6 +763,12 @@ export default function useReservationFlow() {
             currentOccupancy: room.currentOccupancy || 0,
             description: room.description || "",
           },
+          viewingPreference: active.viewingPreference || active.viewingType || "",
+          viewingType: active.viewingType || active.viewingPreference || "",
+          visitDate: active.visitDate || "",
+          visitTime: active.visitTime || "",
+          visitStatus: active.visitStatus || "",
+          visitCode: active.visitCode || "",
           selectedBed: active.selectedBed || null,
           selectedAppliances: active.selectedAppliances || [],
           applianceFees: active.applianceFees || 0,
@@ -759,6 +854,14 @@ export default function useReservationFlow() {
         _id: reservation._id || resId,
         status: reservation.status,
         room: reservation.roomId,
+        viewingPreference:
+          reservation.viewingPreference || reservation.viewingType || "",
+        viewingType:
+          reservation.viewingType || reservation.viewingPreference || "",
+        visitDate: reservation.visitDate || "",
+        visitTime: reservation.visitTime || "",
+        visitStatus: reservation.visitStatus || "",
+        visitCode: reservation.visitCode || "",
         selectedBed: reservation.selectedBed,
         selectedAppliances: reservation.selectedAppliances || [],
         applianceFees: reservation.applianceFees || 0,
@@ -791,24 +894,12 @@ export default function useReservationFlow() {
         hasPayment,
         isConfirmed,
         highest,
+        applicationUnlockedByVisit,
       } = computeLockingFlags(reservation);
 
       // Status-driven stage calculation
       const reservationStatus = normalizeReservationStatus(reservation.status);
-      const STAGE_BY_STATUS = {
-        pending: 1,
-        viewing_preference_selected: 2,
-        visit_pending: 2,
-        visit_approved: 3,
-        pending_application_review: 3,
-        needs_revision: 3,
-        rejected: 3,
-        approved_for_payment: 4,
-        payment_pending: 4,
-        reserved: 5,
-        moveIn: 5,
-      };
-      let targetStage = STAGE_BY_STATUS[reservationStatus] || 1;
+      let targetStage = resolveTargetStage(reservationStatus, getReservationViewingPreference(reservation), applicationUnlockedByVisit);
 
       // visit_pending: tenant must wait ΓÇö redirect to profile (unless rejected)
       if (false && reservationStatus === "visit_pending" && !reservation.scheduleRejected) {
@@ -1137,6 +1228,26 @@ export default function useReservationFlow() {
         _id: updated._id || previous?._id,
         status: updated.status || previous?.status,
         room: updated.roomId || previous?.room,
+        viewingPreference:
+          updated.viewingPreference ??
+          updated.viewingType ??
+          previous?.viewingPreference ??
+          previous?.viewingType ??
+          "",
+        viewingType:
+          updated.viewingType ??
+          updated.viewingPreference ??
+          previous?.viewingType ??
+          previous?.viewingPreference ??
+          "",
+        visitDate:
+          updated.visitDate ?? previous?.visitDate ?? "",
+        visitTime:
+          updated.visitTime ?? previous?.visitTime ?? "",
+        visitStatus:
+          updated.visitStatus ?? previous?.visitStatus ?? "",
+        visitCode:
+          updated.visitCode ?? previous?.visitCode ?? "",
         selectedBed: updated.selectedBed ?? previous?.selectedBed,
         selectedAppliances:
           updated.selectedAppliances ?? previous?.selectedAppliances ?? [],
@@ -1158,10 +1269,10 @@ export default function useReservationFlow() {
       const feedbackByPreference = {
         physical_visit: {
           toastMessage:
-            "Viewing preference saved. You may now complete your tenant application.",
+            "Viewing preference saved.",
           title: "Viewing preference saved",
           message:
-            "Your physical visit schedule has been saved. Please complete your tenant application and upload the required documents for admin review.",
+            "Your physical visit schedule has been saved. Please attend your scheduled room visit first. You may continue to the tenant application after admin confirms your visit or allows you to proceed.",
         },
         remote_2d_viewing: {
           toastMessage:
@@ -1319,8 +1430,13 @@ export default function useReservationFlow() {
         ...previous,
         [stateKey]: {
           ...normalizeDocumentPrecheckEntry(previous?.[stateKey]),
+          precheckStatus: "checking",
+          readabilityStatus: "unknown",
+          documentTypeStatus: "unknown",
+          canSubmit: false,
           aiCheckStatus: "checking",
           summaryMessage: "Checking document quality...",
+          applicantMessage: "Checking document quality...",
         },
       }));
 
@@ -1338,15 +1454,25 @@ export default function useReservationFlow() {
         return normalized;
         } catch (error) {
           const fallback = normalizeDocumentPrecheckEntry({
+            precheckProvider: "ocr",
+            precheckStatus: "manual_review_fallback",
+            readabilityStatus: "ocr_unavailable",
+            documentTypeStatus: "unknown",
+            canSubmit: true,
+            requiresManualReview: true,
+            applicantMessage:
+              "Document uploaded successfully. We could not complete the readability check, so this document will be reviewed manually.",
+            adminNote: "OCR could not complete. Manual review required.",
+            flags: ["ocr_manual_fallback"],
             aiCheckStatus: "error",
             aiCheckWarnings: [
-              "Automatic document pre-check could not be completed. Your documents will still be reviewed by admin.",
+              "OCR could not complete. Manual review required.",
             ],
            summaryMessage:
-              "Automatic document pre-check could not be completed. Your documents will still be reviewed by admin.",
+              "Document uploaded successfully. We could not complete the readability check, so this document will be reviewed manually.",
             requiresAdminAttention: true,
             aiCheckedAt: new Date().toISOString(),
-            provider: "error",
+            provider: "ocr",
           });
         setDocumentPrechecks((previous) => ({
           ...previous,
@@ -1661,6 +1787,39 @@ export default function useReservationFlow() {
                 4000,
               );
             }
+            return;
+          }
+
+          const requiredDocumentChecks = [
+            { key: "validIDFront", hasUpload: Boolean(validIDFront) },
+            { key: "validIDBack", hasUpload: Boolean(validIDBack) },
+            { key: "nbiClearance", hasUpload: Boolean(nbiClearance) },
+            { key: "companyID", hasUpload: Boolean(companyID) },
+          ]
+            .filter((doc) => doc.hasUpload)
+            .map((doc) => ({
+              ...doc,
+              label: DOCUMENT_PRECHECK_LABELS[doc.key],
+              precheck: normalizeDocumentPrecheckEntry(documentPrechecks?.[doc.key]),
+            }));
+          const checkingDocument = requiredDocumentChecks.find(
+            (doc) => doc.precheck.precheckStatus === "checking",
+          );
+          const blockedDocument = requiredDocumentChecks.find((doc) =>
+            isBlockingDocumentPrecheck(doc.precheck),
+          );
+
+          if (checkingDocument || blockedDocument) {
+            const problem = checkingDocument || blockedDocument;
+            const message = checkingDocument
+              ? `Please wait for the readability check to finish: ${problem.label}.`
+              : `Please fix the following document before submitting: ${problem.label} - ${getDocumentPrecheckBlockMessage(problem.label, problem.precheck)}`;
+
+            setShowValidationErrors(true);
+            setTimeout(() => {
+              focusFieldByDataKey(problem.key);
+            }, 100);
+            showNotification(message, "error", 5000);
             return;
           }
         }

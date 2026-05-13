@@ -8,13 +8,14 @@ import {
 import useBodyScrollLock from "../../../shared/hooks/useBodyScrollLock";
 import useEscapeClose from "../../../shared/hooks/useEscapeClose";
 import "../styles/reservation-details-modal.css";
+import { APP_LOCALE, fmtShortDate } from "../../../shared/utils/dateFormat";
 
 /* ─── helpers ────────────────────────────────────────── */
 const fmt = (v) => (v === null || v === undefined || v === "" ? "—" : v);
 
 const formatDate = (d) =>
  d
- ? new Date(d).toLocaleDateString("en-US", {
+ ? new Date(d).toLocaleDateString(APP_LOCALE, {
  weekday: "long",
  year: "numeric",
  month: "long",
@@ -23,6 +24,7 @@ const formatDate = (d) =>
  : "—";
 
 const STATUS_CONFIGS = [
+ { test: (s) => s.visitStatus === "allowed_without_visit", bg: "#CCFBF1", color: "#0F766E", dot: "#14b8a6", label: "Allowed to Proceed Without Visit" },
  { test: (s) => s.visitStatus === "visit_completed", bg: "#D1FAE5", color: "#047857", dot: "#10b981", label: "Visit Completed" },
  { test: (s) => s.visitStatus === "no_show", bg: "#FEF3C7", color: "#92400E", dot: "#f59e0b", label: "No-Show" },
  { test: (s) => s.visitStatus === "rescheduled", bg: "#EDE9FE", color: "#7C3AED", dot: "#8b5cf6", label: "Rescheduled" },
@@ -248,22 +250,21 @@ export default function VisitDetailsModal({ schedule, onClose, onUpdate }) {
  .sort((a, b) => new Date(b.scheduledAt || b.rejectedAt || 0) - new Date(a.scheduledAt || a.rejectedAt || 0))
  .map((entry, idx) => {
  const MAP = {
- pending: { bg: "#FEF3C7", color: "#92400E", label: "Scheduled" },
- rejected: { bg: "#FEE2E2", color: "#DC2626", label: "Rejected" },
- approved: { bg: "#D1FAE5", color: "#047857", label: "Approved" },
- cancelled: { bg: "#F3F4F6", color: "#6B7280", label: "Cancelled" },
- rescheduled: { bg: "#EDE9FE", color: "#7C3AED", label: "Rescheduled" },
- completed: { bg: "#D1FAE5", color: "#047857", label: "Completed" },
- no_show: { bg: "#FEF3C7", color: "#92400E", label: "No-Show" },
- visit_cancelled: { bg: "#FEE2E2", color: "#DC2626", label: "Visit Cancelled" },
+  pending: { bg: "#FEF3C7", color: "#92400E", label: "Scheduled" },
+  rejected: { bg: "#FEE2E2", color: "#DC2626", label: "Rejected" },
+  approved: { bg: "#D1FAE5", color: "#047857", label: "Approved" },
+  cancelled: { bg: "#F3F4F6", color: "#6B7280", label: "Cancelled" },
+  rescheduled: { bg: "#EDE9FE", color: "#7C3AED", label: "Rescheduled" },
+  completed: { bg: "#D1FAE5", color: "#047857", label: "Completed" },
+  no_show: { bg: "#FEF3C7", color: "#92400E", label: "No-Show" },
+  visit_cancelled: { bg: "#FEE2E2", color: "#DC2626", label: "Visit Cancelled" },
+  allowed_without_visit: { bg: "#CCFBF1", color: "#0F766E", label: "Allowed to Proceed Without Visit" },
  };
  const s = MAP[entry.status] || MAP.pending;
- const entryDate = entry.visitDate
- ? new Date(entry.visitDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
- : "N/A";
+ const entryDate = entry.visitDate ? fmtShortDate(entry.visitDate) : "N/A";
  const actionDate = entry.rejectedAt || entry.approvedAt || entry.scheduledAt;
  const actionDateStr = actionDate
- ? new Date(actionDate).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+ ? new Date(actionDate).toLocaleDateString(APP_LOCALE, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
  : "";
 
  return (

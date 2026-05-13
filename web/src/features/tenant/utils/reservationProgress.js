@@ -1,3 +1,10 @@
+import {
+  canProceedToApplicationAfterVisit,
+  getPhysicalVisitApplicantState,
+  getReservationViewingPreference,
+  isPhysicalVisitPreference,
+} from "./physicalVisitFlow";
+
 /**
  * Reservation progress calculation logic.
  * Extracted from ProfilePage.getReservationProgress() (~160 lines).
@@ -61,14 +68,14 @@ export function getReservationProgress(reservation) {
 
  const status =
  reservation.reservationStatus || reservation.status || "pending";
+ const viewingPreference = getReservationViewingPreference(reservation);
+ const physicalVisitState = getPhysicalVisitApplicantState(reservation);
 
  const hasRoom = Boolean(reservation.roomId);
  const hasPoliciesAccepted = Boolean(reservation.agreedToPrivacy === true);
- const hasVisitRequest = Boolean(
- reservation.viewingType && reservation.viewingType !== "none",
- );
+ const hasVisitRequest = Boolean(viewingPreference);
  const isVisitScheduled = hasPoliciesAccepted && hasVisitRequest;
- const isVisitCompleted = Boolean(reservation.visitApproved === true);
+ const isVisitCompleted = canProceedToApplicationAfterVisit(reservation);
  const hasApplication = Boolean(reservation.firstName && reservation.lastName);
  const hasPayment = Boolean(reservation.paymentStatus === "paid" || reservation.paymongoSessionId);
  const isConfirmed =
@@ -124,13 +131,15 @@ export function getReservationProgress(reservation) {
  {
  step: "visit_completed",
  title: "3. Visit Completed",
- description: reservation.scheduleApproved
- ? "Waiting for admin to verify visit completion"
- : "Complete your scheduled visit first",
+ description: !isPhysicalVisitPreference(reservation)
+ ? "Viewing preference saved. You may proceed to the tenant application."
+ : physicalVisitState?.message || "Complete your scheduled visit first",
  status:
  currentStepIndex >= 2
  ? "completed"
- : currentStepIndex === 1 && reservation.scheduleApproved
+ : currentStepIndex === 1 &&
+   isPhysicalVisitPreference(reservation) &&
+   reservation.scheduleApproved
  ? "pending_approval"
  : "locked",
  completedDate:
@@ -205,6 +214,25 @@ export function getNextAction(activeReservation, reservationProgress) {
  }
 
  const currentStep = reservationProgress.currentStep;
+ const physicalVisitState = getPhysicalVisitApplicantState(activeReservation);
+ const hasApplication = Boolean(
+ activeReservation.firstName && activeReservation.lastName,
+ );
+
+ if (
+ physicalVisitState &&
+ !physicalVisitState.canFillApplication &&
+ !hasApplication
+ ) {
+ return {
+ title: physicalVisitState.title,
+ description: physicalVisitState.message,
+ buttonText: physicalVisitState.buttonLabel?.replace(/\s*(->|→)\s*$/, "") || "Review Visit",
+ buttonLink: physicalVisitState.route || "/applicant/reservation?step=2&edit=1",
+ reservationId: activeReservation._id,
+ step: 2,
+ };
+ }
 
  switch (currentStep) {
  case "room_selected":
@@ -217,6 +245,19 @@ export function getNextAction(activeReservation, reservationProgress) {
  step: 1,
  };
  case "visit_scheduled": {
+ const viewingPreference = getReservationViewingPreference(activeReservation);
+ // Non-physical users have already saved their preference — send to application
+ if (viewingPreference && viewingPreference !== "physical_visit") {
+ return {
+ title: "Submit Your Application",
+ description:
+ "Your viewing preference was saved. Fill in your personal details and upload required documents.",
+ buttonText: "Fill Application Form",
+ buttonLink: "/applicant/reservation",
+ reservationId: activeReservation._id,
+ step: 3,
+ };
+ }
  const hasVisitDate = Boolean(activeReservation.visitDate);
  if (!hasVisitDate) {
  return {
@@ -225,6 +266,20 @@ export function getNextAction(activeReservation, reservationProgress) {
  "Pick a date and time to visit the dormitory and review policies.",
  buttonText: "Schedule Visit",
  buttonLink: "/applicant/reservation",
+ reservationId: activeReservation._id,
+ step: 2,
+ };
+ }
+ if (
+ physicalVisitState &&
+ !physicalVisitState.canFillApplication
+ ) {
+ return {
+ title: physicalVisitState.title,
+ description: physicalVisitState.message,
+ buttonText:
+ physicalVisitState.buttonLabel?.replace(/\s*(->|→)\s*$/, "") || "Review Visit",
+ buttonLink: physicalVisitState.route || "/applicant/reservation?step=2&edit=1",
  reservationId: activeReservation._id,
  step: 2,
  };
@@ -246,9 +301,9 @@ export function getNextAction(activeReservation, reservationProgress) {
  buttonText: "Fill Application Form",
  buttonLink: "/applicant/reservation",
  reservationId: activeReservation._id,
- step: 4,
+ step: 3,
  };
- case "application_submitted":
+ case "application_submitted": {
  const reservationFeeAmount = activeReservation.reservationFeeAmount || 2000;
  return {
  title: "Submit Your Payment",
@@ -257,8 +312,9 @@ export function getNextAction(activeReservation, reservationProgress) {
  buttonText: "Pay Now",
  buttonLink: "/applicant/reservation",
  reservationId: activeReservation._id,
- step: 5,
+ step: 4,
  };
+ }
  case "payment_submitted":
  case "reserved":
  return {
