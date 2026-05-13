@@ -201,6 +201,7 @@ const EmploymentSection = ({
  label="Company ID"
  value={companyID}
  onChange={setCompanyID}
+ documentType="company-id"
  onUploadComplete={(documentUrl) =>
  onRunDocumentPrecheck?.({
  documentType: "company_id",

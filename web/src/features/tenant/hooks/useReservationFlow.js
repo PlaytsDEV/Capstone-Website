@@ -392,10 +392,11 @@ export default function useReservationFlow() {
     if (stageId === 2)
       return applicationSubmitted && !needsRevision && !scheduleRejected;
     if (stageId === 3)
-      return (
-        !applicationUnlockedByVisit ||
-        (applicationSubmitted && !editingApplication && !needsRevision)
-      );
+      // Lock only when the application is officially in a non-editable state
+      // (submitted for review, approved, etc.).  A pending physical visit no
+      // longer locks the form — the applicant can fill it in advance; the
+      // backend still validates visit completion before accepting submitApplication.
+      return applicationSubmitted && !editingApplication && !needsRevision;
     if (stageId === 4) return paymentSubmitted || paymentApproved;
     return false;
   };

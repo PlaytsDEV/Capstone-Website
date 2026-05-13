@@ -185,6 +185,17 @@ html[data-theme="dark"] {
 .rf-locked-banner .info-box-title { color: var(--rf-warning-text); }
 .rf-locked-banner .info-text      { color: var(--rf-warning-text-alt); }
 
+/* ── Draft / visit-pending info banner (editable, not locked) ── */
+.rf-draft-banner {
+  background: var(--rf-info-bg, #eff6ff);
+  border-left: 3px solid var(--rf-info, #3b82f6);
+  padding: 14px 16px;
+  border-radius: 0 var(--rf-radius-sm) var(--rf-radius-sm) 0;
+  margin-bottom: 16px;
+}
+.rf-draft-banner .info-box-title { color: var(--rf-info-text, #1d4ed8); font-weight: 600; font-size: 0.85rem; }
+.rf-draft-banner .info-text      { color: var(--rf-info-text-alt, #374151); font-size: 0.82rem; margin-top: 2px; }
+
 /* ── Payment complete banner (Step 4 read-only) ── */
 .rf-success-banner {
   background: var(--rf-success-bg);

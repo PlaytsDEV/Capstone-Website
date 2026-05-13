@@ -384,6 +384,11 @@ function ReservationFlowPage() {
                   showValidationErrors: flow.showValidationErrors,
                   applicationSubmitted: flow.applicationSubmitted,
                   paymentApproved: flow.paymentApproved,
+                  // visitPending: true when physical visit was chosen but not yet
+                  // completed/approved.  The form is editable in this state (the
+                  // visit-pending lock was removed from isStageLocked); we just
+                  // show an informational banner to the applicant.
+                  visitPending: !flow.visitCompleted && !flow.applicationSubmitted,
                   scrollToSection: flow.scrollToSection,
                   onClearScrollToSection: () => flow.setScrollToSection(null),
                 }}

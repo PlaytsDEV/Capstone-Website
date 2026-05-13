@@ -90,6 +90,7 @@ const ReservationApplicationStep = ({
  devBypassValidation, setDevBypassValidation,
  onPrev, onNext, readOnly, saveStatus,
  showValidationErrors, applicationSubmitted, paymentApproved,
+ visitPending,
  onEditApplication, scrollToSection, onClearScrollToSection,
 }) => {
  const [showPoliciesModal, setShowPoliciesModal] = useState(false);
@@ -210,11 +211,23 @@ const ReservationApplicationStep = ({
  </div>
  )}
 
- {/* Read-Only Banner */}
+ {/* Locked banner — only when application is officially submitted / non-editable */}
  {readOnly && (
  <div className="rf-locked-banner">
  <div className="info-box-title">This section is locked</div>
- <div className="info-text">Your application data is saved and cannot be edited at this time.</div>
+ <div className="info-text">
+ Your application has been submitted and is currently under review. It cannot be edited at this time.
+ </div>
+ </div>
+ )}
+
+ {/* Draft info banner — form is editable but physical visit is still pending */}
+ {!readOnly && visitPending && (
+ <div className="rf-draft-banner">
+ <div className="info-box-title">You can continue completing your application</div>
+ <div className="info-text">
+ Your physical visit is still pending. You can fill in your details now — submission will be available once admin confirms your visit or grants access.
+ </div>
  </div>
  )}
 

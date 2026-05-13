@@ -311,6 +311,7 @@ const PersonalInfoSection = ({
  label="Valid ID (Front)"
  value={validIDFront}
  onChange={setValidIDFront}
+ documentType="valid-id-front"
  onUploadComplete={(documentUrl) => {
  if (!validIDType) return Promise.resolve(null);
  return onRunDocumentPrecheck?.({
@@ -334,6 +335,7 @@ const PersonalInfoSection = ({
  label="Valid ID (Back)"
  value={validIDBack}
  onChange={setValidIDBack}
+ documentType="valid-id-back"
  onUploadComplete={(documentUrl) => {
  if (!validIDType) return Promise.resolve(null);
  return onRunDocumentPrecheck?.({
@@ -358,6 +360,7 @@ const PersonalInfoSection = ({
  label="NBI Clearance (If unable, upload another valid ID)"
  value={nbiClearance}
  onChange={setNbiClearance}
+ documentType="nbi-clearance"
  onUploadComplete={(documentUrl) =>
  onRunDocumentPrecheck?.({
  documentType: "nbi_clearance",

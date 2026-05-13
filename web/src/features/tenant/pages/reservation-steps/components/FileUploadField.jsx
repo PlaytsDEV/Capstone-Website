@@ -1,5 +1,6 @@
 import React, { useRef, useState } from "react";
-import { uploadToImageKit, validateFile } from "../../../../../shared/utils/imageUpload";
+import { uploadToFirebaseStorage, validateFile } from "../../../../../shared/utils/firebaseStorageUpload";
+import { useAuth } from "../../../../../shared/hooks/useAuth";
 import { CheckCircle, AlertTriangle, Upload } from "lucide-react";
 import { getPrecheckStatus } from "../../../utils/documentPrecheckUtils";
 
@@ -69,19 +70,24 @@ function getPrecheckDisplay(check, status) {
 
 const FileUploadField = ({
  label, value, onChange,
- accept = "image/*,.pdf", hint, userId,
+ accept = "image/*,.pdf", hint,
+ documentType = "document",
  onUploadComplete,
  aiCheck,
  isChecking = false,
  hasError, required,
 }) => {
+ const { user } = useAuth();
  const inputRef = useRef(null);
  const [uploading, setUploading] = useState(false);
+ const [uploadSuccess, setUploadSuccess] = useState(false);
  const [progress, setProgress] = useState(0);
  const [error, setError] = useState(null);
  const [fileMeta, setFileMeta] = useState(null);
 
- const isUploaded = typeof value === "string" && value.startsWith("http");
+ // An existing HTTPS URL (saved from a previous session) counts as uploaded.
+ // uploadSuccess covers the just-uploaded case before the value prop updates.
+ const isUploaded = uploadSuccess || (typeof value === "string" && value.startsWith("https://"));
  const isFile = value instanceof File;
  const showFieldError = Boolean(hasError);
 
@@ -100,22 +106,30 @@ const FileUploadField = ({
  setFileMeta({ name: file.name, size: file.size });
  setError(null);
  setUploading(true);
+ setUploadSuccess(false);
  setProgress(0);
 
  try {
- const url = await uploadToImageKit(file, (pct) => setProgress(pct));
+ const result = await uploadToFirebaseStorage(
+ file,
+ { uid: user?.firebaseUid, documentType },
+ (pct) => setProgress(pct),
+ );
  setUploading(false);
+ setUploadSuccess(true);
  setProgress(100);
- onChange(url);
-  try {
-  await onUploadComplete?.(url, file);
-  } catch (postUploadError) {
+ onChange(result.downloadUrl);
+ try {
+ await onUploadComplete?.(result.downloadUrl, file);
+ } catch {
  console.warn("Document pre-check fell back to manual review after upload.");
-  }
+ }
  } catch (err) {
  setUploading(false);
+ setUploadSuccess(false);
  setProgress(0);
  setError(err.message || "Upload failed. Please try again.");
+ // Keep the File object in state so the user can retry without re-selecting
  onChange(file);
  }
  };
@@ -190,6 +204,7 @@ const FileUploadField = ({
  <div className="rf-upload-status rf-upload-status--uploading">
  Uploading... {progress}%
  </div>
+ <div className="rf-upload-hint">Saving to secure cloud storage</div>
  {fileMeta ? <div className="rf-upload-filename">{truncateName(fileMeta.name)}</div> : null}
  <div className="rf-upload-progress-track">
  <div className="rf-upload-progress-fill" style={{ width: `${progress}%` }} />
