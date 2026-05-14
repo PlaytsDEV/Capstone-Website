@@ -167,6 +167,7 @@ const getVisitStatusKey = (reservation) => {
  if (VISIT_STATUS_CONFIG[explicit]) return explicit;
  if (reservation?.scheduleRejected) return "visit_cancelled";
  if (reservation?.visitApproved) return "visit_completed";
+ if (reservation?.scheduleApproved) return "schedule_approved";
  if (hasPhysicalVisit(reservation)) return "physical_visit_scheduled";
  return "";
 };

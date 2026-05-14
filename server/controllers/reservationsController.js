@@ -236,6 +236,7 @@ const VISIT_MANAGEMENT_ACTIONS = Object.freeze([
 ]);
 const VISIT_OUTCOME_STATUSES = Object.freeze([
   "physical_visit_scheduled",
+  "schedule_approved",
   "visit_completed",
   "no_show",
   "rescheduled",
@@ -253,20 +254,26 @@ const VISIT_APPLICATION_UNLOCK_STATUSES = Object.freeze([
   "allowed_without_visit",
 ]);
 const VISIT_MANAGEMENT_ACTIONS_BY_STATUS = Object.freeze({
+  // Submitted by applicant, awaiting admin review — outcome actions not yet available
   physical_visit_scheduled: Object.freeze([
     "approve_schedule",
     "reject_schedule",
+    "reschedule",
+    "cancel_visit",
+    "allow_without_visit",
+  ]),
+  // Admin approved the schedule — outcome actions now available
+  schedule_approved: Object.freeze([
     "mark_visited",
     "mark_no_show",
     "reschedule",
     "cancel_visit",
     "allow_without_visit",
   ]),
+  // Admin rescheduled — awaiting re-approval before outcome can be recorded
   rescheduled: Object.freeze([
     "approve_schedule",
     "reject_schedule",
-    "mark_visited",
-    "mark_no_show",
     "reschedule",
     "cancel_visit",
     "allow_without_visit",
@@ -299,6 +306,13 @@ const DOCUMENT_PRECHECK_TYPES = Object.freeze({
     reservationField: "companyIDUrl",
     precheckField: "companyID",
   },
+});
+const DOCUMENT_PRECHECK_LABELS = Object.freeze({
+  selfie_photo: "Selfie Photo",
+  valid_id_front: "Valid ID (Front)",
+  valid_id_back: "Valid ID (Back)",
+  nbi_clearance: "NBI Clearance",
+  company_id: "Company ID",
 });
 const ACTIVE_BED_HOLD_STATUSES = Object.freeze(
   reservationStatusesForQuery(
@@ -1162,6 +1176,9 @@ const getEffectiveVisitStatusKey = (reservation = {}) => {
   if (explicit) return explicit;
   if (reservation.visitApproved) return "visit_completed";
   if (reservation.scheduleRejected) return "visit_cancelled";
+  // Backfill: old records have scheduleApproved=true but no visitStatus written —
+  // treat them as schedule_approved so outcome actions are available.
+  if (reservation.scheduleApproved) return "schedule_approved";
   if (hasPhysicalVisitPreference(reservation)) return "physical_visit_scheduled";
   return "";
 };
@@ -2279,6 +2296,39 @@ export const updateReservation = async (req, res, next) => {
       req.body.status === "approved_for_payment" &&
       !hasReservationStatus(existingReservation.status, "approved_for_payment")
     ) {
+      // Block approval if any uploaded document is flagged needs_reupload by the precheck.
+      // manual_review_fallback is intentionally excluded — admin reviewing IS the manual check.
+      const blockedDocs = Object.entries(DOCUMENT_PRECHECK_TYPES)
+        .filter(([, config]) => Boolean(existingReservation[config.reservationField]))
+        .filter(([, config]) =>
+          shouldBlockDocumentSubmission(
+            existingReservation.documentPrechecks?.[config.precheckField],
+          ),
+        )
+        .map(([docKey, config]) => {
+          const precheck = existingReservation.documentPrechecks?.[config.precheckField] || {};
+          const label = DOCUMENT_PRECHECK_LABELS[docKey] || docKey;
+          return {
+            key: docKey,
+            label,
+            precheckStatus: precheck.precheckStatus || "needs_reupload",
+            readabilityStatus: precheck.readabilityStatus || "unknown",
+            documentTypeStatus: precheck.documentTypeStatus || "unknown",
+            message:
+              precheck.applicantMessage ||
+              precheck.summaryMessage ||
+              `${label} needs a clearer upload before this application can be approved.`,
+          };
+        });
+
+      if (blockedDocs.length > 0) {
+        return res.status(422).json({
+          error: `Cannot approve: ${blockedDocs.length} document(s) must be re-uploaded before this application can be approved. Use "Request Revision" to notify the applicant.`,
+          code: "DOCUMENT_PRECHECK_BLOCKS_APPROVAL",
+          blockedDocuments: blockedDocs,
+        });
+      }
+
       req.body.applicationReviewedAt = new Date();
       req.body.applicationReviewedBy = req.adminId || null;
       req.body.approvedForPaymentAt = new Date();
@@ -2961,6 +3011,16 @@ export const manageReservationVisit = async (req, res, next) => {
       });
     }
 
+    if (
+      (action === "mark_visited" || action === "mark_no_show") &&
+      !reservation.scheduleApproved
+    ) {
+      return res.status(422).json({
+        error: "The visit schedule must be approved before recording an outcome. Approve the schedule first.",
+        code: "SCHEDULE_NOT_APPROVED",
+      });
+    }
+
     if (action === "approve_schedule") {
       if (reservation.scheduleApproved) {
         return res.status(409).json({
@@ -2976,9 +3036,17 @@ export const manageReservationVisit = async (req, res, next) => {
       }
       reservation.scheduleApproved = true;
       reservation.scheduleApprovedAt = reservation.scheduleApprovedAt || now;
-      if (hasReservationStatus(reservation.status, LEGACY_VISIT_STATUSES, "pending")) {
+      if (hasReservationStatus(reservation.status, LEGACY_VISIT_STATUSES, "pending", "viewing_preference_selected")) {
         reservation.status = "visit_approved";
       }
+      applyVisitOutcome({
+        reservation,
+        status: "schedule_approved",
+        actorId,
+        actorName,
+        note: "",
+        updatedAt: now,
+      });
       appendVisitHistoryEntry({
         reservation,
         status: "schedule_approved",
@@ -3017,6 +3085,14 @@ export const manageReservationVisit = async (req, res, next) => {
       if (hasReservationStatus(reservation.status, LEGACY_VISIT_STATUSES, "approved")) {
         reservation.status = "visit_pending";
       }
+      applyVisitOutcome({
+        reservation,
+        status: "visit_cancelled",
+        actorId,
+        actorName,
+        note,
+        updatedAt: now,
+      });
       if (reservation.visitDate) {
         appendVisitHistoryEntry({
           reservation,
@@ -3890,9 +3966,17 @@ export const updateReservationByUser = async (req, res, next) => {
 
     if (isApplicationSubmission) {
       const previouslySubmittedApplication = Boolean(reservation.applicationSubmittedAt);
-      const effectiveVisitStatus = normalizeVisitStatusKey(
-        updates.visitStatus ?? reservation.visitStatus,
-      );
+      // Use getEffectiveVisitStatusKey so old records where visitApproved=true
+      // but visitStatus was never written still resolve to "visit_completed".
+      const effectiveVisitStatus = getEffectiveVisitStatusKey({
+        visitStatus: updates.visitStatus ?? reservation.visitStatus,
+        visitApproved: reservation.visitApproved,
+        scheduleRejected: reservation.scheduleRejected,
+        scheduleApproved: reservation.scheduleApproved,
+        viewingPreference: reservation.viewingPreference,
+        viewingType: reservation.viewingType,
+        visitDate: reservation.visitDate,
+      });
 
       if (
         effectiveViewingPreference === "physical_visit" &&
@@ -4217,6 +4301,9 @@ export const updateReservationByUser = async (req, res, next) => {
 
       updates.status = "pending_application_review";
       updates.applicationSubmittedAt = new Date();
+      if (previouslySubmittedApplication) {
+        updates.applicationResubmittedAt = new Date();
+      }
       updates.applicationReviewReason = null;
       updates.applicationReviewedAt = null;
       updates.applicationReviewedBy = null;

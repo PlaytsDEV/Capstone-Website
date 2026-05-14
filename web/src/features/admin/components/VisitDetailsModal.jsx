@@ -107,7 +107,8 @@ export default function VisitDetailsModal({ schedule, onClose, onUpdate }) {
  const showRejectBtn =
   !schedule.visitApproved &&
   !schedule.scheduleRejected &&
-  !["visit_completed", "no_show", "visit_cancelled"].includes(
+  !schedule.scheduleApproved &&
+  !["visit_completed", "no_show", "visit_cancelled", "schedule_approved"].includes(
     schedule.visitStatus,
   );
  const cfg = getStatusCfg(schedule);

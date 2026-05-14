@@ -905,4 +905,217 @@ describe("reservationsController.updateReservation access hardening", () => {
     expect(save).toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
   });
+
+  test("blocks approval when a submitted document has needs_reupload precheck status", async () => {
+    const save = jest.fn().mockResolvedValue(undefined);
+    const reservation = {
+      _id: "507f1f77bcf86cd799439030",
+      status: "pending_application_review",
+      validIDFrontUrl: "https://storage.example.com/id-front.jpg",
+      validIDBackUrl: "https://storage.example.com/id-back.jpg",
+      selfiePhotoUrl: null,
+      nbiClearanceUrl: null,
+      companyIDUrl: null,
+      documentPrechecks: {
+        validIDFront: {
+          precheckStatus: "needs_reupload",
+          readabilityStatus: "unreadable",
+          documentTypeStatus: "unknown",
+          canSubmit: false,
+          applicantMessage: "ID photo is too blurry to read.",
+        },
+        validIDBack: {
+          precheckStatus: "ready_for_submission",
+          readabilityStatus: "readable",
+          documentTypeStatus: "possible_match",
+          canSubmit: true,
+        },
+      },
+      roomId: { _id: "room-1", branch: "gil-puyat" },
+      userId: { _id: "tenant-1", email: "tala@example.com" },
+      toObject: () => ({
+        status: "pending_application_review",
+        roomId: { _id: "room-1", branch: "gil-puyat" },
+      }),
+      save,
+    };
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockReturnThis(),
+      then: (resolve) => Promise.resolve(resolve(reservation)),
+    });
+    userFindOne.mockResolvedValue({
+      _id: "admin-1",
+      firebaseUid: "admin-uid",
+      role: "branch_admin",
+    });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439030" },
+      body: { status: "approved_for_payment" },
+      branchFilter: "gil-puyat",
+      adminId: "admin-1",
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await updateReservation(req, res, next);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body.code).toBe("DOCUMENT_PRECHECK_BLOCKS_APPROVAL");
+    expect(res.body.blockedDocuments).toHaveLength(1);
+    expect(res.body.blockedDocuments[0].key).toBe("valid_id_front");
+    expect(save).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("allows approval when blocked document has manual_review_fallback status", async () => {
+    const save = jest.fn().mockResolvedValue(undefined);
+    reservationFindByIdAndUpdate.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439031",
+      status: "approved_for_payment",
+      userId: { _id: "tenant-1" },
+      toObject: () => ({ status: "approved_for_payment" }),
+    });
+    const reservation = {
+      _id: "507f1f77bcf86cd799439031",
+      status: "pending_application_review",
+      validIDFrontUrl: "https://storage.example.com/id-front.jpg",
+      validIDBackUrl: null,
+      selfiePhotoUrl: null,
+      nbiClearanceUrl: null,
+      companyIDUrl: null,
+      documentPrechecks: {
+        validIDFront: {
+          precheckStatus: "manual_review_fallback",
+          readabilityStatus: "unknown",
+          documentTypeStatus: "unknown",
+          canSubmit: true,
+        },
+      },
+      roomId: { _id: "room-1", branch: "gil-puyat" },
+      userId: { _id: "tenant-1", email: "tala@example.com" },
+      toObject: () => ({
+        status: "pending_application_review",
+        roomId: { _id: "room-1", branch: "gil-puyat" },
+      }),
+      save,
+    };
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockReturnThis(),
+      then: (resolve) => Promise.resolve(resolve(reservation)),
+    });
+    userFindOne.mockResolvedValue({
+      _id: "admin-1",
+      firebaseUid: "admin-uid",
+      role: "branch_admin",
+    });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439031" },
+      body: { status: "approved_for_payment" },
+      branchFilter: "gil-puyat",
+      adminId: "admin-1",
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await updateReservation(req, res, next);
+
+    expect(res.statusCode).not.toBe(422);
+    expect(res.body?.code).not.toBe("DOCUMENT_PRECHECK_BLOCKS_APPROVAL");
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("allows application submission when visitApproved=true but visitStatus is null (old record backcompat)", async () => {
+    const save = jest.fn().mockResolvedValue(true);
+    // Simulate an old reservation: admin marked visited via boolean only, visitStatus never written
+    const reservation = {
+      _id: "507f1f77bcf86cd799439040",
+      status: "visit_approved",
+      viewingPreference: "physical_visit",
+      viewingType: "inperson",
+      visitDate: "2025-06-01",
+      visitTime: "10:00 AM",
+      visitApproved: true,
+      visitStatus: null,    // old record — field never written
+      scheduleApproved: true,
+      scheduleRejected: false,
+      applicationSubmittedAt: null,  // first submission
+      firstName: "Ana",
+      lastName: "Cruz",
+      mobileNumber: "09171234567",
+      birthday: new Date("2000-01-01"),
+      maritalStatus: "single",
+      nationality: "Filipino",
+      educationLevel: "college",
+      address: {
+        unitHouseNo: "Unit 1",
+        street: "Rizal St",
+        region: "NCR",
+        province: "Metro Manila",
+        city: "Makati",
+        barangay: "Poblacion",
+      },
+      selfiePhotoUrl: "https://firebase.example.com/selfie.jpg",
+      validIDFrontUrl: "https://firebase.example.com/id-front.jpg",
+      validIDBackUrl: "https://firebase.example.com/id-back.jpg",
+      nbiClearanceUrl: "https://firebase.example.com/nbi.jpg",
+      emergencyContact: { name: "Maria Cruz", relationship: "parent", contactNumber: "09181234567" },
+      healthConcerns: "None",
+      employment: {
+        employerSchool: "UP Manila",
+        employerAddress: "Ermita, Manila",
+        occupation: "Student",
+      },
+      referralSource: "facebook",
+      targetMoveInDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      estimatedMoveInTime: "08:00",
+      leaseDuration: 12,
+      workSchedule: "day",
+      agreedToPrivacy: true,
+      agreedToCertification: true,
+      documentPrechecks: {},
+      roomId: { _id: "room-1", branch: "gil-puyat" },
+      userId: { _id: "tenant-1", email: "ana@example.com" },
+      toObject: () => ({ status: "visit_approved", roomId: { _id: "room-1", branch: "gil-puyat" } }),
+      save,
+    };
+
+    buildUserUpdatePayload.mockReturnValue({
+      mobileNumber: "09171234567",
+      "emergencyContact.contactNumber": "09181234567",
+    });
+
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockReturnThis(),
+      then: (resolve) => Promise.resolve(resolve(reservation)),
+    });
+    reservationFindByIdAndUpdate.mockReturnValue({
+      populate: jest.fn().mockReturnThis(),
+      then: (resolve) => Promise.resolve(resolve({ ...reservation, status: "pending_application_review" })),
+    });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439040" },
+      body: {
+        submitApplication: true,
+        agreedToPrivacy: true,
+        agreedToCertification: true,
+        selfiePhotoUrl: "https://firebase.example.com/selfie.jpg",
+        validIDFrontUrl: "https://firebase.example.com/id-front.jpg",
+        validIDBackUrl: "https://firebase.example.com/id-back.jpg",
+        nbiClearanceUrl: "https://firebase.example.com/nbi.jpg",
+      },
+      userId: "tenant-1",
+      branchFilter: "gil-puyat",
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await updateReservationByUser(req, res, next);
+
+    // Must NOT block with PHYSICAL_VISIT_APPLICATION_LOCKED
+    expect(res.statusCode).not.toBe(403);
+    expect(res.body?.code).not.toBe("PHYSICAL_VISIT_APPLICATION_LOCKED");
+  });
 });

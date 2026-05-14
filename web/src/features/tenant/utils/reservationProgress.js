@@ -151,7 +151,7 @@ export function getReservationProgress(reservation) {
  : currentStepIndex === 1 &&
    isPhysicalVisitPreference(reservation) &&
    reservation.scheduleApproved
- ? "pending_approval"
+ ? "awaiting_visit"
  : "locked",
  completedDate:
  currentStepIndex >= 2 ? reservation.visitCompletedAt : undefined,

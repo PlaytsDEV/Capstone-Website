@@ -292,6 +292,7 @@ const reservationSchema = new mongoose.Schema(
       type: String,
       enum: [
         "physical_visit_scheduled",
+        "schedule_approved",
         "visit_completed",
         "no_show",
         "rescheduled",
@@ -484,6 +485,11 @@ const reservationSchema = new mongoose.Schema(
     },
     // When the tenant submitted the application form (personal details step)
     applicationSubmittedAt: {
+      type: Date,
+      default: null,
+    },
+    // Set on every resubmission after a needs_revision cycle; null on first submission
+    applicationResubmittedAt: {
       type: Date,
       default: null,
     },
