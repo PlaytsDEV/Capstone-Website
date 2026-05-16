@@ -32,6 +32,9 @@ const VIEWING_PREFERENCE_CHANGE_ALLOWED_STATUSES = Object.freeze([
 
 const TRUE_VALUES = new Set(["true", "approved", "allowed", "reset"]);
 
+const asReservation = (reservation) =>
+  reservation && typeof reservation === "object" ? reservation : {};
+
 const isTruthyApprovalValue = (value) => {
   if (value === true) return true;
   if (typeof value !== "string") return false;
@@ -39,18 +42,19 @@ const isTruthyApprovalValue = (value) => {
 };
 
 export const hasAdminAllowedViewingPreferenceChange = (reservation = {}) => {
+  const safeReservation = asReservation(reservation);
   const explicitValue =
-    reservation.viewingPreferenceChangeAllowed ??
-    reservation.allowViewingPreferenceChange ??
-    reservation.viewingPreferenceReset ??
-    reservation.adminApprovedViewingPreferenceChange ??
-    reservation.preferenceChangeApproved;
+    safeReservation.viewingPreferenceChangeAllowed ??
+    safeReservation.allowViewingPreferenceChange ??
+    safeReservation.viewingPreferenceReset ??
+    safeReservation.adminApprovedViewingPreferenceChange ??
+    safeReservation.preferenceChangeApproved;
 
   if (isTruthyApprovalValue(explicitValue)) return true;
 
   const status = String(
-    reservation.viewingPreferenceChangeStatus ||
-      reservation.preferenceChangeStatus ||
+    safeReservation.viewingPreferenceChangeStatus ||
+      safeReservation.preferenceChangeStatus ||
       "",
   )
     .trim()
@@ -60,11 +64,12 @@ export const hasAdminAllowedViewingPreferenceChange = (reservation = {}) => {
 };
 
 export const getSubmittedViewingPreference = (reservation = {}) => {
-  const explicitPreference = getReservationViewingPreference(reservation);
+  const safeReservation = asReservation(reservation);
+  const explicitPreference = getReservationViewingPreference(safeReservation);
   if (explicitPreference) return explicitPreference;
   if (
-    reservation.remoteViewingAcknowledged ||
-    String(reservation.remoteViewingQuestions || "").trim()
+    safeReservation.remoteViewingAcknowledged ||
+    String(safeReservation.remoteViewingQuestions || "").trim()
   ) {
     return "remote_2d_viewing";
   }
@@ -72,34 +77,36 @@ export const getSubmittedViewingPreference = (reservation = {}) => {
 };
 
 export const isViewingPreferenceSubmitted = (reservation = {}) => {
-  const submittedPreference = getSubmittedViewingPreference(reservation);
+  const safeReservation = asReservation(reservation);
+  const submittedPreference = getSubmittedViewingPreference(safeReservation);
   const status = normalizeReservationStatus(
-    reservation.reservationStatus || reservation.status,
+    safeReservation.reservationStatus || safeReservation.status,
   );
   return Boolean(
     submittedPreference ||
       hasReservationStatus(status, VIEWING_PREFERENCE_LOCKING_STATUSES) ||
-      reservation.visitDate ||
-      reservation.visitTime ||
-      reservation.visitCode ||
-      reservation.visitScheduledAt ||
-      reservation.visitStatus ||
-      reservation.scheduleApproved ||
-      reservation.scheduleApprovedAt ||
-      reservation.scheduleRejectedAt ||
-      reservation.visitOutcomeUpdatedAt ||
-      reservation.remoteViewingAcknowledged ||
-      String(reservation.remoteViewingQuestions || "").trim() ||
-      reservation.isUrgentMoveIn,
+      safeReservation.visitDate ||
+      safeReservation.visitTime ||
+      safeReservation.visitCode ||
+      safeReservation.visitScheduledAt ||
+      safeReservation.visitStatus ||
+      safeReservation.scheduleApproved ||
+      safeReservation.scheduleApprovedAt ||
+      safeReservation.scheduleRejectedAt ||
+      safeReservation.visitOutcomeUpdatedAt ||
+      safeReservation.remoteViewingAcknowledged ||
+      String(safeReservation.remoteViewingQuestions || "").trim() ||
+      safeReservation.isUrgentMoveIn,
   );
 };
 
 export const isViewingPreferenceChangeAllowed = (reservation = {}) => {
-  if (!isViewingPreferenceSubmitted(reservation)) return true;
-  if (hasAdminAllowedViewingPreferenceChange(reservation)) return true;
+  const safeReservation = asReservation(reservation);
+  if (!isViewingPreferenceSubmitted(safeReservation)) return true;
+  if (hasAdminAllowedViewingPreferenceChange(safeReservation)) return true;
 
   const status = normalizeReservationStatus(
-    reservation.reservationStatus || reservation.status,
+    safeReservation.reservationStatus || safeReservation.status,
   );
 
   return hasReservationStatus(status, VIEWING_PREFERENCE_CHANGE_ALLOWED_STATUSES);
@@ -109,17 +116,18 @@ export const canResubmitSameViewingPreference = (
   reservation = {},
   requestedPreference = "",
 ) => {
-  const submittedPreference = getSubmittedViewingPreference(reservation);
+  const safeReservation = asReservation(reservation);
+  const submittedPreference = getSubmittedViewingPreference(safeReservation);
   const normalizedRequested =
-    requestedPreference || submittedPreference || getReservationViewingPreference(reservation);
+    requestedPreference || submittedPreference || getReservationViewingPreference(safeReservation);
 
   return Boolean(
     submittedPreference === "physical_visit" &&
       normalizedRequested === "physical_visit" &&
-      reservation.scheduleRejected === true &&
-      !reservation.applicationSubmittedAt &&
+      safeReservation.scheduleRejected === true &&
+      !safeReservation.applicationSubmittedAt &&
       !hasReservationStatus(
-        reservation.reservationStatus || reservation.status,
+        safeReservation.reservationStatus || safeReservation.status,
         "pending_application_review",
         "approved_for_payment",
         "payment_pending",
@@ -134,20 +142,22 @@ export const canApplicantSubmitViewingPreference = (
   reservation = {},
   requestedPreference = "",
 ) => {
-  if (!isViewingPreferenceSubmitted(reservation)) return true;
-  if (isViewingPreferenceChangeAllowed(reservation)) return true;
-  return canResubmitSameViewingPreference(reservation, requestedPreference);
+  const safeReservation = asReservation(reservation);
+  if (!isViewingPreferenceSubmitted(safeReservation)) return true;
+  if (isViewingPreferenceChangeAllowed(safeReservation)) return true;
+  return canResubmitSameViewingPreference(safeReservation, requestedPreference);
 };
 
 export const getViewingPreferenceStepAccess = (
   reservation = {},
   requestedPreference = "",
 ) => {
-  const submittedPreference = getSubmittedViewingPreference(reservation);
-  const submitted = isViewingPreferenceSubmitted(reservation);
-  const canChangePreference = isViewingPreferenceChangeAllowed(reservation);
+  const safeReservation = asReservation(reservation);
+  const submittedPreference = getSubmittedViewingPreference(safeReservation);
+  const submitted = isViewingPreferenceSubmitted(safeReservation);
+  const canChangePreference = isViewingPreferenceChangeAllowed(safeReservation);
   const canResubmitSame = canResubmitSameViewingPreference(
-    reservation,
+    safeReservation,
     requestedPreference || submittedPreference,
   );
   const canSubmit = !submitted || canChangePreference || canResubmitSame;

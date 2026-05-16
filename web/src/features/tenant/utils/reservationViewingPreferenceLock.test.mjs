@@ -15,6 +15,18 @@ const baseReservation = {
   roomConfirmed: true,
 };
 
+test("empty or loading reservation data does not lock or crash the preference step", () => {
+  assert.equal(isViewingPreferenceSubmitted(null), false);
+  assert.equal(canApplicantSubmitViewingPreference(null, "physical_visit"), true);
+
+  const access = getViewingPreferenceStepAccess(null, "physical_visit");
+
+  assert.equal(access.submitted, false);
+  assert.equal(access.readOnly, false);
+  assert.equal(access.canSubmit, true);
+  assert.equal(access.requestedPreference, "physical_visit");
+});
+
 test("applicant can submit a viewing preference once before one is saved", () => {
   const reservation = { ...baseReservation, status: "pending" };
 
