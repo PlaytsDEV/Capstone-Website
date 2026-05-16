@@ -19,7 +19,10 @@ import {
 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import { useAppNavigation } from "../hooks/useAppNavigation";
+import { useUnreadCount } from "../hooks/queries/useNotifications";
+import { USER_ROLES } from "../utils/constants";
 import ConfirmModal from "./ConfirmModal";
+import NotificationBell from "./NotificationBell";
 import { showNotification } from "../utils/notification";
 import { buildSignOutSuccessFlash } from "../utils/authToasts";
 import ProfileAvatar, { getProfileInitials } from "./ProfileAvatar";
@@ -27,7 +30,7 @@ import ProfileAvatar, { getProfileInitials } from "./ProfileAvatar";
 const MOBILE_BP = 768;
 const TRANSITION = "0.24s cubic-bezier(0.22, 1, 0.36, 1)";
 
-const buildNavSections = (canViewAnnouncements) => [
+const buildNavSections = (isTenant) => [
  {
  label: "Main",
  items: [
@@ -50,6 +53,8 @@ const buildNavSections = (canViewAnnouncements) => [
  path: "/applicant/profile",
  tab: "personal",
  },
+ ...(isTenant
+ ? [
  {
  id: "billing",
  label: "My Bills",
@@ -62,8 +67,6 @@ const buildNavSections = (canViewAnnouncements) => [
  icon: Wrench,
  path: "/applicant/maintenance",
  },
- ...(canViewAnnouncements
- ? [
  {
  id: "announcements",
  label: "Announcements",
@@ -79,6 +82,8 @@ const buildNavSections = (canViewAnnouncements) => [
  path: "/applicant/profile",
  tab: "reservation",
  },
+ ...(isTenant
+ ? [
  {
  id: "contract",
  label: "My Contract",
@@ -92,6 +97,8 @@ const buildNavSections = (canViewAnnouncements) => [
  path: "/applicant/profile",
  tab: "history",
  },
+ ]
+ : []),
  ],
  },
  {
@@ -179,11 +186,10 @@ function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleCollapse }) {
  () => window.innerWidth <= MOBILE_BP,
  );
 
- const canViewAnnouncements = user?.role === "tenant";
- const navSections = useMemo(
- () => buildNavSections(canViewAnnouncements),
- [canViewAnnouncements],
- );
+ const isTenant = user?.role === USER_ROLES.TENANT;
+ const navSections = useMemo(() => buildNavSections(isTenant), [isTenant]);
+ const { data: unreadData } = useUnreadCount();
+ const sidebarUnreadCount = unreadData?.unreadCount ?? 0;
 
  const currentTab = location.state?.tab || "dashboard";
  const fullName =
@@ -472,6 +478,8 @@ function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleCollapse }) {
  {section.items.map((item) => {
  const active = isItemActive(item);
  const Icon = item.icon;
+ const badge = item.id === "notifications" && sidebarUnreadCount > 0
+ ? sidebarUnreadCount : null;
 
  return (
  <button
@@ -507,9 +515,32 @@ function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleCollapse }) {
  transition: `opacity ${TRANSITION}`,
  overflow: "hidden",
  textOverflow: "ellipsis",
+ flex: 1,
+ display: "flex",
+ alignItems: "center",
+ gap: 6,
  }}
  >
  {item.label}
+ {badge && !collapsed && (
+ <span style={{
+ display: "inline-flex",
+ alignItems: "center",
+ justifyContent: "center",
+ minWidth: 18,
+ height: 18,
+ padding: "0 5px",
+ borderRadius: 9,
+ backgroundColor: "#D4AF37",
+ color: "#fff",
+ fontSize: 10,
+ fontWeight: 700,
+ lineHeight: 1,
+ flexShrink: 0,
+ }}>
+ {badge > 99 ? "99+" : badge}
+ </span>
+ )}
  </span>
  </button>
  );
@@ -640,6 +671,7 @@ function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleCollapse }) {
  alignItems: "center",
  gap: 8,
  textDecoration: "none",
+ flex: 1,
  }}
  >
  <div
@@ -665,6 +697,7 @@ function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleCollapse }) {
  Lilycrest
  </span>
  </Link>
+ <NotificationBell />
  </div>
 
  {isOpen ? (

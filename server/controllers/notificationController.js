@@ -15,6 +15,21 @@ import {
   AppError,
 } from "../middleware/errorHandler.js";
 
+const APPLICANT_HIDDEN_NOTIFICATION_TYPES = [
+  "bill_generated",
+  "bill_due_reminder",
+  "penalty_applied",
+  "contract_expiring",
+  "grace_period_warning",
+  "move_in_reminder",
+  "maintenance_update",
+];
+
+const getNotificationVisibilityOptions = (user) =>
+  user?.role === "applicant"
+    ? { excludeTypes: APPLICANT_HIDDEN_NOTIFICATION_TYPES }
+    : {};
+
 /**
  * GET /api/notifications
  * Get notifications for the authenticated user (paginated).
@@ -29,6 +44,7 @@ export const getMyNotifications = async (req, res, next) => {
       page: parseInt(page),
       limit: parseInt(limit),
       unreadOnly: unreadOnly === "true",
+      ...getNotificationVisibilityOptions(dbUser),
     });
 
     sendSuccess(res, result);
@@ -68,7 +84,10 @@ export const markAllAsRead = async (req, res, next) => {
     const dbUser = await User.findOne({ firebaseUid: req.user.uid }).lean();
     if (!dbUser) throw new AppError("User not found", 404, "USER_NOT_FOUND");
 
-    const result = await Notification.markAllAsRead(dbUser._id);
+    const result = await Notification.markAllAsRead(
+      dbUser._id,
+      getNotificationVisibilityOptions(dbUser),
+    );
     sendSuccess(res, { message: "All notifications marked as read", modifiedCount: result.modifiedCount });
   } catch (error) {
     next(error);
@@ -84,7 +103,12 @@ export const getUnreadCount = async (req, res, next) => {
     const dbUser = await User.findOne({ firebaseUid: req.user.uid }).lean();
     if (!dbUser) throw new AppError("User not found", 404, "USER_NOT_FOUND");
 
-    const count = await Notification.countDocuments({ userId: dbUser._id, isRead: false });
+    const visibilityOptions = getNotificationVisibilityOptions(dbUser);
+    const filter = { userId: dbUser._id, isRead: false };
+    if (visibilityOptions.excludeTypes?.length) {
+      filter.type = { $nin: visibilityOptions.excludeTypes };
+    }
+    const count = await Notification.countDocuments(filter);
     sendSuccess(res, { unreadCount: count });
   } catch (error) {
     next(error);

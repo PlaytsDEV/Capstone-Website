@@ -7,7 +7,18 @@ import {
   useMarkAllAsRead,
   useUnreadCount,
 } from "../../../shared/hooks/queries/useNotifications";
+import { useAuth } from "../../../shared/hooks/useAuth";
 import { ListSkeleton } from "../../../shared/components/LoadingSkeletons";
+import { getVisibleNotificationsForUser } from "../../../shared/utils/notificationVisibility";
+
+const ALL_FILTER_TABS = [
+  { key: "all",                   label: "All" },
+  { key: "reservation_confirmed", label: "Reservations" },
+  { key: "payment_approved",      label: "Payments",      tenantOnly: false },
+  { key: "bill_generated",        label: "Billing",       tenantOnly: true },
+  { key: "maintenance_update",    label: "Maintenance",   tenantOnly: true },
+  { key: "announcement",          label: "Announcements" },
+];
 
 const TYPE_ICONS = {
   reservation_confirmed:  "✅",
@@ -31,14 +42,6 @@ const TYPE_ICONS = {
   general:                "ℹ️",
 };
 
-const FILTER_TABS = [
-  { key: "all",                   label: "All" },
-  { key: "reservation_confirmed", label: "Reservations" },
-  { key: "payment_approved",      label: "Payments" },
-  { key: "bill_generated",        label: "Billing" },
-  { key: "maintenance_update",    label: "Maintenance" },
-  { key: "announcement",          label: "Announcements" },
-];
 
 function matchesFilter(notification, filter) {
   if (filter === "all") return true;
@@ -70,6 +73,8 @@ function timeAgo(dateStr) {
 
 export default function NotificationsPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isApplicant = user?.role === "applicant";
   const [page, setPage] = useState(1);
   const [typeFilter, setTypeFilter] = useState("all");
   const [unreadOnly, setUnreadOnly] = useState(false);
@@ -79,7 +84,9 @@ export default function NotificationsPage() {
   const markAsRead = useMarkAsRead();
   const markAllRead = useMarkAllAsRead();
 
-  const allNotifications = data?.notifications || [];
+  const filterTabs = ALL_FILTER_TABS.filter((t) => !isApplicant || !t.tenantOnly);
+
+  const allNotifications = getVisibleNotificationsForUser(data?.notifications || [], user);
   const totalPages = data?.pagination?.totalPages || 1;
   const unreadCount = countData?.unreadCount ?? 0;
 
@@ -139,7 +146,7 @@ export default function NotificationsPage() {
 
       {/* Filter row */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-        {FILTER_TABS.map((tab) => (
+        {filterTabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => { setTypeFilter(tab.key); setPage(1); }}

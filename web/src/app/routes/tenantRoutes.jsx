@@ -73,33 +73,41 @@ export function TenantRoutes() {
         <Route
           path="contracts"
           element={
-            <RouteShell name="Contracts">
-              <ContractsPage />
-            </RouteShell>
+            <ProtectedRoute requiredRole="tenant">
+              <RouteShell name="Contracts">
+                <ContractsPage />
+              </RouteShell>
+            </ProtectedRoute>
           }
         />
         <Route
           path="billing"
           element={
-            <RouteShell name="Billing">
-              <TenantBillingPage />
-            </RouteShell>
+            <ProtectedRoute requiredRole="tenant">
+              <RouteShell name="Billing">
+                <TenantBillingPage />
+              </RouteShell>
+            </ProtectedRoute>
           }
         />
         <Route
           path="maintenance"
           element={
-            <RouteShell name="Maintenance">
-              <TenantMaintenancePage />
-            </RouteShell>
+            <ProtectedRoute requiredRole="tenant">
+              <RouteShell name="Maintenance">
+                <TenantMaintenancePage />
+              </RouteShell>
+            </ProtectedRoute>
           }
         />
         <Route
           path="announcements"
           element={
-            <RouteShell name="Announcements">
-              <TenantAnnouncementsPage />
-            </RouteShell>
+            <ProtectedRoute requiredRole="tenant">
+              <RouteShell name="Announcements">
+                <TenantAnnouncementsPage />
+              </RouteShell>
+            </ProtectedRoute>
           }
         />
         <Route

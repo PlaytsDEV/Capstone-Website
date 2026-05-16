@@ -13,6 +13,8 @@ import useNotificationStore from "../stores/notificationStore";
 import { useAuth } from "./useAuth";
 import { API_ORIGIN } from "../api/baseUrl";
 import { getFreshToken } from "../api/httpClient";
+import { showNotification } from "../utils/notification";
+import { isNotificationVisibleForUser } from "../utils/notificationVisibility";
 
 const SOCKET_URL = API_ORIGIN;
 
@@ -49,8 +51,12 @@ export default function useSocketClient() {
       });
 
       socket.on("notification:new", (notification) => {
+        if (!isNotificationVisibleForUser(notification, user)) {
+          return;
+        }
         addNotification(notification);
         if (!notification?.isRead) {
+          showNotification(notification.title || "New notification", "info", 4500);
           qc.setQueryData(["notifications", "unread-count"], (current) => ({
             unreadCount: (current?.unreadCount ?? 0) + 1,
           }));

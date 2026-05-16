@@ -3,6 +3,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import useSocketClient from "../hooks/useSocketClient";
 import Sidebar from "../components/Sidebar";
+import NotificationBell from "../components/NotificationBell";
 import RouteTransitionBoundary from "../components/RouteTransitionBoundary";
 import AccountBlockedBanner from "../components/AccountBlockedBanner";
 import { useRouteFlash } from "../hooks/useRouteFlash";
@@ -48,6 +49,9 @@ const TenantLayout = ({ children }) => {
           sidebarCollapsed ? "sidebar-collapsed" : ""
         }`}
       >
+        <div className="tenant-topbar">
+          <NotificationBell />
+        </div>
         <main ref={contentRef} className="tenant-content">
           {(user?.accountStatus === "suspended" ||
             user?.accountStatus === "banned") && (
