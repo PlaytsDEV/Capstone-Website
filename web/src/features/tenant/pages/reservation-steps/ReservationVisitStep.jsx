@@ -1,702 +1,476 @@
-import React, { useState, useMemo, useCallback, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { Calendar, Clock, FileText, X, CheckCircle, AlertTriangle } from "lucide-react";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
+import { ChevronLeft } from "lucide-react";
 import { showNotification } from "../../../../shared/utils/notification";
-import { PoliciesTermsModal } from "../../modals/PoliciesAndConsent";
-import { useVisitAvailability } from "../../../../shared/hooks/queries/useReservations";
-import { useFirebaseAuth } from "../../../../shared/hooks/FirebaseAuthContext";
 
-/* ── Available time slots ─────────────────────────────────────────────── */
+/* ── SVG path data ─────────────────────────────────────────── */
+const svgPaths = {
+  p3e8e8100: "M2.33333 9.33333H23.3333C23.9522 9.33333 24.5457 9.57917 24.9832 10.0168C25.4208 10.4543 25.6667 11.0478 25.6667 11.6667V23.3333",
+  p1da67b80: "M15.8333 3.33333H4.16667C3.24619 3.33333 2.5 4.07953 2.5 5V16.6667C2.5 17.5871 3.24619 18.3333 4.16667 18.3333H15.8333C16.7538 18.3333 17.5 17.5871 17.5 16.6667V5C17.5 4.07953 16.7538 3.33333 15.8333 3.33333Z",
+  p14d24500: "M10 18.3333C14.6024 18.3333 18.3333 14.6024 18.3333 10C18.3333 5.39763 14.6024 1.66667 10 1.66667C5.39763 1.66667 1.66667 5.39763 1.66667 10C1.66667 14.6024 5.39763 18.3333 10 18.3333Z",
+  p3713e00:  "M12.5 1.66667H5C4.55797 1.66667 4.13405 1.84226 3.82149 2.15482C3.50893 2.46738 3.33333 2.89131 3.33333 3.33333V16.6667C3.33333 17.1087 3.50893 17.5326 3.82149 17.8452C4.13405 18.1577 4.55797 18.3333 5 18.3333H15C15.442 18.3333 15.866 18.1577 16.1785 17.8452C16.4911 17.5326 16.6667 17.1087 16.6667 16.6667V5.83333L12.5 1.66667Z",
+  pd2076c0:  "M11.6667 1.66667V5C11.6667 5.44203 11.8423 5.86595 12.1548 6.17851C12.4674 6.49107 12.8913 6.66667 13.3333 6.66667H16.6667",
+};
+
 const TIME_SLOTS = [
- { label: "08:00 AM", available: true, capacity: 5, remaining: 5 },
- { label: "09:00 AM", available: true, capacity: 5, remaining: 5 },
- { label: "10:00 AM", available: true, capacity: 5, remaining: 5 },
- { label: "11:00 AM", available: true, capacity: 5, remaining: 5 },
- { label: "01:00 PM", available: true, capacity: 5, remaining: 5 },
- { label: "02:00 PM", available: true, capacity: 5, remaining: 5 },
- { label: "03:00 PM", available: true, capacity: 5, remaining: 5 },
- { label: "04:00 PM", available: true, capacity: 5, remaining: 5 },
+  { label: "08:00 AM", available: true, capacity: 5, remaining: 5 },
+  { label: "09:00 AM", available: true, capacity: 5, remaining: 5 },
+  { label: "10:00 AM", available: true, capacity: 5, remaining: 5 },
+  { label: "11:00 AM", available: true, capacity: 5, remaining: 5 },
+  { label: "01:00 PM", available: true, capacity: 5, remaining: 5 },
+  { label: "02:00 PM", available: true, capacity: 5, remaining: 5 },
+  { label: "03:00 PM", available: true, capacity: 5, remaining: 5 },
+  { label: "04:00 PM", available: true, capacity: 5, remaining: 5 },
 ];
 
-const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-/* ── Helper: generate next N weekdays ───────────────────────────────── */
-function fmtDate(date) {
- return date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-}
-
-function fmtDateFull(dateStr) {
- if (!dateStr) return "N/A";
- const cleanDate = String(dateStr).split("T")[0];
- return new Date(cleanDate + "T12:00:00").toLocaleDateString("en-US", {
- weekday: "long", month: "long", day: "numeric", year: "numeric",
- });
-}
-
+/* ── Helpers ─────────────────────────────────────────────── */
 function toISODate(date) {
- const year = date.getFullYear();
- const month = String(date.getMonth() + 1).padStart(2, "0");
- const day = String(date.getDate()).padStart(2, "0");
- return `${year}-${month}-${day}`;
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
-
 function addDays(date, days) {
- const next = new Date(date);
- next.setDate(next.getDate() + days);
- return next;
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+function getFallbackAvailabilityDates(count = 10) {
+  const dates = [];
+  let added = 0, offset = 1;
+  while (added < count) {
+    const date = addDays(new Date(), offset);
+    if (![0, 6].includes(date.getDay())) {
+      dates.push({
+        date: toISODate(date),
+        available: true,
+        slots: TIME_SLOTS.map((s) => ({ ...s })),
+      });
+      added++;
+    }
+    offset++;
+  }
+  return dates;
+}
+function formatDate(dateStr) {
+  if (!dateStr) return "N/A";
+  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+function formatDateFull(dateStr) {
+  if (!dateStr) return "N/A";
+  return new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", {
+    weekday: "long", month: "long", day: "numeric", year: "numeric",
+  });
+}
+function getSlotMeta(slot) {
+  const capacity  = Number.isFinite(slot.capacity)  ? slot.capacity  : 5;
+  const remaining = Number.isFinite(slot.remaining) ? slot.remaining : capacity;
+  const isFull    = remaining <= 0 || slot.available === false;
+  const pct       = remaining / capacity;
+  const colorClass = isFull ? "text-red-400" : pct > 0.6 ? "text-green-600" : pct > 0.2 ? "text-yellow-600" : "text-red-500";
+  return { isFull, colorClass, label: isFull ? "Full" : `${remaining}/${capacity}` };
 }
 
-function getTomorrowISO() {
- return toISODate(addDays(new Date(), 1));
+/* ── SVG Icons ───────────────────────────────────────────── */
+function CalSVG({ color = "#0C375F", size = 18 }) {
+  return (
+    <svg width={size} height={size} fill="none" viewBox="0 0 20 20">
+      <path d="M6.66667 1.66667V5" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.66667" />
+      <path d="M13.3333 1.66667V5" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.66667" />
+      <path d={svgPaths.p1da67b80} stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.66667" />
+      <path d="M2.5 8.33333H17.5" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.66667" />
+    </svg>
+  );
+}
+function ClockSVG({ color = "#0C375F", size = 18 }) {
+  return (
+    <svg width={size} height={size} fill="none" viewBox="0 0 20 20">
+      <path d={svgPaths.p14d24500} stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.66667" />
+      <path d="M10 5V10L13.3333 11.6667" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.66667" />
+    </svg>
+  );
+}
+function DocSVG({ color = "#0C375F", size = 18 }) {
+  return (
+    <svg width={size} height={size} fill="none" viewBox="0 0 20 20">
+      <path d={svgPaths.p3713e00} stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.66667" />
+      <path d={svgPaths.pd2076c0} stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.66667" />
+      <path d="M8.33333 7.5H6.66667" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.66667" />
+      <path d="M13.3333 10.8333H6.66667" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.66667" />
+      <path d="M13.3333 14.1667H6.66667" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.66667" />
+    </svg>
+  );
 }
 
-function getFallbackAvailabilityDates(count = 14) {
- return Array.from({ length: count }, (_, index) => {
- const date = addDays(new Date(), index + 1);
- const isWeekend = [0, 6].includes(date.getDay());
- return {
- date: toISODate(date),
- available: !isWeekend,
- disabledReason: isWeekend ? "Visits are closed on that date." : "",
- slots: TIME_SLOTS.map((slot) => ({
- ...slot,
- available: !isWeekend,
- disabledReason: isWeekend ? "Visits are closed on that date." : "",
- disabledCode: isWeekend ? "VISIT_DATE_CLOSED" : "",
- })),
- };
- });
+/* ── Sub-components ─────────────────────────────────────── */
+function Card({ children, className = "" }) {
+  return (
+    <div className={`bg-white rounded-2xl border border-gray-100 shadow-sm ${className}`}>
+      {children}
+    </div>
+  );
+}
+function SectionHeader({ icon, title, subtitle }) {
+  return (
+    <div className="flex items-start gap-3 mb-5">
+      <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: "rgba(12,55,95,0.08)" }}>
+        {icon}
+      </div>
+      <div>
+        <h3 className="text-[15px] font-semibold text-[#0c375f] leading-tight">{title}</h3>
+        {subtitle && <p className="text-xs text-gray-400 mt-0.5">{subtitle}</p>}
+      </div>
+    </div>
+  );
 }
 
-function normalizeBranchKey(value) {
- const normalized = String(value || "").trim().toLowerCase().replace(/\s+/g, "-");
- if (normalized === "gil-puyat" || normalized === "guadalupe") return normalized;
- return "";
+/* ─────────────────────────────────────────────────────────────
+   Modal — rendered via React Portal directly into document.body
+   so it is completely outside any scrollable/overflow container
+   and can never be clipped by an ancestor stacking context.
+   ───────────────────────────────────────────────────────────── */
+function Modal({ show, onBackdropClick, children, animate = true }) {
+  // Track mount state for enter animation
+  const [visible, setVisible] = useState(false);
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    if (show) {
+      // Next tick so CSS transition fires
+      timerRef.current = requestAnimationFrame(() => setVisible(true));
+    } else {
+      setVisible(false);
+    }
+    return () => cancelAnimationFrame(timerRef.current);
+  }, [show]);
+
+  // Lock body scroll while modal is open
+  useEffect(() => {
+    if (show) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => { document.body.style.overflow = prev; };
+    }
+  }, [show]);
+
+  if (!show) return null;
+
+  const overlayStyle = {
+    // Fixed to the viewport — completely unaffected by any ancestor
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: "100vw",
+    height: "100vh",
+    zIndex: 99999,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "16px",
+    // Fade in/out
+    transition: "opacity 0.2s ease",
+    opacity: visible ? 1 : 0,
+  };
+
+  const backdropStyle = {
+    position: "absolute",
+    inset: 0,
+    // Full-screen frosted glass — this is the key fix
+    background: "rgba(0, 0, 0, 0.55)",
+    backdropFilter: "blur(8px)",
+    WebkitBackdropFilter: "blur(8px)",
+  };
+
+  const cardStyle = {
+    position: "relative",
+    zIndex: 1,
+    width: "100%",
+    maxWidth: "380px",
+    background: "#fff",
+    borderRadius: "20px",
+    boxShadow: "0 24px 64px rgba(0,0,0,0.18), 0 8px 24px rgba(0,0,0,0.1)",
+    // Slide up + fade
+    transform: visible ? "translateY(0) scale(1)" : "translateY(16px) scale(0.97)",
+    transition: "transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s ease",
+    opacity: visible ? 1 : 0,
+  };
+
+  return createPortal(
+    <div style={overlayStyle} onClick={onBackdropClick} aria-modal="true" role="dialog">
+      {/* Full-viewport blurred backdrop */}
+      <div style={backdropStyle} aria-hidden="true" />
+      {/* Modal card — stopPropagation so clicking inside doesn't close */}
+      <div style={cardStyle} onClick={(e) => e.stopPropagation()}>
+        {children}
+      </div>
+    </div>,
+    document.body   // ← Mounted on body, outside every container
+  );
 }
 
-function buildCalendarCells(dateRows) {
- if (!dateRows?.length) return [];
- const firstDate = new Date(dateRows[0].date + "T00:00:00");
- const leadingDays = firstDate.getDay();
- return [
- ...Array.from({ length: leadingDays }, (_, index) => ({
- type: "empty",
- key: `empty-start-${index}`,
- })),
- ...dateRows.map((dateRow) => ({
- type: "date",
- key: dateRow.date,
- dateRow,
- })),
- ];
+/* ── Main Component ────────────────────────────────────── */
+export default function ScheduleVisit({
+  reservationData,
+  visitDate,
+  setVisitDate = () => {},
+  visitTime,
+  setVisitTime = () => {},
+  onPrev,
+  onSaveVisit,
+  onAfterClose,
+  readOnly = false,
+  agreedToPrivacy = false,
+}) {
+  const [policiesAccepted, setPoliciesAccepted] = useState(agreedToPrivacy || readOnly);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSubmitted, setIsSubmitted] = useState(false);
+
+  const availableDates   = useMemo(() => getFallbackAvailabilityDates(10), []);
+  const selectedDateData = useMemo(
+    () => availableDates.find((d) => d.date === visitDate),
+    [availableDates, visitDate]
+  );
+
+  const canSubmit = policiesAccepted && visitDate && visitTime && !isSubmitted;
+
+  const handleDateSelect = (date) => {
+    setVisitDate(date);
+    if (visitTime) setVisitTime("");
+  };
+
+  const handleConfirmSubmit = async () => {
+    setShowConfirmModal(false);
+    setIsSaving(true);
+    let saved = false;
+
+    try {
+      if (onSaveVisit) await onSaveVisit();
+      setIsSubmitted(true);
+      saved = true;
+    } catch (err) {
+      console.error("Failed to save visit:", err);
+      showNotification(
+        err?.response?.data?.error ||
+          err?.message ||
+          "Failed to schedule your visit. Please try again.",
+        "error",
+        4000,
+      );
+    } finally {
+      setIsSaving(false);
+    }
+
+    if (saved && onAfterClose) {
+      try {
+        await onAfterClose();
+      } catch (err) {
+        console.error("Failed to complete visit flow:", err);
+      }
+    }
+  };
+
+  const submitLabel = !visitDate
+    ? "Select a date to continue"
+    : !visitTime
+    ? "Select a time to continue"
+    : !policiesAccepted
+    ? "Accept policies to continue"
+    : "Confirm Visit";
+
+  return (
+    <div className="w-full">
+      <div className="flex flex-col gap-4">
+
+        {/* ── Page title ── */}
+        <div className="flex items-center gap-3 px-1 pt-1">
+          <div className="w-11 h-11 bg-[#e7710f] rounded-xl flex items-center justify-center flex-shrink-0">
+            <CalSVG color="white" size={22} />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-[#0c375f] leading-tight">Schedule Your Visit</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Choose a date and time, then review our policies.</p>
+          </div>
+        </div>
+
+        {/* ── Date Selection ── */}
+        <Card className="p-5">
+          <SectionHeader
+            icon={<CalSVG />}
+            title="Choose a Date"
+            subtitle="Weekdays available for the next 2 weeks"
+          />
+          <div className="grid grid-cols-5 gap-2">
+            {availableDates.map((dateData) => {
+              const date       = new Date(dateData.date + "T00:00:00");
+              const weekday    = date.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase();
+              const isSelected = visitDate === dateData.date;
+              return (
+                <button
+                  key={dateData.date}
+                  type="button"
+                  onClick={() => handleDateSelect(dateData.date)}
+                  className={`flex flex-col items-center gap-0.5 py-3.5 rounded-xl border-2 transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#e7710f]/50
+                    ${isSelected
+                      ? "border-[#e7710f] bg-[#fff7ed]"
+                      : "border-gray-100 bg-gray-50 hover:bg-[#fff7ed] hover:border-[#e7710f]/40"
+                    }`}
+                >
+                  <span className="text-[10px] font-semibold text-gray-400 tracking-wider">{weekday}</span>
+                  <span className={`text-sm font-bold mt-0.5 ${isSelected ? "text-[#e7710f]" : "text-[#0c375f]"}`}>
+                    {formatDate(dateData.date)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </Card>
+
+        {/* ── Time Selection ── */}
+        <Card className="p-5">
+          <SectionHeader
+            icon={<ClockSVG />}
+            title="Choose a Time"
+            subtitle="Select your preferred arrival slot"
+          />
+          <div className="grid grid-cols-4 gap-2">
+            {(selectedDateData?.slots || TIME_SLOTS).map((slot) => {
+              const isSelected = visitTime === slot.label;
+              const meta       = getSlotMeta(slot);
+              return (
+                <button
+                  key={slot.label}
+                  type="button"
+                  onClick={() => !meta.isFull && setVisitTime(slot.label)}
+                  disabled={meta.isFull}
+                  className={`flex flex-col items-center py-3 rounded-xl border-2 text-sm transition-all
+                    focus:outline-none focus-visible:ring-2 focus-visible:ring-[#e7710f]/50
+                    disabled:opacity-40 disabled:cursor-not-allowed
+                    ${isSelected
+                      ? "border-[#e7710f] bg-[#fff7ed] text-[#e7710f]"
+                      : "border-gray-100 bg-gray-50 text-gray-700 hover:bg-[#fff7ed] hover:border-[#e7710f]/40 cursor-pointer"
+                    }`}
+                >
+                  <span className="font-semibold text-[13px]">{slot.label}</span>
+                  <span className={`text-[10px] mt-0.5 font-medium ${meta.colorClass}`}>{meta.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </Card>
+
+        {/* ── Policies ── */}
+        <div className="bg-amber-50 rounded-2xl border border-amber-200 p-5">
+          <SectionHeader
+            icon={<DocSVG color="#92400e" />}
+            title="Policies & Terms"
+            subtitle="Please read and accept before confirming"
+          />
+          <label htmlFor="policies-checkbox" className="flex items-start gap-3 cursor-pointer group">
+            <div className="relative mt-0.5 flex-shrink-0">
+              <input
+                type="checkbox"
+                id="policies-checkbox"
+                checked={policiesAccepted}
+                onChange={(e) => setPoliciesAccepted(e.target.checked)}
+                className="sr-only"
+              />
+              <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all
+                ${policiesAccepted ? "bg-[#e7710f] border-[#e7710f]" : "bg-white border-gray-300 group-hover:border-[#e7710f]/60"}`}>
+                {policiesAccepted && (
+                  <svg width="11" height="9" viewBox="0 0 11 9" fill="none">
+                    <path d="M1 4L4 7L10 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </div>
+            </div>
+            <p className="text-sm text-amber-900 leading-relaxed">
+              I have read and agree to the{" "}
+              <span className="font-semibold text-[#e7710f]">dormitory policies</span>,{" "}
+              <span className="font-semibold text-[#e7710f]">terms & conditions</span>, and{" "}
+              <span className="font-semibold text-[#e7710f]">privacy policy</span>
+            </p>
+          </label>
+        </div>
+
+        {/* ── Actions ── */}
+        <div className="flex gap-3 pb-2">
+          {onPrev && (
+            <button
+              onClick={onPrev}
+              className="flex items-center gap-1.5 px-5 rounded-xl border-2 border-gray-200 text-[#0c375f] font-medium text-sm hover:bg-gray-50 transition-colors cursor-pointer flex-shrink-0"
+              style={{ height: 50 }}
+            >
+              <ChevronLeft size={15} />
+              Back
+            </button>
+          )}
+          <button
+            onClick={() => canSubmit && setShowConfirmModal(true)}
+            disabled={!canSubmit}
+            className={`flex-1 rounded-xl font-semibold text-sm text-white transition-all
+              ${canSubmit
+                ? "bg-[#e7710f] hover:bg-[#cc6309] cursor-pointer shadow-sm hover:shadow-md"
+                : "bg-gray-200 text-gray-400 cursor-not-allowed"
+              }`}
+            style={{ height: 50 }}
+          >
+            {submitLabel}
+          </button>
+        </div>
+      </div>
+
+      {/* ── Confirm Modal ──────────────────────────────────────
+          Rendered via createPortal into document.body.
+          The backdrop covers 100vw × 100vh regardless of any
+          ancestor overflow / transform / stacking context.
+          ─────────────────────────────────────────────────── */}
+      <Modal show={showConfirmModal} onBackdropClick={() => setShowConfirmModal(false)}>
+        <div className="p-6">
+          <div className="text-center mb-5">
+            <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3"
+              style={{ background: "rgba(231,113,15,0.1)" }}>
+              <CalSVG color="#e7710f" size={28} />
+            </div>
+            <h3 className="text-lg font-bold text-[#0c375f]">Confirm Your Visit</h3>
+            <p className="text-sm text-gray-400 mt-1">You're scheduling a visit on:</p>
+          </div>
+
+          <div className="bg-gray-50 rounded-xl border border-gray-100 p-4 mb-5">
+            <p className="text-[#0c375f] font-semibold text-sm">{formatDateFull(visitDate || "")}</p>
+            <div className="flex items-center gap-1.5 mt-1.5">
+              <ClockSVG color="#9ca3af" size={13} />
+              <span className="text-gray-500 text-xs">{visitTime}</span>
+            </div>
+          </div>
+
+          <div className="flex gap-2.5">
+            <button
+              onClick={() => setShowConfirmModal(false)}
+              className="flex-1 h-11 border-2 border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              Go Back
+            </button>
+            <button
+              onClick={handleConfirmSubmit}
+              className="flex-1 h-11 bg-[#e7710f] rounded-xl text-sm font-semibold text-white hover:bg-[#cc6309] transition-colors"
+            >
+              Yes, Book Visit
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── Saving Modal ── */}
+      <Modal show={isSaving} onBackdropClick={() => {}}>
+        <div className="p-8 text-center">
+          <div className="w-14 h-14 border-4 border-[#e7710f]/20 border-t-[#e7710f] rounded-full animate-spin mx-auto mb-4" />
+          <h3 className="text-base font-bold text-[#0c375f] mb-1">Preparing Your Visit Pass</h3>
+          <p className="text-gray-400 text-sm">Generating your visit code…</p>
+        </div>
+      </Modal>
+    </div>
+  );
 }
-
-const VISIT_ERROR_MESSAGES = {
- VISIT_DATE_SAME_DAY: "Visits must be scheduled at least one day in advance.",
- VISIT_DATE_IN_PAST: "That date has already passed.",
- VISIT_DATE_CLOSED: "Visits are closed on that date.",
- VISIT_CAPACITY_REACHED: "That time slot is full.",
- VISIT_SLOT_CONFLICT: "That room already has a visit at that time.",
- VISIT_SLOT_CLOSED: "This time is outside working hours.",
-};
-
-function formatRemainingSlots(slot) {
- const remaining = Number(slot?.remaining);
- if (!Number.isFinite(remaining)) return "";
- if (remaining <= 0) return "Full";
- return `${remaining} ${remaining === 1 ? "slot" : "slots"} left`;
-}
-
-function getSlotStatusText(slot) {
- if (slot?.available) return formatRemainingSlots(slot);
- if (slot?.disabledCode === "VISIT_CAPACITY_REACHED" || Number(slot?.remaining) <= 0) return "Full";
- return slot?.disabledReason || "";
-}
-
-/**
- * Step 2 — Visit Scheduling & Policies
- */
-const ReservationVisitStep = ({
- targetMoveInDate, viewingType, setViewingType,
- isOutOfTown, setIsOutOfTown, currentLocation, setCurrentLocation,
- visitApproved, onPrev, onNext,
- visitorName, setVisitorName, visitorPhone, setVisitorPhone, visitorEmail, setVisitorEmail,
- visitDate, setVisitDate, visitTime, setVisitTime,
- reservationData, reservationCode, visitCode,
- onSaveVisit, onAfterClose, readOnly, agreedToPrivacy,
- scheduleRejected, scheduleRejectionReason,
-}) => {
- const navigate = useNavigate();
- const { user: firebaseUser, loading: authLoading } = useFirebaseAuth();
- const [policiesAccepted, setPoliciesAccepted] = useState(agreedToPrivacy || readOnly || false);
- const [showReceiptModal, setShowReceiptModal] = useState(false);
- const [showConfirmModal, setShowConfirmModal] = useState(false);
- const [showPoliciesModal, setShowPoliciesModal] = useState(false);
- const [isSubmitted, setIsSubmitted] = useState(false);
- const [resolvedVisitCode, setResolvedVisitCode] = useState(visitCode || null);
- const [isSaving, setIsSaving] = useState(false);
- const [hoveredDate, setHoveredDate] = useState(null);
- const [hoveredTime, setHoveredTime] = useState(null);
- const scheduleLocked = (readOnly || isSubmitted) && !scheduleRejected;
- const canEditSchedule = !scheduleLocked;
-
- const branch = normalizeBranchKey(
- reservationData?.room?.branchKey ||
- reservationData?.room?.branch ||
- reservationData?.branch,
- );
- const roomId = reservationData?.room?._id || reservationData?.roomId || "";
- const reservationId = reservationData?._id || "";
- const canLoadAvailability = Boolean(branch) && canEditSchedule && !authLoading && Boolean(firebaseUser);
- const availabilityParams = useMemo(
- () => ({
- branch,
- from: getTomorrowISO(),
- days: 14,
- roomId,
- reservationId,
- }),
- [branch, roomId, reservationId],
- );
- const {
- data: availability,
- isError: availabilityError,
- isLoading: loadingAvailability,
- refetch: refetchAvailability,
- } = useVisitAvailability(
- availabilityParams,
- { enabled: canLoadAvailability },
- );
- const availabilityUnavailable = canLoadAvailability && availabilityError;
- const availableDates = useMemo(
- () => {
- if (availabilityError) return [];
- if (loadingAvailability) return [];
- if (availability?.dates?.length) return availability.dates;
- // Only show fallback dates when the query was never enabled (no branch/auth).
- // When the API loaded successfully but returned nothing, keep the list empty
- // so the UI shows a real "no availability" state instead of fake slots.
- if (!canLoadAvailability) return getFallbackAvailabilityDates(14);
- return [];
- },
- [availability, availabilityError, loadingAvailability, canLoadAvailability],
- );
- const calendarDateCells = useMemo(
- () => buildCalendarCells(availableDates),
- [availableDates],
- );
- const selectedDateAvailability = useMemo(
- () => availableDates.find((date) => date.date === visitDate) || null,
- [availableDates, visitDate],
- );
- const selectedTimeSlots = selectedDateAvailability?.slots?.length
- ? selectedDateAvailability.slots
- : [];
-
- useEffect(() => {
- if (visitCode) setResolvedVisitCode(visitCode);
- }, [visitCode]);
-
- const handleConfirmSubmit = async () => {
- setShowConfirmModal(false);
- setIsSaving(true);
- let saveSucceeded = false;
- let shouldOpenReceipt = false;
- try {
- const code = onSaveVisit ? await onSaveVisit() : null;
- saveSucceeded = true;
- const finalCode = code || visitCode || null;
- if (finalCode) {
- setResolvedVisitCode(finalCode);
- shouldOpenReceipt = true;
- } else {
- showNotification(
- "Your visit was saved, but the pass is still being prepared. Please reopen it from your dashboard in a moment.",
- "info",
- 4000,
- );
- }
- } catch (err) {
- console.error("Failed to save visit:", err);
- // Fallback message ensures we don't dump raw technical errors
- const errorCode = err?.response?.data?.code;
- const errorMessage =
- VISIT_ERROR_MESSAGES[errorCode] ||
- err?.response?.data?.error ||
- "We encountered an unexpected issue while scheduling your visit. Please try again.";
- showNotification(errorMessage, "error", 5000);
- } finally {
- setIsSaving(false);
- }
-
- if (saveSucceeded) {
- setIsSubmitted(true);
- }
-
- if (shouldOpenReceipt) {
- setShowReceiptModal(true);
- }
- };
-
- const handleReturnToDashboard = () => {
- setShowReceiptModal(false);
- if (onAfterClose) onAfterClose();
- else navigate("/applicant/profile");
- };
-
- const canSubmit = policiesAccepted && visitDate && visitTime && !isSubmitted && !availabilityError;
-
- const ctaLabel = useCallback(() => {
- if (availabilityError) return "Availability unavailable";
- if (!visitDate) return "Select a date to continue";
- if (!visitTime) return "Select a time to continue";
- if (!policiesAccepted) return "Accept policies to continue";
- return "Confirm Visit";
- }, [visitDate, visitTime, policiesAccepted, availabilityError]);
-
- const handleSubmitWithValidation = () => {
- if (availabilityError) {
- showNotification("Cannot schedule a visit while availability data is unavailable. Please use the retry button above.", "error", 4000);
- document.getElementById("visit-date-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
- return;
- }
- if (!visitDate) {
- showNotification("Please select a visit date to continue.", "error", 3000);
- document.getElementById("visit-date-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
- return;
- }
- const dateAvailability = availableDates.find((date) => date.date === visitDate);
- if (dateAvailability && !dateAvailability.slots?.some((slot) => slot.available)) {
- showNotification(dateAvailability.disabledReason || "Visits are closed on that date.", "error", 3000);
- document.getElementById("visit-date-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
- return;
- }
- if (!visitTime) {
- showNotification("Please select a time slot for your visit.", "error", 3000);
- document.getElementById("visit-time-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
- return;
- }
- const slotAvailability = dateAvailability?.slots?.find((slot) => slot.label === visitTime);
- if (slotAvailability && !slotAvailability.available) {
- showNotification(slotAvailability.disabledReason || "That time slot is unavailable.", "error", 3000);
- document.getElementById("visit-time-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
- return;
- }
- if (!policiesAccepted) {
- showNotification("Please agree to the policies and terms to continue.", "error", 3000);
- document.getElementById("visit-policies-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
- return;
- }
- setShowConfirmModal(true);
- };
-
- return (
- <div className="rf-visit-step">
- {/* Step Header */}
- <div className="main-header">
- <div className="main-header-badge"><span>Step 2 · Verification</span></div>
- <h2 className="main-header-title">Schedule Your Visit</h2>
- <p className="main-header-subtitle">
- Pick an available date and time to visit the dormitory. Review our
- policies before confirming your booking.
- </p>
- </div>
-
- {/* Rejection Banner */}
- {scheduleRejected && (
- <div className="rf-rejection-banner">
- <AlertTriangle size={20} color="var(--rf-error-text)" style={{ flexShrink: 0, marginTop: 2 }} />
- <div>
- <div className="rf-rejection-banner__title">Your previous visit schedule was rejected</div>
- {scheduleRejectionReason && (
- <div className="rf-rejection-banner__reason">
- <strong>Reason:</strong> {scheduleRejectionReason}
- </div>
- )}
- <div className="rf-rejection-banner__hint">
- Please select a new date and time below to reschedule your visit.
- </div>
- </div>
- </div>
- )}
-
- {/* Read-Only Banner */}
- {scheduleLocked && (
- <div className="rf-locked-banner">
- <div className="info-box-title">This section is locked</div>
- <div className="info-text">Your visit has been scheduled. This step can no longer be edited.</div>
- </div>
- )}
-
- {scheduleLocked ? (
- <div className="content-card">
- <div className="card-section-title">
- <CheckCircle size={15} style={{ marginRight: 6, flexShrink: 0 }} />
- Scheduled Visit
- </div>
- <div className="rf-receipt-rows">
- <div className="rf-receipt-row">
- <span className="rf-receipt-row__label">Date</span>
- <span className="rf-receipt-row__value">{fmtDateFull(visitDate)}</span>
- </div>
- <div className="rf-receipt-row">
- <span className="rf-receipt-row__label">Time</span>
- <span className="rf-receipt-row__value">{visitTime || "N/A"}</span>
- </div>
- {resolvedVisitCode && (
- <div className="rf-receipt-row rf-receipt-row--highlighted">
- <span className="rf-receipt-row__label">Visit Code</span>
- <span className="rf-receipt-row__code">{resolvedVisitCode}</span>
- </div>
- )}
- </div>
- </div>
- ) : (
- <>
- {/* Form content wrapper */}
- <div className={scheduleLocked ? "rf-readonly-wrapper" : ""}>
- {/* Availability API error banner */}
- {availabilityError && !scheduleLocked && (
- <div className="rf-locked-banner" style={{ borderColor: "#EF4444", backgroundColor: "rgba(239,68,68,0.06)", alignItems: "center" }}>
- <AlertTriangle size={16} style={{ color: "#DC2626", flexShrink: 0 }} />
- <div style={{ flex: 1 }}>
- <div className="info-box-title" style={{ color: "#DC2626" }}>Availability unavailable</div>
- <div className="info-text">Could not load visit schedule. Retry or refresh the page.</div>
- </div>
- <button
- type="button"
- onClick={() => refetchAvailability()}
- style={{ flexShrink: 0, padding: "4px 12px", borderRadius: 6, border: "1px solid #DC2626", background: "transparent", color: "#DC2626", cursor: "pointer", fontSize: 13, fontWeight: 500 }}
- >
- Retry
- </button>
- </div>
- )}
-
- {/* ── Card 1: Select Date ── */}
- <div className="content-card" id="visit-date-section">
- <div className="card-section-title">
- <Calendar size={15} style={{ marginRight: 6, flexShrink: 0 }} />
- Choose a Date
- </div>
- <p className="rf-section-hint">
- {authLoading || loadingAvailability ? "Checking branch availability..." : "Future visit dates for the next 2 weeks"}
- </p>
- {availabilityUnavailable && (
- <div className="rf-availability-alert" role="alert">
- Unable to load live visit availability. Please refresh before choosing a schedule.
- </div>
- )}
- <div className="rf-calendar-grid" aria-label="Visit dates by week">
- {WEEKDAY_LABELS.map((weekday) => (
- <div key={weekday} className="rf-calendar-weekday">
- {weekday}
- </div>
- ))}
- {calendarDateCells.map((cell) => {
- if (cell.type === "empty") {
- return <div key={cell.key} className="rf-date-empty" aria-hidden="true" />;
- }
- const dateRow = cell.dateRow;
- const iso = dateRow.date;
- const date = new Date(iso + "T00:00:00");
- const selected = visitDate === iso;
- const disabled = readOnly || !dateRow.slots?.some((slot) => slot.available);
- return (
- <button
- key={iso}
- type="button"
- className="rf-date-btn"
- disabled={disabled}
- title={dateRow.disabledReason || ""}
- onClick={() => { setVisitDate(iso); if (visitTime) setVisitTime(""); }}
- onMouseEnter={() => setHoveredDate(iso)}
- onMouseLeave={() => setHoveredDate(null)}
- aria-pressed={selected}
- aria-label={date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
- >
- <div className={`rf-date-card${selected ? " selected" : ""}${disabled ? " disabled" : ""}`}>
- {iso === getTomorrowISO() && <span className="rf-today-pill">Tomorrow</span>}
- <div className="rf-date-day">
- {date.toLocaleDateString("en-US", { weekday: "short" })}
- </div>
- <div className="rf-date-num">
- {date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
- </div>
- </div>
- </button>
- );
- })}
- </div>
- </div>
-
- {/* ── Card 2: Select Time ── */}
- <div
- className="content-card rf-visit-time-card"
- id="visit-time-section"
- style={{ opacity: visitDate ? 1 : 0.45, transition: "opacity 0.2s ease", pointerEvents: visitDate ? "auto" : "none" }}
- >
- <div className="card-section-title">
- <Clock size={15} style={{ marginRight: 6, flexShrink: 0 }} />
- Choose a Time
- </div>
- <p className="rf-section-hint">
- {visitDate
- ? <><span>Available time slots for </span><strong>{fmtDate(new Date(visitDate + "T00:00:00"))}</strong></>
- : "Select a date first to see available times"}
- </p>
- <div className="rf-time-grid">
- {availabilityUnavailable && (
- <div className="rf-time-grid__message">
- Live slot counts are unavailable right now.
- </div>
- )}
- {selectedTimeSlots.map((slot) => {
- const selected = visitTime === slot.label;
- const disabled = readOnly || !slot.available;
- const statusText = getSlotStatusText(slot);
- return (
- <button
- key={slot.label}
- type="button"
- className="rf-time-btn"
- disabled={disabled}
- title={slot.disabledReason || ""}
- onClick={() => setVisitTime(slot.label)}
- onMouseEnter={() => setHoveredTime(slot.label)}
- onMouseLeave={() => setHoveredTime(null)}
- aria-pressed={selected}
- aria-label={slot.label}
- >
- <div className={`rf-time-slot${selected ? " selected" : ""}${disabled ? " disabled" : ""}`}>
- <span>{slot.label}</span>
- {statusText && (
- <small>{statusText}</small>
- )}
- </div>
- </button>
- );
- })}
- </div>
- </div>
-
- {/* ── Card 3: Policies & Terms ── */}
- <div className="content-card" id="visit-policies-section">
- <div className="card-section-title">
- <FileText size={15} style={{ marginRight: 6, flexShrink: 0 }} />
- Policies, Terms & Conditions
- </div>
- <div className="checkbox-group">
- <input
- type="checkbox"
- id="policies-accepted"
- checked={policiesAccepted || readOnly}
- onChange={(e) => setPoliciesAccepted(e.target.checked)}
- />
- <label htmlFor="policies-accepted" className="checkbox-label">
- I have read and agree to the{" "}
- <span className="rf-policies-link" onClick={() => setShowPoliciesModal(true)}>
- dormitory policies, terms & conditions, and privacy policy
- </span>
- </label>
- </div>
- </div>
-
- {/* ── Actions ── */}
- <div className="stage-buttons" style={{ justifyContent: "flex-end" }}>
- <button
- onClick={handleSubmitWithValidation}
- className="btn btn-primary"
- disabled={isSubmitted || isSaving}
- >
- {isSaving ? "Booking..." : ctaLabel()}
- </button>
- </div>
- </div>
- </>
- )}
-
- {/* Confirmation Modal */}
- {showConfirmModal && (
- <ConfirmModal
- visitDate={visitDate}
- visitTime={visitTime}
- onConfirm={handleConfirmSubmit}
- onClose={() => setShowConfirmModal(false)}
- />
- )}
-
- {isSaving && <SavingVisitModal />}
-
- {/* Receipt Modal */}
- {showReceiptModal && (
- <ReceiptModal
- visitDate={visitDate}
- visitTime={visitTime}
- visitCode={resolvedVisitCode}
- reservationCode={reservationCode}
- reservationData={reservationData}
- onClose={handleReturnToDashboard}
- />
- )}
-
- {/* Policies Modal */}
- <PoliciesTermsModal
- isOpen={showPoliciesModal}
- onClose={() => setShowPoliciesModal(false)}
- />
- </div>
- );
-};
-
-/* ══════════════════════════════════════════════════════════════
- ConfirmModal — extracted sub-component
- ══════════════════════════════════════════════════════════════ */
-function ConfirmModal({ visitDate, visitTime, onConfirm, onClose }) {
- useEffect(() => {
- const handler = (e) => { if (e.key === "Escape") onClose(); };
- document.addEventListener("keydown", handler);
- return () => document.removeEventListener("keydown", handler);
- }, [onClose]);
-
- return (
- <div className="rf-modal-overlay" onClick={onClose}>
- <div
- className="rf-modal-card"
- style={{ maxWidth: "420px", textAlign: "center" }}
- onClick={(e) => e.stopPropagation()}
- >
- <button type="button" onClick={onClose} className="rf-modal-close-btn" aria-label="Close">
- <X size={18} />
- </button>
-
- <div className="rf-modal-icon-wrap">
- <Calendar size={24} color="#3B82F6" />
- </div>
-
- <h3 className="rf-modal-title">Confirm Your Visit</h3>
- <p className="rf-modal-subtitle">You're booking a visit on:</p>
-
- <div className="rf-confirm-date-box">
- <div className="rf-confirm-date-box__date">
- {visitDate && fmtDateFull(visitDate + "T00:00:00")}
- </div>
- <div className="rf-confirm-date-box__time">
- <Clock size={13} />{visitTime}
- </div>
- </div>
-
- <div className="rf-modal-actions">
- <button onClick={onClose} className="btn btn-secondary" style={{ flex: 1 }}>Go Back</button>
- <button onClick={onConfirm} className="btn btn-primary" style={{ flex: 1 }}>Yes, Book Visit</button>
- </div>
- </div>
- </div>
- );
-}
-
-function SavingVisitModal() {
- return (
- <div className="rf-modal-overlay">
- <div
- className="rf-modal-card"
- style={{ maxWidth: 420, textAlign: "center", paddingTop: 36, paddingBottom: 36 }}
- >
- <div
- style={{
- width: 52,
- height: 52,
- borderRadius: "50%",
- border: "3px solid rgba(59,130,246,0.14)",
- borderTopColor: "#2563EB",
- margin: "0 auto 16px",
- animation: "rf-spin 0.9s linear infinite",
- }}
- />
- <h3 className="rf-modal-title">Preparing Your Visit Pass</h3>
- <p className="rf-modal-subtitle">
- Saving your schedule and generating your visit code.
- </p>
- </div>
- </div>
- );
-}
-
-/* ══════════════════════════════════════════════════════════════
- ReceiptModal — extracted sub-component
- ══════════════════════════════════════════════════════════════ */
-function ReceiptModal({ visitDate, visitTime, visitCode, reservationCode, reservationData, onClose }) {
- useEffect(() => {
- const handler = (e) => { if (e.key === "Escape") onClose(); };
- document.addEventListener("keydown", handler);
- return () => document.removeEventListener("keydown", handler);
- }, [onClose]);
-
- const room = reservationData?.room?.roomNumber || reservationData?.room?.name || reservationData?.room?.title || "N/A";
- const branch = reservationData?.room?.branch || "N/A";
-
- return (
- <div className="rf-modal-overlay">
- <div className="rf-modal-card" style={{ maxWidth: 420 }}>
- <button type="button" onClick={onClose} className="rf-modal-close-btn" aria-label="Close">
- <X size={18} />
- </button>
-
- {/* Success header */}
- <div style={{ textAlign: "center", marginBottom: "24px" }}>
- <div style={{ width: "52px", height: "52px", borderRadius: "50%", background: "rgba(22,163,74,0.08)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
- <CheckCircle size={28} color="#16A34A" strokeWidth={2.5} />
- </div>
- <h3 className="rf-modal-title">Visit Confirmed!</h3>
- <p className="rf-modal-subtitle">Your visit has been booked successfully</p>
- </div>
-
- {/* Receipt card */}
- <div className="rf-receipt-card">
- <div className="rf-receipt-header">
- <span className="rf-receipt-header__label">Booking Summary</span>
- <span className="rf-receipt-header__badge">Visit Scheduled</span>
- </div>
- <div className="rf-receipt-rows">
- {/* Visit code — highlighted row */}
- <div className="rf-receipt-row rf-receipt-row--highlighted">
- <span className="rf-receipt-row__label">Visit Code</span>
- {visitCode
- ? <span className="rf-receipt-row__code">{visitCode}</span>
- : <span className="rf-receipt-row__code rf-receipt-row__code--pending">Generating…</span>
- }
- </div>
- {[
- { label: "Date", value: fmtDateFull(visitDate), capitalize: false },
- { label: "Time", value: visitTime, capitalize: false },
- { label: "Room", value: room, capitalize: false },
- { label: "Branch", value: branch, capitalize: true },
- ].map((row) => (
- <div key={row.label} className="rf-receipt-row">
- <span className="rf-receipt-row__label">{row.label}</span>
- <span
- className="rf-receipt-row__value"
- style={{ textTransform: row.capitalize ? "capitalize" : "none" }}
- >
- {row.value}
- </span>
- </div>
- ))}
- </div>
- </div>
-
- {/* Note */}
- <div className="rf-visit-note">
- <Clock size={15} color="var(--rf-info-icon)" style={{ flexShrink: 0, marginTop: "2px" }} />
- <p className="rf-visit-note__text">
- Please arrive on time. After your visit, the admin will verify your attendance and approve your reservation to proceed.
- </p>
- </div>
-
- <button onClick={onClose} className="btn btn-primary btn-full">Return to Dashboard</button>
- </div>
- </div>
- );
-}
-
-export default ReservationVisitStep;
