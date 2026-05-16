@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { formatBranch, formatRoomType } from "../../../../shared/utils/formatDate";
 import { getRoomImages as getFallbackRoomImages } from "../check-availability/checkAvailabilityConstants";
+import { ROOM_SELECTION_LOCKED_MESSAGE } from "../../utils/reservationRoomLock";
 
 const formatCurrency = (value) => `₱${Number(value || 0).toLocaleString()}`;
 
@@ -318,7 +319,7 @@ const ReservationSummaryStep = ({
       {readOnly && (
         <div className="rf-locked-banner">
           <div className="info-box-title">This step is locked</div>
-          <div className="info-text">Room selection has been confirmed and cannot be changed.</div>
+          <div className="info-text">{ROOM_SELECTION_LOCKED_MESSAGE}</div>
         </div>
       )}
 

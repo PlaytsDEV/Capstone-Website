@@ -139,6 +139,10 @@ function ReservationFlowPage() {
               reservationData={flow.reservationData}
               onNext={flow.handleNextStage}
               onChangeRoom={() => {
+                if (flow.roomSelectionLocked) {
+                  flow.notifyRoomSelectionLocked();
+                  return;
+                }
                 const activeReservationId =
                   flow.reservationId ||
                   flow.reservationData?._id ||
@@ -151,7 +155,7 @@ function ReservationFlowPage() {
                 }
                 flow.navigate("/applicant/check-availability");
               }}
-              readOnly={flow.isStageLocked(1)}
+              readOnly={flow.roomSelectionLocked || flow.isStageLocked(1)}
             />
           )}
 

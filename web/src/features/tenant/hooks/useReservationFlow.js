@@ -42,6 +42,10 @@ import {
   isPhysicalVisitApplicationLocked,
   isPhysicalVisitApplicationStageRequestBlocked,
 } from "../utils/physicalVisitFlow";
+import {
+  ROOM_SELECTION_LOCKED_MESSAGE,
+  isApplicantRoomSelectionLocked,
+} from "../utils/reservationRoomLock";
 
 // Returns a sessionStorage key scoped to the Firebase UID when known,
 // falling back to the legacy unscoped key for backward compatibility.
@@ -454,6 +458,10 @@ export default function useReservationFlow() {
     () => isPhysicalVisitApplicationLocked(visitGateReservation),
     [visitGateReservation],
   );
+  const roomSelectionLocked = useMemo(
+    () => isApplicantRoomSelectionLocked(reservationData),
+    [reservationData],
+  );
 
   const returnToDashboardForPhysicalVisitGate = useCallback(() => {
     showNotification(PHYSICAL_VISIT_APPLICATION_LOCKED_MESSAGE, "info", 5000);
@@ -465,6 +473,10 @@ export default function useReservationFlow() {
       },
     });
   }, [appNavigate]);
+
+  const notifyRoomSelectionLocked = useCallback(() => {
+    showNotification(ROOM_SELECTION_LOCKED_MESSAGE, "info", 5000);
+  }, []);
 
   useEffect(() => {
     if (
@@ -518,7 +530,7 @@ export default function useReservationFlow() {
       status: reservationStatus,
     });
     if (paymentApproved) return stageId < 5;
-    if (stageId === 1) return visitCompleted;
+    if (stageId === 1) return roomSelectionLocked || visitCompleted;
     if (stageId === 2)
       return applicationSubmitted && !needsRevision && !scheduleRejected;
     if (stageId === 3) {
@@ -564,6 +576,11 @@ export default function useReservationFlow() {
 
   const handleStepperClick = (stageId) => {
     if (!isStageClickable(stageId)) return;
+    if (stageId === 1 && roomSelectionLocked) {
+      setCurrentStage(1);
+      notifyRoomSelectionLocked();
+      return;
+    }
     if (stageId === 3 && physicalVisitApplicationLocked && !applicationSubmitted) {
       returnToDashboardForPhysicalVisitGate();
       return;
@@ -935,6 +952,7 @@ export default function useReservationFlow() {
           visitApproved: Boolean(active.visitApproved),
           scheduleApproved: Boolean(active.scheduleApproved),
           scheduleRejected: Boolean(active.scheduleRejected),
+          roomConfirmed: Boolean(active.roomConfirmed),
           visitCode: active.visitCode || "",
           selectedBed: active.selectedBed || null,
           selectedAppliances: active.selectedAppliances || [],
@@ -1040,6 +1058,7 @@ export default function useReservationFlow() {
         visitApproved: Boolean(reservation.visitApproved),
         scheduleApproved: Boolean(reservation.scheduleApproved),
         scheduleRejected: Boolean(reservation.scheduleRejected),
+        roomConfirmed: Boolean(reservation.roomConfirmed),
         visitCode: reservation.visitCode || "",
         selectedBed: reservation.selectedBed,
         selectedAppliances: reservation.selectedAppliances || [],
@@ -1422,15 +1441,23 @@ export default function useReservationFlow() {
             applianceFees: reservationData?.applianceFees || 0,
             agreedToPrivacy: false,
             agreedToCertification: false,
+            roomConfirmed: true,
           });
           const existing = await reservationApi.getById(existingId);
           if (existing?.reservationCode)
             setReservationCode(existing.reservationCode);
           return existing;
         } catch (e) {
-          /* ignore */
+          const lockCode = e?.response?.data?.code;
+          showNotification(
+            lockCode === "RESERVATION_ROOM_SELECTION_LOCKED"
+              ? ROOM_SELECTION_LOCKED_MESSAGE
+              : getFriendlyError(e, "Unable to update your selected room."),
+            lockCode === "RESERVATION_ROOM_SELECTION_LOCKED" ? "info" : "error",
+            4000,
+          );
+          return null;
         }
-        return { _id: existingId };
       }
       throw error;
     }
@@ -1474,6 +1501,8 @@ export default function useReservationFlow() {
           updated.scheduleApproved ?? previous?.scheduleApproved ?? false,
         scheduleRejected:
           updated.scheduleRejected ?? previous?.scheduleRejected ?? false,
+        roomConfirmed:
+          updated.roomConfirmed ?? previous?.roomConfirmed ?? false,
         visitCode:
           updated.visitCode ?? previous?.visitCode ?? "",
         selectedBed: updated.selectedBed ?? previous?.selectedBed,
@@ -1878,6 +1907,10 @@ export default function useReservationFlow() {
     clearTimeout(autoSaveTimerRef.current);
     try {
       if (currentStage === 1) {
+        if (roomSelectionLocked) {
+          notifyRoomSelectionLocked();
+          return;
+        }
         if (!reservationData?.room) {
           showNotification("Please select a room to continue", "error", 3000);
           return;
@@ -2366,6 +2399,7 @@ export default function useReservationFlow() {
     saveStatus,
     isFormDirty,
     physicalVisitApplicationLocked,
+    roomSelectionLocked,
 
     // Stepper
     isStageLocked,
@@ -2381,6 +2415,7 @@ export default function useReservationFlow() {
     updateReservationDraft,
     returnToDashboardAfterViewingPreference,
     forceEditMode,
+    notifyRoomSelectionLocked,
     setEditingApplication,
     setScrollToSection,
     setShowStageConfirm,

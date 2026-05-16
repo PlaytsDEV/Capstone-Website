@@ -384,6 +384,38 @@ const ACTIVE_BED_HOLD_STATUSES = Object.freeze(
     "moveIn",
   ),
 );
+const ROOM_SELECTION_LOCKING_STATUSES = Object.freeze(
+  reservationStatusesForQuery(
+    "viewing_preference_selected",
+    "visit_pending",
+    "visit_approved",
+    "pending_application_review",
+    "needs_revision",
+    "approved_for_payment",
+    "payment_pending",
+    "reserved",
+    "moveIn",
+    "moveOut",
+  ),
+);
+const ROOM_RESELECTION_ALLOWED_STATUSES = Object.freeze([
+  ...reservationStatusesForQuery("cancelled", "rejected", "archived"),
+  "expired",
+]);
+const ROOM_SELECTION_UPDATE_FIELDS = Object.freeze([
+  "roomId",
+  "selectedBed",
+  "selectedAppliances",
+  "roomConfirmed",
+  "totalPrice",
+  "applianceFees",
+  "monthlyRent",
+  "reservationFee",
+  "reservationFeeAmount",
+  "amount",
+  "fees",
+  "deposit",
+]);
 const APPLICANT_CREATE_ALLOWED_FIELDS = Object.freeze([
   "roomId",
   "roomName",
@@ -581,6 +613,68 @@ const shouldAllowPaymentAccess = (status) =>
 
 const hasSubmittedField = (body, field) =>
   Object.prototype.hasOwnProperty.call(body || {}, field);
+
+const isTruthyApprovalValue = (value) => {
+  if (value === true) return true;
+  if (typeof value !== "string") return false;
+  return ["true", "approved", "allowed"].includes(value.trim().toLowerCase());
+};
+
+const hasAdminApprovedRoomReselection = (reservation = {}) => {
+  const explicitValue =
+    reservation.roomReselectionApproved ??
+    reservation.reselectionApproved ??
+    reservation.allowRoomReselection ??
+    reservation.roomChangeApproved ??
+    reservation.adminApprovedReselection;
+
+  if (isTruthyApprovalValue(explicitValue)) return true;
+
+  return isTruthyApprovalValue(
+    reservation.roomReselectionStatus ||
+      reservation.reselectionStatus ||
+      reservation.roomChangeStatus,
+  );
+};
+
+const hasSavedApplicantViewingPreference = (reservation = {}) => {
+  const explicitPreference = String(reservation.viewingPreference || "").trim();
+  const viewingType = String(reservation.viewingType || "")
+    .trim()
+    .toLowerCase();
+
+  return Boolean(
+    explicitPreference ||
+      reservation.visitDate ||
+      reservation.visitTime ||
+      reservation.visitStatus ||
+      reservation.remoteViewingAcknowledged ||
+      reservation.isUrgentMoveIn ||
+      ["remote_2d", "remote_2d_viewing", "virtual", "urgent_move_in", "urgent_move_in_review"].includes(
+        viewingType,
+      ),
+  );
+};
+
+const isApplicantRoomSelectionLocked = (reservation = {}) => {
+  if (!reservation) return false;
+  if (hasAdminApprovedRoomReselection(reservation)) return false;
+
+  const status = normalizeReservationStatus(reservation.status);
+
+  if (hasReservationStatus(status, ROOM_RESELECTION_ALLOWED_STATUSES)) {
+    return false;
+  }
+
+  return Boolean(
+    hasReservationStatus(status, ROOM_SELECTION_LOCKING_STATUSES) ||
+      reservation.roomConfirmed === true ||
+      hasSavedApplicantViewingPreference(reservation) ||
+      reservation.applicationSubmittedAt ||
+      reservation.paymentDate ||
+      reservation.proofOfPaymentUrl,
+  );
+};
 
 const pickAllowedFields = (source = {}, allowedFields = []) =>
   allowedFields.reduce((acc, key) => {
@@ -2111,6 +2205,7 @@ export const createReservation = async (req, res, next) => {
         : null,
       leaseDuration: b.leaseDuration || null,
       billingEmail: ((b.billingEmail || dbUser.email) ?? "").toLowerCase().trim() || null,
+      roomConfirmed: b.roomConfirmed === true,
       viewingPreference,
       viewingType: deriveViewingType(viewingPreference) || b.viewingType || null,
       isOutOfTown: b.isOutOfTown || false,
@@ -3685,6 +3780,19 @@ export const updateReservationByUser = async (req, res, next) => {
     let appliedPricing = null;
     let roomAvailabilityWasRevalidated = false;
     const hasBodyField = (field) => Object.prototype.hasOwnProperty.call(req.body, field);
+
+    const roomSelectionUpdateRequested = ROOM_SELECTION_UPDATE_FIELDS.some(
+      (field) => hasBodyField(field),
+    );
+    if (
+      roomSelectionUpdateRequested &&
+      isApplicantRoomSelectionLocked(reservation)
+    ) {
+      return res.status(423).json({
+        error: "Room selection is locked while your reservation is under review.",
+        code: "RESERVATION_ROOM_SELECTION_LOCKED",
+      });
+    }
 
     // ── Legacy soft-cancel path: redirect to dedicated cancel endpoint ─────
     // The new PATCH /:id/cancel endpoint is the canonical path.

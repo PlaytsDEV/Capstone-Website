@@ -25,6 +25,7 @@ import {
  getReservationViewingPreference,
  isPhysicalVisitPreference,
 } from "../utils/physicalVisitFlow";
+import { isApplicantRoomSelectionLocked } from "../utils/reservationRoomLock";
 import { APP_LOCALE, fmtShortDate } from "../../../shared/utils/dateFormat";
 
 const getReservationStatus = (reservation) =>
@@ -549,6 +550,7 @@ export default function ReservationDashboard({
   getReservationStatus(reservation),
   );
   const viewingPreferenceLabel = getViewingPreferenceLabel(reservation);
+  const roomSelectionLocked = isApplicantRoomSelectionLocked(reservation);
   const canOpenApplicationFromDashboard =
   !isPhysicalVisitPreference(reservation) ||
   Boolean(physicalVisitState?.canFillApplication) ||
@@ -1044,7 +1046,7 @@ export default function ReservationDashboard({
   (reservation.reservationStatus || reservation.status) !== "moveIn" && (
  <div style={styles.footer}>
  <div style={styles.footerLeft}>
-{!isConfirmed && currentStage <= 2 &&
+{!isConfirmed && !roomSelectionLocked && currentStage <= 2 &&
  !reservation.viewingPreference &&
  !reservation.viewingType &&
  !reservation.visitApproved &&
