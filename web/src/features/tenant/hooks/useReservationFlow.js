@@ -1546,23 +1546,14 @@ export default function useReservationFlow() {
         physical_visit: {
           toastMessage:
             "Viewing preference saved.",
-          title: "Viewing preference saved",
-          message:
-            "Your physical visit schedule has been saved. Please attend your scheduled room visit first. You may continue to the tenant application after admin confirms your visit or allows you to proceed.",
         },
         remote_2d_viewing: {
           toastMessage:
             "Viewing preference saved. You may now complete your tenant application.",
-          title: "Viewing preference saved",
-          message:
-            "Your remote viewing request has been saved. Please complete your tenant application and upload the required documents for admin review.",
         },
         urgent_move_in_review: {
           toastMessage:
             "Viewing preference saved. You may now complete your tenant application.",
-          title: "Viewing preference saved",
-          message:
-            "Your urgent move-in request has been saved. Please complete your tenant application so admin can review your request.",
         },
       };
 
@@ -1574,16 +1565,6 @@ export default function useReservationFlow() {
       appNavigate("/applicant/profile", {
         state: {
           tab: "dashboard",
-          reservationFeedback: {
-            variant: "success",
-            viewingPreference: selectedPreference,
-            title: feedback.title,
-            message: feedback.message,
-            visitCode: savedVisitCode || visitCode || "",
-            visitDate: savedVisitDate || visitDate || "",
-            visitTime: savedVisitTime || visitTime || "",
-            paymentLocked: true,
-          },
         },
         flash: {
           type: "success",

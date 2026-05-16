@@ -25,8 +25,6 @@ const DashboardTab = ({
  activeReservation,
  selectedReservation,
  visits,
- dashboardFeedback,
- onDismissDashboardFeedback,
  onGoToPersonal,
 }) => {
  const navigate = useNavigate();
@@ -122,8 +120,6 @@ const DashboardTab = ({
  <ReservationDashboard
  reservation={selectedReservation}
  visits={visits}
- feedback={dashboardFeedback}
- onDismissFeedback={onDismissDashboardFeedback}
  />
  <div style={S.shortcutsGrid}>
  <button

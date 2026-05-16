@@ -27,7 +27,7 @@ import {
  isPhysicalVisitPreference,
 } from "../utils/physicalVisitFlow";
 import { isApplicantRoomSelectionLocked } from "../utils/reservationRoomLock";
-import { APP_LOCALE, fmtShortDate } from "../../../shared/utils/dateFormat";
+import { fmtShortDate } from "../../../shared/utils/dateFormat";
 
 const getReservationStatus = (reservation) =>
  reservation?.reservationStatus || reservation?.status || "pending";
@@ -506,8 +506,6 @@ function getStepDesc(step, status, reservation) {
 export default function ReservationDashboard({
  reservation,
  visits = [],
- feedback = null,
- onDismissFeedback,
 }) {
  const navigate = useNavigate();
  const queryClient = useQueryClient();
@@ -680,187 +678,6 @@ export default function ReservationDashboard({
   </div>
   )}
 
-  {feedback && (
- <div style={styles.receiptCard}>
- <div style={styles.receiptCardHeader}>
- <div style={styles.receiptCardHeaderLeft}>
- <span style={styles.receiptCardTitle}>Viewing Preference Saved</span>
- <span style={{
- ...styles.receiptStatusPill,
- ...(feedback.viewingPreference === "physical_visit"
-  ? styles.receiptPillPhysical
-  : feedback.viewingPreference === "urgent_move_in_review"
-  ? styles.receiptPillUrgent
-  : styles.receiptPillRemote),
- }}>
- {feedback.viewingPreference === "physical_visit"
-  ? "Physical Visit"
-  : feedback.viewingPreference === "urgent_move_in_review"
-  ? "Priority Review"
-  : "Remote Viewing"}
- </span>
- </div>
- {onDismissFeedback && (
- <button type="button" onClick={onDismissFeedback} style={styles.receiptDismissBtn}>✕</button>
- )}
- </div>
- <div style={styles.receiptRows}>
- <div style={styles.receiptRow}>
- <span style={styles.receiptRowLabel}>Room</span>
- <span style={styles.receiptRowValue}>{roomName}</span>
- </div>
- <div style={styles.receiptRow}>
- <span style={styles.receiptRowLabel}>Branch</span>
- <span style={styles.receiptRowValue}>{branch}</span>
- </div>
- {feedback.viewingPreference === "physical_visit" ? (
- <>
- {feedback.visitDate && (
- <div style={styles.receiptRow}>
- <span style={styles.receiptRowLabel}>Preferred Date</span>
- <span style={styles.receiptRowValue}>{formatDate(feedback.visitDate)}</span>
- </div>
- )}
- {feedback.visitTime && (
- <div style={styles.receiptRow}>
- <span style={styles.receiptRowLabel}>Preferred Time</span>
- <span style={styles.receiptRowValue}>{feedback.visitTime}</span>
- </div>
- )}
- {feedback.visitCode && (
- <div style={styles.receiptRow}>
- <span style={styles.receiptRowLabel}>Visit Code</span>
- <span style={{ ...styles.receiptRowValue, ...styles.receiptCode }}>{feedback.visitCode}</span>
- </div>
- )}
- </>
- ) : feedback.viewingPreference === "urgent_move_in_review" ? (
- <div style={styles.receiptRow}>
- <span style={styles.receiptRowLabel}>Request Type</span>
- <span style={styles.receiptRowValue}>Priority Viewing Review</span>
- </div>
- ) : (
- <div style={styles.receiptRow}>
- <span style={styles.receiptRowLabel}>Viewing Type</span>
- <span style={styles.receiptRowValue}>Remote Viewing</span>
- </div>
- )}
- <div style={styles.receiptRow}>
- <span style={styles.receiptRowLabel}>Status</span>
- <span style={styles.receiptRowValue}>
- {feedback.viewingPreference === "physical_visit"
-  ? physicalVisitState?.title || "Physical Visit Scheduled"
-  : "Application Ready"}
- </span>
- </div>
- </div>
- <div style={styles.receiptNote}>
- {feedback.viewingPreference === "physical_visit"
-  ? "Please attend your scheduled room visit first. You may continue to the tenant application after admin confirms your visit or allows you to proceed. Payment will remain locked until your application and documents are approved."
-  : "Payment is locked until your application and documents are reviewed and approved by admin."}
- </div>
- <div style={styles.receiptActions}>
- {feedback.viewingPreference === "physical_visit" ? (
- <button
- type="button"
- onClick={() => navigate("/applicant/reservation?step=2")}
- style={styles.receiptPrimaryBtn}
- >
- Review Visit Schedule
- </button>
- ) : (
- <button
- type="button"
- onClick={() => navigate("/applicant/reservation?step=3")}
- style={styles.receiptPrimaryBtn}
- >
- Complete Application
- </button>
- )}
- {feedback.viewingPreference !== "physical_visit" && (
- <button
- type="button"
- onClick={() => navigate("/applicant/reservation?step=2&edit=1")}
- style={styles.receiptSecondaryBtn}
- >
- Change Viewing Preference
- </button>
- )}
- </div>
- </div>
- )}
-
- {isPhysicalVisitPreference(reservation) && (
- <div style={styles.receiptCard}>
- <div style={styles.receiptCardHeader}>
- <div style={styles.receiptCardHeaderLeft}>
- <span style={styles.receiptCardTitle}>Physical Visit Status</span>
- <span
- style={{
- ...styles.receiptStatusPill,
- ...(visitStatusKey === "visit_completed" || visitStatusKey === "allowed_without_visit"
-  ? styles.receiptPillSuccess
-  : visitStatusKey === "no_show" || visitStatusKey === "visit_cancelled"
-    ? styles.receiptPillDanger
-    : visitStatusKey === "rescheduled"
-      ? styles.receiptPillUrgent
-      : styles.receiptPillPhysical),
- }}
- >
- {physicalVisitState?.title || "Physical Visit Scheduled"}
- </span>
- </div>
- </div>
- <div style={styles.receiptRows}>
- <div style={styles.receiptRow}>
- <span style={styles.receiptRowLabel}>Visit Date</span>
- <span style={styles.receiptRowValue}>{formatDate(reservation.visitDate)}</span>
- </div>
- <div style={styles.receiptRow}>
- <span style={styles.receiptRowLabel}>Visit Time</span>
- <span style={styles.receiptRowValue}>{reservation.visitTime || "—"}</span>
- </div>
- <div style={styles.receiptRow}>
- <span style={styles.receiptRowLabel}>Visit Code</span>
- <span style={{ ...styles.receiptRowValue, ...styles.receiptCode }}>
- {reservation.visitCode || "—"}
- </span>
- </div>
- {reservation.visitOutcomeUpdatedAt && (
- <div style={styles.receiptRow}>
- <span style={styles.receiptRowLabel}>Last Updated</span>
- <span style={styles.receiptRowValue}>
- {new Date(reservation.visitOutcomeUpdatedAt).toLocaleString(APP_LOCALE, {
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
- })}
- </span>
- </div>
- )}
- </div>
- <div style={styles.receiptNote}>
- {physicalVisitState?.message ||
-  "Please attend your scheduled room visit first. Payment remains locked until your application and documents are approved."}
- </div>
- {reservation.visitOutcomeNotes ? (
- <div style={styles.receiptSubnote}>{reservation.visitOutcomeNotes}</div>
- ) : null}
- {physicalVisitState?.buttonLabel && physicalVisitState?.route ? (
- <div style={styles.receiptActions}>
- <button
- type="button"
- onClick={() => navigate(physicalVisitState.route)}
- style={canAccessTenantApplication(reservation) ? styles.receiptPrimaryBtn : styles.receiptSecondaryBtn}
- >
- {physicalVisitState.buttonLabel}
- </button>
- </div>
- ) : null}
- </div>
- )}
 
  <div style={styles.stepperWrapper}>
  <div style={styles.stepperProgressRail}>
@@ -1455,35 +1272,6 @@ const styles = {
  borderRadius: 999,
  letterSpacing: "0.02em",
  },
- receiptPillPhysical: {
- background: "rgba(212, 175, 55, 0.14)",
- color: "#92650a",
- },
- receiptPillRemote: {
- background: "rgba(37, 99, 235, 0.1)",
- color: "#1D4ED8",
- },
- receiptPillUrgent: {
- background: "rgba(99, 102, 241, 0.1)",
- color: "#4F46E5",
- },
- receiptPillSuccess: {
- background: "rgba(16, 185, 129, 0.12)",
- color: "#047857",
- },
- receiptPillDanger: {
- background: "rgba(220, 38, 38, 0.12)",
- color: "#B91C1C",
- },
- receiptDismissBtn: {
- background: "transparent",
- border: "none",
- color: "#94A3B8",
- fontSize: 13,
- cursor: "pointer",
- padding: "2px 4px",
- lineHeight: 1,
- },
  receiptRows: {
  display: "flex",
  flexDirection: "column",
@@ -1510,27 +1298,12 @@ const styles = {
  fontWeight: 500,
  textAlign: "right",
  },
- receiptCode: {
- fontFamily: "monospace",
- fontSize: 12,
- letterSpacing: "0.05em",
- },
  receiptNote: {
  fontSize: 11,
  color: "#64748B",
  lineHeight: 1.5,
  marginBottom: 10,
  paddingTop: 2,
- },
- receiptSubnote: {
- fontSize: 11,
- color: "#334155",
- lineHeight: 1.5,
- marginBottom: 10,
- padding: "10px 12px",
- borderRadius: 8,
- background: "rgba(15, 23, 42, 0.04)",
- border: "1px solid rgba(15, 23, 42, 0.08)",
  },
  receiptActions: {
  display: "flex",
