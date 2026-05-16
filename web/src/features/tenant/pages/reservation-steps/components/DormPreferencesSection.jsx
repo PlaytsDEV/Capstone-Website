@@ -25,7 +25,7 @@ const DormPreferencesSection = ({
  workSchedule, setWorkSchedule,
  workScheduleOther, setWorkScheduleOther,
  handleTargetDateInput, handleTimeInput,
- readOnly, moveInMin, moveInMax, fieldErrors,
+ readOnly, moveInMin, moveInMax, fieldErrors, validateField,
  showValidationErrors,
 }) => (
  <>
@@ -38,9 +38,11 @@ const DormPreferencesSection = ({
  <div
  className="radio-group"
  style={{
- border: errBorder(showValidationErrors, referralSource),
- borderRadius: "8px",
- padding: showValidationErrors && !referralSource ? "8px" : undefined,
+ border: fieldErrors.referralSource
+ ? "1.5px solid #dc2626"
+ : errBorder(showValidationErrors, referralSource),
+  borderRadius: "8px",
+  padding: showValidationErrors && !referralSource ? "8px" : undefined,
  }}
  >
  {REFERRAL_OPTIONS.map((opt) => (
@@ -51,7 +53,13 @@ const DormPreferencesSection = ({
  id={opt.id}
  value={opt.value}
  checked={referralSource === opt.value}
- onChange={(e) => setReferralSource(e.target.value)}
+ onChange={(e) => {
+ setReferralSource(e.target.value);
+ validateField("referralSource", e.target.value, (value) => ({
+ valid: Boolean(value),
+ error: value ? null : "Please select how you learned about us",
+ }));
+ }}
  />
  <label htmlFor={opt.id} className="radio-label">
  {opt.label}
@@ -59,7 +67,13 @@ const DormPreferencesSection = ({
  </div>
  ))}
  </div>
- <FieldError error={showValidationErrors && !referralSource ? "Please select how you learned about us" : null} />
+ <FieldError
+ error={
+ showValidationErrors && !referralSource
+ ? "Please select how you learned about us"
+ : fieldErrors.referralSource
+ }
+ />
  </div>
 
  {referralSource === "friend" && (
@@ -94,7 +108,9 @@ const DormPreferencesSection = ({
  style={{
  colorScheme: "light",
  cursor: readOnly ? "not-allowed" : "pointer",
- border: errBorder(showValidationErrors, targetMoveInDate),
+ border: fieldErrors.targetMoveInDate
+ ? "1.5px solid #dc2626"
+ : errBorder(showValidationErrors, targetMoveInDate),
  }}
  />
  <div className="form-helper">Must be at least 3 days from today</div>
@@ -114,7 +130,10 @@ const DormPreferencesSection = ({
  cursor: "pointer",
  padding: "10px 12px",
  borderRadius: "8px",
- border: errBorder(showValidationErrors, estimatedMoveInTime) || "1.5px solid #d1d5db",
+ border:
+ fieldErrors.estimatedMoveInTime
+ ? "1.5px solid #dc2626"
+ : errBorder(showValidationErrors, estimatedMoveInTime) || "1.5px solid #d1d5db",
  fontSize: "14px",
  background: "white",
  width: "100%",
@@ -138,10 +157,18 @@ const DormPreferencesSection = ({
  <select
  className="form-select"
  value={leaseDuration}
- onChange={(e) => setLeaseDuration(e.target.value)}
+ onChange={(e) => {
+ setLeaseDuration(e.target.value);
+ validateField("leaseDuration", e.target.value, (value) => ({
+ valid: Boolean(value),
+ error: value ? null : "Please select a lease duration",
+ }));
+ }}
  required
  style={{
- border: errBorder(showValidationErrors, leaseDuration),
+ border: fieldErrors.leaseDuration
+ ? "1.5px solid #dc2626"
+ : errBorder(showValidationErrors, leaseDuration),
  }}
  >
  <option value="">Select duration...</option>
@@ -151,7 +178,13 @@ const DormPreferencesSection = ({
  </option>
  ))}
  </select>
- <FieldError error={showValidationErrors && !leaseDuration ? "Please select a lease duration" : null} />
+ <FieldError
+ error={
+ showValidationErrors && !leaseDuration
+ ? "Please select a lease duration"
+ : fieldErrors.leaseDuration
+ }
+ />
  </div>
 
  {/* Work Schedule */}
@@ -162,9 +195,11 @@ const DormPreferencesSection = ({
  <div
  className="radio-group"
  style={{
- border: errBorder(showValidationErrors, workSchedule),
- borderRadius: "8px",
- padding: showValidationErrors && !workSchedule ? "8px" : undefined,
+ border: fieldErrors.workSchedule
+ ? "1.5px solid #dc2626"
+ : errBorder(showValidationErrors, workSchedule),
+  borderRadius: "8px",
+  padding: showValidationErrors && !workSchedule ? "8px" : undefined,
  }}
  >
  {WORK_SCHEDULE_OPTIONS.map((opt) => (
@@ -175,7 +210,13 @@ const DormPreferencesSection = ({
  id={opt.id}
  value={opt.value}
  checked={workSchedule === opt.value}
- onChange={(e) => setWorkSchedule(e.target.value)}
+ onChange={(e) => {
+ setWorkSchedule(e.target.value);
+ validateField("workSchedule", e.target.value, (value) => ({
+ valid: Boolean(value),
+ error: value ? null : "Please select your work schedule",
+ }));
+ }}
  />
  <label htmlFor={opt.id} className="radio-label">
  {opt.label}
@@ -183,7 +224,13 @@ const DormPreferencesSection = ({
  </div>
  ))}
  </div>
- <FieldError error={showValidationErrors && !workSchedule ? "Please select your work schedule" : null} />
+ <FieldError
+ error={
+ showValidationErrors && !workSchedule
+ ? "Please select your work schedule"
+ : fieldErrors.workSchedule
+ }
+ />
  </div>
 
  {workSchedule === "others" && (
@@ -193,17 +240,30 @@ const DormPreferencesSection = ({
  </label>
  <textarea
  className="form-textarea"
- value={workScheduleOther}
- onChange={(e) => setWorkScheduleOther(e.target.value)}
- placeholder="Please describe your typical work schedule"
- />
- <FieldError
- error={
- showValidationErrors && workSchedule === "others" && !workScheduleOther
- ? "Please describe your work schedule"
- : null
- }
- />
+  value={workScheduleOther}
+  onChange={(e) => {
+  setWorkScheduleOther(e.target.value);
+  validateField("workScheduleOther", e.target.value, (value) => ({
+  valid: Boolean(value?.trim()),
+  error: value?.trim() ? null : "Please describe your work schedule",
+  }));
+  }}
+  placeholder="Please describe your typical work schedule"
+  style={{
+  border: fieldErrors.workScheduleOther
+  ? "1.5px solid #dc2626"
+  : workSchedule === "others"
+  ? errBorder(showValidationErrors, workScheduleOther)
+  : undefined,
+  }}
+  />
+  <FieldError
+  error={
+  showValidationErrors && workSchedule === "others" && !workScheduleOther
+  ? "Please describe your work schedule"
+  : fieldErrors.workScheduleOther
+  }
+  />
  </div>
  )}
  </>

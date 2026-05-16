@@ -19,10 +19,9 @@ const ERROR_MAP = [
   [/forbidden|403|not\s*allowed/i, "You don't have permission to perform this action."],
   [/token\s*expired|jwt\s*expired/i, "Your session has expired. Please sign in again."],
 
-  // Upload / image
-  [/failed\s*to\s*parse\s*imagekit/i, "Upload failed. Please try again with a different file."],
+  // Upload / storage
   [/upload\s*failed\s*\(\d+\)/i, "File upload failed. Please check your connection and try again."],
-  [/failed\s*to\s*get\s*upload\s*auth/i, "Unable to prepare upload. Please try again."],
+  [/storage\/unauthorized|storage\/object-not-found/i, "Upload permission denied. Please sign in and try again."],
   [/file\s*too\s*large/i, "The file is too large. Maximum file size is 5MB."],
 
   // MongoDB / database

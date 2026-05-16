@@ -69,6 +69,24 @@ export function useDeleteUser() {
   });
 }
 
+/** Archive user (admin) */
+export function useArchiveUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId) => userApi.archive(userId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+  });
+}
+
+/** Restore archived user (admin) */
+export function useRestoreUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId) => userApi.restore(userId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+  });
+}
+
 /** Update branch admin permissions */
 export function useUpdatePermissions() {
   const qc = useQueryClient();

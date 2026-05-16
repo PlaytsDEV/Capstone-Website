@@ -86,7 +86,6 @@ await jest.unstable_mockModule("../middleware/errorHandler.js", () => ({
 await jest.unstable_mockModule("../utils/notificationService.js", () => ({
   notify: { general: notifyGeneral },
 }));
-
 const {
   createBillCheckout,
   createDepositCheckout,
@@ -225,10 +224,7 @@ describe("paymentController", () => {
     expect(createCheckoutSession).not.toHaveBeenCalled();
     expect(reservation.save).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalledTimes(1);
-    expect(next.mock.calls[0][0].code).toBe("DEPOSIT_NOT_READY");
-    expect(next.mock.calls[0][0].details).toEqual(
-      expect.objectContaining({ status: "visit_approved" }),
-    );
+    expect(next.mock.calls[0][0].code).toBe("PAYMENT_LOCKED_PENDING_APPLICATION_REVIEW");
   });
 
   test("creates deposit checkout only for an unpaid submitted payment_pending reservation", async () => {
@@ -304,6 +300,35 @@ describe("paymentController", () => {
     expect(next).toHaveBeenCalledTimes(1);
     expect(next.mock.calls[0][0].code).toBe("FORBIDDEN");
     expect(sendSuccess).not.toHaveBeenCalled();
+  });
+
+  test("createDepositCheckout keeps payment locked before application approval", async () => {
+    const reservation = {
+      _id: "res_locked",
+      userId: "tenant_1",
+      roomId: { name: "GP-103", branch: "gil-puyat" },
+      status: "pending_application_review",
+      paymentStatus: "pending",
+      save: jest.fn(),
+    };
+
+    userFindOne.mockReturnValue(mockLean({ _id: "tenant_1" }));
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockResolvedValue(reservation),
+    });
+
+    const req = { params: { resId: "res_locked" }, user: { uid: "firebase-1" } };
+    const res = {};
+    const next = jest.fn();
+
+    await createDepositCheckout(req, res, next);
+
+    expect(createCheckoutSession).not.toHaveBeenCalled();
+    expect(sendSuccess).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next.mock.calls[0][0].code).toBe(
+      "PAYMENT_LOCKED_PENDING_APPLICATION_REVIEW",
+    );
   });
 
   test("auto-reserves a paid payment_pending deposit exactly once", async () => {

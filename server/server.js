@@ -25,6 +25,7 @@ import mongoose from "mongoose";
 
 import connectDB from "./config/database.js";
 import validateStartupConfig from "./config/startupValidation.js";
+import { logDocumentPrecheckStartupStatus } from "./services/reservationDocumentPrecheckService.js";
 import requestId from "./middleware/requestId.js";
 import { requestLogger } from "./middleware/logger.js";
 import logger from "./middleware/logger.js";
@@ -46,7 +47,6 @@ import maintenanceRoutes from "./routes/maintenanceContractRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
-import uploadRoutes from "./routes/uploadRoutes.js";
 import webhookRoutes from "./routes/webhookRoutes.js";
 import digitalTwinRoutes from "./routes/digitalTwinRoutes.js";
 import utilityBillingRoutes from "./routes/utilityBillingRoutes.js";
@@ -248,7 +248,6 @@ app.use("/api/maintenance", maintenanceRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/chat", chatRoutes);
-app.use("/api/upload", uploadRoutes);
 app.use("/api/digital-twin", digitalTwinRoutes);
 app.use("/api/utilities", utilityBillingRoutes);
 app.use("/api/financial", financialRoutes);
@@ -347,6 +346,7 @@ process.on("unhandledRejection", (reason) => {
 
 const bootstrap = async () => {
   validateStartupConfig();
+  logDocumentPrecheckStartupStatus();
 
   const mongoConnected = await connectDB();
 

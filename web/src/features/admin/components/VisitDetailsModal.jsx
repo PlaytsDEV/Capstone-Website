@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { reservationApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
 import {
@@ -8,13 +9,14 @@ import {
 import useBodyScrollLock from "../../../shared/hooks/useBodyScrollLock";
 import useEscapeClose from "../../../shared/hooks/useEscapeClose";
 import "../styles/reservation-details-modal.css";
+import { APP_LOCALE, fmtShortDate } from "../../../shared/utils/dateFormat";
 
 /* ─── helpers ────────────────────────────────────────── */
 const fmt = (v) => (v === null || v === undefined || v === "" ? "—" : v);
 
 const formatDate = (d) =>
  d
- ? new Date(d).toLocaleDateString("en-US", {
+ ? new Date(d).toLocaleDateString(APP_LOCALE, {
  weekday: "long",
  year: "numeric",
  month: "long",
@@ -23,6 +25,11 @@ const formatDate = (d) =>
  : "—";
 
 const STATUS_CONFIGS = [
+ { test: (s) => s.visitStatus === "allowed_without_visit", bg: "#CCFBF1", color: "#0F766E", dot: "#14b8a6", label: "Allowed to Proceed Without Visit" },
+ { test: (s) => s.visitStatus === "visit_completed", bg: "#D1FAE5", color: "#047857", dot: "#10b981", label: "Visit Completed" },
+ { test: (s) => s.visitStatus === "no_show", bg: "#FEF3C7", color: "#92400E", dot: "#f59e0b", label: "No-Show" },
+ { test: (s) => s.visitStatus === "rescheduled", bg: "#EDE9FE", color: "#7C3AED", dot: "#8b5cf6", label: "Rescheduled" },
+ { test: (s) => s.visitStatus === "visit_cancelled", bg: "#FEE2E2", color: "#DC2626", dot: "#ef4444", label: "Visit Cancelled" },
  { test: (s) => s.visitApproved, bg: "#D1FAE5", color: "#047857", dot: "#10b981", label: "Visit Completed" },
  { test: (s) => s.scheduleApproved, bg: "#E0EBF5", color: "#0A5C9B", dot: "#3b82f6", label: "Awaiting Visit" },
  { test: (s) => s.scheduleRejected, bg: "#FEE2E2", color: "#DC2626", dot: "#ef4444", label: "Schedule Rejected" },
@@ -64,6 +71,7 @@ const SectionCard = ({ icon: Icon, title, children }) => (
 
 /* ─── main component ──────────────────────────────────── */
 export default function VisitDetailsModal({ schedule, onClose, onUpdate }) {
+ const queryClient = useQueryClient();
  const [rejectMode, setRejectMode] = useState(false);
  const [rejectReason, setRejectReason] = useState("");
  const [isSubmitting, setIsSubmitting] = useState(false);
@@ -80,14 +88,11 @@ export default function VisitDetailsModal({ schedule, onClose, onUpdate }) {
  }
  setIsSubmitting(true);
  try {
- await reservationApi.update(schedule.id, {
- scheduleRejected: true,
- scheduleRejectionReason: rejectReason.trim(),
- scheduleRejectedAt: new Date().toISOString(),
- viewingType: null,
- agreedToPrivacy: false,
- scheduleApproved: false,
+ await reservationApi.manageVisit(schedule.id, {
+ action: "reject_schedule",
+ note: rejectReason.trim(),
  });
+ queryClient.invalidateQueries({ queryKey: ["reservations"] });
  showNotification("Visit schedule rejected successfully", "success");
  onUpdate?.();
  onClose();
@@ -99,7 +104,13 @@ export default function VisitDetailsModal({ schedule, onClose, onUpdate }) {
  }
  };
 
- const showRejectBtn = !schedule.visitApproved && !schedule.scheduleRejected;
+ const showRejectBtn =
+  !schedule.visitApproved &&
+  !schedule.scheduleRejected &&
+  !schedule.scheduleApproved &&
+  !["visit_completed", "no_show", "visit_cancelled", "schedule_approved"].includes(
+    schedule.visitStatus,
+  );
  const cfg = getStatusCfg(schedule);
 
  const REJECT_PRESETS = [
@@ -189,12 +200,21 @@ export default function VisitDetailsModal({ schedule, onClose, onUpdate }) {
  borderRadius: 20,
  fontSize: "12px",
  fontWeight: 600,
- background: schedule.viewingType === "inperson" ? "#E0EBF5" : "#F3E8FF",
+ background:
+ schedule.viewingType === "inperson" || schedule.viewingType === "physical_visit"
+ ? "#E0EBF5"
+ : schedule.viewingType === "remote_2d" || schedule.viewingType === "remote_2d_viewing"
+ ? "#FFF7ED"
+ : "#F3E8FF",
  color: "#1a1a1a",
  marginTop: 2,
  }}
  >
- {schedule.viewingType === "inperson" ? "In-Person" : "Virtual"}
+ {schedule.viewingType === "inperson" || schedule.viewingType === "physical_visit"
+ ? "Physical Visit"
+ : schedule.viewingType === "remote_2d" || schedule.viewingType === "remote_2d_viewing"
+ ? "2D Remote Viewing"
+ : "Urgent Move-in Review"}
  </span>
  </span>
  </div>
@@ -232,18 +252,22 @@ export default function VisitDetailsModal({ schedule, onClose, onUpdate }) {
  .sort((a, b) => new Date(b.scheduledAt || b.rejectedAt || 0) - new Date(a.scheduledAt || a.rejectedAt || 0))
  .map((entry, idx) => {
  const MAP = {
- pending: { bg: "#FEF3C7", color: "#92400E", label: "Scheduled" },
- rejected: { bg: "#FEE2E2", color: "#DC2626", label: "Rejected" },
- approved: { bg: "#D1FAE5", color: "#047857", label: "Approved" },
- cancelled: { bg: "#F3F4F6", color: "#6B7280", label: "Cancelled" },
+  pending: { bg: "#FEF3C7", color: "#92400E", label: "Scheduled" },
+  schedule_approved: { bg: "#D1FAE5", color: "#047857", label: "Schedule Approved" },
+  rejected: { bg: "#FEE2E2", color: "#DC2626", label: "Rejected" },
+  approved: { bg: "#D1FAE5", color: "#047857", label: "Completed" },
+  cancelled: { bg: "#F3F4F6", color: "#6B7280", label: "Cancelled" },
+  rescheduled: { bg: "#EDE9FE", color: "#7C3AED", label: "Rescheduled" },
+  completed: { bg: "#D1FAE5", color: "#047857", label: "Completed" },
+  no_show: { bg: "#FEF3C7", color: "#92400E", label: "No-Show" },
+  visit_cancelled: { bg: "#FEE2E2", color: "#DC2626", label: "Visit Cancelled" },
+  allowed_without_visit: { bg: "#CCFBF1", color: "#0F766E", label: "Allowed to Proceed Without Visit" },
  };
  const s = MAP[entry.status] || MAP.pending;
- const entryDate = entry.visitDate
- ? new Date(entry.visitDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
- : "N/A";
- const actionDate = entry.rejectedAt || entry.approvedAt || entry.scheduledAt;
+ const entryDate = entry.visitDate ? fmtShortDate(entry.visitDate) : "N/A";
+ const actionDate = entry.rejectedAt || entry.approvedAt || entry.updatedAt || entry.scheduledAt;
  const actionDateStr = actionDate
- ? new Date(actionDate).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+ ? new Date(actionDate).toLocaleDateString(APP_LOCALE, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
  : "";
 
  return (

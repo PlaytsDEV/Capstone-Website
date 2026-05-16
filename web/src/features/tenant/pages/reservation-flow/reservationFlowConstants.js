@@ -11,8 +11,8 @@ export const RESERVATION_STAGES = [
  },
  {
  id: 2,
- label: "Visit & Policies",
- desc: "Schedule a visit and review dormitory policies",
+ label: "Viewing Preference",
+ desc: "Choose a physical visit, remote viewing, or priority review",
  category: "Verification",
  },
  {

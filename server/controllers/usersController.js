@@ -1232,7 +1232,7 @@ export const reactivateUser = async (req, res, next) => {
 /**
  * PATCH /api/users/:userId/restore
  * Restore an archived user account.
- * Access: Owner only
+ * Access: Admin | Owner
  */
 export const restoreUser = async (req, res, next) => {
   try {

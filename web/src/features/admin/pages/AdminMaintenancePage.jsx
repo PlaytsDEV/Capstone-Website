@@ -7,8 +7,10 @@ import {
  ClipboardList,
  Clock3,
  FileDown,
+ FileText,
  Image as ImageIcon,
  MessageSquare,
+ Paperclip,
  RefreshCcw,
  Search,
  UserRound,
@@ -24,15 +26,24 @@ import {
 } from "../../../shared/hooks/queries/useMaintenance";
 import { showNotification } from "../../../shared/utils/notification";
 import {
- ADMIN_MAINTENANCE_STATUS_OPTIONS,
+ LOCKED_ADMIN_MAINTENANCE_STATUSES,
  MAINTENANCE_REQUEST_TYPES,
  MAINTENANCE_URGENCY_LEVELS,
  formatMaintenanceStatus,
+ getAllowedAdminMaintenanceStatuses,
  getMaintenanceTypeMeta,
  getMaintenanceUrgencyMeta,
 } from "../../../shared/utils/maintenanceConfig";
+import {
+ getMaintenanceAttachmentKind,
+ getMaintenanceAttachmentLabel,
+ getMaintenanceAttachmentName,
+ getMaintenanceAttachmentUri,
+ normalizeMaintenanceAttachments,
+} from "../../../shared/utils/maintenanceAttachments";
 import { exportToCSV } from "../../../shared/utils/exportUtils";
 import { BRANCH_OPTIONS, BRANCH_DISPLAY_NAMES } from "../../../shared/utils/constants";
+import { uploadToFirebaseStorage } from "../../../shared/utils/firebaseStorageUpload";
 import {
  normalizeBranchFilterValue,
  syncBranchSearchParam,
@@ -100,7 +111,13 @@ const urgencyRank = {
  low: 2,
 };
 
-const TERMINAL_STATUSES = new Set(["completed", "rejected", "cancelled"]);
+const TERMINAL_STATUSES = new Set([
+ "resolved",
+ "completed",
+ "rejected",
+ "cancelled",
+ "closed",
+]);
 
 const SUMMARY_STATUSES = [
  { key: "pending", label: "Pending" },
@@ -110,6 +127,7 @@ const SUMMARY_STATUSES = [
  { key: "completed", label: "Completed" },
  { key: "rejected", label: "Rejected" },
  { key: "cancelled", label: "Cancelled" },
+ { key: "closed", label: "Closed" },
 ];
 
 const MANAGEMENT_SUMMARY_CARDS = [
@@ -320,6 +338,43 @@ const getAvatarPalette = (name = "") => {
   return AVATAR_PALETTES[index];
 };
 
+const isRemoteUri = (uri) => {
+  if (!uri) return false;
+  try {
+    const { protocol } = new URL(uri);
+    return protocol === "https:" || protocol === "http:";
+  } catch {
+    return false;
+  }
+};
+
+function AttachmentThumbnail({ attachment, index }) {
+ const [failed, setFailed] = useState(false);
+ const kind = getMaintenanceAttachmentKind(attachment);
+ const name = getMaintenanceAttachmentName(attachment, index);
+ const uri = getMaintenanceAttachmentUri(attachment);
+
+ if (kind === "image" && !failed && isRemoteUri(uri)) {
+ return (
+ <img
+ src={uri}
+ alt={name}
+ className="h-12 w-12 rounded-md object-cover"
+ onError={() => setFailed(true)}
+ />
+ );
+ }
+
+ const Icon =
+ kind === "pdf" ? FileText : kind === "image" ? ImageIcon : Paperclip;
+
+ return (
+ <div className="flex h-12 w-12 items-center justify-center rounded-md bg-muted text-muted-foreground">
+ <Icon size={18} />
+ </div>
+ );
+}
+
 export default function AdminMaintenancePage() {
  const { user } = useAuth();
  const isOwner = user?.role === "owner";
@@ -348,6 +403,8 @@ export default function AdminMaintenancePage() {
  const [draftNotes, setDraftNotes] = useState("");
  const [draftAssignedTo, setDraftAssignedTo] = useState("");
  const [draftWorkLogNote, setDraftWorkLogNote] = useState("");
+ const [draftWorkLogAttachments, setDraftWorkLogAttachments] = useState([]);
+ const [uploadingUpdateAttachment, setUploadingUpdateAttachment] = useState(false);
 
  const listFilters = useMemo(
  () =>
@@ -398,6 +455,20 @@ export default function AdminMaintenancePage() {
  const requests = requestsData?.requests || [];
  const summaryRequests = summaryData?.requests || requests;
  const selectedRequest = requestDetailData?.request || null;
+ const selectedRequestStatusOptions = useMemo(
+ () => getAllowedAdminMaintenanceStatuses(selectedRequest?.status),
+ [selectedRequest?.status],
+ );
+ const isSelectedRequestLocked = LOCKED_ADMIN_MAINTENANCE_STATUSES.includes(
+ selectedRequest?.status || "",
+ );
+ const hasDraftChanges = Boolean(selectedRequest) && (
+ draftStatus !== (selectedRequest.status || "") ||
+ draftNotes !== (selectedRequest.notes || "") ||
+ draftAssignedTo !== (selectedRequest.assigned_to || "") ||
+ Boolean(draftWorkLogNote.trim()) ||
+ draftWorkLogAttachments.length > 0
+ );
 
  const summaryItems = useMemo(
  () =>
@@ -608,15 +679,54 @@ export default function AdminMaintenancePage() {
  useEffect(() => {
  if (!selectedRequest) return;
 
- const initialStatus = ADMIN_MAINTENANCE_STATUS_OPTIONS.includes(selectedRequest.status)
- ? selectedRequest.status
- : "viewed";
+ const initialStatus =
+ selectedRequest.status ||
+ selectedRequestStatusOptions[0] ||
+ "viewed";
 
  setDraftStatus(initialStatus);
  setDraftNotes(selectedRequest.notes || "");
  setDraftAssignedTo(selectedRequest.assigned_to || "");
  setDraftWorkLogNote("");
- }, [selectedRequest]);
+ setDraftWorkLogAttachments([]);
+ }, [selectedRequest, selectedRequestStatusOptions]);
+
+ const handleWorkLogAttachmentUpload = async (event) => {
+ const files = Array.from(event.target.files || []).filter(Boolean);
+ if (files.length === 0) return;
+
+ setUploadingUpdateAttachment(true);
+
+ try {
+ const uploaded = [];
+
+ for (const file of files) {
+ const { downloadUrl: uri } = await uploadToFirebaseStorage(file, { documentType: "maintenance-attachment" });
+ uploaded.push({
+ name: file.name,
+ uri,
+ type: file.type || "application/octet-stream",
+ });
+ }
+
+ setDraftWorkLogAttachments((current) => [...current, ...uploaded]);
+ showNotification("Update attachment uploaded.", "success");
+ } catch (uploadError) {
+ showNotification(
+ uploadError.message || "Failed to upload update attachment.",
+ "error",
+ );
+ } finally {
+ setUploadingUpdateAttachment(false);
+ event.target.value = "";
+ }
+ };
+
+ const handleRemoveWorkLogAttachment = (uri) => {
+ setDraftWorkLogAttachments((current) =>
+ current.filter((attachment) => getMaintenanceAttachmentUri(attachment) !== uri),
+ );
+ };
 
  const handleResetFilters = () => {
  setStatusFilter("all");
@@ -684,10 +794,12 @@ export default function AdminMaintenancePage() {
  notes: draftNotes,
  assigned_to: draftAssignedTo,
  work_log_note: draftWorkLogNote,
+ work_log_attachments: draftWorkLogAttachments,
  },
  });
  showNotification("Maintenance request updated.", "success");
  setDraftWorkLogNote("");
+ setDraftWorkLogAttachments([]);
  } catch (submitError) {
  showNotification(
  submitError.message || "Failed to update maintenance request.",
@@ -1107,7 +1219,9 @@ export default function AdminMaintenancePage() {
  }}
  disabled={
  updateRequestMutation.isPending ||
- selectedRequest.status === "cancelled"
+ uploadingUpdateAttachment ||
+ isSelectedRequestLocked ||
+ !hasDraftChanges
  }
  >
  {updateRequestMutation.isPending ? "Saving..." : "Save Update"}
@@ -1242,24 +1356,49 @@ export default function AdminMaintenancePage() {
  >
  {selectedRequest.attachments?.length ? (
  <div className="grid gap-3 md:grid-cols-2">
- {selectedRequest.attachments.map((attachment, index) => (
+ {selectedRequest.attachments.map((attachment, index) => {
+ const attachmentUri = getMaintenanceAttachmentUri(attachment);
+ const isViewable = isRemoteUri(attachmentUri);
+ const attachmentName = getMaintenanceAttachmentName(attachment, index);
+ const key = `${attachmentUri || attachmentName}-${index}`;
+
+ if (isViewable) {
+ return (
  <a
- key={`${attachment.name}-${index}`}
- href={attachment.uri}
+ key={key}
+ href={attachmentUri}
  target="_blank"
  rel="noreferrer"
  className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 hover:bg-muted"
  >
- <img
- src={attachment.uri}
- alt={attachment.name || `Attachment ${index + 1}`}
- className="h-12 w-12 rounded-md object-cover"
- />
- <span className="text-sm font-medium text-card-foreground">
- {attachment.name || `Attachment ${index + 1}`}
+ <AttachmentThumbnail attachment={attachment} index={index} />
+ <div className="min-w-0">
+ <span className="block truncate text-sm font-medium text-card-foreground">
+ {attachmentName}
  </span>
+ <span className="text-xs text-muted-foreground">
+ {getMaintenanceAttachmentLabel(attachment)}
+ </span>
+ </div>
  </a>
- ))}
+ );
+ }
+
+ return (
+ <div
+ key={key}
+ className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 opacity-50"
+ >
+ <AttachmentThumbnail attachment={attachment} index={index} />
+ <div className="min-w-0">
+ <span className="block truncate text-sm font-medium text-card-foreground">
+ {attachmentName}
+ </span>
+ <span className="text-xs text-destructive">Photo unavailable</span>
+ </div>
+ </div>
+ );
+ })}
  </div>
  ) : (
  <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -1370,6 +1509,53 @@ export default function AdminMaintenancePage() {
  {entry.actor_name || "Staff update"}
  </span>
  <p className="mt-2 text-sm text-muted-foreground">{entry.note}</p>
+ {entry.attachments?.length ? (
+ <div className="mt-3 grid gap-3">
+ {entry.attachments.map((attachment, attachmentIndex) => {
+ const attachmentUri = getMaintenanceAttachmentUri(attachment);
+ const isViewable = isRemoteUri(attachmentUri);
+ const attachmentName = getMaintenanceAttachmentName(attachment, attachmentIndex);
+ const key = `${attachmentUri || attachmentName}-${attachmentIndex}`;
+
+ if (isViewable) {
+ return (
+ <a
+ key={key}
+ href={attachmentUri}
+ target="_blank"
+ rel="noreferrer"
+ className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 hover:bg-muted"
+ >
+ <AttachmentThumbnail attachment={attachment} index={attachmentIndex} />
+ <div className="min-w-0">
+ <span className="block truncate text-sm font-medium text-card-foreground">
+ {attachmentName}
+ </span>
+ <span className="text-xs text-muted-foreground">
+ {getMaintenanceAttachmentLabel(attachment)}
+ </span>
+ </div>
+ </a>
+ );
+ }
+
+ return (
+ <div
+ key={key}
+ className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 opacity-50"
+ >
+ <AttachmentThumbnail attachment={attachment} index={attachmentIndex} />
+ <div className="min-w-0">
+ <span className="block truncate text-sm font-medium text-card-foreground">
+ {attachmentName}
+ </span>
+ <span className="text-xs text-destructive">Photo unavailable</span>
+ </div>
+ </div>
+ );
+ })}
+ </div>
+ ) : null}
  </article>
  ))}
  </div>
@@ -1391,9 +1577,9 @@ export default function AdminMaintenancePage() {
  </>
  )}
  >
- {selectedRequest.status === "cancelled" ? (
+ {isSelectedRequestLocked ? (
  <div className="rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-warning-dark">
- Cancelled requests are tenant-only terminal records. Admin notes,
+ Closed and cancelled requests are locked records. Admin notes,
  assignments, and status changes are disabled.
  </div>
  ) : null}
@@ -1410,10 +1596,10 @@ export default function AdminMaintenancePage() {
  <select
  value={draftStatus}
  onChange={(event) => setDraftStatus(event.target.value)}
- disabled={selectedRequest.status === "cancelled"}
+ disabled={isSelectedRequestLocked}
  className="mt-2 h-11 w-full rounded-lg border border-border bg-card px-3 text-sm text-card-foreground focus:border-border focus:outline-none focus:ring-2 focus:ring-border"
  >
- {ADMIN_MAINTENANCE_STATUS_OPTIONS.map((status) => (
+ {selectedRequestStatusOptions.map((status) => (
  <option key={status} value={status}>
  {formatMaintenanceStatus(status)}
  </option>
@@ -1430,7 +1616,7 @@ export default function AdminMaintenancePage() {
  placeholder="Staff member or team"
  value={draftAssignedTo}
  onChange={(event) => setDraftAssignedTo(event.target.value)}
- disabled={selectedRequest.status === "cancelled"}
+ disabled={isSelectedRequestLocked}
  className="mt-2 h-11 w-full rounded-lg border border-border bg-card px-3 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-border focus:outline-none focus:ring-2 focus:ring-border"
  />
  </label>
@@ -1444,7 +1630,7 @@ export default function AdminMaintenancePage() {
  placeholder="This note is shown to the tenant in the mobile app."
  value={draftNotes}
  onChange={(event) => setDraftNotes(event.target.value)}
- disabled={selectedRequest.status === "cancelled"}
+ disabled={isSelectedRequestLocked}
  className="mt-2 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-border focus:outline-none focus:ring-2 focus:ring-border"
  />
  </label>
@@ -1455,12 +1641,66 @@ export default function AdminMaintenancePage() {
  </span>
  <textarea
  rows="3"
- placeholder="Optional internal progress note for the status timeline and work log."
+ placeholder="Optional progress note that the tenant can reference together with any update attachment."
  value={draftWorkLogNote}
  onChange={(event) => setDraftWorkLogNote(event.target.value)}
- disabled={selectedRequest.status === "cancelled"}
+ disabled={isSelectedRequestLocked}
  className="mt-2 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-border focus:outline-none focus:ring-2 focus:ring-border"
  />
+ </label>
+
+ <label className="block">
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Progress Attachments
+ </span>
+ <div className="mt-2 flex flex-wrap items-center gap-3">
+ <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-card-foreground hover:bg-muted">
+ <Paperclip size={14} />
+ {uploadingUpdateAttachment ? "Uploading..." : "Upload photo or PDF"}
+ <input
+ type="file"
+ hidden
+ multiple
+ accept="image/jpeg,image/png,image/webp,application/pdf"
+ onChange={handleWorkLogAttachmentUpload}
+ disabled={isSelectedRequestLocked || uploadingUpdateAttachment}
+ />
+ </label>
+ <span className="text-xs text-muted-foreground">
+ Send progress files that the tenant can open from the request timeline.
+ </span>
+ </div>
+
+ {draftWorkLogAttachments.length ? (
+ <div className="mt-3 grid gap-2">
+ {normalizeMaintenanceAttachments(draftWorkLogAttachments).map((attachment, index) => {
+ const attachmentUri = getMaintenanceAttachmentUri(attachment);
+ return (
+ <div
+ key={`${attachmentUri || attachment.name}-${index}`}
+ className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2"
+ >
+ <div className="min-w-0">
+ <div className="truncate text-sm font-medium text-card-foreground">
+ {getMaintenanceAttachmentName(attachment, index)}
+ </div>
+ <div className="text-xs text-muted-foreground">
+ {getMaintenanceAttachmentLabel(attachment)}
+ </div>
+ </div>
+ <button
+ type="button"
+ className="text-xs font-medium text-rose-600 hover:text-rose-700"
+ onClick={() => handleRemoveWorkLogAttachment(attachmentUri)}
+ disabled={isSelectedRequestLocked}
+ >
+ Remove
+ </button>
+ </div>
+ );
+ })}
+ </div>
+ ) : null}
  </label>
  </form>
  </DetailDrawer.Section>

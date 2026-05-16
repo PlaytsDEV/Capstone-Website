@@ -68,7 +68,7 @@ export async function authMiddleware(req, res, next) {
 
 export function adminMiddleware(req, res, next) {
   const role = (req.user?.role || "").toLowerCase();
-  if (role !== "admin" && role !== "superadmin") {
+  if (role !== "owner" && role !== "branch_admin" && role !== "superadmin" /* legacy */) {
     return res.status(403).json({ detail: "Admin access required" });
   }
   return next();

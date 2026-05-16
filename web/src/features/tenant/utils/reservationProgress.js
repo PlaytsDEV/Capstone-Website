@@ -1,3 +1,15 @@
+import {
+  canProceedToApplicationAfterVisit,
+  getPhysicalVisitApplicantState,
+  getReservationViewingPreference,
+  isPhysicalVisitPreference,
+} from "./physicalVisitFlow.js";
+import {
+  canReservationAccessPayment,
+  hasReservationStatus,
+  normalizeReservationStatus,
+} from "../../../shared/utils/lifecycleNaming.js";
+
 /**
  * Reservation progress calculation logic.
  * Extracted from ProfilePage.getReservationProgress() (~160 lines).
@@ -59,20 +71,26 @@ export function getReservationProgress(reservation) {
  return { currentStep: "not_started", steps: [], currentStepIndex: -1 };
  }
 
- const status =
- reservation.reservationStatus || reservation.status || "pending";
+ const status = normalizeReservationStatus(
+ reservation.reservationStatus || reservation.status || "pending",
+ );
+ const viewingPreference = getReservationViewingPreference(reservation);
+ const physicalVisitState = getPhysicalVisitApplicantState(reservation);
 
  const hasRoom = Boolean(reservation.roomId);
  const hasPoliciesAccepted = Boolean(reservation.agreedToPrivacy === true);
- const hasVisitRequest = Boolean(
- reservation.viewingType && reservation.viewingType !== "none",
- );
+ const hasVisitRequest = Boolean(viewingPreference);
  const isVisitScheduled = hasPoliciesAccepted && hasVisitRequest;
- const isVisitCompleted = Boolean(reservation.visitApproved === true);
+ const isVisitCompleted = canProceedToApplicationAfterVisit(reservation);
  const hasApplication = Boolean(reservation.firstName && reservation.lastName);
- const hasPayment = Boolean(reservation.paymentStatus === "paid" || reservation.paymongoSessionId);
- const isConfirmed =
- status === "reserved" || reservation.paymentStatus === "paid";
+ const hasPayment = hasReservationStatus(
+ status,
+ "payment_pending",
+ "reserved",
+ "moveIn",
+ "moveOut",
+ );
+ const isConfirmed = hasReservationStatus(status, "reserved", "moveIn", "moveOut");
 
  const isScheduleRejected = Boolean(reservation.scheduleRejected === true);
  const scheduleRejectionReason = reservation.scheduleRejectionReason || null;
@@ -87,10 +105,10 @@ export function getReservationProgress(reservation) {
  if (isConfirmed) currentStepIndex = 5;
 
  const isApplicationEditable =
- currentStepIndex >= 3 && !hasPayment && !isConfirmed;
+ hasReservationStatus(status, "needs_revision") && !hasPayment && !isConfirmed;
  const isSchedulePendingApproval =
  isVisitScheduled && !reservation.scheduleApproved && !isScheduleRejected;
- const isPaymentPendingApproval = hasPayment && !isConfirmed;
+ const isPaymentPendingApproval = hasReservationStatus(status, "payment_pending");
 
  const steps = [
  {
@@ -124,14 +142,16 @@ export function getReservationProgress(reservation) {
  {
  step: "visit_completed",
  title: "3. Visit Completed",
- description: reservation.scheduleApproved
- ? "Waiting for admin to verify visit completion"
- : "Complete your scheduled visit first",
+ description: !isPhysicalVisitPreference(reservation)
+ ? "Viewing preference saved. You may proceed to the tenant application."
+ : physicalVisitState?.message || "Complete your scheduled visit first",
  status:
  currentStepIndex >= 2
  ? "completed"
- : currentStepIndex === 1 && reservation.scheduleApproved
- ? "pending_approval"
+ : currentStepIndex === 1 &&
+   isPhysicalVisitPreference(reservation) &&
+   reservation.scheduleApproved
+ ? "awaiting_visit"
  : "locked",
  completedDate:
  currentStepIndex >= 2 ? reservation.visitCompletedAt : undefined,
@@ -205,6 +225,51 @@ export function getNextAction(activeReservation, reservationProgress) {
  }
 
  const currentStep = reservationProgress.currentStep;
+ const status = normalizeReservationStatus(
+ activeReservation.reservationStatus || activeReservation.status || "pending",
+ );
+ const paymentUnlocked = canReservationAccessPayment(status);
+ const physicalVisitState = getPhysicalVisitApplicantState(activeReservation);
+ const hasApplication = Boolean(
+ activeReservation.firstName && activeReservation.lastName,
+ );
+
+ if (hasReservationStatus(status, "payment_pending")) {
+ return {
+ title: "Payment In Progress",
+ description:
+ "Your checkout was started. The reservation will be confirmed once payment is completed.",
+ buttonText: "Review Payment",
+ buttonLink: "/applicant/reservation",
+ reservationId: activeReservation._id,
+ step: 4,
+ };
+ }
+
+ if (hasReservationStatus(status, "reserved", "moveIn", "moveOut")) {
+ return {
+ title: "Reservation Secured!",
+ description:
+ "Your reservation is secured! Prepare for move-in and check your email for contract details.",
+ buttonText: "View Details",
+ buttonLink: "/applicant/profile",
+ };
+ }
+
+ if (
+ physicalVisitState &&
+ !physicalVisitState.canFillApplication &&
+ !hasApplication
+ ) {
+ return {
+ title: physicalVisitState.title,
+ description: physicalVisitState.message,
+ buttonText: physicalVisitState.buttonLabel?.replace(/\s*(->|→)\s*$/, "") || "Review Visit",
+ buttonLink: physicalVisitState.route || "/applicant/reservation?step=2&edit=1",
+ reservationId: activeReservation._id,
+ step: 2,
+ };
+ }
 
  switch (currentStep) {
  case "room_selected":
@@ -217,6 +282,19 @@ export function getNextAction(activeReservation, reservationProgress) {
  step: 1,
  };
  case "visit_scheduled": {
+ const viewingPreference = getReservationViewingPreference(activeReservation);
+ // Non-physical users have already saved their preference — send to application
+ if (viewingPreference && viewingPreference !== "physical_visit") {
+ return {
+ title: "Submit Your Application",
+ description:
+ "Your viewing preference was saved. Fill in your personal details and upload required documents.",
+ buttonText: "Fill Application Form",
+ buttonLink: "/applicant/reservation",
+ reservationId: activeReservation._id,
+ step: 3,
+ };
+ }
  const hasVisitDate = Boolean(activeReservation.visitDate);
  if (!hasVisitDate) {
  return {
@@ -225,6 +303,20 @@ export function getNextAction(activeReservation, reservationProgress) {
  "Pick a date and time to visit the dormitory and review policies.",
  buttonText: "Schedule Visit",
  buttonLink: "/applicant/reservation",
+ reservationId: activeReservation._id,
+ step: 2,
+ };
+ }
+ if (
+ physicalVisitState &&
+ !physicalVisitState.canFillApplication
+ ) {
+ return {
+ title: physicalVisitState.title,
+ description: physicalVisitState.message,
+ buttonText:
+ physicalVisitState.buttonLabel?.replace(/\s*(->|→)\s*$/, "") || "Review Visit",
+ buttonLink: physicalVisitState.route || "/applicant/reservation?step=2&edit=1",
  reservationId: activeReservation._id,
  step: 2,
  };
@@ -248,8 +340,41 @@ export function getNextAction(activeReservation, reservationProgress) {
  reservationId: activeReservation._id,
  step: 3,
  };
- case "application_submitted":
+ case "application_submitted": {
  const reservationFeeAmount = activeReservation.reservationFeeAmount || 2000;
+ if (hasReservationStatus(status, "needs_revision")) {
+ return {
+ title: "Application Needs Revision",
+ description:
+ activeReservation.applicationReviewReason ||
+ "Please update your application or documents so admin can review them again.",
+ buttonText: "Update Application",
+ buttonLink: "/applicant/reservation",
+ reservationId: activeReservation._id,
+ step: 3,
+ };
+ }
+ if (hasReservationStatus(status, "rejected")) {
+ return {
+ title: "Application Rejected",
+ description:
+ activeReservation.applicationReviewReason ||
+ "Your application was not approved. Payment remains locked.",
+ buttonText: "View Status",
+ buttonLink: "/applicant/profile",
+ buttonVariant: "outline",
+ };
+ }
+ if (!paymentUnlocked) {
+ return {
+ title: "Application Under Review",
+ description:
+ "Payment will be available once your application and documents are approved.",
+ buttonText: "View Status",
+ buttonLink: "/applicant/profile",
+ buttonVariant: "outline",
+ };
+ }
  return {
  title: "Submit Your Payment",
  description:
@@ -259,6 +384,7 @@ export function getNextAction(activeReservation, reservationProgress) {
  reservationId: activeReservation._id,
  step: 4,
  };
+ }
  case "payment_submitted":
  case "reserved":
  return {

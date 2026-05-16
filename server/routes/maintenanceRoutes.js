@@ -61,11 +61,11 @@ router.patch(
   maintenanceController.updateAdminRequestStatus,
 );
 
-router.get("/:requestId", maintenanceController.getRequestById);
-
 router.get("/my-requests", verifyApplicant, maintenanceController.getMyRequests);
 router.post("/requests", verifyApplicant, maintenanceController.createRequestCompat);
 router.get("/requests/:requestId", maintenanceController.getRequestById);
+
+router.get("/:requestId", maintenanceController.getRequestById);
 router.get(
   "/branch",
   verifyAdmin,

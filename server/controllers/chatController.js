@@ -9,9 +9,10 @@ import { ROOM_BRANCHES } from "../config/branches.js";
 import { CURRENT_RESIDENT_STATUS_QUERY } from "../utils/lifecycleNaming.js";
 import { notify } from "../utils/notificationService.js";
 import { emitToChatAdmins, emitToUser } from "../utils/socket.js";
+import { ADMIN_ROLE_VALUES, OWNER_ROLE_VALUES, isOwnerRole } from "../config/roles.js";
 
 const MAX_MESSAGE_CHARS = 1000;
-const ADMIN_ROLES = new Set(["branch_admin", "owner", "superadmin"]);
+const ADMIN_ROLES = new Set(ADMIN_ROLE_VALUES);
 const ACTIVE_CONVERSATION_STATUSES = [
   "open",
   "in_review",
@@ -353,15 +354,14 @@ async function resolveAdminContext(req) {
   const role =
     dbUser?.role ||
     req.user?.dbRole ||
-    (req.user?.superadmin ? "superadmin" : "") ||
     (req.user?.owner ? "owner" : "") ||
+    (req.user?.superadmin ? "owner" : "") ||
     (req.user?.branch_admin ? "branch_admin" : "");
 
   const normalizedRole = String(role || "").toLowerCase();
   const isOwnerLike =
-    normalizedRole === "owner" ||
-    normalizedRole === "superadmin" ||
-    Boolean(req.user.owner || req.user.superadmin);
+    isOwnerRole(normalizedRole) ||
+    Boolean(req.user.owner || req.user.superadmin /* legacy */);
   const isBranchAdmin =
     normalizedRole === "branch_admin" || Boolean(req.user.branch_admin);
 
@@ -384,12 +384,7 @@ async function resolveAdminContext(req) {
   return {
     user: dbUser || null,
     role: normalizedRole,
-    senderRole:
-      normalizedRole === "owner"
-        ? "owner"
-        : normalizedRole === "superadmin"
-          ? "superadmin"
-          : "admin",
+    senderRole: isOwnerRole(normalizedRole) ? "owner" : "admin",
     branch: dbUser?.branch || null,
     isOwnerLike,
     displayName: displayName(dbUser, "Admin"),
@@ -494,7 +489,7 @@ async function notifyAdminsOfTenantMessage(conversation) {
       isArchived: false,
       accountStatus: "active",
       $or: [
-        { role: { $in: ["owner", "superadmin"] } },
+        { role: { $in: OWNER_ROLE_VALUES } },
         { role: "branch_admin", branch: conversation.branch },
       ],
     })
@@ -567,7 +562,7 @@ async function markAdminMessagesRead(conversationId) {
     ChatMessage.updateMany(
       {
         conversationId,
-        senderRole: { $in: ["admin", "owner", "superadmin"] },
+        senderRole: { $in: ["admin", ...OWNER_ROLE_VALUES] },
         readAt: null,
       },
       { $set: { readAt: now } },

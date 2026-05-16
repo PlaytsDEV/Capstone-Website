@@ -259,7 +259,7 @@ async function sendPushToAllTenants(db, { title, body, data = {} }) {
     const tenants = await db.collection('users').find(
       {
         is_active: { $ne: false },
-        role: { $nin: ['admin', 'superadmin'] },
+        role: { $nin: ['admin', 'owner', 'branch_admin', 'superadmin' /* legacy */] },
         $or: [
           { push_token: { $exists: true, $nin: [null, ''] } },
           { 'push_tokens.0': { $exists: true } },

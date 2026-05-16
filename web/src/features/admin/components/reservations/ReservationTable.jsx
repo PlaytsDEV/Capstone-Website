@@ -14,10 +14,18 @@ export function statusBadgeClass(status) {
  switch (toStatusKey(status)) {
  case "pending":
  return "ar-badge-pending";
+ case "viewing_preference_selected":
+  return "ar-badge-default";
  case "visit_pending":
  return "ar-badge-default";
  case "visit_approved":
  return "ar-badge-confirmed";
+ case "pending_application_review":
+  return "ar-badge-pending";
+ case "needs_revision":
+  return "ar-badge-pending";
+ case "approved_for_payment":
+  return "ar-badge-confirmed";
  case "payment_pending":
  return "ar-badge-pending";
  case "reserved":
@@ -40,10 +48,18 @@ export function statusLabel(status) {
  switch (toStatusKey(status)) {
  case "pending":
  return "Pending";
+ case "viewing_preference_selected":
+  return "Viewing Preference Selected";
  case "visit_pending":
  return "Visit Pending";
  case "visit_approved":
- return "Visit Approved";
+ return "Legacy Visit Approved";
+ case "pending_application_review":
+  return "Pending Review";
+ case "needs_revision":
+  return "Needs Revision";
+ case "approved_for_payment":
+  return "Approved for Payment";
  case "payment_pending":
  return "Payment Pending";
  case "reserved":

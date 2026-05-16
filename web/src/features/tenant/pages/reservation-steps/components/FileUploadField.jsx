@@ -1,6 +1,8 @@
 import React, { useRef, useState } from "react";
-import { uploadToImageKit, validateFile } from "../../../../../shared/utils/imageUpload";
+import { uploadToFirebaseStorage, validateFile } from "../../../../../shared/utils/firebaseStorageUpload";
+import { useAuth } from "../../../../../shared/hooks/useAuth";
 import { CheckCircle, AlertTriangle, Upload } from "lucide-react";
+import { getPrecheckStatus } from "../../../utils/documentPrecheckUtils";
 
 function formatFileSize(bytes) {
  if (!bytes) return "";
@@ -15,60 +17,165 @@ function truncateName(name, max = 28) {
  return name.slice(0, max - ext.length - 3) + "..." + ext;
 }
 
-/**
- * Reusable file upload field with:
- * - Drag & drop support
- * - Client-side validation (size + type)
- * - Upload progress bar
- * - Error feedback
- * - Displays file name + size after upload
- * - Immediate ImageKit upload on file select
- */
+function normalizePrecheckStatus(check, isChecking) {
+ if (isChecking) return "checking";
+ return getPrecheckStatus(check);
+}
+
+function getPrecheckDisplay(check, status) {
+ if (status === "checking") {
+ return { tone: "info", label: "Checking document quality...", text: "" };
+ }
+ if (status === "ready_for_submission") {
+ return {
+ tone: "success",
+ label: "Ready for submission",
+ text:
+ check?.applicantMessage ||
+ "Readable text was detected. Admin will still review this document.",
+ };
+ }
+ if (status === "manual_review_fallback") {
+ return {
+ tone: "info",
+ label: "Manual review required",
+ text:
+ check?.applicantMessage ||
+ "We could not complete the readability check. Admin will review this manually.",
+ };
+ }
+ if (
+ status === "needs_reupload" &&
+ check?.documentTypeStatus === "possible_mismatch"
+ ) {
+ return {
+ tone: "warning",
+ label: "Check document type",
+ text:
+ check?.applicantMessage ||
+ "This file may not match the required document type. Please review and re-upload if needed.",
+ };
+ }
+ if (status === "needs_reupload") {
+ return {
+ tone: "warning",
+ label: "Needs clearer upload",
+ text:
+ check?.applicantMessage ||
+ "Please upload a clearer and readable copy before submitting.",
+ };
+ }
+ return null;
+}
+
 const FileUploadField = ({
  label, value, onChange,
- accept = "image/*,.pdf", hint, userId,
+ accept = "image/*,.pdf", hint,
+ documentType = "document",
+ onUploadComplete,
+ aiCheck,
+ isChecking = false,
  hasError, required,
 }) => {
+ const { user } = useAuth();
  const inputRef = useRef(null);
  const [uploading, setUploading] = useState(false);
+ const [uploadSuccess, setUploadSuccess] = useState(false);
  const [progress, setProgress] = useState(0);
  const [error, setError] = useState(null);
  const [fileMeta, setFileMeta] = useState(null);
 
- const isUploaded = typeof value === "string" && value.startsWith("http");
+ // An existing HTTPS URL (saved from a previous session) counts as uploaded.
+ // uploadSuccess covers the just-uploaded case before the value prop updates.
+ const isUploaded = uploadSuccess || (typeof value === "string" && value.startsWith("https://"));
  const isFile = value instanceof File;
- const showFieldError = hasError && !isUploaded && !isFile;
+ const showFieldError = Boolean(hasError);
 
- const handleClick = () => { if (!uploading) inputRef.current?.click(); };
+ const handleClick = () => {
+ if (!uploading) inputRef.current?.click();
+ };
 
  const processFile = async (file) => {
  if (!file) return;
  const check = validateFile(file);
- if (!check.valid) { setError(check.error); return; }
+ if (!check.valid) {
+ setError(check.error);
+ return;
+ }
+
  setFileMeta({ name: file.name, size: file.size });
- setError(null); setUploading(true); setProgress(0);
+ setError(null);
+ setUploading(true);
+ setUploadSuccess(false);
+ setProgress(0);
+
  try {
- const url = await uploadToImageKit(file, (pct) => setProgress(pct));
- setUploading(false); setProgress(100); onChange(url);
+ const result = await uploadToFirebaseStorage(
+ file,
+ { uid: user?.firebaseUid, documentType },
+ (pct) => setProgress(pct),
+ );
+ setUploading(false);
+ setUploadSuccess(true);
+ setProgress(100);
+ onChange(result.downloadUrl);
+ try {
+ await onUploadComplete?.(result.downloadUrl, file);
+ } catch {
+ console.warn("Document pre-check fell back to manual review after upload.");
+ }
  } catch (err) {
- setUploading(false); setProgress(0);
+ setUploading(false);
+ setUploadSuccess(false);
+ setProgress(0);
  setError(err.message || "Upload failed. Please try again.");
+ // Keep the File object in state so the user can retry without re-selecting
  onChange(file);
  }
  };
 
- const handleChange = (e) => { const file = e.target.files?.[0] || null; processFile(file); e.target.value = ""; };
- const handleDrop = (e) => { e.preventDefault(); const file = e.dataTransfer.files?.[0] || null; if (file) processFile(file); };
- const handleDragOver = (e) => e.preventDefault();
+ const handleChange = (event) => {
+ const file = event.target.files?.[0] || null;
+ processFile(file);
+ event.target.value = "";
+ };
 
- /* Determine state-based CSS class modifiers */
+ const handleDrop = (event) => {
+ event.preventDefault();
+ const file = event.dataTransfer.files?.[0] || null;
+ if (file) processFile(file);
+ };
+
+ const handleDragOver = (event) => event.preventDefault();
+
+ const handleKeyDown = (event) => {
+ if (event.key === "Enter" || event.key === " ") {
+ event.preventDefault();
+ handleClick();
+ }
+ };
+
+ const aiWarnings = Array.isArray(aiCheck?.aiCheckWarnings)
+ ? aiCheck.aiCheckWarnings.filter(Boolean)
+ : [];
+ const aiStatus = normalizePrecheckStatus(aiCheck, isChecking);
+ const precheckDisplay = getPrecheckDisplay(aiCheck, aiStatus);
+ const showAiFeedback =
+ Boolean(precheckDisplay) ||
+ (aiStatus !== "not_checked" &&
+ (Boolean(aiCheck?.summaryMessage) || aiWarnings.length > 0));
+
  const zoneClass = [
  "rf-upload-zone",
  showFieldError ? "rf-upload-zone--error" : "",
  error ? "rf-upload-zone--error" : "",
  isUploaded ? "rf-upload-zone--success" : "",
  uploading ? "rf-upload-zone--uploading" : "",
- ].filter(Boolean).join(" ");
+ ]
+ .filter(Boolean)
+ .join(" ");
+
+ const aiStatusTone = precheckDisplay?.tone || "warning";
 
  return (
  <div className="form-group">
@@ -76,15 +183,29 @@ const FileUploadField = ({
  {label}
  {required && <span className="rf-required"> *</span>}
  </label>
- <input ref={inputRef} type="file" accept={accept} onChange={handleChange} className="rf-file-input-hidden" />
- <div className={zoneClass} onClick={handleClick} onDrop={handleDrop} onDragOver={handleDragOver}>
-
+ <input
+ ref={inputRef}
+ type="file"
+ accept={accept}
+ onChange={handleChange}
+ className="rf-file-input-hidden"
+ />
+ <div
+ className={zoneClass}
+ onClick={handleClick}
+ onDrop={handleDrop}
+ onDragOver={handleDragOver}
+ onKeyDown={handleKeyDown}
+ role="button"
+ tabIndex={0}
+ >
  {uploading ? (
  <>
  <div className="rf-upload-status rf-upload-status--uploading">
- Uploading… {progress}%
+ Uploading... {progress}%
  </div>
- {fileMeta && <div className="rf-upload-filename">{truncateName(fileMeta.name)}</div>}
+ <div className="rf-upload-hint">Saving to secure cloud storage</div>
+ {fileMeta ? <div className="rf-upload-filename">{truncateName(fileMeta.name)}</div> : null}
  <div className="rf-upload-progress-track">
  <div className="rf-upload-progress-fill" style={{ width: `${progress}%` }} />
  </div>
@@ -116,17 +237,44 @@ const FileUploadField = ({
  </>
  )}
 
- {error && !uploading && (
+ {error && !uploading ? (
  <div className="rf-upload-error">
  <AlertTriangle size={12} /> {error}
  </div>
- )}
+ ) : null}
 
- {hint && !error && <div className="rf-upload-hint">{hint}</div>}
+ {hint && !error ? <div className="rf-upload-hint">{hint}</div> : null}
 
- {!isUploaded && !isFile && !uploading && !error && (
+ {!isUploaded && !isFile && !uploading && !error ? (
  <div className="rf-upload-limit">Max 5MB · JPEG, PNG, or PDF</div>
+ ) : null}
+
+ {showAiFeedback && !error ? (
+ <div className={`rf-upload-ai-status rf-upload-ai-status--${aiStatusTone}`}>
+ {precheckDisplay ? (
+ <>
+ <strong>{precheckDisplay.label}</strong>
+ {precheckDisplay.text ? <span>{precheckDisplay.text}</span> : null}
+ </>
+ ) : (
+ <>
+ {aiCheck?.summaryMessage ? <span>{aiCheck.summaryMessage}</span> : null}
+ {aiWarnings.length > 0 ? (
+ <ul className="rf-upload-ai-status__list">
+ {aiWarnings.map((warning, index) => (
+ <li key={`${warning}-${index}`}>{warning}</li>
+ ))}
+ </ul>
+ ) : null}
+ {aiStatus === "ready_for_submission" ? (
+ <span className="rf-upload-ai-status__footnote">
+ Admin will still review this document before payment becomes available.
+ </span>
+ ) : null}
+ </>
  )}
+ </div>
+ ) : null}
  </div>
  </div>
  );

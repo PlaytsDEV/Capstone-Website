@@ -57,6 +57,8 @@ const CLOSED_MAINTENANCE_STATUSES = new Set([
   "cancelled",
   "closed",
 ]);
+const IMAGE_FILE_PATTERN = /\.(avif|bmp|gif|heic|jpeg|jpg|png|svg|webp)(?:$|[?#])/i;
+const PDF_FILE_PATTERN = /\.pdf(?:$|[?#])/i;
 
 const parseLimit = (value, fallback = 100) => {
   const parsed = Number.parseInt(value, 10);
@@ -124,16 +126,126 @@ const getSlaState = (request) => {
   };
 };
 
+const inferAttachmentType = ({ name, uri, fallbackType }) => {
+  const explicitType = toOptionalText(fallbackType);
+  if (explicitType) return explicitType;
+
+  const source = `${name || ""} ${uri || ""}`.toLowerCase();
+  if (PDF_FILE_PATTERN.test(source)) return "application/pdf";
+  if (IMAGE_FILE_PATTERN.test(source)) return "image/*";
+  return "application/octet-stream";
+};
+
+const getAttachmentUri = (entry) => {
+  if (typeof entry === "string") {
+    return toOptionalText(entry);
+  }
+
+  return (
+    toOptionalText(entry?.uri) ||
+    toOptionalText(entry?.url) ||
+    toOptionalText(entry?.href) ||
+    toOptionalText(entry?.src) ||
+    toOptionalText(entry?.imageUrl) ||
+    toOptionalText(entry?.fileUrl) ||
+    toOptionalText(entry?.path)
+  );
+};
+
+const deriveAttachmentName = (uri, index = 0) => {
+  if (!uri) return `Attachment ${index + 1}`;
+
+  try {
+    const parsedUrl = new URL(uri, "https://placeholder.local");
+    const candidate = parsedUrl.pathname.split("/").filter(Boolean).pop();
+    const decoded = candidate ? decodeURIComponent(candidate) : "";
+    return toOptionalText(decoded) || `Attachment ${index + 1}`;
+  } catch {
+    const candidate = String(uri).split(/[/?#]/).filter(Boolean).pop();
+    return toOptionalText(candidate) || `Attachment ${index + 1}`;
+  }
+};
+
+const isRemoteUri = (uri) => {
+  try {
+    const { protocol } = new URL(uri);
+    return protocol === "https:" || protocol === "http:";
+  } catch {
+    return false;
+  }
+};
+
+const extractAttachmentName = (entry, uri, index) =>
+  (typeof entry === "object" && entry
+    ? toOptionalText(entry?.name) ||
+      toOptionalText(entry?.filename) ||
+      toOptionalText(entry?.fileName) ||
+      toOptionalText(entry?.label) ||
+      toOptionalText(entry?.title)
+    : null) || deriveAttachmentName(uri || "", index);
+
+/**
+ * Used when SAVING new attachments — rejects non-HTTP(S) URIs entirely
+ * so local file paths from mobile devices never reach the database.
+ */
+const normalizeAttachmentEntry = (entry, index = 0) => {
+  const uri = getAttachmentUri(entry);
+  if (!uri || !isRemoteUri(uri)) return null;
+
+  const name = extractAttachmentName(entry, uri, index);
+  return {
+    name,
+    uri,
+    type: inferAttachmentType({
+      name,
+      uri,
+      fallbackType:
+        typeof entry === "object" && entry
+          ? entry?.type || entry?.mimeType || entry?.mime
+          : null,
+    }),
+  };
+};
+
+/**
+ * Used when READING attachments from the DB — preserves every attachment
+ * record but nulls out URIs that are not safe HTTP(S) URLs so the frontend
+ * can show an "unavailable" state instead of silently hiding the attachment.
+ */
+const sanitizeAttachmentForOutput = (entry, index = 0) => {
+  const rawUri = getAttachmentUri(entry);
+  if (!rawUri && typeof entry !== "object") return null;
+
+  const safeUri = rawUri && isRemoteUri(rawUri) ? rawUri : null;
+  const name = extractAttachmentName(entry, safeUri || rawUri, index);
+  if (!name) return null;
+
+  return {
+    name,
+    uri: safeUri,
+    type: inferAttachmentType({
+      name,
+      uri: safeUri || "",
+      fallbackType:
+        typeof entry === "object" && entry
+          ? entry?.type || entry?.mimeType || entry?.mime
+          : null,
+    }),
+  };
+};
+
 const normalizeAttachments = (attachments) => {
   if (!Array.isArray(attachments)) return [];
-
   return attachments
-    .map((entry) => ({
-      name: toOptionalText(entry?.name),
-      uri: toOptionalText(entry?.uri),
-      type: toOptionalText(entry?.type),
-    }))
-    .filter((entry) => entry.name && entry.uri && entry.type);
+    .map((entry, index) => normalizeAttachmentEntry(entry, index))
+    .filter(Boolean);
+};
+
+const sanitizeAttachmentsForOutput = (attachments) => {
+  if (!Array.isArray(attachments)) return [];
+  return attachments
+    .map((entry, index) => sanitizeAttachmentForOutput(entry, index))
+    .filter(Boolean);
 };
 
 const buildRequestIdentifierQuery = (requestId) => {
@@ -208,7 +320,7 @@ const serializeMaintenanceRequest = (request, tenant = null) => ({
   status: request.status,
   assigned_to: request.assigned_to ?? null,
   notes: request.notes ?? null,
-  attachments: Array.isArray(request.attachments) ? request.attachments : [],
+  attachments: sanitizeAttachmentsForOutput(request.attachments),
   reopen_note: request.reopen_note ?? null,
   reopen_history: Array.isArray(request.reopen_history) ? request.reopen_history : [],
   statusHistory: Array.isArray(request.statusHistory) ? request.statusHistory : [],
@@ -219,7 +331,12 @@ const serializeMaintenanceRequest = (request, tenant = null) => ({
     startedAt: request.work_started_at ?? null,
     resolvedAt: request.resolved_at ?? null,
   },
-  workLog: Array.isArray(request.work_log) ? request.work_log : [],
+  workLog: Array.isArray(request.work_log)
+    ? request.work_log.map((entry) => ({
+        ...entry,
+        attachments: sanitizeAttachmentsForOutput(entry?.attachments),
+      }))
+    : [],
   resolutionNote: request.resolution_note ?? null,
   created_at: request.created_at,
   updated_at: request.updated_at,
@@ -284,6 +401,11 @@ const buildAdminDisplayName = (adminUser) =>
 
 const normalizeAdminUpdatePayload = (payload = {}) => {
   const hasAssignedField = Object.prototype.hasOwnProperty.call(payload, "assigned_to");
+  const workLogAttachments = normalizeAttachments(
+    payload.work_log_attachments !== undefined
+      ? payload.work_log_attachments
+      : payload.workLogAttachments,
+  );
 
   return {
     nextStatus: normalizeMaintenanceStatus(payload.status),
@@ -293,6 +415,7 @@ const normalizeAdminUpdatePayload = (payload = {}) => {
     workLogNote: toOptionalText(
       payload.work_log_note !== undefined ? payload.work_log_note : payload.workLogNote,
     ),
+    workLogAttachments,
   };
 };
 
@@ -311,18 +434,11 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
     nextAssignedTo,
     hasAssignedField,
     workLogNote,
+    workLogAttachments,
   } = normalizeAdminUpdatePayload(payload);
 
   if (hasAssignedField && nextAssignedTo && nextAssignedTo.length < 2) {
     throw new AppError("Assigned staff name is too short", 400, "INVALID_ASSIGNEE");
-  }
-
-  if (!nextStatus || !isAdminMutableMaintenanceStatus(nextStatus)) {
-    throw new AppError(
-      `Status must be one of: ${ADMIN_MAINTENANCE_STATUSES.join(", ")}`,
-      400,
-      "INVALID_ADMIN_STATUS",
-    );
   }
 
   if (!canAdminTransitionMaintenanceStatus(request.status, nextStatus)) {
@@ -349,6 +465,20 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
   }
 
   const statusChanged = request.status !== nextStatus;
+  const isSameStatusUpdate =
+    normalizeMaintenanceStatus(request.status) === nextStatus;
+
+  if (
+    !nextStatus ||
+    (!isAdminMutableMaintenanceStatus(nextStatus) && !isSameStatusUpdate)
+  ) {
+    throw new AppError(
+      `Status must be one of: ${ADMIN_MAINTENANCE_STATUSES.join(", ")}`,
+      400,
+      "INVALID_ADMIN_STATUS",
+    );
+  }
+
   let assignmentChanged =
     hasAssignedField && request.assigned_to !== nextAssignedTo;
   const notesChanged = nextNotes !== undefined && request.notes !== nextNotes;
@@ -416,9 +546,10 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
     });
   }
 
-  if (workLogNote) {
+  if (workLogNote || workLogAttachments.length > 0) {
     appendWorkLogEntry(request, {
-      note: workLogNote,
+      note: workLogNote || "Progress attachment added.",
+      attachments: workLogAttachments,
       ...buildActorSnapshot(adminUser),
       logged_at: eventTimestamp,
     });
@@ -426,6 +557,12 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
 
   return {
     statusChanged,
+    notesChanged,
+    hasTenantVisibleUpdate:
+      statusChanged ||
+      notesChanged ||
+      Boolean(workLogNote) ||
+      workLogAttachments.length > 0,
   };
 };
 
@@ -887,7 +1024,7 @@ export const updateAdminRequestStatus = async (req, res, next) => {
     ensureAdminAccess(request, req);
     const adminUser = await getDbUser(req.user.uid);
 
-    const { statusChanged } = applyAdminUpdateToRequest({
+    const { statusChanged, notesChanged, hasTenantVisibleUpdate } = applyAdminUpdateToRequest({
       request,
       adminUser,
       payload: req.body,
@@ -899,12 +1036,22 @@ export const updateAdminRequestStatus = async (req, res, next) => {
       .select("_id user_id firstName lastName email phone branch role")
       .lean();
 
-    if (statusChanged && tenantUser?._id) {
+    if (hasTenantVisibleUpdate && tenantUser?._id) {
       await notify.maintenanceUpdated(
         tenantUser._id,
         request.request_type,
         request.status,
         request.request_id,
+        {
+          statusChanged,
+          hasAdminNote: notesChanged,
+          hasProgressEntry: Boolean(req.body.work_log_note || req.body.workLogNote),
+          hasProgressAttachments: normalizeAttachments(
+            req.body.work_log_attachments !== undefined
+              ? req.body.work_log_attachments
+              : req.body.workLogAttachments,
+          ).length > 0,
+        },
       );
     }
 
@@ -962,6 +1109,10 @@ export const updateAdminBulkRequests = async (req, res, next) => {
       notes: req.body.notes,
       assigned_to: req.body.assigned_to,
       work_log_note: req.body.work_log_note,
+      work_log_attachments:
+        req.body.work_log_attachments !== undefined
+          ? req.body.work_log_attachments
+          : req.body.workLogAttachments,
     };
 
     if (requestIds.length === 0) {
@@ -975,7 +1126,8 @@ export const updateAdminBulkRequests = async (req, res, next) => {
       payload.status !== undefined ||
       payload.notes !== undefined ||
       payload.assigned_to !== undefined ||
-      payload.work_log_note !== undefined;
+      payload.work_log_note !== undefined ||
+      payload.work_log_attachments !== undefined;
     if (!hasPayload) {
       throw new AppError("No update values provided", 400, "MISSING_UPDATE_VALUES");
     }
@@ -990,7 +1142,7 @@ export const updateAdminBulkRequests = async (req, res, next) => {
         const request = await findAccessibleRequest(requestId);
         ensureAdminAccess(request, req);
 
-        const { statusChanged } = applyAdminUpdateToRequest({
+        const { statusChanged, notesChanged, hasTenantVisibleUpdate } = applyAdminUpdateToRequest({
           request,
           adminUser,
           payload,
@@ -998,7 +1150,7 @@ export const updateAdminBulkRequests = async (req, res, next) => {
 
         await request.save();
 
-        if (statusChanged) {
+        if (hasTenantVisibleUpdate) {
           const tenantUser = await User.findOne({ user_id: request.user_id })
             .select("_id")
             .lean();
@@ -1008,6 +1160,16 @@ export const updateAdminBulkRequests = async (req, res, next) => {
               request.request_type,
               request.status,
               request.request_id,
+              {
+                statusChanged,
+                hasAdminNote: notesChanged,
+                hasProgressEntry: Boolean(payload.work_log_note || payload.workLogNote),
+                hasProgressAttachments: normalizeAttachments(
+                  payload.work_log_attachments !== undefined
+                    ? payload.work_log_attachments
+                    : payload.workLogAttachments,
+                ).length > 0,
+              },
             );
           }
         }

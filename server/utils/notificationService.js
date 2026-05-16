@@ -20,6 +20,7 @@ import {
 } from "../config/maintenance.js";
 import logger from "../middleware/logger.js";
 import { sendMobilePushBill, sendMobilePushToRecipients } from "./mobilePushService.js";
+import { emitToUser } from "./socket.js";
 
 /**
  * Create a notification (generic)
@@ -41,6 +42,20 @@ async function createNotification(userId, type, title, message, options = {}) {
       entityId: options.entityId || null,
     });
     await notification.save();
+    if (options.emitRealtime !== false) {
+      try {
+        emitToUser(userId, "notification:new", buildRealtimeNotificationPayload(notification));
+      } catch (emitError) {
+        logger.warn(
+          {
+            err: emitError,
+            userId: String(userId || ""),
+            type,
+          },
+          "[Notification] Realtime delivery failed",
+        );
+      }
+    }
     return notification;
   } catch (error) {
     // Non-fatal — don't break the calling flow
@@ -86,6 +101,47 @@ async function createNotificationWithPush(
 
   return notification;
 }
+
+const buildRealtimeNotificationPayload = (notification) => {
+  if (!notification) return null;
+
+  const payload = notification?.toObject ? notification.toObject() : notification;
+  return {
+    ...payload,
+    _id: payload?._id ? String(payload._id) : payload?._id,
+    userId: payload?.userId ? String(payload.userId) : payload?.userId,
+    isRead: Boolean(payload?.isRead),
+  };
+};
+
+const buildMaintenanceUpdateMessage = (
+  requestType,
+  status,
+  {
+    statusChanged = true,
+    hasAdminNote = false,
+    hasProgressEntry = false,
+    hasProgressAttachments = false,
+  } = {},
+) => {
+  if (statusChanged) {
+    return buildMaintenanceNotificationBody(requestType, status);
+  }
+
+  if (hasProgressEntry && hasProgressAttachments) {
+    return "Admin replied with a progress update and attachment(s) for your maintenance request.";
+  }
+
+  if (hasProgressAttachments) {
+    return "Admin added new attachment(s) to your maintenance request.";
+  }
+
+  if (hasAdminNote || hasProgressEntry) {
+    return "Admin replied to your maintenance request.";
+  }
+
+  return "Your maintenance request has been updated.";
+};
 
 // ============================================================================
 // PRE-BUILT NOTIFICATION HELPERS
@@ -138,8 +194,8 @@ const notify = {
    * Visit approved
    */
   visitApproved: (userId, branchName) =>
-    createNotification(userId, "visit_approved", "Visit Approved",
-      `Your visit to ${branchName} has been approved. Please proceed to the dormitory.`,
+    createNotification(userId, "visit_approved", "Visit Schedule Confirmed",
+      `Your physical visit schedule for ${branchName} has been confirmed for viewing coordination only. Payment will remain locked until your application and documents are approved.`,
       { entityType: "reservation" }),
 
   /**
@@ -347,17 +403,21 @@ const notify = {
   /**
    * Maintenance request status update
    */
-  maintenanceUpdated: (userId, requestType, status, requestId) =>
-    createNotification(
+  maintenanceUpdated: async (userId, requestType, status, requestId, options = {}) => {
+    const notification = await createNotification(
       userId,
       "maintenance_update",
       buildMaintenanceNotificationTitle(requestType),
-      buildMaintenanceNotificationBody(requestType, status),
+      buildMaintenanceUpdateMessage(requestType, status, options),
       {
         entityType: "maintenance",
         entityId: requestId || null,
+        actionUrl: "/applicant/maintenance",
       },
-    ),
+    );
+
+    return notification;
+  },
 };
 
 export { createNotification, notify };

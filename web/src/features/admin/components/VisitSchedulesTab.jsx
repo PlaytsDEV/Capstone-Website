@@ -5,7 +5,6 @@ import {
   Check,
   CheckCircle,
   Clock,
-  RotateCcw,
   Search,
   Trash2,
   X as XIcon,
@@ -75,52 +74,68 @@ function VisitSchedulesTab() {
     [rawReservations],
   );
 
-  const upcoming = useMemo(
+  // Awaiting admin schedule approval
+  const pendingApproval = useMemo(
     () =>
       schedules.filter(
-        (schedule) =>
-          !schedule.isHistorical &&
-          !schedule.visitApproved &&
-          !schedule.scheduleRejected &&
-          new Date(schedule.visitDate) >= new Date(),
+        (s) =>
+          !s.isHistorical &&
+          !s.scheduleApproved &&
+          !s.scheduleRejected &&
+          !s.visitApproved,
       ),
     [schedules],
   );
+  // Schedule approved by admin, visit not yet recorded
+  const confirmed = useMemo(
+    () =>
+      schedules.filter(
+        (s) =>
+          !s.isHistorical &&
+          s.scheduleApproved &&
+          !s.visitApproved &&
+          !s.scheduleRejected,
+      ),
+    [schedules],
+  );
+  // Visit completed (marked as visited)
   const completed = useMemo(
     () =>
       schedules.filter(
-        (schedule) =>
-          (!schedule.isHistorical && schedule.visitApproved) ||
-          (schedule.isHistorical && schedule.historyStatus === "approved"),
+        (s) =>
+          (!s.isHistorical && s.visitApproved) ||
+          (s.isHistorical &&
+            (s.historyStatus === "approved" || s.historyStatus === "completed")),
       ),
     [schedules],
   );
+  // No-shows (explicitly recorded by admin)
   const noShows = useMemo(
     () =>
       schedules.filter(
-        (schedule) =>
-          !schedule.isHistorical &&
-          !schedule.visitApproved &&
-          !schedule.scheduleRejected &&
-          new Date(schedule.visitDate) < new Date(),
+        (s) =>
+          (!s.isHistorical && s.visitStatus === "no_show") ||
+          (s.isHistorical && s.historyStatus === "no_show"),
       ),
     [schedules],
   );
   const rejected = useMemo(
     () =>
       schedules.filter(
-        (schedule) =>
-          schedule.scheduleRejected ||
-          (schedule.isHistorical && schedule.historyStatus === "rejected"),
+        (s) =>
+          s.scheduleRejected ||
+          (s.isHistorical && s.historyStatus === "rejected"),
       ),
     [schedules],
   );
   const cancelled = useMemo(
     () =>
       schedules.filter(
-        (schedule) =>
-          (schedule.isHistorical && schedule.historyStatus === "cancelled") ||
-          (!schedule.isHistorical && schedule.status === "cancelled"),
+        (s) =>
+          (s.isHistorical &&
+            (s.historyStatus === "cancelled" ||
+              s.historyStatus === "visit_cancelled")) ||
+          (!s.isHistorical && s.status === "cancelled"),
       ),
     [schedules],
   );
@@ -158,41 +173,58 @@ function VisitSchedulesTab() {
 
   const handleVerify = (id) => {
     confirmAction(
-      "Verify Attendance",
-      "Confirm the applicant's on-site attendance?",
+      "Mark Visit as Completed",
+      "Confirm the applicant attended the scheduled physical visit? This will unlock their tenant application.",
       "info",
-      "Verify",
+      "Mark as Visited",
       async () => {
         setActionLoading(id);
         try {
-          await reservationApi.update(id, {
-            scheduleApproved: true,
-            visitApproved: true,
-            status: "visit_approved",
-          });
+          await reservationApi.manageVisit(id, { action: "mark_visited" });
         } finally {
           setActionLoading(null);
         }
       },
-      "Attendance verified successfully",
-      "Failed to verify attendance. Please try again.",
+      "Visit marked as completed. Tenant can now submit their application.",
+      "Failed to mark visit as completed. Please try again.",
     );
   };
 
-  const handleRevoke = (id) => {
+  const handleApproveSchedule = (id) => {
     confirmAction(
-      "Revoke Verification",
-      "Revoke this applicant's attendance verification?",
-      "danger",
-      "Revoke",
+      "Approve Visit Schedule",
+      "Confirm this visit appointment? The applicant will be notified that their schedule is approved.",
+      "info",
+      "Approve Schedule",
       async () => {
-        await reservationApi.update(id, {
-          scheduleApproved: false,
-          visitApproved: false,
-        });
+        setActionLoading(id);
+        try {
+          await reservationApi.manageVisit(id, { action: "approve_schedule" });
+        } finally {
+          setActionLoading(null);
+        }
       },
-      "Verification revoked successfully",
-      "Failed to verify attendance. Please try again.",
+      "Visit schedule approved successfully.",
+      "Failed to approve visit schedule. Please try again.",
+    );
+  };
+
+  const handleMarkNoShow = (id) => {
+    confirmAction(
+      "Mark as No-Show",
+      "Mark this applicant as a no-show? This records that they did not attend the scheduled visit.",
+      "danger",
+      "Mark No-Show",
+      async () => {
+        setActionLoading(id);
+        try {
+          await reservationApi.manageVisit(id, { action: "mark_no_show" });
+        } finally {
+          setActionLoading(null);
+        }
+      },
+      "Applicant marked as no-show.",
+      "Failed to mark as no-show. Please try again.",
     );
   };
 
@@ -230,22 +262,22 @@ function VisitSchedulesTab() {
     () => [
       { label: "All", value: schedules.length, icon: Calendar, color: "blue" },
       {
-        label: "Pending",
-        value: upcoming.length,
+        label: "Pending Approval",
+        value: pendingApproval.length,
         icon: Clock,
         color: "orange",
       },
       {
-        label: "Approved",
+        label: "Confirmed",
+        value: confirmed.length,
+        icon: CheckCircle,
+        color: "blue",
+      },
+      {
+        label: "Visit Completed",
         value: completed.length,
         icon: CheckCircle,
         color: "green",
-      },
-      {
-        label: "Rejected",
-        value: rejected.length,
-        icon: XIcon,
-        color: "red",
       },
       {
         label: "No-Show",
@@ -253,26 +285,34 @@ function VisitSchedulesTab() {
         icon: AlertCircle,
         color: "red",
       },
+      {
+        label: "Rejected",
+        value: rejected.length,
+        icon: XIcon,
+        color: "red",
+      },
       { label: "Cancelled", value: cancelled.length, icon: Ban, color: "red" },
     ],
     [
       cancelled.length,
       completed.length,
-      rejected.length,
+      confirmed.length,
       noShows.length,
+      pendingApproval.length,
+      rejected.length,
       schedules.length,
-      upcoming.length,
     ],
   );
 
   const displayData = useMemo(() => {
     let base;
     if (activeFilter === 0) base = schedules;
-    else if (activeFilter === 1) base = upcoming;
-    else if (activeFilter === 2) base = completed;
-    else if (activeFilter === 3) base = rejected;
+    else if (activeFilter === 1) base = pendingApproval;
+    else if (activeFilter === 2) base = confirmed;
+    else if (activeFilter === 3) base = completed;
     else if (activeFilter === 4) base = noShows;
-    else if (activeFilter === 5) base = cancelled;
+    else if (activeFilter === 5) base = rejected;
+    else if (activeFilter === 6) base = cancelled;
     else base = schedules;
 
     const query = searchTerm.trim().toLowerCase();
@@ -311,12 +351,13 @@ function VisitSchedulesTab() {
     branchFilter,
     cancelled,
     completed,
+    confirmed,
     noShows,
+    pendingApproval,
     rejected,
     schedules,
     searchTerm,
     sortBy,
-    upcoming,
   ]);
 
   const totalPages = Math.max(1, Math.ceil(displayData.length / itemsPerPage));
@@ -504,12 +545,6 @@ function VisitSchedulesTab() {
               <tbody>
                 {paginatedData.map((row) => {
                   const isDim = row.isHistorical ? "opacity-55" : "";
-                  const now = new Date();
-                  const visitDate = new Date(row.visitDate);
-                  const isUpcoming =
-                    !row.visitApproved &&
-                    !row.scheduleRejected &&
-                    visitDate >= now;
                   const actionedDate = row.actionedAt
                     ? new Date(row.actionedAt)
                     : null;
@@ -517,9 +552,13 @@ function VisitSchedulesTab() {
                   let statusNode;
                   if (row.isHistorical) {
                     const historyMap = {
+                      schedule_approved: { status: "active", label: "Sched. Approved" },
+                      approved: { status: "verified", label: "Completed" },
+                      completed: { status: "verified", label: "Completed" },
                       rejected: { status: "overdue", label: "Rejected" },
-                      approved: { status: "verified", label: "Approved" },
+                      no_show: { status: "overdue", label: "No-Show" },
                       cancelled: { status: "overdue", label: "Cancelled" },
+                      visit_cancelled: { status: "overdue", label: "Cancelled" },
                       pending: { status: "pending", label: "Scheduled" },
                     };
                     const config =
@@ -547,24 +586,27 @@ function VisitSchedulesTab() {
                         )}
                       </div>
                     );
-                  } else if (row.scheduleRejected) {
-                    statusNode = (
-                      <StatusBadge status="rejected" label="Rejected" />
-                    );
                   } else {
-                    const status = row.visitApproved
-                      ? "completed"
-                      : isUpcoming
-                        ? "pending"
-                        : "no-show";
-                    const label = row.visitApproved
-                      ? "Completed"
-                      : isUpcoming
-                        ? "Pending Approval"
-                        : "No-Show";
+                    let activeStatus, activeLabel;
+                    if (row.scheduleRejected) {
+                      activeStatus = "rejected";
+                      activeLabel = "Rejected";
+                    } else if (row.visitApproved || row.visitStatus === "visit_completed") {
+                      activeStatus = "verified";
+                      activeLabel = "Visit Completed";
+                    } else if (row.visitStatus === "no_show") {
+                      activeStatus = "overdue";
+                      activeLabel = "No-Show";
+                    } else if (row.scheduleApproved) {
+                      activeStatus = "active";
+                      activeLabel = "Sched. Confirmed";
+                    } else {
+                      activeStatus = "pending";
+                      activeLabel = "Pending Approval";
+                    }
                     statusNode = (
                       <div>
-                        <StatusBadge status={status} label={label} />
+                        <StatusBadge status={activeStatus} label={activeLabel} />
                         {actionedDate && (
                           <div className="mt-1 text-xs text-muted-foreground">
                             {actionedDate.toLocaleDateString("en-US", {
@@ -691,18 +733,20 @@ function VisitSchedulesTab() {
                             </button>
                           ) : (
                             <>
-                              {isUpcoming && (
+                              {/* Pending Approval: Approve + Reject */}
+                              {!row.scheduleApproved && !row.scheduleRejected && !row.visitApproved && row.visitStatus !== "no_show" && (
                                 <>
                                   <button
                                     className="px-2.5 py-1.5 bg-[color:var(--success-light)] hover:bg-[color:var(--success)]/20 text-[color:var(--success-dark)] dark:text-[color:var(--success-dark)] font-medium rounded-md transition-colors flex items-center gap-1.5 text-sm"
                                     disabled={actionLoading === row.id}
-                                    onClick={() => handleVerify(row.id)}
+                                    onClick={() => handleApproveSchedule(row.id)}
                                   >
                                     <Check className="w-3.5 h-3.5" />
-                                    Complete
+                                    Approve
                                   </button>
                                   <button
                                     className="px-2.5 py-1.5 bg-[color:var(--danger-light)] hover:bg-[color:var(--danger)]/20 text-[color:var(--danger-dark)] dark:text-[color:var(--danger-dark)] font-medium rounded-md transition-colors flex items-center gap-1.5 text-sm"
+                                    disabled={actionLoading === row.id}
                                     title="Reject schedule"
                                     onClick={() => setSelectedSchedule(row)}
                                   >
@@ -711,14 +755,26 @@ function VisitSchedulesTab() {
                                   </button>
                                 </>
                               )}
-                              {row.visitApproved && (
-                                <button
-                                  className="p-1.5 hover:bg-muted rounded-md transition-colors"
-                                  title="Revoke verification"
-                                  onClick={() => handleRevoke(row.id)}
-                                >
-                                  <RotateCcw className="w-4 h-4 text-muted-foreground" />
-                                </button>
+                              {/* Schedule Confirmed: Mark Visited + No-Show */}
+                              {row.scheduleApproved && !row.visitApproved && row.visitStatus !== "no_show" && !row.scheduleRejected && (
+                                <>
+                                  <button
+                                    className="px-2.5 py-1.5 bg-[color:var(--success-light)] hover:bg-[color:var(--success)]/20 text-[color:var(--success-dark)] dark:text-[color:var(--success-dark)] font-medium rounded-md transition-colors flex items-center gap-1.5 text-sm"
+                                    disabled={actionLoading === row.id}
+                                    onClick={() => handleVerify(row.id)}
+                                  >
+                                    <Check className="w-3.5 h-3.5" />
+                                    Mark Visited
+                                  </button>
+                                  <button
+                                    className="px-2.5 py-1.5 bg-[color:var(--warning-light,#FEF3C7)] hover:bg-[color:var(--warning)]/20 text-[color:var(--warning-dark,#92400E)] font-medium rounded-md transition-colors flex items-center gap-1.5 text-sm"
+                                    disabled={actionLoading === row.id}
+                                    onClick={() => handleMarkNoShow(row.id)}
+                                  >
+                                    <AlertCircle className="w-3.5 h-3.5" />
+                                    No-Show
+                                  </button>
+                                </>
                               )}
                               <button
                                 className="p-1.5 hover:bg-red-50 text-red-500 hover:text-red-600 rounded-md transition-colors"

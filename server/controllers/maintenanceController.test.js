@@ -244,6 +244,12 @@ describe("maintenanceController", () => {
       "plumbing",
       "viewed",
       requestDoc.request_id,
+      {
+        statusChanged: true,
+        hasAdminNote: true,
+        hasProgressEntry: false,
+        hasProgressAttachments: false,
+      },
     );
     expect(sendSuccess).toHaveBeenCalledTimes(1);
     expect(next).not.toHaveBeenCalled();
@@ -285,6 +291,75 @@ describe("maintenanceController", () => {
     expect(maintenanceUpdated).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalledTimes(1);
     expect(next.mock.calls[0][0].code).toBe("INVALID_STATUS_TRANSITION");
+  });
+
+  test("updateAdminRequestStatus notifies tenants about same-status admin updates", async () => {
+    const requestDoc = buildRequestDoc({ status: "pending" });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockImplementation(({ firebaseUid, user_id }) => {
+      if (firebaseUid === "firebase-admin-1") {
+        return buildLeanQuery({
+          _id: "admin_user_1",
+          user_id: "admin_1",
+          firstName: "Branch",
+          lastName: "Admin",
+          email: "admin@example.com",
+          phone: "0918",
+          branch: "gil-puyat",
+          role: "branch_admin",
+        });
+      }
+
+      if (user_id === "user_95f39d5b4ea4") {
+        return buildLeanQuery({
+          _id: "mongo_user_1",
+          user_id: "user_95f39d5b4ea4",
+          firstName: "Lily",
+          lastName: "Tenant",
+          email: "lily@example.com",
+          phone: "0917",
+          branch: "gil-puyat",
+          role: "tenant",
+        });
+      }
+
+      return buildLeanQuery(null);
+    });
+
+    const req = {
+      user: { uid: "firebase-admin-1" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        status: "pending",
+        notes: "Queued for morning inspection",
+        assigned_to: "Morning team",
+      },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await updateAdminRequestStatus(req, res, next);
+
+    expect(requestDoc.status).toBe("pending");
+    expect(requestDoc.notes).toBe("Queued for morning inspection");
+    expect(requestDoc.assigned_to).toBe("Morning team");
+    expect(requestDoc.save).toHaveBeenCalledTimes(1);
+    expect(maintenanceUpdated).toHaveBeenCalledWith(
+      "mongo_user_1",
+      "plumbing",
+      "pending",
+      requestDoc.request_id,
+      {
+        statusChanged: false,
+        hasAdminNote: true,
+        hasProgressEntry: false,
+        hasProgressAttachments: false,
+      },
+    );
+    expect(sendSuccess).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
   });
 
   test("reopenMyRequest returns resolved work to pending and records reopen history", async () => {

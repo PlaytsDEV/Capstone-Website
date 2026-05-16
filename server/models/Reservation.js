@@ -7,9 +7,11 @@
  *
  * WORKFLOW:
  * 1. User creates reservation (status: pending)
- * 2. User completes visit + details + payment (status: reserved)
- * 3. Admin verifies move-in (status: moveIn)
- * 4. Tenant moves out (status: moveOut)
+ * 2. User selects a viewing preference and submits application documents
+ * 3. Admin reviews the application and approves it for payment
+ * 4. User completes deposit payment (status: reserved)
+ * 5. Admin verifies move-in (status: moveIn)
+ * 6. Tenant moves out (status: moveOut)
  *
  * CANCELLATION:
  * - Reservations can be cancelled before move-in
@@ -45,6 +47,111 @@ const generateRandomCode = (prefix, length = 6) => {
   }
   return code;
 };
+
+const documentPrecheckSchema = new mongoose.Schema(
+  {
+    precheckProvider: {
+      type: String,
+      default: "ocr",
+      trim: true,
+      maxlength: 40,
+    },
+    precheckStatus: {
+      type: String,
+      enum: [
+        "not_checked",
+        "checking",
+        "ready_for_submission",
+        "needs_reupload",
+        "manual_review_fallback",
+      ],
+      default: "not_checked",
+    },
+    readabilityStatus: {
+      type: String,
+      enum: [
+        "unknown",
+        "readable",
+        "low_readability",
+        "unreadable",
+        "ocr_unavailable",
+      ],
+      default: "unknown",
+    },
+    documentTypeStatus: {
+      type: String,
+      enum: ["possible_match", "possible_mismatch", "unknown"],
+      default: "unknown",
+    },
+    canSubmit: {
+      type: Boolean,
+      default: true,
+    },
+    requiresManualReview: {
+      type: Boolean,
+      default: true,
+    },
+    applicantMessage: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 500,
+    },
+    adminNote: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 500,
+    },
+    confidence: {
+      type: Number,
+      default: null,
+      min: 0,
+      max: 100,
+    },
+    flags: {
+      type: [String],
+      default: [],
+    },
+    aiCheckStatus: {
+      type: String,
+      enum: [
+        "not_checked",
+        "checking",
+        "passed",
+        "warning",
+        "failed",
+        "error",
+      ],
+      default: "not_checked",
+    },
+    aiCheckWarnings: {
+      type: [String],
+      default: [],
+    },
+    aiCheckedAt: {
+      type: Date,
+      default: null,
+    },
+    requiresAdminAttention: {
+      type: Boolean,
+      default: false,
+    },
+    summaryMessage: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 500,
+    },
+    provider: {
+      type: String,
+      default: "system",
+      trim: true,
+      maxlength: 80,
+    },
+  },
+  { _id: false },
+);
 
 // ============================================================================
 // SCHEMA DEFINITION
@@ -112,12 +219,31 @@ const reservationSchema = new mongoose.Schema(
     // =========================================================================
     // STAGE 2: VISIT
     // =========================================================================
+    viewingPreference: {
+      type: String,
+      enum: ["physical_visit", "remote_2d_viewing", "urgent_move_in_review", null],
+      default: null,
+    },
     viewingType: {
       type: String,
       default: "inperson",
     },
     visitDate: Date,
     visitTime: String,
+    remoteViewingAcknowledged: {
+      type: Boolean,
+      default: false,
+    },
+    remoteViewingQuestions: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 1500,
+    },
+    isUrgentMoveIn: {
+      type: Boolean,
+      default: false,
+    },
     // When the tenant submitted the visit schedule request (≠ the visit appointment date)
     visitScheduledAt: {
       type: Date,
@@ -162,6 +288,41 @@ const reservationSchema = new mongoose.Schema(
       ref: "User",
       default: null,
     },
+    visitStatus: {
+      type: String,
+      enum: [
+        "physical_visit_scheduled",
+        "schedule_approved",
+        "visit_completed",
+        "no_show",
+        "rescheduled",
+        "visit_cancelled",
+        "allowed_without_visit",
+        null,
+      ],
+      default: null,
+    },
+    visitOutcomeNotes: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 1500,
+    },
+    visitOutcomeUpdatedAt: {
+      type: Date,
+      default: null,
+    },
+    visitOutcomeUpdatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    visitOutcomeUpdatedByName: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 160,
+    },
 
     // Visit History — each schedule/rejection attempt is logged here
     visitHistory: {
@@ -170,12 +331,43 @@ const reservationSchema = new mongoose.Schema(
           visitDate: Date,
           visitTime: String,
           viewingType: { type: String, default: "inperson" },
-          status: { type: String, enum: ["pending", "rejected", "approved", "cancelled"], default: "pending" },
+          status: {
+            type: String,
+            enum: [
+              "pending",
+              "schedule_approved",
+              "rejected",
+              "approved",
+              "cancelled",
+              "rescheduled",
+              "completed",
+              "no_show",
+              "visit_cancelled",
+              "allowed_without_visit",
+            ],
+            default: "pending",
+          },
           rejectionReason: String,
+          notes: {
+            type: String,
+            default: "",
+            trim: true,
+            maxlength: 1500,
+          },
           scheduledAt: { type: Date, default: Date.now },
           rejectedAt: Date,
           rejectedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
           approvedAt: Date,
+          updatedAt: Date,
+          updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+          updatedByName: {
+            type: String,
+            default: "",
+            trim: true,
+            maxlength: 160,
+          },
+          rescheduledToDate: Date,
+          rescheduledToTime: String,
         },
       ],
       default: [],
@@ -237,6 +429,28 @@ const reservationSchema = new mongoose.Schema(
     companyIDUrl: String,
     companyIDReason: String,
     personalNotes: String,
+    documentPrechecks: {
+      selfiePhoto: {
+        type: documentPrecheckSchema,
+        default: () => ({}),
+      },
+      validIDFront: {
+        type: documentPrecheckSchema,
+        default: () => ({}),
+      },
+      validIDBack: {
+        type: documentPrecheckSchema,
+        default: () => ({}),
+      },
+      nbiClearance: {
+        type: documentPrecheckSchema,
+        default: () => ({}),
+      },
+      companyID: {
+        type: documentPrecheckSchema,
+        default: () => ({}),
+      },
+    },
 
     // Emergency Contact
     emergencyContact: {
@@ -276,6 +490,38 @@ const reservationSchema = new mongoose.Schema(
     },
     // When the tenant submitted the application form (personal details step)
     applicationSubmittedAt: {
+      type: Date,
+      default: null,
+    },
+    // Set on every resubmission after a needs_revision cycle; null on first submission
+    applicationResubmittedAt: {
+      type: Date,
+      default: null,
+    },
+    applicationReviewReason: {
+      type: String,
+      default: null,
+      trim: true,
+      maxlength: 1500,
+    },
+    applicationReviewedAt: {
+      type: Date,
+      default: null,
+    },
+    applicationReviewedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    approvedForPaymentAt: {
+      type: Date,
+      default: null,
+    },
+    approvedDate: {
+      type: Date,
+      default: null,
+    },
+    reservedAt: {
       type: Date,
       default: null,
     },
@@ -632,8 +878,12 @@ reservationSchema.index(
       status: {
         $in: [
           "pending",
+          "viewing_preference_selected",
           "visit_pending",
           "visit_approved",
+          "pending_application_review",
+          "needs_revision",
+          "approved_for_payment",
           "payment_pending",
           "reserved",
           "moveIn",

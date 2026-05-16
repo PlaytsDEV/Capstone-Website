@@ -318,7 +318,13 @@ export const updateOccupancyOnReservationChange = async (
       }
 
       // === DECREASE OCCUPANCY ===
-      if (newStatus === "cancelled" && previousStatus !== "cancelled") {
+      const previouslyHeldOccupancy =
+        ACTIVE_OCCUPANCY_STATUSES.includes(previousStatus);
+
+      if (
+        (newStatus === "cancelled" || newStatus === "archived") &&
+        previouslyHeldOccupancy
+      ) {
         await decreaseOccupancy();
 
         if (reservation.selectedBed?.id) {
@@ -328,7 +334,7 @@ export const updateOccupancyOnReservationChange = async (
       }
 
       if (newStatus === "moveOut" && previousStatus !== "moveOut") {
-        if (previousStatus === "reserved" || previousStatus === "moveIn") {
+        if (previouslyHeldOccupancy) {
           await decreaseOccupancy();
 
           if (reservation.selectedBed?.id) {

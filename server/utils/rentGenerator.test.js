@@ -48,6 +48,10 @@ await jest.unstable_mockModule("./notificationService.js", () => ({
   default: notify,
 }));
 
+await jest.unstable_mockModule("../config/email.js", () => ({
+  sendBillGeneratedEmail: jest.fn(async () => ({ success: true })),
+}));
+
 await jest.unstable_mockModule("./lifecycleNaming.js", () => ({
   CURRENT_RESIDENT_STATUS_QUERY: ["moveIn"],
   readMoveInDate: (reservation) => reservation.moveInDate || reservation.checkInDate || null,

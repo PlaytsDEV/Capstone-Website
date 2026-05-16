@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
+﻿import React, { useState, useCallback, useEffect, useRef } from "react";
 import ConfirmModal from "../../../../shared/components/ConfirmModal";
 import {
  PoliciesTermsModal,
@@ -60,6 +60,9 @@ const ReservationApplicationStep = ({
  validIDFront, setValidIDFront,
  validIDBack, setValidIDBack,
  validIDType, setValidIDType,
+ documentPrechecks,
+ runningDocumentChecks,
+ onRunDocumentPrecheck,
  nbiClearance, setNbiClearance,
  nbiReason, setNbiReason,
  personalNotes, setPersonalNotes,
@@ -88,6 +91,7 @@ const ReservationApplicationStep = ({
  devBypassValidation, setDevBypassValidation,
  onPrev, onNext, readOnly, saveStatus,
  showValidationErrors, applicationSubmitted, paymentApproved,
+ visitPending,
  onEditApplication, scrollToSection, onClearScrollToSection,
 }) => {
  const [showPoliciesModal, setShowPoliciesModal] = useState(false);
@@ -125,6 +129,12 @@ const ReservationApplicationStep = ({
  const result = validator(value);
  setFieldErrors((prev) => ({ ...prev, [fieldName]: result.error }));
  return result.valid;
+ };
+ const clearFieldError = (fieldName) => {
+ setFieldErrors((prev) => {
+ if (!prev[fieldName]) return prev;
+ return { ...prev, [fieldName]: null };
+ });
  };
  const handleTimeInput = (value) => {
  validateField("estimatedMoveInTime", value, validateEstimatedTime);
@@ -196,11 +206,29 @@ const ReservationApplicationStep = ({
  </p>
  </div>
 
- {/* Read-Only Banner */}
+ {showValidationErrors && !applicationSubmitted && (
+ <div className="rf-form-alert" role="alert">
+ Please complete the highlighted required fields before submitting.
+ </div>
+ )}
+
+ {/* Locked banner — only when application is officially submitted / non-editable */}
  {readOnly && (
  <div className="rf-locked-banner">
  <div className="info-box-title">This section is locked</div>
- <div className="info-text">Your application data is saved and cannot be edited at this time.</div>
+ <div className="info-text">
+ Your application has been submitted and is currently under review. It cannot be edited at this time.
+ </div>
+ </div>
+ )}
+
+ {/* Draft info banner — form is editable but physical visit is still pending */}
+ {!readOnly && visitPending && (
+ <div className="rf-draft-banner">
+ <div className="info-box-title">You can continue completing your application</div>
+ <div className="info-text">
+ Your physical visit is still pending. You can fill in your details and save your progress now — submission will be available once admin confirms your visit or grants access.
+ </div>
  </div>
  )}
 
@@ -247,11 +275,14 @@ const ReservationApplicationStep = ({
  validIDFront, setValidIDFront,
  validIDBack, setValidIDBack,
  validIDType, setValidIDType,
+ documentPrechecks,
+ runningDocumentChecks,
+ onRunDocumentPrecheck,
  nbiClearance, setNbiClearance,
  nbiReason, setNbiReason,
  personalNotes, setPersonalNotes,
  handleNameInput, handlePhoneInput, handleGeneralInput,
- validateField, fieldErrors,
+ validateField, fieldErrors, clearFieldError,
  birthdayMin, birthdayMax,
  showValidationErrors,
  }}
@@ -281,11 +312,17 @@ const ReservationApplicationStep = ({
  employerContact, setEmployerContact,
  startDate, setStartDate,
  occupation, setOccupation,
- previousEmployment, setPreviousEmployment,
- companyID, setCompanyID,
- companyIDReason, setCompanyIDReason,
- handleGeneralInput,
- showValidationErrors,
+  previousEmployment, setPreviousEmployment,
+  companyID, setCompanyID,
+  companyIDReason, setCompanyIDReason,
+  documentPrechecks,
+  runningDocumentChecks,
+  onRunDocumentPrecheck,
+  handleGeneralInput,
+  validateField,
+  fieldErrors,
+  clearFieldError,
+  showValidationErrors,
  }}
  />
 
@@ -298,12 +335,12 @@ const ReservationApplicationStep = ({
  referrerName, setReferrerName,
  targetMoveInDate, setTargetMoveInDate,
  estimatedMoveInTime, setEstimatedMoveInTime,
- leaseDuration, setLeaseDuration,
- workSchedule, setWorkSchedule,
- workScheduleOther, setWorkScheduleOther,
- handleTargetDateInput, handleTimeInput,
- readOnly, moveInMin, moveInMax, fieldErrors,
- showValidationErrors,
+  leaseDuration, setLeaseDuration,
+  workSchedule, setWorkSchedule,
+  workScheduleOther, setWorkScheduleOther,
+  handleTargetDateInput, handleTimeInput,
+  readOnly, moveInMin, moveInMax, fieldErrors, validateField,
+  showValidationErrors,
  }}
  />
 
@@ -331,7 +368,7 @@ const ReservationApplicationStep = ({
  {!readOnly && (
  <div className="stage-buttons" style={{ justifyContent: "flex-end" }}>
  <button onClick={onNext} className="btn btn-primary">
- {applicationSubmitted ? "Save Changes" : "Continue to Payment"}
+ {applicationSubmitted ? "Save Changes" : visitPending ? "Save Progress" : "Submit Application"}
  </button>
  </div>
  )}

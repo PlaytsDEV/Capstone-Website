@@ -1,7 +1,13 @@
 import { useState } from "react";
 import { Droplets, Zap, Home } from "lucide-react";
+import { useAuth } from "../../../shared/hooks/useAuth";
 import UtilityBillingTab from "../components/billing/UtilityBillingTab";
 import RentBillingTab from "../components/billing/RentBillingTab";
+
+const UTILITY_BRANCHES = [
+  { value: "gil-puyat", label: "Gil Puyat" },
+  { value: "guadalupe", label: "Guadalupe" },
+];
 
 const tabs = [
   { id: "electricity", label: "Electricity", icon: Zap },
@@ -10,7 +16,10 @@ const tabs = [
 ];
 
 const AdminBillingPage = () => {
+  const { user } = useAuth();
+  const isOwner = user?.role === "owner" || user?.role === "superadmin";
   const [activeTab, setActiveTab] = useState("electricity");
+  const [branchFilter, setBranchFilter] = useState("");
 
   return (
     <div>
@@ -46,8 +55,47 @@ const AdminBillingPage = () => {
             </div>
           </div>
 
+          <div className="flex shrink-0 items-center gap-3">
+          {isOwner ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-muted-foreground">
+                Branch
+              </span>
+              <select
+                value={branchFilter}
+                onChange={(e) => setBranchFilter(e.target.value)}
+                className="rounded-lg border border-border bg-card px-2 py-2 text-xs text-muted-foreground focus:outline-none"
+                style={{ outlineColor: "var(--ring)" }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = "var(--primary)";
+                  e.currentTarget.style.boxShadow =
+                    "0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent)";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = "";
+                  e.currentTarget.style.boxShadow = "";
+                }}
+              >
+                <option value="">All branches</option>
+                {UTILITY_BRANCHES.map((b) => (
+                  <option key={b.value} value={b.value}>
+                    {b.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : user?.branch ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-muted-foreground">
+                Branch
+              </span>
+              <span className="rounded-lg border border-border bg-muted px-2 py-2 text-xs text-muted-foreground">
+                {UTILITY_BRANCHES.find((b) => b.value === user.branch)?.label ?? user.branch}
+              </span>
+            </div>
+          ) : null}
           <div
-            className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border bg-card p-1"
+            className="inline-flex items-center gap-1 rounded-lg border border-border bg-card p-1"
             role="tablist"
             aria-label="Billing type"
           >
@@ -87,6 +135,7 @@ const AdminBillingPage = () => {
               );
             })}
           </div>
+          </div>
         </div>
       </header>
 
@@ -97,7 +146,12 @@ const AdminBillingPage = () => {
           aria-labelledby="billing-tab-electricity"
           className={activeTab === "electricity" ? "block" : "hidden"}
         >
-          <UtilityBillingTab utilityType="electricity" isActive={activeTab === "electricity"} />
+          <UtilityBillingTab
+            utilityType="electricity"
+            isActive={activeTab === "electricity"}
+            ownerBranchFilter={isOwner ? branchFilter : undefined}
+            onOwnerBranchChange={isOwner ? setBranchFilter : undefined}
+          />
         </section>
 
         <section
@@ -106,7 +160,12 @@ const AdminBillingPage = () => {
           aria-labelledby="billing-tab-water"
           className={activeTab === "water" ? "block" : "hidden"}
         >
-          <UtilityBillingTab utilityType="water" isActive={activeTab === "water"} />
+          <UtilityBillingTab
+            utilityType="water"
+            isActive={activeTab === "water"}
+            ownerBranchFilter={isOwner ? branchFilter : undefined}
+            onOwnerBranchChange={isOwner ? setBranchFilter : undefined}
+          />
         </section>
 
         <section

@@ -20,16 +20,15 @@ import logger from "../middleware/logger.js";
 import { getAuth } from "../config/firebase.js";
 import { User } from "../models/index.js";
 import { ROOM_BRANCHES } from "../config/branches.js";
+import { ADMIN_ROLE_VALUES, isOwnerRole } from "../config/roles.js";
 
 let io = null;
 
-const ADMIN_ROLES = new Set(["branch_admin", "owner", "superadmin"]);
+const ADMIN_ROLES = new Set(ADMIN_ROLE_VALUES);
 
 const adminBranchRoom = (branch) => `admins:branch:${branch}`;
 const isOwnerLike = (role, claims = {}) =>
-  role === "owner" ||
-  role === "superadmin" ||
-  Boolean(claims.owner || claims.superadmin);
+  isOwnerRole(role) || Boolean(claims.owner || claims.superadmin);
 
 /**
  * Initialize Socket.IO on an existing HTTP server
@@ -42,7 +41,7 @@ export function initSocket(httpServer, allowedOrigins = []) {
       origin: allowedOrigins,
       credentials: true,
     },
-    transports: ["websocket", "polling"],
+    transports: ["polling", "websocket"],
   });
 
   io.use(async (socket, next) => {
@@ -85,7 +84,7 @@ export function initSocket(httpServer, allowedOrigins = []) {
       socket.join(`user:${userId}`);
     }
 
-    if (ADMIN_ROLES.has(role) || claims.branch_admin || claims.owner || claims.superadmin) {
+    if (ADMIN_ROLES.has(role) || claims.branch_admin || claims.owner || claims.superadmin /* legacy */) {
       socket.join("admins");
 
       if (isOwnerLike(role, claims)) {

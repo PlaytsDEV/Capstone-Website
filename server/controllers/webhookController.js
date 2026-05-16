@@ -36,7 +36,7 @@ import { settlePaymongoBill } from "../utils/billSettlement.js";
 import logger from "../middleware/logger.js";
 import { BUSINESS } from "../config/constants.js";
 import { getReservationFeeAmount } from "../utils/businessSettings.js";
-import { normalizeReservationStatus } from "../utils/lifecycleNaming.js";
+import { normalizeReservationStatus, hasReservationStatus } from "../utils/lifecycleNaming.js";
 
 /* ─── helpers ───────────────────────────────────── */
 
@@ -55,7 +55,7 @@ function extractPaidAmount(eventData) {
 }
 
 function canAutoReserveReservation(status) {
-  return normalizeReservationStatus(status) === "payment_pending";
+  return hasReservationStatus(status, "approved_for_payment", "payment_pending");
 }
 
 async function notifyAdminsOfDepositReview(reservation, paymentReference) {
@@ -161,6 +161,8 @@ async function handleDepositPayment(metadata, eventData) {
   reservation.paymentMethod = "paymongo";
   reservation.paymongoPaymentId = paymentId;
   reservation.status = "reserved";
+  reservation.reservedAt = new Date();
+  reservation.approvedDate = reservation.approvedDate || new Date();
 
   await reservation.save();
 

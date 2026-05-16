@@ -13,7 +13,7 @@
  * =============================================================================
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
@@ -21,9 +21,13 @@ import { useAppNavigation } from "../../../shared/hooks/useAppNavigation";
 import { showNotification } from "../../../shared/utils/notification";
 import getFriendlyError from "../../../shared/utils/friendlyError";
 import { reservationApi, roomApi, billingApi, authApi } from "../../../shared/api/apiClient";
-import { normalizeReservationStatus } from "../../../shared/utils/lifecycleNaming";
+import {
+  canReservationAccessPayment,
+  hasReservationStatus,
+  normalizeReservationStatus,
+} from "../../../shared/utils/lifecycleNaming";
 import { usePaymentRedirect } from "./usePaymentRedirect";
-import { uploadIfFile } from "../../../shared/utils/imageUpload";
+import { uploadIfFile } from "../../../shared/utils/firebaseStorageUpload";
 import {
   validateBirthday,
   validateEstimatedTime,
@@ -31,6 +35,11 @@ import {
   validatePHPhoneLocal,
   validatePHPhoneOrLandline,
 } from "../utils/reservationValidation";
+import {
+  canProceedToApplicationAfterVisit,
+  getReservationViewingPreference,
+  isPhysicalVisitApplicationLocked,
+} from "../utils/physicalVisitFlow";
 
 // Returns a sessionStorage key scoped to the Firebase UID when known,
 // falling back to the legacy unscoped key for backward compatibility.
@@ -55,11 +64,108 @@ const getValidPaymentReturnSessionId = () => {
 
 const isReservationPaymentConfirmed = (reservation) => {
   const status = normalizeReservationStatus(reservation?.status);
+  return hasReservationStatus(status, "reserved", "moveIn", "moveOut");
+};
+
+const EMPTY_DOCUMENT_PRECHECK = Object.freeze({
+  precheckProvider: "ocr",
+  precheckStatus: "not_checked",
+  readabilityStatus: "unknown",
+  documentTypeStatus: "unknown",
+  canSubmit: true,
+  requiresManualReview: true,
+  applicantMessage: "",
+  adminNote: "",
+  confidence: null,
+  flags: [],
+  aiCheckStatus: "not_checked",
+  aiCheckWarnings: [],
+  aiCheckedAt: null,
+  requiresAdminAttention: false,
+  summaryMessage: "",
+  provider: "ocr",
+});
+
+const DOCUMENT_PRECHECK_LABELS = Object.freeze({
+  validIDFront: "Valid ID (Front)",
+  validIDBack: "Valid ID (Back)",
+  nbiClearance: "NBI Clearance",
+  companyID: "Company ID",
+});
+
+const createEmptyDocumentPrechecks = () => ({
+  validIDFront: { ...EMPTY_DOCUMENT_PRECHECK },
+  validIDBack: { ...EMPTY_DOCUMENT_PRECHECK },
+  nbiClearance: { ...EMPTY_DOCUMENT_PRECHECK },
+  companyID: { ...EMPTY_DOCUMENT_PRECHECK },
+});
+
+const resolveDocumentPrecheckStatus = (entry = {}) => {
+  const explicitStatus = String(entry?.precheckStatus || "").trim();
+  if (explicitStatus && explicitStatus !== "not_checked") return explicitStatus;
+  if (entry?.aiCheckStatus === "passed") return "ready_for_submission";
+  if (entry?.aiCheckStatus === "failed" || entry?.aiCheckStatus === "warning") {
+    return "needs_reupload";
+  }
+  if (entry?.aiCheckStatus === "error") return "manual_review_fallback";
+  return "not_checked";
+};
+
+const normalizeDocumentPrecheckEntry = (entry) => ({
+  ...EMPTY_DOCUMENT_PRECHECK,
+  ...(entry || {}),
+  precheckStatus: resolveDocumentPrecheckStatus(entry),
+  readabilityStatus: entry?.readabilityStatus || EMPTY_DOCUMENT_PRECHECK.readabilityStatus,
+  documentTypeStatus:
+    entry?.documentTypeStatus || EMPTY_DOCUMENT_PRECHECK.documentTypeStatus,
+  canSubmit: entry?.canSubmit !== false,
+  flags: Array.isArray(entry?.flags) ? entry.flags.filter(Boolean) : [],
+  aiCheckWarnings: Array.isArray(entry?.aiCheckWarnings)
+    ? entry.aiCheckWarnings.filter(Boolean)
+    : [],
+});
+
+const normalizeDocumentPrechecks = (prechecks = {}) => ({
+  validIDFront: normalizeDocumentPrecheckEntry(prechecks.validIDFront),
+  validIDBack: normalizeDocumentPrecheckEntry(prechecks.validIDBack),
+  nbiClearance: normalizeDocumentPrecheckEntry(prechecks.nbiClearance),
+  companyID: normalizeDocumentPrecheckEntry(prechecks.companyID),
+});
+
+const isBlockingDocumentPrecheck = (precheck = {}) => {
+  const status = resolveDocumentPrecheckStatus(precheck);
+  if (status === "manual_review_fallback") return false;
   return (
-    reservation?.paymentStatus === "paid" ||
-    status === "reserved" ||
-    status === "moveIn"
+    status === "needs_reupload" ||
+    precheck?.readabilityStatus === "low_readability" ||
+    precheck?.readabilityStatus === "unreadable" ||
+    precheck?.documentTypeStatus === "possible_mismatch" ||
+    precheck?.canSubmit === false
   );
+};
+
+
+const getDocumentPrecheckBlockMessage = (label, precheck = {}) =>
+  precheck?.applicantMessage ||
+  precheck?.summaryMessage ||
+  `${label} needs a clearer readable upload before submission.`;
+
+const resolveTargetStage = (status, viewingPreference, applicationUnlockedByVisit) => {
+  const map = {
+    pending: 1,
+    viewing_preference_selected:
+      viewingPreference === "physical_visit" && !applicationUnlockedByVisit ? 2 : 3,
+    visit_pending: 2,
+    visit_approved: applicationUnlockedByVisit ? 3 : 2,
+    pending_application_review: 3,
+    needs_revision: 3,
+    rejected: 3,
+    approved_for_payment: 4,
+    payment_pending: 4,
+    reserved: 5,
+    moveIn: 5,
+  };
+  return map[status] || 1;
 };
 
 const getProfileName = (profile) => {
@@ -113,6 +219,8 @@ const mergeReservationIntoQueryData = (currentData, updatedReservation) => {
   }
 
   return currentData;
+=======
+
 };
 
 export default function useReservationFlow() {
@@ -126,6 +234,7 @@ export default function useReservationFlow() {
   const stepFromQuery = Number(
     new URLSearchParams(location.search).get("step"),
   );
+  const forceEditMode = new URLSearchParams(location.search).get("edit") === "1";
   const stepOverride =
     Number.isInteger(stepFromState) && stepFromState > 0
       ? stepFromState
@@ -152,7 +261,7 @@ export default function useReservationFlow() {
       sessionStorage.getItem(PAYMENT_RETURN_PENDING_KEY) === "1"
   );
   const [visitApproved, setVisitApproved] = useState(false);
-  const [visitScheduled, setVisitScheduled] = useState(false);
+  const [visitCompleted, setVisitCompleted] = useState(false);
   const [scheduleRejected, setScheduleRejected] = useState(false);
   const [scheduleRejectionReason, setScheduleRejectionReason] = useState("");
   const [applicationSubmitted, setApplicationSubmitted] = useState(false);
@@ -174,7 +283,11 @@ export default function useReservationFlow() {
   const [billingEmail, setBillingEmail] = useState(user?.email || "");
 
   // Stage 2
-  const [viewingType, setViewingType] = useState("inperson");
+  const [viewingType, setViewingType] = useState("physical_visit");
+  const [remoteViewingAcknowledged, setRemoteViewingAcknowledged] = useState(false);
+  const [remoteViewingQuestions, setRemoteViewingQuestions] = useState("");
+  const [isUrgentMoveIn, setIsUrgentMoveIn] = useState(false);
+  const [applicationReviewReason, setApplicationReviewReason] = useState("");
   const [isOutOfTown, setIsOutOfTown] = useState(false);
   const [currentLocation, setCurrentLocation] = useState("");
   const [visitorName, setVisitorName] = useState(user?.displayName || "");
@@ -208,6 +321,10 @@ export default function useReservationFlow() {
   const [validIDType, setValidIDType] = useState("");
   const [idValidationResult, setIdValidationResult] = useState(null);
   const [isValidatingId, setIsValidatingId] = useState(false);
+  const [documentPrechecks, setDocumentPrechecks] = useState(
+    createEmptyDocumentPrechecks,
+  );
+  const [runningDocumentChecks, setRunningDocumentChecks] = useState({});
   const [nbiClearance, setNbiClearance] = useState(null);
   const [nbiReason, setNbiReason] = useState("");
   const [personalNotes, setPersonalNotes] = useState("");
@@ -288,6 +405,7 @@ export default function useReservationFlow() {
   const isFirstRenderRef = useRef(true);
   const navigatingAwayRef = useRef(false);
 
+<<<<<<< HEAD
   useEffect(() => {
     if (!profileName.firstName && !profileName.lastName) return;
     if (!firstName && profileName.firstName) setFirstName(profileName.firstName);
@@ -301,6 +419,41 @@ export default function useReservationFlow() {
     profileName.firstName,
     profileName.lastName,
   ]);
+
+  const visitGateReservation = useMemo(() => {
+    const merged = {
+      ...(reservationData || {}),
+      viewingPreference:
+        reservationData?.viewingPreference ||
+        viewingType,
+      viewingType:
+        reservationData?.viewingType ||
+        viewingType,
+      visitDate:
+        reservationData?.visitDate ||
+        visitDate,
+      visitTime:
+        reservationData?.visitTime ||
+        visitTime,
+      visitStatus: reservationData?.visitStatus || "",
+      status: normalizeReservationStatus(reservationData?.status),
+      scheduleRejected:
+        reservationData?.scheduleRejected ?? scheduleRejected,
+    };
+    return {
+      ...merged,
+      viewingPreference:
+        getReservationViewingPreference(merged) ||
+        merged.viewingPreference ||
+        merged.viewingType ||
+        "",
+    };
+  }, [reservationData, viewingType, visitDate, visitTime, scheduleRejected]);
+
+  const physicalVisitApplicationLocked = useMemo(
+    () => isPhysicalVisitApplicationLocked(visitGateReservation),
+    [visitGateReservation],
+  );
 
   // ΓöÇΓöÇ Warn before leaving mid-flow (skip if intentional navigation) ΓöÇΓöÇ
   useEffect(() => {
@@ -317,18 +470,45 @@ export default function useReservationFlow() {
 
   // ΓöÇΓöÇ Stepper locking ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   const isStageLocked = (stageId) => {
+    const reservationStatus = normalizeReservationStatus(reservationData?.status);
+    const needsRevision = hasReservationStatus(reservationStatus, "needs_revision");
+    const applicationUnlockedByVisit = canProceedToApplicationAfterVisit({
+      ...reservationData,
+      viewingPreference:
+        reservationData?.viewingPreference || getReservationViewingPreference({
+          ...reservationData,
+          viewingPreference: viewingType,
+          viewingType,
+          visitDate,
+          visitTime,
+        }),
+      viewingType,
+      visitDate,
+      visitTime,
+      visitStatus: reservationData?.visitStatus,
+      status: reservationStatus,
+    });
     if (paymentApproved) return stageId < 5;
-    if (stageId === 1) return visitScheduled;
-    if (stageId === 2) return visitScheduled && !scheduleRejected; // unlock when admin rejects visit
-    if (stageId === 3) return applicationSubmitted && !editingApplication;
+<<<<<<< HEAD
+    if (stageId === 1) return visitCompleted;
+    if (stageId === 2)
+      return applicationSubmitted && !needsRevision && !scheduleRejected;
+    if (stageId === 3)
+      // Lock only when the application is officially in a non-editable state
+      // (submitted for review, approved, etc.).  A pending physical visit no
+      // longer locks the form — the applicant can fill it in advance; the
+      // backend still validates visit completion before accepting submitApplication.
+      return applicationSubmitted && !editingApplication && !needsRevision;
     if (stageId === 4) return paymentSubmitted || paymentApproved;
     return false;
   };
 
   const isStageClickable = (stageId) => {
+    const reservationStatus = normalizeReservationStatus(reservationData?.status);
+    const paymentUnlocked = canReservationAccessPayment(reservationStatus);
     if (stageId === 1) return highestStageReached >= 2;
     if (stageId <= highestStageReached) return true;
-    if (stageId === 4 && applicationSubmitted) return true;
+    if (stageId === 4 && (paymentUnlocked || paymentSubmitted || paymentApproved)) return true;
     if (stageId === 5 && paymentSubmitted) return true;
     return false;
   };
@@ -434,6 +614,11 @@ export default function useReservationFlow() {
         notes: r.idValidationNotes || [],
       });
     }
+    setDocumentPrechecks(
+      r.documentPrechecks
+        ? normalizeDocumentPrechecks(r.documentPrechecks)
+        : createEmptyDocumentPrechecks(),
+    );
     // NOTE: agreedToPrivacy / agreedToCertification are NOT restored
     // from saved data ΓÇö consent must be re-affirmed each session.
   };
@@ -466,51 +651,80 @@ export default function useReservationFlow() {
 
   const computeLockingFlags = (r) => {
     const status = normalizeReservationStatus(r.status);
+    const viewingPreference = getReservationViewingPreference(r);
+    const applicationUnlockedByVisit = canProceedToApplicationAfterVisit({
+      ...r,
+      status,
+      viewingPreference,
+    });
     // Status-driven flags (primary) with data-presence fallback (backward compat)
-    const VISIT_SCHEDULED_STATUSES = ["visit_pending","visit_approved","payment_pending","reserved","moveIn"];
-    const VISIT_APPROVED_STATUSES = ["visit_approved","payment_pending","reserved","moveIn"];
-    const APPLICATION_STATUSES = ["payment_pending","reserved","moveIn"];
+    const VIEWING_SELECTED_STATUSES = [
+      "viewing_preference_selected",
+      "visit_pending",
+      "visit_approved",
+      "pending_application_review",
+      "needs_revision",
+      "approved_for_payment",
+      "payment_pending",
+      "reserved",
+      "moveIn",
+    ];
+    const APPLICATION_STATUSES = [
+      "pending_application_review",
+      "needs_revision",
+      "approved_for_payment",
+      "payment_pending",
+      "reserved",
+      "moveIn",
+    ];
 
-    const hasVisitScheduled = VISIT_SCHEDULED_STATUSES.includes(status) || Boolean(r.viewingType && r.agreedToPrivacy);
-    const isVisitApprovedFlag = VISIT_APPROVED_STATUSES.includes(status) || Boolean(r.visitApproved === true);
+    const hasViewingPreference =
+      VIEWING_SELECTED_STATUSES.includes(status) ||
+      Boolean(viewingPreference || r.visitDate);
+    const isVisitApprovedFlag =
+      ["visit_approved"].includes(status) ||
+      Boolean(r.visitApproved === true) ||
+      applicationUnlockedByVisit;
     const hasApplication =
       APPLICATION_STATUSES.includes(status) || Boolean(r.applicationSubmittedAt);
-    const hasPayment = Boolean(r.proofOfPaymentUrl);
-    const isConfirmed = status === "reserved" || r.paymentStatus === "paid";
+    const paymentUnlocked = canReservationAccessPayment(status);
+    const hasPayment =
+      status === "payment_pending" ||
+      status === "reserved" ||
+      status === "moveIn" ||
+      Boolean(r.proofOfPaymentUrl);
+    const isConfirmed = hasReservationStatus(status, "reserved", "moveIn", "moveOut");
 
-    if (hasVisitScheduled) setVisitScheduled(true);
+<<<<<<< HEAD
+    if (hasViewingPreference) setVisitCompleted(applicationUnlockedByVisit);
     if (isVisitApprovedFlag) setVisitApproved(true);
     if (r.scheduleRejected) setScheduleRejected(true);
     if (r.scheduleRejectionReason) setScheduleRejectionReason(r.scheduleRejectionReason);
     if (hasApplication) setApplicationSubmitted(true);
     if (hasPayment) setPaymentSubmitted(true);
     if (isConfirmed) setPaymentApproved(true);
+    if (r.applicationReviewReason) setApplicationReviewReason(r.applicationReviewReason);
 
     // Status-driven highest stage
-    const STAGE_BY_STATUS = {
-      pending: 1,
-      visit_pending: 2,
-      visit_approved: 3,
-      payment_pending: 4,
-      reserved: 5,
-      moveIn: 5,
-    };
-    let highest = STAGE_BY_STATUS[status] || 1;
+    let highest = resolveTargetStage(status, viewingPreference, applicationUnlockedByVisit);
     // Fallback: data-presence checks for legacy records still at "pending"
     if (highest === 1) {
-      if (hasVisitScheduled) highest = 2;
-      if (isVisitApprovedFlag) highest = 3;
-      if (hasApplication) highest = Math.max(highest, 4);
+      if (hasViewingPreference) highest = 2;
+      if (hasViewingPreference && applicationUnlockedByVisit) highest = 3;
+      if (isVisitApprovedFlag) highest = Math.max(highest, 3);
+      if (hasApplication) highest = Math.max(highest, 3);
+      if (paymentUnlocked) highest = Math.max(highest, 4);
       if (hasPayment) highest = Math.max(highest, 4);
       if (isConfirmed) highest = 5;
     }
 
     return {
-      hasVisitScheduled,
+      hasVisitScheduled: hasViewingPreference,
       isVisitApprovedFlag,
       hasApplication,
       hasPayment,
       isConfirmed,
+      applicationUnlockedByVisit,
       highest,
     };
   };
@@ -639,6 +853,8 @@ export default function useReservationFlow() {
         if (active.reservationCode) setReservationCode(active.reservationCode);
         if (active.visitCode) setVisitCode(active.visitCode);
         setReservationData({
+          _id: active._id,
+          status: active.status,
           room: {
             id: room._id || room.id,
             roomId: room._id || room.id,
@@ -648,14 +864,34 @@ export default function useReservationFlow() {
             type: room.type || "",
             price: room.monthlyRate || room.price || 0,
             roomNumber: room.name || "",
+            floor: room.floor || "",
+            images: room.images || [],
+            capacity: room.capacity || 0,
+            currentOccupancy: room.currentOccupancy || 0,
+            description: room.description || "",
           },
+          viewingPreference: active.viewingPreference || active.viewingType || "",
+          viewingType: active.viewingType || active.viewingPreference || "",
+          visitDate: active.visitDate || "",
+          visitTime: active.visitTime || "",
+          visitStatus: active.visitStatus || "",
+          visitApproved: Boolean(active.visitApproved),
+          scheduleApproved: Boolean(active.scheduleApproved),
+          scheduleRejected: Boolean(active.scheduleRejected),
+          visitCode: active.visitCode || "",
           selectedBed: active.selectedBed || null,
           selectedAppliances: active.selectedAppliances || [],
           applianceFees: active.applianceFees || 0,
+          applicationReviewReason: active.applicationReviewReason || "",
         });
         if (active.visitDate) setVisitDate(active.visitDate.split("T")[0]);
         if (active.visitTime) setVisitTime(active.visitTime);
-        if (active.viewingType) setViewingType(active.viewingType);
+        if (active.viewingPreference || active.viewingType) {
+          setViewingType(active.viewingPreference || active.viewingType);
+        }
+        setRemoteViewingAcknowledged(Boolean(active.remoteViewingAcknowledged));
+        setRemoteViewingQuestions(active.remoteViewingQuestions || "");
+        setIsUrgentMoveIn(Boolean(active.isUrgentMoveIn));
         if (active.visitApproved) setVisitApproved(true);
         populateFromReservation(active);
         const { highest } = computeLockingFlags(active);
@@ -723,10 +959,24 @@ export default function useReservationFlow() {
       if (reservation.visitCode)
         setVisitCode(reservation.visitCode);
       setReservationData({
+        _id: reservation._id || resId,
+        status: reservation.status,
         room: reservation.roomId,
+        viewingPreference:
+          reservation.viewingPreference || reservation.viewingType || "",
+        viewingType:
+          reservation.viewingType || reservation.viewingPreference || "",
+        visitDate: reservation.visitDate || "",
+        visitTime: reservation.visitTime || "",
+        visitStatus: reservation.visitStatus || "",
+        visitApproved: Boolean(reservation.visitApproved),
+        scheduleApproved: Boolean(reservation.scheduleApproved),
+        scheduleRejected: Boolean(reservation.scheduleRejected),
+        visitCode: reservation.visitCode || "",
         selectedBed: reservation.selectedBed,
         selectedAppliances: reservation.selectedAppliances || [],
         applianceFees: reservation.applianceFees || 0,
+        applicationReviewReason: reservation.applicationReviewReason || "",
       });
       if (reservation.targetMoveInDate) {
         const d = new Date(reservation.targetMoveInDate);
@@ -735,7 +985,12 @@ export default function useReservationFlow() {
       if (reservation.leaseDuration)
         setLeaseDuration(reservation.leaseDuration);
       if (reservation.billingEmail) setBillingEmail(reservation.billingEmail);
-      if (reservation.viewingType) setViewingType(reservation.viewingType);
+      if (reservation.viewingPreference || reservation.viewingType) {
+        setViewingType(reservation.viewingPreference || reservation.viewingType);
+      }
+      setRemoteViewingAcknowledged(Boolean(reservation.remoteViewingAcknowledged));
+      setRemoteViewingQuestions(reservation.remoteViewingQuestions || "");
+      setIsUrgentMoveIn(Boolean(reservation.isUrgentMoveIn));
       if (reservation.isOutOfTown !== undefined)
         setIsOutOfTown(reservation.isOutOfTown);
       if (reservation.currentLocation)
@@ -750,22 +1005,15 @@ export default function useReservationFlow() {
         hasPayment,
         isConfirmed,
         highest,
+        applicationUnlockedByVisit,
       } = computeLockingFlags(reservation);
 
       // Status-driven stage calculation
       const reservationStatus = normalizeReservationStatus(reservation.status);
-      const STAGE_BY_STATUS = {
-        pending: 1,
-        visit_pending: 2,
-        visit_approved: 3,
-        payment_pending: 4,
-        reserved: 5,
-        moveIn: 5,
-      };
-      let targetStage = STAGE_BY_STATUS[reservationStatus] || 1;
+      let targetStage = resolveTargetStage(reservationStatus, getReservationViewingPreference(reservation), applicationUnlockedByVisit);
 
       // visit_pending: tenant must wait ΓÇö redirect to profile (unless rejected)
-      if (reservationStatus === "visit_pending" && !reservation.scheduleRejected) {
+      if (false && reservationStatus === "visit_pending" && !reservation.scheduleRejected) {
         appNavigate("/applicant/profile", {
           flash: {
             type: "info",
@@ -789,18 +1037,9 @@ export default function useReservationFlow() {
       if (targetStage === 1) {
         if (isConfirmed) targetStage = 5;
         else if (hasPayment) targetStage = 5;
-        else if (hasApplication) targetStage = 4;
+        else if (hasApplication) targetStage = 3;
         else if (isVisitApprovedFlag) targetStage = 3;
-        else if (hasVisitScheduled) {
-          appNavigate("/applicant/profile", {
-            flash: {
-              type: "info",
-              message:
-                "Waiting for admin to approve your visit. Track progress on your profile.",
-            },
-          });
-          return;
-        }
+        else if (hasVisitScheduled) targetStage = 2;
       }
 
       if (reservation.roomConfirmed && targetStage === 1) {
@@ -1063,6 +1302,7 @@ export default function useReservationFlow() {
         selectedAppliances: reservationData?.selectedAppliances || [],
         totalPrice,
         applianceFees: reservationData?.applianceFees || 0,
+        viewingPreference: null,
         viewingType: null,
         agreedToPrivacy: false,
         roomConfirmed: true,
@@ -1121,8 +1361,109 @@ export default function useReservationFlow() {
       reservationId,
       payloadOverrides,
     );
-    return response?.reservation || response;
+    const updated = response?.reservation || response;
+    if (updated?._id) setReservationId(updated._id);
+    if (updated?.status || updated?.roomId) {
+      setReservationData((previous) => ({
+        ...(previous || {}),
+        _id: updated._id || previous?._id,
+        status: updated.status || previous?.status,
+        room: updated.roomId || previous?.room,
+        viewingPreference:
+          updated.viewingPreference ??
+          updated.viewingType ??
+          previous?.viewingPreference ??
+          previous?.viewingType ??
+          "",
+        viewingType:
+          updated.viewingType ??
+          updated.viewingPreference ??
+          previous?.viewingType ??
+          previous?.viewingPreference ??
+          "",
+        visitDate:
+          updated.visitDate ?? previous?.visitDate ?? "",
+        visitTime:
+          updated.visitTime ?? previous?.visitTime ?? "",
+        visitStatus:
+          updated.visitStatus ?? previous?.visitStatus ?? "",
+        visitApproved:
+          updated.visitApproved ?? previous?.visitApproved ?? false,
+        scheduleApproved:
+          updated.scheduleApproved ?? previous?.scheduleApproved ?? false,
+        scheduleRejected:
+          updated.scheduleRejected ?? previous?.scheduleRejected ?? false,
+        visitCode:
+          updated.visitCode ?? previous?.visitCode ?? "",
+        selectedBed: updated.selectedBed ?? previous?.selectedBed,
+        selectedAppliances:
+          updated.selectedAppliances ?? previous?.selectedAppliances ?? [],
+        applianceFees: updated.applianceFees ?? previous?.applianceFees ?? 0,
+        applicationReviewReason:
+          updated.applicationReviewReason ?? previous?.applicationReviewReason ?? "",
+      }));
+    }
+    return updated;
   };
+
+  const returnToDashboardAfterViewingPreference = useCallback(
+    ({
+      viewingPreference,
+      visitCode: savedVisitCode,
+      visitDate: savedVisitDate,
+      visitTime: savedVisitTime,
+    } = {}) => {
+      const feedbackByPreference = {
+        physical_visit: {
+          toastMessage:
+            "Viewing preference saved.",
+          title: "Viewing preference saved",
+          message:
+            "Your physical visit schedule has been saved. Please attend your scheduled room visit first. You may continue to the tenant application after admin confirms your visit or allows you to proceed.",
+        },
+        remote_2d_viewing: {
+          toastMessage:
+            "Viewing preference saved. You may now complete your tenant application.",
+          title: "Viewing preference saved",
+          message:
+            "Your remote viewing request has been saved. Please complete your tenant application and upload the required documents for admin review.",
+        },
+        urgent_move_in_review: {
+          toastMessage:
+            "Viewing preference saved. You may now complete your tenant application.",
+          title: "Viewing preference saved",
+          message:
+            "Your urgent move-in request has been saved. Please complete your tenant application so admin can review your request.",
+        },
+      };
+
+      const selectedPreference = viewingPreference || viewingType;
+      const feedback =
+        feedbackByPreference[selectedPreference] ||
+        feedbackByPreference.remote_2d_viewing;
+
+      appNavigate("/applicant/profile", {
+        state: {
+          tab: "dashboard",
+          reservationFeedback: {
+            variant: "success",
+            viewingPreference: selectedPreference,
+            title: feedback.title,
+            message: feedback.message,
+            visitCode: savedVisitCode || visitCode || "",
+            visitDate: savedVisitDate || visitDate || "",
+            visitTime: savedVisitTime || visitTime || "",
+            paymentLocked: true,
+          },
+        },
+        flash: {
+          type: "success",
+          message: feedback.toastMessage,
+        },
+      });
+    },
+    [appNavigate, viewingType, visitCode, visitDate, visitTime],
+  );
 
   // ΓöÇΓöÇ Auto-save (stages 3-4) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   const validateApplicantIdDocument = useCallback(
@@ -1208,11 +1549,109 @@ export default function useReservationFlow() {
     ],
   );
 
+  const runDocumentPrecheck = useCallback(
+    async ({ documentType, documentUrl, idType } = {}) => {
+      const targetReservationId =
+        reservationId || reservationData?._id || reservationData?.id;
+
+      if (!targetReservationId || !documentType || !documentUrl) {
+        return null;
+      }
+
+      const stateKeyMap = {
+        valid_id_front: "validIDFront",
+        valid_id_back: "validIDBack",
+        nbi_clearance: "nbiClearance",
+        company_id: "companyID",
+      };
+      const stateKey = stateKeyMap[documentType];
+      if (!stateKey) {
+        return null;
+      }
+
+      setRunningDocumentChecks((previous) => ({
+        ...previous,
+        [stateKey]: true,
+      }));
+      setDocumentPrechecks((previous) => ({
+        ...previous,
+        [stateKey]: {
+          ...normalizeDocumentPrecheckEntry(previous?.[stateKey]),
+          precheckStatus: "checking",
+          readabilityStatus: "unknown",
+          documentTypeStatus: "unknown",
+          canSubmit: false,
+          aiCheckStatus: "checking",
+          summaryMessage: "Checking document quality...",
+          applicantMessage: "Checking document quality...",
+        },
+      }));
+
+      try {
+        const result = await reservationApi.precheckDocument(targetReservationId, {
+          documentType,
+          documentUrl,
+          idType: idType || validIDType,
+        });
+        const normalized = normalizeDocumentPrecheckEntry(result);
+        setDocumentPrechecks((previous) => ({
+          ...previous,
+          [stateKey]: normalized,
+        }));
+        return normalized;
+        } catch (error) {
+          const fallback = normalizeDocumentPrecheckEntry({
+            precheckProvider: "ocr",
+            precheckStatus: "manual_review_fallback",
+            readabilityStatus: "ocr_unavailable",
+            documentTypeStatus: "unknown",
+            canSubmit: true,
+            requiresManualReview: true,
+            applicantMessage:
+              "Document uploaded successfully. We could not complete the readability check, so this document will be reviewed manually.",
+            adminNote: "OCR could not complete. Manual review required.",
+            flags: ["ocr_manual_fallback"],
+            aiCheckStatus: "error",
+            aiCheckWarnings: [
+              "OCR could not complete. Manual review required.",
+            ],
+           summaryMessage:
+              "Document uploaded successfully. We could not complete the readability check, so this document will be reviewed manually.",
+            requiresAdminAttention: true,
+            aiCheckedAt: new Date().toISOString(),
+            provider: "ocr",
+          });
+        setDocumentPrechecks((previous) => ({
+          ...previous,
+          [stateKey]: fallback,
+        }));
+        return fallback;
+      } finally {
+        setRunningDocumentChecks((previous) => ({
+          ...previous,
+          [stateKey]: false,
+        }));
+      }
+    },
+    [reservationData, reservationId, validIDType],
+  );
+
   const buildDraftPayload = useCallback(
     () => ({
       visitDate,
       visitTime,
-      viewingType,
+      viewingPreference: viewingType,
+      viewingType:
+        viewingType === "physical_visit"
+          ? "inperson"
+          : viewingType === "remote_2d_viewing"
+            ? "remote_2d"
+            : viewingType === "urgent_move_in_review"
+              ? "urgent_move_in"
+              : viewingType,
+      remoteViewingAcknowledged,
+      remoteViewingQuestions,
+      isUrgentMoveIn,
       visitorName,
       visitorPhone,
       visitorEmail,
@@ -1260,6 +1699,9 @@ export default function useReservationFlow() {
       visitDate,
       visitTime,
       viewingType,
+      remoteViewingAcknowledged,
+      remoteViewingQuestions,
+      isUrgentMoveIn,
       visitorName,
       visitorPhone,
       visitorEmail,
@@ -1328,6 +1770,29 @@ export default function useReservationFlow() {
   }, [buildDraftPayload, currentStage, reservationId]);
 
   // ΓöÇΓöÇ Stage handler ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  const focusFieldByDataKey = (fieldKey) => {
+    if (!fieldKey || typeof document === "undefined") return false;
+
+    const container = document.querySelector(`[data-field="${fieldKey}"]`);
+    if (!container) return false;
+
+    container.scrollIntoView({ behavior: "smooth", block: "center" });
+
+    const focusTarget = container.matches(
+      'input, select, textarea, button, [tabindex]:not([tabindex="-1"])',
+    )
+      ? container
+      : container.querySelector(
+          'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        );
+
+    if (focusTarget && typeof focusTarget.focus === "function") {
+      focusTarget.focus({ preventScroll: true });
+    }
+
+    return true;
+  };
+
   const handleNextStage = async () => {
     clearTimeout(autoSaveTimerRef.current);
     try {
@@ -1339,7 +1804,49 @@ export default function useReservationFlow() {
         setPendingStageAction("stage1");
         setShowStageConfirm(true);
         return;
+      } else if (currentStage === 2) {
+        // Advance from the viewing-preference summary to the application form.
+        // For physical-visit reservations the visit is still pending, but tenants
+        // are allowed to fill in the application as a draft while they wait.
+        setHighestStageReached((prev) => Math.max(prev, 3));
+        setCurrentStage(3);
+        return;
       } else if (currentStage === 3) {
+        // When the physical visit hasn't been confirmed yet, save progress as a
+        // draft and stay on step 3.  Full submission is only allowed once the
+        // visit is marked completed/approved by admin.
+        const visitStillPending =
+          physicalVisitApplicationLocked && !applicationSubmitted;
+
+        if (visitStillPending) {
+          const selfiePhotoUrl = await uploadIfFile(selfiePhoto);
+          const validIDFrontUrl = await uploadIfFile(validIDFront);
+          const validIDBackUrl = await uploadIfFile(validIDBack);
+          const nbiClearanceUrl = await uploadIfFile(nbiClearance);
+          const companyIDUrl = await uploadIfFile(companyID);
+          await updateReservationDraft({
+            firstName, lastName, middleName, nickname, mobileNumber, birthday,
+            maritalStatus, nationality, educationLevel,
+            addressUnitHouseNo, addressStreet, addressRegion,
+            addressBarangay, addressCity, addressProvince,
+            emergencyContactName, emergencyRelationship, emergencyContactNumber,
+            healthConcerns, employerSchool, employerAddress, employerContact,
+            startDate, occupation, previousEmployment, roomType, preferredRoomNumber,
+            referralSource, referrerName, estimatedMoveInTime, workSchedule,
+            workScheduleOther, targetMoveInDate, leaseDuration,
+            agreedToPrivacy, agreedToCertification,
+            selfiePhotoUrl, validIDFrontUrl, validIDBackUrl,
+            nbiClearanceUrl, nbiReason, personalNotes,
+            companyIDUrl, companyIDReason, validIDType, idType: validIDType,
+          });
+          showNotification(
+            "Your application details have been saved. You can submit once your visit is confirmed by admin.",
+            "success",
+            5000,
+          );
+          return;
+        }
+
         if (!devBypassValidation) {
           const hasText = (value) => Boolean(value?.trim?.() || value);
           // 09XXXXXXXXX format ΓÇö matches backend normalization and new input constraint.
@@ -1372,18 +1879,6 @@ export default function useReservationFlow() {
             { key: "addressBarangay", label: "Barangay", isMissing: !hasText(addressBarangay) },
             { key: "validIDType", label: "ID Type", isMissing: !hasText(validIDType) },
             { key: "validIDFront", label: "Valid ID (Front)", isMissing: !validIDFront },
-            {
-              key: "validIDFront",
-              label: "Valid ID validation",
-              isMissing: idValidationResult?.validationStatus === "failed",
-              message: "ID image is unclear. Please upload a clearer photo.",
-            },
-            {
-              key: "validIDFront",
-              label: "Valid ID validation",
-              isMissing: isValidatingId,
-              message: "Please wait until ID validation finishes.",
-            },
             { key: "validIDBack", label: "Valid ID (Back)", isMissing: !validIDBack },
             {
               key: "nbiClearance",
@@ -1459,12 +1954,7 @@ export default function useReservationFlow() {
 
             if (firstInvalid) {
               setTimeout(() => {
-                const el = document.querySelector(
-                  `[data-field="${firstInvalid.key}"]`,
-                );
-                if (el) {
-                  el.scrollIntoView({ behavior: "smooth", block: "center" });
-                }
+                focusFieldByDataKey(firstInvalid.key);
               }, 100);
               showNotification(
                 firstInvalid.message ||
@@ -1478,6 +1968,10 @@ export default function useReservationFlow() {
                 if (el) {
                   el.scrollIntoView({ behavior: "smooth", block: "center" });
                 }
+                const checkbox = document.getElementById("privacy-consent");
+                if (checkbox && typeof checkbox.focus === "function") {
+                  checkbox.focus({ preventScroll: true });
+                }
               }, 100);
               showNotification(
                 "Please agree to both consent items to continue.",
@@ -1485,6 +1979,39 @@ export default function useReservationFlow() {
                 4000,
               );
             }
+            return;
+          }
+
+          const requiredDocumentChecks = [
+            { key: "validIDFront", hasUpload: Boolean(validIDFront) },
+            { key: "validIDBack", hasUpload: Boolean(validIDBack) },
+            { key: "nbiClearance", hasUpload: Boolean(nbiClearance) },
+            { key: "companyID", hasUpload: Boolean(companyID) },
+          ]
+            .filter((doc) => doc.hasUpload)
+            .map((doc) => ({
+              ...doc,
+              label: DOCUMENT_PRECHECK_LABELS[doc.key],
+              precheck: normalizeDocumentPrecheckEntry(documentPrechecks?.[doc.key]),
+            }));
+          const checkingDocument = requiredDocumentChecks.find(
+            (doc) => doc.precheck.precheckStatus === "checking",
+          );
+          const blockedDocument = requiredDocumentChecks.find((doc) =>
+            isBlockingDocumentPrecheck(doc.precheck),
+          );
+
+          if (checkingDocument || blockedDocument) {
+            const problem = checkingDocument || blockedDocument;
+            const message = checkingDocument
+              ? `Please wait for the readability check to finish: ${problem.label}.`
+              : `Please fix the following document before submitting: ${problem.label} - ${getDocumentPrecheckBlockMessage(problem.label, problem.precheck)}`;
+
+            setShowValidationErrors(true);
+            setTimeout(() => {
+              focusFieldByDataKey(problem.key);
+            }, 100);
+            showNotification(message, "error", 5000);
             return;
           }
         }
@@ -1552,13 +2079,15 @@ export default function useReservationFlow() {
         setSuccessOverlay({
           show: true,
           title: "Application Submitted!",
-          subtitle: "Payment step is now unlocked. Continue from your dashboard.",
+          subtitle:
+            "Your application is pending review. Payment will be available once your application and documents are approved.",
         });
         appNavigate("/applicant/profile", {
           flash: {
             type: "success",
             title: "Application Submitted!",
-            message: "Payment step is now unlocked. Continue from your dashboard.",
+            message:
+              "Your application is pending review. Payment will be available once your application and documents are approved.",
           },
         });
       } else if (currentStage === 4) {
@@ -1675,6 +2204,7 @@ export default function useReservationFlow() {
     // Core state
     reservationData,
     currentStage,
+    setCurrentStage,
     highestStageReached, setHighestStageReached,
     isLoading,
     paymentReturnLoading,
@@ -1697,6 +2227,9 @@ export default function useReservationFlow() {
 
     // Stage 2
     viewingType, setViewingType,
+    remoteViewingAcknowledged, setRemoteViewingAcknowledged,
+    remoteViewingQuestions, setRemoteViewingQuestions,
+    isUrgentMoveIn, setIsUrgentMoveIn,
     isOutOfTown, setIsOutOfTown,
     currentLocation, setCurrentLocation,
     visitorName, setVisitorName,
@@ -1728,6 +2261,8 @@ export default function useReservationFlow() {
     validIDType, setValidIDType,
     idValidationResult,
     isValidatingId,
+    documentPrechecks,
+    runningDocumentChecks,
     nbiClearance, setNbiClearance,
     nbiReason, setNbiReason,
     personalNotes, setPersonalNotes,
@@ -1757,6 +2292,10 @@ export default function useReservationFlow() {
     finalMoveInDate, setFinalMoveInDate,
     paymentMethod,
     paymentSubmitted,
+    paymentAvailable: canReservationAccessPayment(
+      normalizeReservationStatus(reservationData?.status),
+    ),
+    applicationReviewReason,
     agreedToFeePolicy, setAgreedToFeePolicy,
 
     // Stage 5
@@ -1772,6 +2311,7 @@ export default function useReservationFlow() {
     scrollToSection,
     saveStatus,
     isFormDirty,
+    physicalVisitApplicationLocked,
 
     // Stepper
     isStageLocked,
@@ -1783,7 +2323,10 @@ export default function useReservationFlow() {
     handlePrevStage,
     handleStageConfirm,
     validateApplicantIdDocument,
+    runDocumentPrecheck,
     updateReservationDraft,
+    returnToDashboardAfterViewingPreference,
+    forceEditMode,
     setEditingApplication,
     setScrollToSection,
     setShowStageConfirm,

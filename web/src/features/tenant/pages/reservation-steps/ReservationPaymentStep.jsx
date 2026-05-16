@@ -10,6 +10,7 @@ import {
   Receipt,
   RefreshCw,
   ShieldCheck,
+  Lock,
 } from "lucide-react";
 
 const formatCurrency = (amount) =>
@@ -26,6 +27,8 @@ const ReservationPaymentStep = ({
   isLoading,
   onPayOnline,
   payingOnline,
+  paymentAvailable = false,
+  applicationReviewReason = "",
   readOnly,
   agreedToFeePolicy = false,
   setAgreedToFeePolicy = () => {},
@@ -76,7 +79,7 @@ const ReservationPaymentStep = ({
         <h2 className="main-header-title">Reservation Fee Payment</h2>
         <p className="main-header-subtitle">
           Review your reservation details and pay the one-time reservation fee
-          of {formatCurrency(reservationFeeAmount)} to secure your room.
+          of {formatCurrency(reservationFeeAmount)} to secure your room. Payment will only be available after admin approves your application.
         </p>
       </div>
 
@@ -153,30 +156,46 @@ const ReservationPaymentStep = ({
             </div>
             Secure Online Payment
           </div>
-          <div className="rf-payment-info-box">
-            <div className="info-box-title">PayMongo secure checkout</div>
-            <div className="info-text">
-              You will be redirected to PayMongo to complete the payment. Your
-              reservation is secured only after PayMongo confirms the payment.
-            </div>
-          </div>
-          <div className="rf-payment-facts" aria-label="Payment details">
-            {paymentFacts.map(({ icon: Icon, title, text }) => (
-              <div className="rf-payment-fact" key={title}>
-                <span className="rf-payment-fact-icon">
-                  <Icon size={18} aria-hidden="true" />
-                </span>
-                <span>
-                  <strong>{title}</strong>
-                  <small>{text}</small>
-                </span>
+          
+          {!paymentAvailable && !readOnly ? (
+            <div className="rf-locked-banner" style={{ margin: '14px 0', padding: '16px', background: '#FEF2F2', borderRadius: '12px', border: '1px solid #FCA5A5' }}>
+              <div className="info-box-title" style={{ color: '#991B1B', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'bold' }}>
+                <Lock size={15} /> Payment Locked — Pending Review
               </div>
-            ))}
-          </div>
+              <div className="info-text" style={{ color: '#B91C1C', marginTop: '6px', fontSize: '0.9rem' }}>
+                Your application is still under review. Payment will become available once
+                your application and documents are approved.
+                {applicationReviewReason ? ` Latest admin note: ${applicationReviewReason}` : ""}
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="rf-payment-info-box">
+                <div className="info-box-title">PayMongo secure checkout</div>
+                <div className="info-text">
+                  You will be redirected to PayMongo to complete the payment. Your
+                  reservation is secured only after PayMongo confirms the payment.
+                </div>
+              </div>
+              <div className="rf-payment-facts" aria-label="Payment details">
+                {paymentFacts.map(({ icon: Icon, title, text }) => (
+                  <div className="rf-payment-fact" key={title}>
+                    <span className="rf-payment-fact-icon">
+                      <Icon size={18} aria-hidden="true" />
+                    </span>
+                    <span>
+                      <strong>{title}</strong>
+                      <small>{text}</small>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </section>
       </div>
 
-      {!readOnly && (
+      {!readOnly && paymentAvailable && (
         <section className="content-card rf-payment-action-card">
           <label className="rf-fee-policy-check">
             <input

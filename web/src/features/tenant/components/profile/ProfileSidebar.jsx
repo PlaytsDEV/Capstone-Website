@@ -163,10 +163,10 @@ const ProfileSidebar = ({
  if (!file || !onUpdateImage) return;
  setUploading(true);
  try {
- const { uploadToImageKit } = await import("../../../../shared/utils/imageUpload");
- const result = await uploadToImageKit(file, `profile/${profileData.email}`);
- if (result?.url) {
- await onUpdateImage(result.url);
+ const { uploadToFirebaseStorage } = await import("../../../../shared/utils/firebaseStorageUpload");
+ const { downloadUrl } = await uploadToFirebaseStorage(file, { documentType: "profile-photo" });
+ if (downloadUrl) {
+ await onUpdateImage(downloadUrl);
  }
  } catch (err) {
  console.error("Profile image upload failed:", err);

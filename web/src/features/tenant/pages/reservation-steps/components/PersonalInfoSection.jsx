@@ -2,7 +2,16 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import FileUploadField from "./FileUploadField";
 import AddressCascadeFields from "./AddressCascadeFields";
 import PhoneInput from "../../../../../shared/components/PhoneInput";
+<<<<<<< HEAD
 import { validateBirthday } from "../../../utils/reservationValidation";
+=======
+import {
+ validateBirthday,
+ validateNameField,
+ validatePHPhoneLocal,
+} from "../../../utils/reservationValidation";
+import { hasBlockingPrecheck } from "../../../utils/documentPrecheckUtils";
+>>>>>>> main
 
 const errBorder = (show, value) =>
   show && !value ? "1.5px solid #dc2626" : undefined;
@@ -56,6 +65,7 @@ const buildYearOptions = (min, max) => {
  * nationality, education, address fields (PSGC cascading), ID uploads, NBI, notes.
  */
 const PersonalInfoSection = ({
+<<<<<<< HEAD
   lastName,
   setLastName,
   firstName,
@@ -300,6 +310,217 @@ const PersonalInfoSection = ({
       />
       </div>
     </div>
+=======
+ lastName, setLastName, firstName, setFirstName,
+ middleName, setMiddleName, nickname, setNickname,
+ mobileNumber, setMobileNumber, birthday, setBirthday,
+ maritalStatus, setMaritalStatus, nationality, setNationality,
+ educationLevel, setEducationLevel,
+ addressUnitHouseNo, setAddressUnitHouseNo,
+ addressStreet, setAddressStreet,
+ addressRegion, setAddressRegion,
+ addressBarangay, setAddressBarangay,
+ addressCity, setAddressCity,
+ addressProvince, setAddressProvince,
+ validIDFront, setValidIDFront,
+ validIDBack, setValidIDBack,
+ validIDType, setValidIDType,
+ documentPrechecks,
+ runningDocumentChecks,
+ onRunDocumentPrecheck,
+ nbiClearance, setNbiClearance,
+ nbiReason, setNbiReason,
+ personalNotes, setPersonalNotes,
+ handleNameInput, handlePhoneInput, handleGeneralInput,
+ validateField, fieldErrors, clearFieldError,
+ birthdayMin, birthdayMax,
+ showValidationErrors,
+}) => (
+ <>
+ {/* Names */}
+ <div className="form-row">
+ <NameField
+ label="Last Name" value={lastName} setter={setLastName}
+ fieldKey="lastName" handler={handleNameInput}
+ validate={validateField} errors={fieldErrors}
+ required showValidationErrors={showValidationErrors}
+ />
+ <NameField
+ label="First Name" value={firstName} setter={setFirstName}
+ fieldKey="firstName" handler={handleNameInput}
+ validate={validateField} errors={fieldErrors}
+ required showValidationErrors={showValidationErrors}
+ />
+ </div>
+ <div className="form-row">
+ <NameField
+ label="Middle Name" value={middleName} setter={setMiddleName}
+ fieldKey="middleName" handler={handleNameInput}
+ validate={validateField} errors={fieldErrors}
+ clearFieldError={clearFieldError}
+ showValidationErrors={showValidationErrors}
+ />
+ <NameField
+ label="Nickname" value={nickname} setter={setNickname}
+ fieldKey="nickname" handler={handleNameInput}
+ validate={validateField} errors={fieldErrors}
+ />
+ </div>
+
+ {/* Phone & Birthday */}
+ <div className="form-row">
+ <div className="form-group" data-field="mobileNumber">
+ <label className="form-label">
+ Mobile Number <span className="rf-required">*</span>
+ </label>
+ <PhoneInput
+ value={mobileNumber}
+ onChange={(e164) => {
+ setMobileNumber(e164);
+ validateField("mobileNumber", e164, validatePHPhoneLocal);
+ }}
+ onBlur={() =>
+ validateField("mobileNumber", mobileNumber, validatePHPhoneLocal)
+ }
+ hasError={Boolean(fieldErrors.mobileNumber) || (showValidationErrors && !mobileNumber)}
+ required
+ />
+ <FieldError
+ error={
+ showValidationErrors && !mobileNumber
+ ? "Mobile number is required"
+ : fieldErrors.mobileNumber
+ }
+ />
+ </div>
+ <div className="form-group" data-field="birthday">
+ <label className="form-label">
+ Birthday <span className="rf-required">*</span>
+ </label>
+ <input
+ type="date"
+ className="form-input"
+ value={birthday}
+ min={birthdayMin}
+ max={birthdayMax}
+ onChange={(e) => {
+ setBirthday(e.target.value);
+ validateField("birthday", e.target.value, validateBirthday);
+ }}
+ style={{
+ cursor: "pointer",
+ border: fieldErrors.birthday
+ ? "1.5px solid #dc2626"
+ : errBorder(showValidationErrors, birthday),
+ }}
+ />
+ <FieldError error={showValidationErrors && !birthday ? "Birthday is required" : fieldErrors.birthday} />
+ </div>
+ </div>
+
+ {/* Marital / Nationality */}
+ <div className="form-row">
+ <div className="form-group" data-field="maritalStatus">
+ <label className="form-label">
+ Marital Status <span className="rf-required">*</span>
+ </label>
+ <select
+ className="form-select"
+ value={maritalStatus}
+ onChange={(e) => {
+ setMaritalStatus(e.target.value);
+ validateField("maritalStatus", e.target.value, (value) => ({
+ valid: Boolean(value),
+ error: value ? null : "Marital status is required",
+ }));
+ }}
+ style={{
+ border: fieldErrors.maritalStatus
+ ? "1.5px solid #dc2626"
+ : errBorder(showValidationErrors, maritalStatus),
+ }}
+ >
+ <option value="">Select status...</option>
+ <option value="single">Single</option>
+ <option value="married">Married</option>
+ <option value="other">Other</option>
+ </select>
+ <FieldError
+ error={
+ showValidationErrors && !maritalStatus
+ ? "Marital status is required"
+ : fieldErrors.maritalStatus
+ }
+ />
+ </div>
+ <div className="form-group" data-field="nationality">
+ <label className="form-label">
+ Nationality <span className="rf-required">*</span>
+ </label>
+ <input
+ type="text"
+ className="form-input"
+ placeholder="e.g., Filipino"
+ value={nationality}
+ onChange={(e) => {
+ setNationality(e.target.value);
+ validateField("nationality", e.target.value, (v) => ({
+ valid: Boolean(v?.trim()),
+ error: v?.trim() ? null : "Nationality is required",
+ }));
+ }}
+ onBlur={() =>
+ validateField("nationality", nationality, (v) => ({
+ valid: Boolean(v?.trim()),
+ error: v?.trim() ? null : "Nationality is required",
+ }))
+ }
+ style={{
+ border: fieldErrors.nationality
+ ? "1.5px solid #dc2626"
+ : errBorder(showValidationErrors, nationality),
+ }}
+ />
+ <FieldError error={showValidationErrors && !nationality ? "Nationality is required" : fieldErrors.nationality} />
+ </div>
+ </div>
+
+ {/* Education */}
+ <div className="form-group" data-field="educationLevel">
+ <label className="form-label">
+ Educational Attainment <span className="rf-required">*</span>
+ </label>
+ <select
+ className="form-select"
+ value={educationLevel}
+ onChange={(e) => {
+ setEducationLevel(e.target.value);
+ validateField("educationLevel", e.target.value, (value) => ({
+ valid: Boolean(value),
+ error: value ? null : "Education level is required",
+ }));
+ }}
+ style={{
+ border: fieldErrors.educationLevel
+ ? "1.5px solid #dc2626"
+ : errBorder(showValidationErrors, educationLevel),
+ }}
+ >
+ <option value="">Select level...</option>
+ <option value="highschool">High School</option>
+ <option value="college">College</option>
+ <option value="vocational">Vocational</option>
+ <option value="graduate">Graduate</option>
+ </select>
+ <FieldError
+ error={
+ showValidationErrors && !educationLevel
+ ? "Education level is required"
+ : fieldErrors.educationLevel
+ }
+ />
+ </div>
+>>>>>>> main
 
     {/* ── Permanent Address (PSGC Cascading Dropdowns) ──────── */}
     <div className="rf-address-heading-wrap">
@@ -329,6 +550,7 @@ const PersonalInfoSection = ({
       showValidationErrors={showValidationErrors}
     />
 
+<<<<<<< HEAD
     {/* ID & document uploads */}
     <div className="form-group" data-field="validIDType">
       <label className="form-label">
@@ -386,6 +608,131 @@ const PersonalInfoSection = ({
         hasError={showValidationErrors && !nbiClearance && !nbiReason}
       />
     </div>
+=======
+ {/* ID & document uploads */}
+ <div className="form-group" data-field="validIDType">
+ <label className="form-label">
+ ID Type <span className="rf-required">*</span>
+ </label>
+ <select
+ className="form-select"
+ value={validIDType}
+ onChange={(e) => {
+ const nextValue = e.target.value;
+ setValidIDType(nextValue);
+ validateField("validIDType", nextValue, (value) => ({
+ valid: Boolean(value),
+ error: value ? null : "ID type is required",
+ }));
+ if (typeof validIDFront === "string" && onRunDocumentPrecheck) {
+ onRunDocumentPrecheck({
+ documentType: "valid_id_front",
+ documentUrl: validIDFront,
+ idType: nextValue,
+ });
+ }
+ if (typeof validIDBack === "string" && onRunDocumentPrecheck) {
+ onRunDocumentPrecheck({
+ documentType: "valid_id_back",
+ documentUrl: validIDBack,
+ idType: nextValue,
+ });
+ }
+ }}
+ style={{
+ border: fieldErrors.validIDType
+ ? "1.5px solid #dc2626"
+ : errBorder(showValidationErrors, validIDType),
+ }}
+ >
+ <option value="">Select ID type...</option>
+ <option value="national_id">National ID</option>
+ <option value="drivers_license">Driver's License</option>
+ <option value="passport">Passport</option>
+ <option value="sss_id">SSS ID</option>
+ <option value="umid">UMID</option>
+ <option value="school_id">School ID</option>
+ <option value="other">Other Government-issued ID</option>
+ </select>
+ <FieldError
+ error={
+ showValidationErrors && !validIDType ? "ID type is required" : fieldErrors.validIDType
+ }
+ />
+ </div>
+
+ <div data-field="validIDFront">
+ <FileUploadField
+ label="Valid ID (Front)"
+ value={validIDFront}
+ onChange={setValidIDFront}
+ documentType="valid-id-front"
+ onUploadComplete={(documentUrl) => {
+ if (!validIDType) return Promise.resolve(null);
+ return onRunDocumentPrecheck?.({
+ documentType: "valid_id_front",
+ documentUrl,
+ idType: validIDType,
+ });
+ }}
+ aiCheck={documentPrechecks?.validIDFront}
+ isChecking={Boolean(runningDocumentChecks?.validIDFront)}
+ hint="Government-issued ID (Front side)"
+ hasError={
+ showValidationErrors &&
+ (!validIDFront || hasBlockingPrecheck(documentPrechecks?.validIDFront))
+ }
+ required
+ />
+ </div>
+ <div data-field="validIDBack">
+ <FileUploadField
+ label="Valid ID (Back)"
+ value={validIDBack}
+ onChange={setValidIDBack}
+ documentType="valid-id-back"
+ onUploadComplete={(documentUrl) => {
+ if (!validIDType) return Promise.resolve(null);
+ return onRunDocumentPrecheck?.({
+ documentType: "valid_id_back",
+ documentUrl,
+ idType: validIDType,
+ });
+ }}
+ aiCheck={documentPrechecks?.validIDBack}
+ isChecking={Boolean(runningDocumentChecks?.validIDBack)}
+ hint="Government-issued ID (Back side)"
+ hasError={
+ showValidationErrors &&
+ (!validIDBack || hasBlockingPrecheck(documentPrechecks?.validIDBack))
+ }
+ required
+ />
+ </div>
+
+ <div data-field="nbiClearance">
+ <FileUploadField
+ label="NBI Clearance (If unable, upload another valid ID)"
+ value={nbiClearance}
+ onChange={setNbiClearance}
+ documentType="nbi-clearance"
+ onUploadComplete={(documentUrl) =>
+ onRunDocumentPrecheck?.({
+ documentType: "nbi_clearance",
+ documentUrl,
+ })
+ }
+ aiCheck={documentPrechecks?.nbiClearance}
+ isChecking={Boolean(runningDocumentChecks?.nbiClearance)}
+ hint="NBI Clearance or additional valid ID"
+ hasError={
+ showValidationErrors &&
+ ((!nbiClearance && !nbiReason) ||
+ (Boolean(nbiClearance) && hasBlockingPrecheck(documentPrechecks?.nbiClearance)))
+ }
+ />
+ </div>
+>>>>>>> main
 
     <div className="form-group" data-field="nbiReason">
       <label className="form-label">
@@ -539,6 +886,7 @@ const BirthdaySelectField = ({
 };
 
 const NameField = ({
+<<<<<<< HEAD
   label,
   value,
   setter,
@@ -590,6 +938,51 @@ const NameField = ({
       }
     />
   </div>
+=======
+ label, value, setter, fieldKey, handler,
+ validate, errors, required, showValidationErrors, clearFieldError,
+}) => (
+ <div className="form-group" data-field={required ? fieldKey : undefined}>
+ <label className="form-label">
+ {label} {required && <span className="rf-required">*</span>}
+ </label>
+ <input
+ type="text"
+ className="form-input"
+ placeholder={label}
+ maxLength={32}
+ value={value}
+ onChange={(e) => {
+ const nextValue = e.target.value;
+ handler(nextValue, setter);
+ if (!required && !nextValue.trim()) {
+ clearFieldError?.(fieldKey);
+ return;
+ }
+ validate(fieldKey, nextValue, validateNameField);
+ }}
+ onBlur={() =>
+ required || value?.trim()
+ ? validate(fieldKey, value, validateNameField)
+ : clearFieldError?.(fieldKey)
+ }
+ style={{
+ border: errors[fieldKey]
+ ? "1.5px solid #dc2626"
+ : required
+ ? errBorder(showValidationErrors, value)
+ : undefined,
+ }}
+ />
+ <FieldError
+ error={
+ showValidationErrors && required && !value
+ ? `${label} is required`
+ : errors[fieldKey]
+ }
+ />
+ </div>
+>>>>>>> main
 );
 
 export default PersonalInfoSection;

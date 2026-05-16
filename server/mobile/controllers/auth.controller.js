@@ -86,7 +86,7 @@ async function findTenantByEmail(db, email) {
       { email: emailRegex(email) },
       { google_email: emailRegex(email) },
     ],
-    role: { $nin: ['admin', 'superadmin'] },
+    role: { $nin: ['admin', 'owner', 'branch_admin', 'superadmin' /* legacy */] },
   });
 }
 
@@ -223,6 +223,7 @@ function normalizeUser(doc) {
     );
   }
   if (!u.username && u.email) u.username = u.email.split('@')[0];
+  if (u.role === 'superadmin') u.role = 'owner';
   return u;
 }
 
@@ -360,7 +361,7 @@ async function login(req, res) {
   // Step 2: Find MongoDB tenant by exact email (NOT google_email — that's for Google sign-in only)
   const tenant = await db.collection('users').findOne({
     email: emailRegex(emailRaw),
-    role: { $nin: ['admin', 'superadmin'] },
+    role: { $nin: ['admin', 'owner', 'branch_admin', 'superadmin' /* legacy */] },
   });
   if (!tenant) {
     logAttempt(db, emailRaw, false, 'not_tenant', req);
@@ -568,7 +569,7 @@ async function googleSignIn(req, res) {
     // 1. Exact email match (most reliable)
     let tenant = await db.collection('users').findOne({
       email: emailRegex(email),
-      role: { $nin: ['admin', 'superadmin'] },
+      role: { $nin: ['admin', 'owner', 'branch_admin', 'superadmin' /* legacy */] },
     });
     if (tenant) {
       console.log(`[GoogleSignIn] Found by email: ${tenant.user_id} (${tenant.email})`);
@@ -578,7 +579,7 @@ async function googleSignIn(req, res) {
     if (!tenant) {
       tenant = await db.collection('users').findOne({
         google_email: emailRegex(email),
-        role: { $nin: ['admin', 'superadmin'] },
+        role: { $nin: ['admin', 'owner', 'branch_admin', 'superadmin' /* legacy */] },
       });
       if (tenant) console.log(`[GoogleSignIn] Found by google_email: ${tenant.user_id} (${tenant.email})`);
     }
@@ -587,7 +588,7 @@ async function googleSignIn(req, res) {
     if (!tenant) {
       tenant = await db.collection('users').findOne({
         firebase_uid: fbUid,
-        role: { $nin: ['admin', 'superadmin'] },
+        role: { $nin: ['admin', 'owner', 'branch_admin', 'superadmin' /* legacy */] },
       });
       if (tenant) console.log(`[GoogleSignIn] Found by firebase_uid: ${tenant.user_id} (${tenant.email})`);
     }

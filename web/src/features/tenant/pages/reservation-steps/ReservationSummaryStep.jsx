@@ -1,4 +1,5 @@
 import React from "react";
+<<<<<<< HEAD
 import { createPortal } from "react-dom";
 import {
   ArrowLeft,
@@ -12,6 +13,9 @@ import {
   Wallet,
   X,
 } from "lucide-react";
+=======
+import { Home } from "lucide-react";
+>>>>>>> main
 import { formatBranch, formatRoomType } from "../../../../shared/utils/formatDate";
 import { getRoomImages as getFallbackRoomImages } from "../check-availability/checkAvailabilityConstants";
 
@@ -72,6 +76,7 @@ const getSummaryRoomImages = (room) => {
   return Array.from(new Set([...images, ...fallbackImages]));
 };
 
+<<<<<<< HEAD
 /**
  * Step 1 - Room review summary
  */
@@ -318,6 +323,88 @@ const ReservationSummaryStep = ({
           </button>
           <button type="button" onClick={onNext} className="btn btn-primary">
             Confirm Room and Schedule Visit
+=======
+const ReservationSummaryStep = ({ reservationData, onNext, readOnly }) => {
+  const room = reservationData?.room || {};
+
+  return (
+    <div className="reservation-card">
+      <div className="main-header">
+        <div className="main-header-badge"><span>Step 1 · Getting Started</span></div>
+        <h2 className="main-header-title">Room Summary</h2>
+        <p className="main-header-subtitle">
+          Review the details of your selected room below. Once confirmed, you'll
+          proceed to choose your viewing or move-in preference.
+        </p>
+      </div>
+
+      <div className="content-card">
+        <div className="card-section-title">
+          <Home size={15} style={{ marginRight: 6, flexShrink: 0 }} />
+          Room Information
+        </div>
+
+        <div className="summary-section">
+          <div className="summary-row">
+            <span className="summary-label">Branch</span>
+            <span className="summary-value">{formatBranch(room.branch)}</span>
+          </div>
+          <div className="summary-row">
+            <span className="summary-label">Room Type</span>
+            <span className="summary-value">{formatRoomType(room.type)}</span>
+          </div>
+          <div className="summary-row">
+            <span className="summary-label">Room Number</span>
+            <span className="summary-value">
+              {room.roomNumber || room.name || room.title || room.id || "N/A"}
+            </span>
+          </div>
+          {reservationData?.selectedBed && (
+            <div className="summary-row">
+              <span className="summary-label">Selected Bed</span>
+              <span className="summary-value" style={{ textTransform: "capitalize" }}>
+                {reservationData.selectedBed.position} Bed ({reservationData.selectedBed.id})
+              </span>
+            </div>
+          )}
+          {reservationData?.applianceFees > 0 && (
+            <div className="summary-row">
+              <span className="summary-label">Appliance Fees</span>
+              <span className="summary-value">
+                ₱{reservationData.applianceFees.toLocaleString()}/month
+              </span>
+            </div>
+          )}
+          <div className="total-section">
+            <span>Monthly Rent</span>
+            <span className="total-amount">₱{(room.price || 0).toLocaleString()}</span>
+          </div>
+        </div>
+      </div>
+
+      {!readOnly && (
+        <div className="info-box">
+          <div className="info-box-title">What happens next?</div>
+          <div className="info-text">
+            After confirming, you'll choose between a physical visit, 2D remote
+            viewing, or an urgent move-in review request before submitting your
+            tenant application.
+          </div>
+        </div>
+      )}
+
+      {readOnly && (
+        <div className="rf-locked-banner">
+          <div className="info-box-title">This step is locked</div>
+          <div className="info-text">Room selection has been confirmed and cannot be changed.</div>
+        </div>
+      )}
+
+      {!readOnly && (
+        <div className="stage-buttons" style={{ justifyContent: "flex-end" }}>
+          <button type="button" onClick={onNext} className="btn btn-primary">
+            Confirm Room &amp; Continue
+>>>>>>> main
           </button>
         </div>
       )}

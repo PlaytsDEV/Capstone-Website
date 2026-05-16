@@ -7,12 +7,14 @@ const emailPrefix = (email) => {
 
 export const resolveAuthDisplayName = (user, fallbackName = "there") => {
   const firstName = user?.firstName?.trim();
+  const lastName = user?.lastName?.trim();
+  const fullName = firstName && lastName ? `${firstName} ${lastName}` : firstName || lastName;
   const displayName = user?.displayName?.trim();
   const username = user?.username?.trim();
   const emailName = emailPrefix(user?.email) || emailPrefix(fallbackName);
   const fallback = fallbackName?.trim?.() || "there";
 
-  return firstName || displayName || username || emailName || fallback;
+  return fullName || displayName || username || emailName || fallback;
 };
 
 export const buildAuthSuccessMessage = (user, fallbackName = "there") => {

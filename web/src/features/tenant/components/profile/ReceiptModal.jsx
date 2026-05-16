@@ -87,6 +87,29 @@ const TimestampBadge = ({ label, date }) => (
  </div>
 );
 
+const getViewingPreferenceLabel = (reservation) => {
+ const preference =
+ reservation?.viewingPreference ||
+ (reservation?.viewingType === "virtual"
+ ? "remote_2d_viewing"
+ : reservation?.viewingType === "inperson"
+ ? "physical_visit"
+ : reservation?.isUrgentMoveIn
+ ? "urgent_move_in_review"
+ : null);
+
+ switch (preference) {
+ case "physical_visit":
+  return "Physical Visit";
+ case "remote_2d_viewing":
+  return "2D Remote Viewing";
+ case "urgent_move_in_review":
+  return "Urgent Move-in Review";
+ default:
+  return "Viewing Preference";
+ }
+};
+
 // ─── Room Selected Receipt ───────────────────────────────────
 const RoomReceipt = ({ reservation }) => (
  <>
@@ -220,24 +243,20 @@ const RoomReceipt = ({ reservation }) => (
 const VisitReceipt = ({ reservation }) => (
  <>
  <div style={{ marginBottom: "12px" }}>
- <SectionTitle>Booking Details</SectionTitle>
+ <SectionTitle>Viewing Preference</SectionTitle>
  <ReceiptRow
- label="Visit Type"
- value={
- reservation?.viewingType === "inperson"
- ? "🏠 In-Person Visit"
- : "💻 Virtual Tour"
- }
+ label="Selected Option"
+ value={getViewingPreferenceLabel(reservation)}
  />
  <ReceiptRow
  label={
  reservation?.scheduleApproved
  ? "Confirmed Date"
- : "Preferred Move-in Date"
+ : "Preferred Visit Date"
  }
  value={
- reservation?.targetMoveInDate
- ? new Date(reservation.targetMoveInDate).toLocaleDateString(
+ reservation?.visitDate
+ ? new Date(reservation.visitDate).toLocaleDateString(
  "en-US",
  {
  weekday: "short",
@@ -249,6 +268,13 @@ const VisitReceipt = ({ reservation }) => (
  : "To be confirmed"
  }
  />
+ <ReceiptRow
+ label="Preferred Visit Time"
+ value={reservation?.visitTime || "To be confirmed"}
+ />
+ {reservation?.visitCode && (
+ <ReceiptRow label="Visit Code" value={reservation.visitCode} />
+ )}
  <ReceiptRow
  label="Schedule Status"
  value={
@@ -343,9 +369,7 @@ const VisitCompletedReceipt = ({ reservation }) => (
  </p>
  <p style={{ color: "#6B7280", fontSize: "13px", margin: 0 }}>
  Your{" "}
- {reservation?.viewingType === "inperson"
- ? "in-person visit"
- : "virtual tour"}{" "}
+ {getViewingPreferenceLabel(reservation).toLowerCase()}{" "}
  has been verified
  </p>
  </div>

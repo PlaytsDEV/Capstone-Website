@@ -113,11 +113,27 @@ export const reservationApi = {
     ),
 
   /**
-   * Validate applicant valid ID using backend OCR/Google Vision.
+   * Validate applicant valid ID using backend OCR/manual review fallback.
    */
   validateIdDocument: (reservationId, data) =>
     withLifecycleNormalization(
       authFetch(`/reservations/${reservationId}/id-validation`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    ),
+
+  precheckDocument: (reservationId, data) =>
+    withLifecycleNormalization(
+      authFetch(`/reservations/${reservationId}/document-precheck`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    ),
+
+  manageVisit: (reservationId, data) =>
+    withLifecycleNormalization(
+      authFetch(`/reservations/${reservationId}/visit-management`, {
         method: "POST",
         body: JSON.stringify(data),
       }),

@@ -29,6 +29,7 @@ import crypto from "crypto";
 import { User, UserSession } from "../models/index.js";
 
 import { CACHE } from "../config/constants.js";
+import { isAdminRole, isOwnerRole } from "../config/roles.js";
 import {
   getCachedAccountStatus as _getCachedAccountStatus,
   setCachedAccountStatus as _setCachedAccountStatus,
@@ -89,8 +90,7 @@ const OTP_SESSION_EXEMPT_PATHS = [
 const isOtpSessionExempt = (req) =>
   OTP_SESSION_EXEMPT_PATHS.some((path) => req.originalUrl?.startsWith(path));
 
-const isAdminRole = (role) =>
-  role === "branch_admin" || role === "owner" || role === "superadmin";
+// isAdminRole and isOwnerRole imported from config/roles.js
 
 /**
  * Verify Firebase ID Token
@@ -261,10 +261,10 @@ export const verifyAdmin = async (req, res, next) => {
     // Fallback: Check MongoDB role (handles missing Firebase custom claims)
     const dbUser = await User.findOne({ firebaseUid: req.user.uid });
 
-    if (dbUser && (dbUser.role === "branch_admin" || dbUser.role === "owner")) {
+    if (dbUser && isAdminRole(dbUser.role)) {
       // Attach role info to req.user for downstream middleware
-      req.user.branch_admin = dbUser.role === "branch_admin" || dbUser.role === "owner";
-      req.user.owner = dbUser.role === "owner";
+      req.user.branch_admin = true;
+      req.user.owner = isOwnerRole(dbUser.role);
       req.user.dbRole = dbUser.role;
       return next();
     }
@@ -319,7 +319,7 @@ export const verifyOwner = async (req, res, next) => {
     // Fallback: Check MongoDB role (handles missing Firebase custom claims)
     const dbUser = await User.findOne({ firebaseUid: req.user.uid });
 
-    if (dbUser && dbUser.role === "owner") {
+    if (dbUser && isOwnerRole(dbUser.role)) {
       req.user.owner = true;
       req.user.branch_admin = true;
       req.user.dbRole = dbUser.role;
