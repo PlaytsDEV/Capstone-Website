@@ -163,7 +163,11 @@ const hasPhysicalVisit = (reservation) =>
  Boolean(reservation?.visitDate);
 
 const getVisitStatusKey = (reservation) => {
- const explicit = String(reservation?.visitStatus || "").trim();
+ const explicit = String(reservation?.visitStatus || "")
+ .trim()
+ .toLowerCase()
+ .replace(/^cancelled$/, "visit_cancelled")
+ .replace(/^canceled$/, "visit_cancelled");
  if (VISIT_STATUS_CONFIG[explicit]) return explicit;
  if (reservation?.scheduleRejected) return "visit_cancelled";
  if (reservation?.visitApproved) return "visit_completed";
@@ -296,16 +300,16 @@ const STAGE_GUIDANCE = {
  message:
  "Viewing preference recorded. Waiting for the tenant to submit the application and required documents.",
  },
- visit_pending: {
- Icon: Eye,
- message:
- "Legacy visit schedule pending approval. Visit approval no longer unlocks payment.",
- },
- visit_approved: {
- Icon: ClipboardList,
- message:
- "Legacy visit approved. Waiting for the tenant to complete the application.",
- },
+  visit_pending: {
+  Icon: Eye,
+  message:
+  "Physical visit is pending schedule approval or completion. Payment remains locked.",
+  },
+  visit_approved: {
+  Icon: ClipboardList,
+  message:
+  "Visit schedule is approved or the visit requirement has been cleared. Waiting for the tenant application.",
+  },
  pending_application_review: {
  Icon: ClipboardList,
  message:
@@ -935,9 +939,34 @@ export default function ReservationDetailsModal({
                  />
                  </label>
 
-                 <div className="rdm-visit-actions-grid">
-                 <button type="button" className="rdm-action rdm-action-outline"
-                 disabled={isSubmitting || !visitActionAvailability.canMarkVisited}
+                  <div className="rdm-visit-actions-grid">
+                  {visitActionAvailability.canApproveSchedule && (
+                  <button type="button" className="rdm-action rdm-action-outline"
+                  disabled={isSubmitting}
+                  onClick={() => runVisitManagementAction({
+                    action: "approve_schedule", successMsg: "Visit schedule approved",
+                    modalTitle: "Approve Visit Schedule",
+                    modalMessage: "Confirm the applicant's selected physical visit schedule. The application will remain locked until the visit is completed or waived.",
+                    confirmText: "Approve Schedule",
+                  })}>
+                  Approve Schedule
+                  </button>
+                  )}
+                  {visitActionAvailability.canRejectSchedule && (
+                  <button type="button" className="rdm-action rdm-action-outline rdm-action-outline-danger"
+                  disabled={isSubmitting}
+                  onClick={() => runVisitManagementAction({
+                    action: "reject_schedule", successMsg: "Visit schedule rejected",
+                    modalTitle: "Reject Visit Schedule",
+                    modalMessage: "Reject the selected visit schedule and ask the applicant to choose another date or time.",
+                    confirmText: "Reject Schedule", variant: "warning",
+                  })}>
+                  Reject Schedule
+                  </button>
+                  )}
+                  {visitActionAvailability.canMarkVisited && (
+                  <button type="button" className="rdm-action rdm-action-outline"
+                  disabled={isSubmitting}
                  onClick={() => runVisitManagementAction({
                    action: "mark_visited", successMsg: "Visit marked as completed",
                    modalTitle: "Mark As Visited",
@@ -946,8 +975,10 @@ export default function ReservationDetailsModal({
                  })}>
                  Mark as Visited
                  </button>
+                 )}
+                 {visitActionAvailability.canMarkNoShow && (
                  <button type="button" className="rdm-action rdm-action-outline"
-                 disabled={isSubmitting || !visitActionAvailability.canMarkNoShow}
+                 disabled={isSubmitting}
                  onClick={() => runVisitManagementAction({
                    action: "mark_no_show", successMsg: "Visit marked as no-show",
                    modalTitle: "Mark As No-Show",
@@ -956,14 +987,18 @@ export default function ReservationDetailsModal({
                  })}>
                  Mark as No-Show
                  </button>
+                 )}
+                 {visitActionAvailability.canReschedule && (
                  <button type="button"
                  className={`rdm-action rdm-action-outline${visitActionMode === "reschedule" ? " rdm-action-outline-active" : ""}`}
-                 disabled={isSubmitting || !visitActionAvailability.canReschedule}
+                 disabled={isSubmitting}
                  onClick={() => setVisitActionMode((p) => p === "reschedule" ? "" : "reschedule")}>
                  Reschedule Visit
                  </button>
+                 )}
+                 {visitActionAvailability.canCancelVisit && (
                  <button type="button" className="rdm-action rdm-action-outline rdm-action-outline-danger"
-                 disabled={isSubmitting || !visitActionAvailability.canCancelVisit}
+                 disabled={isSubmitting}
                  onClick={() => runVisitManagementAction({
                    action: "cancel_visit", successMsg: "Visit schedule cancelled",
                    modalTitle: "Cancel Visit Schedule",
@@ -972,8 +1007,10 @@ export default function ReservationDetailsModal({
                  })}>
                  Cancel Visit Schedule
                  </button>
+                 )}
+                 {visitActionAvailability.canAllowWithoutVisit && (
                  <button type="button" className="rdm-action rdm-action-outline"
-                 disabled={isSubmitting || !visitActionAvailability.canAllowWithoutVisit}
+                 disabled={isSubmitting}
                  onClick={() => runVisitManagementAction({
                    action: "allow_without_visit", successMsg: "Applicant may proceed without a completed visit",
                    modalTitle: "Allow Application Without Visit",
@@ -982,6 +1019,7 @@ export default function ReservationDetailsModal({
                  })}>
                  Allow Application Without Visit
                  </button>
+                 )}
                  </div>
                  </>
                  )}

@@ -82,7 +82,20 @@ export function getReservationProgress(reservation) {
  const hasVisitRequest = Boolean(viewingPreference);
  const isVisitScheduled = hasPoliciesAccepted && hasVisitRequest;
  const isVisitCompleted = canProceedToApplicationAfterVisit(reservation);
- const hasApplication = Boolean(reservation.firstName && reservation.lastName);
+ const hasApplication = Boolean(
+ reservation.applicationSubmittedAt ||
+ hasReservationStatus(
+ status,
+ "pending_application_review",
+ "needs_revision",
+ "approved_for_payment",
+ "payment_pending",
+ "reserved",
+ "moveIn",
+ "moveOut",
+ "rejected",
+ ),
+ );
  const hasPayment = hasReservationStatus(
  status,
  "payment_pending",
@@ -265,7 +278,7 @@ export function getNextAction(activeReservation, reservationProgress) {
  title: physicalVisitState.title,
  description: physicalVisitState.message,
  buttonText: physicalVisitState.buttonLabel?.replace(/\s*(->|→)\s*$/, "") || "Review Visit",
- buttonLink: physicalVisitState.route || "/applicant/reservation?step=2&edit=1",
+ buttonLink: physicalVisitState.route || "/applicant/reservation?step=2",
  reservationId: activeReservation._id,
  step: 2,
  };
@@ -316,7 +329,7 @@ export function getNextAction(activeReservation, reservationProgress) {
  description: physicalVisitState.message,
  buttonText:
  physicalVisitState.buttonLabel?.replace(/\s*(->|→)\s*$/, "") || "Review Visit",
- buttonLink: physicalVisitState.route || "/applicant/reservation?step=2&edit=1",
+ buttonLink: physicalVisitState.route || "/applicant/reservation?step=2",
  reservationId: activeReservation._id,
  step: 2,
  };

@@ -307,6 +307,23 @@ const DOCUMENT_PRECHECK_TYPES = Object.freeze({
     precheckField: "companyID",
   },
 });
+
+const APPLICANT_UPLOAD_URL_FIELDS = Object.freeze([
+  { key: "selfiePhotoUrl", label: "profile photo" },
+  { key: "validIDFrontUrl", label: "valid ID (front)" },
+  { key: "validIDBackUrl", label: "valid ID (back)" },
+  { key: "nbiClearanceUrl", label: "NBI clearance" },
+  { key: "companyIDUrl", label: "company ID" },
+]);
+
+const isValidApplicantUploadUrl = (value) => {
+  try {
+    const parsed = new URL(String(value || "").trim());
+    return parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
 const DOCUMENT_PRECHECK_LABELS = Object.freeze({
   selfie_photo: "Selfie Photo",
   valid_id_front: "Valid ID (Front)",
@@ -1939,7 +1956,7 @@ export const createReservation = async (req, res, next) => {
     const existingActive = await Reservation.findOne({
       userId: dbUser._id,
       status: {
-        $nin: reservationStatusesForQuery("cancelled", "archived", "moveOut"),
+        $nin: reservationStatusesForQuery("cancelled", "archived", "moveOut", "rejected"),
       },
       isArchived: { $ne: true },
     });
@@ -3082,7 +3099,15 @@ export const manageReservationVisit = async (req, res, next) => {
       reservation.visitApproved = false;
       reservation.scheduleApproved = false;
       reservation.scheduleApprovedAt = null;
-      if (hasReservationStatus(reservation.status, LEGACY_VISIT_STATUSES, "approved")) {
+      if (
+        hasReservationStatus(
+          reservation.status,
+          LEGACY_VISIT_STATUSES,
+          "pending",
+          "viewing_preference_selected",
+          "approved",
+        )
+      ) {
         reservation.status = "visit_pending";
       }
       applyVisitOutcome({
@@ -3162,6 +3187,16 @@ export const manageReservationVisit = async (req, res, next) => {
       reservation.scheduleRejectedAt = null;
       reservation.scheduleRejectedBy = null;
       reservation.scheduleRejectionReason = null;
+      if (
+        hasReservationStatus(
+          reservation.status,
+          LEGACY_VISIT_STATUSES,
+          "pending",
+          "viewing_preference_selected",
+        )
+      ) {
+        reservation.status = "visit_pending";
+      }
       applyVisitOutcome({
         reservation,
         status: "rescheduled",
@@ -3203,6 +3238,16 @@ export const manageReservationVisit = async (req, res, next) => {
         note,
         updatedAt: now,
       });
+      if (
+        hasReservationStatus(
+          reservation.status,
+          LEGACY_VISIT_STATUSES,
+          "pending",
+          "viewing_preference_selected",
+        )
+      ) {
+        reservation.status = "visit_approved";
+      }
       applicantNotificationTitle = "Physical Visit Completed";
       applicantNotificationMessage =
         "Your physical visit has been recorded. You may now continue to your tenant application. Payment remains locked until your application and required documents are approved.";
@@ -3228,6 +3273,16 @@ export const manageReservationVisit = async (req, res, next) => {
         note,
         updatedAt: now,
       });
+      if (
+        hasReservationStatus(
+          reservation.status,
+          LEGACY_VISIT_STATUSES,
+          "pending",
+          "viewing_preference_selected",
+        )
+      ) {
+        reservation.status = "visit_pending";
+      }
       applicantNotificationTitle = "Missed Physical Visit";
       applicantNotificationMessage =
         "You missed your scheduled visit. Please reschedule your visit or contact admin before continuing. Your tenant application remains locked.";
@@ -3248,6 +3303,7 @@ export const manageReservationVisit = async (req, res, next) => {
 
       reservation.visitDate = null;
       reservation.visitTime = "";
+      reservation.visitCode = null;
       reservation.visitScheduledAt = null;
       reservation.scheduleApproved = false;
       reservation.scheduleApprovedAt = null;
@@ -3264,6 +3320,16 @@ export const manageReservationVisit = async (req, res, next) => {
         note,
         updatedAt: now,
       });
+      if (
+        hasReservationStatus(
+          reservation.status,
+          LEGACY_VISIT_STATUSES,
+          "pending",
+          "viewing_preference_selected",
+        )
+      ) {
+        reservation.status = "visit_pending";
+      }
       applicantNotificationTitle = "Physical Visit Cancelled";
       applicantNotificationMessage =
         "Your physical visit schedule was cancelled. Your reservation is still active, but your tenant application remains locked unless admin separately allows you to proceed without a visit.";
@@ -3289,6 +3355,16 @@ export const manageReservationVisit = async (req, res, next) => {
         note,
         updatedAt: now,
       });
+      if (
+        hasReservationStatus(
+          reservation.status,
+          LEGACY_VISIT_STATUSES,
+          "pending",
+          "viewing_preference_selected",
+        )
+      ) {
+        reservation.status = "visit_approved";
+      }
       applicantNotificationTitle = "You May Continue Your Tenant Application";
       applicantNotificationMessage =
         "Admin has allowed you to continue your tenant application without a completed physical visit. Payment remains locked until your application and required documents are approved.";
@@ -3558,6 +3634,7 @@ export const updateReservationByUser = async (req, res, next) => {
     // Build update payload from config-driven field mapping
     const updates = buildUserUpdatePayload(req.body);
     let appliedPricing = null;
+    let roomAvailabilityWasRevalidated = false;
     const hasBodyField = (field) => Object.prototype.hasOwnProperty.call(req.body, field);
 
     // ── Legacy soft-cancel path: redirect to dedicated cancel endpoint ─────
@@ -3618,6 +3695,7 @@ export const updateReservationByUser = async (req, res, next) => {
           submittedBed,
           excludeReservationId: reservationId,
         });
+        roomAvailabilityWasRevalidated = true;
       } catch (error) {
         if (error?.code === "BED_SELECTION_REQUIRED") {
           return res.status(400).json({
@@ -3991,6 +4069,60 @@ export const updateReservationByUser = async (req, res, next) => {
         });
       }
 
+      if (!roomAvailabilityWasRevalidated) {
+        const submissionRoomId = updates.roomId || reservation.roomId?._id || reservation.roomId;
+        const room = await Room.findById(submissionRoomId);
+        if (!room) {
+          return res.status(404).json({
+            error: "Room not found",
+            code: "ROOM_NOT_FOUND",
+          });
+        }
+        if (room.isArchived) {
+          return res.status(400).json({
+            error: "Room is not available for reservation",
+            code: "ROOM_NOT_AVAILABLE",
+          });
+        }
+
+        const activeReservationCount = await ensureRoomReservationCapacity({
+          roomId: room._id,
+          excludeReservationId: reservationId,
+        });
+        if (activeReservationCount >= room.capacity) {
+          return res.status(400).json({
+            error: "Room is fully booked. Please choose a different room.",
+            code: "ROOM_UNAVAILABLE",
+          });
+        }
+
+        try {
+          const submittedBed =
+            updates.selectedBed !== undefined
+              ? updates.selectedBed
+              : reservation.selectedBed;
+          await validateSelectedBedForReservation({
+            room,
+            submittedBed,
+            excludeReservationId: reservationId,
+          });
+        } catch (error) {
+          if (error?.code === "BED_SELECTION_REQUIRED") {
+            return res.status(400).json({
+              error: error.message,
+              code: error.code,
+            });
+          }
+          if (error?.code === "BED_NOT_FOUND" || error?.code === "BED_UNAVAILABLE") {
+            return res.status(409).json({
+              error: error.message,
+              code: error.code,
+            });
+          }
+          throw error;
+        }
+      }
+
       // Enforce minimum required fields before accepting the application.
       // Mirrors client-side validation in useReservationFlow stage 3 so direct
       // API calls cannot bypass the form.
@@ -4099,7 +4231,9 @@ export const updateReservationByUser = async (req, res, next) => {
       if (!hasVal(effectiveAddressProvince)) missingRequired.push("province");
       if (!hasVal(effectiveAddressCity)) missingRequired.push("city / municipality");
       if (!hasVal(effectiveAddressBarangay)) missingRequired.push("barangay");
-      if (!hasVal(updates.selfiePhotoUrl || reservation.selfiePhotoUrl))
+      const effectiveSelfiePhotoUrl =
+        updates.selfiePhotoUrl ?? reservation.selfiePhotoUrl;
+      if (!hasVal(effectiveSelfiePhotoUrl))
         missingRequired.push("profile photo");
       if (!hasVal(effectiveEmergencyName))
         missingRequired.push("emergency contact name");
@@ -4195,6 +4329,30 @@ export const updateReservationByUser = async (req, res, next) => {
           error: `Application cannot be submitted. The following required fields are missing or invalid: ${missingRequired.join(", ")}.`,
           code: "APPLICATION_INCOMPLETE",
           missingFields: missingRequired,
+        });
+      }
+
+      const effectiveUploadUrls = {
+        selfiePhotoUrl: effectiveSelfiePhotoUrl,
+        validIDFrontUrl: effectiveValidIDFrontUrl,
+        validIDBackUrl: effectiveValidIDBackUrl,
+        nbiClearanceUrl: effectiveNbiUrl,
+        companyIDUrl: effectiveCompanyUrl,
+      };
+      const invalidUploadUrls = APPLICANT_UPLOAD_URL_FIELDS
+        .map(({ key, label }) => ({ key, label, url: effectiveUploadUrls[key] }))
+        .filter(({ url }) => hasVal(url) && !isValidApplicantUploadUrl(url));
+
+      if (invalidUploadUrls.length > 0) {
+        return res.status(422).json({
+          error:
+            "Application cannot be submitted because one or more uploaded files are not valid secure cloud links. Please re-upload through the portal.",
+          code: "INVALID_DOCUMENT_URLS",
+          documentIssues: invalidUploadUrls.map(({ key, label }) => ({
+            key,
+            label,
+            message: "Please re-upload this file through the portal.",
+          })),
         });
       }
 

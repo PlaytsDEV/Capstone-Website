@@ -25,6 +25,7 @@ export const ALLOWED_RESERVATION_STATUS_TRANSITIONS = Object.freeze({
     "archived",
   ],
   viewing_preference_selected: [
+    "visit_pending",
     "pending_application_review",
     "cancelled",
     "archived",
@@ -71,7 +72,7 @@ export const RESERVATION_STATUS_LABELS = Object.freeze({
   pending: "Room Selected",
   viewing_preference_selected: "Viewing Preference Selected",
   visit_pending: "Visit Pending",
-  visit_approved: "Legacy Visit Approved",
+  visit_approved: "Visit Schedule Approved",
   pending_application_review: "Pending Application Review",
   needs_revision: "Needs Revision",
   approved_for_payment: "Approved for Payment",

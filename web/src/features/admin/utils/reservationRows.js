@@ -17,6 +17,11 @@ export const IN_PROGRESS_STATUSES = [
 
 export { RESERVATION_STAGE_MAP };
 
+const TERMINAL_VISIT_STATUSES = new Set([
+ "visit_completed",
+ "allowed_without_visit",
+]);
+
 export function getBranchLabel(branch) {
  return BRANCH_DISPLAY_NAMES[branch] || branch || "Unknown";
 }
@@ -105,6 +110,7 @@ export function mapVisitScheduleRows(rawReservations = []) {
  reservation.visitDate &&
  !reservation.scheduleRejected &&
  !reservation.visitApproved &&
+ !TERMINAL_VISIT_STATUSES.has(reservation.visitStatus) &&
  reservation.status !== "cancelled";
 
  if (reservation.visitHistory && reservation.visitHistory.length > 0) {
@@ -124,6 +130,10 @@ export function mapVisitScheduleRows(rawReservations = []) {
  ? "Rejected"
  : historyEntry.status === "no_show"
  ? "No-Show"
+ : historyEntry.status === "rescheduled"
+ ? "Rescheduled"
+ : historyEntry.status === "allowed_without_visit"
+ ? "Allowed Without Visit"
  : historyEntry.status === "cancelled" || historyEntry.status === "visit_cancelled"
  ? "Cancelled"
  : null;

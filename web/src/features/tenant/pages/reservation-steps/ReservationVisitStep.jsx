@@ -19,6 +19,15 @@ import { useFirebaseAuth } from "../../../../shared/hooks/FirebaseAuthContext";
 import { getRemoteViewingImages } from "../check-availability/checkAvailabilityConstants";
 import { APP_LOCALE } from "../../../../shared/utils/dateFormat";
 import { getPersistedPhysicalVisitState } from "../../utils/reservationVisitState";
+import {
+  canProceedToApplicationAfterVisit,
+  getPhysicalVisitApplicantState,
+} from "../../utils/physicalVisitFlow";
+import {
+  canFreelyEditViewingPreference,
+  getVisitScheduleSubmitLabel,
+  getVisitSummaryUiState,
+} from "../../utils/reservationVisitUiState";
 
 const TIME_SLOTS = [
   { label: "08:00 AM", available: true, capacity: 5, remaining: 5 },
@@ -173,7 +182,7 @@ const ReservationVisitStep = ({
   const { user: firebaseUser, loading: authLoading } = useFirebaseAuth();
   const [isSaving, setIsSaving] = useState(false);
   const [previewImageIndex, setPreviewImageIndex] = useState(null);
-  const [isEditingPhysicalVisit, setIsEditingPhysicalVisit] = useState(() => Boolean(forceEditMode));
+  const [isEditingPhysicalVisit, setIsEditingPhysicalVisit] = useState(false);
 
   const selectedVisit = viewingType || "physical_visit";
   const room = reservationData?.room || {};
@@ -214,6 +223,29 @@ const ReservationVisitStep = ({
     selectedVisit,
     scheduleRejected,
   );
+  const canEditViewingPreference = canFreelyEditViewingPreference({
+    selectedVisit,
+    hasSavedPhysicalVisit,
+  });
+  const visitGateReservation = {
+    ...(reservationData || {}),
+    viewingPreference: selectedVisit,
+    viewingType: selectedVisit,
+    visitDate: reservationData?.visitDate || visitDate,
+    visitTime: reservationData?.visitTime || visitTime,
+    visitStatus: reservationData?.visitStatus,
+    scheduleApproved: reservationData?.scheduleApproved,
+    scheduleRejected: reservationData?.scheduleRejected || scheduleRejected,
+    visitApproved: reservationData?.visitApproved,
+  };
+  const physicalVisitState = getPhysicalVisitApplicantState(visitGateReservation);
+  const canProceedFromVisitSummary =
+    selectedVisit !== "physical_visit" ||
+    canProceedToApplicationAfterVisit(visitGateReservation);
+  const visitSummaryUi = getVisitSummaryUiState({
+    selectedVisit,
+    reservation: visitGateReservation,
+  });
   const showPhysicalVisitSummary =
     !readOnly && hasSavedPhysicalVisit && !isEditingPhysicalVisit;
   const shouldLoadAvailability =
@@ -223,6 +255,15 @@ const ReservationVisitStep = ({
     Boolean(branch) &&
     !authLoading &&
     Boolean(firebaseUser);
+
+  useEffect(() => {
+    if (forceEditMode && canEditViewingPreference) {
+      setIsEditingPhysicalVisit(true);
+    }
+    if (!canEditViewingPreference) {
+      setIsEditingPhysicalVisit(false);
+    }
+  }, [canEditViewingPreference, forceEditMode]);
 
   const availabilityParams = useMemo(
     () => ({
@@ -361,6 +402,25 @@ const ReservationVisitStep = ({
           {selectedVisit === "physical_visit" && (
             <>
               <div className="rf-receipt-row">
+                <span className="rf-receipt-row__label">Room</span>
+                <span className="rf-receipt-row__value">{room.name || room.roomNumber || "Room"}</span>
+              </div>
+              <div className="rf-receipt-row">
+                <span className="rf-receipt-row__label">Branch</span>
+                <span className="rf-receipt-row__value">
+                  {room.branch ? toTitleCase(room.branch) : "N/A"}
+                </span>
+              </div>
+              {reservationData?.selectedBed && (
+                <div className="rf-receipt-row">
+                  <span className="rf-receipt-row__label">Bed</span>
+                  <span className="rf-receipt-row__value">
+                    {reservationData.selectedBed.position || "Bed"}
+                    {reservationData.selectedBed.id ? ` (${reservationData.selectedBed.id})` : ""}
+                  </span>
+                </div>
+              )}
+              <div className="rf-receipt-row">
                 <span className="rf-receipt-row__label">Preferred Visit Date</span>
                 <span className="rf-receipt-row__value">{fmtDateFull(visitDate)}</span>
               </div>
@@ -374,6 +434,12 @@ const ReservationVisitStep = ({
                   <span className="rf-receipt-row__code">{visitCode}</span>
                 </div>
               )}
+              <div className="rf-receipt-row">
+                <span className="rf-receipt-row__label">Status</span>
+                <span className="rf-receipt-row__value">
+                  {physicalVisitState?.title || "Physical Visit Scheduled"}
+                </span>
+              </div>
             </>
           )}
           {selectedVisit === "remote_2d_viewing" && (
@@ -402,32 +468,75 @@ const ReservationVisitStep = ({
           )}
         </div>
 
+        {withActions && selectedVisit === "physical_visit" && !canProceedFromVisitSummary && (
+          <div
+            className="rf-rejection-banner"
+            style={{
+              marginTop: 16,
+              background: "rgba(37, 99, 235, 0.06)",
+              border: "1px solid rgba(37, 99, 235, 0.18)",
+            }}
+          >
+            <Clock size={18} color="#1D4ED8" style={{ flexShrink: 0, marginTop: 2 }} />
+            <div>
+              <div className="rf-rejection-banner__title" style={{ color: "#1D4ED8" }}>
+                {physicalVisitState?.title || "Physical Visit Pending"}
+              </div>
+              <div className="rf-rejection-banner__hint" style={{ color: "#3B82F6" }}>
+                {visitSummaryUi.lockedMessage}
+              </div>
+            </div>
+          </div>
+        )}
+
         {withActions && (
           <div className="stage-buttons">
-            <button type="button" className="btn btn-secondary" onClick={onPrev}>
-              Back
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => setIsEditingPhysicalVisit(true)}
-            >
-              Change Viewing Preference
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => onReturnToDashboard?.()}
-            >
-              Return to Dashboard
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => onNext?.()}
-            >
-              Proceed to Application
-            </button>
+            {visitSummaryUi.showBack && (
+              <button type="button" className="btn btn-secondary" onClick={onPrev}>
+                Back
+              </button>
+            )}
+            {visitSummaryUi.showChangeViewingPreference && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setIsEditingPhysicalVisit(true)}
+              >
+                Change Viewing Preference
+              </button>
+            )}
+            {visitSummaryUi.showReturnToDashboard && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => onReturnToDashboard?.()}
+              >
+                Return to Dashboard
+              </button>
+            )}
+            {visitSummaryUi.showRequestReschedule && (
+              <button type="button" className="btn btn-secondary" disabled>
+                Request Reschedule
+              </button>
+            )}
+            {visitSummaryUi.canProceedToApplication ? (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => onNext?.()}
+              >
+                {visitSummaryUi.applicationCtaLabel}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled
+                title="Available after admin completes or waives the physical visit."
+              >
+                {visitSummaryUi.applicationCtaLabel}
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -852,11 +961,7 @@ const ReservationVisitStep = ({
             >
               {isSaving
                 ? "Saving..."
-                : selectedVisit === "physical_visit"
-                  ? "Save Visit Schedule"
-                  : selectedVisit === "urgent_move_in_review"
-                    ? "Save and Return to Dashboard"
-                    : "Save and Return to Dashboard"}
+                : getVisitScheduleSubmitLabel(selectedVisit)}
             </button>
           </div>
         </>

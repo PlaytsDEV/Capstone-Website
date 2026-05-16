@@ -36,9 +36,11 @@ import {
   validatePHPhoneOrLandline,
 } from "../utils/reservationValidation";
 import {
+  PHYSICAL_VISIT_APPLICATION_LOCKED_MESSAGE,
   canProceedToApplicationAfterVisit,
   getReservationViewingPreference,
   isPhysicalVisitApplicationLocked,
+  isPhysicalVisitApplicationStageRequestBlocked,
 } from "../utils/physicalVisitFlow";
 
 // Returns a sessionStorage key scoped to the Firebase UID when known,
@@ -154,7 +156,7 @@ const resolveTargetStage = (status, viewingPreference, applicationUnlockedByVisi
     pending: 1,
     viewing_preference_selected:
       viewingPreference === "physical_visit" && !applicationUnlockedByVisit ? 2 : 3,
-    visit_pending: 2,
+    visit_pending: applicationUnlockedByVisit ? 3 : 2,
     visit_approved: applicationUnlockedByVisit ? 3 : 2,
     pending_application_review: 3,
     needs_revision: 3,
@@ -386,6 +388,35 @@ export default function useReservationFlow() {
     [visitGateReservation],
   );
 
+  const returnToDashboardForPhysicalVisitGate = useCallback(() => {
+    showNotification(PHYSICAL_VISIT_APPLICATION_LOCKED_MESSAGE, "info", 5000);
+    appNavigate("/applicant/profile", {
+      state: { tab: "dashboard" },
+      flash: {
+        type: "info",
+        message: PHYSICAL_VISIT_APPLICATION_LOCKED_MESSAGE,
+      },
+    });
+  }, [appNavigate]);
+
+  useEffect(() => {
+    if (
+      (reservationId || reservationData?._id) &&
+      currentStage === 3 &&
+      physicalVisitApplicationLocked &&
+      !applicationSubmitted
+    ) {
+      returnToDashboardForPhysicalVisitGate();
+    }
+  }, [
+    applicationSubmitted,
+    currentStage,
+    physicalVisitApplicationLocked,
+    reservationData?._id,
+    reservationId,
+    returnToDashboardForPhysicalVisitGate,
+  ]);
+
   // ΓöÇΓöÇ Warn before leaving mid-flow (skip if intentional navigation) ΓöÇΓöÇ
   useEffect(() => {
     const handleBeforeUnload = (e) => {
@@ -423,12 +454,33 @@ export default function useReservationFlow() {
     if (stageId === 1) return visitCompleted;
     if (stageId === 2)
       return applicationSubmitted && !needsRevision && !scheduleRejected;
-    if (stageId === 3)
-      // Lock only when the application is officially in a non-editable state
-      // (submitted for review, approved, etc.).  A pending physical visit no
-      // longer locks the form — the applicant can fill it in advance; the
-      // backend still validates visit completion before accepting submitApplication.
-      return applicationSubmitted && !editingApplication && !needsRevision;
+    if (stageId === 3) {
+      const physicalVisitLocked =
+        !applicationUnlockedByVisit &&
+        isPhysicalVisitApplicationLocked({
+          ...reservationData,
+          viewingPreference:
+            reservationData?.viewingPreference || getReservationViewingPreference({
+              ...reservationData,
+              viewingPreference: viewingType,
+              viewingType,
+              visitDate,
+              visitTime,
+            }),
+          viewingType,
+          visitDate,
+          visitTime,
+          visitStatus: reservationData?.visitStatus,
+          status: reservationStatus,
+        });
+
+      // Physical visit applicants cannot open the tenant application until
+      // admin records a completed visit or allows the application without one.
+      return (
+        (physicalVisitLocked && !applicationSubmitted) ||
+        (applicationSubmitted && !editingApplication && !needsRevision)
+      );
+    }
     if (stageId === 4) return paymentSubmitted || paymentApproved;
     return false;
   };
@@ -445,6 +497,10 @@ export default function useReservationFlow() {
 
   const handleStepperClick = (stageId) => {
     if (!isStageClickable(stageId)) return;
+    if (stageId === 3 && physicalVisitApplicationLocked && !applicationSubmitted) {
+      returnToDashboardForPhysicalVisitGate();
+      return;
+    }
     if (isStageLocked(stageId)) return;
     if (stageId === 1 && reservationId) {
       navigate(
@@ -746,7 +802,9 @@ export default function useReservationFlow() {
       leaseDuration: "",
       billingEmail: user?.email || "",
     });
-    if (!continueReservation && stepOverride) setCurrentStage(stepOverride);
+    if (!continueReservation && stepOverride && stepOverride !== 3) {
+      setCurrentStage(stepOverride);
+    }
 
     // Payment redirect is handled by usePaymentRedirect hook
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -760,7 +818,10 @@ export default function useReservationFlow() {
         : all?.reservations || all?.data || [];
       const found = list.find(
         (r) =>
-          r.status !== "cancelled" && r.status !== "archived" && !r.isArchived,
+          r.status !== "cancelled" &&
+          r.status !== "archived" &&
+          r.status !== "rejected" &&
+          !r.isArchived,
       );
       if (!found) {
         appNavigate("/applicant/check-availability", {
@@ -823,6 +884,17 @@ export default function useReservationFlow() {
         const { highest } = computeLockingFlags(active);
         if (active.proofOfPaymentUrl) setPaymentSubmitted(true);
         setHighestStageReached(highest);
+        const activeApplicationStageBlocked =
+          isPhysicalVisitApplicationStageRequestBlocked(stepOverride, {
+            ...active,
+            viewingPreference: getReservationViewingPreference(active),
+          });
+        if (activeApplicationStageBlocked) {
+          setCurrentStage(2);
+          showNotification(PHYSICAL_VISIT_APPLICATION_LOCKED_MESSAGE, "info", 5000);
+        } else if (stepOverride && stepOverride <= highest) {
+          setCurrentStage(stepOverride);
+        }
       }
     } catch (err) {
       console.error("Failed to load reservation:", err);
@@ -939,6 +1011,15 @@ export default function useReservationFlow() {
       // Status-driven stage calculation
       const reservationStatus = normalizeReservationStatus(reservation.status);
       let targetStage = resolveTargetStage(reservationStatus, getReservationViewingPreference(reservation), applicationUnlockedByVisit);
+      const applicationStageBlocked =
+        isPhysicalVisitApplicationStageRequestBlocked(stepOverride, {
+          ...reservation,
+          status: reservationStatus,
+          viewingPreference: getReservationViewingPreference(reservation),
+        });
+      if (applicationStageBlocked) {
+        targetStage = Math.min(targetStage || 2, 2);
+      }
 
       // visit_pending: tenant must wait ΓÇö redirect to profile (unless rejected)
       if (false && reservationStatus === "visit_pending" && !reservation.scheduleRejected) {
@@ -1054,16 +1135,20 @@ export default function useReservationFlow() {
           return; // ΓåÉ prevent double-toast: skip the generic notification below
         }
       } else {
-        if (stepOverride && stepOverride <= highest)
+        if (applicationStageBlocked)
+          setCurrentStage(targetStage || 2);
+        else if (stepOverride && stepOverride <= highest)
           setCurrentStage(stepOverride);
         else setCurrentStage(targetStage);
       }
       showNotification(
-        stepOverride
+        applicationStageBlocked
+          ? PHYSICAL_VISIT_APPLICATION_LOCKED_MESSAGE
+          : stepOverride
           ? "Editing your application. Make your changes and save."
           : "Reservation data loaded. Continue where you left off!",
-        "success",
-        3000,
+        applicationStageBlocked ? "info" : "success",
+        applicationStageBlocked ? 5000 : 3000,
       );
     } catch (err) {
       console.error("Γ¥î [LOAD_RESERVATION] Failed to load reservation id:", resId, "| status:", err?.response?.status, "| message:", err?.message, err);
@@ -1701,45 +1786,18 @@ export default function useReservationFlow() {
         setShowStageConfirm(true);
         return;
       } else if (currentStage === 2) {
-        // Advance from the viewing-preference summary to the application form.
-        // For physical-visit reservations the visit is still pending, but tenants
-        // are allowed to fill in the application as a draft while they wait.
+        if (physicalVisitApplicationLocked && !applicationSubmitted) {
+          setHighestStageReached((prev) => Math.max(prev, 2));
+          returnToDashboardForPhysicalVisitGate();
+          return;
+        }
+
         setHighestStageReached((prev) => Math.max(prev, 3));
         setCurrentStage(3);
         return;
       } else if (currentStage === 3) {
-        // When the physical visit hasn't been confirmed yet, save progress as a
-        // draft and stay on step 3.  Full submission is only allowed once the
-        // visit is marked completed/approved by admin.
-        const visitStillPending =
-          physicalVisitApplicationLocked && !applicationSubmitted;
-
-        if (visitStillPending) {
-          const selfiePhotoUrl = await uploadIfFile(selfiePhoto);
-          const validIDFrontUrl = await uploadIfFile(validIDFront);
-          const validIDBackUrl = await uploadIfFile(validIDBack);
-          const nbiClearanceUrl = await uploadIfFile(nbiClearance);
-          const companyIDUrl = await uploadIfFile(companyID);
-          await updateReservationDraft({
-            firstName, lastName, middleName, nickname, mobileNumber, birthday,
-            maritalStatus, nationality, educationLevel,
-            addressUnitHouseNo, addressStreet, addressRegion,
-            addressBarangay, addressCity, addressProvince,
-            emergencyContactName, emergencyRelationship, emergencyContactNumber,
-            healthConcerns, employerSchool, employerAddress, employerContact,
-            startDate, occupation, previousEmployment, roomType, preferredRoomNumber,
-            referralSource, referrerName, estimatedMoveInTime, workSchedule,
-            workScheduleOther, targetMoveInDate, leaseDuration,
-            agreedToPrivacy, agreedToCertification,
-            selfiePhotoUrl, validIDFrontUrl, validIDBackUrl,
-            nbiClearanceUrl, nbiReason, personalNotes,
-            companyIDUrl, companyIDReason, validIDType, idType: validIDType,
-          });
-          showNotification(
-            "Your application details have been saved. You can submit once your visit is confirmed by admin.",
-            "success",
-            5000,
-          );
+        if (physicalVisitApplicationLocked && !applicationSubmitted) {
+          returnToDashboardForPhysicalVisitGate();
           return;
         }
 

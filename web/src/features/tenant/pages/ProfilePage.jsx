@@ -230,7 +230,7 @@ const ProfilePage = () => {
  const activeReservation = useMemo(() => {
  const activeOnes = reservations.filter((reservation) => {
  const status = reservation.reservationStatus || reservation.status;
- return !hasReservationStatus(status, "moveOut", "cancelled");
+  return !hasReservationStatus(status, "moveOut", "cancelled", "rejected");
  });
 
  return activeOnes[0] || null;
@@ -240,7 +240,7 @@ const ProfilePage = () => {
  () =>
  reservations.filter((reservation) => {
  const status = reservation.reservationStatus || reservation.status;
- return !hasReservationStatus(status, "moveOut", "cancelled");
+  return !hasReservationStatus(status, "moveOut", "cancelled", "rejected");
  }),
  [reservations],
  );

@@ -58,7 +58,7 @@ export function isValidDownloadUrl(url) {
   if (!url || typeof url !== "string" || !url.trim()) return false;
   const lower = url.toLowerCase().trim();
   if (BLOCKED_URL_PREFIXES.some((p) => lower.startsWith(p))) return false;
-  return lower.startsWith("https://") || lower.startsWith("http://");
+  return lower.startsWith("https://");
 }
 
 /**

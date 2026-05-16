@@ -296,6 +296,7 @@ const reservationSchema = new mongoose.Schema(
         "visit_completed",
         "no_show",
         "rescheduled",
+        "cancelled",
         "visit_cancelled",
         "allowed_without_visit",
         null,

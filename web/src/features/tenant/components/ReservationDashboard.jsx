@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import {
  canReservationAccessPayment,
+ getReservationStatusAppearance,
  hasReservationStatus,
 } from "../../../shared/utils/lifecycleNaming";
 import {
@@ -43,6 +44,14 @@ const getViewingPreferenceLabel = (reservation) => {
  }
 };
 
+const formatSelectedBed = (selectedBed) => {
+ if (!selectedBed) return "Not selected";
+ const position = selectedBed.position
+  ? `${String(selectedBed.position).charAt(0).toUpperCase()}${String(selectedBed.position).slice(1)} bed`
+  : "Bed";
+ return `${position}${selectedBed.id ? ` (${selectedBed.id})` : ""}`;
+};
+
 const hasViewingPreference = (reservation) =>
  Boolean(
  reservation?.viewingPreference ||
@@ -54,12 +63,9 @@ const hasViewingPreference = (reservation) =>
  );
 
 const hasSubmittedApplication = (reservation) =>
- Boolean(
- reservation?.applicationSubmittedAt ||
-  (reservation?.agreedToCertification &&
-   reservation?.firstName &&
-   reservation?.lastName) ||
-  hasReservationStatus(
+  Boolean(
+  reservation?.applicationSubmittedAt ||
+   hasReservationStatus(
    getReservationStatus(reservation),
    "pending_application_review",
    "needs_revision",
@@ -536,10 +542,18 @@ export default function ReservationDashboard({
  const roomName = room.name || "Room";
  const branch = room.branch || "Lilycrest";
  const code = reservation.reservationCode || "—";
- const physicalVisitState = getPhysicalVisitApplicantState(reservation);
- const visitStatusKey = getReservationVisitStatus(reservation);
- const isConfirmed =
- hasReservationStatus(getReservationStatus(reservation), "reserved", "moveIn", "moveOut");
+  const physicalVisitState = getPhysicalVisitApplicantState(reservation);
+  const visitStatusKey = getReservationVisitStatus(reservation);
+  const reservationStatusAppearance = getReservationStatusAppearance(
+  getReservationStatus(reservation),
+  );
+  const viewingPreferenceLabel = getViewingPreferenceLabel(reservation);
+  const canOpenApplicationFromDashboard =
+  !isPhysicalVisitPreference(reservation) ||
+  Boolean(physicalVisitState?.canFillApplication) ||
+  hasSubmittedApplication(reservation);
+  const isConfirmed =
+  hasReservationStatus(getReservationStatus(reservation), "reserved", "moveIn", "moveOut");
 
  return (
  <div style={styles.card}>
@@ -574,7 +588,79 @@ export default function ReservationDashboard({
  </div>
 
  {/* ── Viewing Preference Receipt ───────────────────────────────────── */}
- {feedback && (
+  {hasViewingPreference(reservation) && (
+  <div style={styles.receiptCard}>
+  <div style={styles.receiptCardHeader}>
+  <div style={styles.receiptCardHeaderLeft}>
+  <span style={styles.receiptCardTitle}>Reservation Progress Summary</span>
+  <span
+  style={{
+  ...styles.receiptStatusPill,
+  background: reservationStatusAppearance.bg,
+  color: reservationStatusAppearance.color,
+  }}
+  >
+  {reservationStatusAppearance.label}
+  </span>
+  </div>
+  </div>
+  <div style={styles.receiptRows}>
+  <div style={styles.receiptRow}>
+  <span style={styles.receiptRowLabel}>Room</span>
+  <span style={styles.receiptRowValue}>{roomName}</span>
+  </div>
+  <div style={styles.receiptRow}>
+  <span style={styles.receiptRowLabel}>Branch</span>
+  <span style={styles.receiptRowValue}>{branch}</span>
+  </div>
+  <div style={styles.receiptRow}>
+  <span style={styles.receiptRowLabel}>Bed</span>
+  <span style={styles.receiptRowValue}>{formatSelectedBed(reservation.selectedBed)}</span>
+  </div>
+  <div style={styles.receiptRow}>
+  <span style={styles.receiptRowLabel}>Viewing Preference</span>
+  <span style={styles.receiptRowValue}>{viewingPreferenceLabel}</span>
+  </div>
+  {isPhysicalVisitPreference(reservation) && (
+  <div style={styles.receiptRow}>
+  <span style={styles.receiptRowLabel}>Visit Status</span>
+  <span style={styles.receiptRowValue}>
+  {physicalVisitState?.title || visitStatusKey || "Physical Visit Scheduled"}
+  </span>
+  </div>
+  )}
+  <div style={styles.receiptRow}>
+  <span style={styles.receiptRowLabel}>Next Action</span>
+  <span style={styles.receiptRowValue}>{action.title}</span>
+  </div>
+  </div>
+  <div style={styles.receiptNote}>{action.description}</div>
+  {!hasSubmittedApplication(reservation) && (
+  <div style={styles.receiptActions}>
+  {canOpenApplicationFromDashboard ? (
+  <button
+  type="button"
+  onClick={() => navigate("/applicant/reservation?step=3")}
+  style={styles.receiptPrimaryBtn}
+  >
+  Fill Application
+  </button>
+  ) : (
+  <button
+  type="button"
+  disabled
+  title="Available after admin completes or waives the physical visit."
+  style={{ ...styles.receiptSecondaryBtn, opacity: 0.65, cursor: "not-allowed" }}
+  >
+  Application Locked
+  </button>
+  )}
+  </div>
+  )}
+  </div>
+  )}
+
+  {feedback && (
  <div style={styles.receiptCard}>
  <div style={styles.receiptCardHeader}>
  <div style={styles.receiptCardHeaderLeft}>
@@ -657,7 +743,7 @@ export default function ReservationDashboard({
  {feedback.viewingPreference === "physical_visit" ? (
  <button
  type="button"
- onClick={() => navigate("/applicant/reservation?step=2&edit=1")}
+ onClick={() => navigate("/applicant/reservation?step=2")}
  style={styles.receiptPrimaryBtn}
  >
  Review Visit Schedule
@@ -671,6 +757,7 @@ export default function ReservationDashboard({
  Complete Application
  </button>
  )}
+ {feedback.viewingPreference !== "physical_visit" && (
  <button
  type="button"
  onClick={() => navigate("/applicant/reservation?step=2&edit=1")}
@@ -678,6 +765,7 @@ export default function ReservationDashboard({
  >
  Change Viewing Preference
  </button>
+ )}
  </div>
  </div>
  )}
