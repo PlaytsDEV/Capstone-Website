@@ -14,7 +14,29 @@ import {
 } from "lucide-react";
 
 const formatCurrency = (amount) =>
-  `PHP ${Number(amount || 0).toLocaleString("en-PH")}`;
+  `PHP ${Number.isFinite(Number(amount)) ? Number(amount).toLocaleString("en-PH") : "0"}`;
+
+const toDisplayString = (value, fallback = "") => {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value === "object") {
+    return toDisplayString(
+      value.displayName ??
+        value.name ??
+        value.label ??
+        value.title ??
+        value.roomNumber ??
+        value.slug ??
+        value.key ??
+        value.code ??
+        value.value ??
+        value.id,
+      fallback,
+    );
+  }
+  return fallback;
+};
 
 /**
  * Step 4 - Reservation Fee Payment
@@ -34,9 +56,15 @@ const ReservationPaymentStep = ({
   setAgreedToFeePolicy = () => {},
 }) => {
   const room = reservationData?.room || {};
-  const roomName = room.name || room.roomNumber || room.title || room.id || "N/A";
-  const reservationFeeAmount = Number(reservationData?.reservationFeeAmount || 2000);
-  const monthlyRent = Number(room.price || room.monthlyRent || 0);
+  const roomName = toDisplayString(room.name || room.roomNumber || room.title || room.id, "N/A");
+  const reservationFeeAmount = Number.isFinite(Number(reservationData?.reservationFeeAmount))
+    ? Number(reservationData.reservationFeeAmount)
+    : 2000;
+  const monthlyRent = Number.isFinite(Number(room.price || room.monthlyRent))
+    ? Number(room.price || room.monthlyRent)
+    : 0;
+  const selectedBedPosition = toDisplayString(reservationData?.selectedBed?.position, "Bed");
+  const selectedBedId = toDisplayString(reservationData?.selectedBed?.id);
   const canPay = agreedToFeePolicy && !isLoading && !payingOnline;
   const payButtonLabel = payingOnline
     ? "Redirecting to secure checkout..."
@@ -135,8 +163,8 @@ const ReservationPaymentStep = ({
               <div className="summary-row">
                 <span className="summary-label">Selected Bed</span>
                 <span className="summary-value">
-                  {reservationData.selectedBed.position} (
-                  {reservationData.selectedBed.id})
+                  {selectedBedPosition}
+                  {selectedBedId ? ` (${selectedBedId})` : ""}
                 </span>
               </div>
             )}

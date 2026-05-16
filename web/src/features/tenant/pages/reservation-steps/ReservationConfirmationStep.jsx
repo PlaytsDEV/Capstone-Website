@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from "react";
-import { formatBranch, fmtDate } from "../../../../shared/utils/formatDate";
+import { formatBranch, formatRoomType, fmtDate } from "../../../../shared/utils/formatDate";
 import { formatPaymentMethod } from "../../../../shared/utils/formatPaymentMethod";
 import {
  Home,
@@ -14,6 +14,28 @@ import {
  * Celebration screen with summary, auto-redirect, and clear navigation.
  */
 const REDIRECT_SECONDS = 15;
+
+const toDisplayString = (value, fallback = "") => {
+ if (value === null || value === undefined) return fallback;
+ if (typeof value === "string") return value;
+ if (typeof value === "number" || typeof value === "boolean") return String(value);
+ if (typeof value === "object") {
+ return toDisplayString(
+ value.displayName ??
+ value.name ??
+ value.label ??
+ value.title ??
+ value.roomNumber ??
+ value.slug ??
+ value.key ??
+ value.code ??
+ value.value ??
+ value.id,
+ fallback,
+ );
+ }
+ return fallback;
+};
 
 const ReservationConfirmationStep = ({
  reservationData,
@@ -97,10 +119,10 @@ const ReservationConfirmationStep = ({
  </div>
  <div class="receipt-section">
  <h3>Room Details</h3>
- <div class="receipt-row"><span class="label">Room</span><span class="value">${reservationData?.room?.roomNumber || reservationData?.room?.name || "N/A"}</span></div>
+ <div class="receipt-row"><span class="label">Room</span><span class="value">${toDisplayString(reservationData?.room?.roomNumber || reservationData?.room?.name || reservationData?.room?.title, "N/A")}</span></div>
  <div class="receipt-row"><span class="label">Branch</span><span class="value">${formatBranch(reservationData?.room?.branch)}</span></div>
- <div class="receipt-row"><span class="label">Type</span><span class="value">${(reservationData?.room?.type || "N/A").charAt(0).toUpperCase() + (reservationData?.room?.type || "").slice(1)}</span></div>
- <div class="receipt-row"><span class="label">Monthly Rate</span><span class="value">₱${(reservationData?.room?.price || 0).toLocaleString()}</span></div>
+ <div class="receipt-row"><span class="label">Type</span><span class="value">${formatRoomType(reservationData?.room?.type)}</span></div>
+ <div class="receipt-row"><span class="label">Monthly Rate</span><span class="value">PHP ${Number(reservationData?.room?.price || 0).toLocaleString("en-PH")}</span></div>
  <div class="receipt-row"><span class="label">Lease Duration</span><span class="value">${leaseDuration || 12} months</span></div>
  </div>
  <div class="receipt-section">
@@ -127,6 +149,7 @@ const ReservationConfirmationStep = ({
  };
 
  const room = reservationData?.room || {};
+ const roomName = toDisplayString(room.roomNumber || room.name || room.title, "N/A");
 
  return (
  <div ref={receiptRef} className="rf-confirmation-wrapper">
@@ -166,7 +189,7 @@ const ReservationConfirmationStep = ({
  </div>
  <div className="rf-summary-label">Room</div>
  <div className="rf-summary-value">
- {room.roomNumber || room.name || room.title || "—"}
+ {roomName}
  </div>
  <div className="rf-summary-meta">{formatBranch(room.branch)}</div>
  </div>

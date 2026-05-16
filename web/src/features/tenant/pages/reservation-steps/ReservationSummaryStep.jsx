@@ -16,17 +16,56 @@ import { formatBranch, formatRoomType } from "../../../../shared/utils/formatDat
 import { getRoomImages as getFallbackRoomImages } from "../check-availability/checkAvailabilityConstants";
 import { ROOM_SELECTION_LOCKED_MESSAGE } from "../../utils/reservationRoomLock";
 
-const formatCurrency = (value) => `₱${Number(value || 0).toLocaleString()}`;
+const toDisplayString = (value, fallback = "") => {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    const text = value.map((item) => toDisplayString(item)).filter(Boolean).join(", ");
+    return text || fallback;
+  }
+  if (typeof value === "object") {
+    return toDisplayString(
+      value.displayName ??
+        value.name ??
+        value.label ??
+        value.title ??
+        value.roomNumber ??
+        value.slug ??
+        value.key ??
+        value.code ??
+        value.value ??
+        value.id,
+      fallback,
+    );
+  }
+  return fallback;
+};
+
+const toFiniteNumber = (value, fallback = 0) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+};
+
+const toTitle = (value, fallback = "") => {
+  const text = toDisplayString(value, fallback).trim();
+  if (!text) return fallback;
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+};
+
+const formatCurrency = (value) => `\u20b1${toFiniteNumber(value).toLocaleString()}`;
 
 const getRoomName = (room) =>
-  room?.name || room?.roomNumber || room?.title || room?.id || "N/A";
+  toDisplayString(room?.name || room?.roomNumber || room?.title || room?.id, "N/A");
 
 const getSelectedBedLabel = (selectedBed) => {
   if (!selectedBed) return "No bed selected";
-  const position = selectedBed.position
-    ? `${selectedBed.position.charAt(0).toUpperCase()}${selectedBed.position.slice(1)} Bed`
+  const positionText = toDisplayString(selectedBed.position);
+  const position = positionText
+    ? `${toTitle(positionText)} Bed`
     : "Selected Bed";
-  return selectedBed.id ? `${position} (${selectedBed.id})` : position;
+  const bedId = toDisplayString(selectedBed.id);
+  return bedId ? `${position} (${bedId})` : position;
 };
 
 const getAvailableSlots = (room) => {
@@ -39,16 +78,18 @@ const getAvailableSlots = (room) => {
     return Math.max(0, capacity - currentOccupancy);
   }
   if (Array.isArray(room?.beds)) {
-    return room.beds.filter((bed) => bed.status === "available").length;
+    return room.beds.filter((bed) => toDisplayString(bed?.status).toLowerCase() === "available").length;
   }
   return null;
 };
 
 const getAvailabilityLabel = (room, selectedBed) => {
-  const matchedBed = selectedBed?.id
-    ? room?.beds?.find((bed) => bed.id === selectedBed.id)
+  const beds = Array.isArray(room?.beds) ? room.beds : [];
+  const selectedBedId = toDisplayString(selectedBed?.id);
+  const matchedBed = selectedBedId
+    ? beds.find((bed) => toDisplayString(bed?.id) === selectedBedId)
     : null;
-  const bedStatus = selectedBed?.status || matchedBed?.status;
+  const bedStatus = toDisplayString(selectedBed?.status || matchedBed?.status).toLowerCase();
 
   if (bedStatus === "locked") return "Temporarily held";
   if (bedStatus === "reserved") return "Reserved";
@@ -67,10 +108,19 @@ const getAvailabilityTone = (label) => {
 };
 
 const getSummaryRoomImages = (room) => {
-  const images = Array.isArray(room?.images) ? room.images.filter(Boolean) : [];
-  if (room?.image) images.unshift(room.image);
+  const images = Array.isArray(room?.images)
+    ? room.images.filter((image) => typeof image === "string" && image.trim())
+    : [];
+  if (typeof room?.image === "string" && room.image.trim()) images.unshift(room.image);
   const fallbackImages = getFallbackRoomImages(room?.type, room?.branch);
   return Array.from(new Set([...images, ...fallbackImages]));
+};
+
+const formatSelectedAppliance = (item) => {
+  if (typeof item === "string") return item;
+  const name = toDisplayString(item?.name, "Appliance");
+  const quantity = toFiniteNumber(item?.quantity, 0);
+  return `${name}${quantity > 0 ? ` x${quantity}` : ""}`;
 };
 
 /**
@@ -86,19 +136,25 @@ const ReservationSummaryStep = ({
   const [viewerOpen, setViewerOpen] = React.useState(false);
   const room = reservationData?.room || {};
   const selectedBed = reservationData?.selectedBed;
-  const applianceFees = Number(reservationData?.applianceFees || 0);
-  const monthlyRent = Number(room.price || room.monthlyPrice || 0);
+  const applianceFees = toFiniteNumber(reservationData?.applianceFees, 0);
+  const monthlyRent = toFiniteNumber(room.price || room.monthlyPrice, 0);
   const estimatedMonthlyTotal = monthlyRent + applianceFees;
-  const reservationFeeAmount = Number(reservationData?.reservationFeeAmount || 2000);
+  const reservationFeeAmount = toFiniteNumber(reservationData?.reservationFeeAmount, 2000);
   const availableSlots = getAvailableSlots(room);
   const availabilityLabel = getAvailabilityLabel(room, selectedBed);
   const availabilityTone = getAvailabilityTone(availabilityLabel);
-  const amenities = Array.isArray(room.amenities) ? room.amenities.filter(Boolean) : [];
+  const amenities = Array.isArray(room.amenities)
+    ? room.amenities.map((amenity) => toDisplayString(amenity)).filter(Boolean)
+    : [];
   const roomImages = getSummaryRoomImages(room);
   const selectedAppliances = Array.isArray(reservationData?.selectedAppliances)
     ? reservationData.selectedAppliances
     : [];
   const activePhoto = roomImages[activePhotoIndex] || roomImages[0];
+  const floorLabel = toDisplayString(room.floor);
+  const capacityLabel = Number.isFinite(Number(room.capacity))
+    ? Number(room.capacity)
+    : toDisplayString(room.capacity, "?");
 
   const showPreviousPhoto = () => {
     setActivePhotoIndex((current) =>
@@ -227,7 +283,7 @@ const ReservationSummaryStep = ({
             </div>
             <div className="summary-row">
               <span className="summary-label">Floor</span>
-              <span className="summary-value">{room.floor ? `Floor ${room.floor}` : "To be confirmed"}</span>
+              <span className="summary-value">{floorLabel ? `Floor ${floorLabel}` : "To be confirmed"}</span>
             </div>
             <div className="summary-row">
               <span className="summary-label">Selected Bed</span>
@@ -242,7 +298,7 @@ const ReservationSummaryStep = ({
             <div className="summary-row">
               <span className="summary-label">Available Slots</span>
               <span className="summary-value">
-                {availableSlots === null ? "To be confirmed" : `${availableSlots} of ${room.capacity || "?"}`}
+                {availableSlots === null ? "To be confirmed" : `${availableSlots} of ${capacityLabel}`}
               </span>
             </div>
           </div>
@@ -264,7 +320,7 @@ const ReservationSummaryStep = ({
                 <span className="summary-label">Selected Appliances</span>
                 <span className="summary-value">
                   {selectedAppliances
-                    .map((item) => `${item.name}${item.quantity ? ` x${item.quantity}` : ""}`)
+                    .map(formatSelectedAppliance)
                     .join(", ")}
                 </span>
               </div>

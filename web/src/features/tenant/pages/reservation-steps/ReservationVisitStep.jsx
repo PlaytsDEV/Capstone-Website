@@ -75,6 +75,32 @@ const OPTION_ICONS = {
 const REMOTE_ACKNOWLEDGEMENT =
   "I have reviewed the available room photos and understand that this is a photo-based viewing option, not a 3D or 360-degree tour.";
 
+function toDisplayString(value, fallback = "") {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    const text = value.map((item) => toDisplayString(item)).filter(Boolean).join(", ");
+    return text || fallback;
+  }
+  if (typeof value === "object") {
+    return toDisplayString(
+      value.displayName ??
+        value.name ??
+        value.label ??
+        value.title ??
+        value.roomNumber ??
+        value.slug ??
+        value.key ??
+        value.code ??
+        value.value ??
+        value.id,
+      fallback,
+    );
+  }
+  return fallback;
+}
+
 function toISODate(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -222,13 +248,16 @@ function groupSlotsByPeriod(slots = []) {
 
 function formatMoney(value) {
   const amount = Number(value || 0);
-  return `PHP ${amount.toLocaleString()}/mo`;
+  return `PHP ${Number.isFinite(amount) ? amount.toLocaleString() : "0"}/mo`;
 }
 
 function getSelectedVisitSummary({ visitDate, visitTime, reservationData }) {
   const room = reservationData?.room || {};
-  const roomName = room.roomNumber || room.name || room.title || "Selected room";
-  const branch = room.branch || reservationData?.branch || "Branch";
+  const roomName = toDisplayString(
+    room.roomNumber || room.name || room.title,
+    "Selected room",
+  );
+  const branch = toDisplayString(room.branch || reservationData?.branch, "Branch");
   const price = formatMoney(room.price);
 
   if (!visitDate) {
@@ -336,17 +365,19 @@ const ReservationVisitStep = ({
     ? Math.max(roomCapacity - currentOccupancy, 0)
     : null;
   const roomDetails = [
-    ["Branch", room.branch ? toTitleCase(room.branch) : "N/A"],
-    ["Floor", room.floor || "N/A"],
-    ["Room Number", room.roomNumber || room.name || "N/A"],
-    ["Room Type", room.type ? toTitleCase(room.type) : "N/A"],
-    ["Capacity", room.capacity ? `${room.capacity} occupants` : "N/A"],
+    ["Branch", room.branch ? toTitleCase(toDisplayString(room.branch)) : "N/A"],
+    ["Floor", toDisplayString(room.floor, "N/A")],
+    ["Room Number", toDisplayString(room.roomNumber || room.name, "N/A")],
+    ["Room Type", room.type ? toTitleCase(toDisplayString(room.type)) : "N/A"],
+    ["Capacity", room.capacity ? `${toDisplayString(room.capacity)} occupants` : "N/A"],
     ["Available Slots", availableSlots == null ? "N/A" : String(availableSlots)],
     [
       "Monthly Rate",
-      room.price ? `PHP ${Number(room.price).toLocaleString()}` : "N/A",
+      room.price && Number.isFinite(Number(room.price))
+        ? `PHP ${Number(room.price).toLocaleString()}`
+        : "N/A",
     ],
-    ["Notes / Reminders", room.description || "None provided"],
+    ["Notes / Reminders", toDisplayString(room.description, "None provided")],
   ];
 
   const branch = normalizeBranchKey(room.branchKey || room.branch || reservationData?.branch);
@@ -580,20 +611,22 @@ const ReservationVisitStep = ({
             <>
               <div className="rf-receipt-row">
                 <span className="rf-receipt-row__label">Room</span>
-                <span className="rf-receipt-row__value">{room.name || room.roomNumber || "Room"}</span>
+                <span className="rf-receipt-row__value">
+                  {toDisplayString(room.name || room.roomNumber, "Room")}
+                </span>
               </div>
               <div className="rf-receipt-row">
                 <span className="rf-receipt-row__label">Branch</span>
                 <span className="rf-receipt-row__value">
-                  {room.branch ? toTitleCase(room.branch) : "N/A"}
+                  {room.branch ? toTitleCase(toDisplayString(room.branch)) : "N/A"}
                 </span>
               </div>
               {reservationData?.selectedBed && (
                 <div className="rf-receipt-row">
                   <span className="rf-receipt-row__label">Bed</span>
                   <span className="rf-receipt-row__value">
-                    {reservationData.selectedBed.position || "Bed"}
-                    {reservationData.selectedBed.id ? ` (${reservationData.selectedBed.id})` : ""}
+                    {toDisplayString(reservationData.selectedBed.position, "Bed")}
+                    {toDisplayString(reservationData.selectedBed.id) ? ` (${toDisplayString(reservationData.selectedBed.id)})` : ""}
                   </span>
                 </div>
               )}
@@ -603,20 +636,22 @@ const ReservationVisitStep = ({
             <>
               <div className="rf-receipt-row">
                 <span className="rf-receipt-row__label">Room</span>
-                <span className="rf-receipt-row__value">{room.name || room.roomNumber || "Room"}</span>
+                <span className="rf-receipt-row__value">
+                  {toDisplayString(room.name || room.roomNumber, "Room")}
+                </span>
               </div>
               <div className="rf-receipt-row">
                 <span className="rf-receipt-row__label">Branch</span>
                 <span className="rf-receipt-row__value">
-                  {room.branch ? toTitleCase(room.branch) : "N/A"}
+                  {room.branch ? toTitleCase(toDisplayString(room.branch)) : "N/A"}
                 </span>
               </div>
               {reservationData?.selectedBed && (
                 <div className="rf-receipt-row">
                   <span className="rf-receipt-row__label">Bed</span>
                   <span className="rf-receipt-row__value">
-                    {reservationData.selectedBed.position || "Bed"}
-                    {reservationData.selectedBed.id ? ` (${reservationData.selectedBed.id})` : ""}
+                    {toDisplayString(reservationData.selectedBed.position, "Bed")}
+                    {toDisplayString(reservationData.selectedBed.id) ? ` (${toDisplayString(reservationData.selectedBed.id)})` : ""}
                   </span>
                 </div>
               )}

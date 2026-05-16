@@ -129,10 +129,58 @@ const ROOM_TYPE_MAP = {
   "quadruple-sharing": "Quadruple Sharing",
 };
 
+const toDisplayString = (value) => {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    return value.map(toDisplayString).filter(Boolean).join(", ");
+  }
+  if (typeof value === "object") {
+    const preferredValue =
+      value.displayName ??
+      value.name ??
+      value.label ??
+      value.title ??
+      value.roomNumber ??
+      value.slug ??
+      value.key ??
+      value.code ??
+      value.value ??
+      value.id ??
+      value.type ??
+      value.branch;
+    return toDisplayString(preferredValue);
+  }
+  return "";
+};
+
+const toLookupKey = (value) => {
+  const lookupValue =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? value.slug ??
+        value.key ??
+        value.code ??
+        value.value ??
+        value.id ??
+        value.name ??
+        value.label ??
+        value.title ??
+        value.type ??
+        value.branch ??
+        value.displayName
+      : value;
+
+  return toDisplayString(lookupValue)
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, "-");
+};
+
 /** Format branch slug → display name */
 export const formatBranch = (branch) =>
-  branch ? BRANCH_MAP[branch] || branch : "Unknown";
+  branch ? BRANCH_MAP[toLookupKey(branch)] || toDisplayString(branch) || "Unknown" : "Unknown";
 
 /** Format room type slug → display name */
 export const formatRoomType = (type) =>
-  type ? ROOM_TYPE_MAP[type] || type : "Unknown";
+  type ? ROOM_TYPE_MAP[toLookupKey(type)] || toDisplayString(type) || "Unknown" : "Unknown";
