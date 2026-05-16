@@ -1,5 +1,5 @@
 import {
-  canProceedToApplicationAfterVisit,
+  canAccessTenantApplication,
   getPhysicalVisitApplicantState,
   getReservationViewingPreference,
   isPhysicalVisitPreference,
@@ -81,7 +81,7 @@ export function getReservationProgress(reservation) {
  const hasPoliciesAccepted = Boolean(reservation.agreedToPrivacy === true);
  const hasVisitRequest = Boolean(viewingPreference);
  const isVisitScheduled = hasPoliciesAccepted && hasVisitRequest;
- const isVisitCompleted = canProceedToApplicationAfterVisit(reservation);
+ const isVisitCompleted = canAccessTenantApplication(reservation);
  const hasApplication = Boolean(
  reservation.applicationSubmittedAt ||
  hasReservationStatus(
@@ -243,9 +243,24 @@ export function getNextAction(activeReservation, reservationProgress) {
  );
  const paymentUnlocked = canReservationAccessPayment(status);
  const physicalVisitState = getPhysicalVisitApplicantState(activeReservation);
+ const canAccessApplication = canAccessTenantApplication(activeReservation);
  const hasApplication = Boolean(
  activeReservation.firstName && activeReservation.lastName,
  );
+
+ if (hasReservationStatus(status, "rejected", "cancelled", "expired", "archived")) {
+ return {
+ title: hasReservationStatus(status, "rejected")
+ ? "Application Rejected"
+ : "Reservation Closed",
+ description:
+ activeReservation.applicationReviewReason ||
+ "This reservation is no longer available for application submission.",
+ buttonText: "View Status",
+ buttonLink: "/applicant/profile",
+ buttonVariant: "outline",
+ };
+ }
 
  if (hasReservationStatus(status, "payment_pending")) {
  return {
@@ -271,7 +286,7 @@ export function getNextAction(activeReservation, reservationProgress) {
 
  if (
  physicalVisitState &&
- !physicalVisitState.canFillApplication &&
+ !canAccessApplication &&
  !hasApplication
  ) {
  return {
@@ -322,7 +337,7 @@ export function getNextAction(activeReservation, reservationProgress) {
  }
  if (
  physicalVisitState &&
- !physicalVisitState.canFillApplication
+ !canAccessApplication
  ) {
  return {
  title: physicalVisitState.title,

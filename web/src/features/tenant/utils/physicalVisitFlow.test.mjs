@@ -2,9 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  canAccessTenantApplication,
   getPhysicalVisitApplicantState,
   isPhysicalVisitApplicationLocked,
   isPhysicalVisitApplicationStageRequestBlocked,
+  isTenantApplicationStageRequestBlocked,
 } from "./physicalVisitFlow.js";
 
 test("scheduled physical visits keep final application submission locked", () => {
@@ -41,27 +43,43 @@ test("direct application stage requests are blocked for scheduled physical visit
 });
 
 test("completed physical visits unlock final application submission", () => {
-  assert.equal(
-    isPhysicalVisitApplicationLocked({
-      status: "visit_approved",
-      viewingPreference: "physical_visit",
-      viewingType: "inperson",
-      visitStatus: "visit_completed",
-      visitApproved: true,
-    }),
-    false,
-  );
+  const reservation = {
+    status: "visit_approved",
+    viewingPreference: "physical_visit",
+    viewingType: "inperson",
+    visitStatus: "visit_completed",
+    visitApproved: true,
+  };
+
+  assert.equal(isPhysicalVisitApplicationLocked(reservation), false);
+  assert.equal(canAccessTenantApplication(reservation), true);
+  assert.equal(isTenantApplicationStageRequestBlocked(3, reservation), false);
 });
 
 test("allowed without visit unlocks physical visit application access", () => {
-  assert.equal(
-    isPhysicalVisitApplicationLocked({
-      status: "visit_pending",
-      viewingPreference: "physical_visit",
-      visitStatus: "allowed_without_visit",
-    }),
-    false,
-  );
+  const reservation = {
+    status: "visit_pending",
+    viewingPreference: "physical_visit",
+    visitStatus: "allowed_without_visit",
+  };
+
+  assert.equal(isPhysicalVisitApplicationLocked(reservation), false);
+  assert.equal(canAccessTenantApplication(reservation), true);
+  assert.equal(isTenantApplicationStageRequestBlocked(3, reservation), false);
+});
+
+test("visitApproved true stays unlocked after refetch even with stale schedule status", () => {
+  const reservation = {
+    status: "visit_approved",
+    viewingPreference: "physical_visit",
+    visitStatus: "schedule_approved",
+    scheduleApproved: true,
+    visitApproved: true,
+  };
+
+  assert.equal(canAccessTenantApplication(reservation), true);
+  assert.equal(isPhysicalVisitApplicationLocked(reservation), false);
+  assert.equal(getPhysicalVisitApplicantState(reservation).canFillApplication, true);
 });
 
 test("no-show and rescheduled physical visits keep application locked", () => {
@@ -87,6 +105,14 @@ test("remote viewing does not use the physical visit submission lock", () => {
     }),
     false,
   );
+  assert.equal(
+    canAccessTenantApplication({
+      status: "viewing_preference_selected",
+      viewingPreference: "remote_2d_viewing",
+      viewingType: "remote_2d",
+    }),
+    true,
+  );
 });
 
 test("urgent no-visit review does not use the physical visit submission lock", () => {
@@ -97,4 +123,25 @@ test("urgent no-visit review does not use the physical visit submission lock", (
     }),
     false,
   );
+  assert.equal(
+    canAccessTenantApplication({
+      status: "viewing_preference_selected",
+      viewingPreference: "urgent_move_in_review",
+    }),
+    true,
+  );
+});
+
+test("terminal reservation states keep application access locked", () => {
+  for (const status of ["rejected", "cancelled", "expired", "archived"]) {
+    const reservation = {
+      status,
+      viewingPreference: "physical_visit",
+      visitStatus: "visit_completed",
+      visitApproved: true,
+    };
+
+    assert.equal(canAccessTenantApplication(reservation), false);
+    assert.equal(isTenantApplicationStageRequestBlocked(3, reservation), true);
+  }
 });

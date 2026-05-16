@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  CONFIRM_VISIT_SCHEDULE_LABEL,
   SAVE_VIEWING_PREFERENCE_LABEL,
   canFreelyEditViewingPreference,
   getVisitScheduleSubmitLabel,
@@ -17,14 +16,14 @@ const physicalReservation = (visitStatus) => ({
   visitTime: "09:00 AM",
 });
 
-test("physical visit submit button says confirm visit schedule", () => {
+test("first-time viewing preference submit button uses the submit label", () => {
   assert.equal(
     getVisitScheduleSubmitLabel("physical_visit"),
-    CONFIRM_VISIT_SCHEDULE_LABEL,
+    SAVE_VIEWING_PREFERENCE_LABEL,
   );
 });
 
-test("remote and urgent preference labels stay unchanged", () => {
+test("remote and urgent first-time preference labels use submit viewing preference", () => {
   for (const selectedVisit of ["remote_2d_viewing", "urgent_move_in_review"]) {
     assert.equal(
       getVisitScheduleSubmitLabel(selectedVisit),
@@ -110,5 +109,22 @@ test("remote and urgent summaries preserve existing proceed and edit behavior", 
     assert.equal(ui.showBack, true);
     assert.equal(ui.showChangeViewingPreference, true);
     assert.equal(ui.applicationCtaLabel, "Proceed to Application");
+  }
+});
+
+test("locked remote and urgent summaries hide editable actions", () => {
+  for (const selectedVisit of ["remote_2d_viewing", "urgent_move_in_review"]) {
+    const ui = getVisitSummaryUiState({
+      selectedVisit,
+      reservation: { viewingPreference: selectedVisit },
+      viewingPreferenceLocked: true,
+    });
+
+    assert.equal(ui.canProceedToApplication, false);
+    assert.equal(ui.showBack, false);
+    assert.equal(ui.showChangeViewingPreference, false);
+    assert.equal(ui.showReturnToDashboard, true);
+    assert.equal(ui.applicationCtaLabel, "View Reservation Status");
+    assert.match(ui.lockedMessage, /already submitted and locked/i);
   }
 });

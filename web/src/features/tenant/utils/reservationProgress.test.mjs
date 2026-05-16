@@ -5,6 +5,10 @@ import {
   getNextAction,
   getReservationProgress,
 } from "./reservationProgress.js";
+import {
+  canAccessTenantApplication,
+  isTenantApplicationStageRequestBlocked,
+} from "./physicalVisitFlow.js";
 
 const baseReservation = {
   _id: "reservation-1",
@@ -137,7 +141,34 @@ test("physical visit completed or waived enables application after refresh", () 
     assert.equal(progress.currentStep, "visit_completed");
     assert.equal(nextAction.step, 3);
     assert.equal(nextAction.title, "Submit Your Application");
+    assert.equal(canAccessTenantApplication(reservation), true);
+    assert.equal(isTenantApplicationStageRequestBlocked(3, reservation), false);
   }
+});
+
+test("stale schedule status with visitApproved still unlocks after refetch", () => {
+  const reservation = {
+    _id: "reservation-refetch-unlock",
+    roomId: { name: "Room 102", branch: "gil-puyat" },
+    roomConfirmed: true,
+    agreedToPrivacy: true,
+    status: "visit_approved",
+    viewingPreference: "physical_visit",
+    visitStatus: "schedule_approved",
+    scheduleApproved: true,
+    visitApproved: true,
+    visitDate: "2026-05-20T00:00:00.000Z",
+    visitTime: "09:00 AM",
+  };
+
+  const progress = getReservationProgress(reservation);
+  const nextAction = getNextAction(reservation, progress);
+
+  assert.equal(canAccessTenantApplication(reservation), true);
+  assert.equal(isTenantApplicationStageRequestBlocked(3, reservation), false);
+  assert.equal(progress.currentStep, "visit_completed");
+  assert.equal(nextAction.step, 3);
+  assert.equal(nextAction.title, "Submit Your Application");
 });
 
 test("remote and urgent preferences remain application-allowed after save", () => {
@@ -159,5 +190,27 @@ test("remote and urgent preferences remain application-allowed after save", () =
     assert.equal(progress.currentStep, "visit_completed");
     assert.equal(nextAction.step, 3);
     assert.equal(nextAction.title, "Submit Your Application");
+    assert.equal(canAccessTenantApplication(reservation), true);
+    assert.equal(isTenantApplicationStageRequestBlocked(3, reservation), false);
+  }
+});
+
+test("rejected, cancelled, and expired reservations do not reopen application access", () => {
+  for (const status of ["rejected", "cancelled", "expired"]) {
+    const reservation = {
+      ...baseReservation,
+      _id: `reservation-${status}`,
+      status,
+      viewingPreference: "physical_visit",
+      visitStatus: "visit_completed",
+      visitApproved: true,
+    };
+
+    const progress = getReservationProgress(reservation);
+    const nextAction = getNextAction(reservation, progress);
+
+    assert.equal(canAccessTenantApplication(reservation), false);
+    assert.equal(isTenantApplicationStageRequestBlocked(3, reservation), true);
+    assert.notEqual(nextAction.step, 3);
   }
 });

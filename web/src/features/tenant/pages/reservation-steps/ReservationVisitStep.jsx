@@ -23,7 +23,7 @@ import { getRemoteViewingImages } from "../check-availability/checkAvailabilityC
 import { APP_LOCALE } from "../../../../shared/utils/dateFormat";
 import { getPersistedPhysicalVisitState } from "../../utils/reservationVisitState";
 import {
-  canProceedToApplicationAfterVisit,
+  canAccessTenantApplication,
   getPhysicalVisitApplicantState,
 } from "../../utils/physicalVisitFlow";
 import {
@@ -31,6 +31,7 @@ import {
   getVisitScheduleSubmitLabel,
   getVisitSummaryUiState,
 } from "../../utils/reservationVisitUiState";
+import { VIEWING_PREFERENCE_LOCKED_MESSAGE } from "../../utils/reservationViewingPreferenceLock";
 
 const TIME_SLOTS = [
   { label: "08:00 AM", available: true, capacity: 5, remaining: 5 },
@@ -290,6 +291,7 @@ const ReservationVisitStep = ({
   onVisitSaved,
   onReturnToDashboard,
   readOnly,
+  viewingPreferenceAccess = {},
   forceEditMode,
   scheduleRejected,
   scheduleRejectionReason,
@@ -304,11 +306,19 @@ const ReservationVisitStep = ({
   const [resolvedVisitCode, setResolvedVisitCode] = useState(visitCode || null);
   const [isSaving, setIsSaving] = useState(false);
   const [dateWindowDays, setDateWindowDays] = useState(14);
-  const scheduleLocked = (readOnly || isSubmitted) && !scheduleRejected;
+  const preferenceReadOnly = Boolean(readOnly || viewingPreferenceAccess.readOnly);
+  const optionSelectionLocked = Boolean(
+    viewingPreferenceAccess.lockOptions || preferenceReadOnly,
+  );
+  const canSubmitViewingPreference = viewingPreferenceAccess.canSubmit !== false;
+  const scheduleLocked = (preferenceReadOnly || isSubmitted) && !scheduleRejected;
   const canEditSchedule = !scheduleLocked;
   const [previewImageIndex, setPreviewImageIndex] = useState(null);
   const [isEditingPhysicalVisit, setIsEditingPhysicalVisit] = useState(false);
-  const selectedVisit = viewingType || "physical_visit";
+  const selectedVisit =
+    (optionSelectionLocked && viewingPreferenceAccess.submittedPreference) ||
+    viewingType ||
+    "physical_visit";
   const room = reservationData?.room || {};
   const uploadedRoomImages = Array.isArray(room.images)
     ? room.images.filter((entry) => typeof entry === "string" && entry.trim())
@@ -350,7 +360,7 @@ const ReservationVisitStep = ({
   const canEditViewingPreference = canFreelyEditViewingPreference({
     selectedVisit,
     hasSavedPhysicalVisit,
-  });
+  }) && !optionSelectionLocked;
   const visitGateReservation = {
     ...(reservationData || {}),
     viewingPreference: selectedVisit,
@@ -365,16 +375,17 @@ const ReservationVisitStep = ({
   const physicalVisitState = getPhysicalVisitApplicantState(visitGateReservation);
   const canProceedFromVisitSummary =
     selectedVisit !== "physical_visit" ||
-    canProceedToApplicationAfterVisit(visitGateReservation);
+    canAccessTenantApplication(visitGateReservation);
   const visitSummaryUi = getVisitSummaryUiState({
     selectedVisit,
     reservation: visitGateReservation,
+    viewingPreferenceLocked: viewingPreferenceAccess.readOnly,
   });
   const showPhysicalVisitSummary =
-    !readOnly && hasSavedPhysicalVisit && !isEditingPhysicalVisit;
+    !preferenceReadOnly && hasSavedPhysicalVisit && !isEditingPhysicalVisit;
   const shouldLoadAvailability =
     selectedVisit === "physical_visit" &&
-    !readOnly &&
+    !preferenceReadOnly &&
     !showPhysicalVisitSummary &&
     Boolean(branch) &&
     !authLoading &&
@@ -475,6 +486,12 @@ const ReservationVisitStep = ({
   };
 
   const handleContinue = async () => {
+    if (isSaving) return;
+    if (!canSubmitViewingPreference) {
+      showNotification(VIEWING_PREFERENCE_LOCKED_MESSAGE, "info", 5000);
+      return;
+    }
+
     if (selectedVisit === "physical_visit") {
       if (!visitDate) {
         showNotification("Please select a preferred visit date.", "error", 3000);
@@ -559,6 +576,29 @@ const ReservationVisitStep = ({
             <span className="rf-receipt-row__label">Selected Option</span>
             <span className="rf-receipt-row__value">{option?.title || "Not selected"}</span>
           </div>
+          {selectedVisit !== "physical_visit" && (
+            <>
+              <div className="rf-receipt-row">
+                <span className="rf-receipt-row__label">Room</span>
+                <span className="rf-receipt-row__value">{room.name || room.roomNumber || "Room"}</span>
+              </div>
+              <div className="rf-receipt-row">
+                <span className="rf-receipt-row__label">Branch</span>
+                <span className="rf-receipt-row__value">
+                  {room.branch ? toTitleCase(room.branch) : "N/A"}
+                </span>
+              </div>
+              {reservationData?.selectedBed && (
+                <div className="rf-receipt-row">
+                  <span className="rf-receipt-row__label">Bed</span>
+                  <span className="rf-receipt-row__value">
+                    {reservationData.selectedBed.position || "Bed"}
+                    {reservationData.selectedBed.id ? ` (${reservationData.selectedBed.id})` : ""}
+                  </span>
+                </div>
+              )}
+            </>
+          )}
           {selectedVisit === "physical_visit" && (
             <>
               <div className="rf-receipt-row">
@@ -728,15 +768,13 @@ const ReservationVisitStep = ({
         </div>
       )}
 
-      {readOnly ? (
+      {preferenceReadOnly ? (
         <>
           <div className="main-header">
             <div className="main-header-badge"><span>Step 2 · Viewing Preference</span></div>
-            <h2 className="main-header-title">Choose Your Viewing Preference</h2>
+            <h2 className="main-header-title">Viewing Preference Summary</h2>
             <p className="main-header-subtitle">
-              Select how you would like to view the room before completing your tenant
-              application. Payment will only be available after your application and
-              required documents are approved.
+              Your submitted viewing preference is shown below.
             </p>
           </div>
           <div className="rf-rejection-banner" style={{ background: "rgba(37, 99, 235, 0.06)", border: "1px solid rgba(37, 99, 235, 0.18)" }}>
@@ -746,11 +784,20 @@ const ReservationVisitStep = ({
                 Viewing preference is locked
               </div>
               <div className="rf-rejection-banner__hint" style={{ color: "#3B82F6" }}>
-                Your application has been submitted. Contact admin if you need to make changes.
+                {VIEWING_PREFERENCE_LOCKED_MESSAGE}
               </div>
             </div>
           </div>
           {renderVisitSummary({ title: "Viewing Preference Summary" })}
+          <div className="stage-buttons">
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => onReturnToDashboard?.()}
+            >
+              {viewingPreferenceAccess.statusCtaLabel || "View Reservation Status"}
+            </button>
+          </div>
         </>
       ) : showPhysicalVisitSummary ? (
         <>
@@ -786,13 +833,24 @@ const ReservationVisitStep = ({
               {VISIT_OPTIONS.map((option) => {
                 const OptionIcon = OPTION_ICONS[option.value];
                 const isSelected = selectedVisit === option.value;
+                const disabledByPreferenceLock = optionSelectionLocked && !isSelected;
                 return (
                   <button
                     key={option.value}
                     type="button"
                     className={`rf-option-card${isSelected ? " selected" : ""}`}
                     data-option={option.value}
+                    disabled={disabledByPreferenceLock}
+                    title={
+                      disabledByPreferenceLock
+                        ? VIEWING_PREFERENCE_LOCKED_MESSAGE
+                        : undefined
+                    }
                     onClick={() => {
+                      if (disabledByPreferenceLock) {
+                        showNotification(VIEWING_PREFERENCE_LOCKED_MESSAGE, "info", 5000);
+                        return;
+                      }
                       setViewingType(option.value);
                       setIsEditingPhysicalVisit(false);
                       if (option.value !== "physical_visit") {
@@ -1023,6 +1081,7 @@ const ReservationVisitStep = ({
                     type="checkbox"
                     className="rf-ack-card__checkbox"
                     checked={remoteViewingAcknowledged}
+                    disabled={preferenceReadOnly}
                     onChange={(event) => setRemoteViewingAcknowledged(event.target.checked)}
                   />
                   <span className="rf-ack-card__text">{REMOTE_ACKNOWLEDGEMENT}</span>
@@ -1041,6 +1100,7 @@ const ReservationVisitStep = ({
                     rows={4}
                     value={remoteViewingQuestions}
                     maxLength={1500}
+                    disabled={preferenceReadOnly}
                     onChange={(event) => setRemoteViewingQuestions(event.target.value)}
                     placeholder="Ask about the room setup, amenities, layout, or anything you would like the admin to clarify before your application."
                   />
@@ -1117,7 +1177,7 @@ const ReservationVisitStep = ({
               type="button"
               className="btn btn-primary"
               onClick={handleContinue}
-              disabled={isSaving}
+              disabled={isSaving || !canSubmitViewingPreference}
             >
               {isSaving
                 ? "Saving..."

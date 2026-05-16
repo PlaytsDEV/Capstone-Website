@@ -559,18 +559,7 @@ describe("reservationsController.updateReservation access hardening", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  test("tenant can switch to remote viewing without sending a physical visit schedule", async () => {
-    const updatedReservation = {
-      _id: "507f1f77bcf86cd799439011",
-      status: "viewing_preference_selected",
-      userId: { _id: "tenant-1", email: "tala@example.com" },
-      roomId: { _id: "room-1", branch: "gil-puyat", name: "Room 1" },
-      viewingPreference: "remote_2d_viewing",
-      visitDate: null,
-      visitTime: "",
-      populate: jest.fn().mockResolvedValue(undefined),
-    };
-
+  test("tenant cannot switch to remote viewing after a physical visit was already saved", async () => {
     reservationFindById.mockResolvedValue({
       _id: "507f1f77bcf86cd799439011",
       userId: "tenant-1",
@@ -594,11 +583,6 @@ describe("reservationsController.updateReservation access hardening", () => {
       remoteViewingAcknowledged: true,
       remoteViewingQuestions: "",
     });
-    reservationFindByIdAndUpdate.mockReturnValue({
-      populate: jest.fn().mockReturnThis(),
-      then: (resolve) => Promise.resolve(resolve(updatedReservation)),
-    });
-
     const req = {
       params: { reservationId: "507f1f77bcf86cd799439011" },
       user: { uid: "tenant-firebase-uid" },
@@ -620,22 +604,9 @@ describe("reservationsController.updateReservation access hardening", () => {
 
     await updateReservationByUser(req, res, next);
 
-    expect(res.statusCode).toBe(200);
-    expect(res.body?.reservation?.viewingPreference).toBe("remote_2d_viewing");
-    expect(reservationFindByIdAndUpdate).toHaveBeenCalledWith(
-      "507f1f77bcf86cd799439011",
-      expect.objectContaining({
-        $set: expect.objectContaining({
-          viewingPreference: "remote_2d_viewing",
-          viewingType: "remote_2d",
-          visitDate: null,
-          visitTime: "",
-          visitCode: null,
-          remoteViewingAcknowledged: true,
-        }),
-      }),
-      { new: true, runValidators: true },
-    );
+    expect(res.statusCode).toBe(409);
+    expect(res.body?.code).toBe("VIEWING_PREFERENCE_LOCKED");
+    expect(reservationFindByIdAndUpdate).not.toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -1510,7 +1481,9 @@ describe("reservationsController.updateReservation access hardening", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  test("allows application submission when visitApproved=true but visitStatus is null (old record backcompat)", async () => {
+  test.each([null, "schedule_approved"])(
+    "allows application submission when visitApproved=true but visitStatus is %s after refetch",
+    async (visitStatus) => {
     const save = jest.fn().mockResolvedValue(true);
     // Simulate an old reservation: admin marked visited via boolean only, visitStatus never written
     const reservation = {
@@ -1521,7 +1494,7 @@ describe("reservationsController.updateReservation access hardening", () => {
       visitDate: "2025-06-01",
       visitTime: "10:00 AM",
       visitApproved: true,
-      visitStatus: null,    // old record — field never written
+      visitStatus,
       scheduleApproved: true,
       scheduleRejected: false,
       applicationSubmittedAt: null,  // first submission
@@ -1601,5 +1574,6 @@ describe("reservationsController.updateReservation access hardening", () => {
     // Must NOT block with PHYSICAL_VISIT_APPLICATION_LOCKED
     expect(res.statusCode).not.toBe(403);
     expect(res.body?.code).not.toBe("PHYSICAL_VISIT_APPLICATION_LOCKED");
-  });
+    },
+  );
 });

@@ -37,15 +37,20 @@ import {
 } from "../utils/reservationValidation";
 import {
   PHYSICAL_VISIT_APPLICATION_LOCKED_MESSAGE,
-  canProceedToApplicationAfterVisit,
+  TENANT_APPLICATION_LOCKED_MESSAGE,
+  canAccessTenantApplication,
   getReservationViewingPreference,
   isPhysicalVisitApplicationLocked,
-  isPhysicalVisitApplicationStageRequestBlocked,
+  isTenantApplicationStageRequestBlocked,
 } from "../utils/physicalVisitFlow";
 import {
   ROOM_SELECTION_LOCKED_MESSAGE,
   isApplicantRoomSelectionLocked,
 } from "../utils/reservationRoomLock";
+import {
+  VIEWING_PREFERENCE_LOCKED_MESSAGE,
+  getViewingPreferenceStepAccess,
+} from "../utils/reservationViewingPreferenceLock";
 
 // Returns a sessionStorage key scoped to the Firebase UID when known,
 // falling back to the legacy unscoped key for backward compatibility.
@@ -458,42 +463,54 @@ export default function useReservationFlow() {
     () => isPhysicalVisitApplicationLocked(visitGateReservation),
     [visitGateReservation],
   );
+  const applicationAccessAllowed = useMemo(
+    () => canAccessTenantApplication(visitGateReservation),
+    [visitGateReservation],
+  );
   const roomSelectionLocked = useMemo(
     () => isApplicantRoomSelectionLocked(reservationData),
     [reservationData],
   );
+  const viewingPreferenceStepAccess = useMemo(
+    () => getViewingPreferenceStepAccess(reservationData, viewingType),
+    [reservationData, viewingType],
+  );
 
-  const returnToDashboardForPhysicalVisitGate = useCallback(() => {
-    showNotification(PHYSICAL_VISIT_APPLICATION_LOCKED_MESSAGE, "info", 5000);
+  const returnToDashboardForApplicationGate = useCallback(() => {
+    const message = physicalVisitApplicationLocked
+      ? PHYSICAL_VISIT_APPLICATION_LOCKED_MESSAGE
+      : TENANT_APPLICATION_LOCKED_MESSAGE;
+    showNotification(message, "info", 5000);
     appNavigate("/applicant/profile", {
       state: { tab: "dashboard" },
       flash: {
         type: "info",
-        message: PHYSICAL_VISIT_APPLICATION_LOCKED_MESSAGE,
+        message,
       },
     });
-  }, [appNavigate]);
+  }, [appNavigate, physicalVisitApplicationLocked]);
 
   const notifyRoomSelectionLocked = useCallback(() => {
     showNotification(ROOM_SELECTION_LOCKED_MESSAGE, "info", 5000);
+  }, []);
+  const notifyViewingPreferenceLocked = useCallback(() => {
+    showNotification(VIEWING_PREFERENCE_LOCKED_MESSAGE, "info", 5000);
   }, []);
 
   useEffect(() => {
     if (
       (reservationId || reservationData?._id) &&
       currentStage === 3 &&
-      physicalVisitApplicationLocked &&
-      !applicationSubmitted
+      !applicationAccessAllowed
     ) {
-      returnToDashboardForPhysicalVisitGate();
+      returnToDashboardForApplicationGate();
     }
   }, [
-    applicationSubmitted,
+    applicationAccessAllowed,
     currentStage,
-    physicalVisitApplicationLocked,
     reservationData?._id,
     reservationId,
-    returnToDashboardForPhysicalVisitGate,
+    returnToDashboardForApplicationGate,
   ]);
 
   // ΓöÇΓöÇ Warn before leaving mid-flow (skip if intentional navigation) ΓöÇΓöÇ
@@ -513,7 +530,7 @@ export default function useReservationFlow() {
   const isStageLocked = (stageId) => {
     const reservationStatus = normalizeReservationStatus(reservationData?.status);
     const needsRevision = hasReservationStatus(reservationStatus, "needs_revision");
-    const applicationUnlockedByVisit = canProceedToApplicationAfterVisit({
+    const applicationAccess = canAccessTenantApplication({
       ...reservationData,
       viewingPreference:
         reservationData?.viewingPreference || getReservationViewingPreference({
@@ -532,31 +549,13 @@ export default function useReservationFlow() {
     if (paymentApproved) return stageId < 5;
     if (stageId === 1) return roomSelectionLocked || visitCompleted;
     if (stageId === 2)
-      return applicationSubmitted && !needsRevision && !scheduleRejected;
-    if (stageId === 3) {
-      const physicalVisitLocked =
-        !applicationUnlockedByVisit &&
-        isPhysicalVisitApplicationLocked({
-          ...reservationData,
-          viewingPreference:
-            reservationData?.viewingPreference || getReservationViewingPreference({
-              ...reservationData,
-              viewingPreference: viewingType,
-              viewingType,
-              visitDate,
-              visitTime,
-            }),
-          viewingType,
-          visitDate,
-          visitTime,
-          visitStatus: reservationData?.visitStatus,
-          status: reservationStatus,
-        });
-
-      // Physical visit applicants cannot open the tenant application until
-      // admin records a completed visit or allows the application without one.
       return (
-        (physicalVisitLocked && !applicationSubmitted) ||
+        viewingPreferenceStepAccess.readOnly ||
+        (applicationSubmitted && !needsRevision && !scheduleRejected)
+      );
+    if (stageId === 3) {
+      return (
+        !applicationAccess ||
         (applicationSubmitted && !editingApplication && !needsRevision)
       );
     }
@@ -581,8 +580,13 @@ export default function useReservationFlow() {
       notifyRoomSelectionLocked();
       return;
     }
-    if (stageId === 3 && physicalVisitApplicationLocked && !applicationSubmitted) {
-      returnToDashboardForPhysicalVisitGate();
+    if (stageId === 2 && viewingPreferenceStepAccess.readOnly) {
+      setCurrentStage(2);
+      notifyViewingPreferenceLocked();
+      return;
+    }
+    if (stageId === 3 && !applicationAccessAllowed) {
+      returnToDashboardForApplicationGate();
       return;
     }
     if (isStageLocked(stageId)) return;
@@ -722,7 +726,7 @@ export default function useReservationFlow() {
   const computeLockingFlags = (r) => {
     const status = normalizeReservationStatus(r.status);
     const viewingPreference = getReservationViewingPreference(r);
-    const applicationUnlockedByVisit = canProceedToApplicationAfterVisit({
+    const applicationAccess = canAccessTenantApplication({
       ...r,
       status,
       viewingPreference,
@@ -752,9 +756,8 @@ export default function useReservationFlow() {
       VIEWING_SELECTED_STATUSES.includes(status) ||
       Boolean(viewingPreference || r.visitDate);
     const isVisitApprovedFlag =
-      ["visit_approved"].includes(status) ||
       Boolean(r.visitApproved === true) ||
-      applicationUnlockedByVisit;
+      applicationAccess;
     const hasApplication =
       APPLICATION_STATUSES.includes(status) || Boolean(r.applicationSubmittedAt);
     const paymentUnlocked = canReservationAccessPayment(status);
@@ -765,7 +768,7 @@ export default function useReservationFlow() {
       Boolean(r.proofOfPaymentUrl);
     const isConfirmed = hasReservationStatus(status, "reserved", "moveIn", "moveOut");
 
-    if (hasViewingPreference) setVisitCompleted(applicationUnlockedByVisit);
+    if (hasViewingPreference) setVisitCompleted(applicationAccess);
     if (isVisitApprovedFlag) setVisitApproved(true);
     if (r.scheduleRejected) setScheduleRejected(true);
     if (r.scheduleRejectionReason) setScheduleRejectionReason(r.scheduleRejectionReason);
@@ -775,11 +778,11 @@ export default function useReservationFlow() {
     if (r.applicationReviewReason) setApplicationReviewReason(r.applicationReviewReason);
 
     // Status-driven highest stage
-    let highest = resolveTargetStage(status, viewingPreference, applicationUnlockedByVisit);
+    let highest = resolveTargetStage(status, viewingPreference, applicationAccess);
     // Fallback: data-presence checks for legacy records still at "pending"
     if (highest === 1) {
       if (hasViewingPreference) highest = 2;
-      if (hasViewingPreference && applicationUnlockedByVisit) highest = 3;
+      if (hasViewingPreference && applicationAccess) highest = 3;
       if (isVisitApprovedFlag) highest = Math.max(highest, 3);
       if (hasApplication) highest = Math.max(highest, 3);
       if (paymentUnlocked) highest = Math.max(highest, 4);
@@ -793,7 +796,7 @@ export default function useReservationFlow() {
       hasApplication,
       hasPayment,
       isConfirmed,
-      applicationUnlockedByVisit,
+      applicationUnlockedByVisit: applicationAccess,
       highest,
     };
   };
@@ -954,6 +957,9 @@ export default function useReservationFlow() {
           scheduleRejected: Boolean(active.scheduleRejected),
           roomConfirmed: Boolean(active.roomConfirmed),
           visitCode: active.visitCode || "",
+          remoteViewingAcknowledged: Boolean(active.remoteViewingAcknowledged),
+          remoteViewingQuestions: active.remoteViewingQuestions || "",
+          isUrgentMoveIn: Boolean(active.isUrgentMoveIn),
           selectedBed: active.selectedBed || null,
           selectedAppliances: active.selectedAppliances || [],
           applianceFees: active.applianceFees || 0,
@@ -973,13 +979,13 @@ export default function useReservationFlow() {
         if (active.proofOfPaymentUrl) setPaymentSubmitted(true);
         setHighestStageReached(highest);
         const activeApplicationStageBlocked =
-          isPhysicalVisitApplicationStageRequestBlocked(stepOverride, {
+          isTenantApplicationStageRequestBlocked(stepOverride, {
             ...active,
             viewingPreference: getReservationViewingPreference(active),
           });
         if (activeApplicationStageBlocked) {
           setCurrentStage(2);
-          showNotification(PHYSICAL_VISIT_APPLICATION_LOCKED_MESSAGE, "info", 5000);
+          showNotification(TENANT_APPLICATION_LOCKED_MESSAGE, "info", 5000);
         } else if (stepOverride && stepOverride <= highest) {
           setCurrentStage(stepOverride);
         }
@@ -1060,6 +1066,9 @@ export default function useReservationFlow() {
         scheduleRejected: Boolean(reservation.scheduleRejected),
         roomConfirmed: Boolean(reservation.roomConfirmed),
         visitCode: reservation.visitCode || "",
+        remoteViewingAcknowledged: Boolean(reservation.remoteViewingAcknowledged),
+        remoteViewingQuestions: reservation.remoteViewingQuestions || "",
+        isUrgentMoveIn: Boolean(reservation.isUrgentMoveIn),
         selectedBed: reservation.selectedBed,
         selectedAppliances: reservation.selectedAppliances || [],
         applianceFees: reservation.applianceFees || 0,
@@ -1099,7 +1108,7 @@ export default function useReservationFlow() {
       const reservationStatus = normalizeReservationStatus(reservation.status);
       let targetStage = resolveTargetStage(reservationStatus, getReservationViewingPreference(reservation), applicationUnlockedByVisit);
       const applicationStageBlocked =
-        isPhysicalVisitApplicationStageRequestBlocked(stepOverride, {
+        isTenantApplicationStageRequestBlocked(stepOverride, {
           ...reservation,
           status: reservationStatus,
           viewingPreference: getReservationViewingPreference(reservation),
@@ -1261,7 +1270,7 @@ export default function useReservationFlow() {
       }
       showNotification(
         applicationStageBlocked
-          ? PHYSICAL_VISIT_APPLICATION_LOCKED_MESSAGE
+          ? TENANT_APPLICATION_LOCKED_MESSAGE
           : stepOverride
           ? "Editing your application. Make your changes and save."
           : "Reservation data loaded. Continue where you left off!",
@@ -1505,6 +1514,16 @@ export default function useReservationFlow() {
           updated.roomConfirmed ?? previous?.roomConfirmed ?? false,
         visitCode:
           updated.visitCode ?? previous?.visitCode ?? "",
+        remoteViewingAcknowledged:
+          updated.remoteViewingAcknowledged ??
+          previous?.remoteViewingAcknowledged ??
+          false,
+        remoteViewingQuestions:
+          updated.remoteViewingQuestions ??
+          previous?.remoteViewingQuestions ??
+          "",
+        isUrgentMoveIn:
+          updated.isUrgentMoveIn ?? previous?.isUrgentMoveIn ?? false,
         selectedBed: updated.selectedBed ?? previous?.selectedBed,
         selectedAppliances:
           updated.selectedAppliances ?? previous?.selectedAppliances ?? [],
@@ -1747,68 +1766,78 @@ export default function useReservationFlow() {
   );
 
   const buildDraftPayload = useCallback(
-    () => ({
-      visitDate,
-      visitTime,
-      viewingPreference: viewingType,
-      viewingType:
-        viewingType === "physical_visit"
-          ? "inperson"
-          : viewingType === "remote_2d_viewing"
-            ? "remote_2d"
-            : viewingType === "urgent_move_in_review"
-              ? "urgent_move_in"
-              : viewingType,
-      remoteViewingAcknowledged,
-      remoteViewingQuestions,
-      isUrgentMoveIn,
-      visitorName,
-      visitorPhone,
-      visitorEmail,
-      firstName,
-      lastName,
-      middleName,
-      nickname,
-      mobileNumber,
-      birthday,
-      gender,
-      maritalStatus,
-      nationality,
-      educationLevel,
-      addressUnitHouseNo,
-      addressStreet,
-      addressRegion,
-      addressBarangay,
-      addressCity,
-      addressProvince,
-      emergencyContactName,
-      emergencyRelationship,
-      emergencyContactNumber,
-      healthConcerns,
-      employerSchool,
-      employerAddress,
-      employerContact,
-      startDate,
-      occupation,
-      previousEmployment,
-      nbiReason,
-      companyIDReason,
-      personalNotes,
-      referralSource,
-      referrerName,
-      estimatedMoveInTime,
-      workSchedule,
-      workScheduleOther,
-      targetMoveInDate,
-      ...(leaseDuration ? { leaseDuration } : {}),
-      finalMoveInDate,
-      agreedToPrivacy,
-      agreedToCertification,
-    }),
+    () => {
+      const includeViewingPreferenceDraft =
+        currentStage === 2 || !viewingPreferenceStepAccess.submitted;
+      return {
+        ...(includeViewingPreferenceDraft
+          ? {
+              visitDate,
+              visitTime,
+              viewingPreference: viewingType,
+              viewingType:
+                viewingType === "physical_visit"
+                  ? "inperson"
+                  : viewingType === "remote_2d_viewing"
+                    ? "remote_2d"
+                    : viewingType === "urgent_move_in_review"
+                      ? "urgent_move_in"
+                      : viewingType,
+              remoteViewingAcknowledged,
+              remoteViewingQuestions,
+              isUrgentMoveIn,
+              visitorName,
+              visitorPhone,
+              visitorEmail,
+            }
+          : {}),
+        firstName,
+        lastName,
+        middleName,
+        nickname,
+        mobileNumber,
+        birthday,
+        gender,
+        maritalStatus,
+        nationality,
+        educationLevel,
+        addressUnitHouseNo,
+        addressStreet,
+        addressRegion,
+        addressBarangay,
+        addressCity,
+        addressProvince,
+        emergencyContactName,
+        emergencyRelationship,
+        emergencyContactNumber,
+        healthConcerns,
+        employerSchool,
+        employerAddress,
+        employerContact,
+        startDate,
+        occupation,
+        previousEmployment,
+        nbiReason,
+        companyIDReason,
+        personalNotes,
+        referralSource,
+        referrerName,
+        estimatedMoveInTime,
+        workSchedule,
+        workScheduleOther,
+        targetMoveInDate,
+        ...(leaseDuration ? { leaseDuration } : {}),
+        finalMoveInDate,
+        agreedToPrivacy,
+        agreedToCertification,
+      };
+    },
     [
+      currentStage,
       visitDate,
       visitTime,
       viewingType,
+      viewingPreferenceStepAccess.submitted,
       remoteViewingAcknowledged,
       remoteViewingQuestions,
       isUrgentMoveIn,
@@ -1919,9 +1948,13 @@ export default function useReservationFlow() {
         setShowStageConfirm(true);
         return;
       } else if (currentStage === 2) {
-        if (physicalVisitApplicationLocked && !applicationSubmitted) {
+        if (viewingPreferenceStepAccess.readOnly) {
+          notifyViewingPreferenceLocked();
+          return;
+        }
+        if (!applicationAccessAllowed) {
           setHighestStageReached((prev) => Math.max(prev, 2));
-          returnToDashboardForPhysicalVisitGate();
+          returnToDashboardForApplicationGate();
           return;
         }
 
@@ -1929,8 +1962,8 @@ export default function useReservationFlow() {
         setCurrentStage(3);
         return;
       } else if (currentStage === 3) {
-        if (physicalVisitApplicationLocked && !applicationSubmitted) {
-          returnToDashboardForPhysicalVisitGate();
+        if (!applicationAccessAllowed) {
+          returnToDashboardForApplicationGate();
           return;
         }
 
@@ -2398,8 +2431,10 @@ export default function useReservationFlow() {
     scrollToSection,
     saveStatus,
     isFormDirty,
+    applicationAccessAllowed,
     physicalVisitApplicationLocked,
     roomSelectionLocked,
+    viewingPreferenceStepAccess,
 
     // Stepper
     isStageLocked,
@@ -2416,6 +2451,7 @@ export default function useReservationFlow() {
     returnToDashboardAfterViewingPreference,
     forceEditMode,
     notifyRoomSelectionLocked,
+    notifyViewingPreferenceLocked,
     setEditingApplication,
     setScrollToSection,
     setShowStageConfirm,

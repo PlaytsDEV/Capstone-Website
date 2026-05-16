@@ -20,6 +20,7 @@ import {
  hasReservationStatus,
 } from "../../../shared/utils/lifecycleNaming";
 import {
+ canAccessTenantApplication,
  getPhysicalVisitApplicantState,
  getReservationVisitStatus,
  getReservationViewingPreference,
@@ -142,12 +143,13 @@ function resolveCurrentStage(reservation) {
  if (!reservation) return 0;
  const status = getReservationStatus(reservation);
  const physicalVisitState = getPhysicalVisitApplicantState(reservation);
+ const canAccessApplication = canAccessTenantApplication(reservation);
 
  if (hasReservationStatus(status, "reserved", "moveIn", "moveOut")) return 5;
  if (canReservationAccessPayment(status)) return 4;
  if (hasReservationStatus(status, "payment_pending")) return 4;
  if (hasSubmittedApplication(reservation)) return 3;
- if (physicalVisitState && !physicalVisitState.canFillApplication) return 2;
+ if (!canAccessApplication && physicalVisitState && !physicalVisitState.canFillApplication) return 2;
  if (
   hasViewingPreference(reservation) ||
   hasReservationStatus(
@@ -170,6 +172,7 @@ function resolveCurrentStage(reservation) {
 function getStepStatus(stepStage, currentStage, reservation) {
  const status = getReservationStatus(reservation);
  const physicalVisitState = getPhysicalVisitApplicantState(reservation);
+ const canAccessApplication = canAccessTenantApplication(reservation);
  if (stepStage < currentStage) return "complete";
  if (stepStage === currentStage) {
  // Step 5 is the final step — if reservation is confirmed, mark as complete (green)
@@ -189,7 +192,11 @@ function getStepStatus(stepStage, currentStage, reservation) {
  if (stepStage === 4 && hasReservationStatus(status, "payment_pending")) {
  return "waiting";
  }
- if (stepStage === 2 && physicalVisitState && !physicalVisitState.canFillApplication) {
+ if (
+ stepStage === 2 &&
+ physicalVisitState &&
+ !canAccessApplication
+ ) {
  return physicalVisitState.isRejected ? "rejected" : "waiting";
  }
  // Step 4: PayMongo is instant — never show "waiting"; payment is either
@@ -213,6 +220,7 @@ function getNextAction(reservation, currentStage) {
 
  const status = getReservationStatus(reservation);
  const physicalVisitState = getPhysicalVisitApplicantState(reservation);
+ const canAccessApplication = canAccessTenantApplication(reservation);
  if (hasReservationStatus(status, "reserved", "moveIn", "moveOut")) {
  return {
  title: "Reservation Secured",
@@ -229,6 +237,17 @@ function getNextAction(reservation, currentStage) {
  description:
  reservation.applicationReviewReason ||
  "Your application was not approved. Payment remains locked.",
+ buttonLabel: null,
+ route: null,
+ isWaiting: false,
+ isRejected: true,
+ };
+ }
+
+ if (hasReservationStatus(status, "cancelled", "expired", "archived")) {
+ return {
+ title: "Reservation Closed",
+ description: "This reservation is no longer available for application submission.",
  buttonLabel: null,
  route: null,
  isWaiting: false,
@@ -283,7 +302,7 @@ function getNextAction(reservation, currentStage) {
 
  if (
   physicalVisitState &&
-  !physicalVisitState.canFillApplication &&
+  !canAccessApplication &&
   !hasSubmittedApplication(reservation)
  ) {
   return {
@@ -309,7 +328,7 @@ function getNextAction(reservation, currentStage) {
  const viewPref =
  getReservationViewingPreference(reservation);
  const hasSchedule = reservation.visitDate || viewPref;
- if (physicalVisitState && !physicalVisitState.canFillApplication) {
+ if (physicalVisitState && !canAccessApplication) {
  return {
   title: physicalVisitState.title,
   description: physicalVisitState.message,
@@ -552,9 +571,7 @@ export default function ReservationDashboard({
   const viewingPreferenceLabel = getViewingPreferenceLabel(reservation);
   const roomSelectionLocked = isApplicantRoomSelectionLocked(reservation);
   const canOpenApplicationFromDashboard =
-  !isPhysicalVisitPreference(reservation) ||
-  Boolean(physicalVisitState?.canFillApplication) ||
-  hasSubmittedApplication(reservation);
+  canAccessTenantApplication(reservation);
   const isConfirmed =
   hasReservationStatus(getReservationStatus(reservation), "reserved", "moveIn", "moveOut");
 
@@ -836,7 +853,7 @@ export default function ReservationDashboard({
  <button
  type="button"
  onClick={() => navigate(physicalVisitState.route)}
- style={physicalVisitState.canFillApplication ? styles.receiptPrimaryBtn : styles.receiptSecondaryBtn}
+ style={canAccessTenantApplication(reservation) ? styles.receiptPrimaryBtn : styles.receiptSecondaryBtn}
  >
  {physicalVisitState.buttonLabel}
  </button>

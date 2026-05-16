@@ -197,8 +197,13 @@ function ReservationFlowPage() {
               onPrev={flow.handlePrevStage}
               onNext={flow.handleNextStage}
               readOnly={flow.isStageLocked(2)}
+              viewingPreferenceAccess={flow.viewingPreferenceStepAccess}
               forceEditMode={flow.forceEditMode}
                 onSaveVisit={async () => {
+                  if (!flow.viewingPreferenceStepAccess.canSubmit) {
+                    flow.notifyViewingPreferenceLocked();
+                    return null;
+                  }
                   const viewingPreference = flow.viewingType;
                   const isPhysicalVisit = viewingPreference === "physical_visit";
                   const result = await flow.updateReservationDraft({
@@ -300,7 +305,7 @@ function ReservationFlowPage() {
           )}
 
           {flow.currentStage === 3 &&
-            !(flow.physicalVisitApplicationLocked && !flow.applicationSubmitted) && (
+            flow.applicationAccessAllowed && (
               <ReservationApplicationStep
                 {...{
                   billingEmail: flow.billingEmail,
@@ -407,7 +412,7 @@ function ReservationFlowPage() {
                   applicationSubmitted: flow.applicationSubmitted,
                   paymentApproved: flow.paymentApproved,
                   visitPending:
-                    flow.physicalVisitApplicationLocked &&
+                    !flow.applicationAccessAllowed &&
                     !flow.applicationSubmitted,
                   scrollToSection: flow.scrollToSection,
                   onClearScrollToSection: () => flow.setScrollToSection(null),

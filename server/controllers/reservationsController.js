@@ -283,14 +283,23 @@ const VISIT_OUTCOME_STATUSES = Object.freeze([
   "allowed_without_visit",
 ]);
 const VISIT_STATUS_ALIASES = Object.freeze({
+  application_unlocked: "allowed_without_visit",
+  allowed: "allowed_without_visit",
   scheduled: "physical_visit_scheduled",
   completed: "visit_completed",
+  approved: "visit_completed",
   cancelled: "visit_cancelled",
+  canceled: "visit_cancelled",
   not_required: "allowed_without_visit",
 });
 const VISIT_APPLICATION_UNLOCK_STATUSES = Object.freeze([
   "visit_completed",
   "allowed_without_visit",
+]);
+const VISIT_APPLICATION_LOCK_STATUSES = Object.freeze([
+  "no_show",
+  "rescheduled",
+  "visit_cancelled",
 ]);
 const VISIT_MANAGEMENT_ACTIONS_BY_STATUS = Object.freeze({
   // Submitted by applicant, awaiting admin review — outcome actions not yet available
@@ -402,6 +411,26 @@ const ROOM_RESELECTION_ALLOWED_STATUSES = Object.freeze([
   ...reservationStatusesForQuery("cancelled", "rejected", "archived"),
   "expired",
 ]);
+const VIEWING_PREFERENCE_LOCKED_MESSAGE =
+  "Your viewing preference is already submitted and locked while admin reviews your reservation.";
+const VIEWING_PREFERENCE_LOCKING_STATUSES = Object.freeze(
+  reservationStatusesForQuery(
+    "viewing_preference_selected",
+    "visit_pending",
+    "visit_approved",
+    "pending_application_review",
+    "needs_revision",
+    "approved_for_payment",
+    "payment_pending",
+    "reserved",
+    "moveIn",
+    "moveOut",
+  ),
+);
+const VIEWING_PREFERENCE_CHANGE_ALLOWED_STATUSES = Object.freeze([
+  ...reservationStatusesForQuery("cancelled", "rejected", "archived"),
+  "expired",
+]);
 const ROOM_SELECTION_UPDATE_FIELDS = Object.freeze([
   "roomId",
   "selectedBed",
@@ -505,7 +534,12 @@ const normalizeViewingPreferenceInput = (value, fallback = null) => {
   if (normalized === "inperson" || normalized === "physical") {
     return "physical_visit";
   }
-  if (normalized === "remote" || normalized === "remote_2d" || normalized === "photo_based") {
+  if (
+    normalized === "remote" ||
+    normalized === "remote_2d" ||
+    normalized === "virtual" ||
+    normalized === "photo_based"
+  ) {
     return "remote_2d_viewing";
   }
   if (normalized === "urgent" || normalized === "urgent_move_in") {
@@ -617,7 +651,9 @@ const hasSubmittedField = (body, field) =>
 const isTruthyApprovalValue = (value) => {
   if (value === true) return true;
   if (typeof value !== "string") return false;
-  return ["true", "approved", "allowed"].includes(value.trim().toLowerCase());
+  return ["true", "approved", "allowed", "reset"].includes(
+    value.trim().toLowerCase(),
+  );
 };
 
 const hasAdminApprovedRoomReselection = (reservation = {}) => {
@@ -637,6 +673,35 @@ const hasAdminApprovedRoomReselection = (reservation = {}) => {
   );
 };
 
+const hasAdminAllowedViewingPreferenceChange = (reservation = {}) => {
+  const explicitValue =
+    reservation.viewingPreferenceChangeAllowed ??
+    reservation.allowViewingPreferenceChange ??
+    reservation.viewingPreferenceReset ??
+    reservation.adminApprovedViewingPreferenceChange ??
+    reservation.preferenceChangeApproved;
+
+  if (isTruthyApprovalValue(explicitValue)) return true;
+
+  return isTruthyApprovalValue(
+    reservation.viewingPreferenceChangeStatus ||
+      reservation.preferenceChangeStatus,
+  );
+};
+
+const getSubmittedViewingPreference = (reservation = {}) =>
+  normalizeViewingPreferenceInput(
+    reservation.viewingPreference ?? reservation.viewingType,
+    reservation.isUrgentMoveIn
+      ? "urgent_move_in_review"
+      : reservation.remoteViewingAcknowledged ||
+          String(reservation.remoteViewingQuestions || "").trim()
+        ? "remote_2d_viewing"
+        : (reservation.visitDate || reservation.visitTime || reservation.visitCode)
+          ? "physical_visit"
+          : null,
+  );
+
 const hasSavedApplicantViewingPreference = (reservation = {}) => {
   const explicitPreference = String(reservation.viewingPreference || "").trim();
   const viewingType = String(reservation.viewingType || "")
@@ -654,6 +719,75 @@ const hasSavedApplicantViewingPreference = (reservation = {}) => {
         viewingType,
       ),
   );
+};
+
+const isViewingPreferenceSubmitted = (reservation = {}) => {
+  const submittedPreference = getSubmittedViewingPreference(reservation);
+  const status = normalizeReservationStatus(
+    reservation.reservationStatus || reservation.status,
+  );
+  return Boolean(
+    submittedPreference ||
+      hasReservationStatus(status, VIEWING_PREFERENCE_LOCKING_STATUSES) ||
+      reservation.visitDate ||
+      reservation.visitTime ||
+      reservation.visitCode ||
+      reservation.visitScheduledAt ||
+      reservation.visitStatus ||
+      reservation.scheduleApproved ||
+      reservation.scheduleApprovedAt ||
+      reservation.scheduleRejectedAt ||
+      reservation.visitOutcomeUpdatedAt ||
+      reservation.remoteViewingAcknowledged ||
+      String(reservation.remoteViewingQuestions || "").trim() ||
+      reservation.isUrgentMoveIn,
+  );
+};
+
+const isViewingPreferenceChangeAllowed = (reservation = {}) => {
+  if (!isViewingPreferenceSubmitted(reservation)) return true;
+  if (hasAdminAllowedViewingPreferenceChange(reservation)) return true;
+
+  const status = normalizeReservationStatus(
+    reservation.reservationStatus || reservation.status,
+  );
+
+  return hasReservationStatus(status, VIEWING_PREFERENCE_CHANGE_ALLOWED_STATUSES);
+};
+
+const canResubmitSameViewingPreference = (
+  reservation = {},
+  requestedPreference = "",
+) => {
+  const submittedPreference = getSubmittedViewingPreference(reservation);
+  const normalizedRequested =
+    normalizeViewingPreferenceInput(requestedPreference, submittedPreference) ||
+    submittedPreference;
+
+  return Boolean(
+    submittedPreference === "physical_visit" &&
+      normalizedRequested === "physical_visit" &&
+      reservation.scheduleRejected === true &&
+      !reservation.applicationSubmittedAt &&
+      !hasReservationStatus(
+        reservation.reservationStatus || reservation.status,
+        "pending_application_review",
+        "approved_for_payment",
+        "payment_pending",
+        "reserved",
+        "moveIn",
+        "moveOut",
+      ),
+  );
+};
+
+const canApplicantSubmitViewingPreference = (
+  reservation = {},
+  requestedPreference = "",
+) => {
+  if (!isViewingPreferenceSubmitted(reservation)) return true;
+  if (isViewingPreferenceChangeAllowed(reservation)) return true;
+  return canResubmitSameViewingPreference(reservation, requestedPreference);
 };
 
 const isApplicantRoomSelectionLocked = (reservation = {}) => {
@@ -1323,8 +1457,10 @@ const isVisitApplicationUnlocked = (visitStatus) =>
 
 const getEffectiveVisitStatusKey = (reservation = {}) => {
   const explicit = normalizeVisitStatusKey(reservation.visitStatus);
-  if (explicit) return explicit;
+  if (VISIT_APPLICATION_LOCK_STATUSES.includes(explicit)) return explicit;
+  if (isVisitApplicationUnlocked(explicit)) return explicit;
   if (reservation.visitApproved) return "visit_completed";
+  if (explicit) return explicit;
   if (reservation.scheduleRejected) return "visit_cancelled";
   // Backfill: old records have scheduleApproved=true but no visitStatus written —
   // treat them as schedule_approved so outcome actions are available.
@@ -2647,11 +2783,9 @@ export const updateReservation = async (req, res, next) => {
       if (hasReservationStatus(existingReservation.status, LEGACY_VISIT_STATUSES, "pending")) {
         reservation.status = "visit_approved";
       }
-      if (
-        hasPhysicalVisitPreference(existingReservation) &&
-        !VISIT_OUTCOME_STATUSES.includes(existingReservation.visitStatus)
-      ) {
-        reservation.visitStatus = "physical_visit_scheduled";
+      if (hasPhysicalVisitPreference(existingReservation)) {
+        reservation.scheduleApproved = true;
+        reservation.visitStatus = "visit_completed";
       }
       // Stamp the approval time so the activity timeline can show it
       reservation.scheduleApprovedAt = new Date();
@@ -3889,11 +4023,10 @@ export const updateReservationByUser = async (req, res, next) => {
       : hasBodyField("viewingType")
         ? req.body.viewingType
         : undefined;
+    let normalizedViewingPreference = null;
 
     if (rawViewingPreference !== undefined) {
-      const normalizedViewingPreference = normalizeViewingPreferenceInput(
-        rawViewingPreference,
-      );
+      normalizedViewingPreference = normalizeViewingPreferenceInput(rawViewingPreference);
       if (!normalizedViewingPreference) {
         return res.status(400).json({
           error:
@@ -3931,6 +4064,19 @@ export const updateReservationByUser = async (req, res, next) => {
       hasBodyField("remoteViewingAcknowledged") ||
       hasBodyField("remoteViewingQuestions") ||
       hasBodyField("isUrgentMoveIn");
+
+    if (
+      preferenceRelatedUpdate &&
+      !canApplicantSubmitViewingPreference(
+        reservation,
+        normalizedViewingPreference || effectiveViewingPreference,
+      )
+    ) {
+      return res.status(409).json({
+        error: VIEWING_PREFERENCE_LOCKED_MESSAGE,
+        code: "VIEWING_PREFERENCE_LOCKED",
+      });
+    }
 
     if (effectiveViewingPreference) {
       updates.viewingPreference = effectiveViewingPreference;

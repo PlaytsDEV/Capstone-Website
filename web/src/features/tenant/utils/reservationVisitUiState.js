@@ -1,16 +1,18 @@
 import {
   PHYSICAL_VISIT_APPLICATION_LOCKED_MESSAGE,
-  canProceedToApplicationAfterVisit,
+  canAccessTenantApplication,
   getPhysicalVisitApplicantState,
 } from "./physicalVisitFlow.js";
+import {
+  SUBMIT_VIEWING_PREFERENCE_LABEL,
+  VIEWING_PREFERENCE_LOCKED_MESSAGE,
+} from "./reservationViewingPreferenceLock.js";
 
 export const CONFIRM_VISIT_SCHEDULE_LABEL = "Confirm Visit Schedule";
-export const SAVE_VIEWING_PREFERENCE_LABEL = "Save and Return to Dashboard";
+export const SAVE_VIEWING_PREFERENCE_LABEL = SUBMIT_VIEWING_PREFERENCE_LABEL;
 
 export function getVisitScheduleSubmitLabel(selectedVisit) {
-  return selectedVisit === "physical_visit"
-    ? CONFIRM_VISIT_SCHEDULE_LABEL
-    : SAVE_VIEWING_PREFERENCE_LABEL;
+  return SUBMIT_VIEWING_PREFERENCE_LABEL;
 }
 
 export function canFreelyEditViewingPreference({
@@ -24,26 +26,29 @@ export function getVisitSummaryUiState({
   selectedVisit,
   reservation,
   allowApplicantReschedule = false,
+  viewingPreferenceLocked = false,
 } = {}) {
   const isPhysicalVisit = selectedVisit === "physical_visit";
   const physicalVisitState = isPhysicalVisit
     ? getPhysicalVisitApplicantState(reservation)
     : null;
   const canProceedToApplication =
-    !isPhysicalVisit || canProceedToApplicationAfterVisit(reservation);
+    !isPhysicalVisit || canAccessTenantApplication(reservation);
   const isLockedPhysicalVisit = isPhysicalVisit && !canProceedToApplication;
 
   if (!isPhysicalVisit) {
     return {
-      canProceedToApplication: true,
+      canProceedToApplication: !viewingPreferenceLocked,
       isLockedPhysicalVisit: false,
-      lockedMessage: "",
+      lockedMessage: viewingPreferenceLocked ? VIEWING_PREFERENCE_LOCKED_MESSAGE : "",
       physicalVisitState: null,
-      showBack: true,
-      showChangeViewingPreference: true,
+      showBack: !viewingPreferenceLocked,
+      showChangeViewingPreference: !viewingPreferenceLocked,
       showReturnToDashboard: true,
       showRequestReschedule: false,
-      applicationCtaLabel: "Proceed to Application",
+      applicationCtaLabel: viewingPreferenceLocked
+        ? "View Reservation Status"
+        : "Proceed to Application",
     };
   }
 
