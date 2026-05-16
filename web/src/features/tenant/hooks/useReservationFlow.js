@@ -1107,7 +1107,7 @@ export default function useReservationFlow() {
         setVisitTime("");
         setScheduleRejected(true);
         setScheduleRejectionReason(reservation.scheduleRejectionReason || "");
-        setVisitScheduled(false);
+        setVisitCompleted(false);
       }
 
       // Fallback for legacy records still at "pending" with data beyond step 1
@@ -2263,7 +2263,7 @@ export default function useReservationFlow() {
     isLoading,
     paymentReturnLoading,
     visitApproved,
-    visitScheduled, setVisitScheduled,
+    visitCompleted, setVisitCompleted,
     scheduleRejected,
     scheduleRejectionReason,
     applicationSubmitted,
