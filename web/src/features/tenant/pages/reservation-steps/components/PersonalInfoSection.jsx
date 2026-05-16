@@ -3,6 +3,7 @@ import FileUploadField from "./FileUploadField";
 import AddressCascadeFields from "./AddressCascadeFields";
 import PhoneInput from "../../../../../shared/components/PhoneInput";
 import { validateBirthday } from "../../../utils/reservationValidation";
+import { hasBlockingPrecheck } from "../../../utils/documentPrecheckUtils";
 
 const errBorder = (show, value) =>
   show && !value ? "1.5px solid #dc2626" : undefined;
@@ -98,6 +99,9 @@ const PersonalInfoSection = ({
   setNbiClearance,
   nbiReason,
   setNbiReason,
+  documentPrechecks,
+  runningDocumentChecks,
+  onRunDocumentPrecheck,
   personalNotes,
   setPersonalNotes,
   handleNameInput,
@@ -361,8 +365,23 @@ const PersonalInfoSection = ({
         label="Valid ID (Front)"
         value={validIDFront}
         onChange={setValidIDFront}
+        documentType="valid-id-front"
+        onUploadComplete={(documentUrl) =>
+          onRunDocumentPrecheck?.({
+            documentType: "valid_id_front",
+            documentUrl,
+            idType: validIDType,
+          })
+        }
+        aiCheck={documentPrechecks?.validIDFront}
+        isChecking={Boolean(runningDocumentChecks?.validIDFront)}
         hint="Government-issued ID (Front side)"
-        hasError={showValidationErrors && !validIDFront}
+        hasError={
+          showValidationErrors &&
+          (!validIDFront ||
+            (Boolean(validIDFront) &&
+              hasBlockingPrecheck(documentPrechecks?.validIDFront)))
+        }
         required
       />
     </div>
@@ -371,8 +390,23 @@ const PersonalInfoSection = ({
         label="Valid ID (Back)"
         value={validIDBack}
         onChange={setValidIDBack}
+        documentType="valid-id-back"
+        onUploadComplete={(documentUrl) =>
+          onRunDocumentPrecheck?.({
+            documentType: "valid_id_back",
+            documentUrl,
+            idType: validIDType,
+          })
+        }
+        aiCheck={documentPrechecks?.validIDBack}
+        isChecking={Boolean(runningDocumentChecks?.validIDBack)}
         hint="Government-issued ID (Back side)"
-        hasError={showValidationErrors && !validIDBack}
+        hasError={
+          showValidationErrors &&
+          (!validIDBack ||
+            (Boolean(validIDBack) &&
+              hasBlockingPrecheck(documentPrechecks?.validIDBack)))
+        }
         required
       />
     </div>
@@ -382,8 +416,22 @@ const PersonalInfoSection = ({
         label="NBI Clearance (If unable, upload another valid ID)"
         value={nbiClearance}
         onChange={setNbiClearance}
+        documentType="nbi-clearance"
+        onUploadComplete={(documentUrl) =>
+          onRunDocumentPrecheck?.({
+            documentType: "nbi_clearance",
+            documentUrl,
+          })
+        }
+        aiCheck={documentPrechecks?.nbiClearance}
+        isChecking={Boolean(runningDocumentChecks?.nbiClearance)}
         hint="NBI Clearance or additional valid ID"
-        hasError={showValidationErrors && !nbiClearance && !nbiReason}
+        hasError={
+          showValidationErrors &&
+          ((!nbiClearance && !nbiReason) ||
+            (Boolean(nbiClearance) &&
+              hasBlockingPrecheck(documentPrechecks?.nbiClearance)))
+        }
       />
     </div>
 

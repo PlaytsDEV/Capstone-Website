@@ -51,6 +51,12 @@ import {
   VIEWING_PREFERENCE_LOCKED_MESSAGE,
   getViewingPreferenceStepAccess,
 } from "../utils/reservationViewingPreferenceLock";
+import {
+  DOCUMENT_PRECHECK_MESSAGES,
+  getApplicantDocumentPrecheckMessage,
+  getPrecheckStatus,
+  hasBlockingPrecheck,
+} from "../utils/documentPrecheckUtils";
 
 // Returns a sessionStorage key scoped to the Firebase UID when known,
 // falling back to the legacy unscoped key for backward compatibility.
@@ -112,14 +118,7 @@ const createEmptyDocumentPrechecks = () => ({
 });
 
 const resolveDocumentPrecheckStatus = (entry = {}) => {
-  const explicitStatus = String(entry?.precheckStatus || "").trim();
-  if (explicitStatus && explicitStatus !== "not_checked") return explicitStatus;
-  if (entry?.aiCheckStatus === "passed") return "ready_for_submission";
-  if (entry?.aiCheckStatus === "failed" || entry?.aiCheckStatus === "warning") {
-    return "needs_reupload";
-  }
-  if (entry?.aiCheckStatus === "error") return "manual_review_fallback";
-  return "not_checked";
+  return getPrecheckStatus(entry);
 };
 
 const normalizeDocumentPrecheckEntry = (entry) => ({
@@ -144,22 +143,15 @@ const normalizeDocumentPrechecks = (prechecks = {}) => ({
 });
 
 const isBlockingDocumentPrecheck = (precheck = {}) => {
-  const status = resolveDocumentPrecheckStatus(precheck);
-  if (status === "manual_review_fallback") return false;
-  return (
-    status === "needs_reupload" ||
-    precheck?.readabilityStatus === "low_readability" ||
-    precheck?.readabilityStatus === "unreadable" ||
-    precheck?.documentTypeStatus === "possible_mismatch" ||
-    precheck?.canSubmit === false
-  );
+  return hasBlockingPrecheck(precheck);
 };
 
 
-const getDocumentPrecheckBlockMessage = (label, precheck = {}) =>
-  precheck?.applicantMessage ||
-  precheck?.summaryMessage ||
-  `${label} needs a clearer readable upload before submission.`;
+const getDocumentPrecheckBlockMessage = (_label, precheck = {}) =>
+  getApplicantDocumentPrecheckMessage(
+    precheck,
+    resolveDocumentPrecheckStatus(precheck),
+  ) || DOCUMENT_PRECHECK_MESSAGES.failed;
 
 const resolveTargetStage = (status, viewingPreference, applicationUnlockedByVisit) => {
   const map = {
@@ -1692,8 +1684,8 @@ export default function useReservationFlow() {
           documentTypeStatus: "unknown",
           canSubmit: false,
           aiCheckStatus: "checking",
-          summaryMessage: "Checking document quality...",
-          applicantMessage: "Checking document quality...",
+          summaryMessage: DOCUMENT_PRECHECK_MESSAGES.checking,
+          applicantMessage: DOCUMENT_PRECHECK_MESSAGES.checking,
         },
       }));
 
@@ -1717,16 +1709,14 @@ export default function useReservationFlow() {
             documentTypeStatus: "unknown",
             canSubmit: true,
             requiresManualReview: true,
-            applicantMessage:
-              "Document uploaded successfully. We could not complete the readability check, so this document will be reviewed manually.",
+            applicantMessage: DOCUMENT_PRECHECK_MESSAGES.manualReview,
             adminNote: "OCR could not complete. Manual review required.",
             flags: ["ocr_manual_fallback"],
             aiCheckStatus: "error",
             aiCheckWarnings: [
               "OCR could not complete. Manual review required.",
             ],
-           summaryMessage:
-              "Document uploaded successfully. We could not complete the readability check, so this document will be reviewed manually.",
+           summaryMessage: DOCUMENT_PRECHECK_MESSAGES.manualReview,
             requiresAdminAttention: true,
             aiCheckedAt: new Date().toISOString(),
             provider: "ocr",
@@ -2098,15 +2088,20 @@ export default function useReservationFlow() {
           const checkingDocument = requiredDocumentChecks.find(
             (doc) => doc.precheck.precheckStatus === "checking",
           );
+          const uncheckedDocument = requiredDocumentChecks.find(
+            (doc) => doc.precheck.precheckStatus === "not_checked",
+          );
           const blockedDocument = requiredDocumentChecks.find((doc) =>
             isBlockingDocumentPrecheck(doc.precheck),
           );
 
-          if (checkingDocument || blockedDocument) {
-            const problem = checkingDocument || blockedDocument;
+          if (checkingDocument || uncheckedDocument || blockedDocument) {
+            const problem = checkingDocument || uncheckedDocument || blockedDocument;
             const message = checkingDocument
-              ? `Please wait for the readability check to finish: ${problem.label}.`
-              : `Please fix the following document before submitting: ${problem.label} - ${getDocumentPrecheckBlockMessage(problem.label, problem.precheck)}`;
+              ? DOCUMENT_PRECHECK_MESSAGES.checkingSubmit
+              : uncheckedDocument
+                ? DOCUMENT_PRECHECK_MESSAGES.notChecked
+                : getDocumentPrecheckBlockMessage(problem.label, problem.precheck);
 
             setShowValidationErrors(true);
             setTimeout(() => {
