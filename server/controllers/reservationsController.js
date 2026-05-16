@@ -3991,6 +3991,7 @@ export const updateReservationByUser = async (req, res, next) => {
 
     // Build update payload from config-driven field mapping
     const updates = buildUserUpdatePayload(req.body);
+    const unsetFields = {};
     let appliedPricing = null;
     let roomAvailabilityWasRevalidated = false;
     const hasBodyField = (field) => Object.prototype.hasOwnProperty.call(req.body, field);
@@ -4265,7 +4266,8 @@ export const updateReservationByUser = async (req, res, next) => {
     ) {
       updates.visitDate = null;
       updates.visitTime = "";
-      updates.visitCode = null;
+      delete updates.visitCode;
+      unsetFields.visitCode = "";
       updates.visitScheduledAt = null;
       updates.visitApproved = false;
       updates.scheduleApproved = false;
@@ -4923,9 +4925,14 @@ export const updateReservationByUser = async (req, res, next) => {
       updates.reservationCode = await Reservation.generateUniqueReservationCode();
     }
 
+    const updateOperation = { $set: updates };
+    if (Object.keys(unsetFields).length > 0) {
+      updateOperation.$unset = unsetFields;
+    }
+
     const updatedReservation = await Reservation.findByIdAndUpdate(
       reservationId,
-      { $set: updates },
+      updateOperation,
       { new: true, runValidators: true },
     )
       .populate(...POPULATE_USER)

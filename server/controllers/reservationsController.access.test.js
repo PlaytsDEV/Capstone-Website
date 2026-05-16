@@ -783,6 +783,11 @@ describe("reservationsController.updateReservation access hardening", () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.body?.reservation?.viewingPreference).toBe("remote_2d_viewing");
+    const updateOperation = reservationFindByIdAndUpdate.mock.calls[0][1];
+    expect(updateOperation.$set.visitCode).toBeUndefined();
+    expect(updateOperation.$unset).toEqual(
+      expect.objectContaining({ visitCode: "" }),
+    );
     expect(reservationFindByIdAndUpdate).toHaveBeenCalledWith(
       "507f1f77bcf86cd799439023",
       expect.objectContaining({
