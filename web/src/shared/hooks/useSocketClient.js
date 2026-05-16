@@ -14,7 +14,11 @@ import { useAuth } from "./useAuth";
 import { API_ORIGIN } from "../api/baseUrl";
 import { getFreshToken } from "../api/httpClient";
 import { showNotification } from "../utils/notification";
-import { isNotificationVisibleForUser } from "../utils/notificationVisibility";
+import {
+  getNotificationQueryScope,
+  isNotificationVisibleForUser,
+} from "../utils/notificationVisibility";
+import { notificationQueryKeys } from "./queries/useNotifications";
 
 const SOCKET_URL = API_ORIGIN;
 
@@ -24,6 +28,19 @@ export default function useSocketClient() {
   const qc = useQueryClient();
   const addNotification = useNotificationStore((s) => s.addNotification);
   const setConnected = useNotificationStore((s) => s.setConnected);
+  const clearNotifications = useNotificationStore((s) => s.clear);
+  const activeIdentityRef = useRef(null);
+
+  useEffect(() => {
+    const identity = user?.id || user?._id
+      ? `${user?.role || "unknown"}:${user?.id || user?._id}`
+      : null;
+
+    if (activeIdentityRef.current !== identity) {
+      clearNotifications();
+      activeIdentityRef.current = identity;
+    }
+  }, [user?.id, user?._id, user?.role, clearNotifications]);
 
   useEffect(() => {
     if (!user?.id || !user?.role) return undefined;
@@ -57,11 +74,14 @@ export default function useSocketClient() {
         addNotification(notification);
         if (!notification?.isRead) {
           showNotification(notification.title || "New notification", "info", 4500);
-          qc.setQueryData(["notifications", "unread-count"], (current) => ({
+          const scope = getNotificationQueryScope(user);
+          qc.setQueryData(notificationQueryKeys.unread(scope), (current) => ({
             unreadCount: (current?.unreadCount ?? 0) + 1,
           }));
         }
-        qc.invalidateQueries({ queryKey: ["notifications"] });
+        qc.invalidateQueries({
+          queryKey: notificationQueryKeys.scope(getNotificationQueryScope(user)),
+        });
         if (notification?.type === "announcement") {
           qc.invalidateQueries({ queryKey: ["announcements"] });
         }

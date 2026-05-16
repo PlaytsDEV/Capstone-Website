@@ -1,4 +1,4 @@
-import { USER_ROLES } from "./constants.js";
+import { ADMIN_ROLE_VALUES } from "../config/roles.js";
 
 export const APPLICANT_NOTIFICATION_TYPES = new Set([
   "reservation_confirmed",
@@ -57,11 +57,10 @@ const TENANT_GENERAL_TITLES = new Set([
   "Room Transfer",
 ]);
 
-const normalizeUrl = (url) => String(url || "");
-const normalizeRole = (role) => String(role || "").toLowerCase();
+const ADMIN_ROLES = new Set(ADMIN_ROLE_VALUES);
 
-const isAdminRole = (role) =>
-  role === USER_ROLES.BRANCH_ADMIN || role === USER_ROLES.OWNER;
+const normalizeRole = (role) => String(role || "").toLowerCase();
+const normalizeUrl = (url) => String(url || "");
 
 const isAdminActionUrl = (notification = {}) =>
   normalizeUrl(notification.actionUrl).startsWith("/admin");
@@ -82,38 +81,86 @@ const isTenantGeneralNotification = (notification = {}) =>
   (TENANT_GENERAL_TITLES.has(notification.title) ||
     ["bill", "maintenance", "stay", "user"].includes(notification.entityType));
 
-export const isNotificationVisibleForUser = (notification, user) => {
-  const role = normalizeRole(user?.role);
+export const isNotificationVisibleForRole = (notification = {}, role) => {
+  const normalizedRole = normalizeRole(role);
   const type = notification?.type;
 
-  if (role === USER_ROLES.APPLICANT) {
+  if (normalizedRole === "applicant") {
     return (
       APPLICANT_NOTIFICATION_TYPES.has(type) ||
       isApplicantGeneralNotification(notification)
     );
   }
 
-  if (role === USER_ROLES.TENANT) {
+  if (normalizedRole === "tenant") {
     return (
       TENANT_NOTIFICATION_TYPES.has(type) ||
       isTenantGeneralNotification(notification)
     );
   }
 
-  if (isAdminRole(role)) {
+  if (ADMIN_ROLES.has(normalizedRole)) {
     return ADMIN_NOTIFICATION_TYPES.has(type);
   }
 
   return false;
 };
 
-export const getVisibleNotificationsForUser = (notifications = [], user) =>
-  notifications.filter((notification) =>
-    isNotificationVisibleForUser(notification, user),
-  );
-
-export const getNotificationQueryScope = (user) => {
-  const role = normalizeRole(user?.role) || "anonymous";
-  const id = user?._id || user?.id || user?.uid || "current";
-  return `${role}:${id}`;
+const applicantGeneralMongoFilter = {
+  type: "general",
+  $or: [
+    { title: { $in: [...APPLICANT_GENERAL_TITLES] } },
+    { actionUrl: { $regex: "^/applicant/reservation(\\?|$)" } },
+  ],
 };
+
+const tenantGeneralMongoFilter = {
+  type: "general",
+  $and: [
+    {
+      $or: [
+        { actionUrl: { $exists: false } },
+        { actionUrl: null },
+        { actionUrl: "" },
+        { actionUrl: { $not: /^\/admin/ } },
+      ],
+    },
+    {
+      $or: [
+        { title: { $in: [...TENANT_GENERAL_TITLES] } },
+        { entityType: { $in: ["bill", "maintenance", "stay", "user"] } },
+      ],
+    },
+  ],
+};
+
+export const getNotificationVisibilityFilterForRole = (role) => {
+  const normalizedRole = normalizeRole(role);
+
+  if (normalizedRole === "applicant") {
+    return {
+      $or: [
+        { type: { $in: [...APPLICANT_NOTIFICATION_TYPES] } },
+        applicantGeneralMongoFilter,
+      ],
+    };
+  }
+
+  if (normalizedRole === "tenant") {
+    return {
+      $or: [
+        { type: { $in: [...TENANT_NOTIFICATION_TYPES] } },
+        tenantGeneralMongoFilter,
+      ],
+    };
+  }
+
+  if (ADMIN_ROLES.has(normalizedRole)) {
+    return { type: { $in: [...ADMIN_NOTIFICATION_TYPES] } };
+  }
+
+  return { _id: null };
+};
+
+export const getNotificationVisibilityFilterForUser = (user) =>
+  getNotificationVisibilityFilterForRole(user?.role);

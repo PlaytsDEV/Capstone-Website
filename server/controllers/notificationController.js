@@ -10,25 +10,15 @@
 
 import Notification from "../models/Notification.js";
 import { User } from "../models/index.js";
+import { getNotificationVisibilityFilterForUser } from "../utils/notificationVisibility.js";
 import {
   sendSuccess,
   AppError,
 } from "../middleware/errorHandler.js";
 
-const APPLICANT_HIDDEN_NOTIFICATION_TYPES = [
-  "bill_generated",
-  "bill_due_reminder",
-  "penalty_applied",
-  "contract_expiring",
-  "grace_period_warning",
-  "move_in_reminder",
-  "maintenance_update",
-];
-
-const getNotificationVisibilityOptions = (user) =>
-  user?.role === "applicant"
-    ? { excludeTypes: APPLICANT_HIDDEN_NOTIFICATION_TYPES }
-    : {};
+const getNotificationVisibilityOptions = (user) => ({
+  visibilityFilter: getNotificationVisibilityFilterForUser(user),
+});
 
 /**
  * GET /api/notifications
@@ -63,10 +53,12 @@ export const markAsRead = async (req, res, next) => {
     const dbUser = await User.findOne({ firebaseUid: req.user.uid }).lean();
     if (!dbUser) throw new AppError("User not found", 404, "USER_NOT_FOUND");
 
-    const notification = await Notification.findById(notificationId);
+    const notification = await Notification.findOne({
+      _id: notificationId,
+      userId: dbUser._id,
+      ...getNotificationVisibilityFilterForUser(dbUser),
+    });
     if (!notification) throw new AppError("Notification not found", 404, "NOTIFICATION_NOT_FOUND");
-    if (String(notification.userId) !== String(dbUser._id))
-      throw new AppError("Not your notification", 403, "FORBIDDEN");
 
     await notification.markAsRead();
     sendSuccess(res, { message: "Notification marked as read" });
@@ -104,10 +96,12 @@ export const getUnreadCount = async (req, res, next) => {
     if (!dbUser) throw new AppError("User not found", 404, "USER_NOT_FOUND");
 
     const visibilityOptions = getNotificationVisibilityOptions(dbUser);
-    const filter = { userId: dbUser._id, isRead: false };
-    if (visibilityOptions.excludeTypes?.length) {
-      filter.type = { $nin: visibilityOptions.excludeTypes };
-    }
+    const filter = {
+      $and: [
+        { userId: dbUser._id, isRead: false },
+        visibilityOptions.visibilityFilter,
+      ],
+    };
     const count = await Notification.countDocuments(filter);
     sendSuccess(res, { unreadCount: count });
   } catch (error) {

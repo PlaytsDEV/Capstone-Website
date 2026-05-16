@@ -133,14 +133,28 @@ notificationSchema.methods.markAsRead = async function () {
 // STATICS
 // ============================================================================
 
+const mergeFilters = (...filters) => {
+  const activeFilters = filters.filter(
+    (filter) => filter && Object.keys(filter).length > 0,
+  );
+
+  if (activeFilters.length === 0) return {};
+  if (activeFilters.length === 1) return activeFilters[0];
+  return { $and: activeFilters };
+};
+
 const buildNotificationFilter = (userId, options = {}) => {
-  const { unreadOnly = false, excludeTypes = [] } = options;
+  const {
+    unreadOnly = false,
+    excludeTypes = [],
+    visibilityFilter = {},
+  } = options;
   const filter = { userId };
   if (unreadOnly) filter.isRead = false;
   if (Array.isArray(excludeTypes) && excludeTypes.length > 0) {
     filter.type = { $nin: excludeTypes };
   }
-  return filter;
+  return mergeFilters(filter, visibilityFilter);
 };
 
 /**
