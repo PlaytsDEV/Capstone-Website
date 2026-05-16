@@ -6,6 +6,7 @@ import {
   useUsers,
   useUpdatePermissions,
 } from "../../../shared/hooks/queries/useUsers";
+import { ListSkeleton } from "../../../shared/components/LoadingSkeletons";
 import "../styles/superadmin-dashboard.css";
 import "../styles/superadmin-permissions.css";
 
@@ -84,7 +85,7 @@ export default function RolePermissionsPage() {
         </div>
 
         {isLoading ? (
-          <p className="sa2-empty">Loading branch admin accounts...</p>
+          <ListSkeleton rows={4} avatar />
         ) : null}
         {!isLoading && error ? (
           <p className="sa2-empty">Failed to load permissions data.</p>

@@ -1,9 +1,119 @@
 import React from "react";
-import { Home } from "lucide-react";
+import { createPortal } from "react-dom";
+import {
+  ArrowLeft,
+  Bed,
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle,
+  Home,
+  Image as ImageIcon,
+  Maximize2,
+  Wallet,
+  X,
+} from "lucide-react";
 import { formatBranch, formatRoomType } from "../../../../shared/utils/formatDate";
+import { getRoomImages as getFallbackRoomImages } from "../check-availability/checkAvailabilityConstants";
 
-const ReservationSummaryStep = ({ reservationData, onNext, readOnly }) => {
+const formatCurrency = (value) => `₱${Number(value || 0).toLocaleString()}`;
+
+const getRoomName = (room) =>
+  room?.name || room?.roomNumber || room?.title || room?.id || "N/A";
+
+const getSelectedBedLabel = (selectedBed) => {
+  if (!selectedBed) return "No bed selected";
+  const position = selectedBed.position
+    ? `${selectedBed.position.charAt(0).toUpperCase()}${selectedBed.position.slice(1)} Bed`
+    : "Selected Bed";
+  return selectedBed.id ? `${position} (${selectedBed.id})` : position;
+};
+
+const getAvailableSlots = (room) => {
+  if (Number.isFinite(Number(room?.availableSlots))) {
+    return Number(room.availableSlots);
+  }
+  const capacity = Number(room?.capacity);
+  const currentOccupancy = Number(room?.currentOccupancy);
+  if (Number.isFinite(capacity) && Number.isFinite(currentOccupancy)) {
+    return Math.max(0, capacity - currentOccupancy);
+  }
+  if (Array.isArray(room?.beds)) {
+    return room.beds.filter((bed) => bed.status === "available").length;
+  }
+  return null;
+};
+
+const getAvailabilityLabel = (room, selectedBed) => {
+  const matchedBed = selectedBed?.id
+    ? room?.beds?.find((bed) => bed.id === selectedBed.id)
+    : null;
+  const bedStatus = selectedBed?.status || matchedBed?.status;
+
+  if (bedStatus === "locked") return "Temporarily held";
+  if (bedStatus === "reserved") return "Reserved";
+  if (bedStatus === "occupied") return "Occupied";
+  if (bedStatus === "maintenance") return "Under maintenance";
+  if (room?.available === false || getAvailableSlots(room) === 0) return "Unavailable";
+  return "Available";
+};
+
+const getAvailabilityTone = (label) => {
+  const normalized = String(label).toLowerCase();
+  if (normalized.includes("unavailable") || normalized.includes("occupied")) return "neutral";
+  if (normalized.includes("available")) return "success";
+  if (normalized.includes("held")) return "warning";
+  return "neutral";
+};
+
+const getSummaryRoomImages = (room) => {
+  const images = Array.isArray(room?.images) ? room.images.filter(Boolean) : [];
+  if (room?.image) images.unshift(room.image);
+  const fallbackImages = getFallbackRoomImages(room?.type, room?.branch);
+  return Array.from(new Set([...images, ...fallbackImages]));
+};
+
+/**
+ * Step 1 - Room review summary
+ */
+const ReservationSummaryStep = ({
+  reservationData,
+  onNext,
+  onChangeRoom,
+  readOnly,
+}) => {
+  const [activePhotoIndex, setActivePhotoIndex] = React.useState(0);
+  const [viewerOpen, setViewerOpen] = React.useState(false);
   const room = reservationData?.room || {};
+  const selectedBed = reservationData?.selectedBed;
+  const applianceFees = Number(reservationData?.applianceFees || 0);
+  const monthlyRent = Number(room.price || room.monthlyPrice || 0);
+  const estimatedMonthlyTotal = monthlyRent + applianceFees;
+  const reservationFeeAmount = Number(reservationData?.reservationFeeAmount || 2000);
+  const availableSlots = getAvailableSlots(room);
+  const availabilityLabel = getAvailabilityLabel(room, selectedBed);
+  const availabilityTone = getAvailabilityTone(availabilityLabel);
+  const amenities = Array.isArray(room.amenities) ? room.amenities.filter(Boolean) : [];
+  const roomImages = getSummaryRoomImages(room);
+  const selectedAppliances = Array.isArray(reservationData?.selectedAppliances)
+    ? reservationData.selectedAppliances
+    : [];
+  const activePhoto = roomImages[activePhotoIndex] || roomImages[0];
+
+  const showPreviousPhoto = () => {
+    setActivePhotoIndex((current) =>
+      current === 0 ? roomImages.length - 1 : current - 1,
+    );
+  };
+
+  const showNextPhoto = () => {
+    setActivePhotoIndex((current) =>
+      current === roomImages.length - 1 ? 0 : current + 1,
+    );
+  };
+
+  const closeViewer = () => {
+    setViewerOpen(false);
+  };
 
   return (
     <div className="reservation-card">
@@ -16,52 +126,186 @@ const ReservationSummaryStep = ({ reservationData, onNext, readOnly }) => {
         </p>
       </div>
 
-      <div className="content-card">
-        <div className="card-section-title">
-          <Home size={15} style={{ marginRight: 6, flexShrink: 0 }} />
-          Room Information
-        </div>
+      {roomImages.length > 0 && (
+        <section className="content-card rf-room-photos-card">
+          <div className="card-section-title">
+            <div className="icon"><ImageIcon size={15} /></div>
+            Room Photos
+          </div>
 
-        <div className="summary-section">
-          <div className="summary-row">
-            <span className="summary-label">Branch</span>
-            <span className="summary-value">{formatBranch(room.branch)}</span>
+          <div className="rf-room-photo-carousel">
+            <button
+              type="button"
+              className="rf-room-photo-open"
+              onClick={() => setViewerOpen(true)}
+              aria-label="Open room photo viewer"
+            >
+              <img
+                src={activePhoto}
+                alt={`${getRoomName(room)} photo ${activePhotoIndex + 1}`}
+                loading="lazy"
+              />
+              <span className="rf-room-photo-open-hint">
+                <Maximize2 size={14} />
+                View
+              </span>
+            </button>
+
+            {roomImages.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  className="rf-room-photo-nav rf-room-photo-nav-prev"
+                  onClick={showPreviousPhoto}
+                  aria-label="Previous room photo"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <button
+                  type="button"
+                  className="rf-room-photo-nav rf-room-photo-nav-next"
+                  onClick={showNextPhoto}
+                  aria-label="Next room photo"
+                >
+                  <ChevronRight size={18} />
+                </button>
+                <div className="rf-room-photo-dots" aria-label="Room photo slides">
+                  {roomImages.map((image, index) => (
+                    <button
+                      type="button"
+                      key={image}
+                      className={`rf-room-photo-dot ${index === activePhotoIndex ? "active" : ""}`}
+                      onClick={() => setActivePhotoIndex(index)}
+                      aria-label={`Show room photo ${index + 1}`}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
-          <div className="summary-row">
-            <span className="summary-label">Room Type</span>
-            <span className="summary-value">{formatRoomType(room.type)}</span>
+        </section>
+      )}
+
+      {viewerOpen && createPortal(
+        <div className="rf-photo-viewer" role="dialog" aria-modal="true" onClick={closeViewer}>
+          <div className="rf-photo-viewer-toolbar" onClick={(event) => event.stopPropagation()}>
+            <button type="button" onClick={closeViewer} aria-label="Close photo viewer">
+              <X size={17} />
+            </button>
           </div>
-          <div className="summary-row">
-            <span className="summary-label">Room Number</span>
-            <span className="summary-value">
-              {room.roomNumber || room.name || room.title || room.id || "N/A"}
-            </span>
+
+          <div className="rf-photo-viewer-stage" onClick={(event) => event.stopPropagation()}>
+            <img
+              src={activePhoto}
+              alt={`${getRoomName(room)} enlarged photo ${activePhotoIndex + 1}`}
+            />
           </div>
-          {reservationData?.selectedBed && (
+        </div>,
+        document.body,
+      )}
+
+      <div className="rf-summary-grid rf-room-review-grid">
+        <section className="content-card rf-summary-panel rf-summary-panel-main">
+          <div className="card-section-title">
+            <div className="icon"><Home size={15} /></div>
+            Room Information
+          </div>
+
+          <div className="summary-section">
+            <div className="summary-row">
+              <span className="summary-label">Branch</span>
+              <span className="summary-value">{formatBranch(room.branch)}</span>
+            </div>
+            <div className="summary-row">
+              <span className="summary-label">Room Type</span>
+              <span className="summary-value">{formatRoomType(room.type)}</span>
+            </div>
+            <div className="summary-row">
+              <span className="summary-label">Room</span>
+              <span className="summary-value">{getRoomName(room)}</span>
+            </div>
+            <div className="summary-row">
+              <span className="summary-label">Floor</span>
+              <span className="summary-value">{room.floor ? `Floor ${room.floor}` : "To be confirmed"}</span>
+            </div>
             <div className="summary-row">
               <span className="summary-label">Selected Bed</span>
-              <span className="summary-value" style={{ textTransform: "capitalize" }}>
-                {reservationData.selectedBed.position} Bed ({reservationData.selectedBed.id})
-              </span>
+              <span className="summary-value">{getSelectedBedLabel(selectedBed)}</span>
             </div>
-          )}
-          {reservationData?.applianceFees > 0 && (
             <div className="summary-row">
-              <span className="summary-label">Appliance Fees</span>
-              <span className="summary-value">
-                ₱{reservationData.applianceFees.toLocaleString()}/month
+              <span className="summary-label">Availability</span>
+              <span className={`rf-status-pill rf-status-pill-${availabilityTone}`}>
+                {availabilityLabel}
               </span>
             </div>
-          )}
-          <div className="total-section">
-            <span>Monthly Rent</span>
-            <span className="total-amount">₱{(room.price || 0).toLocaleString()}</span>
+            <div className="summary-row">
+              <span className="summary-label">Available Slots</span>
+              <span className="summary-value">
+                {availableSlots === null ? "To be confirmed" : `${availableSlots} of ${room.capacity || "?"}`}
+              </span>
+            </div>
           </div>
-        </div>
+        </section>
+
+        <section className="content-card rf-summary-panel">
+          <div className="card-section-title">
+            <div className="icon"><Wallet size={15} /></div>
+            Payment Preview
+          </div>
+
+          <div className="summary-section">
+            <div className="summary-row">
+              <span className="summary-label">Monthly Rent</span>
+              <span className="summary-value">{formatCurrency(monthlyRent)}/month</span>
+            </div>
+            {selectedAppliances.length > 0 && (
+              <div className="summary-row">
+                <span className="summary-label">Selected Appliances</span>
+                <span className="summary-value">
+                  {selectedAppliances
+                    .map((item) => `${item.name}${item.quantity ? ` x${item.quantity}` : ""}`)
+                    .join(", ")}
+                </span>
+              </div>
+            )}
+            {applianceFees > 0 && (
+              <div className="summary-row">
+                <span className="summary-label">Appliance Fees</span>
+                <span className="summary-value">{formatCurrency(applianceFees)}/month</span>
+              </div>
+            )}
+            <div className="summary-row">
+              <span className="summary-label">Reservation Fee</span>
+              <span className="summary-value">{formatCurrency(reservationFeeAmount)} due later</span>
+            </div>
+            <div className="total-section">
+              <span>Estimated Monthly Total</span>
+              <span className="total-amount">{formatCurrency(estimatedMonthlyTotal)}</span>
+            </div>
+          </div>
+        </section>
       </div>
 
+      {amenities.length > 0 && (
+        <section className="content-card rf-summary-panel">
+          <div className="card-section-title">
+            <div className="icon"><Bed size={15} /></div>
+            Room Includes
+          </div>
+
+          <div className="rf-inclusion-list">
+            {amenities.map((amenity) => (
+              <span className="rf-inclusion-item" key={amenity}>
+                <CheckCircle size={14} />
+                {amenity}
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
+
       {!readOnly && (
-        <div className="info-box">
+        <div className="info-box" style={{ marginTop: 24, marginBottom: 24 }}>
           <div className="info-box-title">What happens next?</div>
           <div className="info-text">
             After confirming, you'll choose between a physical visit, 2D remote
@@ -79,7 +323,13 @@ const ReservationSummaryStep = ({ reservationData, onNext, readOnly }) => {
       )}
 
       {!readOnly && (
-        <div className="stage-buttons" style={{ justifyContent: "flex-end" }}>
+        <div className="stage-buttons rf-summary-actions">
+          {onChangeRoom && (
+            <button type="button" onClick={onChangeRoom} className="btn btn-secondary">
+              <ArrowLeft size={16} />
+              Change Selected Room
+            </button>
+          )}
           <button type="button" onClick={onNext} className="btn btn-primary">
             Confirm Room &amp; Continue
           </button>

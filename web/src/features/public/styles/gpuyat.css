@@ -277,16 +277,16 @@
 .gpuyat-profile-avatar {
   width: 32px;
   height: 32px;
-  border-radius: 8px;
-  background: #ff6b35;
-  color: var(--color-white);
+  border-radius: 50%;
+  background: linear-gradient(135deg, #D4AF37 0%, #B88A1A 100%);
+  color: #0F172A;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
   font-size: 0.85rem;
   flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(255, 107, 53, 0.3);
+  box-shadow: 0 1px 4px rgba(184, 138, 26, 0.28);
 }
 
 .gpuyat-profile-name {
@@ -353,16 +353,16 @@
 .gpuyat-profile-dropdown-avatar {
   width: 36px;
   height: 36px;
-  border-radius: 8px;
-  background: #ff6b35;
-  color: var(--color-white);
+  border-radius: 50%;
+  background: linear-gradient(135deg, #D4AF37 0%, #B88A1A 100%);
+  color: #0F172A;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
   font-size: 0.9rem;
   flex-shrink: 0;
-  box-shadow: 0 3px 10px rgba(255, 107, 53, 0.3);
+  box-shadow: 0 1px 4px rgba(184, 138, 26, 0.28);
 }
 
 .gpuyat-profile-dropdown-info {

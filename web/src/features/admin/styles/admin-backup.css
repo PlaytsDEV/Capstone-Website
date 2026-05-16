@@ -1,0 +1,748 @@
+/* =============================================================================
+   SYSTEM BACKUP PAGE STYLES
+   ============================================================================= */
+
+.backup-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+  max-width: 960px;
+}
+
+/* ── Page Header ──────────────────────────────────────────────────────────── */
+
+.backup-page__header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.backup-page__title {
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+  color: var(--foreground);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.backup-page__title-icon {
+  color: var(--primary);
+}
+
+.backup-page__subtitle {
+  font-size: var(--font-size-base);
+  color: var(--muted-foreground);
+  margin: 0;
+}
+
+/* ── Configuration Card ───────────────────────────────────────────────────── */
+
+.backup-config-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-xl);
+  box-shadow: var(--shadow-sm);
+}
+
+.backup-config-card__title {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--foreground);
+  margin: 0 0 var(--spacing-lg);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.backup-config-card__title-icon {
+  color: var(--muted-foreground);
+}
+
+.backup-config-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-xl);
+}
+
+@media (max-width: 640px) {
+  .backup-config-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Toggle Row ───────────────────────────────────────────────────────────── */
+
+.backup-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-lg);
+  background: var(--muted);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+}
+
+.backup-toggle-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.backup-toggle-label__main {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.backup-toggle-label__hint {
+  font-size: var(--font-size-sm);
+  color: var(--muted-foreground);
+}
+
+/* ── Toggle Switch ────────────────────────────────────────────────────────── */
+
+.backup-toggle-switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.backup-toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.backup-toggle-switch__track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--switch-background);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background var(--duration-normal) var(--ease-in-out);
+}
+
+.backup-toggle-switch__track::after {
+  content: "";
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: white;
+  top: 3px;
+  left: 3px;
+  transition: transform var(--duration-normal) var(--ease-out);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.backup-toggle-switch input:checked + .backup-toggle-switch__track {
+  background: var(--success);
+}
+
+.backup-toggle-switch input:checked + .backup-toggle-switch__track::after {
+  transform: translateX(20px);
+}
+
+/* ── Interval Selector ────────────────────────────────────────────────────── */
+
+.backup-interval-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.backup-interval-group__label {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--foreground);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.backup-interval-select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--input-background);
+  color: var(--foreground);
+  font-size: var(--font-size-md);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) ease;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
+}
+
+.backup-interval-select:focus {
+  outline: none;
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 20%, transparent);
+}
+
+.backup-interval-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Action Bar ───────────────────────────────────────────────────────────── */
+
+.backup-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding-top: var(--spacing-lg);
+  border-top: 1px solid var(--border-light);
+  margin-top: var(--spacing-lg);
+}
+
+.backup-actions__info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.backup-actions__last-backup {
+  font-size: var(--font-size-sm);
+  color: var(--muted-foreground);
+}
+
+.backup-actions__last-backup strong {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.backup-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all var(--duration-fast) ease;
+  white-space: nowrap;
+}
+
+.backup-btn--primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.backup-btn--primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+  box-shadow: var(--shadow-sm);
+}
+
+.backup-btn--secondary {
+  background: var(--muted);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+}
+
+.backup-btn--secondary:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.backup-btn--danger {
+  background: var(--danger-light);
+  color: var(--danger);
+}
+
+.backup-btn--danger:hover:not(:disabled) {
+  background: var(--danger);
+  color: var(--danger-foreground);
+}
+
+.backup-btn--sm {
+  padding: 6px 12px;
+  font-size: var(--font-size-sm);
+}
+
+.backup-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── History Card ─────────────────────────────────────────────────────────── */
+
+.backup-history-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.backup-history-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-lg) var(--spacing-xl);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.backup-history-card__title {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--foreground);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.backup-history-card__title-icon {
+  color: var(--muted-foreground);
+}
+
+/* ── Table ────────────────────────────────────────────────────────────────── */
+
+.backup-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-base);
+}
+
+.backup-table th {
+  text-align: left;
+  padding: 10px var(--spacing-lg);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted-foreground);
+  background: var(--bg-table-header);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.backup-table td {
+  padding: 12px var(--spacing-lg);
+  border-bottom: 1px solid var(--border-light);
+  color: var(--foreground);
+  vertical-align: middle;
+}
+
+.backup-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.backup-table tbody tr:hover {
+  background: var(--bg-hover);
+}
+
+/* ── Status Badge ─────────────────────────────────────────────────────────── */
+
+.backup-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.backup-status-badge--completed {
+  background: var(--status-success-bg);
+  color: var(--success);
+}
+
+.backup-status-badge--failed {
+  background: var(--status-error-bg);
+  color: var(--danger);
+}
+
+.backup-status-badge--in_progress {
+  background: var(--status-info-bg);
+  color: var(--info);
+}
+
+.backup-status-badge--in_progress .backup-status-spinner {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--info);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: backup-spin 0.8s linear infinite;
+}
+
+@keyframes backup-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Type Badge ───────────────────────────────────────────────────────────── */
+
+.backup-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.backup-type-badge--manual {
+  background: var(--accent-blue-bg);
+  color: var(--info);
+}
+
+.backup-type-badge--automatic {
+  background: var(--accent-purple-bg);
+  color: var(--chart-4);
+}
+
+/* ── Table Actions ────────────────────────────────────────────────────────── */
+
+.backup-table-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── Empty State ──────────────────────────────────────────────────────────── */
+
+.backup-empty-state {
+  padding: 48px 24px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.backup-empty-state__icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--muted);
+  display: grid;
+  place-items: center;
+  color: var(--muted-foreground);
+  margin-bottom: 4px;
+}
+
+.backup-empty-state__title {
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.backup-empty-state__desc {
+  font-size: var(--font-size-sm);
+  color: var(--muted-foreground);
+  max-width: 320px;
+}
+
+/* ── Pagination ───────────────────────────────────────────────────────────── */
+
+.backup-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md) var(--spacing-xl);
+  border-top: 1px solid var(--border-light);
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+
+.backup-pagination__left {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-lg);
+}
+
+.backup-pagination__size-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+
+.backup-pagination__size-select {
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--input-background);
+  color: var(--foreground);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  padding-right: 22px;
+}
+
+.backup-pagination__size-select:focus {
+  outline: none;
+  border-color: var(--ring);
+}
+
+.backup-pagination__info {
+  font-size: var(--font-size-sm);
+  color: var(--muted-foreground);
+}
+
+.backup-pagination__buttons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.backup-pagination__page-indicator {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--foreground);
+  min-width: 40px;
+  text-align: center;
+}
+
+/* ── Confirm Modal ────────────────────────────────────────────────────────── */
+
+.backup-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.45);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  animation: backup-fade-in 0.15s ease;
+}
+
+@keyframes backup-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.backup-confirm-modal {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  padding: var(--spacing-xl);
+  max-width: 400px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  animation: backup-slide-up 0.2s var(--ease-out);
+}
+
+@keyframes backup-slide-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.backup-confirm-modal__title {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  color: var(--foreground);
+  margin: 0;
+}
+
+.backup-confirm-modal__desc {
+  font-size: var(--font-size-base);
+  color: var(--muted-foreground);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.backup-confirm-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ── Loading Skeleton ─────────────────────────────────────────────────────── */
+
+.backup-skeleton {
+  background: linear-gradient(90deg, var(--muted) 25%, var(--bg-hover) 50%, var(--muted) 75%);
+  background-size: 200% 100%;
+  animation: backup-shimmer 1.5s ease infinite;
+  border-radius: var(--radius-md);
+  height: 20px;
+}
+
+@keyframes backup-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Warning / Restore Button ─────────────────────────────────────────────── */
+
+.backup-btn--warning {
+  background: color-mix(in srgb, #f59e0b 15%, transparent);
+  color: #f59e0b;
+  border: 1px solid color-mix(in srgb, #f59e0b 25%, transparent);
+}
+
+.backup-btn--warning:hover:not(:disabled) {
+  background: #f59e0b;
+  color: #fff;
+}
+
+.backup-btn--warning:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Restore Type Badge ──────────────────────────────────────────────────── */
+
+.backup-type-badge--restore {
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+  color: #f59e0b;
+}
+
+/* ── Wider Confirm Modal (for restore) ───────────────────────────────────── */
+
+.backup-confirm-modal--wide {
+  max-width: 480px;
+}
+
+/* ── Restore Warning Icon ────────────────────────────────────────────────── */
+
+.backup-restore-warning-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+  display: grid;
+  place-items: center;
+  color: #f59e0b;
+  margin: 0 auto 4px;
+}
+
+/* ── Restore Info Callout ────────────────────────────────────────────────── */
+
+.backup-restore-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--info) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--info) 20%, transparent);
+  color: var(--info);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.backup-restore-callout svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* ── Restore Typed Input ─────────────────────────────────────────────────── */
+
+.backup-restore-input {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--input-background);
+  color: var(--foreground);
+  font-size: var(--font-size-md);
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-align: center;
+  text-transform: uppercase;
+  transition: border-color var(--duration-fast) ease;
+}
+
+.backup-restore-input:focus {
+  outline: none;
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #f59e0b 20%, transparent);
+}
+
+.backup-restore-input::placeholder {
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--muted-foreground);
+}
+
+/* ── Inline Code ─────────────────────────────────────────────────────────── */
+
+.backup-code {
+  background: var(--muted);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-family: monospace;
+  font-size: 0.9em;
+  font-weight: 700;
+  color: #f59e0b;
+  border: 1px solid var(--border-light);
+}
+
+/* ── Upload Drop Zone ────────────────────────────────────────────────────── */
+
+.backup-upload-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px 16px;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--muted);
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: all var(--duration-fast) ease;
+  text-align: center;
+  font-size: var(--font-size-sm);
+}
+
+.backup-upload-zone:hover {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 5%, transparent);
+  color: var(--primary);
+}
+
+.backup-upload-zone--active {
+  border-color: #f59e0b;
+  background: color-mix(in srgb, #f59e0b 8%, transparent);
+  color: #f59e0b;
+}
+
+.backup-upload-zone--has-file {
+  border-color: var(--success);
+  border-style: solid;
+  background: color-mix(in srgb, var(--success) 6%, transparent);
+  color: var(--success);
+}
+
+.backup-upload-zone__filename {
+  font-weight: 700;
+  font-size: var(--font-size-md);
+  color: var(--foreground);
+  word-break: break-all;
+}
+
+.backup-upload-zone__size {
+  font-size: var(--font-size-xs);
+  color: var(--muted-foreground);
+}

@@ -167,7 +167,7 @@ const notify = {
   cancellationRequested: (userId, reservationCode) =>
     createNotification(userId, "reservation_cancellation_requested", "Cancellation Request Submitted",
       `Your cancellation request for reservation ${reservationCode} is pending admin review.`,
-      { entityType: "reservation" }),
+      { entityType: "reservation", actionUrl: "/applicant/profile" }),
 
   cancellationApproved: (userId, reservationCode) =>
     createNotification(userId, "reservation_cancelled", "Reservation Cancelled",
@@ -179,10 +179,16 @@ const notify = {
       `Your cancellation request for reservation ${reservationCode} was not approved.${note ? ` Admin note: ${note}` : ""}`,
       { entityType: "reservation" }),
 
-  cancellationRequestAlert: (adminUserId, tenantName, reservationCode) =>
+  cancellationRequestAlert: (adminUserId, tenantName, reservationCode, reservationId = null) =>
     createNotification(adminUserId, "reservation_cancellation_requested", "Cancellation Request Received",
       `${tenantName} has requested cancellation for reservation ${reservationCode}. Review required. The reservation fee is non-refundable.`,
-      { entityType: "reservation" }),
+      {
+        entityType: "reservation",
+        entityId: reservationId ? String(reservationId) : null,
+        actionUrl: reservationId
+          ? `/admin/reservations?reservationId=${String(reservationId)}&focus=cancellation`
+          : "/admin/reservations",
+      }),
 
   /**
    * Visit approved

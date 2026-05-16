@@ -207,6 +207,17 @@ html[data-theme="dark"] {
 .rf-success-banner .info-box-title { color: var(--rf-success-text); }
 .rf-success-banner .info-text      { color: var(--rf-success-text-alt); }
 
+.rf-payment-complete-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.rf-payment-complete-banner svg {
+  flex: 0 0 auto;
+  color: var(--rf-success);
+}
+
 /* ── Payment info box (Step 4 PayMongo) ── */
 .rf-payment-info-box {
   background: var(--rf-success-bg);
@@ -260,6 +271,92 @@ html[data-theme="dark"] {
 }
 html[data-theme="dark"] .rf-policies-link { color: var(--color-success); }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.rf-visit-form-stack {
+  --rf-visit-card-padding: 22px;
+}
+
+.rf-visit-form-stack .content-card {
+  padding: var(--rf-visit-card-padding);
+  margin-bottom: 16px;
+}
+
+.rf-visit-summary-card {
+  border-left: 3px solid var(--rf-border-card);
+  padding-top: 18px !important;
+  padding-bottom: 18px !important;
+  background: linear-gradient(180deg, var(--rf-surface), var(--rf-surface-alt));
+}
+.rf-visit-summary-card--complete {
+  border-left-color: var(--rf-success);
+}
+.rf-visit-summary-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.rf-visit-summary-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--rf-text-muted);
+  margin-bottom: 4px;
+}
+.rf-visit-summary-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--rf-text-heading);
+  line-height: 1.35;
+}
+.rf-visit-summary-detail {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--rf-text-secondary);
+  overflow-wrap: anywhere;
+}
+.rf-visit-summary-icon {
+  color: var(--rf-success);
+  flex: 0 0 auto;
+  padding: 2px;
+}
+.rf-visit-summary-rows {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.75fr) minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 0.75fr);
+  gap: 8px 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rf-border);
+}
+.rf-visit-summary-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.rf-visit-summary-row span {
+  font-size: 10px;
+  color: var(--rf-text-muted);
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.rf-visit-summary-row strong {
+  font-size: 12px;
+  color: var(--rf-text-heading);
+  overflow-wrap: anywhere;
+}
+
 /* ── Visit step: date picker ── */
 .rf-date-grid,
 .rf-calendar-grid {
@@ -270,8 +367,8 @@ html[data-theme="dark"] .rf-policies-link { color: var(--color-success); }
 }
 .rf-calendar-grid {
   overflow-x: auto;
-  padding-top: 2px;
-  padding-bottom: 4px;
+  padding: 8px 2px 4px;
+  scrollbar-width: thin;
 }
 .rf-calendar-weekday {
   min-width: 0;
@@ -281,10 +378,6 @@ html[data-theme="dark"] .rf-policies-link { color: var(--color-success); }
   font-weight: 700;
   color: var(--rf-text-muted);
   text-transform: uppercase;
-}
-.rf-date-empty {
-  min-height: 80px;
-  border-radius: 10px;
 }
 .rf-date-btn {
   all: unset;
@@ -298,11 +391,12 @@ html[data-theme="dark"] .rf-policies-link { color: var(--color-success); }
   cursor: not-allowed;
 }
 .rf-date-card {
+  position: relative;
   box-sizing: border-box;
-  height: 80px;
-  padding: 9px 8px;
-  border-radius: 10px;
-  border: 2px solid var(--rf-border-card);
+  min-height: 74px;
+  padding: 10px 8px 8px;
+  border-radius: 9px;
+  border: 1.5px solid var(--rf-border-card);
   background: var(--rf-surface);
   display: flex;
   flex-direction: column;
@@ -322,9 +416,13 @@ html[data-theme="dark"] .rf-policies-link { color: var(--color-success); }
   background: var(--rf-muted-bg, #f3f4f6);
   border-color: var(--rf-border-card);
 }
+.rf-date-card.outside-window {
+  opacity: 0.5;
+}
 .rf-date-card.selected {
   border-color: var(--rf-selection-border);
   background: var(--rf-selection-bg);
+  box-shadow: inset 0 0 0 1px var(--rf-selection-border), 0 0 0 2px rgba(255, 140, 66, 0.1);
 }
 .rf-date-day {
   font-size: 11px;
@@ -335,7 +433,7 @@ html[data-theme="dark"] .rf-policies-link { color: var(--color-success); }
 }
 .rf-date-card.selected .rf-date-day { color: var(--rf-accent); }
 .rf-date-num {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--rf-text-secondary);
   white-space: nowrap;
@@ -354,23 +452,91 @@ html[data-theme="dark"] .rf-policies-link { color: var(--color-success); }
 .rf-date-card.selected small { color: var(--rf-accent); }
 .rf-today-pill {
   position: absolute;
-  top: -9px;
+  top: -8px;
   left: 50%;
   transform: translateX(-50%);
   background: var(--rf-today-bg);
   color: var(--rf-today-text);
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.04em;
   padding: 2px 6px;
   border-radius: 20px;
   white-space: nowrap;
 }
+.rf-selection-mark {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  color: var(--rf-accent);
+}
+.rf-date-status {
+  display: block;
+  margin-top: 5px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--rf-error-text);
+  overflow-wrap: anywhere;
+}
+.rf-empty-availability {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px dashed var(--rf-border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: var(--rf-surface-alt);
+  color: var(--rf-text-secondary);
+  font-size: 13px;
+}
+.rf-empty-availability strong {
+  color: var(--rf-text-heading);
+}
+.rf-empty-availability--quiet {
+  border-style: solid;
+}
+.rf-show-more-dates {
+  margin-top: 8px;
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--rf-border);
+  border-radius: 8px;
+  background: var(--rf-surface);
+  color: var(--rf-text-heading);
+  font-size: 13px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.rf-show-more-dates:hover:not(:disabled) {
+  border-color: var(--rf-text-muted);
+  background: var(--rf-hover-bg);
+}
+.rf-show-more-dates:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
 
 /* ── Visit step: time slot picker ── */
+.rf-time-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.rf-time-group-label {
+  margin-bottom: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--rf-text-secondary);
+}
 .rf-time-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
   gap: 8px;
 }
 .rf-time-grid__message,
@@ -398,10 +564,11 @@ html[data-theme="dark"] .rf-policies-link { color: var(--color-success); }
   cursor: not-allowed;
 }
 .rf-time-slot {
-  min-height: 62px;
-  padding: 10px 12px;
+  position: relative;
+  min-height: 66px;
+  padding: 10px 12px 9px;
   border-radius: 8px;
-  border: 2px solid var(--rf-border-card);
+  border: 1.5px solid var(--rf-border-card);
   background: var(--rf-surface);
   display: flex;
   flex-direction: column;
@@ -418,8 +585,8 @@ html[data-theme="dark"] .rf-policies-link { color: var(--color-success); }
   display: block;
 }
 .rf-time-slot small {
-  min-height: 14px;
-  margin-top: 3px;
+  min-height: 0;
+  margin-top: 4px;
   font-size: 11px;
   font-weight: 600;
   line-height: 1.25;
@@ -445,6 +612,20 @@ html[data-theme="dark"] .rf-policies-link { color: var(--color-success); }
   background: var(--rf-selection-bg);
   color: var(--rf-accent);
   font-weight: 600;
+  box-shadow: inset 0 0 0 1px var(--rf-selection-border), 0 0 0 2px rgba(255, 140, 66, 0.1);
+}
+
+.rf-mobile-action-summary {
+  display: none;
+}
+.rf-visit-actions .btn {
+  flex: 0 0 auto;
+}
+.rf-inline-policy {
+  margin: -2px 2px 12px;
+}
+.rf-inline-policy .checkbox-group {
+  margin: 0;
 }
 
 /* ── Section helper text (Choose a date / Select a date first...) ── */
@@ -819,7 +1000,160 @@ html[data-theme="dark"] .rf-receipt-header__badge { color: var(--color-success);
   color: var(--rf-text-muted);
   text-align: right;
 }
-.rf-pay-btn-icon { display: flex; align-items: center; gap: 6px; justify-content: center; }
+.rf-pay-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+}
+
+.rf-payment-stage .card-section-title .icon svg {
+  color: var(--rf-primary);
+}
+
+.rf-payment-summary {
+  margin-bottom: 0;
+}
+
+.rf-payment-room-row .summary-value {
+  font-size: 15px;
+  color: var(--rf-text-heading);
+}
+
+.rf-payment-rent {
+  color: var(--rf-accent);
+}
+
+.rf-payment-total .total-amount {
+  white-space: nowrap;
+}
+
+.rf-payment-trust-card .rf-payment-info-box {
+  margin-bottom: 16px;
+}
+
+.rf-payment-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.rf-payment-fact {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--rf-border);
+  border-radius: var(--rf-radius-sm);
+  background: var(--rf-surface-alt);
+}
+
+.rf-payment-fact-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  color: var(--rf-success-text);
+  background: var(--rf-success-bg);
+}
+
+.rf-payment-fact strong,
+.rf-payment-fact small {
+  display: block;
+}
+
+.rf-payment-fact strong {
+  color: var(--rf-text);
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.rf-payment-fact small {
+  color: var(--rf-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.rf-payment-action-card {
+  border-color: rgba(5, 150, 105, 0.22);
+  margin-bottom: 0;
+}
+
+.rf-fee-policy-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 13px 14px;
+  border: 1px solid var(--rf-warning);
+  border-radius: var(--rf-radius-sm);
+  background: var(--rf-warning-bg);
+  color: var(--rf-warning-text-alt);
+  font-size: 13px;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.rf-fee-policy-check input {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: var(--rf-success);
+}
+
+.rf-fee-policy-check:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.rf-payment-actions {
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.rf-payment-action-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.rf-payment-action-copy strong {
+  color: var(--rf-text);
+  font-size: 14px;
+}
+
+.rf-payment-action-copy span {
+  color: var(--rf-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.rf-payment-state-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  color: var(--rf-warning-text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.rf-payment-state-hint svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.rf-payment-state-hint--ready {
+  color: var(--rf-info-text);
+}
 
 /* ── Confirmation step ── */
 .rf-confirmation-wrapper {
@@ -1725,7 +2059,8 @@ html[data-theme="dark"] .rf-policy-link { color: var(--color-success); }
 }
 
 .form-input,
-.form-select {
+.form-select,
+.form-textarea {
   width: 100%;
   padding: 10px 14px;
   border: 1.5px solid var(--rf-border);
@@ -1738,16 +2073,23 @@ html[data-theme="dark"] .rf-policy-link { color: var(--color-success); }
 }
 
 .form-input:focus,
-.form-select:focus {
+.form-input:focus-visible,
+.form-select:focus,
+.form-select:focus-visible,
+.form-textarea:focus,
+.form-textarea:focus-visible {
   outline: none;
   border-color: #94a3b8;
   box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.15);
 }
 
-.form-input:disabled {
+.form-input:disabled,
+.form-select:disabled,
+.form-textarea:disabled {
   background: var(--rf-surface-alt);
   color: var(--rf-text-muted);
   cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .form-group {
@@ -1759,6 +2101,21 @@ html[data-theme="dark"] .rf-policy-link { color: var(--color-success); }
   color: var(--rf-text-muted);
   margin-top: 4px;
   line-height: 1.4;
+}
+
+.rf-date-part-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 1.25fr) minmax(82px, 0.75fr) minmax(96px, 0.85fr);
+  gap: 8px;
+}
+
+.rf-date-part-row--error .form-select,
+.rf-date-part-select {
+  min-height: 42px;
+}
+
+.rf-date-part-select--month {
+  min-width: 0;
 }
 
 .form-row {
@@ -2080,6 +2437,257 @@ html[data-theme="dark"] .rf-policy-link { color: var(--color-success); }
   text-align: right;
 }
 
+/* Step 1 room review */
+.rf-room-review-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  gap: 18px;
+  align-items: stretch;
+  margin-bottom: 0;
+}
+
+.rf-room-photos-card {
+  padding-bottom: 22px;
+}
+
+.rf-room-photo-carousel {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 7;
+  overflow: hidden;
+  border-radius: var(--rf-radius-sm);
+  background: var(--rf-surface-alt);
+  border: 1px solid var(--rf-border);
+}
+
+.rf-room-photo-open {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+}
+
+.rf-room-photo-open img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.rf-room-photo-open-hint {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(10, 22, 40, 0.72);
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.rf-room-photo-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.52);
+  border-radius: 50%;
+  background: rgba(10, 22, 40, 0.72);
+  color: white;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background var(--rf-transition), transform var(--rf-transition);
+}
+
+.rf-room-photo-nav:hover {
+  background: rgba(10, 22, 40, 0.9);
+  transform: translateY(-50%) scale(1.04);
+}
+
+.rf-room-photo-nav-prev {
+  left: 12px;
+}
+
+.rf-room-photo-nav-next {
+  right: 12px;
+}
+
+.rf-room-photo-dots {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(10, 22, 40, 0.58);
+}
+
+.rf-room-photo-dot {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+}
+
+.rf-room-photo-dot.active {
+  width: 18px;
+  border-radius: 999px;
+  background: white;
+}
+
+.rf-photo-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 72px 24px 24px;
+  background: rgba(6, 14, 28, 0.88);
+}
+
+.rf-photo-viewer-toolbar {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 1201;
+}
+
+.rf-photo-viewer-toolbar button {
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--rf-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.rf-photo-viewer-toolbar button:hover {
+  background: white;
+}
+
+.rf-photo-viewer-stage {
+  width: min(1040px, 100%);
+  height: min(76vh, 720px);
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rf-photo-viewer-stage img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: var(--rf-radius-sm);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+}
+
+.rf-summary-panel {
+  min-width: 0;
+}
+
+.rf-summary-panel-main {
+  grid-row: span 1;
+}
+
+.rf-summary-panel .summary-section {
+  margin-bottom: 0;
+}
+
+.rf-summary-panel .summary-row {
+  gap: 16px;
+}
+
+.rf-summary-panel .summary-value {
+  min-width: 0;
+  max-width: 60%;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.rf-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.rf-status-pill-success {
+  background: rgba(5, 150, 105, 0.11);
+  color: #047857;
+}
+
+.rf-status-pill-warning {
+  background: rgba(217, 119, 6, 0.12);
+  color: #b45309;
+}
+
+.rf-status-pill-neutral {
+  background: rgba(100, 116, 139, 0.12);
+  color: #475569;
+}
+
+.rf-inclusion-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.rf-inclusion-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  padding: 8px 11px;
+  border: 1px solid var(--rf-border);
+  border-radius: var(--rf-radius-sm);
+  background: var(--rf-surface-alt);
+  color: var(--rf-text);
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.rf-inclusion-item svg {
+  flex: 0 0 auto;
+  color: #059669;
+}
+
+.rf-summary-actions {
+  align-items: center;
+  justify-content: space-between;
+}
+
 /* Buttons */
 .stage-buttons {
   display: flex;
@@ -2206,16 +2814,18 @@ html[data-theme="dark"] .rf-policy-link { color: var(--color-success); }
   line-height: 1.5;
 }
 
-.form-textarea:focus {
+.form-textarea:focus,
+.form-textarea:focus-visible {
   outline: none;
-  border-color: var(--rf-border-focus);
-  box-shadow: 0 0 0 1.5px rgba(27, 77, 74, 0.07);
+  border-color: #94a3b8;
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.15);
 }
 
 .form-textarea:disabled {
   background: var(--rf-surface-alt);
   color: var(--rf-text-muted);
   cursor: not-allowed;
+  opacity: 0.7;
 }
 
 /* ============ RESPONSIVE ============ */
@@ -2270,6 +2880,25 @@ html[data-theme="dark"] .rf-policy-link { color: var(--color-success); }
   .reservation-card {
     padding: 20px 16px;
   }
+
+  .rf-payment-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .rf-payment-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .btn-pay-online-reservation {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .rf-payment-action-copy,
+  .rf-payment-state-hint {
+    text-align: left;
+  }
 }
 
 @media (max-width: 480px) {
@@ -2297,6 +2926,19 @@ html[data-theme="dark"] .rf-policy-link { color: var(--color-success); }
 
   .rf-room-banner-icon {
     display: none;
+  }
+
+  .rf-payment-actions {
+    flex-direction: column;
+  }
+
+  .rf-fee-policy-check {
+    padding: 12px;
+  }
+
+  .rf-payment-total {
+    align-items: flex-start;
+    gap: 6px;
   }
 }
 
@@ -2398,14 +3040,18 @@ html[data-theme="dark"] .rf-policy-link { color: var(--color-success); }
 }
 
 .btn-pay-online-reservation {
-  background: none, #10b981) !important;
+  background: #059669 !important;
+  border: 1px solid #047857 !important;
   color: white !important;
   font-weight: 600 !important;
   font-size: 15px !important;
   padding: 14px 28px !important;
+  flex: 0 0 auto;
+  min-width: 260px;
 }
 
 .btn-pay-online-reservation:hover:not(:disabled) {
+  background: #047857 !important;
   box-shadow: 0 6px 20px rgba(5, 150, 105, 0.35);
   transform: translateY(-2px);
 }
@@ -2428,6 +3074,21 @@ html[data-theme="dark"] .rf-policy-link { color: var(--color-success); }
   }
   .payment-path-option {
     padding: 12px 14px;
+  }
+  .rf-payment-facts {
+    grid-template-columns: 1fr;
+  }
+  .rf-payment-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .btn-pay-online-reservation {
+    width: 100%;
+    min-width: 0;
+  }
+  .rf-payment-action-copy,
+  .rf-payment-state-hint {
+    text-align: left;
   }
 }
 
@@ -2632,6 +3293,89 @@ html[data-theme="dark"] .rf-policy-link { color: var(--color-success); }
     border-radius: 10px;
   }
 
+  .rf-visit-form-stack {
+    --rf-visit-card-padding: 16px;
+  }
+
+  .rf-visit-step {
+    padding-bottom: 82px;
+  }
+
+  .rf-calendar-grid {
+    grid-template-columns: repeat(7, minmax(72px, 1fr));
+    gap: 6px;
+    padding-top: 10px;
+  }
+
+  .rf-date-card {
+    min-height: 72px;
+    padding: 9px 6px 7px;
+  }
+
+  .rf-date-status {
+    font-size: 9px;
+  }
+
+  .rf-time-grid {
+    grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  }
+
+  .rf-date-part-row {
+    grid-template-columns: 1fr;
+  }
+
+  .rf-visit-summary-rows {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rf-visit-summary-row:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .rf-visit-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    margin: 18px -16px -16px;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--rf-border);
+    background: var(--rf-surface);
+    box-shadow: 0 -6px 18px rgba(15, 23, 42, 0.08);
+    align-items: center;
+    justify-content: space-between !important;
+  }
+
+  .rf-mobile-action-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .rf-mobile-action-summary span {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--rf-text-muted);
+  }
+
+  .rf-mobile-action-summary strong {
+    font-size: 12px;
+    color: var(--rf-text-heading);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .rf-visit-actions .btn {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 136px;
+    padding: 10px 14px;
+    white-space: nowrap;
+  }
+
   /* Form rows — single column */
   .form-row {
     grid-template-columns: 1fr;
@@ -2664,6 +3408,39 @@ html[data-theme="dark"] .rf-policy-link { color: var(--color-success); }
 
   .summary-value {
     font-size: 13px;
+  }
+
+  .rf-room-review-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .rf-room-photo-carousel {
+    aspect-ratio: 16 / 9;
+  }
+
+  .rf-summary-panel .summary-row {
+    align-items: flex-start;
+  }
+
+  .rf-summary-panel .summary-value,
+  .rf-summary-panel .rf-status-pill {
+    max-width: 58%;
+    text-align: right;
+  }
+
+  .rf-inclusion-list {
+    gap: 8px;
+  }
+
+  .rf-inclusion-item {
+    font-size: 12px;
+    padding: 7px 10px;
+  }
+
+  .rf-summary-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
   }
 
   .total-section {
@@ -2706,6 +3483,31 @@ html[data-theme="dark"] .rf-policy-link { color: var(--color-success); }
     padding: 14px 10px;
   }
 
+  .rf-visit-form-stack {
+    --rf-visit-card-padding: 14px;
+  }
+
+  .rf-calendar-grid {
+    grid-template-columns: repeat(7, minmax(66px, 1fr));
+  }
+
+  .rf-visit-summary-rows {
+    grid-template-columns: 1fr;
+  }
+
+  .rf-visit-actions {
+    margin-left: -14px;
+    margin-right: -14px;
+    margin-bottom: -14px;
+    gap: 8px;
+  }
+
+  .rf-visit-actions .btn {
+    min-width: 124px;
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+
   .rf-stepper-dot {
     width: 24px;
     height: 24px;
@@ -2720,6 +3522,37 @@ html[data-theme="dark"] .rf-policy-link { color: var(--color-success); }
   .main-header-title,
   .stage-title {
     font-size: 18px;
+  }
+
+  .rf-summary-panel .summary-row {
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .rf-summary-panel .summary-value,
+  .rf-summary-panel .rf-status-pill {
+    max-width: 100%;
+    text-align: left;
+  }
+
+  .rf-status-pill {
+    align-self: flex-start;
+  }
+
+  .rf-room-photo-carousel {
+    aspect-ratio: 4 / 3;
+  }
+
+  .rf-photo-viewer {
+    padding: 76px 12px 16px;
+  }
+
+  .rf-photo-viewer-toolbar {
+    right: 12px;
+  }
+
+  .rf-photo-viewer-stage {
+    height: 72vh;
   }
 }
 

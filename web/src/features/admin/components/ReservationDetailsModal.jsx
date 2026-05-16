@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Calendar, ClipboardList, CreditCard, Eye } from "lucide-react";
@@ -339,6 +339,7 @@ const STAGE_GUIDANCE = {
 
 export default function ReservationDetailsModal({
  reservation,
+ focusCancellation = false,
  onClose,
  onUpdate,
 }) {
@@ -364,6 +365,7 @@ export default function ReservationDetailsModal({
  const [showExtendPrompt, setShowExtendPrompt] = useState(false);
  const [meterReadingVal, setMeterReadingVal] = useState("");
  const [showMeterPrompt, setShowMeterPrompt] = useState(false);
+ const cancellationPanelRef = useRef(null);
  const [confirmModal, setConfirmModal] = useState({
  open: false,
  title: "",
@@ -374,6 +376,22 @@ export default function ReservationDetailsModal({
 
  useBodyScrollLock(Boolean(reservation));
  useEscapeClose(Boolean(reservation), onClose);
+ const cancellationPending = Boolean(
+   reservation?.cancellationRequested && reservation?.cancellationStatus === "pending",
+ );
+
+ useEffect(() => {
+ if (!focusCancellation || !cancellationPending) return;
+
+ const timer = window.setTimeout(() => {
+ cancellationPanelRef.current?.scrollIntoView({
+ block: "center",
+ behavior: "smooth",
+ });
+ }, 120);
+
+ return () => window.clearTimeout(timer);
+ }, [cancellationPending, focusCancellation]);
 
  const status = reservation?.status || "pending";
  const physicalVisitSelected = hasPhysicalVisit(reservation);
@@ -391,8 +409,6 @@ export default function ReservationDetailsModal({
  const appearance = getReservationStatusAppearance(status);
  const allowedActions = getAllowedReservationActions(status);
  const moveInDate = readMoveInDate(reservation);
- const cancellationPending =
-   reservation?.cancellationRequested && reservation?.cancellationStatus === "pending";
  const isMovedOut = status === "moveOut";
  const isOverdue =
  status === "reserved" && moveInDate && new Date(moveInDate) < new Date();
@@ -476,6 +492,10 @@ export default function ReservationDetailsModal({
  { wide: true },
  ],
  ];
+ const cancellationRequestDetails = [
+ ["Requested", fmtDate(reservation.cancellationRequestedAt)],
+ ["Reason", reservation.cancellationReason?.trim() || "No reason provided"],
+ ];
  const activityTimeline = [
  {
  label: "Reservation Created",
@@ -526,6 +546,46 @@ export default function ReservationDetailsModal({
  onUpdate?.();
  onClose();
  } catch (error) {
+ const errorCode = error?.response?.data?.code;
+ const isCancellationReviewAction =
+ key === "approveCancellation" || key === "rejectCancellation";
+ if (isCancellationReviewAction) {
+ try {
+ const latest = await reservationApi.getById(reservation.id);
+ const latestReservation = latest?.reservation || latest;
+ const latestCancellationPending =
+ latestReservation?.cancellationRequested &&
+ latestReservation?.cancellationStatus === "pending";
+ const reviewWasApplied =
+ key === "approveCancellation"
+ ? latestReservation?.status === "cancelled" ||
+ latestReservation?.cancellationStatus === "approved"
+ : !latestCancellationPending &&
+ (latestReservation?.cancellationStatus === "rejected" ||
+ latestReservation?.cancellationRequested === false);
+
+ if (reviewWasApplied) {
+ showNotification(successMsg, "success");
+ onUpdate?.();
+ onClose();
+ return;
+ }
+ } catch (refreshError) {
+ console.warn("Failed to verify cancellation review state:", refreshError);
+ }
+ }
+ if (
+ isCancellationReviewAction &&
+ errorCode === "NO_PENDING_REQUEST"
+ ) {
+ showNotification(
+ "This cancellation request was already reviewed. Refreshing reservation details.",
+ "info",
+ );
+ onUpdate?.();
+ onClose();
+ return;
+ }
  console.error(error);
  showNotification(
  getFriendlyError(error, "Action failed. Please try again."),
@@ -730,6 +790,68 @@ export default function ReservationDetailsModal({
  ))}
  </div>
  </div>
+
+ {cancellationPending && (
+ <div
+ ref={cancellationPanelRef}
+ className={`rdm-section rdm-surface-card rdm-cancellation-request${
+ focusCancellation ? " rdm-cancellation-request--focused" : ""
+ }`}
+ >
+ <div className="rdm-cancellation-request__header">
+ <div>
+ <h4 className="rdm-section-title rdm-cancellation-request__title">
+ Cancellation Request
+ </h4>
+ <p className="rdm-cancellation-request__copy">
+ Review this tenant request before releasing the bed. The reservation fee is non-refundable.
+ </p>
+ </div>
+ <span className="rdm-cancellation-request__badge">
+ Pending Review
+ </span>
+ </div>
+ <div className="rdm-info-grid rdm-info-grid-dark rdm-cancellation-request__details">
+ {cancellationRequestDetails.map(([label, value]) => (
+ <div className="rdm-info-item" key={label}>
+ <span className="rdm-info-label">{label}</span>
+ <span className="rdm-info-value">{value}</span>
+ </div>
+ ))}
+ </div>
+ <div className="rdm-cancellation-request__impact">
+ Approving cancels the reservation and releases the assigned bed.
+ </div>
+ <div className="rdm-cancellation-request__actions">
+ <button
+ className="rdm-action rdm-action-dark rdm-action-dark-cancel"
+ onClick={() =>
+ doAction(
+ "approveCancellation",
+ () => reservationApi.approveCancellationRequest(reservation.id),
+ "Cancellation approved. Reservation cancelled and bed released.",
+ )
+ }
+ disabled={isSubmitting}
+ >
+ Approve Cancellation
+ </button>
+ <button
+ className="rdm-action rdm-action-dark"
+ onClick={() =>
+ doAction(
+ "rejectCancellation",
+ () => reservationApi.rejectCancellationRequest(reservation.id),
+ "Cancellation request rejected. Reservation remains active.",
+ )
+ }
+ disabled={isSubmitting}
+ >
+ Reject Request
+ </button>
+ </div>
+ </div>
+ )}
 
  <div className="rdm-section rdm-surface-card">
  <h4 className="rdm-section-title">Viewing Preference</h4>
@@ -1293,26 +1415,7 @@ export default function ReservationDetailsModal({
 
  {status !== "cancelled" && !isMovedOut && (
  <div className="rdm-side-card">
- <h4 className="rdm-side-title">
-   Quick Actions
-   {cancellationPending && (
-     <span
-       style={{
-         marginLeft: "0.5rem",
-         fontSize: "0.7rem",
-         fontWeight: 700,
-         background: "#B91C1C",
-         color: "#fff",
-         borderRadius: "4px",
-         padding: "2px 6px",
-         verticalAlign: "middle",
-         letterSpacing: "0.03em",
-       }}
-     >
-       CANCEL REQUEST
-     </span>
-   )}
- </h4>
+ <h4 className="rdm-side-title">Quick Actions</h4>
  <div className="rdm-actions-card rdm-actions-card-dark">
  {stageGuide && (
  <div className="rdm-stage-guide rdm-stage-guide-dark">
@@ -1445,7 +1548,6 @@ export default function ReservationDetailsModal({
      </button>
    </>
  )}
-
  {allowedActions.includes("cancelled") && !cancellationPending && (
  <button
  className="rdm-action rdm-action-dark rdm-action-dark-cancel"

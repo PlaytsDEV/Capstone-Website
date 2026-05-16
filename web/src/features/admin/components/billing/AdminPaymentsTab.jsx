@@ -3,6 +3,7 @@ import { CreditCard, LoaderCircle, RefreshCw, Search } from "lucide-react";
 import { useAdminPayments } from "../../../../shared/hooks/queries/useBilling";
 import { useAuth } from "../../../../shared/hooks/useAuth";
 import { fmtCurrency, formatBranch } from "../../utils/formatters";
+import { TableSkeleton } from "../../../../shared/components/LoadingSkeletons";
 
 const OWNER_ROLES = new Set(["owner", "superadmin" /* legacy */]);
 
@@ -197,9 +198,7 @@ export default function AdminPaymentsTab({ isActive }) {
         </div>
 
         {isLoading ? (
-          <div className="mt-4 rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
-            Loading payment ledger...
-          </div>
+          <TableSkeleton rows={7} columns={10} style={{ marginTop: 16 }} />
         ) : error ? (
           <div className="mt-4 rounded-lg border border-danger bg-danger-light px-4 py-4 text-sm text-danger">
             {error.message || "Failed to load payment ledger."}

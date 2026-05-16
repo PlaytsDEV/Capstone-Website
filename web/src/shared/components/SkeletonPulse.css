@@ -1,18 +1,36 @@
-/* ==========================================================================
-   SKELETON PULSE — Gentle loading placeholder (Apple / Notion style)
-   ========================================================================== */
-
-@keyframes skeleton-pulse {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.45; }
-}
-
 .skeleton-pulse {
-  background: #E5E7EB;
-  animation: skeleton-pulse 2.2s ease-in-out infinite;
+  position: relative;
+  overflow: hidden;
+  background: var(--skeleton-base, color-mix(in srgb, var(--muted, #e5e7eb) 78%, white));
 }
 
-/* ── Dark mode ── */
+.skeleton-pulse::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--skeleton-highlight, rgba(255, 255, 255, 0.62)),
+    transparent
+  );
+  animation: skeleton-shimmer 1.45s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 html[data-theme="dark"] .skeleton-pulse {
-  background: #1e293b;
+  --skeleton-base: color-mix(in srgb, var(--muted, #1e293b) 72%, black);
+  --skeleton-highlight: rgba(255, 255, 255, 0.09);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-pulse::after {
+    animation: none;
+  }
 }

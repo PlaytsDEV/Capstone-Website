@@ -36,10 +36,6 @@ export default function AdminSidebar({
     : "Admin";
   const brandMeta = getSidebarBrandMeta(isOwner);
   const roleLabel = brandMeta.roleLabel;
-  const initials = user
-    ? `${(user.firstName || "A")[0]}${(user.lastName || "")[0] || ""}`.toUpperCase()
-    : "A";
-
   const shellWidthClass = collapsed ? "w-16" : "w-64";
   const shellVisibilityClass = isOpen
     ? "translate-x-0"

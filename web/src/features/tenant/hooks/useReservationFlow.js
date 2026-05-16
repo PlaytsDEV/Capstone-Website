@@ -51,8 +51,8 @@ const PAYMENT_RETURN_PENDING_KEY = "activeReservationPaymentReturnPending";
 const PAYMENT_SESSION_KEY = "activeReservationPaymongoSessionId";
 
 const PAYMENT_RETURN_MIN_LOADING_MS = 150;
-const PAYMENT_RETURN_POLL_INTERVAL_MS = 500;
-const PAYMENT_RETURN_MAX_WAIT_MS = 60000;
+const PAYMENT_RETURN_POLL_INTERVAL_MS = 1000;
+const PAYMENT_RETURN_MAX_WAIT_MS = 20000;
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -146,6 +146,7 @@ const isBlockingDocumentPrecheck = (precheck = {}) => {
   );
 };
 
+
 const getDocumentPrecheckBlockMessage = (label, precheck = {}) =>
   precheck?.applicantMessage ||
   precheck?.summaryMessage ||
@@ -169,11 +170,66 @@ const resolveTargetStage = (status, viewingPreference, applicationUnlockedByVisi
   return map[status] || 1;
 };
 
+const getProfileName = (profile) => {
+  const displayParts = String(profile?.displayName || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  return {
+    firstName: profile?.firstName || displayParts[0] || "",
+    lastName: profile?.lastName || displayParts.slice(1).join(" ") || "",
+  };
+};
+
+const mergeReservationIntoQueryData = (currentData, updatedReservation) => {
+  if (!updatedReservation?._id) return currentData;
+
+  const patchList = (items) => {
+    if (!Array.isArray(items)) return items;
+
+    let changed = false;
+    const nextItems = items.map((item) => {
+      if (item?._id !== updatedReservation._id) return item;
+      changed = true;
+      return { ...item, ...updatedReservation };
+    });
+
+    return changed ? nextItems : items;
+  };
+
+  if (Array.isArray(currentData)) {
+    return patchList(currentData);
+  }
+
+  if (Array.isArray(currentData?.reservations)) {
+    const nextReservations = patchList(currentData.reservations);
+    return nextReservations === currentData.reservations
+      ? currentData
+      : { ...currentData, reservations: nextReservations };
+  }
+
+  if (Array.isArray(currentData?.data)) {
+    const nextData = patchList(currentData.data);
+    return nextData === currentData.data
+      ? currentData
+      : { ...currentData, data: nextData };
+  }
+
+  if (currentData?._id === updatedReservation._id) {
+    return { ...currentData, ...updatedReservation };
+  }
+
+  return currentData;
+
+};
+
 export default function useReservationFlow() {
   const navigate = useNavigate();
   const appNavigate = useAppNavigation();
   const location = useLocation();
   const { user } = useAuth();
+  const profileName = getProfileName(user);
   const queryClient = useQueryClient();
   const stepFromState = Number(location.state?.step);
   const stepFromQuery = Number(
@@ -245,16 +301,13 @@ export default function useReservationFlow() {
   const [selfiePhoto, setSelfiePhoto] = useState(null);
 
   // Stage 3: Personal
-  const [firstName, setFirstName] = useState(
-    user?.displayName?.split(" ")[0] || "",
-  );
-  const [lastName, setLastName] = useState(
-    user?.displayName?.split(" ")[1] || "",
-  );
+  const [firstName, setFirstName] = useState(profileName.firstName);
+  const [lastName, setLastName] = useState(profileName.lastName);
   const [middleName, setMiddleName] = useState("");
   const [nickname, setNickname] = useState("");
   const [mobileNumber, setMobileNumber] = useState("");
   const [birthday, setBirthday] = useState("");
+  const [gender, setGender] = useState("");
   const [maritalStatus, setMaritalStatus] = useState("");
   const [nationality, setNationality] = useState("");
   const [educationLevel, setEducationLevel] = useState("");
@@ -352,6 +405,20 @@ export default function useReservationFlow() {
   const autoSaveTimerRef = useRef(null);
   const isFirstRenderRef = useRef(true);
   const navigatingAwayRef = useRef(false);
+
+  useEffect(() => {
+    if (!profileName.firstName && !profileName.lastName) return;
+    if (!firstName && profileName.firstName) setFirstName(profileName.firstName);
+    if (!lastName && profileName.lastName) setLastName(profileName.lastName);
+  }, [
+    user?.firstName,
+    user?.lastName,
+    user?.displayName,
+    firstName,
+    lastName,
+    profileName.firstName,
+    profileName.lastName,
+  ]);
 
   const visitGateReservation = useMemo(() => {
     const merged = {
@@ -522,6 +589,7 @@ export default function useReservationFlow() {
       const b = new Date(r.birthday);
       if (!isNaN(b)) setBirthday(b.toISOString().split("T")[0]);
     }
+    if (r.gender) setGender(r.gender);
     if (r.maritalStatus) setMaritalStatus(r.maritalStatus);
     if (r.nationality) setNationality(r.nationality);
     if (r.educationLevel) setEducationLevel(r.educationLevel);
@@ -613,14 +681,16 @@ export default function useReservationFlow() {
     try {
       const profile = await authApi.getCurrentUser();
       if (!profile) return;
+      const profileName = getProfileName(profile);
       // Only fill fields that are still empty
-      if (!firstName && profile.firstName) setFirstName(profile.firstName);
-      if (!lastName && profile.lastName) setLastName(profile.lastName);
+      if (!firstName && profileName.firstName) setFirstName(profileName.firstName);
+      if (!lastName && profileName.lastName) setLastName(profileName.lastName);
       if (!mobileNumber && profile.phone) setMobileNumber(profile.phone);
       if (!birthday && profile.dateOfBirth) {
         const b = new Date(profile.dateOfBirth);
         if (!isNaN(b)) setBirthday(b.toISOString().split("T")[0]);
       }
+      if (!gender && profile.gender) setGender(profile.gender);
       if (!addressCity && profile.city) setAddressCity(profile.city);
       if (!addressStreet && profile.address) setAddressStreet(profile.address);
       if (!emergencyContactName && profile.emergencyContact)
@@ -907,46 +977,44 @@ export default function useReservationFlow() {
   const waitForDepositPaymentValidation = async (resId, sessionId) => {
     const startedAt = Date.now();
     let lastResult = null;
-    let lastReservation = null;
+
+    if (!sessionId) {
+      return { result: null, reservation: null };
+    }
 
     while (Date.now() - startedAt < PAYMENT_RETURN_MAX_WAIT_MS) {
-      const [statusResult, reservationResult] = await Promise.allSettled([
-        sessionId
-          ? billingApi.checkPaymentStatus(sessionId)
-          : Promise.resolve(null),
-        reservationApi.getById(resId),
-      ]);
-
-      if (statusResult.status === "fulfilled") {
-        lastResult = statusResult.value;
-        if (lastResult?.status === "paid") {
+      try {
+        lastResult = await billingApi.checkPaymentStatus(sessionId);
+        if (lastResult?.requiresReview) {
           return {
-            result: lastResult,
+            result: {
+              ...lastResult,
+              status: lastResult.status || "requires_review",
+              requiresReview: true,
+            },
             reservation: lastResult.reservation || null,
           };
         }
-      }
-
-      if (reservationResult.status === "fulfilled") {
-        lastReservation = reservationResult.value;
-        if (isReservationPaymentConfirmed(lastReservation)) {
+        if (lastResult?.status === "paid") {
+          let confirmedReservation = lastResult.reservation || null;
+          try {
+            confirmedReservation = await reservationApi.getById(resId);
+          } catch {
+            // The payment is confirmed; profile/dashboard refresh can catch up.
+          }
           return {
-            result: {
-              status: "paid",
-              paymentMethod:
-                lastResult?.paymentMethod ||
-                lastReservation.paymentMethod ||
-                "paymongo",
-            },
-            reservation: lastReservation,
+            result: lastResult,
+            reservation: confirmedReservation,
           };
         }
+      } catch (error) {
+        console.warn("[PAYMENT] Session validation attempt failed:", error);
       }
 
       await wait(PAYMENT_RETURN_POLL_INTERVAL_MS);
     }
 
-    return { result: lastResult, reservation: lastReservation };
+    return { result: lastResult, reservation: null };
   };
 
   const loadExistingReservation = async (resId, skipStageSet = false) => {
@@ -1039,7 +1107,7 @@ export default function useReservationFlow() {
         setVisitTime("");
         setScheduleRejected(true);
         setScheduleRejectionReason(reservation.scheduleRejectionReason || "");
-        setVisitCompleted(false);
+        setVisitScheduled(false);
       }
 
       // Fallback for legacy records still at "pending" with data beyond step 1
@@ -1083,21 +1151,46 @@ export default function useReservationFlow() {
                     resId,
                     verificationSessionId,
                   );
+            if (result?.requiresReview) {
+              sessionStorage.removeItem(PAYMENT_SESSION_KEY);
+              sessionStorage.removeItem(PAYMENT_RETURN_PENDING_KEY);
+              await queryClient.invalidateQueries({ queryKey: ["reservations"] });
+              await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+              appNavigate("/applicant/profile", {
+                flash: {
+                  type: "warning",
+                  message:
+                    "Payment was received but needs admin review before your reservation can be secured.",
+                },
+              });
+              return;
+            }
+
             if (result?.status === "paid") {
               sessionStorage.removeItem(getActiveResKey(user?.firebaseUid));
               sessionStorage.removeItem("activeReservationId"); // legacy cleanup
               sessionStorage.removeItem(PAYMENT_SESSION_KEY);
               sessionStorage.removeItem(PAYMENT_RETURN_PENDING_KEY);
-              // Re-fetch reservation to get the newly generated reservationCode
-              // (the pre-save hook creates it when status transitions to "reserved")
-              try {
-                const updated =
-                  validatedReservation ||
-                  result.reservation ||
-                  (await reservationApi.getById(resId));
-                if (updated?.reservationCode) setReservationCode(updated.reservationCode);
-                if (updated?.paymentMethod) setPaymentMethod(updated.paymentMethod);
+              let updatedReservation = validatedReservation || result.reservation || null;
+              if (!updatedReservation?._id) {
+                try {
+                updatedReservation = await reservationApi.getById(resId);
+                if (updatedReservation?.reservationCode) setReservationCode(updatedReservation.reservationCode);
+                if (updatedReservation?.paymentMethod) setPaymentMethod(updatedReservation.paymentMethod);
               } catch { /* non-critical ΓÇö code just won't display */ }
+              }
+              if (updatedReservation?._id) {
+                queryClient.setQueryData(
+                  ["reservations", "detail", updatedReservation._id],
+                  (current) => ({ ...(current || {}), ...updatedReservation }),
+                );
+                queryClient.setQueriesData(
+                  { queryKey: ["reservations", "list"] },
+                  (current) => mergeReservationIntoQueryData(current, updatedReservation),
+                );
+              }
+              await queryClient.invalidateQueries({ queryKey: ["reservations"] });
+              await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
               await wait(PAYMENT_RETURN_MIN_LOADING_MS);
               setCurrentStage(5);
               setHighestStageReached(5);
@@ -1115,7 +1208,13 @@ export default function useReservationFlow() {
               if (paymentReturnStatusRef.current === "cancelled") {
                 showNotification("Payment was not confirmed yet. You can try again from the payment step.", "info", 5000);
               } else {
-                showNotification("Payment is still being validated. Please try again in a moment.", "info", 5000);
+                appNavigate("/applicant/profile", {
+                  flash: {
+                    type: "info",
+                    message:
+                      "Payment is still being validated. You can retry from the payment step if needed.",
+                  },
+                });
               }
               return;
             }
@@ -1318,7 +1417,6 @@ export default function useReservationFlow() {
               billingEmail,
               user?.email || "test@example.com",
             ),
-            moveInDate,
             selectedAppliances: reservationData?.selectedAppliances || [],
             totalPrice: totalPrice > 0 ? totalPrice : 5000,
             applianceFees: reservationData?.applianceFees || 0,
@@ -1644,6 +1742,7 @@ export default function useReservationFlow() {
       nickname,
       mobileNumber,
       birthday,
+      gender,
       maritalStatus,
       nationality,
       educationLevel,
@@ -1693,6 +1792,7 @@ export default function useReservationFlow() {
       nickname,
       mobileNumber,
       birthday,
+      gender,
       maritalStatus,
       nationality,
       educationLevel,
@@ -1821,6 +1921,7 @@ export default function useReservationFlow() {
               isMissing: !validateBirthday(birthday).valid,
               message: "Please enter a valid birthday to continue.",
             },
+            { key: "gender", label: "Gender", isMissing: !hasText(gender) },
             { key: "maritalStatus", label: "Marital Status", isMissing: !hasText(maritalStatus) },
             { key: "nationality", label: "Nationality", isMissing: !hasText(nationality) },
             { key: "educationLevel", label: "Educational Attainment", isMissing: !hasText(educationLevel) },
@@ -1973,13 +2074,14 @@ export default function useReservationFlow() {
         const validIDBackUrl = await uploadIfFile(validIDBack);
         const nbiClearanceUrl = await uploadIfFile(nbiClearance);
         const companyIDUrl = await uploadIfFile(companyID);
-        await updateReservationDraft({
+        const applicationPayload = {
           firstName,
           lastName,
           middleName,
           nickname,
           mobileNumber,
           birthday,
+          gender,
           maritalStatus,
           nationality,
           educationLevel,
@@ -2020,8 +2122,11 @@ export default function useReservationFlow() {
           companyIDReason,
           validIDType,
           idType: validIDType,
-          submitApplication: true,
-        });
+        };
+        if (!applicationSubmitted) {
+          applicationPayload.submitApplication = true;
+        }
+        await updateReservationDraft(applicationPayload);
         setApplicationSubmitted(true);
         setEditingApplication(false);
         await queryClient.invalidateQueries({ queryKey: ["reservations"] });
@@ -2158,7 +2263,7 @@ export default function useReservationFlow() {
     isLoading,
     paymentReturnLoading,
     visitApproved,
-    visitCompleted, setVisitCompleted,
+    visitScheduled, setVisitScheduled,
     scheduleRejected,
     scheduleRejectionReason,
     applicationSubmitted,
@@ -2195,6 +2300,7 @@ export default function useReservationFlow() {
     nickname, setNickname,
     mobileNumber, setMobileNumber,
     birthday, setBirthday,
+    gender, setGender,
     maritalStatus, setMaritalStatus,
     nationality, setNationality,
     educationLevel, setEducationLevel,

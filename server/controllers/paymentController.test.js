@@ -7,6 +7,7 @@ const paymentGetPaymentsForBill = jest.fn();
 const reservationFindById = jest.fn();
 const userFindOne = jest.fn();
 const userFindById = jest.fn();
+const userFind = jest.fn();
 const sendPaymentApprovedEmail = jest.fn();
 const sendPaymentReceiptEmail = jest.fn();
 const updateOccupancyOnReservationChange = jest.fn();
@@ -15,6 +16,7 @@ const getBillRemainingAmount = jest.fn();
 const resolveBillStatus = jest.fn();
 const settlePaymongoBill = jest.fn();
 const sendSuccess = jest.fn();
+const notifyGeneral = jest.fn();
 const mockLean = (value) => ({ lean: jest.fn().mockResolvedValue(value) });
 
 await jest.unstable_mockModule("../config/paymongo.js", () => ({
@@ -26,7 +28,7 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   Bill: { findById: billFindById },
   Payment: { getPaymentsForBill: paymentGetPaymentsForBill },
   Reservation: { findById: reservationFindById },
-  User: { findOne: userFindOne, findById: userFindById },
+  User: { findOne: userFindOne, findById: userFindById, find: userFind },
 }));
 
 await jest.unstable_mockModule("../middleware/logger.js", () => ({
@@ -72,14 +74,18 @@ await jest.unstable_mockModule("../utils/billingPolicy.js", () => ({
 await jest.unstable_mockModule("../middleware/errorHandler.js", () => ({
   sendSuccess,
   AppError: class AppError extends Error {
-    constructor(message, statusCode, code) {
+    constructor(message, statusCode, code, details) {
       super(message);
       this.statusCode = statusCode;
       this.code = code;
+      this.details = details;
     }
   },
 }));
 
+await jest.unstable_mockModule("../utils/notificationService.js", () => ({
+  notify: { general: notifyGeneral },
+}));
 const {
   createBillCheckout,
   createDepositCheckout,
@@ -96,6 +102,7 @@ describe("paymentController", () => {
     reservationFindById.mockReset();
     userFindOne.mockReset();
     userFindById.mockReset();
+    userFind.mockReset();
     sendPaymentApprovedEmail.mockReset();
     sendPaymentReceiptEmail.mockReset();
     updateOccupancyOnReservationChange.mockReset();
@@ -104,6 +111,12 @@ describe("paymentController", () => {
     resolveBillStatus.mockReset();
     settlePaymongoBill.mockReset();
     sendSuccess.mockReset();
+    notifyGeneral.mockReset();
+    userFind.mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue([]),
+      }),
+    });
   });
 
   test("createBillCheckout redirects paid tenant bills back to applicant billing", async () => {
@@ -135,8 +148,8 @@ describe("paymentController", () => {
     expect(createCheckoutSession).toHaveBeenCalledWith(
       expect.objectContaining({
         successUrl:
-          "http://localhost:3000/applicant/billing?payment=success&session_id={id}",
-        cancelUrl: "http://localhost:3000/applicant/billing?payment=cancelled",
+          "http://localhost:5173/applicant/billing?payment=success&session_id={id}",
+        cancelUrl: "http://localhost:5173/applicant/billing?payment=cancelled",
       }),
     );
     expect(sendSuccess).toHaveBeenCalledWith(
@@ -181,6 +194,85 @@ describe("paymentController", () => {
         checkoutUrl: "https://checkout.test/cs_existing",
         sessionId: "cs_existing",
         reused: true,
+      }),
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("rejects deposit checkout before the reservation reaches payment stage", async () => {
+    const reservation = {
+      _id: "res_early",
+      userId: "tenant_1",
+      roomId: { name: "GP-101", branch: "gil-puyat" },
+      status: "visit_approved",
+      paymentStatus: "pending",
+      applicationSubmittedAt: new Date(),
+      save: jest.fn(),
+    };
+
+    userFindOne.mockReturnValue(mockLean({ _id: "tenant_1" }));
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockResolvedValue(reservation),
+    });
+
+    const req = { params: { resId: "res_early" }, user: { uid: "firebase-1" } };
+    const res = {};
+    const next = jest.fn();
+
+    await createDepositCheckout(req, res, next);
+
+    expect(createCheckoutSession).not.toHaveBeenCalled();
+    expect(reservation.save).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next.mock.calls[0][0].code).toBe("PAYMENT_LOCKED_PENDING_APPLICATION_REVIEW");
+  });
+
+  test("creates deposit checkout only for an unpaid submitted payment_pending reservation", async () => {
+    const reservation = {
+      _id: "res_ready",
+      userId: "tenant_1",
+      roomId: { name: "GD-201", branch: "guadalupe" },
+      status: "payment_pending",
+      paymentStatus: "pending",
+      applicationSubmittedAt: new Date(),
+      reservationFeeAmount: null,
+      save: jest.fn(async function save() {
+        return this;
+      }),
+    };
+
+    userFindOne.mockReturnValue(mockLean({ _id: "tenant_1" }));
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockResolvedValue(reservation),
+    });
+    createCheckoutSession.mockResolvedValue({
+      checkoutUrl: "https://checkout.test/cs_deposit",
+      sessionId: "cs_deposit",
+    });
+
+    const req = { params: { resId: "res_ready" }, user: { uid: "firebase-1" } };
+    const res = {};
+    const next = jest.fn();
+
+    await createDepositCheckout(req, res, next);
+
+    expect(createCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 2000,
+        metadata: expect.objectContaining({
+          type: "deposit",
+          reservationId: "res_ready",
+          userId: "tenant_1",
+        }),
+      }),
+    );
+    expect(reservation.paymongoSessionId).toBe("cs_deposit");
+    expect(reservation.save).toHaveBeenCalledTimes(1);
+    expect(sendSuccess).toHaveBeenCalledWith(
+      res,
+      expect.objectContaining({
+        checkoutUrl: "https://checkout.test/cs_deposit",
+        sessionId: "cs_deposit",
       }),
     );
     expect(next).not.toHaveBeenCalled();
@@ -294,6 +386,70 @@ describe("paymentController", () => {
     expect(sendSuccess).toHaveBeenCalledWith(
       res,
       expect.objectContaining({ sessionId: "cs_1", status: "paid" }),
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("marks out-of-sequence paid deposit sessions for manual review", async () => {
+    const reservation = {
+      _id: "res_review",
+      userId: "tenant_1",
+      roomId: { name: "GP-103", branch: "gil-puyat" },
+      status: "visit_approved",
+      paymentStatus: "pending",
+      reservationFeeAmount: 2000,
+      paymongoPaymentId: null,
+      notes: "",
+      save: jest.fn(async function save() {
+        return this;
+      }),
+    };
+
+    userFindOne.mockReturnValue(mockLean({ _id: "tenant_1" }));
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockResolvedValue(reservation),
+    });
+    getCheckoutSession.mockResolvedValue({
+      attributes: {
+        metadata: {
+          type: "deposit",
+          reservationId: "res_review",
+          userId: "tenant_1",
+        },
+        payment_method_used: "gcash",
+        payments: [
+          {
+            id: "pay_review",
+            attributes: { status: "paid", source: { type: "gcash" } },
+          },
+        ],
+      },
+    });
+
+    const req = { params: { sessionId: "cs_review" }, user: { uid: "firebase-1" } };
+    const res = {};
+    const next = jest.fn();
+
+    await checkSessionStatus(req, res, next);
+
+    expect(reservation.paymentStatus).toBe("pending");
+    expect(reservation.status).toBe("visit_approved");
+    expect(reservation.paymongoPaymentId).toBe("pay_review");
+    expect(reservation.save).toHaveBeenCalledTimes(1);
+    expect(updateOccupancyOnReservationChange).not.toHaveBeenCalled();
+    expect(sendPaymentReceiptEmail).not.toHaveBeenCalled();
+    expect(sendSuccess).toHaveBeenCalledWith(
+      res,
+      expect.objectContaining({
+        sessionId: "cs_review",
+        status: "paid",
+        requiresReview: true,
+        reservation: expect.objectContaining({
+          status: "visit_approved",
+          paymentStatus: "pending",
+          requiresReview: true,
+        }),
+      }),
     );
     expect(next).not.toHaveBeenCalled();
   });

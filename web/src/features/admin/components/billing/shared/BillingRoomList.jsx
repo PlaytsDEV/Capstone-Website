@@ -1,5 +1,6 @@
 import "./BillingShared.css";
 import { getRoomLabel } from "../../../../../shared/utils/roomLabel.js";
+import { ListSkeleton } from "../../../../../shared/components/LoadingSkeletons";
 
 export default function BillingRoomList({
  title,
@@ -59,11 +60,7 @@ export default function BillingRoomList({
 
  <div className="billing-room-list__body">
  {isLoading ? (
- <div className="billing-room-list__skeleton-list">
- {Array.from({ length: loadingCount }, (_, index) => (
- <div key={index} className="billing-room-list__skeleton-card" />
- ))}
- </div>
+ <ListSkeleton rows={loadingCount} />
  ) : rooms.length === 0 ? (
  <div className="billing-room-list__empty">{emptyMessageText}</div>
  ) : (

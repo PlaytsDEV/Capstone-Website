@@ -136,8 +136,9 @@ export const StageConfirmModal = ({
  ? "Are you sure you want to proceed with this room selection? A reservation draft will be created."
  : "Are you sure you want to submit your reservation? Once submitted, you will need to wait for admin confirmation.";
  const IconComponent = isStage1 ? Home : CheckCircle;
- const iconBg = isStage1 ? "#FEF3C7" : "#ECFDF5";
- const iconColor = isStage1 ? "#D97706" : "#059669";
+ const iconBg = isStage1 ? "var(--info-light, #dbeafe)" : "var(--success-light, #dcfce7)";
+ const iconColor = isStage1 ? "var(--info, #2563eb)" : "var(--success, #16a34a)";
+ const confirmButtonBg = "var(--success, #16a34a)";
 
  return (
  <div style={overlayStyle} onClick={onCancel}>
@@ -190,13 +191,41 @@ export const StageConfirmModal = ({
  style={{
  flex: 1,
  padding: "12px",
- background: "#F3F4F6",
- color: "#374151",
+ background: "var(--danger, #ef4444)",
+ color: "white",
  border: "none",
  borderRadius: "8px",
  cursor: "pointer",
- fontWeight: "500",
+ fontWeight: "700",
  fontSize: "14px",
+ boxShadow: "0 8px 18px rgba(239, 68, 68, 0.22)",
+ transition: "transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease",
+ }}
+ onMouseEnter={(e) => {
+ e.currentTarget.style.transform = "translateY(-1px)";
+ e.currentTarget.style.boxShadow = "0 12px 24px rgba(239, 68, 68, 0.28)";
+ e.currentTarget.style.filter = "brightness(0.98)";
+ }}
+ onMouseLeave={(e) => {
+ e.currentTarget.style.transform = "translateY(0)";
+ e.currentTarget.style.boxShadow = "0 8px 18px rgba(239, 68, 68, 0.22)";
+ e.currentTarget.style.filter = "none";
+ }}
+ onMouseDown={(e) => {
+ e.currentTarget.style.transform = "translateY(1px) scale(0.98)";
+ e.currentTarget.style.boxShadow = "0 4px 10px rgba(239, 68, 68, 0.2)";
+ }}
+ onMouseUp={(e) => {
+ e.currentTarget.style.transform = "translateY(-1px)";
+ e.currentTarget.style.boxShadow = "0 12px 24px rgba(239, 68, 68, 0.28)";
+ }}
+ onFocus={(e) => {
+ e.currentTarget.style.outline = "none";
+ e.currentTarget.style.boxShadow = "0 10px 22px rgba(239, 68, 68, 0.26)";
+ }}
+ onBlur={(e) => {
+ e.currentTarget.style.outline = "none";
+ e.currentTarget.style.boxShadow = "0 8px 18px rgba(239, 68, 68, 0.22)";
  }}
  >
  Cancel
@@ -206,16 +235,44 @@ export const StageConfirmModal = ({
  style={{
  flex: 1,
  padding: "12px",
- background: "#FF8C42",
+ background: confirmButtonBg,
  color: "white",
  border: "none",
  borderRadius: "8px",
  cursor: "pointer",
- fontWeight: "600",
+ fontWeight: "700",
  fontSize: "14px",
+ boxShadow: "0 8px 18px rgba(22, 163, 74, 0.24)",
+ transition: "transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease",
+ }}
+ onMouseEnter={(e) => {
+ e.currentTarget.style.transform = "translateY(-1px)";
+ e.currentTarget.style.boxShadow = "0 12px 24px rgba(22, 163, 74, 0.3)";
+ e.currentTarget.style.filter = "brightness(0.98)";
+ }}
+ onMouseLeave={(e) => {
+ e.currentTarget.style.transform = "translateY(0)";
+ e.currentTarget.style.boxShadow = "0 8px 18px rgba(22, 163, 74, 0.24)";
+ e.currentTarget.style.filter = "none";
+ }}
+ onMouseDown={(e) => {
+ e.currentTarget.style.transform = "translateY(1px) scale(0.98)";
+ e.currentTarget.style.boxShadow = "0 4px 10px rgba(22, 163, 74, 0.22)";
+ }}
+ onMouseUp={(e) => {
+ e.currentTarget.style.transform = "translateY(-1px)";
+ e.currentTarget.style.boxShadow = "0 12px 24px rgba(22, 163, 74, 0.3)";
+ }}
+ onFocus={(e) => {
+ e.currentTarget.style.outline = "none";
+ e.currentTarget.style.boxShadow = "0 10px 22px rgba(22, 163, 74, 0.28)";
+ }}
+ onBlur={(e) => {
+ e.currentTarget.style.outline = "none";
+ e.currentTarget.style.boxShadow = "0 8px 18px rgba(22, 163, 74, 0.24)";
  }}
  >
- Yes, Proceed
+ Proceed
  </button>
  </div>
  </div>

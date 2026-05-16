@@ -21,7 +21,8 @@
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  color: #fff;
+  background: linear-gradient(135deg, #D4AF37 0%, #B88A1A 100%);
+  color: #0F172A;
   display: flex;
   align-items: center;
   justify-content: center;

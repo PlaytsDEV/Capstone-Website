@@ -26,6 +26,13 @@ export function getBranchLabel(branch) {
  return BRANCH_DISPLAY_NAMES[branch] || branch || "Unknown";
 }
 
+export function hasPendingCancellationRequest(reservation) {
+ return Boolean(
+ reservation?.cancellationRequested &&
+ reservation?.cancellationStatus === "pending",
+ );
+}
+
 export function mapReservationAdminRow(reservation) {
  const branchCode = reservation.roomId?.branch || "";
 
@@ -67,6 +74,7 @@ export function mapReservationAdminRow(reservation) {
  cancellationStatus: reservation.cancellationStatus || null,
  cancellationReason: reservation.cancellationReason || null,
  cancellationRequestedAt: reservation.cancellationRequestedAt || null,
+ cancellationRequestedBy: reservation.cancellationRequestedBy || null,
  cancellationAdminNote: reservation.cancellationAdminNote || null,
  createdAt: reservation.createdAt,
  _raw: reservation,

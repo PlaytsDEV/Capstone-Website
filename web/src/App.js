@@ -26,13 +26,10 @@ function AppContent() {
   return (
     <>
       <ScrollToTop />
-      {globalLoading ? (
-        <GlobalLoading />
-      ) : (
-        <Suspense fallback={<GlobalLoading />}>
-          <AppRoutes />
-        </Suspense>
-      )}
+      <Suspense fallback={<GlobalLoading />}>
+        <AppRoutes />
+      </Suspense>
+      {globalLoading ? <GlobalLoading /> : null}
       <ToastViewport />
     </>
   );

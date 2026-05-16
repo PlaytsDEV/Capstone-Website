@@ -7,6 +7,7 @@ import {
  LogOut,
 } from "lucide-react";
 import logo from "../../../../assets/images/LOGO.svg";
+import ProfileAvatar, { getProfileInitials } from "../../../../shared/components/ProfileAvatar";
 
 /**
  * Redesigned header — single row: Logo | Filter Bar | Sign In
@@ -41,10 +42,7 @@ const AvailabilityHeader = ({
  ? "Any Price"
  : `Up to ₱${localPrice.toLocaleString()}`;
 
- const userInitials = user
- ? `${(user.firstName || "")[0] || ""}${(user.lastName || "")[0] || ""}`.toUpperCase() ||
- (user.email || "?")[0].toUpperCase()
- : "?";
+ const userInitials = getProfileInitials(user, "?");
  const userDisplayName = user
  ? `${user.firstName || ""} ${user.lastName || ""}`.trim() ||
  user.email ||
@@ -204,16 +202,7 @@ const AvailabilityHeader = ({
  aria-label="User menu"
  aria-expanded={showUserMenu}
  >
- <div
- className="w-8 h-8 rounded-full flex items-center justify-center text-primary-foreground text-xs font-bold shrink-0"
- style={{
- background:
- "linear-gradient(135deg, #D4AF37 0%, #B88A1A 100%)",
- boxShadow: "0 1px 3px rgba(212, 175, 55, 0.34)",
- }}
- >
- {userInitials}
- </div>
+ <ProfileAvatar user={user} initials={userInitials} size={32} />
  <span className="flex-1 text-sm font-medium truncate leading-tight text-left" style={{ color: "var(--text-heading)" }}>
  {userDisplayName}
  </span>
@@ -241,16 +230,7 @@ const AvailabilityHeader = ({
  }}
  >
  <div className="flex items-center gap-2.5">
- <div
- className="w-10 h-10 rounded-[10px] flex items-center justify-center text-primary-foreground text-sm font-bold shrink-0"
- style={{
- background:
- "linear-gradient(135deg, #D4AF37 0%, #B88A1A 100%)",
- boxShadow: "0 2px 6px rgba(212, 175, 55, 0.3)",
- }}
- >
- {userInitials}
- </div>
+ <ProfileAvatar user={user} initials={userInitials} size={40} />
  <div className="min-w-0 flex-1">
  <div className="flex items-center gap-1.5">
  <p

@@ -24,6 +24,7 @@ import { isOwnerRole, isAdminRole, OWNER_ROLE_VALUES } from "../config/roles.js"
 import logger from "../middleware/logger.js";
 import auditLogger from "../utils/auditLogger.js";
 import { updateOccupancyOnReservationChange } from "../utils/occupancyManager.js";
+import { notify } from "../utils/notificationService.js";
 
 import {
   isValidObjectId,
@@ -35,6 +36,7 @@ import {
   syncReservationUserLifecycle,
   reconcileTenantUsersForScope,
   buildUserUpdatePayload,
+  getForbiddenTenantUpdateFields,
   getMoveInBlockers,
 } from "../utils/reservationHelpers.js";
 import {
@@ -76,6 +78,7 @@ import {
   transferStayWorkflow,
 } from "../utils/tenantActionService.js";
 import { ensureCurrentCycleRentBill } from "../utils/rentGenerator.js";
+import { emitToUser } from "../utils/socket.js";
 import {
   buildVisitAvailability,
   getVisitAvailabilitySettings,
@@ -168,6 +171,7 @@ const CURRENT_RESIDENT_FIELDS = [
   "firstName",
   "lastName",
   "email",
+  "gender",
   "nationality",
   "maritalStatus",
   "employment",
@@ -194,6 +198,7 @@ const TENANT_WORKSPACE_FIELDS = [
   "firstName",
   "lastName",
   "email",
+  "gender",
   "nationality",
   "maritalStatus",
   "employment",
@@ -203,6 +208,40 @@ const TENANT_WORKSPACE_FIELDS = [
   "userId",
   "roomId",
 ].join(" ");
+
+async function notifyAdminsOfCancellationRequest(reservation, dbUser) {
+  const room = await Room.findById(reservation.roomId).select("branch").lean();
+  const adminRecipients = room?.branch
+    ? [
+        { role: "branch_admin", branch: room.branch },
+        { role: "owner" },
+      ]
+    : [
+        { role: "branch_admin" },
+        { role: "owner" },
+      ];
+
+  const adminUsers = await User.find({
+    $or: adminRecipients,
+    accountStatus: "active",
+    isArchived: { $ne: true },
+  }).select("_id").lean();
+
+  const tenantName = `${dbUser.firstName || ""} ${dbUser.lastName || ""}`.trim() || dbUser.email;
+  await Promise.all(
+    adminUsers.map(async (admin) => {
+      const notification = await notify.cancellationRequestAlert(
+        admin._id,
+        tenantName,
+        reservation.reservationCode,
+        reservation._id,
+      );
+      if (notification) {
+        emitToUser(admin._id, "notification:new", notification);
+      }
+    }),
+  );
+}
 const TENANT_WORKSPACE_USER = [
   "userId",
   "firstName lastName email phone role tenantStatus branch",
@@ -372,9 +411,11 @@ const APPLICANT_CREATE_ALLOWED_FIELDS = Object.freeze([
   "nickname",
   "mobileNumber",
   "birthday",
+  "gender",
   "maritalStatus",
   "nationality",
   "educationLevel",
+  "addressRegion",
   "addressUnitHouseNo",
   "addressStreet",
   "addressBarangay",
@@ -408,9 +449,7 @@ const APPLICANT_CREATE_ALLOWED_FIELDS = Object.freeze([
   "workScheduleOther",
   "agreedToPrivacy",
   "agreedToCertification",
-  "proofOfPaymentUrl",
   "moveInDate",
-  "moveOutDate",
   "notes",
 ]);
 const CLIENT_PRICING_FIELDS = Object.freeze([
@@ -2087,6 +2126,7 @@ export const createReservation = async (req, res, next) => {
       nickname: b.nickname || null,
       mobileNumber: b.mobileNumber || null,
       birthday: b.birthday ? new Date(b.birthday) : null,
+      gender: b.gender || null,
       maritalStatus: b.maritalStatus || null,
       nationality: b.nationality || null,
       educationLevel: b.educationLevel || null,
@@ -2129,13 +2169,13 @@ export const createReservation = async (req, res, next) => {
       workScheduleOther: b.workScheduleOther || null,
       agreedToPrivacy: b.agreedToPrivacy || false,
       agreedToCertification: b.agreedToCertification || false,
-      proofOfPaymentUrl: b.proofOfPaymentUrl || null,
+      proofOfPaymentUrl: null,
       reservationFeeAmount: pricing.reservationFeeAmount,
       monthlyRent: pricing.monthlyRent,
       selectedAppliances: pricing.selectedAppliances,
       applianceFees: pricing.applianceFees,
       moveInDate: b.moveInDate,
-      moveOutDate: b.moveOutDate || null,
+      moveOutDate: null,
       totalPrice: pricing.totalPrice,
       notes: b.notes || "",
       status: "pending",
@@ -3631,6 +3671,15 @@ export const updateReservationByUser = async (req, res, next) => {
         code: "RESERVATION_ACCESS_DENIED",
       });
 
+    const forbiddenFields = getForbiddenTenantUpdateFields(req.body);
+    if (forbiddenFields.length > 0) {
+      return res.status(400).json({
+        error: `Tenant updates cannot set protected reservation fields: ${forbiddenFields.join(", ")}.`,
+        code: "TENANT_FIELD_NOT_ALLOWED",
+        fields: forbiddenFields,
+      });
+    }
+
     // Build update payload from config-driven field mapping
     const updates = buildUserUpdatePayload(req.body);
     let appliedPricing = null;
@@ -3656,7 +3705,6 @@ export const updateReservationByUser = async (req, res, next) => {
       req.body.selectedBed !== undefined ||
       req.body.selectedAppliances !== undefined ||
       req.body.leaseDuration !== undefined ||
-      req.body.moveInDate !== undefined ||
       CLIENT_PRICING_FIELDS.some((field) => req.body[field] !== undefined);
 
     if (shouldRevalidateBedSelection) {
@@ -5350,12 +5398,16 @@ export const requestCancellationByUser = async (req, res, next) => {
     }
 
     if (reservation.cancellationRequested && reservation.cancellationStatus === "pending") {
+      notifyAdminsOfCancellationRequest(reservation, dbUser).catch((notifyErr) => {
+        logger.warn({ err: notifyErr }, "[CancelRequest] Pending request admin notification failed (non-fatal)");
+      });
       return res.status(409).json({
         error: "A cancellation request is already pending review.",
         code: "CANCELLATION_REQUEST_ALREADY_PENDING",
       });
     }
 
+    const oldData = reservation.toObject();
     const now = new Date();
     reservation.cancellationRequested = true;
     reservation.cancellationRequestedAt = now;
@@ -5364,25 +5416,23 @@ export const requestCancellationByUser = async (req, res, next) => {
     reservation.cancellationReason = req.body.reason || null;
     await reservation.save();
 
-    // Notify tenant
-    const { notify } = await import("../utils/notificationService.js");
-    await notify.cancellationRequested(dbUser._id, reservation.reservationCode);
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservation._id,
+      oldData,
+      reservation.toObject(),
+      "Cancellation request submitted",
+    );
+
+    // Notify tenant. Do not fail the already-saved request if notification delivery breaks.
+    await notify.cancellationRequested(dbUser._id, reservation.reservationCode).catch((notifyErr) => {
+      logger.warn({ err: notifyErr }, "[CancelRequest] Tenant notification failed (non-fatal)");
+    });
 
     // Notify all admins for this branch
     try {
-      const room = await Room.findById(reservation.roomId).select("branch").lean();
-      const adminUsers = await User.find({
-        role: { $in: ["branch_admin", ...OWNER_ROLE_VALUES] },
-        ...(room?.branch ? { branch: room.branch } : {}),
-        isActive: true,
-      }).select("_id").lean();
-
-      const tenantName = `${dbUser.firstName || ""} ${dbUser.lastName || ""}`.trim() || dbUser.email;
-      await Promise.all(
-        adminUsers.map((admin) =>
-          notify.cancellationRequestAlert(admin._id, tenantName, reservation.reservationCode),
-        ),
-      );
+      await notifyAdminsOfCancellationRequest(reservation, dbUser);
     } catch (notifyErr) {
       logger.warn({ err: notifyErr }, "[CancelRequest] Admin notification failed (non-fatal)");
     }
@@ -5421,6 +5471,7 @@ export const approveCancellationRequest = async (req, res, next) => {
     const now = new Date();
     const adminNote = req.body.note || null;
     const oldData = reservation.toObject();
+    const previousStatus = reservation.status;
 
     // Archive any active visit to history
     const visitHistoryUpdate = [];
@@ -5468,14 +5519,24 @@ export const approveCancellationRequest = async (req, res, next) => {
     // Sync user lifecycle to reflect cancellation
     await syncReservationUserLifecycle({
       status: "cancelled",
-      previousStatus: oldData.status,
+      previousStatus,
       userId: reservation.userId,
       roomId: reservation.roomId,
       reservationId: reservation._id,
     }).catch((err) => logger.warn({ err }, "[ApproveCancellation] User lifecycle sync failed (non-fatal)"));
 
-    const { notify } = await import("../utils/notificationService.js");
-    await notify.cancellationApproved(reservation.userId, reservation.reservationCode);
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservation._id,
+      oldData,
+      reservation.toObject(),
+      "Cancellation request approved",
+    );
+
+    await notify.cancellationApproved(reservation.userId, reservation.reservationCode).catch((notifyErr) => {
+      logger.warn({ err: notifyErr }, "[ApproveCancellation] Tenant notification failed (non-fatal)");
+    });
 
     res.json({ message: "Cancellation request approved. Reservation cancelled and bed released.", reservation });
   } catch (error) {
@@ -5510,6 +5571,7 @@ export const rejectCancellationRequest = async (req, res, next) => {
 
     const now = new Date();
     const adminNote = req.body.note || null;
+    const oldData = reservation.toObject();
 
     reservation.cancellationStatus = "rejected";
     reservation.cancellationReviewedAt = now;
@@ -5519,8 +5581,18 @@ export const rejectCancellationRequest = async (req, res, next) => {
     reservation.cancellationRequested = false;
     await reservation.save();
 
-    const { notify } = await import("../utils/notificationService.js");
-    await notify.cancellationRejected(reservation.userId, reservation.reservationCode, adminNote);
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservation._id,
+      oldData,
+      reservation.toObject(),
+      "Cancellation request rejected",
+    );
+
+    await notify.cancellationRejected(reservation.userId, reservation.reservationCode, adminNote).catch((notifyErr) => {
+      logger.warn({ err: notifyErr }, "[RejectCancellation] Tenant notification failed (non-fatal)");
+    });
 
     res.json({ message: "Cancellation request rejected. Reservation remains active.", reservation });
   } catch (error) {
@@ -5537,6 +5609,10 @@ export const getMyContract = async (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
+    if (user.role !== "tenant" || user.tenantStatus !== "active") {
+      return res.status(404).json({ error: "No active contract found" });
+    }
+
     // Find the tenant's active moved-in reservation
     const reservation = await Reservation.findOne({
       userId: user._id,
@@ -5548,9 +5624,14 @@ export const getMyContract = async (req, res) => {
       return res.status(404).json({ error: "No active contract found" });
     }
 
+    const moveInDate = readMoveInDate(reservation);
+    if (!moveInDate) {
+      return res.status(404).json({ error: "No active contract found" });
+    }
+
     const dayjs = (await import("dayjs")).default;
     const now = dayjs();
-    const leaseStart = dayjs(readMoveInDate(reservation));
+    const leaseStart = dayjs(moveInDate);
     const leaseDuration = reservation.leaseDuration || 12;
     const leaseEnd = leaseStart.add(leaseDuration, "month");
     const monthsCompleted = Math.min(

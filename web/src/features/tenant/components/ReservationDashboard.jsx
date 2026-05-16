@@ -2,6 +2,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { showNotification } from "../../../shared/utils/notification";
+
 import {
  Home,
  Calendar,
@@ -299,7 +300,7 @@ function getNextAction(reservation, currentStage) {
  return {
  title: "Confirm Room & Continue",
  description: "Review your selected room and confirm your choice",
- buttonLabel: "Continue →",
+ buttonLabel: "Continue ->",
  route: `/applicant/reservation?step=1`,
  isWaiting: false,
  };
@@ -358,7 +359,7 @@ function getNextAction(reservation, currentStage) {
  return {
  title: "Complete Your Application",
  description: "Fill in personal details and upload required documents",
- buttonLabel: "Fill Application →",
+ buttonLabel: "Fill Application ->",
  route: `/applicant/reservation?step=3`,
  isWaiting: false,
  };
@@ -384,11 +385,11 @@ function getNextAction(reservation, currentStage) {
 }
 
 function formatDate(dateStr) {
- if (!dateStr) return "—";
+ if (!dateStr) return "-";
  try {
  return fmtShortDate(dateStr);
  } catch {
- return "—";
+ return "-";
  }
 }
 
@@ -1166,6 +1167,31 @@ export default function ReservationDashboard({
  showNotification("Cancellation request submitted. Pending admin review.", "success", 4000);
  queryClient.invalidateQueries({ queryKey: ["reservations"] });
  } catch (err) {
+ const errorCode = err?.response?.data?.code;
+ if (errorCode === "CANCELLATION_REQUEST_ALREADY_PENDING") {
+ setIsRequesting(false);
+ setShowRequestCancelModal(false);
+ showNotification("Cancellation request is already pending admin review.", "info", 4000);
+ queryClient.invalidateQueries({ queryKey: ["reservations"] });
+ return;
+ }
+ try {
+ const { reservationApi } = await import("../../../shared/api/reservationApi");
+ const latest = await reservationApi.getById(reservation._id);
+ const latestReservation = latest?.reservation || latest;
+ if (
+ latestReservation?.cancellationRequested &&
+ latestReservation?.cancellationStatus === "pending"
+ ) {
+ setIsRequesting(false);
+ setShowRequestCancelModal(false);
+ showNotification("Cancellation request submitted. Pending admin review.", "success", 4000);
+ queryClient.invalidateQueries({ queryKey: ["reservations"] });
+ return;
+ }
+ } catch (refreshErr) {
+ console.warn("Failed to verify cancellation request state:", refreshErr);
+ }
  console.error("Cancellation request failed:", err);
  setIsRequesting(false);
  setShowRequestCancelModal(false);

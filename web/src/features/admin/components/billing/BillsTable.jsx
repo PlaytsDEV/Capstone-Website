@@ -1,11 +1,12 @@
 import { Eye, FileText } from "lucide-react";
 import { fmtCurrency, fmtDate, fmtMonth } from "../../utils/formatters";
+import { TableSkeleton } from "../../../../../shared/components/LoadingSkeletons";
 
 export default function BillsTable({ bills, loading, onViewBill }) {
  if (loading) {
  return (
  <div className="table-container">
- <div className="empty-state">Loading bills...</div>
+ <TableSkeleton rows={6} columns={10} style={{ border: 0 }} />
  </div>
  );
  }

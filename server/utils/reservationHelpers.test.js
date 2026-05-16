@@ -28,6 +28,8 @@ await jest.unstable_mockModule("../config/firebase.js", () => ({
 }));
 
 const {
+  buildUserUpdatePayload,
+  getForbiddenTenantUpdateFields,
   syncReservationUserLifecycle,
   reconcileTenantUsersForScope,
 } = await import("./reservationHelpers.js");
@@ -66,6 +68,37 @@ const mockReservationById = ({ moveOutDate = null, branch = "gil-puyat" } = {}) 
     }),
   });
 };
+
+describe("tenant reservation update helpers", () => {
+  test("detects protected tenant update fields before mutation", () => {
+    expect(
+      getForbiddenTenantUpdateFields({
+        firstName: "Tala",
+        status: "reserved",
+        proofOfPaymentUrl: "https://example.test/proof.jpg",
+        visitApproved: true,
+        paymentStatus: "paid",
+      }),
+    ).toEqual(["status", "proofOfPaymentUrl", "visitApproved", "paymentStatus"]);
+  });
+
+  test("normalizes accepted mobile formats and omits protected fields from update payload", () => {
+    const updates = buildUserUpdatePayload({
+      firstName: "Tala",
+      mobileNumber: "+639171234567",
+      emergencyContactNumber: "09181234567",
+      status: "reserved",
+      proofOfPaymentUrl: "https://example.test/proof.jpg",
+      paymentMethod: "gcash",
+    });
+
+    expect(updates).toEqual({
+      firstName: "Tala",
+      mobileNumber: "09171234567",
+      "emergencyContact.contactNumber": "09181234567",
+    });
+  });
+});
 
 describe("syncReservationUserLifecycle", () => {
   beforeEach(() => {

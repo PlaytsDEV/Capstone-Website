@@ -22,6 +22,7 @@ import { useAppNavigation } from "../hooks/useAppNavigation";
 import ConfirmModal from "./ConfirmModal";
 import { showNotification } from "../utils/notification";
 import { buildSignOutSuccessFlash } from "../utils/authToasts";
+import ProfileAvatar, { getProfileInitials } from "./ProfileAvatar";
 
 const MOBILE_BP = 768;
 const TRANSITION = "0.24s cubic-bezier(0.22, 1, 0.36, 1)";
@@ -188,8 +189,7 @@ function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleCollapse }) {
  const fullName =
  `${user?.firstName || ""} ${user?.lastName || ""}`.trim() || "User";
  const email = user?.email || "";
- const initials =
- `${user?.firstName?.[0] || "U"}${user?.lastName?.[0] || ""}`.toUpperCase();
+ const initials = getProfileInitials(user, "U");
 
  useEffect(() => {
  const handleResize = () => {
@@ -348,45 +348,7 @@ function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleCollapse }) {
  pointerEvents: "none",
  }}
  >
- <div
- style={{
- width: 36,
- height: 36,
- borderRadius: "50%",
- flexShrink: 0,
- overflow: "hidden",
- }}
- >
- {user?.profileImage ? (
- <img
- src={user.profileImage}
- alt="Profile"
- style={{
- width: "100%",
- height: "100%",
- objectFit: "cover",
- borderRadius: "50%",
- }}
- />
- ) : (
- <div
- style={{
- background: "linear-gradient(135deg, #FF8C42 0%, #D35400 100%)",
- width: "100%",
- height: "100%",
- display: "flex",
- alignItems: "center",
- justifyContent: "center",
- color: "#fff",
- fontSize: 13,
- fontWeight: 700,
- borderRadius: "50%",
- }}
- >
- {initials}
- </div>
- )}
- </div>
+ <ProfileAvatar user={user} initials={initials} size={36} />
 
  <div
  style={{
@@ -725,7 +687,7 @@ function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleCollapse }) {
  onConfirm={confirmLogout}
  title="Log Out"
  message="Are you sure you want to log out of your account?"
- variant="warning"
+ variant="danger"
  confirmText="Log Out"
  loading={isLoggingOut}
  />

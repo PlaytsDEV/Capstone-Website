@@ -1,4 +1,3 @@
-import React from "react";
 import "./SkeletonPulse.css";
 
 /**
@@ -37,6 +36,7 @@ export default function SkeletonPulse({
  return (
  <div
  className={`skeleton-pulse ${className}`}
+ aria-hidden="true"
  style={{
  width: w,
  height: h,

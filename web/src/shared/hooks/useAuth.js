@@ -45,7 +45,11 @@ import { useFirebaseAuth } from "./FirebaseAuthContext";
 import { USER_ROLES } from "../utils/constants";
 import { queryKeys } from "../lib/queryKeys";
 
-const AuthContext = createContext(null);
+const AuthContext =
+  import.meta.env.DEV
+    ? (globalThis.__CAPSTONE_AUTH_CONTEXT__ ??=
+        createContext(null))
+    : createContext(null);
 
 const TENANT_WARM_ROUTES = ["/applicant/profile", "/applicant/reservation"];
 
@@ -319,8 +323,8 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem("user");
 
       // Return branch for caller to handle navigation
-      // NOTE: Don't turn off globalLoading here - page will reload and clear it
-      // This keeps the loading overlay visible during navigation for smooth UX
+      // NOTE: Don't turn off globalLoading here - the route transition clears it.
+      // This keeps the loading overlay visible during navigation for smooth UX.
       return { success: true, branch: branchHome };
     } catch (error) {
       console.error("Logout error:", error);

@@ -8,6 +8,10 @@ import { useReservations } from "../../../shared/hooks/queries/useReservations";
 import { useQueryClient } from "@tanstack/react-query";
 import { readMoveInDate } from "../../../shared/utils/lifecycleNaming";
 import { exportToCSV } from "../../../shared/utils/exportUtils";
+import {
+ StatGridSkeleton,
+ TableSkeleton,
+} from "../../../shared/components/LoadingSkeletons";
 
 function formatUpdatedAt(ts) {
  if (!ts) return "";
@@ -165,8 +169,10 @@ function PaymentRequestsTab() {
 
  if (loading)
  return (
- <div style={{ textAlign: "center", padding: "60px" }}>
- <p style={{ color: "#6B7280" }}>Loading payment requests...</p>
+ <div style={{ display: "grid", gap: 20 }}>
+ <StatGridSkeleton count={3} />
+ <TableSkeleton rows={5} columns={7} />
+ <TableSkeleton rows={4} columns={7} />
  </div>
  );
 

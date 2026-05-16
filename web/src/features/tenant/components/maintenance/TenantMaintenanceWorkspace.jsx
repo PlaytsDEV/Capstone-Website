@@ -32,6 +32,7 @@ import {
   getMaintenanceTypeMeta,
   getMaintenanceUrgencyMeta,
 } from "../../../../shared/utils/maintenanceConfig";
+
 import {
   getMaintenanceAttachmentKind,
   getMaintenanceAttachmentLabel,
@@ -182,6 +183,7 @@ function AttachmentLink({ attachment, index, onPreview }) {
       </div>
     );
   }
+
 
   return (
     <a

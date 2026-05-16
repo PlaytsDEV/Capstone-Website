@@ -21,6 +21,7 @@ import {
   RolePermissionsPage,
   SystemSettingsPage,
   AdminNotificationsPage,
+  SystemBackupPage,
 } from "../lazyPages";
 import {
   ANALYTICS_DETAILS_PATH,
@@ -218,6 +219,16 @@ export function AdminRoutes() {
           <ProtectedRoute requiredRole="owner">
             <RouteShell name="Roles">
               <RolePermissionsPage />
+            </RouteShell>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="backups"
+        element={
+          <ProtectedRoute requiredRole="owner">
+            <RouteShell name="SystemBackup">
+              <SystemBackupPage />
             </RouteShell>
           </ProtectedRoute>
         }

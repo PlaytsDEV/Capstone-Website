@@ -13,27 +13,25 @@ const ContractsPage = () => {
  const reservations = Array.isArray(rawReservations) ? rawReservations : [];
  const error = queryError ? (queryError.message || "Failed to load contracts") : null;
 
- // Active contract = moved-in reservations
+ const isContractReservation = (reservation) =>
+ hasReservationStatus(reservation?.status, "moveIn", "moveOut") &&
+ readMoveInDate(reservation);
+
+ // Active contract = admin moved the applicant in and the stay is active
  const activeContract = useMemo(
- () => reservations.find((r) => hasReservationStatus(r.status, "moveIn")),
+ () => reservations.find((r) => isContractReservation(r) && hasReservationStatus(r.status, "moveIn")),
  [reservations],
  );
 
- // Past contracts = completed/cancelled/archived
+ // Past contracts = previous moved-in stays only. Cancelled/reserved applications
+ // are not contracts because the applicant never became a tenant.
  const pastContracts = useMemo(
  () =>
  reservations.filter(
  (r) =>
- r.status === "completed" ||
- r.status === "cancelled" ||
- hasReservationStatus(r.status, "moveOut"),
+ isContractReservation(r) &&
+ (r.status === "completed" || hasReservationStatus(r.status, "moveOut")),
  ),
- [reservations],
- );
-
- // Confirmed (upcoming) = confirmed but not moved in yet
- const upcomingContract = useMemo(
- () => reservations.find((r) => r.status === "reserved"),
  [reservations],
  );
 
@@ -348,7 +346,6 @@ const ContractsPage = () => {
  ) : error ? (
  <div className="contracts-error">{error}</div>
  ) : !activeContract &&
- !upcomingContract &&
  pastContracts.length === 0 ? (
  <div className="contracts-empty">
  <div className="empty-icon">
@@ -370,8 +367,8 @@ const ContractsPage = () => {
  </div>
  <h3>No Contracts Yet</h3>
  <p>
- Your contract details will appear here once your reservation is
- confirmed and you've moved in.
+ Your contract details will appear here after the admin moves you in
+ and your account becomes a tenant.
  </p>
  </div>
  ) : (
@@ -381,14 +378,6 @@ const ContractsPage = () => {
  <section className="contracts-section">
  <h2 className="section-title">Active Contract</h2>
  {renderContractCard(activeContract, true)}
- </section>
- )}
-
- {/* Upcoming Contract */}
- {upcomingContract && (
- <section className="contracts-section">
- <h2 className="section-title">Upcoming Contract</h2>
- {renderContractCard(upcomingContract)}
  </section>
  )}
 

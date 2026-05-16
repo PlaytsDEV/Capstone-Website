@@ -4,8 +4,9 @@
 
 :root {
   --fi-border: #e2e8f0;
-  --fi-border-focus: #b0bec5;
-  --fi-focus: #D4AF37;
+  --fi-border-focus: #D4AF37;
+  --fi-focus: #475569;
+  --fi-border-hover: #cbd5e1;
   --fi-valid: #10b981;
   --fi-error: #ef4444;
   --fi-label: #94a3b8;
@@ -27,11 +28,16 @@
   border: 1px solid var(--border-color, var(--fi-border));
   border-radius: var(--fi-radius);
   background: var(--fi-bg);
-  transition: border-color 0.2s ease;
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.floating-field__wrapper:hover {
+  border-color: var(--fi-border-hover);
 }
 
 .floating-field__wrapper.focused {
-  border-color: #cbd5e1;
+  border-color: var(--fi-border-focus);
+  box-shadow: none;
 }
 
 /* ── Input ── */
@@ -609,11 +615,12 @@
 
 html[data-theme="dark"] {
   --fi-border: #1E293B;
-  --fi-border-focus: #3d4f66;
+  --fi-border-focus: #D4AF37;
   --fi-label: #64748b;
   --fi-label-active: #94a3b8;
   --fi-text: #f1f5f9;
   --fi-bg: #0B1120;
+  --fi-border-hover: #475569;
 }
 
 /* Form container (the white right panel) */

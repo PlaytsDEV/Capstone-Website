@@ -19,6 +19,7 @@ import {
   useMarkAllAsRead,
   useUnreadCount,
 } from "../../../shared/hooks/queries/useNotifications";
+import { ListSkeleton } from "../../../shared/components/LoadingSkeletons";
 import "../styles/design-tokens.css";
 import "../styles/admin-notifications.css";
 
@@ -38,6 +39,8 @@ const TYPE_META = {
   payment_rejected:    { label: "Payment",           icon: Receipt,          priority: "high"     },
   reservation_confirmed:{ label: "Reservation",     icon: CalendarCheck,    priority: "low"      },
   reservation_cancelled:{ label: "Reservation",     icon: CalendarCheck,    priority: "medium"   },
+  reservation_cancellation_requested:{ label: "Cancellation", icon: AlertTriangle, priority: "high" },
+  reservation_cancellation_rejected:{ label: "Cancellation", icon: CalendarCheck, priority: "medium" },
   reservation_expired: { label: "Reservation",      icon: CalendarCheck,    priority: "medium"   },
   reservation_noshow:  { label: "No-Show",           icon: CalendarCheck,    priority: "high"     },
   visit_approved:      { label: "Visit",             icon: CalendarCheck,    priority: "low"      },
@@ -51,6 +54,7 @@ const FILTER_TYPES = [
   { key: "sla_breach",       label: "SLA Breach" },
   { key: "maintenance_update", label: "Maintenance" },
   { key: "bill_generated",   label: "Billing" },
+  { key: "reservation",      label: "Reservations" },
   { key: "chat_unresponded", label: "Chat" },
   { key: "general",          label: "General" },
 ];
@@ -66,6 +70,8 @@ const ACTION_URLS = {
   payment_rejected:    "/admin/billing",
   reservation_confirmed:"/admin/reservations",
   reservation_cancelled:"/admin/reservations",
+  reservation_cancellation_requested:"/admin/reservations",
+  reservation_cancellation_rejected:"/admin/reservations",
   reservation_expired: "/admin/reservations",
   reservation_noshow:  "/admin/reservations",
   visit_approved:      "/admin/reservations",
@@ -81,6 +87,14 @@ function getMeta(type) {
 }
 
 function getActionUrl(notification) {
+  if (
+    notification.type === "reservation_cancellation_requested" &&
+    notification.entityId
+  ) {
+    return `/admin/reservations?reservationId=${encodeURIComponent(
+      notification.entityId,
+    )}&focus=cancellation`;
+  }
   return notification.actionUrl || ACTION_URLS[notification.type] || null;
 }
 
@@ -120,6 +134,19 @@ export default function AdminNotificationsPage() {
           if (typeFilter === "bill_generated") {
             return ["bill_generated", "bill_due_reminder", "penalty_applied",
                     "payment_approved", "payment_rejected"].includes(n.type);
+          }
+          if (typeFilter === "reservation") {
+            return [
+              "reservation_confirmed",
+              "reservation_cancelled",
+              "reservation_cancellation_requested",
+              "reservation_cancellation_rejected",
+              "reservation_expired",
+              "reservation_noshow",
+              "visit_approved",
+              "visit_rejected",
+              "grace_period_warning",
+            ].includes(n.type);
           }
           return n.type === typeFilter;
         });
@@ -192,10 +219,7 @@ export default function AdminNotificationsPage() {
       {/* ── List ── */}
       <div className="admin-notif-page__list">
         {isLoading ? (
-          <div className="admin-notif-page__state">
-            <Loader2 size={22} className="admin-notif__spin" />
-            <span>Loading notifications…</span>
-          </div>
+          <ListSkeleton rows={6} avatar />
         ) : filtered.length === 0 ? (
           <div className="admin-notif-page__state">
             <Inbox size={28} />

@@ -9,7 +9,6 @@ import {
  FileDown,
  FileText,
  Image as ImageIcon,
- Loader2,
  MessageSquare,
  Paperclip,
  RefreshCcw,
@@ -49,6 +48,7 @@ import {
  normalizeBranchFilterValue,
  syncBranchSearchParam,
 } from "../../../shared/utils/branchFilterQuery.mjs";
+import { DrawerSkeleton } from "../../../shared/components/LoadingSkeletons";
 import {
  DataTable,
  DetailDrawer,
@@ -1231,9 +1231,8 @@ export default function AdminMaintenancePage() {
  }
  >
  {isDetailLoading || !selectedRequest ? (
- <div className="flex items-center gap-2 px-6 py-6 text-sm text-muted-foreground">
- <Loader2 size={18} className="animate-spin" />
- Loading request details...
+ <div className="px-6 py-6">
+ <DrawerSkeleton rows={4} />
  </div>
  ) : (
  <div>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
   Calendar,
   CheckCircle,
   Clock,
@@ -44,6 +45,7 @@ import {
   IN_PROGRESS_STATUSES,
   checkOverdueReservation,
   getBranchLabel,
+  hasPendingCancellationRequest,
   mapReservationAdminRow,
 } from "../utils/reservationRows";
 import "../styles/design-tokens.css";
@@ -85,6 +87,7 @@ const SUMMARY_FILTERS = [
   "needs_revision",
   "approved_for_payment",
   "reserved",
+  "cancellation_requested",
   "cancelled",
   "moveIn",
 ];
@@ -144,6 +147,8 @@ function ReservationsPage() {
       reserved: reservations.filter(
         (reservation) => reservation.status === "reserved",
       ).length,
+      cancellationRequested: reservations.filter(hasPendingCancellationRequest)
+        .length,
       cancelled: reservations.filter(
         (reservation) => reservation.status === "cancelled",
       ).length,
@@ -170,7 +175,9 @@ function ReservationsPage() {
             ? checkOverdueReservation(reservation)
             : statusFilter === "in_progress"
               ? IN_PROGRESS_STATUSES.includes(reservation.status)
-              : hasReservationStatus(reservation.status, statusFilter);
+              : statusFilter === "cancellation_requested"
+                ? hasPendingCancellationRequest(reservation)
+                : hasReservationStatus(reservation.status, statusFilter);
       const matchBranch =
         branchFilter === "all" || reservation.branchCode === branchFilter;
       return matchSearch && matchStatus && matchBranch;
@@ -179,6 +186,14 @@ function ReservationsPage() {
 
   const sortedReservations = useMemo(() => {
     const { key, dir } = sortState;
+    if (statusFilter === "cancellation_requested") {
+      return [...filteredReservations].sort(
+        (left, right) =>
+          new Date(right.cancellationRequestedAt || 0) -
+          new Date(left.cancellationRequestedAt || 0),
+      );
+    }
+
     if (!key) return filteredReservations;
 
     return [...filteredReservations].sort((left, right) => {
@@ -202,7 +217,7 @@ function ReservationsPage() {
 
       return dir === "asc" ? comparison : -comparison;
     });
-  }, [filteredReservations, sortState]);
+  }, [filteredReservations, sortState, statusFilter]);
 
   const totalFiltered = sortedReservations.length;
 
@@ -265,6 +280,12 @@ function ReservationsPage() {
         color: "blue",
       },
       {
+        label: "Cancellation Requests",
+        value: counts.cancellationRequested,
+        icon: AlertTriangle,
+        color: "orange",
+      },
+      {
         label: "Cancelled",
         value: counts.cancelled,
         icon: Trash2,
@@ -313,6 +334,7 @@ function ReservationsPage() {
           { value: "approved_for_payment", label: "Approved for Payment" },
           { value: "payment_pending", label: "Payment Pending" },
           { value: "reserved", label: "Reserved" },
+          { value: "cancellation_requested", label: "Cancellation Requests" },
           { value: "moveIn", label: "Move In" },
           { value: "rejected", label: "Rejected" },
           { value: "cancelled", label: "Cancelled" },
@@ -353,6 +375,9 @@ function ReservationsPage() {
         previous.status === liveReservation.status &&
         previous.moveInDate === liveReservation.moveInDate &&
         previous.moveOutDate === liveReservation.moveOutDate &&
+        previous.cancellationRequested === liveReservation.cancellationRequested &&
+        previous.cancellationStatus === liveReservation.cancellationStatus &&
+        previous.cancellationRequestedAt === liveReservation.cancellationRequestedAt &&
         previous.visitStatus === liveReservation.visitStatus &&
         previous.visitApproved === liveReservation.visitApproved &&
         previous.scheduleApproved === liveReservation.scheduleApproved &&
@@ -374,6 +399,12 @@ function ReservationsPage() {
         moveInDate: liveReservation.moveInDate,
         moveOutDate: liveReservation.moveOutDate,
         createdAt: liveReservation.createdAt,
+        cancellationRequested: liveReservation.cancellationRequested,
+        cancellationRequestedAt: liveReservation.cancellationRequestedAt,
+        cancellationRequestedBy: liveReservation.cancellationRequestedBy,
+        cancellationStatus: liveReservation.cancellationStatus,
+        cancellationReason: liveReservation.cancellationReason,
+        cancellationAdminNote: liveReservation.cancellationAdminNote,
         visitStatus: liveReservation.visitStatus,
         visitApproved: liveReservation.visitApproved,
         visitDate: liveReservation.visitDate,
@@ -440,6 +471,12 @@ function ReservationsPage() {
           visitTime: reservation.visitTime,
           visitApproved: reservation.visitApproved,
           notes: reservation.notes,
+          cancellationRequested: reservation.cancellationRequested,
+          cancellationRequestedAt: reservation.cancellationRequestedAt,
+          cancellationRequestedBy: reservation.cancellationRequestedBy,
+          cancellationStatus: reservation.cancellationStatus,
+          cancellationReason: reservation.cancellationReason,
+          cancellationAdminNote: reservation.cancellationAdminNote,
         });
       } catch {
         const fallbackReservation = reservations.find(
@@ -452,6 +489,15 @@ function ReservationsPage() {
     },
     [prefetchReservationDetail, reservations],
   );
+
+  useEffect(() => {
+    if (activeTab !== "reservations") return;
+    const reservationId = searchParams.get("reservationId");
+    if (!reservationId) return;
+    if (selectedReservation?.id === reservationId) return;
+
+    handleView(reservationId);
+  }, [activeTab, handleView, searchParams, selectedReservation?.id]);
 
   const refetchReservations = useCallback(
     () => queryClient.invalidateQueries({ queryKey: ["reservations"] }),
@@ -839,13 +885,18 @@ function ReservationsPage() {
                           </div>
                         </td>
                         <td className="py-4 px-4">
-                          <StatusBadge
-                            status={
-                              checkOverdueReservation(row)
-                                ? "overdue"
-                                : row.status
-                            }
-                          />
+                          <div className="flex flex-col items-start gap-1.5">
+                            <StatusBadge
+                              status={
+                                checkOverdueReservation(row)
+                                  ? "overdue"
+                                  : row.status
+                              }
+                            />
+                            {hasPendingCancellationRequest(row) && (
+                              <StatusBadge status="cancellation_requested" />
+                            )}
+                          </div>
                         </td>
                         <td className="py-4 px-4 text-sm text-foreground">
                           {formatShortDate(row.moveInDate)}
@@ -943,7 +994,16 @@ function ReservationsPage() {
       {selectedReservation && (
         <ReservationDetailsModal
           reservation={selectedReservation}
-          onClose={() => setSelectedReservation(null)}
+          focusCancellation={searchParams.get("focus") === "cancellation"}
+          onClose={() => {
+            setSelectedReservation(null);
+            if (searchParams.has("reservationId") || searchParams.has("focus")) {
+              const nextParams = new URLSearchParams(searchParams);
+              nextParams.delete("reservationId");
+              nextParams.delete("focus");
+              setSearchParams(nextParams, { replace: true });
+            }
+          }}
           onUpdate={refetchReservations}
         />
       )}

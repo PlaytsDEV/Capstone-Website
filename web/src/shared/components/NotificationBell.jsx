@@ -73,6 +73,19 @@ function timeAgo(dateStr) {
  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+function getNotificationActionUrl(notification) {
+ if (
+ notification?.type === "reservation_cancellation_requested" &&
+ notification?.entityId
+ ) {
+ return `/admin/reservations?reservationId=${encodeURIComponent(
+ notification.entityId,
+ )}&focus=cancellation`;
+ }
+
+ return notification?.actionUrl || null;
+}
+
 export default function NotificationBell() {
  const [isOpen, setIsOpen] = useState(false);
  const dropdownRef = useRef(null);
@@ -125,9 +138,10 @@ export default function NotificationBell() {
  markAsRead.mutate(notification._id);
  }
 
- if (notification.actionUrl) {
+ const actionUrl = getNotificationActionUrl(notification);
+ if (actionUrl) {
  setIsOpen(false);
- navigate(notification.actionUrl);
+ navigate(actionUrl);
  }
  };
 

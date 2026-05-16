@@ -138,6 +138,19 @@ function ReservationFlowPage() {
             <ReservationSummaryStep
               reservationData={flow.reservationData}
               onNext={flow.handleNextStage}
+              onChangeRoom={() => {
+                const activeReservationId =
+                  flow.reservationId ||
+                  flow.reservationData?._id ||
+                  flow.reservationData?.id;
+                if (activeReservationId) {
+                  flow.navigate(
+                    `/applicant/check-availability?changeRoom=1&reservationId=${activeReservationId}`,
+                  );
+                  return;
+                }
+                flow.navigate("/applicant/check-availability");
+              }}
               readOnly={flow.isStageLocked(1)}
             />
           )}
@@ -222,6 +235,7 @@ function ReservationFlowPage() {
 
                 return null;
               }}
+
               onVisitSaved={async ({ visitCode, viewingPreference, visitDate, visitTime } = {}) => {
                 // Optimistically patch the list cache so the side panel and
                 // dashboard show the correct preference state the moment
@@ -274,6 +288,7 @@ function ReservationFlowPage() {
                   visitCode,
                   visitDate,
                   visitTime,
+
                 });
               }}
               onReturnToDashboard={flow.returnToDashboardAfterViewingPreference}
@@ -299,6 +314,8 @@ function ReservationFlowPage() {
                   setMobileNumber: flow.setMobileNumber,
                   birthday: flow.birthday,
                   setBirthday: flow.setBirthday,
+                  gender: flow.gender,
+                  setGender: flow.setGender,
                   maritalStatus: flow.maritalStatus,
                   setMaritalStatus: flow.setMaritalStatus,
                   nationality: flow.nationality,

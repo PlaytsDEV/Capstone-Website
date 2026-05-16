@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
   Calendar,
@@ -6,6 +7,8 @@ import {
   CheckCircle,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Clock,
   Eye,
   Home,
@@ -84,6 +87,18 @@ function addDays(date, days) {
   return next;
 }
 
+function startOfWeek(date) {
+ const weekStart = new Date(date);
+ weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+ return weekStart;
+}
+
+function endOfWeek(date) {
+ const weekEnd = new Date(date);
+ weekEnd.setDate(weekEnd.getDate() + (6 - weekEnd.getDay()));
+ return weekEnd;
+}
+
 function getTomorrowISO() {
   return toISODate(addDays(new Date(), 1));
 }
@@ -131,19 +146,31 @@ function getFallbackAvailabilityDates(count = 14) {
 
 function buildCalendarCells(dateRows) {
   if (!dateRows?.length) return [];
-  const firstDate = new Date(`${dateRows[0].date}T00:00:00`);
-  const leadingDays = firstDate.getDay();
-  return [
-    ...Array.from({ length: leadingDays }, (_, index) => ({
-      type: "empty",
-      key: `empty-start-${index}`,
-    })),
-    ...dateRows.map((dateRow) => ({
+  const dateByIso = new Map(dateRows.map((dateRow) => [dateRow.date, dateRow]));
+  const firstDate = new Date(dateRows[0].date + "T00:00:00");
+  const lastDate = new Date(dateRows[dateRows.length - 1].date + "T00:00:00");
+  const calendarStart = startOfWeek(firstDate);
+  const calendarEnd = endOfWeek(lastDate);
+  const cells = [];
+
+  for (let date = new Date(calendarStart); date <= calendarEnd; date = addDays(date, 1)) {
+    const iso = toISODate(date);
+    const dateRow = dateByIso.get(iso) || {
+      date: iso,
+      available: false,
+      disabledReason: "Not available",
+      slots: [],
+    };
+
+    cells.push({
       type: "date",
-      key: dateRow.date,
+      key: iso,
       dateRow,
-    })),
-  ];
+      isOutsideWindow: !dateByIso.has(iso),
+    });
+  }
+
+  return cells;
 }
 
 function formatRemainingSlots(slot) {
@@ -153,6 +180,94 @@ function formatRemainingSlots(slot) {
   return `${remaining} ${remaining === 1 ? "slot" : "slots"} left`;
 }
 
+function getSlotDisplayStatus(slot) {
+  if (slot?.available) {
+    return formatRemainingSlots(slot);
+  }
+  if (slot?.disabledCode === "VISIT_CAPACITY_REACHED" || Number(slot?.remaining) <= 0) return "Full";
+  return slot?.disabledReason || "";
+}
+
+function hasAvailableSlots(dateRow) {
+  return Boolean(dateRow?.slots?.some((slot) => slot.available));
+}
+
+function getDisabledDateLabel(dateRow) {
+  if (hasAvailableSlots(dateRow)) return "";
+  if (dateRow?.disabledReason) return dateRow.disabledReason;
+  const disabledCodes = new Set((dateRow?.slots || []).map((slot) => slot.disabledCode).filter(Boolean));
+  if (disabledCodes.has("VISIT_CAPACITY_REACHED")) return "Full";
+  if (disabledCodes.has("VISIT_SLOT_CONFLICT")) return "Room conflict";
+  if (disabledCodes.has("VISIT_DATE_CLOSED")) return "Closed";
+  return dateRow?.disabledReason || "No available times";
+}
+
+function getSlotAriaStatus(slot) {
+  if (slot?.available) {
+    const status = getSlotDisplayStatus(slot);
+    return status ? `, ${status}` : ", available";
+  }
+  if (slot?.disabledCode === "VISIT_SLOT_CONFLICT") return ", room conflict";
+  if (slot?.disabledCode === "VISIT_CAPACITY_REACHED" || Number(slot?.remaining) <= 0) return ", full";
+  return slot?.disabledReason ? `, ${slot.disabledReason}` : ", unavailable";
+}
+
+function groupSlotsByPeriod(slots = []) {
+  return [
+    { label: "Morning", slots: slots.filter((slot) => String(slot.label).includes("AM")) },
+    { label: "Afternoon", slots: slots.filter((slot) => String(slot.label).includes("PM")) },
+  ].filter((group) => group.slots.length);
+}
+
+function formatMoney(value) {
+  const amount = Number(value || 0);
+  return `PHP ${amount.toLocaleString()}/mo`;
+}
+
+function getSelectedVisitSummary({ visitDate, visitTime, reservationData }) {
+  const room = reservationData?.room || {};
+  const roomName = room.roomNumber || room.name || room.title || "Selected room";
+  const branch = room.branch || reservationData?.branch || "Branch";
+  const price = formatMoney(room.price);
+
+  if (!visitDate) {
+    return {
+      status: "empty",
+      title: "Select a date and time to continue",
+      detail: `${roomName} - ${branch} - ${price}`,
+      mobile: "No visit selected",
+      rows: [],
+    };
+  }
+
+  const fullDate = fmtDateFull(visitDate);
+  if (!visitTime) {
+    return {
+      status: "partial",
+      title: fullDate,
+      detail: "Choose an available time slot",
+      mobile: fullDate,
+      rows: [
+        { label: "Date", value: fullDate },
+        { label: "Time", value: "Not selected" },
+      ],
+    };
+  }
+
+  return {
+    status: "complete",
+    title: `${fullDate} at ${visitTime}`,
+    detail: `${roomName} - ${branch} - ${price}`,
+    mobile: `${fmtDate(new Date(visitDate + "T00:00:00"))} - ${visitTime}`,
+    rows: [
+      { label: "Date", value: fullDate },
+      { label: "Time", value: visitTime },
+      { label: "Room", value: roomName },
+      { label: "Branch", value: branch },
+      { label: "Price", value: price },
+    ],
+  };
+}
 const ReservationVisitStep = ({
   viewingType,
   setViewingType,
@@ -179,11 +294,20 @@ const ReservationVisitStep = ({
   scheduleRejected,
   scheduleRejectionReason,
 }) => {
+  const navigate = useNavigate();
   const { user: firebaseUser, loading: authLoading } = useFirebaseAuth();
+  const [policiesAccepted, setPoliciesAccepted] = useState(false);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showPoliciesModal, setShowPoliciesModal] = useState(false);
+  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [resolvedVisitCode, setResolvedVisitCode] = useState(visitCode || null);
   const [isSaving, setIsSaving] = useState(false);
+  const [dateWindowDays, setDateWindowDays] = useState(14);
+  const scheduleLocked = (readOnly || isSubmitted) && !scheduleRejected;
+  const canEditSchedule = !scheduleLocked;
   const [previewImageIndex, setPreviewImageIndex] = useState(null);
   const [isEditingPhysicalVisit, setIsEditingPhysicalVisit] = useState(false);
-
   const selectedVisit = viewingType || "physical_visit";
   const room = reservationData?.room || {};
   const uploadedRoomImages = Array.isArray(room.images)
@@ -210,7 +334,7 @@ const ReservationVisitStep = ({
     ["Available Slots", availableSlots == null ? "N/A" : String(availableSlots)],
     [
       "Monthly Rate",
-      room.price ? `₱${Number(room.price).toLocaleString()}` : "N/A",
+      room.price ? `PHP ${Number(room.price).toLocaleString()}` : "N/A",
     ],
     ["Notes / Reminders", room.description || "None provided"],
   ];
@@ -314,22 +438,41 @@ const ReservationVisitStep = ({
     }
   }, [isUrgentMoveIn, selectedVisit, setIsUrgentMoveIn]);
 
-  useEffect(() => {
-    if (!hasSavedPhysicalVisit) {
-      setIsEditingPhysicalVisit(false);
+  const handleSubmitWithValidation = () => {
+    if (availabilityError) {
+      showNotification("Cannot schedule a visit while availability data is unavailable. Please use the retry button above.", "error", 4000);
+      document.getElementById("visit-date-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
     }
-  }, [hasSavedPhysicalVisit]);
-
-  useEffect(() => {
-    if (previewImageIndex === null) return undefined;
-    const handleKey = (e) => {
-      if (e.key === "Escape") setPreviewImageIndex(null);
-      if (e.key === "ArrowLeft") setPreviewImageIndex((i) => Math.max(0, i - 1));
-      if (e.key === "ArrowRight") setPreviewImageIndex((i) => Math.min(roomImages.length - 1, i + 1));
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [previewImageIndex, roomImages.length]);
+    if (!visitDate) {
+      showNotification("Please select a visit date to continue.", "error", 3000);
+      document.getElementById("visit-date-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    const dateAvailability = availableDates.find((date) => date.date === visitDate);
+    if (dateAvailability && !dateAvailability.slots?.some((slot) => slot.available)) {
+      showNotification(dateAvailability.disabledReason || "Visits are closed on that date.", "error", 3000);
+      document.getElementById("visit-date-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (!visitTime) {
+      showNotification("Please select a time slot for your visit.", "error", 3000);
+      document.getElementById("visit-time-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    const slotAvailability = dateAvailability?.slots?.find((slot) => slot.label === visitTime);
+    if (slotAvailability && !slotAvailability.available) {
+      showNotification(slotAvailability.disabledReason || "That time slot is unavailable.", "error", 3000);
+      document.getElementById("visit-time-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (!policiesAccepted) {
+      showNotification("Please agree to the policies and terms to continue.", "error", 3000);
+      document.getElementById("visit-policies-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    setShowConfirmModal(true);
+  };
 
   const handleContinue = async () => {
     if (selectedVisit === "physical_visit") {
@@ -384,6 +527,23 @@ const ReservationVisitStep = ({
       setIsSaving(false);
     }
   };
+
+  useEffect(() => {
+    if (!hasSavedPhysicalVisit) {
+      setIsEditingPhysicalVisit(false);
+    }
+  }, [hasSavedPhysicalVisit]);
+
+  useEffect(() => {
+    if (previewImageIndex === null) return undefined;
+    const handleKey = (e) => {
+      if (e.key === "Escape") setPreviewImageIndex(null);
+      if (e.key === "ArrowLeft") setPreviewImageIndex((i) => Math.max(0, i - 1));
+      if (e.key === "ArrowRight") setPreviewImageIndex((i) => Math.min(roomImages.length - 1, i + 1));
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [previewImageIndex, roomImages.length]);
 
   const renderVisitSummary = ({ title, withActions = false }) => {
     const option = VISIT_OPTIONS.find((entry) => entry.value === selectedVisit);

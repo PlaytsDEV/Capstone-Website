@@ -10,6 +10,7 @@ import {
  SIGN_OUT_SUCCESS_MESSAGE,
 } from "../../../shared/utils/authToasts";
 import LilycrestLogo from "../../../shared/components/LilycrestLogo";
+import ProfileAvatar, { getProfileInitials } from "../../../shared/components/ProfileAvatar";
 import {
  LayoutDashboard,
  CalendarCheck,
@@ -127,9 +128,7 @@ export default function Sidebar({ isOpen, onClose, collapsed, onToggleCollapse }
  ? `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.username || "Admin"
  : "Admin";
  const roleLabel = isOwner ? "Owner" : "Branch Admin";
- const initials = user
- ? `${(user.firstName || "A")[0]}${(user.lastName || "")[0] || ""}`.toUpperCase()
- : "A";
+ const initials = getProfileInitials(user, "A");
 
  const renderGroup = (group) => {
  const items = groupedItems[group.id] || [];
@@ -205,13 +204,14 @@ export default function Sidebar({ isOpen, onClose, collapsed, onToggleCollapse }
 
  {/* User profile pill */}
  <div className="sb-profile">
- <div
+ <ProfileAvatar
+ user={user}
+ initials={initials}
+ size={36}
  className="sb-avatar"
  onMouseEnter={() => collapsed && setHoveredItem("__profile")}
  onMouseLeave={() => setHoveredItem(null)}
- >
- {initials}
- </div>
+ />
  {!collapsed && (
  <div className="sb-profile-info">
  <span className="sb-profile-name">{displayName}</span>

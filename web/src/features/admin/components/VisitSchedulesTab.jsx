@@ -16,6 +16,10 @@ import { reservationApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
 import { useReservations } from "../../../shared/hooks/queries/useReservations";
+import {
+  StatGridSkeleton,
+  TableSkeleton,
+} from "../../../shared/components/LoadingSkeletons";
 import VisitDetailsModal from "./VisitDetailsModal";
 import { StatusBadge } from "./shared";
 import { mapVisitScheduleRows } from "../utils/reservationRows";
@@ -378,6 +382,12 @@ function VisitSchedulesTab() {
 
   return (
     <div className="space-y-6">
+      {loading ? (
+        <StatGridSkeleton
+          count={6}
+          className="grid grid-flow-col auto-cols-[minmax(150px,1fr)] gap-3 overflow-x-auto pb-1"
+        />
+      ) : (
       <div className="grid grid-flow-col auto-cols-[minmax(150px,1fr)] gap-3 overflow-x-auto pb-1">
         {summaryItems.map((item, index) => {
           const Icon = item.icon;
@@ -428,6 +438,7 @@ function VisitSchedulesTab() {
           );
         })}
       </div>
+      )}
 
       <div
         className="border rounded-lg p-6"
@@ -486,11 +497,7 @@ function VisitSchedulesTab() {
 
         <div className="overflow-x-auto">
           {loading ? (
-            <div className="p-12 text-center">
-              <p className="text-base text-muted-foreground">
-                Loading visit schedules...
-              </p>
-            </div>
+            <TableSkeleton rows={7} columns={7} style={{ border: 0 }} />
           ) : displayData.length === 0 ? (
             <div className="p-12 text-center">
               <CalendarDays className="mx-auto mb-3 h-12 w-12 text-muted-foreground" />

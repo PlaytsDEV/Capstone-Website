@@ -1,4 +1,5 @@
 import { formatDate, formatTime, formatBranch } from "../../utils/formatters";
+import { ListSkeleton } from "../../../../shared/components/LoadingSkeletons";
 
 /* ── Inline SVG icons ── */
 const MailIcon = () => (
@@ -231,7 +232,7 @@ export default function InquiryTable({
  onArchive,
 }) {
  if (loading) {
- return <div className="admin-inquiries-loading">Loading inquiries...</div>;
+ return <ListSkeleton rows={6} avatar />;
  }
  if (error) {
  return <div className="admin-inquiries-error">{error}</div>;
