@@ -128,7 +128,9 @@ function ReservationFlowPage() {
 
         <ReservationStepper
           currentStage={flow.currentStage}
-          isStageLocked={flow.isStageLocked}
+          reservation={flow.reservationData}
+          applicationSubmitted={flow.applicationSubmitted}
+          paymentSubmitted={flow.paymentSubmitted}
           paymentApproved={flow.paymentApproved}
         />
         <RoomInfoBanner room={flow.reservationData?.room} />
