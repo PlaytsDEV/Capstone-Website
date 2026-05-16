@@ -626,14 +626,64 @@ const shouldBlockDocumentSubmission = (precheck = {}) => {
   );
 };
 
-const deriveViewingPreference = (reservation, updates = {}) =>
-  normalizeViewingPreferenceInput(
-    updates.viewingPreference ??
-      reservation?.viewingPreference ??
-      updates.viewingType ??
-      reservation?.viewingType,
-    (updates.visitDate || reservation?.visitDate) ? "physical_visit" : null,
+const deriveViewingPreference = (reservation, updates = {}) => {
+  const explicitPreference = normalizeViewingPreferenceInput(
+    updates.viewingPreference ?? reservation?.viewingPreference,
   );
+  if (explicitPreference) return explicitPreference;
+
+  const updateViewingType = String(updates.viewingType || "").trim().toLowerCase();
+  if (updateViewingType && updateViewingType !== "inperson") {
+    const normalizedUpdateViewingType = normalizeViewingPreferenceInput(updateViewingType);
+    if (normalizedUpdateViewingType) return normalizedUpdateViewingType;
+  }
+
+  const reservationViewingType = String(reservation?.viewingType || "")
+    .trim()
+    .toLowerCase();
+  if (reservationViewingType && reservationViewingType !== "inperson") {
+    const normalizedReservationViewingType =
+      normalizeViewingPreferenceInput(reservationViewingType);
+    if (normalizedReservationViewingType) return normalizedReservationViewingType;
+  }
+
+  if (updates.isUrgentMoveIn ?? reservation?.isUrgentMoveIn) {
+    return "urgent_move_in_review";
+  }
+
+  if (
+    updates.remoteViewingAcknowledged ??
+    reservation?.remoteViewingAcknowledged ??
+    false
+  ) {
+    return "remote_2d_viewing";
+  }
+
+  if (
+    String(
+      updates.remoteViewingQuestions ?? reservation?.remoteViewingQuestions ?? "",
+    ).trim()
+  ) {
+    return "remote_2d_viewing";
+  }
+
+  if (
+    updates.visitDate ||
+    reservation?.visitDate ||
+    updates.visitTime ||
+    reservation?.visitTime ||
+    updates.visitCode ||
+    reservation?.visitCode ||
+    updates.visitScheduledAt ||
+    reservation?.visitScheduledAt ||
+    updates.visitStatus ||
+    reservation?.visitStatus
+  ) {
+    return "physical_visit";
+  }
+
+  return null;
+};
 
 const deriveViewingType = (viewingPreference) => {
   if (viewingPreference === "physical_visit") return "inperson";
@@ -689,18 +739,42 @@ const hasAdminAllowedViewingPreferenceChange = (reservation = {}) => {
   );
 };
 
-const getSubmittedViewingPreference = (reservation = {}) =>
-  normalizeViewingPreferenceInput(
-    reservation.viewingPreference ?? reservation.viewingType,
-    reservation.isUrgentMoveIn
-      ? "urgent_move_in_review"
-      : reservation.remoteViewingAcknowledged ||
-          String(reservation.remoteViewingQuestions || "").trim()
-        ? "remote_2d_viewing"
-        : (reservation.visitDate || reservation.visitTime || reservation.visitCode)
-          ? "physical_visit"
-          : null,
-  );
+const getExplicitViewingTypePreference = (reservation = {}) => {
+  const rawViewingType = String(reservation.viewingType || "").trim().toLowerCase();
+  if (!rawViewingType || rawViewingType === "inperson") return null;
+  return normalizeViewingPreferenceInput(rawViewingType);
+};
+
+const getSubmittedViewingPreference = (reservation = {}) => {
+  const explicitPreference = normalizeViewingPreferenceInput(reservation.viewingPreference);
+  if (explicitPreference) return explicitPreference;
+
+  const explicitViewingTypePreference = getExplicitViewingTypePreference(reservation);
+  if (explicitViewingTypePreference) return explicitViewingTypePreference;
+
+  if (reservation.isUrgentMoveIn) return "urgent_move_in_review";
+
+  if (
+    reservation.remoteViewingAcknowledged ||
+    String(reservation.remoteViewingQuestions || "").trim()
+  ) {
+    return "remote_2d_viewing";
+  }
+
+  if (
+    reservation.visitDate ||
+    reservation.visitTime ||
+    reservation.visitCode ||
+    reservation.visitScheduledAt ||
+    reservation.visitStatus ||
+    reservation.scheduleApproved ||
+    reservation.scheduleApprovedAt
+  ) {
+    return "physical_visit";
+  }
+
+  return null;
+};
 
 const hasSavedApplicantViewingPreference = (reservation = {}) => {
   const explicitPreference = String(reservation.viewingPreference || "").trim();
@@ -788,6 +862,12 @@ const canApplicantSubmitViewingPreference = (
   if (!isViewingPreferenceSubmitted(reservation)) return true;
   if (isViewingPreferenceChangeAllowed(reservation)) return true;
   return canResubmitSameViewingPreference(reservation, requestedPreference);
+};
+
+const isViewingPreferenceLocked = (reservation = {}, requestedPreference = "") => {
+  if (!isViewingPreferenceSubmitted(reservation)) return false;
+  if (isViewingPreferenceChangeAllowed(reservation)) return false;
+  return !canResubmitSameViewingPreference(reservation, requestedPreference);
 };
 
 const isApplicantRoomSelectionLocked = (reservation = {}) => {
@@ -4038,6 +4118,36 @@ export const updateReservationByUser = async (req, res, next) => {
       updates.viewingType = deriveViewingType(normalizedViewingPreference);
     }
 
+    const requestedPreferenceSignals = new Set();
+    if (normalizedViewingPreference) {
+      requestedPreferenceSignals.add(normalizedViewingPreference);
+    }
+    if (
+      (hasBodyField("visitDate") && req.body.visitDate) ||
+      (hasBodyField("visitTime") && req.body.visitTime)
+    ) {
+      requestedPreferenceSignals.add("physical_visit");
+    }
+    if (
+      (hasBodyField("remoteViewingAcknowledged") &&
+        req.body.remoteViewingAcknowledged === true) ||
+      (hasBodyField("remoteViewingQuestions") &&
+        String(req.body.remoteViewingQuestions || "").trim())
+    ) {
+      requestedPreferenceSignals.add("remote_2d_viewing");
+    }
+    if (hasBodyField("isUrgentMoveIn") && req.body.isUrgentMoveIn === true) {
+      requestedPreferenceSignals.add("urgent_move_in_review");
+    }
+
+    if (requestedPreferenceSignals.size > 1) {
+      return res.status(400).json({
+        error:
+          "Only one viewing preference can be active for a reservation. Please choose Physical Visit, 2D Remote Viewing, or Urgent Move-in Review.",
+        code: "CONFLICTING_VIEWING_PREFERENCE_PAYLOAD",
+      });
+    }
+
     if (hasBodyField("remoteViewingQuestions")) {
       const normalizedQuestions =
         typeof req.body.remoteViewingQuestions === "string"
@@ -4067,7 +4177,7 @@ export const updateReservationByUser = async (req, res, next) => {
 
     if (
       preferenceRelatedUpdate &&
-      !canApplicantSubmitViewingPreference(
+      isViewingPreferenceLocked(
         reservation,
         normalizedViewingPreference || effectiveViewingPreference,
       )

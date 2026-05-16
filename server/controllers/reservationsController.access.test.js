@@ -610,6 +610,194 @@ describe("reservationsController.updateReservation access hardening", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  test("tenant cannot switch to physical visit after remote viewing was already saved", async () => {
+    reservationFindById.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439021",
+      userId: "tenant-1",
+      roomId: "room-1",
+      status: "viewing_preference_selected",
+      viewingPreference: "remote_2d_viewing",
+      viewingType: "remote_2d",
+      remoteViewingAcknowledged: true,
+      remoteViewingQuestions: "",
+      agreedToPrivacy: true,
+      scheduleRejected: false,
+      validIDFrontUrl: null,
+      nbiClearanceUrl: null,
+      companyIDUrl: null,
+      emergencyContact: {},
+      employment: {},
+      idType: null,
+      validIDType: null,
+    });
+    buildUserUpdatePayload.mockReturnValue({
+      viewingPreference: "physical_visit",
+      visitDate: "2099-06-01",
+      visitTime: "09:00 AM",
+      agreedToPrivacy: true,
+    });
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439021" },
+      user: { uid: "tenant-firebase-uid" },
+      body: {
+        viewingPreference: "physical_visit",
+        visitDate: "2099-06-01",
+        visitTime: "09:00 AM",
+        agreedToPrivacy: true,
+      },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    userFindOne.mockResolvedValue({
+      _id: "tenant-1",
+      firebaseUid: "tenant-firebase-uid",
+      role: "applicant",
+    });
+
+    await updateReservationByUser(req, res, next);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body?.code).toBe("VIEWING_PREFERENCE_LOCKED");
+    expect(reservationFindByIdAndUpdate).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("tenant cannot switch to remote viewing after priority review was already saved", async () => {
+    reservationFindById.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439022",
+      userId: "tenant-1",
+      roomId: "room-1",
+      status: "viewing_preference_selected",
+      viewingPreference: "urgent_move_in_review",
+      viewingType: "urgent_move_in",
+      isUrgentMoveIn: true,
+      remoteViewingAcknowledged: false,
+      remoteViewingQuestions: "",
+      agreedToPrivacy: true,
+      scheduleRejected: false,
+      validIDFrontUrl: null,
+      nbiClearanceUrl: null,
+      companyIDUrl: null,
+      emergencyContact: {},
+      employment: {},
+      idType: null,
+      validIDType: null,
+    });
+    buildUserUpdatePayload.mockReturnValue({
+      viewingPreference: "remote_2d_viewing",
+      remoteViewingAcknowledged: true,
+      remoteViewingQuestions: "",
+    });
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439022" },
+      user: { uid: "tenant-firebase-uid" },
+      body: {
+        viewingPreference: "remote_2d_viewing",
+        remoteViewingAcknowledged: true,
+        remoteViewingQuestions: "",
+      },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    userFindOne.mockResolvedValue({
+      _id: "tenant-1",
+      firebaseUid: "tenant-firebase-uid",
+      role: "applicant",
+    });
+
+    await updateReservationByUser(req, res, next);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body?.code).toBe("VIEWING_PREFERENCE_LOCKED");
+    expect(reservationFindByIdAndUpdate).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("tenant can save first remote viewing preference when only default inperson viewing type exists", async () => {
+    const existingReservation = {
+      _id: "507f1f77bcf86cd799439023",
+      userId: "tenant-1",
+      roomId: "room-1",
+      status: "pending",
+      viewingPreference: null,
+      viewingType: "inperson",
+      visitDate: null,
+      visitTime: "",
+      visitCode: null,
+      visitStatus: null,
+      remoteViewingAcknowledged: false,
+      remoteViewingQuestions: "",
+      isUrgentMoveIn: false,
+      agreedToPrivacy: false,
+      scheduleRejected: false,
+      validIDFrontUrl: null,
+      nbiClearanceUrl: null,
+      companyIDUrl: null,
+      emergencyContact: {},
+      employment: {},
+      idType: null,
+      validIDType: null,
+    };
+    const updatedReservation = {
+      ...existingReservation,
+      status: "viewing_preference_selected",
+      userId: { _id: "tenant-1", email: "tala@example.com" },
+      roomId: { _id: "room-1", branch: "gil-puyat", name: "Room 1" },
+      viewingPreference: "remote_2d_viewing",
+      viewingType: "remote_2d",
+      remoteViewingAcknowledged: true,
+    };
+
+    reservationFindById.mockResolvedValue(existingReservation);
+    buildUserUpdatePayload.mockReturnValue({
+      viewingPreference: "remote_2d_viewing",
+      remoteViewingAcknowledged: true,
+      remoteViewingQuestions: "",
+    });
+    reservationFindByIdAndUpdate.mockReturnValue({
+      populate: jest.fn().mockReturnThis(),
+      then: (resolve) => Promise.resolve(resolve(updatedReservation)),
+    });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439023" },
+      user: { uid: "tenant-firebase-uid" },
+      body: {
+        viewingPreference: "remote_2d_viewing",
+        remoteViewingAcknowledged: true,
+        remoteViewingQuestions: "",
+      },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    userFindOne.mockResolvedValue({
+      _id: "tenant-1",
+      firebaseUid: "tenant-firebase-uid",
+      role: "applicant",
+    });
+
+    await updateReservationByUser(req, res, next);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body?.reservation?.viewingPreference).toBe("remote_2d_viewing");
+    expect(reservationFindByIdAndUpdate).toHaveBeenCalledWith(
+      "507f1f77bcf86cd799439023",
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          viewingPreference: "remote_2d_viewing",
+          viewingType: "remote_2d",
+          remoteViewingAcknowledged: true,
+          status: "viewing_preference_selected",
+        }),
+      }),
+      { new: true, runValidators: true },
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
   test("tenant physical visit schedule is persisted for admin review", async () => {
     const existingReservation = {
       _id: "507f1f77bcf86cd799439011",

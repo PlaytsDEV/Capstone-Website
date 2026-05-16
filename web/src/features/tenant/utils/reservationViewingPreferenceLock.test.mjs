@@ -4,7 +4,10 @@ import assert from "node:assert/strict";
 import {
   VIEWING_PREFERENCE_LOCKED_MESSAGE,
   canApplicantSubmitViewingPreference,
+  canChangeViewingPreference,
   getViewingPreferenceStepAccess,
+  hasSubmittedViewingPreference,
+  isViewingPreferenceLocked,
   isViewingPreferenceChangeAllowed,
   isViewingPreferenceSubmitted,
 } from "./reservationViewingPreferenceLock.js";
@@ -39,6 +42,38 @@ test("applicant can submit a viewing preference once before one is saved", () =>
     getViewingPreferenceStepAccess(reservation, "physical_visit").canSubmit,
     true,
   );
+});
+
+test("default inperson viewing type alone is not treated as submitted", () => {
+  const reservation = {
+    ...baseReservation,
+    status: "pending",
+    viewingPreference: null,
+    viewingType: "inperson",
+    visitDate: null,
+    visitTime: "",
+    visitCode: null,
+  };
+
+  assert.equal(hasSubmittedViewingPreference(reservation), false);
+  assert.equal(canApplicantSubmitViewingPreference(reservation, "remote_2d_viewing"), true);
+  assert.equal(isViewingPreferenceLocked(reservation, "remote_2d_viewing"), false);
+});
+
+test("legacy saved remote viewing type locks read-only even without acknowledgement", () => {
+  const reservation = {
+    ...baseReservation,
+    status: "viewing_preference_selected",
+    viewingPreference: null,
+    viewingType: "remote_2d",
+    remoteViewingAcknowledged: false,
+  };
+  const access = getViewingPreferenceStepAccess(reservation, "physical_visit");
+
+  assert.equal(access.submittedPreference, "remote_2d_viewing");
+  assert.equal(access.readOnly, true);
+  assert.equal(access.canSubmit, false);
+  assert.equal(canChangeViewingPreference(reservation), false);
 });
 
 test("saved viewing preference becomes read-only while active", () => {

@@ -41,6 +41,15 @@ const isTruthyApprovalValue = (value) => {
   return TRUE_VALUES.has(value.trim().toLowerCase());
 };
 
+const normalizePreferenceValue = (value) =>
+  getReservationViewingPreference({ viewingPreference: value, viewingType: value });
+
+const getExplicitViewingTypePreference = (reservation = {}) => {
+  const rawViewingType = String(reservation.viewingType || "").trim().toLowerCase();
+  if (!rawViewingType || rawViewingType === "inperson") return null;
+  return normalizePreferenceValue(rawViewingType);
+};
+
 export const hasAdminAllowedViewingPreferenceChange = (reservation = {}) => {
   const safeReservation = asReservation(reservation);
   const explicitValue =
@@ -65,13 +74,27 @@ export const hasAdminAllowedViewingPreferenceChange = (reservation = {}) => {
 
 export const getSubmittedViewingPreference = (reservation = {}) => {
   const safeReservation = asReservation(reservation);
-  const explicitPreference = getReservationViewingPreference(safeReservation);
+  const explicitPreference = normalizePreferenceValue(safeReservation.viewingPreference);
   if (explicitPreference) return explicitPreference;
+  const explicitViewingTypePreference = getExplicitViewingTypePreference(safeReservation);
+  if (explicitViewingTypePreference) return explicitViewingTypePreference;
+  if (safeReservation.isUrgentMoveIn) return "urgent_move_in_review";
   if (
     safeReservation.remoteViewingAcknowledged ||
     String(safeReservation.remoteViewingQuestions || "").trim()
   ) {
     return "remote_2d_viewing";
+  }
+  if (
+    safeReservation.visitDate ||
+    safeReservation.visitTime ||
+    safeReservation.visitCode ||
+    safeReservation.visitScheduledAt ||
+    safeReservation.visitStatus ||
+    safeReservation.scheduleApproved ||
+    safeReservation.scheduleApprovedAt
+  ) {
+    return "physical_visit";
   }
   return null;
 };
@@ -100,6 +123,8 @@ export const isViewingPreferenceSubmitted = (reservation = {}) => {
   );
 };
 
+export const hasSubmittedViewingPreference = isViewingPreferenceSubmitted;
+
 export const isViewingPreferenceChangeAllowed = (reservation = {}) => {
   const safeReservation = asReservation(reservation);
   if (!isViewingPreferenceSubmitted(safeReservation)) return true;
@@ -111,6 +136,8 @@ export const isViewingPreferenceChangeAllowed = (reservation = {}) => {
 
   return hasReservationStatus(status, VIEWING_PREFERENCE_CHANGE_ALLOWED_STATUSES);
 };
+
+export const canChangeViewingPreference = isViewingPreferenceChangeAllowed;
 
 export const canResubmitSameViewingPreference = (
   reservation = {},
@@ -148,6 +175,16 @@ export const canApplicantSubmitViewingPreference = (
   return canResubmitSameViewingPreference(safeReservation, requestedPreference);
 };
 
+export const isViewingPreferenceLocked = (
+  reservation = {},
+  requestedPreference = "",
+) => {
+  const safeReservation = asReservation(reservation);
+  if (!isViewingPreferenceSubmitted(safeReservation)) return false;
+  if (isViewingPreferenceChangeAllowed(safeReservation)) return false;
+  return !canResubmitSameViewingPreference(safeReservation, requestedPreference);
+};
+
 export const getViewingPreferenceStepAccess = (
   reservation = {},
   requestedPreference = "",
@@ -161,7 +198,10 @@ export const getViewingPreferenceStepAccess = (
     requestedPreference || submittedPreference,
   );
   const canSubmit = !submitted || canChangePreference || canResubmitSame;
-  const locked = submitted && !canChangePreference && !canResubmitSame;
+  const locked = isViewingPreferenceLocked(
+    safeReservation,
+    requestedPreference || submittedPreference,
+  );
 
   return {
     submitted,
