@@ -25,6 +25,7 @@ const PhotoEmailSection = ({ billingEmail, selfiePhoto, setSelfiePhoto, showVali
  onChange={setSelfiePhoto}
  accept="image/*"
  hint="Clear 2x2 or selfie photo"
+ documentType="selfie-photo"
  hasError={showValidationErrors && !selfiePhoto}
  required
  />

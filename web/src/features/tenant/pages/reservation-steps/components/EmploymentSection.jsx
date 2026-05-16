@@ -1,6 +1,7 @@
 import React from "react";
 import FileUploadField from "./FileUploadField";
 import { validatePHPhoneOrLandline } from "../../../utils/reservationValidation";
+import { hasBlockingPrecheck } from "../../../utils/documentPrecheckUtils";
 
 const errBorder = (show, value) =>
  show && !value ? "1.5px solid #dc2626" : undefined;
@@ -25,7 +26,13 @@ const EmploymentSection = ({
  setCompanyID,
  companyIDReason,
  setCompanyIDReason,
+ documentPrechecks,
+ runningDocumentChecks,
+ onRunDocumentPrecheck,
  handleGeneralInput,
+ validateField,
+ fieldErrors,
+ clearFieldError,
  showValidationErrors,
 }) => (
  <>
@@ -43,16 +50,24 @@ const EmploymentSection = ({
  className="form-input"
  placeholder="Company or School name"
  value={employerSchool}
- onChange={(e) =>
- handleGeneralInput(e.target.value, setEmployerSchool, 100)
- }
- style={{ border: errBorder(showValidationErrors, employerSchool) }}
+ onChange={(e) => {
+ handleGeneralInput(e.target.value, setEmployerSchool, 100);
+ validateField("employerSchool", e.target.value, (value) => ({
+ valid: Boolean(value?.trim()),
+ error: value?.trim() ? null : "Employer / school name is required",
+ }));
+ }}
+ style={{
+ border: fieldErrors.employerSchool
+ ? "1.5px solid #dc2626"
+ : errBorder(showValidationErrors, employerSchool),
+ }}
  />
  <FieldError
  error={
  showValidationErrors && !employerSchool
  ? "Employer / school name is required"
- : null
+ : fieldErrors.employerSchool
  }
  />
  </div>
@@ -65,19 +80,25 @@ const EmploymentSection = ({
  className="form-textarea"
  placeholder="Full address"
  value={employerAddress}
- onChange={(e) =>
- handleGeneralInput(e.target.value, setEmployerAddress, 100)
- }
+ onChange={(e) => {
+ handleGeneralInput(e.target.value, setEmployerAddress, 100);
+ validateField("employerAddress", e.target.value, (value) => ({
+ valid: Boolean(value?.trim()),
+ error: value?.trim() ? null : "Employer address is required",
+ }));
+ }}
  style={{
  resize: "vertical",
- border: errBorder(showValidationErrors, employerAddress),
+ border: fieldErrors.employerAddress
+ ? "1.5px solid #dc2626"
+ : errBorder(showValidationErrors, employerAddress),
  }}
  />
  <FieldError
  error={
  showValidationErrors && !employerAddress
  ? "Employer address is required"
- : null
+ : fieldErrors.employerAddress
  }
  />
  </div>
@@ -95,10 +116,21 @@ const EmploymentSection = ({
  onChange={(e) => {
  const cleaned = e.target.value.replace(/[^0-9\s\-()+]/g, "");
  setEmployerContact(cleaned.slice(0, 20));
+ validateField("employerContact", cleaned.slice(0, 20), (value) => {
+ const valid =
+ !value || !String(value).trim() || validatePHPhoneOrLandline(value);
+ return {
+ valid,
+ error: valid
+ ? null
+ : "Enter a valid phone number (e.g. 09123456789 or 02-1234567)",
+ };
+ });
  }}
  style={{
- border:
- showValidationErrors && employerContact && !validatePHPhoneOrLandline(employerContact)
+ border: fieldErrors.employerContact
+ ? "1.5px solid #dc2626"
+ : showValidationErrors && employerContact && !validatePHPhoneOrLandline(employerContact)
  ? "1.5px solid #dc2626"
  : undefined,
  }}
@@ -107,7 +139,7 @@ const EmploymentSection = ({
  error={
  showValidationErrors && employerContact && !validatePHPhoneOrLandline(employerContact)
  ? "Enter a valid phone number (e.g. 09123456789 or 02-1234567)"
- : null
+ : fieldErrors.employerContact
  }
  />
  </div>
@@ -130,15 +162,23 @@ const EmploymentSection = ({
  className="form-textarea"
  placeholder="e.g., Software Engineer, Nurse, Currently Job Hunting"
  value={occupation}
- onChange={(e) => handleGeneralInput(e.target.value, setOccupation, 100)}
+ onChange={(e) => {
+ handleGeneralInput(e.target.value, setOccupation, 100);
+ validateField("occupation", e.target.value, (value) => ({
+ valid: Boolean(value?.trim()),
+ error: value?.trim() ? null : "Occupation is required",
+ }));
+ }}
  style={{
  resize: "vertical",
- border: errBorder(showValidationErrors, occupation),
+ border: fieldErrors.occupation
+ ? "1.5px solid #dc2626"
+ : errBorder(showValidationErrors, occupation),
  }}
  />
  <FieldError
  error={
- showValidationErrors && !occupation ? "Occupation is required" : null
+ showValidationErrors && !occupation ? "Occupation is required" : fieldErrors.occupation
  }
  />
  </div>
@@ -161,8 +201,21 @@ const EmploymentSection = ({
  label="Company ID"
  value={companyID}
  onChange={setCompanyID}
+ documentType="company-id"
+ onUploadComplete={(documentUrl) =>
+ onRunDocumentPrecheck?.({
+ documentType: "company_id",
+ documentUrl,
+ })
+ }
+ aiCheck={documentPrechecks?.companyID}
+ isChecking={Boolean(runningDocumentChecks?.companyID)}
  hint="Company ID or employee badge"
- hasError={showValidationErrors && !companyID && !companyIDReason}
+ hasError={
+ showValidationErrors &&
+ ((!companyID && !companyIDReason) ||
+ (Boolean(companyID) && hasBlockingPrecheck(documentPrechecks?.companyID)))
+ }
  />
  </div>
 
@@ -174,7 +227,13 @@ const EmploymentSection = ({
  <textarea
  className="form-textarea"
  value={companyIDReason}
- onChange={(e) => setCompanyIDReason(e.target.value)}
+ onChange={(e) => {
+ const nextValue = e.target.value;
+ setCompanyIDReason(nextValue);
+ if (nextValue?.trim()) {
+ clearFieldError?.("companyIDReason");
+ }
+ }}
  placeholder="N/A if Company ID has been submitted"
  style={{
  border: !companyID

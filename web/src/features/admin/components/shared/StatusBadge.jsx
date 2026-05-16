@@ -9,10 +9,10 @@ import "./StatusBadge.css";
 
 export default function StatusBadge({ status, label: customLabel }) {
   const getStatusVariant = (s) => {
-    const successStatuses = ["month", "moveIn", "approved", "completed", "resolved", "active", "paid", "confirmed"];
-    const warningStatuses = ["pending", "visit_pending", "partial", "aced-pending", "missed"];
-    const errorStatuses = ["cancelled", "rejected", "overdue", "no-show", "banned", "suspended"];
-    const infoStatuses = ["reserved", "responded", "new"];
+    const successStatuses = ["month", "moveIn", "approved", "approved_for_payment", "completed", "resolved", "active", "paid", "confirmed"];
+    const warningStatuses = ["pending", "viewing_preference_selected", "visit_pending", "pending_application_review", "payment_pending", "partial", "aced-pending", "missed"];
+    const errorStatuses = ["cancelled", "rejected", "needs_revision", "overdue", "no-show", "banned", "suspended"];
+    const infoStatuses = ["reserved", "visit_approved", "responded", "new"];
 
     if (successStatuses.includes(s)) return "success";
     if (warningStatuses.includes(s)) return "warning";
@@ -26,7 +26,12 @@ export default function StatusBadge({ status, label: customLabel }) {
     if (s === "aced-pending") return "Aced Pending";
     if (s === "no-show") return "No Show";
     if (s === "month" || s === "moveIn") return "Move In";
+    if (s === "viewing_preference_selected") return "Viewing Preference Selected";
     if (s === "visit_pending") return "Visit Pending";
+    if (s === "visit_approved") return "Legacy Visit Approved";
+    if (s === "pending_application_review") return "Pending Review";
+    if (s === "needs_revision") return "Needs Revision";
+    if (s === "approved_for_payment") return "Approved for Payment";
     if (!s) return "Pending";
     
     // Convert to proper case: capitalize each word

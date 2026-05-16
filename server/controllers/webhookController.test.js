@@ -195,7 +195,7 @@ describe("handlePaymongoWebhook", () => {
     expect(updateOccupancyOnReservationChange).toHaveBeenCalledTimes(1);
   });
 
-  test("does not force status change when deposit arrives before payment stage", async () => {
+  test("does not auto-reserve when deposit arrives before application approval", async () => {
     verifyWebhookSignature.mockReturnValue(
       buildCheckoutPaidEvent({
         metadata: { type: "deposit", reservationId: "res_3" },
@@ -207,7 +207,7 @@ describe("handlePaymongoWebhook", () => {
       _id: "res_3",
       userId: "user_3",
       roomId: { name: "Room 3" },
-      status: "visit_approved",
+      status: "pending_application_review",
       paymentStatus: "pending",
       paymongoPaymentId: null,
       reservationFeeAmount: 2000,
@@ -234,7 +234,7 @@ describe("handlePaymongoWebhook", () => {
 
     expect(res.statusCode).toBe(200);
     expect(reservation.paymentStatus).toBe("paid");
-    expect(reservation.status).toBe("visit_approved");
+    expect(reservation.status).toBe("pending_application_review");
     expect(updateOccupancyOnReservationChange).not.toHaveBeenCalled();
   });
 

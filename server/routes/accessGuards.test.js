@@ -82,6 +82,8 @@ await jest.unstable_mockModule("../controllers/reservationsController.js", () =>
   getVisitAvailability: noop,
   getVisitAvailabilityRules: noop,
   getReservationById: noop,
+  manageReservationVisit: noop,
+  precheckReservationDocument: noop,
   createReservation: noop,
   updateVisitAvailabilityRules: noop,
   updateReservation: noop,
@@ -237,6 +239,11 @@ describe("route access guards", () => {
       "/:reservationId",
       "put",
     );
+    const visitManagementHandlers = getRouteHandlers(
+      reservationsRoutes,
+      "/:reservationId/visit-management",
+      "post",
+    );
     const currentResidentsHandlers = getRouteHandlers(
       reservationsRoutes,
       "/current-residents",
@@ -245,6 +252,11 @@ describe("route access guards", () => {
 
     expect(
       updateHandlers.some(
+        (handler) => handler.requiredPermission === "manageReservations",
+      ),
+    ).toBe(true);
+    expect(
+      visitManagementHandlers.some(
         (handler) => handler.requiredPermission === "manageReservations",
       ),
     ).toBe(true);

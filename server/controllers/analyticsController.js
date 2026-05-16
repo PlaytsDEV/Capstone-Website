@@ -22,7 +22,15 @@ import { generateAnalyticsInsight } from "../services/analyticsInsightsService.j
 const DASHBOARD_RANGE_DAYS = Object.freeze({
   "7d": 7,
   "30d": 30,
+  "60d": 60,
   "90d": 90,
+});
+
+const DASHBOARD_BILLING_RANGE_MONTHS = Object.freeze({
+  "7d": 3,
+  "30d": 3,
+  "60d": 6,
+  "90d": 12,
 });
 
 const REPORT_DAY_RANGES = Object.freeze({
@@ -273,7 +281,7 @@ const fetchScopedRooms = async (branchesIncluded) =>
     isArchived: false,
     branch: { $in: branchesIncluded },
   })
-    .select("_id branch type name roomNumber")
+    .select("_id branch type name roomNumber capacity")
     .lean();
 
 const fetchRevenueCollected = async (branchesIncluded, sinceDate) => {
@@ -510,6 +518,8 @@ const buildOccupancyTrend = ({ rooms, reservations, days }) => {
     return {
       date: windowStart.toISOString(),
       label: formatDateLabel(windowStart),
+      occupiedBeds,
+      totalCapacity,
       totalRate:
         totalCapacity > 0 ? Math.round((occupiedBeds / totalCapacity) * 100) : 0,
       byType: ROOM_TYPE_ORDER.reduce((acc, type) => {
@@ -1955,6 +1965,13 @@ export const getDashboardAnalytics = async (req, res, next) => {
     const rangeKey = String(req.query.range || "30d").trim().toLowerCase();
     const rangeDays = parseRangeDays(rangeKey);
     const sinceDate = dayjs().subtract(rangeDays, "day").startOf("day").toDate();
+    const billingTrendMonths =
+      DASHBOARD_BILLING_RANGE_MONTHS[rangeKey] ||
+      DASHBOARD_BILLING_RANGE_MONTHS["30d"];
+    const billingSinceMonth = dayjs()
+      .subtract(billingTrendMonths - 1, "month")
+      .startOf("month")
+      .toDate();
 
     const [occupancyStats, scopedRooms, registeredUsers, activeTickets, inquiryCount] =
       await Promise.all([
@@ -1985,9 +2002,11 @@ export const getDashboardAnalytics = async (req, res, next) => {
       approvedReservations,
       pendingReservations,
       rejectedReservations,
+      occupancyTrendReservations,
       recentReservations,
       recentInquiries,
       branchComparison,
+      billingTrendBills,
     ] = await Promise.all([
       fetchRevenueCollected(scope.branchesIncluded, sinceDate),
       roomIds.length
@@ -1999,9 +2018,23 @@ export const getDashboardAnalytics = async (req, res, next) => {
       roomIds.length
         ? countReservationsByStatuses(roomIds, REJECTED_RESERVATION_STATUSES)
         : 0,
+      roomIds.length
+        ? fetchScopedReservations(roomIds, {
+            moveInDate: { $lte: dayjs().endOf("day").toDate() },
+            $or: [
+              { moveOutDate: null },
+              { moveOutDate: { $gte: sinceDate } },
+              { checkOutDate: null },
+              { checkOutDate: { $gte: sinceDate } },
+            ],
+          })
+        : [],
       roomIds.length ? fetchRecentReservations(roomIds) : [],
       fetchRecentInquiries(scope.branchesIncluded),
       buildBranchComparison(scope, sinceDate),
+      fetchScopedBills(scope.branchesIncluded, {
+        billingMonth: { $gte: billingSinceMonth },
+      }),
     ]);
 
     const totalCapacity = occupancyStats?.totalCapacity || 0;
@@ -2030,6 +2063,10 @@ export const getDashboardAnalytics = async (req, res, next) => {
         activeBookings: approvedReservations,
         registeredUsers,
         totalRooms: occupancyStats?.totalRooms || 0,
+        revenueTrend: buildBillingMonthSeries(
+          billingTrendBills,
+          billingTrendMonths,
+        ),
       },
       occupancy: {
         branch: occupancyStats?.branch || scope.branch,
@@ -2038,6 +2075,11 @@ export const getDashboardAnalytics = async (req, res, next) => {
         totalOccupancy,
         availableBeds: Math.max(totalCapacity - totalOccupancy, 0),
         occupancyRate,
+        trend: buildOccupancyTrend({
+          rooms: scopedRooms,
+          reservations: occupancyTrendReservations,
+          days: rangeDays,
+        }),
       },
       reservationStatus: {
         approved: approvedReservations,

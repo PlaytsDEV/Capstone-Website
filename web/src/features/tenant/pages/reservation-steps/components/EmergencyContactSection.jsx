@@ -26,7 +26,16 @@ const EmergencyContactSection = ({
  className="form-input"
  placeholder="Full name of emergency contact"
  value={emergencyContactName}
- onChange={(e) => setEmergencyContactName(e.target.value)}
+ onChange={(e) => {
+ setEmergencyContactName(e.target.value);
+ validateField("emergencyContactName", e.target.value, (v) => {
+ const valid = v && v.trim().length >= 2;
+ return {
+ valid,
+ error: valid ? null : "Please enter the contact person's full name",
+ };
+ });
+ }}
  onBlur={() =>
  validateField("emergencyContactName", emergencyContactName, (v) => {
  const valid = v && v.trim().length >= 2;
@@ -36,7 +45,11 @@ const EmergencyContactSection = ({
  };
  })
  }
- style={{ border: errBorder(showValidationErrors, emergencyContactName) }}
+ style={{
+ border: fieldErrors.emergencyContactName
+ ? "1.5px solid #dc2626"
+ : errBorder(showValidationErrors, emergencyContactName),
+ }}
  />
  <FieldError error={showValidationErrors && !emergencyContactName ? "Emergency contact name is required" : fieldErrors.emergencyContactName} />
  </div>
@@ -49,8 +62,18 @@ const EmergencyContactSection = ({
  <select
  className="form-select"
  value={emergencyRelationship}
- onChange={(e) => setEmergencyRelationship(e.target.value)}
- style={{ border: errBorder(showValidationErrors, emergencyRelationship) }}
+ onChange={(e) => {
+ setEmergencyRelationship(e.target.value);
+ validateField("emergencyRelationship", e.target.value, (value) => ({
+ valid: Boolean(value),
+ error: value ? null : "Relationship is required",
+ }));
+ }}
+ style={{
+ border: fieldErrors.emergencyRelationship
+ ? "1.5px solid #dc2626"
+ : errBorder(showValidationErrors, emergencyRelationship),
+ }}
  >
  <option value="">Select relationship...</option>
  <option value="parent">Parent</option>
@@ -60,7 +83,13 @@ const EmergencyContactSection = ({
  <option value="friend">Friend</option>
  <option value="other">Other</option>
  </select>
- <FieldError error={showValidationErrors && !emergencyRelationship ? "Relationship is required" : null} />
+ <FieldError
+ error={
+ showValidationErrors && !emergencyRelationship
+ ? "Relationship is required"
+ : fieldErrors.emergencyRelationship
+ }
+ />
  </div>
  <div className="form-group" data-field="emergencyContactNumber">
  <label className="form-label">
@@ -69,7 +98,16 @@ const EmergencyContactSection = ({
  </label>
  <PhoneInput
  value={emergencyContactNumber}
- onChange={(e164) => setEmergencyContactNumber(e164)}
+ onChange={(e164) => {
+ setEmergencyContactNumber(e164);
+ validateField("emergencyContactNumber", e164, (value) => {
+ const valid = /^\+\d{10,15}$/.test(value || "");
+ return {
+ valid,
+ error: valid ? null : "Please enter a valid contact number",
+ };
+ });
+ }}
  onBlur={() =>
  validateField("emergencyContactNumber", emergencyContactNumber, (value) => {
  const valid = /^\+\d{10,15}$/.test(value || "");
@@ -79,7 +117,10 @@ const EmergencyContactSection = ({
  };
  })
  }
- hasError={showValidationErrors && !emergencyContactNumber}
+ hasError={
+ Boolean(fieldErrors.emergencyContactNumber) ||
+ (showValidationErrors && !emergencyContactNumber)
+ }
  required
  />
  <FieldError
@@ -100,13 +141,31 @@ const EmergencyContactSection = ({
  <textarea
  className="form-textarea"
  value={healthConcerns}
- onChange={(e) => setHealthConcerns(e.target.value)}
+ onChange={(e) => {
+ setHealthConcerns(e.target.value);
+ validateField("healthConcerns", e.target.value, (value) => ({
+ valid: Boolean(value?.trim()),
+ error: value?.trim()
+ ? null
+ : "This field is required (put N/A if not applicable)",
+ }));
+ }}
  placeholder="N/A or describe any health concerns"
  maxLength={500}
- style={{ border: errBorder(showValidationErrors, healthConcerns) }}
+ style={{
+ border: fieldErrors.healthConcerns
+ ? "1.5px solid #dc2626"
+ : errBorder(showValidationErrors, healthConcerns),
+ }}
  />
  <div style={{ display: "flex", justifyContent: "space-between", marginTop: "2px" }}>
- <FieldError error={showValidationErrors && !healthConcerns ? "This field is required (put N/A if not applicable)" : null} />
+ <FieldError
+ error={
+ showValidationErrors && !healthConcerns
+ ? "This field is required (put N/A if not applicable)"
+ : fieldErrors.healthConcerns
+ }
+ />
  <span style={{ fontSize: "11px", color: "#9CA3AF" }}>
  {healthConcerns.length}/500
  </span>

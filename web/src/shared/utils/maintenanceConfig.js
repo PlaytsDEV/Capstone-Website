@@ -78,6 +78,11 @@ export const TERMINAL_ADMIN_MAINTENANCE_STATUSES = Object.freeze([
   "closed",
 ]);
 
+export const LOCKED_ADMIN_MAINTENANCE_STATUSES = Object.freeze([
+  "cancelled",
+  "closed",
+]);
+
 export const MAINTENANCE_STATUS_META = Object.freeze({
   pending: {
     label: "Pending",
@@ -176,10 +181,7 @@ export const getAllowedAdminMaintenanceStatuses = (currentStatus) => {
   const current = String(currentStatus || "").toLowerCase();
   const nextStatuses = ADMIN_MAINTENANCE_STATUS_TRANSITIONS[current] || [];
 
-  return [
-    ...(ADMIN_MAINTENANCE_STATUS_OPTIONS.includes(current) ? [current] : []),
-    ...nextStatuses,
-  ];
+  return [...new Set([current, ...nextStatuses].filter(Boolean))];
 };
 
 export const isAdminTerminalMaintenanceStatus = (status) =>

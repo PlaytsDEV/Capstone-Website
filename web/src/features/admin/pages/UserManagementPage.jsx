@@ -88,13 +88,26 @@ function UserActionMenu({
     !isCurrentUser &&
     !isArchived &&
     (status === "suspended" || (status === "banned" && isOwner));
+  const canRestoreAccount =
+    canManageUsers &&
+    !isCurrentUser &&
+    isArchived &&
+    (isOwner || !isPrivilegedAccount);
   const canDeleteAccount =
     canManageUsers && !isCurrentUser && !isArchived && (isOwner || !isPrivilegedAccount);
   const canForceDeleteAccount =
     canManageUsers && isOwner && !isCurrentUser && (!isPrivilegedAccount || isOwner);
 
   // If there are literally no actions available, render nothing
-  if (!canEditAccount && !canBlockAccount && !canUnblockAccount && !canDeleteAccount && !canForceDeleteAccount && u.role !== "branch_admin") {
+  if (
+    !canEditAccount &&
+    !canBlockAccount &&
+    !canUnblockAccount &&
+    !canRestoreAccount &&
+    !canDeleteAccount &&
+    !canForceDeleteAccount &&
+    u.role !== "branch_admin"
+  ) {
     return <div className="w-16" />;
   }
 
@@ -179,6 +192,19 @@ function UserActionMenu({
               }}
             >
               <Unlock className="h-4 w-4" /> Unblock Account
+            </button>
+          )}
+
+          {canRestoreAccount && (
+            <button
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-primary hover:bg-primary/10"
+              onClick={() => {
+                setIsOpen(false);
+                setSelectedUser(u);
+                setAccountAction({ type: "restore", user: u });
+              }}
+            >
+              <Unlock className="h-4 w-4" /> Restore Account
             </button>
           )}
 
@@ -505,15 +531,22 @@ function getAvatarColor(user) {
     confirmationText = "",
   } = {}) => {
     try {
-      const queryParams = new URLSearchParams();
-      if (hardDelete) queryParams.set("hardDelete", "true");
-      if (forceDelete) queryParams.set("force", "true");
-      const query = queryParams.toString() ? `?${queryParams.toString()}` : "";
-      const response = await authFetch(`/users/${selectedUser._id}${query}`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ confirmationText }),
-      });
+      const response = hardDelete
+        ? await (async () => {
+            const queryParams = new URLSearchParams();
+            queryParams.set("hardDelete", "true");
+            if (forceDelete) queryParams.set("force", "true");
+            const query = `?${queryParams.toString()}`;
+            return authFetch(`/users/${selectedUser._id}${query}`, {
+              method: "DELETE",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ confirmationText }),
+            });
+          })()
+        : await authFetch(`/users/${selectedUser._id}/archive`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+          });
 
       const userLabel = formatUserLabel(selectedUser);
       if (response?.blocked) {
@@ -681,6 +714,13 @@ function getAvatarColor(user) {
           "success",
           3000,
         );
+      } else if (action === "restore") {
+        await authFetch(`/users/${userId}/restore`, { method: "PATCH" });
+        showNotification(
+          `${actionUserLabel} was restored successfully.`,
+          "success",
+          3000,
+        );
       }
       refetchAll();
     } catch (error) {
@@ -764,7 +804,7 @@ function getAvatarColor(user) {
         { value: "suspended", label: "Suspended" },
         { value: "banned", label: "Blocked account" },
         { value: "pending_verification", label: "Pending Verification" },
-        { value: "archived", label: "Archived/Deleted" },
+        { value: "archived", label: "Archived" },
       ],
       value: statusFilter,
       onChange: (v) => {
@@ -1118,8 +1158,10 @@ function getAvatarColor(user) {
                   <td className="px-6 py-4">
                     {(() => {
                       const status =
-                        u.accountStatus ||
-                        (u.isActive ? "active" : "suspended");
+                        u.isArchived === true
+                          ? "archived"
+                          : u.accountStatus ||
+                            (u.isActive ? "active" : "suspended");
                       const statusMeta = {
                         active: {
                           label: "Active",
@@ -1135,6 +1177,10 @@ function getAvatarColor(user) {
                         },
                         banned: {
                           label: "Blocked account",
+                          color: "var(--color-danger)",
+                        },
+                        archived: {
+                          label: "Archived",
                           color: "var(--color-danger)",
                         },
                       }[status] || {

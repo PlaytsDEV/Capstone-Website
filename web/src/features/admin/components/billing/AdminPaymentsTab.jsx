@@ -4,7 +4,7 @@ import { useAdminPayments } from "../../../../shared/hooks/queries/useBilling";
 import { useAuth } from "../../../../shared/hooks/useAuth";
 import { fmtCurrency, formatBranch } from "../../utils/formatters";
 
-const OWNER_ROLES = new Set(["owner", "superadmin"]);
+const OWNER_ROLES = new Set(["owner", "superadmin" /* legacy */]);
 
 const STATUS_OPTIONS = [
   { value: "", label: "All statuses" },

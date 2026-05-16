@@ -1,4 +1,5 @@
 import { User } from "../models/index.js";
+import { isOwnerRole } from "../config/roles.js";
 
 export async function resolveAdminAccessContext(req) {
   const dbUser = await User.findOne({ firebaseUid: req.user.uid }).lean();
@@ -6,7 +7,7 @@ export async function resolveAdminAccessContext(req) {
   return {
     role: dbUser?.role || "user",
     branch: dbUser?.branch || null,
-    isOwner: dbUser?.role === "owner",
+    isOwner: isOwnerRole(dbUser?.role),
     _id: dbUser?._id || null,
     email: dbUser?.email || req.user?.email || "",
     displayName:

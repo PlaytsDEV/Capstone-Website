@@ -2,8 +2,10 @@ export const AUTH_TOAST_DURATION = 5000;
 
 export const buildAuthSuccessMessage = (user, fallbackName = "there") => {
   const firstName = user?.firstName?.trim();
+  const lastName = user?.lastName?.trim();
+  const fullName = firstName && lastName ? `${firstName} ${lastName}` : firstName || lastName;
   const displayName =
-    firstName ||
+    fullName ||
     user?.displayName?.trim() ||
     user?.username?.trim() ||
     fallbackName;

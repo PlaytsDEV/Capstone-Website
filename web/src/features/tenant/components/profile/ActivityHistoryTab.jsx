@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import dayjs from "dayjs";
 import {
+ canReservationAccessPayment,
  hasReservationStatus,
  readMoveInDate,
  readMoveOutDate,
@@ -39,6 +40,29 @@ const formatMethod = (m) => {
  return map[m] || m || "Online";
 };
 
+const getViewingPreferenceLabel = (reservationLike) => {
+ const preference =
+ reservationLike?.viewingPreference ||
+ (reservationLike?.viewingType === "virtual"
+ ? "remote_2d_viewing"
+ : reservationLike?.viewingType === "inperson"
+ ? "physical_visit"
+ : reservationLike?.isUrgentMoveIn
+ ? "urgent_move_in_review"
+ : null);
+
+ switch (preference) {
+ case "physical_visit":
+  return "Physical Visit";
+ case "remote_2d_viewing":
+  return "2D Remote Viewing";
+ case "urgent_move_in_review":
+  return "Urgent Move-in Review";
+ default:
+  return "Viewing Preference";
+ }
+};
+
 /* ── Build timeline from a single reservation ───── */
 const buildTimeline = (r, direction = "desc") => {
  if (!r) return [];
@@ -56,7 +80,8 @@ const buildTimeline = (r, direction = "desc") => {
  if (r.visitHistory && r.visitHistory.length > 0) {
  r.visitHistory.forEach((attempt, idx) => {
  const suffix = r.visitHistory.length > 1 ? ` (Attempt ${idx + 1})` : "";
- const viewType = attempt.viewingType === "virtual" ? "Virtual" : "In-person";
+ const viewType =
+ attempt.viewingType === "virtual" ? "2D Remote Viewing" : "Physical Visit";
  const visitDateStr = attempt.visitDate
  ? fmtDate(attempt.visitDate) + (attempt.visitTime ? ` at ${attempt.visitTime}` : "")
  : "Date not set";
@@ -66,8 +91,8 @@ const buildTimeline = (r, direction = "desc") => {
  events.push({
  id: `visit-${idx}-scheduled`,
  icon: Calendar, iconBg: "#DBEAFE", iconColor: "#2563EB",
- title: `Visit Scheduled${suffix}`,
- description: `${viewType} visit requested for ${visitDateStr}`,
+ title: `Physical Visit Scheduled${suffix}`,
+ description: `${viewType} requested for ${visitDateStr}`,
  // scheduledAt = when the tenant submitted the schedule form (visitScheduledAt)
  date: attempt.scheduledAt,
  status: "Scheduled", statusColor: "#D97706", statusBg: "#FFFBEB",
@@ -79,8 +104,8 @@ const buildTimeline = (r, direction = "desc") => {
  events.push({
  id: `visit-${idx}-approved`,
  icon: CheckCircle, iconBg: "#F0FDF4", iconColor: "#059669",
- title: `Visit Approved${suffix}`,
- description: `Admin confirmed your ${viewType.toLowerCase()} visit on ${visitDateStr}`,
+ title: `Visit Schedule Confirmed${suffix}`,
+ description: `Admin confirmed your ${viewType.toLowerCase()} for viewing coordination on ${visitDateStr}`,
  date: attempt.approvedAt,
  status: "Approved", statusColor: "#059669", statusBg: "#F0FDF4",
  });
@@ -116,19 +141,36 @@ const buildTimeline = (r, direction = "desc") => {
  const visitDateStr = fmtDate(r.visitDate) + (r.visitTime ? ` at ${r.visitTime}` : "");
  events.push({
  id: "visit-current", icon: Calendar, iconBg: "#DBEAFE", iconColor: "#2563EB",
- title: attemptNum > 1 ? `Visit Scheduled (Attempt ${attemptNum})` : "Visit Scheduled",
- description: `${r.viewingType === "virtual" ? "Virtual" : "In-person"} visit requested for ${visitDateStr}`,
+ title: attemptNum > 1 ? `Physical Visit Scheduled (Attempt ${attemptNum})` : "Physical Visit Scheduled",
+ description: `Physical visit requested for ${visitDateStr}`,
  // visitScheduledAt = when the tenant submitted this schedule (not updatedAt/createdAt)
  date: r.visitScheduledAt,
  status: "Pending", statusColor: "#D97706", statusBg: "#FFFBEB",
  });
  }
  } else {
+ if (r.viewingPreference || r.viewingType || r.isUrgentMoveIn) {
+ events.push({
+ id: "viewing-preference",
+ icon: Calendar,
+ iconBg: "#DBEAFE",
+ iconColor: "#2563EB",
+ title: "Viewing Preference Selected",
+ description:
+ getViewingPreferenceLabel(r) === "Physical Visit" && r.visitDate
+ ? `Physical visit requested for ${fmtDate(r.visitDate)}${r.visitTime ? ` at ${r.visitTime}` : ""}`
+ : getViewingPreferenceLabel(r),
+ date: r.visitScheduledAt || r.updatedAt || r.createdAt,
+ status: r.scheduleRejected ? "Rejected" : "Saved",
+ statusColor: r.scheduleRejected ? "#DC2626" : "#2563EB",
+ statusBg: r.scheduleRejected ? "#FEF2F2" : "#DBEAFE",
+ });
+ }
  if (r.visitDate) {
  events.push({
  id: "visit-scheduled", icon: Calendar, iconBg: "#DBEAFE", iconColor: "#2563EB",
- title: "Visit Scheduled",
- description: `${r.viewingType === "virtual" ? "Virtual" : "In-person"} visit on ${fmtDate(r.visitDate)}${r.visitTime ? ` at ${r.visitTime}` : ""}`,
+ title: "Physical Visit Scheduled",
+ description: `Physical visit on ${fmtDate(r.visitDate)}${r.visitTime ? ` at ${r.visitTime}` : ""}`,
  // visitScheduledAt = when the tenant submitted the schedule form
  date: r.visitScheduledAt || r.updatedAt || r.createdAt,
  status: r.scheduleRejected ? "Rejected" : r.scheduleApproved ? "Approved" : "Pending",
@@ -153,23 +195,66 @@ const buildTimeline = (r, direction = "desc") => {
  if (r.scheduleApproved && r.scheduleApprovedAt && !hasApprovedInHistory) {
  events.push({
  id: "visit-approved", icon: CheckCircle, iconBg: "#F0FDF4", iconColor: "#059669",
- title: "Visit Approved",
- description: "Admin verified your visit. Proceed with application.",
+ title: "Visit Schedule Confirmed",
+ description: "Admin confirmed your physical visit schedule for viewing coordination only.",
  date: r.scheduleApprovedAt,
  status: "Approved", statusColor: "#059669", statusBg: "#F0FDF4",
  });
  }
 
  if (r.firstName && r.lastName && r.agreedToCertification) {
- // Fallback: scheduleApprovedAt is the closest prior event (visit approval happens right before application)
- // Avoid updatedAt since it reflects the latest save (e.g. payment), not the application submission time
- const appDate = r.applicationSubmittedAt || r.scheduleApprovedAt || r.createdAt;
+ const appDate = r.applicationSubmittedAt || r.updatedAt || r.createdAt;
  events.push({
  id: "application", icon: FileText, iconBg: "#FFF7ED", iconColor: "#EA580C",
  title: "Application Submitted",
  description: "Personal details and documents submitted.",
  date: appDate,
  status: "Submitted", statusColor: "#EA580C", statusBg: "#FFF7ED",
+ });
+ }
+
+ if (r.applicationReviewedAt && hasReservationStatus(r.status, "approved_for_payment")) {
+ events.push({
+ id: "application-approved",
+ icon: ClipboardCheck,
+ iconBg: "#ECFEFF",
+ iconColor: "#0F766E",
+ title: "Approved for Payment",
+ description: "Admin approved your application and documents. Payment is now available.",
+ date: r.applicationReviewedAt,
+ status: "Approved",
+ statusColor: "#0F766E",
+ statusBg: "#ECFEFF",
+ });
+ }
+
+ if (r.applicationReviewedAt && hasReservationStatus(r.status, "needs_revision")) {
+ events.push({
+ id: "application-revision",
+ icon: Clock,
+ iconBg: "#FFF7ED",
+ iconColor: "#EA580C",
+ title: "Revision Requested",
+ description: r.applicationReviewReason || "Admin requested updates to your application or documents.",
+ date: r.applicationReviewedAt,
+ status: "Needs Revision",
+ statusColor: "#EA580C",
+ statusBg: "#FFF7ED",
+ });
+ }
+
+ if (r.applicationReviewedAt && hasReservationStatus(r.status, "rejected")) {
+ events.push({
+ id: "application-rejected",
+ icon: XCircle,
+ iconBg: "#FEF2F2",
+ iconColor: "#DC2626",
+ title: "Application Rejected",
+ description: r.applicationReviewReason || "Admin rejected your application.",
+ date: r.applicationReviewedAt,
+ status: "Rejected",
+ statusColor: "#DC2626",
+ statusBg: "#FEF2F2",
  });
  }
 
@@ -226,14 +311,17 @@ const buildTimeline = (r, direction = "desc") => {
  // Logical step order for tie-breaking when timestamps are identical
  const stepOrder = {
  created: 0,
- "visit-scheduled": 1, "visit-current": 1,
+ "viewing-preference": 1, "visit-scheduled": 1, "visit-current": 1,
  "visit-approved": 2, "schedule-rejected": 2,
  application: 3,
- payment: 4,
- reserved: 5,
- movein: 6,
- moveout: 7,
- cancelled: 8,
+ "application-approved": 4,
+ "application-revision": 4,
+ "application-rejected": 4,
+ payment: 5,
+ reserved: 6,
+ movein: 7,
+ moveout: 8,
+ cancelled: 9,
  };
  const getOrder = (id) => {
  // Handle visit-history IDs like "visit-0-scheduled", "visit-1-approved"
@@ -261,16 +349,31 @@ const deriveStage = (r) => {
  if (s === "reserved" || r.paymentStatus === "paid")
  return { color: "#059669", bg: "#D1FAE5", label: "Reserved" };
 
+ if (hasReservationStatus(s, "rejected"))
+ return { color: "#DC2626", bg: "#FEF2F2", label: "Rejected" };
+
+ if (hasReservationStatus(s, "needs_revision"))
+ return { color: "#EA580C", bg: "#FFF7ED", label: "Needs Revision" };
+
+ if (hasReservationStatus(s, "pending_application_review"))
+ return { color: "#D97706", bg: "#FFFBEB", label: "Pending Review" };
+
+ if (canReservationAccessPayment(s))
+ return { color: "#0F766E", bg: "#ECFEFF", label: "Approved for Payment" };
+
  // Step 4 — Payment
  if (s === "payment_pending")
  return { color: "#D97706", bg: "#FFFBEB", label: "Payment Pending" };
 
  // Step 2-3 — Visit pipeline
  if (s === "visit_approved" || r.scheduleApproved || r.visitApproved)
- return { color: "#7C3AED", bg: "#EDE9FE", label: "Visit Approved" };
+ return { color: "#7C3AED", bg: "#EDE9FE", label: "Legacy Visit Approved" };
 
  if (s === "visit_pending" || (r.visitDate && !r.scheduleRejected))
- return { color: "#2563EB", bg: "#DBEAFE", label: "Visit Pending" };
+ return { color: "#2563EB", bg: "#DBEAFE", label: "Visit Scheduled" };
+
+ if (hasReservationStatus(s, "viewing_preference_selected") || r.viewingPreference)
+ return { color: "#2563EB", bg: "#DBEAFE", label: "Viewing Preference Selected" };
 
  if (r.scheduleRejected)
  return { color: "#DC2626", bg: "#FEF2F2", label: "Reschedule Needed" };
@@ -477,7 +580,17 @@ const ActivityHistoryTab = ({ reservations = [] }) => {
 
  const toggle = (id) => setOpenId((prev) => (prev === id ? null : id));
 
- const IN_PROGRESS = ["pending", "visit_pending", "visit_approved", "payment_pending", "reserved"];
+ const IN_PROGRESS = [
+ "pending",
+ "viewing_preference_selected",
+ "visit_pending",
+ "visit_approved",
+ "pending_application_review",
+ "needs_revision",
+ "approved_for_payment",
+ "payment_pending",
+ "reserved",
+ ];
  const stats = useMemo(() => ({
  total: reservations.length,
  active: reservations.filter((r) => IN_PROGRESS.includes(r.status)).length,

@@ -107,6 +107,10 @@ const workLogSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    attachments: {
+      type: [attachmentSchema],
+      default: [],
+    },
     actor_id: {
       type: String,
       default: null,

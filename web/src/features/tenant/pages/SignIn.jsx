@@ -34,6 +34,7 @@ import {
  AUTH_TOAST_DURATION,
  buildAuthSuccessMessage,
 } from "../../../shared/utils/authToasts";
+import { setOtpPending } from "../../../shared/api/authSession";
 import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
 import SocialAuthButtons from "../../../shared/components/SocialAuthButtons";
 import FloatingInput from "../../../shared/components/FloatingInput";
@@ -321,6 +322,11 @@ function SignIn() {
 
  try {
  const loginResponse = await login();
+ if (loginResponse?.requiresOtp) {
+  setOtpPending({ email: formData.email });
+  navigate("/verify-otp");
+  return;
+ }
  navigateAfterAuth(loginResponse.user, firebaseUser.displayName || "there");
  } catch (backendError) {
  await auth.signOut();

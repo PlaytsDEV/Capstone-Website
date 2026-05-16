@@ -1,35 +1,85 @@
 export const CANONICAL_RESERVATION_STATUSES = Object.freeze([
   "pending",
+  "viewing_preference_selected",
   "visit_pending",
   "visit_approved",
+  "pending_application_review",
+  "needs_revision",
+  "approved_for_payment",
   "payment_pending",
   "reserved",
   "moveIn",
   "moveOut",
+  "rejected",
   "cancelled",
   "archived",
 ]);
 
 export const ALLOWED_RESERVATION_STATUS_TRANSITIONS = Object.freeze({
-  pending: ["visit_pending", "cancelled", "archived"],
-  visit_pending: ["visit_approved", "cancelled", "archived"],
-  visit_approved: ["payment_pending", "cancelled", "archived"],
+  pending: [
+    "viewing_preference_selected",
+    "pending_application_review",
+    "visit_pending",
+    "visit_approved",
+    "cancelled",
+    "archived",
+  ],
+  viewing_preference_selected: [
+    "pending_application_review",
+    "cancelled",
+    "archived",
+  ],
+  visit_pending: [
+    "visit_approved",
+    "pending_application_review",
+    "cancelled",
+    "archived",
+  ],
+  visit_approved: [
+    "visit_pending",
+    "pending_application_review",
+    "approved_for_payment",
+    "payment_pending",
+    "cancelled",
+    "archived",
+  ],
+  pending_application_review: [
+    "needs_revision",
+    "approved_for_payment",
+    "rejected",
+    "cancelled",
+    "archived",
+  ],
+  needs_revision: [
+    "pending_application_review",
+    "approved_for_payment",
+    "rejected",
+    "cancelled",
+    "archived",
+  ],
+  approved_for_payment: ["payment_pending", "reserved", "cancelled", "archived"],
   payment_pending: ["reserved", "cancelled", "archived"],
   reserved: ["moveIn", "cancelled", "archived"],
   moveIn: ["moveOut", "archived"],
   moveOut: ["archived"],
+  rejected: ["archived"],
   cancelled: ["archived"],
   archived: [],
 });
 
 export const RESERVATION_STATUS_LABELS = Object.freeze({
-  pending: "Pending Review",
+  pending: "Room Selected",
+  viewing_preference_selected: "Viewing Preference Selected",
   visit_pending: "Visit Pending",
-  visit_approved: "Visit Approved",
+  visit_approved: "Legacy Visit Approved",
+  pending_application_review: "Pending Application Review",
+  needs_revision: "Needs Revision",
+  approved_for_payment: "Approved for Payment",
   payment_pending: "Payment Pending",
   reserved: "Reserved",
   moveIn: "Moved In",
   moveOut: "Moved Out",
+  rejected: "Rejected",
   cancelled: "Cancelled",
   archived: "Archived",
 });
@@ -41,6 +91,12 @@ export const RESERVATION_STATUS_APPEARANCE = Object.freeze({
     bg: "#fffbeb",
     dot: "#f59e0b",
   },
+  viewing_preference_selected: {
+    label: RESERVATION_STATUS_LABELS.viewing_preference_selected,
+    color: "#1d4ed8",
+    bg: "#eff6ff",
+    dot: "#3b82f6",
+  },
   visit_pending: {
     label: RESERVATION_STATUS_LABELS.visit_pending,
     color: "#1d4ed8",
@@ -49,9 +105,27 @@ export const RESERVATION_STATUS_APPEARANCE = Object.freeze({
   },
   visit_approved: {
     label: RESERVATION_STATUS_LABELS.visit_approved,
-    color: "#7c3aed",
+    color: "#6d28d9",
     bg: "#f5f3ff",
     dot: "#8b5cf6",
+  },
+  pending_application_review: {
+    label: RESERVATION_STATUS_LABELS.pending_application_review,
+    color: "#b45309",
+    bg: "#fffbeb",
+    dot: "#f59e0b",
+  },
+  needs_revision: {
+    label: RESERVATION_STATUS_LABELS.needs_revision,
+    color: "#b45309",
+    bg: "#fff7ed",
+    dot: "#f97316",
+  },
+  approved_for_payment: {
+    label: RESERVATION_STATUS_LABELS.approved_for_payment,
+    color: "#0f766e",
+    bg: "#ecfeff",
+    dot: "#14b8a6",
   },
   payment_pending: {
     label: RESERVATION_STATUS_LABELS.payment_pending,
@@ -77,6 +151,12 @@ export const RESERVATION_STATUS_APPEARANCE = Object.freeze({
     bg: "#f8fafc",
     dot: "#94a3b8",
   },
+  rejected: {
+    label: RESERVATION_STATUS_LABELS.rejected,
+    color: "#dc2626",
+    bg: "#fef2f2",
+    dot: "#ef4444",
+  },
   cancelled: {
     label: RESERVATION_STATUS_LABELS.cancelled,
     color: "#dc2626",
@@ -93,34 +173,66 @@ export const RESERVATION_STATUS_APPEARANCE = Object.freeze({
 
 export const RESERVATION_STAGE_MAP = Object.freeze({
   pending: { step: 1, total: 5, label: "Room Selected" },
+  viewing_preference_selected: {
+    step: 2,
+    total: 5,
+    label: "Viewing Preference Selected",
+  },
   visit_pending: { step: 2, total: 5, label: "Visit Scheduled" },
-  visit_approved: { step: 3, total: 5, label: "Application Ready" },
-  payment_pending: { step: 4, total: 5, label: "Payment Submitted" },
+  visit_approved: { step: 3, total: 5, label: "Legacy Visit Approved" },
+  pending_application_review: {
+    step: 3,
+    total: 5,
+    label: "Pending Application Review",
+  },
+  needs_revision: { step: 3, total: 5, label: "Needs Revision" },
+  approved_for_payment: { step: 4, total: 5, label: "Approved for Payment" },
+  payment_pending: { step: 4, total: 5, label: "Payment Pending" },
   reserved: { step: 5, total: 5, label: "Confirmed" },
   moveIn: { step: 6, total: 6, label: "Moved In" },
   moveOut: { step: 6, total: 6, label: "Completed" },
+  rejected: { step: 0, label: "Rejected" },
   cancelled: { step: 0, label: "Cancelled" },
   archived: { step: 0, label: "Archived" },
 });
 
 export const RESERVATION_STAGE_GUIDANCE = Object.freeze({
-  pending: "Waiting for the tenant to schedule a site visit.",
+  pending:
+    "Waiting for the tenant to confirm a room and select a viewing preference.",
+  viewing_preference_selected:
+    "Viewing preference selected. Waiting for the tenant to submit the application and documents.",
   visit_pending:
-    "Tenant has scheduled a visit. Approve or reject it in the Visit Schedules tab.",
+    "Legacy visit schedule pending approval. Review it in the Visit Schedules tab.",
   visit_approved:
-    "Visit approved. Waiting for the tenant to complete the application and deposit.",
+    "Legacy visit approved. Waiting for the tenant to complete the application.",
+  pending_application_review:
+    "Application and documents submitted. Payment stays locked until admin review is complete.",
+  needs_revision:
+    "Application needs corrections. Payment remains locked until the tenant resubmits and admin approves it.",
+  approved_for_payment:
+    "Application approved. The applicant can now proceed to reservation payment.",
   payment_pending:
-    "Payment submitted and waiting for settlement confirmation from the payment gateway.",
+    "Payment started and waiting for settlement confirmation from the payment gateway.",
 });
 
 export const ADMIN_RESERVATION_ACTIONS_BY_STATUS = Object.freeze({
   pending: ["cancelled"],
+  viewing_preference_selected: ["cancelled"],
   visit_pending: ["cancelled"],
   visit_approved: ["cancelled"],
+  pending_application_review: [
+    "approve_for_payment",
+    "needs_revision",
+    "rejected",
+    "cancelled",
+  ],
+  needs_revision: ["approve_for_payment", "rejected", "cancelled"],
+  approved_for_payment: ["cancelled"],
   payment_pending: ["cancelled"],
   reserved: ["moveIn", "cancelled", "extend"],
   moveIn: ["moveOut"],
   moveOut: [],
+  rejected: [],
   cancelled: [],
   archived: [],
 });
@@ -186,6 +298,9 @@ export const getReservationStatusAppearance = (status) =>
 
 export const getAllowedReservationActions = (status) =>
   ADMIN_RESERVATION_ACTIONS_BY_STATUS[normalizeReservationStatus(status)] || [];
+
+export const canReservationAccessPayment = (status) =>
+  hasReservationStatus(status, "approved_for_payment", "payment_pending");
 
 const normalizeLifecycleObject = (value) => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {

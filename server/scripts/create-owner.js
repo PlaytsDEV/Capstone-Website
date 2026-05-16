@@ -91,15 +91,15 @@ async function run() {
     existingMongo.isActive = true;
     existingMongo.isArchived = false;
     await existingMongo.save();
-    console.log("✅ MongoDB record updated to superAdmin");
+    console.log("✅ MongoDB owner record updated");
   } else {
     // Create fresh MongoDB record
     await User.create({
       firebaseUid,
       email:     EMAIL,
-      username:  "superadmin",
-      firstName: "Super",
-      lastName:  "Admin",
+      username:  "owner",
+      firstName: "Dormitory",
+      lastName:  "Owner",
       role:      "owner",
       branch:    null,
       accountStatus: "active",
@@ -108,7 +108,7 @@ async function run() {
       isArchived: false,
       permissions: [],
     });
-    console.log("✅ MongoDB superAdmin record created");
+    console.log("✅ MongoDB owner record created");
   }
 
   console.log("\n🎉 Done! You can now log in with:");

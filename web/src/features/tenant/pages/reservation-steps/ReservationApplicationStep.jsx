@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { ChevronDown, User } from "lucide-react";
 import ConfirmModal from "../../../../shared/components/ConfirmModal";
 import {
@@ -39,7 +39,8 @@ const APPLICATION_SECTIONS = [
 
 const buildOpenSectionState = (isOpen) =>
   APPLICATION_SECTIONS.reduce((acc, section, index) => {
-    acc[section.key] = typeof isOpen === "function" ? isOpen(section, index) : isOpen;
+    acc[section.key] =
+      typeof isOpen === "function" ? isOpen(section, index) : isOpen;
     return acc;
   }, {});
 
@@ -54,7 +55,11 @@ const CollapsibleSection = React.memo(
     children,
     contentClassName = "",
   }) => (
-    <section ref={sectionRef} id={`section-${sectionKey}`} className="rf-app-section">
+    <section
+      ref={sectionRef}
+      id={`section-${sectionKey}`}
+      className="rf-app-section"
+    >
       <div className="rf-app-section__header">
         <button
           type="button"
@@ -136,6 +141,9 @@ const ReservationApplicationStep = ({
   setValidIDBack,
   validIDType,
   setValidIDType,
+  documentPrechecks,
+  runningDocumentChecks,
+  onRunDocumentPrecheck,
   nbiClearance,
   setNbiClearance,
   nbiReason,
@@ -195,6 +203,7 @@ const ReservationApplicationStep = ({
   showValidationErrors,
   applicationSubmitted,
   paymentApproved,
+  visitPending,
   onEditApplication,
   scrollToSection,
   onClearScrollToSection,
@@ -265,6 +274,12 @@ const ReservationApplicationStep = ({
     const result = validator(value);
     setFieldErrors((prev) => ({ ...prev, [fieldName]: result.error }));
     return result.valid;
+  };
+  const clearFieldError = (fieldName) => {
+    setFieldErrors((prev) => {
+      if (!prev[fieldName]) return prev;
+      return { ...prev, [fieldName]: null };
+    });
   };
   const handleTimeInput = (value) => {
     validateField("estimatedMoveInTime", value, validateEstimatedTime);
@@ -396,7 +411,7 @@ const ReservationApplicationStep = ({
         <div className="rf-app-header__content">
           <div className="rf-app-header__copy">
             <div className="main-header-badge">
-              <span>Step 3 - Verification</span>
+              <span>Step 3 · Verification</span>
             </div>
             <h2 className="rf-app-header__title">Tenant Application</h2>
             <p className="rf-app-header__subtitle">
@@ -407,7 +422,9 @@ const ReservationApplicationStep = ({
 
           {!readOnly && (
             <div className="rf-app-actions">
-              {saveStatus && <span className="rf-save-status">{saveStatus}</span>}
+              {saveStatus && (
+                <span className="rf-save-status">{saveStatus}</span>
+              )}
               <button
                 type="button"
                 onClick={handleResetAll}
@@ -421,7 +438,7 @@ const ReservationApplicationStep = ({
                   onClick={devAutoFill}
                   className="rf-dev-fill-btn"
                 >
-                  Dev Auto-Fill
+                  ⚡ Dev Auto-Fill
                 </button>
               )}
             </div>
@@ -429,11 +446,33 @@ const ReservationApplicationStep = ({
         </div>
       </div>
 
+      {showValidationErrors && !applicationSubmitted && (
+        <div className="rf-form-alert" role="alert">
+          Please complete the highlighted required fields before submitting.
+        </div>
+      )}
+
+      {/* Locked banner — only when application is officially submitted / non-editable */}
       {readOnly && (
         <div className="rf-locked-banner">
           <div className="info-box-title">This section is locked</div>
           <div className="info-text">
-            Your application data is saved and cannot be edited at this time.
+            Your application has been submitted and is currently under review.
+            It cannot be edited at this time.
+          </div>
+        </div>
+      )}
+
+      {/* Draft info banner — form is editable but physical visit is still pending */}
+      {!readOnly && visitPending && (
+        <div className="rf-draft-banner">
+          <div className="info-box-title">
+            You can continue completing your application
+          </div>
+          <div className="info-text">
+            Your physical visit is still pending. You can fill in your details
+            and save your progress now — submission will be available once admin
+            confirms your visit or grants access.
           </div>
         </div>
       )}
@@ -507,6 +546,9 @@ const ReservationApplicationStep = ({
               setValidIDBack,
               validIDType,
               setValidIDType,
+              documentPrechecks,
+              runningDocumentChecks,
+              onRunDocumentPrecheck,
               nbiClearance,
               setNbiClearance,
               nbiReason,
@@ -518,6 +560,7 @@ const ReservationApplicationStep = ({
               handleGeneralInput,
               validateField,
               fieldErrors,
+              clearFieldError,
               birthdayMin,
               birthdayMax,
               showValidationErrors,
@@ -583,7 +626,13 @@ const ReservationApplicationStep = ({
               setCompanyID,
               companyIDReason,
               setCompanyIDReason,
+              documentPrechecks,
+              runningDocumentChecks,
+              onRunDocumentPrecheck,
               handleGeneralInput,
+              validateField,
+              fieldErrors,
+              clearFieldError,
               showValidationErrors,
             }}
           />
@@ -622,6 +671,7 @@ const ReservationApplicationStep = ({
               moveInMin,
               moveInMax,
               fieldErrors,
+              validateField,
               showValidationErrors,
             }}
           />
@@ -671,7 +721,11 @@ const ReservationApplicationStep = ({
       {!readOnly && (
         <div className="stage-buttons" style={{ justifyContent: "flex-end" }}>
           <button onClick={onNext} className="btn btn-primary">
-            {applicationSubmitted ? "Save Changes" : "Continue to Payment"}
+            {applicationSubmitted
+              ? "Save Changes"
+              : visitPending
+                ? "Save Progress"
+                : "Submit Application"}
           </button>
         </div>
       )}

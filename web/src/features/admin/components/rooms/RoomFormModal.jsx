@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { ImagePlus, LoaderCircle, Trash2, X } from "lucide-react";
 import { BRANCH_OPTIONS } from "../../../../shared/utils/constants";
-import { uploadIfFile } from "../../../../shared/utils/imageUpload";
+import { uploadIfFile } from "../../../../shared/utils/firebaseStorageUpload";
 import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
 
 /**

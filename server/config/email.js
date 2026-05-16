@@ -122,6 +122,27 @@ if (resendClient && OTP_FROM) {
 // EMAIL TEMPLATES
 // =============================================================================
 
+const escapeHtml = (value) =>
+  String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const formatVisitScheduleLabel = (visitDate, visitTime) => {
+  const hasDate = Boolean(visitDate);
+  const dateLabel = hasDate
+    ? new Date(visitDate).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+    : "TBD";
+
+  return visitTime ? `${dateLabel} at ${visitTime}` : dateLabel;
+};
+
 /**
  * Generate HTML email template for inquiry response
  */
@@ -388,16 +409,16 @@ const generateVisitApprovedEmailHtml = (tenantName, branchName) => `
     <div style="padding:32px 24px;background:#fff;">
       <p style="font-size:16px;margin:0 0 16px;">Hello <strong>${tenantName}</strong>,</p>
       <p style="font-size:14px;line-height:1.6;margin:0 0 16px;">
-        Great news! Your visit to <strong>${branchName}</strong> has been <strong>approved</strong> by our admin team.
+        Your physical visit schedule for <strong>${branchName}</strong> has been confirmed by our admin team.
       </p>
       <div style="background:#ECFDF5;border-left:4px solid #10B981;padding:16px 20px;border-radius:8px;margin:0 0 16px;">
         <p style="margin:0;font-size:14px;color:#065F46;">
-          <strong>✓ Visit Approved</strong><br/>
-          You can now proceed to the <strong>Tenant Application</strong> step in your reservation flow.
+          <strong>✓ Visit Schedule Confirmed</strong><br/>
+          Your visit schedule is confirmed for viewing coordination only.
         </p>
       </div>
       <p style="font-size:14px;line-height:1.6;margin:0 0 24px;">
-        Log in to your account and continue your application from your profile dashboard.
+        Please continue your tenant application and document upload in the portal. Payment will only become available after your application and documents are approved.
       </p>
     </div>
     <div style="padding:16px 24px;background:#F9FAFB;border-top:1px solid #E5E7EB;text-align:center;border-radius:0 0 12px 12px;">
@@ -418,9 +439,9 @@ export const sendVisitApprovedEmail = async ({
   const mailOptions = {
     from: { name: "Lilycrest Dormitory", address: process.env.EMAIL_USER },
     to,
-    subject: "Visit Approved — Continue Your Application | Lilycrest Dormitory",
+    subject: "Visit Schedule Confirmed — Continue Your Application | Lilycrest Dormitory",
     html: generateVisitApprovedEmailHtml(tenantName, branchName),
-    text: `Hello ${tenantName}, your visit to ${branchName} has been approved. You can now proceed to the Tenant Application step. — Lilycrest Dormitory`,
+    text: `Hello ${tenantName}, your physical visit schedule for ${branchName} has been confirmed for viewing coordination only. Please continue your tenant application and document upload. Payment will only be available after your application and documents are approved. — Lilycrest Dormitory`,
   };
   try {
     const info = await transporter.sendMail(mailOptions);
@@ -431,6 +452,205 @@ export const sendVisitApprovedEmail = async ({
       `❌ Failed to send visit approved email to ${to}:`,
       error.message,
     );
+    return { success: false, error: error.message };
+  }
+};
+
+const getPhysicalVisitEmailContent = ({
+  status,
+  tenantName,
+  roomName,
+  branchName,
+  visitCode,
+  visitDate,
+  visitTime,
+  previousVisitDate,
+  previousVisitTime,
+  remarks,
+}) => {
+  const safeTenantName = escapeHtml(tenantName || "Applicant");
+  const safeRoomName = escapeHtml(roomName || "your room");
+  const safeBranchName = escapeHtml(branchName || "Lilycrest");
+  const safeVisitCode = escapeHtml(visitCode || "Pending");
+  const safeRemarks = escapeHtml(remarks || "");
+  const scheduleLabel = escapeHtml(formatVisitScheduleLabel(visitDate, visitTime));
+  const previousScheduleLabel =
+    previousVisitDate || previousVisitTime
+      ? escapeHtml(formatVisitScheduleLabel(previousVisitDate, previousVisitTime))
+      : "";
+
+  const baseDetails = `
+    <div style="background:#F8FAFC;border:1px solid #E5E7EB;border-radius:10px;padding:16px 18px;margin:0 0 20px;">
+      <p style="margin:0 0 8px;font-size:13px;color:#475569;"><strong>Room:</strong> ${safeRoomName}</p>
+      <p style="margin:0 0 8px;font-size:13px;color:#475569;"><strong>Branch:</strong> ${safeBranchName}</p>
+      <p style="margin:0 0 8px;font-size:13px;color:#475569;"><strong>Visit Code:</strong> ${safeVisitCode}</p>
+      <p style="margin:0;font-size:13px;color:#475569;"><strong>Visit Schedule:</strong> ${scheduleLabel}</p>
+      ${
+        previousScheduleLabel
+          ? `<p style="margin:8px 0 0;font-size:13px;color:#475569;"><strong>Previous Schedule:</strong> ${previousScheduleLabel}</p>`
+          : ""
+      }
+      ${
+        safeRemarks
+          ? `<p style="margin:8px 0 0;font-size:13px;color:#475569;"><strong>Remarks:</strong> ${safeRemarks}</p>`
+          : ""
+      }
+    </div>
+  `;
+
+  const statusMap = {
+    scheduled: {
+      subject: "Physical Visit Scheduled",
+      badge: "Physical Visit Scheduled",
+      intro:
+        "Your physical visit schedule has been recorded as a room-viewing appointment.",
+      nextStep:
+        "Please attend your scheduled room visit first. You may continue to the tenant application after admin confirms your visit or allows you to proceed.",
+    },
+    rescheduled: {
+      subject: "Physical Visit Rescheduled",
+      badge: "Physical Visit Rescheduled",
+      intro:
+        "Your physical visit schedule has been updated by our admin team.",
+      nextStep:
+        "Your tenant application remains locked until your visit is completed or admin allows you to proceed without a completed visit.",
+    },
+    visit_completed: {
+      subject: "Physical Visit Completed",
+      badge: "Physical Visit Completed",
+      intro:
+        "Your physical visit has been recorded as completed.",
+      nextStep:
+        "You may now continue to your tenant application. Payment will remain locked until your application and required documents are approved.",
+    },
+    no_show: {
+      subject: "Missed Physical Visit",
+      badge: "Missed Physical Visit",
+      intro:
+        "Your scheduled physical visit was marked as a no-show.",
+      nextStep:
+        "Please reschedule your visit or contact admin before continuing. Your tenant application remains locked.",
+    },
+    visit_cancelled: {
+      subject: "Physical Visit Cancelled",
+      badge: "Physical Visit Cancelled",
+      intro:
+        "Only your physical visit schedule was cancelled. Your reservation itself remains active.",
+      nextStep:
+        "Please contact admin or select another allowed next step. Your tenant application remains locked unless admin separately allows you to proceed without a visit.",
+    },
+    allowed_without_visit: {
+      subject: "You May Continue Your Tenant Application",
+      badge: "Application Access Granted",
+      intro:
+        "Admin has allowed you to continue without a completed physical visit.",
+      nextStep:
+        "You may now complete your tenant application. Payment will remain locked until your application and required documents are approved.",
+    },
+  };
+
+  const content = statusMap[status] || statusMap.scheduled;
+
+  const html = `
+    <div style="max-width:600px;margin:0 auto;font-family:'Segoe UI',sans-serif;color:#1F2937;">
+      <div style="background:#0C375F;padding:24px;text-align:center;border-radius:12px 12px 0 0;">
+        <h1 style="color:#fff;margin:0;font-size:22px;">Lilycrest Dormitory</h1>
+      </div>
+      <div style="padding:32px 24px;background:#fff;">
+        <p style="font-size:16px;margin:0 0 16px;">Hello <strong>${safeTenantName}</strong>,</p>
+        <p style="font-size:14px;line-height:1.6;margin:0 0 16px;">
+          ${content.intro}
+        </p>
+        <div style="background:#EFF6FF;border-left:4px solid #2563EB;padding:16px 20px;border-radius:8px;margin:0 0 16px;">
+          <p style="margin:0;font-size:14px;color:#1D4ED8;">
+            <strong>${content.badge}</strong>
+          </p>
+        </div>
+        ${baseDetails}
+        <p style="font-size:14px;line-height:1.6;margin:0 0 18px;">
+          ${content.nextStep}
+        </p>
+        <p style="font-size:13px;line-height:1.6;margin:0;color:#64748B;">
+          Payment remains locked until your application and required documents are approved.
+        </p>
+      </div>
+      <div style="padding:16px 24px;background:#F9FAFB;border-top:1px solid #E5E7EB;text-align:center;border-radius:0 0 12px 12px;">
+        <p style="margin:0;font-size:11px;color:#9CA3AF;">Lilycrest Dormitory Management System</p>
+      </div>
+    </div>
+  `;
+
+  const text = [
+    `Hello ${tenantName || "Applicant"},`,
+    "",
+    content.intro,
+    `Room: ${roomName || "your room"}`,
+    `Branch: ${branchName || "Lilycrest"}`,
+    `Visit Code: ${visitCode || "Pending"}`,
+    `Visit Schedule: ${formatVisitScheduleLabel(visitDate, visitTime)}`,
+    previousScheduleLabel ? `Previous Schedule: ${formatVisitScheduleLabel(previousVisitDate, previousVisitTime)}` : "",
+    remarks ? `Remarks: ${remarks}` : "",
+    "",
+    content.nextStep,
+    "Payment remains locked until your application and required documents are approved.",
+    "",
+    "Lilycrest Dormitory",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return {
+    subject: content.subject,
+    html,
+    text,
+  };
+};
+
+export const sendPhysicalVisitStatusEmail = async ({
+  to,
+  tenantName,
+  roomName,
+  branchName,
+  visitCode,
+  visitDate,
+  visitTime,
+  previousVisitDate,
+  previousVisitTime,
+  remarks,
+  status,
+}) => {
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
+    console.log("Email not sent - not configured");
+    return { success: false, message: "Email service not configured" };
+  }
+
+  const content = getPhysicalVisitEmailContent({
+    status,
+    tenantName,
+    roomName,
+    branchName,
+    visitCode,
+    visitDate,
+    visitTime,
+    previousVisitDate,
+    previousVisitTime,
+    remarks,
+  });
+
+  const mailOptions = {
+    from: { name: "Lilycrest Dormitory", address: process.env.EMAIL_USER },
+    to,
+    subject: `${content.subject} | Lilycrest Dormitory`,
+    html: content.html,
+    text: content.text,
+  };
+
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`Visit status email sent to ${to}`);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error(`Failed to send visit status email to ${to}:`, error.message);
     return { success: false, error: error.message };
   }
 };

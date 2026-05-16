@@ -14,9 +14,6 @@ import {
   Sparkles,
 } from "lucide-react";
 
-/**
- * Step 1 — Room Selection Summary
- */
 const ReservationSummaryStep = ({ reservationData, onNext, readOnly }) => {
   const room = reservationData?.room || {};
   const monthlyRent = room.price || 0;
@@ -39,7 +36,8 @@ const ReservationSummaryStep = ({ reservationData, onNext, readOnly }) => {
             Room Summary
           </h2>
           <p className="text-slate-600 leading-relaxed">
-            Review the details of your selected room below. Once confirmed, you'll proceed to schedule your visit.
+            Review the details of your selected room below. Once confirmed,
+            you'll proceed to choose your viewing or move-in preference.
           </p>
         </div>
       </div>
@@ -96,10 +94,13 @@ const ReservationSummaryStep = ({ reservationData, onNext, readOnly }) => {
             <div className="flex items-center justify-between py-3 border-b border-slate-100">
               <div className="flex items-center gap-3">
                 <Bed className="w-5 h-5 text-slate-400" />
-                <span className="text-sm font-medium text-slate-600">Selected Bed</span>
+                <span className="text-sm font-medium text-slate-600">
+                  Selected Bed
+                </span>
               </div>
               <span className="text-sm font-semibold text-slate-900 capitalize">
-                {reservationData.selectedBed.position} Bed ({reservationData.selectedBed.id})
+                {reservationData.selectedBed.position} Bed (
+                {reservationData.selectedBed.id})
               </span>
             </div>
           )}
@@ -109,7 +110,9 @@ const ReservationSummaryStep = ({ reservationData, onNext, readOnly }) => {
             <div className="flex items-center justify-between py-3 border-b border-slate-100">
               <div className="flex items-center gap-3">
                 <Calendar className="w-5 h-5 text-slate-400" />
-                <span className="text-sm font-medium text-slate-600">Appliance Fees</span>
+                <span className="text-sm font-medium text-slate-600">
+                  Appliance Fees
+                </span>
               </div>
               <span className="text-sm font-semibold text-slate-900">
                 ₱{applianceFees.toLocaleString()}/month
@@ -124,7 +127,9 @@ const ReservationSummaryStep = ({ reservationData, onNext, readOnly }) => {
                 <div className="p-2 bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg">
                   <DollarSign className="w-5 h-5 text-white" />
                 </div>
-                <span className="text-lg font-bold text-slate-900">Monthly Rent</span>
+                <span className="text-lg font-bold text-slate-900">
+                  Monthly Rent
+                </span>
               </div>
               <span className="text-3xl font-bold text-orange-600">
                 ₱{monthlyRent.toLocaleString()}
@@ -141,9 +146,13 @@ const ReservationSummaryStep = ({ reservationData, onNext, readOnly }) => {
             <Info className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h4 className="text-base font-bold text-blue-900 mb-2">What happens next?</h4>
+            <h4 className="text-base font-bold text-blue-900 mb-2">
+              What happens next?
+            </h4>
             <p className="text-sm text-blue-700 leading-relaxed">
-              After confirming, you'll be asked to schedule a dormitory visit so you can see the room in person before finalizing your application.
+              After confirming, you'll choose between a physical visit, 2D
+              remote viewing, or an urgent move-in review request before
+              submitting your tenant application.
             </p>
           </div>
         </div>
@@ -157,7 +166,9 @@ const ReservationSummaryStep = ({ reservationData, onNext, readOnly }) => {
               <Lock className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h4 className="text-base font-bold text-amber-900 mb-1">This step is locked</h4>
+              <h4 className="text-base font-bold text-amber-900 mb-1">
+                This step is locked
+              </h4>
               <p className="text-sm text-amber-700">
                 Room selection has been confirmed and cannot be changed.
               </p>
@@ -170,11 +181,12 @@ const ReservationSummaryStep = ({ reservationData, onNext, readOnly }) => {
       {!readOnly && (
         <div className="flex justify-end pt-4">
           <button
+            type="button"
             onClick={onNext}
             className="group flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl font-semibold text-base shadow-lg shadow-orange-500/30 hover:shadow-xl hover:shadow-orange-500/40 transition-all"
           >
             <CheckCircle2 className="w-5 h-5" />
-            Confirm Room & Continue
+            Confirm Room &amp; Continue
             <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
           </button>
         </div>
@@ -182,41 +194,50 @@ const ReservationSummaryStep = ({ reservationData, onNext, readOnly }) => {
 
       {/* Features Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
-        {/* Verified Room */}
         <div className="bg-white rounded-xl border-2 border-green-200 p-5">
           <div className="flex items-start gap-3">
             <div className="p-2 bg-green-100 rounded-lg flex-shrink-0">
               <CheckCircle2 className="w-5 h-5 text-green-600" />
             </div>
             <div>
-              <h5 className="text-sm font-bold text-slate-900 mb-1">Verified Room</h5>
-              <p className="text-xs text-slate-600">Quality assured and inspected</p>
+              <h5 className="text-sm font-bold text-slate-900 mb-1">
+                Verified Room
+              </h5>
+              <p className="text-xs text-slate-600">
+                Quality assured and inspected
+              </p>
             </div>
           </div>
         </div>
 
-        {/* Flexible Booking */}
         <div className="bg-white rounded-xl border-2 border-blue-200 p-5">
           <div className="flex items-start gap-3">
             <div className="p-2 bg-blue-100 rounded-lg flex-shrink-0">
               <Calendar className="w-5 h-5 text-blue-600" />
             </div>
             <div>
-              <h5 className="text-sm font-bold text-slate-900 mb-1">Flexible Booking</h5>
-              <p className="text-xs text-slate-600">Schedule your visit anytime</p>
+              <h5 className="text-sm font-bold text-slate-900 mb-1">
+                Flexible Booking
+              </h5>
+              <p className="text-xs text-slate-600">
+                Schedule your visit anytime
+              </p>
             </div>
           </div>
         </div>
 
-        {/* No Commitment */}
         <div className="bg-white rounded-xl border-2 border-purple-200 p-5">
           <div className="flex items-start gap-3">
             <div className="p-2 bg-purple-100 rounded-lg flex-shrink-0">
               <AlertCircle className="w-5 h-5 text-purple-600" />
             </div>
             <div>
-              <h5 className="text-sm font-bold text-slate-900 mb-1">No Commitment</h5>
-              <p className="text-xs text-slate-600">Cancel or modify anytime</p>
+              <h5 className="text-sm font-bold text-slate-900 mb-1">
+                No Commitment
+              </h5>
+              <p className="text-xs text-slate-600">
+                Cancel or modify anytime
+              </p>
             </div>
           </div>
         </div>

@@ -13,6 +13,10 @@ import {
 } from "lucide-react";
 import { generateDepositReceipt } from "../../../../shared/utils/receiptGenerator";
 import { useCurrentUser } from "../../../../shared/hooks/queries/useUsers";
+import {
+ canReservationAccessPayment,
+ hasReservationStatus,
+} from "../../../../shared/utils/lifecycleNaming";
 
 function parseSafeDate(dateStr) {
  if (!dateStr) return null;
@@ -68,10 +72,41 @@ export default function ReservationSidePanel({ reservation, onClick }) {
  if (!reservation) return <EmptyState />;
 
  const status = reservation.reservationStatus || reservation.status;
- const isConfirmed = status === "reserved" || reservation.paymentStatus === "paid";
+ const isConfirmed =
+ hasReservationStatus(status, "reserved", "moveIn", "moveOut");
  const hasVisit = !!(reservation.visitDate && reservation.visitTime);
  const visitApproved = reservation.visitApproved || reservation.scheduleApproved;
- const hasApplication = !!(reservation.firstName && reservation.lastName && reservation.mobileNumber);
+  const hasApplication = !!(reservation.firstName && reservation.lastName && reservation.mobileNumber);
+ const paymentReady =
+ canReservationAccessPayment(status) ||
+ hasReservationStatus(status, "payment_pending");
+ const pendingReview = hasReservationStatus(status, "pending_application_review");
+ const needsRevision = hasReservationStatus(status, "needs_revision");
+ const preferenceSelected = Boolean(
+ reservation.viewingPreference ||
+  reservation.viewingType ||
+  reservation.isUrgentMoveIn ||
+  hasVisit,
+ );
+
+ const viewingPreference =
+  reservation.viewingPreference ||
+  (reservation.viewingType === "virtual"
+    ? "remote_2d_viewing"
+    : reservation.viewingType === "inperson"
+    ? "physical_visit"
+    : reservation.isUrgentMoveIn
+    ? "urgent_move_in_review"
+    : null);
+
+ const viewingPrefLabel =
+  viewingPreference === "physical_visit"
+    ? "Physical Visit"
+    : viewingPreference === "remote_2d_viewing"
+    ? "Remote Viewing"
+    : viewingPreference === "urgent_move_in_review"
+    ? "Priority Viewing Review"
+    : null;
 
  const room = reservation.roomId || {};
  const roomName = room.name || "Room";
@@ -79,9 +114,12 @@ export default function ReservationSidePanel({ reservation, onClick }) {
 
  let panelState = "pending";
  if (isConfirmed) panelState = "confirmed";
- else if (hasApplication) panelState = "application";
+ else if (paymentReady) panelState = "payment_ready";
+ else if (needsRevision) panelState = "needs_revision";
+ else if (pendingReview || hasApplication) panelState = "application_review";
  else if (visitApproved) panelState = "approved";
  else if (hasVisit) panelState = "scheduled";
+ else if (preferenceSelected) panelState = "preference";
 
  const panelTone =
  panelState === "confirmed"
@@ -91,26 +129,54 @@ export default function ReservationSidePanel({ reservation, onClick }) {
  border: "rgba(16, 185, 129, 0.28)",
  label: "Reservation Details",
  }
- : panelState === "application"
+ : panelState === "payment_ready"
+ ? {
+ accent: "#0F766E",
+ soft: "rgba(15, 118, 110, 0.10)",
+ border: "rgba(15, 118, 110, 0.24)",
+ label: "Approved for Payment",
+ }
+ : panelState === "application_review"
  ? {
  accent: "var(--color-primary, #D4AF37)",
  soft: "rgba(212, 175, 55, 0.12)",
  border: "rgba(212, 175, 55, 0.34)",
- label: "Payment Pending",
+ label: "Pending Review",
+ }
+ : panelState === "needs_revision"
+ ? {
+ accent: "#EA580C",
+ soft: "rgba(234, 88, 12, 0.10)",
+ border: "rgba(234, 88, 12, 0.24)",
+ label: "Needs Revision",
  }
  : panelState === "approved"
  ? {
  accent: "#2563EB",
  soft: "rgba(37, 99, 235, 0.10)",
  border: "rgba(37, 99, 235, 0.24)",
- label: "Visit Approved",
+ label: "Legacy Visit Approved",
  }
  : panelState === "scheduled"
  ? {
  accent: "#7C3AED",
  soft: "rgba(124, 58, 237, 0.10)",
  border: "rgba(124, 58, 237, 0.24)",
- label: "Visit Scheduled",
+ label: "Physical Visit Scheduled",
+ }
+ : panelState === "preference"
+ ? {
+ accent: viewingPreference === "urgent_move_in_review" ? "#DC2626" : "#2563EB",
+ soft: viewingPreference === "urgent_move_in_review" ? "rgba(220, 38, 38, 0.10)" : "rgba(37, 99, 235, 0.10)",
+ border: viewingPreference === "urgent_move_in_review" ? "rgba(220, 38, 38, 0.24)" : "rgba(37, 99, 235, 0.24)",
+ label:
+  viewingPreference === "remote_2d_viewing"
+   ? "Remote Viewing Selected"
+   : viewingPreference === "urgent_move_in_review"
+   ? "Priority Review Requested"
+   : viewingPreference === "physical_visit"
+   ? "Physical Visit Preference Saved"
+   : "Viewing Preference Saved",
  }
  : {
  accent: "var(--text-secondary, #64748B)",
@@ -178,6 +244,14 @@ export default function ReservationSidePanel({ reservation, onClick }) {
  </>
  )}
 
+ {panelState === "preference" && viewingPrefLabel && (
+ <DetailRow
+ icon={<Calendar size={15} color="var(--text-secondary, #94A3B8)" />}
+ label="Preference"
+ value={viewingPrefLabel}
+ />
+ )}
+
  {reservation.visitCode && (
  <DetailRow
  icon={<Ticket size={15} color="var(--text-secondary, #94A3B8)" />}
@@ -200,8 +274,16 @@ export default function ReservationSidePanel({ reservation, onClick }) {
  <DetailRow
  icon={<FileText size={15} color="var(--text-secondary, #94A3B8)" />}
  label="Application"
- value="Submitted"
- success
+ value={
+ pendingReview
+ ? "Pending Review"
+ : needsRevision
+ ? "Needs Revision"
+ : paymentReady
+ ? "Approved"
+ : "Submitted"
+ }
+ success={paymentReady}
  />
  )}
 
@@ -227,7 +309,21 @@ export default function ReservationSidePanel({ reservation, onClick }) {
  {panelState === "scheduled" && (
  <div style={S.pendingBanner}>
  <Clock size={14} color="#7C3AED" />
- <span style={S.pendingText}>Awaiting admin approval</span>
+ <span style={S.pendingText}>Saved for viewing coordination only</span>
+ </div>
+ )}
+
+ {panelState === "preference" && viewingPreference === "remote_2d_viewing" && (
+ <div style={{ ...S.pendingBanner, background: "rgba(37, 99, 235, 0.08)", border: "1px solid rgba(37, 99, 235, 0.2)" }}>
+ <Clock size={14} color="#2563EB" />
+ <span style={{ ...S.pendingText, color: "#2563EB" }}>Admin will arrange a remote viewing for your room</span>
+ </div>
+ )}
+
+ {panelState === "preference" && viewingPreference === "urgent_move_in_review" && (
+ <div style={{ ...S.pendingBanner, background: "rgba(220, 38, 38, 0.08)", border: "1px solid rgba(220, 38, 38, 0.2)" }}>
+ <Clock size={14} color="#DC2626" />
+ <span style={{ ...S.pendingText, color: "#DC2626" }}>Priority review request is under review</span>
  </div>
  )}
 

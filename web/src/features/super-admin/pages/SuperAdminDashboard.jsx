@@ -141,7 +141,7 @@ export default function SuperAdminDashboard() {
 
  <header className="sa2-header">
  <div>
- <p className="sa2-eyebrow">Super Admin</p>
+ <p className="sa2-eyebrow">Owner</p>
  <h1 className="sa2-title">System Overview</h1>
  </div>
  <Link to="/admin/dashboard" className="sa2-back">

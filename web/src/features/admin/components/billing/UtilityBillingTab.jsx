@@ -394,9 +394,14 @@ const TENANT_SUMMARY_EXPORT_COLUMNS = [
   { key: "billAmount", label: "Bill Amount" },
 ];
 
-const UtilityBillingTab = ({ utilityType, isActive = true }) => {
+const UtilityBillingTab = ({
+  utilityType,
+  isActive = true,
+  ownerBranchFilter,
+  onOwnerBranchChange,
+}) => {
   const { user } = useAuth();
-  const isOwner = user?.role === "owner";
+  const isOwner = user?.role === "owner" || user?.role === "superadmin" /* legacy */;
   const notify = useBillingNotifier();
 
   /** Mask tenant name for privacy: "Leander Ponce" -> "Leander *****" */
@@ -412,9 +417,19 @@ const UtilityBillingTab = ({ utilityType, isActive = true }) => {
   // Selection
   const [selectedRoomId, setSelectedRoomId] = useState(null);
   const [selectedPeriodId, setSelectedPeriodId] = useState(null);
-  const [branchFilter, setBranchFilter] = useState(
+
+  // For Owner: branchFilter is controlled by the parent page so both
+  // electricity and water tabs always share the same branch selection.
+  // For Branch Admin: local state locked to their assigned branch.
+  const [localBranchFilter, setLocalBranchFilter] = useState(
     isOwner ? "" : user?.branch || "",
   );
+  const branchFilter = isOwner
+    ? (ownerBranchFilter ?? "")
+    : localBranchFilter;
+  const setBranchFilter = isOwner
+    ? (onOwnerBranchChange ?? (() => {}))
+    : setLocalBranchFilter;
 
   // Sidebar search
   const [sidebarSearch, setSidebarSearch] = useState("");
@@ -1569,6 +1584,29 @@ const UtilityBillingTab = ({ utilityType, isActive = true }) => {
     });
   };
 
+  const effectiveBranch = isOwner ? branchFilter : (user?.branch || "");
+  const isGuadaUtility =
+    (utilityType === "electricity" || utilityType === "water") &&
+    effectiveBranch === "guadalupe";
+
+  if (isGuadaUtility) {
+    return (
+      <section className="space-y-4" aria-label={`${utilityType} billing workspace`}>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-800 dark:bg-amber-950/30">
+          <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+            Utility billing not applicable for Guadalupe
+          </p>
+          <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+            Guadalupe uses a fixed-rate billing setup. Separate electricity and
+            water utility billing are not used for this branch. Optional
+            appliance/device fees are handled through reservation recurring fees
+            when applicable.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section
       className="space-y-4"
@@ -1621,32 +1659,13 @@ const UtilityBillingTab = ({ utilityType, isActive = true }) => {
           </div>
 
           <div className="mt-2 grid grid-cols-2 gap-2">
-            <select
-              value={branchFilter}
-              onChange={(e) => {
-                if (!isOwner) return;
-                setBranchFilter(e.target.value);
-                setSelectedRoomId(null);
-                setSelectedPeriodId(null);
-                setRoomsPage(1);
-              }}
-              disabled={!isOwner}
-              className="rounded-lg border border-border bg-card px-2 py-2 text-xs text-muted-foreground disabled:bg-muted focus:outline-none"
-              style={{ outlineColor: "var(--ring)" }}
-              onFocus={(e) => {
-                e.currentTarget.style.borderColor = "var(--primary)";
-                e.currentTarget.style.boxShadow =
-                  "0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent)";
-              }}
-              onBlur={(e) => {
-                e.currentTarget.style.borderColor = "";
-                e.currentTarget.style.boxShadow = "";
-              }}
-            >
-              <option value="">All branches</option>
-              <option value="gil-puyat">Gil-Puyat</option>
-              <option value="guadalupe">Guadalupe</option>
-            </select>
+            <div className="flex items-center rounded-lg border border-border bg-muted px-2 py-2 text-xs text-muted-foreground">
+              {branchFilter === "gil-puyat"
+                ? "Gil Puyat"
+                : branchFilter === "guadalupe"
+                ? "Guadalupe"
+                : "All branches"}
+            </div>
             <select
               defaultValue="all"
               disabled

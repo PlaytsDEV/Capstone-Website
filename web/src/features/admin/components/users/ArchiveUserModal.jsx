@@ -61,8 +61,8 @@ export default function ArchiveUserModal({ user, isOwner, onDelete, onClose }) {
  onChange={(e) => setHardDelete(e.target.checked)}
  />
  <span>
- Permanently delete instead (owner only, blocked when active
- reservations or issued bills exist).
+ Permanently delete instead (owner only). Leave unchecked to archive this
+ account so it can be restored later.
  </span>
  </label>
  )}

@@ -6,6 +6,7 @@
 
 import { Announcement, AcknowledgmentAccount, User } from "../models/index.js";
 import { ROOM_BRANCHES, ROOM_BRANCH_LABELS } from "../config/branches.js";
+import { isOwnerRole } from "../config/roles.js";
 import { sendSuccess, AppError } from "../middleware/errorHandler.js";
 import { clean } from "../utils/sanitize.js";
 import auditLogger from "../utils/auditLogger.js";
@@ -216,7 +217,7 @@ const serializeAdminAnnouncement = (announcement, stats = {}) => {
 };
 
 const assertAdminAnnouncementScope = (user, announcement) => {
-  if (user.role === "owner") {
+  if (isOwnerRole(user.role)) {
     return;
   }
 
@@ -539,7 +540,7 @@ export const getAdminAnnouncements = async (req, res, next) => {
       visibility: "tenants-only",
     };
 
-    if (dbUser.role === "owner") {
+    if (isOwnerRole(dbUser.role)) {
       if (ROOM_BRANCHES.includes(branch)) {
         query.$or = [{ targetBranch: "both" }, { targetBranch: branch }];
       } else if (branch === "both") {
@@ -615,7 +616,7 @@ export const createAnnouncement = async (req, res, next) => {
     }
 
     const targetBranch =
-      dbUser.role === "owner"
+      isOwnerRole(dbUser.role)
         ? req.body.targetBranch || "both"
         : dbUser.branch;
 

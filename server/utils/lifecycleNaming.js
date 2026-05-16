@@ -7,12 +7,17 @@ export const USER_ROLE_NAMES = Object.freeze([
 
 export const CANONICAL_RESERVATION_STATUSES = Object.freeze([
   "pending",
+  "viewing_preference_selected",
   "visit_pending",
   "visit_approved",
+  "pending_application_review",
+  "needs_revision",
+  "approved_for_payment",
   "payment_pending",
   "reserved",
   "moveIn",
   "moveOut",
+  "rejected",
   "cancelled",
   "archived",
 ]);
@@ -20,25 +25,71 @@ export const CANONICAL_RESERVATION_STATUSES = Object.freeze([
 export const LEGACY_RESERVATION_STATUS_MAP = Object.freeze({});
 
 export const ALLOWED_RESERVATION_STATUS_TRANSITIONS = Object.freeze({
-  pending: ["visit_pending", "cancelled", "archived"],
-  visit_pending: ["visit_approved", "cancelled", "archived"],
-  visit_approved: ["payment_pending", "cancelled", "archived"],
+  pending: [
+    "viewing_preference_selected",
+    "pending_application_review",
+    "visit_pending",
+    "visit_approved",
+    "cancelled",
+    "archived",
+  ],
+  viewing_preference_selected: [
+    "visit_pending",
+    "pending_application_review",
+    "cancelled",
+    "archived",
+  ],
+  visit_pending: [
+    "visit_approved",
+    "pending_application_review",
+    "cancelled",
+    "archived",
+  ],
+  visit_approved: [
+    "visit_pending",
+    "pending_application_review",
+    "approved_for_payment",
+    "payment_pending",
+    "cancelled",
+    "archived",
+  ],
+  pending_application_review: [
+    "needs_revision",
+    "approved_for_payment",
+    "rejected",
+    "cancelled",
+    "archived",
+  ],
+  needs_revision: [
+    "pending_application_review",
+    "approved_for_payment",
+    "rejected",
+    "cancelled",
+    "archived",
+  ],
+  approved_for_payment: ["payment_pending", "reserved", "cancelled", "archived"],
   payment_pending: ["reserved", "cancelled", "archived"],
   reserved: ["moveIn", "cancelled", "archived"],
   moveIn: ["moveOut", "archived"],
   moveOut: ["archived"],
+  rejected: ["archived"],
   cancelled: ["archived"],
   archived: [],
 });
 
 const RESERVATION_STATUS_QUERY_MAP = Object.freeze({
   pending: ["pending"],
+  viewing_preference_selected: ["viewing_preference_selected"],
   visit_pending: ["visit_pending"],
   visit_approved: ["visit_approved"],
+  pending_application_review: ["pending_application_review"],
+  needs_revision: ["needs_revision"],
+  approved_for_payment: ["approved_for_payment"],
   payment_pending: ["payment_pending"],
   reserved: ["reserved"],
   moveIn: ["moveIn"],
   moveOut: ["moveOut"],
+  rejected: ["rejected"],
   cancelled: ["cancelled"],
   archived: ["archived"],
 });
@@ -86,6 +137,10 @@ export const reservationStatusesForQuery = (...statuses) => {
 
 export const ACTIVE_OCCUPANCY_STATUS_QUERY = Object.freeze(
   reservationStatusesForQuery("reserved", "moveIn"),
+);
+
+export const PAYMENT_UNLOCK_RESERVATION_STATUS_QUERY = Object.freeze(
+  reservationStatusesForQuery("approved_for_payment", "payment_pending"),
 );
 
 export const CURRENT_RESIDENT_STATUS_QUERY = Object.freeze(

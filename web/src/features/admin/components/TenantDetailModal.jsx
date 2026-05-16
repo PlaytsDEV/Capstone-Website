@@ -553,6 +553,7 @@ export default function TenantDetailModal({ tenant, onClose }) {
  </button>
  </div>
  </div>
+ </div>
 
 </div>
  {dialogState.type && (

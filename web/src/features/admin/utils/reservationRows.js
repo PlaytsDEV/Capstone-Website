@@ -1,13 +1,17 @@
-import { BRANCH_DISPLAY_NAMES } from "../../../shared/utils/constants";
+import { BRANCH_DISPLAY_NAMES } from "../../../shared/utils/constants.js";
 import {
  RESERVATION_STAGE_MAP,
  hasReservationStatus,
-} from "../../../shared/utils/lifecycleNaming";
+} from "../../../shared/utils/lifecycleNaming.js";
 
 export const IN_PROGRESS_STATUSES = [
  "pending",
+ "viewing_preference_selected",
  "visit_pending",
  "visit_approved",
+ "pending_application_review",
+ "needs_revision",
+ "approved_for_payment",
  "payment_pending",
 ];
 
@@ -30,12 +34,35 @@ export function mapReservationAdminRow(reservation) {
  phone: reservation.mobileNumber || reservation.phone || "-",
  room: reservation.roomId?.name || reservation.roomId?.roomNumber || "-",
  roomType: reservation.roomId?.type || "",
+ selectedBed: reservation.selectedBed || null,
  branchCode,
  branch: getBranchLabel(branchCode),
  moveInDate: reservation.moveInDate,
+ moveOutDate: reservation.moveOutDate,
  status: reservation.status || "pending",
  totalPrice: reservation.totalPrice,
  paymentStatus: reservation.paymentStatus,
+ viewingPreference: reservation.viewingPreference,
+ viewingType: reservation.viewingType,
+ visitDate: reservation.visitDate,
+ visitTime: reservation.visitTime,
+ visitApproved: Boolean(reservation.visitApproved),
+ visitScheduledAt: reservation.visitScheduledAt,
+ visitStatus: reservation.visitStatus || null,
+ visitOutcomeNotes: reservation.visitOutcomeNotes || "",
+ visitOutcomeUpdatedAt: reservation.visitOutcomeUpdatedAt || null,
+ visitOutcomeUpdatedByName: reservation.visitOutcomeUpdatedByName || "",
+ visitHistory: reservation.visitHistory || [],
+ scheduleApproved: Boolean(reservation.scheduleApproved),
+ scheduleApprovedAt: reservation.scheduleApprovedAt || null,
+ scheduleRejected: Boolean(reservation.scheduleRejected),
+ scheduleRejectedAt: reservation.scheduleRejectedAt || null,
+ scheduleRejectionReason: reservation.scheduleRejectionReason || "",
+ cancellationRequested: Boolean(reservation.cancellationRequested),
+ cancellationStatus: reservation.cancellationStatus || null,
+ cancellationReason: reservation.cancellationReason || null,
+ cancellationRequestedAt: reservation.cancellationRequestedAt || null,
+ cancellationAdminNote: reservation.cancellationAdminNote || null,
  createdAt: reservation.createdAt,
  _raw: reservation,
  };
@@ -55,6 +82,7 @@ export function mapVisitScheduleRows(rawReservations = []) {
  rawReservations
  .filter(
  (reservation) =>
+ (reservation.visitDate && reservation.viewingPreference === "physical_visit") ||
  reservation.status === "visit_pending" ||
  (reservation.visitDate && reservation.visitApproved) ||
  reservation.scheduleRejected ||
@@ -73,16 +101,30 @@ export function mapVisitScheduleRows(rawReservations = []) {
  visitHistory: reservation.visitHistory || [],
  };
 
+ const hasActiveVisitRow =
+ reservation.visitDate &&
+ !reservation.scheduleRejected &&
+ !reservation.visitApproved &&
+ reservation.status !== "cancelled";
+
  if (reservation.visitHistory && reservation.visitHistory.length > 0) {
  reservation.visitHistory.forEach((historyEntry, index) => {
+ if (hasActiveVisitRow && historyEntry.status === "schedule_approved") {
+ return;
+ }
+
  const actionedAt =
- historyEntry.approvedAt || historyEntry.rejectedAt || null;
+ historyEntry.approvedAt || historyEntry.rejectedAt || historyEntry.updatedAt || null;
  const actionedLabel =
- historyEntry.status === "approved"
+ historyEntry.status === "approved" || historyEntry.status === "completed"
+ ? "Completed"
+ : historyEntry.status === "schedule_approved"
  ? "Approved"
  : historyEntry.status === "rejected"
  ? "Rejected"
- : historyEntry.status === "cancelled"
+ : historyEntry.status === "no_show"
+ ? "No-Show"
+ : historyEntry.status === "cancelled" || historyEntry.status === "visit_cancelled"
  ? "Cancelled"
  : null;
 
@@ -91,8 +133,8 @@ export function mapVisitScheduleRows(rawReservations = []) {
  id: `${reservation._id}-history-${index}`,
  visitDate: historyEntry.visitDate,
  visitTime: historyEntry.visitTime || "-",
- visitApproved: historyEntry.status === "approved",
- scheduleApproved: historyEntry.status === "approved",
+ visitApproved: historyEntry.status === "approved" || historyEntry.status === "completed",
+ scheduleApproved: historyEntry.status === "approved" || historyEntry.status === "completed",
  scheduleRejected: historyEntry.status === "rejected",
  scheduleRejectionReason: historyEntry.rejectionReason || "",
  scheduledDate:
@@ -110,10 +152,7 @@ export function mapVisitScheduleRows(rawReservations = []) {
  }
 
  if (
- reservation.visitDate &&
- !reservation.scheduleRejected &&
- !reservation.visitApproved &&
- reservation.status !== "cancelled"
+ hasActiveVisitRow
  ) {
  rows.push({
  ...base,
@@ -121,9 +160,10 @@ export function mapVisitScheduleRows(rawReservations = []) {
  visitDate: reservation.visitDate,
  visitTime: reservation.visitTime || "-",
  visitApproved: reservation.visitApproved,
- scheduleApproved: reservation.scheduleApproved,
+ scheduleApproved: Boolean(reservation.scheduleApproved),
  scheduleRejected: false,
  scheduleRejectionReason: "",
+ visitStatus: reservation.visitStatus || null,
  status: reservation.status,
  scheduledDate: reservation.visitScheduledAt || reservation.createdAt,
  actionedAt: null,

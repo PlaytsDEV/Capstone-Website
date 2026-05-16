@@ -36,6 +36,7 @@ import { settlePaymongoBill } from "../utils/billSettlement.js";
 import logger from "../middleware/logger.js";
 import { BUSINESS } from "../config/constants.js";
 import { getReservationFeeAmount } from "../utils/businessSettings.js";
+import { hasReservationStatus } from "../utils/lifecycleNaming.js";
 
 /* ─── helpers ───────────────────────────────────── */
 
@@ -54,7 +55,7 @@ function extractPaidAmount(eventData) {
 }
 
 function canAutoReserveReservation(status) {
-  return status === "pending" || status === "payment_pending";
+  return hasReservationStatus(status, "approved_for_payment", "payment_pending");
 }
 
 /* ─── handlers ───────────────────────────────────── */
@@ -111,6 +112,8 @@ async function handleDepositPayment(metadata, eventData) {
   const canAutoReserve = canAutoReserveReservation(reservation.status);
   if (canAutoReserve) {
     reservation.status = "reserved";
+    reservation.reservedAt = new Date();
+    reservation.approvedDate = reservation.approvedDate || new Date();
   }
 
   await reservation.save();

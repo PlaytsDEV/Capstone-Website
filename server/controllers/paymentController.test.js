@@ -80,7 +80,12 @@ await jest.unstable_mockModule("../middleware/errorHandler.js", () => ({
   },
 }));
 
-const { createBillCheckout, checkSessionStatus, getPaymentsForBill } = await import("./paymentController.js");
+const {
+  createBillCheckout,
+  createDepositCheckout,
+  checkSessionStatus,
+  getPaymentsForBill,
+} = await import("./paymentController.js");
 
 describe("paymentController", () => {
   beforeEach(() => {
@@ -130,8 +135,8 @@ describe("paymentController", () => {
     expect(createCheckoutSession).toHaveBeenCalledWith(
       expect.objectContaining({
         successUrl:
-          "http://localhost:5173/applicant/billing?payment=success&session_id={id}",
-        cancelUrl: "http://localhost:5173/applicant/billing?payment=cancelled",
+          "http://localhost:3000/applicant/billing?payment=success&session_id={id}",
+        cancelUrl: "http://localhost:3000/applicant/billing?payment=cancelled",
       }),
     );
     expect(sendSuccess).toHaveBeenCalledWith(
@@ -203,6 +208,35 @@ describe("paymentController", () => {
     expect(next).toHaveBeenCalledTimes(1);
     expect(next.mock.calls[0][0].code).toBe("FORBIDDEN");
     expect(sendSuccess).not.toHaveBeenCalled();
+  });
+
+  test("createDepositCheckout keeps payment locked before application approval", async () => {
+    const reservation = {
+      _id: "res_locked",
+      userId: "tenant_1",
+      roomId: { name: "GP-103", branch: "gil-puyat" },
+      status: "pending_application_review",
+      paymentStatus: "pending",
+      save: jest.fn(),
+    };
+
+    userFindOne.mockReturnValue(mockLean({ _id: "tenant_1" }));
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockResolvedValue(reservation),
+    });
+
+    const req = { params: { resId: "res_locked" }, user: { uid: "firebase-1" } };
+    const res = {};
+    const next = jest.fn();
+
+    await createDepositCheckout(req, res, next);
+
+    expect(createCheckoutSession).not.toHaveBeenCalled();
+    expect(sendSuccess).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next.mock.calls[0][0].code).toBe(
+      "PAYMENT_LOCKED_PENDING_APPLICATION_REVIEW",
+    );
   });
 
   test("auto-reserves a paid payment_pending deposit exactly once", async () => {

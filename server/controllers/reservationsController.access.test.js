@@ -1,18 +1,30 @@
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
 const reservationFindById = jest.fn();
+const reservationFindByIdAndUpdate = jest.fn();
+const reservationFind = jest.fn();
+const reservationFindOne = jest.fn();
 const userFindOne = jest.fn();
+const roomFind = jest.fn();
+const roomFindById = jest.fn();
 const visitAvailabilityFindOne = jest.fn();
 const visitAvailabilityCreate = jest.fn();
 const utilityReadingFindOne = jest.fn();
 const ensureCurrentCycleRentBill = jest.fn();
 const moveOutStayWorkflow = jest.fn();
 const notifyGeneral = jest.fn();
+const buildUserUpdatePayload = jest.fn(() => ({}));
+const sendPhysicalVisitStatusEmail = jest.fn();
 
 await jest.unstable_mockModule("../models/index.js", () => ({
-  Reservation: { findById: reservationFindById },
+  Reservation: {
+    find: reservationFind,
+    findById: reservationFindById,
+    findByIdAndUpdate: reservationFindByIdAndUpdate,
+    findOne: reservationFindOne,
+  },
   User: { findOne: userFindOne },
-  Room: { find: jest.fn(), findById: jest.fn() },
+  Room: { find: roomFind, findById: roomFindById },
   VisitAvailability: { findOne: visitAvailabilityFindOne, create: visitAvailabilityCreate },
   Bill: { countDocuments: jest.fn(), deleteMany: jest.fn() },
   UtilityReading: { findOne: utilityReadingFindOne },
@@ -51,7 +63,7 @@ await jest.unstable_mockModule("../utils/reservationHelpers.js", () => ({
   handleStatusTransition: jest.fn(),
   syncReservationUserLifecycle: jest.fn(),
   reconcileTenantUsersForScope: jest.fn(async () => []),
-  buildUserUpdatePayload: jest.fn(() => ({})),
+  buildUserUpdatePayload,
   getMoveInBlockers: jest.fn(() => []),
 }));
 await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
@@ -60,10 +72,13 @@ await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
   CURRENT_RESIDENT_STATUS_QUERY: ["moveIn"],
   canTransitionReservationStatus: jest.fn((current, next) => {
     if (current === next) return true;
-    return current === "pending" ? next === "visit_pending" : true;
+    if (current === "pending") {
+      return ["visit_pending", "viewing_preference_selected", "pending_application_review"].includes(next);
+    }
+    return true;
   }),
-  hasReservationStatus: jest.fn((status, expected) => {
-    const values = Array.isArray(expected) ? expected : [expected];
+  hasReservationStatus: jest.fn((status, ...expected) => {
+    const values = expected.flat();
     return values.includes(status);
   }),
   normalizeReservationPayload: jest.fn((payload) => payload),
@@ -78,6 +93,12 @@ await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
 await jest.unstable_mockModule("../config/email.js", () => ({
   sendReservationConfirmedEmail: jest.fn(),
   sendVisitApprovedEmail: jest.fn(),
+  sendPhysicalVisitStatusEmail,
+  sendDocumentsRejectedEmail: jest.fn(),
+}));
+await jest.unstable_mockModule("../services/reservationDocumentPrecheckService.js", () => ({
+  isAllowedReservationDocumentUrl: jest.fn(() => true),
+  runReservationDocumentPrecheck: jest.fn(),
 }));
 await jest.unstable_mockModule("../middleware/errorHandler.js", () => ({
   sendSuccess: jest.fn(),
@@ -89,8 +110,10 @@ await jest.unstable_mockModule("../utils/notificationService.js", () => ({
 }));
 
 const {
+  manageReservationVisit,
   moveOutReservation,
   updateReservation,
+  updateReservationByUser,
   updateVisitAvailabilityRules,
 } = await import("./reservationsController.js");
 
@@ -110,13 +133,22 @@ const createResponse = () => ({
 describe("reservationsController.updateReservation access hardening", () => {
   beforeEach(() => {
     reservationFindById.mockReset();
+    reservationFindByIdAndUpdate.mockReset();
+    reservationFind.mockReset();
+    reservationFindOne.mockReset();
     userFindOne.mockReset();
+    roomFind.mockReset();
+    roomFindById.mockReset();
     utilityReadingFindOne.mockReset();
     visitAvailabilityFindOne.mockReset();
     visitAvailabilityCreate.mockReset();
     ensureCurrentCycleRentBill.mockReset();
     moveOutStayWorkflow.mockReset();
     notifyGeneral.mockReset();
+    sendPhysicalVisitStatusEmail.mockReset();
+    sendPhysicalVisitStatusEmail.mockResolvedValue({ success: true });
+    buildUserUpdatePayload.mockReset();
+    buildUserUpdatePayload.mockReturnValue({});
     userFindOne.mockResolvedValue(null);
   });
 
@@ -147,6 +179,44 @@ describe("reservationsController.updateReservation access hardening", () => {
 
     expect(res.statusCode).toBe(400);
     expect(res.body.code).toBe("INVALID_RESERVATION_STATUS_TRANSITION");
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("rejects direct admin visit updates after a visit is completed", async () => {
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockResolvedValue({
+        _id: "507f1f77bcf86cd799439099",
+        status: "visit_approved",
+        visitStatus: "visit_completed",
+        visitApproved: true,
+        userId: "user-1",
+        roomId: { _id: "room-1", branch: "gil-puyat" },
+        toObject: () => ({
+          status: "visit_approved",
+          visitStatus: "visit_completed",
+          visitApproved: true,
+          userId: "user-1",
+          roomId: { _id: "room-1", branch: "gil-puyat" },
+        }),
+      }),
+    });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439099" },
+      body: { visitStatus: "no_show" },
+      branchFilter: "gil-puyat",
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await updateReservation(req, res, next);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toEqual({
+      error: "Visit is already completed and cannot be changed.",
+      code: "VISIT_ALREADY_COMPLETED",
+    });
+    expect(reservationFindByIdAndUpdate).not.toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -248,5 +318,804 @@ describe("reservationsController.updateReservation access hardening", () => {
     expect(res.statusCode).toBe(200);
     expect(save).toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
+  });
+
+  test("visit management stays unavailable for non-physical viewing preferences", async () => {
+    const reservation = {
+      _id: "507f1f77bcf86cd799439011",
+      status: "pending_application_review",
+      viewingPreference: "remote_2d_viewing",
+      visitDate: null,
+      visitTime: "",
+      roomId: { _id: "room-1", branch: "gil-puyat" },
+      userId: { _id: "tenant-1", email: "tala@example.com" },
+      toObject: () => ({
+        _id: "507f1f77bcf86cd799439011",
+        status: "pending_application_review",
+        viewingPreference: "remote_2d_viewing",
+        roomId: { _id: "room-1", branch: "gil-puyat" },
+      }),
+      populate: jest.fn().mockResolvedValue(undefined),
+      save: jest.fn(),
+    };
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockReturnThis(),
+      then: (resolve) => Promise.resolve(resolve(reservation)),
+    });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439011" },
+      body: { action: "mark_visited" },
+      branchFilter: "gil-puyat",
+      user: { uid: "admin-uid", email: "admin@example.com" },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await manageReservationVisit(req, res, next);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body.code).toBe("VISIT_MANAGEMENT_NOT_APPLICABLE");
+    expect(reservation.save).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("tenant can switch to remote viewing without sending a physical visit schedule", async () => {
+    const updatedReservation = {
+      _id: "507f1f77bcf86cd799439011",
+      status: "viewing_preference_selected",
+      userId: { _id: "tenant-1", email: "tala@example.com" },
+      roomId: { _id: "room-1", branch: "gil-puyat", name: "Room 1" },
+      viewingPreference: "remote_2d_viewing",
+      visitDate: null,
+      visitTime: "",
+      populate: jest.fn().mockResolvedValue(undefined),
+    };
+
+    reservationFindById.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439011",
+      userId: "tenant-1",
+      roomId: "room-1",
+      status: "pending",
+      visitDate: new Date("2026-05-15T00:00:00.000Z"),
+      visitTime: "09:00 AM",
+      remoteViewingAcknowledged: false,
+      agreedToPrivacy: false,
+      scheduleRejected: false,
+      validIDFrontUrl: null,
+      nbiClearanceUrl: null,
+      companyIDUrl: null,
+      emergencyContact: {},
+      employment: {},
+      idType: null,
+      validIDType: null,
+    });
+    buildUserUpdatePayload.mockReturnValue({
+      agreedToPrivacy: true,
+      remoteViewingAcknowledged: true,
+      remoteViewingQuestions: "",
+    });
+    reservationFindByIdAndUpdate.mockReturnValue({
+      populate: jest.fn().mockReturnThis(),
+      then: (resolve) => Promise.resolve(resolve(updatedReservation)),
+    });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439011" },
+      user: { uid: "tenant-firebase-uid" },
+      body: {
+        agreedToPrivacy: true,
+        viewingPreference: "remote_2d_viewing",
+        remoteViewingAcknowledged: true,
+        remoteViewingQuestions: "",
+      },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    userFindOne.mockResolvedValue({
+      _id: "tenant-1",
+      firebaseUid: "tenant-firebase-uid",
+      role: "applicant",
+    });
+
+    await updateReservationByUser(req, res, next);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body?.reservation?.viewingPreference).toBe("remote_2d_viewing");
+    expect(reservationFindByIdAndUpdate).toHaveBeenCalledWith(
+      "507f1f77bcf86cd799439011",
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          viewingPreference: "remote_2d_viewing",
+          viewingType: "remote_2d",
+          visitDate: null,
+          visitTime: "",
+          visitCode: null,
+          remoteViewingAcknowledged: true,
+        }),
+      }),
+      { new: true, runValidators: true },
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("tenant physical visit schedule is persisted for admin review", async () => {
+    const existingReservation = {
+      _id: "507f1f77bcf86cd799439011",
+      userId: "tenant-1",
+      roomId: "room-1",
+      status: "pending",
+      viewingPreference: null,
+      viewingType: null,
+      visitDate: null,
+      visitTime: "",
+      visitCode: null,
+      remoteViewingAcknowledged: false,
+      agreedToPrivacy: false,
+      scheduleRejected: false,
+      validIDFrontUrl: null,
+      nbiClearanceUrl: null,
+      companyIDUrl: null,
+      emergencyContact: {},
+      employment: {},
+      idType: null,
+      validIDType: null,
+    };
+    const updatedReservation = {
+      ...existingReservation,
+      status: "visit_pending",
+      userId: { _id: "tenant-1", email: "tala@example.com" },
+      roomId: { _id: "room-1", branch: "gil-puyat", name: "Room 1" },
+      viewingPreference: "physical_visit",
+      viewingType: "inperson",
+      visitDate: new Date("2099-06-01T00:00:00.000Z"),
+      visitTime: "09:00 AM",
+      visitCode: "VIS-ABC123",
+    };
+
+    reservationFindById.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockResolvedValue({ visitCode: null, visitScheduledAt: null }),
+      then: (resolve) => Promise.resolve(resolve(existingReservation)),
+    });
+    roomFindById.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockResolvedValue({ branch: "gil-puyat" }),
+    });
+    visitAvailabilityFindOne.mockResolvedValue({
+      branch: "gil-puyat",
+      enabledWeekdays: [0, 1, 2, 3, 4, 5, 6],
+      slots: [{ label: "09:00 AM", enabled: true, capacity: 5 }],
+      blackoutDates: [],
+      weekdaySystem: "js-get-day",
+    });
+    roomFind.mockReturnValue({
+      distinct: jest.fn().mockResolvedValue(["room-1"]),
+    });
+    reservationFind.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockResolvedValue([]),
+    });
+    reservationFindOne.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      lean: jest.fn().mockResolvedValue(null),
+    });
+    buildUserUpdatePayload.mockReturnValue({
+      agreedToPrivacy: true,
+      viewingPreference: "physical_visit",
+      visitDate: "2099-06-01",
+      visitTime: "09:00 AM",
+    });
+    reservationFindByIdAndUpdate.mockReturnValue({
+      populate: jest.fn().mockReturnThis(),
+      then: (resolve) => Promise.resolve(resolve(updatedReservation)),
+    });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439011" },
+      user: { uid: "tenant-firebase-uid" },
+      body: {
+        agreedToPrivacy: true,
+        viewingPreference: "physical_visit",
+        visitDate: "2099-06-01",
+        visitTime: "09:00 AM",
+      },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    userFindOne.mockResolvedValue({
+      _id: "tenant-1",
+      firebaseUid: "tenant-firebase-uid",
+      role: "applicant",
+    });
+
+    await updateReservationByUser(req, res, next);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body?.reservation?.viewingPreference).toBe("physical_visit");
+    expect(reservationFindByIdAndUpdate).toHaveBeenCalledWith(
+      "507f1f77bcf86cd799439011",
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          agreedToPrivacy: true,
+          viewingPreference: "physical_visit",
+          viewingType: "inperson",
+          visitDate: expect.any(Date),
+          visitTime: "09:00 AM",
+          visitCode: expect.stringMatching(/^VIS-/),
+          visitScheduledAt: expect.any(Date),
+          visitStatus: "physical_visit_scheduled",
+          status: "visit_pending",
+        }),
+      }),
+      { new: true, runValidators: true },
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("physical-visit applicants cannot submit the tenant application before visit clearance", async () => {
+    reservationFindById.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439012",
+      userId: "tenant-1",
+      roomId: "room-1",
+      status: "viewing_preference_selected",
+      viewingPreference: "physical_visit",
+      visitDate: new Date("2026-05-18T00:00:00.000Z"),
+      visitTime: "10:00 AM",
+      visitStatus: "physical_visit_scheduled",
+      agreedToPrivacy: true,
+      agreedToCertification: true,
+      firstName: null,
+      lastName: null,
+      mobileNumber: null,
+      selfiePhotoUrl: null,
+      emergencyContact: {},
+      validIDFrontUrl: null,
+      nbiClearanceUrl: null,
+      companyIDUrl: null,
+      idType: null,
+      validIDType: null,
+      applicationSubmittedAt: null,
+    });
+    buildUserUpdatePayload.mockReturnValue({
+      firstName: "Tala",
+      lastName: "Applicant",
+      mobileNumber: "09123456789",
+      agreedToPrivacy: true,
+      agreedToCertification: true,
+      selfiePhotoUrl: "https://example.com/selfie.jpg",
+      validIDFrontUrl: "https://example.com/id-front.jpg",
+      validIDBackUrl: "https://example.com/id-back.jpg",
+      nbiReason: "To follow",
+      companyIDReason: "Student applicant",
+      idType: "Passport",
+      validIDType: "Passport",
+      "emergencyContact.name": "Parent Contact",
+      "emergencyContact.contactNumber": "09123456789",
+    });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439012" },
+      user: { uid: "tenant-firebase-uid" },
+      body: {
+        submitApplication: true,
+        firstName: "Tala",
+        lastName: "Applicant",
+        mobileNumber: "09123456789",
+        agreedToPrivacy: true,
+        agreedToCertification: true,
+      },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    userFindOne.mockResolvedValue({
+      _id: "tenant-1",
+      firebaseUid: "tenant-firebase-uid",
+      role: "applicant",
+    });
+
+    await updateReservationByUser(req, res, next);
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body?.code).toBe("PHYSICAL_VISIT_APPLICATION_LOCKED");
+    expect(reservationFindByIdAndUpdate).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("tenant application submission requires fresh final agreements", async () => {
+    reservationFindById.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439015",
+      userId: "tenant-1",
+      roomId: "room-1",
+      status: "viewing_preference_selected",
+      viewingPreference: "remote_2d_viewing",
+      remoteViewingAcknowledged: true,
+      agreedToPrivacy: true,
+      agreedToCertification: true,
+      firstName: "Tala",
+      lastName: "Applicant",
+      mobileNumber: "09123456789",
+      birthday: new Date("1998-01-01T00:00:00.000Z"),
+      maritalStatus: "single",
+      nationality: "Filipino",
+      educationLevel: "college",
+      address: {
+        region: "NCR",
+        unitHouseNo: "Unit 1",
+        street: "Roxas Blvd",
+        province: "Metro Manila",
+        city: "Pasay",
+        barangay: "Barangay 1",
+      },
+      selfiePhotoUrl: "https://example.com/selfie.jpg",
+      emergencyContact: {
+        name: "Parent Contact",
+        relationship: "Parent",
+        contactNumber: "09123456789",
+      },
+      healthConcerns: "None",
+      employment: {
+        employerSchool: "Lilycrest Co",
+        employerAddress: "Makati",
+        occupation: "Analyst",
+      },
+      referralSource: "facebook",
+      targetMoveInDate: new Date("2099-06-01T00:00:00.000Z"),
+      estimatedMoveInTime: "09:00",
+      leaseDuration: 12,
+      workSchedule: "day",
+      validIDFrontUrl: "https://example.com/id-front.jpg",
+      validIDBackUrl: "https://example.com/id-back.jpg",
+      nbiReason: "To follow",
+      companyIDReason: "Student applicant",
+      idType: "Passport",
+      validIDType: "Passport",
+      applicationSubmittedAt: null,
+    });
+    buildUserUpdatePayload.mockReturnValue({});
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439015" },
+      user: { uid: "tenant-firebase-uid" },
+      body: { submitApplication: true },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    userFindOne.mockResolvedValue({
+      _id: "tenant-1",
+      firebaseUid: "tenant-firebase-uid",
+      role: "applicant",
+    });
+
+    await updateReservationByUser(req, res, next);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body?.code).toBe("APPLICATION_INCOMPLETE");
+    expect(res.body?.missingFields).toEqual(
+      expect.arrayContaining([
+        "privacy policy agreement",
+        "certification agreement",
+      ]),
+    );
+    expect(reservationFindByIdAndUpdate).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("admin can allow application progress without a completed physical visit", async () => {
+    const save = jest.fn().mockResolvedValue(undefined);
+    const populate = jest.fn().mockResolvedValue(undefined);
+    const reservation = {
+      _id: "507f1f77bcf86cd799439013",
+      status: "viewing_preference_selected",
+      viewingPreference: "physical_visit",
+      visitDate: new Date("2026-05-20T00:00:00.000Z"),
+      visitTime: "01:00 PM",
+      visitCode: "VIS-123456",
+      visitHistory: [],
+      roomId: { _id: "room-1", branch: "gil-puyat", roomNumber: "301", name: "Room 301" },
+      userId: {
+        _id: "tenant-1",
+        firstName: "Tala",
+        lastName: "Applicant",
+        email: "tala@example.com",
+      },
+      toObject: () => ({
+        _id: "507f1f77bcf86cd799439013",
+        status: "viewing_preference_selected",
+        viewingPreference: "physical_visit",
+      }),
+      populate,
+      save,
+    };
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockReturnThis(),
+      then: (resolve) => Promise.resolve(resolve(reservation)),
+    });
+    userFindOne.mockResolvedValue({
+      _id: "admin-1",
+      firebaseUid: "admin-uid",
+      role: "branch_admin",
+      firstName: "Branch",
+      lastName: "Admin",
+      email: "admin@example.com",
+    });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439013" },
+      body: { action: "allow_without_visit", note: "Proceed with documents first." },
+      branchFilter: "gil-puyat",
+      user: { uid: "admin-uid", email: "admin@example.com" },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await manageReservationVisit(req, res, next);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body?.reservation?.visitStatus).toBe("allowed_without_visit");
+    expect(sendPhysicalVisitStatusEmail).toHaveBeenCalled();
+    expect(save).toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["mark_visited", {}],
+    ["mark_no_show", {}],
+    ["cancel_visit", {}],
+    ["reschedule", { visitDate: "2026-05-21", visitTime: "02:00 PM" }],
+  ])("rejects normal visit action %s after completion", async (action, payload) => {
+    const save = jest.fn().mockResolvedValue(undefined);
+    const reservation = {
+      _id: "507f1f77bcf86cd799439020",
+      status: "visit_approved",
+      viewingPreference: "physical_visit",
+      visitStatus: "visit_completed",
+      visitApproved: true,
+      visitDate: new Date("2026-05-20T00:00:00.000Z"),
+      visitTime: "01:00 PM",
+      visitHistory: [],
+      roomId: { _id: "room-1", branch: "gil-puyat", roomNumber: "301", name: "Room 301" },
+      userId: {
+        _id: "tenant-1",
+        firstName: "Tala",
+        lastName: "Applicant",
+        email: "tala@example.com",
+      },
+      toObject: () => ({
+        _id: "507f1f77bcf86cd799439020",
+        status: "visit_approved",
+        viewingPreference: "physical_visit",
+        visitStatus: "visit_completed",
+        visitApproved: true,
+      }),
+      save,
+    };
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockReturnThis(),
+      then: (resolve) => Promise.resolve(resolve(reservation)),
+    });
+    userFindOne.mockResolvedValue({
+      _id: "admin-1",
+      firebaseUid: "admin-uid",
+      role: "branch_admin",
+      firstName: "Branch",
+      lastName: "Admin",
+      email: "admin@example.com",
+    });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439020" },
+      body: { action, ...payload },
+      branchFilter: "gil-puyat",
+      user: { uid: "admin-uid", email: "admin@example.com" },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await manageReservationVisit(req, res, next);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toEqual({
+      error: "Visit is already completed and cannot be changed.",
+      code: "VISIT_ALREADY_COMPLETED",
+    });
+    expect(save).not.toHaveBeenCalled();
+    expect(sendPhysicalVisitStatusEmail).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("admin can reschedule a physical visit using the reservation room branch", async () => {
+    const save = jest.fn().mockResolvedValue(undefined);
+    const populate = jest.fn().mockResolvedValue(undefined);
+    const reservation = {
+      _id: "507f1f77bcf86cd799439014",
+      status: "viewing_preference_selected",
+      viewingPreference: "physical_visit",
+      viewingType: "inperson",
+      visitDate: new Date("2026-05-20T00:00:00.000Z"),
+      visitTime: "01:00 PM",
+      visitScheduledAt: new Date("2026-05-12T00:00:00.000Z"),
+      visitHistory: [],
+      roomId: { _id: "room-1", branch: "gil-puyat", roomNumber: "301", name: "Room 301" },
+      userId: {
+        _id: "tenant-1",
+        firstName: "Tala",
+        lastName: "Applicant",
+        email: "tala@example.com",
+      },
+      toObject: () => ({
+        _id: "507f1f77bcf86cd799439014",
+        status: "viewing_preference_selected",
+        viewingPreference: "physical_visit",
+      }),
+      populate,
+      save,
+    };
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockReturnThis(),
+      then: (resolve) => Promise.resolve(resolve(reservation)),
+    });
+    userFindOne.mockResolvedValue({
+      _id: "admin-1",
+      firebaseUid: "admin-uid",
+      role: "branch_admin",
+      firstName: "Branch",
+      lastName: "Admin",
+      email: "admin@example.com",
+    });
+    visitAvailabilityFindOne.mockResolvedValue({
+      branch: "gil-puyat",
+      enabledWeekdays: [1, 2, 3, 4, 5],
+      slots: [{ label: "02:00 PM", enabled: true, capacity: 5 }],
+      blackoutDates: [],
+    });
+    roomFind.mockReturnValue({
+      distinct: jest.fn().mockResolvedValue(["room-1"]),
+    });
+    reservationFind.mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue([]),
+      }),
+    });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439014" },
+      body: {
+        action: "reschedule",
+        visitDate: "2026-05-21",
+        visitTime: "02:00 PM",
+        note: "Move to the afternoon slot.",
+      },
+      branchFilter: "gil-puyat",
+      user: { uid: "admin-uid", email: "admin@example.com" },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await manageReservationVisit(req, res, next);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body?.reservation?.visitStatus).toBe("rescheduled");
+    expect(visitAvailabilityFindOne).toHaveBeenCalledWith({ branch: "gil-puyat" });
+    expect(reservation.visitTime).toBe("02:00 PM");
+    expect(save).toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("blocks approval when a submitted document has needs_reupload precheck status", async () => {
+    const save = jest.fn().mockResolvedValue(undefined);
+    const reservation = {
+      _id: "507f1f77bcf86cd799439030",
+      status: "pending_application_review",
+      validIDFrontUrl: "https://storage.example.com/id-front.jpg",
+      validIDBackUrl: "https://storage.example.com/id-back.jpg",
+      selfiePhotoUrl: null,
+      nbiClearanceUrl: null,
+      companyIDUrl: null,
+      documentPrechecks: {
+        validIDFront: {
+          precheckStatus: "needs_reupload",
+          readabilityStatus: "unreadable",
+          documentTypeStatus: "unknown",
+          canSubmit: false,
+          applicantMessage: "ID photo is too blurry to read.",
+        },
+        validIDBack: {
+          precheckStatus: "ready_for_submission",
+          readabilityStatus: "readable",
+          documentTypeStatus: "possible_match",
+          canSubmit: true,
+        },
+      },
+      roomId: { _id: "room-1", branch: "gil-puyat" },
+      userId: { _id: "tenant-1", email: "tala@example.com" },
+      toObject: () => ({
+        status: "pending_application_review",
+        roomId: { _id: "room-1", branch: "gil-puyat" },
+      }),
+      save,
+    };
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockReturnThis(),
+      then: (resolve) => Promise.resolve(resolve(reservation)),
+    });
+    userFindOne.mockResolvedValue({
+      _id: "admin-1",
+      firebaseUid: "admin-uid",
+      role: "branch_admin",
+    });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439030" },
+      body: { status: "approved_for_payment" },
+      branchFilter: "gil-puyat",
+      adminId: "admin-1",
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await updateReservation(req, res, next);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body.code).toBe("DOCUMENT_PRECHECK_BLOCKS_APPROVAL");
+    expect(res.body.blockedDocuments).toHaveLength(1);
+    expect(res.body.blockedDocuments[0].key).toBe("valid_id_front");
+    expect(save).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("allows approval when blocked document has manual_review_fallback status", async () => {
+    const save = jest.fn().mockResolvedValue(undefined);
+    reservationFindByIdAndUpdate.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439031",
+      status: "approved_for_payment",
+      userId: { _id: "tenant-1" },
+      toObject: () => ({ status: "approved_for_payment" }),
+    });
+    const reservation = {
+      _id: "507f1f77bcf86cd799439031",
+      status: "pending_application_review",
+      validIDFrontUrl: "https://storage.example.com/id-front.jpg",
+      validIDBackUrl: null,
+      selfiePhotoUrl: null,
+      nbiClearanceUrl: null,
+      companyIDUrl: null,
+      documentPrechecks: {
+        validIDFront: {
+          precheckStatus: "manual_review_fallback",
+          readabilityStatus: "unknown",
+          documentTypeStatus: "unknown",
+          canSubmit: true,
+        },
+      },
+      roomId: { _id: "room-1", branch: "gil-puyat" },
+      userId: { _id: "tenant-1", email: "tala@example.com" },
+      toObject: () => ({
+        status: "pending_application_review",
+        roomId: { _id: "room-1", branch: "gil-puyat" },
+      }),
+      save,
+    };
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockReturnThis(),
+      then: (resolve) => Promise.resolve(resolve(reservation)),
+    });
+    userFindOne.mockResolvedValue({
+      _id: "admin-1",
+      firebaseUid: "admin-uid",
+      role: "branch_admin",
+    });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439031" },
+      body: { status: "approved_for_payment" },
+      branchFilter: "gil-puyat",
+      adminId: "admin-1",
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await updateReservation(req, res, next);
+
+    expect(res.statusCode).not.toBe(422);
+    expect(res.body?.code).not.toBe("DOCUMENT_PRECHECK_BLOCKS_APPROVAL");
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("allows application submission when visitApproved=true but visitStatus is null (old record backcompat)", async () => {
+    const save = jest.fn().mockResolvedValue(true);
+    // Simulate an old reservation: admin marked visited via boolean only, visitStatus never written
+    const reservation = {
+      _id: "507f1f77bcf86cd799439040",
+      status: "visit_approved",
+      viewingPreference: "physical_visit",
+      viewingType: "inperson",
+      visitDate: "2025-06-01",
+      visitTime: "10:00 AM",
+      visitApproved: true,
+      visitStatus: null,    // old record — field never written
+      scheduleApproved: true,
+      scheduleRejected: false,
+      applicationSubmittedAt: null,  // first submission
+      firstName: "Ana",
+      lastName: "Cruz",
+      mobileNumber: "09171234567",
+      birthday: new Date("2000-01-01"),
+      maritalStatus: "single",
+      nationality: "Filipino",
+      educationLevel: "college",
+      address: {
+        unitHouseNo: "Unit 1",
+        street: "Rizal St",
+        region: "NCR",
+        province: "Metro Manila",
+        city: "Makati",
+        barangay: "Poblacion",
+      },
+      selfiePhotoUrl: "https://firebase.example.com/selfie.jpg",
+      validIDFrontUrl: "https://firebase.example.com/id-front.jpg",
+      validIDBackUrl: "https://firebase.example.com/id-back.jpg",
+      nbiClearanceUrl: "https://firebase.example.com/nbi.jpg",
+      emergencyContact: { name: "Maria Cruz", relationship: "parent", contactNumber: "09181234567" },
+      healthConcerns: "None",
+      employment: {
+        employerSchool: "UP Manila",
+        employerAddress: "Ermita, Manila",
+        occupation: "Student",
+      },
+      referralSource: "facebook",
+      targetMoveInDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      estimatedMoveInTime: "08:00",
+      leaseDuration: 12,
+      workSchedule: "day",
+      agreedToPrivacy: true,
+      agreedToCertification: true,
+      documentPrechecks: {},
+      roomId: { _id: "room-1", branch: "gil-puyat" },
+      userId: { _id: "tenant-1", email: "ana@example.com" },
+      toObject: () => ({ status: "visit_approved", roomId: { _id: "room-1", branch: "gil-puyat" } }),
+      save,
+    };
+
+    buildUserUpdatePayload.mockReturnValue({
+      mobileNumber: "09171234567",
+      "emergencyContact.contactNumber": "09181234567",
+    });
+
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockReturnThis(),
+      then: (resolve) => Promise.resolve(resolve(reservation)),
+    });
+    reservationFindByIdAndUpdate.mockReturnValue({
+      populate: jest.fn().mockReturnThis(),
+      then: (resolve) => Promise.resolve(resolve({ ...reservation, status: "pending_application_review" })),
+    });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439040" },
+      body: {
+        submitApplication: true,
+        agreedToPrivacy: true,
+        agreedToCertification: true,
+        selfiePhotoUrl: "https://firebase.example.com/selfie.jpg",
+        validIDFrontUrl: "https://firebase.example.com/id-front.jpg",
+        validIDBackUrl: "https://firebase.example.com/id-back.jpg",
+        nbiClearanceUrl: "https://firebase.example.com/nbi.jpg",
+      },
+      userId: "tenant-1",
+      branchFilter: "gil-puyat",
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await updateReservationByUser(req, res, next);
+
+    // Must NOT block with PHYSICAL_VISIT_APPLICATION_LOCKED
+    expect(res.statusCode).not.toBe(403);
+    expect(res.body?.code).not.toBe("PHYSICAL_VISIT_APPLICATION_LOCKED");
   });
 });

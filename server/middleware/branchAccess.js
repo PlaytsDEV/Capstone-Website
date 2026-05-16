@@ -15,6 +15,7 @@
  */
 
 import { User, INQUIRY_BRANCHES } from "../models/index.js";
+import { isOwnerRole } from "../config/roles.js";
 
 /**
  * Get User's Branch and Role
@@ -34,7 +35,7 @@ export const getUserBranchInfo = async (firebaseUid) => {
   return {
     branch: user.branch,
     role: user.role,
-    isOwner: user.role === "owner",
+    isOwner: isOwnerRole(user.role),
   };
 };
 

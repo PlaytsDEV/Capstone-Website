@@ -28,6 +28,9 @@ export const SignIn = React.lazy(
 export const ForgotPassword = React.lazy(
   () => import("../features/tenant/pages/ForgotPassword.jsx"),
 );
+export const OtpVerify = React.lazy(
+  () => import("../features/tenant/pages/OtpVerify.jsx"),
+);
 export const ResetPassword = React.lazy(
   () => import("../features/tenant/pages/ResetPassword.jsx"),
 );

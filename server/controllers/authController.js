@@ -6,6 +6,7 @@
 import crypto from "crypto";
 import { getDefaultPermissionsForRole } from "../config/accessControl.js";
 import { ROOM_BRANCHES } from "../config/branches.js";
+import { isAdminRole, isOwnerRole, OWNER_ROLE_VALUES } from "../config/roles.js";
 import { sendLoginOtpEmail } from "../config/email.js";
 import { getAuth } from "../config/firebase.js";
 import {
@@ -23,14 +24,11 @@ import auditLogger from "../utils/auditLogger.js";
 
 const VALID_BRANCHES = ROOM_BRANCHES;
 const VALID_ROLES = ["applicant", "tenant", "branch_admin", "owner"];
-const ADMIN_ROLES = ["branch_admin", "owner", "superadmin"];
 const OTP_EXPIRES_MINUTES = 10;
 const OTP_EXPIRES_MS = OTP_EXPIRES_MINUTES * 60 * 1000;
 const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
 const SESSION_DURATION_MS = 24 * 60 * 60 * 1000;
-
-const isAdminRole = (role) => ADMIN_ROLES.includes(role);
 
 const getDeviceId = (req) =>
   typeof req.headers["x-device-id"] === "string"
@@ -57,7 +55,7 @@ const buildUserPayload = (user) => ({
   lastName: user.lastName,
   phone: user.phone,
   branch: user.branch,
-  role: user.role,
+  role: isOwnerRole(user.role) ? "owner" : user.role,
   permissions: user.permissions,
   isActive: user.isActive,
   isEmailVerified: user.isEmailVerified,

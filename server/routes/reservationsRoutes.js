@@ -37,6 +37,8 @@ import {
   getVisitAvailability,
   getVisitAvailabilityRules,
   getReservationById,
+  manageReservationVisit,
+  precheckReservationDocument,
   createReservation,
   updateVisitAvailabilityRules,
   updateReservation,
@@ -209,6 +211,29 @@ router.get("/my-contract", verifyToken, getMyContract);
  * @returns {Object} Reservation with populated user and room data
  */
 router.get("/:reservationId", verifyToken, getReservationById);
+
+router.post(
+  "/:reservationId/document-precheck",
+  verifyToken,
+  verifyApplicant,
+  precheckReservationDocument,
+);
+
+router.post(
+  "/:reservationId/id-validation",
+  verifyToken,
+  verifyApplicant,
+  precheckReservationDocument,
+);
+
+router.post(
+  "/:reservationId/visit-management",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageReservations"),
+  manageReservationVisit,
+);
 
 /**
  * POST /api/reservations

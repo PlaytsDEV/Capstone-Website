@@ -94,6 +94,7 @@ const {
   updatePermissions,
   deleteUser,
   restoreUser,
+  archiveUser,
   suspendUser,
   reactivateUser,
 } = await import("./usersController.js");
@@ -585,6 +586,45 @@ describe("usersController", () => {
       expect.objectContaining({
         message: "User restored successfully",
         user: targetUser,
+      }),
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("archiveUser archives accounts even when they have history", async () => {
+    const archive = jest.fn().mockResolvedValue(undefined);
+    const targetUser = {
+      _id: "507f1f77bcf86cd799439011",
+      role: "tenant",
+      isArchived: false,
+      archive,
+      toObject: () => ({ isArchived: false, accountStatus: "active" }),
+    };
+
+    userModel.findById.mockResolvedValue(targetUser);
+    userModel.findOne.mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue({ _id: "admin-1" }),
+      }),
+    });
+
+    const req = {
+      params: { userId: "507f1f77bcf86cd799439011" },
+      user: { uid: "firebase-admin-1" },
+      branchFilter: null,
+      isOwner: false,
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await archiveUser(req, res, next);
+
+    expect(archive).toHaveBeenCalledWith("admin-1");
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual(
+      expect.objectContaining({
+        message: "User archived successfully",
+        archived: true,
       }),
     );
     expect(next).not.toHaveBeenCalled();

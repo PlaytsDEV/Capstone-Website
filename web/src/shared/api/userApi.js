@@ -47,6 +47,14 @@ export const userApi = {
   },
 
   /**
+   * Archive user account (admin only)
+   */
+  archive: (userId) =>
+    authFetch(`/users/${userId}/archive`, {
+      method: "PATCH",
+    }),
+
+  /**
    * Get email by username (public - for login)
    */
   getEmailByUsername: (username) =>
@@ -81,7 +89,7 @@ export const userApi = {
     }),
 
   /**
-   * Restore archived user account (owner only)
+   * Restore archived user account (admin only)
    */
   restore: (userId) =>
     authFetch(`/users/${userId}/restore`, {

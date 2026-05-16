@@ -11,6 +11,7 @@ import {
   SignIn,
   SignUp,
   ForgotPassword,
+  OtpVerify,
   VerifyEmail,
   AuthAction,
   ResetPassword,
@@ -72,6 +73,16 @@ export function PublicRoutes() {
             <RequireNonAdmin>
               <RouteShell name="ForgotPassword">
                 <ForgotPassword />
+              </RouteShell>
+            </RequireNonAdmin>
+          }
+        />
+        <Route
+          path="/verify-otp"
+          element={
+            <RequireNonAdmin>
+              <RouteShell name="OtpVerify">
+                <OtpVerify />
               </RouteShell>
             </RequireNonAdmin>
           }

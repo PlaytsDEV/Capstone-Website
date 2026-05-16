@@ -88,8 +88,6 @@ export const validateMoveInDate = (dateStr) => {
  * Rules:
  *  1. Current status must be exactly "reserved" — no skipping the queue.
  *  2. Payment must be confirmed (paymentStatus === "paid").
- *  3. A site visit must have been approved — UNLESS the tenant is flagged
- *     as out-of-town and has previously received visitApproved via admin.
  */
 export const getMoveInBlockers = (reservation) => {
   const blockers = [];
@@ -103,14 +101,6 @@ export const getMoveInBlockers = (reservation) => {
   if (reservation.paymentStatus !== "paid") {
     blockers.push(
       "Payment must be confirmed (status: Paid) before move-in."
-    );
-  }
-
-  const visitWaived =
-    reservation.isOutOfTown === true && reservation.isOutOfTownApproved === true;
-  if (!reservation.visitApproved && !visitWaived) {
-    blockers.push(
-      "Site visit must be completed and approved by admin before move-in."
     );
   }
 
@@ -410,13 +400,16 @@ export const USER_UPDATE_FLAT_FIELDS = [
   "leaseDuration",
   "billingEmail",
   "roomConfirmed",
+  "viewingPreference",
   "viewingType",
   "visitDate",
   "visitTime",
   "visitScheduledAt",
+  "remoteViewingAcknowledged",
+  "remoteViewingQuestions",
+  "isUrgentMoveIn",
   "isOutOfTown",
   "currentLocation",
-  "visitApproved",
   "selfiePhotoUrl",
   "firstName",
   "lastName",

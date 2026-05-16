@@ -397,8 +397,8 @@ const PersonalDetailsTab = ({
  if (pendingFile) {
  setUploading(true);
  try {
- const { uploadToImageKit } = await import("../../../../shared/utils/imageUpload");
- const imageUrl = await uploadToImageKit(pendingFile);
+ const { uploadToFirebaseStorage } = await import("../../../../shared/utils/firebaseStorageUpload");
+ const { downloadUrl: imageUrl } = await uploadToFirebaseStorage(pendingFile, { documentType: "profile-photo" });
  if (imageUrl) {
  editData.profileImage = imageUrl;
  setEditData((prev) => ({ ...prev, profileImage: imageUrl }));

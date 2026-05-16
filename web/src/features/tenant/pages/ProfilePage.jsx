@@ -48,6 +48,7 @@ const ProfilePage = () => {
  const [pendingTab, setPendingTab] = useState(null);
  const [receiptModal, setReceiptModal] = useState({ open: false, step: null });
  const [selectedReservationId, setSelectedReservationId] = useState(null);
+ const [dashboardFeedback, setDashboardFeedback] = useState(null);
 
  const [profileData, setProfileData] = useState({
  firstName: "",
@@ -113,6 +114,21 @@ const ProfilePage = () => {
 
  setActiveTab(nextTab);
  }, [canViewAnnouncements, location.state]);
+
+ useEffect(() => {
+ const nextFeedback = location.state?.reservationFeedback;
+ if (!nextFeedback) return;
+
+ setDashboardFeedback(nextFeedback);
+
+ const nextState = { ...(location.state || {}) };
+ delete nextState.reservationFeedback;
+
+ navigate(location.pathname, {
+ replace: true,
+ state: Object.keys(nextState).length > 0 ? nextState : undefined,
+ });
+ }, [location.pathname, location.state, navigate]);
 
  useEffect(() => {
  if (activeTab === "announcements" && !canViewAnnouncements) {
@@ -348,13 +364,16 @@ const ProfilePage = () => {
  : activeReservations[0];
 
  const reservationProgress = getReservationProgress(selectedReservation);
- const nextAction = getNextAction(activeReservation, reservationProgress);
+ const nextAction = getNextAction(selectedReservation, reservationProgress);
 
  const isReservationConfirmed =
  selectedReservation &&
- (selectedReservation.reservationStatus === "reserved" ||
- selectedReservation.status === "reserved" ||
- selectedReservation.paymentStatus === "paid");
+ hasReservationStatus(
+ selectedReservation.reservationStatus || selectedReservation.status,
+ "reserved",
+ "moveIn",
+ "moveOut",
+ );
 
  const confirmedReservation = isReservationConfirmed
  ? selectedReservation || activeReservation
@@ -385,6 +404,8 @@ const ProfilePage = () => {
  activeReservation={activeReservation}
  selectedReservation={selectedReservation}
  visits={visits}
+ dashboardFeedback={dashboardFeedback}
+ onDismissDashboardFeedback={() => setDashboardFeedback(null)}
  nextAction={nextAction}
  onGoToPersonal={() => handleTabChange("personal")}
  />
