@@ -122,21 +122,7 @@ const EmploymentSection = ({
  maxLength={EMPLOYER_CONTACT_MAX_LENGTH}
  onChange={(e) => {
  const cleaned = e.target.value.replace(/[^0-9\s\-()+]/g, "");
-<<<<<<< HEAD
  setEmployerContact(cleaned.slice(0, EMPLOYER_CONTACT_MAX_LENGTH));
-=======
- setEmployerContact(cleaned.slice(0, 20));
- validateField("employerContact", cleaned.slice(0, 20), (value) => {
- const valid =
- !value || !String(value).trim() || validatePHPhoneOrLandline(value);
- return {
- valid,
- error: valid
- ? null
- : "Enter a valid phone number (e.g. 09123456789 or 02-1234567)",
- };
- });
->>>>>>> main
  }}
  style={{
  border: fieldErrors.employerContact

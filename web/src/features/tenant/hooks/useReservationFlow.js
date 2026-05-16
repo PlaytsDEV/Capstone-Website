@@ -219,7 +219,6 @@ const mergeReservationIntoQueryData = (currentData, updatedReservation) => {
   }
 
   return currentData;
-=======
 
 };
 
@@ -405,7 +404,6 @@ export default function useReservationFlow() {
   const isFirstRenderRef = useRef(true);
   const navigatingAwayRef = useRef(false);
 
-<<<<<<< HEAD
   useEffect(() => {
     if (!profileName.firstName && !profileName.lastName) return;
     if (!firstName && profileName.firstName) setFirstName(profileName.firstName);
@@ -489,7 +487,6 @@ export default function useReservationFlow() {
       status: reservationStatus,
     });
     if (paymentApproved) return stageId < 5;
-<<<<<<< HEAD
     if (stageId === 1) return visitCompleted;
     if (stageId === 2)
       return applicationSubmitted && !needsRevision && !scheduleRejected;
@@ -695,7 +692,6 @@ export default function useReservationFlow() {
       Boolean(r.proofOfPaymentUrl);
     const isConfirmed = hasReservationStatus(status, "reserved", "moveIn", "moveOut");
 
-<<<<<<< HEAD
     if (hasViewingPreference) setVisitCompleted(applicationUnlockedByVisit);
     if (isVisitApprovedFlag) setVisitApproved(true);
     if (r.scheduleRejected) setScheduleRejected(true);

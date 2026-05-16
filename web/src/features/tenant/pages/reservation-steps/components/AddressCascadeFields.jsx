@@ -330,15 +330,7 @@ const AddressCascadeFields = ({
  error: v?.trim() ? null : "This field is required",
  }))
  }
-<<<<<<< HEAD
  style={{ border: errBorder(showValidationErrors, addressUnitHouseNo) }}
-=======
- style={{
- border: fieldErrors.addressUnitHouseNo
- ? "1.5px solid #dc2626"
- : errBorder(showValidationErrors, addressUnitHouseNo) || "1.5px solid #999",
- }}
->>>>>>> main
  />
  {(showValidationErrors && !addressUnitHouseNo) || fieldErrors.addressUnitHouseNo ? (
  <div className="rf-field-error">
@@ -372,15 +364,7 @@ const AddressCascadeFields = ({
  error: v?.trim() ? null : "This field is required",
  }))
  }
-<<<<<<< HEAD
  style={{ border: errBorder(showValidationErrors, addressStreet) }}
-=======
- style={{
- border: fieldErrors.addressStreet
- ? "1.5px solid #dc2626"
- : errBorder(showValidationErrors, addressStreet) || "1.5px solid #999",
- }}
->>>>>>> main
  />
  {(showValidationErrors && !addressStreet) || fieldErrors.addressStreet ? (
  <div className="rf-field-error">
@@ -399,14 +383,7 @@ const AddressCascadeFields = ({
  <select
  className="form-select"
  style={{
-<<<<<<< HEAD
  border: errBorder(showValidationErrors, addressRegion),
-=======
-  ...selectStyle(false),
-  border: fieldErrors.addressRegion
-  ? "1.5px solid #dc2626"
-  : errBorder(showValidationErrors, addressRegion) || "1.5px solid #d1d5db",
->>>>>>> main
  }}
  value={selectedRegionCode}
  onChange={(e) => handleRegionChange(e.target.value)}
@@ -437,15 +414,7 @@ const AddressCascadeFields = ({
  <select
  className="form-select"
  style={{
-<<<<<<< HEAD
  border: errBorder(showValidationErrors && regionSelected, addressProvince),
-=======
-  ...selectStyle(!regionSelected),
-  border: fieldErrors.addressProvince
-  ? "1.5px solid #dc2626"
-  : errBorder(showValidationErrors && regionSelected, addressProvince) ||
-    "1.5px solid #d1d5db",
->>>>>>> main
  }}
  value={selectedProvinceCode}
  onChange={(e) => handleProvinceChange(e.target.value)}
@@ -483,15 +452,7 @@ const AddressCascadeFields = ({
  <select
  className="form-select"
  style={{
-<<<<<<< HEAD
  border: errBorder(showValidationErrors && provinceReady && regionSelected, addressCity),
-=======
-  ...selectStyle(!provinceReady || !regionSelected),
-  border: fieldErrors.addressCity
-  ? "1.5px solid #dc2626"
-  : errBorder(showValidationErrors && provinceReady && regionSelected, addressCity) ||
-    "1.5px solid #d1d5db",
->>>>>>> main
  }}
  value={selectedCityCode}
  onChange={(e) => handleCityChange(e.target.value)}
@@ -530,15 +491,7 @@ const AddressCascadeFields = ({
  <select
  className="form-select"
  style={{
-<<<<<<< HEAD
  border: errBorder(showValidationErrors && cityReady, addressBarangay),
-=======
-  ...selectStyle(!cityReady),
-  border: fieldErrors.addressBarangay
-  ? "1.5px solid #dc2626"
-  : errBorder(showValidationErrors && cityReady, addressBarangay) ||
-    "1.5px solid #d1d5db",
->>>>>>> main
  }}
  value={addressBarangay}
  onChange={(e) => handleBarangayChange(e.target.value)}

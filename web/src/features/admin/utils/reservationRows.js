@@ -69,14 +69,9 @@ export function mapReservationAdminRow(reservation) {
  cancellationStatus: reservation.cancellationStatus || null,
  cancellationReason: reservation.cancellationReason || null,
  cancellationRequestedAt: reservation.cancellationRequestedAt || null,
+ cancellationRequestedBy: reservation.cancellationRequestedBy || null,
  cancellationAdminNote: reservation.cancellationAdminNote || null,
  createdAt: reservation.createdAt,
- cancellationRequested: reservation.cancellationRequested,
- cancellationRequestedAt: reservation.cancellationRequestedAt,
- cancellationRequestedBy: reservation.cancellationRequestedBy,
- cancellationStatus: reservation.cancellationStatus,
- cancellationReason: reservation.cancellationReason,
- cancellationAdminNote: reservation.cancellationAdminNote,
  _raw: reservation,
  };
 }

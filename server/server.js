@@ -54,6 +54,7 @@ import financialRoutes from "./routes/financialRoutes.js";
 import settingsRoutes from "./routes/settingsRoutes.js";
 import analyticsRoutes from "./routes/analyticsRoutes.js";
 import branchSummaryRoutes from "./routes/branchSummaryRoutes.js";
+import backupRoutes from "./routes/backupRoutes.js";
 import { initSocket } from "./utils/socket.js";
 import mobileRoutes from "./mobile/mobileRoutes.mjs";
 
@@ -160,6 +161,22 @@ const runSchedulerStartup = async () => {
   }
 };
 
+const runBackupSchedulerStartup = async () => {
+  try {
+    const { checkAndRunAutoBackup } = await import("./controllers/backupController.js");
+    const cron = await import("node-cron");
+    // Check every hour if an auto-backup is due
+    cron.default.schedule("0 * * * *", () => {
+      checkAndRunAutoBackup().catch((err) =>
+        logger.error({ err }, "Auto-backup scheduler tick failed"),
+      );
+    });
+    logger.info("Backup scheduler started (hourly check)");
+  } catch (error) {
+    logger.error({ err: error }, "Backup scheduler startup failed");
+  }
+};
+
 const startBackgroundServices = (mongoConnected) => {
   if (!mongoConnected) {
     logger.warn(
@@ -169,7 +186,7 @@ const startBackgroundServices = (mongoConnected) => {
   }
 
   setImmediate(() => {
-    void Promise.allSettled([runPermissionBackfill(), runSchedulerStartup()]);
+    void Promise.allSettled([runPermissionBackfill(), runSchedulerStartup(), runBackupSchedulerStartup()]);
   });
 };
 
@@ -254,6 +271,7 @@ app.use("/api/financial", financialRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/branches", branchSummaryRoutes);
+app.use("/api/backups", backupRoutes);
 
 // ─── Mobile App Routes (LilyCrest-Clean backend bridge) ─────────────────────
 app.use("/api/m", mobileRoutes);

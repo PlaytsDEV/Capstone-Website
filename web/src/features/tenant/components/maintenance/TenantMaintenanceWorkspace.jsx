@@ -1084,5 +1084,4 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
       ) : null}
     </div>
   );
->>>>>>> main
 }

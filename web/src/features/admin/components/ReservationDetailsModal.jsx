@@ -1412,8 +1412,6 @@ export default function ReservationDetailsModal({
  </button>
  )}
 
-<<<<<<< HEAD
-=======
  {allowedActions.includes("approve_for_payment") && (
  <button
  className="rdm-action rdm-action-dark"
@@ -1512,8 +1510,6 @@ export default function ReservationDetailsModal({
      </button>
    </>
  )}
-
->>>>>>> main
  {allowedActions.includes("cancelled") && !cancellationPending && (
  <button
  className="rdm-action rdm-action-dark rdm-action-dark-cancel"
