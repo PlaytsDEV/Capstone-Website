@@ -1,5 +1,6 @@
 ﻿import React, { useState, useCallback, useEffect, useRef } from "react";
 import ConfirmModal from "../../../../shared/components/ConfirmModal";
+import FormScrollArrows from "../../../../shared/components/FormScrollArrows";
 import {
  PoliciesTermsModal,
  PrivacyConsentModal,
@@ -89,7 +90,8 @@ const ReservationApplicationStep = ({
  agreedToPrivacy, setAgreedToPrivacy,
  agreedToCertification, setAgreedToCertification,
  devBypassValidation, setDevBypassValidation,
- onPrev, onNext, readOnly, saveStatus,
+ onPrev, onNext, readOnly, saveStatus, saveStatusMessage,
+ draftRecoveryMessage,
  showValidationErrors, applicationSubmitted, paymentApproved,
  visitPending,
  onEditApplication, scrollToSection, onClearScrollToSection,
@@ -100,6 +102,8 @@ const ReservationApplicationStep = ({
  open: false, title: "", message: "", variant: "info", onConfirm: null,
  });
  const [fieldErrors, setFieldErrors] = useState({});
+ const isCheckingDocuments = Object.values(runningDocumentChecks || {}).some(Boolean);
+ const submitDisabled = saveStatus === "saving" || isCheckingDocuments;
 
  const sectionRefs = useRef({});
  useEffect(() => {
@@ -212,6 +216,13 @@ const ReservationApplicationStep = ({
  </div>
  )}
 
+ {draftRecoveryMessage && (
+ <div className="rf-draft-banner" role="status">
+ <div className="info-box-title">Saved draft restored</div>
+ <div className="info-text">{draftRecoveryMessage}</div>
+ </div>
+ )}
+
  {/* Locked banner — only when application is officially submitted / non-editable */}
  {readOnly && (
  <div className="rf-locked-banner">
@@ -235,7 +246,7 @@ const ReservationApplicationStep = ({
  {/* Top actions row */}
  {!readOnly && (
  <div className="rf-top-actions">
- {saveStatus && <span className="rf-save-status">{saveStatus}</span>}
+ {saveStatusMessage && <span className="rf-save-status">{saveStatusMessage}</span>}
  <button type="button" onClick={handleResetAll} className="rf-reset-btn">Reset All</button>
  {import.meta.env.DEV && (
  <button type="button" onClick={devAutoFill} className="rf-dev-fill-btn">
@@ -367,7 +378,7 @@ const ReservationApplicationStep = ({
  )}
  {!readOnly && (
  <div className="stage-buttons" style={{ justifyContent: "flex-end" }}>
- <button onClick={onNext} className="btn btn-primary">
+ <button onClick={onNext} className="btn btn-primary" disabled={submitDisabled}>
  {applicationSubmitted ? "Save Changes" : visitPending ? "Save Progress" : "Submit Application"}
  </button>
  </div>
@@ -382,6 +393,8 @@ const ReservationApplicationStep = ({
  variant={confirmModal.variant}
  confirmText={confirmModal.confirmText || "Confirm"}
  />
+
+ <FormScrollArrows />
  </div>
  );
 };

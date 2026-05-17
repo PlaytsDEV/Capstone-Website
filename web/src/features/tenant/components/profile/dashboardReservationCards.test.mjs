@@ -24,10 +24,64 @@ test("dashboard profile no longer persists viewing preference feedback cards", (
 
 test("reservation dashboard has one persistent current reservation card", () => {
   const reservationDashboard = readTenantSource("components/ReservationDashboard.jsx");
-  const progressSummaryMatches =
-    reservationDashboard.match(/Reservation Progress Summary/g) || [];
 
-  assert.equal(progressSummaryMatches.length, 1);
+  assert.equal(reservationDashboard.includes("styles.reservedStatusCard"), true);
   assert.equal(reservationDashboard.includes("Viewing Preference Saved"), false);
   assert.equal(reservationDashboard.includes("Physical Visit Status"), false);
+});
+
+test("reserved applicant dashboard does not render the old viewing-preference summary", () => {
+  const reservationDashboard = readTenantSource("components/ReservationDashboard.jsx");
+
+  assert.equal(
+    reservationDashboard.includes("{isReservedApplicant && ("),
+    true,
+  );
+  assert.equal(reservationDashboard.includes("Reservation Confirmed"), true);
+  assert.equal(
+    reservationDashboard.includes(
+      "Your room reservation has been confirmed. Please wait for further instructions from the admin.",
+    ),
+    true,
+  );
+});
+
+test("reserved applicant detail page remains applicant-mode, not tenant-mode", () => {
+  const reservationAgreementPage = readTenantSource(
+    "components/profile/ReservationAgreementPage.jsx",
+  );
+  const dashboardTab = readTenantSource("components/profile/DashboardTab.jsx");
+  const confirmationStep = readTenantSource(
+    "pages/reservation-steps/ReservationConfirmationStep.jsx",
+  );
+  const confirmationState = readTenantSource(
+    "utils/reservationConfirmationState.js",
+  );
+
+  assert.equal(
+    reservationAgreementPage.includes(
+      'const personLabel = isFullTenantReservation ? "Tenant" : "Applicant";',
+    ),
+    true,
+  );
+  assert.equal(
+    reservationAgreementPage.includes(
+      "You remain an applicant until admin completes the tenant conversion.",
+    ),
+    true,
+  );
+  assert.equal(
+    reservationAgreementPage.includes(
+      '{isFullTenantReservation ? "Payment Receipt" : "Reservation Fee Payment"}',
+    ),
+    true,
+  );
+  assert.equal(confirmationStep.includes("You're All Set!"), false);
+  assert.equal(confirmationStep.includes("Print / Download Receipt"), false);
+  assert.equal(confirmationState.includes("Room Reserved"), true);
+  assert.equal(dashboardTab.includes("canViewTenantModules &&"), true);
+  assert.equal(
+    dashboardTab.includes('profileData?.tenantStatus === "active"'),
+    true,
+  );
 });

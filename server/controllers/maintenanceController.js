@@ -147,7 +147,23 @@ const getAttachmentUri = (entry) => {
     toOptionalText(entry?.href) ||
     toOptionalText(entry?.src) ||
     toOptionalText(entry?.imageUrl) ||
+    toOptionalText(entry?.imageURL) ||
+    toOptionalText(entry?.image_url) ||
     toOptionalText(entry?.fileUrl) ||
+    toOptionalText(entry?.fileURL) ||
+    toOptionalText(entry?.file_url) ||
+    toOptionalText(entry?.downloadUrl) ||
+    toOptionalText(entry?.downloadURL) ||
+    toOptionalText(entry?.download_url) ||
+    toOptionalText(entry?.publicUrl) ||
+    toOptionalText(entry?.publicURL) ||
+    toOptionalText(entry?.public_url) ||
+    toOptionalText(entry?.secureUrl) ||
+    toOptionalText(entry?.secureURL) ||
+    toOptionalText(entry?.secure_url) ||
+    toOptionalText(entry?.mediaUrl) ||
+    toOptionalText(entry?.mediaURL) ||
+    toOptionalText(entry?.media_url) ||
     toOptionalText(entry?.path)
   );
 };
@@ -180,6 +196,8 @@ const extractAttachmentName = (entry, uri, index) =>
     ? toOptionalText(entry?.name) ||
       toOptionalText(entry?.filename) ||
       toOptionalText(entry?.fileName) ||
+      toOptionalText(entry?.originalName) ||
+      toOptionalText(entry?.originalFilename) ||
       toOptionalText(entry?.label) ||
       toOptionalText(entry?.title)
     : null) || deriveAttachmentName(uri || "", index);
@@ -201,7 +219,7 @@ const normalizeAttachmentEntry = (entry, index = 0) => {
       uri,
       fallbackType:
         typeof entry === "object" && entry
-          ? entry?.type || entry?.mimeType || entry?.mime
+          ? entry?.type || entry?.mimeType || entry?.mime || entry?.contentType
           : null,
     }),
   };
@@ -228,7 +246,7 @@ const sanitizeAttachmentForOutput = (entry, index = 0) => {
       uri: safeUri || "",
       fallbackType:
         typeof entry === "object" && entry
-          ? entry?.type || entry?.mimeType || entry?.mime
+          ? entry?.type || entry?.mimeType || entry?.mime || entry?.contentType
           : null,
     }),
   };

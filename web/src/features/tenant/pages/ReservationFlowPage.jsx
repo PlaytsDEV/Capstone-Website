@@ -201,32 +201,37 @@ function ReservationFlowPage() {
               readOnly={flow.isStageLocked(2)}
               viewingPreferenceAccess={flow.viewingPreferenceStepAccess}
               forceEditMode={flow.forceEditMode}
-                onSaveVisit={async () => {
-                  if (!flow.viewingPreferenceStepAccess.canSubmit) {
-                    flow.notifyViewingPreferenceLocked();
-                    return null;
-                  }
-                  const viewingPreference = flow.viewingType;
-                  const isPhysicalVisit = viewingPreference === "physical_visit";
-                  const result = await flow.updateReservationDraft({
-                    agreedToPrivacy: true,
-                    viewingPreference,
-                    remoteViewingAcknowledged:
-                      viewingPreference === "remote_2d_viewing"
+              onValidatePreferenceChange={flow.validateViewingPreferenceChange}
+              onSaveVisit={async () => {
+                if (!flow.viewingPreferenceStepAccess.canSubmit) {
+                  flow.notifyViewingPreferenceLocked();
+                  return null;
+                }
+                const viewingPreference = flow.viewingType;
+                if (!viewingPreference) {
+                  showNotification("Please choose a viewing preference before submitting.", "error", 3000);
+                  return null;
+                }
+                const isPhysicalVisit = viewingPreference === "physical_visit";
+                const result = await flow.updateReservationDraft({
+                  agreedToPrivacy: true,
+                  viewingPreference,
+                  remoteViewingAcknowledged:
+                    viewingPreference === "remote_2d_viewing"
                       ? flow.remoteViewingAcknowledged
                       : false,
-                    remoteViewingQuestions:
-                      viewingPreference === "remote_2d_viewing"
-                        ? flow.remoteViewingQuestions
-                        : "",
-                    isUrgentMoveIn: viewingPreference === "urgent_move_in_review",
-                    ...(isPhysicalVisit
-                      ? {
-                          visitDate: flow.visitDate,
-                          visitTime: flow.visitTime,
-                        }
-                      : {}),
-                  });
+                  remoteViewingQuestions:
+                    viewingPreference === "remote_2d_viewing"
+                      ? flow.remoteViewingQuestions
+                      : "",
+                  isUrgentMoveIn: viewingPreference === "urgent_move_in_review",
+                  ...(isPhysicalVisit
+                    ? {
+                        visitDate: flow.visitDate,
+                        visitTime: flow.visitTime,
+                      }
+                    : {}),
+                });
                 let resolvedCode = result?.visitCode || flow.visitCode || null;
                 const reservationId = result?._id || flow.reservationId || null;
 
@@ -288,8 +293,8 @@ function ReservationFlowPage() {
                   flow.setVisitCompleted(false);
                   flow.setHighestStageReached((prev) => Math.max(prev, 2));
                 } else {
-                  flow.setVisitCompleted(true);
-                  flow.setHighestStageReached((prev) => Math.max(prev, 3));
+                  flow.setVisitCompleted(false);
+                  flow.setHighestStageReached((prev) => Math.max(prev, 2));
                 }
                 // Background re-fetch to sync with authoritative server state.
                 flow.queryClient.invalidateQueries({ queryKey: ["reservations"] });
@@ -410,6 +415,8 @@ function ReservationFlowPage() {
                   devBypassValidation: flow.devBypassValidation,
                   setDevBypassValidation: flow.setDevBypassValidation,
                   saveStatus: flow.saveStatus,
+                  saveStatusMessage: flow.saveStatusMessage,
+                  draftRecoveryMessage: flow.draftRecoveryMessage,
                   showValidationErrors: flow.showValidationErrors,
                   applicationSubmitted: flow.applicationSubmitted,
                   paymentApproved: flow.paymentApproved,
@@ -497,6 +504,7 @@ function ReservationFlowPage() {
                 reservationCode: flow.reservationCode,
                 reservationData: flow.reservationData,
                 paymentMethod: flow.paymentMethod,
+                paymentApproved: flow.paymentApproved,
                 visitDate: flow.visitDate,
                 visitTime: flow.visitTime,
                 leaseDuration: flow.leaseDuration,

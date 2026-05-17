@@ -15,6 +15,123 @@ const COLLECTIONS = [...new Set([PRIMARY_COLLECTION, LEGACY_COLLECTION])];
 const ACTIVE_RESERVATION_STATUSES = ['moveIn', 'active', 'completed', 'confirmed'];
 const VALID_URGENCIES = ['low', 'normal', 'high'];
 const VALID_STATUSES = ['pending', 'viewed', 'in_progress', 'resolved', 'completed', 'rejected', 'cancelled'];
+const IMAGE_FILE_PATTERN = /\.(avif|bmp|gif|heic|jpeg|jpg|png|svg|webp)(?:$|[?#])/i;
+const PDF_FILE_PATTERN = /\.pdf(?:$|[?#])/i;
+
+function attachmentText(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function pickAttachmentText(...values) {
+  for (const value of values) {
+    const text = attachmentText(value);
+    if (text) return text;
+  }
+  return '';
+}
+
+function getAttachmentUri(entry) {
+  if (typeof entry === 'string') {
+    return attachmentText(entry);
+  }
+
+  return pickAttachmentText(
+    entry?.uri,
+    entry?.url,
+    entry?.href,
+    entry?.src,
+    entry?.imageUrl,
+    entry?.imageURL,
+    entry?.image_url,
+    entry?.fileUrl,
+    entry?.fileURL,
+    entry?.file_url,
+    entry?.downloadUrl,
+    entry?.downloadURL,
+    entry?.download_url,
+    entry?.publicUrl,
+    entry?.publicURL,
+    entry?.public_url,
+    entry?.secureUrl,
+    entry?.secureURL,
+    entry?.secure_url,
+    entry?.mediaUrl,
+    entry?.mediaURL,
+    entry?.media_url,
+    entry?.path,
+  );
+}
+
+function isRemoteUri(uri) {
+  try {
+    const { protocol } = new URL(uri);
+    return protocol === 'https:' || protocol === 'http:';
+  } catch (_) {
+    return false;
+  }
+}
+
+function deriveAttachmentName(uri, index = 0) {
+  if (!uri) return `Attachment ${index + 1}`;
+
+  try {
+    const parsedUrl = new URL(uri, 'https://placeholder.local');
+    const candidate = parsedUrl.pathname.split('/').filter(Boolean).pop();
+    return attachmentText(candidate ? decodeURIComponent(candidate) : '') || `Attachment ${index + 1}`;
+  } catch (_) {
+    const candidate = String(uri).split(/[/?#]/).filter(Boolean).pop();
+    return attachmentText(candidate) || `Attachment ${index + 1}`;
+  }
+}
+
+function getAttachmentName(entry, uri, index = 0) {
+  if (typeof entry !== 'object' || !entry) {
+    return deriveAttachmentName(uri, index);
+  }
+
+  return pickAttachmentText(
+    entry.name,
+    entry.filename,
+    entry.fileName,
+    entry.originalName,
+    entry.originalFilename,
+    entry.label,
+    entry.title,
+    deriveAttachmentName(uri, index),
+  );
+}
+
+function inferAttachmentType(entry, name, uri) {
+  const explicitType = typeof entry === 'object' && entry
+    ? pickAttachmentText(entry.type, entry.mimeType, entry.mime, entry.contentType)
+    : '';
+  if (explicitType) return explicitType;
+
+  const source = `${name || ''} ${uri || ''}`.toLowerCase();
+  if (PDF_FILE_PATTERN.test(source)) return 'application/pdf';
+  if (IMAGE_FILE_PATTERN.test(source)) return 'image/*';
+  return 'application/octet-stream';
+}
+
+function normalizeAttachmentEntry(entry, index = 0) {
+  const uri = getAttachmentUri(entry);
+  if (!uri || !isRemoteUri(uri)) return null;
+
+  const name = getAttachmentName(entry, uri, index);
+  return {
+    name,
+    uri,
+    type: inferAttachmentType(entry, name, uri),
+  };
+}
+
+function normalizeAttachmentList(attachments) {
+  return Array.isArray(attachments)
+    ? attachments
+      .map((entry, index) => normalizeAttachmentEntry(entry, index))
+      .filter(Boolean)
+    : [];
+}
 
 function asObjectId(value) {
   if (!value) return null;
@@ -72,7 +189,7 @@ function normalizeRequestForPrimary(request, user = {}) {
   normalized.notes = normalized.notes ?? null;
   normalized.reopen_note = normalized.reopen_note ?? null;
 
-  normalized.attachments = Array.isArray(normalized.attachments) ? normalized.attachments : [];
+  normalized.attachments = normalizeAttachmentList(normalized.attachments);
   normalized.reopen_history = Array.isArray(normalized.reopen_history) ? normalized.reopen_history : [];
   normalized.statusHistory = Array.isArray(normalized.statusHistory) ? normalized.statusHistory : [];
 
@@ -297,15 +414,7 @@ async function createMaintenance(req, res) {
     }
 
     const urgency = VALID_URGENCIES.includes(urgencyRaw) ? urgencyRaw : 'normal';
-    const attachments = Array.isArray(attachmentsRaw)
-      ? attachmentsRaw
-        .map((entry) => ({
-          name: typeof entry?.name === 'string' ? entry.name.trim() : '',
-          uri: typeof entry?.uri === 'string' ? entry.uri.trim() : '',
-          type: typeof entry?.type === 'string' ? entry.type.trim() : '',
-        }))
-        .filter((entry) => entry.name && entry.uri && entry.type)
-      : [];
+    const attachments = normalizeAttachmentList(attachmentsRaw);
 
     const tenantContext = await resolveTenantContext(db, req.user);
     const now = new Date();

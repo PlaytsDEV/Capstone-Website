@@ -20,15 +20,23 @@ import {
  ChevronLeft,
  Users,
  DoorOpen,
+ AlertCircle,
 } from "lucide-react";
 import dayjs from "dayjs";
+import { useQueryClient } from "@tanstack/react-query";
 import { generateDepositReceipt, viewDepositReceipt } from "../../../../shared/utils/receiptGenerator";
 import { useCurrentUser } from "../../../../shared/hooks/queries/useUsers";
+import { reservationApi } from "../../../../shared/api/reservationApi";
+import { showNotification } from "../../../../shared/utils/notification";
 import {
  canReservationAccessPayment,
  hasReservationStatus,
  readMoveInDate,
 } from "../../../../shared/utils/lifecycleNaming";
+import {
+ RESERVATION_FEE_NON_REFUNDABLE_NOTICE,
+ getReservationCancellationUiState,
+} from "./reservationCancellationUi";
 
 /* ── Ordinal suffix helper ────────────────────────── */
 function ordinal(n) {
@@ -64,10 +72,15 @@ function getAmenityIcon(amenity) {
 }
 
 /* ── Main Component ────────────────────────────────── */
-const ReservationAgreementPage = ({ reservation, onBack }) => {
+const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated }) => {
  const navigate = useNavigate();
+ const queryClient = useQueryClient();
  const { data: profile } = useCurrentUser();
  const [selectedImage, setSelectedImage] = useState(0);
+ const [showCancellationModal, setShowCancellationModal] = useState(false);
+ const [isRequestingCancellation, setIsRequestingCancellation] = useState(false);
+ const [cancellationReason, setCancellationReason] = useState("");
+ const [acknowledgedCancellationPolicy, setAcknowledgedCancellationPolicy] = useState(false);
 
  if (!reservation) {
  return (
@@ -115,10 +128,16 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
  const moveInDateLabel = moveInDate
  ? dayjs(moveInDate).format("MMMM D, YYYY")
  : "TBD";
- const tenantName =
- `${profile?.firstName || reservation.firstName || ""} ${profile?.lastName || reservation.lastName || ""}`.trim() ||
- "Tenant";
  const reservationStatus = reservation.reservationStatus || reservation.status || "pending";
+ const isFullTenantReservation = hasReservationStatus(reservationStatus, "moveIn", "moveOut");
+ const isReservedApplicant =
+ hasReservationStatus(reservationStatus, "reserved") && !isFullTenantReservation;
+ const personLabel = isFullTenantReservation ? "Tenant" : "Applicant";
+ const personName =
+ `${profile?.firstName || reservation.firstName || ""} ${profile?.lastName || reservation.lastName || ""}`.trim() ||
+ personLabel;
+ const reservationFeeLabel = isFullTenantReservation ? "Deposit" : "Reservation Fee";
+ const paymentDescriptor = isFullTenantReservation ? "deposit" : "reservation fee";
  const statusDisplay = (() => {
  const s = reservationStatus;
  if (s === "cancelled") return { label: "Cancelled", bg: "#EF4444" };
@@ -150,6 +169,7 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
  const paymentDate = reservation.paymentDate
  ? dayjs(reservation.paymentDate).format("MMMM D, YYYY")
  : null;
+ const cancellationUi = getReservationCancellationUiState(reservation);
  const branchDisplay =
  room.branch === "gil-puyat" ? "Gil Puyat" : room.branch === "guadalupe" ? "Guadalupe" : room.branch || "—";
  const roomType =
@@ -182,6 +202,54 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
  padding: "10px 0",
  borderBottom: "1px solid var(--border-subtle, rgba(255,255,255,0.06))",
  fontSize: 13,
+ };
+
+ const resetCancellationModal = () => {
+ setShowCancellationModal(false);
+ setCancellationReason("");
+ setAcknowledgedCancellationPolicy(false);
+ };
+
+ const handleRequestCancellation = async () => {
+ if (!reservation?._id || isRequestingCancellation) return;
+ if (!acknowledgedCancellationPolicy) {
+ showNotification("Please acknowledge that the reservation fee is non-refundable.", "warning", 4000);
+ return;
+ }
+
+ setIsRequestingCancellation(true);
+ try {
+ await reservationApi.requestCancellation(reservation._id, cancellationReason.trim());
+ resetCancellationModal();
+ showNotification(
+ "Cancellation request submitted. Your reservation fee is non-refundable and the request is pending admin review.",
+ "success",
+ 5000,
+ );
+ await Promise.all([
+ queryClient.invalidateQueries({ queryKey: ["reservations"] }),
+ queryClient.invalidateQueries({ queryKey: ["users", "currentUser"] }),
+ ]);
+ await onReservationUpdated?.();
+ } catch (error) {
+ const errorCode = error?.response?.data?.code;
+ if (errorCode === "CANCELLATION_REQUEST_ALREADY_PENDING") {
+ resetCancellationModal();
+ showNotification("Cancellation request is already pending admin review.", "info", 5000);
+ await queryClient.invalidateQueries({ queryKey: ["reservations"] });
+ await onReservationUpdated?.();
+ return;
+ }
+
+ console.error("Cancellation request failed:", error);
+ showNotification(
+ error?.message || "Failed to submit cancellation request. Please try again.",
+ "error",
+ 5000,
+ );
+ } finally {
+ setIsRequestingCancellation(false);
+ }
  };
 
  return (
@@ -280,6 +348,45 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
  </div>
 
  {/* ── Two Column Layout ──────────────────────── */}
+ {isReservedApplicant && (
+ <div
+ style={{
+ ...card,
+ background: "#F0FDF4",
+ borderColor: "#BBF7D0",
+ display: "flex",
+ alignItems: "flex-start",
+ gap: 12,
+ }}
+ >
+ <div
+ style={{
+ width: 40,
+ height: 40,
+ borderRadius: 999,
+ background: "#DCFCE7",
+ display: "flex",
+ alignItems: "center",
+ justifyContent: "center",
+ flexShrink: 0,
+ }}
+ >
+ <ShieldCheck size={20} color="#047857" />
+ </div>
+ <div>
+ <h2 style={{ fontSize: 18, fontWeight: 700, color: "#065F46", margin: "0 0 6px" }}>
+ Room Reserved
+ </h2>
+ <p style={{ color: "#166534", fontSize: 13, lineHeight: 1.6, margin: 0 }}>
+ Your room reservation has been confirmed. Please wait for further instructions from the admin.
+ </p>
+ <p style={{ color: "#047857", fontSize: 12, lineHeight: 1.6, margin: "8px 0 0" }}>
+ You remain an applicant until admin completes the tenant conversion.
+ </p>
+ </div>
+ </div>
+ )}
+
  <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
  {/* LEFT: Room Details ────────────────────────── */}
  <div style={{ flex: "1 1 520px", minWidth: 300 }}>
@@ -464,7 +571,7 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
  <div style={card}>
  <h3 style={sectionTitle}>Reservation Summary</h3>
  {[
- { label: "Tenant", value: tenantName },
+ { label: personLabel, value: personName },
  { label: "Booked On", value: bookedOn },
  { label: "Move-in Date", value: moveInDateLabel },
  { label: "Lease Duration", value: `${reservation.leaseDuration || 12} months` },
@@ -474,7 +581,7 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
  highlight: true,
  },
  {
- label: "Deposit",
+ label: reservationFeeLabel,
  value: paymentDate ? `PHP ${reservationFeeAmount.toLocaleString("en-PH")} — Paid ✓` : "Pending",
  paid: !!paymentDate,
  },
@@ -497,14 +604,16 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
  <div style={{ ...card, background: "var(--surface-muted, #F8FAFC)" }}>
  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
  <FileText size={16} color="#475569" />
- <h3 style={{ ...sectionTitle, margin: 0 }}>Payment Receipt</h3>
+ <h3 style={{ ...sectionTitle, margin: 0 }}>
+ {isFullTenantReservation ? "Payment Receipt" : "Reservation Fee Payment"}
+ </h3>
  </div>
 
  {paymentDate ? (
  <>
  <p style={{ color: "#475569", fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
- Your deposit payment of <strong>{`PHP ${reservationFeeAmount.toLocaleString("en-PH")}`}</strong> was confirmed on{" "}
- <strong>{paymentDate}</strong>. Download or view your official receipt below.
+ Your {paymentDescriptor} payment of <strong>{`PHP ${reservationFeeAmount.toLocaleString("en-PH")}`}</strong> was confirmed on{" "}
+ <strong>{paymentDate}</strong>.
  </p>
  <div style={{ display: "flex", gap: 10 }}>
  <button
@@ -573,8 +682,202 @@ const ReservationAgreementPage = ({ reservation, onBack }) => {
  </p>
  )}
  </div>
+
+ {/* Cancellation Request Card */}
+ {cancellationUi.visible && (
+ <div style={{ ...card, borderColor: cancellationUi.isPending ? "#F59E0B" : "#FECACA" }}>
+ <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 12 }}>
+ <AlertCircle size={18} color={cancellationUi.isPending ? "#D97706" : "#DC2626"} style={{ marginTop: 1 }} />
+ <div>
+ <h3 style={{ ...sectionTitle, margin: 0 }}>
+ {cancellationUi.isPending ? "Cancellation Request Pending" : "Request Reservation Cancellation"}
+ </h3>
+ <p style={{ color: "#64748B", fontSize: 13, lineHeight: 1.6, margin: "8px 0 0" }}>
+ {cancellationUi.isPending
+ ? "Your cancellation request is waiting for admin review. Your bed remains reserved until admin approves the request."
+ : RESERVATION_FEE_NON_REFUNDABLE_NOTICE}
+ </p>
  </div>
  </div>
+
+ {cancellationUi.isPending ? (
+ <div
+ style={{
+ borderRadius: 8,
+ background: "#FFFBEB",
+ color: "#92400E",
+ padding: "10px 12px",
+ fontSize: 13,
+ fontWeight: 600,
+ }}
+ >
+ Pending admin review
+ </div>
+ ) : (
+ <button
+ type="button"
+ onClick={() => setShowCancellationModal(true)}
+ style={{
+ width: "100%",
+ padding: "11px 16px",
+ background: "#DC2626",
+ color: "#fff",
+ border: "none",
+ borderRadius: 8,
+ fontSize: 13,
+ fontWeight: 700,
+ cursor: "pointer",
+ }}
+ >
+ Request Cancellation
+ </button>
+ )}
+ </div>
+ )}
+ </div>
+ </div>
+ {showCancellationModal && (
+ <div
+ onClick={() => {
+ if (!isRequestingCancellation) resetCancellationModal();
+ }}
+ style={{
+ position: "fixed",
+ inset: 0,
+ background: "rgba(15, 23, 42, 0.55)",
+ display: "flex",
+ alignItems: "center",
+ justifyContent: "center",
+ padding: 20,
+ zIndex: 1000,
+ }}
+ >
+ <div
+ onClick={(event) => event.stopPropagation()}
+ style={{
+ width: "min(520px, 100%)",
+ background: "#fff",
+ borderRadius: 14,
+ boxShadow: "0 24px 60px rgba(15, 23, 42, 0.22)",
+ padding: 24,
+ }}
+ >
+ <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 14 }}>
+ <div
+ style={{
+ width: 42,
+ height: 42,
+ borderRadius: 12,
+ background: "#FEF2F2",
+ color: "#DC2626",
+ display: "grid",
+ placeItems: "center",
+ flexShrink: 0,
+ }}
+ >
+ <AlertCircle size={22} />
+ </div>
+ <div>
+ <h3 style={{ margin: "0 0 6px", fontSize: 18, color: "#0A1628" }}>
+ Request reservation cancellation?
+ </h3>
+ <p style={{ margin: 0, color: "#475569", fontSize: 13, lineHeight: 1.6 }}>
+ {RESERVATION_FEE_NON_REFUNDABLE_NOTICE} Your bed will only be released if admin approves your request.
+ </p>
+ </div>
+ </div>
+
+ <label style={{ display: "block", marginTop: 16 }}>
+ <span style={{ display: "block", color: "#334155", fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
+ Reason for cancellation (optional)
+ </span>
+ <textarea
+ rows={4}
+ value={cancellationReason}
+ onChange={(event) => setCancellationReason(event.target.value)}
+ disabled={isRequestingCancellation}
+ placeholder="Share a short reason for admin review."
+ style={{
+ width: "100%",
+ resize: "vertical",
+ border: "1px solid #CBD5E1",
+ borderRadius: 10,
+ padding: "10px 12px",
+ fontSize: 13,
+ color: "#0F172A",
+ outline: "none",
+ boxSizing: "border-box",
+ }}
+ />
+ </label>
+
+ <label
+ style={{
+ display: "flex",
+ gap: 10,
+ alignItems: "flex-start",
+ marginTop: 14,
+ padding: "12px 14px",
+ background: "#FFF7ED",
+ border: "1px solid #FED7AA",
+ borderRadius: 10,
+ color: "#7C2D12",
+ fontSize: 13,
+ lineHeight: 1.5,
+ }}
+ >
+ <input
+ type="checkbox"
+ checked={acknowledgedCancellationPolicy}
+ onChange={(event) => setAcknowledgedCancellationPolicy(event.target.checked)}
+ disabled={isRequestingCancellation}
+ style={{ marginTop: 3 }}
+ />
+ <span>
+ I understand that the reservation fee is non-refundable even if my cancellation request is approved.
+ </span>
+ </label>
+
+ <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
+ <button
+ type="button"
+ onClick={resetCancellationModal}
+ disabled={isRequestingCancellation}
+ style={{
+ padding: "10px 16px",
+ borderRadius: 8,
+ border: "1px solid #CBD5E1",
+ background: "#fff",
+ color: "#334155",
+ fontSize: 13,
+ fontWeight: 700,
+ cursor: isRequestingCancellation ? "default" : "pointer",
+ }}
+ >
+ Keep Reservation
+ </button>
+ <button
+ type="button"
+ onClick={handleRequestCancellation}
+ disabled={isRequestingCancellation || !acknowledgedCancellationPolicy}
+ style={{
+ padding: "10px 16px",
+ borderRadius: 8,
+ border: "none",
+ background: "#DC2626",
+ color: "#fff",
+ fontSize: 13,
+ fontWeight: 700,
+ cursor: isRequestingCancellation || !acknowledgedCancellationPolicy ? "default" : "pointer",
+ opacity: isRequestingCancellation || !acknowledgedCancellationPolicy ? 0.6 : 1,
+ }}
+ >
+ {isRequestingCancellation ? "Submitting..." : "Submit Request"}
+ </button>
+ </div>
+ </div>
+ </div>
+ )}
  </div>
  );
 };

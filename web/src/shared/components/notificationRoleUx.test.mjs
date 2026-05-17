@@ -12,9 +12,11 @@ const readSharedSource = (relativePath) =>
 
 test("applicant tenant shell exposes notification bell and sidebar badge", () => {
   const tenantLayout = readSharedSource("layouts/TenantLayout.jsx");
+  const applicantTopBar = readSharedSource("components/ApplicantTopBar.jsx");
   const sidebar = readSharedSource("components/Sidebar.jsx");
 
-  assert.match(tenantLayout, /<NotificationBell \/>/);
+  assert.match(tenantLayout, /<ApplicantTopBar /);
+  assert.match(applicantTopBar, /<NotificationBell \/>/);
   assert.match(sidebar, /useUnreadCount\(\)/);
   assert.match(sidebar, /item\.id === "notifications"/);
   assert.match(sidebar, /sidebarUnreadCount/);

@@ -3,16 +3,12 @@ import { Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import useSocketClient from "../hooks/useSocketClient";
 import Sidebar from "../components/Sidebar";
-import NotificationBell from "../components/NotificationBell";
+import ApplicantTopBar from "../components/ApplicantTopBar";
 import RouteTransitionBoundary from "../components/RouteTransitionBoundary";
 import AccountBlockedBanner from "../components/AccountBlockedBanner";
 import { useRouteFlash } from "../hooks/useRouteFlash";
 import "./TenantLayout.css";
 
-/**
- * TenantLayout - Layout wrapper for tenant portal pages
- * Provides the restored resident sidebar shell and route content area
- */
 const TenantLayout = ({ children }) => {
   const { user } = useAuth();
   const location = useLocation();
@@ -49,9 +45,7 @@ const TenantLayout = ({ children }) => {
           sidebarCollapsed ? "sidebar-collapsed" : ""
         }`}
       >
-        <div className="tenant-topbar">
-          <NotificationBell />
-        </div>
+        <ApplicantTopBar onOpenSidebar={() => setSidebarOpen(true)} />
         <main ref={contentRef} className="tenant-content">
           {(user?.accountStatus === "suspended" ||
             user?.accountStatus === "banned") && (

@@ -31,6 +31,8 @@ const DashboardTab = ({
  const res = selectedReservation;
  const room = res?.roomId || {};
  const roomName = room.name;
+ const canViewTenantModules =
+ profileData?.role === "tenant" || profileData?.tenantStatus === "active";
 
  // Responsive: detect if we're on mobile
  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768);
@@ -142,6 +144,7 @@ const DashboardTab = ({
  <ChevronRight size={18} color={shortcutChevronColor} />
  </button>
 
+ {canViewTenantModules && (
  <button
  type="button"
  onClick={() => navigate("/applicant/billing")}
@@ -161,6 +164,7 @@ const DashboardTab = ({
  </span>
  <ChevronRight size={18} color={shortcutChevronColor} />
  </button>
+ )}
  </div>
  </div>
 

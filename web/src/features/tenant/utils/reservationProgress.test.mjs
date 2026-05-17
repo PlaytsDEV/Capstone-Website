@@ -56,6 +56,45 @@ test("approved applications point applicants to payment", () => {
   assert.equal(nextAction.step, 4);
 });
 
+test("reserved applicant progress uses reserved applicant wording", () => {
+  const reservation = {
+    ...baseReservation,
+    status: "reserved",
+    paymentStatus: "paid",
+    paymentDate: "2026-05-10T00:00:00.000Z",
+  };
+
+  const progress = getReservationProgress(reservation);
+  const nextAction = getNextAction(reservation, progress);
+  const reservedStep = progress.steps.find((step) => step.step === "reserved");
+
+  assert.equal(progress.currentStep, "reserved");
+  assert.equal(reservedStep.status, "completed");
+  assert.equal(reservedStep.title, "6. Room Reserved");
+  assert.equal(reservedStep.description, "Room reservation confirmed");
+  assert.equal(nextAction.title, "Room Reserved");
+  assert.equal(
+    nextAction.description,
+    "Your room reservation has been confirmed. Please wait for further instructions from the admin.",
+  );
+  assert.equal(nextAction.buttonText, "View Reservation Status");
+});
+
+test("moved-in reservations keep tenant-stage wording separate from reserved applicants", () => {
+  const reservation = {
+    ...baseReservation,
+    status: "moveIn",
+    paymentStatus: "paid",
+  };
+
+  const progress = getReservationProgress(reservation);
+  const nextAction = getNextAction(reservation, progress);
+
+  assert.equal(progress.currentStep, "reserved");
+  assert.equal(nextAction.title, "Tenant Stay Active");
+  assert.equal(nextAction.description, "Your tenant stay is active.");
+});
+
 test("revision requests route applicants back to the application", () => {
   const reservation = {
     ...baseReservation,

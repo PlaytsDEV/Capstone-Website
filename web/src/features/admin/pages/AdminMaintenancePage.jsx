@@ -785,6 +785,18 @@ export default function AdminMaintenancePage() {
  const handleSubmitUpdate = async (event) => {
  event.preventDefault();
  if (!selectedRequest) return;
+ if (uploadingUpdateAttachment) {
+ showNotification("Please wait for the attachment upload to finish.", "warning");
+ return;
+ }
+
+ const workLogAttachments = normalizeMaintenanceAttachments(draftWorkLogAttachments)
+ .filter((attachment) => isRemoteUri(getMaintenanceAttachmentUri(attachment)));
+
+ if (draftWorkLogAttachments.length > 0 && workLogAttachments.length === 0) {
+ showNotification("Please upload the progress attachment again before saving.", "error");
+ return;
+ }
 
  try {
  await updateRequestMutation.mutateAsync({
@@ -794,7 +806,7 @@ export default function AdminMaintenancePage() {
  notes: draftNotes,
  assigned_to: draftAssignedTo,
  work_log_note: draftWorkLogNote,
- work_log_attachments: draftWorkLogAttachments,
+ work_log_attachments: workLogAttachments,
  },
  });
  showNotification("Maintenance request updated.", "success");
@@ -1394,7 +1406,7 @@ export default function AdminMaintenancePage() {
  <span className="block truncate text-sm font-medium text-card-foreground">
  {attachmentName}
  </span>
- <span className="text-xs text-destructive">Photo unavailable</span>
+ <span className="text-xs text-destructive">Attachment unavailable</span>
  </div>
  </div>
  );
@@ -1549,7 +1561,7 @@ export default function AdminMaintenancePage() {
  <span className="block truncate text-sm font-medium text-card-foreground">
  {attachmentName}
  </span>
- <span className="text-xs text-destructive">Photo unavailable</span>
+ <span className="text-xs text-destructive">Attachment unavailable</span>
  </div>
  </div>
  );

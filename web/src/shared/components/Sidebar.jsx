@@ -10,7 +10,6 @@ import {
  LayoutDashboard,
  LogOut,
  Megaphone,
- Menu,
  Search,
  Settings,
  User,
@@ -22,10 +21,8 @@ import { useAppNavigation } from "../hooks/useAppNavigation";
 import { useUnreadCount } from "../hooks/queries/useNotifications";
 import { USER_ROLES } from "../utils/constants";
 import ConfirmModal from "./ConfirmModal";
-import NotificationBell from "./NotificationBell";
 import { showNotification } from "../utils/notification";
 import { buildSignOutSuccessFlash } from "../utils/authToasts";
-import ProfileAvatar, { getProfileInitials } from "./ProfileAvatar";
 
 const MOBILE_BP = 768;
 const TRANSITION = "0.24s cubic-bezier(0.22, 1, 0.36, 1)";
@@ -139,20 +136,6 @@ const styles = {
  overflow: "hidden",
  zIndex: 10,
  }),
- mobileTopbar: {
- position: "fixed",
- top: 0,
- left: 0,
- right: 0,
- height: 56,
- backgroundColor: "var(--surface-sidebar, #F8FAFC)",
- borderBottom: "1px solid var(--border-subtle, #E2E8F0)",
- display: "flex",
- alignItems: "center",
- padding: "0 16px",
- gap: 12,
- zIndex: 40,
- },
  mobileDrawer: (open) => ({
  position: "fixed",
  top: 0,
@@ -192,10 +175,6 @@ function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleCollapse }) {
  const sidebarUnreadCount = unreadData?.unreadCount ?? 0;
 
  const currentTab = location.state?.tab || "dashboard";
- const fullName =
- `${user?.firstName || ""} ${user?.lastName || ""}`.trim() || "User";
- const email = user?.email || "";
- const initials = getProfileInitials(user, "U");
 
  useEffect(() => {
  const handleResize = () => {
@@ -341,55 +320,6 @@ function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleCollapse }) {
  <X size={20} />
  </button>
  ) : null}
- </div>
-
- <div
- style={{
- padding: "14px 14px",
- borderBottom: "1px solid var(--border-subtle, #E2E8F0)",
- display: "flex",
- alignItems: "center",
- gap: 12,
- cursor: "default",
- pointerEvents: "none",
- }}
- >
- <ProfileAvatar user={user} initials={initials} size={36} />
-
- <div
- style={{
- flex: 1,
- minWidth: 0,
- opacity: collapsed ? 0 : 1,
- transition: `opacity ${TRANSITION}`,
- }}
- >
- <p
- style={{
- margin: 0,
- fontSize: 13,
- fontWeight: 600,
- color: "var(--text-heading, #0F172A)",
- overflow: "hidden",
- textOverflow: "ellipsis",
- whiteSpace: "nowrap",
- }}
- >
- {fullName}
- </p>
- <p
- style={{
- margin: "2px 0 0",
- fontSize: 11,
- color: "var(--text-muted, #64748B)",
- overflow: "hidden",
- textOverflow: "ellipsis",
- whiteSpace: "nowrap",
- }}
- >
- {email}
- </p>
- </div>
  </div>
 
  <div style={{ padding: "12px 8px 4px" }}>
@@ -647,59 +577,6 @@ function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleCollapse }) {
  <>
  {isMobile ? (
  <>
- <div style={styles.mobileTopbar}>
- <button
- type="button"
- onClick={toggleSidebar}
- style={{
- background: "none",
- border: "none",
- cursor: "pointer",
- padding: 4,
- color: "var(--text-heading, #0F172A)",
- display: "flex",
- alignItems: "center",
- }}
- aria-label="Open menu"
- >
- <Menu size={22} />
- </button>
- <Link
- to="/"
- style={{
- display: "flex",
- alignItems: "center",
- gap: 8,
- textDecoration: "none",
- flex: 1,
- }}
- >
- <div
- style={{
- width: 30,
- height: 30,
- borderRadius: 6,
- backgroundColor: "var(--color-primary, #0F172A)",
- display: "flex",
- alignItems: "center",
- justifyContent: "center",
- }}
- >
- <Bed style={{ width: 16, height: 16, color: "#fff" }} />
- </div>
- <span
- style={{
- fontWeight: 600,
- fontSize: 16,
- color: "var(--text-heading, #0F172A)",
- }}
- >
- Lilycrest
- </span>
- </Link>
- <NotificationBell />
- </div>
-
  {isOpen ? (
  <div style={styles.backdrop} onClick={toggleSidebar} />
  ) : null}

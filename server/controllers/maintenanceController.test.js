@@ -186,6 +186,69 @@ describe("maintenanceController", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  test("getAdminAll exposes remote attachment URL aliases", async () => {
+    const storedRequest = buildRequestDoc({
+      attachments: [
+        {
+          fileName: "leak-photo.jpg",
+          downloadUrl: "https://storage.example.com/maintenance/leak-photo.jpg?token=abc",
+          contentType: "image/jpeg",
+        },
+        {
+          name: "device-only.jpg",
+          uri: "file:///local/device/photo.jpg",
+          type: "image/jpeg",
+        },
+      ],
+      work_log: [
+        {
+          logged_at: new Date("2026-04-09T10:30:00.000Z"),
+          note: "Added progress photo",
+          attachments: [
+            {
+              originalName: "repair.pdf",
+              secure_url: "https://cdn.example.com/maintenance/repair.pdf",
+            },
+          ],
+        },
+      ],
+    });
+    maintenanceFind.mockReturnValue(buildListQuery([storedRequest]));
+    userFind.mockReturnValue(buildListQuery([]));
+
+    const req = {
+      query: {},
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await getAdminAll(req, res, next);
+
+    const request = sendSuccess.mock.calls[0][1].requests[0];
+    expect(request.attachments).toEqual([
+      {
+        name: "leak-photo.jpg",
+        uri: "https://storage.example.com/maintenance/leak-photo.jpg?token=abc",
+        type: "image/jpeg",
+      },
+      {
+        name: "device-only.jpg",
+        uri: null,
+        type: "image/jpeg",
+      },
+    ]);
+    expect(request.workLog[0].attachments).toEqual([
+      {
+        name: "repair.pdf",
+        uri: "https://cdn.example.com/maintenance/repair.pdf",
+        type: "application/pdf",
+      },
+    ]);
+    expect(next).not.toHaveBeenCalled();
+  });
+
   test("updateAdminRequestStatus updates a request and notifies the tenant on status change", async () => {
     const requestDoc = buildRequestDoc();
     maintenanceFindOne.mockResolvedValue(requestDoc);
@@ -252,6 +315,92 @@ describe("maintenanceController", () => {
       },
     );
     expect(sendSuccess).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("updateAdminRequestStatus saves progress attachments without changing the request status", async () => {
+    const requestDoc = buildRequestDoc({ status: "pending", work_log: [] });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockImplementation(({ firebaseUid, user_id }) => {
+      if (firebaseUid === "firebase-admin-1") {
+        return buildLeanQuery({
+          _id: "admin_user_1",
+          user_id: "admin_1",
+          firstName: "Branch",
+          lastName: "Admin",
+          email: "admin@example.com",
+          phone: "0918",
+          branch: "gil-puyat",
+          role: "branch_admin",
+        });
+      }
+
+      if (user_id === "user_95f39d5b4ea4") {
+        return buildLeanQuery({
+          _id: "mongo_user_1",
+          user_id: "user_95f39d5b4ea4",
+          firstName: "Lily",
+          lastName: "Tenant",
+          email: "lily@example.com",
+          phone: "0917",
+          branch: "gil-puyat",
+          role: "tenant",
+        });
+      }
+
+      return buildLeanQuery(null);
+    });
+
+    const req = {
+      user: { uid: "firebase-admin-1" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        status: "pending",
+        notes: "",
+        assigned_to: "",
+        work_log_attachments: [
+          {
+            name: "progress.jpg",
+            uri: "https://storage.example.com/maintenance/progress.jpg",
+            type: "image/jpeg",
+          },
+        ],
+      },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await updateAdminRequestStatus(req, res, next);
+
+    expect(requestDoc.status).toBe("pending");
+    expect(requestDoc.work_log).toHaveLength(1);
+    expect(requestDoc.work_log[0]).toEqual(
+      expect.objectContaining({
+        note: "Progress attachment added.",
+        attachments: [
+          {
+            name: "progress.jpg",
+            uri: "https://storage.example.com/maintenance/progress.jpg",
+            type: "image/jpeg",
+          },
+        ],
+      }),
+    );
+    expect(requestDoc.save).toHaveBeenCalledTimes(1);
+    expect(maintenanceUpdated).toHaveBeenCalledWith(
+      "mongo_user_1",
+      "plumbing",
+      "pending",
+      requestDoc.request_id,
+      {
+        statusChanged: false,
+        hasAdminNote: false,
+        hasProgressEntry: false,
+        hasProgressAttachments: true,
+      },
+    );
     expect(next).not.toHaveBeenCalled();
   });
 

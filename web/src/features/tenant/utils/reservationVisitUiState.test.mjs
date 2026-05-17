@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  SAVE_VIEWING_PREFERENCE_LABEL,
   canFreelyEditViewingPreference,
   getVisitScheduleSubmitLabel,
   getVisitSummaryUiState,
@@ -16,20 +15,22 @@ const physicalReservation = (visitStatus) => ({
   visitTime: "09:00 AM",
 });
 
-test("first-time viewing preference submit button uses the submit label", () => {
+test("first-time physical visit submit button uses the specific request label", () => {
   assert.equal(
     getVisitScheduleSubmitLabel("physical_visit"),
-    SAVE_VIEWING_PREFERENCE_LABEL,
+    "Submit Physical Visit Request",
   );
 });
 
-test("remote and urgent first-time preference labels use submit viewing preference", () => {
-  for (const selectedVisit of ["remote_2d_viewing", "urgent_move_in_review"]) {
-    assert.equal(
-      getVisitScheduleSubmitLabel(selectedVisit),
-      SAVE_VIEWING_PREFERENCE_LABEL,
-    );
-  }
+test("remote and urgent first-time preference labels use specific request labels", () => {
+  assert.equal(
+    getVisitScheduleSubmitLabel("remote_2d_viewing"),
+    "Submit Remote Viewing Request",
+  );
+  assert.equal(
+    getVisitScheduleSubmitLabel("urgent_move_in_review"),
+    "Submit Priority Review Request",
+  );
 });
 
 test("confirmed physical visit schedule hides free edit actions and locks application", () => {

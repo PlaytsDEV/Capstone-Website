@@ -443,6 +443,7 @@ const ProfilePage = () => {
  <ReservationAgreementPage
  reservation={confirmedReservation}
  onBack={() => handleTabChange("dashboard")}
+ onReservationUpdated={refetchReservations}
  />
  )}
 

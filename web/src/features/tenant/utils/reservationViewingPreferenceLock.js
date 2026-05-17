@@ -1,4 +1,7 @@
-import { getReservationViewingPreference } from "./physicalVisitFlow.js";
+import {
+  canAccessTenantApplication,
+  getReservationViewingPreference,
+} from "./physicalVisitFlow.js";
 import {
   hasReservationStatus,
   normalizeReservationStatus,
@@ -28,6 +31,21 @@ const VIEWING_PREFERENCE_CHANGE_ALLOWED_STATUSES = Object.freeze([
   "rejected",
   "expired",
   "archived",
+]);
+
+const APPLICATION_OR_PAYMENT_STARTED_STATUSES = Object.freeze([
+  "pending_application_review",
+  "needs_revision",
+  "approved_for_payment",
+  "payment_pending",
+  "reserved",
+  "moveIn",
+  "moveOut",
+]);
+
+const VISIT_PROCESSING_STATUSES = Object.freeze([
+  "visit_pending",
+  "visit_approved",
 ]);
 
 const TRUE_VALUES = new Set(["true", "approved", "allowed", "reset"]);
@@ -128,13 +146,35 @@ export const hasSubmittedViewingPreference = isViewingPreferenceSubmitted;
 export const isViewingPreferenceChangeAllowed = (reservation = {}) => {
   const safeReservation = asReservation(reservation);
   if (!isViewingPreferenceSubmitted(safeReservation)) return true;
-  if (hasAdminAllowedViewingPreferenceChange(safeReservation)) return true;
 
   const status = normalizeReservationStatus(
     safeReservation.reservationStatus || safeReservation.status,
   );
 
-  return hasReservationStatus(status, VIEWING_PREFERENCE_CHANGE_ALLOWED_STATUSES);
+  if (hasReservationStatus(status, VIEWING_PREFERENCE_CHANGE_ALLOWED_STATUSES)) {
+    return true;
+  }
+
+  const hardBlocked = Boolean(
+    hasReservationStatus(status, APPLICATION_OR_PAYMENT_STARTED_STATUSES) ||
+      safeReservation.applicationSubmittedAt ||
+      safeReservation.paymentDate ||
+      safeReservation.proofOfPaymentUrl ||
+      String(safeReservation.paymentStatus || "").trim().toLowerCase() === "paid" ||
+      safeReservation.paymongoPaymentId ||
+      safeReservation.paymongoSessionId ||
+      safeReservation.visitCode ||
+      safeReservation.visitScheduledAt ||
+      hasReservationStatus(status, VISIT_PROCESSING_STATUSES) ||
+      safeReservation.scheduleApproved ||
+      safeReservation.scheduleApprovedAt ||
+      safeReservation.visitApproved ||
+      safeReservation.visitOutcomeUpdatedAt ||
+      canAccessTenantApplication(safeReservation),
+  );
+
+  if (hardBlocked) return false;
+  return hasAdminAllowedViewingPreferenceChange(safeReservation);
 };
 
 export const canChangeViewingPreference = isViewingPreferenceChangeAllowed;

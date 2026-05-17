@@ -22,9 +22,7 @@ import {
 import {
  canAccessTenantApplication,
  getPhysicalVisitApplicantState,
- getReservationVisitStatus,
  getReservationViewingPreference,
- isPhysicalVisitPreference,
 } from "../utils/physicalVisitFlow";
 import { isApplicantRoomSelectionLocked } from "../utils/reservationRoomLock";
 import { fmtShortDate } from "../../../shared/utils/dateFormat";
@@ -45,14 +43,6 @@ const getViewingPreferenceLabel = (reservation) => {
  default:
   return "Viewing Preference";
  }
-};
-
-const formatSelectedBed = (selectedBed) => {
- if (!selectedBed) return "Not selected";
- const position = selectedBed.position
-  ? `${String(selectedBed.position).charAt(0).toUpperCase()}${String(selectedBed.position).slice(1)} bed`
-  : "Bed";
- return `${position}${selectedBed.id ? ` (${selectedBed.id})` : ""}`;
 };
 
 const hasViewingPreference = (reservation) =>
@@ -130,7 +120,7 @@ const STEPS = [
  {
  key: "reserved",
  label: "Confirmation",
- desc: "Reservation secured and ready",
+ desc: "Room reservation confirmed",
  icon: CheckCircle,
  stage: 5,
  category: "Finalization",
@@ -221,10 +211,20 @@ function getNextAction(reservation, currentStage) {
  const status = getReservationStatus(reservation);
  const physicalVisitState = getPhysicalVisitApplicantState(reservation);
  const canAccessApplication = canAccessTenantApplication(reservation);
- if (hasReservationStatus(status, "reserved", "moveIn", "moveOut")) {
+ if (hasReservationStatus(status, "reserved")) {
  return {
- title: "Reservation Secured",
- description: "Your reservation is secured. You're all set for move-in!",
+ title: "Reservation Confirmed",
+ description: "Your room reservation has been confirmed. Please wait for further instructions from the admin.",
+ buttonLabel: "View Reservation Status",
+ route: "/applicant/profile",
+ isWaiting: false,
+ };
+ }
+
+ if (hasReservationStatus(status, "moveIn", "moveOut")) {
+ return {
+ title: "Reservation Active",
+ description: "Your reservation is now active in the tenant stage.",
  buttonLabel: null,
  route: null,
  isWaiting: false,
@@ -493,7 +493,9 @@ function getStepDesc(step, status, reservation) {
  return step.desc; // "Pay reservation fee online" — no admin review needed
  case 5:
  if (status === "complete") {
- return "Move-in ready!";
+ return hasReservationStatus(reservationStatus, "reserved")
+ ? "Room reserved"
+ : "Tenant stage active";
  }
  return step.desc;
  default:
@@ -562,16 +564,17 @@ export default function ReservationDashboard({
  const branch = room.branch || "Lilycrest";
  const code = reservation.reservationCode || "—";
   const physicalVisitState = getPhysicalVisitApplicantState(reservation);
-  const visitStatusKey = getReservationVisitStatus(reservation);
+  const normalizedReservationStatus = getReservationStatus(reservation);
   const reservationStatusAppearance = getReservationStatusAppearance(
-  getReservationStatus(reservation),
+  normalizedReservationStatus,
   );
-  const viewingPreferenceLabel = getViewingPreferenceLabel(reservation);
   const roomSelectionLocked = isApplicantRoomSelectionLocked(reservation);
-  const canOpenApplicationFromDashboard =
-  canAccessTenantApplication(reservation);
+  const isReservedApplicant =
+  hasReservationStatus(normalizedReservationStatus, "reserved");
+  const isFullTenantReservation =
+  hasReservationStatus(normalizedReservationStatus, "moveIn", "moveOut");
   const isConfirmed =
-  hasReservationStatus(getReservationStatus(reservation), "reserved", "moveIn", "moveOut");
+  isReservedApplicant || isFullTenantReservation;
 
  return (
  <div style={styles.card}>
@@ -582,7 +585,9 @@ export default function ReservationDashboard({
  <div style={styles.headerRow}>
  <h3 style={styles.roomTitle}>{roomName}</h3>
  {isConfirmed ? (
- <span style={styles.confirmedBadge}>✓ Reserved</span>
+ <span style={styles.confirmedBadge}>
+ {isReservedApplicant ? "Room Reserved" : reservationStatusAppearance.label}
+ </span>
  ) : (
  <span style={styles.pendingBadge}>In Progress</span>
  )}
@@ -606,78 +611,37 @@ export default function ReservationDashboard({
  </div>
 
  {/* ── Viewing Preference Receipt ───────────────────────────────────── */}
-  {hasViewingPreference(reservation) && (
-  <div style={styles.receiptCard}>
-  <div style={styles.receiptCardHeader}>
-  <div style={styles.receiptCardHeaderLeft}>
-  <span style={styles.receiptCardTitle}>Reservation Progress Summary</span>
-  <span
-  style={{
-  ...styles.receiptStatusPill,
-  background: reservationStatusAppearance.bg,
-  color: reservationStatusAppearance.color,
-  }}
-  >
-  {reservationStatusAppearance.label}
-  </span>
-  </div>
-  </div>
-  <div style={styles.receiptRows}>
-  <div style={styles.receiptRow}>
-  <span style={styles.receiptRowLabel}>Room</span>
-  <span style={styles.receiptRowValue}>{roomName}</span>
-  </div>
-  <div style={styles.receiptRow}>
-  <span style={styles.receiptRowLabel}>Branch</span>
-  <span style={styles.receiptRowValue}>{branch}</span>
-  </div>
-  <div style={styles.receiptRow}>
-  <span style={styles.receiptRowLabel}>Bed</span>
-  <span style={styles.receiptRowValue}>{formatSelectedBed(reservation.selectedBed)}</span>
-  </div>
-  <div style={styles.receiptRow}>
-  <span style={styles.receiptRowLabel}>Viewing Preference</span>
-  <span style={styles.receiptRowValue}>{viewingPreferenceLabel}</span>
-  </div>
-  {isPhysicalVisitPreference(reservation) && (
-  <div style={styles.receiptRow}>
-  <span style={styles.receiptRowLabel}>Visit Status</span>
-  <span style={styles.receiptRowValue}>
-  {physicalVisitState?.title || visitStatusKey || "Physical Visit Scheduled"}
-  </span>
-  </div>
-  )}
-  <div style={styles.receiptRow}>
-  <span style={styles.receiptRowLabel}>Next Action</span>
-  <span style={styles.receiptRowValue}>{action.title}</span>
-  </div>
-  </div>
-  <div style={styles.receiptNote}>{action.description}</div>
-  {!hasSubmittedApplication(reservation) && (
-  <div style={styles.receiptActions}>
-  {canOpenApplicationFromDashboard ? (
-  <button
-  type="button"
-  onClick={() => navigate("/applicant/reservation?step=3")}
-  style={styles.receiptPrimaryBtn}
-  >
-  Fill Application
-  </button>
-  ) : (
-  <button
-  type="button"
-  disabled
-  title="Available after admin completes or waives the physical visit."
-  style={{ ...styles.receiptSecondaryBtn, opacity: 0.65, cursor: "not-allowed" }}
-  >
-  Application Locked
-  </button>
-  )}
-  </div>
-  )}
-  </div>
-  )}
-
+ {isReservedApplicant && (
+ <div style={styles.reservedStatusCard}>
+ <div style={styles.reservedStatusHeader}>
+ <div style={styles.reservedStatusIcon}>
+ <CheckCircle size={20} color="#047857" />
+ </div>
+ <div>
+ <div style={styles.reservedStatusTitle}>Reservation Confirmed</div>
+ <p style={styles.reservedStatusText}>
+ Your room reservation has been confirmed. Please wait for further instructions from the admin.
+ </p>
+ </div>
+ </div>
+ <div style={styles.reservedStatusActions}>
+ <button
+ type="button"
+ onClick={() => navigate("/applicant/profile", { state: { tab: "reservation" } })}
+ style={styles.reservedStatusPrimaryBtn}
+ >
+ View Reservation Status
+ </button>
+ <button
+ type="button"
+ onClick={() => navigate("/applicant/profile")}
+ style={styles.reservedStatusSecondaryBtn}
+ >
+ Go to Dashboard
+ </button>
+ </div>
+ </div>
+ )}
 
  <div style={styles.stepperWrapper}>
  <div style={styles.stepperProgressRail}>
@@ -840,7 +804,7 @@ export default function ReservationDashboard({
  )}
 
  {/* ── Post-Confirmation Dashboard ─────────────────────────────────── */}
- {isConfirmed && (() => {
+ {isFullTenantReservation && (() => {
  const moveIn = reservation.targetMoveInDate;
  const daysLeft = moveIn
  ? Math.ceil((new Date(moveIn) - new Date()) / (1000 * 60 * 60 * 24))
@@ -1239,102 +1203,65 @@ const styles = {
  padding: "2px 0",
  },
 
- /* receipt card */
- receiptCard: {
+ reservedStatusCard: {
  marginBottom: 18,
- padding: "14px 16px",
+ padding: "16px 18px",
  borderRadius: 10,
- background: "rgba(15, 23, 42, 0.03)",
- border: "1px solid rgba(15, 23, 42, 0.1)",
+ background: "#F0FDF4",
+ border: "1px solid #BBF7D0",
  },
- receiptCardHeader: {
+ reservedStatusHeader: {
  display: "flex",
- alignItems: "center",
- justifyContent: "space-between",
- marginBottom: 10,
+ alignItems: "flex-start",
+ gap: 12,
  },
- receiptCardHeaderLeft: {
- display: "flex",
- alignItems: "center",
- gap: 8,
- flexWrap: "wrap",
- },
- receiptCardTitle: {
- fontSize: 13,
- fontWeight: 700,
- color: "var(--text-heading, #0F172A)",
- letterSpacing: "-0.01em",
- },
- receiptStatusPill: {
- fontSize: 11,
- fontWeight: 600,
- padding: "2px 8px",
+ reservedStatusIcon: {
+ width: 36,
+ height: 36,
  borderRadius: 999,
- letterSpacing: "0.02em",
- },
- receiptRows: {
+ background: "#DCFCE7",
  display: "flex",
- flexDirection: "column",
- gap: 0,
- marginBottom: 10,
- },
- receiptRow: {
- display: "flex",
- alignItems: "baseline",
- justifyContent: "space-between",
- gap: 8,
- fontSize: 12,
- padding: "5px 0",
- borderBottom: "1px solid rgba(15, 23, 42, 0.05)",
- },
- receiptRowLabel: {
- color: "#94A3B8",
- fontWeight: 500,
- whiteSpace: "nowrap",
+ alignItems: "center",
+ justifyContent: "center",
  flexShrink: 0,
  },
- receiptRowValue: {
- color: "var(--text-heading, #0F172A)",
- fontWeight: 500,
- textAlign: "right",
+ reservedStatusTitle: {
+ fontSize: 15,
+ fontWeight: 700,
+ color: "#065F46",
+ marginBottom: 4,
  },
- receiptNote: {
- fontSize: 11,
- color: "#64748B",
+ reservedStatusText: {
+ fontSize: 13,
  lineHeight: 1.5,
- marginBottom: 10,
- paddingTop: 2,
+ color: "#166534",
+ margin: 0,
  },
- receiptActions: {
+ reservedStatusActions: {
  display: "flex",
  gap: 8,
  flexWrap: "wrap",
+ marginTop: 14,
  },
- receiptPrimaryBtn: {
- flex: 1,
- minWidth: 140,
- padding: "7px 12px",
- background: "var(--text-heading, #0F172A)",
+ reservedStatusPrimaryBtn: {
+ padding: "8px 14px",
+ background: "#047857",
  color: "#fff",
  border: "none",
  borderRadius: 6,
  fontSize: 12,
- fontWeight: 600,
+ fontWeight: 700,
  cursor: "pointer",
- textAlign: "center",
  },
- receiptSecondaryBtn: {
- flex: 1,
- minWidth: 140,
- padding: "7px 12px",
+ reservedStatusSecondaryBtn: {
+ padding: "8px 14px",
  background: "transparent",
- color: "var(--text-secondary, #64748B)",
- border: "1px solid rgba(15, 23, 42, 0.15)",
+ color: "#047857",
+ border: "1px solid rgba(4, 120, 87, 0.28)",
  borderRadius: 6,
  fontSize: 12,
- fontWeight: 500,
+ fontWeight: 700,
  cursor: "pointer",
- textAlign: "center",
  },
 
  /* category row */

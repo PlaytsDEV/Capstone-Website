@@ -431,6 +431,33 @@ const VIEWING_PREFERENCE_CHANGE_ALLOWED_STATUSES = Object.freeze([
   ...reservationStatusesForQuery("cancelled", "rejected", "archived"),
   "expired",
 ]);
+const APPLICATION_OR_PAYMENT_STARTED_STATUSES = Object.freeze(
+  reservationStatusesForQuery(
+    "pending_application_review",
+    "needs_revision",
+    "approved_for_payment",
+    "payment_pending",
+    "reserved",
+    "moveIn",
+    "moveOut",
+  ),
+);
+const APPLICATION_DRAFT_LOCKING_STATUSES = Object.freeze(
+  reservationStatusesForQuery(
+    "pending_application_review",
+    "approved_for_payment",
+    "payment_pending",
+    "reserved",
+    "moveIn",
+    "moveOut",
+    "rejected",
+    "cancelled",
+    "archived",
+  ),
+);
+const VISIT_PROCESSING_STATUSES = Object.freeze(
+  reservationStatusesForQuery("visit_pending", "visit_approved"),
+);
 const ROOM_SELECTION_UPDATE_FIELDS = Object.freeze([
   "roomId",
   "selectedBed",
@@ -820,13 +847,35 @@ const isViewingPreferenceSubmitted = (reservation = {}) => {
 
 const isViewingPreferenceChangeAllowed = (reservation = {}) => {
   if (!isViewingPreferenceSubmitted(reservation)) return true;
-  if (hasAdminAllowedViewingPreferenceChange(reservation)) return true;
 
   const status = normalizeReservationStatus(
     reservation.reservationStatus || reservation.status,
   );
 
-  return hasReservationStatus(status, VIEWING_PREFERENCE_CHANGE_ALLOWED_STATUSES);
+  if (hasReservationStatus(status, VIEWING_PREFERENCE_CHANGE_ALLOWED_STATUSES)) {
+    return true;
+  }
+
+  const hardBlocked = Boolean(
+    hasReservationStatus(status, APPLICATION_OR_PAYMENT_STARTED_STATUSES) ||
+      reservation.applicationSubmittedAt ||
+      reservation.paymentDate ||
+      reservation.proofOfPaymentUrl ||
+      String(reservation.paymentStatus || "").trim().toLowerCase() === "paid" ||
+      reservation.paymongoPaymentId ||
+      reservation.paymongoSessionId ||
+      reservation.visitCode ||
+      reservation.visitScheduledAt ||
+      hasReservationStatus(status, VISIT_PROCESSING_STATUSES) ||
+      reservation.scheduleApproved ||
+      reservation.scheduleApprovedAt ||
+      reservation.visitApproved ||
+      isVisitApplicationUnlocked(reservation.visitStatus) ||
+      reservation.visitOutcomeUpdatedAt,
+  );
+
+  if (hardBlocked) return false;
+  return hasAdminAllowedViewingPreferenceChange(reservation);
 };
 
 const canResubmitSameViewingPreference = (
@@ -3838,6 +3887,17 @@ const APPLICANT_CANCELLABLE_STATUSES = new Set([
   "reserved",
 ]);
 
+const hasPaidReservationFee = (reservation = {}) => {
+  const status = normalizeReservationStatus(reservation.status);
+  return Boolean(
+    reservation.paymentStatus === "paid" ||
+      reservation.paymentDate ||
+      reservation.reservedAt ||
+      status === "reserved" ||
+      reservation.paymongoPaymentId,
+  );
+};
+
 export const cancelReservationByUser = async (req, res, next) => {
   try {
     const { reservationId } = req.params;
@@ -3867,7 +3927,7 @@ export const cancelReservationByUser = async (req, res, next) => {
     }
 
     // Paid reservations must go through the request flow (admin review required, no refund).
-    if (reservation.paymentStatus === "paid") {
+    if (hasPaidReservationFee(reservation)) {
       return res.status(409).json({
         error: "This reservation has a paid reservation fee. Please use the cancellation request process.",
         code: "PAID_RESERVATION_MUST_USE_REQUEST_FLOW",
@@ -3995,6 +4055,32 @@ export const updateReservationByUser = async (req, res, next) => {
     let appliedPricing = null;
     let roomAvailabilityWasRevalidated = false;
     const hasBodyField = (field) => Object.prototype.hasOwnProperty.call(req.body, field);
+    const applicationDraftSaveRequested =
+      req.body.applicationDraftAutosave === true;
+
+    if (applicationDraftSaveRequested) {
+      if (req.body.submitApplication === true) {
+        return res.status(400).json({
+          error: "Draft auto-save cannot submit an application.",
+          code: "APPLICATION_DRAFT_SUBMIT_NOT_ALLOWED",
+        });
+      }
+
+      const currentStatus = normalizeReservationStatus(reservation.status);
+      const draftLocked =
+        hasReservationStatus(currentStatus, APPLICATION_DRAFT_LOCKING_STATUSES) ||
+        (Boolean(reservation.applicationSubmittedAt) &&
+          !hasReservationStatus(currentStatus, "needs_revision")) ||
+        Boolean(reservation.paymentDate || reservation.proofOfPaymentUrl);
+
+      if (draftLocked) {
+        return res.status(409).json({
+          error:
+            "Application draft is locked because this application is already submitted or under review.",
+          code: "APPLICATION_DRAFT_LOCKED",
+        });
+      }
+    }
 
     const roomSelectionUpdateRequested = ROOM_SELECTION_UPDATE_FIELDS.some(
       (field) => hasBodyField(field),
@@ -5753,7 +5839,7 @@ export const requestCancellationByUser = async (req, res, next) => {
     if (String(reservation.userId) !== String(dbUser._id))
       return res.status(403).json({ error: "Unauthorized.", code: "UNAUTHORIZED" });
 
-    if (reservation.paymentStatus !== "paid") {
+    if (!hasPaidReservationFee(reservation)) {
       return res.status(409).json({
         error: "This reservation has not been paid. Use the direct cancel instead.",
         code: "NOT_PAID_USE_DIRECT_CANCEL",

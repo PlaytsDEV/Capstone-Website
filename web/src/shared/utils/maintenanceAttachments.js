@@ -1,8 +1,34 @@
-const IMAGE_FILE_PATTERN = /\.(avif|bmp|gif|heic|jpeg|jpg|png|svg|webp)$/i;
-const PDF_FILE_PATTERN = /\.pdf$/i;
+const IMAGE_FILE_PATTERN = /\.(avif|bmp|gif|heic|jpeg|jpg|png|svg|webp)(?:$|[?#])/i;
+const PDF_FILE_PATTERN = /\.pdf(?:$|[?#])/i;
 
 const toText = (value) =>
   typeof value === "string" ? value.trim() : "";
+
+const getAttachmentUriCandidates = (attachment) => [
+  attachment?.uri,
+  attachment?.url,
+  attachment?.href,
+  attachment?.src,
+  attachment?.imageUrl,
+  attachment?.imageURL,
+  attachment?.image_url,
+  attachment?.fileUrl,
+  attachment?.fileURL,
+  attachment?.file_url,
+  attachment?.downloadUrl,
+  attachment?.downloadURL,
+  attachment?.download_url,
+  attachment?.publicUrl,
+  attachment?.publicURL,
+  attachment?.public_url,
+  attachment?.secureUrl,
+  attachment?.secureURL,
+  attachment?.secure_url,
+  attachment?.mediaUrl,
+  attachment?.mediaURL,
+  attachment?.media_url,
+  attachment?.path,
+];
 
 const pickFirstText = (...values) => {
   for (const value of values) {
@@ -34,15 +60,7 @@ export const getMaintenanceAttachmentUri = (attachment) => {
     return toText(attachment);
   }
 
-  return pickFirstText(
-    attachment?.uri,
-    attachment?.url,
-    attachment?.href,
-    attachment?.src,
-    attachment?.imageUrl,
-    attachment?.fileUrl,
-    attachment?.path,
-  );
+  return pickFirstText(...getAttachmentUriCandidates(attachment));
 };
 
 export const getMaintenanceAttachmentName = (attachment, index = 0) =>
@@ -50,6 +68,8 @@ export const getMaintenanceAttachmentName = (attachment, index = 0) =>
     attachment?.name,
     attachment?.filename,
     attachment?.fileName,
+    attachment?.originalName,
+    attachment?.originalFilename,
     attachment?.label,
     attachment?.title,
     getFilenameFromUri(getMaintenanceAttachmentUri(attachment), `Attachment ${index + 1}`),
@@ -60,6 +80,7 @@ export const getMaintenanceAttachmentType = (attachment) => {
     attachment?.type,
     attachment?.mimeType,
     attachment?.mime,
+    attachment?.contentType,
   ).toLowerCase();
   if (explicitType) return explicitType;
 

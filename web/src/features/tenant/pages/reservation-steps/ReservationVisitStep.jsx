@@ -324,6 +324,7 @@ const ReservationVisitStep = ({
   forceEditMode,
   scheduleRejected,
   scheduleRejectionReason,
+  onValidatePreferenceChange,
 }) => {
   const navigate = useNavigate();
   const { user: firebaseUser, loading: authLoading } = useFirebaseAuth();
@@ -335,7 +336,28 @@ const ReservationVisitStep = ({
   const [resolvedVisitCode, setResolvedVisitCode] = useState(visitCode || null);
   const [isSaving, setIsSaving] = useState(false);
   const [dateWindowDays, setDateWindowDays] = useState(14);
-  const preferenceReadOnly = Boolean(readOnly || viewingPreferenceAccess.readOnly);
+  const [draftViewingPreference, setDraftViewingPreference] = useState("");
+  const [activePreferenceView, setActivePreferenceView] = useState("");
+  const [changeModeUnlocked, setChangeModeUnlocked] = useState(false);
+  const [showChangeConfirm, setShowChangeConfirm] = useState(false);
+  const submittedPreference = viewingPreferenceAccess.submittedPreference || "";
+  const hasSubmittedPreference = Boolean(viewingPreferenceAccess.submitted);
+  const canResubmitSamePhysicalVisit = Boolean(
+    viewingPreferenceAccess.canResubmitSamePreference &&
+      submittedPreference === "physical_visit",
+  );
+  const canStartChangeFlow = Boolean(
+    viewingPreferenceAccess.canChangePreference &&
+      !readOnly &&
+      !canResubmitSamePhysicalVisit,
+  );
+  const isChangingPreference = Boolean(changeModeUnlocked && canStartChangeFlow);
+  const showReadOnlyPreference = Boolean(
+    hasSubmittedPreference &&
+      !isChangingPreference &&
+      !canResubmitSamePhysicalVisit,
+  );
+  const preferenceReadOnly = Boolean(readOnly || showReadOnlyPreference);
   const optionSelectionLocked = Boolean(
     viewingPreferenceAccess.lockOptions || preferenceReadOnly,
   );
@@ -345,9 +367,10 @@ const ReservationVisitStep = ({
   const [previewImageIndex, setPreviewImageIndex] = useState(null);
   const [isEditingPhysicalVisit, setIsEditingPhysicalVisit] = useState(false);
   const selectedVisit =
-    (optionSelectionLocked && viewingPreferenceAccess.submittedPreference) ||
-    viewingType ||
-    "physical_visit";
+    (showReadOnlyPreference && submittedPreference) ||
+    activePreferenceView ||
+    (canResubmitSamePhysicalVisit ? "physical_visit" : "") ||
+    "";
   const room = reservationData?.room || {};
   const uploadedRoomImages = Array.isArray(room.images)
     ? room.images.filter((entry) => typeof entry === "string" && entry.trim())
@@ -412,15 +435,66 @@ const ReservationVisitStep = ({
     reservation: visitGateReservation,
     viewingPreferenceLocked: viewingPreferenceAccess.readOnly,
   });
-  const showPhysicalVisitSummary =
-    !preferenceReadOnly && hasSavedPhysicalVisit && !isEditingPhysicalVisit;
+  const showPhysicalVisitSummary = false;
   const shouldLoadAvailability =
     selectedVisit === "physical_visit" &&
+    Boolean(activePreferenceView || canResubmitSamePhysicalVisit) &&
     !preferenceReadOnly &&
     !showPhysicalVisitSummary &&
     Boolean(branch) &&
     !authLoading &&
     Boolean(firebaseUser);
+
+  const goToDashboard = () => {
+    navigate("/applicant/profile", { state: { tab: "dashboard" } });
+  };
+
+  const goToReservationStatus = () => {
+    navigate("/applicant/profile", { state: { tab: "reservation" } });
+  };
+
+  const handleSelectionContinue = () => {
+    if (!draftViewingPreference) {
+      showNotification("Please choose a viewing preference before continuing.", "error", 3000);
+      return;
+    }
+
+    setViewingType(draftViewingPreference);
+    setActivePreferenceView(draftViewingPreference);
+    setIsEditingPhysicalVisit(false);
+
+    if (draftViewingPreference !== "physical_visit") {
+      setVisitDate("");
+      setVisitTime("");
+    }
+  };
+
+  const handleBackToSelection = () => {
+    setActivePreferenceView("");
+    setViewingType("");
+    setIsEditingPhysicalVisit(false);
+  };
+
+  const handleChangePreferenceRequest = () => {
+    if (!canStartChangeFlow) return;
+    setShowChangeConfirm(true);
+  };
+
+  const handleConfirmPreferenceChange = async () => {
+    setShowChangeConfirm(false);
+    const canChangeLatest = onValidatePreferenceChange
+      ? await onValidatePreferenceChange()
+      : true;
+    if (!canChangeLatest) return;
+
+    setChangeModeUnlocked(true);
+    setDraftViewingPreference("");
+    setActivePreferenceView("");
+    setViewingType("");
+    setIsUrgentMoveIn(false);
+    setVisitDate("");
+    setVisitTime("");
+  };
 
   useEffect(() => {
     if (forceEditMode && canEditViewingPreference) {
@@ -430,6 +504,25 @@ const ReservationVisitStep = ({
       setIsEditingPhysicalVisit(false);
     }
   }, [canEditViewingPreference, forceEditMode]);
+
+  useEffect(() => {
+    if (showReadOnlyPreference) {
+      setDraftViewingPreference("");
+      setActivePreferenceView("");
+      setChangeModeUnlocked(false);
+      return;
+    }
+
+    if (canResubmitSamePhysicalVisit) {
+      setViewingType("physical_visit");
+      setActivePreferenceView("physical_visit");
+      setDraftViewingPreference("");
+    }
+  }, [
+    canResubmitSamePhysicalVisit,
+    setViewingType,
+    showReadOnlyPreference,
+  ]);
 
   const availabilityParams = useMemo(
     () => ({
@@ -518,6 +611,10 @@ const ReservationVisitStep = ({
 
   const handleContinue = async () => {
     if (isSaving) return;
+    if (!selectedVisit) {
+      showNotification("Please choose a viewing preference before submitting.", "error", 3000);
+      return;
+    }
     if (!canSubmitViewingPreference) {
       showNotification(VIEWING_PREFERENCE_LOCKED_MESSAGE, "info", 5000);
       return;
@@ -803,35 +900,55 @@ const ReservationVisitStep = ({
         </div>
       )}
 
-      {preferenceReadOnly ? (
+      {showReadOnlyPreference ? (
         <>
           <div className="main-header">
             <div className="main-header-badge"><span>Step 2 · Viewing Preference</span></div>
             <h2 className="main-header-title">Viewing Preference Summary</h2>
             <p className="main-header-subtitle">
-              Your submitted viewing preference is shown below.
+              Your viewing preference has already been submitted and is being reviewed.
             </p>
           </div>
           <div className="rf-rejection-banner" style={{ background: "rgba(37, 99, 235, 0.06)", border: "1px solid rgba(37, 99, 235, 0.18)" }}>
             <AlertTriangle size={18} color="#2563EB" style={{ flexShrink: 0, marginTop: 2 }} />
             <div>
               <div className="rf-rejection-banner__title" style={{ color: "#1D4ED8" }}>
-                Viewing preference is locked
+                Viewing preference submitted
               </div>
               <div className="rf-rejection-banner__hint" style={{ color: "#3B82F6" }}>
-                {VIEWING_PREFERENCE_LOCKED_MESSAGE}
+                Your viewing preference is already submitted and is being reviewed.
               </div>
             </div>
           </div>
           {renderVisitSummary({ title: "Viewing Preference Summary" })}
           <div className="stage-buttons">
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => onReturnToDashboard?.()}
-            >
-              {viewingPreferenceAccess.statusCtaLabel || "View Reservation Status"}
-            </button>
+            {canStartChangeFlow ? (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleChangePreferenceRequest}
+                >
+                  Change Viewing Preference
+                </button>
+                <button type="button" className="btn btn-secondary" onClick={goToDashboard}>
+                  Back to Dashboard
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={goToReservationStatus}
+                >
+                  {viewingPreferenceAccess.statusCtaLabel || "View Reservation Status"}
+                </button>
+                <button type="button" className="btn btn-secondary" onClick={goToDashboard}>
+                  Back to Dashboard
+                </button>
+              </>
+            )}
           </div>
         </>
       ) : showPhysicalVisitSummary ? (
@@ -867,7 +984,7 @@ const ReservationVisitStep = ({
             <div className="rf-option-cards">
               {VISIT_OPTIONS.map((option) => {
                 const OptionIcon = OPTION_ICONS[option.value];
-                const isSelected = selectedVisit === option.value;
+                const isSelected = draftViewingPreference === option.value;
                 const disabledByPreferenceLock = optionSelectionLocked && !isSelected;
                 return (
                   <button
@@ -886,7 +1003,7 @@ const ReservationVisitStep = ({
                         showNotification(VIEWING_PREFERENCE_LOCKED_MESSAGE, "info", 5000);
                         return;
                       }
-                      setViewingType(option.value);
+                      setDraftViewingPreference(option.value);
                       setIsEditingPhysicalVisit(false);
                       if (option.value !== "physical_visit") {
                         setVisitDate("");
@@ -911,11 +1028,43 @@ const ReservationVisitStep = ({
             </div>
           </div>{/* end rf-step2-main-card */}
 
+          {!activePreferenceView && (
+            <div className="stage-buttons">
+              <button type="button" className="btn btn-secondary" onClick={goToDashboard}>
+                Back to Dashboard
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleSelectionContinue}
+                disabled={!draftViewingPreference}
+              >
+                Continue
+              </button>
+            </div>
+          )}
+
+          {activePreferenceView && (
+            <>
           {selectedVisit === "physical_visit" && (
             <>
               <div className="rf-selection-confirm">
                 <CheckCircle size={14} />
                 <span>Current selection: <strong>Physical Visit</strong></span>
+              </div>
+              <div className="content-card">
+                <div className="card-section-title">
+                  <Home size={15} style={{ marginRight: 6, flexShrink: 0 }} />
+                  Selected Room Summary
+                </div>
+                <div className="rf-room-details-grid">
+                  {roomDetails.map(([label, value]) => (
+                    <div key={label} className="rf-room-details-grid__item">
+                      <span className="rf-room-details-grid__label">{label}</span>
+                      <strong className="rf-room-details-grid__value">{value}</strong>
+                    </div>
+                  ))}
+                </div>
               </div>
               <div className="content-card">
                 <div className="card-section-title">
@@ -1161,12 +1310,12 @@ const ReservationVisitStep = ({
                   <Zap size={22} />
                 </div>
                 <div className="rf-urgent-banner__body">
-                  <div className="rf-urgent-banner__title">Priority Viewing Review Requested</div>
+                  <div className="rf-urgent-banner__title">Priority Viewing Review</div>
                   <div className="rf-urgent-banner__subtitle">
-                    Your request has been recorded. An admin will review your room
-                    selection and reservation details sooner. Your tenant application
-                    and required documents must still be submitted and approved before
-                    payment becomes available.
+                    Submit this request if you need admin to review your selected room
+                    and reservation sooner. Your tenant application and required
+                    documents must still be submitted and approved before payment
+                    becomes available.
                   </div>
                 </div>
               </div>
@@ -1205,8 +1354,12 @@ const ReservationVisitStep = ({
           )}
 
           <div className="stage-buttons">
-            <button type="button" className="btn btn-secondary" onClick={onPrev}>
-              Back
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={canResubmitSamePhysicalVisit ? goToDashboard : handleBackToSelection}
+            >
+              {canResubmitSamePhysicalVisit ? "Back to Dashboard" : "Back"}
             </button>
             <button
               type="button"
@@ -1219,7 +1372,49 @@ const ReservationVisitStep = ({
                 : getVisitScheduleSubmitLabel(selectedVisit)}
             </button>
           </div>
+            </>
+          )}
         </>
+      )}
+
+      {showChangeConfirm && (
+        <div
+          className="rf-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setShowChangeConfirm(false)}
+        >
+          <div className="rf-modal-card" onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              className="rf-modal-close-btn"
+              onClick={() => setShowChangeConfirm(false)}
+              aria-label="Close change viewing preference confirmation"
+            >
+              <X size={18} />
+            </button>
+            <div className="rf-modal-icon-wrap">
+              <AlertTriangle size={24} color="#B45309" />
+            </div>
+            <h3 className="rf-modal-title">Change Viewing Preference?</h3>
+            <p className="rf-modal-subtitle">
+              Changing your viewing preference may reset your current viewing request.
+              Do you want to continue?
+            </p>
+            <div className="rf-modal-actions">
+              <button type="button" className="btn btn-primary" onClick={handleConfirmPreferenceChange}>
+                Continue
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowChangeConfirm(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {previewImageIndex !== null && (

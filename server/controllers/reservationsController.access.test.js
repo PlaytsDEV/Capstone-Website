@@ -5,6 +5,7 @@ const reservationFindByIdAndUpdate = jest.fn();
 const reservationFind = jest.fn();
 const reservationFindOne = jest.fn();
 const reservationCountDocuments = jest.fn();
+const userFind = jest.fn();
 const userFindOne = jest.fn();
 const roomFind = jest.fn();
 const roomFindById = jest.fn();
@@ -14,6 +15,8 @@ const utilityReadingFindOne = jest.fn();
 const ensureCurrentCycleRentBill = jest.fn();
 const moveOutStayWorkflow = jest.fn();
 const notifyGeneral = jest.fn();
+const notifyCancellationRequested = jest.fn();
+const notifyCancellationRequestAlert = jest.fn();
 const buildUserUpdatePayload = jest.fn(() => ({}));
 const getForbiddenTenantUpdateFields = jest.fn(() => []);
 const sendPhysicalVisitStatusEmail = jest.fn();
@@ -26,7 +29,7 @@ await jest.unstable_mockModule("../models/index.js", () => ({
     findOne: reservationFindOne,
     countDocuments: reservationCountDocuments,
   },
-  User: { findOne: userFindOne },
+  User: { find: userFind, findOne: userFindOne },
   Room: { find: roomFind, findById: roomFindById },
   VisitAvailability: { findOne: visitAvailabilityFindOne, create: visitAvailabilityCreate },
   Bill: { countDocuments: jest.fn(), deleteMany: jest.fn() },
@@ -116,13 +119,18 @@ await jest.unstable_mockModule("../middleware/errorHandler.js", () => ({
   },
 }));
 await jest.unstable_mockModule("../utils/notificationService.js", () => ({
-  notify: { general: notifyGeneral },
+  notify: {
+    general: notifyGeneral,
+    cancellationRequested: notifyCancellationRequested,
+    cancellationRequestAlert: notifyCancellationRequestAlert,
+  },
 }));
 
 const {
   createReservation,
   manageReservationVisit,
   moveOutReservation,
+  requestCancellationByUser,
   updateReservation,
   updateReservationByUser,
   updateVisitAvailabilityRules,
@@ -212,6 +220,7 @@ describe("reservationsController.updateReservation access hardening", () => {
     reservationFind.mockReset();
     reservationFindOne.mockReset();
     reservationCountDocuments.mockReset();
+    userFind.mockReset();
     userFindOne.mockReset();
     roomFind.mockReset();
     roomFindById.mockReset();
@@ -221,6 +230,10 @@ describe("reservationsController.updateReservation access hardening", () => {
     ensureCurrentCycleRentBill.mockReset();
     moveOutStayWorkflow.mockReset();
     notifyGeneral.mockReset();
+    notifyCancellationRequested.mockReset();
+    notifyCancellationRequested.mockResolvedValue(null);
+    notifyCancellationRequestAlert.mockReset();
+    notifyCancellationRequestAlert.mockResolvedValue(null);
     buildUserUpdatePayload.mockReset();
     buildUserUpdatePayload.mockReturnValue({});
     reservationCountDocuments.mockResolvedValue(0);
@@ -236,6 +249,88 @@ describe("reservationsController.updateReservation access hardening", () => {
     sendPhysicalVisitStatusEmail.mockReset();
     sendPhysicalVisitStatusEmail.mockResolvedValue({ success: true });
     userFindOne.mockResolvedValue(null);
+  });
+
+  test("allows cancellation request for paid reserved legacy records", async () => {
+    const reservationDoc = {
+      _id: "507f1f77bcf86cd799439011",
+      userId: "user-1",
+      roomId: "room-1",
+      status: "reserved",
+      paymentStatus: "pending",
+      paymentDate: new Date("2026-05-17T00:00:00.000Z"),
+      reservationCode: "RES-PAID",
+      cancellationRequested: false,
+      cancellationStatus: null,
+      save: jest.fn().mockResolvedValue(undefined),
+      toObject: jest.fn(() => ({
+        status: "reserved",
+        paymentStatus: "pending",
+        paymentDate: new Date("2026-05-17T00:00:00.000Z"),
+      })),
+    };
+    reservationFindById.mockResolvedValue(reservationDoc);
+    userFindOne.mockResolvedValue({
+      _id: "user-1",
+      firstName: "Lama",
+      lastName: "Tenant",
+      email: "lama@example.com",
+    });
+    roomFindById.mockReturnValue({
+      select: jest.fn(() => ({
+        lean: jest.fn().mockResolvedValue({ branch: "gil-puyat" }),
+      })),
+    });
+    userFind.mockReturnValue({
+      select: jest.fn(() => ({
+        lean: jest.fn().mockResolvedValue([]),
+      })),
+    });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439011" },
+      user: { uid: "firebase-cancel-paid" },
+      body: { reason: "Plans changed" },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await requestCancellationByUser(req, res, next);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.message).toBe("Cancellation request submitted. Pending admin review.");
+    expect(reservationDoc.cancellationRequested).toBe(true);
+    expect(reservationDoc.cancellationStatus).toBe("pending");
+    expect(reservationDoc.cancellationReason).toBe("Plans changed");
+    expect(reservationDoc.save).toHaveBeenCalledTimes(1);
+    expect(notifyCancellationRequested).toHaveBeenCalledWith("user-1", "RES-PAID");
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("rejects cancellation request for unpaid reservations", async () => {
+    reservationFindById.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439011",
+      userId: "user-1",
+      status: "payment_pending",
+      paymentStatus: "pending",
+      paymentDate: null,
+      reservedAt: null,
+    });
+    userFindOne.mockResolvedValue({ _id: "user-1" });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439011" },
+      user: { uid: "firebase-cancel-unpaid" },
+      body: {},
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await requestCancellationByUser(req, res, next);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body.code).toBe("NOT_PAID_USE_DIRECT_CANCEL");
+    expect(next).not.toHaveBeenCalled();
   });
 
   test("rejects protected fields from tenant self-updates", async () => {
@@ -313,6 +408,97 @@ describe("reservationsController.updateReservation access hardening", () => {
     expect(res.body.code).toBe("APPLICATION_INCOMPLETE");
     expect(res.body.missingFields).toContain("first name");
     expect(res.body.missingFields).toContain("valid ID (front)");
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("allows application draft autosave without submitting the application", async () => {
+    userFindOne.mockResolvedValue({ _id: "tenant-1" });
+    const existingReservation = {
+      _id: "507f1f77bcf86cd799439101",
+      userId: "tenant-1",
+      roomId: "room-1",
+      status: "visit_approved",
+      viewingPreference: "remote_2d_viewing",
+      viewingType: "remote_2d",
+      remoteViewingAcknowledged: true,
+      applicationSubmittedAt: null,
+      emergencyContact: {},
+      employment: {},
+      documentPrechecks: {},
+    };
+    const updatedReservation = {
+      ...existingReservation,
+      firstName: "Ana",
+      validIDFrontUrl: "https://storage.example.com/id-front.jpg",
+    };
+    reservationFindById.mockResolvedValue(existingReservation);
+    buildUserUpdatePayload.mockReturnValue({
+      firstName: "Ana",
+      validIDFrontUrl: "https://storage.example.com/id-front.jpg",
+      validIDType: "passport",
+    });
+    reservationFindByIdAndUpdate.mockReturnValue({
+      populate: jest.fn().mockReturnThis(),
+      then: (resolve) => Promise.resolve(resolve(updatedReservation)),
+    });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439101" },
+      user: { uid: "tenant-firebase-uid" },
+      body: {
+        applicationDraftAutosave: true,
+        firstName: "Ana",
+        validIDFrontUrl: "https://storage.example.com/id-front.jpg",
+        validIDType: "passport",
+      },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await updateReservationByUser(req, res, next);
+
+    expect(res.statusCode).toBe(200);
+    const updateOperation = reservationFindByIdAndUpdate.mock.calls[0][1];
+    expect(updateOperation.$set).toEqual(
+      expect.objectContaining({
+        firstName: "Ana",
+        validIDFrontUrl: "https://storage.example.com/id-front.jpg",
+        validIDType: "passport",
+      }),
+    );
+    expect(updateOperation.$set.submitApplication).toBeUndefined();
+    expect(updateOperation.$set.applicationSubmittedAt).toBeUndefined();
+    expect(updateOperation.$set.status).toBeUndefined();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("rejects application draft autosave after the application is under review", async () => {
+    userFindOne.mockResolvedValue({ _id: "tenant-1" });
+    reservationFindById.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439102",
+      userId: "tenant-1",
+      roomId: "room-1",
+      status: "pending_application_review",
+      applicationSubmittedAt: new Date("2026-05-17T08:00:00.000Z"),
+      emergencyContact: {},
+      employment: {},
+      documentPrechecks: {},
+    });
+    buildUserUpdatePayload.mockReturnValue({ firstName: "Ana" });
+
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439102" },
+      user: { uid: "tenant-firebase-uid" },
+      body: { applicationDraftAutosave: true, firstName: "Ana" },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await updateReservationByUser(req, res, next);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body?.code).toBe("APPLICATION_DRAFT_LOCKED");
+    expect(reservationFindByIdAndUpdate).not.toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -696,6 +882,57 @@ describe("reservationsController.updateReservation access hardening", () => {
         viewingPreference: "remote_2d_viewing",
         remoteViewingAcknowledged: true,
         remoteViewingQuestions: "",
+      },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    userFindOne.mockResolvedValue({
+      _id: "tenant-1",
+      firebaseUid: "tenant-firebase-uid",
+      role: "applicant",
+    });
+
+    await updateReservationByUser(req, res, next);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body?.code).toBe("VIEWING_PREFERENCE_LOCKED");
+    expect(reservationFindByIdAndUpdate).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("tenant preference change returns 409 when admin reset is stale after processing started", async () => {
+    reservationFindById.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439024",
+      userId: "tenant-1",
+      roomId: "room-1",
+      status: "pending_application_review",
+      viewingPreference: "remote_2d_viewing",
+      viewingType: "remote_2d",
+      remoteViewingAcknowledged: true,
+      remoteViewingQuestions: "",
+      viewingPreferenceChangeStatus: "approved",
+      applicationSubmittedAt: new Date("2026-05-17T08:00:00.000Z"),
+      agreedToPrivacy: true,
+      scheduleRejected: false,
+      validIDFrontUrl: null,
+      nbiClearanceUrl: null,
+      companyIDUrl: null,
+      emergencyContact: {},
+      employment: {},
+      idType: null,
+      validIDType: null,
+    });
+    buildUserUpdatePayload.mockReturnValue({
+      viewingPreference: "urgent_move_in_review",
+      isUrgentMoveIn: true,
+    });
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439024" },
+      user: { uid: "tenant-firebase-uid" },
+      body: {
+        viewingPreference: "urgent_move_in_review",
+        isUrgentMoveIn: true,
       },
     };
     const res = createResponse();

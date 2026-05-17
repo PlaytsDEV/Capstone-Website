@@ -179,7 +179,7 @@ test("admin action markers lock physical visit preference switching", () => {
   }
 });
 
-test("rejected, cancelled, expired, and admin-reset preferences can be changed", () => {
+test("rejected, cancelled, expired, and safe admin-reset preferences can be changed", () => {
   for (const status of ["rejected", "cancelled", "expired", "archived"]) {
     const reservation = {
       ...baseReservation,
@@ -199,15 +199,43 @@ test("rejected, cancelled, expired, and admin-reset preferences can be changed",
     canApplicantSubmitViewingPreference(
       {
         ...baseReservation,
-        status: "visit_pending",
-        viewingPreference: "remote_2d_viewing",
-        remoteViewingAcknowledged: true,
+        status: "viewing_preference_selected",
+        viewingPreference: "physical_visit",
+        visitDate: null,
+        visitTime: "",
         viewingPreferenceChangeStatus: "approved",
       },
-      "physical_visit",
+      "remote_2d_viewing",
     ),
     true,
   );
+});
+
+test("admin reset does not override processing, application, or payment blockers", () => {
+  for (const marker of [
+    { status: "visit_pending" },
+    { visitCode: "VIS-ABC123" },
+    { visitScheduledAt: "2026-05-17T08:00:00.000Z" },
+    { applicationSubmittedAt: "2026-05-17T08:00:00.000Z" },
+    { visitStatus: "allowed_without_visit" },
+    { status: "payment_pending" },
+    { paymentStatus: "paid" },
+  ]) {
+    const reservation = {
+      ...baseReservation,
+      status: "viewing_preference_selected",
+      viewingPreference: "remote_2d_viewing",
+      remoteViewingAcknowledged: true,
+      viewingPreferenceChangeStatus: "approved",
+      ...marker,
+    };
+
+    assert.equal(canChangeViewingPreference(reservation), false);
+    assert.equal(
+      canApplicantSubmitViewingPreference(reservation, "physical_visit"),
+      false,
+    );
+  }
 });
 
 test("direct step access stays read-only and does not reopen options", () => {

@@ -26,20 +26,21 @@ const attachmentSchema = new mongoose.Schema(
   {
     name: {
       type: String,
-      required: true,
+      default: "Attachment",
       trim: true,
     },
     uri: {
       type: String,
-      required: true,
+      default: null,
+      trim: true,
     },
     type: {
       type: String,
-      required: true,
+      default: "application/octet-stream",
       trim: true,
     },
   },
-  { _id: false },
+  { _id: false, strict: false },
 );
 
 const reopenHistorySchema = new mongoose.Schema(
