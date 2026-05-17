@@ -105,6 +105,13 @@ const appendWorkLogEntry = (request, entry) => {
   ];
 };
 
+const appendConversationEntry = (request, entry) => {
+  request.conversation = [
+    ...(Array.isArray(request.conversation) ? request.conversation : []),
+    entry,
+  ];
+};
+
 const getSlaState = (request) => {
   const urgency = normalizeMaintenanceUrgency(request?.urgency) || "normal";
   const baseTimestamp = request?.reopened_at || request?.created_at;
@@ -276,13 +283,19 @@ const hasSupportedProgressAttachmentType = (attachment) => {
   return SUPPORTED_PROGRESS_ATTACHMENT_EXTENSION_PATTERN.test(source);
 };
 
-const validateIncomingWorkLogAttachments = (rawAttachments) => {
+const validateIncomingAttachments = (
+  rawAttachments,
+  {
+    fieldPrefix = "work_log_attachments",
+    noun = "attachments",
+  } = {},
+) => {
   if (rawAttachments === undefined) return [];
   if (!Array.isArray(rawAttachments)) {
     return [
       {
-        field: "work_log_attachments",
-        message: "Progress attachments must be uploaded files.",
+        field: fieldPrefix,
+        message: `${noun} must be uploaded files.`,
       },
     ];
   }
@@ -293,7 +306,7 @@ const validateIncomingWorkLogAttachments = (rawAttachments) => {
     const normalized = normalizeAttachmentEntry(entry, index);
     if (!uri || !isRemoteUri(uri) || !normalized) {
       errors.push({
-        field: `work_log_attachments.${index}.uri`,
+        field: `${fieldPrefix}.${index}.uri`,
         message: "Attachment upload is missing a valid link.",
       });
       return;
@@ -301,7 +314,7 @@ const validateIncomingWorkLogAttachments = (rawAttachments) => {
 
     if (!hasSupportedProgressAttachmentType(normalized)) {
       errors.push({
-        field: `work_log_attachments.${index}.type`,
+        field: `${fieldPrefix}.${index}.type`,
         message: "This file type is not supported. Please upload a photo or PDF.",
       });
     }
@@ -309,6 +322,12 @@ const validateIncomingWorkLogAttachments = (rawAttachments) => {
 
   return errors;
 };
+
+const validateIncomingWorkLogAttachments = (rawAttachments) =>
+  validateIncomingAttachments(rawAttachments, {
+    fieldPrefix: "work_log_attachments",
+    noun: "Progress attachments",
+  });
 
 const sanitizeAttachmentsForOutput = (attachments) => {
   if (!Array.isArray(attachments)) return [];
@@ -406,6 +425,12 @@ const serializeMaintenanceRequest = (request, tenant = null) => ({
         attachments: sanitizeAttachmentsForOutput(entry?.attachments),
       }))
     : [],
+  conversation: Array.isArray(request.conversation)
+    ? request.conversation.map((entry) => ({
+        ...entry,
+        attachments: sanitizeAttachmentsForOutput(entry?.attachments),
+      }))
+    : [],
   resolutionNote: request.resolution_note ?? null,
   created_at: request.created_at,
   updated_at: request.updated_at,
@@ -461,12 +486,6 @@ const resolveAdminBranchFilter = (req) => {
 
 const ensureMinimumDescriptionLength = (description) =>
   String(description || "").trim().length >= MIN_MAINTENANCE_DESCRIPTION_LENGTH;
-
-const buildAdminDisplayName = (adminUser) =>
-  `${adminUser?.firstName || ""} ${adminUser?.lastName || ""}`.trim() ||
-  adminUser?.email ||
-  adminUser?.user_id ||
-  "Admin";
 
 const normalizeAdminUpdatePayload = (payload = {}) => {
   const hasAssignedField = Object.prototype.hasOwnProperty.call(payload, "assigned_to");
@@ -528,6 +547,20 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
     ]);
   }
 
+  if (nextStatus === "in_progress" && !nextAssignedTo && !request.assigned_to) {
+    throw new AppError(
+      "Please assign a staff member or team before marking this request as In Progress.",
+      400,
+      "ASSIGNEE_REQUIRED",
+      [
+        {
+          field: "assigned_to",
+          message: "Please assign a staff member or team before marking this request as In Progress.",
+        },
+      ],
+    );
+  }
+
   if (!canAdminTransitionMaintenanceStatus(request.status, nextStatus)) {
     throw new AppError(
       `Invalid maintenance status transition: ${request.status} -> ${nextStatus}`,
@@ -542,22 +575,16 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
     );
   }
 
-  const requiresNotes = [
-    "resolved",
-    "completed",
-    "rejected",
-    "waiting_tenant",
-    "closed",
-  ].includes(nextStatus);
-  if (requiresNotes && !nextNotes) {
+  const requiresResolutionNote = ["resolved", "completed"].includes(nextStatus);
+  if (requiresResolutionNote && !nextNotes && !workLogNote) {
     throw new AppError(
-      "Admin response is required for this status update",
+      "Please add resolution notes or a completion work log before marking this request as Resolved.",
       400,
-      "ADMIN_RESPONSE_REQUIRED",
+      "RESOLUTION_NOTE_REQUIRED",
       [
         {
           field: "notes",
-          message: "Admin response is required for this status update.",
+          message: "Please add resolution notes or a completion work log before marking this request as Resolved.",
         },
       ],
     );
@@ -631,12 +658,6 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
     request.resolution_note = nextNotes ?? request.notes ?? null;
   }
 
-  if (statusChanged && nextStatus === "in_progress" && !request.assigned_to) {
-    request.assigned_to = buildAdminDisplayName(adminUser);
-    request.assigned_at = eventTimestamp;
-    assignmentChanged = true;
-  }
-
   if (statusChanged || assignmentChanged || notesChanged) {
     appendStatusHistory(request, {
       event: statusChanged
@@ -664,10 +685,7 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
     statusChanged,
     notesChanged,
     hasTenantVisibleUpdate:
-      statusChanged ||
-      notesChanged ||
-      Boolean(workLogNote) ||
-      workLogAttachments.length > 0,
+      statusChanged,
   };
 };
 
@@ -1176,6 +1194,106 @@ export const updateAdminRequestStatus = async (req, res, next) => {
     } catch (socketErr) {
       // non-fatal
     }
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/m/maintenance/admin/:requestId/reply
+ * Tenant-facing admin/staff reply with optional attachments.
+ */
+export const sendAdminReply = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId);
+    ensureAdminAccess(request, req);
+
+    if (["cancelled", "closed"].includes(normalizeMaintenanceStatus(request.status))) {
+      throw new AppError(
+        "Closed maintenance requests cannot receive new replies.",
+        409,
+        "REQUEST_CLOSED",
+      );
+    }
+
+    const adminUser = await getDbUser(req.user.uid);
+    const rawAttachments =
+      req.body.reply_attachments !== undefined
+        ? req.body.reply_attachments
+        : req.body.attachments;
+    const attachmentErrors = validateIncomingAttachments(rawAttachments, {
+      fieldPrefix: "reply_attachments",
+      noun: "Reply attachments",
+    });
+    const attachments = normalizeAttachments(rawAttachments);
+    const message = toOptionalText(req.body.message ?? req.body.reply);
+
+    if (attachmentErrors.length > 0) {
+      throw new AppError(
+        "Some required information is missing or invalid.",
+        400,
+        "VALIDATION_ERROR",
+        attachmentErrors,
+      );
+    }
+
+    if (!message && attachments.length === 0) {
+      throw new AppError(
+        "Please enter a message or attach a file before sending.",
+        400,
+        "REPLY_REQUIRED",
+        [
+          {
+            field: "reply",
+            message: "Please enter a message or attach a file before sending.",
+          },
+        ],
+      );
+    }
+
+    const eventTimestamp = new Date();
+    appendConversationEntry(request, {
+      message,
+      attachments,
+      sender_id: adminUser?.user_id || null,
+      sender_name:
+        `${adminUser?.firstName || ""} ${adminUser?.lastName || ""}`.trim() ||
+        adminUser?.email ||
+        adminUser?.user_id ||
+        null,
+      sender_role: adminUser?.role || null,
+      sender_side: "admin",
+      created_at: eventTimestamp,
+    });
+    request.updated_at = eventTimestamp;
+
+    await request.save();
+
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select("_id user_id firstName lastName email phone branch role")
+      .lean();
+
+    if (tenantUser?._id) {
+      await notify.maintenanceUpdated(
+        tenantUser._id,
+        request.request_type,
+        request.status,
+        request.request_id,
+        {
+          statusChanged: false,
+          hasAdminNote: Boolean(message),
+          hasProgressEntry: Boolean(message),
+          hasProgressAttachments: attachments.length > 0,
+        },
+      );
+    }
+
+    sendSuccess(res, {
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(tenantUser, request),
+      ),
+    });
   } catch (error) {
     next(error);
   }

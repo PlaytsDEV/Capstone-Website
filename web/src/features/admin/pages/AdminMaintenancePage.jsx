@@ -22,6 +22,7 @@ import { useAuth } from "../../../shared/hooks/useAuth";
 import {
  useAdminMaintenanceRequests,
  useMaintenanceRequest,
+ useSendMaintenanceReply,
  useUpdateMaintenanceRequest,
 } from "../../../shared/hooks/queries/useMaintenance";
 import { showNotification } from "../../../shared/utils/notification";
@@ -65,13 +66,6 @@ const SUPPORTED_PROGRESS_ATTACHMENT_TYPES = new Set([
  "image/webp",
  "application/pdf",
 ]);
-const REQUIRED_NOTE_STATUSES = new Set([
- "resolved",
- "completed",
- "rejected",
- "waiting_tenant",
- "closed",
-]);
 const UPDATE_FIELD_ORDER = [
  "status",
  "notes",
@@ -79,6 +73,7 @@ const UPDATE_FIELD_ORDER = [
  "work_log_note",
  "attachments",
 ];
+const REPLY_FIELD_ORDER = ["reply_message", "reply_attachments"];
 
 const fmtDate = (value) => {
  const date = new Date(value);
@@ -325,6 +320,22 @@ const getStatusTextClass = (status) => {
  }
 };
 
+const ROLE_LABELS = {
+ owner: "Dormitory Owner",
+ admin: "Admin",
+ branch_admin: "Branch Admin",
+ maintenance_staff: "Maintenance Staff",
+ staff: "Maintenance Staff",
+ tenant: "Tenant",
+ applicant: "Tenant",
+};
+
+const formatSenderLabel = ({ role, name, fallback = "Staff update" } = {}) => {
+ const roleLabel = ROLE_LABELS[String(role || "").toLowerCase()] || "Staff";
+ const displayName = String(name || "").trim();
+ return displayName ? `${roleLabel} - ${displayName}` : roleLabel || fallback;
+};
+
 const createFilterPayload = ({
  status,
  requestType,
@@ -408,13 +419,22 @@ const getMaintenanceApiValidationDetails = (error) => {
  return Array.isArray(details) ? details : [];
 };
 
-const mapMaintenanceApiErrors = (error) => {
+const mapMaintenanceApiErrors = (error, { scope = "progress" } = {}) => {
  const nextErrors = {};
  for (const detail of getMaintenanceApiValidationDetails(error)) {
  const rawField = String(detail?.field || "").toLowerCase();
  const message =
  detail?.message ||
  "Some required information is missing or invalid.";
+
+ if (scope === "reply") {
+ if (rawField.includes("attachment")) {
+ nextErrors.reply_attachments = message;
+ } else if (rawField.includes("reply") || rawField.includes("message")) {
+ nextErrors.reply_message = message;
+ }
+ continue;
+ }
 
  if (rawField.includes("work_log") || rawField.includes("attachment")) {
  nextErrors.attachments = message;
@@ -488,6 +508,11 @@ export default function AdminMaintenancePage() {
  const [uploadingUpdateAttachment, setUploadingUpdateAttachment] = useState(false);
  const [updateFieldErrors, setUpdateFieldErrors] = useState({});
  const [updateFormMessage, setUpdateFormMessage] = useState("");
+ const [replyMessage, setReplyMessage] = useState("");
+ const [replyAttachments, setReplyAttachments] = useState([]);
+ const [uploadingReplyAttachment, setUploadingReplyAttachment] = useState(false);
+ const [replyFieldErrors, setReplyFieldErrors] = useState({});
+ const [replyFormMessage, setReplyFormMessage] = useState("");
 
  const listFilters = useMemo(
  () =>
@@ -534,6 +559,7 @@ export default function AdminMaintenancePage() {
  isLoading: isDetailLoading,
  } = useMaintenanceRequest(selectedRequestId);
  const updateRequestMutation = useUpdateMaintenanceRequest();
+ const sendReplyMutation = useSendMaintenanceReply();
 
  const requests = requestsData?.requests || [];
  const summaryRequests = summaryData?.requests || requests;
@@ -547,12 +573,15 @@ export default function AdminMaintenancePage() {
  );
  const hasDraftChanges = Boolean(selectedRequest) && (
  draftStatus !== (selectedRequest.status || "") ||
- draftNotes !== (selectedRequest.notes || "") ||
- draftAssignedTo !== (selectedRequest.assigned_to || "") ||
+ draftNotes.trim() !== String(selectedRequest.notes || "").trim() ||
+ draftAssignedTo.trim() !== String(selectedRequest.assigned_to || "").trim() ||
  Boolean(draftWorkLogNote.trim()) ||
  draftWorkLogAttachments.length > 0
  );
  const hasBlockingWorkLogAttachment = draftWorkLogAttachments.some(
+ isBlockingWorkLogAttachment,
+ );
+ const hasBlockingReplyAttachment = replyAttachments.some(
  isBlockingWorkLogAttachment,
  );
 
@@ -777,6 +806,10 @@ export default function AdminMaintenancePage() {
  setDraftWorkLogAttachments([]);
  setUpdateFieldErrors({});
  setUpdateFormMessage("");
+ setReplyMessage("");
+ setReplyAttachments([]);
+ setReplyFieldErrors({});
+ setReplyFormMessage("");
  }, [selectedRequest, selectedRequestStatusOptions]);
 
  const clearUpdateFieldError = (field) => {
@@ -789,12 +822,37 @@ export default function AdminMaintenancePage() {
  if (updateFormMessage) setUpdateFormMessage("");
  };
 
+ const clearReplyFieldError = (field) => {
+ setReplyFieldErrors((current) => {
+ if (!current[field]) return current;
+ const next = { ...current };
+ delete next[field];
+ return next;
+ });
+ if (replyFormMessage) setReplyFormMessage("");
+ };
+
  const scrollToFirstUpdateError = (errors) => {
  const firstField = UPDATE_FIELD_ORDER.find((field) => errors[field]);
  if (!firstField) return;
 
  window.setTimeout(() => {
  const fieldNode = document.getElementById(`maintenance-update-field-${firstField}`);
+ if (!fieldNode) return;
+ fieldNode.scrollIntoView({ behavior: "smooth", block: "center" });
+ const focusTarget = fieldNode.matches?.("input,select,textarea,button")
+ ? fieldNode
+ : fieldNode.querySelector("input,select,textarea,button");
+ focusTarget?.focus?.({ preventScroll: true });
+ }, 0);
+ };
+
+ const scrollToFirstReplyError = (errors) => {
+ const firstField = REPLY_FIELD_ORDER.find((field) => errors[field]);
+ if (!firstField) return;
+
+ window.setTimeout(() => {
+ const fieldNode = document.getElementById(`maintenance-reply-field-${firstField}`);
  if (!fieldNode) return;
  fieldNode.scrollIntoView({ behavior: "smooth", block: "center" });
  const focusTarget = fieldNode.matches?.("input,select,textarea,button")
@@ -814,8 +872,16 @@ export default function AdminMaintenancePage() {
  errors.status = "Please choose a valid status for this request.";
  }
 
- if (REQUIRED_NOTE_STATUSES.has(normalizedStatus) && !draftNotes.trim()) {
- errors.notes = "Admin response is required for this status update.";
+ if (normalizedStatus === "in_progress" && !assignedTo) {
+ errors.assigned_to = "Please assign a staff member or team before marking this request as In Progress.";
+ }
+
+ if (
+ ["resolved", "completed"].includes(normalizedStatus) &&
+ !draftNotes.trim() &&
+ !draftWorkLogNote.trim()
+ ) {
+ errors.notes = "Please add resolution notes or a completion work log before marking this request as Resolved.";
  }
 
  if (assignedTo && assignedTo.length < 2) {
@@ -952,6 +1018,117 @@ export default function AdminMaintenancePage() {
  });
  };
 
+ const handleReplyAttachmentUpload = async (event) => {
+ const files = Array.from(event.target.files || []).filter(Boolean);
+ if (files.length === 0) return;
+
+ clearReplyFieldError("reply_attachments");
+ setUploadingReplyAttachment(true);
+
+ try {
+ for (const file of files) {
+ const clientId = createAttachmentClientId();
+ const validationMessage = validateProgressAttachmentFile(file);
+
+ if (validationMessage) {
+ setReplyAttachments((current) => [
+ ...current,
+ {
+ clientId,
+ name: file.name,
+ type: file.type || "application/octet-stream",
+ uploadStatus: "invalid",
+ error: validationMessage,
+ },
+ ]);
+ setReplyFieldErrors((current) => ({
+ ...current,
+ reply_attachments: validationMessage,
+ }));
+ continue;
+ }
+
+ setReplyAttachments((current) => [
+ ...current,
+ {
+ clientId,
+ name: file.name,
+ type: file.type || "application/octet-stream",
+ uploadStatus: "uploading",
+ },
+ ]);
+
+ try {
+ const { downloadUrl: uri, storagePath, size } = await uploadToFirebaseStorage(
+ file,
+ { documentType: "maintenance-reply-attachment" },
+ );
+ setReplyAttachments((current) =>
+ current.map((attachment) =>
+ attachment.clientId === clientId
+ ? {
+ clientId,
+ name: file.name,
+ uri,
+ type: file.type || "application/octet-stream",
+ size,
+ storagePath,
+ uploadStatus: "uploaded",
+ }
+ : attachment,
+ ),
+ );
+ showNotification("Attachment uploaded.", "success");
+ } catch (uploadError) {
+ const message =
+ uploadError.message || "Attachment upload failed. Please try again.";
+ setReplyAttachments((current) =>
+ current.map((attachment) =>
+ attachment.clientId === clientId
+ ? {
+ ...attachment,
+ uploadStatus: "failed",
+ error: "Attachment upload failed. Please try again.",
+ }
+ : attachment,
+ ),
+ );
+ setReplyFieldErrors((current) => ({
+ ...current,
+ reply_attachments: "Attachment upload failed. Please try again.",
+ }));
+ showNotification(message, "error");
+ }
+ }
+ } catch (uploadError) {
+ showNotification(
+ uploadError.message || "Attachment upload failed. Please try again.",
+ "error",
+ );
+ } finally {
+ setUploadingReplyAttachment(false);
+ event.target.value = "";
+ }
+ };
+
+ const handleRemoveReplyAttachment = (attachmentKey) => {
+ setReplyAttachments((current) => {
+ const next = current.filter(
+ (attachment, index) =>
+ getWorkLogAttachmentKey(attachment, index) !== attachmentKey,
+ );
+ const stillBlocked = next.some(isBlockingWorkLogAttachment);
+ setReplyFieldErrors((errors) => {
+ if (stillBlocked) return errors;
+ const nextErrors = { ...errors };
+ delete nextErrors.reply_attachments;
+ return nextErrors;
+ });
+ if (!stillBlocked && replyFormMessage) setReplyFormMessage("");
+ return next;
+ });
+ };
+
  const handleResetFilters = () => {
  setStatusFilter("all");
  setRequestTypeFilter("all");
@@ -1052,21 +1229,89 @@ export default function AdminMaintenancePage() {
  const hasMappedErrors = Object.keys(mappedErrors).length > 0;
  if (hasMappedErrors) {
  setUpdateFieldErrors(mappedErrors);
- setUpdateFormMessage("Some required information is missing or invalid. Please review the highlighted fields.");
+ setUpdateFormMessage("Please fix the highlighted fields before saving.");
  scrollToFirstUpdateError(mappedErrors);
  } else {
  setUpdateFormMessage(
- submitError?.message === "Validation failed"
- ? "Some required information is missing or invalid. Please review the highlighted fields."
- : submitError.message || "Failed to update maintenance request.",
+ submitError.message || "Failed to update maintenance request.",
  );
  }
  showNotification(
- submitError?.message === "Validation failed"
- ? "Please fix the highlighted fields before saving."
- : submitError.message || "Failed to update maintenance request.",
+ submitError.message || "Failed to update maintenance request.",
  "error",
  );
+ }
+ };
+
+ const validateReplyForm = () => {
+ const errors = {};
+
+ if (uploadingReplyAttachment) {
+ errors.reply_attachments = "Please wait until the attachment finishes uploading.";
+ } else if (replyAttachments.some((attachment) => attachment.uploadStatus === "failed")) {
+ errors.reply_attachments = "Attachment upload failed. Please try again.";
+ } else if (replyAttachments.some((attachment) => attachment.uploadStatus === "invalid")) {
+ errors.reply_attachments = "Please remove the invalid attachment before sending.";
+ } else if (replyAttachments.some((attachment) => !isUploadedWorkLogAttachment(attachment))) {
+ errors.reply_attachments = "Please remove the invalid attachment before sending.";
+ }
+
+ if (!replyMessage.trim() && replyAttachments.length === 0) {
+ errors.reply_message = "Please enter a message or attach a file before sending.";
+ }
+
+ return errors;
+ };
+
+ const handleSendReply = async (event) => {
+ event.preventDefault();
+ if (!selectedRequest) return;
+
+ const validationErrors = validateReplyForm();
+ if (Object.keys(validationErrors).length > 0) {
+ setReplyFieldErrors(validationErrors);
+ setReplyFormMessage("Please fix the highlighted fields before sending.");
+ scrollToFirstReplyError(validationErrors);
+ return;
+ }
+
+ const uploadedReplyAttachments = normalizeMaintenanceAttachments(replyAttachments)
+ .filter((attachment) => isRemoteUri(getMaintenanceAttachmentUri(attachment)));
+
+ if (replyAttachments.length > 0 && uploadedReplyAttachments.length !== replyAttachments.length) {
+ const nextErrors = {
+ reply_attachments: "Please remove the invalid attachment before sending.",
+ };
+ setReplyFieldErrors(nextErrors);
+ setReplyFormMessage("Please fix the highlighted fields before sending.");
+ scrollToFirstReplyError(nextErrors);
+ return;
+ }
+
+ try {
+ await sendReplyMutation.mutateAsync({
+ requestId: selectedRequest.request_id,
+ payload: {
+ message: replyMessage,
+ reply_attachments: uploadedReplyAttachments,
+ },
+ });
+ showNotification("Reply sent to tenant.", "success");
+ setReplyMessage("");
+ setReplyAttachments([]);
+ setReplyFieldErrors({});
+ setReplyFormMessage("");
+ } catch (submitError) {
+ const mappedErrors = mapMaintenanceApiErrors(submitError, { scope: "reply" });
+ const hasMappedErrors = Object.keys(mappedErrors).length > 0;
+ if (hasMappedErrors) {
+ setReplyFieldErrors(mappedErrors);
+ setReplyFormMessage("Please fix the highlighted fields before sending.");
+ scrollToFirstReplyError(mappedErrors);
+ } else {
+ setReplyFormMessage(submitError.message || "Failed to send reply.");
+ }
+ showNotification(submitError.message || "Failed to send reply.", "error");
  }
  };
 
@@ -1487,7 +1732,7 @@ export default function AdminMaintenancePage() {
  !hasDraftChanges
  }
  >
- {updateRequestMutation.isPending ? "Saving..." : "Save Update"}
+ {updateRequestMutation.isPending ? "Saving..." : "Save Progress"}
  </button>
  </div>
  ) : null
@@ -1592,6 +1837,105 @@ export default function AdminMaintenancePage() {
  : "Not resolved"
  }
  />
+ </DetailDrawer.Section>
+ </div>
+
+ <div className="rounded-xl border border-border bg-card p-5">
+ <DetailDrawer.Section
+ label={(
+ <>
+ <MessageSquare size={14} />
+ Tenant Reply History
+ </>
+ )}
+ >
+ {selectedRequest.conversation?.length || selectedRequest.notes ? (
+ <div className="space-y-3">
+ {selectedRequest.notes ? (
+ <article className="rounded-lg border border-border bg-card p-3">
+ <strong className="block text-xs font-semibold text-card-foreground">
+ Legacy Admin Response
+ </strong>
+ <span className="text-xs text-muted-foreground">
+ Saved before the reply thread was separated
+ </span>
+ <p className="mt-2 text-sm text-muted-foreground">{selectedRequest.notes}</p>
+ </article>
+ ) : null}
+ {selectedRequest.conversation?.map((entry, index) => (
+ <article
+ key={`${entry.created_at}-${index}`}
+ className="rounded-lg border border-border bg-card p-3"
+ >
+ <strong className="block text-xs font-semibold text-card-foreground">
+ {fmtDateTime(entry.created_at)}
+ </strong>
+ <span className="text-xs text-muted-foreground">
+ {formatSenderLabel({
+ role: entry.sender_role,
+ name: entry.sender_name,
+ fallback: "Maintenance reply",
+ })}
+ </span>
+ {entry.message ? (
+ <p className="mt-2 text-sm text-muted-foreground">{entry.message}</p>
+ ) : null}
+ {entry.attachments?.length ? (
+ <div className="mt-3 grid gap-3">
+ {entry.attachments.map((attachment, attachmentIndex) => {
+ const attachmentUri = getMaintenanceAttachmentUri(attachment);
+ const isViewable = isRemoteUri(attachmentUri);
+ const attachmentName = getMaintenanceAttachmentName(attachment, attachmentIndex);
+ const key = `${attachmentUri || attachmentName}-${attachmentIndex}`;
+
+ if (isViewable) {
+ return (
+ <a
+ key={key}
+ href={attachmentUri}
+ target="_blank"
+ rel="noreferrer"
+ className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 hover:bg-muted"
+ >
+ <AttachmentThumbnail attachment={attachment} index={attachmentIndex} />
+ <div className="min-w-0">
+ <span className="block truncate text-sm font-medium text-card-foreground">
+ {attachmentName}
+ </span>
+ <span className="text-xs text-muted-foreground">
+ {getMaintenanceAttachmentLabel(attachment)}
+ </span>
+ </div>
+ </a>
+ );
+ }
+
+ return (
+ <div
+ key={key}
+ className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 opacity-50"
+ >
+ <AttachmentThumbnail attachment={attachment} index={attachmentIndex} />
+ <div className="min-w-0">
+ <span className="block truncate text-sm font-medium text-card-foreground">
+ {attachmentName}
+ </span>
+ <span className="text-xs text-destructive">Attachment unavailable</span>
+ </div>
+ </div>
+ );
+ })}
+ </div>
+ ) : null}
+ </article>
+ ))}
+ </div>
+ ) : (
+ <div className="flex items-center gap-2 text-sm text-muted-foreground">
+ <MessageSquare size={16} />
+ No tenant-facing replies yet.
+ </div>
+ )}
  </DetailDrawer.Section>
  </div>
 
@@ -1732,7 +2076,9 @@ export default function AdminMaintenancePage() {
  </strong>
  <span className="text-xs text-muted-foreground">
  {formatMaintenanceStatus(entry.status)}
- {entry.actor_name ? ` - ${entry.actor_name}` : ""}
+ {entry.actor_name
+ ? ` - ${formatSenderLabel({ role: entry.actor_role, name: entry.actor_name })}`
+ : ""}
  </span>
  <p className="mt-2 text-sm text-muted-foreground">
  {entry.note || entry.event || "Status updated."}
@@ -1769,7 +2115,11 @@ export default function AdminMaintenancePage() {
  {fmtDateTime(entry.logged_at)}
  </strong>
  <span className="text-xs text-muted-foreground">
- {entry.actor_name || "Staff update"}
+ {formatSenderLabel({
+ role: entry.actor_role,
+ name: entry.actor_name,
+ fallback: "Staff update",
+ })}
  </span>
  <p className="mt-2 text-sm text-muted-foreground">{entry.note}</p>
  {entry.attachments?.length ? (
@@ -1836,7 +2186,7 @@ export default function AdminMaintenancePage() {
  label={(
  <>
  <MessageSquare size={14} />
- Admin Response
+ Progress Update
  </>
  )}
  >
@@ -1912,11 +2262,11 @@ export default function AdminMaintenancePage() {
 
  <label id="maintenance-update-field-notes" className="block">
  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
- Admin Response
+ Resolution Notes
  </span>
  <textarea
  rows="6"
- placeholder="This note is shown to the tenant in the mobile app."
+ placeholder="Internal resolution or status note for this request."
  value={draftNotes}
  onChange={(event) => {
  setDraftNotes(event.target.value);
@@ -1940,7 +2290,7 @@ export default function AdminMaintenancePage() {
  </span>
  <textarea
  rows="3"
- placeholder="Optional progress note that the tenant can reference together with any update attachment."
+ placeholder="Optional internal progress note for the work log."
  value={draftWorkLogNote}
  onChange={(event) => {
  setDraftWorkLogNote(event.target.value);
@@ -1980,7 +2330,7 @@ export default function AdminMaintenancePage() {
  />
  </label>
  <span className="text-xs text-muted-foreground">
- Send progress files that the tenant can open from the request timeline.
+ Add internal progress files for the admin work log.
  </span>
  </div>
  {updateFieldErrors.attachments ? (
@@ -2037,6 +2387,153 @@ export default function AdminMaintenancePage() {
  </div>
  ) : null}
  </label>
+ </form>
+ </DetailDrawer.Section>
+ </div>
+
+ <div className="rounded-xl border border-border bg-card p-5">
+ <DetailDrawer.Section
+ label={(
+ <>
+ <MessageSquare size={14} />
+ Reply to Tenant
+ </>
+ )}
+ >
+ {isSelectedRequestLocked ? (
+ <div className="rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-warning-dark">
+ Closed and cancelled requests are locked records. Tenant replies are disabled.
+ </div>
+ ) : null}
+
+ <form className="mt-4 space-y-4" onSubmit={handleSendReply}>
+ {replyFormMessage ? (
+ <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+ {replyFormMessage}
+ </div>
+ ) : null}
+
+ <label id="maintenance-reply-field-reply_message" className="block">
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Message
+ </span>
+ <textarea
+ rows="4"
+ placeholder="Write a message for the tenant."
+ value={replyMessage}
+ onChange={(event) => {
+ setReplyMessage(event.target.value);
+ clearReplyFieldError("reply_message");
+ }}
+ disabled={isSelectedRequestLocked || sendReplyMutation.isPending}
+ aria-invalid={Boolean(replyFieldErrors.reply_message)}
+ className={buildFieldClassName(
+ Boolean(replyFieldErrors.reply_message),
+ "mt-2 w-full rounded-lg border bg-card px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2",
+ )}
+ />
+ {replyFieldErrors.reply_message ? (
+ <p className="mt-1 text-xs text-rose-600">{replyFieldErrors.reply_message}</p>
+ ) : null}
+ </label>
+
+ <label id="maintenance-reply-field-reply_attachments" className="block">
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Reply Attachments
+ </span>
+ <div
+ className={`mt-2 flex flex-wrap items-center gap-3 rounded-lg border p-3 ${
+ replyFieldErrors.reply_attachments ? "border-rose-500" : "border-transparent"
+ }`}
+ >
+ <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-card-foreground hover:bg-muted">
+ <Paperclip size={14} />
+ {uploadingReplyAttachment ? "Uploading attachment..." : "Upload photo or PDF"}
+ <input
+ type="file"
+ hidden
+ multiple
+ accept="image/jpeg,image/png,image/webp,application/pdf"
+ onChange={handleReplyAttachmentUpload}
+ disabled={isSelectedRequestLocked || uploadingReplyAttachment || sendReplyMutation.isPending}
+ />
+ </label>
+ <span className="text-xs text-muted-foreground">
+ Attach files the tenant can open from the reply history.
+ </span>
+ </div>
+ {replyFieldErrors.reply_attachments ? (
+ <p className="mt-1 text-xs text-rose-600">{replyFieldErrors.reply_attachments}</p>
+ ) : null}
+
+ {replyAttachments.length ? (
+ <div className="mt-3 grid gap-2">
+ {replyAttachments.map((attachment, index) => {
+ const attachmentKey = getWorkLogAttachmentKey(attachment, index);
+ const uploadStatus = attachment.uploadStatus || "uploaded";
+ const statusMessage =
+ uploadStatus === "uploading"
+ ? "Uploading attachment..."
+ : uploadStatus === "uploaded"
+ ? "Attachment uploaded."
+ : attachment.error || "Please remove the invalid attachment before sending.";
+ return (
+ <div
+ key={attachmentKey}
+ className={`flex items-center justify-between gap-3 rounded-lg border bg-card px-3 py-2 ${
+ isBlockingWorkLogAttachment(attachment) ? "border-rose-200" : "border-border"
+ }`}
+ >
+ <div className="min-w-0">
+ <div className="truncate text-sm font-medium text-card-foreground">
+ {getMaintenanceAttachmentName(attachment, index)}
+ </div>
+ <div
+ className={`text-xs ${
+ isBlockingWorkLogAttachment(attachment)
+ ? "text-rose-600"
+ : uploadStatus === "uploaded"
+ ? "text-emerald-600"
+ : "text-muted-foreground"
+ }`}
+ >
+ {statusMessage}
+ {uploadStatus === "uploaded" ? ` ${getMaintenanceAttachmentLabel(attachment)}` : ""}
+ </div>
+ </div>
+ <button
+ type="button"
+ className="text-xs font-medium text-rose-600 hover:text-rose-700"
+ onClick={() => handleRemoveReplyAttachment(attachmentKey)}
+ disabled={isSelectedRequestLocked || sendReplyMutation.isPending}
+ >
+ Remove
+ </button>
+ </div>
+ );
+ })}
+ </div>
+ ) : null}
+ </label>
+
+ <div className="flex justify-end">
+ <button
+ type="submit"
+ className="inline-flex h-10 items-center justify-center rounded-lg px-5 text-sm font-semibold shadow-sm hover:opacity-90"
+ style={{
+ backgroundColor: "var(--primary)",
+ color: "var(--primary-foreground)",
+ }}
+ disabled={
+ isSelectedRequestLocked ||
+ sendReplyMutation.isPending ||
+ uploadingReplyAttachment ||
+ hasBlockingReplyAttachment
+ }
+ >
+ {sendReplyMutation.isPending ? "Sending..." : "Send Reply"}
+ </button>
+ </div>
  </form>
  </DetailDrawer.Section>
  </div>

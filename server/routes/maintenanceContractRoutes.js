@@ -57,6 +57,13 @@ router.patch(
   requirePermission("manageMaintenance"),
   maintenanceController.updateAdminRequestStatus,
 );
+router.post(
+  "/admin/:requestId/reply",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.sendAdminReply,
+);
 router.patch(
   "/admin/bulk",
   verifyAdmin,

@@ -48,6 +48,7 @@ await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
 const {
   getAdminAll,
   reopenMyRequest,
+  sendAdminReply,
   updateAdminRequestStatus,
 } = await import("./maintenanceController.js");
 
@@ -81,8 +82,11 @@ const buildRequestDoc = (overrides = {}) => {
     assigned_to: null,
     notes: null,
     attachments: [],
+    conversation: [],
     reopen_note: null,
     reopen_history: [],
+    statusHistory: [],
+    work_log: [],
     created_at: new Date("2026-04-08T10:30:00.000Z"),
     updated_at: new Date("2026-04-08T10:30:00.000Z"),
     cancelled_at: null,
@@ -105,8 +109,11 @@ const buildRequestDoc = (overrides = {}) => {
         assigned_to: this.assigned_to,
         notes: this.notes,
         attachments: this.attachments,
+        conversation: this.conversation,
         reopen_note: this.reopen_note,
         reopen_history: this.reopen_history,
+        statusHistory: this.statusHistory,
+        work_log: this.work_log,
         created_at: this.created_at,
         updated_at: this.updated_at,
         cancelled_at: this.cancelled_at,
@@ -389,18 +396,7 @@ describe("maintenanceController", () => {
       }),
     );
     expect(requestDoc.save).toHaveBeenCalledTimes(1);
-    expect(maintenanceUpdated).toHaveBeenCalledWith(
-      "mongo_user_1",
-      "plumbing",
-      "pending",
-      requestDoc.request_id,
-      {
-        statusChanged: false,
-        hasAdminNote: false,
-        hasProgressEntry: false,
-        hasProgressAttachments: true,
-      },
-    );
+    expect(maintenanceUpdated).not.toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -442,7 +438,7 @@ describe("maintenanceController", () => {
     expect(next.mock.calls[0][0].code).toBe("INVALID_STATUS_TRANSITION");
   });
 
-  test("updateAdminRequestStatus notifies tenants about same-status admin updates", async () => {
+  test("updateAdminRequestStatus saves same-status internal progress without tenant reply notification", async () => {
     const requestDoc = buildRequestDoc({ status: "pending" });
     maintenanceFindOne.mockResolvedValue(requestDoc);
     userFindOne.mockImplementation(({ firebaseUid, user_id }) => {
@@ -495,6 +491,124 @@ describe("maintenanceController", () => {
     expect(requestDoc.notes).toBe("Queued for morning inspection");
     expect(requestDoc.assigned_to).toBe("Morning team");
     expect(requestDoc.save).toHaveBeenCalledTimes(1);
+    expect(maintenanceUpdated).not.toHaveBeenCalled();
+    expect(sendSuccess).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("updateAdminRequestStatus requires assignment before in progress", async () => {
+    const requestDoc = buildRequestDoc({ status: "pending" });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockImplementation(({ firebaseUid }) =>
+      buildLeanQuery(
+        firebaseUid === "firebase-admin-1"
+          ? {
+              _id: "admin_user_1",
+              user_id: "admin_1",
+              firstName: "Branch",
+              lastName: "Admin",
+              email: "admin@example.com",
+              phone: "0918",
+              branch: "gil-puyat",
+              role: "branch_admin",
+            }
+          : null,
+      ),
+    );
+
+    const req = {
+      user: { uid: "firebase-admin-1" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        status: "in_progress",
+        assigned_to: "",
+      },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await updateAdminRequestStatus(req, res, next);
+
+    expect(requestDoc.save).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next.mock.calls[0][0].code).toBe("ASSIGNEE_REQUIRED");
+    expect(next.mock.calls[0][0].details[0].field).toBe("assigned_to");
+  });
+
+  test("sendAdminReply stores tenant-facing message attachments and notifies tenant", async () => {
+    const requestDoc = buildRequestDoc({ conversation: [] });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockImplementation(({ firebaseUid, user_id }) => {
+      if (firebaseUid === "firebase-admin-1") {
+        return buildLeanQuery({
+          _id: "admin_user_1",
+          user_id: "admin_1",
+          firstName: "Dormitory",
+          lastName: "Owner",
+          email: "owner@example.com",
+          phone: "0918",
+          branch: "gil-puyat",
+          role: "owner",
+        });
+      }
+
+      if (user_id === "user_95f39d5b4ea4") {
+        return buildLeanQuery({
+          _id: "mongo_user_1",
+          user_id: "user_95f39d5b4ea4",
+          firstName: "Lily",
+          lastName: "Tenant",
+          email: "lily@example.com",
+          phone: "0917",
+          branch: "gil-puyat",
+          role: "tenant",
+        });
+      }
+
+      return buildLeanQuery(null);
+    });
+
+    const req = {
+      user: { uid: "firebase-admin-1" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        message: "We uploaded the repair progress photo.",
+        reply_attachments: [
+          {
+            name: "progress.jpg",
+            uri: "https://storage.example.com/maintenance/progress.jpg",
+            type: "image/jpeg",
+          },
+        ],
+      },
+      branchFilter: "gil-puyat",
+      isOwner: true,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await sendAdminReply(req, res, next);
+
+    expect(requestDoc.conversation).toHaveLength(1);
+    expect(requestDoc.conversation[0]).toEqual(
+      expect.objectContaining({
+        message: "We uploaded the repair progress photo.",
+        sender_id: "admin_1",
+        sender_name: "Dormitory Owner",
+        sender_role: "owner",
+        sender_side: "admin",
+        attachments: [
+          {
+            name: "progress.jpg",
+            uri: "https://storage.example.com/maintenance/progress.jpg",
+            type: "image/jpeg",
+          },
+        ],
+      }),
+    );
+    expect(requestDoc.save).toHaveBeenCalledTimes(1);
     expect(maintenanceUpdated).toHaveBeenCalledWith(
       "mongo_user_1",
       "plumbing",
@@ -503,12 +617,53 @@ describe("maintenanceController", () => {
       {
         statusChanged: false,
         hasAdminNote: true,
-        hasProgressEntry: false,
-        hasProgressAttachments: false,
+        hasProgressEntry: true,
+        hasProgressAttachments: true,
       },
     );
     expect(sendSuccess).toHaveBeenCalledTimes(1);
     expect(next).not.toHaveBeenCalled();
+  });
+
+  test("sendAdminReply requires a message or attachment", async () => {
+    const requestDoc = buildRequestDoc({ conversation: [] });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockImplementation(({ firebaseUid }) =>
+      buildLeanQuery(
+        firebaseUid === "firebase-admin-1"
+          ? {
+              _id: "admin_user_1",
+              user_id: "admin_1",
+              firstName: "Branch",
+              lastName: "Admin",
+              email: "admin@example.com",
+              phone: "0918",
+              branch: "gil-puyat",
+              role: "branch_admin",
+            }
+          : null,
+      ),
+    );
+
+    const req = {
+      user: { uid: "firebase-admin-1" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        message: "",
+        reply_attachments: [],
+      },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await sendAdminReply(req, res, next);
+
+    expect(requestDoc.save).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next.mock.calls[0][0].code).toBe("REPLY_REQUIRED");
+    expect(next.mock.calls[0][0].details[0].field).toBe("reply");
   });
 
   test("reopenMyRequest returns resolved work to pending and records reopen history", async () => {

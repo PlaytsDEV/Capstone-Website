@@ -61,6 +61,14 @@ router.patch(
   maintenanceController.updateAdminRequestStatus,
 );
 
+router.post(
+  "/admin/:requestId/reply",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.sendAdminReply,
+);
+
 router.get("/my-requests", verifyApplicant, maintenanceController.getMyRequests);
 router.post("/requests", verifyApplicant, maintenanceController.createRequestCompat);
 router.get("/requests/:requestId", maintenanceController.getRequestById);

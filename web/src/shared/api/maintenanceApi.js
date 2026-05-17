@@ -79,6 +79,15 @@ export const maintenanceApi = {
     }),
 
   /**
+   * Send a tenant-facing admin reply with optional attachments.
+   */
+  sendAdminReply: (requestId, payload) =>
+    authFetch(`/m/maintenance/admin/${requestId}/reply`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  /**
    * Bulk update maintenance requests (admin only)
    */
   bulkUpdateAdminRequests: (payload) =>

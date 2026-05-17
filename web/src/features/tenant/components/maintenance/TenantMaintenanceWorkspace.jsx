@@ -5,6 +5,7 @@ import {
   FileText,
   Image as ImageIcon,
   LoaderCircle,
+  MessageSquare,
   Paperclip,
   Pencil,
   Plus,
@@ -85,6 +86,10 @@ const getLatestProgressEntry = (request) => {
   const workLog = Array.isArray(request?.workLog) ? request.workLog : [];
   return workLog.length ? workLog[workLog.length - 1] : null;
 };
+const getLatestTenantReply = (request) => {
+  const conversation = Array.isArray(request?.conversation) ? request.conversation : [];
+  return conversation.length ? conversation[conversation.length - 1] : null;
+};
 const getProgressSummary = (entry) => {
   if (!entry) return "";
 
@@ -97,6 +102,17 @@ const getProgressSummary = (entry) => {
   }
 
   return "Admin posted a progress update.";
+};
+
+const getReplySummary = (entry) => {
+  if (!entry) return "";
+  const message = typeof entry.message === "string" ? entry.message.trim() : "";
+  if (message) return message;
+  const attachmentCount = Array.isArray(entry.attachments) ? entry.attachments.length : 0;
+  if (attachmentCount > 0) {
+    return `Admin sent ${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"}.`;
+  }
+  return "Admin sent a reply.";
 };
 
 function AttachmentLink({ attachment, index, onPreview }) {
@@ -646,6 +662,8 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               const isReopenable = REOPENABLE_MAINTENANCE_STATUSES.includes(request.status);
               const latestProgressEntry = getLatestProgressEntry(request);
               const latestProgressSummary = getProgressSummary(latestProgressEntry);
+              const latestReply = getLatestTenantReply(request);
+              const latestReplySummary = getReplySummary(latestReply);
 
               return (
                 <article
@@ -740,6 +758,42 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                           Admin Response
                         </strong>
                         <span>{request.notes}</span>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {latestReply ? (
+                    <div
+                      style={{
+                        marginTop: 14,
+                        borderRadius: 12,
+                        padding: "12px 14px",
+                        background: "#E0F2FE",
+                        color: "#075985",
+                        display: "flex",
+                        gap: 10,
+                        alignItems: "flex-start",
+                      }}
+                    >
+                      <MessageSquare size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+                      <div style={{ width: "100%" }}>
+                        <strong style={{ display: "block", marginBottom: 4 }}>
+                          Latest Admin Reply
+                        </strong>
+                        <span>{latestReplySummary}</span>
+
+                        {latestReply.attachments?.length ? (
+                          <div className="maintenance-detail-links" style={{ marginTop: 12 }}>
+                            {latestReply.attachments.map((attachment, index) => (
+                              <AttachmentLink
+                                key={`${getMaintenanceAttachmentUri(attachment) || attachment.name}-${index}`}
+                                attachment={attachment}
+                                index={index}
+                                onPreview={setPreviewAttachment}
+                              />
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   ) : null}
@@ -926,6 +980,36 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                   <p>{selectedRequest.notes}</p>
                 </div>
               </div>
+            ) : null}
+
+            {selectedRequest.conversation?.length ? (
+              <section className="maintenance-detail-section">
+                <h3>Reply History</h3>
+                <div className="maintenance-timeline">
+                  {selectedRequest.conversation.map((entry, index) => (
+                    <article key={`${entry.created_at}-${index}`}>
+                      <strong>{fmtDateTime(entry.created_at)}</strong>
+                      <span>
+                        {entry.sender_side === "tenant" ? "Tenant" : "Dormitory Admin"}
+                        {entry.sender_name ? ` - ${entry.sender_name}` : ""}
+                      </span>
+                      {entry.message ? <p>{entry.message}</p> : null}
+                      {entry.attachments?.length ? (
+                        <div className="maintenance-detail-links" style={{ marginTop: 10 }}>
+                          {entry.attachments.map((attachment, attachmentIndex) => (
+                            <AttachmentLink
+                              key={`${getMaintenanceAttachmentUri(attachment) || attachment.name}-${attachmentIndex}`}
+                              attachment={attachment}
+                              index={attachmentIndex}
+                              onPreview={setPreviewAttachment}
+                            />
+                          ))}
+                        </div>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              </section>
             ) : null}
 
             {selectedRequest.workLog?.length ? (

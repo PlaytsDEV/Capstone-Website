@@ -135,6 +135,45 @@ const workLogSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const conversationEntrySchema = new mongoose.Schema(
+  {
+    message: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    attachments: {
+      type: [attachmentSchema],
+      default: [],
+    },
+    sender_id: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    sender_name: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    sender_role: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    sender_side: {
+      type: String,
+      enum: ["tenant", "admin"],
+      default: "admin",
+    },
+    created_at: {
+      type: Date,
+      required: true,
+    },
+  },
+  { _id: false },
+);
+
 const buildRequestId = () =>
   `maint_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
 
@@ -230,6 +269,10 @@ const maintenanceRequestSchema = new mongoose.Schema(
     },
     work_log: {
       type: [workLogSchema],
+      default: [],
+    },
+    conversation: {
+      type: [conversationEntrySchema],
       default: [],
     },
 
