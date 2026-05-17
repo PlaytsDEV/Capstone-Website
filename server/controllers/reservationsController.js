@@ -77,6 +77,7 @@ import {
   renewStayWorkflow,
   transferStayWorkflow,
 } from "../utils/tenantActionService.js";
+import { resolveArchivedRestoreStatus } from "../utils/reservationArchive.js";
 import { ensureCurrentCycleRentBill } from "../utils/rentGenerator.js";
 import { emitToUser } from "../utils/socket.js";
 import {
@@ -150,6 +151,9 @@ const ADMIN_LIST_FIELDS = [
   "reservationFeeForfeited",
   "isArchived",
   "archivedAt",
+  "archivedBy",
+  "archivedPreviousStatus",
+  "archiveReason",
   "idType",
   "validIDType",
 ].join(" ");
@@ -1912,7 +1916,10 @@ export const getReservations = async (req, res, next) => {
       .sort({ createdAt: -1 });
 
     if (isAdminListView) {
-      reservationsQuery = reservationsQuery.select(ADMIN_LIST_FIELDS).lean();
+      reservationsQuery = reservationsQuery
+        .populate("archivedBy", "firstName lastName email role")
+        .select(ADMIN_LIST_FIELDS)
+        .lean();
     } else {
       reservationsQuery = reservationsQuery.select(HEAVY_FIELDS);
     }
@@ -2203,7 +2210,8 @@ export const getReservationById = async (req, res, next) => {
 
     const reservation = await Reservation.findById(reservationId)
       .populate(...POPULATE_USER)
-      .populate(...POPULATE_ROOM);
+      .populate(...POPULATE_ROOM)
+      .populate("archivedBy", "firstName lastName email role");
     if (!reservation)
       return res.status(404).json({
         error: "Reservation not found",
@@ -5162,13 +5170,11 @@ export const deleteReservation = async (req, res, next) => {
         code: "RESERVATION_NOT_FOUND",
       });
 
-    const isOwner = String(reservation.userId) === String(dbUser._id);
-    const isAdmin =
-      isAdminRole(dbUser.role);
-    if (!isOwner && !isAdmin)
+    const isAdmin = isAdminRole(dbUser.role);
+    if (!isAdmin)
       return res.status(403).json({
-        error: "Access denied. You can only delete your own reservation.",
-        code: "RESERVATION_ACCESS_DENIED",
+        error: "Access denied. Admin privileges are required to archive or delete reservations.",
+        code: "ADMIN_REQUIRED",
       });
     if (
       dbUser.role === "branch_admin" &&
@@ -5234,7 +5240,10 @@ export const deleteReservation = async (req, res, next) => {
         reservation.status = "cancelled";
       }
       reservation.notes = `${reservation.notes ? reservation.notes + " | " : ""}Archived via delete endpoint`;
-      await reservation.archive(dbUser._id);
+      await reservation.archive(dbUser._id, {
+        previousStatus: reservationData.status,
+        reason: "Archived via delete endpoint",
+      });
 
       await syncReservationUserLifecycle({
         status: "archived",
@@ -5544,11 +5553,11 @@ export const archiveReservation = async (req, res, next) => {
       }
     }
 
-    reservation.isArchived = true;
-    reservation.archivedAt = new Date();
-    reservation.archivedBy = dbUser?._id || null;
     reservation.notes = `${reservation.notes ? reservation.notes + " | " : ""}Archived: ${reason}`;
-    await reservation.save();
+    await reservation.archive(dbUser?._id || null, {
+      previousStatus: oldData.status,
+      reason,
+    });
 
     await syncReservationUserLifecycle({
       status: "archived",
@@ -5584,6 +5593,83 @@ export const archiveReservation = async (req, res, next) => {
 };
 
 /* ─── RENEW CONTRACT ─────────────────────────────── */
+/* Restore an archived reservation without reactivating occupancy-sensitive states. */
+export const restoreReservation = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const reservation = await Reservation.findById(reservationId).populate(
+      "roomId",
+      "branch",
+    );
+    if (!reservation) {
+      return res.status(404).json({
+        error: "Reservation not found",
+        code: "RESERVATION_NOT_FOUND",
+      });
+    }
+
+    const denied = checkBranchAccess(
+      res,
+      req.branchFilter,
+      reservation.roomId?.branch,
+    );
+    if (denied) return;
+
+    if (!reservation.isArchived) {
+      return res.status(409).json({
+        error: "Reservation is not archived.",
+        code: "RESERVATION_NOT_ARCHIVED",
+      });
+    }
+
+    const oldData = reservation.toObject();
+    const restoredStatus = resolveArchivedRestoreStatus(reservation);
+
+    reservation.status = restoredStatus;
+    reservation.isArchived = false;
+    reservation.archivedAt = null;
+    reservation.archivedBy = null;
+    reservation.archiveReason = "";
+    reservation.notes = `${reservation.notes ? reservation.notes + " | " : ""}Restored from archive`;
+    await reservation.save();
+
+    await syncReservationUserLifecycle({
+      status: restoredStatus,
+      previousStatus: oldData.status || "archived",
+      userId: reservation.userId,
+      roomId: reservation.roomId,
+      reservationId: reservation._id,
+      force: true,
+    });
+
+    await reservation.populate(...POPULATE_USER);
+    await reservation.populate(...POPULATE_ROOM);
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservationId,
+      oldData,
+      reservation.toObject(),
+      `Reservation restored from archive as ${restoredStatus}`,
+    );
+
+    res.json({
+      message: "Reservation restored successfully",
+      restoredStatus,
+      reservation: serializeReservation(reservation),
+    });
+  } catch (error) {
+    logger.error(
+      { err: error, requestId: req.id },
+      "Restore reservation error",
+    );
+    await auditLogger.logError(req, error, "Failed to restore reservation");
+    handleReservationError(res, error, "restore");
+  }
+};
+
 export const renewContract = async (req, res, next) => {
   try {
     const { reservationId } = req.params;

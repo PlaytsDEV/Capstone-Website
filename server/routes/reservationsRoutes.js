@@ -51,6 +51,7 @@ import {
   extendReservation,
   releaseSlot,
   archiveReservation,
+  restoreReservation,
   renewContract,
   moveOutReservation,
   transferTenant,
@@ -415,6 +416,22 @@ router.put(
   filterByBranch,
   requirePermission("manageReservations"),
   archiveReservation,
+);
+
+/**
+ * PATCH /api/reservations/:reservationId/restore
+ *
+ * Restore an archived reservation to the reservations list.
+ *
+ * Access: Admin (must be from room's branch) | Owner (any reservation)
+ */
+router.patch(
+  "/:reservationId/restore",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageReservations"),
+  restoreReservation,
 );
 
 /**

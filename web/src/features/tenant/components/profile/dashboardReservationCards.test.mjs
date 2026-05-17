@@ -44,6 +44,8 @@ test("reserved applicant dashboard does not render the old viewing-preference su
     ),
     true,
   );
+  assert.equal(reservationDashboard.includes("Go to Dashboard"), false);
+  assert.equal(reservationDashboard.includes("View Reservation Status"), true);
 });
 
 test("reserved applicant detail page remains applicant-mode, not tenant-mode", () => {

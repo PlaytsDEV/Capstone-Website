@@ -31,7 +31,7 @@ const PROCEED_WITHOUT_VISIT_STATUSES = new Set([
 ]);
 
 export const VISIT_COMPLETED_LOCK_MESSAGE =
-  "This visit has already been completed. Visit actions are no longer available.";
+  "This visit has been completed. Visit actions are no longer available.";
 
 const VISIT_STATUS_ALIASES = Object.freeze({
   cancelled: "visit_cancelled",

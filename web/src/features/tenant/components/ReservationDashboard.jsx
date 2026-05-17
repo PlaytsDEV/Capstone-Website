@@ -632,13 +632,6 @@ export default function ReservationDashboard({
  >
  View Reservation Status
  </button>
- <button
- type="button"
- onClick={() => navigate("/applicant/profile")}
- style={styles.reservedStatusSecondaryBtn}
- >
- Go to Dashboard
- </button>
  </div>
  </div>
  )}
@@ -1253,17 +1246,6 @@ const styles = {
  fontWeight: 700,
  cursor: "pointer",
  },
- reservedStatusSecondaryBtn: {
- padding: "8px 14px",
- background: "transparent",
- color: "#047857",
- border: "1px solid rgba(4, 120, 87, 0.28)",
- borderRadius: 6,
- fontSize: 12,
- fontWeight: 700,
- cursor: "pointer",
- },
-
  /* category row */
  categoryRow: {
  display: "flex",

@@ -408,15 +408,48 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.rdm-visit-management-header > div:first-child {
+  flex: 1 1 320px;
+  min-width: 0;
 }
 
 .rdm-visit-management-copy {
   margin: 0;
   color: #5b6472;
-  font-size: 0.92rem;
-  line-height: 1.45;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  max-width: 620px;
+}
+
+.rdm-visit-status-chip {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  min-width: max-content;
+  width: fit-content;
+  padding-inline: 14px !important;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.rdm-visit-status-chip .rdm-status-dot {
+  flex-shrink: 0;
+}
+
+.rdm-visit-completed-banner {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+  font-size: 0.9rem;
+  font-weight: 650;
+  line-height: 1.5;
 }
 
 .rdm-visit-management-note {

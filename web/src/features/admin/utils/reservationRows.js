@@ -30,7 +30,14 @@ export function hasPendingCancellationRequest(reservation) {
  return Boolean(
  reservation?.cancellationRequested &&
  reservation?.cancellationStatus === "pending",
- );
+  );
+}
+
+export function getArchivedByName(archivedBy) {
+ if (!archivedBy) return "-";
+ if (typeof archivedBy === "string") return archivedBy;
+ const name = `${archivedBy.firstName || ""} ${archivedBy.lastName || ""}`.trim();
+ return name || archivedBy.email || "-";
 }
 
 export function mapReservationAdminRow(reservation) {
@@ -76,6 +83,12 @@ export function mapReservationAdminRow(reservation) {
  cancellationRequestedAt: reservation.cancellationRequestedAt || null,
  cancellationRequestedBy: reservation.cancellationRequestedBy || null,
  cancellationAdminNote: reservation.cancellationAdminNote || null,
+ isArchived: Boolean(reservation.isArchived),
+ archivedAt: reservation.archivedAt || null,
+ archivedBy: reservation.archivedBy || null,
+ archivedByName: getArchivedByName(reservation.archivedBy),
+ archivedPreviousStatus: reservation.archivedPreviousStatus || reservation.status || null,
+ archiveReason: reservation.archiveReason || "",
  createdAt: reservation.createdAt,
  _raw: reservation,
  };

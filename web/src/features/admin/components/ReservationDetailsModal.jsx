@@ -176,6 +176,72 @@ const getVisitStatusKey = (reservation) => {
  return "";
 };
 
+const normalizeVisitHistoryStatus = (status) => {
+ const normalized = String(status || "").trim().toLowerCase();
+ if (normalized === "completed") return "visit_completed";
+ if (normalized === "approved") return "schedule_approved";
+ if (normalized === "cancelled" || normalized === "canceled") return "visit_cancelled";
+ return normalized;
+};
+
+const formatVisitSchedule = (date, time) => {
+ const dateLabel = fmtDate(date);
+ return `${dateLabel}${time ? ` at ${time}` : ""}`;
+};
+
+const getVisitHistoryTitle = (entry) => {
+ const status = normalizeVisitHistoryStatus(entry?.status);
+ return (
+  VISIT_STATUS_CONFIG[status]?.label ||
+  (status === "no_show"
+    ? "No-Show"
+    : status === "allowed_without_visit"
+      ? "Allowed to Proceed Without Visit"
+      : "Visit Updated")
+ );
+};
+
+const getVisitHistoryScheduleLines = (entry) => {
+ const status = normalizeVisitHistoryStatus(entry?.status);
+ const currentSchedule = formatVisitSchedule(entry?.visitDate, entry?.visitTime);
+ const nextSchedule = formatVisitSchedule(
+  entry?.rescheduledToDate,
+  entry?.rescheduledToTime,
+ );
+
+ if (status === "rescheduled") {
+  const lines = [{ label: "Changed from:", value: currentSchedule }];
+  if (entry?.rescheduledToDate || entry?.rescheduledToTime) {
+   lines.push({ label: "Changed to:", value: nextSchedule });
+  }
+  return lines;
+ }
+
+ if (status === "visit_completed") {
+  return [{ label: "Completed visit scheduled for:", value: currentSchedule }];
+ }
+
+ if (status === "schedule_approved" || status === "physical_visit_scheduled") {
+  return [{ label: "Scheduled for:", value: currentSchedule }];
+ }
+
+ if (status === "no_show") {
+  return [{ label: "No-show recorded for:", value: currentSchedule }];
+ }
+
+ if (status === "visit_cancelled") {
+  return [{ label: "Cancelled visit scheduled for:", value: currentSchedule }];
+ }
+
+ if (status === "allowed_without_visit") {
+  return entry?.visitDate || entry?.visitTime
+   ? [{ label: "Visit requirement waived for:", value: currentSchedule }]
+   : [{ label: "Visit requirement:", value: "Waived by admin" }];
+ }
+
+ return [{ label: "Visit schedule:", value: currentSchedule }];
+};
+
 const openImage = (url, title, options = {}) => {
  if (!url) {
  showNotification("No file available", "error");
@@ -915,13 +981,12 @@ export default function ReservationDetailsModal({
  Visit Management
  </h4>
  <p className="rdm-visit-management-copy">
- Track the physical visit separately from application review. Completing a
- visit or allowing the applicant to proceed will not unlock payment.
+ Visit completion only records attendance. Application review and payment remain separate.
  </p>
  </div>
  {visitStatusAppearance && (
  <div
- className="rdm-status-chip"
+ className="rdm-status-chip rdm-visit-status-chip"
  style={{
  background: visitStatusAppearance.bg,
  color: visitStatusAppearance.color,
@@ -936,6 +1001,12 @@ export default function ReservationDetailsModal({
  </div>
  )}
  </div>
+
+ {visitActionAvailability.completed && (
+ <div className="rdm-visit-completed-banner">
+ {visitActionAvailability.helperMessage}
+ </div>
+ )}
 
  <div className="rdm-info-grid">
  <div className="rdm-info-item">
@@ -997,32 +1068,20 @@ export default function ReservationDetailsModal({
  >
  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
  <strong style={{ fontSize: "0.84rem", color: "#0F172A" }}>
- {VISIT_STATUS_CONFIG[entry.status]?.label ||
-  (entry.status === "completed"
-    ? "Visit Completed"
-    : entry.status === "no_show"
-      ? "No-Show"
-      : entry.status === "visit_cancelled"
-        ? "Visit Cancelled"
-        : entry.status === "rescheduled"
-          ? "Rescheduled"
-          : entry.status === "allowed_without_visit"
-            ? "Allowed to Proceed Without Visit"
-            : "Visit Updated")}
+ {getVisitHistoryTitle(entry)}
  </strong>
  <span style={{ fontSize: "0.78rem", color: "#64748B" }}>
  {fmtDateTime(entry.updatedAt || entry.scheduledAt)}
  </span>
  </div>
- <div style={{ fontSize: "0.8rem", color: "#334155", marginTop: 6 }}>
- Old: {fmtDate(entry.visitDate)} {entry.visitTime ? `at ${entry.visitTime}` : ""}
+ {getVisitHistoryScheduleLines(entry).map((line) => (
+ <div
+ key={`${line.label}-${line.value}`}
+ style={{ fontSize: "0.8rem", color: "#334155", marginTop: 6 }}
+ >
+ <span style={{ fontWeight: 650 }}>{line.label}</span> {line.value}
  </div>
- {(entry.rescheduledToDate || entry.rescheduledToTime) && (
- <div style={{ fontSize: "0.8rem", color: "#334155", marginTop: 4 }}>
- New: {fmtDate(entry.rescheduledToDate)}{" "}
- {entry.rescheduledToTime ? `at ${entry.rescheduledToTime}` : ""}
- </div>
- )}
+ ))}
  {entry.updatedByName && (
  <div style={{ fontSize: "0.78rem", color: "#64748B", marginTop: 4 }}>
  Updated by {entry.updatedByName}
@@ -1039,12 +1098,9 @@ export default function ReservationDetailsModal({
  </div>
  )}
 
+                 {!visitActionAvailability.completed && (
                  <div className="rdm-visit-management-panel">
-                 {visitActionAvailability.completed ? (
-                 <div className="rdm-visit-action-helper rdm-visit-action-helper-success">
-                 {visitActionAvailability.helperMessage}
-                 </div>
-                 ) : visitStatusKey === "allowed_without_visit" ? (
+                 {visitStatusKey === "allowed_without_visit" ? (
                  <div className="rdm-visit-action-helper rdm-visit-action-helper-info">
                  Visit requirement has been waived. Applicant may proceed without a physical visit.
                  </div>
@@ -1217,6 +1273,7 @@ export default function ReservationDetailsModal({
  </div>
  )}
  </div>
+ )}
  </div>
  )}
 

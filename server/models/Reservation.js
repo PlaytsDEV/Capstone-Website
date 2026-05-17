@@ -758,6 +758,17 @@ const reservationSchema = new mongoose.Schema(
       ref: "User",
       default: null,
     },
+    archivedPreviousStatus: {
+      type: String,
+      enum: CANONICAL_RESERVATION_STATUSES,
+      default: null,
+    },
+    archiveReason: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 500,
+    },
   },
   {
     timestamps: true,
@@ -914,10 +925,17 @@ reservationSchema.index(
 /**
  * Soft delete this reservation
  */
-reservationSchema.methods.archive = async function (archivedById = null) {
+reservationSchema.methods.archive = async function (
+  archivedById = null,
+  { previousStatus = null, reason = "" } = {},
+) {
   this.isArchived = true;
   this.archivedAt = new Date();
   this.archivedBy = archivedById;
+  this.archivedPreviousStatus =
+    normalizeReservationStatus(previousStatus || this.archivedPreviousStatus || this.status) ||
+    this.status;
+  this.archiveReason = reason || this.archiveReason || "";
   return this.save();
 };
 
@@ -928,6 +946,7 @@ reservationSchema.methods.restore = async function () {
   this.isArchived = false;
   this.archivedAt = null;
   this.archivedBy = null;
+  this.archiveReason = "";
   return this.save();
 };
 

@@ -17,6 +17,8 @@ test("applicant tenant shell exposes notification bell and sidebar badge", () =>
 
   assert.match(tenantLayout, /<ApplicantTopBar /);
   assert.match(applicantTopBar, /<NotificationBell \/>/);
+  assert.doesNotMatch(applicantTopBar, /ChevronDown|aria-haspopup|role="menu"/);
+  assert.doesNotMatch(applicantTopBar, /Personal Details|Settings|Sign Out/);
   assert.match(sidebar, /useUnreadCount\(\)/);
   assert.match(sidebar, /item\.id === "notifications"/);
   assert.match(sidebar, /sidebarUnreadCount/);

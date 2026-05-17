@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { mapVisitScheduleRows } from "./reservationRows.js";
+import {
+  getArchivedByName,
+  mapReservationAdminRow,
+  mapVisitScheduleRows,
+} from "./reservationRows.js";
 
 const basePhysicalReservation = {
   _id: "reservation-1",
@@ -52,4 +56,40 @@ test("no-show reservations remain active so admins can reschedule or waive", () 
   assert.equal(rows.length, 1);
   assert.equal(rows[0].isHistorical, false);
   assert.equal(rows[0].visitStatus, "no_show");
+});
+
+test("mapReservationAdminRow exposes archive metadata for archived view", () => {
+  const row = mapReservationAdminRow({
+    _id: "reservation-archived",
+    reservationCode: "RES-123ABC",
+    status: "cancelled",
+    isArchived: true,
+    archivedAt: "2026-05-17T00:00:00.000Z",
+    archivedPreviousStatus: "cancelled",
+    archiveReason: "Archived by admin",
+    archivedBy: {
+      firstName: "Dormitory",
+      lastName: "Owner",
+      email: "owner@example.com",
+    },
+    userId: {
+      firstName: "Tala",
+      lastName: "Applicant",
+      email: "tala@example.com",
+    },
+    roomId: { name: "Room 101", branch: "gil-puyat", type: "Quad" },
+  });
+
+  assert.equal(row.isArchived, true);
+  assert.equal(row.archivedPreviousStatus, "cancelled");
+  assert.equal(row.archivedByName, "Dormitory Owner");
+  assert.equal(row.archiveReason, "Archived by admin");
+});
+
+test("getArchivedByName falls back to email or dash", () => {
+  assert.equal(
+    getArchivedByName({ email: "owner@example.com" }),
+    "owner@example.com",
+  );
+  assert.equal(getArchivedByName(null), "-");
 });

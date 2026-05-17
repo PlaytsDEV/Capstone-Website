@@ -74,7 +74,7 @@ export const ALLOWED_RESERVATION_STATUS_TRANSITIONS = Object.freeze({
   moveOut: ["archived"],
   rejected: ["archived"],
   cancelled: ["archived"],
-  archived: [],
+  archived: ["cancelled", "rejected", "moveOut"],
 });
 
 const RESERVATION_STATUS_QUERY_MAP = Object.freeze({

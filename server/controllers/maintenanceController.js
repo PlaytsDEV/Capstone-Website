@@ -59,6 +59,15 @@ const CLOSED_MAINTENANCE_STATUSES = new Set([
 ]);
 const IMAGE_FILE_PATTERN = /\.(avif|bmp|gif|heic|jpeg|jpg|png|svg|webp)(?:$|[?#])/i;
 const PDF_FILE_PATTERN = /\.pdf(?:$|[?#])/i;
+const SUPPORTED_PROGRESS_ATTACHMENT_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/*",
+  "application/pdf",
+]);
+const SUPPORTED_PROGRESS_ATTACHMENT_EXTENSION_PATTERN =
+  /\.(jpe?g|png|webp|pdf)(?:$|[?#])/i;
 
 const parseLimit = (value, fallback = 100) => {
   const parsed = Number.parseInt(value, 10);
@@ -259,6 +268,48 @@ const normalizeAttachments = (attachments) => {
     .filter(Boolean);
 };
 
+const hasSupportedProgressAttachmentType = (attachment) => {
+  const type = toOptionalText(attachment?.type)?.toLowerCase();
+  if (type && SUPPORTED_PROGRESS_ATTACHMENT_MIME_TYPES.has(type)) return true;
+
+  const source = `${attachment?.name || ""} ${attachment?.uri || ""}`.toLowerCase();
+  return SUPPORTED_PROGRESS_ATTACHMENT_EXTENSION_PATTERN.test(source);
+};
+
+const validateIncomingWorkLogAttachments = (rawAttachments) => {
+  if (rawAttachments === undefined) return [];
+  if (!Array.isArray(rawAttachments)) {
+    return [
+      {
+        field: "work_log_attachments",
+        message: "Progress attachments must be uploaded files.",
+      },
+    ];
+  }
+
+  const errors = [];
+  rawAttachments.forEach((entry, index) => {
+    const uri = getAttachmentUri(entry);
+    const normalized = normalizeAttachmentEntry(entry, index);
+    if (!uri || !isRemoteUri(uri) || !normalized) {
+      errors.push({
+        field: `work_log_attachments.${index}.uri`,
+        message: "Attachment upload is missing a valid link.",
+      });
+      return;
+    }
+
+    if (!hasSupportedProgressAttachmentType(normalized)) {
+      errors.push({
+        field: `work_log_attachments.${index}.type`,
+        message: "This file type is not supported. Please upload a photo or PDF.",
+      });
+    }
+  });
+
+  return errors;
+};
+
 const sanitizeAttachmentsForOutput = (attachments) => {
   if (!Array.isArray(attachments)) return [];
   return attachments
@@ -419,10 +470,12 @@ const buildAdminDisplayName = (adminUser) =>
 
 const normalizeAdminUpdatePayload = (payload = {}) => {
   const hasAssignedField = Object.prototype.hasOwnProperty.call(payload, "assigned_to");
-  const workLogAttachments = normalizeAttachments(
+  const rawWorkLogAttachments =
     payload.work_log_attachments !== undefined
       ? payload.work_log_attachments
-      : payload.workLogAttachments,
+      : payload.workLogAttachments;
+  const workLogAttachments = normalizeAttachments(
+    rawWorkLogAttachments,
   );
 
   return {
@@ -433,6 +486,7 @@ const normalizeAdminUpdatePayload = (payload = {}) => {
     workLogNote: toOptionalText(
       payload.work_log_note !== undefined ? payload.work_log_note : payload.workLogNote,
     ),
+    workLogAttachmentErrors: validateIncomingWorkLogAttachments(rawWorkLogAttachments),
     workLogAttachments,
   };
 };
@@ -452,11 +506,26 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
     nextAssignedTo,
     hasAssignedField,
     workLogNote,
+    workLogAttachmentErrors,
     workLogAttachments,
   } = normalizeAdminUpdatePayload(payload);
 
+  if (workLogAttachmentErrors.length > 0) {
+    throw new AppError(
+      "Some required information is missing or invalid. Please review the highlighted fields.",
+      400,
+      "VALIDATION_ERROR",
+      workLogAttachmentErrors,
+    );
+  }
+
   if (hasAssignedField && nextAssignedTo && nextAssignedTo.length < 2) {
-    throw new AppError("Assigned staff name is too short", 400, "INVALID_ASSIGNEE");
+    throw new AppError("Assigned staff name is too short", 400, "INVALID_ASSIGNEE", [
+      {
+        field: "assigned_to",
+        message: "Assigned staff name must be at least 2 characters.",
+      },
+    ]);
   }
 
   if (!canAdminTransitionMaintenanceStatus(request.status, nextStatus)) {
@@ -464,6 +533,12 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
       `Invalid maintenance status transition: ${request.status} -> ${nextStatus}`,
       409,
       "INVALID_STATUS_TRANSITION",
+      [
+        {
+          field: "status",
+          message: "This status change is not available for the current request.",
+        },
+      ],
     );
   }
 
@@ -479,6 +554,12 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
       "Admin response is required for this status update",
       400,
       "ADMIN_RESPONSE_REQUIRED",
+      [
+        {
+          field: "notes",
+          message: "Admin response is required for this status update.",
+        },
+      ],
     );
   }
 
@@ -494,6 +575,12 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
       `Status must be one of: ${ADMIN_MAINTENANCE_STATUSES.join(", ")}`,
       400,
       "INVALID_ADMIN_STATUS",
+      [
+        {
+          field: "status",
+          message: "Please choose a valid status for this request.",
+        },
+      ],
     );
   }
 
