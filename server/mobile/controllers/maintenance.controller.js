@@ -168,6 +168,26 @@ function stripInternalRequestFields(request) {
   return clean;
 }
 
+function stripTenantRequestFields(request) {
+  const clean = stripInternalRequestFields(request);
+  if (!clean) return clean;
+
+  delete clean.notes;
+  delete clean.resolution_note;
+  delete clean.completionNote;
+  delete clean.work_log;
+  delete clean.workLog;
+
+  if (Array.isArray(clean.statusHistory)) {
+    clean.statusHistory = clean.statusHistory.map((entry) => ({
+      ...entry,
+      note: ['tenant', 'applicant'].includes(entry?.actor_role) ? entry.note || null : null,
+    }));
+  }
+
+  return clean;
+}
+
 function normalizeRequestForPrimary(request, user = {}) {
   const now = new Date();
   const normalized = { ...request };
@@ -384,7 +404,7 @@ async function getMyMaintenance(req, res) {
     }
 
     const requests = await loadRequestsAcrossCollections(db, filter);
-    res.json(requests.map(stripInternalRequestFields));
+    res.json(requests.map(stripTenantRequestFields));
   } catch (error) {
     console.error('Get maintenance error:', error);
     res.status(500).json({ detail: 'Failed to fetch maintenance requests' });
@@ -457,7 +477,7 @@ async function createMaintenance(req, res) {
     );
 
     await db.collection(PRIMARY_COLLECTION).insertOne(newRequest);
-    res.status(201).json(stripInternalRequestFields(newRequest));
+    res.status(201).json(stripTenantRequestFields(newRequest));
   } catch (error) {
     console.error('Create maintenance error:', error);
     res.status(500).json({ detail: 'Failed to create maintenance request' });
@@ -499,7 +519,7 @@ async function updateMaintenance(req, res) {
     const updatedSource = await db.collection(located.collectionName).findOne({ request_id: requestId });
     const updated = await promoteRequestToPrimary(db, updatedSource, req.user)
       .catch(() => updatedSource);
-    res.json(stripInternalRequestFields(updated));
+    res.json(stripTenantRequestFields(updated));
   } catch (error) {
     console.error('Update maintenance error:', error);
     res.status(500).json({ detail: 'Failed to update maintenance request' });
@@ -550,7 +570,7 @@ async function cancelMaintenance(req, res) {
     const updatedSource = await db.collection(located.collectionName).findOne({ request_id: requestId });
     const updated = await promoteRequestToPrimary(db, updatedSource, req.user)
       .catch(() => updatedSource);
-    res.json(stripInternalRequestFields(updated));
+    res.json(stripTenantRequestFields(updated));
   } catch (error) {
     console.error('Cancel maintenance error:', error);
     res.status(500).json({ detail: 'Failed to cancel maintenance request' });
@@ -619,7 +639,7 @@ async function reopenMaintenance(req, res) {
     const updatedSource = await db.collection(located.collectionName).findOne({ request_id: requestId });
     const updated = await promoteRequestToPrimary(db, updatedSource, req.user)
       .catch(() => updatedSource);
-    res.json(stripInternalRequestFields(updated));
+    res.json(stripTenantRequestFields(updated));
   } catch (error) {
     console.error('Reopen maintenance error:', error);
     res.status(500).json({ detail: 'Failed to reopen maintenance request' });

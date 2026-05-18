@@ -47,6 +47,7 @@ await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
 
 const {
   getAdminAll,
+  getMyRequests,
   reopenMyRequest,
   sendAdminReply,
   updateAdminRequestStatus,
@@ -235,24 +236,99 @@ describe("maintenanceController", () => {
 
     const request = sendSuccess.mock.calls[0][1].requests[0];
     expect(request.attachments).toEqual([
-      {
+      expect.objectContaining({
         name: "leak-photo.jpg",
         uri: "https://storage.example.com/maintenance/leak-photo.jpg?token=abc",
         type: "image/jpeg",
-      },
-      {
+        url: "https://storage.example.com/maintenance/leak-photo.jpg?token=abc",
+        filename: "leak-photo.jpg",
+        mimeType: "image/jpeg",
+        fileType: "image",
+      }),
+      expect.objectContaining({
         name: "device-only.jpg",
         uri: null,
         type: "image/jpeg",
-      },
+        url: null,
+        filename: "device-only.jpg",
+        mimeType: "image/jpeg",
+        fileType: "image",
+      }),
     ]);
     expect(request.workLog[0].attachments).toEqual([
-      {
+      expect.objectContaining({
         name: "repair.pdf",
         uri: "https://cdn.example.com/maintenance/repair.pdf",
         type: "application/pdf",
-      },
+        url: "https://cdn.example.com/maintenance/repair.pdf",
+        filename: "repair.pdf",
+        mimeType: "application/pdf",
+        fileType: "pdf",
+      }),
     ]);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("getMyRequests hides internal progress fields from tenants", async () => {
+    const storedRequest = buildRequestDoc({
+      notes: "Internal resolution note",
+      statusHistory: [
+        {
+          event: "note_updated",
+          status: "pending",
+          actor_role: "branch_admin",
+          actor_name: "Branch Admin",
+          note: "Internal status note",
+          timestamp: new Date("2026-04-09T10:30:00.000Z"),
+        },
+      ],
+      work_log: [
+        {
+          logged_at: new Date("2026-04-09T10:30:00.000Z"),
+          note: "Internal work log",
+          attachments: [
+            {
+              name: "internal.jpg",
+              uri: "https://storage.example.com/maintenance/internal.jpg",
+              type: "image/jpeg",
+            },
+          ],
+        },
+      ],
+    });
+    maintenanceFind.mockReturnValue(buildListQuery([storedRequest]));
+    userFindOne.mockImplementation(({ firebaseUid }) =>
+      buildLeanQuery(
+        firebaseUid === "firebase-tenant-1"
+          ? {
+              _id: "tenant_user_1",
+              user_id: "user_95f39d5b4ea4",
+              firstName: "Lily",
+              lastName: "Tenant",
+              email: "lily@example.com",
+              phone: "0917",
+              branch: "gil-puyat",
+              role: "tenant",
+            }
+          : null,
+      ),
+    );
+
+    const req = {
+      user: { uid: "firebase-tenant-1" },
+      query: {},
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await getMyRequests(req, res, next);
+
+    const request = sendSuccess.mock.calls[0][1].requests[0];
+    expect(request.notes).toBeNull();
+    expect(request.workLog).toEqual([]);
+    expect(request.resolutionNote).toBeNull();
+    expect(request.completionNote).toBeNull();
+    expect(request.statusHistory[0].note).toBeNull();
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -387,11 +463,15 @@ describe("maintenanceController", () => {
       expect.objectContaining({
         note: "Progress attachment added.",
         attachments: [
-          {
+          expect.objectContaining({
             name: "progress.jpg",
             uri: "https://storage.example.com/maintenance/progress.jpg",
             type: "image/jpeg",
-          },
+            url: "https://storage.example.com/maintenance/progress.jpg",
+            filename: "progress.jpg",
+            mimeType: "image/jpeg",
+            fileType: "image",
+          }),
         ],
       }),
     );
@@ -575,11 +655,14 @@ describe("maintenanceController", () => {
       params: { requestId: requestDoc.request_id },
       body: {
         message: "We uploaded the repair progress photo.",
-        reply_attachments: [
+        attachments: [
           {
-            name: "progress.jpg",
-            uri: "https://storage.example.com/maintenance/progress.jpg",
-            type: "image/jpeg",
+            url: "https://storage.example.com/maintenance/progress.jpg",
+            filename: "progress.jpg",
+            originalName: "progress.jpg",
+            mimeType: "image/jpeg",
+            fileType: "image",
+            size: 123456,
           },
         ],
       },
@@ -600,11 +683,17 @@ describe("maintenanceController", () => {
         sender_role: "owner",
         sender_side: "admin",
         attachments: [
-          {
+          expect.objectContaining({
             name: "progress.jpg",
             uri: "https://storage.example.com/maintenance/progress.jpg",
             type: "image/jpeg",
-          },
+            url: "https://storage.example.com/maintenance/progress.jpg",
+            filename: "progress.jpg",
+            originalName: "progress.jpg",
+            mimeType: "image/jpeg",
+            fileType: "image",
+            size: 123456,
+          }),
         ],
       }),
     );
@@ -617,8 +706,8 @@ describe("maintenanceController", () => {
       {
         statusChanged: false,
         hasAdminNote: true,
-        hasProgressEntry: true,
-        hasProgressAttachments: true,
+        hasProgressEntry: false,
+        hasProgressAttachments: false,
       },
     );
     expect(sendSuccess).toHaveBeenCalledTimes(1);
@@ -663,7 +752,7 @@ describe("maintenanceController", () => {
     expect(requestDoc.save).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalledTimes(1);
     expect(next.mock.calls[0][0].code).toBe("REPLY_REQUIRED");
-    expect(next.mock.calls[0][0].details[0].field).toBe("reply");
+    expect(next.mock.calls[0][0].details[0].field).toBe("message");
   });
 
   test("reopenMyRequest returns resolved work to pending and records reopen history", async () => {

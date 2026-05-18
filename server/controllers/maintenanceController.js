@@ -69,6 +69,22 @@ const SUPPORTED_PROGRESS_ATTACHMENT_MIME_TYPES = new Set([
 const SUPPORTED_PROGRESS_ATTACHMENT_EXTENSION_PATTERN =
   /\.(jpe?g|png|webp|pdf)(?:$|[?#])/i;
 
+const getAttachmentFileType = (type, name, uri) => {
+  const source = `${type || ""} ${name || ""} ${uri || ""}`.toLowerCase();
+  if (source.includes("image/") || IMAGE_FILE_PATTERN.test(source)) return "image";
+  if (source.includes("application/pdf") || PDF_FILE_PATTERN.test(source)) return "pdf";
+  return "file";
+};
+
+const getAttachmentSize = (entry) => {
+  const rawSize =
+    typeof entry === "object" && entry
+      ? entry.size ?? entry.fileSize
+      : null;
+  const size = Number(rawSize);
+  return Number.isFinite(size) && size >= 0 ? size : null;
+};
+
 const parseLimit = (value, fallback = 100) => {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
@@ -227,17 +243,41 @@ const normalizeAttachmentEntry = (entry, index = 0) => {
   if (!uri || !isRemoteUri(uri)) return null;
 
   const name = extractAttachmentName(entry, uri, index);
-  return {
+  const originalName =
+    typeof entry === "object" && entry
+      ? toOptionalText(entry?.originalName) ||
+        toOptionalText(entry?.originalFilename) ||
+        toOptionalText(entry?.filename) ||
+        toOptionalText(entry?.fileName) ||
+        toOptionalText(entry?.name) ||
+        name
+      : name;
+  const type = inferAttachmentType({
     name,
     uri,
-    type: inferAttachmentType({
-      name,
-      uri,
-      fallbackType:
-        typeof entry === "object" && entry
-          ? entry?.type || entry?.mimeType || entry?.mime || entry?.contentType
-          : null,
-    }),
+    fallbackType:
+      typeof entry === "object" && entry
+        ? entry?.type || entry?.mimeType || entry?.mime || entry?.contentType
+        : null,
+  });
+  const normalized = {
+    name,
+    uri,
+    type,
+    url: uri,
+    filename: name,
+    originalName,
+    mimeType: type,
+    fileType: getAttachmentFileType(type, name, uri),
+  };
+  const size = getAttachmentSize(entry);
+  if (size !== null) normalized.size = size;
+  if (typeof entry === "object" && entry?.storagePath) {
+    normalized.storagePath = entry.storagePath;
+  }
+
+  return {
+    ...normalized,
   };
 };
 
@@ -253,19 +293,40 @@ const sanitizeAttachmentForOutput = (entry, index = 0) => {
   const safeUri = rawUri && isRemoteUri(rawUri) ? rawUri : null;
   const name = extractAttachmentName(entry, safeUri || rawUri, index);
   if (!name) return null;
-
-  return {
+  const type = inferAttachmentType({
+    name,
+    uri: safeUri || "",
+    fallbackType:
+      typeof entry === "object" && entry
+        ? entry?.type || entry?.mimeType || entry?.mime || entry?.contentType
+        : null,
+  });
+  const originalName =
+    typeof entry === "object" && entry
+      ? toOptionalText(entry?.originalName) ||
+        toOptionalText(entry?.originalFilename) ||
+        toOptionalText(entry?.filename) ||
+        toOptionalText(entry?.fileName) ||
+        toOptionalText(entry?.name) ||
+        name
+      : name;
+  const output = {
     name,
     uri: safeUri,
-    type: inferAttachmentType({
-      name,
-      uri: safeUri || "",
-      fallbackType:
-        typeof entry === "object" && entry
-          ? entry?.type || entry?.mimeType || entry?.mime || entry?.contentType
-          : null,
-    }),
+    type,
+    url: safeUri,
+    filename: name,
+    originalName,
+    mimeType: type,
+    fileType: getAttachmentFileType(type, name, safeUri || rawUri),
   };
+  const size = getAttachmentSize(entry);
+  if (size !== null) output.size = size;
+  if (typeof entry === "object" && entry?.storagePath) {
+    output.storagePath = entry.storagePath;
+  }
+
+  return output;
 };
 
 const normalizeAttachments = (attachments) => {
@@ -307,7 +368,7 @@ const validateIncomingAttachments = (
     if (!uri || !isRemoteUri(uri) || !normalized) {
       errors.push({
         field: `${fieldPrefix}.${index}.uri`,
-        message: "Attachment upload is missing a valid link.",
+        message: "Attachment URL is required.",
       });
       return;
     }
@@ -328,6 +389,18 @@ const validateIncomingWorkLogAttachments = (rawAttachments) =>
     fieldPrefix: "work_log_attachments",
     noun: "Progress attachments",
   });
+
+const getReplyAttachmentsFromBody = (body = {}) => {
+  const candidates = [
+    body.attachments,
+    body.replyAttachments,
+    body.reply_attachments,
+    body.attachmentUrls,
+    body.attachment_urls,
+  ];
+
+  return candidates.find((value) => value !== undefined);
+};
 
 const sanitizeAttachmentsForOutput = (attachments) => {
   if (!Array.isArray(attachments)) return [];
@@ -397,60 +470,79 @@ const serializeTenantSummary = (user, request) => {
   };
 };
 
-const serializeMaintenanceRequest = (request, tenant = null) => ({
-  id: request.request_id,
-  _id: request._id,
-  request_id: request.request_id,
-  user_id: request.user_id,
-  request_type: request.request_type,
-  description: request.description,
-  urgency: request.urgency,
-  status: request.status,
-  assigned_to: request.assigned_to ?? null,
-  notes: request.notes ?? null,
-  attachments: sanitizeAttachmentsForOutput(request.attachments),
-  reopen_note: request.reopen_note ?? null,
-  reopen_history: Array.isArray(request.reopen_history) ? request.reopen_history : [],
-  statusHistory: Array.isArray(request.statusHistory) ? request.statusHistory : [],
-  slaState: getSlaState(request),
-  assignment: {
-    assignedTo: request.assigned_to ?? null,
-    assignedAt: request.assigned_at ?? null,
-    startedAt: request.work_started_at ?? null,
-    resolvedAt: request.resolved_at ?? null,
-  },
-  workLog: Array.isArray(request.work_log)
+const sanitizeStatusHistoryForOutput = (statusHistory, { includeInternal = true } = {}) =>
+  Array.isArray(statusHistory)
+    ? statusHistory.map((entry) => ({
+        ...entry,
+        note:
+          includeInternal || ["tenant", "applicant"].includes(entry?.actor_role)
+            ? entry?.note ?? null
+            : null,
+      }))
+    : [];
+
+const serializeMaintenanceRequest = (
+  request,
+  tenant = null,
+  { includeInternal = true } = {},
+) => {
+  const workLog = includeInternal && Array.isArray(request.work_log)
     ? request.work_log.map((entry) => ({
         ...entry,
         attachments: sanitizeAttachmentsForOutput(entry?.attachments),
       }))
-    : [],
-  conversation: Array.isArray(request.conversation)
-    ? request.conversation.map((entry) => ({
-        ...entry,
-        attachments: sanitizeAttachmentsForOutput(entry?.attachments),
-      }))
-    : [],
-  resolutionNote: request.resolution_note ?? null,
-  created_at: request.created_at,
-  updated_at: request.updated_at,
-  cancelled_at: request.cancelled_at ?? null,
-  reopened_at: request.reopened_at ?? null,
-  resolved_at: request.resolved_at ?? null,
-  closed_at: request.closed_at ?? null,
-  estimated_resolution: getResolutionEstimate(request.urgency),
-  tenant,
-  branch: request.branch || null,
-  roomId: request.roomId || null,
-  reservationId: request.reservationId || null,
+    : [];
 
-  // Compatibility aliases for legacy consumers still in the repo.
-  title: `${formatMaintenanceTypeLabel(request.request_type)} Request`,
-  category: request.request_type,
-  date: request.created_at,
-  assignedTo: request.assigned_to ?? null,
-  completionNote: request.resolution_note ?? request.notes ?? null,
-});
+  return {
+    id: request.request_id,
+    _id: request._id,
+    request_id: request.request_id,
+    user_id: request.user_id,
+    request_type: request.request_type,
+    description: request.description,
+    urgency: request.urgency,
+    status: request.status,
+    assigned_to: request.assigned_to ?? null,
+    notes: includeInternal ? request.notes ?? null : null,
+    attachments: sanitizeAttachmentsForOutput(request.attachments),
+    reopen_note: request.reopen_note ?? null,
+    reopen_history: Array.isArray(request.reopen_history) ? request.reopen_history : [],
+    statusHistory: sanitizeStatusHistoryForOutput(request.statusHistory, { includeInternal }),
+    slaState: getSlaState(request),
+    assignment: {
+      assignedTo: request.assigned_to ?? null,
+      assignedAt: request.assigned_at ?? null,
+      startedAt: request.work_started_at ?? null,
+      resolvedAt: request.resolved_at ?? null,
+    },
+    workLog,
+    conversation: Array.isArray(request.conversation)
+      ? request.conversation.map((entry) => ({
+          ...entry,
+          attachments: sanitizeAttachmentsForOutput(entry?.attachments),
+        }))
+      : [],
+    resolutionNote: includeInternal ? request.resolution_note ?? null : null,
+    created_at: request.created_at,
+    updated_at: request.updated_at,
+    cancelled_at: request.cancelled_at ?? null,
+    reopened_at: request.reopened_at ?? null,
+    resolved_at: request.resolved_at ?? null,
+    closed_at: request.closed_at ?? null,
+    estimated_resolution: getResolutionEstimate(request.urgency),
+    tenant,
+    branch: request.branch || null,
+    roomId: request.roomId || null,
+    reservationId: request.reservationId || null,
+
+    // Compatibility aliases for legacy consumers still in the repo.
+    title: `${formatMaintenanceTypeLabel(request.request_type)} Request`,
+    category: request.request_type,
+    date: request.created_at,
+    assignedTo: request.assigned_to ?? null,
+    completionNote: includeInternal ? request.resolution_note ?? request.notes ?? null : null,
+  };
+};
 
 const loadTenantMap = async (requests) => {
   const userIds = [...new Set(requests.map((entry) => entry.user_id).filter(Boolean))];
@@ -719,7 +811,11 @@ export const getMyRequests = async (req, res, next) => {
     sendSuccess(res, {
       count: requests.length,
       requests: requests.map((request) =>
-        serializeMaintenanceRequest(request, serializeTenantSummary(dbUser, request)),
+        serializeMaintenanceRequest(
+          request,
+          serializeTenantSummary(dbUser, request),
+          { includeInternal: false },
+        ),
       ),
     });
   } catch (error) {
@@ -890,6 +986,7 @@ export const createRequest = async (req, res, next) => {
         request: serializeMaintenanceRequest(
           existingRequest,
           serializeTenantSummary(dbUser, existingRequest),
+          { includeInternal: false },
         ),
       });
     }
@@ -923,6 +1020,7 @@ export const createRequest = async (req, res, next) => {
         request: serializeMaintenanceRequest(
           request.toObject(),
           serializeTenantSummary(dbUser, request),
+          { includeInternal: false },
         ),
       },
       201,
@@ -968,6 +1066,7 @@ export const getRequestById = async (req, res, next) => {
       request: serializeMaintenanceRequest(
         request.toObject(),
         serializeTenantSummary(tenantUser, request),
+        { includeInternal: dbUser.role === "owner" || dbUser.role === "branch_admin" },
       ),
     });
   } catch (error) {
@@ -1036,6 +1135,7 @@ export const updateMyRequest = async (req, res, next) => {
       request: serializeMaintenanceRequest(
         request.toObject(),
         serializeTenantSummary(dbUser, request),
+        { includeInternal: false },
       ),
     });
   } catch (error) {
@@ -1075,6 +1175,7 @@ export const cancelMyRequest = async (req, res, next) => {
       request: serializeMaintenanceRequest(
         request.toObject(),
         serializeTenantSummary(dbUser, request),
+        { includeInternal: false },
       ),
     });
   } catch (error) {
@@ -1130,6 +1231,7 @@ export const reopenMyRequest = async (req, res, next) => {
       request: serializeMaintenanceRequest(
         request.toObject(),
         serializeTenantSummary(dbUser, request),
+        { includeInternal: false },
       ),
     });
   } catch (error) {
@@ -1217,20 +1319,19 @@ export const sendAdminReply = async (req, res, next) => {
     }
 
     const adminUser = await getDbUser(req.user.uid);
-    const rawAttachments =
-      req.body.reply_attachments !== undefined
-        ? req.body.reply_attachments
-        : req.body.attachments;
+    const rawAttachments = getReplyAttachmentsFromBody(req.body);
     const attachmentErrors = validateIncomingAttachments(rawAttachments, {
-      fieldPrefix: "reply_attachments",
+      fieldPrefix: "attachments",
       noun: "Reply attachments",
     });
     const attachments = normalizeAttachments(rawAttachments);
-    const message = toOptionalText(req.body.message ?? req.body.reply);
+    const message = toOptionalText(
+      req.body.message ?? req.body.replyMessage ?? req.body.body ?? req.body.reply,
+    );
 
     if (attachmentErrors.length > 0) {
       throw new AppError(
-        "Some required information is missing or invalid.",
+        attachmentErrors[0]?.message || "Invalid attachment format.",
         400,
         "VALIDATION_ERROR",
         attachmentErrors,
@@ -1244,7 +1345,7 @@ export const sendAdminReply = async (req, res, next) => {
         "REPLY_REQUIRED",
         [
           {
-            field: "reply",
+            field: "message",
             message: "Please enter a message or attach a file before sending.",
           },
         ],
@@ -1281,9 +1382,9 @@ export const sendAdminReply = async (req, res, next) => {
         request.request_id,
         {
           statusChanged: false,
-          hasAdminNote: Boolean(message),
-          hasProgressEntry: Boolean(message),
-          hasProgressAttachments: attachments.length > 0,
+          hasAdminNote: true,
+          hasProgressEntry: false,
+          hasProgressAttachments: false,
         },
       );
     }
