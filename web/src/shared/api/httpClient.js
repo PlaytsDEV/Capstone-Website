@@ -103,8 +103,11 @@ export const authFetch = async (url, options = {}, _isRetry = false) => {
       );
     }
 
+    const isFormDataBody =
+      typeof FormData !== "undefined" && fetchOptions.body instanceof FormData;
+
     const headers = {
-      "Content-Type": "application/json",
+      ...(isFormDataBody ? {} : { "Content-Type": "application/json" }),
       ...(token && { Authorization: `Bearer ${token}` }),
       ...getSessionHeaders(),
       ...optionHeaders,
@@ -184,8 +187,11 @@ export const publicFetch = async (url, options = {}) => {
       ...fetchOptions
     } = options;
 
+    const isFormDataBody =
+      typeof FormData !== "undefined" && fetchOptions.body instanceof FormData;
+
     const headers = {
-      "Content-Type": "application/json",
+      ...(isFormDataBody ? {} : { "Content-Type": "application/json" }),
       ...optionHeaders,
     };
 

@@ -1027,22 +1027,29 @@ export default function AdminMaintenancePage() {
  ]);
 
  try {
- const { downloadUrl: uri, storagePath, size } = await uploadToFirebaseStorage(
- file,
- { documentType: "maintenance-attachment" },
- );
+  const { downloadUrl: uri, storagePath, size, attachment: uploadedAttachment } = await uploadToFirebaseStorage(
+  file,
+  {
+  documentType: "maintenance-attachment",
+  context: "maintenance_internal_note",
+  visibility: "admin_only",
+  maintenanceRequestId: selectedRequest?.request_id,
+  relatedId: selectedRequest?.request_id,
+  },
+  );
  setDraftWorkLogAttachments((current) =>
  current.map((attachment) =>
  attachment.clientId === clientId
- ? {
- clientId,
- name: file.name,
- uri,
- type: file.type || "application/octet-stream",
- size,
- storagePath,
- uploadStatus: "uploaded",
- }
+  ? {
+  clientId,
+  name: file.name,
+  uri,
+  type: file.type || "application/octet-stream",
+  size,
+  storagePath,
+  ...uploadedAttachment,
+  uploadStatus: "uploaded",
+  }
  : attachment,
  ),
  );
@@ -1138,22 +1145,29 @@ export default function AdminMaintenancePage() {
  ]);
 
  try {
- const { downloadUrl: uri, storagePath, size } = await uploadToFirebaseStorage(
- file,
- { documentType: "maintenance-reply-attachment" },
- );
+  const { downloadUrl: uri, storagePath, size, attachment: uploadedAttachment } = await uploadToFirebaseStorage(
+  file,
+  {
+  documentType: "maintenance-reply-attachment",
+  context: "maintenance_reply",
+  visibility: "tenant_admin",
+  maintenanceRequestId: selectedRequest?.request_id,
+  relatedId: selectedRequest?.request_id,
+  },
+  );
  setReplyAttachments((current) =>
  current.map((attachment) =>
  attachment.clientId === clientId
- ? {
- clientId,
- name: file.name,
- uri,
- type: file.type || "application/octet-stream",
- size,
- storagePath,
- uploadStatus: "uploaded",
- }
+  ? {
+  clientId,
+  name: file.name,
+  uri,
+  type: file.type || "application/octet-stream",
+  size,
+  storagePath,
+  ...uploadedAttachment,
+  uploadStatus: "uploaded",
+  }
  : attachment,
  ),
  );

@@ -40,6 +40,11 @@ router.patch(
   verifyApplicant,
   maintenanceController.reopenMyRequest,
 );
+router.post(
+  "/:requestId/reply",
+  verifyApplicant,
+  maintenanceController.sendTenantReply,
+);
 
 // ============================================================================
 // ADMIN/STAFF ROUTES
@@ -71,6 +76,7 @@ router.post(
 
 router.get("/my-requests", verifyApplicant, maintenanceController.getMyRequests);
 router.post("/requests", verifyApplicant, maintenanceController.createRequestCompat);
+router.post("/requests/:requestId/reply", verifyApplicant, maintenanceController.sendTenantReply);
 router.get("/requests/:requestId", maintenanceController.getRequestById);
 
 router.get("/:requestId", maintenanceController.getRequestById);

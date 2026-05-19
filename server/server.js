@@ -22,6 +22,8 @@ import dotenv from "dotenv";
 import helmet from "helmet";
 import compression from "compression";
 import mongoose from "mongoose";
+import path from "path";
+import { fileURLToPath } from "url";
 
 import connectDB from "./config/database.js";
 import validateStartupConfig from "./config/startupValidation.js";
@@ -46,6 +48,7 @@ import announcementRoutes from "./routes/announcementRoutes.js";
 import maintenanceRoutes from "./routes/maintenanceContractRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import notificationRoutes from "./routes/notificationRoutes.js";
+import attachmentRoutes from "./routes/attachmentRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
 import webhookRoutes from "./routes/webhookRoutes.js";
 import digitalTwinRoutes from "./routes/digitalTwinRoutes.js";
@@ -62,6 +65,8 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 let server = null;
 let stopBackgroundJobs = () => {};
 
@@ -250,6 +255,13 @@ app.use(globalLimiter);
 app.use(compression());
 app.use(express.json({ limit: "8mb" }));
 app.use(express.urlencoded({ extended: true, limit: "8mb" }));
+app.use(
+  "/uploads",
+  express.static(path.join(__dirname, "uploads"), {
+    maxAge: "1d",
+    fallthrough: true,
+  }),
+);
 app.use(requestLogger);
 
 app.use("/api/auth", authLimiter, authRoutes);
@@ -264,6 +276,7 @@ app.use("/api/m/maintenance", maintenanceRoutes);
 app.use("/api/maintenance", maintenanceRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/attachments", attachmentRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/digital-twin", digitalTwinRoutes);
 app.use("/api/utilities", utilityBillingRoutes);

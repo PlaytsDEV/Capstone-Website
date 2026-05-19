@@ -11,6 +11,7 @@
 
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import app, { auth } from "../../firebase/config";
+import { authFetch } from "../api/httpClient";
 
 // ── File validation ────────────────────────────────────────────────────────
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -21,6 +22,65 @@ const ALLOWED_MIME_TYPES = [
   "image/webp",
   "application/pdf",
 ];
+
+const BACKEND_ATTACHMENT_DOCUMENT_TYPES = new Set([
+  "maintenance-attachment",
+  "maintenance-reply-attachment",
+]);
+
+const shouldUseBackendAttachmentUpload = (opts = {}) =>
+  opts.useBackend !== false &&
+  (opts.context ||
+    BACKEND_ATTACHMENT_DOCUMENT_TYPES.has(String(opts.documentType || "").trim()));
+
+const getDefaultAttachmentContext = (documentType) => {
+  if (documentType === "maintenance-reply-attachment") return "maintenance_reply";
+  if (documentType === "maintenance-attachment") return "maintenance_request";
+  return "";
+};
+
+async function uploadToBackendAttachmentService(file, opts = {}) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const fields = {
+    documentType: opts.documentType,
+    context: opts.context || getDefaultAttachmentContext(opts.documentType),
+    visibility: opts.visibility,
+    relatedId: opts.relatedId,
+    maintenanceRequestId: opts.maintenanceRequestId,
+    conversationId: opts.conversationId,
+    branchId: opts.branchId,
+  };
+
+  Object.entries(fields).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value).trim()) {
+      formData.append(key, String(value));
+    }
+  });
+
+  const response = await authFetch("/attachments", {
+    method: "POST",
+    body: formData,
+  });
+  const attachment = response?.attachment || response;
+
+  if (!attachment?.url && !attachment?.downloadUrl && !attachment?.uri) {
+    throw new Error("Upload completed but the returned URL is invalid. Please try again.");
+  }
+
+  return {
+    downloadUrl: attachment.downloadUrl || attachment.url || attachment.uri,
+    storagePath: attachment.storagePath,
+    originalName: attachment.originalName || file.name,
+    mimeType: attachment.mimeType || file.type,
+    size: attachment.size ?? file.size,
+    uploadedAt: attachment.uploadedAt || new Date().toISOString(),
+    provider: attachment.provider || "server-attachment",
+    attachment,
+    ...attachment,
+  };
+}
 
 /**
  * Validate a File object before uploading.
@@ -102,6 +162,10 @@ export function validateDownloadUrl(url) {
 export async function uploadToFirebaseStorage(file, opts = {}, onProgress) {
   const validation = validateFile(file);
   if (!validation.valid) throw new Error(validation.error);
+
+  if (shouldUseBackendAttachmentUpload(opts)) {
+    return uploadToBackendAttachmentService(file, opts);
+  }
 
   if (!auth?.currentUser) {
     throw new Error("You must be signed in to upload files. Please refresh and try again.");

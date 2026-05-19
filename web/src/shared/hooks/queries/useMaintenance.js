@@ -102,6 +102,23 @@ export function useReopenMaintenanceRequest() {
   });
 }
 
+/** Send a tenant reply on an existing maintenance request */
+export function useSendTenantMaintenanceReply() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, payload }) =>
+      maintenanceApi.sendTenantReply(requestId, payload),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
+      if (variables?.requestId) {
+        qc.invalidateQueries({
+          queryKey: queryKeys.maintenance.detail(variables.requestId),
+        });
+      }
+    },
+  });
+}
+
 /** Update maintenance request status/notes/assignment (admin) */
 export function useUpdateMaintenanceRequest() {
   const qc = useQueryClient();

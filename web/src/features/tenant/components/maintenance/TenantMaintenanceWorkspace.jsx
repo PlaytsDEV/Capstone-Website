@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ClipboardList,
@@ -19,6 +19,7 @@ import {
   useCreateMaintenanceRequest,
   useMyMaintenanceRequests,
   useReopenMaintenanceRequest,
+  useSendTenantMaintenanceReply,
   useUpdateMyMaintenanceRequest,
 } from "../../../../shared/hooks/queries/useMaintenance";
 import { showNotification } from "../../../../shared/utils/notification";
@@ -235,6 +236,9 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
   const [selectedRequestId, setSelectedRequestId] = useState(null);
   const [previewAttachment, setPreviewAttachment] = useState(null);
   const [reopenNote, setReopenNote] = useState("");
+  const [replyMessage, setReplyMessage] = useState("");
+  const [replyAttachments, setReplyAttachments] = useState([]);
+  const [uploadingReplyAttachment, setUploadingReplyAttachment] = useState(false);
   const [formData, setFormData] = useState({ ...EMPTY_FORM_DATA });
 
   const { data, isLoading } = useMyMaintenanceRequests({ limit: 50 });
@@ -242,12 +246,18 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
   const updateMutation = useUpdateMyMaintenanceRequest();
   const cancelMutation = useCancelMaintenanceRequest();
   const reopenMutation = useReopenMaintenanceRequest();
+  const sendReplyMutation = useSendTenantMaintenanceReply();
 
   const requests = data?.requests || [];
   const selectedRequest = useMemo(
     () => requests.find((request) => request.request_id === selectedRequestId) || null,
     [requests, selectedRequestId],
   );
+
+  useEffect(() => {
+    setReplyMessage("");
+    setReplyAttachments([]);
+  }, [selectedRequestId]);
 
   const isEditing = Boolean(editingRequestId);
   const isSavingForm = createMutation.isPending || updateMutation.isPending;
@@ -303,11 +313,18 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
       const uploaded = [];
 
       for (const file of files) {
-        const { downloadUrl: uri } = await uploadToFirebaseStorage(file, { documentType: "maintenance-attachment" });
+        const { downloadUrl: uri, storagePath, size, attachment } = await uploadToFirebaseStorage(file, {
+          documentType: "maintenance-attachment",
+          context: "maintenance_request",
+          visibility: "tenant_admin",
+        });
         uploaded.push({
           name: file.name,
           uri,
           type: file.type || "application/octet-stream",
+          size,
+          storagePath,
+          ...attachment,
         });
       }
 
@@ -334,6 +351,78 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
         (entry) => getMaintenanceAttachmentUri(entry) !== uri,
       ),
     }));
+  };
+
+  const handleReplyAttachmentUpload = async (event) => {
+    const files = Array.from(event.target.files || []).filter(Boolean);
+    if (files.length === 0 || !selectedRequest) return;
+
+    setUploadingReplyAttachment(true);
+
+    try {
+      const uploaded = [];
+
+      for (const file of files) {
+        const { downloadUrl: uri, storagePath, size, attachment } = await uploadToFirebaseStorage(file, {
+          documentType: "maintenance-reply-attachment",
+          context: "maintenance_reply",
+          visibility: "tenant_admin",
+          maintenanceRequestId: selectedRequest.request_id,
+          relatedId: selectedRequest.request_id,
+        });
+        uploaded.push({
+          name: file.name,
+          uri,
+          type: file.type || "application/octet-stream",
+          size,
+          storagePath,
+          ...attachment,
+        });
+      }
+
+      setReplyAttachments((current) => [...current, ...uploaded]);
+      showNotification("Attachment uploaded.", "success");
+    } catch (error) {
+      showNotification(
+        error.message || "Failed to upload attachment.",
+        "error",
+      );
+    } finally {
+      setUploadingReplyAttachment(false);
+      event.target.value = "";
+    }
+  };
+
+  const handleRemoveReplyAttachment = (uri) => {
+    setReplyAttachments((current) =>
+      current.filter((entry) => getMaintenanceAttachmentUri(entry) !== uri),
+    );
+  };
+
+  const handleSendReply = async (event) => {
+    event.preventDefault();
+    if (!selectedRequest) return;
+
+    const message = replyMessage.trim();
+    if (!message && replyAttachments.length === 0) {
+      showNotification("Please enter a message or attach a file before sending.", "error");
+      return;
+    }
+
+    try {
+      await sendReplyMutation.mutateAsync({
+        requestId: selectedRequest.request_id,
+        payload: {
+          message,
+          attachments: normalizeMaintenanceAttachments(replyAttachments),
+        },
+      });
+      setReplyMessage("");
+      setReplyAttachments([]);
+      showNotification("Reply sent.", "success");
+    } catch (error) {
+      showNotification(error.message || "Failed to send reply.", "error");
+    }
   };
 
   const handleSubmitRequest = async (event) => {
@@ -1009,6 +1098,70 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                     </article>
                   ))}
                 </div>
+              </section>
+            ) : null}
+
+            {ACTIVE_MAINTENANCE_STATUSES.includes(selectedRequest.status) ? (
+              <section className="maintenance-detail-section">
+                <h3>Send Reply</h3>
+                <form className="maintenance-form" onSubmit={handleSendReply}>
+                  <textarea
+                    className="form-control"
+                    rows="3"
+                    placeholder="Add an update for the admin team."
+                    value={replyMessage}
+                    onChange={(event) => setReplyMessage(event.target.value)}
+                  />
+                  <div className="form-actions" style={{ justifyContent: "space-between" }}>
+                    <label
+                      htmlFor="maintenance-reply-attachments"
+                      className="btn btn-secondary"
+                      style={{ width: "fit-content", display: "inline-flex", gap: 8 }}
+                    >
+                      <Paperclip size={14} />
+                      {uploadingReplyAttachment ? "Uploading..." : "Attach Photo"}
+                    </label>
+                    <input
+                      id="maintenance-reply-attachments"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,application/pdf"
+                      multiple
+                      onChange={handleReplyAttachmentUpload}
+                      disabled={uploadingReplyAttachment || sendReplyMutation.isPending}
+                      style={{ display: "none" }}
+                    />
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      disabled={uploadingReplyAttachment || sendReplyMutation.isPending}
+                    >
+                      <MessageSquare size={14} />
+                      {sendReplyMutation.isPending ? "Sending..." : "Send Reply"}
+                    </button>
+                  </div>
+                  {replyAttachments.length ? (
+                    <div className="maintenance-attachment-list">
+                      {replyAttachments.map((attachment, index) => {
+                        const uri = getMaintenanceAttachmentUri(attachment);
+                        return (
+                          <div
+                            key={`${uri || attachment.name}-${index}`}
+                            className="maintenance-attachment-row"
+                          >
+                            <span>{getMaintenanceAttachmentName(attachment, index)}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveReplyAttachment(uri)}
+                              aria-label="Remove attachment"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </form>
               </section>
             ) : null}
 

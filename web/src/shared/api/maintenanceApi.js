@@ -59,6 +59,15 @@ export const maintenanceApi = {
     }),
 
   /**
+   * Send a tenant reply with optional attachments.
+   */
+  sendTenantReply: (requestId, payload) =>
+    authFetch(`/m/maintenance/${requestId}/reply`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  /**
    * Get maintenance request details
    */
   getRequest: (requestId) => authFetch(`/m/maintenance/${requestId}`),

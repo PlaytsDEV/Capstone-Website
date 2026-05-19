@@ -2,19 +2,55 @@ import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
 const maintenanceFind = jest.fn();
 const maintenanceFindOne = jest.fn();
+const maintenanceSave = jest.fn();
 const userFind = jest.fn();
 const userFindOne = jest.fn();
 const reservationFindOne = jest.fn();
+const roomFindById = jest.fn();
+const stayFindOne = jest.fn();
+const bedHistoryFindOne = jest.fn();
+const chatConversationFindById = jest.fn();
 const sendSuccess = jest.fn();
 const maintenanceUpdated = jest.fn();
+let lastCreatedMaintenanceRequest = null;
+
+class MockMaintenanceRequest {
+  constructor(data) {
+    Object.assign(this, data);
+    this._id = data._id || "created_request_id";
+    this.save = maintenanceSave;
+    lastCreatedMaintenanceRequest = this;
+  }
+
+  toObject() {
+    return { ...this, save: undefined };
+  }
+
+  static find(...args) {
+    return maintenanceFind(...args);
+  }
+
+  static findOne(...args) {
+    return maintenanceFindOne(...args);
+  }
+}
 
 await jest.unstable_mockModule("../models/index.js", () => ({
-  MaintenanceRequest: {
-    find: maintenanceFind,
-    findOne: maintenanceFindOne,
-  },
+  MaintenanceRequest: MockMaintenanceRequest,
   Reservation: {
     findOne: reservationFindOne,
+  },
+  Room: {
+    findById: roomFindById,
+  },
+  Stay: {
+    findOne: stayFindOne,
+  },
+  BedHistory: {
+    findOne: bedHistoryFindOne,
+  },
+  ChatConversation: {
+    findById: chatConversationFindById,
   },
   User: {
     find: userFind,
@@ -48,8 +84,10 @@ await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
 const {
   getAdminAll,
   getMyRequests,
+  createRequest,
   reopenMyRequest,
   sendAdminReply,
+  sendTenantReply,
   updateAdminRequestStatus,
 } = await import("./maintenanceController.js");
 
@@ -68,6 +106,36 @@ const buildListQuery = (result) => ({
     limit: jest.fn(() => ({
       lean: jest.fn().mockResolvedValue(result),
     })),
+  })),
+});
+
+const buildSortedLeanQuery = (result) => ({
+  sort: jest.fn(() => ({
+    lean: jest.fn().mockResolvedValue(result),
+  })),
+});
+
+const buildSortSelectLeanQuery = (result) => ({
+  sort: jest.fn(() => ({
+    select: jest.fn(() => ({
+      lean: jest.fn().mockResolvedValue(result),
+    })),
+  })),
+});
+
+const buildSortPopulateSelectLeanQuery = (result) => ({
+  sort: jest.fn(() => ({
+    populate: jest.fn(() => ({
+      select: jest.fn(() => ({
+        lean: jest.fn().mockResolvedValue(result),
+      })),
+    })),
+  })),
+});
+
+const buildSelectLeanQuery = (result) => ({
+  select: jest.fn(() => ({
+    lean: jest.fn().mockResolvedValue(result),
   })),
 });
 
@@ -135,11 +203,18 @@ describe("maintenanceController", () => {
   beforeEach(() => {
     maintenanceFind.mockReset();
     maintenanceFindOne.mockReset();
+    maintenanceSave.mockReset();
+    maintenanceSave.mockResolvedValue(undefined);
     userFind.mockReset();
     userFindOne.mockReset();
     reservationFindOne.mockReset();
+    roomFindById.mockReset();
+    stayFindOne.mockReset();
+    bedHistoryFindOne.mockReset();
+    chatConversationFindById.mockReset();
     sendSuccess.mockReset();
     maintenanceUpdated.mockReset();
+    lastCreatedMaintenanceRequest = null;
   });
 
   test("getAdminAll applies branch and contract filters", async () => {
@@ -332,6 +407,160 @@ describe("maintenanceController", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  test("getMyRequests filters admin-only attachments from tenant-visible conversation", async () => {
+    const storedRequest = buildRequestDoc({
+      conversation: [
+        {
+          message: "Internal photo should not leak.",
+          sender_side: "admin",
+          created_at: new Date("2026-04-09T10:30:00.000Z"),
+          attachments: [
+            {
+              name: "internal.jpg",
+              uri: "https://storage.example.com/maintenance/internal.jpg",
+              type: "image/jpeg",
+              visibility: "admin_only",
+            },
+            {
+              name: "tenant-visible.jpg",
+              uri: "https://storage.example.com/maintenance/tenant-visible.jpg",
+              type: "image/jpeg",
+              visibility: "tenant_admin",
+            },
+          ],
+        },
+      ],
+    });
+    maintenanceFind.mockReturnValue(buildListQuery([storedRequest]));
+    userFindOne.mockReturnValue(
+      buildLeanQuery({
+        _id: "tenant_user_1",
+        user_id: "user_95f39d5b4ea4",
+        firstName: "Lily",
+        lastName: "Tenant",
+        email: "lily@example.com",
+        phone: "0917",
+        branch: "gil-puyat",
+        role: "tenant",
+      }),
+    );
+
+    const req = {
+      user: { uid: "firebase-tenant-1" },
+      query: {},
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await getMyRequests(req, res, next);
+
+    const request = sendSuccess.mock.calls[0][1].requests[0];
+    expect(request.conversation[0].attachments).toHaveLength(1);
+    expect(request.conversation[0].attachments[0].name).toBe("tenant-visible.jpg");
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("createRequest resolves missing reservation branch from assigned room and stamps attachments", async () => {
+    maintenanceFindOne.mockReturnValue(buildSortedLeanQuery(null));
+    userFindOne.mockReturnValue(
+      buildLeanQuery({
+        _id: "tenant_user_1",
+        user_id: "user_95f39d5b4ea4",
+        firstName: "Lily",
+        lastName: "Tenant",
+        email: "lily@example.com",
+        phone: "0917",
+        branch: "",
+        role: "tenant",
+      }),
+    );
+    stayFindOne.mockReturnValue(buildSortSelectLeanQuery(null));
+    reservationFindOne.mockReturnValue(
+      buildSortPopulateSelectLeanQuery({
+        _id: "reservation_1",
+        roomId: "room_1",
+      }),
+    );
+    roomFindById.mockReturnValue(buildSelectLeanQuery({ branch: "guadalupe" }));
+
+    const req = {
+      user: { uid: "firebase-tenant-1" },
+      body: {
+        request_type: "plumbing",
+        description: "Bathroom faucet is leaking heavily.",
+        urgency: "normal",
+        attachments: [
+          {
+            name: "leak.jpg",
+            uri: "https://storage.example.com/maintenance/leak.jpg",
+            type: "image/jpeg",
+          },
+        ],
+      },
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await createRequest(req, res, next);
+
+    expect(lastCreatedMaintenanceRequest.branch).toBe("guadalupe");
+    expect(lastCreatedMaintenanceRequest.reservationId).toBe("reservation_1");
+    expect(lastCreatedMaintenanceRequest.roomId).toBe("room_1");
+    expect(lastCreatedMaintenanceRequest.attachments[0]).toEqual(
+      expect.objectContaining({
+        name: "leak.jpg",
+        branchId: "guadalupe",
+        context: "maintenance_request",
+        visibility: "tenant_admin",
+        uploadedBy: "user_95f39d5b4ea4",
+        senderRole: "tenant",
+        relatedId: expect.stringMatching(/^maint_/),
+      }),
+    );
+    expect(maintenanceSave).toHaveBeenCalledTimes(1);
+    expect(sendSuccess).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("createRequest returns a friendly branch error when branch cannot be resolved", async () => {
+    maintenanceFindOne.mockReturnValue(buildSortedLeanQuery(null));
+    userFindOne.mockReturnValue(
+      buildLeanQuery({
+        _id: "tenant_user_1",
+        user_id: "user_95f39d5b4ea4",
+        firstName: "Lily",
+        lastName: "Tenant",
+        email: "lily@example.com",
+        phone: "0917",
+        branch: "",
+        role: "tenant",
+      }),
+    );
+    stayFindOne.mockReturnValue(buildSortSelectLeanQuery(null));
+    reservationFindOne.mockReturnValue(buildSortPopulateSelectLeanQuery(null));
+    bedHistoryFindOne.mockReturnValue(buildSortSelectLeanQuery(null));
+
+    const req = {
+      user: { uid: "firebase-tenant-1" },
+      body: {
+        request_type: "plumbing",
+        description: "Bathroom faucet is leaking heavily.",
+        urgency: "normal",
+      },
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await createRequest(req, res, next);
+
+    expect(maintenanceSave).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next.mock.calls[0][0].code).toBe("UPLOAD_BRANCH_UNRESOLVED");
+    expect(next.mock.calls[0][0].message).toBe(
+      "Unable to determine the assigned branch for this upload. Please refresh and try again or contact support.",
+    );
+  });
+
   test("updateAdminRequestStatus updates a request and notifies the tenant on status change", async () => {
     const requestDoc = buildRequestDoc();
     maintenanceFindOne.mockResolvedValue(requestDoc);
@@ -471,6 +700,12 @@ describe("maintenanceController", () => {
             filename: "progress.jpg",
             mimeType: "image/jpeg",
             fileType: "image",
+            context: "maintenance_internal_note",
+            visibility: "admin_only",
+            branchId: "gil-puyat",
+            uploadedBy: "admin_1",
+            senderRole: "branch_admin",
+            relatedId: requestDoc.request_id,
           }),
         ],
       }),
@@ -693,6 +928,12 @@ describe("maintenanceController", () => {
             mimeType: "image/jpeg",
             fileType: "image",
             size: 123456,
+            context: "maintenance_reply",
+            visibility: "tenant_admin",
+            branchId: "gil-puyat",
+            uploadedBy: "admin_1",
+            senderRole: "owner",
+            relatedId: requestDoc.request_id,
           }),
         ],
       }),
@@ -753,6 +994,87 @@ describe("maintenanceController", () => {
     expect(next).toHaveBeenCalledTimes(1);
     expect(next.mock.calls[0][0].code).toBe("REPLY_REQUIRED");
     expect(next.mock.calls[0][0].details[0].field).toBe("message");
+  });
+
+  test("sendAdminReply denies branch admin access to another branch request", async () => {
+    const requestDoc = buildRequestDoc({ branch: "guadalupe", conversation: [] });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+
+    const req = {
+      user: { uid: "firebase-admin-1" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        message: "Cross-branch reply",
+      },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await sendAdminReply(req, res, next);
+
+    expect(requestDoc.save).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next.mock.calls[0][0].code).toBe("FORBIDDEN");
+  });
+
+  test("sendTenantReply stores tenant-visible attachment metadata from maintenance request branch", async () => {
+    const requestDoc = buildRequestDoc({ conversation: [] });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockReturnValue(
+      buildLeanQuery({
+        _id: "mongo_user_1",
+        user_id: "user_95f39d5b4ea4",
+        firstName: "Lily",
+        lastName: "Tenant",
+        email: "lily@example.com",
+        phone: "0917",
+        branch: "gil-puyat",
+        role: "tenant",
+      }),
+    );
+
+    const req = {
+      user: { uid: "firebase-tenant-1" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        message: "",
+        attachments: [
+          {
+            name: "follow-up.jpg",
+            uri: "https://storage.example.com/maintenance/follow-up.jpg",
+            type: "image/jpeg",
+          },
+        ],
+      },
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await sendTenantReply(req, res, next);
+
+    expect(requestDoc.conversation).toHaveLength(1);
+    expect(requestDoc.conversation[0]).toEqual(
+      expect.objectContaining({
+        sender_side: "tenant",
+        sender_role: "tenant",
+        attachments: [
+          expect.objectContaining({
+            name: "follow-up.jpg",
+            branchId: "gil-puyat",
+            context: "maintenance_reply",
+            visibility: "tenant_admin",
+            uploadedBy: "user_95f39d5b4ea4",
+            senderRole: "tenant",
+            relatedId: requestDoc.request_id,
+          }),
+        ],
+      }),
+    );
+    expect(requestDoc.save).toHaveBeenCalledTimes(1);
+    expect(sendSuccess).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
   });
 
   test("reopenMyRequest returns resolved work to pending and records reopen history", async () => {
