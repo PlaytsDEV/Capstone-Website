@@ -185,6 +185,7 @@ await jest.unstable_mockModule("../controllers/maintenanceController.js", () => 
   updateAdminRequestStatus: noop,
   updateAdminRequestStatusCompat: noop,
   sendAdminReply: noop,
+  sendTenantReply: noop,
   updateAdminBulkRequests: noop,
   getCompletionStats: noop,
   getIssueFrequency: noop,
