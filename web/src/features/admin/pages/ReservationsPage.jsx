@@ -756,10 +756,8 @@ function ReservationsPage() {
                   style={{
                     borderColor: isActive ? "var(--primary)" : "var(--border-light)",
                     boxShadow: isActive
-                      ? "0 12px 30px rgba(2,6,23,0.12)"
-                      : "0 6px 18px rgba(2,6,23,0.04)",
-                    transition: "box-shadow 180ms, border-color 180ms, transform 180ms",
-                    transform: isActive ? "translateY(-2px)" : "none",
+                      ? "0 6px 16px rgba(2,6,23,0.06)"
+                      : "0 2px 8px rgba(2,6,23,0.03)",
                   }}
                   className={`border rounded-xl p-4 cursor-pointer transition-all`}
                 >
@@ -784,7 +782,19 @@ function ReservationsPage() {
                     </span>
                   </div>
 
-                  <div className="text-2xl font-semibold">
+                  <div
+                    className={`text-2xl font-semibold ${
+                      item.color === "blue"
+                        ? "text-[color:var(--info)]"
+                        : item.color === "orange"
+                        ? "text-[color:var(--warning)]"
+                        : item.color === "neutral"
+                        ? "text-[color:var(--status-neutral)]"
+                        : item.color === "green"
+                        ? "text-[color:var(--success)]"
+                        : "text-[color:var(--danger)]"
+                    }`}
+                  >
                     {item.value}
                   </div>
                 </div>
