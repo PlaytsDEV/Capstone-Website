@@ -742,52 +742,54 @@ function ReservationsPage() {
       {activeTab === "reservations" && (
         <>
           <div className="grid grid-flow-col auto-cols-[minmax(160px,1fr)] gap-3 overflow-x-auto pb-2">
-  {summaryItems.map((item, idx) => (
-    <div
-      key={item.label}
-      onClick={() => {
-        const nextFilter =
-          idx < 0 ? "all" : SUMMARY_FILTERS[idx];
+            {summaryItems.map((item, idx) => {
+              const isActive = activeSummaryIndex === idx;
+              return (
+                <div
+                  key={item.label}
+                  onClick={() => {
+                    const nextFilter = idx < 0 ? "all" : SUMMARY_FILTERS[idx];
 
-        setStatusFilter(nextFilter);
-        setCurrentPage(1);
-      }}
-      style={{
-        borderColor:
-          activeSummaryIndex === idx
-            ? "var(--primary)"
-            : "var(--border-light)",
-      }}
-      className={`border rounded-xl p-4 cursor-pointer transition-all hover:shadow-md ${
-        activeSummaryIndex === idx ? "shadow-md" : ""
-      }`}
-    >
-      <div className="flex items-center gap-2 mb-3">
-        <item.icon
-          strokeWidth={1.5}
-          className={`w-5 h-5 ${
-            item.color === "blue"
-              ? "text-[color:var(--info)]"
-              : item.color === "orange"
-              ? "text-[color:var(--warning)]"
-              : item.color === "neutral"
-              ? "text-[color:var(--status-neutral)]"
-              : item.color === "green"
-              ? "text-[color:var(--success)]"
-              : "text-[color:var(--danger)]"
-          }`}
-        />
+                    setStatusFilter(nextFilter);
+                    setCurrentPage(1);
+                  }}
+                  style={{
+                    borderColor: isActive ? "var(--primary)" : "var(--border-light)",
+                    boxShadow: isActive
+                      ? "0 12px 30px rgba(2,6,23,0.12)"
+                      : "0 6px 18px rgba(2,6,23,0.04)",
+                    transition: "box-shadow 180ms, border-color 180ms, transform 180ms",
+                    transform: isActive ? "translateY(-2px)" : "none",
+                  }}
+                  className={`border rounded-xl p-4 cursor-pointer transition-all`}
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <item.icon
+                      strokeWidth={1.5}
+                      className={`w-5 h-5 flex-shrink-0 mr-2 ${
+                        item.color === "blue"
+                          ? "text-[color:var(--info)]"
+                          : item.color === "orange"
+                          ? "text-[color:var(--warning)]"
+                          : item.color === "neutral"
+                          ? "text-[color:var(--status-neutral)]"
+                          : item.color === "green"
+                          ? "text-[color:var(--success)]"
+                          : "text-[color:var(--danger)]"
+                      }`}
+                    />
 
-        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          {item.label}
-        </span>
-      </div>
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      {item.label}
+                    </span>
+                  </div>
 
-      <div className="text-2xl font-semibold">
-        {item.value}
-      </div>
-    </div>
-  ))}
+                  <div className="text-2xl font-semibold">
+                    {item.value}
+                  </div>
+                </div>
+              );
+            })}
 </div>
 
           <div
