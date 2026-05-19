@@ -4,6 +4,10 @@ import { CheckCircle, Info } from "lucide-react";
 import { DetailDrawer, StatusBadge } from "../shared";
 import { useUser } from "../../../../shared/hooks/queries/useUsers";
 import { useAuditLogs } from "../../../../shared/hooks/queries/useAuditLogs";
+import {
+  DrawerSkeleton,
+  ListSkeleton,
+} from "../../../../shared/components/LoadingSkeletons";
 
 /* ---------------------------
    CONSTANTS
@@ -184,9 +188,7 @@ export default function AccountAccessDrawer({
       }
     >
       {isLoading && (
-        <div className="p-4 rounded-lg border border-border bg-muted/20 text-sm text-muted-foreground">
-          Loading account access details...
-        </div>
+        <DrawerSkeleton rows={4} />
       )}
 
       {isError && (
@@ -299,7 +301,7 @@ export default function AccountAccessDrawer({
               </div>
 
               <div className="p-5">
-                {auditLoading && <div className="text-sm text-muted-foreground">Loading...</div>}
+                {auditLoading && <ListSkeleton rows={3} />}
                 {auditError && <div className="text-sm text-muted-foreground">Failed to load.</div>}
                 
                 {!auditLoading && !auditError && visibleAudit.length > 0 && (

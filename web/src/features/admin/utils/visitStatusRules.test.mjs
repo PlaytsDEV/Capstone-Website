@@ -96,3 +96,15 @@ test("cancelled visits can only be rescheduled or allowed without visit", () => 
   assert.equal(availability.canCancelVisit, false);
   assert.equal(availability.canAllowWithoutVisit, true);
 });
+
+test("legacy cancelled visit status alias follows cancelled visit rules", () => {
+  const availability = getVisitManagementAvailability({
+    visitStatusKey: "cancelled",
+    hasVisitSchedule: false,
+  });
+
+  assert.equal(availability.canApproveSchedule, false);
+  assert.equal(availability.canMarkVisited, false);
+  assert.equal(availability.canReschedule, true);
+  assert.equal(availability.canAllowWithoutVisit, true);
+});

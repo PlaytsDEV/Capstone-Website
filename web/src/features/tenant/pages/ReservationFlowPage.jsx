@@ -128,7 +128,9 @@ function ReservationFlowPage() {
 
         <ReservationStepper
           currentStage={flow.currentStage}
-          isStageLocked={flow.isStageLocked}
+          reservation={flow.reservationData}
+          applicationSubmitted={flow.applicationSubmitted}
+          paymentSubmitted={flow.paymentSubmitted}
           paymentApproved={flow.paymentApproved}
         />
         <RoomInfoBanner room={flow.reservationData?.room} />
@@ -138,7 +140,24 @@ function ReservationFlowPage() {
             <ReservationSummaryStep
               reservationData={flow.reservationData}
               onNext={flow.handleNextStage}
-              readOnly={flow.isStageLocked(1)}
+              onChangeRoom={() => {
+                if (flow.roomSelectionLocked) {
+                  flow.notifyRoomSelectionLocked();
+                  return;
+                }
+                const activeReservationId =
+                  flow.reservationId ||
+                  flow.reservationData?._id ||
+                  flow.reservationData?.id;
+                if (activeReservationId) {
+                  flow.navigate(
+                    `/applicant/check-availability?changeRoom=1&reservationId=${activeReservationId}`,
+                  );
+                  return;
+                }
+                flow.navigate("/applicant/check-availability");
+              }}
+              readOnly={flow.roomSelectionLocked || flow.isStageLocked(1)}
             />
           )}
 
@@ -180,29 +199,39 @@ function ReservationFlowPage() {
               onPrev={flow.handlePrevStage}
               onNext={flow.handleNextStage}
               readOnly={flow.isStageLocked(2)}
+              viewingPreferenceAccess={flow.viewingPreferenceStepAccess}
               forceEditMode={flow.forceEditMode}
-                onSaveVisit={async () => {
-                  const viewingPreference = flow.viewingType;
-                  const isPhysicalVisit = viewingPreference === "physical_visit";
-                  const result = await flow.updateReservationDraft({
-                    agreedToPrivacy: true,
-                    viewingPreference,
-                    remoteViewingAcknowledged:
-                      viewingPreference === "remote_2d_viewing"
+              onValidatePreferenceChange={flow.validateViewingPreferenceChange}
+              onSaveVisit={async () => {
+                if (!flow.viewingPreferenceStepAccess.canSubmit) {
+                  flow.notifyViewingPreferenceLocked();
+                  return null;
+                }
+                const viewingPreference = flow.viewingType;
+                if (!viewingPreference) {
+                  showNotification("Please choose a viewing preference before submitting.", "error", 3000);
+                  return null;
+                }
+                const isPhysicalVisit = viewingPreference === "physical_visit";
+                const result = await flow.updateReservationDraft({
+                  agreedToPrivacy: true,
+                  viewingPreference,
+                  remoteViewingAcknowledged:
+                    viewingPreference === "remote_2d_viewing"
                       ? flow.remoteViewingAcknowledged
                       : false,
-                    remoteViewingQuestions:
-                      viewingPreference === "remote_2d_viewing"
-                        ? flow.remoteViewingQuestions
-                        : "",
-                    isUrgentMoveIn: viewingPreference === "urgent_move_in_review",
-                    ...(isPhysicalVisit
-                      ? {
-                          visitDate: flow.visitDate,
-                          visitTime: flow.visitTime,
-                        }
-                      : {}),
-                  });
+                  remoteViewingQuestions:
+                    viewingPreference === "remote_2d_viewing"
+                      ? flow.remoteViewingQuestions
+                      : "",
+                  isUrgentMoveIn: viewingPreference === "urgent_move_in_review",
+                  ...(isPhysicalVisit
+                    ? {
+                        visitDate: flow.visitDate,
+                        visitTime: flow.visitTime,
+                      }
+                    : {}),
+                });
                 let resolvedCode = result?.visitCode || flow.visitCode || null;
                 const reservationId = result?._id || flow.reservationId || null;
 
@@ -222,6 +251,7 @@ function ReservationFlowPage() {
 
                 return null;
               }}
+
               onVisitSaved={async ({ visitCode, viewingPreference, visitDate, visitTime } = {}) => {
                 // Optimistically patch the list cache so the side panel and
                 // dashboard show the correct preference state the moment
@@ -263,8 +293,8 @@ function ReservationFlowPage() {
                   flow.setVisitCompleted(false);
                   flow.setHighestStageReached((prev) => Math.max(prev, 2));
                 } else {
-                  flow.setVisitCompleted(true);
-                  flow.setHighestStageReached((prev) => Math.max(prev, 3));
+                  flow.setVisitCompleted(false);
+                  flow.setHighestStageReached((prev) => Math.max(prev, 2));
                 }
                 // Background re-fetch to sync with authoritative server state.
                 flow.queryClient.invalidateQueries({ queryKey: ["reservations"] });
@@ -274,13 +304,15 @@ function ReservationFlowPage() {
                   visitCode,
                   visitDate,
                   visitTime,
+
                 });
               }}
               onReturnToDashboard={flow.returnToDashboardAfterViewingPreference}
             />
           )}
 
-          {flow.currentStage === 3 && (
+          {flow.currentStage === 3 &&
+            flow.applicationAccessAllowed && (
               <ReservationApplicationStep
                 {...{
                   billingEmail: flow.billingEmail,
@@ -298,6 +330,8 @@ function ReservationFlowPage() {
                   setMobileNumber: flow.setMobileNumber,
                   birthday: flow.birthday,
                   setBirthday: flow.setBirthday,
+                  gender: flow.gender,
+                  setGender: flow.setGender,
                   maritalStatus: flow.maritalStatus,
                   setMaritalStatus: flow.setMaritalStatus,
                   nationality: flow.nationality,
@@ -381,15 +415,13 @@ function ReservationFlowPage() {
                   devBypassValidation: flow.devBypassValidation,
                   setDevBypassValidation: flow.setDevBypassValidation,
                   saveStatus: flow.saveStatus,
+                  saveStatusMessage: flow.saveStatusMessage,
+                  draftRecoveryMessage: flow.draftRecoveryMessage,
                   showValidationErrors: flow.showValidationErrors,
                   applicationSubmitted: flow.applicationSubmitted,
                   paymentApproved: flow.paymentApproved,
-                  // visitPending: true when physical visit was chosen but not yet
-                  // completed/approved.  The form is editable in this state (the
-                  // visit-pending lock was removed from isStageLocked); we just
-                  // show an informational banner to the applicant.
                   visitPending:
-                    flow.physicalVisitApplicationLocked &&
+                    !flow.applicationAccessAllowed &&
                     !flow.applicationSubmitted,
                   scrollToSection: flow.scrollToSection,
                   onClearScrollToSection: () => flow.setScrollToSection(null),
@@ -472,6 +504,7 @@ function ReservationFlowPage() {
                 reservationCode: flow.reservationCode,
                 reservationData: flow.reservationData,
                 paymentMethod: flow.paymentMethod,
+                paymentApproved: flow.paymentApproved,
                 visitDate: flow.visitDate,
                 visitTime: flow.visitTime,
                 leaseDuration: flow.leaseDuration,

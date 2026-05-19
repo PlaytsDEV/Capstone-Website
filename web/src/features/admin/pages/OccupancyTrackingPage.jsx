@@ -15,6 +15,11 @@ import { digitalTwinApi } from "../../../shared/api/digitalTwinApi";
 import { formatRoomType, formatBranch } from "../utils/formatters";
 import { useVacancyForecast } from "../../../shared/hooks/queries/useRooms";
 import { useDigitalTwinSnapshot } from "../../../shared/hooks/queries/useDigitalTwin";
+import {
+  CardSkeleton,
+  StatGridSkeleton,
+  TableSkeleton,
+} from "../../../shared/components/LoadingSkeletons";
 
 import OccupancyRoomModal from "../components/occupancy/OccupancyRoomModal";
 
@@ -289,9 +294,28 @@ function OccupancyTrackingPage({ isEmbedded = false }) {
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-[var(--border-card)] bg-[var(--surface-card)] p-8 text-center text-sm text-muted-foreground">
-        Loading occupancy data...
-      </div>
+      <section className="space-y-4" aria-busy="true">
+        <div>
+          <h2 className="text-2xl font-semibold text-foreground mb-1">
+            {isEmbedded ? "Room Occupancy" : "Occupancy Tracking"}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Monitor committed occupancy, bed status, and upcoming vacancies.
+          </p>
+        </div>
+        <StatGridSkeleton count={5} className="grid grid-cols-2 md:grid-cols-5 gap-3" />
+        <div className="flex items-center gap-3">
+          <CardSkeleton lines={1} height={42} style={{ width: 180, minHeight: 42, padding: 10 }} />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <CardSkeleton lines={4} height={285} />
+          <CardSkeleton lines={4} height={285} />
+        </div>
+        <div className="bg-[var(--surface-card)] border border-[var(--border-card)] rounded-lg p-4">
+          <StatGridSkeleton count={3} minWidth={220} style={{ marginBottom: 16 }} />
+          <TableSkeleton rows={8} columns={9} />
+        </div>
+      </section>
     );
   }
 

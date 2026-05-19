@@ -14,8 +14,8 @@
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--chart-4) 10%, var(--card)) 0%, color-mix(in srgb, var(--info) 10%, var(--card)) 100%);
-  color: var(--chart-4);
+  background: linear-gradient(135deg, #D4AF37 0%, #B88A1A 100%);
+  color: #0F172A;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -23,7 +23,7 @@
   font-weight: 700;
   flex-shrink: 0;
   letter-spacing: 0.02em;
-  border: 1.5px solid var(--border);
+  border: 1.5px solid rgba(184, 138, 26, 0.26);
 }
 
 .user-cell__info {

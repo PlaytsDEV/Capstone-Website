@@ -296,6 +296,7 @@ const reservationSchema = new mongoose.Schema(
         "visit_completed",
         "no_show",
         "rescheduled",
+        "cancelled",
         "visit_cancelled",
         "allowed_without_visit",
         null,
@@ -387,6 +388,11 @@ const reservationSchema = new mongoose.Schema(
     nickname: String,
     mobileNumber: String,
     birthday: Date,
+    gender: {
+      type: String,
+      enum: ["male", "female", "other", "prefer-not-to-say", "", null],
+      default: null,
+    },
     maritalStatus: String, // "single", "married", "divorced", "widowed"
     nationality: String,
     educationLevel: String, // "highschool", "college", "graduate", "other"
@@ -752,6 +758,17 @@ const reservationSchema = new mongoose.Schema(
       ref: "User",
       default: null,
     },
+    archivedPreviousStatus: {
+      type: String,
+      enum: CANONICAL_RESERVATION_STATUSES,
+      default: null,
+    },
+    archiveReason: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 500,
+    },
   },
   {
     timestamps: true,
@@ -908,10 +925,17 @@ reservationSchema.index(
 /**
  * Soft delete this reservation
  */
-reservationSchema.methods.archive = async function (archivedById = null) {
+reservationSchema.methods.archive = async function (
+  archivedById = null,
+  { previousStatus = null, reason = "" } = {},
+) {
   this.isArchived = true;
   this.archivedAt = new Date();
   this.archivedBy = archivedById;
+  this.archivedPreviousStatus =
+    normalizeReservationStatus(previousStatus || this.archivedPreviousStatus || this.status) ||
+    this.status;
+  this.archiveReason = reason || this.archiveReason || "";
   return this.save();
 };
 
@@ -922,6 +946,7 @@ reservationSchema.methods.restore = async function () {
   this.isArchived = false;
   this.archivedAt = null;
   this.archivedBy = null;
+  this.archiveReason = "";
   return this.save();
 };
 

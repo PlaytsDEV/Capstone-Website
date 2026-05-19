@@ -195,17 +195,6 @@ function SignIn() {
  return;
  }
 
- if (!user.branch || user.branch === "") {
- appNavigate("/applicant/check-availability", {
- flash: {
- type: "info",
- message: "Please select your branch to continue",
- duration: 5000,
- },
- });
- return;
- }
-
  if (!suppressSuccessToast) {
  showNotification(successMessage, "success", AUTH_TOAST_DURATION);
  }
@@ -358,7 +347,7 @@ function SignIn() {
  }
  };
 
- const handleSocialLogin = async (provider, providerName = "Google") => {
+ const handleSocialLogin = async (provider) => {
  setSocialLoading(true);
  setGlobalLoading(true);
  sessionStorage.setItem("socialAuthInProgress", "1");
@@ -381,14 +370,7 @@ function SignIn() {
 
  try {
  const loginResponse = await login();
- showNotification(
- `Signed in with ${providerName} successfully.`,
- "success",
- AUTH_TOAST_DURATION,
- );
- handlePostAuthFlow(loginResponse, firebaseUser.displayName || "there", {
- suppressSuccessToast: true,
- });
+ handlePostAuthFlow(loginResponse, firebaseUser.displayName || firebaseUser.email || "there");
  } catch (loginError) {
  // Delete the auto-created Firebase account to keep Firebase ↔ MongoDB in sync
  // signInWithPopup auto-creates a Firebase account; if backend rejects, we must remove it
@@ -465,9 +447,9 @@ function SignIn() {
  };
 
  const handleGoogleLogin = () =>
- handleSocialLogin(new GoogleAuthProvider(), "Google");
+ handleSocialLogin(new GoogleAuthProvider());
  const handleFacebookLogin = () =>
- handleSocialLogin(new FacebookAuthProvider(), "Facebook");
+ handleSocialLogin(new FacebookAuthProvider());
 
  const inputClass = (name) =>
  `w-full px-4 py-4 rounded-xl bg-muted border focus:outline-none text-foreground font-light placeholder:text-muted-foreground transition-colors ${touched[name] ? (fieldValid[name] ? "border-green-500" : "border-red-500") : "border-border focus:border-border"}`;

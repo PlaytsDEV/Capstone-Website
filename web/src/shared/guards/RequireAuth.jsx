@@ -17,6 +17,7 @@
 import React from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+import GlobalLoading from "../components/GlobalLoading";
 
 /**
  * Guard component that requires authentication
@@ -29,7 +30,7 @@ const RequireAuth = ({ children }) => {
 
   // Show loading state while checking authentication
   if (loading) {
-    return null;
+    return <GlobalLoading />;
   }
 
   // Redirect to sign-in if not authenticated

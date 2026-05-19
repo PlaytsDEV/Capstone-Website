@@ -59,6 +59,15 @@ export const maintenanceApi = {
     }),
 
   /**
+   * Send a tenant reply with optional attachments.
+   */
+  sendTenantReply: (requestId, payload) =>
+    authFetch(`/m/maintenance/${requestId}/reply`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  /**
    * Get maintenance request details
    */
   getRequest: (requestId) => authFetch(`/m/maintenance/${requestId}`),
@@ -75,6 +84,15 @@ export const maintenanceApi = {
   updateAdminRequestStatus: (requestId, payload) =>
     authFetch(`/m/maintenance/admin/${requestId}/status`, {
       method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  /**
+   * Send a tenant-facing admin reply with optional attachments.
+   */
+  sendAdminReply: (requestId, payload) =>
+    authFetch(`/m/maintenance/admin/${requestId}/reply`, {
+      method: "POST",
       body: JSON.stringify(payload),
     }),
 

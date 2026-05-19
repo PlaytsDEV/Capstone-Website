@@ -18,6 +18,7 @@ import {
  formatAnnouncementCategory,
  getAnnouncementCategoryMeta,
 } from "../../../../shared/utils/announcementConfig";
+import { ListSkeleton } from "../../../../shared/components/LoadingSkeletons";
 
 const CATEGORY_ICONS = {
  general: Megaphone,
@@ -50,20 +51,9 @@ const LoadingState = () => (
  <div style={{ width: "100%" }}>
  <div style={s.heading}>
  <h1 style={s.title}>Announcements</h1>
- <p style={s.subtitle}>Loading announcements...</p>
+ <p style={s.subtitle}>Stay updated with branch notices, policy versions, and required acknowledgments</p>
  </div>
- {[1, 2, 3].map((item) => (
- <div
- key={item}
- style={{
- ...s.card,
- height: 88,
- background: "#F3F4F6",
- animation: "pulse 1.5s ease-in-out infinite",
- marginBottom: 10,
- }}
- />
- ))}
+ <ListSkeleton rows={4} />
  </div>
 );
 

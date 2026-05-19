@@ -133,13 +133,40 @@ notificationSchema.methods.markAsRead = async function () {
 // STATICS
 // ============================================================================
 
+const mergeFilters = (...filters) => {
+  const activeFilters = filters.filter(
+    (filter) => filter && Object.keys(filter).length > 0,
+  );
+
+  if (activeFilters.length === 0) return {};
+  if (activeFilters.length === 1) return activeFilters[0];
+  return { $and: activeFilters };
+};
+
+const buildNotificationFilter = (userId, options = {}) => {
+  const {
+    unreadOnly = false,
+    excludeTypes = [],
+    visibilityFilter = {},
+  } = options;
+  const filter = { userId };
+  if (unreadOnly) filter.isRead = false;
+  if (Array.isArray(excludeTypes) && excludeTypes.length > 0) {
+    filter.type = { $nin: excludeTypes };
+  }
+  return mergeFilters(filter, visibilityFilter);
+};
+
 /**
  * Get notifications for a user (paginated)
  */
 notificationSchema.statics.getForUser = async function (userId, options = {}) {
-  const { page = 1, limit = 20, unreadOnly = false } = options;
-  const filter = { userId };
-  if (unreadOnly) filter.isRead = false;
+  const { page = 1, limit = 20 } = options;
+  const filter = buildNotificationFilter(userId, options);
+  const unreadFilter = buildNotificationFilter(userId, {
+    ...options,
+    unreadOnly: true,
+  });
 
   const [notifications, total, unreadCount] = await Promise.all([
     this.find(filter)
@@ -148,7 +175,7 @@ notificationSchema.statics.getForUser = async function (userId, options = {}) {
       .limit(limit)
       .lean(),
     this.countDocuments(filter),
-    this.countDocuments({ userId, isRead: false }),
+    this.countDocuments(unreadFilter),
   ]);
 
   return {
@@ -165,9 +192,9 @@ notificationSchema.statics.getForUser = async function (userId, options = {}) {
 /**
  * Mark all notifications as read for a user
  */
-notificationSchema.statics.markAllAsRead = async function (userId) {
+notificationSchema.statics.markAllAsRead = async function (userId, options = {}) {
   return this.updateMany(
-    { userId, isRead: false },
+    buildNotificationFilter(userId, { ...options, unreadOnly: true }),
     { $set: { isRead: true, readAt: new Date() } },
   );
 };

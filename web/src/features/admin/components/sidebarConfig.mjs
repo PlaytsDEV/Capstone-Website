@@ -14,6 +14,7 @@ import {
   Shield,
   Settings,
   Bell,
+  Database,
 } from "lucide-react";
 
 export const NAV_GROUPS = [
@@ -37,6 +38,7 @@ export const NAV_ITEMS = [
   { to: "/admin/audit-logs", icon: FileText, text: "Audit & Security", group: "system", priority: 3 },
   { to: "/admin/branches", icon: Building2, text: "Branches", group: "system", priority: 4, saOnly: true },
   { to: "/admin/settings", icon: Settings, text: "Policies & Settings", group: "system", priority: 5, saOnly: true },
+  { to: "/admin/backups", icon: Database, text: "System Backup", group: "system", priority: 6, saOnly: true },
 ];
 
 export function getVisibleNavItems({ isOwner = false, can = () => true } = {}) {

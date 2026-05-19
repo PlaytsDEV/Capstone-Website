@@ -193,3 +193,13 @@ export function useArchiveReservation() {
       invalidateReservationSideEffects(qc, reservationId),
   });
 }
+
+/** Restore archived reservation (admin) */
+export function useRestoreReservation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (reservationId) => reservationApi.restore(reservationId),
+    onSuccess: (_data, reservationId) =>
+      invalidateReservationSideEffects(qc, reservationId),
+  });
+}

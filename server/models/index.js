@@ -54,6 +54,8 @@ import UtilityPeriod from "./UtilityPeriod.js";
 import UtilityReading from "./UtilityReading.js";
 import BedHistory from "./BedHistory.js";
 import Stay from "./Stay.js";
+import BackupConfig from "./BackupConfig.js";
+import BackupRecord from "./BackupRecord.js";
 import {
   CANONICAL_RESERVATION_STATUSES,
   USER_ROLE_NAMES,
@@ -96,6 +98,8 @@ export {
   UtilityReading,
   BedHistory,
   Stay,
+  BackupConfig,
+  BackupRecord,
 };
 
 // ============================================================================
@@ -197,6 +201,8 @@ export default {
   UtilityReading,
   BedHistory,
   Stay,
+  BackupConfig,
+  BackupRecord,
   Notification,
   Payment,
   LoginLog,

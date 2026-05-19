@@ -1,12 +1,26 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, CheckCheck, Loader2 } from "lucide-react";
+import { Bell, CheckCheck } from "lucide-react";
 import {
   useNotifications,
   useMarkAsRead,
   useMarkAllAsRead,
   useUnreadCount,
 } from "../../../shared/hooks/queries/useNotifications";
+import { useAuth } from "../../../shared/hooks/useAuth";
+import { ListSkeleton } from "../../../shared/components/LoadingSkeletons";
+import { getVisibleNotificationsForUser } from "../../../shared/utils/notificationVisibility";
+
+const ALL_FILTER_TABS = [
+  { key: "all", label: "All", roles: ["applicant", "tenant"] },
+  { key: "reservation", label: "Reservations", roles: ["applicant"] },
+  { key: "application", label: "Applications", roles: ["applicant"] },
+  { key: "visit", label: "Visits", roles: ["applicant"] },
+  { key: "payment", label: "Payments", roles: ["applicant", "tenant"] },
+  { key: "billing", label: "Billing", roles: ["tenant"] },
+  { key: "maintenance", label: "Maintenance", roles: ["tenant"] },
+  { key: "announcement", label: "Announcements", roles: ["tenant"] },
+];
 
 const TYPE_ICONS = {
   reservation_confirmed:  "✅",
@@ -30,26 +44,29 @@ const TYPE_ICONS = {
   general:                "ℹ️",
 };
 
-const FILTER_TABS = [
-  { key: "all",                   label: "All" },
-  { key: "reservation_confirmed", label: "Reservations" },
-  { key: "payment_approved",      label: "Payments" },
-  { key: "bill_generated",        label: "Billing" },
-  { key: "maintenance_update",    label: "Maintenance" },
-  { key: "announcement",          label: "Announcements" },
-];
 
 function matchesFilter(notification, filter) {
   if (filter === "all") return true;
-  if (filter === "reservation_confirmed") {
-    return notification.type.startsWith("reservation_") || notification.type.startsWith("visit_");
+  if (filter === "reservation") {
+    return notification.type.startsWith("reservation_");
   }
-  if (filter === "payment_approved") {
+  if (filter === "application") {
+    return notification.type === "general" && notification.title?.toLowerCase().includes("application");
+  }
+  if (filter === "visit") {
+    return notification.type.startsWith("visit_") ||
+      notification.title?.toLowerCase().includes("viewing") ||
+      notification.title?.toLowerCase().includes("visit");
+  }
+  if (filter === "payment") {
     return notification.type === "payment_approved" || notification.type === "payment_rejected";
   }
-  if (filter === "bill_generated") {
+  if (filter === "billing") {
     return ["bill_generated", "bill_due_reminder", "penalty_applied",
             "contract_expiring", "grace_period_warning"].includes(notification.type);
+  }
+  if (filter === "maintenance") {
+    return notification.type === "maintenance_update";
   }
   return notification.type === filter;
 }
@@ -69,6 +86,8 @@ function timeAgo(dateStr) {
 
 export default function NotificationsPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isApplicant = user?.role === "applicant";
   const [page, setPage] = useState(1);
   const [typeFilter, setTypeFilter] = useState("all");
   const [unreadOnly, setUnreadOnly] = useState(false);
@@ -78,7 +97,10 @@ export default function NotificationsPage() {
   const markAsRead = useMarkAsRead();
   const markAllRead = useMarkAllAsRead();
 
-  const allNotifications = data?.notifications || [];
+  const currentRole = isApplicant ? "applicant" : "tenant";
+  const filterTabs = ALL_FILTER_TABS.filter((t) => t.roles.includes(currentRole));
+
+  const allNotifications = getVisibleNotificationsForUser(data?.notifications || [], user);
   const totalPages = data?.pagination?.totalPages || 1;
   const unreadCount = countData?.unreadCount ?? 0;
 
@@ -114,7 +136,9 @@ export default function NotificationsPage() {
             )}
           </h1>
           <p style={{ fontSize: 13, color: "#6B7280", margin: "4px 0 0" }}>
-            Reservation updates, billing alerts, and announcements
+            {isApplicant
+              ? "Reservation, visit, and application updates from Lilycrest"
+              : "Billing, maintenance, contract, and account notices"}
           </p>
         </div>
 
@@ -138,7 +162,7 @@ export default function NotificationsPage() {
 
       {/* Filter row */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-        {FILTER_TABS.map((tab) => (
+        {filterTabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => { setTypeFilter(tab.key); setPage(1); }}
@@ -172,12 +196,8 @@ export default function NotificationsPage() {
       {/* List */}
       <div style={{ backgroundColor: "white", borderRadius: 12, border: "1px solid #E5E7EB", overflow: "hidden" }}>
         {isLoading ? (
-          <div style={{ padding: 48, textAlign: "center" }}>
-            <Loader2
-              size={28}
-              style={{ color: "#D4AF37", margin: "0 auto", display: "block" }}
-              className="animate-spin"
-            />
+          <div style={{ padding: 12 }}>
+            <ListSkeleton rows={5} avatar />
           </div>
         ) : filtered.length === 0 ? (
           <div style={{ padding: "56px 24px", textAlign: "center" }}>

@@ -163,7 +163,6 @@ html[data-theme="dark"] .rf-receipt-header__badge { color: var(--rf-success-text
 /* ============ PAGE LAYOUT ============ */
 .reservation-flow-container {
   min-height: 100vh;
-  background: var(--rf-bg);
   padding: 0 0 60px;
   font-family: "Inter", "DM Sans", sans-serif;
 }
@@ -1725,6 +1724,160 @@ html[data-theme="dark"] .rf-option-card[data-option="urgent_move_in_review"].sel
   padding: 3px 10px;
   border-radius: 20px;
   margin-left: auto;
+}
+
+/* ============ ROOM SUMMARY — layout and photo carousel ============ */
+.rf-room-review-grid {
+  grid-template-columns: 1fr 340px;
+  gap: 20px;
+}
+
+.rf-room-photos-card .rf-room-photo-carousel {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+.rf-room-photo-open {
+  display: block;
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+  background: var(--rf-surface-alt);
+  box-shadow: var(--rf-shadow-sm);
+}
+.rf-room-photo-open img {
+  width: 100%;
+  height: 420px;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.35s ease;
+}
+.rf-room-photo-open:hover img { transform: scale(1.03); }
+
+.rf-room-photo-open-hint {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.5);
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rf-room-photo-nav {
+  all: unset;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.9);
+  border: 1px solid var(--rf-border-card);
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+}
+.rf-room-photo-nav-prev { left: 12px; }
+.rf-room-photo-nav-next { right: 12px; }
+
+.rf-room-photo-dots {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.rf-room-photo-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 99px;
+  background: rgba(12,13,16,0.06);
+  border: 1px solid rgba(12,13,16,0.06);
+  transition: all 0.18s;
+}
+.rf-room-photo-dot.active {
+  width: 28px;
+  height: 8px;
+  border-radius: 8px;
+  background: var(--rf-accent);
+}
+
+.rf-summary-panel { padding: 18px; }
+.rf-summary-panel-main { min-height: 100%; }
+
+/* sidebar panel (payment/summary) */
+.rf-summary-panel + .rf-summary-panel { align-self: start; }
+.rf-summary-panel .summary-section { padding: 10px; }
+
+@media (max-width: 900px) {
+  .rf-room-review-grid { grid-template-columns: 1fr; }
+  .rf-room-photo-open img { height: 300px; }
+  .rf-room-photo-nav { display: none; }
+  .rf-room-photo-dots { position: static; transform: none; margin-top: 12px; }
+}
+
+/* Fullscreen photo viewer used by Room Summary */
+.rf-photo-viewer {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.75);
+  z-index: 11000;
+  padding: 24px;
+}
+.rf-photo-viewer-toolbar {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 11010;
+}
+.rf-photo-viewer-toolbar button {
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+  cursor: pointer;
+}
+.rf-photo-viewer-stage {
+  max-width: 1200px;
+  width: 100%;
+  max-height: calc(100vh - 120px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.rf-photo-viewer-stage img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: var(--rf-shadow-xl);
+  display: block;
+}
+
+@media (max-width: 480px) {
+  .rf-photo-viewer-stage { padding: 8px; }
+  .rf-photo-viewer-toolbar button { width: 36px; height: 36px; }
 }
 
 /* ============ ACKNOWLEDGEMENT CARD ============ */

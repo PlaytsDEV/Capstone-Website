@@ -116,3 +116,6 @@ export const SystemSettingsPage = React.lazy(
 export const AdminNotificationsPage = React.lazy(
   () => import("../features/admin/pages/AdminNotificationsPage"),
 );
+export const SystemBackupPage = React.lazy(
+  () => import("../features/admin/pages/SystemBackupPage"),
+);

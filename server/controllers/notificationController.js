@@ -10,10 +10,15 @@
 
 import Notification from "../models/Notification.js";
 import { User } from "../models/index.js";
+import { getNotificationVisibilityFilterForUser } from "../utils/notificationVisibility.js";
 import {
   sendSuccess,
   AppError,
 } from "../middleware/errorHandler.js";
+
+const getNotificationVisibilityOptions = (user) => ({
+  visibilityFilter: getNotificationVisibilityFilterForUser(user),
+});
 
 /**
  * GET /api/notifications
@@ -29,6 +34,7 @@ export const getMyNotifications = async (req, res, next) => {
       page: parseInt(page),
       limit: parseInt(limit),
       unreadOnly: unreadOnly === "true",
+      ...getNotificationVisibilityOptions(dbUser),
     });
 
     sendSuccess(res, result);
@@ -47,10 +53,12 @@ export const markAsRead = async (req, res, next) => {
     const dbUser = await User.findOne({ firebaseUid: req.user.uid }).lean();
     if (!dbUser) throw new AppError("User not found", 404, "USER_NOT_FOUND");
 
-    const notification = await Notification.findById(notificationId);
+    const notification = await Notification.findOne({
+      _id: notificationId,
+      userId: dbUser._id,
+      ...getNotificationVisibilityFilterForUser(dbUser),
+    });
     if (!notification) throw new AppError("Notification not found", 404, "NOTIFICATION_NOT_FOUND");
-    if (String(notification.userId) !== String(dbUser._id))
-      throw new AppError("Not your notification", 403, "FORBIDDEN");
 
     await notification.markAsRead();
     sendSuccess(res, { message: "Notification marked as read" });
@@ -68,7 +76,10 @@ export const markAllAsRead = async (req, res, next) => {
     const dbUser = await User.findOne({ firebaseUid: req.user.uid }).lean();
     if (!dbUser) throw new AppError("User not found", 404, "USER_NOT_FOUND");
 
-    const result = await Notification.markAllAsRead(dbUser._id);
+    const result = await Notification.markAllAsRead(
+      dbUser._id,
+      getNotificationVisibilityOptions(dbUser),
+    );
     sendSuccess(res, { message: "All notifications marked as read", modifiedCount: result.modifiedCount });
   } catch (error) {
     next(error);
@@ -84,7 +95,14 @@ export const getUnreadCount = async (req, res, next) => {
     const dbUser = await User.findOne({ firebaseUid: req.user.uid }).lean();
     if (!dbUser) throw new AppError("User not found", 404, "USER_NOT_FOUND");
 
-    const count = await Notification.countDocuments({ userId: dbUser._id, isRead: false });
+    const visibilityOptions = getNotificationVisibilityOptions(dbUser);
+    const filter = {
+      $and: [
+        { userId: dbUser._id, isRead: false },
+        visibilityOptions.visibilityFilter,
+      ],
+    };
+    const count = await Notification.countDocuments(filter);
     sendSuccess(res, { unreadCount: count });
   } catch (error) {
     next(error);

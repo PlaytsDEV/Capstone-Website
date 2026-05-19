@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { Bed, History, LayoutDashboard, LogOut, User } from "lucide-react";
+import ProfileAvatar, { getProfileInitials } from "../../../shared/components/ProfileAvatar";
 
 const ProfileSidebar = ({
  activeTab,
@@ -8,7 +9,11 @@ const ProfileSidebar = ({
  fullName,
  email,
  handleLogout,
-}) => (
+}) => {
+ const profileUser = { name: fullName, email };
+ const initials = getProfileInitials(profileUser, "U");
+
+ return (
  <aside
  className="w-64 bg-card border-r flex flex-col h-screen sticky top-0 self-start overflow-y-auto"
  style={{ borderColor: "var(--border-card, #E8EBF0)" }}
@@ -29,12 +34,7 @@ const ProfileSidebar = ({
 
  <div className="p-4 border-b" style={{ borderColor: "var(--border-card, #E8EBF0)" }}>
  <div className="flex items-center gap-3">
- <div
- className="w-10 h-10 rounded-full flex items-center justify-center"
- style={{ backgroundColor: "#0A1628" }}
- >
- <User className="w-6 h-6 text-primary-foreground" />
- </div>
+ <ProfileAvatar user={profileUser} initials={initials} size={40} />
  <div className="flex-1 min-w-0">
  <p
  className="text-sm font-medium truncate"
@@ -125,6 +125,7 @@ const ProfileSidebar = ({
  </Link>
  </div>
  </aside>
-);
+ );
+};
 
 export default ProfileSidebar;

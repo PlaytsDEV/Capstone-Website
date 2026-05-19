@@ -9,14 +9,11 @@ import ConfirmModal from "../../../shared/components/ConfirmModal";
 import { authFetch } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
 import { useQueryClient } from "@tanstack/react-query";
-import {
- getReservationProgress,
- getNextAction,
-} from "../utils/reservationProgress";
 import { useCurrentUser } from "../../../shared/hooks/queries/useUsers";
 import { useReservations } from "../../../shared/hooks/queries/useReservations";
 import { billingApi } from "../../../shared/api/billingApi";
 import { hasReservationStatus } from "../../../shared/utils/lifecycleNaming";
+import { getReservationProgress, getNextAction } from "../utils/reservationProgress";
 import TenantMaintenanceWorkspace from "../components/maintenance/TenantMaintenanceWorkspace";
 import {
  ReceiptModal,
@@ -48,7 +45,6 @@ const ProfilePage = () => {
  const [pendingTab, setPendingTab] = useState(null);
  const [receiptModal, setReceiptModal] = useState({ open: false, step: null });
  const [selectedReservationId, setSelectedReservationId] = useState(null);
- const [dashboardFeedback, setDashboardFeedback] = useState(null);
 
  const [profileData, setProfileData] = useState({
  firstName: "",
@@ -87,7 +83,11 @@ const ProfilePage = () => {
  });
 
  const { data: profile, isLoading: profileLoading } = useCurrentUser();
- const { data: reservationsData, isLoading: reservationsLoading } = useReservations();
+ const {
+ data: reservationsData,
+ isLoading: reservationsLoading,
+ refetch: refetchReservations,
+ } = useReservations();
  const loading = (!profile && profileLoading) || (!reservationsData && reservationsLoading);
 
  useEffect(() => {
@@ -116,19 +116,27 @@ const ProfilePage = () => {
  }, [canViewAnnouncements, location.state]);
 
  useEffect(() => {
- const nextFeedback = location.state?.reservationFeedback;
- if (!nextFeedback) return;
+ const refreshReservations = () => {
+ void refetchReservations();
+ };
 
- setDashboardFeedback(nextFeedback);
+ refreshReservations();
 
- const nextState = { ...(location.state || {}) };
- delete nextState.reservationFeedback;
+ const handlePageShow = () => {
+ refreshReservations();
+ };
+ const handleVisibilityChange = () => {
+ if (!document.hidden) refreshReservations();
+ };
 
- navigate(location.pathname, {
- replace: true,
- state: Object.keys(nextState).length > 0 ? nextState : undefined,
- });
- }, [location.pathname, location.state, navigate]);
+ window.addEventListener("pageshow", handlePageShow);
+ document.addEventListener("visibilitychange", handleVisibilityChange);
+
+ return () => {
+ window.removeEventListener("pageshow", handlePageShow);
+ document.removeEventListener("visibilitychange", handleVisibilityChange);
+ };
+ }, [refetchReservations]);
 
  useEffect(() => {
  if (activeTab === "announcements" && !canViewAnnouncements) {
@@ -179,6 +187,15 @@ const ProfilePage = () => {
  if (sessionId) {
  try {
  const result = await billingApi.checkPaymentStatus(sessionId);
+ if (result?.requiresReview) {
+ showNotification(
+ "Payment was received but needs admin review before your reservation can be secured.",
+ "warning",
+ 5000,
+ );
+ queryClient.invalidateQueries({ queryKey: ["reservations"] });
+ return;
+ }
  if (result?.status === "paid") {
  showNotification(
  "Payment successful! Your reservation is confirmed.",
@@ -230,7 +247,7 @@ const ProfilePage = () => {
  const activeReservation = useMemo(() => {
  const activeOnes = reservations.filter((reservation) => {
  const status = reservation.reservationStatus || reservation.status;
- return !hasReservationStatus(status, "moveOut", "cancelled");
+  return !hasReservationStatus(status, "moveOut", "cancelled", "rejected");
  });
 
  return activeOnes[0] || null;
@@ -240,7 +257,7 @@ const ProfilePage = () => {
  () =>
  reservations.filter((reservation) => {
  const status = reservation.reservationStatus || reservation.status;
- return !hasReservationStatus(status, "moveOut", "cancelled");
+  return !hasReservationStatus(status, "moveOut", "cancelled", "rejected");
  }),
  [reservations],
  );
@@ -365,7 +382,6 @@ const ProfilePage = () => {
 
  const reservationProgress = getReservationProgress(selectedReservation);
  const nextAction = getNextAction(selectedReservation, reservationProgress);
-
  const isReservationConfirmed =
  selectedReservation &&
  hasReservationStatus(
@@ -404,8 +420,6 @@ const ProfilePage = () => {
  activeReservation={activeReservation}
  selectedReservation={selectedReservation}
  visits={visits}
- dashboardFeedback={dashboardFeedback}
- onDismissDashboardFeedback={() => setDashboardFeedback(null)}
  nextAction={nextAction}
  onGoToPersonal={() => handleTabChange("personal")}
  />
@@ -429,6 +443,7 @@ const ProfilePage = () => {
  <ReservationAgreementPage
  reservation={confirmedReservation}
  onBack={() => handleTabChange("dashboard")}
+ onReservationUpdated={refetchReservations}
  />
  )}
 

@@ -19,6 +19,11 @@ import {
   getReservationStatusLabel,
 } from "../utils/formatters";
 import { useDashboardData } from "../../../shared/hooks/queries/useDashboard";
+import {
+  CardSkeleton,
+  StatGridSkeleton,
+  TableSkeleton,
+} from "../../../shared/components/LoadingSkeletons";
 import { PageShell } from "../components/shared";
 import OccupancyTrendCard from "../components/dashboard/OccupancyTrendCard";
 import RevenueTrendCard from "../components/dashboard/RevenueTrendCard";
@@ -64,6 +69,26 @@ function AlertBanner({ activeTickets, pendingReservations, unresolvedInquiries }
         </button>
       </div>
     </div>
+  );
+}
+
+function DashboardLoadingSkeleton() {
+  return (
+    <>
+      <StatGridSkeleton
+        count={5}
+        className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5"
+      />
+      <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <CardSkeleton lines={5} height={300} className="lg:col-span-2" />
+        <CardSkeleton lines={5} height={300} />
+      </div>
+      <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <CardSkeleton lines={4} height={240} />
+        <CardSkeleton lines={4} height={240} />
+      </div>
+      <TableSkeleton rows={4} columns={5} />
+    </>
   );
 }
 
@@ -216,26 +241,17 @@ export default function Dashboard() {
               {error}
             </div>
           )}
-          {isLoading && (
-            <div className="dash-loading mb-6">
-              <span className="dash-loading__spinner" aria-hidden="true" />
-              <span className="dash-loading__label">
-                Loading dashboard data
-                <span className="dash-loading__ellipsis" aria-hidden="true">
-                  <span>.</span>
-                  <span>.</span>
-                  <span>.</span>
-                </span>
-              </span>
-            </div>
+          {!isLoading && (
+            <AlertBanner
+              activeTickets={kpis.activeTickets || 0}
+              pendingReservations={reservationStatus.pending || 0}
+              unresolvedInquiries={unresolvedInquiryCount}
+            />
           )}
 
-          <AlertBanner
-            activeTickets={kpis.activeTickets || 0}
-            pendingReservations={reservationStatus.pending || 0}
-            unresolvedInquiries={unresolvedInquiryCount}
-          />
-
+          {isLoading ? (
+            <DashboardLoadingSkeleton />
+          ) : (
           <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
             {summaryItems.map((item) => {
               const Icon = item.icon;
@@ -282,8 +298,10 @@ export default function Dashboard() {
               );
             })}
           </div>
+          )}
         </PageShell.Summary>
 
+        {!isLoading && (
         <PageShell.Content>
           <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
             <section
@@ -689,6 +707,7 @@ export default function Dashboard() {
             )}
           </section>
         </PageShell.Content>
+        )}
       </PageShell>
     </div>
   );

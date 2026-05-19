@@ -1,4 +1,6 @@
 /* ── Inline SVG icons used by each row ── */
+import { ListSkeleton } from "../../../../shared/components/LoadingSkeletons";
+
 const BuildingIcon = () => (
  <svg
  xmlns="http://www.w3.org/2000/svg"
@@ -168,9 +170,7 @@ export default function TenantTable({
  return (
  <div className="admin-tenants-table-body">
  {loading ? (
- <div style={{ padding: "40px", textAlign: "center", color: "#6b7280" }}>
- Loading tenants...
- </div>
+ <ListSkeleton rows={7} avatar style={{ padding: "16px" }} />
  ) : error ? (
  <div style={{ padding: "40px", textAlign: "center", color: "#ef4444" }}>
  {error}

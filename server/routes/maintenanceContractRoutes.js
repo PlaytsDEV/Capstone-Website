@@ -41,6 +41,11 @@ router.patch(
   verifyApplicant,
   maintenanceController.reopenMyRequest,
 );
+router.post(
+  "/:requestId/reply",
+  verifyApplicant,
+  maintenanceController.sendTenantReply,
+);
 
 // Canonical admin routes
 router.get(
@@ -57,6 +62,13 @@ router.patch(
   requirePermission("manageMaintenance"),
   maintenanceController.updateAdminRequestStatus,
 );
+router.post(
+  "/admin/:requestId/reply",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.sendAdminReply,
+);
 router.patch(
   "/admin/bulk",
   verifyAdmin,
@@ -68,6 +80,7 @@ router.patch(
 // Compatibility aliases for legacy repo callers
 router.get("/my-requests", verifyApplicant, maintenanceController.getMyRequests);
 router.post("/requests", verifyApplicant, maintenanceController.createRequestCompat);
+router.post("/requests/:requestId/reply", verifyApplicant, maintenanceController.sendTenantReply);
 router.get(
   "/branch",
   verifyAdmin,

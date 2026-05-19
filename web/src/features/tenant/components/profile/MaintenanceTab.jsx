@@ -13,6 +13,10 @@ import {
  Loader2,
  ChevronDown,
 } from "lucide-react";
+import {
+ ListSkeleton,
+ StatGridSkeleton,
+} from "../../../../shared/components/LoadingSkeletons";
 
 /* ── Helpers ───────────────────────────────────────── */
 
@@ -69,20 +73,10 @@ const MaintenanceTab = () => {
  <div style={{ width: "100%" }}>
  <div style={s.heading}>
  <h1 style={s.title}>Maintenance</h1>
- <p style={s.subtitle}>Loading your requests...</p>
+ <p style={s.subtitle}>Submit and track your maintenance requests</p>
  </div>
- {[1, 2, 3].map((i) => (
- <div
- key={i}
- style={{
- ...s.card,
- height: 72,
- background: "#F3F4F6",
- animation: "pulse 1.5s ease-in-out infinite",
- marginBottom: 10,
- }}
- />
- ))}
+ <StatGridSkeleton count={3} style={{ marginBottom: 20 }} />
+ <ListSkeleton rows={4} />
  </div>
  );
  }

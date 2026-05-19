@@ -31,13 +31,26 @@ const PROCEED_WITHOUT_VISIT_STATUSES = new Set([
 ]);
 
 export const VISIT_COMPLETED_LOCK_MESSAGE =
-  "This visit has already been completed. Visit actions are no longer available.";
+  "This visit has been completed. Visit actions are no longer available.";
+
+const VISIT_STATUS_ALIASES = Object.freeze({
+  cancelled: "visit_cancelled",
+  canceled: "visit_cancelled",
+  completed: "visit_completed",
+  approved: "visit_completed",
+  not_required: "allowed_without_visit",
+});
+
+const normalizeVisitStatusKey = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  return VISIT_STATUS_ALIASES[normalized] || normalized;
+};
 
 export function getVisitManagementAvailability({
   visitStatusKey = "",
   hasVisitSchedule = false,
 } = {}) {
-  const status = String(visitStatusKey || "").trim();
+  const status = normalizeVisitStatusKey(visitStatusKey);
   const completed = status === "visit_completed";
   const isPending = SCHEDULE_PENDING_STATUSES.has(status);
   const isActive = SCHEDULE_ACTIVE_STATUSES.has(status);

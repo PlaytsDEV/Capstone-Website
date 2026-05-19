@@ -46,6 +46,34 @@ const parseApiJson = (json, preserveEnvelope = false) => {
   return json;
 };
 
+const getFirstApiValidationMessage = (errorPayload) => {
+  const details =
+    errorPayload?.error?.details ??
+    errorPayload?.details ??
+    errorPayload?.errors;
+
+  if (Array.isArray(details)) {
+    for (const detail of details) {
+      if (typeof detail === "string" && detail.trim()) return detail.trim();
+      if (detail?.message) return String(detail.message).trim();
+      if (detail?.msg) return String(detail.msg).trim();
+    }
+  }
+
+  if (details && typeof details === "object") {
+    for (const value of Object.values(details)) {
+      if (typeof value === "string" && value.trim()) return value.trim();
+      if (Array.isArray(value)) {
+        const first = value.find(Boolean);
+        if (first) return typeof first === "string" ? first.trim() : String(first?.message || first).trim();
+      }
+      if (value?.message) return String(value.message).trim();
+    }
+  }
+
+  return "";
+};
+
 // =============================================================================
 // CORE: Authenticated Fetch (always uses fresh token)
 // =============================================================================
@@ -75,8 +103,11 @@ export const authFetch = async (url, options = {}, _isRetry = false) => {
       );
     }
 
+    const isFormDataBody =
+      typeof FormData !== "undefined" && fetchOptions.body instanceof FormData;
+
     const headers = {
-      "Content-Type": "application/json",
+      ...(isFormDataBody ? {} : { "Content-Type": "application/json" }),
       ...(token && { Authorization: `Bearer ${token}` }),
       ...getSessionHeaders(),
       ...optionHeaders,
@@ -112,7 +143,10 @@ export const authFetch = async (url, options = {}, _isRetry = false) => {
       }
 
       let errorMessage = "API request failed";
-      if (error && error.error) {
+      const validationMessage = getFirstApiValidationMessage(error);
+      if (validationMessage) {
+        errorMessage = validationMessage;
+      } else if (error && error.error) {
         errorMessage =
           typeof error.error === "string"
             ? error.error
@@ -153,8 +187,11 @@ export const publicFetch = async (url, options = {}) => {
       ...fetchOptions
     } = options;
 
+    const isFormDataBody =
+      typeof FormData !== "undefined" && fetchOptions.body instanceof FormData;
+
     const headers = {
-      "Content-Type": "application/json",
+      ...(isFormDataBody ? {} : { "Content-Type": "application/json" }),
       ...optionHeaders,
     };
 
@@ -168,8 +205,9 @@ export const publicFetch = async (url, options = {}) => {
         .json()
         .catch(() => ({ message: response.statusText }));
 
+      const validationMessage = getFirstApiValidationMessage(error);
       const apiError = new Error(
-        error.error || error.message || "API request failed",
+        validationMessage || error.error || error.message || "API request failed",
       );
       apiError.response = { status: response.status, data: error };
       throw apiError;

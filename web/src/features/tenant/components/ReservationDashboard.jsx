@@ -2,6 +2,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { showNotification } from "../../../shared/utils/notification";
+
 import {
   Home,
   Calendar,
@@ -23,7 +24,7 @@ import {
   getReservationViewingPreference,
   isPhysicalVisitPreference,
 } from "../utils/physicalVisitFlow";
-import { APP_LOCALE, fmtShortDate } from "../../../shared/utils/dateFormat";
+import { fmtShortDate, APP_LOCALE } from "../../../shared/utils/dateFormat";
 
 const getReservationStatus = (reservation) =>
   reservation?.reservationStatus || reservation?.status || "pending";
@@ -71,19 +72,6 @@ const hasSubmittedApplication = (reservation) =>
         "rejected",
       ),
   );
-
-/**
- * ─── RESERVATION DASHBOARD ──────────────────────────────────────────────────
- * A clean, single-reservation dashboard component.
- * Replaces the old multi-reservation selector with a single-card view.
- *
- * Design principles:
- * - ONE active reservation at a time
- * - Horizontal step indicator
- * - Clear next-action CTA
- * - Formal, minimal typography
- * ─────────────────────────────────────────────────────────────────────────────
- */
 
 const STEPS = [
   {
@@ -706,7 +694,7 @@ export default function ReservationDashboard({
       )}
 
       {/* ── Physical Visit Status Receipt ────────────────────────────────── */}
-      {isPhysicalVisitPreference(reservation) && (
+      {isPhysicalVisitPreference(reservation) && !hasSubmittedApplication(reservation) && !isConfirmed && (
         <div style={styles.receiptCard}>
           <div style={styles.receiptCardHeader}>
             <div style={styles.receiptCardHeaderLeft}>

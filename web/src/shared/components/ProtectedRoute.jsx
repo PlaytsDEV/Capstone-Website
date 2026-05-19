@@ -30,6 +30,7 @@ import { USER_ROLES } from "../utils/constants";
  */
 const ProtectedRoute = ({ children, requiredRole, requireAuth = true }) => {
  const {
+ user,
  isAuthenticated,
  loading,
  isAdmin,
@@ -77,6 +78,24 @@ const ProtectedRoute = ({ children, requiredRole, requireAuth = true }) => {
  } else if (requiredRole === USER_ROLES.OWNER) {
  if (!isOwner()) {
  return <Navigate to={getDefaultRoute()} replace />;
+ }
+ } else if (requiredRole === USER_ROLES.TENANT) {
+ if (isAdmin() || isOwner()) {
+ return <Navigate to="/admin/dashboard" replace />;
+ }
+ if (user?.role !== USER_ROLES.TENANT) {
+ return (
+ <Navigate
+ to="/applicant/profile"
+ replace
+ state={{
+ flash: {
+ type: "warning",
+ message: "This section is available once your reservation is approved and you become a tenant.",
+ },
+ }}
+ />
+ );
  }
  } else if (requiredRole === USER_ROLES.APPLICANT) {
  if (isAdmin() || isOwner()) {

@@ -1,17 +1,30 @@
 export const AUTH_TOAST_DURATION = 5000;
 
-export const buildAuthSuccessMessage = (user, fallbackName = "there") => {
+const emailPrefix = (email) => {
+  if (!email || typeof email !== "string" || !email.includes("@")) return "";
+  return email.split("@")[0]?.trim();
+};
+
+export const resolveAuthDisplayName = (user, fallbackName = "there") => {
   const firstName = user?.firstName?.trim();
   const lastName = user?.lastName?.trim();
   const fullName = firstName && lastName ? `${firstName} ${lastName}` : firstName || lastName;
-  const displayName =
-    fullName ||
-    user?.displayName?.trim() ||
-    user?.username?.trim() ||
-    fallbackName;
+  const displayName = user?.displayName?.trim();
+  const username = user?.username?.trim();
+  const emailName = emailPrefix(user?.email) || emailPrefix(fallbackName);
+  const fallback = fallbackName?.trim?.() || "there";
+
+  return fullName || displayName || username || emailName || fallback;
+};
+
+export const buildAuthSuccessMessage = (user, fallbackName = "there") => {
+  const displayName = resolveAuthDisplayName(user, fallbackName);
 
   return `Welcome back, ${displayName}!`;
 };
+
+export const buildAuthWelcomeMessage = (user, fallbackName = "there") =>
+  `Welcome to Lilycrest, ${resolveAuthDisplayName(user, fallbackName)}!`;
 
 export const buildAuthSuccessFlash = (message) => ({
   flash: {

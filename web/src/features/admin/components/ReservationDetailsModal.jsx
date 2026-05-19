@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Calendar, ClipboardList, CreditCard, Eye } from "lucide-react";
@@ -163,13 +163,83 @@ const hasPhysicalVisit = (reservation) =>
  Boolean(reservation?.visitDate);
 
 const getVisitStatusKey = (reservation) => {
- const explicit = String(reservation?.visitStatus || "").trim();
+ const explicit = String(reservation?.visitStatus || "")
+ .trim()
+ .toLowerCase()
+ .replace(/^cancelled$/, "visit_cancelled")
+ .replace(/^canceled$/, "visit_cancelled");
  if (VISIT_STATUS_CONFIG[explicit]) return explicit;
  if (reservation?.scheduleRejected) return "visit_cancelled";
  if (reservation?.visitApproved) return "visit_completed";
  if (reservation?.scheduleApproved) return "schedule_approved";
  if (hasPhysicalVisit(reservation)) return "physical_visit_scheduled";
  return "";
+};
+
+const normalizeVisitHistoryStatus = (status) => {
+ const normalized = String(status || "").trim().toLowerCase();
+ if (normalized === "completed") return "visit_completed";
+ if (normalized === "approved") return "schedule_approved";
+ if (normalized === "cancelled" || normalized === "canceled") return "visit_cancelled";
+ return normalized;
+};
+
+const formatVisitSchedule = (date, time) => {
+ const dateLabel = fmtDate(date);
+ return `${dateLabel}${time ? ` at ${time}` : ""}`;
+};
+
+const getVisitHistoryTitle = (entry) => {
+ const status = normalizeVisitHistoryStatus(entry?.status);
+ return (
+  VISIT_STATUS_CONFIG[status]?.label ||
+  (status === "no_show"
+    ? "No-Show"
+    : status === "allowed_without_visit"
+      ? "Allowed to Proceed Without Visit"
+      : "Visit Updated")
+ );
+};
+
+const getVisitHistoryScheduleLines = (entry) => {
+ const status = normalizeVisitHistoryStatus(entry?.status);
+ const currentSchedule = formatVisitSchedule(entry?.visitDate, entry?.visitTime);
+ const nextSchedule = formatVisitSchedule(
+  entry?.rescheduledToDate,
+  entry?.rescheduledToTime,
+ );
+
+ if (status === "rescheduled") {
+  const lines = [{ label: "Changed from:", value: currentSchedule }];
+  if (entry?.rescheduledToDate || entry?.rescheduledToTime) {
+   lines.push({ label: "Changed to:", value: nextSchedule });
+  }
+  return lines;
+ }
+
+ if (status === "visit_completed") {
+  return [{ label: "Completed visit scheduled for:", value: currentSchedule }];
+ }
+
+ if (status === "schedule_approved" || status === "physical_visit_scheduled") {
+  return [{ label: "Scheduled for:", value: currentSchedule }];
+ }
+
+ if (status === "no_show") {
+  return [{ label: "No-show recorded for:", value: currentSchedule }];
+ }
+
+ if (status === "visit_cancelled") {
+  return [{ label: "Cancelled visit scheduled for:", value: currentSchedule }];
+ }
+
+ if (status === "allowed_without_visit") {
+  return entry?.visitDate || entry?.visitTime
+   ? [{ label: "Visit requirement waived for:", value: currentSchedule }]
+   : [{ label: "Visit requirement:", value: "Waived by admin" }];
+ }
+
+ return [{ label: "Visit schedule:", value: currentSchedule }];
 };
 
 const openImage = (url, title, options = {}) => {
@@ -296,16 +366,16 @@ const STAGE_GUIDANCE = {
  message:
  "Viewing preference recorded. Waiting for the tenant to submit the application and required documents.",
  },
- visit_pending: {
- Icon: Eye,
- message:
- "Legacy visit schedule pending approval. Visit approval no longer unlocks payment.",
- },
- visit_approved: {
- Icon: ClipboardList,
- message:
- "Legacy visit approved. Waiting for the tenant to complete the application.",
- },
+  visit_pending: {
+  Icon: Eye,
+  message:
+  "Physical visit is pending schedule approval or completion. Payment remains locked.",
+  },
+  visit_approved: {
+  Icon: ClipboardList,
+  message:
+  "Visit schedule is approved or the visit requirement has been cleared. Waiting for the tenant application.",
+  },
  pending_application_review: {
  Icon: ClipboardList,
  message:
@@ -335,6 +405,7 @@ const STAGE_GUIDANCE = {
 
 export default function ReservationDetailsModal({
  reservation,
+ focusCancellation = false,
  onClose,
  onUpdate,
 }) {
@@ -360,6 +431,7 @@ export default function ReservationDetailsModal({
  const [showExtendPrompt, setShowExtendPrompt] = useState(false);
  const [meterReadingVal, setMeterReadingVal] = useState("");
  const [showMeterPrompt, setShowMeterPrompt] = useState(false);
+ const cancellationPanelRef = useRef(null);
  const [confirmModal, setConfirmModal] = useState({
  open: false,
  title: "",
@@ -370,6 +442,22 @@ export default function ReservationDetailsModal({
 
  useBodyScrollLock(Boolean(reservation));
  useEscapeClose(Boolean(reservation), onClose);
+ const cancellationPending = Boolean(
+   reservation?.cancellationRequested && reservation?.cancellationStatus === "pending",
+ );
+
+ useEffect(() => {
+ if (!focusCancellation || !cancellationPending) return;
+
+ const timer = window.setTimeout(() => {
+ cancellationPanelRef.current?.scrollIntoView({
+ block: "center",
+ behavior: "smooth",
+ });
+ }, 120);
+
+ return () => window.clearTimeout(timer);
+ }, [cancellationPending, focusCancellation]);
 
  const status = reservation?.status || "pending";
  const physicalVisitSelected = hasPhysicalVisit(reservation);
@@ -387,8 +475,6 @@ export default function ReservationDetailsModal({
  const appearance = getReservationStatusAppearance(status);
  const allowedActions = getAllowedReservationActions(status);
  const moveInDate = readMoveInDate(reservation);
- const cancellationPending =
-   reservation?.cancellationRequested && reservation?.cancellationStatus === "pending";
  const isMovedOut = status === "moveOut";
  const isOverdue =
  status === "reserved" && moveInDate && new Date(moveInDate) < new Date();
@@ -472,6 +558,10 @@ export default function ReservationDetailsModal({
  { wide: true },
  ],
  ];
+ const cancellationRequestDetails = [
+ ["Requested", fmtDate(reservation.cancellationRequestedAt)],
+ ["Reason", reservation.cancellationReason?.trim() || "No reason provided"],
+ ];
  const activityTimeline = [
  {
  label: "Reservation Created",
@@ -522,6 +612,46 @@ export default function ReservationDetailsModal({
  onUpdate?.();
  onClose();
  } catch (error) {
+ const errorCode = error?.response?.data?.code;
+ const isCancellationReviewAction =
+ key === "approveCancellation" || key === "rejectCancellation";
+ if (isCancellationReviewAction) {
+ try {
+ const latest = await reservationApi.getById(reservation.id);
+ const latestReservation = latest?.reservation || latest;
+ const latestCancellationPending =
+ latestReservation?.cancellationRequested &&
+ latestReservation?.cancellationStatus === "pending";
+ const reviewWasApplied =
+ key === "approveCancellation"
+ ? latestReservation?.status === "cancelled" ||
+ latestReservation?.cancellationStatus === "approved"
+ : !latestCancellationPending &&
+ (latestReservation?.cancellationStatus === "rejected" ||
+ latestReservation?.cancellationRequested === false);
+
+ if (reviewWasApplied) {
+ showNotification(successMsg, "success");
+ onUpdate?.();
+ onClose();
+ return;
+ }
+ } catch (refreshError) {
+ console.warn("Failed to verify cancellation review state:", refreshError);
+ }
+ }
+ if (
+ isCancellationReviewAction &&
+ errorCode === "NO_PENDING_REQUEST"
+ ) {
+ showNotification(
+ "This cancellation request was already reviewed. Refreshing reservation details.",
+ "info",
+ );
+ onUpdate?.();
+ onClose();
+ return;
+ }
  console.error(error);
  showNotification(
  getFriendlyError(error, "Action failed. Please try again."),
@@ -727,6 +857,68 @@ export default function ReservationDetailsModal({
  </div>
  </div>
 
+ {cancellationPending && (
+ <div
+ ref={cancellationPanelRef}
+ className={`rdm-section rdm-surface-card rdm-cancellation-request${
+ focusCancellation ? " rdm-cancellation-request--focused" : ""
+ }`}
+ >
+ <div className="rdm-cancellation-request__header">
+ <div>
+ <h4 className="rdm-section-title rdm-cancellation-request__title">
+ Cancellation Request
+ </h4>
+ <p className="rdm-cancellation-request__copy">
+ Review this tenant request before releasing the bed. The reservation fee is non-refundable.
+ </p>
+ </div>
+ <span className="rdm-cancellation-request__badge">
+ Pending Review
+ </span>
+ </div>
+ <div className="rdm-info-grid rdm-info-grid-dark rdm-cancellation-request__details">
+ {cancellationRequestDetails.map(([label, value]) => (
+ <div className="rdm-info-item" key={label}>
+ <span className="rdm-info-label">{label}</span>
+ <span className="rdm-info-value">{value}</span>
+ </div>
+ ))}
+ </div>
+ <div className="rdm-cancellation-request__impact">
+ Approving cancels the reservation and releases the assigned bed.
+ </div>
+ <div className="rdm-cancellation-request__actions">
+ <button
+ className="rdm-action rdm-action-dark rdm-action-dark-cancel"
+ onClick={() =>
+ doAction(
+ "approveCancellation",
+ () => reservationApi.approveCancellationRequest(reservation.id),
+ "Cancellation approved. Reservation cancelled and bed released.",
+ )
+ }
+ disabled={isSubmitting}
+ >
+ Approve Cancellation
+ </button>
+ <button
+ className="rdm-action rdm-action-dark"
+ onClick={() =>
+ doAction(
+ "rejectCancellation",
+ () => reservationApi.rejectCancellationRequest(reservation.id),
+ "Cancellation request rejected. Reservation remains active.",
+ )
+ }
+ disabled={isSubmitting}
+ >
+ Reject Request
+ </button>
+ </div>
+ </div>
+ )}
+
  <div className="rdm-section rdm-surface-card">
  <h4 className="rdm-section-title">Viewing Preference</h4>
  <div className="rdm-info-grid">
@@ -789,13 +981,12 @@ export default function ReservationDetailsModal({
  Visit Management
  </h4>
  <p className="rdm-visit-management-copy">
- Track the physical visit separately from application review. Completing a
- visit or allowing the applicant to proceed will not unlock payment.
+ Visit completion only records attendance. Application review and payment remain separate.
  </p>
  </div>
  {visitStatusAppearance && (
  <div
- className="rdm-status-chip"
+ className="rdm-status-chip rdm-visit-status-chip"
  style={{
  background: visitStatusAppearance.bg,
  color: visitStatusAppearance.color,
@@ -810,6 +1001,12 @@ export default function ReservationDetailsModal({
  </div>
  )}
  </div>
+
+ {visitActionAvailability.completed && (
+ <div className="rdm-visit-completed-banner">
+ {visitActionAvailability.helperMessage}
+ </div>
+ )}
 
  <div className="rdm-info-grid">
  <div className="rdm-info-item">
@@ -871,32 +1068,20 @@ export default function ReservationDetailsModal({
  >
  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
  <strong style={{ fontSize: "0.84rem", color: "#0F172A" }}>
- {VISIT_STATUS_CONFIG[entry.status]?.label ||
-  (entry.status === "completed"
-    ? "Visit Completed"
-    : entry.status === "no_show"
-      ? "No-Show"
-      : entry.status === "visit_cancelled"
-        ? "Visit Cancelled"
-        : entry.status === "rescheduled"
-          ? "Rescheduled"
-          : entry.status === "allowed_without_visit"
-            ? "Allowed to Proceed Without Visit"
-            : "Visit Updated")}
+ {getVisitHistoryTitle(entry)}
  </strong>
  <span style={{ fontSize: "0.78rem", color: "#64748B" }}>
  {fmtDateTime(entry.updatedAt || entry.scheduledAt)}
  </span>
  </div>
- <div style={{ fontSize: "0.8rem", color: "#334155", marginTop: 6 }}>
- Old: {fmtDate(entry.visitDate)} {entry.visitTime ? `at ${entry.visitTime}` : ""}
+ {getVisitHistoryScheduleLines(entry).map((line) => (
+ <div
+ key={`${line.label}-${line.value}`}
+ style={{ fontSize: "0.8rem", color: "#334155", marginTop: 6 }}
+ >
+ <span style={{ fontWeight: 650 }}>{line.label}</span> {line.value}
  </div>
- {(entry.rescheduledToDate || entry.rescheduledToTime) && (
- <div style={{ fontSize: "0.8rem", color: "#334155", marginTop: 4 }}>
- New: {fmtDate(entry.rescheduledToDate)}{" "}
- {entry.rescheduledToTime ? `at ${entry.rescheduledToTime}` : ""}
- </div>
- )}
+ ))}
  {entry.updatedByName && (
  <div style={{ fontSize: "0.78rem", color: "#64748B", marginTop: 4 }}>
  Updated by {entry.updatedByName}
@@ -913,12 +1098,9 @@ export default function ReservationDetailsModal({
  </div>
  )}
 
+                 {!visitActionAvailability.completed && (
                  <div className="rdm-visit-management-panel">
-                 {visitActionAvailability.completed ? (
-                 <div className="rdm-visit-action-helper rdm-visit-action-helper-success">
-                 {visitActionAvailability.helperMessage}
-                 </div>
-                 ) : visitStatusKey === "allowed_without_visit" ? (
+                 {visitStatusKey === "allowed_without_visit" ? (
                  <div className="rdm-visit-action-helper rdm-visit-action-helper-info">
                  Visit requirement has been waived. Applicant may proceed without a physical visit.
                  </div>
@@ -935,9 +1117,34 @@ export default function ReservationDetailsModal({
                  />
                  </label>
 
-                 <div className="rdm-visit-actions-grid">
-                 <button type="button" className="rdm-action rdm-action-outline"
-                 disabled={isSubmitting || !visitActionAvailability.canMarkVisited}
+                  <div className="rdm-visit-actions-grid">
+                  {visitActionAvailability.canApproveSchedule && (
+                  <button type="button" className="rdm-action rdm-action-outline"
+                  disabled={isSubmitting}
+                  onClick={() => runVisitManagementAction({
+                    action: "approve_schedule", successMsg: "Visit schedule approved",
+                    modalTitle: "Approve Visit Schedule",
+                    modalMessage: "Confirm the applicant's selected physical visit schedule. The application will remain locked until the visit is completed or waived.",
+                    confirmText: "Approve Schedule",
+                  })}>
+                  Approve Schedule
+                  </button>
+                  )}
+                  {visitActionAvailability.canRejectSchedule && (
+                  <button type="button" className="rdm-action rdm-action-outline rdm-action-outline-danger"
+                  disabled={isSubmitting}
+                  onClick={() => runVisitManagementAction({
+                    action: "reject_schedule", successMsg: "Visit schedule rejected",
+                    modalTitle: "Reject Visit Schedule",
+                    modalMessage: "Reject the selected visit schedule and ask the applicant to choose another date or time.",
+                    confirmText: "Reject Schedule", variant: "warning",
+                  })}>
+                  Reject Schedule
+                  </button>
+                  )}
+                  {visitActionAvailability.canMarkVisited && (
+                  <button type="button" className="rdm-action rdm-action-outline"
+                  disabled={isSubmitting}
                  onClick={() => runVisitManagementAction({
                    action: "mark_visited", successMsg: "Visit marked as completed",
                    modalTitle: "Mark As Visited",
@@ -946,8 +1153,10 @@ export default function ReservationDetailsModal({
                  })}>
                  Mark as Visited
                  </button>
+                 )}
+                 {visitActionAvailability.canMarkNoShow && (
                  <button type="button" className="rdm-action rdm-action-outline"
-                 disabled={isSubmitting || !visitActionAvailability.canMarkNoShow}
+                 disabled={isSubmitting}
                  onClick={() => runVisitManagementAction({
                    action: "mark_no_show", successMsg: "Visit marked as no-show",
                    modalTitle: "Mark As No-Show",
@@ -956,14 +1165,18 @@ export default function ReservationDetailsModal({
                  })}>
                  Mark as No-Show
                  </button>
+                 )}
+                 {visitActionAvailability.canReschedule && (
                  <button type="button"
                  className={`rdm-action rdm-action-outline${visitActionMode === "reschedule" ? " rdm-action-outline-active" : ""}`}
-                 disabled={isSubmitting || !visitActionAvailability.canReschedule}
+                 disabled={isSubmitting}
                  onClick={() => setVisitActionMode((p) => p === "reschedule" ? "" : "reschedule")}>
                  Reschedule Visit
                  </button>
+                 )}
+                 {visitActionAvailability.canCancelVisit && (
                  <button type="button" className="rdm-action rdm-action-outline rdm-action-outline-danger"
-                 disabled={isSubmitting || !visitActionAvailability.canCancelVisit}
+                 disabled={isSubmitting}
                  onClick={() => runVisitManagementAction({
                    action: "cancel_visit", successMsg: "Visit schedule cancelled",
                    modalTitle: "Cancel Visit Schedule",
@@ -972,8 +1185,10 @@ export default function ReservationDetailsModal({
                  })}>
                  Cancel Visit Schedule
                  </button>
+                 )}
+                 {visitActionAvailability.canAllowWithoutVisit && (
                  <button type="button" className="rdm-action rdm-action-outline"
-                 disabled={isSubmitting || !visitActionAvailability.canAllowWithoutVisit}
+                 disabled={isSubmitting}
                  onClick={() => runVisitManagementAction({
                    action: "allow_without_visit", successMsg: "Applicant may proceed without a completed visit",
                    modalTitle: "Allow Application Without Visit",
@@ -982,6 +1197,7 @@ export default function ReservationDetailsModal({
                  })}>
                  Allow Application Without Visit
                  </button>
+                 )}
                  </div>
                  </>
                  )}
@@ -1057,6 +1273,7 @@ export default function ReservationDetailsModal({
  </div>
  )}
  </div>
+ )}
  </div>
  )}
 
@@ -1255,26 +1472,7 @@ export default function ReservationDetailsModal({
 
  {status !== "cancelled" && !isMovedOut && (
  <div className="rdm-side-card">
- <h4 className="rdm-side-title">
-   Quick Actions
-   {cancellationPending && (
-     <span
-       style={{
-         marginLeft: "0.5rem",
-         fontSize: "0.7rem",
-         fontWeight: 700,
-         background: "#B91C1C",
-         color: "#fff",
-         borderRadius: "4px",
-         padding: "2px 6px",
-         verticalAlign: "middle",
-         letterSpacing: "0.03em",
-       }}
-     >
-       CANCEL REQUEST
-     </span>
-   )}
- </h4>
+ <h4 className="rdm-side-title">Quick Actions</h4>
  <div className="rdm-actions-card rdm-actions-card-dark">
  {stageGuide && (
  <div className="rdm-stage-guide rdm-stage-guide-dark">
@@ -1407,7 +1605,6 @@ export default function ReservationDetailsModal({
      </button>
    </>
  )}
-
  {allowedActions.includes("cancelled") && !cancellationPending && (
  <button
  className="rdm-action rdm-action-dark rdm-action-dark-cancel"

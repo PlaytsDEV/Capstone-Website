@@ -17,8 +17,27 @@ export const IN_PROGRESS_STATUSES = [
 
 export { RESERVATION_STAGE_MAP };
 
+const TERMINAL_VISIT_STATUSES = new Set([
+ "visit_completed",
+ "allowed_without_visit",
+]);
+
 export function getBranchLabel(branch) {
  return BRANCH_DISPLAY_NAMES[branch] || branch || "Unknown";
+}
+
+export function hasPendingCancellationRequest(reservation) {
+ return Boolean(
+ reservation?.cancellationRequested &&
+ reservation?.cancellationStatus === "pending",
+  );
+}
+
+export function getArchivedByName(archivedBy) {
+ if (!archivedBy) return "-";
+ if (typeof archivedBy === "string") return archivedBy;
+ const name = `${archivedBy.firstName || ""} ${archivedBy.lastName || ""}`.trim();
+ return name || archivedBy.email || "-";
 }
 
 export function mapReservationAdminRow(reservation) {
@@ -62,7 +81,14 @@ export function mapReservationAdminRow(reservation) {
  cancellationStatus: reservation.cancellationStatus || null,
  cancellationReason: reservation.cancellationReason || null,
  cancellationRequestedAt: reservation.cancellationRequestedAt || null,
+ cancellationRequestedBy: reservation.cancellationRequestedBy || null,
  cancellationAdminNote: reservation.cancellationAdminNote || null,
+ isArchived: Boolean(reservation.isArchived),
+ archivedAt: reservation.archivedAt || null,
+ archivedBy: reservation.archivedBy || null,
+ archivedByName: getArchivedByName(reservation.archivedBy),
+ archivedPreviousStatus: reservation.archivedPreviousStatus || reservation.status || null,
+ archiveReason: reservation.archiveReason || "",
  createdAt: reservation.createdAt,
  _raw: reservation,
  };
@@ -105,6 +131,7 @@ export function mapVisitScheduleRows(rawReservations = []) {
  reservation.visitDate &&
  !reservation.scheduleRejected &&
  !reservation.visitApproved &&
+ !TERMINAL_VISIT_STATUSES.has(reservation.visitStatus) &&
  reservation.status !== "cancelled";
 
  if (reservation.visitHistory && reservation.visitHistory.length > 0) {
@@ -124,6 +151,10 @@ export function mapVisitScheduleRows(rawReservations = []) {
  ? "Rejected"
  : historyEntry.status === "no_show"
  ? "No-Show"
+ : historyEntry.status === "rescheduled"
+ ? "Rescheduled"
+ : historyEntry.status === "allowed_without_visit"
+ ? "Allowed Without Visit"
  : historyEntry.status === "cancelled" || historyEntry.status === "visit_cancelled"
  ? "Cancelled"
  : null;

@@ -1,0 +1,89 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const tenantRoot = resolve(__dirname, "../..");
+
+const readTenantSource = (relativePath) =>
+  readFileSync(resolve(tenantRoot, relativePath), "utf8");
+
+test("dashboard profile no longer persists viewing preference feedback cards", () => {
+  const profilePage = readTenantSource("pages/ProfilePage.jsx");
+  const dashboardTab = readTenantSource("components/profile/DashboardTab.jsx");
+  const reservationFlow = readTenantSource("hooks/useReservationFlow.js");
+
+  assert.equal(profilePage.includes("dashboardFeedback"), false);
+  assert.equal(profilePage.includes("reservationFeedback"), false);
+  assert.equal(dashboardTab.includes("feedback={"), false);
+  assert.equal(dashboardTab.includes("onDismissFeedback"), false);
+  assert.equal(reservationFlow.includes("reservationFeedback"), false);
+});
+
+test("reservation dashboard has one persistent current reservation card", () => {
+  const reservationDashboard = readTenantSource("components/ReservationDashboard.jsx");
+
+  assert.equal(reservationDashboard.includes("styles.reservedStatusCard"), true);
+  assert.equal(reservationDashboard.includes("Viewing Preference Saved"), false);
+  assert.equal(reservationDashboard.includes("Physical Visit Status"), false);
+});
+
+test("reserved applicant dashboard does not render the old viewing-preference summary", () => {
+  const reservationDashboard = readTenantSource("components/ReservationDashboard.jsx");
+
+  assert.equal(
+    reservationDashboard.includes("{isReservedApplicant && ("),
+    true,
+  );
+  assert.equal(reservationDashboard.includes("Reservation Confirmed"), true);
+  assert.equal(
+    reservationDashboard.includes(
+      "Your room reservation has been confirmed. Please wait for further instructions from the admin.",
+    ),
+    true,
+  );
+  assert.equal(reservationDashboard.includes("Go to Dashboard"), false);
+  assert.equal(reservationDashboard.includes("View Reservation Status"), true);
+});
+
+test("reserved applicant detail page remains applicant-mode, not tenant-mode", () => {
+  const reservationAgreementPage = readTenantSource(
+    "components/profile/ReservationAgreementPage.jsx",
+  );
+  const dashboardTab = readTenantSource("components/profile/DashboardTab.jsx");
+  const confirmationStep = readTenantSource(
+    "pages/reservation-steps/ReservationConfirmationStep.jsx",
+  );
+  const confirmationState = readTenantSource(
+    "utils/reservationConfirmationState.js",
+  );
+
+  assert.equal(
+    reservationAgreementPage.includes(
+      'const personLabel = isFullTenantReservation ? "Tenant" : "Applicant";',
+    ),
+    true,
+  );
+  assert.equal(
+    reservationAgreementPage.includes(
+      "You remain an applicant until admin completes the tenant conversion.",
+    ),
+    true,
+  );
+  assert.equal(
+    reservationAgreementPage.includes(
+      '{isFullTenantReservation ? "Payment Receipt" : "Reservation Fee Payment"}',
+    ),
+    true,
+  );
+  assert.equal(confirmationStep.includes("You're All Set!"), false);
+  assert.equal(confirmationStep.includes("Print / Download Receipt"), false);
+  assert.equal(confirmationState.includes("Room Reserved"), true);
+  assert.equal(dashboardTab.includes("canViewTenantModules &&"), true);
+  assert.equal(
+    dashboardTab.includes('profileData?.tenantStatus === "active"'),
+    true,
+  );
+});

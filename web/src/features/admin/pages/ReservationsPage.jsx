@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
+  Archive,
   Calendar,
   CheckCircle,
   Clock,
   Eye,
   Download,
+  RotateCcw,
   Trash2,
   User,
   Search,
@@ -44,6 +47,7 @@ import {
   IN_PROGRESS_STATUSES,
   checkOverdueReservation,
   getBranchLabel,
+  hasPendingCancellationRequest,
   mapReservationAdminRow,
 } from "../utils/reservationRows";
 import "../styles/design-tokens.css";
@@ -85,8 +89,10 @@ const SUMMARY_FILTERS = [
   "needs_revision",
   "approved_for_payment",
   "reserved",
+  "cancellation_requested",
   "cancelled",
   "moveIn",
+  "archived",
 ];
 function ReservationsPage() {
   const { user } = useAuth();
@@ -121,7 +127,7 @@ function ReservationsPage() {
     data: rawReservations = [],
     isLoading: loading,
     error: queryError,
-  } = useReservations({ view: "admin-list" });
+  } = useReservations({ view: "admin-list", archive: "all" });
   const error = queryError?.message || null;
 
   const reservations = useMemo(
@@ -129,34 +135,49 @@ function ReservationsPage() {
     [rawReservations],
   );
 
+  const activeReservations = useMemo(
+    () => reservations.filter((reservation) => !reservation.isArchived),
+    [reservations],
+  );
+
   const counts = useMemo(
     () => ({
-      total: reservations.length,
-      pendingApplicationReview: reservations.filter((reservation) =>
+      total: activeReservations.length,
+      pendingApplicationReview: activeReservations.filter((reservation) =>
         reservation.status === "pending_application_review",
       ).length,
-      needsRevision: reservations.filter((reservation) =>
+      needsRevision: activeReservations.filter((reservation) =>
         reservation.status === "needs_revision",
       ).length,
-      approvedForPayment: reservations.filter((reservation) =>
+      approvedForPayment: activeReservations.filter((reservation) =>
         reservation.status === "approved_for_payment",
       ).length,
-      reserved: reservations.filter(
+      reserved: activeReservations.filter(
         (reservation) => reservation.status === "reserved",
       ).length,
-      cancelled: reservations.filter(
+      cancellationRequested: activeReservations.filter(hasPendingCancellationRequest)
+        .length,
+      cancelled: activeReservations.filter(
         (reservation) => reservation.status === "cancelled",
       ).length,
-      movedIn: reservations.filter((reservation) =>
+      movedIn: activeReservations.filter((reservation) =>
         hasReservationStatus(reservation.status, "moveIn"),
       ).length,
+      archived: reservations.filter((reservation) => reservation.isArchived)
+        .length,
     }),
-    [reservations],
+    [activeReservations, reservations],
   );
 
   const filteredReservations = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
     return reservations.filter((reservation) => {
+      const matchArchive =
+        statusFilter === "archived"
+          ? reservation.isArchived
+          : !reservation.isArchived;
+      if (!matchArchive) return false;
+
       const matchSearch =
         !query ||
         reservation.customer.toLowerCase().includes(query) ||
@@ -166,11 +187,15 @@ function ReservationsPage() {
       const matchStatus =
         statusFilter === "all"
           ? true
+          : statusFilter === "archived"
+            ? true
           : statusFilter === "overdue"
             ? checkOverdueReservation(reservation)
             : statusFilter === "in_progress"
               ? IN_PROGRESS_STATUSES.includes(reservation.status)
-              : hasReservationStatus(reservation.status, statusFilter);
+              : statusFilter === "cancellation_requested"
+                ? hasPendingCancellationRequest(reservation)
+                : hasReservationStatus(reservation.status, statusFilter);
       const matchBranch =
         branchFilter === "all" || reservation.branchCode === branchFilter;
       return matchSearch && matchStatus && matchBranch;
@@ -179,6 +204,14 @@ function ReservationsPage() {
 
   const sortedReservations = useMemo(() => {
     const { key, dir } = sortState;
+    if (statusFilter === "cancellation_requested") {
+      return [...filteredReservations].sort(
+        (left, right) =>
+          new Date(right.cancellationRequestedAt || 0) -
+          new Date(left.cancellationRequestedAt || 0),
+      );
+    }
+
     if (!key) return filteredReservations;
 
     return [...filteredReservations].sort((left, right) => {
@@ -202,9 +235,10 @@ function ReservationsPage() {
 
       return dir === "asc" ? comparison : -comparison;
     });
-  }, [filteredReservations, sortState]);
+  }, [filteredReservations, sortState, statusFilter]);
 
   const totalFiltered = sortedReservations.length;
+  const isArchivedView = statusFilter === "archived";
 
   useEffect(() => {
     const maxPage = Math.max(1, Math.ceil(totalFiltered / itemsPerPage));
@@ -265,12 +299,24 @@ function ReservationsPage() {
         color: "blue",
       },
       {
+        label: "Cancellation Requests",
+        value: counts.cancellationRequested,
+        icon: AlertTriangle,
+        color: "orange",
+      },
+      {
         label: "Cancelled",
         value: counts.cancelled,
         icon: Trash2,
         color: "red",
       },
       { label: "Move In", value: counts.movedIn, icon: User, color: "green" },
+      {
+        label: "Archived",
+        value: counts.archived,
+        icon: Archive,
+        color: "neutral",
+      },
     ],
     [counts],
   );
@@ -313,9 +359,11 @@ function ReservationsPage() {
           { value: "approved_for_payment", label: "Approved for Payment" },
           { value: "payment_pending", label: "Payment Pending" },
           { value: "reserved", label: "Reserved" },
+          { value: "cancellation_requested", label: "Cancellation Requests" },
           { value: "moveIn", label: "Move In" },
           { value: "rejected", label: "Rejected" },
           { value: "cancelled", label: "Cancelled" },
+          { value: "archived", label: "Archived" },
         ],
         value: statusFilter,
         onChange: (value) => {
@@ -353,6 +401,9 @@ function ReservationsPage() {
         previous.status === liveReservation.status &&
         previous.moveInDate === liveReservation.moveInDate &&
         previous.moveOutDate === liveReservation.moveOutDate &&
+        previous.cancellationRequested === liveReservation.cancellationRequested &&
+        previous.cancellationStatus === liveReservation.cancellationStatus &&
+        previous.cancellationRequestedAt === liveReservation.cancellationRequestedAt &&
         previous.visitStatus === liveReservation.visitStatus &&
         previous.visitApproved === liveReservation.visitApproved &&
         previous.scheduleApproved === liveReservation.scheduleApproved &&
@@ -374,6 +425,12 @@ function ReservationsPage() {
         moveInDate: liveReservation.moveInDate,
         moveOutDate: liveReservation.moveOutDate,
         createdAt: liveReservation.createdAt,
+        cancellationRequested: liveReservation.cancellationRequested,
+        cancellationRequestedAt: liveReservation.cancellationRequestedAt,
+        cancellationRequestedBy: liveReservation.cancellationRequestedBy,
+        cancellationStatus: liveReservation.cancellationStatus,
+        cancellationReason: liveReservation.cancellationReason,
+        cancellationAdminNote: liveReservation.cancellationAdminNote,
         visitStatus: liveReservation.visitStatus,
         visitApproved: liveReservation.visitApproved,
         visitDate: liveReservation.visitDate,
@@ -440,6 +497,12 @@ function ReservationsPage() {
           visitTime: reservation.visitTime,
           visitApproved: reservation.visitApproved,
           notes: reservation.notes,
+          cancellationRequested: reservation.cancellationRequested,
+          cancellationRequestedAt: reservation.cancellationRequestedAt,
+          cancellationRequestedBy: reservation.cancellationRequestedBy,
+          cancellationStatus: reservation.cancellationStatus,
+          cancellationReason: reservation.cancellationReason,
+          cancellationAdminNote: reservation.cancellationAdminNote,
         });
       } catch {
         const fallbackReservation = reservations.find(
@@ -453,6 +516,15 @@ function ReservationsPage() {
     [prefetchReservationDetail, reservations],
   );
 
+  useEffect(() => {
+    if (activeTab !== "reservations") return;
+    const reservationId = searchParams.get("reservationId");
+    if (!reservationId) return;
+    if (selectedReservation?.id === reservationId) return;
+
+    handleView(reservationId);
+  }, [activeTab, handleView, searchParams, selectedReservation?.id]);
+
   const refetchReservations = useCallback(
     () => queryClient.invalidateQueries({ queryKey: ["reservations"] }),
     [queryClient],
@@ -464,18 +536,47 @@ function ReservationsPage() {
         open: true,
         title: "Archive Reservation",
         message:
-          "This action archives the reservation and preserves billing history. Permanent deletion is restricted when issued bills exist.",
+          "This will hide the reservation from the active list and preserve billing history. You can restore it later from Archived Reservations. Permanent deletion is restricted when issued bills exist.",
         variant: "danger",
         confirmText: "Archive",
         onConfirm: async () => {
           setConfirmModal((previous) => ({ ...previous, open: false }));
           try {
-            await reservationApi.delete(reservationId);
+            await reservationApi.archive(reservationId, {
+              reason: "Archived from Reservations page",
+            });
             showNotification("Reservation archived", "success");
             refetchReservations();
           } catch (error) {
             showNotification(
               error?.message || "Failed to archive reservation",
+              "error",
+            );
+          }
+        },
+      });
+    },
+    [refetchReservations],
+  );
+
+  const handleRestore = useCallback(
+    (reservationId) => {
+      setConfirmModal({
+        open: true,
+        title: "Restore Reservation",
+        message:
+          "This will return the reservation to the reservations list using its previous status. Billing and history records will remain preserved.",
+        variant: "info",
+        confirmText: "Restore",
+        onConfirm: async () => {
+          setConfirmModal((previous) => ({ ...previous, open: false }));
+          try {
+            await reservationApi.restore(reservationId);
+            showNotification("Reservation restored", "success");
+            refetchReservations();
+          } catch (error) {
+            showNotification(
+              error?.message || "Failed to restore reservation",
               "error",
             );
           }
@@ -562,13 +663,13 @@ function ReservationsPage() {
       },
       {
         key: "moveInDate",
-        label: "Move-In",
+        label: isArchivedView ? "Archived" : "Move-In",
         sortable: true,
         render: (row) => formatShortDate(row.moveInDate),
       },
       {
         key: "createdAt",
-        label: "Date",
+        label: isArchivedView ? "Archived By" : "Date",
         sortable: true,
         render: (row) => formatShortDate(row.createdAt),
       },
@@ -602,7 +703,7 @@ function ReservationsPage() {
         ),
       },
     ],
-    [can, handleDelete, handleView],
+    [can, handleDelete, handleView, isArchivedView],
   );
 
   return (
@@ -754,6 +855,15 @@ function ReservationsPage() {
               </div>
             </div>
 
+            {isArchivedView && (
+              <div className="mb-4 rounded-md border border-[var(--border-light)] bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                Archived reservations are hidden from the active operational
+                list, but billing and history records are preserved. Restore
+                returns the record to the reservations list using a safe
+                previous status.
+              </div>
+            )}
+
             <div className="overflow-x-auto" style={{ backgroundColor: "var(--bg-card)" }}>
               <table className="w-full">
                 <thead>
@@ -831,19 +941,44 @@ function ReservationsPage() {
                           </div>
                         </td>
                         <td className="py-4 px-4">
-                          <StatusBadge
-                            status={
-                              checkOverdueReservation(row)
-                                ? "overdue"
-                                : row.status
-                            }
-                          />
+                          <div className="flex flex-col items-start gap-1.5">
+                            {isArchivedView ? (
+                              <>
+                                <StatusBadge status="archived" />
+                                <span className="text-xs text-muted-foreground">
+                                  Previous:{" "}
+                                  {RESERVATION_STATUS_LABELS[
+                                    row.archivedPreviousStatus
+                                  ] ||
+                                    row.archivedPreviousStatus ||
+                                    "Cancelled"}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <StatusBadge
+                                  status={
+                                    checkOverdueReservation(row)
+                                      ? "overdue"
+                                      : row.status
+                                  }
+                                />
+                                {hasPendingCancellationRequest(row) && (
+                                  <StatusBadge status="cancellation_requested" />
+                                )}
+                              </>
+                            )}
+                          </div>
                         </td>
                         <td className="py-4 px-4 text-sm text-foreground">
-                          {formatShortDate(row.moveInDate)}
+                          {isArchivedView
+                            ? formatShortDate(row.archivedAt)
+                            : formatShortDate(row.moveInDate)}
                         </td>
                         <td className="py-4 px-4 text-sm text-foreground">
-                          {formatShortDate(row.createdAt)}
+                          {isArchivedView
+                            ? row.archivedByName || "-"
+                            : formatShortDate(row.createdAt)}
                         </td>
                         <td className="py-4 px-4">
                           <div className="flex items-center justify-end gap-2">
@@ -857,16 +992,28 @@ function ReservationsPage() {
                             >
                               <Eye className="w-4 h-4 text-muted-foreground" />
                             </button>
-                            {can("manageReservations") && (
+                            {can("manageReservations") && isArchivedView && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRestore(row.id);
+                                }}
+                                className="p-1.5 hover:bg-[color:var(--success)]/10 text-[color:var(--success)] rounded-md transition-colors"
+                                title="Restore reservation"
+                              >
+                                <RotateCcw className="w-4 h-4" />
+                              </button>
+                            )}
+                            {can("manageReservations") && !isArchivedView && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleDelete(row.id);
                                 }}
                                 className="p-1.5 hover:bg-[color:var(--danger)]/10 text-[color:var(--danger)] rounded-md transition-colors"
-                                title="Delete"
+                                title="Archive"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Archive className="w-4 h-4" />
                               </button>
                             )}
                           </div>
@@ -879,7 +1026,9 @@ function ReservationsPage() {
                         colSpan={6}
                         className="py-8 text-center text-muted-foreground"
                       >
-                        No reservations found. Try adjusting your filters.
+                        {isArchivedView
+                          ? "No archived reservations found."
+                          : "No reservations found. Try adjusting your filters."}
                       </td>
                     </tr>
                   )}
@@ -935,7 +1084,16 @@ function ReservationsPage() {
       {selectedReservation && (
         <ReservationDetailsModal
           reservation={selectedReservation}
-          onClose={() => setSelectedReservation(null)}
+          focusCancellation={searchParams.get("focus") === "cancellation"}
+          onClose={() => {
+            setSelectedReservation(null);
+            if (searchParams.has("reservationId") || searchParams.has("focus")) {
+              const nextParams = new URLSearchParams(searchParams);
+              nextParams.delete("reservationId");
+              nextParams.delete("focus");
+              setSearchParams(nextParams, { replace: true });
+            }
+          }}
           onUpdate={refetchReservations}
         />
       )}

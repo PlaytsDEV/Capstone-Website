@@ -4,6 +4,7 @@ import { showNotification } from "../../../shared/utils/notification";
 import getFriendlyError from "../../../shared/utils/friendlyError";
 import { useAppNavigation } from "../../../shared/hooks/useAppNavigation";
 import { useRouteFlash } from "../../../shared/hooks/useRouteFlash";
+import { reservationApi } from "../../../shared/api/reservationApi";
 import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { buildSignOutSuccessFlash } from "../../../shared/utils/authToasts";
@@ -15,6 +16,10 @@ import "../styles/check-availability.css";
 import InquiryModal from "../../public/modals/InquiryModal";
 import RoomDetailsModal from "../modals/RoomDetailsModal";
 import CheckAvailabilitySkeleton from "../components/check-availability/CheckAvailabilitySkeleton";
+import {
+ ROOM_SELECTION_LOCKED_MESSAGE,
+ isApplicantRoomSelectionLocked,
+} from "../utils/reservationRoomLock";
 
 // Extracted sub-components
 import {
@@ -58,12 +63,57 @@ function CheckAvailabilityPage() {
  const [selectedBed, setSelectedBed] = useState(null);
  const [showLoginConfirmBeforeReserve, setShowLoginConfirmBeforeReserve] =
  useState(false);
+ const [changeRoomLocked, setChangeRoomLocked] = useState(false);
  const [currentPage, setCurrentPage] = useState(1);
  const ROOMS_PER_PAGE = 6;
 
  // ── TanStack Query ─────────────────────────────────────────
  const { data: rawRooms = [], isLoading: roomsLoading, error: roomsQueryError } = useRooms();
  const roomsError = roomsQueryError ? "Failed to load rooms. Please try again." : null;
+
+ useEffect(() => {
+ if (!isChangeRoomMode || !changeRoomReservationId || !user) return undefined;
+
+ let cancelled = false;
+
+ const validateChangeRoomAccess = async () => {
+ try {
+ const reservation = await reservationApi.getById(changeRoomReservationId);
+ if (cancelled) return;
+
+ const locked = isApplicantRoomSelectionLocked(reservation);
+ setChangeRoomLocked(locked);
+
+ if (locked) {
+ showNotification(ROOM_SELECTION_LOCKED_MESSAGE, "info", 5000);
+ appNavigate("/applicant/profile", {
+ state: { tab: "dashboard" },
+ flash: {
+ type: "info",
+ message: ROOM_SELECTION_LOCKED_MESSAGE,
+ },
+ });
+ }
+ } catch (error) {
+ if (cancelled) return;
+ console.error("Failed to verify room change access:", error);
+ showNotification(
+ getFriendlyError(error, "Unable to verify room change access."),
+ "warning",
+ 4000,
+ );
+ appNavigate("/applicant/profile", {
+ state: { tab: "dashboard" },
+ });
+ }
+ };
+
+ validateChangeRoomAccess();
+
+ return () => {
+ cancelled = true;
+ };
+ }, [appNavigate, changeRoomReservationId, isChangeRoomMode, user]);
 
 
 
@@ -254,10 +304,13 @@ function CheckAvailabilityPage() {
  };
 
  const proceedWithReservation = async () => {
+ if (changeRoomLocked) {
+ showNotification(ROOM_SELECTION_LOCKED_MESSAGE, "info", 5000);
+ return;
+ }
+
  if (isChangeRoomMode && changeRoomReservationId && selectedRoom) {
  try {
- const { reservationApi } =
- await import("../../../shared/api/reservationApi");
  await reservationApi.updateByUser(changeRoomReservationId, {
  roomId: selectedRoom.roomId,
  selectedBed: selectedBed
@@ -277,18 +330,26 @@ function CheckAvailabilityPage() {
  });
  } catch (err) {
  console.error("Failed to change room:", err);
+ const isLocked =
+ err?.response?.data?.code === "RESERVATION_ROOM_SELECTION_LOCKED";
  showNotification(
- getFriendlyError(err, "Failed to change room. Please try again."),
- "error",
+ isLocked
+ ? ROOM_SELECTION_LOCKED_MESSAGE
+ : getFriendlyError(err, "Failed to change room. Please try again."),
+ isLocked ? "info" : "error",
  4000,
  );
+ if (isLocked) {
+ appNavigate("/applicant/profile", {
+ state: { tab: "dashboard" },
+ flash: { type: "info", message: ROOM_SELECTION_LOCKED_MESSAGE },
+ });
+ }
  }
  return;
  }
 
  try {
- const { reservationApi } =
- await import("../../../shared/api/reservationApi");
  const checkInDate = new Date();
  checkInDate.setDate(checkInDate.getDate() + 30);
  const payload = {
@@ -302,7 +363,6 @@ function CheckAvailabilityPage() {
  applianceFees: calculateApplianceFees(),
  viewingType: null,
  agreedToPrivacy: false,
- visitApproved: false,
  };
  try {
  await reservationApi.create(payload);
@@ -451,13 +511,31 @@ function CheckAvailabilityPage() {
 
  <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
- <div style={{ marginBottom: "8px" }}>
- <h1 className="ca-section-title">Available Rooms</h1>
- <p className="ca-room-count">
- {roomsLoading
- ? "Loading rooms..."
- : `${filteredRooms.length} room${filteredRooms.length !== 1 ? "s" : ""} found`}
+ {isChangeRoomMode && (
+ <div className="ca-change-room-banner">
+ <div>
+ <h1 className="ca-section-title">Change Selected Room</h1>
+ <p className="ca-change-room-copy">
+ Choose a replacement room for your current reservation. Confirming a room here updates your existing reservation instead of creating a new one.
  </p>
+ </div>
+ <button
+ type="button"
+ className="ca-change-room-back"
+ onClick={() => navigate("/applicant/profile")}
+ >
+ Back to profile
+ </button>
+ </div>
+ )}
+
+ <div style={{ marginBottom: "8px" }}>
+ {!isChangeRoomMode && <h1 className="ca-section-title">Available Rooms</h1>}
+ {!roomsLoading && (
+ <p className="ca-room-count">
+ {`${filteredRooms.length} room${filteredRooms.length !== 1 ? "s" : ""} found`}
+ </p>
+ )}
  {!user && (
  <p className="ca-signin-prompt">
  <button onClick={() => navigate("/signin")}>Sign in</button>{" "}
@@ -595,7 +673,7 @@ function CheckAvailabilityPage() {
  }}
  title="Sign Out"
  message="Are you sure you want to sign out of your account?"
- variant="warning"
+ variant="danger"
  confirmText="Sign Out"
  cancelText="Cancel"
  />

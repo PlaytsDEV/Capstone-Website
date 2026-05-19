@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { FileText, RefreshCw, Download, Clock } from "lucide-react";
 import dayjs from "dayjs";
+import {
+ CardSkeleton,
+ StatGridSkeleton,
+} from "../../../../shared/components/LoadingSkeletons";
 
 /* ─── Circular Progress Ring ─────────────────────────── */
 const ProgressRing = ({ percent, monthsCompleted, totalMonths }) => {
@@ -123,11 +127,17 @@ const ContractTab = () => {
 
  if (loading) {
  return (
- <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: 300 }}>
- <div style={{ textAlign: "center", color: "#94A3B8" }}>
- <RefreshCw className="w-6 h-6 animate-spin" style={{ margin: "0 auto 12px", color: "#E8734A" }} />
- <p style={{ fontSize: 14 }}>Loading contract...</p>
+ <div style={{ width: "100%" }}>
+ <div style={{ marginBottom: 24 }}>
+ <h1 style={{ fontSize: 22, fontWeight: 700, color: "#0A1628", margin: "0 0 4px" }}>My Contract</h1>
+ <p style={{ fontSize: 13, color: "#9CA3AF", margin: 0 }}>Your lease agreement and progress</p>
  </div>
+ <CardSkeleton lines={2} height={100} style={{ marginBottom: 20 }} />
+ <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 220px", gap: 20, marginBottom: 20 }}>
+ <StatGridSkeleton count={4} minWidth={160} />
+ <CardSkeleton lines={3} height={180} />
+ </div>
+ <CardSkeleton lines={3} height={140} />
  </div>
  );
  }

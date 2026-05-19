@@ -220,6 +220,16 @@ export const reservationApi = {
     ),
 
   /**
+   * Restore an archived reservation (admin only)
+   */
+  restore: (reservationId) =>
+    withLifecycleNormalization(
+      authFetch(`/reservations/${reservationId}/restore`, {
+        method: "PATCH",
+      }),
+    ),
+
+  /**
    * Renew a tenant's contract / extend lease (admin only)
    */
   renew: (reservationId, data) =>

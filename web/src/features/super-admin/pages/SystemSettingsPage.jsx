@@ -14,6 +14,10 @@ import "../styles/superadmin-dashboard.css";
 import "../styles/superadmin-settings.css";
 import { settingsApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
+import {
+ CardSkeleton,
+ StatGridSkeleton,
+} from "../../../shared/components/LoadingSkeletons";
 
 const BRANCH_LABELS = {
  "gil-puyat": "Gil Puyat",
@@ -366,10 +370,11 @@ export default function SystemSettingsPage() {
  </section>
 
  {loading ? (
- <section className="sa2-card sa-settings-loading">
- <strong>Loading policy settings</strong>
- <p>Fetching the current `BusinessSettings` document.</p>
- </section>
+ <div style={{ display: "grid", gap: 18 }}>
+ <StatGridSkeleton count={2} />
+ <CardSkeleton lines={5} height={220} />
+ <CardSkeleton lines={5} height={220} />
+ </div>
  ) : (
  <>
  <section className="sa2-card sa-settings-section">

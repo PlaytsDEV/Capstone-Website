@@ -35,6 +35,9 @@ import {
  useMarkAsRead,
  useMarkAllAsRead,
 } from "../../../../shared/hooks/queries/useNotifications";
+import { useAuth } from "../../../../shared/hooks/useAuth";
+import { ListSkeleton } from "../../../../shared/components/LoadingSkeletons";
+import { getVisibleNotificationsForUser } from "../../../../shared/utils/notificationVisibility";
 
 // ── Notification type → icon + color mapping ──
 const TYPE_CONFIG = {
@@ -82,14 +85,16 @@ const formatTime = (dateStr) => {
 // ── Component ──
 
 const NotificationsTab = () => {
+ const { user } = useAuth();
  const [page, setPage] = useState(1);
  const { data, isLoading, error } = useNotifications(page);
  const markAsRead = useMarkAsRead();
  const markAllAsRead = useMarkAllAsRead();
 
- const notifications = data?.notifications || [];
+ const notifications = getVisibleNotificationsForUser(data?.notifications || [], user);
  const pagination = data?.pagination || {};
  const unreadCount = data?.unreadCount || 0;
+ const isApplicant = user?.role === "applicant";
 
  // Group notifications by date
  const grouped = useMemo(() => {
@@ -161,7 +166,9 @@ const NotificationsTab = () => {
  )}
  </h1>
  <p style={{ fontSize: "14px", color: "var(--text-muted, #94A3B8)", margin: 0 }}>
- Stay updated on your reservations, payments, and more
+ {isApplicant
+ ? "Stay updated on your reservation, visit, and application progress"
+ : "Stay updated on billing, maintenance, contracts, and account notices"}
  </p>
  </div>
 
@@ -198,9 +205,7 @@ const NotificationsTab = () => {
 
  {/* Loading */}
  {isLoading && (
- <div style={{ ...cardStyle, padding: "48px", textAlign: "center" }}>
- <p style={{ color: "#94A3B8", fontSize: "14px" }}>Loading notifications...</p>
- </div>
+ <ListSkeleton rows={5} avatar />
  )}
 
  {/* Error */}

@@ -175,8 +175,8 @@ export default function ReservationSidePanel({ reservation, onClick }) {
    : viewingPreference === "urgent_move_in_review"
    ? "Priority Review Requested"
    : viewingPreference === "physical_visit"
-   ? "Physical Visit Preference Saved"
-   : "Viewing Preference Saved",
+   ? "Physical Visit Selected"
+   : "Viewing Preference Selected",
  }
  : {
  accent: "var(--text-secondary, #64748B)",

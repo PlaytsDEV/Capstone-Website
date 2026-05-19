@@ -35,7 +35,10 @@ import {
   generateUsername,
   getFirebaseErrorMessage,
 } from "../../../shared/utils/authValidation";
-import { AUTH_TOAST_DURATION } from "../../../shared/utils/authToasts";
+import {
+  AUTH_TOAST_DURATION,
+  buildAuthWelcomeMessage,
+} from "../../../shared/utils/authToasts";
 import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
 import SocialAuthButtons from "../../../shared/components/SocialAuthButtons";
 import FloatingInput from "../../../shared/components/FloatingInput";
@@ -50,6 +53,14 @@ import "../../../shared/styles/notification.css";
 import hero1 from "../../../assets/images/hero1.jpg";
 
 const SIGNUP_IMAGE = hero1;
+const FIELD_LIMITS = {
+  firstName: 50,
+  lastName: 50,
+  email: 254,
+  password: 64,
+  confirmPassword: 64,
+};
+
 const getWebBaseUrl = () => {
   const configured = import.meta.env.VITE_WEB_BASE_URL;
   if (configured && configured.trim()) return configured.trim().replace(/\/$/, "");
@@ -116,12 +127,14 @@ function SignUp() {
     // phone is now handled separately by PhoneInput — skip old guards
     const sanitizedValue =
       name === "firstName" || name === "lastName" ? sanitizeName(value) : value;
-    setFormData({ ...formData, [name]: sanitizedValue });
+    const limit = FIELD_LIMITS[name];
+    const nextValue = limit ? sanitizedValue.slice(0, limit) : sanitizedValue;
+    setFormData({ ...formData, [name]: nextValue });
     setTouched({ ...touched, [name]: true });
     if (debounceTimer) clearTimeout(debounceTimer);
     if (name === "password")
-      setPasswordStrength(calculatePasswordStrength(value));
-    const timer = setTimeout(() => validateField(name, value), 300);
+      setPasswordStrength(calculatePasswordStrength(nextValue));
+    const timer = setTimeout(() => validateField(name, nextValue), 300);
     setDebounceTimer(timer);
   };
 
@@ -141,12 +154,18 @@ function SignUp() {
     switch (fieldName) {
       case "firstName":
         if (!value.trim()) error = "First name is required";
+        else if (value.length > FIELD_LIMITS.firstName)
+          error = `First name must be ${FIELD_LIMITS.firstName} characters or less`;
         break;
       case "lastName":
         if (!value.trim()) error = "Last name is required";
+        else if (value.length > FIELD_LIMITS.lastName)
+          error = `Last name must be ${FIELD_LIMITS.lastName} characters or less`;
         break;
       case "email":
-        error = validateEmail(value);
+        if (value.length > FIELD_LIMITS.email)
+          error = `Email must be ${FIELD_LIMITS.email} characters or less`;
+        else error = validateEmail(value);
         break;
       case "phone":
         if (!value || !value.trim()) {
@@ -159,7 +178,9 @@ function SignUp() {
         }
         break;
       case "password":
-        if (/\s/.test(value)) {
+        if (value.length > FIELD_LIMITS.password) {
+          error = `Password must be ${FIELD_LIMITS.password} characters or less`;
+        } else if (/\s/.test(value)) {
           error = "Password cannot contain spaces";
         } else {
           error = validatePassword(value);
@@ -169,6 +190,8 @@ function SignUp() {
         break;
       case "confirmPassword":
         if (!value) error = "Please confirm your password";
+        else if (value.length > FIELD_LIMITS.confirmPassword)
+          error = `Confirm password must be ${FIELD_LIMITS.confirmPassword} characters or less`;
         else if (value !== formData.password) error = "Passwords do not match";
         break;
       default:
@@ -222,8 +245,26 @@ function SignUp() {
     if (!formData.firstName.trim()) {
       return scrollToField("firstName", "First name is required");
     }
+    if (formData.firstName.length > FIELD_LIMITS.firstName) {
+      return scrollToField(
+        "firstName",
+        `First name must be ${FIELD_LIMITS.firstName} characters or less`,
+      );
+    }
     if (!formData.lastName.trim()) {
       return scrollToField("lastName", "Last name is required");
+    }
+    if (formData.lastName.length > FIELD_LIMITS.lastName) {
+      return scrollToField(
+        "lastName",
+        `Last name must be ${FIELD_LIMITS.lastName} characters or less`,
+      );
+    }
+    if (formData.email.length > FIELD_LIMITS.email) {
+      return scrollToField(
+        "email",
+        `Email must be ${FIELD_LIMITS.email} characters or less`,
+      );
     }
     const emailError = validateEmail(formData.email);
     if (emailError) {
@@ -241,12 +282,24 @@ function SignUp() {
     if (/\s/.test(formData.password)) {
       return scrollToField("password", "Password cannot contain spaces");
     }
+    if (formData.password.length > FIELD_LIMITS.password) {
+      return scrollToField(
+        "password",
+        `Password must be ${FIELD_LIMITS.password} characters or less`,
+      );
+    }
     const passwordError = validatePassword(formData.password);
     if (passwordError) {
       return scrollToField("password", passwordError);
     }
     if (formData.password !== formData.confirmPassword) {
       return scrollToField("confirmPassword", "Passwords do not match");
+    }
+    if (formData.confirmPassword.length > FIELD_LIMITS.confirmPassword) {
+      return scrollToField(
+        "confirmPassword",
+        `Confirm password must be ${FIELD_LIMITS.confirmPassword} characters or less`,
+      );
     }
     if (!agreedToTerms) {
       showNotification("Please agree to Terms and Conditions", "error");
@@ -406,7 +459,14 @@ function SignUp() {
               /* proceed anyway */
             }
             showNotification(
-              `Welcome to Lilycrest, ${firstName}!`,
+              buildAuthWelcomeMessage(
+                {
+                  displayName: firebaseUser.displayName,
+                  username,
+                  email: firebaseUser.email,
+                },
+                firstName,
+              ),
               "success",
               AUTH_TOAST_DURATION,
             );
@@ -541,6 +601,7 @@ function SignUp() {
                   name="firstName"
                   value={formData.firstName}
                   onChange={handleChange}
+                  maxLength={FIELD_LIMITS.firstName}
                   disabled={loading}
                   error={touched.firstName ? validationErrors.firstName : null}
                   valid={touched.firstName && fieldValid.firstName}
@@ -550,6 +611,7 @@ function SignUp() {
                   name="lastName"
                   value={formData.lastName}
                   onChange={handleChange}
+                  maxLength={FIELD_LIMITS.lastName}
                   disabled={loading}
                   error={touched.lastName ? validationErrors.lastName : null}
                   valid={touched.lastName && fieldValid.lastName}
@@ -562,6 +624,7 @@ function SignUp() {
                 type="email"
                 value={formData.email}
                 onChange={handleChange}
+                maxLength={FIELD_LIMITS.email}
                 disabled={loading}
                 autoComplete="email"
                 error={touched.email ? validationErrors.email : null}
@@ -586,6 +649,7 @@ function SignUp() {
                   type={showPassword ? "text" : "password"}
                   value={formData.password}
                   onChange={handleChange}
+                  maxLength={FIELD_LIMITS.password}
                   onPaste={(e) => { if (/\s/.test(e.clipboardData.getData("text"))) e.preventDefault(); }}
                   disabled={loading}
                   error={touched.password ? validationErrors.password : null}
@@ -687,6 +751,7 @@ function SignUp() {
                 type={showConfirmPassword ? "text" : "password"}
                 value={formData.confirmPassword}
                 onChange={handleChange}
+                maxLength={FIELD_LIMITS.confirmPassword}
                 onPaste={(e) => { if (/\s/.test(e.clipboardData.getData("text"))) e.preventDefault(); }}
                 disabled={loading}
                 error={

@@ -19,14 +19,16 @@ import {
 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import { useAppNavigation } from "../hooks/useAppNavigation";
+import { useUnreadCount } from "../hooks/queries/useNotifications";
+import { USER_ROLES } from "../utils/constants";
 import ConfirmModal from "./ConfirmModal";
 import { showNotification } from "../utils/notification";
 import { buildSignOutSuccessFlash } from "../utils/authToasts";
-import "./sidebar.css"; // ← make sure this import exists
+import "./sidebar.css";
 
 const MOBILE_BP = 768;
 
-const buildNavSections = (canViewAnnouncements) => [
+const buildNavSections = (isTenant) => [
   {
     label: "Main",
     items: [
@@ -49,20 +51,20 @@ const buildNavSections = (canViewAnnouncements) => [
         path: "/applicant/profile",
         tab: "personal",
       },
-      {
-        id: "billing",
-        label: "My Bills",
-        icon: CreditCard,
-        path: "/applicant/billing",
-      },
-      {
-        id: "maintenance",
-        label: "Maintenance",
-        icon: Wrench,
-        path: "/applicant/maintenance",
-      },
-      ...(canViewAnnouncements
+      ...(isTenant
         ? [
+            {
+              id: "billing",
+              label: "My Bills",
+              icon: CreditCard,
+              path: "/applicant/billing",
+            },
+            {
+              id: "maintenance",
+              label: "Maintenance",
+              icon: Wrench,
+              path: "/applicant/maintenance",
+            },
             {
               id: "announcements",
               label: "Announcements",
@@ -78,19 +80,23 @@ const buildNavSections = (canViewAnnouncements) => [
         path: "/applicant/profile",
         tab: "reservation",
       },
-      {
-        id: "contract",
-        label: "My Contract",
-        icon: FileText,
-        path: "/applicant/contracts",
-      },
-      {
-        id: "history",
-        label: "My History",
-        icon: History,
-        path: "/applicant/profile",
-        tab: "history",
-      },
+      ...(isTenant
+        ? [
+            {
+              id: "contract",
+              label: "My Contract",
+              icon: FileText,
+              path: "/applicant/contracts",
+            },
+            {
+              id: "history",
+              label: "My History",
+              icon: History,
+              path: "/applicant/profile",
+              tab: "history",
+            },
+          ]
+        : []),
     ],
   },
   {
@@ -114,28 +120,23 @@ const buildNavSections = (canViewAnnouncements) => [
   },
 ];
 
-function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleCollapse }) {
+export default function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleCollapse }) {
   const { user, logout } = useAuth();
   const appNavigate = useAppNavigation();
   const location = useLocation();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-  const [isMobile, setIsMobile] = useState(
-    () => window.innerWidth <= MOBILE_BP
-  );
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= MOBILE_BP);
 
-  const canViewAnnouncements = user?.role === "tenant";
-  const navSections = useMemo(
-    () => buildNavSections(canViewAnnouncements),
-    [canViewAnnouncements]
-  );
+  const isTenant = user?.role === USER_ROLES.TENANT;
+  const navSections = useMemo(() => buildNavSections(isTenant), [isTenant]);
+  const { data: unreadData } = useUnreadCount();
+  const sidebarUnreadCount = unreadData?.unreadCount ?? 0;
 
   const currentTab = location.state?.tab || "dashboard";
-  const fullName =
-    `${user?.firstName || ""} ${user?.lastName || ""}`.trim() || "User";
+  const fullName = `${user?.firstName || ""} ${user?.lastName || ""}`.trim() || "User";
   const email = user?.email || "";
-  const initials =
-    `${user?.firstName?.[0] || "U"}${user?.lastName?.[0] || ""}`.toUpperCase();
+  const initials = `${user?.firstName?.[0] || "U"}${user?.lastName?.[0] || ""}`.toUpperCase();
 
   useEffect(() => {
     const handleResize = () => {
@@ -165,9 +166,7 @@ function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleCollapse }) {
   };
 
   const handleItemClick = (item) => {
-    appNavigate(item.path, {
-      state: item.tab ? { tab: item.tab } : undefined,
-    });
+    appNavigate(item.path, { state: item.tab ? { tab: item.tab } : undefined });
     if (isMobile && isOpen) toggleSidebar();
   };
 
@@ -192,50 +191,27 @@ function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleCollapse }) {
     "sidebar",
     isCollapsed && !isMobile ? "collapsed" : "",
     isMobile && isOpen ? "open" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  ].filter(Boolean).join(" ");
 
   const renderSidebarContent = () => (
     <>
-      {/* ── Header ── */}
       <div className="sidebar-header">
         <Link to="/" className="sidebar-brand">
-          <div className="sidebar-brand-mark">
-            <Bed size={18} />
-          </div>
+          <div className="sidebar-brand-mark"><Bed size={18} /></div>
           <span className="sidebar-brand-name">Lilycrest</span>
         </Link>
 
-        {/* Mobile close / Desktop collapse toggle */}
         {isMobile ? (
-          <button
-            type="button"
-            className="sidebar-close"
-            onClick={toggleSidebar}
-            aria-label="Close menu"
-          >
+          <button type="button" className="sidebar-close" onClick={toggleSidebar} aria-label="Close menu">
             <X size={18} />
           </button>
         ) : (
-          <button
-            type="button"
-            className="sidebar-collapse-toggle"
-            onClick={toggleCollapse}
-            aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-          >
-            <ChevronLeft
-              size={14}
-              style={{
-                transform: isCollapsed ? "rotate(180deg)" : "rotate(0deg)",
-                transition: "transform 0.24s ease",
-              }}
-            />
+          <button type="button" className="sidebar-collapse-toggle" onClick={toggleCollapse} aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}>
+            <ChevronLeft size={14} style={{ transform: isCollapsed ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.24s ease" }} />
           </button>
         )}
       </div>
 
-      {/* ── User identity ── */}
       <div className="sidebar-identity">
         <div className="sidebar-avatar">
           {user?.profileImage ? (
@@ -250,20 +226,13 @@ function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleCollapse }) {
         </div>
       </div>
 
-      {/* ── Browse Rooms CTA ── */}
       <div className="sidebar-cta-wrap">
-        <button
-          type="button"
-          className="sidebar-cta"
-          onClick={() => handleItemClick({ path: "/applicant/check-availability" })}
-          title="Browse Rooms"
-        >
+        <button type="button" className="sidebar-cta" onClick={() => handleItemClick({ path: "/applicant/check-availability" })} title="Browse Rooms">
           <Search size={15} style={{ flexShrink: 0 }} />
           <span>Browse Rooms</span>
         </button>
       </div>
 
-      {/* ── Navigation ── */}
       <nav aria-label="Tenant navigation" className="sidebar-nav">
         {navSections.map((section) => (
           <div key={section.label} className="sidebar-group">
@@ -272,16 +241,14 @@ function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleCollapse }) {
               {section.items.map((item) => {
                 const active = isItemActive(item);
                 const Icon = item.icon;
+                const badge = item.id === "notifications" && sidebarUnreadCount > 0 ? sidebarUnreadCount : null;
                 return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => handleItemClick(item)}
-                    title={isCollapsed && !isMobile ? item.label : undefined}
-                    className={`sidebar-nav-item${active ? " active" : ""}`}
-                  >
+                  <button key={item.id} type="button" onClick={() => handleItemClick(item)} title={isCollapsed && !isMobile ? item.label : undefined} className={`sidebar-nav-item${active ? " active" : ""}`}>
                     <Icon size={17} className="sidebar-nav-icon" />
-                    <span>{item.label}</span>
+                    <span className="sidebar-nav-label">{item.label}</span>
+                    {badge && (
+                      <span className="sidebar-badge">{badge > 99 ? "99+" : badge}</span>
+                    )}
                   </button>
                 );
               })}
@@ -290,15 +257,8 @@ function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleCollapse }) {
         ))}
       </nav>
 
-      {/* ── Footer ── */}
       <div className="sidebar-footer">
-        <button
-          type="button"
-          className="sidebar-logout"
-          onClick={handleLogout}
-          disabled={isLoggingOut}
-          title="Sign Out"
-        >
+        <button type="button" className="sidebar-logout" onClick={handleLogout} disabled={isLoggingOut} title="Sign Out">
           <LogOut size={17} />
           <span>{isLoggingOut ? "Signing out…" : "Sign Out"}</span>
         </button>
@@ -308,35 +268,20 @@ function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleCollapse }) {
 
   return (
     <>
-      {/* Mobile topbar */}
       {isMobile && (
         <div className="sidebar-topbar">
-          <button
-            type="button"
-            className="sidebar-topbar-menu"
-            onClick={toggleSidebar}
-            aria-label="Open menu"
-          >
-            <Menu size={20} />
-          </button>
+          <button type="button" className="sidebar-topbar-menu" onClick={toggleSidebar} aria-label="Open menu"><Menu size={20} /></button>
           <Link to="/" className="sidebar-topbar-brand">
-            <div className="sidebar-brand-mark" style={{ width: 28, height: 28, borderRadius: 6 }}>
-              <Bed size={14} />
-            </div>
+            <div className="sidebar-brand-mark" style={{ width: 28, height: 28, borderRadius: 6 }}><Bed size={14} /></div>
             <span>Lilycrest</span>
           </Link>
         </div>
       )}
 
-      {/* Overlay */}
-      {isMobile && isOpen && (
-        <div className="sidebar-overlay" onClick={toggleSidebar} aria-hidden="true" />
-      )}
+      {isMobile && isOpen && <div className="sidebar-overlay" onClick={toggleSidebar} aria-hidden="true" />}
 
-      {/* Sidebar */}
       <aside className={sidebarClasses}>{renderSidebarContent()}</aside>
 
-      {/* Logout confirmation */}
       <ConfirmModal
         isOpen={showLogoutConfirm}
         onClose={() => setShowLogoutConfirm(false)}
@@ -350,5 +295,3 @@ function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleCollapse }) {
     </>
   );
 }
-
-export default Sidebar;

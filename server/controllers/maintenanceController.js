@@ -10,6 +10,7 @@
  * ============================================================================
  */
 
+import crypto from "crypto";
 import mongoose from "mongoose";
 import {
     ADMIN_MAINTENANCE_STATUSES,
@@ -31,14 +32,12 @@ import {
     AppError,
     sendSuccess,
 } from "../middleware/errorHandler.js";
-import { MaintenanceRequest, Reservation, User } from "../models/index.js";
-import {
-    CURRENT_RESIDENT_STATUS_QUERY,
-} from "../utils/lifecycleNaming.js";
+import { MaintenanceRequest, User } from "../models/index.js";
 import { buildLegacyDescription } from "../utils/maintenanceMigration.js";
 import { notify } from "../utils/notificationService.js";
 import { clean } from "../utils/sanitize.js";
 import { DELETED_ACCOUNT_LABEL } from "../utils/userReference.js";
+import { resolveUploadBranch } from "../services/attachmentUploadService.js";
 
 const USER_SELECT_FIELDS =
   "user_id firstName lastName email phone branch role";
@@ -59,6 +58,34 @@ const CLOSED_MAINTENANCE_STATUSES = new Set([
 ]);
 const IMAGE_FILE_PATTERN = /\.(avif|bmp|gif|heic|jpeg|jpg|png|svg|webp)(?:$|[?#])/i;
 const PDF_FILE_PATTERN = /\.pdf(?:$|[?#])/i;
+const SUPPORTED_PROGRESS_ATTACHMENT_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/*",
+  "application/pdf",
+]);
+const SUPPORTED_PROGRESS_ATTACHMENT_EXTENSION_PATTERN =
+  /\.(jpe?g|png|webp|pdf)(?:$|[?#])/i;
+
+const buildMaintenanceRequestId = () =>
+  `maint_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+
+const getAttachmentFileType = (type, name, uri) => {
+  const source = `${type || ""} ${name || ""} ${uri || ""}`.toLowerCase();
+  if (source.includes("image/") || IMAGE_FILE_PATTERN.test(source)) return "image";
+  if (source.includes("application/pdf") || PDF_FILE_PATTERN.test(source)) return "pdf";
+  return "file";
+};
+
+const getAttachmentSize = (entry) => {
+  const rawSize =
+    typeof entry === "object" && entry
+      ? entry.size ?? entry.fileSize
+      : null;
+  const size = Number(rawSize);
+  return Number.isFinite(size) && size >= 0 ? size : null;
+};
 
 const parseLimit = (value, fallback = 100) => {
   const parsed = Number.parseInt(value, 10);
@@ -92,6 +119,13 @@ const appendStatusHistory = (request, event) => {
 const appendWorkLogEntry = (request, entry) => {
   request.work_log = [
     ...(Array.isArray(request.work_log) ? request.work_log : []),
+    entry,
+  ];
+};
+
+const appendConversationEntry = (request, entry) => {
+  request.conversation = [
+    ...(Array.isArray(request.conversation) ? request.conversation : []),
     entry,
   ];
 };
@@ -147,7 +181,23 @@ const getAttachmentUri = (entry) => {
     toOptionalText(entry?.href) ||
     toOptionalText(entry?.src) ||
     toOptionalText(entry?.imageUrl) ||
+    toOptionalText(entry?.imageURL) ||
+    toOptionalText(entry?.image_url) ||
     toOptionalText(entry?.fileUrl) ||
+    toOptionalText(entry?.fileURL) ||
+    toOptionalText(entry?.file_url) ||
+    toOptionalText(entry?.downloadUrl) ||
+    toOptionalText(entry?.downloadURL) ||
+    toOptionalText(entry?.download_url) ||
+    toOptionalText(entry?.publicUrl) ||
+    toOptionalText(entry?.publicURL) ||
+    toOptionalText(entry?.public_url) ||
+    toOptionalText(entry?.secureUrl) ||
+    toOptionalText(entry?.secureURL) ||
+    toOptionalText(entry?.secure_url) ||
+    toOptionalText(entry?.mediaUrl) ||
+    toOptionalText(entry?.mediaURL) ||
+    toOptionalText(entry?.media_url) ||
     toOptionalText(entry?.path)
   );
 };
@@ -180,6 +230,8 @@ const extractAttachmentName = (entry, uri, index) =>
     ? toOptionalText(entry?.name) ||
       toOptionalText(entry?.filename) ||
       toOptionalText(entry?.fileName) ||
+      toOptionalText(entry?.originalName) ||
+      toOptionalText(entry?.originalFilename) ||
       toOptionalText(entry?.label) ||
       toOptionalText(entry?.title)
     : null) || deriveAttachmentName(uri || "", index);
@@ -188,22 +240,100 @@ const extractAttachmentName = (entry, uri, index) =>
  * Used when SAVING new attachments — rejects non-HTTP(S) URIs entirely
  * so local file paths from mobile devices never reach the database.
  */
-const normalizeAttachmentEntry = (entry, index = 0) => {
+const getAttachmentMetadataText = (entry, key) =>
+  typeof entry === "object" && entry ? toOptionalText(entry?.[key]) : null;
+
+const buildAttachmentMetadata = ({
+  entry,
+  context = null,
+  visibility = null,
+  branchId = null,
+  uploadedBy = null,
+  senderRole = null,
+  relatedId = null,
+} = {}) => {
+  const metadata = {};
+  const resolvedContext =
+    context ||
+    getAttachmentMetadataText(entry, "context") ||
+    getAttachmentMetadataText(entry, "attachmentContext");
+  const resolvedVisibility =
+    visibility ||
+    getAttachmentMetadataText(entry, "visibility");
+  const resolvedBranchId =
+    branchId ||
+    getAttachmentMetadataText(entry, "branchId") ||
+    getAttachmentMetadataText(entry, "branch") ||
+    getAttachmentMetadataText(entry, "branch_id");
+  const resolvedUploadedBy =
+    uploadedBy ||
+    getAttachmentMetadataText(entry, "uploadedBy") ||
+    getAttachmentMetadataText(entry, "uploaded_by");
+  const resolvedSenderRole =
+    senderRole ||
+    getAttachmentMetadataText(entry, "senderRole") ||
+    getAttachmentMetadataText(entry, "sender_role");
+  const resolvedRelatedId =
+    relatedId ||
+    getAttachmentMetadataText(entry, "relatedId") ||
+    getAttachmentMetadataText(entry, "related_id") ||
+    getAttachmentMetadataText(entry, "maintenanceRequestId") ||
+    getAttachmentMetadataText(entry, "requestId");
+
+  if (resolvedContext) metadata.context = resolvedContext;
+  if (resolvedVisibility) metadata.visibility = resolvedVisibility;
+  if (resolvedBranchId) {
+    metadata.branchId = resolvedBranchId;
+    metadata.branch = resolvedBranchId;
+  }
+  if (resolvedUploadedBy) metadata.uploadedBy = resolvedUploadedBy;
+  if (resolvedSenderRole) metadata.senderRole = resolvedSenderRole;
+  if (resolvedRelatedId) metadata.relatedId = resolvedRelatedId;
+
+  return metadata;
+};
+
+const normalizeAttachmentEntry = (entry, index = 0, metadataOptions = {}) => {
   const uri = getAttachmentUri(entry);
   if (!uri || !isRemoteUri(uri)) return null;
 
   const name = extractAttachmentName(entry, uri, index);
-  return {
+  const originalName =
+    typeof entry === "object" && entry
+      ? toOptionalText(entry?.originalName) ||
+        toOptionalText(entry?.originalFilename) ||
+        toOptionalText(entry?.filename) ||
+        toOptionalText(entry?.fileName) ||
+        toOptionalText(entry?.name) ||
+        name
+      : name;
+  const type = inferAttachmentType({
     name,
     uri,
-    type: inferAttachmentType({
-      name,
-      uri,
-      fallbackType:
-        typeof entry === "object" && entry
-          ? entry?.type || entry?.mimeType || entry?.mime
-          : null,
-    }),
+    fallbackType:
+      typeof entry === "object" && entry
+        ? entry?.type || entry?.mimeType || entry?.mime || entry?.contentType
+        : null,
+  });
+  const normalized = {
+    name,
+    uri,
+    type,
+    url: uri,
+    filename: name,
+    originalName,
+    mimeType: type,
+    fileType: getAttachmentFileType(type, name, uri),
+  };
+  const size = getAttachmentSize(entry);
+  if (size !== null) normalized.size = size;
+  if (typeof entry === "object" && entry?.storagePath) {
+    normalized.storagePath = entry.storagePath;
+  }
+
+  return {
+    ...normalized,
+    ...buildAttachmentMetadata({ entry, ...metadataOptions }),
   };
 };
 
@@ -212,39 +342,137 @@ const normalizeAttachmentEntry = (entry, index = 0) => {
  * record but nulls out URIs that are not safe HTTP(S) URLs so the frontend
  * can show an "unavailable" state instead of silently hiding the attachment.
  */
-const sanitizeAttachmentForOutput = (entry, index = 0) => {
+const sanitizeAttachmentForOutput = (entry, index = 0, { includeInternal = true } = {}) => {
+  if (
+    !includeInternal &&
+    typeof entry === "object" &&
+    entry?.visibility === "admin_only"
+  ) {
+    return null;
+  }
+
   const rawUri = getAttachmentUri(entry);
   if (!rawUri && typeof entry !== "object") return null;
 
   const safeUri = rawUri && isRemoteUri(rawUri) ? rawUri : null;
   const name = extractAttachmentName(entry, safeUri || rawUri, index);
   if (!name) return null;
-
-  return {
+  const type = inferAttachmentType({
+    name,
+    uri: safeUri || "",
+    fallbackType:
+      typeof entry === "object" && entry
+        ? entry?.type || entry?.mimeType || entry?.mime || entry?.contentType
+        : null,
+  });
+  const originalName =
+    typeof entry === "object" && entry
+      ? toOptionalText(entry?.originalName) ||
+        toOptionalText(entry?.originalFilename) ||
+        toOptionalText(entry?.filename) ||
+        toOptionalText(entry?.fileName) ||
+        toOptionalText(entry?.name) ||
+        name
+      : name;
+  const output = {
     name,
     uri: safeUri,
-    type: inferAttachmentType({
-      name,
-      uri: safeUri || "",
-      fallbackType:
-        typeof entry === "object" && entry
-          ? entry?.type || entry?.mimeType || entry?.mime
-          : null,
-    }),
+    type,
+    url: safeUri,
+    filename: name,
+    originalName,
+    mimeType: type,
+    fileType: getAttachmentFileType(type, name, safeUri || rawUri),
+  };
+  const size = getAttachmentSize(entry);
+  if (size !== null) output.size = size;
+  if (typeof entry === "object" && entry?.storagePath) {
+    output.storagePath = entry.storagePath;
+  }
+
+  return {
+    ...output,
+    ...buildAttachmentMetadata({ entry }),
   };
 };
 
-const normalizeAttachments = (attachments) => {
+const normalizeAttachments = (attachments, metadataOptions = {}) => {
   if (!Array.isArray(attachments)) return [];
   return attachments
-    .map((entry, index) => normalizeAttachmentEntry(entry, index))
+    .map((entry, index) => normalizeAttachmentEntry(entry, index, metadataOptions))
     .filter(Boolean);
 };
 
-const sanitizeAttachmentsForOutput = (attachments) => {
+const hasSupportedProgressAttachmentType = (attachment) => {
+  const type = toOptionalText(attachment?.type)?.toLowerCase();
+  if (type && SUPPORTED_PROGRESS_ATTACHMENT_MIME_TYPES.has(type)) return true;
+
+  const source = `${attachment?.name || ""} ${attachment?.uri || ""}`.toLowerCase();
+  return SUPPORTED_PROGRESS_ATTACHMENT_EXTENSION_PATTERN.test(source);
+};
+
+const validateIncomingAttachments = (
+  rawAttachments,
+  {
+    fieldPrefix = "work_log_attachments",
+    noun = "attachments",
+  } = {},
+) => {
+  if (rawAttachments === undefined) return [];
+  if (!Array.isArray(rawAttachments)) {
+    return [
+      {
+        field: fieldPrefix,
+        message: `${noun} must be uploaded files.`,
+      },
+    ];
+  }
+
+  const errors = [];
+  rawAttachments.forEach((entry, index) => {
+    const uri = getAttachmentUri(entry);
+    const normalized = normalizeAttachmentEntry(entry, index);
+    if (!uri || !isRemoteUri(uri) || !normalized) {
+      errors.push({
+        field: `${fieldPrefix}.${index}.uri`,
+        message: "Attachment URL is required.",
+      });
+      return;
+    }
+
+    if (!hasSupportedProgressAttachmentType(normalized)) {
+      errors.push({
+        field: `${fieldPrefix}.${index}.type`,
+        message: "This file type is not supported. Please upload a photo or PDF.",
+      });
+    }
+  });
+
+  return errors;
+};
+
+const validateIncomingWorkLogAttachments = (rawAttachments) =>
+  validateIncomingAttachments(rawAttachments, {
+    fieldPrefix: "work_log_attachments",
+    noun: "Progress attachments",
+  });
+
+const getReplyAttachmentsFromBody = (body = {}) => {
+  const candidates = [
+    body.attachments,
+    body.replyAttachments,
+    body.reply_attachments,
+    body.attachmentUrls,
+    body.attachment_urls,
+  ];
+
+  return candidates.find((value) => value !== undefined);
+};
+
+const sanitizeAttachmentsForOutput = (attachments, options = {}) => {
   if (!Array.isArray(attachments)) return [];
   return attachments
-    .map((entry, index) => sanitizeAttachmentForOutput(entry, index))
+    .map((entry, index) => sanitizeAttachmentForOutput(entry, index, options))
     .filter(Boolean);
 };
 
@@ -309,54 +537,79 @@ const serializeTenantSummary = (user, request) => {
   };
 };
 
-const serializeMaintenanceRequest = (request, tenant = null) => ({
-  id: request.request_id,
-  _id: request._id,
-  request_id: request.request_id,
-  user_id: request.user_id,
-  request_type: request.request_type,
-  description: request.description,
-  urgency: request.urgency,
-  status: request.status,
-  assigned_to: request.assigned_to ?? null,
-  notes: request.notes ?? null,
-  attachments: sanitizeAttachmentsForOutput(request.attachments),
-  reopen_note: request.reopen_note ?? null,
-  reopen_history: Array.isArray(request.reopen_history) ? request.reopen_history : [],
-  statusHistory: Array.isArray(request.statusHistory) ? request.statusHistory : [],
-  slaState: getSlaState(request),
-  assignment: {
-    assignedTo: request.assigned_to ?? null,
-    assignedAt: request.assigned_at ?? null,
-    startedAt: request.work_started_at ?? null,
-    resolvedAt: request.resolved_at ?? null,
-  },
-  workLog: Array.isArray(request.work_log)
+const sanitizeStatusHistoryForOutput = (statusHistory, { includeInternal = true } = {}) =>
+  Array.isArray(statusHistory)
+    ? statusHistory.map((entry) => ({
+        ...entry,
+        note:
+          includeInternal || ["tenant", "applicant"].includes(entry?.actor_role)
+            ? entry?.note ?? null
+            : null,
+      }))
+    : [];
+
+const serializeMaintenanceRequest = (
+  request,
+  tenant = null,
+  { includeInternal = true } = {},
+) => {
+  const workLog = includeInternal && Array.isArray(request.work_log)
     ? request.work_log.map((entry) => ({
         ...entry,
-        attachments: sanitizeAttachmentsForOutput(entry?.attachments),
+        attachments: sanitizeAttachmentsForOutput(entry?.attachments, { includeInternal }),
       }))
-    : [],
-  resolutionNote: request.resolution_note ?? null,
-  created_at: request.created_at,
-  updated_at: request.updated_at,
-  cancelled_at: request.cancelled_at ?? null,
-  reopened_at: request.reopened_at ?? null,
-  resolved_at: request.resolved_at ?? null,
-  closed_at: request.closed_at ?? null,
-  estimated_resolution: getResolutionEstimate(request.urgency),
-  tenant,
-  branch: request.branch || null,
-  roomId: request.roomId || null,
-  reservationId: request.reservationId || null,
+    : [];
 
-  // Compatibility aliases for legacy consumers still in the repo.
-  title: `${formatMaintenanceTypeLabel(request.request_type)} Request`,
-  category: request.request_type,
-  date: request.created_at,
-  assignedTo: request.assigned_to ?? null,
-  completionNote: request.resolution_note ?? request.notes ?? null,
-});
+  return {
+    id: request.request_id,
+    _id: request._id,
+    request_id: request.request_id,
+    user_id: request.user_id,
+    request_type: request.request_type,
+    description: request.description,
+    urgency: request.urgency,
+    status: request.status,
+    assigned_to: request.assigned_to ?? null,
+    notes: includeInternal ? request.notes ?? null : null,
+    attachments: sanitizeAttachmentsForOutput(request.attachments, { includeInternal }),
+    reopen_note: request.reopen_note ?? null,
+    reopen_history: Array.isArray(request.reopen_history) ? request.reopen_history : [],
+    statusHistory: sanitizeStatusHistoryForOutput(request.statusHistory, { includeInternal }),
+    slaState: getSlaState(request),
+    assignment: {
+      assignedTo: request.assigned_to ?? null,
+      assignedAt: request.assigned_at ?? null,
+      startedAt: request.work_started_at ?? null,
+      resolvedAt: request.resolved_at ?? null,
+    },
+    workLog,
+    conversation: Array.isArray(request.conversation)
+      ? request.conversation.map((entry) => ({
+          ...entry,
+          attachments: sanitizeAttachmentsForOutput(entry?.attachments, { includeInternal }),
+        }))
+      : [],
+    resolutionNote: includeInternal ? request.resolution_note ?? null : null,
+    created_at: request.created_at,
+    updated_at: request.updated_at,
+    cancelled_at: request.cancelled_at ?? null,
+    reopened_at: request.reopened_at ?? null,
+    resolved_at: request.resolved_at ?? null,
+    closed_at: request.closed_at ?? null,
+    estimated_resolution: getResolutionEstimate(request.urgency),
+    tenant,
+    branch: request.branch || null,
+    roomId: request.roomId || null,
+    reservationId: request.reservationId || null,
+
+    // Compatibility aliases for legacy consumers still in the repo.
+    title: `${formatMaintenanceTypeLabel(request.request_type)} Request`,
+    category: request.request_type,
+    date: request.created_at,
+    assignedTo: request.assigned_to ?? null,
+    completionNote: includeInternal ? request.resolution_note ?? request.notes ?? null : null,
+  };
+};
 
 const loadTenantMap = async (requests) => {
   const userIds = [...new Set(requests.map((entry) => entry.user_id).filter(Boolean))];
@@ -393,18 +646,15 @@ const resolveAdminBranchFilter = (req) => {
 const ensureMinimumDescriptionLength = (description) =>
   String(description || "").trim().length >= MIN_MAINTENANCE_DESCRIPTION_LENGTH;
 
-const buildAdminDisplayName = (adminUser) =>
-  `${adminUser?.firstName || ""} ${adminUser?.lastName || ""}`.trim() ||
-  adminUser?.email ||
-  adminUser?.user_id ||
-  "Admin";
-
-const normalizeAdminUpdatePayload = (payload = {}) => {
+const normalizeAdminUpdatePayload = (payload = {}, attachmentMetadata = {}) => {
   const hasAssignedField = Object.prototype.hasOwnProperty.call(payload, "assigned_to");
-  const workLogAttachments = normalizeAttachments(
+  const rawWorkLogAttachments =
     payload.work_log_attachments !== undefined
       ? payload.work_log_attachments
-      : payload.workLogAttachments,
+      : payload.workLogAttachments;
+  const workLogAttachments = normalizeAttachments(
+    rawWorkLogAttachments,
+    attachmentMetadata,
   );
 
   return {
@@ -415,6 +665,7 @@ const normalizeAdminUpdatePayload = (payload = {}) => {
     workLogNote: toOptionalText(
       payload.work_log_note !== undefined ? payload.work_log_note : payload.workLogNote,
     ),
+    workLogAttachmentErrors: validateIncomingWorkLogAttachments(rawWorkLogAttachments),
     workLogAttachments,
   };
 };
@@ -434,11 +685,47 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
     nextAssignedTo,
     hasAssignedField,
     workLogNote,
+    workLogAttachmentErrors,
     workLogAttachments,
-  } = normalizeAdminUpdatePayload(payload);
+  } = normalizeAdminUpdatePayload(payload, {
+    context: "maintenance_internal_note",
+    visibility: "admin_only",
+    branchId: request.branch,
+    uploadedBy: adminUser?.user_id,
+    senderRole: adminUser?.role || "admin",
+    relatedId: request.request_id,
+  });
+
+  if (workLogAttachmentErrors.length > 0) {
+    throw new AppError(
+      "Some required information is missing or invalid. Please review the highlighted fields.",
+      400,
+      "VALIDATION_ERROR",
+      workLogAttachmentErrors,
+    );
+  }
 
   if (hasAssignedField && nextAssignedTo && nextAssignedTo.length < 2) {
-    throw new AppError("Assigned staff name is too short", 400, "INVALID_ASSIGNEE");
+    throw new AppError("Assigned staff name is too short", 400, "INVALID_ASSIGNEE", [
+      {
+        field: "assigned_to",
+        message: "Assigned staff name must be at least 2 characters.",
+      },
+    ]);
+  }
+
+  if (nextStatus === "in_progress" && !nextAssignedTo && !request.assigned_to) {
+    throw new AppError(
+      "Please assign a staff member or team before marking this request as In Progress.",
+      400,
+      "ASSIGNEE_REQUIRED",
+      [
+        {
+          field: "assigned_to",
+          message: "Please assign a staff member or team before marking this request as In Progress.",
+        },
+      ],
+    );
   }
 
   if (!canAdminTransitionMaintenanceStatus(request.status, nextStatus)) {
@@ -446,21 +733,27 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
       `Invalid maintenance status transition: ${request.status} -> ${nextStatus}`,
       409,
       "INVALID_STATUS_TRANSITION",
+      [
+        {
+          field: "status",
+          message: "This status change is not available for the current request.",
+        },
+      ],
     );
   }
 
-  const requiresNotes = [
-    "resolved",
-    "completed",
-    "rejected",
-    "waiting_tenant",
-    "closed",
-  ].includes(nextStatus);
-  if (requiresNotes && !nextNotes) {
+  const requiresResolutionNote = ["resolved", "completed"].includes(nextStatus);
+  if (requiresResolutionNote && !nextNotes && !workLogNote) {
     throw new AppError(
-      "Admin response is required for this status update",
+      "Please add resolution notes or a completion work log before marking this request as Resolved.",
       400,
-      "ADMIN_RESPONSE_REQUIRED",
+      "RESOLUTION_NOTE_REQUIRED",
+      [
+        {
+          field: "notes",
+          message: "Please add resolution notes or a completion work log before marking this request as Resolved.",
+        },
+      ],
     );
   }
 
@@ -476,6 +769,12 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
       `Status must be one of: ${ADMIN_MAINTENANCE_STATUSES.join(", ")}`,
       400,
       "INVALID_ADMIN_STATUS",
+      [
+        {
+          field: "status",
+          message: "Please choose a valid status for this request.",
+        },
+      ],
     );
   }
 
@@ -526,12 +825,6 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
     request.resolution_note = nextNotes ?? request.notes ?? null;
   }
 
-  if (statusChanged && nextStatus === "in_progress" && !request.assigned_to) {
-    request.assigned_to = buildAdminDisplayName(adminUser);
-    request.assigned_at = eventTimestamp;
-    assignmentChanged = true;
-  }
-
   if (statusChanged || assignmentChanged || notesChanged) {
     appendStatusHistory(request, {
       event: statusChanged
@@ -559,10 +852,7 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
     statusChanged,
     notesChanged,
     hasTenantVisibleUpdate:
-      statusChanged ||
-      notesChanged ||
-      Boolean(workLogNote) ||
-      workLogAttachments.length > 0,
+      statusChanged,
   };
 };
 
@@ -596,7 +886,11 @@ export const getMyRequests = async (req, res, next) => {
     sendSuccess(res, {
       count: requests.length,
       requests: requests.map((request) =>
-        serializeMaintenanceRequest(request, serializeTenantSummary(dbUser, request)),
+        serializeMaintenanceRequest(
+          request,
+          serializeTenantSummary(dbUser, request),
+          { includeInternal: false },
+        ),
       ),
     });
   } catch (error) {
@@ -683,22 +977,26 @@ export const getAdminAll = async (req, res, next) => {
 
 const buildMaintenanceDocument = ({
   dbUser,
-  reservation,
+  branch,
+  reservationId = null,
+  roomId = null,
+  requestId = null,
   requestType,
   description,
   urgency,
   attachments,
 }) =>
   new MaintenanceRequest({
+    request_id: requestId,
     user_id: dbUser.user_id,
     userId: dbUser._id,
-    branch: reservation.branch,
+    branch,
     request_type: requestType,
     description,
     urgency,
     attachments,
-    reservationId: reservation._id,
-    roomId: reservation.roomId || null,
+    reservationId,
+    roomId,
     statusHistory: [
       {
         event: "submitted",
@@ -727,7 +1025,6 @@ export const createRequest = async (req, res, next) => {
     const requestType = normalizeMaintenanceType(req.body.request_type);
     const description = toOptionalText(req.body.description);
     const urgency = normalizeMaintenanceUrgency(req.body.urgency || "normal") || "normal";
-    const attachments = normalizeAttachments(req.body.attachments);
 
     if (!requestType || !MAINTENANCE_REQUEST_TYPES.includes(requestType)) {
       throw new AppError("Invalid maintenance request type", 400, "INVALID_REQUEST_TYPE");
@@ -767,25 +1064,31 @@ export const createRequest = async (req, res, next) => {
         request: serializeMaintenanceRequest(
           existingRequest,
           serializeTenantSummary(dbUser, existingRequest),
+          { includeInternal: false },
         ),
       });
     }
 
-    const reservation = await Reservation.findOne({
-      userId: dbUser._id,
-      status: { $in: CURRENT_RESIDENT_STATUS_QUERY },
-      isArchived: { $ne: true },
-    })
-      .select("_id branch roomId")
-      .lean();
-
-    if (!reservation) {
-      throw new AppError("No active stay found", 404, "NO_ACTIVE_STAY");
-    }
+    const branchResolution = await resolveUploadBranch(req, {
+      dbUser,
+      context: "maintenance_request",
+    });
+    const requestId = buildMaintenanceRequestId();
+    const attachments = normalizeAttachments(req.body.attachments, {
+      context: "maintenance_request",
+      visibility: "tenant_admin",
+      branchId: branchResolution.branch,
+      uploadedBy: dbUser.user_id,
+      senderRole: dbUser.role || "tenant",
+      relatedId: requestId,
+    });
 
     const request = buildMaintenanceDocument({
       dbUser,
-      reservation,
+      branch: branchResolution.branch,
+      reservationId: branchResolution.reservationId || null,
+      roomId: branchResolution.roomId || null,
+      requestId,
       requestType,
       description,
       urgency,
@@ -800,6 +1103,7 @@ export const createRequest = async (req, res, next) => {
         request: serializeMaintenanceRequest(
           request.toObject(),
           serializeTenantSummary(dbUser, request),
+          { includeInternal: false },
         ),
       },
       201,
@@ -845,6 +1149,7 @@ export const getRequestById = async (req, res, next) => {
       request: serializeMaintenanceRequest(
         request.toObject(),
         serializeTenantSummary(tenantUser, request),
+        { includeInternal: dbUser.role === "owner" || dbUser.role === "branch_admin" },
       ),
     });
   } catch (error) {
@@ -904,7 +1209,14 @@ export const updateMyRequest = async (req, res, next) => {
     request.urgency = urgency;
 
     if (req.body.attachments !== undefined) {
-      request.attachments = normalizeAttachments(req.body.attachments);
+      request.attachments = normalizeAttachments(req.body.attachments, {
+        context: "maintenance_request",
+        visibility: "tenant_admin",
+        branchId: request.branch,
+        uploadedBy: dbUser.user_id,
+        senderRole: dbUser.role || "tenant",
+        relatedId: request.request_id,
+      });
     }
 
     await request.save();
@@ -913,6 +1225,7 @@ export const updateMyRequest = async (req, res, next) => {
       request: serializeMaintenanceRequest(
         request.toObject(),
         serializeTenantSummary(dbUser, request),
+        { includeInternal: false },
       ),
     });
   } catch (error) {
@@ -952,6 +1265,7 @@ export const cancelMyRequest = async (req, res, next) => {
       request: serializeMaintenanceRequest(
         request.toObject(),
         serializeTenantSummary(dbUser, request),
+        { includeInternal: false },
       ),
     });
   } catch (error) {
@@ -1007,6 +1321,7 @@ export const reopenMyRequest = async (req, res, next) => {
       request: serializeMaintenanceRequest(
         request.toObject(),
         serializeTenantSummary(dbUser, request),
+        { includeInternal: false },
       ),
     });
   } catch (error) {
@@ -1071,6 +1386,200 @@ export const updateAdminRequestStatus = async (req, res, next) => {
     } catch (socketErr) {
       // non-fatal
     }
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/m/maintenance/admin/:requestId/reply
+ * Tenant-facing admin/staff reply with optional attachments.
+ */
+export const sendAdminReply = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId);
+    ensureAdminAccess(request, req);
+
+    if (["cancelled", "closed"].includes(normalizeMaintenanceStatus(request.status))) {
+      throw new AppError(
+        "Closed maintenance requests cannot receive new replies.",
+        409,
+        "REQUEST_CLOSED",
+      );
+    }
+
+    const adminUser = await getDbUser(req.user.uid);
+    const rawAttachments = getReplyAttachmentsFromBody(req.body);
+    const attachmentErrors = validateIncomingAttachments(rawAttachments, {
+      fieldPrefix: "attachments",
+      noun: "Reply attachments",
+    });
+    const attachments = normalizeAttachments(rawAttachments, {
+      context: "maintenance_reply",
+      visibility: "tenant_admin",
+      branchId: request.branch,
+      uploadedBy: adminUser?.user_id,
+      senderRole: adminUser?.role || "admin",
+      relatedId: request.request_id,
+    });
+    const message = toOptionalText(
+      req.body.message ?? req.body.replyMessage ?? req.body.body ?? req.body.reply,
+    );
+
+    if (attachmentErrors.length > 0) {
+      throw new AppError(
+        attachmentErrors[0]?.message || "Invalid attachment format.",
+        400,
+        "VALIDATION_ERROR",
+        attachmentErrors,
+      );
+    }
+
+    if (!message && attachments.length === 0) {
+      throw new AppError(
+        "Please enter a message or attach a file before sending.",
+        400,
+        "REPLY_REQUIRED",
+        [
+          {
+            field: "message",
+            message: "Please enter a message or attach a file before sending.",
+          },
+        ],
+      );
+    }
+
+    const eventTimestamp = new Date();
+    appendConversationEntry(request, {
+      message,
+      attachments,
+      sender_id: adminUser?.user_id || null,
+      sender_name:
+        `${adminUser?.firstName || ""} ${adminUser?.lastName || ""}`.trim() ||
+        adminUser?.email ||
+        adminUser?.user_id ||
+        null,
+      sender_role: adminUser?.role || null,
+      sender_side: "admin",
+      created_at: eventTimestamp,
+    });
+    request.updated_at = eventTimestamp;
+
+    await request.save();
+
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select("_id user_id firstName lastName email phone branch role")
+      .lean();
+
+    if (tenantUser?._id) {
+      await notify.maintenanceUpdated(
+        tenantUser._id,
+        request.request_type,
+        request.status,
+        request.request_id,
+        {
+          statusChanged: false,
+          hasAdminNote: true,
+          hasProgressEntry: false,
+          hasProgressAttachments: false,
+        },
+      );
+    }
+
+    sendSuccess(res, {
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(tenantUser, request),
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/m/maintenance/:requestId/reply
+ * Tenant reply with optional attachments.
+ */
+export const sendTenantReply = async (req, res, next) => {
+  try {
+    const dbUser = await getDbUser(req.user.uid);
+    const request = await findAccessibleRequest(req.params.requestId);
+    ensureTenantAccess(request, dbUser);
+
+    if (["cancelled", "closed"].includes(normalizeMaintenanceStatus(request.status))) {
+      throw new AppError(
+        "Closed maintenance requests cannot receive new replies.",
+        409,
+        "REQUEST_CLOSED",
+      );
+    }
+
+    const rawAttachments = getReplyAttachmentsFromBody(req.body);
+    const attachmentErrors = validateIncomingAttachments(rawAttachments, {
+      fieldPrefix: "attachments",
+      noun: "Reply attachments",
+    });
+    const attachments = normalizeAttachments(rawAttachments, {
+      context: "maintenance_reply",
+      visibility: "tenant_admin",
+      branchId: request.branch,
+      uploadedBy: dbUser?.user_id,
+      senderRole: dbUser?.role || "tenant",
+      relatedId: request.request_id,
+    });
+    const message = toOptionalText(
+      req.body.message ?? req.body.replyMessage ?? req.body.body ?? req.body.reply,
+    );
+
+    if (attachmentErrors.length > 0) {
+      throw new AppError(
+        attachmentErrors[0]?.message || "Invalid attachment format.",
+        400,
+        "VALIDATION_ERROR",
+        attachmentErrors,
+      );
+    }
+
+    if (!message && attachments.length === 0) {
+      throw new AppError(
+        "Please enter a message or attach a file before sending.",
+        400,
+        "REPLY_REQUIRED",
+        [
+          {
+            field: "message",
+            message: "Please enter a message or attach a file before sending.",
+          },
+        ],
+      );
+    }
+
+    const eventTimestamp = new Date();
+    appendConversationEntry(request, {
+      message,
+      attachments,
+      sender_id: dbUser?.user_id || null,
+      sender_name:
+        `${dbUser?.firstName || ""} ${dbUser?.lastName || ""}`.trim() ||
+        dbUser?.email ||
+        dbUser?.user_id ||
+        null,
+      sender_role: dbUser?.role || "tenant",
+      sender_side: "tenant",
+      created_at: eventTimestamp,
+    });
+    request.updated_at = eventTimestamp;
+
+    await request.save();
+
+    sendSuccess(res, {
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(dbUser, request),
+        { includeInternal: false },
+      ),
+    });
   } catch (error) {
     next(error);
   }
@@ -1292,11 +1801,13 @@ export default {
   getRequest,
   getRequestById,
   updateMyRequest,
+  sendTenantReply,
   cancelMyRequest,
   reopenMyRequest,
   updateRequest,
   updateAdminRequestStatus,
   updateAdminRequestStatusCompat,
+  sendAdminReply,
   updateAdminBulkRequests,
   getCompletionStats,
   getIssueFrequency,

@@ -9,14 +9,21 @@ import {
 } from "../hooks/queries/useNotifications";
 import useNotificationStore from "../stores/notificationStore";
 import { useAuth } from "../hooks/useAuth";
+import { getVisibleNotificationsForUser } from "../utils/notificationVisibility";
 import "./NotificationBell.css";
 
 const TYPE_ICONS = {
  reservation_created: "📋",
  reservation_approved: "✅",
  reservation_rejected: "❌",
+ reservation_confirmed: "✅",
+ reservation_cancelled: "❌",
+ reservation_expired: "⏰",
+ reservation_noshow: "🚫",
  payment_received: "💳",
  payment_verified: "✅",
+ payment_approved: "💳",
+ payment_rejected: "💳",
  visit_approved: "🏠",
  visit_rejected: "🚫",
  account_suspended: "⚠️",
@@ -24,6 +31,7 @@ const TYPE_ICONS = {
  account_banned: "🚫",
  announcement: "📢",
  system: "ℹ️",
+ general: "ℹ️",
 };
 
 const BellIcon = ({ hasUnread }) => (
@@ -73,13 +81,26 @@ function timeAgo(dateStr) {
  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+function getNotificationActionUrl(notification) {
+ if (
+ notification?.type === "reservation_cancellation_requested" &&
+ notification?.entityId
+ ) {
+ return `/admin/reservations?reservationId=${encodeURIComponent(
+ notification.entityId,
+ )}&focus=cancellation`;
+ }
+
+ return notification?.actionUrl || null;
+}
+
 export default function NotificationBell() {
  const [isOpen, setIsOpen] = useState(false);
  const dropdownRef = useRef(null);
  const buttonRef = useRef(null);
  const navigate = useNavigate();
  const prefersReducedMotion = useReducedMotion();
- const { isAdmin } = useAuth();
+ const { user, isAdmin } = useAuth();
 
  const { data: unreadData } = useUnreadCount();
  const { data: notifData, isLoading } = useNotifications(1, {
@@ -94,10 +115,10 @@ export default function NotificationBell() {
 
  const polledNotifs = notifData?.notifications ?? [];
  const polledIds = new Set(polledNotifs.map((notification) => notification._id));
- const mergedNotifications = [
+ const mergedNotifications = getVisibleNotificationsForUser([
  ...realtimeNotifs.filter((notification) => !polledIds.has(notification._id)),
  ...polledNotifs,
- ].slice(0, 12);
+ ], user).slice(0, 12);
 
  useEffect(() => {
  const handleClickOutside = (event) => {
@@ -125,9 +146,10 @@ export default function NotificationBell() {
  markAsRead.mutate(notification._id);
  }
 
- if (notification.actionUrl) {
+ const actionUrl = getNotificationActionUrl(notification);
+ if (actionUrl) {
  setIsOpen(false);
- navigate(notification.actionUrl);
+ navigate(actionUrl);
  }
  };
 

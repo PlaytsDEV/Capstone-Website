@@ -7,9 +7,11 @@ const reservationUpdateOne = jest.fn().mockResolvedValue({ modifiedCount: 1 });
 const billFindById = jest.fn();
 const billFindOne = jest.fn();
 const userFindById = jest.fn();
+const userFind = jest.fn();
 const sendPaymentReceiptEmail = jest.fn();
 const updateOccupancyOnReservationChange = jest.fn();
 const paymentApproved = jest.fn();
+const notifyGeneral = jest.fn();
 const settlePaymongoBill = jest.fn();
 
 await jest.unstable_mockModule("../config/paymongo.js", () => ({
@@ -23,7 +25,7 @@ await jest.unstable_mockModule("../models/index.js", () => ({
     updateOne: reservationUpdateOne,
   },
   Bill: { findById: billFindById, findOne: billFindOne },
-  User: { findById: userFindById },
+  User: { findById: userFindById, find: userFind },
 }));
 
 await jest.unstable_mockModule("../config/email.js", () => ({
@@ -35,7 +37,7 @@ await jest.unstable_mockModule("../utils/occupancyManager.js", () => ({
 }));
 
 await jest.unstable_mockModule("../utils/notificationService.js", () => ({
-  notify: { paymentApproved },
+  notify: { paymentApproved, general: notifyGeneral },
 }));
 
 await jest.unstable_mockModule("../middleware/logger.js", () => ({
@@ -56,6 +58,11 @@ await jest.unstable_mockModule("../utils/businessSettings.js", () => ({
 
 await jest.unstable_mockModule("../utils/billSettlement.js", () => ({
   settlePaymongoBill,
+}));
+
+await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
+  normalizeReservationStatus: (status) => status,
+  hasReservationStatus: jest.fn((status, ...expected) => expected.includes(status)),
 }));
 
 const {
@@ -111,10 +118,17 @@ describe("handlePaymongoWebhook", () => {
     billFindById.mockReset();
     billFindOne.mockReset();
     userFindById.mockReset();
+    userFind.mockReset();
     sendPaymentReceiptEmail.mockReset();
     updateOccupancyOnReservationChange.mockReset();
     paymentApproved.mockReset();
+    notifyGeneral.mockReset();
     settlePaymongoBill.mockReset();
+    userFind.mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue([]),
+      }),
+    });
   });
 
   test("returns 200 and skips duplicate deposit payments", async () => {
@@ -233,9 +247,13 @@ describe("handlePaymongoWebhook", () => {
     await handlePaymongoWebhook(req, res);
 
     expect(res.statusCode).toBe(200);
-    expect(reservation.paymentStatus).toBe("paid");
+    expect(reservation.paymentStatus).toBe("pending");
     expect(reservation.status).toBe("pending_application_review");
+    expect(reservation.paymongoPaymentId).toBe("pay_midflow");
+    expect(reservation.save).toHaveBeenCalledTimes(1);
     expect(updateOccupancyOnReservationChange).not.toHaveBeenCalled();
+    expect(paymentApproved).not.toHaveBeenCalled();
+    expect(sendPaymentReceiptEmail).not.toHaveBeenCalled();
   });
 
   test("settles bill webhooks through the shared bill-settlement helper", async () => {

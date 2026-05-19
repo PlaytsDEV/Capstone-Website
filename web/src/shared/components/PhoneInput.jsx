@@ -25,6 +25,38 @@ const getExpectedLength = (isoCode) => {
  }
 };
 
+const normalizePlaceholder = (formattedNumber, nationalDigits) => {
+ const extraPrefixDigits =
+ formattedNumber.replace(/\D/g, "").length - nationalDigits.length;
+ let removedPrefixDigits = 0;
+
+ return formattedNumber
+ .split("")
+ .filter((char) => {
+ if (!/\d/.test(char) || removedPrefixDigits >= extraPrefixDigits) {
+ return true;
+ }
+ removedPrefixDigits += 1;
+ return false;
+ })
+ .join("")
+ .replace(/[^\d]+/g, " ")
+ .trim();
+};
+
+const getExamplePlaceholder = (isoCode, expectedLength) => {
+ try {
+ const ex = getExampleNumber(isoCode, examples);
+ const nationalDigits = ex?.nationalNumber;
+ if (!nationalDigits) return "0".repeat(expectedLength);
+
+ const formatted = ex.formatNational?.() || new AsYouType(isoCode).input(nationalDigits);
+ return normalizePlaceholder(formatted || nationalDigits, nationalDigits);
+ } catch {
+ return "0".repeat(expectedLength);
+ }
+};
+
 /** Detect country from a partial or full "+" prefixed string.
  * Returns the matching COUNTRY_CODES entry or null. */
 const detectCountryFromE164 = (e164) => {
@@ -225,9 +257,8 @@ const PhoneInput = ({
 
  /* ── Placeholder ─────────────────────────────────────────────── */
  const getPlaceholder = () => {
- if (!selectedCountry) return "Pick a country first";
- if (selectedCountry.code === "PH") return "9XXXXXXXXX";
- return "Local number or +[code]…";
+ if (!selectedCountry) return "Select country first";
+ return getExamplePlaceholder(selectedCountry.code, expectedLength);
  };
 
  /* ──────────────────────────────────────────────────────────────
@@ -368,8 +399,8 @@ const PhoneInput = ({
  }}
  onFocus={(e) => {
  if (!showError) {
- e.currentTarget.style.borderColor = "#FF8C42";
- e.currentTarget.style.boxShadow = "0 0 0 3px rgba(255,140,66,0.10)";
+ e.currentTarget.style.borderColor = "#94a3b8";
+ e.currentTarget.style.boxShadow = "0 0 0 1px rgba(148,163,184,0.15)";
  }
  }}
  onBlur={(e) => {

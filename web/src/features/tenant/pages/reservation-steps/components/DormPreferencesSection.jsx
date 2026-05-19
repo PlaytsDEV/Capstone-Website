@@ -9,6 +9,10 @@ import {
 const errBorder = (show, value) =>
  show && !value ? "1.5px solid #dc2626" : undefined;
 
+const openDatePicker = (event) => {
+ event.currentTarget.showPicker?.();
+};
+
 /**
  * Section 5: Dorm Preferences — referral, move-in date/time, lease, work schedule.
  */
@@ -97,6 +101,7 @@ const DormPreferencesSection = ({
  value={targetMoveInDate}
  min={moveInMin}
  max={moveInMax}
+ onClick={openDatePicker}
  onChange={(e) => handleTargetDateInput(e.target.value)}
  disabled={readOnly}
  required
@@ -108,9 +113,7 @@ const DormPreferencesSection = ({
  : errBorder(showValidationErrors, targetMoveInDate),
  }}
  />
- <div style={{ fontSize: "11px", color: "#6B7280", marginTop: "4px" }}>
- Must be at least 3 days from today
- </div>
+ <div className="form-helper">Must be at least 3 days from today</div>
  <FieldError error={showValidationErrors && !targetMoveInDate ? "Move-in date is required" : fieldErrors.targetMoveInDate} />
  </div>
 

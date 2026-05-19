@@ -2,7 +2,11 @@ import React, { useRef, useState } from "react";
 import { uploadToFirebaseStorage, validateFile } from "../../../../../shared/utils/firebaseStorageUpload";
 import { useAuth } from "../../../../../shared/hooks/useAuth";
 import { CheckCircle, AlertTriangle, Upload } from "lucide-react";
-import { getPrecheckStatus } from "../../../utils/documentPrecheckUtils";
+import {
+ DOCUMENT_PRECHECK_MESSAGES,
+ getApplicantDocumentPrecheckMessage,
+ getPrecheckStatus,
+} from "../../../utils/documentPrecheckUtils";
 
 function formatFileSize(bytes) {
  if (!bytes) return "";
@@ -24,45 +28,31 @@ function normalizePrecheckStatus(check, isChecking) {
 
 function getPrecheckDisplay(check, status) {
  if (status === "checking") {
- return { tone: "info", label: "Checking document quality...", text: "" };
+ return {
+ tone: "info",
+ label: getApplicantDocumentPrecheckMessage(check, status),
+ text: "",
+ };
  }
  if (status === "ready_for_submission") {
  return {
  tone: "success",
- label: "Ready for submission",
- text:
- check?.applicantMessage ||
- "Readable text was detected. Admin will still review this document.",
+ label: getApplicantDocumentPrecheckMessage(check, status),
+ text: "",
  };
  }
- if (status === "manual_review_fallback") {
+ if (status === "manual_review_fallback" || status === "manual_review") {
  return {
  tone: "info",
- label: "Manual review required",
- text:
- check?.applicantMessage ||
- "We could not complete the readability check. Admin will review this manually.",
- };
- }
- if (
- status === "needs_reupload" &&
- check?.documentTypeStatus === "possible_mismatch"
- ) {
- return {
- tone: "warning",
- label: "Check document type",
- text:
- check?.applicantMessage ||
- "This file may not match the required document type. Please review and re-upload if needed.",
+ label: getApplicantDocumentPrecheckMessage(check, status),
+ text: "",
  };
  }
  if (status === "needs_reupload") {
  return {
  tone: "warning",
- label: "Needs clearer upload",
- text:
- check?.applicantMessage ||
- "Please upload a clearer and readable copy before submitting.",
+ label: getApplicantDocumentPrecheckMessage(check, status),
+ text: "",
  };
  }
  return null;
@@ -99,7 +89,14 @@ const FileUploadField = ({
  if (!file) return;
  const check = validateFile(file);
  if (!check.valid) {
- setError(check.error);
+ const isUnsupportedFile = /only .*files are allowed|file type/i.test(
+ check.error || "",
+ );
+ setError(
+ isUnsupportedFile
+ ? DOCUMENT_PRECHECK_MESSAGES.unsupportedFile
+ : check.error,
+ );
  return;
  }
 
@@ -122,7 +119,7 @@ const FileUploadField = ({
  try {
  await onUploadComplete?.(result.downloadUrl, file);
  } catch {
- console.warn("Document pre-check fell back to manual review after upload.");
+ console.warn("Document check fell back to staff review after upload.");
  }
  } catch (err) {
  setUploading(false);
@@ -155,15 +152,9 @@ const FileUploadField = ({
  }
  };
 
- const aiWarnings = Array.isArray(aiCheck?.aiCheckWarnings)
- ? aiCheck.aiCheckWarnings.filter(Boolean)
- : [];
  const aiStatus = normalizePrecheckStatus(aiCheck, isChecking);
  const precheckDisplay = getPrecheckDisplay(aiCheck, aiStatus);
- const showAiFeedback =
- Boolean(precheckDisplay) ||
- (aiStatus !== "not_checked" &&
- (Boolean(aiCheck?.summaryMessage) || aiWarnings.length > 0));
+ const showAiFeedback = Boolean(precheckDisplay);
 
  const zoneClass = [
  "rf-upload-zone",
@@ -251,28 +242,10 @@ const FileUploadField = ({
 
  {showAiFeedback && !error ? (
  <div className={`rf-upload-ai-status rf-upload-ai-status--${aiStatusTone}`}>
- {precheckDisplay ? (
  <>
  <strong>{precheckDisplay.label}</strong>
  {precheckDisplay.text ? <span>{precheckDisplay.text}</span> : null}
  </>
- ) : (
- <>
- {aiCheck?.summaryMessage ? <span>{aiCheck.summaryMessage}</span> : null}
- {aiWarnings.length > 0 ? (
- <ul className="rf-upload-ai-status__list">
- {aiWarnings.map((warning, index) => (
- <li key={`${warning}-${index}`}>{warning}</li>
- ))}
- </ul>
- ) : null}
- {aiStatus === "ready_for_submission" ? (
- <span className="rf-upload-ai-status__footnote">
- Admin will still review this document before payment becomes available.
- </span>
- ) : null}
- </>
- )}
  </div>
  ) : null}
  </div>

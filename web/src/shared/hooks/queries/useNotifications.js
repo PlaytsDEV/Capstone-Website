@@ -18,19 +18,25 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { notificationApi } from "../../api/notificationApi";
 import useNotificationStore from "../../stores/notificationStore";
+import { useAuth } from "../useAuth";
+import { getNotificationQueryScope } from "../../utils/notificationVisibility";
 
 // ── Query Keys ──
 const KEYS = {
   all: ["notifications"],
-  list: (page, limit, unreadOnly) => [
+  scope: (scope) => ["notifications", scope],
+  list: (scope, page, limit, unreadOnly) => [
     "notifications",
+    scope,
     "list",
     page,
     limit,
     unreadOnly,
   ],
-  unread: ["notifications", "unread-count"],
+  unread: (scope) => ["notifications", scope, "unread-count"],
 };
+
+export const notificationQueryKeys = KEYS;
 
 /**
  * Fetch paginated notifications
@@ -39,11 +45,13 @@ const KEYS = {
  */
 export const useNotifications = (page = 1, options = {}) => {
   const { limit = 20, unreadOnly = false, enabled = true } = options;
+  const { user } = useAuth();
+  const scope = getNotificationQueryScope(user);
 
   return useQuery({
-    queryKey: KEYS.list(page, limit, unreadOnly),
+    queryKey: KEYS.list(scope, page, limit, unreadOnly),
     queryFn: () => notificationApi.getAll({ page, limit, unreadOnly }),
-    enabled,
+    enabled: enabled && Boolean(user?.id || user?._id),
     staleTime: 30 * 1000, // 30 seconds
     refetchInterval: 60 * 1000, // Auto-refresh every 60s
   });
@@ -53,10 +61,13 @@ export const useNotifications = (page = 1, options = {}) => {
  * Fetch unread notification count (for badge)
  */
 export const useUnreadCount = (enabled = true) => {
+  const { user } = useAuth();
+  const scope = getNotificationQueryScope(user);
+
   return useQuery({
-    queryKey: KEYS.unread,
+    queryKey: KEYS.unread(scope),
     queryFn: () => notificationApi.getUnreadCount(),
-    enabled,
+    enabled: enabled && Boolean(user?.id || user?._id),
     staleTime: 15 * 1000, // 15 seconds
     refetchInterval: 30 * 1000, // Auto-refresh every 30s
   });
@@ -67,17 +78,19 @@ export const useUnreadCount = (enabled = true) => {
  */
 export const useMarkAsRead = () => {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const scope = getNotificationQueryScope(user);
 
   return useMutation({
     mutationFn: (notificationId) => notificationApi.markAsRead(notificationId),
     onSuccess: (_, notificationId) => {
       useNotificationStore.getState().markAsRead(notificationId);
-      queryClient.setQueryData(KEYS.unread, (current) => ({
+      queryClient.setQueryData(KEYS.unread(scope), (current) => ({
         unreadCount: Math.max(0, (current?.unreadCount ?? 0) - 1),
       }));
       // Invalidate both the list and the unread count
       queryClient.invalidateQueries({ queryKey: KEYS.all });
-      queryClient.invalidateQueries({ queryKey: KEYS.unread });
+      queryClient.invalidateQueries({ queryKey: KEYS.unread(scope) });
     },
   });
 };
@@ -87,14 +100,16 @@ export const useMarkAsRead = () => {
  */
 export const useMarkAllAsRead = () => {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const scope = getNotificationQueryScope(user);
 
   return useMutation({
     mutationFn: () => notificationApi.markAllAsRead(),
     onSuccess: () => {
       useNotificationStore.getState().markAllAsRead();
-      queryClient.setQueryData(KEYS.unread, { unreadCount: 0 });
+      queryClient.setQueryData(KEYS.unread(scope), { unreadCount: 0 });
       queryClient.invalidateQueries({ queryKey: KEYS.all });
-      queryClient.invalidateQueries({ queryKey: KEYS.unread });
+      queryClient.invalidateQueries({ queryKey: KEYS.unread(scope) });
     },
   });
 };

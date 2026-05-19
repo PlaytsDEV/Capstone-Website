@@ -1,5 +1,5 @@
 import {
-  canProceedToApplicationAfterVisit,
+  canAccessTenantApplication,
   getPhysicalVisitApplicantState,
   getReservationViewingPreference,
   isPhysicalVisitPreference,
@@ -60,8 +60,8 @@ export const DEFAULT_STEPS = [
  },
  {
  step: "reserved",
- title: "6. Reservation Secured",
- description: "Reservation finalized and ready for move-in",
+ title: "6. Room Reserved",
+ description: "Room reservation confirmed",
  status: "locked",
  },
 ];
@@ -81,8 +81,21 @@ export function getReservationProgress(reservation) {
  const hasPoliciesAccepted = Boolean(reservation.agreedToPrivacy === true);
  const hasVisitRequest = Boolean(viewingPreference);
  const isVisitScheduled = hasPoliciesAccepted && hasVisitRequest;
- const isVisitCompleted = canProceedToApplicationAfterVisit(reservation);
- const hasApplication = Boolean(reservation.firstName && reservation.lastName);
+ const isVisitCompleted = canAccessTenantApplication(reservation);
+ const hasApplication = Boolean(
+ reservation.applicationSubmittedAt ||
+ hasReservationStatus(
+ status,
+ "pending_application_review",
+ "needs_revision",
+ "approved_for_payment",
+ "payment_pending",
+ "reserved",
+ "moveIn",
+ "moveOut",
+ "rejected",
+ ),
+ );
  const hasPayment = hasReservationStatus(
  status,
  "payment_pending",
@@ -194,10 +207,10 @@ export function getReservationProgress(reservation) {
  },
  {
  step: "reserved",
- title: "6. Reservation Secured",
+ title: "6. Room Reserved",
  description: isPaymentPendingApproval
  ? "Pending admin payment verification"
- : "Reservation fully secured and finalized",
+ : "Room reservation confirmed",
  status: currentStepIndex >= 5 ? "completed" : "locked",
  completedDate:
  currentStepIndex >= 5 ? reservation.approvedDate : undefined,
@@ -230,9 +243,24 @@ export function getNextAction(activeReservation, reservationProgress) {
  );
  const paymentUnlocked = canReservationAccessPayment(status);
  const physicalVisitState = getPhysicalVisitApplicantState(activeReservation);
+ const canAccessApplication = canAccessTenantApplication(activeReservation);
  const hasApplication = Boolean(
  activeReservation.firstName && activeReservation.lastName,
  );
+
+ if (hasReservationStatus(status, "rejected", "cancelled", "expired", "archived")) {
+ return {
+ title: hasReservationStatus(status, "rejected")
+ ? "Application Rejected"
+ : "Reservation Closed",
+ description:
+ activeReservation.applicationReviewReason ||
+ "This reservation is no longer available for application submission.",
+ buttonText: "View Status",
+ buttonLink: "/applicant/profile",
+ buttonVariant: "outline",
+ };
+ }
 
  if (hasReservationStatus(status, "payment_pending")) {
  return {
@@ -246,11 +274,22 @@ export function getNextAction(activeReservation, reservationProgress) {
  };
  }
 
- if (hasReservationStatus(status, "reserved", "moveIn", "moveOut")) {
+ if (hasReservationStatus(status, "reserved")) {
  return {
- title: "Reservation Secured!",
+ title: "Room Reserved",
  description:
- "Your reservation is secured! Prepare for move-in and check your email for contract details.",
+ "Your room reservation has been confirmed. Please wait for further instructions from the admin.",
+ buttonText: "View Reservation Status",
+ buttonLink: "/applicant/profile",
+ };
+ }
+
+ if (hasReservationStatus(status, "moveIn", "moveOut")) {
+ return {
+ title: hasReservationStatus(status, "moveOut") ? "Stay Completed" : "Tenant Stay Active",
+ description: hasReservationStatus(status, "moveOut")
+ ? "This stay has been completed."
+ : "Your tenant stay is active.",
  buttonText: "View Details",
  buttonLink: "/applicant/profile",
  };
@@ -258,14 +297,14 @@ export function getNextAction(activeReservation, reservationProgress) {
 
  if (
  physicalVisitState &&
- !physicalVisitState.canFillApplication &&
+ !canAccessApplication &&
  !hasApplication
  ) {
  return {
  title: physicalVisitState.title,
  description: physicalVisitState.message,
  buttonText: physicalVisitState.buttonLabel?.replace(/\s*(->|→)\s*$/, "") || "Review Visit",
- buttonLink: physicalVisitState.route || "/applicant/reservation?step=2&edit=1",
+ buttonLink: physicalVisitState.route || "/applicant/reservation?step=2",
  reservationId: activeReservation._id,
  step: 2,
  };
@@ -309,14 +348,14 @@ export function getNextAction(activeReservation, reservationProgress) {
  }
  if (
  physicalVisitState &&
- !physicalVisitState.canFillApplication
+ !canAccessApplication
  ) {
  return {
  title: physicalVisitState.title,
  description: physicalVisitState.message,
  buttonText:
  physicalVisitState.buttonLabel?.replace(/\s*(->|→)\s*$/, "") || "Review Visit",
- buttonLink: physicalVisitState.route || "/applicant/reservation?step=2&edit=1",
+ buttonLink: physicalVisitState.route || "/applicant/reservation?step=2",
  reservationId: activeReservation._id,
  step: 2,
  };
@@ -386,12 +425,19 @@ export function getNextAction(activeReservation, reservationProgress) {
  };
  }
  case "payment_submitted":
+ return {
+ title: "Payment Submitted",
+ description:
+ "Your payment is being reviewed. The reservation will be confirmed after admin verification.",
+ buttonText: "View Status",
+ buttonLink: "/applicant/profile",
+ };
  case "reserved":
  return {
- title: "Reservation Secured!",
+ title: "Room Reserved",
  description:
- "Your reservation is secured! Prepare for move-in and check your email for contract details.",
- buttonText: "View Details",
+ "Your room reservation has been confirmed. Please wait for further instructions from the admin.",
+ buttonText: "View Reservation Status",
  buttonLink: "/applicant/profile",
  };
  default:
