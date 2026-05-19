@@ -640,65 +640,57 @@ function ReservationsPage() {
 
       {activeTab === "reservations" && (
         <>
-          <div className="grid grid-flow-col auto-cols-[minmax(150px,1fr)] gap-3 overflow-x-auto pb-1">
-            {summaryItems.map((item, idx) => (
-              <div
-                key={item.label}
-                onClick={() => {
-                  const nextFilter = idx < 0 ? "all" : SUMMARY_FILTERS[idx];
-                  setStatusFilter(nextFilter);
-                  setCurrentPage(1);
-                }}
-                style={{
-                  backgroundColor: "var(--bg-card)",
-                  borderColor:
-                    activeSummaryIndex === idx
-                      ? "color-mix(in srgb, var(--primary) 55%, var(--border-light))"
-                      : "var(--border-light)",
-                }}
-                className={`border
- rounded-xl p-3 hover:shadow-md transition-shadow cursor-pointer min-h-[108px]`}
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <item.icon
-                    strokeWidth={1.5}
-                    className={`w-5 h-5 ${
-                      item.color === "blue"
-                        ? "text-[color:var(--info)]"
-                        : item.color === "orange"
-                          ? "text-[color:var(--warning)]"
-                          : item.color === "neutral"
-                            ? "text-[color:var(--status-neutral)]"
-                          : item.color === "green"
-                            ? "text-[color:var(--success)]"
-                            : "text-[color:var(--danger)]"
-                    }`}
-                  />
-                  <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide text-right">
-                    {item.label}
-                  </span>
-                </div>
-                <div
-                  className={`text-[28px] font-medium leading-none ${
-                    item.color === "blue"
-                      ? "text-[color:var(--info)]"
-                      : item.color === "orange"
-                        ? "text-[color:var(--warning)]"
-                        : item.color === "neutral"
-                          ? "text-[color:var(--status-neutral)]"
-                        : item.color === "green"
-                          ? "text-[color:var(--success)]"
-                          : "text-[color:var(--danger)]"
-                  }`}
-                >
-                  {item.value}
-                </div>
-              </div>
-            ))}
-          </div>
+          <div className="grid grid-flow-col auto-cols-[minmax(160px,1fr)] gap-3 overflow-x-auto pb-2">
+  {summaryItems.map((item, idx) => (
+    <div
+      key={item.label}
+      onClick={() => {
+        const nextFilter =
+          idx < 0 ? "all" : SUMMARY_FILTERS[idx];
+
+        setStatusFilter(nextFilter);
+        setCurrentPage(1);
+      }}
+      style={{
+        borderColor:
+          activeSummaryIndex === idx
+            ? "var(--primary)"
+            : "var(--border-light)",
+      }}
+      className={`border rounded-xl p-4 cursor-pointer transition-all hover:shadow-md ${
+        activeSummaryIndex === idx ? "shadow-md" : ""
+      }`}
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <item.icon
+          strokeWidth={1.5}
+          className={`w-5 h-5 ${
+            item.color === "blue"
+              ? "text-[color:var(--info)]"
+              : item.color === "orange"
+              ? "text-[color:var(--warning)]"
+              : item.color === "neutral"
+              ? "text-[color:var(--status-neutral)]"
+              : item.color === "green"
+              ? "text-[color:var(--success)]"
+              : "text-[color:var(--danger)]"
+          }`}
+        />
+
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          {item.label}
+        </span>
+      </div>
+
+      <div className="text-2xl font-semibold">
+        {item.value}
+      </div>
+    </div>
+  ))}
+</div>
 
           <div
-            style={{ backgroundColor: "var(--bg-card)", borderColor: "var(--border-light)" }}
+            style={{ backgroundColor: "var(--bg-card)", border: `1px solid var(--border-light)` }}
             className="border rounded-lg p-6 overflow-x-auto"
           >
             <div className="flex flex-col md:flex-row gap-4 mb-6">

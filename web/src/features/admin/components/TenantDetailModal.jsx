@@ -554,8 +554,6 @@ export default function TenantDetailModal({ tenant, onClose }) {
  </div>
  </div>
  </div>
-
-</div>
  {dialogState.type && (
  <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={closeDialog}>
  <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden animate-in fade-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
@@ -662,6 +660,6 @@ export default function TenantDetailModal({ tenant, onClose }) {
  </div>
  </div>
  )}
- </div>
+</div>
  );
 }
