@@ -1216,11 +1216,17 @@ const isActiveBedAssignmentDuplicateError = (error) => {
   return Boolean(error?.keyPattern?.roomId && selectedBedKey);
 };
 
+const isPrivateRoomType = (type) =>
+  String(type || "").trim().toLowerCase().includes("private");
+
 const validateSelectedBedForReservation = async ({
   room,
   submittedBed,
   excludeReservationId = null,
-  requireBedSelection = Array.isArray(room?.beds) && room.beds.length > 0,
+  requireBedSelection =
+    Array.isArray(room?.beds) &&
+    room.beds.length > 0 &&
+    !isPrivateRoomType(room?.type),
 }) => {
   if (!room) {
     throw new AppError("Room not found", 404, "ROOM_NOT_FOUND");
