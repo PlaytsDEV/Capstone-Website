@@ -298,10 +298,134 @@ describe("maintenanceController", () => {
       headers: {},
     });
 
-    expect(maintenanceFindOne).toHaveBeenCalledWith({ request_id: storedRequest.request_id });
+    expect(maintenanceFindOne).toHaveBeenCalledWith(
+      expect.objectContaining({
+        $or: expect.arrayContaining([{ request_id: storedRequest.request_id }]),
+      }),
+    );
     expect(resolution.branch).toBe("gil-puyat");
     expect(resolution.context).toBe("maintenance_reply");
     expect(resolution.relatedId).toBe(storedRequest.request_id);
+  });
+
+  test("resolveUploadBranch resolves legacy maintenance request branch from tenant profile", async () => {
+    const storedRequest = buildRequestDoc({
+      branch: null,
+      branchId: null,
+      roomId: null,
+      reservationId: null,
+    });
+    userFindOne
+      .mockReturnValueOnce(
+        buildSelectLeanQuery({
+          _id: "admin_user_1",
+          user_id: "admin_1",
+          firebaseUid: "admin_firebase_uid",
+          role: "branch_admin",
+          branch: "guadalupe",
+        }),
+      )
+      .mockReturnValueOnce(
+        buildSelectLeanQuery({
+          _id: "tenant_user_1",
+          user_id: storedRequest.user_id,
+          role: "tenant",
+          branch: "Guadalupe",
+        }),
+      );
+    maintenanceFindOne.mockReturnValue(buildLeanQuery(storedRequest));
+
+    const resolution = await resolveUploadBranch({
+      user: { uid: "admin_firebase_uid" },
+      body: {
+        context: "maintenance_internal_note",
+        relatedType: "maintenance_request",
+        relatedId: storedRequest.request_id,
+      },
+      query: {},
+      headers: {},
+    });
+
+    expect(resolution.branch).toBe("guadalupe");
+    expect(resolution.context).toBe("maintenance_internal_note");
+    expect(resolution.relatedId).toBe(storedRequest.request_id);
+  });
+
+  test("resolveUploadBranch supports Mongo id maintenanceRequestId", async () => {
+    const storedRequest = buildRequestDoc({
+      _id: "507f1f77bcf86cd799439099",
+      branch: "gil-puyat",
+    });
+    userFindOne.mockReturnValue(
+      buildSelectLeanQuery({
+        _id: "owner_user_1",
+        user_id: "owner_1",
+        firebaseUid: "owner_firebase_uid",
+        role: "owner",
+        branch: "",
+      }),
+    );
+    maintenanceFindOne.mockReturnValue(buildLeanQuery(storedRequest));
+
+    const resolution = await resolveUploadBranch({
+      user: { uid: "owner_firebase_uid" },
+      body: {
+        context: "maintenance_reply",
+        maintenanceRequestId: storedRequest._id,
+        requestId: storedRequest.request_id,
+        relatedId: storedRequest._id,
+      },
+      query: {},
+      headers: {},
+    });
+
+    expect(maintenanceFindOne).toHaveBeenCalledWith(
+      expect.objectContaining({
+        $or: expect.arrayContaining([
+          { _id: storedRequest._id },
+          { request_id: storedRequest._id },
+        ]),
+      }),
+    );
+    expect(resolution.branch).toBe("gil-puyat");
+  });
+
+  test("resolveUploadBranch falls back from missing Mongo id to custom request code", async () => {
+    const storedRequest = buildRequestDoc({
+      branch: "gil-puyat",
+    });
+    userFindOne.mockReturnValue(
+      buildSelectLeanQuery({
+        _id: "owner_user_1",
+        user_id: "owner_1",
+        firebaseUid: "owner_firebase_uid",
+        role: "owner",
+        branch: "",
+      }),
+    );
+    maintenanceFindOne
+      .mockReturnValueOnce(buildLeanQuery(null))
+      .mockReturnValueOnce(buildLeanQuery(storedRequest));
+
+    const resolution = await resolveUploadBranch({
+      user: { uid: "owner_firebase_uid" },
+      body: {
+        context: "maintenance_reply",
+        maintenanceRequestId: "507f1f77bcf86cd799439000",
+        requestId: storedRequest.request_id,
+        relatedId: storedRequest.request_id,
+      },
+      query: {},
+      headers: {},
+    });
+
+    expect(maintenanceFindOne).toHaveBeenCalledTimes(2);
+    expect(maintenanceFindOne.mock.calls[1][0]).toEqual(
+      expect.objectContaining({
+        $or: expect.arrayContaining([{ request_id: storedRequest.request_id }]),
+      }),
+    );
+    expect(resolution.branch).toBe("gil-puyat");
   });
 
   test("resolveUploadBranch rejects mismatched branchId for a maintenance request", async () => {

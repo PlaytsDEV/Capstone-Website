@@ -48,6 +48,7 @@ async function uploadToBackendAttachmentService(file, opts = {}) {
     context: opts.context || getDefaultAttachmentContext(opts.documentType),
     visibility: opts.visibility,
     relatedId: opts.relatedId,
+    relatedType: opts.relatedType,
     maintenanceRequestId: opts.maintenanceRequestId,
     requestId: opts.requestId,
     conversationId: opts.conversationId,

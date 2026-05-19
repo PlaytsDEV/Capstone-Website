@@ -42,8 +42,40 @@ const toText = (value) => {
 };
 
 const normalizeBranch = (value) => {
-  const branch = toText(value).toLowerCase();
+  const branch = toText(value)
+    .toLowerCase()
+    .replace(/[_\s]+/g, "-")
+    .replace(/[^a-z0-9-]/g, "");
   return ROOM_BRANCHES.includes(branch) ? branch : "";
+};
+
+const normalizeBranchFromValue = (value) => {
+  if (!value) return "";
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return (
+      normalizeBranch(value.branchId) ||
+      normalizeBranch(value.branch_id) ||
+      normalizeBranch(value.branch) ||
+      normalizeBranch(value.branchName) ||
+      normalizeBranch(value.branch_name) ||
+      normalizeBranch(value.slug) ||
+      normalizeBranch(value.code) ||
+      normalizeBranch(value.value) ||
+      normalizeBranch(value.name) ||
+      normalizeBranch(value.label) ||
+      normalizeBranch(value._id) ||
+      normalizeBranch(value.id)
+    );
+  }
+  return normalizeBranch(value);
+};
+
+const firstBranch = (...values) => {
+  for (const value of values) {
+    const branch = normalizeBranchFromValue(value);
+    if (branch) return branch;
+  }
+  return "";
 };
 
 const inferContextFromDocumentType = (documentType) => {
@@ -79,15 +111,27 @@ const isTenantRole = (role) => !isAdminRole(String(role || "").toLowerCase());
 const buildMaintenanceIdentifierQuery = (requestId) => {
   const identifier = toText(requestId);
   if (!identifier) return { request_id: "__missing__" };
+  const aliases = [
+    { request_id: identifier },
+    { requestId: identifier },
+    { ticketId: identifier },
+    { maintenanceId: identifier },
+  ];
   if (mongoose.Types.ObjectId.isValid(identifier)) {
     return {
       $or: [
-        { request_id: identifier },
         { _id: identifier },
+        ...aliases,
       ],
     };
   }
-  return { request_id: identifier };
+  return { $or: aliases };
+};
+
+const canQueryObjectId = (value) => {
+  if (!value) return false;
+  if (typeof value === "object") return true;
+  return mongoose.Types.ObjectId.isValid(toText(value));
 };
 
 const getDbUser = async (req, providedUser = null) => {
@@ -112,18 +156,61 @@ const getDbUser = async (req, providedUser = null) => {
 const getRoomBranch = async (roomId) => {
   if (!roomId) return "";
   if (typeof roomId === "object" && !Array.isArray(roomId)) {
-    const directBranch = normalizeBranch(roomId.branch || roomId.branchId);
+    const directBranch = firstBranch(roomId, roomId.branch, roomId.branchId);
     if (directBranch) return directBranch;
   }
 
-  const room = await Room.findById(roomId).select("branch").lean().catch(() => null);
-  return normalizeBranch(room?.branch);
+  const room = await Room.findById(roomId)
+    .select("branch branchId branch_id branchName")
+    .lean()
+    .catch(() => null);
+  return firstBranch(room);
 };
 
 const getReservationBranch = async (reservation) => {
-  const directBranch = normalizeBranch(reservation?.branch || reservation?.branchId);
+  const directBranch = firstBranch(
+    reservation,
+    reservation?.branch,
+    reservation?.branchId,
+    reservation?.branch_id,
+    reservation?.branchName,
+  );
   if (directBranch) return directBranch;
   return getRoomBranch(reservation?.roomId);
+};
+
+const getReservationBranchById = async (reservationId) => {
+  if (!reservationId) return "";
+  const reservation = await Reservation.findOne({ _id: reservationId })
+    .populate("roomId", "branch branchId branch_id branchName")
+    .select("_id branch branchId branch_id branchName roomId")
+    .lean()
+    .catch(() => null);
+  return getReservationBranch(reservation);
+};
+
+const getMaintenanceTenantBranch = async (request) => {
+  const filters = [];
+  if (request?.user_id) filters.push({ user_id: request.user_id });
+  if (canQueryObjectId(request?.userId)) filters.push({ _id: request.userId });
+  if (canQueryObjectId(request?.tenantId)) filters.push({ _id: request.tenantId });
+  if (canQueryObjectId(request?.tenant?._id)) filters.push({ _id: request.tenant._id });
+  if (request?.tenant?.user_id) filters.push({ user_id: request.tenant.user_id });
+
+  if (filters.length === 0) return "";
+
+  const tenant = await User.findOne(filters.length === 1 ? filters[0] : { $or: filters })
+    .select("branch branchId branch_id branchName")
+    .lean()
+    .catch(() => null);
+
+  return firstBranch(
+    tenant,
+    tenant?.branch,
+    tenant?.branchId,
+    tenant?.branch_id,
+    tenant?.branchName,
+  );
 };
 
 const loadActiveTenantReservation = async (dbUser) =>
@@ -226,7 +313,7 @@ const assertMaintenanceAccess = (dbUser, request, branch) => {
   if (isOwnerRole(role)) return;
 
   if (isAdminRole(role)) {
-    if (normalizeBranch(dbUser?.branch) === branch) return;
+    if (normalizeBranchFromValue(dbUser?.branch) === branch) return;
     throw new AppError("Access denied", 403, "UPLOAD_BRANCH_FORBIDDEN");
   }
 
@@ -236,10 +323,43 @@ const assertMaintenanceAccess = (dbUser, request, branch) => {
 };
 
 const resolveBranchFromMaintenanceRequest = async (dbUser, request, explicitBranch = "") => {
-  const providedBranch = normalizeBranch(explicitBranch);
-  let branch = normalizeBranch(request?.branchId || request?.branch);
+  const role = String(dbUser?.role || "").toLowerCase();
+  const providedBranch = normalizeBranchFromValue(explicitBranch);
+  let branch = firstBranch(
+    request?.branchId,
+    request?.branch_id,
+    request?.branch,
+    request?.branchName,
+    request?.branch_name,
+    request?.tenant?.branchId,
+    request?.tenant?.branch_id,
+    request?.tenant?.branch,
+    request?.property?.branchId,
+    request?.property?.branch,
+  );
   if (!branch) {
-    branch = await getRoomBranch(request?.roomId);
+    branch = await getRoomBranch(
+      request?.roomId ||
+      request?.room ||
+      request?.room_id ||
+      request?.assignedRoom,
+    );
+  }
+  if (!branch) {
+    branch = await getReservationBranchById(
+      request?.reservationId ||
+      request?.reservation_id ||
+      request?.reservation,
+    );
+  }
+  if (!branch) {
+    branch = await getMaintenanceTenantBranch(request);
+  }
+  if (!branch && providedBranch) {
+    branch = providedBranch;
+  }
+  if (!branch && isAdminRole(role) && !isOwnerRole(role)) {
+    branch = normalizeBranchFromValue(dbUser?.branch);
   }
 
   if (!branch) {
@@ -315,12 +435,16 @@ export const resolveUploadBranch = async (req, options = {}) => {
     inferContextFromDocumentType(options.documentType || getField(req, "documentType")) ||
     "attachment";
   const explicitBranch = getExplicitBranch(req);
-  const maintenanceRequestId =
+  const maintenanceRequestIdentifiers = [
     toText(options.maintenanceRequestId) ||
-    getField(req, ["maintenanceRequestId", "maintenance_request_id", "requestId", "request_id"]) ||
-    (context.startsWith("maintenance")
-      ? toText(options.relatedId || getField(req, ["relatedId", "related_id"]))
-      : "");
+      getField(req, ["maintenanceRequestId", "maintenance_request_id"]),
+    toText(options.requestId) ||
+      getField(req, ["requestId", "request_id"]),
+    context.startsWith("maintenance")
+      ? toText(options.relatedId) || getField(req, ["relatedId", "related_id"])
+      : "",
+  ].filter(Boolean);
+  const uniqueMaintenanceRequestIdentifiers = [...new Set(maintenanceRequestIdentifiers)];
   const conversationId =
     toText(options.conversationId) ||
     getField(req, ["conversationId", "conversation_id"]) ||
@@ -340,10 +464,14 @@ export const resolveUploadBranch = async (req, options = {}) => {
     };
   }
 
-  if (maintenanceRequestId) {
-    const request = await MaintenanceRequest.findOne(
-      buildMaintenanceIdentifierQuery(maintenanceRequestId),
-    ).lean();
+  if (uniqueMaintenanceRequestIdentifiers.length > 0) {
+    let request = null;
+    for (const identifier of uniqueMaintenanceRequestIdentifiers) {
+      request = await MaintenanceRequest.findOne(
+        buildMaintenanceIdentifierQuery(identifier),
+      ).lean();
+      if (request) break;
+    }
 
     if (!request || request.isArchived) {
       throw new AppError("Maintenance request not found", 404, "REQUEST_NOT_FOUND");

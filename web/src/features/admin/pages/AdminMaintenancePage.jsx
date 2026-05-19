@@ -382,10 +382,17 @@ const isRemoteUri = (uri) => {
   }
 };
 
-const getMaintenanceRequestUploadId = (request) =>
- request?.request_id ||
- request?.requestId ||
+const getMaintenanceRequestMongoId = (request) =>
  request?._id ||
+ request?.mongoId ||
+ request?.maintenanceRequestId ||
+ "";
+
+const getMaintenanceRequestCode = (request) =>
+ request?.requestId ||
+ request?.request_id ||
+ request?.ticketId ||
+ request?.maintenanceId ||
  request?.id ||
  "";
 
@@ -448,14 +455,17 @@ const getMaintenanceRequestUploadBranchId = (request) => {
 };
 
 const buildMaintenanceAttachmentUploadOptions = (request, options = {}) => {
- const requestId = getMaintenanceRequestUploadId(request);
+ const maintenanceRequestId = getMaintenanceRequestMongoId(request);
+ const requestId = getMaintenanceRequestCode(request) || maintenanceRequestId;
+ const relatedId = maintenanceRequestId || requestId;
  const branchId = getMaintenanceRequestUploadBranchId(request);
 
  return {
  ...options,
- maintenanceRequestId: requestId,
+ maintenanceRequestId: maintenanceRequestId || requestId,
  requestId,
- relatedId: requestId,
+ relatedId,
+ relatedType: "maintenance_request",
  ...(branchId ? { branchId } : {}),
  };
 };
