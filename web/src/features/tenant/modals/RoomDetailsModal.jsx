@@ -42,6 +42,11 @@ function getImages(room) {
  return [];
 }
 
+function isPrivateRoomType(type) {
+ const normalized = String(type || "").trim().toLowerCase();
+ return normalized === "private" || normalized.includes("private");
+}
+
 export default function RoomDetailsModal({
  isOpen,
  room,
@@ -63,7 +68,7 @@ export default function RoomDetailsModal({
 
  const images = getImages(room);
  const requiresBedSelection =
- room.beds && room.beds.length > 1 && room.type !== "Private";
+ room.beds && room.beds.length > 1 && !isPrivateRoomType(room.type);
  const proceedDisabled =
  isOverbooked || (requiresBedSelection && !selectedBed);
  const totalBeds = room.capacity || room.beds?.length || 0;

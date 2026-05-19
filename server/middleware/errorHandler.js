@@ -127,6 +127,22 @@ export const globalErrorHandler = (err, req, res, _next) => {
       field: e.path,
       message: e.message,
     }));
+    const branchRequired = details.some(
+      (detail) =>
+        detail.field === "branch" &&
+        /required/i.test(String(detail.message || "")),
+    );
+
+    if (branchRequired) {
+      return sendError(
+        res,
+        "Unable to determine the assigned branch for this upload. Please refresh and try again or contact support.",
+        400,
+        "UPLOAD_BRANCH_UNRESOLVED",
+        details,
+      );
+    }
+
     return sendError(
       res,
       "Validation failed",

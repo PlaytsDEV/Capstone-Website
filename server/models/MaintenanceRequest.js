@@ -39,6 +39,58 @@ const attachmentSchema = new mongoose.Schema(
       default: "application/octet-stream",
       trim: true,
     },
+    context: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    visibility: {
+      type: String,
+      enum: ["tenant_admin", "admin_only", null],
+      default: "tenant_admin",
+      index: true,
+    },
+    branchId: {
+      type: String,
+      enum: [...ROOM_BRANCHES, null],
+      default: null,
+      index: true,
+    },
+    uploadedBy: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    senderRole: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    relatedId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    url: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    filename: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    mimeType: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    size: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
   },
   { _id: false, strict: false },
 );
@@ -128,6 +180,45 @@ const workLogSchema = new mongoose.Schema(
       trim: true,
     },
     logged_at: {
+      type: Date,
+      required: true,
+    },
+  },
+  { _id: false },
+);
+
+const conversationEntrySchema = new mongoose.Schema(
+  {
+    message: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    attachments: {
+      type: [attachmentSchema],
+      default: [],
+    },
+    sender_id: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    sender_name: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    sender_role: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    sender_side: {
+      type: String,
+      enum: ["tenant", "admin"],
+      default: "admin",
+    },
+    created_at: {
       type: Date,
       required: true,
     },
@@ -230,6 +321,10 @@ const maintenanceRequestSchema = new mongoose.Schema(
     },
     work_log: {
       type: [workLogSchema],
+      default: [],
+    },
+    conversation: {
+      type: [conversationEntrySchema],
       default: [],
     },
 

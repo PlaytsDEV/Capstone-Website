@@ -488,3 +488,9 @@ export const useAuth = () => {
   }
   return context;
 };
+
+/**
+ * Optional auth hook for public routes that can render without AuthProvider.
+ * @returns {Object|null} Auth context value or null if provider is missing.
+ */
+export const useOptionalAuth = () => useContext(AuthContext);

@@ -111,14 +111,43 @@ export const getMaintenanceAttachmentLabel = (attachment) => {
   return "File";
 };
 
+const getMaintenanceAttachmentSize = (attachment) => {
+  const rawSize = attachment?.size ?? attachment?.fileSize;
+  const size = Number(rawSize);
+  return Number.isFinite(size) && size >= 0 ? size : null;
+};
+
 export const normalizeMaintenanceAttachment = (attachment, index = 0) => {
   const uri = getMaintenanceAttachmentUri(attachment);
   if (!uri) return null;
 
-  return {
-    name: getMaintenanceAttachmentName(attachment, index),
+  const name = getMaintenanceAttachmentName(attachment, index);
+  const type = getMaintenanceAttachmentType(attachment);
+  const fileType = getMaintenanceAttachmentKind({ ...attachment, name, uri, type });
+  const originalName = pickFirstText(
+    attachment?.originalName,
+    attachment?.originalFilename,
+    attachment?.filename,
+    attachment?.fileName,
+    attachment?.name,
+    name,
+  );
+  const normalized = {
+    name,
     uri,
-    type: getMaintenanceAttachmentType(attachment),
+    type,
+    url: uri,
+    filename: name,
+    originalName,
+    mimeType: type,
+    fileType,
+  };
+  const size = getMaintenanceAttachmentSize(attachment);
+  if (size !== null) normalized.size = size;
+  if (attachment?.storagePath) normalized.storagePath = attachment.storagePath;
+
+  return {
+    ...normalized,
   };
 };
 

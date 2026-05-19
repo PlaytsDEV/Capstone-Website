@@ -2,6 +2,7 @@ import React from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowLeft,
+  ArrowRight,
   Bed,
   ChevronLeft,
   ChevronRight,
@@ -11,6 +12,13 @@ import {
   Maximize2,
   Wallet,
   X,
+  Info,
+  Lock,
+  MapPin,
+  DollarSign,
+  Calendar,
+  Sparkles,
+  AlertCircle,
 } from "lucide-react";
 import { formatBranch, formatRoomType } from "../../../../shared/utils/formatDate";
 import { getRoomImages as getFallbackRoomImages } from "../check-availability/checkAvailabilityConstants";
@@ -124,17 +132,13 @@ const formatSelectedAppliance = (item) => {
 };
 
 /**
- * Step 1 - Room review summary
+ * Reservation Summary Step
  */
-const ReservationSummaryStep = ({
-  reservationData,
-  onNext,
-  onChangeRoom,
-  readOnly,
-}) => {
+const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnly }) => {
   const [activePhotoIndex, setActivePhotoIndex] = React.useState(0);
   const [viewerOpen, setViewerOpen] = React.useState(false);
   const room = reservationData?.room || {};
+
   const selectedBed = reservationData?.selectedBed;
   const applianceFees = toFiniteNumber(reservationData?.applianceFees, 0);
   const monthlyRent = toFiniteNumber(room.price || room.monthlyPrice, 0);
@@ -168,21 +172,27 @@ const ReservationSummaryStep = ({
     );
   };
 
-  const closeViewer = () => {
-    setViewerOpen(false);
-  };
+  const closeViewer = () => setViewerOpen(false);
 
   return (
-    <div className="reservation-card">
-      <div className="main-header">
-        <div className="main-header-badge"><span>Step 1 · Getting Started</span></div>
-        <h2 className="main-header-title">Room Summary</h2>
-        <p className="main-header-subtitle">
-          Review the details of your selected room below. Once confirmed, you'll
-          proceed to choose your viewing or move-in preference.
-        </p>
+    <div className="w-full max-w-5xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="space-y-4">
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-orange-50 to-orange-100 border border-orange-200 rounded-full">
+          <span className="text-xs font-semibold text-orange-700 uppercase tracking-wider">Step 1 · Getting Started</span>
+        </div>
+        <div>
+          <h2 className="text-3xl font-bold text-slate-900 mb-2 flex items-center gap-3">
+            <div className="p-2.5 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl">
+              <Home className="w-6 h-6 text-white" />
+            </div>
+            Room Summary
+          </h2>
+          <p className="text-slate-600 leading-relaxed">Review the details of your selected room below. Once confirmed, you'll proceed to choose your viewing or move-in preference.</p>
+        </div>
       </div>
 
+      {/* Photos */}
       {roomImages.length > 0 && (
         <section className="content-card rf-room-photos-card">
           <div className="card-section-title">
@@ -197,35 +207,14 @@ const ReservationSummaryStep = ({
               onClick={() => setViewerOpen(true)}
               aria-label="Open room photo viewer"
             >
-              <img
-                src={activePhoto}
-                alt={`${getRoomName(room)} photo ${activePhotoIndex + 1}`}
-                loading="lazy"
-              />
-              <span className="rf-room-photo-open-hint">
-                <Maximize2 size={14} />
-                View
-              </span>
+              <img src={activePhoto} alt={`${getRoomName(room)} photo ${activePhotoIndex + 1}`} loading="lazy" />
+              <span className="rf-room-photo-open-hint"><Maximize2 size={14} />View</span>
             </button>
 
             {roomImages.length > 1 && (
               <>
-                <button
-                  type="button"
-                  className="rf-room-photo-nav rf-room-photo-nav-prev"
-                  onClick={showPreviousPhoto}
-                  aria-label="Previous room photo"
-                >
-                  <ChevronLeft size={18} />
-                </button>
-                <button
-                  type="button"
-                  className="rf-room-photo-nav rf-room-photo-nav-next"
-                  onClick={showNextPhoto}
-                  aria-label="Next room photo"
-                >
-                  <ChevronRight size={18} />
-                </button>
+                <button type="button" className="rf-room-photo-nav rf-room-photo-nav-prev" onClick={showPreviousPhoto} aria-label="Previous room photo"><ChevronLeft size={18} /></button>
+                <button type="button" className="rf-room-photo-nav rf-room-photo-nav-next" onClick={showNextPhoto} aria-label="Next room photo"><ChevronRight size={18} /></button>
                 <div className="rf-room-photo-dots" aria-label="Room photo slides">
                   {roomImages.map((image, index) => (
                     <button
@@ -246,21 +235,17 @@ const ReservationSummaryStep = ({
       {viewerOpen && createPortal(
         <div className="rf-photo-viewer" role="dialog" aria-modal="true" onClick={closeViewer}>
           <div className="rf-photo-viewer-toolbar" onClick={(event) => event.stopPropagation()}>
-            <button type="button" onClick={closeViewer} aria-label="Close photo viewer">
-              <X size={17} />
-            </button>
+            <button type="button" onClick={closeViewer} aria-label="Close photo viewer"><X size={17} /></button>
           </div>
 
           <div className="rf-photo-viewer-stage" onClick={(event) => event.stopPropagation()}>
-            <img
-              src={activePhoto}
-              alt={`${getRoomName(room)} enlarged photo ${activePhotoIndex + 1}`}
-            />
+            <img src={activePhoto} alt={`${getRoomName(room)} enlarged photo ${activePhotoIndex + 1}`} />
           </div>
         </div>,
         document.body,
       )}
 
+      {/* Summary Grid */}
       <div className="rf-summary-grid rf-room-review-grid">
         <section className="content-card rf-summary-panel rf-summary-panel-main">
           <div className="card-section-title">
@@ -269,106 +254,46 @@ const ReservationSummaryStep = ({
           </div>
 
           <div className="summary-section">
-            <div className="summary-row">
-              <span className="summary-label">Branch</span>
-              <span className="summary-value">{formatBranch(room.branch)}</span>
-            </div>
-            <div className="summary-row">
-              <span className="summary-label">Room Type</span>
-              <span className="summary-value">{formatRoomType(room.type)}</span>
-            </div>
-            <div className="summary-row">
-              <span className="summary-label">Room</span>
-              <span className="summary-value">{getRoomName(room)}</span>
-            </div>
-            <div className="summary-row">
-              <span className="summary-label">Floor</span>
-              <span className="summary-value">{floorLabel ? `Floor ${floorLabel}` : "To be confirmed"}</span>
-            </div>
-            <div className="summary-row">
-              <span className="summary-label">Selected Bed</span>
-              <span className="summary-value">{getSelectedBedLabel(selectedBed)}</span>
-            </div>
-            <div className="summary-row">
-              <span className="summary-label">Availability</span>
-              <span className={`rf-status-pill rf-status-pill-${availabilityTone}`}>
-                {availabilityLabel}
-              </span>
-            </div>
-            <div className="summary-row">
-              <span className="summary-label">Available Slots</span>
-              <span className="summary-value">
-                {availableSlots === null ? "To be confirmed" : `${availableSlots} of ${capacityLabel}`}
-              </span>
-            </div>
+            <div className="summary-row"><span className="summary-label">Branch</span><span className="summary-value">{formatBranch(room.branch)}</span></div>
+            <div className="summary-row"><span className="summary-label">Room Type</span><span className="summary-value">{formatRoomType(room.type)}</span></div>
+            <div className="summary-row"><span className="summary-label">Room</span><span className="summary-value">{getRoomName(room)}</span></div>
+            <div className="summary-row"><span className="summary-label">Floor</span><span className="summary-value">{floorLabel ? `Floor ${floorLabel}` : "To be confirmed"}</span></div>
+            <div className="summary-row"><span className="summary-label">Selected Bed</span><span className="summary-value">{getSelectedBedLabel(selectedBed)}</span></div>
+            <div className="summary-row"><span className="summary-label">Availability</span><span className={`rf-status-pill rf-status-pill-${availabilityTone}`}>{availabilityLabel}</span></div>
+            <div className="summary-row"><span className="summary-label">Available Slots</span><span className="summary-value">{availableSlots === null ? "To be confirmed" : `${availableSlots} of ${capacityLabel}`}</span></div>
           </div>
         </section>
 
         <section className="content-card rf-summary-panel">
-          <div className="card-section-title">
-            <div className="icon"><Wallet size={15} /></div>
-            Payment Preview
-          </div>
+          <div className="card-section-title"><div className="icon"><Wallet size={15} /></div>Payment Preview</div>
 
           <div className="summary-section">
-            <div className="summary-row">
-              <span className="summary-label">Monthly Rent</span>
-              <span className="summary-value">{formatCurrency(monthlyRent)}/month</span>
-            </div>
+            <div className="summary-row"><span className="summary-label">Monthly Rent</span><span className="summary-value">{formatCurrency(monthlyRent)}/month</span></div>
             {selectedAppliances.length > 0 && (
-              <div className="summary-row">
-                <span className="summary-label">Selected Appliances</span>
-                <span className="summary-value">
-                  {selectedAppliances
-                    .map(formatSelectedAppliance)
-                    .join(", ")}
-                </span>
-              </div>
+              <div className="summary-row"><span className="summary-label">Selected Appliances</span><span className="summary-value">{selectedAppliances.map(formatSelectedAppliance).join(", ")}</span></div>
             )}
             {applianceFees > 0 && (
-              <div className="summary-row">
-                <span className="summary-label">Appliance Fees</span>
-                <span className="summary-value">{formatCurrency(applianceFees)}/month</span>
-              </div>
+              <div className="summary-row"><span className="summary-label">Appliance Fees</span><span className="summary-value">{formatCurrency(applianceFees)}/month</span></div>
             )}
-            <div className="summary-row">
-              <span className="summary-label">Reservation Fee</span>
-              <span className="summary-value">{formatCurrency(reservationFeeAmount)} due later</span>
-            </div>
-            <div className="total-section">
-              <span>Estimated Monthly Total</span>
-              <span className="total-amount">{formatCurrency(estimatedMonthlyTotal)}</span>
-            </div>
+            <div className="summary-row"><span className="summary-label">Reservation Fee</span><span className="summary-value">{formatCurrency(reservationFeeAmount)} due later</span></div>
+            <div className="total-section"><span>Estimated Monthly Total</span><span className="total-amount">{formatCurrency(estimatedMonthlyTotal)}</span></div>
           </div>
         </section>
       </div>
 
+      {/* Amenities */}
       {amenities.length > 0 && (
         <section className="content-card rf-summary-panel">
-          <div className="card-section-title">
-            <div className="icon"><Bed size={15} /></div>
-            Room Includes
-          </div>
-
-          <div className="rf-inclusion-list">
-            {amenities.map((amenity) => (
-              <span className="rf-inclusion-item" key={amenity}>
-                <CheckCircle size={14} />
-                {amenity}
-              </span>
-            ))}
-          </div>
+          <div className="card-section-title"><div className="icon"><Bed size={15} /></div>Room Includes</div>
+          <div className="rf-inclusion-list">{amenities.map((amenity) => (<span className="rf-inclusion-item" key={amenity}><CheckCircle size={14} />{amenity}</span>))}</div>
         </section>
       )}
 
+      {/* Info / Locked Notice */}
       {!readOnly && (
         <div className="info-box" style={{ marginTop: 24, marginBottom: 24 }}>
           <div className="info-box-title">What happens next?</div>
-          <div className="info-text">
-            After confirming, you'll choose between a physical visit, 2D remote
-            viewing, or an urgent move-in review request before submitting your
-            tenant application.
-          </div>
+          <div className="info-text">After confirming, you'll choose between a physical visit, 2D remote viewing, or an urgent move-in review request before submitting your tenant application.</div>
         </div>
       )}
 
@@ -379,19 +304,48 @@ const ReservationSummaryStep = ({
         </div>
       )}
 
+      {/* Actions */}
       {!readOnly && (
-        <div className="stage-buttons rf-summary-actions">
-          {onChangeRoom && (
-            <button type="button" onClick={onChangeRoom} className="btn btn-secondary">
-              <ArrowLeft size={16} />
-              Change Selected Room
+        <div className="stage-buttons rf-summary-actions" style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            {onChangeRoom && (
+              <button type="button" onClick={onChangeRoom} className="btn btn-secondary" style={{ marginRight: 8 }}>
+                <ArrowLeft size={16} /> Change Selected Room
+              </button>
+            )}
+          </div>
+
+          <div>
+            <button type="button" onClick={onNext} className="btn btn-primary">
+              Confirm Room & Continue <ArrowRight size={16} style={{ marginLeft: 8 }} />
             </button>
-          )}
-          <button type="button" onClick={onNext} className="btn btn-primary">
-            Confirm Room &amp; Continue
-          </button>
+          </div>
         </div>
       )}
+
+      {/* Features Grid (informational) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
+        <div className="bg-white rounded-xl border-2 border-green-200 p-5">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-green-100 rounded-lg flex-shrink-0"><CheckCircle className="w-5 h-5 text-green-600" /></div>
+            <div><h5 className="text-sm font-bold text-slate-900 mb-1">Verified Room</h5><p className="text-xs text-slate-600">Quality assured and inspected</p></div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border-2 border-blue-200 p-5">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-blue-100 rounded-lg flex-shrink-0"><Calendar className="w-5 h-5 text-blue-600" /></div>
+            <div><h5 className="text-sm font-bold text-slate-900 mb-1">Flexible Booking</h5><p className="text-xs text-slate-600">Schedule your visit anytime</p></div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border-2 border-purple-200 p-5">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-purple-100 rounded-lg flex-shrink-0"><AlertCircle className="w-5 h-5 text-purple-600" /></div>
+            <div><h5 className="text-sm font-bold text-slate-900 mb-1">No Commitment</h5><p className="text-xs text-slate-600">Cancel or modify anytime</p></div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

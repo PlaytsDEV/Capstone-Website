@@ -96,6 +96,7 @@ await jest.unstable_mockModule("../controllers/reservationsController.js", () =>
   extendReservation: noop,
   releaseSlot: noop,
   archiveReservation: noop,
+  restoreReservation: noop,
   renewContract: noop,
   moveOutReservation: noop,
   transferTenant: noop,
@@ -183,6 +184,7 @@ await jest.unstable_mockModule("../controllers/maintenanceController.js", () => 
   updateRequest: noop,
   updateAdminRequestStatus: noop,
   updateAdminRequestStatusCompat: noop,
+  sendAdminReply: noop,
   updateAdminBulkRequests: noop,
   getCompletionStats: noop,
   getIssueFrequency: noop,
@@ -362,6 +364,11 @@ describe("route access guards", () => {
       "/admin/:requestId/status",
       "patch",
     );
+    const adminReplyHandlers = getRouteHandlers(
+      maintenanceRoutes,
+      "/admin/:requestId/reply",
+      "post",
+    );
     const legacyBranchHandlers = getRouteHandlers(maintenanceRoutes, "/branch", "get");
 
     expect(adminListHandlers).toContain(verifyAdmin);
@@ -376,6 +383,14 @@ describe("route access guards", () => {
     expect(adminUpdateHandlers).toContain(filterByBranch);
     expect(
       adminUpdateHandlers.some(
+        (handler) => handler.requiredPermission === "manageMaintenance",
+      ),
+    ).toBe(true);
+
+    expect(adminReplyHandlers).toContain(verifyAdmin);
+    expect(adminReplyHandlers).toContain(filterByBranch);
+    expect(
+      adminReplyHandlers.some(
         (handler) => handler.requiredPermission === "manageMaintenance",
       ),
     ).toBe(true);

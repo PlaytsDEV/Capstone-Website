@@ -393,6 +393,15 @@ function VisitSchedulesTab() {
           const Icon = item.icon;
           const isActive = activeFilter === index;
 
+          const colorClass =
+            item.color === "blue"
+              ? "text-[color:var(--info)]"
+              : item.color === "orange"
+              ? "text-[color:var(--warning)]"
+              : item.color === "green"
+              ? "text-[color:var(--success)]"
+              : "text-[color:var(--danger)]";
+
           return (
             <div
               key={item.label}
@@ -402,36 +411,17 @@ function VisitSchedulesTab() {
                 borderColor: isActive
                   ? "color-mix(in srgb, var(--primary) 55%, var(--border-light))"
                   : "var(--border-light)",
+                boxShadow: isActive ? "0 6px 16px rgba(2,6,23,0.06)" : "0 2px 8px rgba(2,6,23,0.03)",
               }}
-              className="border rounded-xl p-3 hover:shadow-md transition-shadow cursor-pointer min-h-[108px]"
+              className="border rounded-xl p-4 cursor-pointer min-h-[108px]"
             >
-              <div className="flex items-start justify-between mb-3">
-                <Icon
-                  className={`w-5 h-5 ${
-                    item.color === "blue"
-                      ? "text-[color:var(--info)]"
-                      : item.color === "orange"
-                        ? "text-[color:var(--warning)]"
-                        : item.color === "green"
-                          ? "text-[color:var(--success)]"
-                          : "text-[color:var(--danger)]"
-                  }`}
-                />
-                <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide text-right">
+              <div className="flex items-center gap-3 mb-3">
+                <Icon className={`${colorClass} w-5 h-5 flex-shrink-0 mr-2`} />
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   {item.label}
                 </span>
               </div>
-              <div
-                className={`text-[28px] font-medium leading-none ${
-                  item.color === "blue"
-                    ? "text-[color:var(--info)]"
-                    : item.color === "orange"
-                      ? "text-[color:var(--warning)]"
-                      : item.color === "green"
-                        ? "text-[color:var(--success)]"
-                        : "text-[color:var(--danger)]"
-                }`}
-              >
+              <div className={`text-[28px] font-medium leading-none ${colorClass}`}>
                 {item.value}
               </div>
             </div>
