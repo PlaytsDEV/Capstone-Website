@@ -90,6 +90,7 @@ const {
   sendTenantReply,
   updateAdminRequestStatus,
 } = await import("./maintenanceController.js");
+const { resolveUploadBranch } = await import("../services/attachmentUploadService.js");
 
 const buildLeanQuery = (result) => ({
   select: jest.fn(() => ({
@@ -267,6 +268,74 @@ describe("maintenanceController", () => {
     expect(sendSuccess).toHaveBeenCalledTimes(1);
     expect(sendSuccess.mock.calls[0][1].requests[0].tenant.full_name).toBe("Lily Tenant");
     expect(next).not.toHaveBeenCalled();
+  });
+
+  test("resolveUploadBranch uses admin maintenance request context from requestId", async () => {
+    const storedRequest = buildRequestDoc({
+      branch: "gil-puyat",
+      branchId: "gil-puyat",
+    });
+    userFindOne.mockReturnValue(
+      buildSelectLeanQuery({
+        _id: "admin_user_1",
+        user_id: "admin_1",
+        firebaseUid: "admin_firebase_uid",
+        role: "branch_admin",
+        branch: "gil-puyat",
+      }),
+    );
+    maintenanceFindOne.mockReturnValue(buildLeanQuery(storedRequest));
+
+    const resolution = await resolveUploadBranch({
+      user: { uid: "admin_firebase_uid" },
+      body: {
+        documentType: "maintenance-reply-attachment",
+        requestId: storedRequest.request_id,
+        relatedId: storedRequest.request_id,
+        branchId: "gil-puyat",
+      },
+      query: {},
+      headers: {},
+    });
+
+    expect(maintenanceFindOne).toHaveBeenCalledWith({ request_id: storedRequest.request_id });
+    expect(resolution.branch).toBe("gil-puyat");
+    expect(resolution.context).toBe("maintenance_reply");
+    expect(resolution.relatedId).toBe(storedRequest.request_id);
+  });
+
+  test("resolveUploadBranch rejects mismatched branchId for a maintenance request", async () => {
+    const storedRequest = buildRequestDoc({
+      branch: "gil-puyat",
+      branchId: "gil-puyat",
+    });
+    userFindOne.mockReturnValue(
+      buildSelectLeanQuery({
+        _id: "admin_user_1",
+        user_id: "admin_1",
+        firebaseUid: "admin_firebase_uid",
+        role: "branch_admin",
+        branch: "gil-puyat",
+      }),
+    );
+    maintenanceFindOne.mockReturnValue(buildLeanQuery(storedRequest));
+
+    await expect(
+      resolveUploadBranch({
+        user: { uid: "admin_firebase_uid" },
+        body: {
+          context: "maintenance_internal_note",
+          maintenanceRequestId: storedRequest.request_id,
+          relatedId: storedRequest.request_id,
+          branchId: "guadalupe",
+        },
+        query: {},
+        headers: {},
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      code: "UPLOAD_BRANCH_FORBIDDEN",
+    });
   });
 
   test("getAdminAll exposes remote attachment URL aliases", async () => {

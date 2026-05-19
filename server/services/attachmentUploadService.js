@@ -46,6 +46,13 @@ const normalizeBranch = (value) => {
   return ROOM_BRANCHES.includes(branch) ? branch : "";
 };
 
+const inferContextFromDocumentType = (documentType) => {
+  const normalized = toText(documentType);
+  if (normalized === "maintenance-reply-attachment") return "maintenance_reply";
+  if (normalized === "maintenance-attachment") return "maintenance_request";
+  return "";
+};
+
 const getField = (req, names) => {
   const fields = Array.isArray(names) ? names : [names];
   for (const field of fields) {
@@ -228,8 +235,9 @@ const assertMaintenanceAccess = (dbUser, request, branch) => {
   throw new AppError("Access denied", 403, "UPLOAD_BRANCH_FORBIDDEN");
 };
 
-const resolveBranchFromMaintenanceRequest = async (dbUser, request) => {
-  let branch = normalizeBranch(request?.branch || request?.branchId);
+const resolveBranchFromMaintenanceRequest = async (dbUser, request, explicitBranch = "") => {
+  const providedBranch = normalizeBranch(explicitBranch);
+  let branch = normalizeBranch(request?.branchId || request?.branch);
   if (!branch) {
     branch = await getRoomBranch(request?.roomId);
   }
@@ -240,6 +248,10 @@ const resolveBranchFromMaintenanceRequest = async (dbUser, request) => {
       400,
       "UPLOAD_BRANCH_UNRESOLVED",
     );
+  }
+
+  if (providedBranch && providedBranch !== branch) {
+    throw new AppError("Access denied", 403, "UPLOAD_BRANCH_FORBIDDEN");
   }
 
   assertMaintenanceAccess(dbUser, request, branch);
@@ -298,7 +310,11 @@ const getExplicitBranch = (req) => {
 
 export const resolveUploadBranch = async (req, options = {}) => {
   const dbUser = await getDbUser(req, options.dbUser);
-  const context = toText(options.context || getField(req, "context")) || "attachment";
+  const context =
+    toText(options.context || getField(req, "context")) ||
+    inferContextFromDocumentType(options.documentType || getField(req, "documentType")) ||
+    "attachment";
+  const explicitBranch = getExplicitBranch(req);
   const maintenanceRequestId =
     toText(options.maintenanceRequestId) ||
     getField(req, ["maintenanceRequestId", "maintenance_request_id", "requestId", "request_id"]) ||
@@ -316,7 +332,11 @@ export const resolveUploadBranch = async (req, options = {}) => {
     return {
       dbUser,
       context,
-      ...(await resolveBranchFromMaintenanceRequest(dbUser, options.maintenanceRequest)),
+      ...(await resolveBranchFromMaintenanceRequest(
+        dbUser,
+        options.maintenanceRequest,
+        explicitBranch,
+      )),
     };
   }
 
@@ -332,7 +352,7 @@ export const resolveUploadBranch = async (req, options = {}) => {
     return {
       dbUser,
       context,
-      ...(await resolveBranchFromMaintenanceRequest(dbUser, request)),
+      ...(await resolveBranchFromMaintenanceRequest(dbUser, request, explicitBranch)),
     };
   }
 
@@ -348,7 +368,6 @@ export const resolveUploadBranch = async (req, options = {}) => {
   if (isTenantRole(role)) {
     const tenantResolution = await resolveTenantBranch(dbUser);
     if (tenantResolution.branch) {
-      const explicitBranch = getExplicitBranch(req);
       if (explicitBranch && explicitBranch !== tenantResolution.branch) {
         throw new AppError("Access denied", 403, "UPLOAD_BRANCH_FORBIDDEN");
       }
@@ -360,7 +379,6 @@ export const resolveUploadBranch = async (req, options = {}) => {
       };
     }
   } else if (isOwnerRole(role)) {
-    const explicitBranch = getExplicitBranch(req);
     if (explicitBranch) {
       return {
         dbUser,
@@ -372,7 +390,6 @@ export const resolveUploadBranch = async (req, options = {}) => {
   } else {
     const adminBranch = normalizeBranch(dbUser?.branch);
     if (adminBranch) {
-      const explicitBranch = getExplicitBranch(req);
       if (explicitBranch && explicitBranch !== adminBranch) {
         throw new AppError("Access denied", 403, "UPLOAD_BRANCH_FORBIDDEN");
       }

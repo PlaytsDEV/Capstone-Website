@@ -382,6 +382,84 @@ const isRemoteUri = (uri) => {
   }
 };
 
+const getMaintenanceRequestUploadId = (request) =>
+ request?.request_id ||
+ request?.requestId ||
+ request?._id ||
+ request?.id ||
+ "";
+
+const normalizeMaintenanceBranchCandidate = (value) => {
+ if (!value) return "";
+ if (typeof value === "object") {
+ return normalizeMaintenanceBranchCandidate(
+ value.value ||
+ value.slug ||
+ value.code ||
+ value.branchId ||
+ value.branch ||
+ value._id ||
+ value.id ||
+ value.name ||
+ value.label,
+ );
+ }
+
+ const raw = String(value).trim();
+ if (!raw) return "";
+
+ const directMatch = BRANCH_OPTIONS.find((branch) => branch.value === raw);
+ if (directMatch) return directMatch.value;
+
+ const normalized = raw.toLowerCase();
+ const displayMatch = BRANCH_OPTIONS.find(
+ (branch) =>
+ branch.value.toLowerCase() === normalized ||
+ branch.label.toLowerCase() === normalized ||
+ BRANCH_DISPLAY_NAMES[branch.value]?.toLowerCase() === normalized,
+ );
+
+ return displayMatch?.value || raw;
+};
+
+const isKnownMaintenanceBranch = (branchId) =>
+ BRANCH_OPTIONS.some((branch) => branch.value === branchId);
+
+const getMaintenanceRequestUploadBranchId = (request) => {
+ const candidates = [
+ request?.branchId ||
+ request?.branch_id,
+ request?.branch ||
+ request?.branch?.value ||
+ request?.branch?.slug ||
+ request?.branch?.code ||
+ request?.branch?._id ||
+ request?.branch?.id,
+ request?.tenant?.branchId ||
+ request?.tenant?.branch,
+ ];
+
+ for (const candidate of candidates) {
+ const branchId = normalizeMaintenanceBranchCandidate(candidate);
+ if (isKnownMaintenanceBranch(branchId)) return branchId;
+ }
+
+ return "";
+};
+
+const buildMaintenanceAttachmentUploadOptions = (request, options = {}) => {
+ const requestId = getMaintenanceRequestUploadId(request);
+ const branchId = getMaintenanceRequestUploadBranchId(request);
+
+ return {
+ ...options,
+ maintenanceRequestId: requestId,
+ requestId,
+ relatedId: requestId,
+ ...(branchId ? { branchId } : {}),
+ };
+};
+
 const createAttachmentClientId = () =>
  `maintenance-attachment-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -1029,13 +1107,11 @@ export default function AdminMaintenancePage() {
  try {
   const { downloadUrl: uri, storagePath, size, attachment: uploadedAttachment } = await uploadToFirebaseStorage(
   file,
-  {
+  buildMaintenanceAttachmentUploadOptions(selectedRequest, {
   documentType: "maintenance-attachment",
   context: "maintenance_internal_note",
   visibility: "admin_only",
-  maintenanceRequestId: selectedRequest?.request_id,
-  relatedId: selectedRequest?.request_id,
-  },
+  }),
   );
  setDraftWorkLogAttachments((current) =>
  current.map((attachment) =>
@@ -1063,14 +1139,14 @@ export default function AdminMaintenancePage() {
  ? {
  ...attachment,
  uploadStatus: "failed",
- error: "Attachment upload failed. Please try again.",
+ error: message,
  }
  : attachment,
  ),
  );
  setUpdateFieldErrors((current) => ({
  ...current,
- attachments: "Attachment upload failed. Please try again.",
+ attachments: message,
  }));
  showNotification(message, "error");
  }
@@ -1147,13 +1223,11 @@ export default function AdminMaintenancePage() {
  try {
   const { downloadUrl: uri, storagePath, size, attachment: uploadedAttachment } = await uploadToFirebaseStorage(
   file,
-  {
+  buildMaintenanceAttachmentUploadOptions(selectedRequest, {
   documentType: "maintenance-reply-attachment",
   context: "maintenance_reply",
   visibility: "tenant_admin",
-  maintenanceRequestId: selectedRequest?.request_id,
-  relatedId: selectedRequest?.request_id,
-  },
+  }),
   );
  setReplyAttachments((current) =>
  current.map((attachment) =>
@@ -1181,14 +1255,14 @@ export default function AdminMaintenancePage() {
  ? {
  ...attachment,
  uploadStatus: "failed",
- error: "Attachment upload failed. Please try again.",
+ error: message,
  }
  : attachment,
  ),
  );
  setReplyFieldErrors((current) => ({
  ...current,
- reply_attachments: "Attachment upload failed. Please try again.",
+ reply_attachments: message,
  }));
  showNotification(message, "error");
  }

@@ -49,6 +49,7 @@ async function uploadToBackendAttachmentService(file, opts = {}) {
     visibility: opts.visibility,
     relatedId: opts.relatedId,
     maintenanceRequestId: opts.maintenanceRequestId,
+    requestId: opts.requestId,
     conversationId: opts.conversationId,
     branchId: opts.branchId,
   };
