@@ -1519,7 +1519,7 @@ const UtilityBillingTab = ({
       return;
     }
 
-    exportToCSV(filename, rows, columns);
+    exportToCSV(rows, columns, filename);
   };
 
   const handleExportTimeline = () => {
