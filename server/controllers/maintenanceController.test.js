@@ -564,12 +564,53 @@ describe("maintenanceController", () => {
     expect(resolution).toEqual(
       expect.objectContaining({
         branch: "gil-puyat",
-        source: "maintenance_tenant",
+        source: "maintenance_tenant_profile",
       }),
     );
   });
 
-  test("resolveMaintenanceRequestStorageBranch supports owner repair fallback branch", async () => {
+  test("resolveMaintenanceRequestStorageBranch resolves legacy request branch from active stay room", async () => {
+    const storedRequest = buildRequestDoc({
+      branch: null,
+      branchId: null,
+      roomId: null,
+      reservationId: null,
+    });
+    userFindOne.mockReturnValue(
+      buildSelectLeanQuery({
+        _id: "507f1f77bcf86cd799439021",
+        user_id: storedRequest.user_id,
+        role: "tenant",
+        branch: "",
+      }),
+    );
+    stayFindOne.mockReturnValue(
+      buildSortSelectLeanQuery({
+        branch: "",
+        roomId: "room_legacy_1",
+        reservationId: "reservation_legacy_1",
+      }),
+    );
+    roomFindById.mockReturnValue(
+      buildSelectLeanQuery({
+        _id: "room_legacy_1",
+        branch: "Guadalupe",
+      }),
+    );
+
+    const resolution = await resolveMaintenanceRequestStorageBranch(storedRequest);
+
+    expect(resolution).toEqual(
+      expect.objectContaining({
+        branch: "guadalupe",
+        source: "maintenance_active_stay",
+        roomId: "room_legacy_1",
+        reservationId: "reservation_legacy_1",
+      }),
+    );
+  });
+
+  test("resolveMaintenanceRequestStorageBranch does not use manual fallback branches", async () => {
     const storedRequest = buildRequestDoc({
       branch: null,
       branchId: null,
@@ -584,8 +625,8 @@ describe("maintenanceController", () => {
 
     expect(resolution).toEqual(
       expect.objectContaining({
-        branch: "guadalupe",
-        source: "owner_branch_repair",
+        branch: "",
+        source: "unresolved",
       }),
     );
   });
@@ -1341,7 +1382,7 @@ describe("maintenanceController", () => {
 
     expect(next).toHaveBeenCalledWith(
       expect.objectContaining({
-        message: "Maintenance request has no branch assigned.",
+        message: "This maintenance request has no branch assigned. Please check the tenant’s room or branch details before uploading.",
         statusCode: 400,
         code: "MAINTENANCE_REQUEST_BRANCH_REQUIRED",
       }),

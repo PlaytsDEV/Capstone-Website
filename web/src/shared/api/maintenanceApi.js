@@ -97,19 +97,18 @@ export const maintenanceApi = {
     }),
 
   /**
-   * Upload an admin maintenance attachment. Branch is normally resolved server-side;
-   * owners may send repairBranch only for legacy records with no saved branch.
+   * Upload an admin maintenance attachment. Branch is resolved server-side from
+   * the maintenance request and related tenant/room/reservation records.
    */
   uploadAdminMaintenanceAttachment: (
     requestId,
     file,
-    { visibility = "tenant_visible", repairBranch = "" } = {},
+    { visibility = "tenant_visible" } = {},
   ) => {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("maintenanceRequestId", requestId);
     formData.append("visibility", visibility);
-    if (repairBranch) formData.append("branchRepair", repairBranch);
 
     return authFetch(`/m/maintenance/admin/${requestId}/attachments`, {
       method: "POST",

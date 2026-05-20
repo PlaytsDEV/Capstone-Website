@@ -38,6 +38,7 @@ import { notify } from "../utils/notificationService.js";
 import { clean } from "../utils/sanitize.js";
 import { DELETED_ACCOUNT_LABEL } from "../utils/userReference.js";
 import {
+  MAINTENANCE_UPLOAD_BRANCH_ERROR_MESSAGE,
   resolveMaintenanceRequestBranch,
   resolveMaintenanceRequestStorageBranch,
   resolveUploadBranch,
@@ -1535,8 +1536,8 @@ export const sendAdminReply = async (req, res, next) => {
 
 /**
  * POST /api/m/maintenance/admin/:requestId/attachments
- * Maintenance-specific admin attachment upload. Branch is resolved only from
- * the maintenance request document, not from frontend upload metadata.
+ * Maintenance-specific admin attachment upload. Branch is resolved server-side
+ * from the request and its tenant/room/reservation anchors.
  */
 export const uploadAdminMaintenanceAttachment = async (req, res, next) => {
   try {
@@ -1550,17 +1551,13 @@ export const uploadAdminMaintenanceAttachment = async (req, res, next) => {
     }
 
     const request = await findAccessibleRequest(requestId);
-    const branchRepair = req.isOwner
-      ? toOptionalText(req.body?.branchRepair || req.body?.branchHint)
-      : null;
     const branchResolution = await resolveMaintenanceRequestStorageBranch(
       request,
-      { fallbackBranch: branchRepair },
     );
     const branch = branchResolution.branch;
     if (!branch) {
       throw new AppError(
-        "Maintenance request has no branch assigned.",
+        MAINTENANCE_UPLOAD_BRANCH_ERROR_MESSAGE,
         400,
         "MAINTENANCE_REQUEST_BRANCH_REQUIRED",
       );
@@ -1592,7 +1589,6 @@ export const uploadAdminMaintenanceAttachment = async (req, res, next) => {
       context: isInternal ? "maintenance_internal_note" : "maintenance_reply",
       uploadedBy: adminUser?.user_id || String(adminUser?._id || ""),
       senderRole: adminUser?.role || "admin",
-      fallbackBranch: branchRepair,
     });
 
     sendSuccess(

@@ -21,6 +21,8 @@ import { CURRENT_RESIDENT_STATUS_QUERY } from "../utils/lifecycleNaming.js";
 
 export const UPLOAD_BRANCH_ERROR_MESSAGE =
   "Unable to determine the assigned branch for this upload. Please refresh and try again or contact support.";
+export const MAINTENANCE_UPLOAD_BRANCH_ERROR_MESSAGE =
+  "This maintenance request has no branch assigned. Please check the tenant’s room or branch details before uploading.";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -258,20 +260,28 @@ const getReservationBranchById = async (reservationId) => {
   return getReservationBranch(reservation);
 };
 
-const getMaintenanceTenantBranch = async (request) => {
+const buildMaintenanceTenantFilters = (request) => {
   const filters = [];
   if (request?.user_id) filters.push({ user_id: request.user_id });
   if (canQueryObjectId(request?.userId)) filters.push({ _id: request.userId });
   if (canQueryObjectId(request?.tenantId)) filters.push({ _id: request.tenantId });
   if (canQueryObjectId(request?.tenant?._id)) filters.push({ _id: request.tenant._id });
   if (request?.tenant?.user_id) filters.push({ user_id: request.tenant.user_id });
+  return filters;
+};
 
+const getMaintenanceTenant = async (request) => {
+  const filters = buildMaintenanceTenantFilters(request);
   if (filters.length === 0) return "";
 
-  const tenant = await User.findOne(filters.length === 1 ? filters[0] : { $or: filters })
-    .select("branch branchId branch_id branchName")
+  return User.findOne(filters.length === 1 ? filters[0] : { $or: filters })
+    .select("_id user_id branch branchId branch_id branchName role")
     .lean()
     .catch(() => null);
+};
+
+const getMaintenanceTenantBranch = async (request) => {
+  const tenant = await getMaintenanceTenant(request);
 
   return firstBranch(
     tenant,
@@ -280,6 +290,109 @@ const getMaintenanceTenantBranch = async (request) => {
     tenant?.branch_id,
     tenant?.branchName,
   );
+};
+
+const resolveMaintenanceTenantBranch = async (request) => {
+  const tenant = await getMaintenanceTenant(request);
+  const profileBranch = firstBranch(
+    tenant,
+    tenant?.branch,
+    tenant?.branchId,
+    tenant?.branch_id,
+    tenant?.branchName,
+  );
+
+  if (profileBranch) {
+    return {
+      branch: profileBranch,
+      source: "maintenance_tenant_profile",
+      reservationId: request?.reservationId || null,
+      roomId: request?.roomId || null,
+    };
+  }
+
+  const tenantId =
+    tenant?._id ||
+    request?.userId ||
+    request?.tenantId ||
+    request?.tenant?._id ||
+    null;
+
+  if (!canQueryObjectId(tenantId)) {
+    return {
+      branch: "",
+      source: "unresolved",
+      reservationId: request?.reservationId || null,
+      roomId: request?.roomId || null,
+    };
+  }
+
+  const tenantLike = {
+    ...(tenant || {}),
+    _id: tenantId,
+    user_id: tenant?.user_id || request?.user_id || request?.tenant?.user_id || null,
+    branch: "",
+  };
+
+  const activeStay = await Stay.findOne({
+    tenantId: tenantLike._id,
+    status: { $in: ["active", "ending_soon"] },
+  })
+    .sort({ leaseStartDate: -1, createdAt: -1 })
+    .select("branch roomId reservationId")
+    .lean()
+    .catch(() => null);
+
+  const stayBranch =
+    normalizeBranch(activeStay?.branch) ||
+    (await getRoomBranch(activeStay?.roomId));
+  if (stayBranch) {
+    return {
+      branch: stayBranch,
+      source: "maintenance_active_stay",
+      reservationId: activeStay?.reservationId || request?.reservationId || null,
+      roomId: activeStay?.roomId || request?.roomId || null,
+    };
+  }
+
+  const activeReservation = await loadActiveTenantReservation(tenantLike).catch(() => null);
+  const activeReservationBranch = await getReservationBranch(activeReservation);
+  if (activeReservationBranch) {
+    return {
+      branch: activeReservationBranch,
+      source: "maintenance_active_reservation",
+      reservationId: activeReservation?._id || request?.reservationId || null,
+      roomId: activeReservation?.roomId?._id || activeReservation?.roomId || request?.roomId || null,
+    };
+  }
+
+  const bedHistory = await BedHistory.findOne({
+    tenantId: tenantLike._id,
+    status: "active",
+  })
+    .sort({ moveInDate: -1, effectiveStartDate: -1 })
+    .select("branch roomId reservationId")
+    .lean()
+    .catch(() => null);
+
+  const bedHistoryBranch =
+    normalizeBranch(bedHistory?.branch) ||
+    (await getRoomBranch(bedHistory?.roomId));
+  if (bedHistoryBranch) {
+    return {
+      branch: bedHistoryBranch,
+      source: "maintenance_bed_history",
+      reservationId: bedHistory?.reservationId || request?.reservationId || null,
+      roomId: bedHistory?.roomId || request?.roomId || null,
+    };
+  }
+
+  return {
+    branch: "",
+    source: "unresolved",
+    reservationId: request?.reservationId || null,
+    roomId: request?.roomId || null,
+  };
 };
 
 const loadActiveTenantReservation = async (dbUser) =>
@@ -636,7 +749,6 @@ export const resolveMaintenanceRequestBranch = (maintenanceRequest = {}) =>
 
 export const resolveMaintenanceRequestStorageBranch = async (
   maintenanceRequest = {},
-  options = {},
 ) => {
   const requestBranch = resolveMaintenanceRequestBranch(maintenanceRequest);
   if (requestBranch) {
@@ -677,24 +789,9 @@ export const resolveMaintenanceRequestStorageBranch = async (
     };
   }
 
-  const tenantBranch = await getMaintenanceTenantBranch(maintenanceRequest);
-  if (tenantBranch) {
-    return {
-      branch: tenantBranch,
-      source: "maintenance_tenant",
-      reservationId: maintenanceRequest?.reservationId || null,
-      roomId: maintenanceRequest?.roomId || null,
-    };
-  }
-
-  const fallbackBranch = firstBranch(options.fallbackBranch, options.branchRepair);
-  if (fallbackBranch) {
-    return {
-      branch: fallbackBranch,
-      source: "owner_branch_repair",
-      reservationId: maintenanceRequest?.reservationId || null,
-      roomId: maintenanceRequest?.roomId || null,
-    };
+  const tenantResolution = await resolveMaintenanceTenantBranch(maintenanceRequest);
+  if (tenantResolution.branch) {
+    return tenantResolution;
   }
 
   return {
@@ -904,18 +1001,16 @@ export const uploadMaintenanceRequestAttachmentFile = async ({
   context = "maintenance_reply",
   uploadedBy = "",
   senderRole = "admin",
-  fallbackBranch = "",
 }) => {
   assertUploadableAttachmentFile(file);
 
   const branchResolution = await resolveMaintenanceRequestStorageBranch(
     maintenanceRequest,
-    { fallbackBranch },
   );
   const branch = branchResolution.branch;
   if (!branch) {
     throw new AppError(
-      "Maintenance request has no branch assigned.",
+      MAINTENANCE_UPLOAD_BRANCH_ERROR_MESSAGE,
       400,
       "MAINTENANCE_REQUEST_BRANCH_REQUIRED",
     );
