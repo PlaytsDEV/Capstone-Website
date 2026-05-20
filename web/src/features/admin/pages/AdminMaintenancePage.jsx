@@ -44,7 +44,7 @@ import {
 } from "../../../shared/utils/maintenanceAttachments";
 import { exportToCSV } from "../../../shared/utils/exportUtils";
 import { BRANCH_OPTIONS, BRANCH_DISPLAY_NAMES } from "../../../shared/utils/constants";
-import { uploadMaintenanceAttachment } from "../../../shared/utils/firebaseStorageUpload";
+import { maintenanceApi } from "../../../shared/api/apiClient";
 import {
  normalizeBranchFilterValue,
  syncBranchSearchParam,
@@ -393,109 +393,35 @@ const isRemoteUri = (uri) => {
   }
 };
 
-const getMaintenanceRequestMongoId = (request) =>
- request?._id ||
- request?.mongoId ||
- request?.maintenanceRequestId ||
- "";
-
-const getMaintenanceRequestCode = (request) =>
+const getMaintenanceRequestUploadId = (request) =>
  request?.requestId ||
  request?.request_id ||
  request?.ticketId ||
  request?.maintenanceId ||
  request?.id ||
+ request?._id ||
  "";
 
-const normalizeMaintenanceBranchCandidate = (value) => {
- if (!value) return "";
- if (typeof value === "object") {
- return normalizeMaintenanceBranchCandidate(
- value.value ||
- value.slug ||
- value.code ||
- value.branchId ||
- value.branch ||
- value._id ||
- value.id ||
- value.name ||
- value.label,
- );
- }
+const getUploadedAttachmentUrl = (attachment = {}) =>
+ attachment.url || attachment.downloadUrl || attachment.uri || "";
 
- const raw = String(value).trim();
- if (!raw) return "";
-
- const directMatch = BRANCH_OPTIONS.find((branch) => branch.value === raw);
- if (directMatch) return directMatch.value;
-
- const normalized = raw.toLowerCase();
- const displayMatch = BRANCH_OPTIONS.find(
- (branch) =>
- branch.value.toLowerCase() === normalized ||
- branch.label.toLowerCase() === normalized ||
- BRANCH_DISPLAY_NAMES[branch.value]?.toLowerCase() === normalized,
- );
-
- return displayMatch?.value || raw;
-};
-
-const isKnownMaintenanceBranch = (branchId) =>
- BRANCH_OPTIONS.some((branch) => branch.value === branchId);
-
-const getMaintenanceRequestUploadBranchId = (request) => {
- const candidates = [
- request?.branchId ||
- request?.branch_id,
- request?.branch ||
- request?.branch?.value ||
- request?.branch?.slug ||
- request?.branch?.code ||
- request?.branch?._id ||
- request?.branch?.id,
- request?.tenant?.branchId ||
- request?.tenant?.branch,
- ];
-
- for (const candidate of candidates) {
- const branchId = normalizeMaintenanceBranchCandidate(candidate);
- if (isKnownMaintenanceBranch(branchId)) return branchId;
- }
-
- return "";
-};
-
-const buildMaintenanceAttachmentUploadOptions = (request, options = {}) => {
- const maintenanceRequestId = getMaintenanceRequestMongoId(request);
- const requestId = getMaintenanceRequestCode(request) || maintenanceRequestId;
- const relatedId = maintenanceRequestId || requestId;
- const branchId = getMaintenanceRequestUploadBranchId(request);
+const buildUploadedAdminAttachment = ({ clientId, file, attachment = {} }) => {
+ const uri = getUploadedAttachmentUrl(attachment);
+ const type = attachment.type || attachment.mimeType || file.type || "application/octet-stream";
 
  return {
- ...options,
- maintenanceRequestId: maintenanceRequestId || requestId,
- requestId,
- relatedId,
- relatedType: "maintenance_request",
- ...(branchId ? { branchId } : {}),
+ ...attachment,
+ clientId,
+ name: attachment.name || file.name,
+ uri,
+ url: uri,
+ downloadUrl: uri,
+ type,
+ mimeType: attachment.mimeType || type,
+ size: attachment.size ?? file.size,
+ storagePath: attachment.storagePath,
+ uploadStatus: "uploaded",
  };
-};
-
-const getAdminUploadFallbackBranchId = ({ request, user, branchFilter, isOwner }) => {
- const candidates = [
- getMaintenanceRequestUploadBranchId(request),
- isOwner && branchFilter !== "all" ? branchFilter : "",
- user?.branchId,
- user?.branch_id,
- user?.branch,
- ];
-
- for (const candidate of candidates) {
- const branchId = normalizeMaintenanceBranchCandidate(candidate);
- if (isKnownMaintenanceBranch(branchId)) return branchId;
- }
-
- return "";
 };
 
 const createAttachmentClientId = () =>
@@ -773,12 +699,6 @@ export default function AdminMaintenancePage() {
  const requests = requestsData?.requests || [];
  const summaryRequests = summaryData?.requests || requests;
  const selectedRequest = requestDetailData?.request || null;
- const selectedRequestUploadBranchId = getAdminUploadFallbackBranchId({
- request: selectedRequest,
- user,
- branchFilter,
- isOwner,
- });
  const selectedRequestStatusOptions = useMemo(
  () => getAllowedAdminMaintenanceStatuses(selectedRequest?.status),
  [selectedRequest?.status],
@@ -1127,6 +1047,14 @@ export default function AdminMaintenancePage() {
  if (files.length === 0) return;
 
  clearUpdateFieldError("attachments");
+ const maintenanceRequestId = getMaintenanceRequestUploadId(selectedRequest);
+ if (!maintenanceRequestId) {
+ const message = "Failed to upload attachment. Please try again.";
+ setUpdateFieldErrors((current) => ({ ...current, attachments: message }));
+ showNotification(message, "error");
+ event.target.value = "";
+ return;
+ }
  setUploadingUpdateAttachment(true);
 
  try {
@@ -1163,38 +1091,22 @@ export default function AdminMaintenancePage() {
  ]);
 
  try {
-  const { downloadUrl: uri, storagePath, size, attachment: uploadedAttachment } = await uploadMaintenanceAttachment(
-  file,
-  buildMaintenanceAttachmentUploadOptions(selectedRequest, {
-  documentType: "maintenance-attachment",
-  context: "maintenance_internal_note",
-  visibility: "admin_only",
-  ...(selectedRequestUploadBranchId ? { branchId: selectedRequestUploadBranchId } : {}),
-  }),
-  );
+ const uploadResult = await maintenanceApi.uploadAdminMaintenanceAttachment(
+ maintenanceRequestId,
+ file,
+ { visibility: "admin_only" },
+ );
+ const uploadedAttachment = uploadResult?.attachment || uploadResult;
  setDraftWorkLogAttachments((current) =>
  current.map((attachment) =>
  attachment.clientId === clientId
- ? {
-  ...uploadedAttachment,
-  clientId,
-  name: file.name,
-  uri,
-  url: uri,
-  downloadUrl: uri,
-  type: uploadedAttachment?.type || uploadedAttachment?.mimeType || file.type || "application/octet-stream",
-  mimeType: uploadedAttachment?.mimeType || uploadedAttachment?.type || file.type || "application/octet-stream",
-  size,
-  storagePath,
-  uploadStatus: "uploaded",
-  }
+ ? buildUploadedAdminAttachment({ clientId, file, attachment: uploadedAttachment })
  : attachment,
  ),
  );
- showNotification("Attachment uploaded.", "success");
- } catch (uploadError) {
- const message =
- uploadError.message || "Attachment upload failed. Please try again.";
+ showNotification("Upload complete.", "success");
+ } catch {
+ const message = "Failed to upload attachment. Please try again.";
  setDraftWorkLogAttachments((current) =>
  current.map((attachment) =>
  attachment.clientId === clientId
@@ -1213,9 +1125,9 @@ export default function AdminMaintenancePage() {
  showNotification(message, "error");
  }
  }
- } catch (uploadError) {
+ } catch {
  showNotification(
- uploadError.message || "Attachment upload failed. Please try again.",
+ "Failed to upload attachment. Please try again.",
  "error",
  );
  } finally {
@@ -1247,6 +1159,14 @@ export default function AdminMaintenancePage() {
  if (files.length === 0) return;
 
  clearReplyFieldError("reply_attachments");
+ const maintenanceRequestId = getMaintenanceRequestUploadId(selectedRequest);
+ if (!maintenanceRequestId) {
+ const message = "Failed to upload attachment. Please try again.";
+ setReplyFieldErrors((current) => ({ ...current, reply_attachments: message }));
+ showNotification(message, "error");
+ event.target.value = "";
+ return;
+ }
  setUploadingReplyAttachment(true);
 
  try {
@@ -1283,38 +1203,22 @@ export default function AdminMaintenancePage() {
  ]);
 
  try {
-  const { downloadUrl: uri, storagePath, size, attachment: uploadedAttachment } = await uploadMaintenanceAttachment(
-  file,
-  buildMaintenanceAttachmentUploadOptions(selectedRequest, {
-  documentType: "maintenance-reply-attachment",
-  context: "maintenance_reply",
-  visibility: "tenant_admin",
-  ...(selectedRequestUploadBranchId ? { branchId: selectedRequestUploadBranchId } : {}),
-  }),
-  );
+ const uploadResult = await maintenanceApi.uploadAdminMaintenanceAttachment(
+ maintenanceRequestId,
+ file,
+ { visibility: "tenant_visible" },
+ );
+ const uploadedAttachment = uploadResult?.attachment || uploadResult;
  setReplyAttachments((current) =>
  current.map((attachment) =>
  attachment.clientId === clientId
- ? {
-  ...uploadedAttachment,
-  clientId,
-  name: file.name,
-  uri,
-  url: uri,
-  downloadUrl: uri,
-  type: uploadedAttachment?.type || uploadedAttachment?.mimeType || file.type || "application/octet-stream",
-  mimeType: uploadedAttachment?.mimeType || uploadedAttachment?.type || file.type || "application/octet-stream",
-  size,
-  storagePath,
-  uploadStatus: "uploaded",
-  }
+ ? buildUploadedAdminAttachment({ clientId, file, attachment: uploadedAttachment })
  : attachment,
  ),
  );
- showNotification("Attachment uploaded.", "success");
- } catch (uploadError) {
- const message =
- uploadError.message || "Attachment upload failed. Please try again.";
+ showNotification("Upload complete.", "success");
+ } catch {
+ const message = "Failed to upload attachment. Please try again.";
  setReplyAttachments((current) =>
  current.map((attachment) =>
  attachment.clientId === clientId
@@ -1333,9 +1237,9 @@ export default function AdminMaintenancePage() {
  showNotification(message, "error");
  }
  }
- } catch (uploadError) {
+ } catch {
  showNotification(
- uploadError.message || "Attachment upload failed. Please try again.",
+ "Failed to upload attachment. Please try again.",
  "error",
  );
  } finally {
@@ -2589,7 +2493,7 @@ export default function AdminMaintenancePage() {
  >
  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-card-foreground hover:bg-muted">
  <Paperclip size={14} />
- {uploadingUpdateAttachment ? "Uploading attachment..." : "Upload internal file"}
+ {uploadingUpdateAttachment ? "Uploading..." : "Upload internal file"}
  <input
  type="file"
  hidden
@@ -2722,7 +2626,7 @@ export default function AdminMaintenancePage() {
  >
  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-card-foreground hover:bg-muted">
  <Paperclip size={14} />
- {uploadingReplyAttachment ? "Uploading attachment..." : "Upload tenant-visible file"}
+ {uploadingReplyAttachment ? "Uploading..." : "Upload tenant-visible file"}
  <input
  type="file"
  hidden

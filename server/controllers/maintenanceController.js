@@ -37,7 +37,11 @@ import { buildLegacyDescription } from "../utils/maintenanceMigration.js";
 import { notify } from "../utils/notificationService.js";
 import { clean } from "../utils/sanitize.js";
 import { DELETED_ACCOUNT_LABEL } from "../utils/userReference.js";
-import { resolveUploadBranch } from "../services/attachmentUploadService.js";
+import {
+  resolveMaintenanceRequestBranch,
+  resolveUploadBranch,
+  uploadMaintenanceRequestAttachmentFile,
+} from "../services/attachmentUploadService.js";
 
 const USER_SELECT_FIELDS =
   "user_id firstName lastName email phone branch role";
@@ -476,6 +480,35 @@ const sanitizeAttachmentsForOutput = (attachments, options = {}) => {
   return attachments
     .map((entry, index) => sanitizeAttachmentForOutput(entry, index, options))
     .filter(Boolean);
+};
+
+const serializeUploadedMaintenanceAttachment = (attachment = {}) => {
+  const url =
+    toOptionalText(attachment.url) ||
+    toOptionalText(attachment.downloadUrl) ||
+    toOptionalText(attachment.uri);
+  const visibility =
+    attachment.visibility === "admin_only" ? "admin_only" : "tenant_visible";
+
+  return {
+    id: attachment.id || attachment.storagePath || url,
+    name: attachment.name || attachment.originalName || attachment.filename || "Attachment",
+    url,
+    uri: url,
+    downloadUrl: url,
+    type: attachment.type || attachment.mimeType || "application/octet-stream",
+    mimeType: attachment.mimeType || attachment.type || "application/octet-stream",
+    size: attachment.size ?? null,
+    visibility,
+    uploadedBy: attachment.uploadedBy || null,
+    uploadedAt: attachment.uploadedAt || new Date().toISOString(),
+    storagePath: attachment.storagePath || null,
+    context: attachment.context || null,
+    relatedId: attachment.relatedId || null,
+    branchId: attachment.branchId || attachment.branch || null,
+    branch: attachment.branch || attachment.branchId || null,
+    provider: attachment.provider || null,
+  };
 };
 
 const buildRequestIdentifierQuery = (requestId) => {
@@ -1494,6 +1527,61 @@ export const sendAdminReply = async (req, res, next) => {
         serializeTenantSummary(tenantUser, request),
       ),
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/m/maintenance/admin/:requestId/attachments
+ * Maintenance-specific admin attachment upload. Branch is resolved only from
+ * the maintenance request document, not from frontend upload metadata.
+ */
+export const uploadAdminMaintenanceAttachment = async (req, res, next) => {
+  try {
+    const requestId = toOptionalText(req.params.requestId || req.body?.maintenanceRequestId);
+    if (!requestId) {
+      throw new AppError(
+        "Maintenance request ID is required.",
+        400,
+        "REQUEST_ID_REQUIRED",
+      );
+    }
+
+    const request = await findAccessibleRequest(requestId);
+    const branch = resolveMaintenanceRequestBranch(request);
+    if (!branch) {
+      throw new AppError(
+        "Maintenance request has no branch assigned.",
+        400,
+        "MAINTENANCE_REQUEST_BRANCH_REQUIRED",
+      );
+    }
+
+    if (!req.isOwner && req.branchFilter !== branch) {
+      throw new AppError("Access denied", 403, "FORBIDDEN");
+    }
+
+    const adminUser = await getDbUser(req.user.uid);
+    const rawVisibility = toOptionalText(req.body?.visibility || req.body?.type) || "tenant_visible";
+    const isInternal = ["admin_only", "admin-only", "internal"].includes(rawVisibility);
+    const attachment = await uploadMaintenanceRequestAttachmentFile({
+      req,
+      file: req.file,
+      maintenanceRequest: request,
+      visibility: isInternal ? "admin_only" : "tenant_visible",
+      context: isInternal ? "maintenance_internal_note" : "maintenance_reply",
+      uploadedBy: adminUser?.user_id || String(adminUser?._id || ""),
+      senderRole: adminUser?.role || "admin",
+    });
+
+    sendSuccess(
+      res,
+      {
+        attachment: serializeUploadedMaintenanceAttachment(attachment),
+      },
+      201,
+    );
   } catch (error) {
     next(error);
   }

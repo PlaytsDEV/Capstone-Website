@@ -56,7 +56,12 @@ await jest.unstable_mockModule("../middleware/rateLimiter.js", () => ({
   apiLimiter: noop,
 }));
 await jest.unstable_mockModule("../config/firebase.js", () => ({
+  default: { storage: jest.fn() },
   getAuth: jest.fn(),
+}));
+await jest.unstable_mockModule("../services/attachmentUploadService.js", () => ({
+  ATTACHMENT_TYPE_ERROR_MESSAGE: "Unsupported attachment type",
+  isAllowedAttachmentFile: jest.fn(() => true),
 }));
 await jest.unstable_mockModule("../utils/auditLogger.js", () => ({
   default: { log: jest.fn() },
@@ -184,6 +189,7 @@ await jest.unstable_mockModule("../controllers/maintenanceController.js", () => 
   updateRequest: noop,
   updateAdminRequestStatus: noop,
   updateAdminRequestStatusCompat: noop,
+  uploadAdminMaintenanceAttachment: noop,
   sendAdminReply: noop,
   sendTenantReply: noop,
   updateAdminBulkRequests: noop,
@@ -370,6 +376,11 @@ describe("route access guards", () => {
       "/admin/:requestId/reply",
       "post",
     );
+    const adminAttachmentHandlers = getRouteHandlers(
+      maintenanceRoutes,
+      "/admin/:requestId/attachments",
+      "post",
+    );
     const legacyBranchHandlers = getRouteHandlers(maintenanceRoutes, "/branch", "get");
 
     expect(adminListHandlers).toContain(verifyAdmin);
@@ -392,6 +403,14 @@ describe("route access guards", () => {
     expect(adminReplyHandlers).toContain(filterByBranch);
     expect(
       adminReplyHandlers.some(
+        (handler) => handler.requiredPermission === "manageMaintenance",
+      ),
+    ).toBe(true);
+
+    expect(adminAttachmentHandlers).toContain(verifyAdmin);
+    expect(adminAttachmentHandlers).toContain(filterByBranch);
+    expect(
+      adminAttachmentHandlers.some(
         (handler) => handler.requiredPermission === "manageMaintenance",
       ),
     ).toBe(true);

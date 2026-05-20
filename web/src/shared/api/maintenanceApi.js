@@ -97,6 +97,21 @@ export const maintenanceApi = {
     }),
 
   /**
+   * Upload an admin maintenance attachment without relying on frontend branch metadata.
+   */
+  uploadAdminMaintenanceAttachment: (requestId, file, { visibility = "tenant_visible" } = {}) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("maintenanceRequestId", requestId);
+    formData.append("visibility", visibility);
+
+    return authFetch(`/m/maintenance/admin/${requestId}/attachments`, {
+      method: "POST",
+      body: formData,
+    });
+  },
+
+  /**
    * Bulk update maintenance requests (admin only)
    */
   bulkUpdateAdminRequests: (payload) =>

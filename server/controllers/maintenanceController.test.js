@@ -88,9 +88,13 @@ const {
   reopenMyRequest,
   sendAdminReply,
   sendTenantReply,
+  uploadAdminMaintenanceAttachment,
   updateAdminRequestStatus,
 } = await import("./maintenanceController.js");
-const { resolveUploadBranch } = await import("../services/attachmentUploadService.js");
+const {
+  resolveMaintenanceRequestBranch,
+  resolveUploadBranch,
+} = await import("../services/attachmentUploadService.js");
 
 const buildLeanQuery = (result) => ({
   select: jest.fn(() => ({
@@ -529,6 +533,12 @@ describe("maintenanceController", () => {
       statusCode: 403,
       code: "UPLOAD_BRANCH_FORBIDDEN",
     });
+  });
+
+  test("resolveMaintenanceRequestBranch only derives branch from the maintenance request record", () => {
+    expect(resolveMaintenanceRequestBranch({ branch: "Gil Puyat Branch" })).toBe("gil-puyat");
+    expect(resolveMaintenanceRequestBranch({ branchId: "guadalupe" })).toBe("guadalupe");
+    expect(resolveMaintenanceRequestBranch({ tenant: { branch: "gil-puyat" } })).toBe("");
   });
 
   test("getAdminAll exposes remote attachment URL aliases", async () => {
@@ -1256,6 +1266,32 @@ describe("maintenanceController", () => {
     expect(next).toHaveBeenCalledTimes(1);
     expect(next.mock.calls[0][0].code).toBe("REPLY_REQUIRED");
     expect(next.mock.calls[0][0].details[0].field).toBe("message");
+  });
+
+  test("uploadAdminMaintenanceAttachment returns clear error when request has no branch", async () => {
+    const requestDoc = buildRequestDoc({ branch: null, branchId: null });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+
+    const req = {
+      params: { requestId: requestDoc.request_id },
+      body: { maintenanceRequestId: requestDoc.request_id, visibility: "tenant_visible" },
+      user: { uid: "admin-firebase-1" },
+      isOwner: true,
+      branchFilter: null,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await uploadAdminMaintenanceAttachment(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "Maintenance request has no branch assigned.",
+        statusCode: 400,
+        code: "MAINTENANCE_REQUEST_BRANCH_REQUIRED",
+      }),
+    );
+    expect(sendSuccess).not.toHaveBeenCalled();
   });
 
   test("sendAdminReply denies branch admin access to another branch request", async () => {

@@ -56,6 +56,13 @@ export const ATTACHMENT_TYPE_ERROR_MESSAGE =
   "This file type is not supported. Please upload a JPEG, PNG, WebP, HEIC, HEIF, or PDF file.";
 
 const VALID_VISIBILITIES = new Set(["tenant_admin", "admin_only"]);
+const TENANT_VISIBLE_VISIBILITIES = new Set([
+  "tenant_visible",
+  "tenant-visible",
+  "tenant_admin",
+  "tenant-admin",
+  "public",
+]);
 const OWNER_BRANCH_FIELD_NAMES = ["branchId", "branch_id", "branch"];
 
 const toText = (value) => {
@@ -618,6 +625,15 @@ export const resolveAttachmentVisibility = (context, rawVisibility) => {
   return context === "maintenance_internal_note" ? "admin_only" : "tenant_admin";
 };
 
+export const resolveMaintenanceRequestBranch = (maintenanceRequest = {}) =>
+  firstBranch(
+    maintenanceRequest?.branchId,
+    maintenanceRequest?.branch_id,
+    maintenanceRequest?.branch,
+    maintenanceRequest?.branchName,
+    maintenanceRequest?.branch_name,
+  );
+
 const sanitizeStorageSegment = (value, fallback) => {
   const segment = toText(value)
     .replace(/[^a-zA-Z0-9._-]/g, "_")
@@ -691,7 +707,7 @@ const storeInFirebase = async ({ file, storagePath, metadata, mimeType }) => {
   };
 };
 
-export const uploadAttachmentFile = async ({ req, file, options = {} }) => {
+const assertUploadableAttachmentFile = (file) => {
   if (!file) {
     throw new AppError("Please choose a photo or PDF to upload.", 400, "FILE_REQUIRED");
   }
@@ -707,33 +723,24 @@ export const uploadAttachmentFile = async ({ req, file, options = {} }) => {
       "UNSUPPORTED_FILE_TYPE",
     );
   }
+};
 
+const storeAttachmentFile = async ({
+  req,
+  file,
+  branch,
+  context,
+  visibility,
+  relatedId = null,
+  uploadedBy = "",
+  senderRole = "user",
+}) => {
   const mimeType = resolveAttachmentMimeType(file);
-  const resolution = await resolveUploadBranch(req, options);
-  const context = resolution.context;
-  const visibility = resolveAttachmentVisibility(
-    context,
-    options.visibility || getField(req, "visibility"),
-  );
-  const relatedId =
-    toText(options.relatedId) ||
-    getField(req, ["relatedId", "related_id"]) ||
-    resolution.relatedId ||
-    null;
-  const senderRole =
-    toText(options.senderRole) ||
-    toText(resolution.dbUser?.role) ||
-    "user";
-  const uploadedBy =
-    toText(options.uploadedBy) ||
-    toText(resolution.dbUser?.user_id) ||
-    String(resolution.dbUser?._id || "");
-
   const safeName = sanitizeStorageSegment(file.originalname, "attachment");
   const storagePath = [
     "uploads",
     "attachments",
-    resolution.branch,
+    branch,
     sanitizeStorageSegment(context, "attachment"),
     relatedId ? sanitizeStorageSegment(relatedId, "related") : "unlinked",
     `${Date.now()}-${crypto.randomUUID()}-${safeName}`,
@@ -742,8 +749,8 @@ export const uploadAttachmentFile = async ({ req, file, options = {} }) => {
   const baseMetadata = {
     context,
     visibility,
-    branchId: resolution.branch,
-    branch: resolution.branch,
+    branchId: branch,
+    branch,
     uploadedBy,
     senderRole,
     relatedId,
@@ -766,6 +773,7 @@ export const uploadAttachmentFile = async ({ req, file, options = {} }) => {
   const stored = firebaseResult || (await storeLocally({ file, storagePath, req }));
 
   return {
+    id: crypto.randomUUID(),
     ...baseMetadata,
     name: file.originalname,
     filename: file.originalname,
@@ -780,4 +788,79 @@ export const uploadAttachmentFile = async ({ req, file, options = {} }) => {
     provider: stored.provider,
     uploadedAt: new Date().toISOString(),
   };
+};
+
+export const uploadAttachmentFile = async ({ req, file, options = {} }) => {
+  assertUploadableAttachmentFile(file);
+
+  const resolution = await resolveUploadBranch(req, options);
+  const context = resolution.context;
+  const visibility = resolveAttachmentVisibility(
+    context,
+    options.visibility || getField(req, "visibility"),
+  );
+  const relatedId =
+    toText(options.relatedId) ||
+    getField(req, ["relatedId", "related_id"]) ||
+    resolution.relatedId ||
+    null;
+  const senderRole =
+    toText(options.senderRole) ||
+    toText(resolution.dbUser?.role) ||
+    "user";
+  const uploadedBy =
+    toText(options.uploadedBy) ||
+    toText(resolution.dbUser?.user_id) ||
+    String(resolution.dbUser?._id || "");
+
+  return storeAttachmentFile({
+    req,
+    file,
+    branch: resolution.branch,
+    context,
+    visibility,
+    relatedId,
+    uploadedBy,
+    senderRole,
+  });
+};
+
+export const uploadMaintenanceRequestAttachmentFile = async ({
+  req,
+  file,
+  maintenanceRequest,
+  visibility = "tenant_visible",
+  context = "maintenance_reply",
+  uploadedBy = "",
+  senderRole = "admin",
+}) => {
+  assertUploadableAttachmentFile(file);
+
+  const branch = resolveMaintenanceRequestBranch(maintenanceRequest);
+  if (!branch) {
+    throw new AppError(
+      "Maintenance request has no branch assigned.",
+      400,
+      "MAINTENANCE_REQUEST_BRANCH_REQUIRED",
+    );
+  }
+
+  const requestedVisibility = toText(visibility).toLowerCase();
+  const internalVisibility =
+    requestedVisibility === "admin_only" || requestedVisibility === "admin-only"
+      ? "admin_only"
+      : TENANT_VISIBLE_VISIBILITIES.has(requestedVisibility)
+        ? "tenant_admin"
+        : resolveAttachmentVisibility(context, visibility);
+
+  return storeAttachmentFile({
+    req,
+    file,
+    branch,
+    context,
+    visibility: internalVisibility,
+    relatedId: maintenanceRequest?.request_id || String(maintenanceRequest?._id || ""),
+    uploadedBy,
+    senderRole,
+  });
 };
