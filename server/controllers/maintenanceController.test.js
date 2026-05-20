@@ -1693,6 +1693,65 @@ describe("maintenanceController", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  test("assignAdminMaintenanceProvider treats unassigning an already unassigned request as a no-op", async () => {
+    const requestDoc = buildRequestDoc({
+      assigned_to: null,
+      assignedProviderName: null,
+      assignedProviderId: null,
+      statusHistory: [],
+      save: jest.fn().mockResolvedValue(undefined),
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockImplementation((query) => {
+      if (query.firebaseUid === "firebase-admin-1") {
+        return buildLeanQuery({
+          _id: "admin_user_1",
+          user_id: "admin_1",
+          firstName: "Branch",
+          lastName: "Admin",
+          email: "admin@example.com",
+          phone: "0918",
+          branch: "gil-puyat",
+          role: "branch_admin",
+        });
+      }
+
+      if (query.user_id === requestDoc.user_id) {
+        return buildLeanQuery({
+          _id: "tenant_user_1",
+          user_id: requestDoc.user_id,
+          firstName: "Lily",
+          lastName: "Tenant",
+          email: "lily@example.com",
+          phone: "0917",
+          branch: "gil-puyat",
+          role: "tenant",
+        });
+      }
+
+      return buildLeanQuery(null);
+    });
+
+    const req = {
+      user: { uid: "firebase-admin-1" },
+      params: { requestId: requestDoc.request_id },
+      body: { providerSource: "none" },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await assignAdminMaintenanceProvider(req, res, next);
+
+    expect(requestDoc.statusHistory).toEqual([]);
+    expect(requestDoc.save).not.toHaveBeenCalled();
+    expect(sendSuccess).toHaveBeenCalledWith(res, expect.objectContaining({
+      message: "No service provider is assigned yet.",
+    }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
   test("getMyRequests does not expose provider contact details to tenants", async () => {
     const storedRequest = buildRequestDoc({
       assigned_to: "Makati Plumbing Services",

@@ -1317,12 +1317,37 @@ function ServiceProviderAssignmentPanel({
  const currentName = getAssignedProviderName(request);
  const currentContact = getAssignedProviderContact(request);
  const currentCategory = getAssignedProviderCategory(request);
+ const currentNotes =
+ request?.assignedProvider?.notes ||
+ request?.assignedProviderNotes ||
+ "";
+ const currentProviderId =
+ request?.assignedProvider?.id ||
+ request?.assignedProviderId ||
+ "";
+ const currentProviderSource =
+ request?.assignedProvider?.source ||
+ request?.assignedProviderSource ||
+ (currentName ? (currentProviderId ? "directory" : "manual") : "none");
  const selectedProvider = providers.find((provider) => provider.id === selectedChoice);
  const showManualFields = selectedChoice === PROVIDER_MANUAL_CHOICE;
  const requestBranch = formatBranchLabel(getRequestBranch(request));
  const requestCategory = request?.request_type
  ? getMaintenanceTypeMeta(request.request_type).label
  : "Maintenance";
+ const manualValuesChanged =
+ manualProvider.providerName.trim() !== String(currentName || "").trim() ||
+ manualProvider.contactNumber.trim() !== String(currentContact || "").trim() ||
+ manualProvider.serviceType.trim() !== String(currentCategory || "").trim() ||
+ manualProvider.notes.trim() !== String(currentNotes || "").trim();
+ const hasAssignmentChanges =
+ selectedChoice === PROVIDER_NONE_CHOICE
+ ? Boolean(currentName || currentProviderId)
+ : selectedChoice === PROVIDER_MANUAL_CHOICE
+ ? currentProviderSource !== "manual" || manualValuesChanged || saveForFuture
+ : selectedChoice !== currentProviderId ||
+ currentProviderSource !== "directory" ||
+ manualProvider.notes.trim() !== String(currentNotes || "").trim();
 
  return (
  <div className="rounded-xl border border-border bg-card p-5">
@@ -1537,7 +1562,8 @@ function ServiceProviderAssignmentPanel({
  color: "var(--primary-foreground)",
  }}
  onClick={onAssign}
- disabled={disabled || isAssigning}
+ disabled={disabled || isAssigning || !hasAssignmentChanges}
+ title={!hasAssignmentChanges ? "No assignment changes to save." : undefined}
  >
  {isAssigning ? "Saving..." : "Save Assignment"}
  </button>
@@ -2730,6 +2756,15 @@ export default function AdminMaintenancePage() {
 
  const handleAssignProvider = async () => {
  if (!selectedRequest) return;
+ if (
+ providerChoice === PROVIDER_NONE_CHOICE &&
+ !getAssignedProviderName(selectedRequest) &&
+ !selectedRequest.assignedProviderId &&
+ !selectedRequest.assignedProvider?.id
+ ) {
+ showNotification("No service provider is assigned yet.", "info");
+ return;
+ }
  const validationErrors = validateProviderAssignment();
  if (Object.keys(validationErrors).length > 0) {
  const message = getFormSummaryMessage(

@@ -1736,7 +1736,18 @@ export const assignAdminMaintenanceProvider = async (req, res, next) => {
 
     if (providerSource === "none") {
       if (!previousProviderName) {
-        throw new AppError("No service provider is assigned.", 400, "PROVIDER_NOT_ASSIGNED");
+        const tenantUser = await User.findOne({ user_id: request.user_id })
+          .select(USER_SELECT_FIELDS)
+          .lean();
+
+        sendSuccess(res, {
+          message: "No service provider is assigned yet.",
+          request: serializeMaintenanceRequest(
+            request.toObject(),
+            serializeTenantSummary(tenantUser, request),
+          ),
+        });
+        return;
       }
       event = "service_provider_unassigned";
       request.assignedProviderId = null;
