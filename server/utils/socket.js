@@ -30,6 +30,12 @@ const adminBranchRoom = (branch) => `admins:branch:${branch}`;
 const isOwnerLike = (role, claims = {}) =>
   isOwnerRole(role) || Boolean(claims.owner || claims.superadmin);
 
+const getSocketOrigin = (socket) => socket.handshake.headers?.origin || "";
+const getSocketTransport = (socket) =>
+  socket.conn?.transport?.name ||
+  socket.handshake.query?.transport ||
+  "unknown";
+
 /**
  * Initialize Socket.IO on an existing HTTP server
  * @param {import("http").Server} httpServer
@@ -62,15 +68,39 @@ export function initSocket(httpServer, options = {}) {
     transports: ["polling", "websocket"],
   });
 
+  io.engine.on("connection_error", (error) => {
+    logger.warn(
+      {
+        code: error.code,
+        message: error.message,
+        context: error.context,
+        origin: error.req?.headers?.origin,
+        transport: error.req?._query?.transport,
+      },
+      "Socket.IO engine connection error",
+    );
+  });
+
   io.use(async (socket, next) => {
+    const origin = getSocketOrigin(socket);
+    const transport = getSocketTransport(socket);
+
     try {
       const token = socket.handshake.auth?.token;
       if (!token) {
+        logger.warn(
+          { socketId: socket.id, origin, transport },
+          "Socket authentication missing token",
+        );
         return next(new Error("Authentication required"));
       }
 
       const auth = getAuth();
       if (!auth) {
+        logger.warn(
+          { socketId: socket.id, origin, transport },
+          "Socket authentication unavailable",
+        );
         return next(new Error("Authentication unavailable"));
       }
 
@@ -80,6 +110,18 @@ export function initSocket(httpServer, options = {}) {
         .lean();
 
       if (!dbUser || dbUser.isArchived || dbUser.accountStatus !== "active") {
+        logger.warn(
+          {
+            socketId: socket.id,
+            origin,
+            transport,
+            firebaseUid: decoded.uid,
+            userId: dbUser?._id ? String(dbUser._id) : null,
+            accountStatus: dbUser?.accountStatus,
+            isArchived: dbUser?.isArchived,
+          },
+          "Socket authentication rejected user",
+        );
         return next(new Error("User not allowed"));
       }
 
@@ -87,7 +129,10 @@ export function initSocket(httpServer, options = {}) {
       socket.data.claims = decoded;
       return next();
     } catch (error) {
-      logger.warn({ err: error }, "Socket authentication failed");
+      logger.warn(
+        { err: error, socketId: socket.id, origin, transport },
+        "Socket authentication failed",
+      );
       return next(new Error("Authentication failed"));
     }
   });
@@ -97,6 +142,7 @@ export function initSocket(httpServer, options = {}) {
     const claims = socket.data.claims || {};
     const userId = dbUser?._id ? String(dbUser._id) : "";
     const role = String(dbUser?.role || "").toLowerCase();
+    const origin = getSocketOrigin(socket);
 
     if (userId) {
       socket.join(`user:${userId}`);
@@ -112,8 +158,55 @@ export function initSocket(httpServer, options = {}) {
       }
     }
 
-    socket.on("disconnect", () => {
+    logger.info(
+      {
+        socketId: socket.id,
+        userId,
+        role,
+        branch: dbUser?.branch || null,
+        origin,
+        transport: getSocketTransport(socket),
+      },
+      "Socket connected",
+    );
+
+    socket.conn.once("upgrade", (transport) => {
+      logger.info(
+        {
+          socketId: socket.id,
+          userId,
+          origin,
+          transport: transport.name,
+        },
+        "Socket transport upgraded",
+      );
+    });
+
+    socket.on("disconnect", (reason) => {
+      logger.info(
+        {
+          socketId: socket.id,
+          userId,
+          origin,
+          transport: getSocketTransport(socket),
+          reason,
+        },
+        "Socket disconnected",
+      );
       // Cleanup handled automatically by Socket.IO
+    });
+
+    socket.on("error", (error) => {
+      logger.warn(
+        {
+          err: error,
+          socketId: socket.id,
+          userId,
+          origin,
+          transport: getSocketTransport(socket),
+        },
+        "Socket error",
+      );
     });
   });
 

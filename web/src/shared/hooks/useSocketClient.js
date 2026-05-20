@@ -12,6 +12,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import useNotificationStore from "../stores/notificationStore";
 import { useAuth } from "./useAuth";
 import { SOCKET_BASE_URL } from "../api/baseUrl";
+import {
+  SOCKET_CLIENT_OPTIONS,
+  describeSocketTarget,
+} from "../api/socketConfig";
 import { getFreshToken } from "../api/httpClient";
 import { showNotification } from "../utils/notification";
 import {
@@ -29,6 +33,7 @@ export default function useSocketClient() {
   const setConnected = useNotificationStore((s) => s.setConnected);
   const clearNotifications = useNotificationStore((s) => s.clear);
   const activeIdentityRef = useRef(null);
+  const hasLoggedConnectionRef = useRef(false);
 
   useEffect(() => {
     const identity = user?.id || user?._id
@@ -53,21 +58,27 @@ export default function useSocketClient() {
 
       const socket = io(SOCKET_BASE_URL, {
         auth: { token },
-        path: "/socket.io",
-        transports: ["websocket", "polling"],
-        reconnectionAttempts: 4,
-        reconnectionDelay: 2000,
-        reconnectionDelayMax: 10000,
-        timeout: 10000,
+        ...SOCKET_CLIENT_OPTIONS,
       });
 
       socket.on("connect", () => {
         lastSocketErrorRef.current = "";
         setConnected(true);
+        const transport = socket.io.engine?.transport?.name || "unknown";
+        if (!hasLoggedConnectionRef.current) {
+          hasLoggedConnectionRef.current = true;
+          console.info(`[socket] Connected to real-time server (${transport}).`);
+        }
+        socket.io.engine?.once("upgrade", (upgradedTransport) => {
+          console.info(`[socket] Real-time transport upgraded to ${upgradedTransport.name}.`);
+        });
       });
 
-      socket.on("disconnect", () => {
+      socket.on("disconnect", (reason) => {
         setConnected(false);
+        if (reason !== "io client disconnect") {
+          console.info(`[socket] Disconnected (${reason || "unknown reason"}). HTTP updates remain active.`);
+        }
       });
 
       socket.on("connect_error", (error) => {
@@ -76,7 +87,7 @@ export default function useSocketClient() {
         if (lastSocketErrorRef.current !== message) {
           lastSocketErrorRef.current = message;
           console.warn(
-            `[socket] Real-time connection unavailable (${message}). Continuing with normal HTTP updates.`,
+            `[socket] Real-time connection unavailable (${message}). Target: ${describeSocketTarget()}. Continuing with normal HTTP updates.`,
           );
         }
       });

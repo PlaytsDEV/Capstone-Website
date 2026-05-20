@@ -21,6 +21,10 @@ import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { useAuth } from "./useAuth";
 import { SOCKET_BASE_URL } from "../api/baseUrl";
+import {
+  SOCKET_CLIENT_OPTIONS,
+  describeSocketTarget,
+} from "../api/socketConfig";
 import { getFreshToken } from "../api/httpClient";
 
 export default function useChatSocket({
@@ -32,6 +36,7 @@ export default function useChatSocket({
   const { user } = useAuth();
   const socketRef = useRef(null);
   const lastSocketErrorRef = useRef("");
+  const hasLoggedConnectionRef = useRef(false);
   const [isConnected, setIsConnected] = useState(false);
 
   // Keep callback refs stable so the effect doesn't re-run on every render
@@ -54,19 +59,27 @@ export default function useChatSocket({
 
       const socket = io(SOCKET_BASE_URL, {
         auth: { token },
-        path: "/socket.io",
-        transports: ["websocket", "polling"],
-        reconnectionAttempts: 4,
-        reconnectionDelay: 2000,
-        reconnectionDelayMax: 10000,
-        timeout: 10000,
+        ...SOCKET_CLIENT_OPTIONS,
       });
 
       socket.on("connect", () => {
         lastSocketErrorRef.current = "";
         setIsConnected(true);
+        const transport = socket.io.engine?.transport?.name || "unknown";
+        if (!hasLoggedConnectionRef.current) {
+          hasLoggedConnectionRef.current = true;
+          console.info(`[socket] Chat connected to real-time server (${transport}).`);
+        }
+        socket.io.engine?.once("upgrade", (upgradedTransport) => {
+          console.info(`[socket] Chat transport upgraded to ${upgradedTransport.name}.`);
+        });
       });
-      socket.on("disconnect", () => setIsConnected(false));
+      socket.on("disconnect", (reason) => {
+        setIsConnected(false);
+        if (reason !== "io client disconnect") {
+          console.info(`[socket] Chat disconnected (${reason || "unknown reason"}). HTTP loading is unaffected.`);
+        }
+      });
 
       socket.on("connect_error", (error) => {
         setIsConnected(false);
@@ -74,7 +87,7 @@ export default function useChatSocket({
         if (lastSocketErrorRef.current !== message) {
           lastSocketErrorRef.current = message;
           console.warn(
-            `[socket] Chat real-time connection unavailable (${message}). Chat HTTP loading is unaffected.`,
+            `[socket] Chat real-time connection unavailable (${message}). Target: ${describeSocketTarget()}. Chat HTTP loading is unaffected.`,
           );
         }
       });
