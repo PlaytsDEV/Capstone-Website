@@ -822,6 +822,27 @@ const getPublicBaseUrl = (req) => {
   return normalizePublicBaseUrl(`${req.protocol}://${req.get("host")}`);
 };
 
+const getFirebaseStorageBucketCandidates = () => {
+  const configuredBuckets = [
+    process.env.FIREBASE_STORAGE_BUCKET,
+    process.env.GCLOUD_STORAGE_BUCKET,
+    process.env.GOOGLE_CLOUD_STORAGE_BUCKET,
+  ].map(toText);
+
+  const projectId = toText(process.env.FIREBASE_PROJECT_ID);
+  const derivedBuckets = projectId
+    ? [`${projectId}.firebasestorage.app`, `${projectId}.appspot.com`]
+    : [];
+
+  return [...new Set([...configuredBuckets, ...derivedBuckets].filter(Boolean))];
+};
+
+const getAttachmentStorageDriver = () => {
+  const configured = toText(process.env.ATTACHMENT_STORAGE_DRIVER).toLowerCase();
+  if (configured) return configured;
+  return process.env.NODE_ENV === "production" ? "firebase" : "local";
+};
+
 const storeLocally = async ({ file, storagePath, req }) => {
   const uploadRoot = path.resolve(__dirname, "..", "uploads");
   const relativePath = storagePath.replace(/^uploads\//, "");
@@ -838,41 +859,95 @@ const storeLocally = async ({ file, storagePath, req }) => {
 };
 
 const storeInFirebase = async ({ file, storagePath, metadata, mimeType }) => {
-  const bucketName =
-    process.env.FIREBASE_STORAGE_BUCKET ||
-    process.env.GCLOUD_STORAGE_BUCKET ||
-    process.env.GOOGLE_CLOUD_STORAGE_BUCKET;
+  const bucketCandidates = getFirebaseStorageBucketCandidates();
 
-  if (!admin.apps.length || !bucketName) {
+  if (!admin.apps.length || bucketCandidates.length === 0) {
     return null;
   }
 
-  const bucket = admin.storage().bucket(bucketName);
   const token = crypto.randomUUID();
   const firebasePath = storagePath.replace(/^uploads\//, "");
 
-  await bucket.file(firebasePath).save(file.buffer, {
-    resumable: false,
-    metadata: {
-      contentType: mimeType || file.mimetype,
-      metadata: {
-        firebaseStorageDownloadTokens: token,
-        ...Object.fromEntries(
-          Object.entries(metadata)
-            .filter(([, value]) => value !== undefined && value !== null)
-            .map(([key, value]) => [key, String(value)]),
-        ),
-      },
-    },
-  });
+  for (const bucketName of bucketCandidates) {
+    try {
+      const bucket = admin.storage().bucket(bucketName);
+      await bucket.file(firebasePath).save(file.buffer, {
+        resumable: false,
+        metadata: {
+          contentType: mimeType || file.mimetype,
+          metadata: {
+            firebaseStorageDownloadTokens: token,
+            ...Object.fromEntries(
+              Object.entries(metadata)
+                .filter(([, value]) => value !== undefined && value !== null)
+                .map(([key, value]) => [key, String(value)]),
+            ),
+          },
+        },
+      });
 
-  return {
-    provider: "firebase-storage",
-    storagePath: firebasePath,
-    downloadUrl:
-      `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/` +
-      `${encodeURIComponent(firebasePath)}?alt=media&token=${token}`,
-  };
+      return {
+        provider: "firebase-storage",
+        storagePath: firebasePath,
+        downloadUrl:
+          `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/` +
+          `${encodeURIComponent(firebasePath)}?alt=media&token=${token}`,
+      };
+    } catch {
+      // Try the next known bucket form before reporting storage unavailable.
+    }
+  }
+
+  return null;
+};
+
+const throwAttachmentStorageConfigurationError = () => {
+  throw new AppError(
+    "Attachment storage is not configured. Please set FIREBASE_STORAGE_BUCKET and Firebase Admin credentials for maintenance uploads.",
+    500,
+    "ATTACHMENT_STORAGE_NOT_CONFIGURED",
+  );
+};
+
+const resolveStoredAttachmentFile = async ({
+  req,
+  file,
+  storagePath,
+  metadata,
+  mimeType,
+}) => {
+  const storageDriver = getAttachmentStorageDriver();
+
+  if (storageDriver === "firebase") {
+    const firebaseResult = await storeInFirebase({
+      file,
+      storagePath,
+      metadata,
+      mimeType,
+    });
+    if (!firebaseResult) {
+      throwAttachmentStorageConfigurationError();
+    }
+    return firebaseResult;
+  }
+
+  if (storageDriver === "local") {
+    if (process.env.NODE_ENV === "production") {
+      throw new AppError(
+        "Local attachment storage is not supported in production. Configure Firebase Storage before uploading attachments.",
+        500,
+        "ATTACHMENT_LOCAL_STORAGE_DISABLED",
+      );
+    }
+
+    return storeLocally({ file, storagePath, req });
+  }
+
+  throw new AppError(
+    `Unsupported attachment storage driver: ${storageDriver}`,
+    500,
+    "ATTACHMENT_STORAGE_DRIVER_INVALID",
+  );
 };
 
 const assertUploadableAttachmentFile = (file) => {
@@ -924,21 +999,13 @@ const storeAttachmentFile = async ({
     relatedId,
   };
 
-  const wantsFirebaseStorage =
-    String(process.env.ATTACHMENT_STORAGE_DRIVER || "").toLowerCase() === "firebase";
-  const firebaseResult = wantsFirebaseStorage
-    ? await storeInFirebase({ file, storagePath, metadata: baseMetadata, mimeType })
-    : null;
-
-  if (wantsFirebaseStorage && !firebaseResult) {
-    throw new AppError(
-      "Attachment storage is not configured. Please set FIREBASE_STORAGE_BUCKET and Firebase Admin credentials for maintenance uploads.",
-      500,
-      "ATTACHMENT_STORAGE_NOT_CONFIGURED",
-    );
-  }
-
-  const stored = firebaseResult || (await storeLocally({ file, storagePath, req }));
+  const stored = await resolveStoredAttachmentFile({
+    req,
+    file,
+    storagePath,
+    metadata: baseMetadata,
+    mimeType,
+  });
 
   return {
     id: crypto.randomUUID(),
