@@ -11,7 +11,7 @@ import { io } from "socket.io-client";
 import { useQueryClient } from "@tanstack/react-query";
 import useNotificationStore from "../stores/notificationStore";
 import { useAuth } from "./useAuth";
-import { API_ORIGIN } from "../api/baseUrl";
+import { SOCKET_BASE_URL } from "../api/baseUrl";
 import { getFreshToken } from "../api/httpClient";
 import { showNotification } from "../utils/notification";
 import {
@@ -20,11 +20,10 @@ import {
 } from "../utils/notificationVisibility";
 import { notificationQueryKeys } from "./queries/useNotifications";
 
-const SOCKET_URL = API_ORIGIN;
-
 export default function useSocketClient() {
   const { user } = useAuth();
   const socketRef = useRef(null);
+  const lastSocketErrorRef = useRef("");
   const qc = useQueryClient();
   const addNotification = useNotificationStore((s) => s.addNotification);
   const setConnected = useNotificationStore((s) => s.setConnected);
@@ -52,19 +51,39 @@ export default function useSocketClient() {
       const token = await getFreshToken();
       if (cancelled || !token || socketRef.current?.connected) return;
 
-      const socket = io(SOCKET_URL, {
+      const socket = io(SOCKET_BASE_URL, {
         auth: { token },
-        transports: ["polling", "websocket"],
-        reconnectionAttempts: 5,
-        reconnectionDelay: 3000,
+        path: "/socket.io",
+        transports: ["websocket", "polling"],
+        reconnectionAttempts: 4,
+        reconnectionDelay: 2000,
+        reconnectionDelayMax: 10000,
+        timeout: 10000,
       });
 
       socket.on("connect", () => {
+        lastSocketErrorRef.current = "";
         setConnected(true);
       });
 
       socket.on("disconnect", () => {
         setConnected(false);
+      });
+
+      socket.on("connect_error", (error) => {
+        setConnected(false);
+        const message = error?.message || "connection failed";
+        if (lastSocketErrorRef.current !== message) {
+          lastSocketErrorRef.current = message;
+          console.warn(
+            `[socket] Real-time connection unavailable (${message}). Continuing with normal HTTP updates.`,
+          );
+        }
+      });
+
+      socket.on("reconnect_failed", () => {
+        setConnected(false);
+        console.warn("[socket] Real-time reconnect attempts exhausted. HTTP data loading is unaffected.");
       });
 
       socket.on("notification:new", (notification) => {

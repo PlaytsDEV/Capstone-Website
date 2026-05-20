@@ -33,12 +33,30 @@ const isOwnerLike = (role, claims = {}) =>
 /**
  * Initialize Socket.IO on an existing HTTP server
  * @param {import("http").Server} httpServer
- * @param {string[]} allowedOrigins - CORS origins
+ * @param {Object} options
+ * @param {string[]} options.allowedOrigins - CORS origins for logging/debug
+ * @param {(origin?: string) => boolean} options.isOriginAllowed - shared CORS matcher
  */
-export function initSocket(httpServer, allowedOrigins = []) {
+export function initSocket(httpServer, options = {}) {
+  const {
+    allowedOrigins = [],
+    isOriginAllowed = () => true,
+  } = Array.isArray(options)
+    ? { allowedOrigins: options, isOriginAllowed: (origin) => !origin || options.includes(origin) }
+    : options;
+
   io = new Server(httpServer, {
     cors: {
-      origin: allowedOrigins,
+      origin: (origin, callback) => {
+        if (isOriginAllowed(origin)) {
+          callback(null, true);
+          return;
+        }
+
+        logger.warn({ origin }, "Socket.IO CORS rejected origin");
+        callback(new Error("Not allowed by Socket.IO CORS"));
+      },
+      methods: ["GET", "POST"],
       credentials: true,
     },
     transports: ["polling", "websocket"],
@@ -99,7 +117,7 @@ export function initSocket(httpServer, allowedOrigins = []) {
     });
   });
 
-  logger.info("Socket.IO initialized");
+  logger.info({ allowedOrigins }, "Socket.IO initialized");
   return io;
 }
 

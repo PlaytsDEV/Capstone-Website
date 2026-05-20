@@ -93,14 +93,25 @@ const escapeRegex = (value = "") => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 const wildcardToRegex = (pattern = "") =>
   new RegExp(`^${escapeRegex(pattern).replace(/\\\*/g, ".*")}$`, "i");
 
-const allowedOriginRules = (
-  process.env.CORS_ORIGINS ||
-  process.env.FRONTEND_URL ||
-  "http://localhost:3000,http://localhost:3001"
-)
-  .split(",")
-  .map((origin) => normalizeOrigin(origin))
-  .filter(Boolean);
+const DEFAULT_ALLOWED_ORIGINS = [
+  "http://localhost:3000",
+  "http://localhost:3001",
+  "http://localhost:5173",
+  "https://www.lilycrest.space",
+  "https://lilycrest.space",
+];
+
+const allowedOriginRules = [
+  ...(process.env.CORS_ORIGINS || "")
+    .split(",")
+    .map((origin) => normalizeOrigin(origin)),
+  ...(process.env.FRONTEND_URL || "")
+    .split(",")
+    .map((origin) => normalizeOrigin(origin)),
+  ...DEFAULT_ALLOWED_ORIGINS,
+]
+  .filter(Boolean)
+  .filter((origin, index, origins) => origins.indexOf(origin) === index);
 
 const allowedOriginMatchers = allowedOriginRules.map((rule) =>
   rule.includes("*") ? wildcardToRegex(rule) : rule,
@@ -404,10 +415,10 @@ const bootstrap = async () => {
     logger.info(`API available at http://localhost:${PORT}/api`);
     logger.info(`Health check: http://localhost:${PORT}/api/health`);
 
-    const socketAllowedOrigins = allowedOriginRules.filter(
-      (origin) => !origin.includes("*"),
-    );
-    initSocket(server, socketAllowedOrigins);
+    initSocket(server, {
+      allowedOrigins: allowedOriginRules,
+      isOriginAllowed,
+    });
     startBackgroundServices(mongoConnected);
   });
 

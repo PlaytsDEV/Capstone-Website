@@ -20,7 +20,7 @@
 import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { useAuth } from "./useAuth";
-import { API_ORIGIN } from "../api/baseUrl";
+import { SOCKET_BASE_URL } from "../api/baseUrl";
 import { getFreshToken } from "../api/httpClient";
 
 export default function useChatSocket({
@@ -31,6 +31,7 @@ export default function useChatSocket({
 } = {}) {
   const { user } = useAuth();
   const socketRef = useRef(null);
+  const lastSocketErrorRef = useRef("");
   const [isConnected, setIsConnected] = useState(false);
 
   // Keep callback refs stable so the effect doesn't re-run on every render
@@ -51,15 +52,37 @@ export default function useChatSocket({
       const token = await getFreshToken();
       if (cancelled || !token) return;
 
-      const socket = io(API_ORIGIN, {
+      const socket = io(SOCKET_BASE_URL, {
         auth: { token },
+        path: "/socket.io",
         transports: ["websocket", "polling"],
-        reconnectionAttempts: 5,
-        reconnectionDelay: 3000,
+        reconnectionAttempts: 4,
+        reconnectionDelay: 2000,
+        reconnectionDelayMax: 10000,
+        timeout: 10000,
       });
 
-      socket.on("connect", () => setIsConnected(true));
+      socket.on("connect", () => {
+        lastSocketErrorRef.current = "";
+        setIsConnected(true);
+      });
       socket.on("disconnect", () => setIsConnected(false));
+
+      socket.on("connect_error", (error) => {
+        setIsConnected(false);
+        const message = error?.message || "connection failed";
+        if (lastSocketErrorRef.current !== message) {
+          lastSocketErrorRef.current = message;
+          console.warn(
+            `[socket] Chat real-time connection unavailable (${message}). Chat HTTP loading is unaffected.`,
+          );
+        }
+      });
+
+      socket.on("reconnect_failed", () => {
+        setIsConnected(false);
+        console.warn("[socket] Chat real-time reconnect attempts exhausted.");
+      });
 
       socket.on("chat:message-new", (payload = {}) => {
         const { message, conversationId } = payload;
