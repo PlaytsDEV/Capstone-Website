@@ -140,6 +140,12 @@ export const maintenanceApi = {
       body: JSON.stringify(payload),
     }),
 
+  assignAdminBranch: (requestId, payload) =>
+    authFetch(`/m/maintenance/admin/${requestId}/branch`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
   generateAdminUpdate: (requestId) =>
     authFetch(`/m/maintenance/admin/${requestId}/generate-update`, {
       method: "POST",

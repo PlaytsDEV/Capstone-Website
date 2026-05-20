@@ -28,7 +28,7 @@ import {
     normalizeMaintenanceType,
     normalizeMaintenanceUrgency,
 } from "../config/maintenance.js";
-import { ROOM_BRANCH_LABELS } from "../config/branches.js";
+import { ROOM_BRANCHES, ROOM_BRANCH_LABELS } from "../config/branches.js";
 import {
     AppError,
     sendSuccess,
@@ -111,6 +111,11 @@ const toOptionalText = (value) => {
   if (value == null) return null;
   const sanitized = clean(String(value)).trim();
   return sanitized ? sanitized : null;
+};
+
+const normalizeRoomBranch = (value) => {
+  const branch = String(value || "").trim().toLowerCase();
+  return ROOM_BRANCHES.includes(branch) ? branch : null;
 };
 
 const buildActorSnapshot = (user) => ({
@@ -696,6 +701,7 @@ const INTERNAL_STATUS_EVENTS = new Set([
   "attachment_removed_request",
   "archived",
   "restored",
+  "branch_assigned_manually",
   "service_provider_assigned",
   "service_provider_changed",
   "service_provider_unassigned",
@@ -1813,11 +1819,24 @@ export const assignAdminMaintenanceProvider = async (req, res, next) => {
       const saveForFuture = Boolean(req.body?.saveForFuture);
       if (saveForFuture) {
         const branch = resolveMaintenanceRequestBranch(request);
+        if (!branch) {
+          throw new AppError(
+            "This request needs a branch before saving a provider for future use.",
+            400,
+            "PROVIDER_BRANCH_REQUIRED",
+            [
+              {
+                field: "saveForFuture",
+                message: "Repair or assign the request branch before saving this provider for future use.",
+              },
+            ],
+          );
+        }
         savedProvider = await ServiceProvider.create({
           providerName,
           contactNumber,
           serviceCategories: normalizeTextList([serviceType, getMaintenanceCategoryLabel(request)]),
-          branchCoverage: [branch].filter(Boolean),
+          branchCoverage: [branch],
           notes,
           status: "active",
           createdBy: adminUser.user_id || String(adminUser._id || ""),
@@ -1885,6 +1904,75 @@ export const assignAdminMaintenanceProvider = async (req, res, next) => {
 };
 
 /**
+ * PATCH /api/m/maintenance/admin/:requestId/branch
+ * Owner-only manual branch repair for requests that still have no valid branch.
+ */
+export const assignAdminMaintenanceBranch = async (req, res, next) => {
+  try {
+    if (!req.isOwner) {
+      throw new AppError(
+        "Only the owner can assign a missing maintenance request branch.",
+        403,
+        "OWNER_ONLY",
+      );
+    }
+
+    const branch = normalizeRoomBranch(req.body?.branch);
+    if (!branch) {
+      throw new AppError("Please select a valid branch.", 400, "INVALID_BRANCH", [
+        { field: "branch", message: "Please select Guadalupe or Gil Puyat." },
+      ]);
+    }
+
+    const request = await findAccessibleRequest(req.params.requestId, {
+      includeArchived: true,
+    });
+    const currentBranch = normalizeRoomBranch(request.branch);
+    if (currentBranch) {
+      throw new AppError(
+        "This maintenance request already has a branch assigned.",
+        409,
+        "REQUEST_BRANCH_ALREADY_ASSIGNED",
+        [{ field: "branch", message: "This request already has a valid branch." }],
+      );
+    }
+
+    const ownerUser = await getDbUser(req.user.uid);
+    const branchLabel = ROOM_BRANCH_LABELS[branch] || branch;
+    const assignedAt = new Date();
+    const actor = buildActorSnapshot(ownerUser);
+
+    request.branch = branch;
+    appendStatusHistory(request, {
+      event: "branch_assigned_manually",
+      status: request.status,
+      ...actor,
+      actor_name: "Dormitory Owner",
+      note: `Branch: ${branchLabel}`,
+      branch,
+      timestamp: assignedAt,
+    });
+
+    await request.save();
+    await emitMaintenanceUpdated(request);
+
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select(USER_SELECT_FIELDS)
+      .lean();
+
+    sendSuccess(res, {
+      message: `Branch assigned manually: ${branchLabel}.`,
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(tenantUser, request),
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * POST /api/m/maintenance/admin/:requestId/generate-update
  */
 export const generateAdminMaintenanceUpdate = async (req, res, next) => {
@@ -1927,6 +2015,16 @@ export const suggestAdminMaintenanceProvider = async (req, res, next) => {
       includeArchived: true,
     });
     ensureAdminAccess(request, req);
+
+    const requestBranch = resolveMaintenanceRequestBranch(request);
+    if (!requestBranch) {
+      sendSuccess(res, {
+        message: "This request needs a branch before a saved provider can be suggested.",
+        recommendation: null,
+        unavailableReason: "missing_branch",
+      });
+      return;
+    }
 
     const providers = await ServiceProvider.find(buildProviderDirectoryFilter(request))
       .select("+serviceCategoryKeys")

@@ -190,6 +190,7 @@ await jest.unstable_mockModule("../controllers/maintenanceController.js", () => 
   updateAdminRequestStatus: noop,
   updateAdminRequestStatusCompat: noop,
   assignAdminMaintenanceProvider: noop,
+  assignAdminMaintenanceBranch: noop,
   generateAdminMaintenanceUpdate: noop,
   suggestAdminMaintenanceProvider: noop,
   uploadAdminMaintenanceAttachment: noop,
@@ -394,6 +395,11 @@ describe("route access guards", () => {
       "/admin/:requestId/assign-provider",
       "post",
     );
+    const adminAssignBranchHandlers = getRouteHandlers(
+      maintenanceRoutes,
+      "/admin/:requestId/branch",
+      "patch",
+    );
     const adminGenerateUpdateHandlers = getRouteHandlers(
       maintenanceRoutes,
       "/admin/:requestId/generate-update",
@@ -443,7 +449,7 @@ describe("route access guards", () => {
       ),
     ).toBe(true);
 
-    [adminAssignProviderHandlers, adminGenerateUpdateHandlers, adminSuggestProviderHandlers].forEach(
+    [adminAssignProviderHandlers, adminAssignBranchHandlers, adminGenerateUpdateHandlers, adminSuggestProviderHandlers].forEach(
       (handlers) => {
         expect(handlers).toContain(verifyAdmin);
         expect(handlers).toContain(filterByBranch);

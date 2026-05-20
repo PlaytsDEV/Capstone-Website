@@ -27,6 +27,7 @@ import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import {
  useAdminMaintenanceRequests,
+ useAssignMaintenanceBranch,
  useArchiveMaintenanceRequest,
  useAssignMaintenanceProvider,
  useGenerateMaintenanceUpdate,
@@ -118,6 +119,11 @@ const ATTACHMENT_REMOVAL_REASONS = [
 ];
 const PROVIDER_MANUAL_CHOICE = "__manual__";
 const PROVIDER_NONE_CHOICE = "";
+const VALID_MAINTENANCE_BRANCHES = new Set(BRANCH_OPTIONS.map((branch) => branch.value));
+const ASSIGN_BRANCH_OPTIONS = [
+ { value: "guadalupe", label: "Guadalupe" },
+ { value: "gil-puyat", label: "Gil Puyat" },
+];
 
 const fmtDate = (value) => {
  const date = new Date(value);
@@ -374,14 +380,21 @@ const ROLE_LABELS = {
  applicant: "Tenant",
 };
 
+const normalizeMaintenanceBranch = (value) => {
+ const branch = String(value || "").trim().toLowerCase();
+ return VALID_MAINTENANCE_BRANCHES.has(branch) ? branch : "";
+};
+
+const hasValidRequestBranch = (request) => Boolean(normalizeMaintenanceBranch(request?.branch));
+
 const formatBranchLabel = (value) => {
- const branch = String(value || "").trim();
+ const branch = normalizeMaintenanceBranch(value);
  if (!branch) return "Branch missing";
  return BRANCH_DISPLAY_NAMES[branch] || branch;
 };
 
 const getRequestBranch = (request) =>
- request?.branch || request?.tenant?.branch || "";
+ normalizeMaintenanceBranch(request?.branch);
 
 const getAssignedProviderName = (request) =>
  request?.assignedProvider?.name ||
@@ -747,6 +760,8 @@ const getStatusTimelineTitle = (entry = {}) => {
  return "Request archived";
  case "restored":
  return "Request restored";
+ case "branch_assigned_manually":
+ return "Branch assigned manually";
  case "admin_proof_uploaded":
  return "Admin-only proof uploaded";
  case "attachment_removed_tenant":
@@ -828,17 +843,20 @@ const buildMaintenanceTimeline = (request) => {
  ? "Uploaded by"
  : entry.event?.startsWith("attachment_removed")
  ? "Removed by"
+ : entry.event === "branch_assigned_manually"
+ ? "Assigned by"
  : ["archived", "restored"].includes(entry.event)
  ? "Updated by"
  : "Updated by",
  timestamp: entry.timestamp,
  visibility:
- ["archived", "restored", "admin_proof_uploaded", "attachment_removed_tenant", "attachment_removed_request", "note_updated", "service_provider_assigned", "service_provider_changed", "service_provider_unassigned"].includes(entry.event)
+ ["archived", "restored", "branch_assigned_manually", "admin_proof_uploaded", "attachment_removed_tenant", "attachment_removed_request", "note_updated", "service_provider_assigned", "service_provider_changed", "service_provider_unassigned"].includes(entry.event)
  ? "admin"
  : "tenant",
  meta: entry.status ? formatMaintenanceStatus(entry.status) : "",
  removedScope: entry.removedScope,
  attachmentName: entry.attachmentName,
+ branch: entry.branch,
  providerName: entry.providerName,
  previousProviderName: entry.previousProviderName,
  });
@@ -1082,6 +1100,9 @@ function MaintenanceTimeline({
  {item.attachmentName ? (
  <p className="mt-2 text-sm text-muted-foreground">File: {item.attachmentName}</p>
  ) : null}
+ {item.branch ? (
+ <p className="mt-2 text-sm text-muted-foreground">Branch: {formatBranchLabel(item.branch)}</p>
+ ) : null}
  {item.providerName ? (
  <p className="mt-2 text-sm text-muted-foreground">Provider: {item.providerName}</p>
  ) : null}
@@ -1146,6 +1167,81 @@ function ConfirmationModal({
  disabled={isPending}
  >
  {isPending ? "Working..." : confirmLabel}
+ </button>
+ </div>
+ </section>
+ </div>
+ );
+}
+
+function AssignBranchModal({
+ open,
+ branch,
+ error = "",
+ isPending = false,
+ onBranchChange,
+ onCancel,
+ onConfirm,
+}) {
+ if (!open) return null;
+ const canSubmit = Boolean(branch) && !isPending;
+
+ return (
+ <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/50 px-4 py-6">
+ <section
+ role="dialog"
+ aria-modal="true"
+ aria-labelledby="maintenance-assign-branch-title"
+ className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl"
+ >
+ <h2 id="maintenance-assign-branch-title" className="text-lg font-semibold text-card-foreground">
+ Assign Branch
+ </h2>
+ <p className="mt-3 text-sm leading-6 text-muted-foreground">
+ This request has no branch assigned. Please select the correct branch so it can be managed properly.
+ </p>
+
+ <label className="mt-5 block">
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Branch
+ </span>
+ <select
+ value={branch}
+ onChange={(event) => onBranchChange(event.target.value)}
+ disabled={isPending}
+ className="mt-2 h-11 w-full rounded-lg border border-border bg-card px-3 text-sm text-card-foreground focus:outline-none focus:ring-2 focus:ring-slate-100"
+ >
+ <option value="">Select branch</option>
+ {ASSIGN_BRANCH_OPTIONS.map((option) => (
+ <option key={option.value} value={option.value}>
+ {option.label}
+ </option>
+ ))}
+ </select>
+ </label>
+
+ {error ? (
+ <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+ {error}
+ </div>
+ ) : null}
+
+ <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+ <button
+ type="button"
+ className="inline-flex h-10 items-center justify-center rounded-lg border border-border px-4 text-sm font-medium text-muted-foreground hover:bg-muted"
+ onClick={onCancel}
+ disabled={isPending}
+ >
+ Cancel
+ </button>
+ <button
+ type="button"
+ className="inline-flex h-10 items-center justify-center rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+ onClick={onConfirm}
+ disabled={!canSubmit}
+ >
+ {isPending ? "Saving..." : "Save Branch"}
  </button>
  </div>
  </section>
@@ -1332,6 +1428,7 @@ function ServiceProviderAssignmentPanel({
  const selectedProvider = providers.find((provider) => provider.id === selectedChoice);
  const showManualFields = selectedChoice === PROVIDER_MANUAL_CHOICE;
  const requestBranch = formatBranchLabel(getRequestBranch(request));
+ const hasRequestBranch = Boolean(getRequestBranch(request));
  const requestCategory = request?.request_type
  ? getMaintenanceTypeMeta(request.request_type).label
  : "Maintenance";
@@ -1421,7 +1518,9 @@ function ServiceProviderAssignmentPanel({
  </div>
  ) : providers.length === 0 ? (
  <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-warning-dark">
- No matching service providers found for this branch and request type. Use Manual Entry.
+ {hasRequestBranch
+ ? "No matching service providers found for this branch and request type. Use Manual Entry."
+ : "This request is missing a branch. Repair the branch before choosing a saved provider."}
  </div>
  ) : null}
 
@@ -1511,10 +1610,14 @@ function ServiceProviderAssignmentPanel({
  type="checkbox"
  checked={saveForFuture}
  onChange={(event) => onSaveForFutureChange(event.target.checked)}
- disabled={disabled || isAssigning}
+ disabled={disabled || isAssigning || !hasRequestBranch}
  className="mt-1 h-4 w-4 accent-primary"
  />
- <span>Save this provider for future use in {requestBranch} {requestCategory} requests.</span>
+ <span>
+ {hasRequestBranch
+ ? `Save this provider for future use in ${requestBranch} ${requestCategory} requests.`
+ : "Repair the request branch before saving this provider for future use."}
+ </span>
  </label>
  </div>
  ) : null}
@@ -1628,6 +1731,11 @@ export default function AdminMaintenancePage() {
  const [proofFieldErrors, setProofFieldErrors] = useState({});
  const [proofFormMessage, setProofFormMessage] = useState("");
  const [archiveDialogMode, setArchiveDialogMode] = useState(null);
+ const [branchAssignmentDialog, setBranchAssignmentDialog] = useState({
+ open: false,
+ branch: "",
+ error: "",
+ });
  const [attachmentRemovalDialog, setAttachmentRemovalDialog] = useState({
  open: false,
  target: null,
@@ -1690,6 +1798,7 @@ export default function AdminMaintenancePage() {
  const removeAttachmentMutation = useRemoveMaintenanceAttachment();
  const archiveRequestMutation = useArchiveMaintenanceRequest();
  const restoreRequestMutation = useRestoreMaintenanceRequest();
+ const assignBranchMutation = useAssignMaintenanceBranch();
  const assignProviderMutation = useAssignMaintenanceProvider();
  const generateUpdateMutation = useGenerateMaintenanceUpdate();
  const suggestProviderMutation = useSuggestMaintenanceProvider();
@@ -2010,6 +2119,11 @@ export default function AdminMaintenancePage() {
  setProofFieldErrors({});
  setProofFormMessage("");
  setArchiveDialogMode(null);
+ setBranchAssignmentDialog({
+ open: false,
+ branch: "",
+ error: "",
+ });
  setAttachmentRemovalDialog({
  open: false,
  target: null,
@@ -2574,6 +2688,56 @@ export default function AdminMaintenancePage() {
  ),
  "error",
  );
+ }
+ };
+
+ const handleOpenAssignBranch = () => {
+ if (!selectedRequest || !isOwner || hasValidRequestBranch(selectedRequest)) return;
+ setBranchAssignmentDialog({
+ open: true,
+ branch: "",
+ error: "",
+ });
+ };
+
+ const handleCloseAssignBranch = () => {
+ if (assignBranchMutation.isPending) return;
+ setBranchAssignmentDialog({
+ open: false,
+ branch: "",
+ error: "",
+ });
+ };
+
+ const handleConfirmAssignBranch = async () => {
+ if (!selectedRequest) return;
+ const branch = normalizeMaintenanceBranch(branchAssignmentDialog.branch);
+ if (!branch) {
+ setBranchAssignmentDialog((current) => ({
+ ...current,
+ error: "Please select Guadalupe or Gil Puyat.",
+ }));
+ return;
+ }
+
+ try {
+ await assignBranchMutation.mutateAsync({
+ requestId: selectedRequest.request_id,
+ branch,
+ });
+ showNotification("Maintenance request branch assigned.", "success");
+ setBranchAssignmentDialog({
+ open: false,
+ branch: "",
+ error: "",
+ });
+ } catch (assignError) {
+ const message = getMaintenanceApiErrorMessage(
+ assignError,
+ "Failed to assign branch.",
+ );
+ setBranchAssignmentDialog((current) => ({ ...current, error: message }));
+ showNotification(message, "error");
  }
  };
 
@@ -3526,7 +3690,19 @@ export default function AdminMaintenancePage() {
  <DetailDrawer.Row
  label="Branch"
  >
+ <div className="flex flex-wrap items-center gap-2">
  <BranchBadge branch={getRequestBranch(selectedRequest)} />
+ {isOwner && !hasValidRequestBranch(selectedRequest) ? (
+ <button
+ type="button"
+ className="inline-flex h-8 items-center justify-center rounded-lg border border-amber-200 px-3 text-xs font-semibold text-amber-700 hover:bg-amber-50"
+ onClick={handleOpenAssignBranch}
+ disabled={assignBranchMutation.isPending}
+ >
+ Assign Branch
+ </button>
+ ) : null}
+ </div>
  </DetailDrawer.Row>
  <DetailDrawer.Row label="Request Type">
  {getMaintenanceTypeMeta(selectedRequest.request_type).label}
@@ -4128,6 +4304,21 @@ export default function AdminMaintenancePage() {
  isPending={archiveRequestMutation.isPending || restoreRequestMutation.isPending}
  onCancel={() => setArchiveDialogMode(null)}
  onConfirm={handleConfirmArchiveAction}
+ />
+ <AssignBranchModal
+ open={branchAssignmentDialog.open}
+ branch={branchAssignmentDialog.branch}
+ error={branchAssignmentDialog.error}
+ isPending={assignBranchMutation.isPending}
+ onCancel={handleCloseAssignBranch}
+ onConfirm={handleConfirmAssignBranch}
+ onBranchChange={(branch) =>
+ setBranchAssignmentDialog((current) => ({
+ ...current,
+ branch,
+ error: "",
+ }))
+ }
  />
  <AttachmentRemovalModal
  open={attachmentRemovalDialog.open}

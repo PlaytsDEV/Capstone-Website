@@ -211,6 +211,23 @@ export function useAssignMaintenanceProvider() {
   });
 }
 
+export function useAssignMaintenanceBranch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, branch }) =>
+      maintenanceApi.assignAdminBranch(requestId, { branch }),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
+      qc.invalidateQueries({ queryKey: ["maintenance", "serviceProviders"] });
+      if (variables?.requestId) {
+        qc.invalidateQueries({
+          queryKey: queryKeys.maintenance.detail(variables.requestId),
+        });
+      }
+    },
+  });
+}
+
 export function useGenerateMaintenanceUpdate() {
   return useMutation({
     mutationFn: ({ requestId }) => maintenanceApi.generateAdminUpdate(requestId),

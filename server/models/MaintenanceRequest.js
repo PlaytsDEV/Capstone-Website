@@ -204,6 +204,11 @@ const statusHistorySchema = new mongoose.Schema(
       enum: ["directory", "manual", null],
       default: null,
     },
+    branch: {
+      type: String,
+      enum: [...ROOM_BRANCHES, null],
+      default: null,
+    },
     attachmentName: {
       type: String,
       default: null,

@@ -95,7 +95,9 @@ const {
   createRequest,
   reopenMyRequest,
   sendAdminReply,
+  assignAdminMaintenanceBranch,
   assignAdminMaintenanceProvider,
+  suggestAdminMaintenanceProvider,
   sendTenantReply,
   uploadAdminMaintenanceAttachment,
   removeAdminMaintenanceAttachment,
@@ -1613,6 +1615,131 @@ describe("maintenanceController", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  test("assignAdminMaintenanceBranch lets owner assign a missing branch and logs timeline", async () => {
+    const requestDoc = buildRequestDoc({
+      branch: null,
+      roomId: null,
+      reservationId: null,
+      statusHistory: [],
+      save: jest.fn().mockResolvedValue(undefined),
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockImplementation((query) => {
+      if (query.firebaseUid === "firebase-owner-1") {
+        return buildLeanQuery({
+          _id: "owner_user_1",
+          user_id: "owner_1",
+          firstName: "Dorm",
+          lastName: "Owner",
+          email: "owner@example.com",
+          phone: "0918",
+          branch: null,
+          role: "owner",
+        });
+      }
+
+      if (query.user_id === requestDoc.user_id) {
+        return buildLeanQuery({
+          _id: "tenant_user_1",
+          user_id: requestDoc.user_id,
+          firstName: "Lily",
+          lastName: "Tenant",
+          email: "lily@example.com",
+          phone: "0917",
+          branch: "gil-puyat",
+          role: "tenant",
+        });
+      }
+
+      return buildLeanQuery(null);
+    });
+
+    const req = {
+      user: { uid: "firebase-owner-1" },
+      params: { requestId: requestDoc.request_id },
+      body: { branch: "guadalupe" },
+      branchFilter: null,
+      isOwner: true,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await assignAdminMaintenanceBranch(req, res, next);
+
+    expect(requestDoc.branch).toBe("guadalupe");
+    expect(requestDoc.statusHistory).toEqual([
+      expect.objectContaining({
+        event: "branch_assigned_manually",
+        actor_name: "Dormitory Owner",
+        actor_role: "owner",
+        branch: "guadalupe",
+        note: "Branch: Guadalupe",
+      }),
+    ]);
+    expect(requestDoc.save).toHaveBeenCalledTimes(1);
+    expect(sendSuccess).toHaveBeenCalledWith(
+      res,
+      expect.objectContaining({
+        message: "Branch assigned manually: Guadalupe.",
+      }),
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("assignAdminMaintenanceBranch rejects branch admins", async () => {
+    const req = {
+      user: { uid: "firebase-admin-1" },
+      params: { requestId: "maint_a1b2c3d4e5f6" },
+      body: { branch: "gil-puyat" },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await assignAdminMaintenanceBranch(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "OWNER_ONLY",
+        statusCode: 403,
+      }),
+    );
+    expect(maintenanceFindOne).not.toHaveBeenCalled();
+    expect(sendSuccess).not.toHaveBeenCalled();
+  });
+
+  test("assignAdminMaintenanceBranch does not overwrite an existing valid branch", async () => {
+    const requestDoc = buildRequestDoc({
+      branch: "gil-puyat",
+      statusHistory: [],
+      save: jest.fn().mockResolvedValue(undefined),
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+
+    const req = {
+      user: { uid: "firebase-owner-1" },
+      params: { requestId: requestDoc.request_id },
+      body: { branch: "guadalupe" },
+      branchFilter: null,
+      isOwner: true,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await assignAdminMaintenanceBranch(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "REQUEST_BRANCH_ALREADY_ASSIGNED",
+        statusCode: 409,
+      }),
+    );
+    expect(requestDoc.branch).toBe("gil-puyat");
+    expect(requestDoc.save).not.toHaveBeenCalled();
+    expect(sendSuccess).not.toHaveBeenCalled();
+  });
+
   test("assignAdminMaintenanceProvider assigns a saved provider and logs timeline", async () => {
     const requestDoc = buildRequestDoc({
       statusHistory: [],
@@ -1749,6 +1876,86 @@ describe("maintenanceController", () => {
     expect(sendSuccess).toHaveBeenCalledWith(res, expect.objectContaining({
       message: "No service provider is assigned yet.",
     }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("assignAdminMaintenanceProvider rejects saving a future provider when request branch is missing", async () => {
+    const requestDoc = buildRequestDoc({
+      branch: null,
+      roomId: null,
+      reservationId: null,
+      save: jest.fn().mockResolvedValue(undefined),
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockReturnValue(
+      buildLeanQuery({
+        _id: "owner_user_1",
+        user_id: "owner_1",
+        firstName: "Dorm",
+        lastName: "Owner",
+        email: "owner@example.com",
+        phone: "0918",
+        branch: null,
+        role: "owner",
+      }),
+    );
+
+    const req = {
+      user: { uid: "firebase-owner-1" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        providerSource: "manual",
+        providerName: "Manual Plumbing Co.",
+        contactNumber: "09171234567",
+        serviceType: "Plumbing",
+        saveForFuture: true,
+      },
+      branchFilter: null,
+      isOwner: true,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await assignAdminMaintenanceProvider(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "PROVIDER_BRANCH_REQUIRED",
+        statusCode: 400,
+      }),
+    );
+    expect(serviceProviderCreate).not.toHaveBeenCalled();
+    expect(requestDoc.save).not.toHaveBeenCalled();
+    expect(sendSuccess).not.toHaveBeenCalled();
+  });
+
+  test("suggestAdminMaintenanceProvider does not suggest providers for branchless requests", async () => {
+    const requestDoc = buildRequestDoc({
+      branch: null,
+      roomId: null,
+      reservationId: null,
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+
+    const req = {
+      user: { uid: "firebase-owner-1" },
+      params: { requestId: requestDoc.request_id },
+      branchFilter: null,
+      isOwner: true,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await suggestAdminMaintenanceProvider(req, res, next);
+
+    expect(serviceProviderFind).not.toHaveBeenCalled();
+    expect(sendSuccess).toHaveBeenCalledWith(
+      res,
+      expect.objectContaining({
+        recommendation: null,
+        unavailableReason: "missing_branch",
+      }),
+    );
     expect(next).not.toHaveBeenCalled();
   });
 

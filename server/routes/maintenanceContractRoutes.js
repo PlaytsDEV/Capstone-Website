@@ -92,6 +92,13 @@ router.post(
   requirePermission("manageMaintenance"),
   maintenanceController.assignAdminMaintenanceProvider,
 );
+router.patch(
+  "/admin/:requestId/branch",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.assignAdminMaintenanceBranch,
+);
 router.post(
   "/admin/:requestId/generate-update",
   verifyAdmin,
