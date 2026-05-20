@@ -837,10 +837,29 @@ const getFirebaseStorageBucketCandidates = () => {
   return [...new Set([...configuredBuckets, ...derivedBuckets].filter(Boolean))];
 };
 
+const isLocalAttachmentOrigin = (value = "") => {
+  const origin = normalizePublicBaseUrl(value).toLowerCase();
+  return !origin || origin.includes("localhost") || origin.includes("127.0.0.1") || origin.includes("[::1]");
+};
+
+const isHostedAttachmentRuntime = () => {
+  if (process.env.NODE_ENV === "production") return true;
+  if (process.env.RENDER || process.env.VERCEL || process.env.RAILWAY_ENVIRONMENT) return true;
+
+  return [
+    process.env.PUBLIC_API_URL,
+    process.env.SERVER_PUBLIC_URL,
+    process.env.API_PUBLIC_URL,
+  ].some((origin) => origin && !isLocalAttachmentOrigin(origin));
+};
+
 const getAttachmentStorageDriver = () => {
   const configured = toText(process.env.ATTACHMENT_STORAGE_DRIVER).toLowerCase();
   if (configured) return configured;
-  return process.env.NODE_ENV === "production" ? "firebase" : "local";
+  if (admin.apps.length && getFirebaseStorageBucketCandidates().length > 0) {
+    return "firebase";
+  }
+  return isHostedAttachmentRuntime() ? "firebase" : "local";
 };
 
 const storeLocally = async ({ file, storagePath, req }) => {
