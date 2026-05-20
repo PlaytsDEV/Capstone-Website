@@ -17,6 +17,7 @@ import {
   User,
 } from "../models/index.js";
 import { AppError } from "../middleware/errorHandler.js";
+import logger from "../middleware/logger.js";
 import { CURRENT_RESIDENT_STATUS_QUERY } from "../utils/lifecycleNaming.js";
 
 export const UPLOAD_BRANCH_ERROR_MESSAGE =
@@ -842,6 +843,16 @@ const isLocalAttachmentOrigin = (value = "") => {
   return !origin || origin.includes("localhost") || origin.includes("127.0.0.1") || origin.includes("[::1]");
 };
 
+const isTruthyEnv = (value, fallback = false) => {
+  if (value === undefined || value === null || String(value).trim() === "") {
+    return fallback;
+  }
+
+  return !["0", "false", "no", "off"].includes(
+    String(value).trim().toLowerCase(),
+  );
+};
+
 const isHostedAttachmentRuntime = () => {
   if (process.env.NODE_ENV === "production") return true;
   if (process.env.RENDER || process.env.VERCEL || process.env.RAILWAY_ENVIRONMENT) return true;
@@ -855,6 +866,9 @@ const isHostedAttachmentRuntime = () => {
 
 const getAttachmentStorageDriver = () => {
   const configured = toText(process.env.ATTACHMENT_STORAGE_DRIVER).toLowerCase();
+  if (configured === "local" && isHostedAttachmentRuntime() && !isTruthyEnv(process.env.ALLOW_LOCAL_ATTACHMENT_STORAGE)) {
+    return "firebase";
+  }
   if (configured) return configured;
   if (admin.apps.length && getFirebaseStorageBucketCandidates().length > 0) {
     return "firebase";
@@ -862,17 +876,50 @@ const getAttachmentStorageDriver = () => {
   return isHostedAttachmentRuntime() ? "firebase" : "local";
 };
 
+const assertLocalAttachmentStorageAllowed = (req) => {
+  if (isTruthyEnv(process.env.ALLOW_LOCAL_ATTACHMENT_STORAGE)) return;
+
+  const publicBaseUrl = getPublicBaseUrl(req);
+  if (!isHostedAttachmentRuntime() && isLocalAttachmentOrigin(publicBaseUrl)) {
+    return;
+  }
+
+  throw new AppError(
+    "Local attachment storage is not supported for this hosted API. Configure Firebase Storage before uploading attachments.",
+    500,
+    "ATTACHMENT_LOCAL_STORAGE_DISABLED",
+  );
+};
+
+const getStoragePathFilename = (storagePath = "") =>
+  String(storagePath || "").split(/[\\/]/).filter(Boolean).pop() || "";
+
 const storeLocally = async ({ file, storagePath, req }) => {
+  assertLocalAttachmentStorageAllowed(req);
+
   const uploadRoot = path.resolve(__dirname, "..", "uploads");
   const relativePath = storagePath.replace(/^uploads\//, "");
   const absolutePath = path.join(uploadRoot, relativePath);
+  const resolvedPath = path.resolve(absolutePath);
+  const normalizedUploadRoot = `${uploadRoot}${path.sep}`;
 
-  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-  await fs.writeFile(absolutePath, file.buffer);
+  if (!resolvedPath.startsWith(normalizedUploadRoot)) {
+    throw new AppError(
+      "Invalid attachment storage path.",
+      500,
+      "ATTACHMENT_STORAGE_PATH_INVALID",
+    );
+  }
+
+  await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
+  await fs.writeFile(resolvedPath, file.buffer);
+  await fs.access(resolvedPath);
 
   return {
     provider: "local",
     storagePath,
+    absolutePath: resolvedPath,
+    savedFilename: path.basename(resolvedPath),
     downloadUrl: `${getPublicBaseUrl(req)}/${storagePath.split(path.sep).join("/")}`,
   };
 };
@@ -908,11 +955,21 @@ const storeInFirebase = async ({ file, storagePath, metadata, mimeType }) => {
       return {
         provider: "firebase-storage",
         storagePath: firebasePath,
+        savedFilename: getStoragePathFilename(firebasePath),
         downloadUrl:
           `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/` +
           `${encodeURIComponent(firebasePath)}?alt=media&token=${token}`,
       };
-    } catch {
+    } catch (error) {
+      logger.warn(
+        {
+          err: error,
+          bucketName,
+          storagePath: firebasePath,
+          originalFilename: file.originalname,
+        },
+        "Firebase attachment upload bucket attempt failed",
+      );
       // Try the next known bucket form before reporting storage unavailable.
     }
   }
@@ -951,14 +1008,6 @@ const resolveStoredAttachmentFile = async ({
   }
 
   if (storageDriver === "local") {
-    if (process.env.NODE_ENV === "production") {
-      throw new AppError(
-        "Local attachment storage is not supported in production. Configure Firebase Storage before uploading attachments.",
-        500,
-        "ATTACHMENT_LOCAL_STORAGE_DISABLED",
-      );
-    }
-
     return storeLocally({ file, storagePath, req });
   }
 
@@ -1025,6 +1074,26 @@ const storeAttachmentFile = async ({
     metadata: baseMetadata,
     mimeType,
   });
+  const savedFilename =
+    stored.savedFilename ||
+    getStoragePathFilename(stored.storagePath) ||
+    getStoragePathFilename(storagePath);
+
+  (req?.log || logger).info(
+    {
+      requestId: relatedId,
+      relatedId,
+      branch,
+      originalFilename: file.originalname,
+      savedFilename,
+      storagePath: stored.storagePath,
+      returnedUrl: stored.downloadUrl,
+      provider: stored.provider,
+      context,
+      visibility,
+    },
+    "Maintenance attachment uploaded",
+  );
 
   return {
     id: crypto.randomUUID(),
@@ -1040,6 +1109,7 @@ const storeAttachmentFile = async ({
     downloadUrl: stored.downloadUrl,
     storagePath: stored.storagePath,
     provider: stored.provider,
+    savedFilename,
     uploadedAt: new Date().toISOString(),
   };
 };

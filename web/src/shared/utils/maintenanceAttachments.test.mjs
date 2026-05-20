@@ -6,6 +6,8 @@ import {
   getMaintenanceAttachmentName,
   getMaintenanceAttachmentType,
   getMaintenanceAttachmentUri,
+  isLegacyLocalMaintenanceUploadUri,
+  isViewableMaintenanceAttachmentUri,
   normalizeMaintenanceAttachments,
 } from "./maintenanceAttachments.js";
 
@@ -46,4 +48,30 @@ test("maintenance attachment normalization keeps recognized remote aliases", () 
   assert.equal(normalized[1].uri, "file:///local/device/photo.jpg");
   assert.equal(normalized[1].type, "image/jpeg");
   assert.equal(normalized[1].fileType, "image");
+});
+
+test("maintenance attachments prefer public urls over stale uri fields", () => {
+  const attachment = {
+    uri: "https://api.lilycrest.space/uploads/attachments/gil-puyat/maintenance_reply/old.png",
+    url: "https://firebasestorage.googleapis.com/v0/b/app/o/attachments%2Fnew.png?alt=media&token=abc",
+    type: "image/png",
+  };
+
+  assert.equal(
+    getMaintenanceAttachmentUri(attachment),
+    "https://firebasestorage.googleapis.com/v0/b/app/o/attachments%2Fnew.png?alt=media&token=abc",
+  );
+});
+
+test("production local upload urls are treated as legacy unavailable assets", () => {
+  const uri = "https://api.lilycrest.space/uploads/attachments/gil-puyat/maintenance_reply/file.png";
+
+  assert.equal(isLegacyLocalMaintenanceUploadUri(uri), true);
+  assert.equal(isViewableMaintenanceAttachmentUri(uri), false);
+  assert.equal(
+    isViewableMaintenanceAttachmentUri(
+      "https://firebasestorage.googleapis.com/v0/b/app/o/attachments%2Ffile.png?alt=media&token=abc",
+    ),
+    true,
+  );
 });

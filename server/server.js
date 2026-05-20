@@ -151,6 +151,11 @@ const setUploadStaticHeaders = (res) => {
   }
 };
 
+const uploadStaticHeaders = (_req, res, next) => {
+  setUploadStaticHeaders(res);
+  next();
+};
+
 const runPermissionBackfill = async () => {
   try {
     const { backfillBranchAdminPermissions } = await import(
@@ -278,6 +283,7 @@ app.use(express.json({ limit: "8mb" }));
 app.use(express.urlencoded({ extended: true, limit: "8mb" }));
 app.use(
   "/uploads",
+  uploadStaticHeaders,
   express.static(path.join(__dirname, "uploads"), {
     maxAge: "1d",
     fallthrough: true,

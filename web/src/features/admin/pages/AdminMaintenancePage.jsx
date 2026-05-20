@@ -40,6 +40,7 @@ import {
  getMaintenanceAttachmentLabel,
  getMaintenanceAttachmentName,
  getMaintenanceAttachmentUri,
+ isViewableMaintenanceAttachmentUri,
  normalizeMaintenanceAttachments,
 } from "../../../shared/utils/maintenanceAttachments";
 import { exportToCSV } from "../../../shared/utils/exportUtils";
@@ -384,13 +385,7 @@ const getAvatarPalette = (name = "") => {
 };
 
 const isRemoteUri = (uri) => {
-  if (!uri) return false;
-  try {
-    const { protocol } = new URL(uri);
-    return protocol === "https:" || protocol === "http:";
-  } catch {
-    return false;
-  }
+ return isViewableMaintenanceAttachmentUri(uri);
 };
 
 const getMaintenanceRequestUploadId = (request) =>

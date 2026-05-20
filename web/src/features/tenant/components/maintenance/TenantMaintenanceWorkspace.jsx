@@ -40,6 +40,7 @@ import {
   getMaintenanceAttachmentLabel,
   getMaintenanceAttachmentName,
   getMaintenanceAttachmentUri,
+  isViewableMaintenanceAttachmentUri,
   normalizeMaintenanceAttachments,
 } from "../../../../shared/utils/maintenanceAttachments";
 import {
@@ -161,11 +162,12 @@ function AttachmentLink({ attachment, index, onPreview }) {
   const label = getMaintenanceAttachmentLabel(attachment);
   const name = getMaintenanceAttachmentName(attachment, index);
   const uri = getMaintenanceAttachmentUri(attachment);
+  const isViewable = isViewableMaintenanceAttachmentUri(uri);
   const Icon = kind === "image" ? ImageIcon : kind === "pdf" ? FileText : Paperclip;
 
   if (!uri) return null;
 
-  if (kind === "image") {
+  if (kind === "image" && isViewable) {
     return (
       <div
         style={{
@@ -236,6 +238,31 @@ function AttachmentLink({ attachment, index, onPreview }) {
               Open Original
             </a>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isViewable) {
+    return (
+      <div
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 10,
+          color: "#64748B",
+          fontSize: 13,
+          width: "fit-content",
+          padding: "10px 12px",
+          borderRadius: 12,
+          border: "1px solid #CBD5E1",
+          background: "#F8FAFC",
+        }}
+      >
+        <Icon size={14} />
+        <div style={{ display: "grid", gap: 2 }}>
+          <span style={{ fontWeight: 600 }}>{name}</span>
+          <span style={{ color: "#94A3B8" }}>Attachment unavailable</span>
         </div>
       </div>
     );

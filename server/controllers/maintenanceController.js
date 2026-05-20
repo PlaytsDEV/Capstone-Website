@@ -184,16 +184,7 @@ const getAttachmentUri = (entry) => {
   }
 
   return (
-    toOptionalText(entry?.uri) ||
     toOptionalText(entry?.url) ||
-    toOptionalText(entry?.href) ||
-    toOptionalText(entry?.src) ||
-    toOptionalText(entry?.imageUrl) ||
-    toOptionalText(entry?.imageURL) ||
-    toOptionalText(entry?.image_url) ||
-    toOptionalText(entry?.fileUrl) ||
-    toOptionalText(entry?.fileURL) ||
-    toOptionalText(entry?.file_url) ||
     toOptionalText(entry?.downloadUrl) ||
     toOptionalText(entry?.downloadURL) ||
     toOptionalText(entry?.download_url) ||
@@ -203,6 +194,15 @@ const getAttachmentUri = (entry) => {
     toOptionalText(entry?.secureUrl) ||
     toOptionalText(entry?.secureURL) ||
     toOptionalText(entry?.secure_url) ||
+    toOptionalText(entry?.uri) ||
+    toOptionalText(entry?.href) ||
+    toOptionalText(entry?.src) ||
+    toOptionalText(entry?.imageUrl) ||
+    toOptionalText(entry?.imageURL) ||
+    toOptionalText(entry?.image_url) ||
+    toOptionalText(entry?.fileUrl) ||
+    toOptionalText(entry?.fileURL) ||
+    toOptionalText(entry?.file_url) ||
     toOptionalText(entry?.mediaUrl) ||
     toOptionalText(entry?.mediaURL) ||
     toOptionalText(entry?.media_url) ||
