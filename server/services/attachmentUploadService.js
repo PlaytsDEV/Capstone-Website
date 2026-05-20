@@ -634,7 +634,10 @@ export const resolveMaintenanceRequestBranch = (maintenanceRequest = {}) =>
     maintenanceRequest?.branch_name,
   );
 
-export const resolveMaintenanceRequestStorageBranch = async (maintenanceRequest = {}) => {
+export const resolveMaintenanceRequestStorageBranch = async (
+  maintenanceRequest = {},
+  options = {},
+) => {
   const requestBranch = resolveMaintenanceRequestBranch(maintenanceRequest);
   if (requestBranch) {
     return {
@@ -679,6 +682,16 @@ export const resolveMaintenanceRequestStorageBranch = async (maintenanceRequest 
     return {
       branch: tenantBranch,
       source: "maintenance_tenant",
+      reservationId: maintenanceRequest?.reservationId || null,
+      roomId: maintenanceRequest?.roomId || null,
+    };
+  }
+
+  const fallbackBranch = firstBranch(options.fallbackBranch, options.branchRepair);
+  if (fallbackBranch) {
+    return {
+      branch: fallbackBranch,
+      source: "owner_branch_repair",
       reservationId: maintenanceRequest?.reservationId || null,
       roomId: maintenanceRequest?.roomId || null,
     };
@@ -891,10 +904,14 @@ export const uploadMaintenanceRequestAttachmentFile = async ({
   context = "maintenance_reply",
   uploadedBy = "",
   senderRole = "admin",
+  fallbackBranch = "",
 }) => {
   assertUploadableAttachmentFile(file);
 
-  const branchResolution = await resolveMaintenanceRequestStorageBranch(maintenanceRequest);
+  const branchResolution = await resolveMaintenanceRequestStorageBranch(
+    maintenanceRequest,
+    { fallbackBranch },
+  );
   const branch = branchResolution.branch;
   if (!branch) {
     throw new AppError(

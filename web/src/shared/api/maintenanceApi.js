@@ -97,13 +97,19 @@ export const maintenanceApi = {
     }),
 
   /**
-   * Upload an admin maintenance attachment without relying on frontend branch metadata.
+   * Upload an admin maintenance attachment. Branch is normally resolved server-side;
+   * owners may send repairBranch only for legacy records with no saved branch.
    */
-  uploadAdminMaintenanceAttachment: (requestId, file, { visibility = "tenant_visible" } = {}) => {
+  uploadAdminMaintenanceAttachment: (
+    requestId,
+    file,
+    { visibility = "tenant_visible", repairBranch = "" } = {},
+  ) => {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("maintenanceRequestId", requestId);
     formData.append("visibility", visibility);
+    if (repairBranch) formData.append("branchRepair", repairBranch);
 
     return authFetch(`/m/maintenance/admin/${requestId}/attachments`, {
       method: "POST",

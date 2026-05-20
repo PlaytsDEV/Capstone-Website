@@ -569,6 +569,27 @@ describe("maintenanceController", () => {
     );
   });
 
+  test("resolveMaintenanceRequestStorageBranch supports owner repair fallback branch", async () => {
+    const storedRequest = buildRequestDoc({
+      branch: null,
+      branchId: null,
+      roomId: null,
+      reservationId: null,
+    });
+    userFindOne.mockReturnValue(buildSelectLeanQuery(null));
+
+    const resolution = await resolveMaintenanceRequestStorageBranch(storedRequest, {
+      fallbackBranch: "Guadalupe",
+    });
+
+    expect(resolution).toEqual(
+      expect.objectContaining({
+        branch: "guadalupe",
+        source: "owner_branch_repair",
+      }),
+    );
+  });
+
   test("getAdminAll exposes remote attachment URL aliases", async () => {
     const storedRequest = buildRequestDoc({
       attachments: [

@@ -402,6 +402,66 @@ const getMaintenanceRequestUploadId = (request) =>
  request?._id ||
  "";
 
+const normalizeMaintenanceUploadBranch = (value) => {
+ if (!value) return "";
+ if (typeof value === "object") {
+ return normalizeMaintenanceUploadBranch(
+ value.value ||
+ value.slug ||
+ value.code ||
+ value.branchId ||
+ value.branch_id ||
+ value.branch ||
+ value.id ||
+ value.name ||
+ value.label,
+ );
+ }
+
+ const raw = String(value).trim();
+ if (!raw) return "";
+
+ const directMatch = BRANCH_OPTIONS.find((branch) => branch.value === raw);
+ if (directMatch) return directMatch.value;
+
+ const normalized = raw.toLowerCase();
+ const displayMatch = BRANCH_OPTIONS.find(
+ (branch) =>
+ branch.value.toLowerCase() === normalized ||
+ branch.label.toLowerCase() === normalized ||
+ BRANCH_DISPLAY_NAMES[branch.value]?.toLowerCase() === normalized,
+ );
+
+ return displayMatch?.value || "";
+};
+
+const getMaintenanceUploadBranchHint = ({
+ request,
+ branchFilter,
+ isOwner,
+ manualBranch,
+} = {}) => {
+ const candidates = [
+ request?.branchId,
+ request?.branch_id,
+ request?.branch,
+ request?.tenant?.branchId,
+ request?.tenant?.branch_id,
+ request?.tenant?.branch,
+ request?.room?.branch,
+ request?.reservation?.branch,
+ manualBranch,
+ isOwner && branchFilter !== "all" ? branchFilter : "",
+ ];
+
+ for (const candidate of candidates) {
+ const branch = normalizeMaintenanceUploadBranch(candidate);
+ if (branch) return branch;
+ }
+
+ return "";
+};
+
 const getUploadedAttachmentUrl = (attachment = {}) =>
  attachment.url || attachment.downloadUrl || attachment.uri || "";
 
@@ -648,6 +708,7 @@ export default function AdminMaintenancePage() {
  const [uploadingReplyAttachment, setUploadingReplyAttachment] = useState(false);
  const [replyFieldErrors, setReplyFieldErrors] = useState({});
  const [replyFormMessage, setReplyFormMessage] = useState("");
+ const [legacyUploadBranch, setLegacyUploadBranch] = useState("");
 
  const listFilters = useMemo(
  () =>
@@ -699,6 +760,18 @@ export default function AdminMaintenancePage() {
  const requests = requestsData?.requests || [];
  const summaryRequests = summaryData?.requests || requests;
  const selectedRequest = requestDetailData?.request || null;
+ const selectedRequestBranchHint = useMemo(
+ () =>
+ getMaintenanceUploadBranchHint({
+ request: selectedRequest,
+ branchFilter,
+ isOwner,
+ }),
+ [branchFilter, isOwner, selectedRequest],
+ );
+ const uploadRepairBranch = selectedRequestBranchHint || legacyUploadBranch;
+ const needsLegacyUploadBranch =
+ Boolean(selectedRequest) && isOwner && !selectedRequestBranchHint;
  const selectedRequestStatusOptions = useMemo(
  () => getAllowedAdminMaintenanceStatuses(selectedRequest?.status),
  [selectedRequest?.status],
@@ -945,6 +1018,7 @@ export default function AdminMaintenancePage() {
  setReplyAttachments([]);
  setReplyFieldErrors({});
  setReplyFormMessage("");
+ setLegacyUploadBranch("");
  }, [selectedRequest, selectedRequestStatusOptions]);
 
  const clearUpdateFieldError = (field) => {
@@ -966,6 +1040,33 @@ export default function AdminMaintenancePage() {
  });
  if (replyFormMessage) setReplyFormMessage("");
  };
+
+ const renderLegacyUploadBranchSelector = (clearFieldError, fieldName) =>
+ needsLegacyUploadBranch ? (
+ <label className="mt-2 block rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-800">
+ Assign branch for this legacy request
+ </span>
+ <select
+ value={legacyUploadBranch}
+ onChange={(event) => {
+ setLegacyUploadBranch(event.target.value);
+ clearFieldError(fieldName);
+ }}
+ className="mt-2 h-10 w-full rounded-md border border-amber-200 bg-white px-3 text-sm text-card-foreground focus:outline-none focus:ring-2 focus:ring-amber-100"
+ >
+ <option value="">Select branch</option>
+ {BRANCH_OPTIONS.map((branch) => (
+ <option key={branch.value} value={branch.value}>
+ {branch.label}
+ </option>
+ ))}
+ </select>
+ <p className="mt-2 text-xs text-amber-800">
+ This older request has no branch saved. The selected branch will be saved with the request before upload.
+ </p>
+ </label>
+ ) : null;
 
  const scrollToFirstUpdateError = (errors) => {
  const firstField = UPDATE_FIELD_ORDER.find((field) => errors[field]);
@@ -1094,7 +1195,7 @@ export default function AdminMaintenancePage() {
  const uploadResult = await maintenanceApi.uploadAdminMaintenanceAttachment(
  maintenanceRequestId,
  file,
- { visibility: "admin_only" },
+ { visibility: "admin_only", repairBranch: uploadRepairBranch },
  );
  const uploadedAttachment = uploadResult?.attachment || uploadResult;
  setDraftWorkLogAttachments((current) =>
@@ -1105,8 +1206,11 @@ export default function AdminMaintenancePage() {
  ),
  );
  showNotification("Upload complete.", "success");
- } catch {
- const message = "Failed to upload attachment. Please try again.";
+ } catch (uploadError) {
+ const message =
+ uploadError?.message === "Maintenance request has no branch assigned."
+ ? "Maintenance request has no branch assigned. Select a branch and try again."
+ : "Failed to upload attachment. Please try again.";
  setDraftWorkLogAttachments((current) =>
  current.map((attachment) =>
  attachment.clientId === clientId
@@ -1206,7 +1310,7 @@ export default function AdminMaintenancePage() {
  const uploadResult = await maintenanceApi.uploadAdminMaintenanceAttachment(
  maintenanceRequestId,
  file,
- { visibility: "tenant_visible" },
+ { visibility: "tenant_visible", repairBranch: uploadRepairBranch },
  );
  const uploadedAttachment = uploadResult?.attachment || uploadResult;
  setReplyAttachments((current) =>
@@ -1217,8 +1321,11 @@ export default function AdminMaintenancePage() {
  ),
  );
  showNotification("Upload complete.", "success");
- } catch {
- const message = "Failed to upload attachment. Please try again.";
+ } catch (uploadError) {
+ const message =
+ uploadError?.message === "Maintenance request has no branch assigned."
+ ? "Maintenance request has no branch assigned. Select a branch and try again."
+ : "Failed to upload attachment. Please try again.";
  setReplyAttachments((current) =>
  current.map((attachment) =>
  attachment.clientId === clientId
@@ -2486,6 +2593,7 @@ export default function AdminMaintenancePage() {
  <p className="mt-1 text-xs text-muted-foreground">
  These notes and files are for internal tracking only.
  </p>
+ {renderLegacyUploadBranchSelector(clearUpdateFieldError, "attachments")}
  <div
  className={`mt-2 flex flex-wrap items-center gap-3 rounded-lg border p-3 ${
  updateFieldErrors.attachments ? "border-rose-500" : "border-transparent"
@@ -2500,7 +2608,11 @@ export default function AdminMaintenancePage() {
  multiple
  accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
  onChange={handleWorkLogAttachmentUpload}
- disabled={isSelectedRequestLocked || uploadingUpdateAttachment}
+ disabled={
+ isSelectedRequestLocked ||
+ uploadingUpdateAttachment ||
+ (needsLegacyUploadBranch && !legacyUploadBranch)
+ }
  />
  </label>
  <span className="text-xs text-muted-foreground">
@@ -2619,6 +2731,7 @@ export default function AdminMaintenancePage() {
  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
  Tenant-visible attachments
  </span>
+ {renderLegacyUploadBranchSelector(clearReplyFieldError, "reply_attachments")}
  <div
  className={`mt-2 flex flex-wrap items-center gap-3 rounded-lg border p-3 ${
  replyFieldErrors.reply_attachments ? "border-rose-500" : "border-transparent"
@@ -2633,7 +2746,12 @@ export default function AdminMaintenancePage() {
  multiple
  accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
  onChange={handleReplyAttachmentUpload}
- disabled={isSelectedRequestLocked || uploadingReplyAttachment || sendReplyMutation.isPending}
+ disabled={
+ isSelectedRequestLocked ||
+ uploadingReplyAttachment ||
+ sendReplyMutation.isPending ||
+ (needsLegacyUploadBranch && !legacyUploadBranch)
+ }
  />
  </label>
  <span className="text-xs text-muted-foreground">

@@ -1550,7 +1550,13 @@ export const uploadAdminMaintenanceAttachment = async (req, res, next) => {
     }
 
     const request = await findAccessibleRequest(requestId);
-    const branchResolution = await resolveMaintenanceRequestStorageBranch(request);
+    const branchRepair = req.isOwner
+      ? toOptionalText(req.body?.branchRepair || req.body?.branchHint)
+      : null;
+    const branchResolution = await resolveMaintenanceRequestStorageBranch(
+      request,
+      { fallbackBranch: branchRepair },
+    );
     const branch = branchResolution.branch;
     if (!branch) {
       throw new AppError(
@@ -1586,6 +1592,7 @@ export const uploadAdminMaintenanceAttachment = async (req, res, next) => {
       context: isInternal ? "maintenance_internal_note" : "maintenance_reply",
       uploadedBy: adminUser?.user_id || String(adminUser?._id || ""),
       senderRole: adminUser?.role || "admin",
+      fallbackBranch: branchRepair,
     });
 
     sendSuccess(
