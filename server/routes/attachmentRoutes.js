@@ -3,7 +3,10 @@ import multer from "multer";
 
 import { uploadAttachment } from "../controllers/attachmentController.js";
 import { verifyToken } from "../middleware/auth.js";
-import { ALLOWED_ATTACHMENT_MIME_TYPES } from "../services/attachmentUploadService.js";
+import {
+  ATTACHMENT_TYPE_ERROR_MESSAGE,
+  isAllowedAttachmentFile,
+} from "../services/attachmentUploadService.js";
 
 const router = express.Router();
 
@@ -14,12 +17,12 @@ const upload = multer({
     files: 1,
   },
   fileFilter: (_req, file, cb) => {
-    if (ALLOWED_ATTACHMENT_MIME_TYPES.has(file.mimetype)) {
+    if (isAllowedAttachmentFile(file)) {
       cb(null, true);
       return;
     }
 
-    const error = new Error("This file type is not supported. Please upload a photo or PDF.");
+    const error = new Error(ATTACHMENT_TYPE_ERROR_MESSAGE);
     error.statusCode = 400;
     error.code = "UNSUPPORTED_FILE_TYPE";
     cb(error);

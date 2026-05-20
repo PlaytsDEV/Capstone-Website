@@ -38,16 +38,12 @@ test("maintenance attachment normalization keeps recognized remote aliases", () 
     },
   ]);
 
-  assert.deepEqual(normalized, [
-    {
-      name: "invoice.pdf",
-      uri: "https://cdn.example.com/maintenance/invoice.pdf",
-      type: "application/pdf",
-    },
-    {
-      name: "local-only.jpg",
-      uri: "file:///local/device/photo.jpg",
-      type: "image/jpeg",
-    },
-  ]);
+  assert.equal(normalized[0].name, "invoice.pdf");
+  assert.equal(normalized[0].uri, "https://cdn.example.com/maintenance/invoice.pdf");
+  assert.equal(normalized[0].type, "application/pdf");
+  assert.equal(normalized[0].fileType, "pdf");
+  assert.equal(normalized[1].name, "local-only.jpg");
+  assert.equal(normalized[1].uri, "file:///local/device/photo.jpg");
+  assert.equal(normalized[1].type, "image/jpeg");
+  assert.equal(normalized[1].fileType, "image");
 });

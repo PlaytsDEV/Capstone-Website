@@ -42,7 +42,10 @@ import {
   getMaintenanceAttachmentUri,
   normalizeMaintenanceAttachments,
 } from "../../../../shared/utils/maintenanceAttachments";
-import { uploadToFirebaseStorage } from "../../../../shared/utils/firebaseStorageUpload";
+import {
+  uploadMaintenanceAttachment,
+  validateFile,
+} from "../../../../shared/utils/firebaseStorageUpload";
 import "../../styles/tenant-common.css";
 
 const EMPTY_FORM_DATA = Object.freeze({
@@ -51,6 +54,43 @@ const EMPTY_FORM_DATA = Object.freeze({
   description: "",
   attachments: [],
 });
+
+const createAttachmentClientId = () =>
+  `maintenance-attachment-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+const isLocalPendingAttachment = (attachment) =>
+  attachment?.uploadStatus === "pending" &&
+  typeof File !== "undefined" &&
+  attachment?.file instanceof File;
+
+const getAttachmentKey = (attachment, index = 0) =>
+  attachment?.clientId ||
+  getMaintenanceAttachmentUri(attachment) ||
+  `${attachment?.name || "attachment"}-${index}`;
+
+const buildUploadedAttachment = (file, uploadResult = {}) => {
+  const uri = uploadResult.downloadUrl || uploadResult.url || uploadResult.uri;
+  const uploadedAttachment = uploadResult.attachment || {};
+  const type =
+    uploadedAttachment.type ||
+    uploadResult.type ||
+    uploadedAttachment.mimeType ||
+    uploadResult.mimeType ||
+    file.type ||
+    "application/octet-stream";
+
+  return {
+    ...uploadedAttachment,
+    name: file.name,
+    uri,
+    url: uri,
+    downloadUrl: uri,
+    type,
+    mimeType: uploadedAttachment.mimeType || uploadResult.mimeType || type,
+    size: uploadResult.size ?? file.size,
+    storagePath: uploadResult.storagePath,
+  };
+};
 
 const fmtDate = (value) => {
   const date = new Date(value);
@@ -260,7 +300,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
   }, [selectedRequestId]);
 
   const isEditing = Boolean(editingRequestId);
-  const isSavingForm = createMutation.isPending || updateMutation.isPending;
+  const isSavingForm = createMutation.isPending || updateMutation.isPending || uploadingAttachment;
   const descriptionLength = formData.description.trim().length;
   const descriptionTooShort =
     descriptionLength > 0 &&
@@ -307,25 +347,56 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
     const files = Array.from(event.target.files || []).filter(Boolean);
     if (files.length === 0) return;
 
+    if (!isEditing) {
+      const staged = [];
+
+      files.forEach((file) => {
+        const check = validateFile(file);
+        if (!check.valid) {
+          showNotification(check.error || "This file cannot be uploaded.", "error");
+          return;
+        }
+
+        staged.push({
+          clientId: createAttachmentClientId(),
+          name: file.name,
+          type: file.type || "application/octet-stream",
+          size: file.size,
+          file,
+          uploadStatus: "pending",
+        });
+      });
+
+      if (staged.length > 0) {
+        setFormData((current) => ({
+          ...current,
+          attachments: [...(current.attachments || []), ...staged],
+        }));
+        showNotification(
+          `${staged.length} attachment${staged.length === 1 ? "" : "s"} ready to upload when you submit.`,
+          "success",
+        );
+      }
+
+      event.target.value = "";
+      return;
+    }
+
     setUploadingAttachment(true);
 
     try {
       const uploaded = [];
 
       for (const file of files) {
-        const { downloadUrl: uri, storagePath, size, attachment } = await uploadToFirebaseStorage(file, {
+        const uploadResult = await uploadMaintenanceAttachment(file, {
           documentType: "maintenance-attachment",
           context: "maintenance_request",
           visibility: "tenant_admin",
+          maintenanceRequestId: editingRequestId,
+          requestId: editingRequestId,
+          relatedId: editingRequestId,
         });
-        uploaded.push({
-          name: file.name,
-          uri,
-          type: file.type || "application/octet-stream",
-          size,
-          storagePath,
-          ...attachment,
-        });
+        uploaded.push(buildUploadedAttachment(file, uploadResult));
       }
 
       setFormData((current) => ({
@@ -344,11 +415,11 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
     }
   };
 
-  const handleRemoveAttachment = (uri) => {
+  const handleRemoveAttachment = (attachmentKey) => {
     setFormData((current) => ({
       ...current,
       attachments: (current.attachments || []).filter(
-        (entry) => getMaintenanceAttachmentUri(entry) !== uri,
+        (entry, index) => getAttachmentKey(entry, index) !== attachmentKey,
       ),
     }));
   };
@@ -363,21 +434,14 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
       const uploaded = [];
 
       for (const file of files) {
-        const { downloadUrl: uri, storagePath, size, attachment } = await uploadToFirebaseStorage(file, {
+        const uploadResult = await uploadMaintenanceAttachment(file, {
           documentType: "maintenance-reply-attachment",
           context: "maintenance_reply",
           visibility: "tenant_admin",
           maintenanceRequestId: selectedRequest.request_id,
           relatedId: selectedRequest.request_id,
         });
-        uploaded.push({
-          name: file.name,
-          uri,
-          type: file.type || "application/octet-stream",
-          size,
-          storagePath,
-          ...attachment,
-        });
+        uploaded.push(buildUploadedAttachment(file, uploadResult));
       }
 
       setReplyAttachments((current) => [...current, ...uploaded]);
@@ -436,20 +500,85 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
       return;
     }
 
+    let createdRequestId = "";
+
     try {
+      const existingAttachments = normalizeMaintenanceAttachments(formData.attachments);
+
       if (isEditing) {
         await updateMutation.mutateAsync({
           requestId: editingRequestId,
-          data: formData,
+          data: {
+            ...formData,
+            attachments: existingAttachments,
+          },
         });
         showNotification("Maintenance request updated.", "success");
       } else {
-        await createMutation.mutateAsync(formData);
+        const created = await createMutation.mutateAsync({
+          ...formData,
+          attachments: existingAttachments,
+        });
+        const createdRequest = created?.request || created;
+        const requestId = createdRequest?.request_id || createdRequest?._id;
+        createdRequestId = requestId || "";
+        const pendingAttachments = (formData.attachments || []).filter(isLocalPendingAttachment);
+
+        if (pendingAttachments.length > 0) {
+          if (!requestId) {
+            throw new Error("Request was created, but attachment upload could not continue. Please reopen the request and try again.");
+          }
+
+          setUploadingAttachment(true);
+          const uploadedAttachments = [];
+
+          try {
+            for (const pendingAttachment of pendingAttachments) {
+              const uploadResult = await uploadMaintenanceAttachment(pendingAttachment.file, {
+                documentType: "maintenance-attachment",
+                context: "maintenance_request",
+                visibility: "tenant_admin",
+                maintenanceRequestId: requestId,
+                requestId,
+                relatedId: requestId,
+              });
+              uploadedAttachments.push(buildUploadedAttachment(pendingAttachment.file, uploadResult));
+            }
+          } finally {
+            setUploadingAttachment(false);
+          }
+
+          await updateMutation.mutateAsync({
+            requestId,
+            data: {
+              request_type: createdRequest?.request_type || formData.request_type,
+              urgency: createdRequest?.urgency || formData.urgency,
+              description: createdRequest?.description || formData.description,
+              attachments: [
+                ...normalizeMaintenanceAttachments(createdRequest?.attachments || existingAttachments),
+                ...normalizeMaintenanceAttachments(uploadedAttachments),
+              ],
+            },
+          });
+        }
+
         showNotification("Maintenance request submitted.", "success");
       }
 
       resetComposer();
     } catch (error) {
+      setUploadingAttachment(false);
+      if (!isEditing && createdRequestId) {
+        resetComposer();
+        setSelectedRequestId(createdRequestId);
+        showNotification(
+          error.message ||
+            "Request submitted, but one or more attachments failed to upload. Open the pending request to retry.",
+          "error",
+        );
+        return;
+      }
+
       showNotification(
         error.message ||
           `Failed to ${isEditing ? "update" : "submit"} maintenance request.`,
@@ -616,41 +745,55 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                 ) : (
                   <Paperclip size={16} />
                 )}
-                {uploadingAttachment ? "Uploading..." : "Upload photo or file"}
+                {uploadingAttachment
+                  ? "Uploading..."
+                  : isEditing
+                    ? "Upload photo or file"
+                    : "Attach photo or file"}
               </label>
               <input
                 id="maintenance-attachments"
                 type="file"
                 hidden
                 multiple
-                accept="image/jpeg,image/png,image/webp,application/pdf"
+                accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
                 onChange={handleAttachmentUpload}
+                disabled={isSavingForm}
               />
 
               {formData.attachments?.length ? (
                 <div className="maintenance-attachment-list">
-                  {formData.attachments.map((attachment, index) => (
+                  {formData.attachments.map((attachment, index) => {
+                    const attachmentKey = getAttachmentKey(attachment, index);
+                    const isPending = attachment.uploadStatus === "pending";
+
+                    return (
                     <div
-                      key={`${getMaintenanceAttachmentUri(attachment) || attachment.name}-${index}`}
+                      key={attachmentKey}
                       className="maintenance-attachment-row"
                     >
-                      <span>{getMaintenanceAttachmentName(attachment, index)}</span>
+                      <span>
+                        {getMaintenanceAttachmentName(attachment, index)}
+                        {isPending ? " - uploads on submit" : ""}
+                      </span>
                       <button
                         type="button"
                         className="btn btn-secondary"
                         onClick={() =>
-                          handleRemoveAttachment(getMaintenanceAttachmentUri(attachment))
+                          handleRemoveAttachment(attachmentKey)
                         }
                         style={{ padding: "6px 10px" }}
                       >
                         <Trash2 size={14} />
                       </button>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="maintenance-help-text">
-                  Attach JPEG, PNG, WebP, or PDF files for clearer troubleshooting.
+                  Attach JPEG, PNG, WebP, HEIC, HEIF, or PDF files for clearer troubleshooting.
+                  New request files upload after the request is created.
                 </p>
               )}
             </div>
@@ -666,9 +809,11 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               <button
                 type="submit"
                 className="btn btn-primary"
-                disabled={isSavingForm || uploadingAttachment || descriptionTooShort}
+                disabled={isSavingForm || descriptionTooShort}
               >
-                {isSavingForm
+                {uploadingAttachment
+                  ? "Uploading files..."
+                  : isSavingForm
                   ? isEditing
                     ? "Saving..."
                     : "Submitting..."
@@ -1124,7 +1269,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                     <input
                       id="maintenance-reply-attachments"
                       type="file"
-                      accept="image/jpeg,image/png,image/webp,application/pdf"
+                      accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
                       multiple
                       onChange={handleReplyAttachmentUpload}
                       disabled={uploadingReplyAttachment || sendReplyMutation.isPending}

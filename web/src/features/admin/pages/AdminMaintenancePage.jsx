@@ -44,7 +44,7 @@ import {
 } from "../../../shared/utils/maintenanceAttachments";
 import { exportToCSV } from "../../../shared/utils/exportUtils";
 import { BRANCH_OPTIONS, BRANCH_DISPLAY_NAMES } from "../../../shared/utils/constants";
-import { uploadToFirebaseStorage } from "../../../shared/utils/firebaseStorageUpload";
+import { uploadMaintenanceAttachment } from "../../../shared/utils/firebaseStorageUpload";
 import {
  normalizeBranchFilterValue,
  syncBranchSearchParam,
@@ -64,7 +64,18 @@ const SUPPORTED_PROGRESS_ATTACHMENT_TYPES = new Set([
  "image/jpeg",
  "image/png",
  "image/webp",
+ "image/heic",
+ "image/heif",
  "application/pdf",
+]);
+const SUPPORTED_PROGRESS_ATTACHMENT_EXTENSIONS = new Set([
+ ".jpg",
+ ".jpeg",
+ ".png",
+ ".webp",
+ ".heic",
+ ".heif",
+ ".pdf",
 ]);
 const UPDATE_FIELD_ORDER = [
  "status",
@@ -473,10 +484,24 @@ const buildMaintenanceAttachmentUploadOptions = (request, options = {}) => {
 const createAttachmentClientId = () =>
  `maintenance-attachment-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+const getAttachmentFileExtension = (file) => {
+ const name = String(file?.name || "").toLowerCase();
+ const dotIndex = name.lastIndexOf(".");
+ return dotIndex >= 0 ? name.slice(dotIndex) : "";
+};
+
+const isSupportedProgressAttachmentFile = (file) => {
+ const type = String(file?.type || "").toLowerCase();
+ if (SUPPORTED_PROGRESS_ATTACHMENT_TYPES.has(type)) return true;
+
+ return (!type || type === "application/octet-stream") &&
+ SUPPORTED_PROGRESS_ATTACHMENT_EXTENSIONS.has(getAttachmentFileExtension(file));
+};
+
 const validateProgressAttachmentFile = (file) => {
  if (!file) return "No file selected.";
- if (!SUPPORTED_PROGRESS_ATTACHMENT_TYPES.has(String(file.type || "").toLowerCase())) {
- return "This file type is not supported. Please upload a photo or PDF.";
+ if (!isSupportedProgressAttachmentFile(file)) {
+ return "This file type is not supported. Please upload a JPEG, PNG, WebP, HEIC, HEIF, or PDF file.";
  }
  if (file.size > MAX_MAINTENANCE_ATTACHMENT_SIZE) {
  return "This file is too large. Please upload a file under 5 MB.";
@@ -1115,7 +1140,7 @@ export default function AdminMaintenancePage() {
  ]);
 
  try {
-  const { downloadUrl: uri, storagePath, size, attachment: uploadedAttachment } = await uploadToFirebaseStorage(
+  const { downloadUrl: uri, storagePath, size, attachment: uploadedAttachment } = await uploadMaintenanceAttachment(
   file,
   buildMaintenanceAttachmentUploadOptions(selectedRequest, {
   documentType: "maintenance-attachment",
@@ -1126,14 +1151,17 @@ export default function AdminMaintenancePage() {
  setDraftWorkLogAttachments((current) =>
  current.map((attachment) =>
  attachment.clientId === clientId
-  ? {
+ ? {
+  ...uploadedAttachment,
   clientId,
   name: file.name,
   uri,
-  type: file.type || "application/octet-stream",
+  url: uri,
+  downloadUrl: uri,
+  type: uploadedAttachment?.type || uploadedAttachment?.mimeType || file.type || "application/octet-stream",
+  mimeType: uploadedAttachment?.mimeType || uploadedAttachment?.type || file.type || "application/octet-stream",
   size,
   storagePath,
-  ...uploadedAttachment,
   uploadStatus: "uploaded",
   }
  : attachment,
@@ -1231,7 +1259,7 @@ export default function AdminMaintenancePage() {
  ]);
 
  try {
-  const { downloadUrl: uri, storagePath, size, attachment: uploadedAttachment } = await uploadToFirebaseStorage(
+  const { downloadUrl: uri, storagePath, size, attachment: uploadedAttachment } = await uploadMaintenanceAttachment(
   file,
   buildMaintenanceAttachmentUploadOptions(selectedRequest, {
   documentType: "maintenance-reply-attachment",
@@ -1242,14 +1270,17 @@ export default function AdminMaintenancePage() {
  setReplyAttachments((current) =>
  current.map((attachment) =>
  attachment.clientId === clientId
-  ? {
+ ? {
+  ...uploadedAttachment,
   clientId,
   name: file.name,
   uri,
-  type: file.type || "application/octet-stream",
+  url: uri,
+  downloadUrl: uri,
+  type: uploadedAttachment?.type || uploadedAttachment?.mimeType || file.type || "application/octet-stream",
+  mimeType: uploadedAttachment?.mimeType || uploadedAttachment?.type || file.type || "application/octet-stream",
   size,
   storagePath,
-  ...uploadedAttachment,
   uploadStatus: "uploaded",
   }
  : attachment,
@@ -2538,13 +2569,13 @@ export default function AdminMaintenancePage() {
  type="file"
  hidden
  multiple
- accept="image/jpeg,image/png,image/webp,application/pdf"
+ accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
  onChange={handleWorkLogAttachmentUpload}
  disabled={isSelectedRequestLocked || uploadingUpdateAttachment}
  />
  </label>
  <span className="text-xs text-muted-foreground">
- Photos and PDFs uploaded here stay in the admin work log.
+ Photos and PDF files uploaded here stay in the admin work log.
  </span>
  </div>
  {updateFieldErrors.attachments ? (
@@ -2671,13 +2702,13 @@ export default function AdminMaintenancePage() {
  type="file"
  hidden
  multiple
- accept="image/jpeg,image/png,image/webp,application/pdf"
+ accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
  onChange={handleReplyAttachmentUpload}
  disabled={isSelectedRequestLocked || uploadingReplyAttachment || sendReplyMutation.isPending}
  />
  </label>
  <span className="text-xs text-muted-foreground">
- Attach photos or PDFs the tenant can open from reply history.
+ Attach photos or PDF files the tenant can open from reply history.
  </span>
  </div>
  {replyFieldErrors.reply_attachments ? (

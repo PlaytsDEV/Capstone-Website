@@ -710,7 +710,7 @@ export const updateProfile = async (req, res, next) => {
       req.body.profileImage !== undefined ? req.body.profileImage : undefined;
 
     // S5: Validate profileImage size and MIME type if provided
-    // Only validate base64 data URLs — skip for already-uploaded external URLs (e.g. ImageKit)
+    // Only validate base64 data URLs — skip already-uploaded external URLs.
     if (profileImage && typeof profileImage === "string" && profileImage.length > 0) {
       const isDataUrl = profileImage.startsWith("data:");
       if (isDataUrl) {

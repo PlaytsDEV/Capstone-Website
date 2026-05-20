@@ -62,11 +62,13 @@ const SUPPORTED_PROGRESS_ATTACHMENT_MIME_TYPES = new Set([
   "image/jpeg",
   "image/png",
   "image/webp",
+  "image/heic",
+  "image/heif",
   "image/*",
   "application/pdf",
 ]);
 const SUPPORTED_PROGRESS_ATTACHMENT_EXTENSION_PATTERN =
-  /\.(jpe?g|png|webp|pdf)(?:$|[?#])/i;
+  /\.(jpe?g|png|webp|heic|heif|pdf)(?:$|[?#])/i;
 
 const buildMaintenanceRequestId = () =>
   `maint_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
@@ -443,7 +445,7 @@ const validateIncomingAttachments = (
     if (!hasSupportedProgressAttachmentType(normalized)) {
       errors.push({
         field: `${fieldPrefix}.${index}.type`,
-        message: "This file type is not supported. Please upload a photo or PDF.",
+        message: "This file type is not supported. Please upload a JPEG, PNG, WebP, HEIC, HEIF, or PDF file.",
       });
     }
   });

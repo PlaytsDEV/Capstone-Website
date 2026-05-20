@@ -30,8 +30,30 @@ export const ALLOWED_ATTACHMENT_MIME_TYPES = new Set([
   "image/jpeg",
   "image/png",
   "image/webp",
+  "image/heic",
+  "image/heif",
   "application/pdf",
 ]);
+export const ALLOWED_ATTACHMENT_EXTENSIONS = new Set([
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".webp",
+  ".heic",
+  ".heif",
+  ".pdf",
+]);
+const ATTACHMENT_EXTENSION_MIME_TYPES = new Map([
+  [".jpg", "image/jpeg"],
+  [".jpeg", "image/jpeg"],
+  [".png", "image/png"],
+  [".webp", "image/webp"],
+  [".heic", "image/heic"],
+  [".heif", "image/heif"],
+  [".pdf", "application/pdf"],
+]);
+export const ATTACHMENT_TYPE_ERROR_MESSAGE =
+  "This file type is not supported. Please upload a JPEG, PNG, WebP, HEIC, HEIF, or PDF file.";
 
 const VALID_VISIBILITIES = new Set(["tenant_admin", "admin_only"]);
 const OWNER_BRANCH_FIELD_NAMES = ["branchId", "branch_id", "branch"];
@@ -39,6 +61,25 @@ const OWNER_BRANCH_FIELD_NAMES = ["branchId", "branch_id", "branch"];
 const toText = (value) => {
   if (value == null) return "";
   return String(value).trim();
+};
+
+export const isAllowedAttachmentFile = (file = {}) => {
+  const mimeType = toText(file.mimetype).toLowerCase();
+  if (ALLOWED_ATTACHMENT_MIME_TYPES.has(mimeType)) return true;
+
+  const extension = path.extname(toText(file.originalname)).toLowerCase();
+  return (!mimeType || mimeType === "application/octet-stream") &&
+    ALLOWED_ATTACHMENT_EXTENSIONS.has(extension);
+};
+
+export const resolveAttachmentMimeType = (file = {}) => {
+  const mimeType = toText(file.mimetype).toLowerCase();
+  if (ALLOWED_ATTACHMENT_MIME_TYPES.has(mimeType)) return mimeType;
+
+  const extension = path.extname(toText(file.originalname)).toLowerCase();
+  return ATTACHMENT_EXTENSION_MIME_TYPES.get(extension) ||
+    mimeType ||
+    "application/octet-stream";
 };
 
 const normalizeBranch = (value) => {
@@ -555,13 +596,16 @@ const sanitizeStorageSegment = (value, fallback) => {
   return segment || fallback;
 };
 
+const normalizePublicBaseUrl = (value) =>
+  toText(value).replace(/\/+$/, "").replace(/\/api$/i, "");
+
 const getPublicBaseUrl = (req) => {
   const configured =
     process.env.PUBLIC_API_URL ||
     process.env.SERVER_PUBLIC_URL ||
     process.env.API_PUBLIC_URL;
-  if (configured) return configured.replace(/\/+$/, "");
-  return `${req.protocol}://${req.get("host")}`.replace(/\/+$/, "");
+  if (configured) return normalizePublicBaseUrl(configured);
+  return normalizePublicBaseUrl(`${req.protocol}://${req.get("host")}`);
 };
 
 const storeLocally = async ({ file, storagePath, req }) => {
@@ -579,7 +623,7 @@ const storeLocally = async ({ file, storagePath, req }) => {
   };
 };
 
-const storeInFirebase = async ({ file, storagePath, metadata }) => {
+const storeInFirebase = async ({ file, storagePath, metadata, mimeType }) => {
   const bucketName =
     process.env.FIREBASE_STORAGE_BUCKET ||
     process.env.GCLOUD_STORAGE_BUCKET ||
@@ -596,7 +640,7 @@ const storeInFirebase = async ({ file, storagePath, metadata }) => {
   await bucket.file(firebasePath).save(file.buffer, {
     resumable: false,
     metadata: {
-      contentType: file.mimetype,
+      contentType: mimeType || file.mimetype,
       metadata: {
         firebaseStorageDownloadTokens: token,
         ...Object.fromEntries(
@@ -626,14 +670,15 @@ export const uploadAttachmentFile = async ({ req, file, options = {} }) => {
     throw new AppError("File is too large. Maximum size is 5 MB.", 400, "FILE_TOO_LARGE");
   }
 
-  if (!ALLOWED_ATTACHMENT_MIME_TYPES.has(file.mimetype)) {
+  if (!isAllowedAttachmentFile(file)) {
     throw new AppError(
-      "This file type is not supported. Please upload a photo or PDF.",
+      ATTACHMENT_TYPE_ERROR_MESSAGE,
       400,
       "UNSUPPORTED_FILE_TYPE",
     );
   }
 
+  const mimeType = resolveAttachmentMimeType(file);
   const resolution = await resolveUploadBranch(req, options);
   const context = resolution.context;
   const visibility = resolveAttachmentVisibility(
@@ -674,10 +719,20 @@ export const uploadAttachmentFile = async ({ req, file, options = {} }) => {
     relatedId,
   };
 
-  const firebaseResult =
-    String(process.env.ATTACHMENT_STORAGE_DRIVER || "").toLowerCase() === "firebase"
-      ? await storeInFirebase({ file, storagePath, metadata: baseMetadata })
-      : null;
+  const wantsFirebaseStorage =
+    String(process.env.ATTACHMENT_STORAGE_DRIVER || "").toLowerCase() === "firebase";
+  const firebaseResult = wantsFirebaseStorage
+    ? await storeInFirebase({ file, storagePath, metadata: baseMetadata, mimeType })
+    : null;
+
+  if (wantsFirebaseStorage && !firebaseResult) {
+    throw new AppError(
+      "Attachment storage is not configured. Please set FIREBASE_STORAGE_BUCKET and Firebase Admin credentials for maintenance uploads.",
+      500,
+      "ATTACHMENT_STORAGE_NOT_CONFIGURED",
+    );
+  }
+
   const stored = firebaseResult || (await storeLocally({ file, storagePath, req }));
 
   return {
@@ -685,8 +740,8 @@ export const uploadAttachmentFile = async ({ req, file, options = {} }) => {
     name: file.originalname,
     filename: file.originalname,
     originalName: file.originalname,
-    type: file.mimetype,
-    mimeType: file.mimetype,
+    type: mimeType,
+    mimeType,
     size: file.size,
     uri: stored.downloadUrl,
     url: stored.downloadUrl,

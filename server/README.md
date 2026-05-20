@@ -15,7 +15,7 @@ Express.js backend with MongoDB, Firebase Admin SDK, PayMongo, and Socket.io for
 - **Helmet** — Security headers
 - **node-cron** — Background job scheduling
 - **Pino** — Structured JSON logging
-- **ImageKit** — Image upload authentication
+- **Firebase Storage / local disk** — Branch-scoped attachment uploads
 
 ---
 
@@ -86,7 +86,7 @@ server/
 │   ├── announcementRoutes.js    # /api/announcements/*
 │   ├── maintenanceRoutes.js     # /api/maintenance/*
 │   ├── notificationRoutes.js    # /api/notifications/*
-│   ├── uploadRoutes.js          # /api/upload/*
+│   ├── attachmentRoutes.js      # /api/attachments/*
 │   ├── webhookRoutes.js         # /api/webhooks/*
 │   └── auditRoutes.js           # /api/audit-logs/*
 │
@@ -142,12 +142,12 @@ FRONTEND_URL=http://localhost:5173
 PAYMONGO_SECRET_KEY=your-paymongo-secret-key
 PAYMONGO_WEBHOOK_SECRET=your-webhook-signing-key
 
-# ImageKit
-IMAGEKIT_PRIVATE_KEY=your-imagekit-private-key
-IMAGEKIT_URL_ENDPOINT=https://ik.imagekit.io/your-imagekit-id
+# Maintenance attachments
+ATTACHMENT_STORAGE_DRIVER=firebase
+FIREBASE_STORAGE_BUCKET=your-project.appspot.com
+PUBLIC_API_URL=http://localhost:5000
 
 # Optional: reservation document OCR pre-check timeout
-RESERVATION_DOCUMENT_UPLOAD_URL_ENDPOINT=https://ik.imagekit.io/your-imagekit-id
 RESERVATION_DOCUMENT_PRECHECK_TIMEOUT_MS=15000
 ```
 
@@ -170,7 +170,6 @@ Server runs on: **http://localhost:5000**
 The reservation document pre-check uses server-side OCR through `tesseract.js` plus conservative readability and document-type checks. It does not use Google Vision or Gemini for reservation document checking, and it does not require any OCR API key.
 
 - Optional timeout override: `RESERVATION_DOCUMENT_PRECHECK_TIMEOUT_MS`
-- Optional trusted upload endpoint override: `RESERVATION_DOCUMENT_UPLOAD_URL_ENDPOINT`
 - Default timeout: `15000` milliseconds
 
 Startup logging is intentionally limited to:
@@ -183,9 +182,8 @@ The backend does not store full OCR text and does not treat OCR as identity veri
 ### Render / Server Setup
 
 1. Deploy the backend with dependencies installed so `tesseract.js` is available.
-2. Set `IMAGEKIT_URL_ENDPOINT` or `RESERVATION_DOCUMENT_UPLOAD_URL_ENDPOINT` if production uploads use a different ImageKit endpoint than the checked-in default.
-3. Optionally add `RESERVATION_DOCUMENT_PRECHECK_TIMEOUT_MS`.
-4. Redeploy or restart the backend service after changing OCR-related values.
+2. Optionally add `RESERVATION_DOCUMENT_PRECHECK_TIMEOUT_MS`.
+3. Redeploy or restart the backend service after changing OCR-related values.
 
 If OCR cannot complete or times out, uploads still succeed and the system safely falls back to manual admin review.
 
@@ -288,11 +286,12 @@ If OCR cannot complete or times out, uploads still succeed and the system safely
 | PUT    | `/:userId` | Admin | Update user    |
 | DELETE | `/:userId` | Admin | Delete user    |
 
-### Uploads (`/api/upload`)
+### Uploads (`/api/attachments`)
 
-| Method | Endpoint         | Auth | Description                     |
-| ------ | ---------------- | ---- | ------------------------------- |
-| GET    | `/imagekit-auth` | JWT  | Get ImageKit upload credentials |
+| Method | Endpoint  | Auth | Description |
+| ------ | --------- | ---- | ----------- |
+| POST   | `/`       | JWT  | Upload a branch-scoped attachment file |
+| POST   | `/upload` | JWT  | Compatibility alias for attachment upload |
 
 ### Webhooks (`/api/webhooks`)
 
@@ -423,7 +422,7 @@ curl -X POST http://localhost:5000/api/auth/register \
 - Update `FRONTEND_URL` to production domain
 - Use production Firebase credentials
 - Set production PayMongo keys and webhook secret
-- Configure ImageKit production credentials
+- Configure Firebase Storage attachment credentials or persistent local storage
 - Ensure backend dependencies are installed so OCR pre-check can run
 - Redeploy or restart the backend after changing OCR-related environment variables
 
