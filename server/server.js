@@ -130,6 +130,16 @@ const isTruthyEnv = (value, fallback = false) => {
 
 const shouldStartScheduler = () => isTruthyEnv(process.env.ENABLE_SCHEDULER, true);
 
+const setUploadStaticHeaders = (res) => {
+  // Uploaded files are intentionally consumed by the frontend on a separate
+  // origin/subdomain, so override Helmet's default same-origin resource policy
+  // only for this public static file surface.
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+  if (!res.getHeader("Access-Control-Allow-Origin")) {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  }
+};
+
 const runPermissionBackfill = async () => {
   try {
     const { backfillBranchAdminPermissions } = await import(
@@ -260,6 +270,7 @@ app.use(
   express.static(path.join(__dirname, "uploads"), {
     maxAge: "1d",
     fallthrough: true,
+    setHeaders: setUploadStaticHeaders,
   }),
 );
 app.use(requestLogger);
