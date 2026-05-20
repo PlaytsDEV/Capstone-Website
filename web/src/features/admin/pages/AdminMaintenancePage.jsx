@@ -481,6 +481,23 @@ const buildMaintenanceAttachmentUploadOptions = (request, options = {}) => {
  };
 };
 
+const getAdminUploadFallbackBranchId = ({ request, user, branchFilter, isOwner }) => {
+ const candidates = [
+ getMaintenanceRequestUploadBranchId(request),
+ isOwner && branchFilter !== "all" ? branchFilter : "",
+ user?.branchId,
+ user?.branch_id,
+ user?.branch,
+ ];
+
+ for (const candidate of candidates) {
+ const branchId = normalizeMaintenanceBranchCandidate(candidate);
+ if (isKnownMaintenanceBranch(branchId)) return branchId;
+ }
+
+ return "";
+};
+
 const createAttachmentClientId = () =>
  `maintenance-attachment-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -756,6 +773,12 @@ export default function AdminMaintenancePage() {
  const requests = requestsData?.requests || [];
  const summaryRequests = summaryData?.requests || requests;
  const selectedRequest = requestDetailData?.request || null;
+ const selectedRequestUploadBranchId = getAdminUploadFallbackBranchId({
+ request: selectedRequest,
+ user,
+ branchFilter,
+ isOwner,
+ });
  const selectedRequestStatusOptions = useMemo(
  () => getAllowedAdminMaintenanceStatuses(selectedRequest?.status),
  [selectedRequest?.status],
@@ -1146,6 +1169,7 @@ export default function AdminMaintenancePage() {
   documentType: "maintenance-attachment",
   context: "maintenance_internal_note",
   visibility: "admin_only",
+  ...(selectedRequestUploadBranchId ? { branchId: selectedRequestUploadBranchId } : {}),
   }),
   );
  setDraftWorkLogAttachments((current) =>
@@ -1265,6 +1289,7 @@ export default function AdminMaintenancePage() {
   documentType: "maintenance-reply-attachment",
   context: "maintenance_reply",
   visibility: "tenant_admin",
+  ...(selectedRequestUploadBranchId ? { branchId: selectedRequestUploadBranchId } : {}),
   }),
   );
  setReplyAttachments((current) =>

@@ -5,7 +5,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 import admin from "../config/firebase.js";
-import { ROOM_BRANCHES } from "../config/branches.js";
+import { ROOM_BRANCH_LABELS, ROOM_BRANCHES } from "../config/branches.js";
 import { isAdminRole, isOwnerRole } from "../config/roles.js";
 import {
   BedHistory,
@@ -83,11 +83,32 @@ export const resolveAttachmentMimeType = (file = {}) => {
 };
 
 const normalizeBranch = (value) => {
-  const branch = toText(value)
+  const raw = toText(value);
+  const branch = raw
     .toLowerCase()
     .replace(/[_\s]+/g, "-")
     .replace(/[^a-z0-9-]/g, "");
-  return ROOM_BRANCHES.includes(branch) ? branch : "";
+  if (ROOM_BRANCHES.includes(branch)) return branch;
+
+  const compactBranch = branch.replace(/-/g, "");
+  for (const knownBranch of ROOM_BRANCHES) {
+    const label = ROOM_BRANCH_LABELS[knownBranch] || knownBranch;
+    const compactKnownBranch = knownBranch.replace(/-/g, "");
+    const compactLabel = label
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+
+    if (
+      compactBranch === compactKnownBranch ||
+      compactBranch === compactLabel ||
+      compactBranch.includes(compactKnownBranch) ||
+      compactBranch.includes(compactLabel)
+    ) {
+      return knownBranch;
+    }
+  }
+
+  return "";
 };
 
 const normalizeBranchFromValue = (value) => {
@@ -399,7 +420,7 @@ const resolveBranchFromMaintenanceRequest = async (dbUser, request, explicitBran
   if (!branch && providedBranch) {
     branch = providedBranch;
   }
-  if (!branch && isAdminRole(role) && !isOwnerRole(role)) {
+  if (!branch && isAdminRole(role)) {
     branch = normalizeBranchFromValue(dbUser?.branch);
   }
 
@@ -554,6 +575,15 @@ export const resolveUploadBranch = async (req, options = {}) => {
         context,
         branch: explicitBranch,
         source: "owner_selected_branch",
+      };
+    }
+    const ownerBranch = normalizeBranch(dbUser?.branch);
+    if (ownerBranch) {
+      return {
+        dbUser,
+        context,
+        branch: ownerBranch,
+        source: "owner_profile",
       };
     }
   } else {

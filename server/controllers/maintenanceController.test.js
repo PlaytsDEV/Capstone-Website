@@ -351,6 +351,75 @@ describe("maintenanceController", () => {
     expect(resolution.relatedId).toBe(storedRequest.request_id);
   });
 
+  test("resolveUploadBranch accepts display-name branch values on legacy maintenance requests", async () => {
+    const storedRequest = buildRequestDoc({
+      branch: "Gil Puyat Branch",
+      branchId: null,
+      roomId: null,
+      reservationId: null,
+    });
+    userFindOne.mockReturnValue(
+      buildSelectLeanQuery({
+        _id: "admin_user_1",
+        user_id: "admin_1",
+        firebaseUid: "admin_firebase_uid",
+        role: "branch_admin",
+        branch: "Gil Puyat Branch",
+      }),
+    );
+    maintenanceFindOne.mockReturnValue(buildLeanQuery(storedRequest));
+
+    const resolution = await resolveUploadBranch({
+      user: { uid: "admin_firebase_uid" },
+      body: {
+        context: "maintenance_internal_note",
+        requestId: storedRequest.request_id,
+        relatedId: storedRequest.request_id,
+      },
+      query: {},
+      headers: {},
+    });
+
+    expect(resolution.branch).toBe("gil-puyat");
+    expect(resolution.context).toBe("maintenance_internal_note");
+  });
+
+  test("resolveUploadBranch lets owners use an explicit branch for branchless legacy maintenance requests", async () => {
+    const storedRequest = buildRequestDoc({
+      branch: null,
+      branchId: null,
+      roomId: null,
+      reservationId: null,
+    });
+    userFindOne
+      .mockReturnValueOnce(
+        buildSelectLeanQuery({
+          _id: "owner_user_1",
+          user_id: "owner_1",
+          firebaseUid: "owner_firebase_uid",
+          role: "owner",
+          branch: "",
+        }),
+      )
+      .mockReturnValueOnce(buildSelectLeanQuery(null));
+    maintenanceFindOne.mockReturnValue(buildLeanQuery(storedRequest));
+
+    const resolution = await resolveUploadBranch({
+      user: { uid: "owner_firebase_uid" },
+      body: {
+        context: "maintenance_internal_note",
+        requestId: storedRequest.request_id,
+        relatedId: storedRequest.request_id,
+        branchId: "guadalupe",
+      },
+      query: {},
+      headers: {},
+    });
+
+    expect(resolution.branch).toBe("guadalupe");
+    expect(resolution.source).toBe("maintenance_request");
+  });
+
   test("resolveUploadBranch supports Mongo id maintenanceRequestId", async () => {
     const storedRequest = buildRequestDoc({
       _id: "507f1f77bcf86cd799439099",
