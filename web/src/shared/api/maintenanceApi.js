@@ -117,6 +117,36 @@ export const maintenanceApi = {
   },
 
   /**
+   * Save already-uploaded admin-only proof attachments into the work log.
+   */
+  saveAdminProof: (requestId, payload) =>
+    authFetch(`/m/maintenance/admin/${requestId}/proof`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  /**
+   * Soft-remove an attachment from tenant view or normal request display.
+   */
+  removeAdminAttachment: (requestId, payload) =>
+    authFetch(`/m/maintenance/admin/${requestId}/attachments/remove`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  archiveAdminRequest: (requestId, payload = {}) =>
+    authFetch(`/m/maintenance/admin/${requestId}/archive`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  restoreAdminRequest: (requestId, payload = {}) =>
+    authFetch(`/m/maintenance/admin/${requestId}/restore`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  /**
    * Bulk update maintenance requests (admin only)
    */
   bulkUpdateAdminRequests: (payload) =>

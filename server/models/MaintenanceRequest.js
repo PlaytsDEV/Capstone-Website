@@ -91,6 +91,41 @@ const attachmentSchema = new mongoose.Schema(
       default: null,
       min: 0,
     },
+    isRemoved: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    removedAt: {
+      type: Date,
+      default: null,
+    },
+    removedBy: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    removedByRole: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    removedByName: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    removedReason: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    removedScope: {
+      type: String,
+      enum: ["tenant_only", "request", null],
+      default: null,
+      index: true,
+    },
   },
   { _id: false, strict: false },
 );
@@ -362,6 +397,24 @@ const maintenanceRequestSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
+    archivedAt: {
+      type: Date,
+      default: null,
+    },
+    archivedBy: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    restoredAt: {
+      type: Date,
+      default: null,
+    },
+    restoredBy: {
+      type: String,
+      default: null,
+      trim: true,
+    },
     // Prevents duplicate SLA breach notifications for the same unresolved breach.
     // Reset to false whenever status changes so re-escalation fires correctly.
     // Covered by the compound index { status, urgency, created_at, slaBreachNotified }.
@@ -391,6 +444,7 @@ const MAINTENANCE_ARRAY_CAPS = {
   work_log: 200,
   statusHistory: 200,
   reopen_history: 30,
+  conversation: 200,
 };
 
 maintenanceRequestSchema.pre("save", function (next) {

@@ -184,6 +184,27 @@ export const normalizeMaintenanceAttachment = (attachment, index = 0) => {
   const size = getMaintenanceAttachmentSize(attachment);
   if (size !== null) normalized.size = size;
   if (attachment?.storagePath) normalized.storagePath = attachment.storagePath;
+  [
+    "id",
+    "attachmentId",
+    "provider",
+    "visibility",
+    "uploadedBy",
+    "uploadedAt",
+    "branch",
+    "branchId",
+    "context",
+    "relatedId",
+    "isRemoved",
+    "removedAt",
+    "removedBy",
+    "removedByRole",
+    "removedByName",
+    "removedReason",
+    "removedScope",
+  ].forEach((field) => {
+    if (attachment?.[field] !== undefined) normalized[field] = attachment[field];
+  });
 
   return {
     ...normalized,

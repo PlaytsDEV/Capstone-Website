@@ -210,6 +210,13 @@ const getAttachmentUri = (entry) => {
   );
 };
 
+const normalizeRemovalScope = (value) => {
+  const scope = String(value || "").trim().toLowerCase();
+  if (["tenant_only", "tenant-only", "tenant"].includes(scope)) return "tenant_only";
+  if (["request", "all", "request_only", "request-only"].includes(scope)) return "request";
+  return "";
+};
+
 const deriveAttachmentName = (uri, index = 0) => {
   if (!uri) return `Attachment ${index + 1}`;
 
@@ -324,6 +331,10 @@ const normalizeAttachmentEntry = (entry, index = 0, metadataOptions = {}) => {
         : null,
   });
   const normalized = {
+    id:
+      (typeof entry === "object" && entry
+        ? toOptionalText(entry?.id) || toOptionalText(entry?.attachmentId)
+        : null) || crypto.randomUUID(),
     name,
     uri,
     type,
@@ -338,6 +349,9 @@ const normalizeAttachmentEntry = (entry, index = 0, metadataOptions = {}) => {
   if (typeof entry === "object" && entry?.storagePath) {
     normalized.storagePath = entry.storagePath;
   }
+  if (typeof entry === "object" && entry?.provider) {
+    normalized.provider = entry.provider;
+  }
 
   return {
     ...normalized,
@@ -351,6 +365,10 @@ const normalizeAttachmentEntry = (entry, index = 0, metadataOptions = {}) => {
  * can show an "unavailable" state instead of silently hiding the attachment.
  */
 const sanitizeAttachmentForOutput = (entry, index = 0, { includeInternal = true } = {}) => {
+  if (!includeInternal && typeof entry === "object" && entry?.isRemoved) {
+    return null;
+  }
+
   if (
     !includeInternal &&
     typeof entry === "object" &&
@@ -383,6 +401,10 @@ const sanitizeAttachmentForOutput = (entry, index = 0, { includeInternal = true 
         name
       : name;
   const output = {
+    id:
+      (typeof entry === "object" && entry
+        ? entry?.id || entry?.attachmentId || entry?.storagePath
+        : null) || safeUri || `${name}-${index}`,
     name,
     uri: safeUri,
     type,
@@ -396,6 +418,18 @@ const sanitizeAttachmentForOutput = (entry, index = 0, { includeInternal = true 
   if (size !== null) output.size = size;
   if (typeof entry === "object" && entry?.storagePath) {
     output.storagePath = entry.storagePath;
+  }
+  if (typeof entry === "object" && entry?.provider) {
+    output.provider = entry.provider;
+  }
+  if (typeof entry === "object" && entry?.isRemoved) {
+    output.isRemoved = true;
+    output.removedAt = entry.removedAt || null;
+    output.removedBy = entry.removedBy || null;
+    output.removedByRole = entry.removedByRole || null;
+    output.removedByName = entry.removedByName || null;
+    output.removedReason = entry.removedReason || null;
+    output.removedScope = entry.removedScope || null;
   }
 
   return {
@@ -574,9 +608,19 @@ const serializeTenantSummary = (user, request) => {
   };
 };
 
+const INTERNAL_STATUS_EVENTS = new Set([
+  "admin_proof_uploaded",
+  "attachment_removed_tenant",
+  "attachment_removed_request",
+  "archived",
+  "restored",
+]);
+
 const sanitizeStatusHistoryForOutput = (statusHistory, { includeInternal = true } = {}) =>
   Array.isArray(statusHistory)
-    ? statusHistory.map((entry) => ({
+    ? statusHistory
+        .filter((entry) => includeInternal || !INTERNAL_STATUS_EVENTS.has(entry?.event))
+        .map((entry) => ({
         ...entry,
         note:
           includeInternal || ["tenant", "applicant"].includes(entry?.actor_role)
@@ -638,6 +682,11 @@ const serializeMaintenanceRequest = (
     branch: request.branch || null,
     roomId: request.roomId || null,
     reservationId: request.reservationId || null,
+    isArchived: Boolean(request.isArchived),
+    archivedAt: request.archivedAt ?? null,
+    archivedBy: request.archivedBy ?? null,
+    restoredAt: request.restoredAt ?? null,
+    restoredBy: request.restoredBy ?? null,
 
     // Compatibility aliases for legacy consumers still in the repo.
     title: `${formatMaintenanceTypeLabel(request.request_type)} Request`,
@@ -659,12 +708,15 @@ const loadTenantMap = async (requests) => {
   return new Map(users.map((user) => [user.user_id, user]));
 };
 
-const findAccessibleRequest = async (requestId) => {
+const findAccessibleRequest = async (
+  requestId,
+  { includeArchived = false } = {},
+) => {
   const request = await MaintenanceRequest.findOne(
     buildRequestIdentifierQuery(requestId),
   );
 
-  if (!request || request.isArchived) {
+  if (!request || (!includeArchived && request.isArchived)) {
     throw new AppError("Maintenance request not found", 404, "REQUEST_NOT_FOUND");
   }
 
@@ -705,6 +757,105 @@ const normalizeAdminUpdatePayload = (payload = {}, attachmentMetadata = {}) => {
     workLogAttachmentErrors: validateIncomingWorkLogAttachments(rawWorkLogAttachments),
     workLogAttachments,
   };
+};
+
+const resolveArchiveFilter = (value) => {
+  const archive = String(value || "active").trim().toLowerCase();
+  if (["active", "archived", "all"].includes(archive)) return archive;
+  return "active";
+};
+
+const getAttachmentBuckets = (request) => {
+  const buckets = [
+    {
+      source: "request",
+      label: "request attachments",
+      attachments: request.attachments,
+    },
+  ];
+
+  (request.conversation || []).forEach((entry, entryIndex) => {
+    buckets.push({
+      source: "conversation",
+      label: "tenant conversation",
+      entry,
+      entryIndex,
+      attachments: entry.attachments,
+    });
+  });
+
+  (request.work_log || []).forEach((entry, entryIndex) => {
+    buckets.push({
+      source: "work_log",
+      label: "admin work log",
+      entry,
+      entryIndex,
+      attachments: entry.attachments,
+    });
+  });
+
+  return buckets;
+};
+
+const findAttachmentTarget = (request, target = {}) => {
+  const source = toOptionalText(target.source || target.collection);
+  const entryIndex =
+    target.entryIndex === undefined || target.entryIndex === null
+      ? null
+      : Number(target.entryIndex);
+  const attachmentIndex =
+    target.attachmentIndex === undefined || target.attachmentIndex === null
+      ? null
+      : Number(target.attachmentIndex);
+  const targetId = toOptionalText(target.attachmentId || target.id);
+  const targetUri = toOptionalText(target.uri || target.url || target.downloadUrl);
+
+  for (const bucket of getAttachmentBuckets(request)) {
+    if (source && bucket.source !== source) continue;
+    if (
+      bucket.source !== "request" &&
+      Number.isInteger(entryIndex) &&
+      bucket.entryIndex !== entryIndex
+    ) {
+      continue;
+    }
+
+    const attachments = Array.isArray(bucket.attachments) ? bucket.attachments : [];
+    for (let index = 0; index < attachments.length; index += 1) {
+      const attachment = attachments[index];
+      const attachmentUri = getAttachmentUri(attachment);
+      const attachmentId = toOptionalText(
+        attachment?.id || attachment?.attachmentId || attachment?.storagePath,
+      );
+      const indexMatches =
+        Number.isInteger(attachmentIndex) && attachmentIndex === index;
+      const idMatches = targetId && attachmentId && targetId === attachmentId;
+      const uriMatches = targetUri && attachmentUri && targetUri === attachmentUri;
+
+      if (indexMatches || idMatches || uriMatches) {
+        return {
+          ...bucket,
+          attachment,
+          attachmentIndex: index,
+        };
+      }
+    }
+  }
+
+  return null;
+};
+
+const emitMaintenanceUpdated = async (request) => {
+  try {
+    const { emitToAdmins } = await import("../utils/socket.js");
+    emitToAdmins("ticket:updated", {
+      requestId: String(request._id),
+      status: request.status,
+      isArchived: Boolean(request.isArchived),
+    });
+  } catch {
+    // non-fatal; HTTP update already succeeded
+  }
 };
 
 const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
@@ -941,7 +1092,10 @@ export const getMyRequests = async (req, res, next) => {
  */
 export const getAdminAll = async (req, res, next) => {
   try {
-    const query = { isArchived: false };
+    const archiveFilter = resolveArchiveFilter(
+      req.query.archive || req.query.archived || req.query.view,
+    );
+    const query = {};
     const limit = parseLimit(req.query.limit, MAINTENANCE_LIMIT_MAX);
     const branch = resolveAdminBranchFilter(req);
     const status = normalizeMaintenanceStatus(req.query.status);
@@ -953,6 +1107,8 @@ export const getAdminAll = async (req, res, next) => {
     const dateFrom = toOptionalText(req.query.date_from);
     const dateTo = toOptionalText(req.query.date_to);
 
+    if (archiveFilter === "active") query.isArchived = false;
+    if (archiveFilter === "archived") query.isArchived = true;
     if (branch) query.branch = branch;
     if (status) {
       if (!isValidMaintenanceStatus(status)) {
@@ -1167,9 +1323,12 @@ export const createRequestCompat = async (req, res, next) => {
 export const getRequestById = async (req, res, next) => {
   try {
     const dbUser = await getDbUser(req.user.uid);
-    const request = await findAccessibleRequest(req.params.requestId);
+    const isAdminViewer = dbUser.role === "owner" || dbUser.role === "branch_admin";
+    const request = await findAccessibleRequest(req.params.requestId, {
+      includeArchived: isAdminViewer,
+    });
 
-    if (dbUser.role === "owner" || dbUser.role === "branch_admin") {
+    if (isAdminViewer) {
       if (dbUser.role !== "owner" && request.branch !== dbUser.branch) {
         throw new AppError("Access denied", 403, "FORBIDDEN");
       }
@@ -1184,9 +1343,9 @@ export const getRequestById = async (req, res, next) => {
 
     sendSuccess(res, {
       request: serializeMaintenanceRequest(
-        request.toObject(),
-        serializeTenantSummary(tenantUser, request),
-        { includeInternal: dbUser.role === "owner" || dbUser.role === "branch_admin" },
+      request.toObject(),
+      serializeTenantSummary(tenantUser, request),
+      { includeInternal: isAdminViewer },
       ),
     });
   } catch (error) {
@@ -1598,6 +1757,265 @@ export const uploadAdminMaintenanceAttachment = async (req, res, next) => {
       },
       201,
     );
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/m/maintenance/admin/:requestId/proof
+ * Saves an admin-only proof attachment into the maintenance work log.
+ */
+export const saveAdminMaintenanceProof = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId);
+    ensureAdminAccess(request, req);
+
+    if (request.isArchived) {
+      throw new AppError(
+        "Archived maintenance requests cannot be updated.",
+        409,
+        "REQUEST_ARCHIVED",
+      );
+    }
+
+    const adminUser = await getDbUser(req.user.uid);
+    const note = toOptionalText(req.body?.note || req.body?.work_log_note);
+    const rawAttachments =
+      req.body?.attachments !== undefined
+        ? req.body.attachments
+        : req.body?.work_log_attachments;
+    const attachmentErrors = validateIncomingWorkLogAttachments(rawAttachments);
+    const attachments = normalizeAttachments(rawAttachments, {
+      context: "maintenance_internal_note",
+      visibility: "admin_only",
+      branchId: request.branch,
+      uploadedBy: adminUser?.user_id,
+      senderRole: adminUser?.role || "admin",
+      relatedId: request.request_id,
+    });
+
+    if (attachmentErrors.length > 0) {
+      throw new AppError(
+        attachmentErrors[0]?.message || "Invalid attachment format.",
+        400,
+        "VALIDATION_ERROR",
+        attachmentErrors,
+      );
+    }
+
+    if (attachments.length === 0) {
+      throw new AppError(
+        "Please upload a proof attachment before saving.",
+        400,
+        "PROOF_ATTACHMENT_REQUIRED",
+      );
+    }
+
+    const eventTimestamp = new Date();
+    appendWorkLogEntry(request, {
+      note: note || "Admin-only proof uploaded.",
+      attachments,
+      ...buildActorSnapshot(adminUser),
+      logged_at: eventTimestamp,
+      entry_type: "admin_proof",
+      visibility: "admin_only",
+    });
+    appendStatusHistory(request, {
+      event: "admin_proof_uploaded",
+      status: request.status,
+      ...buildActorSnapshot(adminUser),
+      note: note || null,
+      timestamp: eventTimestamp,
+    });
+
+    await request.save();
+
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select(USER_SELECT_FIELDS)
+      .lean();
+
+    await emitMaintenanceUpdated(request);
+
+    sendSuccess(res, {
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(tenantUser, request),
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PATCH /api/m/maintenance/admin/:requestId/archive
+ */
+export const archiveAdminMaintenanceRequest = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId, {
+      includeArchived: true,
+    });
+    ensureAdminAccess(request, req);
+    const adminUser = await getDbUser(req.user.uid);
+
+    if (!request.isArchived) {
+      const eventTimestamp = new Date();
+      request.isArchived = true;
+      request.archivedAt = eventTimestamp;
+      request.archivedBy = adminUser?.user_id || String(adminUser?._id || "");
+      appendStatusHistory(request, {
+        event: "archived",
+        status: request.status,
+        ...buildActorSnapshot(adminUser),
+        note: toOptionalText(req.body?.reason) || null,
+        timestamp: eventTimestamp,
+      });
+      await request.save();
+      await emitMaintenanceUpdated(request);
+    }
+
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select(USER_SELECT_FIELDS)
+      .lean();
+
+    sendSuccess(res, {
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(tenantUser, request),
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PATCH /api/m/maintenance/admin/:requestId/restore
+ */
+export const restoreAdminMaintenanceRequest = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId, {
+      includeArchived: true,
+    });
+    ensureAdminAccess(request, req);
+    const adminUser = await getDbUser(req.user.uid);
+
+    if (request.isArchived) {
+      const eventTimestamp = new Date();
+      request.isArchived = false;
+      request.restoredAt = eventTimestamp;
+      request.restoredBy = adminUser?.user_id || String(adminUser?._id || "");
+      appendStatusHistory(request, {
+        event: "restored",
+        status: request.status,
+        ...buildActorSnapshot(adminUser),
+        note: toOptionalText(req.body?.reason) || null,
+        timestamp: eventTimestamp,
+      });
+      await request.save();
+      await emitMaintenanceUpdated(request);
+    }
+
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select(USER_SELECT_FIELDS)
+      .lean();
+
+    sendSuccess(res, {
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(tenantUser, request),
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PATCH /api/m/maintenance/admin/:requestId/attachments/remove
+ */
+export const removeAdminMaintenanceAttachment = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId, {
+      includeArchived: true,
+    });
+    ensureAdminAccess(request, req);
+    const adminUser = await getDbUser(req.user.uid);
+    const scope = normalizeRemovalScope(req.body?.scope || req.body?.removedScope);
+
+    if (request.isArchived) {
+      throw new AppError(
+        "Archived maintenance requests cannot be updated.",
+        409,
+        "REQUEST_ARCHIVED",
+      );
+    }
+
+    if (!scope) {
+      throw new AppError(
+        "Please choose how to remove this attachment.",
+        400,
+        "INVALID_REMOVAL_SCOPE",
+      );
+    }
+
+    const target = findAttachmentTarget(request, req.body || {});
+    if (!target?.attachment) {
+      throw new AppError(
+        "Attachment not found.",
+        404,
+        "ATTACHMENT_NOT_FOUND",
+      );
+    }
+
+    const eventTimestamp = new Date();
+    const reason = toOptionalText(req.body?.reason || req.body?.removedReason);
+    const actor = buildActorSnapshot(adminUser);
+    target.attachment.isRemoved = true;
+    target.attachment.removedAt = eventTimestamp;
+    target.attachment.removedBy = actor.actor_id;
+    target.attachment.removedByRole = actor.actor_role;
+    target.attachment.removedByName = actor.actor_name;
+    target.attachment.removedReason = reason;
+    target.attachment.removedScope = scope;
+
+    appendStatusHistory(request, {
+      event:
+        scope === "tenant_only"
+          ? "attachment_removed_tenant"
+          : "attachment_removed_request",
+      status: request.status,
+      ...actor,
+      note: reason || getAttachmentUri(target.attachment) || target.attachment.name || null,
+      timestamp: eventTimestamp,
+      attachmentName: target.attachment.name || target.attachment.filename || null,
+      attachmentId:
+        target.attachment.id ||
+        target.attachment.attachmentId ||
+        target.attachment.storagePath ||
+        null,
+      removedScope: scope,
+      source: target.source,
+    });
+
+    request.markModified(target.source === "request" ? "attachments" : target.source);
+    if (target.source === "conversation") request.markModified("conversation");
+    if (target.source === "work_log") request.markModified("work_log");
+
+    await request.save();
+    await emitMaintenanceUpdated(request);
+
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select(USER_SELECT_FIELDS)
+      .lean();
+
+    sendSuccess(res, {
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(tenantUser, request),
+      ),
+    });
   } catch (error) {
     next(error);
   }

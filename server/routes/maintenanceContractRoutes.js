@@ -94,11 +94,39 @@ router.post(
   maintenanceController.uploadAdminMaintenanceAttachment,
 );
 router.post(
+  "/admin/:requestId/proof",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.saveAdminMaintenanceProof,
+);
+router.patch(
+  "/admin/:requestId/attachments/remove",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.removeAdminMaintenanceAttachment,
+);
+router.post(
   "/admin/:requestId/reply",
   verifyAdmin,
   filterByBranch,
   requirePermission("manageMaintenance"),
   maintenanceController.sendAdminReply,
+);
+router.patch(
+  "/admin/:requestId/archive",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.archiveAdminMaintenanceRequest,
+);
+router.patch(
+  "/admin/:requestId/restore",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.restoreAdminMaintenanceRequest,
 );
 router.patch(
   "/admin/bulk",

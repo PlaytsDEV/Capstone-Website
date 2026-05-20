@@ -124,28 +124,14 @@ const formatSlaLabel = (slaState) => {
 };
 
 const cloneAttachments = (attachments) => normalizeMaintenanceAttachments(attachments);
-const getLatestProgressEntry = (request) => {
-  const workLog = Array.isArray(request?.workLog) ? request.workLog : [];
-  return workLog.length ? workLog[workLog.length - 1] : null;
-};
+const getTenantVisibleAttachments = (attachments = []) =>
+  Array.isArray(attachments)
+    ? attachments.filter((attachment) => !attachment?.isRemoved)
+    : [];
 const getLatestTenantReply = (request) => {
   const conversation = Array.isArray(request?.conversation) ? request.conversation : [];
   return conversation.length ? conversation[conversation.length - 1] : null;
 };
-const getProgressSummary = (entry) => {
-  if (!entry) return "";
-
-  const note = typeof entry.note === "string" ? entry.note.trim() : "";
-  if (note) return note;
-
-  const attachmentCount = Array.isArray(entry.attachments) ? entry.attachments.length : 0;
-  if (attachmentCount > 0) {
-    return `Admin added ${attachmentCount} progress ${attachmentCount === 1 ? "photo" : "photos"}.`;
-  }
-
-  return "Admin posted a progress update.";
-};
-
 const getReplySummary = (entry) => {
   if (!entry) return "";
   const message = typeof entry.message === "string" ? entry.message.trim() : "";
@@ -158,6 +144,8 @@ const getReplySummary = (entry) => {
 };
 
 function AttachmentLink({ attachment, index, onPreview }) {
+  if (attachment?.isRemoved) return null;
+
   const kind = getMaintenanceAttachmentKind(attachment);
   const label = getMaintenanceAttachmentLabel(attachment);
   const name = getMaintenanceAttachmentName(attachment, index);
@@ -921,9 +909,9 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               const TypeIcon = typeMeta.icon;
               const isPending = request.status === "pending";
               const isReopenable = REOPENABLE_MAINTENANCE_STATUSES.includes(request.status);
-              const latestProgressEntry = getLatestProgressEntry(request);
-              const latestProgressSummary = getProgressSummary(latestProgressEntry);
+              const visibleRequestAttachments = getTenantVisibleAttachments(request.attachments);
               const latestReply = getLatestTenantReply(request);
+              const latestReplyAttachments = getTenantVisibleAttachments(latestReply?.attachments);
               const latestReplySummary = getReplySummary(latestReply);
 
               return (
@@ -996,7 +984,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                   >
                     <span>ETA: {urgencyMeta.estimate}</span>
                     <span>SLA: {formatSlaLabel(request.slaState)}</span>
-                    <span>Attachments: {request.attachments?.length || 0}</span>
+                    <span>Attachments: {visibleRequestAttachments.length}</span>
                     {request.reopen_note ? <span>Reopen note saved</span> : null}
                   </div>
 
@@ -1043,45 +1031,9 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                         </strong>
                         <span>{latestReplySummary}</span>
 
-                        {latestReply.attachments?.length ? (
+                        {latestReplyAttachments.length ? (
                           <div className="maintenance-detail-links" style={{ marginTop: 12 }}>
-                            {latestReply.attachments.map((attachment, index) => (
-                              <AttachmentLink
-                                key={`${getMaintenanceAttachmentUri(attachment) || attachment.name}-${index}`}
-                                attachment={attachment}
-                                index={index}
-                                onPreview={setPreviewAttachment}
-                              />
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {latestProgressEntry ? (
-                    <div
-                      style={{
-                        marginTop: 14,
-                        borderRadius: 12,
-                        padding: "12px 14px",
-                        background: "#DBEAFE",
-                        color: "#1D4ED8",
-                        display: "flex",
-                        gap: 10,
-                        alignItems: "flex-start",
-                      }}
-                    >
-                      <Wrench size={16} style={{ flexShrink: 0, marginTop: 2 }} />
-                      <div style={{ width: "100%" }}>
-                        <strong style={{ display: "block", marginBottom: 4 }}>
-                          Latest Progress Update
-                        </strong>
-                        <span>{latestProgressSummary}</span>
-
-                        {latestProgressEntry.attachments?.length ? (
-                          <div className="maintenance-detail-links" style={{ marginTop: 12 }}>
-                            {latestProgressEntry.attachments.map((attachment, index) => (
+                            {latestReplyAttachments.map((attachment, index) => (
                               <AttachmentLink
                                 key={`${getMaintenanceAttachmentUri(attachment) || attachment.name}-${index}`}
                                 attachment={attachment}
@@ -1208,7 +1160,7 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               </div>
               <div>
                 <span>Attachments</span>
-                <strong>{selectedRequest.attachments?.length || 0}</strong>
+                <strong>{getTenantVisibleAttachments(selectedRequest.attachments).length}</strong>
               </div>
             </div>
 
@@ -1217,11 +1169,11 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
               <p>{selectedRequest.description}</p>
             </section>
 
-            {selectedRequest.attachments?.length ? (
+            {getTenantVisibleAttachments(selectedRequest.attachments).length ? (
               <section className="maintenance-detail-section">
                 <h3>Attachments</h3>
                 <div className="maintenance-detail-links">
-                  {selectedRequest.attachments.map((attachment, index) => (
+                  {getTenantVisibleAttachments(selectedRequest.attachments).map((attachment, index) => (
                     <AttachmentLink
                       key={`${getMaintenanceAttachmentUri(attachment) || attachment.name}-${index}`}
                       attachment={attachment}
@@ -1255,9 +1207,9 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                         {entry.sender_name ? ` - ${entry.sender_name}` : ""}
                       </span>
                       {entry.message ? <p>{entry.message}</p> : null}
-                      {entry.attachments?.length ? (
+                      {getTenantVisibleAttachments(entry.attachments).length ? (
                         <div className="maintenance-detail-links" style={{ marginTop: 10 }}>
-                          {entry.attachments.map((attachment, attachmentIndex) => (
+                          {getTenantVisibleAttachments(entry.attachments).map((attachment, attachmentIndex) => (
                             <AttachmentLink
                               key={`${getMaintenanceAttachmentUri(attachment) || attachment.name}-${attachmentIndex}`}
                               attachment={attachment}
@@ -1334,33 +1286,6 @@ export default function TenantMaintenanceWorkspace({ embedded = false }) {
                     </div>
                   ) : null}
                 </form>
-              </section>
-            ) : null}
-
-            {selectedRequest.workLog?.length ? (
-              <section className="maintenance-detail-section">
-                <h3>Work Log</h3>
-                <div className="maintenance-timeline">
-                  {selectedRequest.workLog.map((entry, index) => (
-                    <article key={`${entry.logged_at}-${index}`}>
-                      <strong>{fmtDateTime(entry.logged_at)}</strong>
-                      <span>{entry.actor_name || "Staff update"}</span>
-                      <p>{entry.note}</p>
-                      {entry.attachments?.length ? (
-                        <div className="maintenance-detail-links" style={{ marginTop: 10 }}>
-                          {entry.attachments.map((attachment, attachmentIndex) => (
-                            <AttachmentLink
-                              key={`${getMaintenanceAttachmentUri(attachment) || attachment.name}-${attachmentIndex}`}
-                              attachment={attachment}
-                              index={attachmentIndex}
-                              onPreview={setPreviewAttachment}
-                            />
-                          ))}
-                        </div>
-                      ) : null}
-                    </article>
-                  ))}
-                </div>
               </section>
             ) : null}
 
