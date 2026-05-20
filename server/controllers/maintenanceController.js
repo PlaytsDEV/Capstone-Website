@@ -39,6 +39,7 @@ import { clean } from "../utils/sanitize.js";
 import { DELETED_ACCOUNT_LABEL } from "../utils/userReference.js";
 import {
   resolveMaintenanceRequestBranch,
+  resolveMaintenanceRequestStorageBranch,
   resolveUploadBranch,
   uploadMaintenanceRequestAttachmentFile,
 } from "../services/attachmentUploadService.js";
@@ -1549,7 +1550,8 @@ export const uploadAdminMaintenanceAttachment = async (req, res, next) => {
     }
 
     const request = await findAccessibleRequest(requestId);
-    const branch = resolveMaintenanceRequestBranch(request);
+    const branchResolution = await resolveMaintenanceRequestStorageBranch(request);
+    const branch = branchResolution.branch;
     if (!branch) {
       throw new AppError(
         "Maintenance request has no branch assigned.",
@@ -1557,9 +1559,20 @@ export const uploadAdminMaintenanceAttachment = async (req, res, next) => {
         "MAINTENANCE_REQUEST_BRANCH_REQUIRED",
       );
     }
-
     if (!req.isOwner && req.branchFilter !== branch) {
       throw new AppError("Access denied", 403, "FORBIDDEN");
+    }
+
+    const storedBranch = resolveMaintenanceRequestBranch(request);
+    if (storedBranch !== branch) {
+      request.branch = branch;
+      if (!request.roomId && branchResolution.roomId) {
+        request.roomId = branchResolution.roomId;
+      }
+      if (!request.reservationId && branchResolution.reservationId) {
+        request.reservationId = branchResolution.reservationId;
+      }
+      await request.save({ validateModifiedOnly: true });
     }
 
     const adminUser = await getDbUser(req.user.uid);

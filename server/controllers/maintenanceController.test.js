@@ -93,6 +93,7 @@ const {
 } = await import("./maintenanceController.js");
 const {
   resolveMaintenanceRequestBranch,
+  resolveMaintenanceRequestStorageBranch,
   resolveUploadBranch,
 } = await import("../services/attachmentUploadService.js");
 
@@ -539,6 +540,33 @@ describe("maintenanceController", () => {
     expect(resolveMaintenanceRequestBranch({ branch: "Gil Puyat Branch" })).toBe("gil-puyat");
     expect(resolveMaintenanceRequestBranch({ branchId: "guadalupe" })).toBe("guadalupe");
     expect(resolveMaintenanceRequestBranch({ tenant: { branch: "gil-puyat" } })).toBe("");
+  });
+
+  test("resolveMaintenanceRequestStorageBranch resolves legacy request branch from tenant profile", async () => {
+    const storedRequest = buildRequestDoc({
+      branch: null,
+      branchId: null,
+      roomId: null,
+      reservationId: null,
+    });
+    userFindOne.mockReturnValue(
+      buildSelectLeanQuery({
+        _id: "tenant_user_1",
+        user_id: storedRequest.user_id,
+        role: "tenant",
+        branch: "Gil Puyat Branch",
+      }),
+    );
+
+    const resolution = await resolveMaintenanceRequestStorageBranch(storedRequest);
+
+    expect(userFindOne).toHaveBeenCalledWith({ user_id: storedRequest.user_id });
+    expect(resolution).toEqual(
+      expect.objectContaining({
+        branch: "gil-puyat",
+        source: "maintenance_tenant",
+      }),
+    );
   });
 
   test("getAdminAll exposes remote attachment URL aliases", async () => {
@@ -1269,8 +1297,14 @@ describe("maintenanceController", () => {
   });
 
   test("uploadAdminMaintenanceAttachment returns clear error when request has no branch", async () => {
-    const requestDoc = buildRequestDoc({ branch: null, branchId: null });
+    const requestDoc = buildRequestDoc({
+      branch: null,
+      branchId: null,
+      roomId: null,
+      reservationId: null,
+    });
     maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockReturnValue(buildSelectLeanQuery(null));
 
     const req = {
       params: { requestId: requestDoc.request_id },

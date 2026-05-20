@@ -634,6 +634,64 @@ export const resolveMaintenanceRequestBranch = (maintenanceRequest = {}) =>
     maintenanceRequest?.branch_name,
   );
 
+export const resolveMaintenanceRequestStorageBranch = async (maintenanceRequest = {}) => {
+  const requestBranch = resolveMaintenanceRequestBranch(maintenanceRequest);
+  if (requestBranch) {
+    return {
+      branch: requestBranch,
+      source: "maintenance_request",
+      reservationId: maintenanceRequest?.reservationId || null,
+      roomId: maintenanceRequest?.roomId || null,
+    };
+  }
+
+  const roomId =
+    maintenanceRequest?.roomId ||
+    maintenanceRequest?.room ||
+    maintenanceRequest?.room_id ||
+    maintenanceRequest?.assignedRoom;
+  const roomBranch = await getRoomBranch(roomId);
+  if (roomBranch) {
+    return {
+      branch: roomBranch,
+      source: "maintenance_room",
+      reservationId: maintenanceRequest?.reservationId || null,
+      roomId: roomId || null,
+    };
+  }
+
+  const reservationId =
+    maintenanceRequest?.reservationId ||
+    maintenanceRequest?.reservation_id ||
+    maintenanceRequest?.reservation;
+  const reservationBranch = await getReservationBranchById(reservationId);
+  if (reservationBranch) {
+    return {
+      branch: reservationBranch,
+      source: "maintenance_reservation",
+      reservationId: reservationId || null,
+      roomId: maintenanceRequest?.roomId || null,
+    };
+  }
+
+  const tenantBranch = await getMaintenanceTenantBranch(maintenanceRequest);
+  if (tenantBranch) {
+    return {
+      branch: tenantBranch,
+      source: "maintenance_tenant",
+      reservationId: maintenanceRequest?.reservationId || null,
+      roomId: maintenanceRequest?.roomId || null,
+    };
+  }
+
+  return {
+    branch: "",
+    source: "unresolved",
+    reservationId: maintenanceRequest?.reservationId || null,
+    roomId: maintenanceRequest?.roomId || null,
+  };
+};
+
 const sanitizeStorageSegment = (value, fallback) => {
   const segment = toText(value)
     .replace(/[^a-zA-Z0-9._-]/g, "_")
@@ -836,7 +894,8 @@ export const uploadMaintenanceRequestAttachmentFile = async ({
 }) => {
   assertUploadableAttachmentFile(file);
 
-  const branch = resolveMaintenanceRequestBranch(maintenanceRequest);
+  const branchResolution = await resolveMaintenanceRequestStorageBranch(maintenanceRequest);
+  const branch = branchResolution.branch;
   if (!branch) {
     throw new AppError(
       "Maintenance request has no branch assigned.",
