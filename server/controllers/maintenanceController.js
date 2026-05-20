@@ -364,16 +364,16 @@ const normalizeAttachmentEntry = (entry, index = 0, metadataOptions = {}) => {
  * record but nulls out URIs that are not safe HTTP(S) URLs so the frontend
  * can show an "unavailable" state instead of silently hiding the attachment.
  */
-const sanitizeAttachmentForOutput = (entry, index = 0, { includeInternal = true } = {}) => {
-  if (!includeInternal && typeof entry === "object" && entry?.isRemoved) {
-    return null;
-  }
+const shouldHideAttachmentFromTenantOutput = (entry) => {
+  if (!entry || typeof entry !== "object") return false;
+  // Both removal scopes hide the file from tenant output. The "request" scope
+  // is stronger and is also filtered from normal admin displays in the UI.
+  if (entry.isRemoved) return true;
+  return entry.visibility === "admin_only";
+};
 
-  if (
-    !includeInternal &&
-    typeof entry === "object" &&
-    entry?.visibility === "admin_only"
-  ) {
+const sanitizeAttachmentForOutput = (entry, index = 0, { includeInternal = true } = {}) => {
+  if (!includeInternal && shouldHideAttachmentFromTenantOutput(entry)) {
     return null;
   }
 

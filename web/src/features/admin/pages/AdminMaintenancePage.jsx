@@ -1134,7 +1134,7 @@ function AttachmentRemovalModal({
  value: "request",
  title: "Remove from Request",
  description:
- "This attachment will be hidden from the normal request display. A removal record will still remain in the admin timeline.",
+ "This attachment will be hidden from normal admin and tenant attachment displays. A removal record will still remain in the admin timeline.",
  },
  ];
 

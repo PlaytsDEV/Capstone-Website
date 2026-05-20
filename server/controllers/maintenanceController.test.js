@@ -823,6 +823,85 @@ describe("maintenanceController", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  test("getMyRequests hides request-scope removed attachments from tenants", async () => {
+    const storedRequest = buildRequestDoc({
+      attachments: [
+        {
+          name: "initial-removed.jpg",
+          uri: "https://storage.example.com/maintenance/initial-removed.jpg",
+          type: "image/jpeg",
+          isRemoved: true,
+          removedScope: "request",
+          removedReason: "Wrong file attached",
+        },
+        {
+          name: "initial-active.jpg",
+          uri: "https://storage.example.com/maintenance/initial-active.jpg",
+          type: "image/jpeg",
+        },
+      ],
+      conversation: [
+        {
+          message: "Here are the repair photos.",
+          sender_side: "admin",
+          created_at: new Date("2026-04-09T10:30:00.000Z"),
+          attachments: [
+            {
+              name: "tenant-removed.jpg",
+              uri: "https://storage.example.com/maintenance/tenant-removed.jpg",
+              type: "image/jpeg",
+              isRemoved: true,
+              removedScope: "tenant_only",
+              removedReason: "Sensitive information visible",
+            },
+            {
+              name: "request-removed.jpg",
+              uri: "https://storage.example.com/maintenance/request-removed.jpg",
+              type: "image/jpeg",
+              isRemoved: true,
+              removedScope: "request",
+              removedReason: "Attached to the wrong request",
+            },
+            {
+              name: "tenant-active.jpg",
+              uri: "https://storage.example.com/maintenance/tenant-active.jpg",
+              type: "image/jpeg",
+            },
+          ],
+        },
+      ],
+    });
+    maintenanceFind.mockReturnValue(buildListQuery([storedRequest]));
+    userFindOne.mockReturnValue(
+      buildLeanQuery({
+        _id: "tenant_user_1",
+        user_id: "user_95f39d5b4ea4",
+        firstName: "Lily",
+        lastName: "Tenant",
+        email: "lily@example.com",
+        phone: "0917",
+        branch: "gil-puyat",
+        role: "tenant",
+      }),
+    );
+
+    const req = {
+      user: { uid: "firebase-tenant-1" },
+      query: {},
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await getMyRequests(req, res, next);
+
+    const request = sendSuccess.mock.calls[0][1].requests[0];
+    expect(request.attachments).toHaveLength(1);
+    expect(request.attachments[0].name).toBe("initial-active.jpg");
+    expect(request.conversation[0].attachments).toHaveLength(1);
+    expect(request.conversation[0].attachments[0].name).toBe("tenant-active.jpg");
+    expect(next).not.toHaveBeenCalled();
+  });
+
   test("createRequest resolves missing reservation branch from assigned room and stamps attachments", async () => {
     maintenanceFindOne.mockReturnValue(buildSortedLeanQuery(null));
     userFindOne.mockReturnValue(
@@ -1413,6 +1492,95 @@ describe("maintenanceController", () => {
         statusCode: 400,
       }),
     );
+  });
+
+  test("removeAdminMaintenanceAttachment logs request-scope removals", async () => {
+    const markModified = jest.fn();
+    const requestDoc = buildRequestDoc({
+      conversation: [
+        {
+          message: "Photo attached.",
+          sender_side: "admin",
+          created_at: new Date("2026-04-09T10:30:00.000Z"),
+          attachments: [
+            {
+              id: "attachment_1",
+              name: "wrong-request.jpg",
+              uri: "https://storage.example.com/wrong-request.jpg",
+              type: "image/jpeg",
+            },
+          ],
+        },
+      ],
+      statusHistory: [],
+      markModified,
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockImplementation((query) => {
+      if (query.firebaseUid === "firebase-admin-1") {
+        return buildLeanQuery({
+          _id: "admin_user_1",
+          user_id: "admin_1",
+          firstName: "Branch",
+          lastName: "Admin",
+          email: "admin@example.com",
+          phone: "0918",
+          branch: "gil-puyat",
+          role: "branch_admin",
+        });
+      }
+
+      if (query.user_id === requestDoc.user_id) {
+        return buildLeanQuery({
+          _id: "tenant_user_1",
+          user_id: requestDoc.user_id,
+          firstName: "Lily",
+          lastName: "Tenant",
+          email: "lily@example.com",
+          phone: "0917",
+          branch: "gil-puyat",
+          role: "tenant",
+        });
+      }
+
+      return buildLeanQuery(null);
+    });
+
+    const req = {
+      user: { uid: "firebase-admin-1" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        source: "conversation",
+        entryIndex: 0,
+        attachmentIndex: 0,
+        scope: "request",
+        removedReason: "Attached to the wrong request",
+      },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await removeAdminMaintenanceAttachment(req, res, next);
+
+    const attachment = requestDoc.conversation[0].attachments[0];
+    expect(attachment.isRemoved).toBe(true);
+    expect(attachment.removedScope).toBe("request");
+    expect(attachment.removedReason).toBe("Attached to the wrong request");
+    expect(requestDoc.statusHistory).toEqual([
+      expect.objectContaining({
+        event: "attachment_removed_request",
+        note: "Attached to the wrong request",
+        removedScope: "request",
+        source: "conversation",
+        attachmentName: "wrong-request.jpg",
+      }),
+    ]);
+    expect(markModified).toHaveBeenCalledWith("conversation");
+    expect(requestDoc.save).toHaveBeenCalledTimes(1);
+    expect(sendSuccess).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
   });
 
   test("uploadAdminMaintenanceAttachment returns clear error when request has no branch", async () => {
