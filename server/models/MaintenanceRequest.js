@@ -184,6 +184,46 @@ const statusHistorySchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
+    providerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ServiceProvider",
+      default: null,
+    },
+    providerName: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    previousProviderName: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    providerSource: {
+      type: String,
+      enum: ["directory", "manual", null],
+      default: null,
+    },
+    attachmentName: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    attachmentId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    removedScope: {
+      type: String,
+      enum: ["tenant_only", "request", null],
+      default: null,
+    },
+    source: {
+      type: String,
+      default: null,
+      trim: true,
+    },
   },
   { _id: false },
 );
@@ -305,6 +345,53 @@ const maintenanceRequestSchema = new mongoose.Schema(
     },
 
     assigned_to: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    assignedProviderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ServiceProvider",
+      default: null,
+      index: true,
+    },
+    assignedProviderName: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    assignedProviderContact: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    assignedProviderCategory: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    assignedProviderNotes: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    assignedProviderSource: {
+      type: String,
+      enum: ["directory", "manual", null],
+      default: null,
+      index: true,
+    },
+    assignedBy: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    assignedByName: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    assignedByRole: {
       type: String,
       default: null,
       trim: true,

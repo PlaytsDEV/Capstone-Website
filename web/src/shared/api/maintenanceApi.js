@@ -134,6 +134,39 @@ export const maintenanceApi = {
       body: JSON.stringify(payload),
     }),
 
+  assignAdminProvider: (requestId, payload) =>
+    authFetch(`/m/maintenance/admin/${requestId}/assign-provider`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  generateAdminUpdate: (requestId) =>
+    authFetch(`/m/maintenance/admin/${requestId}/generate-update`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+
+  suggestAdminProvider: (requestId) =>
+    authFetch(`/m/maintenance/admin/${requestId}/suggest-provider`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+
+  getServiceProviders: (filters = {}) =>
+    authFetch(`/service-providers${buildQueryString(filters)}`),
+
+  createServiceProvider: (payload) =>
+    authFetch("/service-providers", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  updateServiceProvider: (providerId, payload) =>
+    authFetch(`/service-providers/${providerId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
   archiveAdminRequest: (requestId, payload = {}) =>
     authFetch(`/m/maintenance/admin/${requestId}/archive`, {
       method: "PATCH",

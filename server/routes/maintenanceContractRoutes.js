@@ -86,6 +86,27 @@ router.patch(
   maintenanceController.updateAdminRequestStatus,
 );
 router.post(
+  "/admin/:requestId/assign-provider",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.assignAdminMaintenanceProvider,
+);
+router.post(
+  "/admin/:requestId/generate-update",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.generateAdminMaintenanceUpdate,
+);
+router.post(
+  "/admin/:requestId/suggest-provider",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.suggestAdminMaintenanceProvider,
+);
+router.post(
   "/admin/:requestId/attachments",
   verifyAdmin,
   filterByBranch,

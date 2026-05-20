@@ -28,15 +28,21 @@ import {
     normalizeMaintenanceType,
     normalizeMaintenanceUrgency,
 } from "../config/maintenance.js";
+import { ROOM_BRANCH_LABELS } from "../config/branches.js";
 import {
     AppError,
     sendSuccess,
 } from "../middleware/errorHandler.js";
-import { MaintenanceRequest, User } from "../models/index.js";
+import { MaintenanceRequest, ServiceProvider, User } from "../models/index.js";
+import { toCategoryKey } from "../models/ServiceProvider.js";
 import { buildLegacyDescription } from "../utils/maintenanceMigration.js";
 import { notify } from "../utils/notificationService.js";
 import { clean } from "../utils/sanitize.js";
 import { DELETED_ACCOUNT_LABEL } from "../utils/userReference.js";
+import {
+  generateMaintenanceUpdateDraft,
+  suggestMaintenanceProviderFromDirectory,
+} from "../services/maintenanceAiService.js";
 import {
   MAINTENANCE_UPLOAD_BRANCH_ERROR_MESSAGE,
   resolveMaintenanceRequestBranch,
@@ -215,6 +221,82 @@ const normalizeRemovalScope = (value) => {
   if (["tenant_only", "tenant-only", "tenant"].includes(scope)) return "tenant_only";
   if (["request", "all", "request_only", "request-only"].includes(scope)) return "request";
   return "";
+};
+
+const normalizeProviderSource = (value) => {
+  const source = String(value || "").trim().toLowerCase();
+  if (["directory", "saved", "provider"].includes(source)) return "directory";
+  if (["manual", "other"].includes(source)) return "manual";
+  if (["none", "unassign", "unassigned", "clear"].includes(source)) return "none";
+  return "";
+};
+
+const normalizeTextList = (items = []) =>
+  [...new Set(
+    (Array.isArray(items) ? items : [items])
+      .flatMap((item) => String(item || "").split(","))
+      .map((item) => toOptionalText(item))
+      .filter(Boolean),
+  )];
+
+const getMaintenanceCategoryLabel = (request) =>
+  formatMaintenanceTypeLabel(request?.request_type || "maintenance");
+
+const getCategoryCandidates = (value) => {
+  const raw = toOptionalText(value);
+  const normalizedType = normalizeMaintenanceType(raw);
+  const label = normalizedType ? formatMaintenanceTypeLabel(normalizedType) : raw;
+  const labels = [...new Set([raw, normalizedType, label].filter(Boolean))];
+  const keys = [...new Set(labels.map(toCategoryKey).filter(Boolean))];
+  return { labels, keys };
+};
+
+const providerMatchesMaintenanceRequest = (provider, request) => {
+  if (!provider || provider.status !== "active") return false;
+  const branch = resolveMaintenanceRequestBranch(request);
+  if (!branch || !provider.branchCoverage?.includes(branch)) return false;
+  const category = getCategoryCandidates(request.request_type);
+  if (category.keys.length === 0) return true;
+  const providerKeys = Array.isArray(provider.serviceCategoryKeys)
+    ? provider.serviceCategoryKeys
+    : (provider.serviceCategories || []).map(toCategoryKey);
+  return providerKeys.some((key) => category.keys.includes(key));
+};
+
+const buildProviderDirectoryFilter = (request) => {
+  const branch = resolveMaintenanceRequestBranch(request);
+  const category = getCategoryCandidates(request?.request_type);
+  return {
+    status: "active",
+    ...(branch ? { branchCoverage: branch } : {}),
+    ...(category.keys.length || category.labels.length
+      ? {
+          $or: [
+            ...(category.keys.length ? [{ serviceCategoryKeys: { $in: category.keys } }] : []),
+            ...(category.labels.length ? [{ serviceCategories: { $in: category.labels } }] : []),
+          ],
+        }
+      : {}),
+  };
+};
+
+const serializeAssignedProvider = (request, { includeInternal = true } = {}) => {
+  if (!includeInternal) return null;
+  const name = request.assignedProviderName || request.assigned_to || null;
+  if (!name) return null;
+
+  return {
+    id: request.assignedProviderId ? String(request.assignedProviderId) : null,
+    name,
+    contactNumber: request.assignedProviderContact || null,
+    category: request.assignedProviderCategory || null,
+    notes: request.assignedProviderNotes || null,
+    source: request.assignedProviderSource || (request.assignedProviderId ? "directory" : "manual"),
+    assignedAt: request.assigned_at ?? null,
+    assignedBy: request.assignedBy ?? null,
+    assignedByName: request.assignedByName ?? null,
+    assignedByRole: request.assignedByRole ?? null,
+  };
 };
 
 const deriveAttachmentName = (uri, index = 0) => {
@@ -614,6 +696,9 @@ const INTERNAL_STATUS_EVENTS = new Set([
   "attachment_removed_request",
   "archived",
   "restored",
+  "service_provider_assigned",
+  "service_provider_changed",
+  "service_provider_unassigned",
 ]);
 
 const sanitizeStatusHistoryForOutput = (statusHistory, { includeInternal = true } = {}) =>
@@ -650,7 +735,7 @@ const serializeMaintenanceRequest = (
     description: request.description,
     urgency: request.urgency,
     status: request.status,
-    assigned_to: request.assigned_to ?? null,
+    assigned_to: includeInternal ? request.assigned_to ?? null : null,
     notes: includeInternal ? request.notes ?? null : null,
     attachments: sanitizeAttachmentsForOutput(request.attachments, { includeInternal }),
     reopen_note: request.reopen_note ?? null,
@@ -658,11 +743,24 @@ const serializeMaintenanceRequest = (
     statusHistory: sanitizeStatusHistoryForOutput(request.statusHistory, { includeInternal }),
     slaState: getSlaState(request),
     assignment: {
-      assignedTo: request.assigned_to ?? null,
+      assignedTo: includeInternal ? request.assigned_to ?? null : null,
       assignedAt: request.assigned_at ?? null,
       startedAt: request.work_started_at ?? null,
       resolvedAt: request.resolved_at ?? null,
+      provider: serializeAssignedProvider(request, { includeInternal }),
     },
+    assignedProvider: serializeAssignedProvider(request, { includeInternal }),
+    assignedProviderId: includeInternal && request.assignedProviderId
+      ? String(request.assignedProviderId)
+      : null,
+    assignedProviderName: includeInternal ? request.assignedProviderName ?? null : null,
+    assignedProviderContact: includeInternal ? request.assignedProviderContact ?? null : null,
+    assignedProviderCategory: includeInternal ? request.assignedProviderCategory ?? null : null,
+    assignedProviderNotes: includeInternal ? request.assignedProviderNotes ?? null : null,
+    assignedProviderSource: includeInternal ? request.assignedProviderSource ?? null : null,
+    assignedBy: includeInternal ? request.assignedBy ?? null : null,
+    assignedByName: includeInternal ? request.assignedByName ?? null : null,
+    assignedByRole: includeInternal ? request.assignedByRole ?? null : null,
     workLog,
     conversation: Array.isArray(request.conversation)
       ? request.conversation.map((entry) => ({
@@ -692,7 +790,7 @@ const serializeMaintenanceRequest = (
     title: `${formatMaintenanceTypeLabel(request.request_type)} Request`,
     category: request.request_type,
     date: request.created_at,
-    assignedTo: request.assigned_to ?? null,
+    assignedTo: includeInternal ? request.assigned_to ?? null : null,
     completionNote: includeInternal ? request.resolution_note ?? request.notes ?? null : null,
   };
 };
@@ -894,23 +992,28 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
   }
 
   if (hasAssignedField && nextAssignedTo && nextAssignedTo.length < 2) {
-    throw new AppError("Assigned staff name is too short", 400, "INVALID_ASSIGNEE", [
+    throw new AppError("Assigned service provider name is too short", 400, "INVALID_ASSIGNEE", [
       {
         field: "assigned_to",
-        message: "Assigned staff name must be at least 2 characters.",
+        message: "Assigned service provider must be at least 2 characters.",
       },
     ]);
   }
 
-  if (nextStatus === "in_progress" && !nextAssignedTo && !request.assigned_to) {
+  if (
+    nextStatus === "in_progress" &&
+    !nextAssignedTo &&
+    !request.assigned_to &&
+    !request.assignedProviderName
+  ) {
     throw new AppError(
-      "Please assign a staff member or team before marking this request as In Progress.",
+      "Please assign a service provider before marking this request as In Progress.",
       400,
       "ASSIGNEE_REQUIRED",
       [
         {
           field: "assigned_to",
-          message: "Please assign a staff member or team before marking this request as In Progress.",
+          message: "Please assign a service provider before marking this request as In Progress.",
         },
       ],
     );
@@ -1582,6 +1685,260 @@ export const updateAdminRequestStatus = async (req, res, next) => {
     } catch (socketErr) {
       // non-fatal
     }
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/m/maintenance/admin/:requestId/assign-provider
+ * Assign, change, or clear the external service provider for a request.
+ */
+export const assignAdminMaintenanceProvider = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId);
+    ensureAdminAccess(request, req);
+
+    if (request.isArchived) {
+      throw new AppError(
+        "Archived maintenance requests cannot be updated.",
+        409,
+        "REQUEST_ARCHIVED",
+      );
+    }
+
+    if (["cancelled", "closed"].includes(normalizeMaintenanceStatus(request.status))) {
+      throw new AppError(
+        "Closed maintenance requests cannot be updated.",
+        409,
+        "REQUEST_CLOSED",
+      );
+    }
+
+    const adminUser = await getDbUser(req.user.uid);
+    const actor = buildActorSnapshot(adminUser);
+    const providerSource = normalizeProviderSource(
+      req.body?.providerSource || req.body?.source,
+    );
+    if (!providerSource) {
+      throw new AppError(
+        "Please choose a service provider assignment option.",
+        400,
+        "INVALID_PROVIDER_SOURCE",
+        [{ field: "providerSource", message: "Please choose a service provider assignment option." }],
+      );
+    }
+
+    const previousProviderName = request.assignedProviderName || request.assigned_to || null;
+    const eventTimestamp = new Date();
+    let nextProvider = null;
+    let event = "service_provider_assigned";
+
+    if (providerSource === "none") {
+      if (!previousProviderName) {
+        throw new AppError("No service provider is assigned.", 400, "PROVIDER_NOT_ASSIGNED");
+      }
+      event = "service_provider_unassigned";
+      request.assignedProviderId = null;
+      request.assignedProviderName = null;
+      request.assignedProviderContact = null;
+      request.assignedProviderCategory = null;
+      request.assignedProviderNotes = null;
+      request.assignedProviderSource = null;
+      request.assignedBy = actor.actor_id;
+      request.assignedByName = actor.actor_name;
+      request.assignedByRole = actor.actor_role;
+      request.assigned_to = null;
+      request.assigned_at = null;
+    } else if (providerSource === "directory") {
+      const providerId = toOptionalText(req.body?.providerId || req.body?.assignedProviderId);
+      if (!providerId || !mongoose.Types.ObjectId.isValid(providerId)) {
+        throw new AppError("Please select a saved service provider.", 400, "PROVIDER_REQUIRED", [
+          { field: "providerId", message: "Please select a saved service provider." },
+        ]);
+      }
+
+      const provider = await ServiceProvider.findById(providerId).select("+serviceCategoryKeys");
+      if (!provider) {
+        throw new AppError("Service provider not found.", 404, "SERVICE_PROVIDER_NOT_FOUND");
+      }
+      if (!providerMatchesMaintenanceRequest(provider, request)) {
+        throw new AppError(
+          "This provider is not active for the request branch and type.",
+          400,
+          "PROVIDER_NOT_AVAILABLE",
+          [{ field: "providerId", message: "This provider is not active for the request branch and type." }],
+        );
+      }
+
+      nextProvider = {
+        id: provider._id,
+        name: provider.providerName,
+        contact: provider.contactNumber,
+        category: provider.serviceCategories?.[0] || getMaintenanceCategoryLabel(request),
+        notes: toOptionalText(req.body?.notes) || provider.notes || null,
+        source: "directory",
+      };
+    } else if (providerSource === "manual") {
+      const providerName = toOptionalText(req.body?.providerName);
+      const contactNumber = toOptionalText(req.body?.contactNumber);
+      const serviceType = toOptionalText(req.body?.serviceType || req.body?.category);
+      const notes = toOptionalText(req.body?.notes);
+
+      const validationErrors = [];
+      if (!providerName) validationErrors.push({ field: "providerName", message: "Provider name is required." });
+      if (!contactNumber) validationErrors.push({ field: "contactNumber", message: "Contact number is required." });
+      if (!serviceType) validationErrors.push({ field: "serviceType", message: "Service type is required." });
+      if (validationErrors.length > 0) {
+        throw new AppError(
+          "Please complete the manual provider details.",
+          400,
+          "VALIDATION_ERROR",
+          validationErrors,
+        );
+      }
+
+      let savedProvider = null;
+      const saveForFuture = Boolean(req.body?.saveForFuture);
+      if (saveForFuture) {
+        const branch = resolveMaintenanceRequestBranch(request);
+        savedProvider = await ServiceProvider.create({
+          providerName,
+          contactNumber,
+          serviceCategories: normalizeTextList([serviceType, getMaintenanceCategoryLabel(request)]),
+          branchCoverage: [branch].filter(Boolean),
+          notes,
+          status: "active",
+          createdBy: adminUser.user_id || String(adminUser._id || ""),
+          updatedBy: adminUser.user_id || String(adminUser._id || ""),
+        });
+      }
+
+      nextProvider = {
+        id: savedProvider?._id || null,
+        name: savedProvider?.providerName || providerName,
+        contact: savedProvider?.contactNumber || contactNumber,
+        category: serviceType,
+        notes,
+        source: savedProvider ? "directory" : "manual",
+      };
+    }
+
+    if (nextProvider) {
+      event = previousProviderName
+        ? previousProviderName === nextProvider.name
+          ? "service_provider_assigned"
+          : "service_provider_changed"
+        : "service_provider_assigned";
+      request.assignedProviderId = nextProvider.id || null;
+      request.assignedProviderName = nextProvider.name;
+      request.assignedProviderContact = nextProvider.contact;
+      request.assignedProviderCategory = nextProvider.category;
+      request.assignedProviderNotes = nextProvider.notes;
+      request.assignedProviderSource = nextProvider.source;
+      request.assignedBy = actor.actor_id;
+      request.assignedByName = actor.actor_name;
+      request.assignedByRole = actor.actor_role;
+      request.assigned_to = nextProvider.name;
+      request.assigned_at = eventTimestamp;
+    }
+
+    appendStatusHistory(request, {
+      event,
+      status: request.status,
+      ...actor,
+      note: toOptionalText(req.body?.notes) || null,
+      timestamp: eventTimestamp,
+      providerId: request.assignedProviderId || null,
+      providerName: request.assignedProviderName || null,
+      previousProviderName,
+      providerSource: request.assignedProviderSource || null,
+    });
+
+    await request.save();
+    await emitMaintenanceUpdated(request);
+
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select(USER_SELECT_FIELDS)
+      .lean();
+
+    sendSuccess(res, {
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(tenantUser, request),
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/m/maintenance/admin/:requestId/generate-update
+ */
+export const generateAdminMaintenanceUpdate = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId, {
+      includeArchived: true,
+    });
+    ensureAdminAccess(request, req);
+
+    const timeline = [
+      ...(Array.isArray(request.statusHistory) ? request.statusHistory : []),
+      ...(Array.isArray(request.work_log) ? request.work_log : []),
+      ...(Array.isArray(request.conversation) ? request.conversation : []),
+    ].sort((left, right) => {
+      const leftTime = new Date(left.timestamp || left.logged_at || left.created_at || 0).getTime();
+      const rightTime = new Date(right.timestamp || right.logged_at || right.created_at || 0).getTime();
+      return leftTime - rightTime;
+    });
+
+    const result = await generateMaintenanceUpdateDraft({
+      request: {
+        ...request.toObject(),
+        typeLabel: getMaintenanceCategoryLabel(request),
+      },
+      timeline,
+    });
+
+    sendSuccess(res, result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/m/maintenance/admin/:requestId/suggest-provider
+ */
+export const suggestAdminMaintenanceProvider = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId, {
+      includeArchived: true,
+    });
+    ensureAdminAccess(request, req);
+
+    const providers = await ServiceProvider.find(buildProviderDirectoryFilter(request))
+      .select("+serviceCategoryKeys")
+      .lean();
+
+    if (providers.length === 0) {
+      sendSuccess(res, {
+        message: "No matching saved providers found for this branch and request type.",
+        recommendation: null,
+      });
+      return;
+    }
+
+    const suggestion = await suggestMaintenanceProviderFromDirectory({
+      request: {
+        ...request.toObject(),
+        typeLabel: getMaintenanceCategoryLabel(request),
+        branchLabel: ROOM_BRANCH_LABELS[request.branch] || request.branch,
+      },
+      providers,
+    });
+
+    sendSuccess(res, suggestion);
   } catch (error) {
     next(error);
   }
@@ -2339,6 +2696,9 @@ export default {
   updateRequest,
   updateAdminRequestStatus,
   updateAdminRequestStatusCompat,
+  assignAdminMaintenanceProvider,
+  generateAdminMaintenanceUpdate,
+  suggestAdminMaintenanceProvider,
   sendAdminReply,
   updateAdminBulkRequests,
   getCompletionStats,

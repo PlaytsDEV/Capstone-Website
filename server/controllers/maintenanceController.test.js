@@ -10,6 +10,9 @@ const roomFindById = jest.fn();
 const stayFindOne = jest.fn();
 const bedHistoryFindOne = jest.fn();
 const chatConversationFindById = jest.fn();
+const serviceProviderFind = jest.fn();
+const serviceProviderFindById = jest.fn();
+const serviceProviderCreate = jest.fn();
 const sendSuccess = jest.fn();
 const maintenanceUpdated = jest.fn();
 let lastCreatedMaintenanceRequest = null;
@@ -52,6 +55,11 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   ChatConversation: {
     findById: chatConversationFindById,
   },
+  ServiceProvider: {
+    find: serviceProviderFind,
+    findById: serviceProviderFindById,
+    create: serviceProviderCreate,
+  },
   User: {
     find: userFind,
     findOne: userFindOne,
@@ -87,6 +95,7 @@ const {
   createRequest,
   reopenMyRequest,
   sendAdminReply,
+  assignAdminMaintenanceProvider,
   sendTenantReply,
   uploadAdminMaintenanceAttachment,
   removeAdminMaintenanceAttachment,
@@ -156,6 +165,15 @@ const buildRequestDoc = (overrides = {}) => {
     urgency: "high",
     status: "pending",
     assigned_to: null,
+    assignedProviderId: null,
+    assignedProviderName: null,
+    assignedProviderContact: null,
+    assignedProviderCategory: null,
+    assignedProviderNotes: null,
+    assignedProviderSource: null,
+    assignedBy: null,
+    assignedByName: null,
+    assignedByRole: null,
     notes: null,
     attachments: [],
     conversation: [],
@@ -183,6 +201,15 @@ const buildRequestDoc = (overrides = {}) => {
         urgency: this.urgency,
         status: this.status,
         assigned_to: this.assigned_to,
+        assignedProviderId: this.assignedProviderId,
+        assignedProviderName: this.assignedProviderName,
+        assignedProviderContact: this.assignedProviderContact,
+        assignedProviderCategory: this.assignedProviderCategory,
+        assignedProviderNotes: this.assignedProviderNotes,
+        assignedProviderSource: this.assignedProviderSource,
+        assignedBy: this.assignedBy,
+        assignedByName: this.assignedByName,
+        assignedByRole: this.assignedByRole,
         notes: this.notes,
         attachments: this.attachments,
         conversation: this.conversation,
@@ -219,6 +246,9 @@ describe("maintenanceController", () => {
     stayFindOne.mockReset();
     bedHistoryFindOne.mockReset();
     chatConversationFindById.mockReset();
+    serviceProviderFind.mockReset();
+    serviceProviderFindById.mockReset();
+    serviceProviderCreate.mockReset();
     sendSuccess.mockReset();
     maintenanceUpdated.mockReset();
     lastCreatedMaintenanceRequest = null;
@@ -1580,6 +1610,124 @@ describe("maintenanceController", () => {
     expect(markModified).toHaveBeenCalledWith("conversation");
     expect(requestDoc.save).toHaveBeenCalledTimes(1);
     expect(sendSuccess).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("assignAdminMaintenanceProvider assigns a saved provider and logs timeline", async () => {
+    const requestDoc = buildRequestDoc({
+      statusHistory: [],
+      save: jest.fn().mockResolvedValue(undefined),
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    const provider = {
+      _id: "507f1f77bcf86cd799439012",
+      providerName: "Makati Plumbing Services",
+      contactNumber: "09171234567",
+      serviceCategories: ["Plumbing"],
+      serviceCategoryKeys: ["plumbing"],
+      branchCoverage: ["gil-puyat"],
+      status: "active",
+      notes: "Usually available within the day.",
+    };
+    serviceProviderFindById.mockReturnValue({
+      select: jest.fn().mockResolvedValue(provider),
+    });
+    userFindOne.mockImplementation((query) => {
+      if (query.firebaseUid === "firebase-admin-1") {
+        return buildLeanQuery({
+          _id: "admin_user_1",
+          user_id: "admin_1",
+          firstName: "Branch",
+          lastName: "Admin",
+          email: "admin@example.com",
+          phone: "0918",
+          branch: "gil-puyat",
+          role: "branch_admin",
+        });
+      }
+
+      if (query.user_id === requestDoc.user_id) {
+        return buildLeanQuery({
+          _id: "tenant_user_1",
+          user_id: requestDoc.user_id,
+          firstName: "Lily",
+          lastName: "Tenant",
+          email: "lily@example.com",
+          phone: "0917",
+          branch: "gil-puyat",
+          role: "tenant",
+        });
+      }
+
+      return buildLeanQuery(null);
+    });
+
+    const req = {
+      user: { uid: "firebase-admin-1" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        providerSource: "directory",
+        providerId: provider._id,
+        notes: "Called provider for inspection.",
+      },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await assignAdminMaintenanceProvider(req, res, next);
+
+    expect(requestDoc.assigned_to).toBe("Makati Plumbing Services");
+    expect(requestDoc.assignedProviderContact).toBe("09171234567");
+    expect(requestDoc.assignedProviderSource).toBe("directory");
+    expect(requestDoc.statusHistory).toEqual([
+      expect.objectContaining({
+        event: "service_provider_assigned",
+        providerName: "Makati Plumbing Services",
+        note: "Called provider for inspection.",
+      }),
+    ]);
+    expect(requestDoc.save).toHaveBeenCalledTimes(1);
+    expect(sendSuccess).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("getMyRequests does not expose provider contact details to tenants", async () => {
+    const storedRequest = buildRequestDoc({
+      assigned_to: "Makati Plumbing Services",
+      assignedProviderName: "Makati Plumbing Services",
+      assignedProviderContact: "09171234567",
+      assignedProviderCategory: "Plumbing",
+      assignedProviderSource: "directory",
+    });
+    maintenanceFind.mockReturnValue(buildListQuery([storedRequest]));
+    userFindOne.mockReturnValue(
+      buildLeanQuery({
+        _id: "tenant_user_1",
+        user_id: "user_95f39d5b4ea4",
+        firstName: "Lily",
+        lastName: "Tenant",
+        email: "lily@example.com",
+        phone: "0917",
+        branch: "gil-puyat",
+        role: "tenant",
+      }),
+    );
+
+    const req = {
+      user: { uid: "firebase-tenant-1" },
+      query: {},
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await getMyRequests(req, res, next);
+
+    const request = sendSuccess.mock.calls[0][1].requests[0];
+    expect(request.assigned_to).toBeNull();
+    expect(request.assignedProviderContact).toBeNull();
+    expect(request.assignedProvider).toBeNull();
     expect(next).not.toHaveBeenCalled();
   });
 

@@ -185,6 +185,44 @@ export function useRemoveMaintenanceAttachment() {
   });
 }
 
+export function useServiceProviders(filters, options = {}) {
+  return useQuery({
+    queryKey: queryKeys.maintenance.serviceProviders(filters),
+    queryFn: () => maintenanceApi.getServiceProviders(filters),
+    enabled: options.enabled !== false,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useAssignMaintenanceProvider() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, payload }) =>
+      maintenanceApi.assignAdminProvider(requestId, payload),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
+      qc.invalidateQueries({ queryKey: ["maintenance", "serviceProviders"] });
+      if (variables?.requestId) {
+        qc.invalidateQueries({
+          queryKey: queryKeys.maintenance.detail(variables.requestId),
+        });
+      }
+    },
+  });
+}
+
+export function useGenerateMaintenanceUpdate() {
+  return useMutation({
+    mutationFn: ({ requestId }) => maintenanceApi.generateAdminUpdate(requestId),
+  });
+}
+
+export function useSuggestMaintenanceProvider() {
+  return useMutation({
+    mutationFn: ({ requestId }) => maintenanceApi.suggestAdminProvider(requestId),
+  });
+}
+
 export function useArchiveMaintenanceRequest() {
   const qc = useQueryClient();
   return useMutation({

@@ -58,6 +58,7 @@ import settingsRoutes from "./routes/settingsRoutes.js";
 import analyticsRoutes from "./routes/analyticsRoutes.js";
 import branchSummaryRoutes from "./routes/branchSummaryRoutes.js";
 import backupRoutes from "./routes/backupRoutes.js";
+import serviceProviderRoutes from "./routes/serviceProviderRoutes.js";
 import { initSocket } from "./utils/socket.js";
 import mobileRoutes from "./mobile/mobileRoutes.mjs";
 
@@ -302,6 +303,7 @@ app.use("/api/billing", billingRoutes);
 app.use("/api/announcements", announcementRoutes);
 app.use("/api/m/maintenance", maintenanceRoutes);
 app.use("/api/maintenance", maintenanceRoutes);
+app.use("/api/service-providers", serviceProviderRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/attachments", attachmentRoutes);

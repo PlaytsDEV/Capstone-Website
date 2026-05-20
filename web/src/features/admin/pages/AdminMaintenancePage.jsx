@@ -10,12 +10,15 @@ import {
  FileDown,
  FileText,
  Image as ImageIcon,
+ Lightbulb,
  MessageSquare,
  Paperclip,
+ PhoneCall,
  RefreshCcw,
  RotateCcw,
  Search,
  ShieldCheck,
+ Sparkles,
  UserRound,
  Wrench,
  XCircle,
@@ -25,11 +28,15 @@ import { useAuth } from "../../../shared/hooks/useAuth";
 import {
  useAdminMaintenanceRequests,
  useArchiveMaintenanceRequest,
+ useAssignMaintenanceProvider,
+ useGenerateMaintenanceUpdate,
  useMaintenanceRequest,
  useRemoveMaintenanceAttachment,
  useRestoreMaintenanceRequest,
  useSaveMaintenanceProof,
  useSendMaintenanceReply,
+ useServiceProviders,
+ useSuggestMaintenanceProvider,
  useUpdateMaintenanceRequest,
 } from "../../../shared/hooks/queries/useMaintenance";
 import { showNotification } from "../../../shared/utils/notification";
@@ -109,6 +116,8 @@ const ATTACHMENT_REMOVAL_REASONS = [
  "Uploaded by mistake",
  "Other",
 ];
+const PROVIDER_MANUAL_CHOICE = "__manual__";
+const PROVIDER_NONE_CHOICE = "";
 
 const fmtDate = (value) => {
  const date = new Date(value);
@@ -297,7 +306,7 @@ const matchesSummaryCard = ({ request, cardKey, dateFrom, dateTo }) => {
  case "unassigned_high":
  return (
  request.urgency === "high" &&
- !String(request.assigned_to || "").trim() &&
+ !getAssignedProviderName(request) &&
  isNonTerminal(request.status)
  );
  case "exceptions":
@@ -373,6 +382,31 @@ const formatBranchLabel = (value) => {
 
 const getRequestBranch = (request) =>
  request?.branch || request?.tenant?.branch || "";
+
+const getAssignedProviderName = (request) =>
+ request?.assignedProvider?.name ||
+ request?.assignedProviderName ||
+ request?.assigned_to ||
+ "";
+
+const getAssignedProviderContact = (request) =>
+ request?.assignedProvider?.contactNumber ||
+ request?.assignedProviderContact ||
+ "";
+
+const getAssignedProviderCategory = (request) =>
+ request?.assignedProvider?.category ||
+ request?.assignedProviderCategory ||
+ (request?.request_type ? getMaintenanceTypeMeta(request.request_type).label : "");
+
+const getProviderBranchCoverageLabel = (provider) =>
+ (provider?.branchCoverage || [])
+ .map((branch) => BRANCH_DISPLAY_NAMES[branch] || branch)
+ .filter(Boolean)
+ .join(", ") || "No branch coverage";
+
+const getProviderCategoryLabel = (provider) =>
+ (provider?.serviceCategories || []).filter(Boolean).join(", ") || "No service category";
 
 const BranchBadge = ({ branch }) => {
  const label = formatBranchLabel(branch);
@@ -719,6 +753,12 @@ const getStatusTimelineTitle = (entry = {}) => {
  return "Attachment removed from tenant view";
  case "attachment_removed_request":
  return "Attachment removed from request display";
+ case "service_provider_assigned":
+ return "Service provider assigned";
+ case "service_provider_changed":
+ return "Service provider changed";
+ case "service_provider_unassigned":
+ return "Service provider unassigned";
  default:
  return entry.event ? entry.event.replace(/_/g, " ") : "Maintenance updated";
  }
@@ -793,12 +833,14 @@ const buildMaintenanceTimeline = (request) => {
  : "Updated by",
  timestamp: entry.timestamp,
  visibility:
- ["archived", "restored", "admin_proof_uploaded", "attachment_removed_tenant", "attachment_removed_request", "note_updated"].includes(entry.event)
+ ["archived", "restored", "admin_proof_uploaded", "attachment_removed_tenant", "attachment_removed_request", "note_updated", "service_provider_assigned", "service_provider_changed", "service_provider_unassigned"].includes(entry.event)
  ? "admin"
  : "tenant",
  meta: entry.status ? formatMaintenanceStatus(entry.status) : "",
  removedScope: entry.removedScope,
  attachmentName: entry.attachmentName,
+ providerName: entry.providerName,
+ previousProviderName: entry.previousProviderName,
  });
  });
 
@@ -1040,6 +1082,12 @@ function MaintenanceTimeline({
  {item.attachmentName ? (
  <p className="mt-2 text-sm text-muted-foreground">File: {item.attachmentName}</p>
  ) : null}
+ {item.providerName ? (
+ <p className="mt-2 text-sm text-muted-foreground">Provider: {item.providerName}</p>
+ ) : null}
+ {item.previousProviderName ? (
+ <p className="mt-1 text-sm text-muted-foreground">Previous provider: {item.previousProviderName}</p>
+ ) : null}
  <TimelineAttachmentList
  attachments={item.attachments}
  targets={item.attachmentTargets}
@@ -1246,6 +1294,260 @@ function AttachmentRemovalModal({
  );
 }
 
+function ServiceProviderAssignmentPanel({
+ request,
+ providers = [],
+ isLoadingProviders = false,
+ selectedChoice,
+ manualProvider,
+ saveForFuture,
+ fieldErrors = {},
+ formMessage = "",
+ suggestion = null,
+ isAssigning = false,
+ isSuggesting = false,
+ disabled = false,
+ onChoiceChange,
+ onManualChange,
+ onSaveForFutureChange,
+ onAssign,
+ onSuggest,
+ onUseSuggestion,
+}) {
+ const currentName = getAssignedProviderName(request);
+ const currentContact = getAssignedProviderContact(request);
+ const currentCategory = getAssignedProviderCategory(request);
+ const selectedProvider = providers.find((provider) => provider.id === selectedChoice);
+ const showManualFields = selectedChoice === PROVIDER_MANUAL_CHOICE;
+ const requestBranch = formatBranchLabel(getRequestBranch(request));
+ const requestCategory = request?.request_type
+ ? getMaintenanceTypeMeta(request.request_type).label
+ : "Maintenance";
+
+ return (
+ <div className="rounded-xl border border-border bg-card p-5">
+ <DetailDrawer.Section
+ label={(
+ <>
+ <PhoneCall size={14} />
+ Assigned Service Provider
+ <SectionBadge tone="amber">Admin Only</SectionBadge>
+ </>
+ )}
+ >
+ <p className="mb-4 text-sm text-muted-foreground">
+ Provider details are internal. Tenants only see updates that admins send manually.
+ </p>
+
+ <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+ <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Current Assignment
+ </div>
+ {currentName ? (
+ <div className="mt-2 space-y-1 text-card-foreground">
+ <div className="font-semibold">{currentName}</div>
+ {currentCategory ? <div className="text-xs text-muted-foreground">{currentCategory}</div> : null}
+ {currentContact ? (
+ <div className="text-xs text-muted-foreground">Contact: {currentContact}</div>
+ ) : null}
+ </div>
+ ) : (
+ <div className="mt-2 text-sm text-muted-foreground">Not assigned yet</div>
+ )}
+ </div>
+
+ {formMessage ? (
+ <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+ {formMessage}
+ </div>
+ ) : null}
+
+ <div className="mt-4 grid gap-3">
+ <label id="maintenance-update-field-assigned_to" className="block">
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Choose Provider
+ </span>
+ <select
+ value={selectedChoice}
+ onChange={(event) => onChoiceChange(event.target.value)}
+ disabled={disabled || isAssigning}
+ aria-invalid={Boolean(fieldErrors.assigned_to)}
+ className={buildFieldClassName(
+ Boolean(fieldErrors.assigned_to),
+ "mt-2 h-11 w-full rounded-lg border bg-card px-3 text-sm text-card-foreground focus:outline-none focus:ring-2",
+ )}
+ >
+ <option value={PROVIDER_NONE_CHOICE}>Not assigned yet</option>
+ {providers.map((provider) => (
+ <option key={provider.id} value={provider.id}>
+ {provider.providerName}
+ </option>
+ ))}
+ <option value={PROVIDER_MANUAL_CHOICE}>Other / Manual Entry</option>
+ </select>
+ {fieldErrors.assigned_to ? (
+ <p className="mt-1 text-xs text-rose-600">{fieldErrors.assigned_to}</p>
+ ) : null}
+ </label>
+
+ {isLoadingProviders ? (
+ <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+ Loading service providers...
+ </div>
+ ) : providers.length === 0 ? (
+ <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-warning-dark">
+ No matching service providers found for this branch and request type. Use Manual Entry.
+ </div>
+ ) : null}
+
+ {selectedProvider ? (
+ <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+ <div className="font-semibold text-card-foreground">{selectedProvider.providerName}</div>
+ <div className="mt-1 text-xs text-muted-foreground">
+ Category: {getProviderCategoryLabel(selectedProvider)}
+ </div>
+ <div className="text-xs text-muted-foreground">
+ Branches: {getProviderBranchCoverageLabel(selectedProvider)}
+ </div>
+ <div className="text-xs text-muted-foreground">
+ Contact: {selectedProvider.contactNumber}
+ </div>
+ {selectedProvider.notes ? (
+ <div className="mt-2 text-xs text-muted-foreground">{selectedProvider.notes}</div>
+ ) : null}
+ </div>
+ ) : null}
+
+ {showManualFields ? (
+ <div className="grid gap-3 rounded-lg border border-border bg-muted/20 p-3">
+ <label>
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Provider Name
+ </span>
+ <input
+ value={manualProvider.providerName}
+ onChange={(event) => onManualChange("providerName", event.target.value)}
+ disabled={disabled || isAssigning}
+ className={buildFieldClassName(
+ Boolean(fieldErrors.providerName),
+ "mt-2 h-10 w-full rounded-lg border bg-card px-3 text-sm text-card-foreground focus:outline-none focus:ring-2",
+ )}
+ placeholder="Provider or company name"
+ />
+ {fieldErrors.providerName ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.providerName}</p> : null}
+ </label>
+ <label>
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Contact Number
+ </span>
+ <input
+ value={manualProvider.contactNumber}
+ onChange={(event) => onManualChange("contactNumber", event.target.value)}
+ disabled={disabled || isAssigning}
+ className={buildFieldClassName(
+ Boolean(fieldErrors.contactNumber),
+ "mt-2 h-10 w-full rounded-lg border bg-card px-3 text-sm text-card-foreground focus:outline-none focus:ring-2",
+ )}
+ placeholder="09XXXXXXXXX"
+ />
+ {fieldErrors.contactNumber ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.contactNumber}</p> : null}
+ </label>
+ <label>
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Service Type
+ </span>
+ <input
+ value={manualProvider.serviceType}
+ onChange={(event) => onManualChange("serviceType", event.target.value)}
+ disabled={disabled || isAssigning}
+ className={buildFieldClassName(
+ Boolean(fieldErrors.serviceType),
+ "mt-2 h-10 w-full rounded-lg border bg-card px-3 text-sm text-card-foreground focus:outline-none focus:ring-2",
+ )}
+ placeholder={requestCategory}
+ />
+ {fieldErrors.serviceType ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.serviceType}</p> : null}
+ </label>
+ <label>
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Notes
+ </span>
+ <textarea
+ rows="3"
+ value={manualProvider.notes}
+ onChange={(event) => onManualChange("notes", event.target.value)}
+ disabled={disabled || isAssigning}
+ className="mt-2 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-card-foreground focus:outline-none focus:ring-2 focus:ring-slate-100"
+ placeholder="Optional internal provider notes"
+ />
+ </label>
+ <label className="flex items-start gap-2 text-sm text-muted-foreground">
+ <input
+ type="checkbox"
+ checked={saveForFuture}
+ onChange={(event) => onSaveForFutureChange(event.target.checked)}
+ disabled={disabled || isAssigning}
+ className="mt-1 h-4 w-4 accent-primary"
+ />
+ <span>Save this provider for future use in {requestBranch} {requestCategory} requests.</span>
+ </label>
+ </div>
+ ) : null}
+
+ {suggestion ? (
+ <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-sm text-sky-800">
+ {suggestion.recommendedProviderName ? (
+ <>
+ <div className="font-semibold">Suggested: {suggestion.recommendedProviderName}</div>
+ <div className="mt-1">{suggestion.reason}</div>
+ <button
+ type="button"
+ className="mt-2 text-xs font-semibold text-sky-900 underline"
+ onClick={() => onUseSuggestion(suggestion.recommendedProviderId)}
+ disabled={disabled || isAssigning}
+ >
+ Use suggestion
+ </button>
+ </>
+ ) : (
+ suggestion.message || "No matching saved providers found for this branch and request type."
+ )}
+ </div>
+ ) : null}
+
+ <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+ AI suggestions are based on saved maintenance records and provider directory. Please review before confirming.
+ </div>
+
+ <div className="flex flex-wrap justify-end gap-2">
+ <button
+ type="button"
+ className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-medium text-card-foreground hover:bg-muted disabled:opacity-60"
+ onClick={onSuggest}
+ disabled={disabled || isSuggesting || isAssigning}
+ >
+ <Lightbulb size={14} />
+ {isSuggesting ? "Suggesting..." : "Suggest Provider"}
+ </button>
+ <button
+ type="button"
+ className="inline-flex h-10 items-center justify-center rounded-lg px-4 text-sm font-semibold shadow-sm hover:opacity-90 disabled:opacity-60"
+ style={{
+ backgroundColor: "var(--primary)",
+ color: "var(--primary-foreground)",
+ }}
+ onClick={onAssign}
+ disabled={disabled || isAssigning}
+ >
+ {isAssigning ? "Saving..." : "Save Assignment"}
+ </button>
+ </div>
+ </div>
+ </DetailDrawer.Section>
+ </div>
+ );
+}
+
 export default function AdminMaintenancePage() {
  const { user } = useAuth();
  const isOwner = user?.role === "owner";
@@ -1273,7 +1575,17 @@ export default function AdminMaintenancePage() {
  const [selectedRequestId, setSelectedRequestId] = useState(null);
  const [draftStatus, setDraftStatus] = useState("viewed");
  const [draftNotes, setDraftNotes] = useState("");
- const [draftAssignedTo, setDraftAssignedTo] = useState("");
+ const [providerChoice, setProviderChoice] = useState(PROVIDER_NONE_CHOICE);
+ const [manualProvider, setManualProvider] = useState({
+ providerName: "",
+ contactNumber: "",
+ serviceType: "",
+ notes: "",
+ });
+ const [saveManualProviderForFuture, setSaveManualProviderForFuture] = useState(false);
+ const [providerFieldErrors, setProviderFieldErrors] = useState({});
+ const [providerFormMessage, setProviderFormMessage] = useState("");
+ const [providerSuggestion, setProviderSuggestion] = useState(null);
  const [draftWorkLogNote, setDraftWorkLogNote] = useState("");
  const [draftWorkLogAttachments, setDraftWorkLogAttachments] = useState([]);
  const [uploadingUpdateAttachment, setUploadingUpdateAttachment] = useState(false);
@@ -1352,10 +1664,31 @@ export default function AdminMaintenancePage() {
  const removeAttachmentMutation = useRemoveMaintenanceAttachment();
  const archiveRequestMutation = useArchiveMaintenanceRequest();
  const restoreRequestMutation = useRestoreMaintenanceRequest();
+ const assignProviderMutation = useAssignMaintenanceProvider();
+ const generateUpdateMutation = useGenerateMaintenanceUpdate();
+ const suggestProviderMutation = useSuggestMaintenanceProvider();
 
  const requests = requestsData?.requests || [];
  const summaryRequests = summaryData?.requests || requests;
  const selectedRequest = requestDetailData?.request || null;
+ const providerFilters = useMemo(() => {
+ if (!selectedRequest) return {};
+ const branchId = getRequestBranch(selectedRequest);
+ const category = selectedRequest.request_type
+ ? getMaintenanceTypeMeta(selectedRequest.request_type).label
+ : "";
+ return {
+ branchId,
+ category,
+ };
+ }, [selectedRequest]);
+ const {
+ data: providerData,
+ isLoading: isLoadingProviders,
+ } = useServiceProviders(providerFilters, {
+ enabled: Boolean(selectedRequest && getRequestBranch(selectedRequest)),
+ });
+ const serviceProviders = providerData?.providers || [];
  const selectedRequestStatusOptions = useMemo(
  () => getAllowedAdminMaintenanceStatuses(selectedRequest?.status),
  [selectedRequest?.status],
@@ -1366,7 +1699,6 @@ export default function AdminMaintenancePage() {
  const hasDraftChanges = Boolean(selectedRequest) && (
  draftStatus !== (selectedRequest.status || "") ||
  draftNotes.trim() !== String(selectedRequest.notes || "").trim() ||
- draftAssignedTo.trim() !== String(selectedRequest.assigned_to || "").trim() ||
  Boolean(draftWorkLogNote.trim()) ||
  draftWorkLogAttachments.length > 0
  );
@@ -1429,7 +1761,7 @@ export default function AdminMaintenancePage() {
  const haystack = [
  request.request_id,
  request.description,
- request.assigned_to,
+ getAssignedProviderName(request),
  request.user_id,
  request.tenant?.user_id,
  request.tenant?.full_name,
@@ -1612,7 +1944,33 @@ export default function AdminMaintenancePage() {
 
  setDraftStatus(initialStatus);
  setDraftNotes(selectedRequest.notes || "");
- setDraftAssignedTo(selectedRequest.assigned_to || "");
+ const assignedProviderId =
+ selectedRequest.assignedProvider?.id ||
+ selectedRequest.assignedProviderId ||
+ "";
+ const assignedProviderSource =
+ selectedRequest.assignedProvider?.source ||
+ selectedRequest.assignedProviderSource ||
+ "";
+ const hasAssignedProviderName = Boolean(getAssignedProviderName(selectedRequest));
+ setProviderChoice(
+ assignedProviderSource === "manual" || (!assignedProviderId && hasAssignedProviderName)
+ ? PROVIDER_MANUAL_CHOICE
+ : assignedProviderId || PROVIDER_NONE_CHOICE,
+ );
+ setManualProvider({
+ providerName: getAssignedProviderName(selectedRequest),
+ contactNumber: getAssignedProviderContact(selectedRequest),
+ serviceType: getAssignedProviderCategory(selectedRequest),
+ notes:
+ selectedRequest.assignedProvider?.notes ||
+ selectedRequest.assignedProviderNotes ||
+ "",
+ });
+ setSaveManualProviderForFuture(false);
+ setProviderFieldErrors({});
+ setProviderFormMessage("");
+ setProviderSuggestion(null);
  setDraftWorkLogNote("");
  setDraftWorkLogAttachments([]);
  setUpdateFieldErrors({});
@@ -1715,7 +2073,7 @@ export default function AdminMaintenancePage() {
  const errors = {};
  const allowedStatuses = new Set(selectedRequestStatusOptions);
  const normalizedStatus = String(draftStatus || "").trim();
- const assignedTo = draftAssignedTo.trim();
+ const assignedTo = getAssignedProviderName(selectedRequest);
 
  if (!normalizedStatus || !allowedStatuses.has(normalizedStatus)) {
  errors.status = "Please choose a valid status for this request.";
@@ -1731,10 +2089,6 @@ export default function AdminMaintenancePage() {
  !draftWorkLogNote.trim()
  ) {
  errors.notes = "Please add resolution notes or a completion work log before marking this request as Resolved.";
- }
-
- if (assignedTo && assignedTo.length < 2) {
- errors.assigned_to = "Assigned service provider must be at least 2 characters.";
  }
 
  if (uploadingUpdateAttachment) {
@@ -2300,7 +2654,7 @@ export default function AdminMaintenancePage() {
  urgency: getMaintenanceUrgencyMeta(request.urgency).label,
  status: formatMaintenanceStatus(request.status),
  sla: formatSlaState(request.slaState),
- assignedTo: request.assigned_to || "Unassigned",
+ assignedTo: getAssignedProviderName(request) || "Unassigned",
  createdAt: fmtDateTime(request.created_at),
  updatedAt: fmtDateTime(request.updated_at),
  })),
@@ -2318,6 +2672,170 @@ export default function AdminMaintenancePage() {
  ],
  "maintenance-requests",
  );
+ };
+
+ const clearProviderFieldError = (field) => {
+ setProviderFieldErrors((current) => {
+ if (!current[field]) return current;
+ const next = { ...current };
+ delete next[field];
+ return next;
+ });
+ if (providerFormMessage) setProviderFormMessage("");
+ };
+
+ const handleProviderChoiceChange = (choice) => {
+ setProviderChoice(choice);
+ setProviderSuggestion(null);
+ setProviderFieldErrors({});
+ setProviderFormMessage("");
+ clearUpdateFieldError("assigned_to");
+ if (choice === PROVIDER_MANUAL_CHOICE && !manualProvider.serviceType) {
+ setManualProvider((current) => ({
+ ...current,
+ serviceType: selectedRequest?.request_type
+ ? getMaintenanceTypeMeta(selectedRequest.request_type).label
+ : current.serviceType,
+ }));
+ }
+ };
+
+ const handleManualProviderChange = (field, value) => {
+ setManualProvider((current) => ({ ...current, [field]: value }));
+ clearProviderFieldError(field);
+ clearProviderFieldError("assigned_to");
+ };
+
+ const validateProviderAssignment = () => {
+ const errors = {};
+ if (providerChoice === PROVIDER_MANUAL_CHOICE) {
+ if (!manualProvider.providerName.trim()) {
+ errors.providerName = "Provider name is required.";
+ }
+ if (!manualProvider.contactNumber.trim()) {
+ errors.contactNumber = "Contact number is required.";
+ }
+ if (!manualProvider.serviceType.trim()) {
+ errors.serviceType = "Service type is required.";
+ }
+ return errors;
+ }
+
+ if (providerChoice && !serviceProviders.some((provider) => provider.id === providerChoice)) {
+ errors.assigned_to = "Please select an available saved service provider.";
+ }
+
+ return errors;
+ };
+
+ const handleAssignProvider = async () => {
+ if (!selectedRequest) return;
+ const validationErrors = validateProviderAssignment();
+ if (Object.keys(validationErrors).length > 0) {
+ const message = getFormSummaryMessage(
+ validationErrors,
+ "Please complete the service provider assignment.",
+ );
+ setProviderFieldErrors(validationErrors);
+ setProviderFormMessage(message);
+ showNotification(message, "error");
+ return;
+ }
+
+ const payload =
+ providerChoice === PROVIDER_NONE_CHOICE
+ ? { providerSource: "none" }
+ : providerChoice === PROVIDER_MANUAL_CHOICE
+ ? {
+ providerSource: "manual",
+ providerName: manualProvider.providerName.trim(),
+ contactNumber: manualProvider.contactNumber.trim(),
+ serviceType: manualProvider.serviceType.trim(),
+ notes: manualProvider.notes.trim(),
+ saveForFuture: saveManualProviderForFuture,
+ }
+ : {
+ providerSource: "directory",
+ providerId: providerChoice,
+ notes: manualProvider.notes.trim(),
+ };
+
+ try {
+ await assignProviderMutation.mutateAsync({
+ requestId: selectedRequest.request_id,
+ payload,
+ });
+ setProviderFieldErrors({});
+ setProviderFormMessage("");
+ setProviderSuggestion(null);
+ showNotification("Service provider assignment saved.", "success");
+ } catch (assignmentError) {
+ const mappedErrors = mapMaintenanceApiErrors(assignmentError);
+ const message = getMaintenanceApiErrorMessage(
+ assignmentError,
+ "Failed to assign service provider.",
+ );
+ setProviderFieldErrors(mappedErrors);
+ setProviderFormMessage(message);
+ showNotification(message, "error");
+ }
+ };
+
+ const handleSuggestProvider = async () => {
+ if (!selectedRequest) return;
+ setProviderSuggestion(null);
+ try {
+ const suggestion = await suggestProviderMutation.mutateAsync({
+ requestId: selectedRequest.request_id,
+ });
+ setProviderSuggestion(suggestion);
+ if (suggestion?.recommendedProviderName) {
+ showNotification("Service provider suggestion ready.", "success");
+ } else {
+ showNotification(
+ suggestion?.message || "No matching saved providers found for this branch and request type.",
+ "info",
+ );
+ }
+ } catch (suggestError) {
+ const message = getMaintenanceApiErrorMessage(
+ suggestError,
+ "Failed to suggest a service provider.",
+ );
+ setProviderFormMessage(message);
+ showNotification(message, "error");
+ }
+ };
+
+ const handleUseSuggestedProvider = (providerId) => {
+ if (!providerId) return;
+ setProviderChoice(providerId);
+ setProviderFieldErrors({});
+ setProviderFormMessage("");
+ };
+
+ const handleGenerateUpdate = async () => {
+ if (!selectedRequest) return;
+ try {
+ const result = await generateUpdateMutation.mutateAsync({
+ requestId: selectedRequest.request_id,
+ });
+ if (result?.unavailable) {
+ showNotification(result.draft || "AI drafting is currently unavailable.", "info");
+ return;
+ }
+ if (result?.draft) {
+ setReplyMessage(result.draft);
+ clearReplyFieldError("reply_message");
+ showNotification("AI draft generated. Please review before sending.", "success");
+ }
+ } catch (generateError) {
+ const message = getMaintenanceApiErrorMessage(
+ generateError,
+ "AI drafting is currently unavailable. Please write the update manually.",
+ );
+ showNotification(message, "error");
+ }
  };
 
  const handleSummaryFilter = (index) => {
@@ -2371,7 +2889,6 @@ export default function AdminMaintenancePage() {
  payload: {
  status: draftStatus,
  notes: draftNotes,
- assigned_to: draftAssignedTo,
  work_log_note: draftWorkLogNote,
  work_log_attachments: workLogAttachments,
  },
@@ -2604,7 +3121,7 @@ export default function AdminMaintenancePage() {
  {
  key: "assigned_to",
  label: "Assigned Service Provider",
- render: (row) => row.assigned_to || "Unassigned",
+ render: (row) => getAssignedProviderName(row) || "Unassigned",
  },
  {
  key: "created_at",
@@ -3246,6 +3763,30 @@ export default function AdminMaintenancePage() {
  </div>
 
  <div className="space-y-6">
+ <ServiceProviderAssignmentPanel
+ request={selectedRequest}
+ providers={serviceProviders}
+ isLoadingProviders={isLoadingProviders}
+ selectedChoice={providerChoice}
+ manualProvider={manualProvider}
+ saveForFuture={saveManualProviderForFuture}
+ fieldErrors={{
+ ...providerFieldErrors,
+ assigned_to: providerFieldErrors.assigned_to || updateFieldErrors.assigned_to,
+ }}
+ formMessage={providerFormMessage}
+ suggestion={providerSuggestion}
+ isAssigning={assignProviderMutation.isPending}
+ isSuggesting={suggestProviderMutation.isPending}
+ disabled={isSelectedRequestLocked || selectedRequest.isArchived}
+ onChoiceChange={handleProviderChoiceChange}
+ onManualChange={handleManualProviderChange}
+ onSaveForFutureChange={setSaveManualProviderForFuture}
+ onAssign={handleAssignProvider}
+ onSuggest={handleSuggestProvider}
+ onUseSuggestion={handleUseSuggestedProvider}
+ />
+
  <div className="rounded-xl border border-border bg-card p-5">
  <DetailDrawer.Section
  label={(
@@ -3302,30 +3843,6 @@ export default function AdminMaintenancePage() {
  </select>
  {updateFieldErrors.status ? (
  <p className="mt-1 text-xs text-rose-600">{updateFieldErrors.status}</p>
- ) : null}
- </label>
-
- <label id="maintenance-update-field-assigned_to" className="block">
- <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
- Assigned Service Provider
- </span>
- <input
- type="text"
- placeholder="Service provider name or team"
- value={draftAssignedTo}
- onChange={(event) => {
- setDraftAssignedTo(event.target.value);
- clearUpdateFieldError("assigned_to");
- }}
- disabled={isSelectedRequestLocked || selectedRequest.isArchived}
- aria-invalid={Boolean(updateFieldErrors.assigned_to)}
- className={buildFieldClassName(
- Boolean(updateFieldErrors.assigned_to),
- "mt-2 h-11 w-full rounded-lg border bg-card px-3 text-sm text-card-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2",
- )}
- />
- {updateFieldErrors.assigned_to ? (
- <p className="mt-1 text-xs text-rose-600">{updateFieldErrors.assigned_to}</p>
  ) : null}
  </label>
 
@@ -3405,6 +3922,28 @@ export default function AdminMaintenancePage() {
  {replyFormMessage}
  </div>
  ) : null}
+
+ <div className="rounded-lg border border-border bg-muted/30 px-3 py-3">
+ <div className="flex flex-wrap items-center justify-between gap-3">
+ <p className="text-xs text-muted-foreground">
+ AI drafted updates are based on the request timeline. Please review before sending.
+ </p>
+ <button
+ type="button"
+ className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-medium text-card-foreground hover:bg-muted disabled:opacity-60"
+ onClick={handleGenerateUpdate}
+ disabled={
+ isSelectedRequestLocked ||
+ selectedRequest.isArchived ||
+ sendReplyMutation.isPending ||
+ generateUpdateMutation.isPending
+ }
+ >
+ <Sparkles size={14} />
+ {generateUpdateMutation.isPending ? "Generating..." : "Generate Update"}
+ </button>
+ </div>
+ </div>
 
  <label id="maintenance-reply-field-reply_message" className="block">
  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">

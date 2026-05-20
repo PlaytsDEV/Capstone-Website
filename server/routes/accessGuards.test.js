@@ -189,12 +189,24 @@ await jest.unstable_mockModule("../controllers/maintenanceController.js", () => 
   updateRequest: noop,
   updateAdminRequestStatus: noop,
   updateAdminRequestStatusCompat: noop,
+  assignAdminMaintenanceProvider: noop,
+  generateAdminMaintenanceUpdate: noop,
+  suggestAdminMaintenanceProvider: noop,
   uploadAdminMaintenanceAttachment: noop,
+  saveAdminMaintenanceProof: noop,
+  removeAdminMaintenanceAttachment: noop,
+  archiveAdminMaintenanceRequest: noop,
+  restoreAdminMaintenanceRequest: noop,
   sendAdminReply: noop,
   sendTenantReply: noop,
   updateAdminBulkRequests: noop,
   getCompletionStats: noop,
   getIssueFrequency: noop,
+}));
+await jest.unstable_mockModule("../controllers/serviceProviderController.js", () => ({
+  listServiceProviders: noop,
+  createServiceProvider: noop,
+  updateServiceProvider: noop,
 }));
 await jest.unstable_mockModule("../controllers/branchSummaryController.js", () => ({
   getOwnerBranchSummaries: noop,
@@ -209,6 +221,7 @@ const auditRoutes = (await import("./auditRoutes.js")).default;
 const branchSummaryRoutes = (await import("./branchSummaryRoutes.js")).default;
 const digitalTwinRoutes = (await import("./digitalTwinRoutes.js")).default;
 const maintenanceRoutes = (await import("./maintenanceContractRoutes.js")).default;
+const serviceProviderRoutes = (await import("./serviceProviderRoutes.js")).default;
 
 function getRouteHandlers(router, path, method) {
   const layer = router.stack.find(
@@ -376,6 +389,21 @@ describe("route access guards", () => {
       "/admin/:requestId/reply",
       "post",
     );
+    const adminAssignProviderHandlers = getRouteHandlers(
+      maintenanceRoutes,
+      "/admin/:requestId/assign-provider",
+      "post",
+    );
+    const adminGenerateUpdateHandlers = getRouteHandlers(
+      maintenanceRoutes,
+      "/admin/:requestId/generate-update",
+      "post",
+    );
+    const adminSuggestProviderHandlers = getRouteHandlers(
+      maintenanceRoutes,
+      "/admin/:requestId/suggest-provider",
+      "post",
+    );
     const adminAttachmentHandlers = getRouteHandlers(
       maintenanceRoutes,
       "/admin/:requestId/attachments",
@@ -415,10 +443,39 @@ describe("route access guards", () => {
       ),
     ).toBe(true);
 
+    [adminAssignProviderHandlers, adminGenerateUpdateHandlers, adminSuggestProviderHandlers].forEach(
+      (handlers) => {
+        expect(handlers).toContain(verifyAdmin);
+        expect(handlers).toContain(filterByBranch);
+        expect(
+          handlers.some(
+            (handler) => handler.requiredPermission === "manageMaintenance",
+          ),
+        ).toBe(true);
+      },
+    );
+
     expect(
       legacyBranchHandlers.some(
         (handler) => handler.requiredPermission === "manageMaintenance",
       ),
     ).toBe(true);
+  });
+
+  test("service provider routes enforce manageMaintenance", () => {
+    const listHandlers = getRouteHandlers(serviceProviderRoutes, "/", "get");
+    const createHandlers = getRouteHandlers(serviceProviderRoutes, "/", "post");
+    const updateHandlers = getRouteHandlers(serviceProviderRoutes, "/:id", "patch");
+
+    [listHandlers, createHandlers, updateHandlers].forEach((handlers) => {
+      expect(handlers).toContain(verifyToken);
+      expect(handlers).toContain(verifyAdmin);
+      expect(handlers).toContain(filterByBranch);
+      expect(
+        handlers.some(
+          (handler) => handler.requiredPermission === "manageMaintenance",
+        ),
+      ).toBe(true);
+    });
   });
 });
