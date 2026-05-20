@@ -99,6 +99,16 @@ const ARCHIVE_FILTER_OPTIONS = [
  { key: "archived", label: "Archived" },
  { key: "all", label: "All" },
 ];
+const ATTACHMENT_REMOVAL_REASONS = [
+ "Wrong file attached",
+ "Duplicate attachment",
+ "Sensitive information visible",
+ "Blurry or unreadable file",
+ "Attached to the wrong request",
+ "Outdated file",
+ "Uploaded by mistake",
+ "Other",
+];
 
 const fmtDate = (value) => {
  const date = new Date(value);
@@ -376,6 +386,17 @@ const BranchBadge = ({ branch }) => {
  : "border-sky-200 bg-sky-50 text-sky-700"
  }`}
  >
+ {label}
+ </span>
+ );
+};
+
+const BranchTableText = ({ branch }) => {
+ const label = formatBranchLabel(branch);
+ const isMissing = label === "Branch missing";
+
+ return (
+ <span className={isMissing ? "text-sm font-medium text-amber-700" : "text-sm text-card-foreground"}>
  {label}
  </span>
  );
@@ -697,7 +718,7 @@ const getStatusTimelineTitle = (entry = {}) => {
  case "attachment_removed_tenant":
  return "Attachment removed from tenant view";
  case "attachment_removed_request":
- return "Attachment removed from request";
+ return "Attachment removed from request display";
  default:
  return entry.event ? entry.event.replace(/_/g, " ") : "Maintenance updated";
  }
@@ -738,14 +759,15 @@ const buildMaintenanceTimeline = (request) => {
  title:
  attachment.removedScope === "tenant_only"
  ? "Attachment removed from tenant view"
- : "Attachment removed from request",
+ : "Attachment removed from request display",
  message: attachment.removedReason,
  actorName: attachment.removedByName || attachment.removedBy,
  actorRole: attachment.removedByRole,
  actorPrefix: "Removed by",
  timestamp: attachment.removedAt || request.updated_at,
  visibility: "admin",
- attachments: [attachment],
+ attachmentName: getMaintenanceAttachmentName(attachment, attachmentIndex),
+ attachments: [],
  removed: true,
  });
  });
@@ -837,14 +859,15 @@ const buildMaintenanceTimeline = (request) => {
  title:
  attachment.removedScope === "tenant_only"
  ? "Attachment removed from tenant view"
- : "Attachment removed from request",
+ : "Attachment removed from request display",
  message: attachment.removedReason,
  actorName: attachment.removedByName || attachment.removedBy,
  actorRole: attachment.removedByRole,
  actorPrefix: "Removed by",
  timestamp: attachment.removedAt || entry.created_at,
  visibility: "admin",
- attachments: [attachment],
+ attachmentName: getMaintenanceAttachmentName(attachment, attachmentIndex),
+ attachments: [],
  removed: true,
  });
  });
@@ -885,14 +908,15 @@ const buildMaintenanceTimeline = (request) => {
  items.push({
  key: `worklog-removed-${entryIndex}-${attachmentIndex}`,
  type: "attachment_removed",
- title: "Attachment removed from request",
+ title: "Attachment removed from request display",
  message: attachment.removedReason,
  actorName: attachment.removedByName || attachment.removedBy,
  actorRole: attachment.removedByRole,
  actorPrefix: "Removed by",
  timestamp: attachment.removedAt || entry.logged_at,
  visibility: "admin",
- attachments: [attachment],
+ attachmentName: getMaintenanceAttachmentName(attachment, attachmentIndex),
+ attachments: [],
  removed: true,
  });
  });
@@ -1009,7 +1033,9 @@ function MaintenanceTimeline({
  })}
  </div>
  {item.message ? (
- <p className="mt-2 text-sm text-muted-foreground">{item.message}</p>
+ <p className="mt-2 text-sm text-muted-foreground">
+ {item.type === "attachment_removed" ? `Reason: ${item.message}` : item.message}
+ </p>
  ) : null}
  {item.attachmentName ? (
  <p className="mt-2 text-sm text-muted-foreground">File: {item.attachmentName}</p>
@@ -1023,6 +1049,199 @@ function MaintenanceTimeline({
  />
  </article>
  ))}
+ </div>
+ );
+}
+
+function ConfirmationModal({
+ open,
+ title,
+ message,
+ confirmLabel,
+ confirmTone = "rose",
+ isPending = false,
+ onCancel,
+ onConfirm,
+}) {
+ if (!open) return null;
+
+ const confirmClassName =
+ confirmTone === "emerald"
+ ? "bg-emerald-600 text-white hover:bg-emerald-700"
+ : "bg-rose-600 text-white hover:bg-rose-700";
+
+ return (
+ <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/50 px-4 py-6">
+ <section
+ role="dialog"
+ aria-modal="true"
+ aria-labelledby="maintenance-confirm-title"
+ className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl"
+ >
+ <h2 id="maintenance-confirm-title" className="text-lg font-semibold text-card-foreground">
+ {title}
+ </h2>
+ <p className="mt-3 text-sm leading-6 text-muted-foreground">{message}</p>
+ <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+ <button
+ type="button"
+ className="inline-flex h-10 items-center justify-center rounded-lg border border-border px-4 text-sm font-medium text-muted-foreground hover:bg-muted"
+ onClick={onCancel}
+ disabled={isPending}
+ >
+ Cancel
+ </button>
+ <button
+ type="button"
+ className={`inline-flex h-10 items-center justify-center rounded-lg px-4 text-sm font-semibold shadow-sm disabled:cursor-not-allowed disabled:opacity-60 ${confirmClassName}`}
+ onClick={onConfirm}
+ disabled={isPending}
+ >
+ {isPending ? "Working..." : confirmLabel}
+ </button>
+ </div>
+ </section>
+ </div>
+ );
+}
+
+function AttachmentRemovalModal({
+ open,
+ scope,
+ reason,
+ customReason,
+ error,
+ isPending = false,
+ onScopeChange,
+ onReasonChange,
+ onCustomReasonChange,
+ onCancel,
+ onConfirm,
+}) {
+ if (!open) return null;
+
+ const hasScope = Boolean(scope);
+ const hasReason = reason && (reason !== "Other" || Boolean(customReason.trim()));
+ const canSubmit = hasScope && hasReason && !isPending;
+ const options = [
+ {
+ value: "tenant_only",
+ title: "Remove for Tenant",
+ description:
+ "The tenant will no longer be able to view or download this attachment. Admins can still see the removal record in the maintenance timeline.",
+ },
+ {
+ value: "request",
+ title: "Remove from Request",
+ description:
+ "This attachment will be hidden from the normal request display. A removal record will still remain in the admin timeline.",
+ },
+ ];
+
+ return (
+ <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/50 px-4 py-6">
+ <section
+ role="dialog"
+ aria-modal="true"
+ aria-labelledby="maintenance-remove-attachment-title"
+ className="max-h-[calc(100vh-2rem)] w-full max-w-xl overflow-y-auto rounded-xl border border-border bg-card p-5 shadow-2xl"
+ >
+ <h2 id="maintenance-remove-attachment-title" className="text-lg font-semibold text-card-foreground">
+ Who should no longer see this attachment?
+ </h2>
+
+ <div className="mt-4 grid gap-3">
+ {options.map((option) => {
+ const selected = scope === option.value;
+ return (
+ <label
+ key={option.value}
+ className={`flex cursor-pointer gap-3 rounded-lg border p-4 transition ${
+ selected
+ ? "border-primary bg-primary/5 ring-2 ring-primary/20"
+ : "border-border bg-card hover:bg-muted/50"
+ }`}
+ >
+ <input
+ type="radio"
+ name="attachment-removal-scope"
+ value={option.value}
+ checked={selected}
+ onChange={() => onScopeChange(option.value)}
+ className="mt-1 h-4 w-4 accent-primary"
+ disabled={isPending}
+ />
+ <span>
+ <span className="block text-sm font-semibold text-card-foreground">{option.title}</span>
+ <span className="mt-1 block text-sm leading-5 text-muted-foreground">
+ {option.description}
+ </span>
+ </span>
+ </label>
+ );
+ })}
+ </div>
+
+ <label className="mt-5 block">
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Reason for removal
+ </span>
+ <select
+ value={reason}
+ onChange={(event) => onReasonChange(event.target.value)}
+ disabled={isPending}
+ className="mt-2 h-11 w-full rounded-lg border border-border bg-card px-3 text-sm text-card-foreground focus:outline-none focus:ring-2 focus:ring-slate-100"
+ >
+ <option value="">Select a reason</option>
+ {ATTACHMENT_REMOVAL_REASONS.map((option) => (
+ <option key={option} value={option}>
+ {option}
+ </option>
+ ))}
+ </select>
+ </label>
+
+ {reason === "Other" ? (
+ <label className="mt-4 block">
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Please specify reason
+ </span>
+ <textarea
+ rows="3"
+ value={customReason}
+ onChange={(event) => onCustomReasonChange(event.target.value)}
+ disabled={isPending}
+ className="mt-2 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-slate-100"
+ placeholder="Enter a clear removal reason."
+ />
+ </label>
+ ) : null}
+
+ {error ? (
+ <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+ {error}
+ </div>
+ ) : null}
+
+ <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+ <button
+ type="button"
+ className="inline-flex h-10 items-center justify-center rounded-lg border border-border px-4 text-sm font-medium text-muted-foreground hover:bg-muted"
+ onClick={onCancel}
+ disabled={isPending}
+ >
+ Cancel
+ </button>
+ <button
+ type="button"
+ className="inline-flex h-10 items-center justify-center rounded-lg bg-rose-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+ onClick={onConfirm}
+ disabled={!canSubmit}
+ >
+ {isPending ? "Removing..." : "Remove Attachment"}
+ </button>
+ </div>
+ </section>
  </div>
  );
 }
@@ -1070,6 +1289,15 @@ export default function AdminMaintenancePage() {
  const [uploadingProofAttachment, setUploadingProofAttachment] = useState(false);
  const [proofFieldErrors, setProofFieldErrors] = useState({});
  const [proofFormMessage, setProofFormMessage] = useState("");
+ const [archiveDialogMode, setArchiveDialogMode] = useState(null);
+ const [attachmentRemovalDialog, setAttachmentRemovalDialog] = useState({
+ open: false,
+ target: null,
+ scope: "",
+ reason: "",
+ customReason: "",
+ error: "",
+ });
 
  const listFilters = useMemo(
  () =>
@@ -1397,6 +1625,15 @@ export default function AdminMaintenancePage() {
  setProofAttachments([]);
  setProofFieldErrors({});
  setProofFormMessage("");
+ setArchiveDialogMode(null);
+ setAttachmentRemovalDialog({
+ open: false,
+ target: null,
+ scope: "",
+ reason: "",
+ customReason: "",
+ error: "",
+ });
  }, [selectedRequest, selectedRequestStatusOptions]);
 
  const clearUpdateFieldError = (field) => {
@@ -1920,81 +2157,119 @@ export default function AdminMaintenancePage() {
 
  const handleArchiveRequest = async () => {
  if (!selectedRequest) return;
- const confirmed = window.confirm(
- "Are you sure you want to archive this request? It will be hidden from the active list but can still be viewed in Archived Requests.",
- );
- if (!confirmed) return;
-
- try {
- await archiveRequestMutation.mutateAsync({
- requestId: selectedRequest.request_id,
- payload: {},
- });
- showNotification("Maintenance request archived.", "success");
- setArchiveView("archived");
- } catch (archiveError) {
- showNotification(
- getMaintenanceApiErrorMessage(archiveError, "Failed to archive request."),
- "error",
- );
- }
+ setArchiveDialogMode("archive");
  };
 
  const handleRestoreRequest = async () => {
  if (!selectedRequest) return;
- const confirmed = window.confirm(
- "Restore this request? It will return to the active maintenance list.",
- );
- if (!confirmed) return;
+ setArchiveDialogMode("restore");
+ };
+
+ const handleConfirmArchiveAction = async () => {
+ if (!selectedRequest || !archiveDialogMode) return;
+ const isRestore = archiveDialogMode === "restore";
 
  try {
+ if (isRestore) {
  await restoreRequestMutation.mutateAsync({
  requestId: selectedRequest.request_id,
  payload: {},
  });
  showNotification("Maintenance request restored.", "success");
  setArchiveView("active");
- } catch (restoreError) {
+ } else {
+ await archiveRequestMutation.mutateAsync({
+ requestId: selectedRequest.request_id,
+ payload: {},
+ });
+ showNotification("Maintenance request archived.", "success");
+ setArchiveView("archived");
+ }
+ setArchiveDialogMode(null);
+ } catch (archiveError) {
  showNotification(
- getMaintenanceApiErrorMessage(restoreError, "Failed to restore request."),
+ getMaintenanceApiErrorMessage(
+ archiveError,
+ isRestore ? "Failed to restore request." : "Failed to archive request.",
+ ),
  "error",
  );
  }
  };
 
- const handleRemoveSavedAttachment = async (target) => {
+ const handleRemoveSavedAttachment = (target) => {
  if (!selectedRequest || !target) return;
- const choice = window.prompt(
- "Remove attachment:\n1 = Remove for Tenant\n2 = Remove from Request\nLeave blank to cancel.",
- "1",
- );
- if (!choice) return;
- const trimmedChoice = choice.trim();
- const scope =
- trimmedChoice === "1"
- ? "tenant_only"
- : trimmedChoice === "2"
- ? "request"
- : "";
+ setAttachmentRemovalDialog({
+ open: true,
+ target,
+ scope: "",
+ reason: "",
+ customReason: "",
+ error: "",
+ });
+ };
+
+ const handleCloseAttachmentRemovalDialog = () => {
+ if (removeAttachmentMutation.isPending) return;
+ setAttachmentRemovalDialog({
+ open: false,
+ target: null,
+ scope: "",
+ reason: "",
+ customReason: "",
+ error: "",
+ });
+ };
+
+ const handleSubmitAttachmentRemoval = async () => {
+ if (!selectedRequest || !attachmentRemovalDialog.target) return;
+ const scope = attachmentRemovalDialog.scope;
+ const selectedReason = attachmentRemovalDialog.reason;
+ const customReason = attachmentRemovalDialog.customReason.trim();
+ const reason = selectedReason === "Other" ? customReason : selectedReason;
+
  if (!scope) {
- showNotification("Attachment removal cancelled.", "info");
+ setAttachmentRemovalDialog((current) => ({
+ ...current,
+ error: "Please choose who should no longer see this attachment.",
+ }));
  return;
  }
- const reason = window.prompt("Optional removal reason:", "") || "";
+
+ if (!reason) {
+ setAttachmentRemovalDialog((current) => ({
+ ...current,
+ error: "Please select a reason for removing this attachment.",
+ }));
+ return;
+ }
 
  try {
  await removeAttachmentMutation.mutateAsync({
  requestId: selectedRequest.request_id,
  payload: {
- ...target,
+ ...attachmentRemovalDialog.target,
  scope,
- reason,
+ removedReason: reason,
  },
  });
  showNotification("Attachment removed.", "success");
+ setAttachmentRemovalDialog({
+ open: false,
+ target: null,
+ scope: "",
+ reason: "",
+ customReason: "",
+ error: "",
+ });
  } catch (removeError) {
+ const errorMessage = getMaintenanceApiErrorMessage(
+ removeError,
+ "Failed to remove attachment.",
+ );
+ setAttachmentRemovalDialog((current) => ({ ...current, error: errorMessage }));
  showNotification(
- getMaintenanceApiErrorMessage(removeError, "Failed to remove attachment."),
+ errorMessage,
  "error",
  );
  }
@@ -2240,7 +2515,7 @@ export default function AdminMaintenancePage() {
  {
  key: "branch",
  label: "Branch",
- render: (row) => <BranchBadge branch={getRequestBranch(row)} />,
+ render: (row) => <BranchTableText branch={getRequestBranch(row)} />,
  },
  {
  key: "request_type",
@@ -3266,6 +3541,52 @@ export default function AdminMaintenancePage() {
  </div>
  )}
  </DetailDrawer>
+ <ConfirmationModal
+ open={Boolean(archiveDialogMode)}
+ title={archiveDialogMode === "restore" ? "Restore Request" : "Archive Request"}
+ message={
+ archiveDialogMode === "restore"
+ ? "This request will return to the active maintenance list."
+ : "This request will be hidden from the active list but can still be viewed in Archived Requests."
+ }
+ confirmLabel={archiveDialogMode === "restore" ? "Restore Request" : "Archive Request"}
+ confirmTone={archiveDialogMode === "restore" ? "emerald" : "rose"}
+ isPending={archiveRequestMutation.isPending || restoreRequestMutation.isPending}
+ onCancel={() => setArchiveDialogMode(null)}
+ onConfirm={handleConfirmArchiveAction}
+ />
+ <AttachmentRemovalModal
+ open={attachmentRemovalDialog.open}
+ scope={attachmentRemovalDialog.scope}
+ reason={attachmentRemovalDialog.reason}
+ customReason={attachmentRemovalDialog.customReason}
+ error={attachmentRemovalDialog.error}
+ isPending={removeAttachmentMutation.isPending}
+ onCancel={handleCloseAttachmentRemovalDialog}
+ onConfirm={handleSubmitAttachmentRemoval}
+ onScopeChange={(scope) =>
+ setAttachmentRemovalDialog((current) => ({
+ ...current,
+ scope,
+ error: "",
+ }))
+ }
+ onReasonChange={(reason) =>
+ setAttachmentRemovalDialog((current) => ({
+ ...current,
+ reason,
+ customReason: reason === "Other" ? current.customReason : "",
+ error: "",
+ }))
+ }
+ onCustomReasonChange={(customReason) =>
+ setAttachmentRemovalDialog((current) => ({
+ ...current,
+ customReason,
+ error: "",
+ }))
+ }
+ />
  </PageShell.Content>
  </PageShell>
  </div>

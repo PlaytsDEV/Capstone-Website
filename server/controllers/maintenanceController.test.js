@@ -89,6 +89,7 @@ const {
   sendAdminReply,
   sendTenantReply,
   uploadAdminMaintenanceAttachment,
+  removeAdminMaintenanceAttachment,
   updateAdminRequestStatus,
 } = await import("./maintenanceController.js");
 const {
@@ -1356,6 +1357,62 @@ describe("maintenanceController", () => {
     expect(next).toHaveBeenCalledTimes(1);
     expect(next.mock.calls[0][0].code).toBe("REPLY_REQUIRED");
     expect(next.mock.calls[0][0].details[0].field).toBe("message");
+  });
+
+  test("removeAdminMaintenanceAttachment requires a removal reason", async () => {
+    const requestDoc = buildRequestDoc({
+      attachments: [
+        {
+          id: "attachment_1",
+          name: "wrong-photo.jpg",
+          uri: "https://storage.example.com/wrong-photo.jpg",
+          type: "image/jpeg",
+        },
+      ],
+      markModified: jest.fn(),
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockImplementation(({ firebaseUid }) =>
+      buildLeanQuery(
+        firebaseUid === "firebase-admin-1"
+          ? {
+              _id: "admin_user_1",
+              user_id: "admin_1",
+              firstName: "Branch",
+              lastName: "Admin",
+              email: "admin@example.com",
+              phone: "0918",
+              branch: "gil-puyat",
+              role: "branch_admin",
+            }
+          : null,
+      ),
+    );
+
+    const req = {
+      user: { uid: "firebase-admin-1" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        source: "request",
+        attachmentIndex: 0,
+        scope: "tenant_only",
+      },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await removeAdminMaintenanceAttachment(req, res, next);
+
+    expect(requestDoc.save).not.toHaveBeenCalled();
+    expect(requestDoc.attachments[0].isRemoved).toBeUndefined();
+    expect(next).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "REMOVAL_REASON_REQUIRED",
+        statusCode: 400,
+      }),
+    );
   });
 
   test("uploadAdminMaintenanceAttachment returns clear error when request has no branch", async () => {

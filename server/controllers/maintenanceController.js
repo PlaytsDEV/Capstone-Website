@@ -1971,6 +1971,14 @@ export const removeAdminMaintenanceAttachment = async (req, res, next) => {
 
     const eventTimestamp = new Date();
     const reason = toOptionalText(req.body?.reason || req.body?.removedReason);
+    if (!reason || reason.toLowerCase() === "other") {
+      throw new AppError(
+        "Please provide a reason for removing this attachment.",
+        400,
+        "REMOVAL_REASON_REQUIRED",
+      );
+    }
+
     const actor = buildActorSnapshot(adminUser);
     target.attachment.isRemoved = true;
     target.attachment.removedAt = eventTimestamp;
