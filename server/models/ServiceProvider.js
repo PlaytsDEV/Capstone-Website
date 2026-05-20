@@ -104,7 +104,8 @@ serviceProviderSchema.index({
   notes: "text",
   serviceCategories: "text",
 });
-serviceProviderSchema.index({ status: 1, branchCoverage: 1, serviceCategoryKeys: 1 });
+serviceProviderSchema.index({ status: 1, branchCoverage: 1 });
+serviceProviderSchema.index({ status: 1, serviceCategoryKeys: 1 });
 
 const ServiceProvider = mongoose.model("ServiceProvider", serviceProviderSchema);
 

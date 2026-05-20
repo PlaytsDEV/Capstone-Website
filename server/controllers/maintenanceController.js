@@ -247,20 +247,57 @@ const normalizeTextList = (items = []) =>
 const getMaintenanceCategoryLabel = (request) =>
   formatMaintenanceTypeLabel(request?.request_type || "maintenance");
 
+const GENERIC_MAINTENANCE_FALLBACK_CATEGORIES = Object.freeze([
+  "Maintenance",
+  "General Maintenance",
+]);
+
+const buildCategoryCandidatesFromValues = (values) => {
+  const labels = (Array.isArray(values) ? values : [values]).flatMap((value) => {
+    const raw = toOptionalText(value);
+    const normalizedType = normalizeMaintenanceType(raw);
+    const label = normalizedType ? formatMaintenanceTypeLabel(normalizedType) : raw;
+    return [raw, normalizedType, label].filter(Boolean);
+  });
+
+  return {
+    labels: [...new Set(labels)],
+    keys: [...new Set(labels.map(toCategoryKey).filter(Boolean))],
+  };
+};
+
 const getCategoryCandidates = (value) => {
+  if (!toOptionalText(value)) return { labels: [], keys: [] };
+  return buildCategoryCandidatesFromValues(value);
+};
+
+const isGenericMaintenanceCategory = (value) => {
   const raw = toOptionalText(value);
-  const normalizedType = normalizeMaintenanceType(raw);
-  const label = normalizedType ? formatMaintenanceTypeLabel(normalizedType) : raw;
-  const labels = [...new Set([raw, normalizedType, label].filter(Boolean))];
-  const keys = [...new Set(labels.map(toCategoryKey).filter(Boolean))];
-  return { labels, keys };
+  if (!raw) return false;
+  return normalizeMaintenanceType(raw) === "maintenance" || toCategoryKey(raw) === "general-maintenance";
+};
+
+const getGenericMaintenanceFallbackCandidates = (value) =>
+  isGenericMaintenanceCategory(value)
+    ? buildCategoryCandidatesFromValues(GENERIC_MAINTENANCE_FALLBACK_CATEGORIES)
+    : { labels: [], keys: [] };
+
+const getAssignableProviderCategoryCandidates = (value) => {
+  const category = getCategoryCandidates(value);
+  if (!isGenericMaintenanceCategory(value)) return category;
+  const fallback = getGenericMaintenanceFallbackCandidates(value);
+
+  return {
+    labels: [...new Set([...category.labels, ...fallback.labels])],
+    keys: [...new Set([...category.keys, ...fallback.keys])],
+  };
 };
 
 const providerMatchesMaintenanceRequest = (provider, request) => {
   if (!provider || provider.status !== "active") return false;
   const branch = resolveMaintenanceRequestBranch(request);
   if (!branch || !provider.branchCoverage?.includes(branch)) return false;
-  const category = getCategoryCandidates(request.request_type);
+  const category = getAssignableProviderCategoryCandidates(request.request_type);
   if (category.keys.length === 0) return true;
   const providerKeys = Array.isArray(provider.serviceCategoryKeys)
     ? provider.serviceCategoryKeys
@@ -268,9 +305,11 @@ const providerMatchesMaintenanceRequest = (provider, request) => {
   return providerKeys.some((key) => category.keys.includes(key));
 };
 
-const buildProviderDirectoryFilter = (request) => {
+const buildProviderDirectoryFilter = (
+  request,
+  category = getCategoryCandidates(request?.request_type),
+) => {
   const branch = resolveMaintenanceRequestBranch(request);
-  const category = getCategoryCandidates(request?.request_type);
   return {
     status: "active",
     ...(branch ? { branchCoverage: branch } : {}),
@@ -283,6 +322,12 @@ const buildProviderDirectoryFilter = (request) => {
         }
       : {}),
   };
+};
+
+const buildGenericProviderDirectoryFilter = (request) => {
+  const category = getGenericMaintenanceFallbackCandidates(request?.request_type);
+  if (category.keys.length === 0 && category.labels.length === 0) return null;
+  return buildProviderDirectoryFilter(request, category);
 };
 
 const serializeAssignedProvider = (request, { includeInternal = true } = {}) => {
@@ -2026,9 +2071,15 @@ export const suggestAdminMaintenanceProvider = async (req, res, next) => {
       return;
     }
 
-    const providers = await ServiceProvider.find(buildProviderDirectoryFilter(request))
+    let providers = await ServiceProvider.find(buildProviderDirectoryFilter(request))
       .select("+serviceCategoryKeys")
       .lean();
+    const fallbackFilter = buildGenericProviderDirectoryFilter(request);
+    if (providers.length === 0 && fallbackFilter) {
+      providers = await ServiceProvider.find(fallbackFilter)
+        .select("+serviceCategoryKeys")
+        .lean();
+    }
 
     if (providers.length === 0) {
       sendSuccess(res, {

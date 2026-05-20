@@ -1820,6 +1820,80 @@ describe("maintenanceController", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  test("assignAdminMaintenanceProvider accepts a general maintenance provider for generic maintenance requests", async () => {
+    const requestDoc = buildRequestDoc({
+      request_type: "maintenance",
+      statusHistory: [],
+      save: jest.fn().mockResolvedValue(undefined),
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    const provider = {
+      _id: "507f1f77bcf86cd799439099",
+      providerName: "Lilycrest General Maintenance Provider Placeholder",
+      contactNumber: "09XX XXX XXXX",
+      serviceCategories: ["General Maintenance"],
+      serviceCategoryKeys: ["general-maintenance"],
+      branchCoverage: ["gil-puyat"],
+      status: "active",
+      notes: "General maintenance placeholder.",
+    };
+    serviceProviderFindById.mockReturnValue({
+      select: jest.fn().mockResolvedValue(provider),
+    });
+    userFindOne.mockImplementation((query) => {
+      if (query.firebaseUid === "firebase-admin-1") {
+        return buildLeanQuery({
+          _id: "admin_user_1",
+          user_id: "admin_1",
+          firstName: "Branch",
+          lastName: "Admin",
+          email: "admin@example.com",
+          phone: "0918",
+          branch: "gil-puyat",
+          role: "branch_admin",
+        });
+      }
+
+      if (query.user_id === requestDoc.user_id) {
+        return buildLeanQuery({
+          _id: "tenant_user_1",
+          user_id: requestDoc.user_id,
+          firstName: "Lily",
+          lastName: "Tenant",
+          email: "lily@example.com",
+          phone: "0917",
+          branch: "gil-puyat",
+          role: "tenant",
+        });
+      }
+
+      return buildLeanQuery(null);
+    });
+
+    const req = {
+      user: { uid: "firebase-admin-1" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        providerSource: "directory",
+        providerId: provider._id,
+      },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await assignAdminMaintenanceProvider(req, res, next);
+
+    expect(requestDoc.assignedProviderName).toBe(
+      "Lilycrest General Maintenance Provider Placeholder",
+    );
+    expect(requestDoc.assignedProviderCategory).toBe("General Maintenance");
+    expect(requestDoc.save).toHaveBeenCalledTimes(1);
+    expect(sendSuccess).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+  });
+
   test("assignAdminMaintenanceProvider treats unassigning an already unassigned request as a no-op", async () => {
     const requestDoc = buildRequestDoc({
       assigned_to: null,
@@ -1954,6 +2028,64 @@ describe("maintenanceController", () => {
       expect.objectContaining({
         recommendation: null,
         unavailableReason: "missing_branch",
+      }),
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("suggestAdminMaintenanceProvider falls back to general maintenance providers for generic requests", async () => {
+    const requestDoc = buildRequestDoc({
+      request_type: "maintenance",
+      branch: "gil-puyat",
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    const generalProvider = {
+      _id: "507f1f77bcf86cd799439099",
+      providerName: "Lilycrest General Maintenance Provider Placeholder",
+      contactNumber: "09XX XXX XXXX",
+      serviceCategories: ["General Maintenance"],
+      serviceCategoryKeys: ["general-maintenance"],
+      branchCoverage: ["gil-puyat"],
+      status: "active",
+      notes: "General maintenance placeholder.",
+    };
+    serviceProviderFind
+      .mockReturnValueOnce(buildSelectLeanQuery([]))
+      .mockReturnValueOnce(buildSelectLeanQuery([generalProvider]));
+
+    const req = {
+      user: { uid: "firebase-owner-1" },
+      params: { requestId: requestDoc.request_id },
+      branchFilter: null,
+      isOwner: true,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await suggestAdminMaintenanceProvider(req, res, next);
+
+    expect(serviceProviderFind).toHaveBeenCalledTimes(2);
+    expect(serviceProviderFind.mock.calls[0][0]).toMatchObject({
+      status: "active",
+      branchCoverage: "gil-puyat",
+    });
+    expect(serviceProviderFind.mock.calls[1][0]).toMatchObject({
+      status: "active",
+      branchCoverage: "gil-puyat",
+    });
+    expect(serviceProviderFind.mock.calls[1][0].$or).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          serviceCategoryKeys: {
+            $in: expect.arrayContaining(["maintenance", "general-maintenance"]),
+          },
+        }),
+      ]),
+    );
+    expect(sendSuccess).toHaveBeenCalledWith(
+      res,
+      expect.objectContaining({
+        recommendedProviderName: "Lilycrest General Maintenance Provider Placeholder",
       }),
     );
     expect(next).not.toHaveBeenCalled();

@@ -26,16 +26,41 @@ const normalizeTextList = (value) =>
       .filter(Boolean),
   )];
 
-export const buildServiceCategoryCandidates = (value) => {
-  const raw = toOptionalText(value);
-  if (!raw) return { labels: [], keys: [] };
+const GENERIC_MAINTENANCE_FALLBACK_CATEGORIES = Object.freeze([
+  "Maintenance",
+  "General Maintenance",
+]);
 
-  const normalizedType = normalizeMaintenanceType(raw);
-  const label = normalizedType ? formatMaintenanceTypeLabel(normalizedType) : raw;
-  const labels = [...new Set([raw, normalizedType, label].filter(Boolean))];
-  const keys = [...new Set(labels.map(toCategoryKey).filter(Boolean))];
-  return { labels, keys };
+const buildCategoryCandidatesFromValues = (values) => {
+  const labels = (Array.isArray(values) ? values : [values]).flatMap((value) => {
+    const raw = toOptionalText(value);
+    if (!raw) return [];
+    const normalizedType = normalizeMaintenanceType(raw);
+    const label = normalizedType ? formatMaintenanceTypeLabel(normalizedType) : raw;
+    return [raw, normalizedType, label].filter(Boolean);
+  });
+
+  return {
+    labels: [...new Set(labels)],
+    keys: [...new Set(labels.map(toCategoryKey).filter(Boolean))],
+  };
 };
+
+export const buildServiceCategoryCandidates = (value) => {
+  if (!toOptionalText(value)) return { labels: [], keys: [] };
+  return buildCategoryCandidatesFromValues(value);
+};
+
+const isGenericMaintenanceCategory = (value) => {
+  const raw = toOptionalText(value);
+  if (!raw) return false;
+  return normalizeMaintenanceType(raw) === "maintenance" || toCategoryKey(raw) === "general-maintenance";
+};
+
+const buildGenericMaintenanceFallbackCandidates = (value) =>
+  isGenericMaintenanceCategory(value)
+    ? buildCategoryCandidatesFromValues(GENERIC_MAINTENANCE_FALLBACK_CATEGORIES)
+    : { labels: [], keys: [] };
 
 const serializeServiceProvider = (provider) => {
   const doc = provider?.toObject ? provider.toObject() : provider;
@@ -81,26 +106,36 @@ const getAccessibleBranch = (req, requestedBranch = null) => {
   return req.branchFilter;
 };
 
-const buildProviderFilter = (req) => {
+const applyCategoryFilter = (filter, category) => {
+  if (category.keys.length === 0 && category.labels.length === 0) return filter;
+  return {
+    ...filter,
+    $or: [
+      ...(category.keys.length ? [{ serviceCategoryKeys: { $in: category.keys } }] : []),
+      ...(category.labels.length ? [{ serviceCategories: { $in: category.labels } }] : []),
+    ],
+  };
+};
+
+const getRequestedProviderCategory = (req) =>
+  req.query.category || req.query.requestType;
+
+const buildProviderFilter = (
+  req,
+  category = buildServiceCategoryCandidates(getRequestedProviderCategory(req)),
+) => {
   const branch = getAccessibleBranch(
     req,
     req.query.branchId || req.query.branch || req.query.branchCoverage,
   );
   const includeInactive =
     String(req.query.includeInactive || "").trim().toLowerCase() === "true";
-  const category = buildServiceCategoryCandidates(req.query.category || req.query.requestType);
   const filter = {};
 
   if (!includeInactive) filter.status = "active";
   if (branch) filter.branchCoverage = branch;
-  if (category.keys.length > 0 || category.labels.length > 0) {
-    filter.$or = [
-      ...(category.keys.length ? [{ serviceCategoryKeys: { $in: category.keys } }] : []),
-      ...(category.labels.length ? [{ serviceCategories: { $in: category.labels } }] : []),
-    ];
-  }
 
-  return filter;
+  return applyCategoryFilter(filter, category);
 };
 
 const normalizeProviderPayload = (payload = {}, req) => {
@@ -174,10 +209,19 @@ const normalizeProviderPayload = (payload = {}, req) => {
 
 export const listServiceProviders = async (req, res, next) => {
   try {
-    const filter = buildProviderFilter(req);
-    const providers = await ServiceProvider.find(filter)
+    const requestedCategory = getRequestedProviderCategory(req);
+    const exactCategory = buildServiceCategoryCandidates(requestedCategory);
+    const exactFilter = buildProviderFilter(req, exactCategory);
+    let providers = await ServiceProvider.find(exactFilter)
       .sort({ providerName: 1, createdAt: -1 })
       .lean();
+
+    const fallbackCategory = buildGenericMaintenanceFallbackCandidates(requestedCategory);
+    if (providers.length === 0 && fallbackCategory.keys.length + fallbackCategory.labels.length > 0) {
+      providers = await ServiceProvider.find(buildProviderFilter(req, fallbackCategory))
+        .sort({ providerName: 1, createdAt: -1 })
+        .lean();
+    }
 
     sendSuccess(res, {
       providers: providers.map(serializeServiceProvider),
