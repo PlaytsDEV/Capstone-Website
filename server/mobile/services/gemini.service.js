@@ -8,6 +8,12 @@ let genAIClient;
 // Use a v1beta-supported default without models/ prefix (per integration requirements)
 const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
 
+function redactSecretLikeText(value) {
+  return String(value || '')
+    .replace(/([?&]key=)[^&\s]+/gi, '$1[redacted]')
+    .replace(/\bAIza[0-9A-Za-z_-]{30,}\b/g, '[redacted-api-key]');
+}
+
 function getGenAIClient() {
   const apiKey = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
 
@@ -45,7 +51,7 @@ function extractText(result) {
     if (typeof result.text === 'string') return result.text;
     return '';
   } catch (err) {
-    console.error('[Gemini] extractText error:', err.message);
+    console.error('[Gemini] extractText error:', redactSecretLikeText(err.message));
     return '';
   }
 }
@@ -100,7 +106,7 @@ async function sendGeminiMessage(sessionId, prompt) {
     appendHistory(sessionId, prompt, text);
     return { text };
   } catch (err) {
-    console.error(`[Gemini] API error for model "${DEFAULT_MODEL}":`, err.message);
+    console.error(`[Gemini] API error for model "${DEFAULT_MODEL}":`, redactSecretLikeText(err.message));
     // If the model name is invalid, try a known fallback
     if (err.message?.includes('not found') || err.message?.includes('404') || err.message?.includes('not supported')) {
       console.log('[Gemini] Retrying with fallback model "gemini-2.0-flash"...');
@@ -123,7 +129,7 @@ async function sendGeminiMessage(sessionId, prompt) {
         appendHistory(sessionId, prompt, text);
         return { text };
       } catch (fallbackErr) {
-        console.error('[Gemini] Fallback model also failed:', fallbackErr.message);
+        console.error('[Gemini] Fallback model also failed:', redactSecretLikeText(fallbackErr.message));
       }
     }
     throw err;

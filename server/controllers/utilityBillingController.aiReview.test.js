@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
 const utilityPeriodFindOne = jest.fn();
 const utilityPeriodFind = jest.fn();
+const utilityPeriodFindById = jest.fn();
 const utilityPeriodUpdateOne = jest.fn();
 const utilityPeriodFindByIdAndUpdate = jest.fn();
 const roomFindById = jest.fn();
 const utilityReadingFind = jest.fn();
+const utilityReadingSave = jest.fn();
 const reservationFind = jest.fn();
 const billFind = jest.fn();
 const resolveAdminAccessContext = jest.fn();
@@ -14,6 +16,16 @@ const buildElectricityReview = jest.fn();
 const buildBillingIntelligenceSnapshot = jest.fn();
 const generateBillingIntelligence = jest.fn();
 const getRoomLabel = jest.fn();
+const computeBilling = jest.fn();
+const logBillingAudit = jest.fn();
+const upsertDraftBillsForUtility = jest.fn();
+
+function UtilityReadingMock(payload) {
+  Object.assign(this, payload);
+  this.save = utilityReadingSave;
+}
+
+UtilityReadingMock.find = utilityReadingFind;
 
 const makeQueryChain = (result) => {
   const chain = {
@@ -36,12 +48,11 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   UtilityPeriod: {
     findOne: utilityPeriodFindOne,
     find: utilityPeriodFind,
+    findById: utilityPeriodFindById,
     updateOne: utilityPeriodUpdateOne,
     findByIdAndUpdate: utilityPeriodFindByIdAndUpdate,
   },
-  UtilityReading: {
-    find: utilityReadingFind,
-  },
+  UtilityReading: UtilityReadingMock,
   Bill: {
     find: billFind,
   },
@@ -71,16 +82,16 @@ await jest.unstable_mockModule("../utils/roomLabel.js", () => ({
 }));
 
 await jest.unstable_mockModule("../utils/billingEngine.js", () => ({
-  computeBilling: jest.fn(),
+  computeBilling,
 }));
 
 await jest.unstable_mockModule("../utils/billingAudit.js", () => ({
-  logBillingAudit: jest.fn(),
+  logBillingAudit,
 }));
 
 await jest.unstable_mockModule("../utils/utilityBillFlow.js", () => ({
   sendUtilityPeriodBills: jest.fn(),
-  upsertDraftBillsForUtility: jest.fn(),
+  upsertDraftBillsForUtility,
 }));
 
 await jest.unstable_mockModule("../utils/userReference.js", () => ({
@@ -128,7 +139,12 @@ await jest.unstable_mockModule("../middleware/logger.js", () => ({
   },
 }));
 
-const { exportUtilityRows, getUtilityAiReview } = await import("./utilityBillingController.js");
+const {
+  batchCloseUtilityPeriods,
+  closeUtilityPeriod,
+  exportUtilityRows,
+  getUtilityAiReview,
+} = await import("./utilityBillingController.js");
 
 const createRes = () => ({
   statusCode: 200,
@@ -215,6 +231,13 @@ const arrangeSuccessfulQueries = ({
 describe("getUtilityAiReview", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    utilityReadingSave.mockResolvedValue(undefined);
+    upsertDraftBillsForUtility.mockImplementation(async ({ tenantSummaries }) =>
+      (tenantSummaries || []).map((summary, index) => ({
+        ...summary,
+        billId: summary.billId || `bill-${index + 1}`,
+      })),
+    );
     arrangeSuccessfulQueries();
   });
 
@@ -434,6 +457,20 @@ describe("exportUtilityRows", () => {
         },
       ],
     });
+    expect(logBillingAudit).toHaveBeenCalledWith(
+      req,
+      expect.objectContaining({
+        admin: expect.objectContaining({ branch: "gil-puyat" }),
+        action: "electricity_billing_exported",
+        branch: "gil-puyat",
+        metadata: expect.objectContaining({
+          utilityType: "electricity",
+          branch: "gil-puyat",
+          rowCount: 1,
+          periodCount: 1,
+        }),
+      }),
+    );
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -477,6 +514,19 @@ describe("exportUtilityRows", () => {
       tenantName: "Guad Tenant",
       amount: 700,
     });
+    expect(logBillingAudit).toHaveBeenCalledWith(
+      req,
+      expect.objectContaining({
+        action: "water_billing_exported",
+        branch: "guadalupe",
+        metadata: expect.objectContaining({
+          utilityType: "water",
+          branch: "guadalupe",
+          rowCount: 1,
+          periodCount: 1,
+        }),
+      }),
+    );
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -490,6 +540,179 @@ describe("exportUtilityRows", () => {
     expect(res.status).toHaveBeenCalledWith(400);
     expect(res.payload).toEqual({ error: "Invalid utility type specified" });
     expect(utilityPeriodFind).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+});
+
+const makeOpenPeriod = (overrides = {}) => ({
+  _id: overrides._id || "period-close-1",
+  roomId: overrides.roomId || "room-1",
+  branch: overrides.branch || "gil-puyat",
+  utilityType: overrides.utilityType || "electricity",
+  status: "open",
+  startDate: new Date("2026-04-15T00:00:00.000Z"),
+  startReading: 100,
+  ratePerUnit: 15,
+  save: jest.fn(async function save() {
+    return this;
+  }),
+  toObject() {
+    return { ...this };
+  },
+  ...overrides,
+});
+
+describe("Phase 6 close period hardening", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    resolveAdminAccessContext.mockResolvedValue({
+      _id: "admin-1",
+      isOwner: false,
+      branch: "gil-puyat",
+    });
+    getRoomLabel.mockReturnValue("Room 201");
+    roomFindById.mockResolvedValue(baseRoom);
+    reservationFind.mockReturnValue(makeQueryChain([]));
+    utilityReadingFind.mockReturnValue(makeQueryChain([]));
+    utilityReadingSave.mockResolvedValue(undefined);
+    computeBilling.mockReturnValue({
+      strategy: "segmented",
+      computedTotalUsage: 80,
+      computedTotalCost: 1200,
+      verified: true,
+      segments: [],
+      tenantSummaries: [
+        {
+          tenantId: "tenant-1",
+          tenantName: "Test Tenant",
+          totalUsage: 80,
+          billAmount: 1200,
+        },
+      ],
+    });
+    upsertDraftBillsForUtility.mockResolvedValue([
+      {
+        tenantId: "tenant-1",
+        tenantName: "Test Tenant",
+        totalUsage: 80,
+        billAmount: 1200,
+        billId: "bill-1",
+      },
+    ]);
+  });
+
+  test("single electricity close runs through the shared draft-sync close path and audits the result", async () => {
+    const period = makeOpenPeriod();
+    utilityPeriodFindById.mockResolvedValue(period);
+
+    const req = {
+      params: { utilityType: "electricity", id: "period-close-1" },
+      body: { endReading: 180, endDate: "2026-05-15" },
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await closeUtilityPeriod(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(period.status).toBe("closed");
+    expect(period.endReading).toBe(180);
+    expect(upsertDraftBillsForUtility).toHaveBeenCalledWith(
+      expect.objectContaining({
+        room: baseRoom,
+        utilityType: "electricity",
+        tenantSummaries: [
+          expect.objectContaining({
+            tenantId: "tenant-1",
+            billAmount: 1200,
+          }),
+        ],
+      }),
+    );
+    expect(period.save).toHaveBeenCalledTimes(1);
+    expect(logBillingAudit).toHaveBeenCalledWith(
+      req,
+      expect.objectContaining({
+        action: "utility_period_closed",
+        entityId: "period-close-1",
+        branch: "gil-puyat",
+        metadata: expect.objectContaining({
+          utilityType: "electricity",
+          tenantCount: 1,
+          computedCost: 1200,
+        }),
+      }),
+    );
+    expect(res.payload).toMatchObject({
+      success: true,
+      result: {
+        periodId: "period-close-1",
+        computationResult: expect.objectContaining({
+          computedTotalCost: 1200,
+        }),
+      },
+    });
+  });
+
+  test("batch close keeps successful periods, reports failures, and uses the same audit path", async () => {
+    const period = makeOpenPeriod({ _id: "period-ok" });
+    utilityPeriodFindById.mockImplementation(async (periodId) =>
+      periodId === "period-ok" ? period : null,
+    );
+
+    const req = {
+      params: { utilityType: "electricity" },
+      body: {
+        closures: [
+          { periodId: "period-ok", endReading: 180 },
+          { periodId: "period-missing", endReading: 190 },
+        ],
+        endDate: "2026-05-15",
+      },
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await batchCloseUtilityPeriods(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.payload).toEqual({
+      success: false,
+      closed: [{ periodId: "period-ok", roomName: "Room 201", success: true }],
+      failed: [
+        {
+          periodId: "period-missing",
+          error: "Invalid or already closed period",
+        },
+      ],
+    });
+    expect(upsertDraftBillsForUtility).toHaveBeenCalledTimes(1);
+    expect(logBillingAudit).toHaveBeenCalledWith(
+      req,
+      expect.objectContaining({
+        action: "utility_period_closed",
+        entityId: "period-ok",
+      }),
+    );
+  });
+
+  test("batch close returns a friendly 400 when no closures are provided", async () => {
+    const req = {
+      params: { utilityType: "electricity" },
+      body: { closures: [] },
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await batchCloseUtilityPeriods(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.payload).toEqual({
+      success: false,
+      error: "Provide at least one billing period to close.",
+    });
+    expect(utilityPeriodFindById).not.toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
   });
 });

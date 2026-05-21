@@ -266,6 +266,54 @@ describe("syncBillAmounts", () => {
     expect(bill.remainingAmount).toBe(4400);
   });
 
+  test("keeps draft-only utility bills invisible until a utility dispatch is sent", () => {
+    const bill = {
+      status: "draft",
+      charges: {
+        rent: 0,
+        electricity: 900,
+        water: 300,
+        applianceFees: 0,
+        corkageFees: 0,
+        penalty: 0,
+        discount: 0,
+      },
+      utilityDispatch: {
+        electricity: { state: "draft", amount: 900 },
+        water: { state: "draft", amount: 300 },
+      },
+      reservationCreditApplied: 0,
+      paidAmount: 0,
+    };
+
+    expect(getVisibleBillSnapshot(bill)).toMatchObject({
+      charges: expect.objectContaining({
+        electricity: 0,
+        water: 0,
+      }),
+      totalAmount: 0,
+      remainingAmount: 0,
+    });
+
+    bill.status = "pending";
+    bill.utilityDispatch.electricity = {
+      state: "sent",
+      amount: 900,
+      issuedAt: new Date("2026-05-18T00:00:00.000Z"),
+      dueDate: new Date("2026-05-25T00:00:00.000Z"),
+    };
+
+    expect(getVisibleBillSnapshot(bill)).toMatchObject({
+      charges: expect.objectContaining({
+        electricity: 900,
+        water: 0,
+      }),
+      totalAmount: 900,
+      remainingAmount: 900,
+      status: "pending",
+    });
+  });
+
   test("reopens a previously paid bill when a later utility becomes visible", () => {
     const bill = {
       status: "paid",

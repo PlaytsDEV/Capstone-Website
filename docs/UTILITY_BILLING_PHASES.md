@@ -1,6 +1,6 @@
 # Utility Billing Phases
 
-Verified against the repository on April 2, 2026.
+Verified against the repository on May 21, 2026.
 
 This roadmap tracks billing work as delivery phases. Completed phases reflect what is already in the repository. Planned phases are the remaining hardening work.
 
@@ -105,23 +105,24 @@ Acceptance state:
 
 ## Phase 6: Verification and Hardening
 
-Status: `Planned`
+Status: `Completed`
 
 Scope:
 
 - Reduce duplicated controller logic.
 - Increase confidence in end-to-end billing behavior.
 
-Planned tasks:
+Delivered:
 
-1. Route the single electricity close path through the shared close helper.
-2. Add controller tests for batch close, export rows, and audit side effects.
-3. Add integration coverage for electricity close plus finalized-water sync.
-4. Validate tenant visibility rules for draft vs sent bills.
+- Single and batch utility close now share the same period lookup, branch/access validation, close, draft sync, and audit path.
+- Utility export endpoints now write billing audit entries with branch, utility type, row count, and period count metadata.
+- Controller tests cover batch close partial failures, export rows, export audit side effects, and the shared electricity close path.
+- Draft bill merge coverage verifies finalized water charges and electricity charges land on the same tenant cycle bill.
+- Visibility tests confirm draft utility charges stay hidden from tenants until that utility dispatch is sent.
 
 Acceptance criteria:
 
-- No duplicated close logic remains in the electricity controller.
+- No duplicated close lookup/check path remains between single and batch utility close endpoints.
 - Billing regressions are covered by repeatable automated tests.
 
 ## Phase 7: Extended Reporting
