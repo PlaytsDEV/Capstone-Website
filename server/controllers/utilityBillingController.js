@@ -77,13 +77,6 @@ const UTILITY_EXPORT_TYPES = new Set(["electricity", "water"]);
 const formatExportDate = (value) =>
   value ? dayjs(value).format("YYYY-MM-DD") : "";
 
-function createHttpError(message, statusCode = 500, extra = {}) {
-  const error = new Error(message);
-  error.statusCode = statusCode;
-  Object.assign(error, extra);
-  return error;
-}
-
 const buildUtilityExportRow = ({ utilityType, period, summary }) => {
   const room = period.roomId || {};
   const charge =
@@ -528,51 +521,6 @@ async function closePeriodAndGenerateDrafts({
   return { closingDate, computationResult, periodId: period._id };
 }
 
-async function closeUtilityPeriodById({
-  admin,
-  periodId,
-  endReading,
-  endDate,
-  utilityType,
-  requestContext = null,
-}) {
-  const period = await UtilityPeriod.findById(periodId);
-  if (!period || period.status !== "open") {
-    throw createHttpError("Invalid or already closed period", 400);
-  }
-  if (period.utilityType && period.utilityType !== utilityType) {
-    throw createHttpError("Invalid utility period type", 400);
-  }
-
-  if (!branchSupportsSeparateUtilityBilling(period.branch, utilityType)) {
-    throw createHttpError(
-      "Guadalupe uses a fixed-rate billing setup. Separate electricity and water utility billing are not used for this branch.",
-      422,
-      { code: "BRANCH_UTILITY_NOT_SUPPORTED" },
-    );
-  }
-
-  const room = await Room.findById(period.roomId);
-  if (!room) {
-    throw createHttpError("Room not found", 404);
-  }
-  if (!admin.isOwner && room.branch !== admin.branch) {
-    throw createHttpError("Access denied", 403);
-  }
-
-  const result = await closePeriodAndGenerateDrafts({
-    admin,
-    period,
-    room,
-    endReading,
-    endDate,
-    utilityType,
-    requestContext,
-  });
-
-  return { period, room, result };
-}
-
 // ============================================================================
 // ENDPOINTS
 // ============================================================================
@@ -717,9 +665,25 @@ export const closeUtilityPeriod = async (req, res, next) => {
     const { id } = req.params;
     const { endReading, endDate } = req.body;
 
-    const { result } = await closeUtilityPeriodById({
+    const period = await UtilityPeriod.findById(id);
+    if (!period || period.status !== "open")
+      return res
+        .status(400)
+        .json({ error: "Invalid or already closed period" });
+
+    if (!branchSupportsSeparateUtilityBilling(period.branch, utilityType)) {
+      return res.status(422).json({
+        error:
+          "Guadalupe uses a fixed-rate billing setup. Separate electricity and water utility billing are not used for this branch.",
+        code: "BRANCH_UTILITY_NOT_SUPPORTED",
+      });
+    }
+
+    const room = await Room.findById(period.roomId);
+    const result = await closePeriodAndGenerateDrafts({
       admin,
-      periodId: id,
+      period,
+      room,
       endReading,
       endDate,
       utilityType,
@@ -740,18 +704,26 @@ export const batchCloseUtilityPeriods = async (req, res, next) => {
     const closed = [],
       failed = [];
 
-    if (!Array.isArray(closures) || closures.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: "Provide at least one billing period to close.",
-      });
-    }
-
     for (const item of closures) {
       try {
-        const { period, room } = await closeUtilityPeriodById({
+        const period = await UtilityPeriod.findById(item.periodId);
+        if (!period) {
+          failed.push({ periodId: item.periodId, error: "Period not found" });
+          continue;
+        }
+        if (!branchSupportsSeparateUtilityBilling(period.branch, utilityType)) {
+          failed.push({
+            periodId: item.periodId,
+            error:
+              "Guadalupe uses a fixed-rate billing setup. Separate electricity and water utility billing are not used for this branch.",
+          });
+          continue;
+        }
+        const room = await Room.findById(period.roomId);
+        const result = await closePeriodAndGenerateDrafts({
           admin,
-          periodId: item.periodId,
+          period,
+          room,
           endReading: item.endReading,
           endDate: item.endDate || endDate,
           utilityType,
@@ -1764,20 +1736,6 @@ export const exportUtilityRows = async (req, res, next) => {
         buildUtilityExportRow({ utilityType, period, summary }),
       ),
     );
-
-    await logBillingAudit(req, {
-      admin,
-      action: `${utilityType}_billing_exported`,
-      details: `Exported ${rows.length} ${utilityType} billing row${rows.length === 1 ? "" : "s"}.`,
-      metadata: {
-        utilityType,
-        branch: branch || "all",
-        rowCount: rows.length,
-        periodCount: scopedPeriods.length,
-      },
-      entityId: null,
-      branch: branch || admin.branch || "general",
-    });
 
     res.json({ success: true, rows });
   } catch (error) {
