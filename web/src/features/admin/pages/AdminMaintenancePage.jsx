@@ -1820,6 +1820,7 @@ export default function AdminMaintenancePage() {
  });
  const [reportPreview, setReportPreview] = useState(null);
  const [isCopyingReport, setIsCopyingReport] = useState(false);
+ const [updateType, setUpdateType] = useState("status_update");
  const [attachmentRemovalDialog, setAttachmentRemovalDialog] = useState({
  open: false,
  target: null,
@@ -2203,6 +2204,7 @@ export default function AdminMaintenancePage() {
  setProofAttachments([]);
  setProofFieldErrors({});
  setProofFormMessage("");
+ setUpdateType("status_update");
  setArchiveDialogMode(null);
  setBranchAssignmentDialog({
  open: false,
@@ -3344,6 +3346,13 @@ export default function AdminMaintenancePage() {
  }
  };
 
+ const handleUnifiedSubmit = (event) => {
+ if (!selectedRequest) return;
+ if (updateType === "tenant_reply") return handleSendReply(event);
+ if (updateType === "admin_proof") return handleSaveProof(event);
+ return handleSubmitUpdate(event);
+ };
+
  const columns = useMemo(
  () => [
  {
@@ -3797,15 +3806,22 @@ export default function AdminMaintenancePage() {
    color: "var(--primary-foreground)",
  }}
  disabled={
- updateRequestMutation.isPending ||
- uploadingUpdateAttachment ||
- hasBlockingWorkLogAttachment ||
  isSelectedRequestLocked ||
  selectedRequest.isArchived ||
- !hasDraftChanges
+ updateRequestMutation.isPending ||
+ sendReplyMutation.isPending ||
+ saveProofMutation.isPending ||
+ (updateType === "status_update" && (!hasDraftChanges || uploadingUpdateAttachment || hasBlockingWorkLogAttachment)) ||
+ (updateType === "internal_note" && !draftWorkLogNote.trim()) ||
+ (updateType === "admin_proof" && (uploadingProofAttachment || hasBlockingProofAttachment)) ||
+ (updateType === "tenant_reply" && (uploadingReplyAttachment || hasBlockingReplyAttachment))
  }
  >
- {updateRequestMutation.isPending ? "Saving..." : "Save Admin Note"}
+ {(updateRequestMutation.isPending || sendReplyMutation.isPending || saveProofMutation.isPending)
+ ? "Saving..."
+ : updateType === "tenant_reply"
+ ? "Send to Tenant"
+ : "Save Internal Update"}
  </button>
  </div>
  </div>
@@ -3817,8 +3833,9 @@ export default function AdminMaintenancePage() {
  <DrawerSkeleton rows={4} />
  </div>
  ) : (
- <div className="space-y-6">
- <div className="grid gap-6 md:grid-cols-2">
+ <div className="space-y-4">
+ {/* ── Top row: Request Details + Service Provider ── */}
+ <div className="grid gap-4 md:grid-cols-2">
  <div className="rounded-xl border border-border bg-card p-5">
  <DetailDrawer.Section
  label={(
@@ -3838,9 +3855,7 @@ export default function AdminMaintenancePage() {
  label="User ID"
  value={selectedRequest.tenant?.user_id || selectedRequest.user_id}
  />
- <DetailDrawer.Row
- label="Branch"
- >
+ <DetailDrawer.Row label="Branch">
  <div className="flex flex-wrap items-center gap-2">
  <BranchBadge branch={getRequestBranch(selectedRequest)} />
  {isOwner && !hasValidRequestBranch(selectedRequest) ? (
@@ -3855,7 +3870,7 @@ export default function AdminMaintenancePage() {
  ) : null}
  </div>
  </DetailDrawer.Row>
- <DetailDrawer.Row label="Request Type">
+ <DetailDrawer.Row label="Type">
  {getMaintenanceTypeMeta(selectedRequest.request_type).label}
  </DetailDrawer.Row>
  <DetailDrawer.Row label="Urgency">
@@ -3872,15 +3887,15 @@ export default function AdminMaintenancePage() {
  <DetailDrawer.Row label="Status">
  <StatusBadge status={selectedRequest.status} />
  </DetailDrawer.Row>
- <DetailDrawer.Row label="Created At" value={fmtDateTime(selectedRequest.created_at)} />
- <DetailDrawer.Row label="Updated At" value={fmtDateTime(selectedRequest.updated_at)} />
+ <DetailDrawer.Row label="Submitted" value={fmtDateTime(selectedRequest.created_at)} />
+ <DetailDrawer.Row label="Last Updated" value={fmtDateTime(selectedRequest.updated_at)} />
  <DetailDrawer.Row label="SLA">
  <span
  style={{
  display: "inline-flex",
  alignItems: "center",
  gap: 6,
- padding: "6px 12px",
+ padding: "4px 10px",
  borderRadius: 999,
  background: getSlaTone(selectedRequest.slaState).bg,
  color: getSlaTone(selectedRequest.slaState).color,
@@ -3893,7 +3908,7 @@ export default function AdminMaintenancePage() {
  </DetailDrawer.Row>
  </DetailDrawer.Section>
  {selectedRequest.description ? (
- <div className="mt-4 border-t border-border pt-4">
+ <div className="mt-3 border-t border-border pt-3">
  <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
  Description
  </div>
@@ -3929,83 +3944,155 @@ export default function AdminMaintenancePage() {
  />
  </div>
 
+ {/* ── Add Maintenance Update (unified) ── */}
  <div className="rounded-xl border border-border bg-card p-5">
- <div className="mb-1 flex items-center gap-2">
- <Clock3 size={14} className="text-muted-foreground" />
+ <div className="mb-3 flex items-center justify-between gap-2">
+ <div className="flex items-center gap-2">
+ <Wrench size={14} className="text-muted-foreground" />
  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
- Maintenance History
+ Add Maintenance Update
  </span>
  </div>
- <p className="mb-5 text-sm text-muted-foreground">
- All request updates, notes, attachments, provider assignments, and tenant messages are recorded here.
- </p>
- <div className="mb-5 rounded-lg border border-border bg-muted/30 px-4 py-3">
- <div className="flex flex-wrap items-center justify-between gap-3">
- <div>
- <div className="text-sm font-semibold text-card-foreground">Maintenance Summary / Report</div>
- <p className="mt-1 text-xs text-muted-foreground">
- Generate a preview from the recorded request details and timeline. Nothing is sent automatically.
- </p>
- </div>
- <div className="flex flex-wrap gap-2">
- <button
- type="button"
- className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-medium text-card-foreground hover:bg-muted disabled:opacity-60"
- onClick={() => handleGenerateReport("admin")}
- disabled={generateReportMutation.isPending}
- >
- <FileText size={14} />
- {generateReportMutation.isPending ? "Generating..." : "Generate Admin Report"}
- </button>
- <button
- type="button"
- className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-medium text-card-foreground hover:bg-muted disabled:opacity-60"
- onClick={() => handleGenerateReport("tenant")}
- disabled={generateReportMutation.isPending}
- >
- <MessageSquare size={14} />
- {generateReportMutation.isPending ? "Generating..." : "Generate Tenant Summary"}
- </button>
- </div>
- </div>
- </div>
-
- {!selectedRequest.isArchived ? (
- <form
- className="mb-5 rounded-lg border border-dashed border-border bg-muted/30 p-4"
- onSubmit={handleSaveProof}
- >
- <div className="flex flex-wrap items-start justify-between gap-3">
- <div>
- <div className="flex items-center gap-2 text-sm font-semibold text-card-foreground">
- <ShieldCheck size={16} className="text-muted-foreground" />
- Add Admin-only Proof
- </div>
- <p className="mt-1 text-xs text-muted-foreground">
- Upload inspection photos or PDFs that should stay in the admin timeline.
- </p>
- </div>
+ {updateType === "tenant_reply" ? (
+ <SectionBadge>Visible to Tenant</SectionBadge>
+ ) : (
  <SectionBadge tone="amber">Admin Only</SectionBadge>
+ )}
  </div>
 
- {proofFormMessage ? (
- <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
- {proofFormMessage}
- </div>
- ) : null}
-
- {isSelectedRequestLocked ? (
- <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-warning-dark">
- Closed and cancelled requests are locked records. Admin-only proof upload is disabled.
+ {isSelectedRequestLocked || selectedRequest.isArchived ? (
+ <div className="mb-3 rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-warning-dark">
+ {selectedRequest.isArchived
+ ? "Archived requests are read-only until restored."
+ : "Closed and cancelled requests are locked. Updates are disabled."}
  </div>
  ) : null}
 
- <label id="maintenance-proof-field-proof_note" className="mt-4 block">
+ <form id="maintenance-admin-form" className="space-y-3" onSubmit={handleUnifiedSubmit}>
+ {(updateType === "tenant_reply" ? replyFormMessage :
+ updateType === "admin_proof" ? proofFormMessage :
+ updateFormMessage) ? (
+ <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+ {updateType === "tenant_reply" ? replyFormMessage :
+ updateType === "admin_proof" ? proofFormMessage :
+ updateFormMessage}
+ </div>
+ ) : null}
+
+ <label className="block">
  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
- Optional Note
+ Update Type
+ </span>
+ <select
+ value={updateType}
+ onChange={(event) => setUpdateType(event.target.value)}
+ disabled={isSelectedRequestLocked || selectedRequest.isArchived}
+ className="mt-2 h-11 w-full rounded-lg border border-border bg-card px-3 text-sm text-card-foreground focus:outline-none focus:ring-2"
+ >
+ <option value="status_update">Status Update</option>
+ <option value="internal_note">Internal Note</option>
+ <option value="admin_proof">Admin-only Proof</option>
+ <option value="tenant_reply">Tenant Reply</option>
+ </select>
+ </label>
+
+ {updateType === "status_update" ? (
+ <label id="maintenance-update-field-status" className="block">
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Status
+ </span>
+ <select
+ value={draftStatus}
+ onChange={(event) => {
+ setDraftStatus(event.target.value);
+ clearUpdateFieldError("status");
+ }}
+ disabled={isSelectedRequestLocked || selectedRequest.isArchived}
+ aria-invalid={Boolean(updateFieldErrors.status)}
+ className={buildFieldClassName(
+ Boolean(updateFieldErrors.status),
+ "mt-2 h-11 w-full rounded-lg border bg-card px-3 text-sm text-card-foreground focus:outline-none focus:ring-2",
+ )}
+ >
+ {selectedRequestStatusOptions.map((status) => (
+ <option key={status} value={status}>
+ {formatMaintenanceStatus(status)}
+ </option>
+ ))}
+ </select>
+ {updateFieldErrors.status ? (
+ <p className="mt-1 text-xs text-rose-600">{updateFieldErrors.status}</p>
+ ) : null}
+ </label>
+ ) : null}
+
+ {updateType === "status_update" ? (
+ <label id="maintenance-update-field-notes" className="block">
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Resolution Notes
  </span>
  <textarea
  rows="3"
+ placeholder="Internal resolution or progress note for this request."
+ value={draftNotes}
+ onChange={(event) => {
+ setDraftNotes(event.target.value);
+ clearUpdateFieldError("notes");
+ }}
+ disabled={isSelectedRequestLocked || selectedRequest.isArchived}
+ aria-invalid={Boolean(updateFieldErrors.notes)}
+ className={buildFieldClassName(
+ Boolean(updateFieldErrors.notes),
+ "mt-2 w-full rounded-lg border bg-card px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2",
+ )}
+ />
+ {updateFieldErrors.notes ? (
+ <p className="mt-1 text-xs text-rose-600">{updateFieldErrors.notes}</p>
+ ) : null}
+ </label>
+ ) : null}
+
+ {(updateType === "status_update" || updateType === "internal_note") ? (
+ <label id="maintenance-update-field-work_log_note" className="block">
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ {updateType === "status_update" ? "Note (optional)" : "Note"}
+ </span>
+ <textarea
+ rows={updateType === "internal_note" ? 4 : 3}
+ placeholder={updateType === "internal_note"
+ ? "Write an internal note for the admin timeline."
+ : "Add an optional note to the admin timeline."}
+ value={draftWorkLogNote}
+ onChange={(event) => {
+ setDraftWorkLogNote(event.target.value);
+ clearUpdateFieldError("work_log_note");
+ }}
+ disabled={isSelectedRequestLocked || selectedRequest.isArchived}
+ aria-invalid={Boolean(updateFieldErrors.work_log_note)}
+ className={buildFieldClassName(
+ Boolean(updateFieldErrors.work_log_note),
+ "mt-2 w-full rounded-lg border bg-card px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2",
+ )}
+ />
+ {updateFieldErrors.work_log_note ? (
+ <p className="mt-1 text-xs text-rose-600">{updateFieldErrors.work_log_note}</p>
+ ) : null}
+ </label>
+ ) : null}
+
+ {updateType === "admin_proof" ? (
+ <>
+ {isSelectedRequestLocked ? (
+ <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-warning-dark">
+ Closed and cancelled requests are locked. Admin-only proof upload is disabled.
+ </div>
+ ) : null}
+ <label id="maintenance-proof-field-proof_note" className="block">
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Note (optional)
+ </span>
+ <textarea
+ rows="2"
  placeholder="Add context for this proof."
  value={proofNote}
  onChange={(event) => {
@@ -4023,10 +4110,9 @@ export default function AdminMaintenancePage() {
  <p className="mt-1 text-xs text-rose-600">{proofFieldErrors.proof_note}</p>
  ) : null}
  </label>
-
- <label id="maintenance-proof-field-proof_attachments" className="mt-4 block">
+ <label id="maintenance-proof-field-proof_attachments" className="block">
  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
- Proof Attachment
+ Proof File
  </span>
  <div
  className={`mt-2 flex flex-wrap items-center gap-3 rounded-lg border p-3 ${
@@ -4035,39 +4121,30 @@ export default function AdminMaintenancePage() {
  >
  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-card-foreground hover:bg-muted">
  <Paperclip size={14} />
- {uploadingProofAttachment ? "Uploading..." : "Upload proof file"}
+ {uploadingProofAttachment ? "Uploading..." : "Attach file"}
  <input
  type="file"
  hidden
  multiple
  accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
  onChange={handleProofAttachmentUpload}
- disabled={
- isSelectedRequestLocked ||
- uploadingProofAttachment ||
- saveProofMutation.isPending
- }
+ disabled={isSelectedRequestLocked || uploadingProofAttachment || saveProofMutation.isPending}
  />
  </label>
- <span className="text-xs text-muted-foreground">
- Photo, PDF, or file saved here stays Admin Only.
- </span>
+ <span className="text-xs text-muted-foreground">Photo or PDF — stays in admin timeline only.</span>
  </div>
  {proofFieldErrors.proof_attachments ? (
  <p className="mt-1 text-xs text-rose-600">{proofFieldErrors.proof_attachments}</p>
  ) : null}
-
  {proofAttachments.length ? (
- <div className="mt-3 grid gap-2">
+ <div className="mt-2 grid gap-2">
  {proofAttachments.map((attachment, index) => {
  const attachmentKey = getWorkLogAttachmentKey(attachment, index);
  const uploadStatus = attachment.uploadStatus || "uploaded";
  const statusMessage =
- uploadStatus === "uploading"
- ? "Uploading attachment..."
- : uploadStatus === "uploaded"
- ? "Attachment uploaded."
- : attachment.error || "Please remove the invalid attachment before saving.";
+ uploadStatus === "uploading" ? "Uploading..." :
+ uploadStatus === "uploaded" ? "Uploaded." :
+ attachment.error || "Remove and try again.";
  return (
  <div
  key={attachmentKey}
@@ -4079,17 +4156,11 @@ export default function AdminMaintenancePage() {
  <div className="truncate text-sm font-medium text-card-foreground">
  {getMaintenanceAttachmentName(attachment, index)}
  </div>
- <div
- className={`text-xs ${
- isBlockingWorkLogAttachment(attachment)
- ? "text-rose-600"
- : uploadStatus === "uploaded"
- ? "text-emerald-600"
- : "text-muted-foreground"
- }`}
- >
- {statusMessage}
- {uploadStatus === "uploaded" ? ` ${getMaintenanceAttachmentLabel(attachment)}` : ""}
+ <div className={`text-xs ${
+ isBlockingWorkLogAttachment(attachment) ? "text-rose-600" :
+ uploadStatus === "uploaded" ? "text-emerald-600" : "text-muted-foreground"
+ }`}>
+ {statusMessage}{uploadStatus === "uploaded" ? ` ${getMaintenanceAttachmentLabel(attachment)}` : ""}
  </div>
  </div>
  <button
@@ -4106,94 +4177,14 @@ export default function AdminMaintenancePage() {
  </div>
  ) : null}
  </label>
-
- <div className="mt-4 flex justify-end">
- <button
- type="submit"
- className="inline-flex h-10 items-center justify-center rounded-lg px-5 text-sm font-semibold shadow-sm hover:opacity-90"
- style={{
- backgroundColor: "var(--primary)",
- color: "var(--primary-foreground)",
- }}
- disabled={
- isSelectedRequestLocked ||
- saveProofMutation.isPending ||
- uploadingProofAttachment ||
- hasBlockingProofAttachment ||
- proofAttachments.length === 0
- }
- >
- {saveProofMutation.isPending ? "Saving..." : "Save Proof"}
- </button>
- </div>
- </form>
- ) : (
- <div className="mb-5 rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-warning-dark">
- Archived requests are read-only until restored.
- </div>
- )}
-
- <MaintenanceTimeline
- items={timelineItems}
- onRemoveAttachment={handleRemoveSavedAttachment}
- canRemoveAttachments={
- !selectedRequest.isArchived &&
- !removeAttachmentMutation.isPending
- }
- />
- </div>
-
- <div className="rounded-xl border border-border bg-card p-5">
- <DetailDrawer.Section
- label={(
- <>
- <MessageSquare size={14} />
- Update for Tenant
- <SectionBadge>Visible to Tenant</SectionBadge>
  </>
- )}
- >
- <p className="mb-4 text-sm text-muted-foreground">
- This message and its attachments will be visible to the tenant.
- </p>
- {isSelectedRequestLocked || selectedRequest.isArchived ? (
- <div className="rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-warning-dark">
- Closed, cancelled, and archived requests are read-only here. Tenant updates are disabled.
- </div>
  ) : null}
 
- <form className="mt-4 space-y-4" onSubmit={handleSendReply}>
- {replyFormMessage ? (
- <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
- {replyFormMessage}
- </div>
- ) : null}
-
- <div className="rounded-lg border border-border bg-muted/30 px-3 py-3">
- <div className="flex flex-wrap items-center justify-between gap-3">
- <p className="text-xs text-muted-foreground">
- AI drafts are based on the request timeline. Please review before sending.
- </p>
- <button
- type="button"
- className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-medium text-card-foreground hover:bg-muted disabled:opacity-60"
- onClick={handleGenerateUpdate}
- disabled={
- isSelectedRequestLocked ||
- selectedRequest.isArchived ||
- sendReplyMutation.isPending ||
- generateUpdateMutation.isPending
- }
- >
- <Sparkles size={14} />
- {generateUpdateMutation.isPending ? "Generating..." : "Generate Update"}
- </button>
- </div>
- </div>
-
+ {updateType === "tenant_reply" ? (
+ <>
  <label id="maintenance-reply-field-reply_message" className="block">
  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
- Message
+ Message to Tenant
  </span>
  <textarea
  rows="4"
@@ -4226,7 +4217,7 @@ export default function AdminMaintenancePage() {
  >
  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-card-foreground hover:bg-muted">
  <Paperclip size={14} />
- {uploadingReplyAttachment ? "Uploading..." : "Upload file for tenant"}
+ {uploadingReplyAttachment ? "Uploading..." : "Upload file"}
  <input
  type="file"
  hidden
@@ -4242,7 +4233,7 @@ export default function AdminMaintenancePage() {
  />
  </label>
  <span className="text-xs text-muted-foreground">
- Attach photos or PDF files the tenant can open from reply history.
+ Photo or PDF — visible to tenant in their request history.
  </span>
  </div>
  {replyFieldErrors.reply_attachments ? (
@@ -4250,15 +4241,15 @@ export default function AdminMaintenancePage() {
  ) : null}
 
  {replyAttachments.length ? (
- <div className="mt-3 grid gap-2">
+ <div className="mt-2 grid gap-2">
  {replyAttachments.map((attachment, index) => {
  const attachmentKey = getWorkLogAttachmentKey(attachment, index);
  const uploadStatus = attachment.uploadStatus || "uploaded";
  const statusMessage =
  uploadStatus === "uploading"
- ? "Uploading attachment..."
+ ? "Uploading..."
  : uploadStatus === "uploaded"
- ? "Attachment uploaded."
+ ? "Uploaded."
  : attachment.error || "Please remove the invalid attachment before sending.";
  return (
  <div
@@ -4299,137 +4290,90 @@ export default function AdminMaintenancePage() {
  ) : null}
  </label>
 
- <div className="flex justify-end">
+ <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+ <p className="text-xs text-muted-foreground">
+ AI drafts are based on the request timeline. Review before sending.
+ </p>
  <button
- type="submit"
- className="inline-flex h-10 items-center justify-center rounded-lg px-5 text-sm font-semibold shadow-sm hover:opacity-90"
- style={{
- backgroundColor: "var(--primary)",
- color: "var(--primary-foreground)",
- }}
+ type="button"
+ className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-medium text-card-foreground hover:bg-muted disabled:opacity-60"
+ onClick={handleGenerateUpdate}
  disabled={
  isSelectedRequestLocked ||
  selectedRequest.isArchived ||
  sendReplyMutation.isPending ||
- uploadingReplyAttachment ||
- hasBlockingReplyAttachment
+ generateUpdateMutation.isPending
  }
  >
- {sendReplyMutation.isPending ? "Sending..." : "Send Update"}
+ <Sparkles size={14} />
+ {generateUpdateMutation.isPending ? "Generating..." : "Generate Update"}
  </button>
  </div>
- </form>
- </DetailDrawer.Section>
- </div>
+ </>
+ ) : null}
 
- <div className="rounded-xl border border-border bg-card p-5">
- <DetailDrawer.Section
- label={(
+ <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+ {updateType === "tenant_reply" ? (
  <>
- <MessageSquare size={14} />
- Admin Notes
- <SectionBadge tone="amber">Admin Only</SectionBadge>
+ <MessageSquare size={13} className="shrink-0 text-emerald-600" />
+ <span>This update will be sent and shown to the tenant.</span>
+ </>
+ ) : (
+ <>
+ <ShieldCheck size={13} className="shrink-0 text-amber-600" />
+ <span>This update will only appear in the admin timeline — not visible to the tenant.</span>
  </>
  )}
- >
- <p className="mb-4 text-sm text-muted-foreground">
- These updates are for admin tracking and will not be shown to the tenant.
- </p>
- {isSelectedRequestLocked || selectedRequest.isArchived ? (
- <div className="rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-warning-dark">
- Closed, cancelled, and archived requests are read-only here. Admin notes,
- assignments, and status changes are disabled.
  </div>
- ) : null}
-
- <form
- id="maintenance-admin-form"
- className="mt-4 space-y-4"
- onSubmit={handleSubmitUpdate}
- >
- {updateFormMessage ? (
- <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
- {updateFormMessage}
- </div>
- ) : null}
-
- <label id="maintenance-update-field-status" className="block">
- <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
- Status
- </span>
- <select
- value={draftStatus}
- onChange={(event) => {
- setDraftStatus(event.target.value);
- clearUpdateFieldError("status");
- }}
- disabled={isSelectedRequestLocked || selectedRequest.isArchived}
- aria-invalid={Boolean(updateFieldErrors.status)}
- className={buildFieldClassName(
- Boolean(updateFieldErrors.status),
- "mt-2 h-11 w-full rounded-lg border bg-card px-3 text-sm text-card-foreground focus:outline-none focus:ring-2",
- )}
- >
- {selectedRequestStatusOptions.map((status) => (
- <option key={status} value={status}>
- {formatMaintenanceStatus(status)}
- </option>
- ))}
- </select>
- {updateFieldErrors.status ? (
- <p className="mt-1 text-xs text-rose-600">{updateFieldErrors.status}</p>
- ) : null}
- </label>
-
- <label id="maintenance-update-field-notes" className="block">
- <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
- Resolution Notes
- </span>
- <textarea
- rows="6"
- placeholder="Internal resolution or status note for this request."
- value={draftNotes}
- onChange={(event) => {
- setDraftNotes(event.target.value);
- clearUpdateFieldError("notes");
- }}
- disabled={isSelectedRequestLocked || selectedRequest.isArchived}
- aria-invalid={Boolean(updateFieldErrors.notes)}
- className={buildFieldClassName(
- Boolean(updateFieldErrors.notes),
- "mt-2 w-full rounded-lg border bg-card px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2",
- )}
- />
- {updateFieldErrors.notes ? (
- <p className="mt-1 text-xs text-rose-600">{updateFieldErrors.notes}</p>
- ) : null}
- </label>
-
- <label id="maintenance-update-field-work_log_note" className="block">
- <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
- Admin Notes
- </span>
- <textarea
- rows="3"
- placeholder="Optional admin note for the maintenance timeline."
- value={draftWorkLogNote}
- onChange={(event) => {
- setDraftWorkLogNote(event.target.value);
- clearUpdateFieldError("work_log_note");
- }}
- disabled={isSelectedRequestLocked || selectedRequest.isArchived}
- aria-invalid={Boolean(updateFieldErrors.work_log_note)}
- className={buildFieldClassName(
- Boolean(updateFieldErrors.work_log_note),
- "mt-2 w-full rounded-lg border bg-card px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2",
- )}
- />
- {updateFieldErrors.work_log_note ? (
- <p className="mt-1 text-xs text-rose-600">{updateFieldErrors.work_log_note}</p>
- ) : null}
- </label>
  </form>
- </DetailDrawer.Section>
+ </div>
+
+ {/* ── Maintenance Timeline ── */}
+ <div className="rounded-xl border border-border bg-card p-5">
+ <div className="mb-3 flex items-center gap-2">
+ <Clock3 size={14} className="text-muted-foreground" />
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Maintenance Timeline
+ </span>
+ </div>
+
+ <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3">
+ <div>
+ <div className="text-sm font-semibold text-card-foreground">Generate Report</div>
+ <p className="mt-0.5 text-xs text-muted-foreground">
+ Preview a report from the request details and timeline. Nothing is sent automatically.
+ </p>
+ </div>
+ <div className="flex flex-wrap gap-2">
+ <button
+ type="button"
+ className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-medium text-card-foreground hover:bg-muted disabled:opacity-60"
+ onClick={() => handleGenerateReport("admin")}
+ disabled={generateReportMutation.isPending}
+ >
+ <FileText size={12} />
+ {generateReportMutation.isPending ? "Generating..." : "Admin Report"}
+ </button>
+ <button
+ type="button"
+ className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-medium text-card-foreground hover:bg-muted disabled:opacity-60"
+ onClick={() => handleGenerateReport("tenant")}
+ disabled={generateReportMutation.isPending}
+ >
+ <MessageSquare size={12} />
+ {generateReportMutation.isPending ? "Generating..." : "Tenant Summary"}
+ </button>
+ </div>
+ </div>
+
+ <MaintenanceTimeline
+ items={timelineItems}
+ onRemoveAttachment={handleRemoveSavedAttachment}
+ canRemoveAttachments={
+ !selectedRequest.isArchived &&
+ !removeAttachmentMutation.isPending
+ }
+ />
  </div>
  </div>
  )}
