@@ -234,6 +234,13 @@ export function useGenerateMaintenanceUpdate() {
   });
 }
 
+export function useGenerateMaintenanceReport() {
+  return useMutation({
+    mutationFn: ({ requestId, reportType }) =>
+      maintenanceApi.generateAdminReport(requestId, { reportType }),
+  });
+}
+
 export function useSuggestMaintenanceProvider() {
   return useMutation({
     mutationFn: ({ requestId }) => maintenanceApi.suggestAdminProvider(requestId),

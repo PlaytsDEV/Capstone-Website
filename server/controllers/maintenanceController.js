@@ -21,6 +21,7 @@ import {
     REOPENABLE_MAINTENANCE_STATUSES,
     canAdminTransitionMaintenanceStatus,
     formatMaintenanceTypeLabel,
+    formatMaintenanceStatusLabel,
     getResolutionEstimate,
     isAdminMutableMaintenanceStatus,
     isValidMaintenanceStatus,
@@ -41,6 +42,7 @@ import { clean } from "../utils/sanitize.js";
 import { DELETED_ACCOUNT_LABEL } from "../utils/userReference.js";
 import {
   generateMaintenanceUpdateDraft,
+  generateMaintenanceReportText,
   suggestMaintenanceProviderFromDirectory,
 } from "../services/maintenanceAiService.js";
 import {
@@ -843,6 +845,514 @@ const serializeMaintenanceRequest = (
     date: request.created_at,
     assignedTo: includeInternal ? request.assigned_to ?? null : null,
     completionNote: includeInternal ? request.resolution_note ?? request.notes ?? null : null,
+  };
+};
+
+const REPORT_TYPE_LABELS = Object.freeze({
+  admin: "Admin Report",
+  tenant: "Tenant Summary",
+});
+
+const TENANT_REPORT_SAFE_STATUS_EVENTS = new Set([
+  "submitted",
+  "status_changed",
+  "reopened",
+]);
+
+const REPORT_INTERNAL_STATUS_EVENTS = new Set([
+  ...INTERNAL_STATUS_EVENTS,
+  "assignment_updated",
+  "note_updated",
+]);
+
+const formatReportDate = (value) => {
+  if (!value) return "Not recorded";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not recorded";
+  return date.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
+};
+
+const formatReportListValue = (value, fallback = "Not recorded") =>
+  toOptionalText(value) || fallback;
+
+const formatReportRole = (role) =>
+  toOptionalText(role)?.replace(/_/g, " ") || "unknown role";
+
+const formatReportActor = ({ name, role } = {}) => {
+  const actorName = toOptionalText(name) || "Unknown";
+  const actorRole = formatReportRole(role);
+  return `${actorName} (${actorRole})`;
+};
+
+const formatReportVisibility = (visibility) =>
+  visibility === "tenant" ? "Visible to Tenant" : "Admin Only";
+
+const formatReportStatus = (status) =>
+  status ? formatMaintenanceStatusLabel(status) : "Not recorded";
+
+const formatReportSlaState = (request) => {
+  const state = getSlaState(request);
+  const label = String(state?.label || "not_recorded").replace(/_/g, " ");
+  return label.replace(/\b\w/g, (letter) => letter.toUpperCase());
+};
+
+const getReportStatusTitle = (entry = {}) => {
+  switch (entry.event) {
+    case "submitted":
+      return "Request created";
+    case "status_changed":
+      if (entry.status === "completed" || entry.status === "resolved") return "Request completed";
+      if (entry.status === "cancelled") return "Request cancelled";
+      if (entry.status === "closed") return "Request closed";
+      return "Status updated";
+    case "assignment_updated":
+      return "Assigned service provider updated";
+    case "note_updated":
+      return "Admin note updated";
+    case "reopened":
+      return "Request reopened";
+    case "archived":
+      return "Request archived";
+    case "restored":
+      return "Request restored";
+    case "branch_assigned_manually":
+      return "Branch assigned manually";
+    case "admin_proof_uploaded":
+      return "Admin-only proof uploaded";
+    case "attachment_removed_tenant":
+      return "Attachment removed from tenant view";
+    case "attachment_removed_request":
+      return "Attachment removed from request display";
+    case "service_provider_assigned":
+      return "Service provider assigned";
+    case "service_provider_changed":
+      return "Service provider changed";
+    case "service_provider_unassigned":
+      return "Service provider unassigned";
+    default:
+      return entry.event ? entry.event.replace(/_/g, " ") : "Maintenance updated";
+  }
+};
+
+const isReportAttachmentRemoved = (attachment = {}) =>
+  Boolean(attachment?.isRemoved || attachment?.removedAt || attachment?.removedScope);
+
+const isTenantVisibleReportAttachment = (attachment = {}) =>
+  !isReportAttachmentRemoved(attachment) && attachment?.visibility !== "admin_only";
+
+const getReportAttachmentName = (attachment = {}, index = 0) =>
+  toOptionalText(
+    attachment.name ||
+      attachment.originalName ||
+      attachment.filename ||
+      attachment.fileName ||
+      attachment.displayName,
+  ) ||
+  deriveAttachmentName(getAttachmentUri(attachment), index);
+
+const buildReportAttachmentSummaries = (
+  attachments,
+  { tenantSafe = false, includeRemoved = false } = {},
+) =>
+  (Array.isArray(attachments) ? attachments : [])
+    .map((attachment, index) => ({ attachment, index }))
+    .filter(({ attachment }) => {
+      if (tenantSafe) return isTenantVisibleReportAttachment(attachment);
+      if (!includeRemoved && isReportAttachmentRemoved(attachment)) return false;
+      return true;
+    })
+    .map(({ attachment, index }) => ({
+      name: getReportAttachmentName(attachment, index),
+      type: attachment?.mimeType || attachment?.type || "file",
+      visibility: attachment?.visibility === "admin_only" ? "admin" : "tenant",
+      removed: isReportAttachmentRemoved(attachment),
+      removalReason: attachment?.removedReason || null,
+      removedScope: attachment?.removedScope || null,
+    }));
+
+const buildReportTimelineItem = ({
+  title,
+  timestamp,
+  actorName,
+  actorRole,
+  visibility = "admin",
+  note = null,
+  attachments = [],
+  attachmentName = null,
+  removalReason = null,
+  status = null,
+  branch = null,
+  providerName = null,
+  previousProviderName = null,
+}) => ({
+  title,
+  timestamp,
+  actorName,
+  actorRole,
+  visibility,
+  note,
+  attachments,
+  attachmentName,
+  removalReason,
+  status,
+  branch,
+  providerName,
+  previousProviderName,
+});
+
+const buildMaintenanceReportTimeline = (request, { reportType = "admin" } = {}) => {
+  const tenantSafe = reportType === "tenant";
+  const items = [];
+
+  items.push(buildReportTimelineItem({
+    title: "Request created",
+    timestamp: request.created_at,
+    actorName: request.tenant?.full_name || request.user_id,
+    actorRole: "tenant",
+    visibility: "tenant",
+    note: request.description,
+    attachments: buildReportAttachmentSummaries(request.attachments, { tenantSafe }),
+    status: request.status,
+  }));
+
+  if (!tenantSafe) {
+    (request.attachments || [])
+      .filter(isReportAttachmentRemoved)
+      .forEach((attachment, index) => {
+        items.push(buildReportTimelineItem({
+          title:
+            attachment.removedScope === "tenant_only"
+              ? "Attachment removed from tenant view"
+              : "Attachment removed from request display",
+          timestamp: attachment.removedAt || request.updated_at,
+          actorName: attachment.removedByName || attachment.removedBy,
+          actorRole: attachment.removedByRole,
+          visibility: "admin",
+          attachmentName: getReportAttachmentName(attachment, index),
+          removalReason: attachment.removedReason || "No reason recorded",
+        }));
+      });
+  }
+
+  (request.statusHistory || []).forEach((entry) => {
+    const event = entry.event || "status";
+    const isTenantSafeEvent = TENANT_REPORT_SAFE_STATUS_EVENTS.has(event);
+    if (tenantSafe && (!isTenantSafeEvent || REPORT_INTERNAL_STATUS_EVENTS.has(event))) {
+      return;
+    }
+
+    items.push(buildReportTimelineItem({
+      title: getReportStatusTitle(entry),
+      timestamp: entry.timestamp,
+      actorName: entry.actor_name,
+      actorRole: entry.actor_role,
+      visibility: tenantSafe ? "tenant" : REPORT_INTERNAL_STATUS_EVENTS.has(event) ? "admin" : "tenant",
+      note:
+        tenantSafe && !["tenant", "applicant"].includes(entry.actor_role)
+          ? null
+          : entry.note,
+      attachmentName: tenantSafe ? null : entry.attachmentName,
+      removalReason: tenantSafe ? null : entry.removedReason,
+      status: entry.status,
+      branch: tenantSafe ? null : entry.branch,
+      providerName: tenantSafe ? null : entry.providerName,
+      previousProviderName: tenantSafe ? null : entry.previousProviderName,
+    }));
+  });
+
+  (request.reopen_history || []).forEach((entry) => {
+    items.push(buildReportTimelineItem({
+      title: "Request reopened",
+      timestamp: entry.reopened_at || entry.timestamp,
+      actorName: entry.actor_name || request.tenant?.full_name || request.user_id,
+      actorRole: entry.actor_role || "tenant",
+      visibility: "tenant",
+      note: entry.note,
+      status: request.status,
+    }));
+  });
+
+  (request.conversation || []).forEach((entry) => {
+    const attachments = buildReportAttachmentSummaries(entry.attachments, { tenantSafe });
+    items.push(buildReportTimelineItem({
+      title: entry.message ? "Message sent to tenant" : "Attachment sent to tenant",
+      timestamp: entry.created_at,
+      actorName: entry.sender_name,
+      actorRole: entry.sender_role,
+      visibility: "tenant",
+      note: entry.message,
+      attachments,
+    }));
+
+    if (!tenantSafe) {
+      (entry.attachments || [])
+        .filter(isReportAttachmentRemoved)
+        .forEach((attachment, index) => {
+          items.push(buildReportTimelineItem({
+            title:
+              attachment.removedScope === "tenant_only"
+                ? "Attachment removed from tenant view"
+                : "Attachment removed from request display",
+            timestamp: attachment.removedAt || entry.created_at,
+            actorName: attachment.removedByName || attachment.removedBy,
+            actorRole: attachment.removedByRole,
+            visibility: "admin",
+            attachmentName: getReportAttachmentName(attachment, index),
+            removalReason: attachment.removedReason || "No reason recorded",
+          }));
+        });
+    }
+  });
+
+  if (!tenantSafe) {
+    (request.work_log || []).forEach((entry) => {
+      const attachments = buildReportAttachmentSummaries(entry.attachments);
+      items.push(buildReportTimelineItem({
+        title: attachments.length > 0 ? "Admin-only proof uploaded" : "Admin note added",
+        timestamp: entry.logged_at,
+        actorName: entry.actor_name,
+        actorRole: entry.actor_role,
+        visibility: "admin",
+        note: entry.note,
+        attachments,
+      }));
+
+      (entry.attachments || [])
+        .filter(isReportAttachmentRemoved)
+        .forEach((attachment, index) => {
+          items.push(buildReportTimelineItem({
+            title: "Attachment removed from request display",
+            timestamp: attachment.removedAt || entry.logged_at,
+            actorName: attachment.removedByName || attachment.removedBy,
+            actorRole: attachment.removedByRole,
+            visibility: "admin",
+            attachmentName: getReportAttachmentName(attachment, index),
+            removalReason: attachment.removedReason || "No reason recorded",
+          }));
+        });
+    });
+  }
+
+  return items
+    .filter((item) => item.timestamp)
+    .sort((left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime());
+};
+
+const formatReportAttachmentList = (attachments = []) => {
+  if (!attachments.length) return "None recorded";
+  return attachments
+    .map((attachment) => {
+      const suffix = attachment.removed
+        ? ` (removed${attachment.removalReason ? `: ${attachment.removalReason}` : ""})`
+        : "";
+      return `- ${attachment.name}${suffix}`;
+    })
+    .join("\n");
+};
+
+const formatReportTimeline = (timeline = []) => {
+  if (!timeline.length) return "- No timeline entries recorded.";
+  return timeline
+    .map((item) => {
+      const lines = [
+        `- ${formatReportDate(item.timestamp)} | ${item.title} | ${formatReportVisibility(item.visibility)}`,
+        `  Actor: ${formatReportActor({ name: item.actorName, role: item.actorRole })}`,
+      ];
+      if (item.status) lines.push(`  Status: ${formatReportStatus(item.status)}`);
+      if (item.note) lines.push(`  Note: ${item.note}`);
+      if (item.attachmentName) lines.push(`  Attachment: ${item.attachmentName}`);
+      if (item.attachments?.length) {
+        lines.push(`  Attachments: ${item.attachments.map((attachment) => attachment.name).join(", ")}`);
+      }
+      if (item.removalReason) lines.push(`  Removal reason: ${item.removalReason}`);
+      if (item.branch) lines.push(`  Branch: ${ROOM_BRANCH_LABELS[item.branch] || item.branch}`);
+      if (item.providerName) lines.push(`  Provider: ${item.providerName}`);
+      if (item.previousProviderName) lines.push(`  Previous provider: ${item.previousProviderName}`);
+      return lines.join("\n");
+    })
+    .join("\n");
+};
+
+const buildAdminMaintenanceReport = ({ request, tenant, timeline, title }) => {
+  const initialAttachments = buildReportAttachmentSummaries(request.attachments);
+  const proofAttachments = (request.work_log || [])
+    .flatMap((entry) => buildReportAttachmentSummaries(entry.attachments))
+    .filter((attachment) => attachment.visibility === "admin" || attachment.name);
+  const providerName = request.assignedProviderName || request.assigned_to || null;
+  const providerLines = providerName
+    ? [
+        `- Provider: ${providerName}`,
+        `- Source: ${formatReportListValue(request.assignedProviderSource, "Not recorded")}`,
+        `- Category: ${formatReportListValue(request.assignedProviderCategory, "Not recorded")}`,
+        `- Contact: ${formatReportListValue(request.assignedProviderContact, "Not recorded")}`,
+        `- Notes: ${formatReportListValue(request.assignedProviderNotes, "None recorded")}`,
+      ]
+    : ["- Not assigned"];
+
+  return [
+    `# ${title}`,
+    "",
+    "## Request Information",
+    `- Request ID: ${request.request_id}`,
+    `- Tenant name: ${tenant?.full_name || "Unknown Tenant"}`,
+    `- User ID: ${request.user_id}`,
+    `- Branch: ${ROOM_BRANCH_LABELS[request.branch] || request.branch || "Branch missing"}`,
+    `- Request Type: ${getMaintenanceCategoryLabel(request)}`,
+    `- Urgency: ${formatReportListValue(request.urgency)}`,
+    `- Current Status: ${formatReportStatus(request.status)}`,
+    `- SLA Health: ${formatReportSlaState(request)}`,
+    `- Created At: ${formatReportDate(request.created_at)}`,
+    `- Updated At: ${formatReportDate(request.updated_at)}`,
+    "",
+    "## Issue Details",
+    request.description || "No issue description recorded.",
+    "",
+    "Initial tenant attachments:",
+    formatReportAttachmentList(initialAttachments),
+    "",
+    "## Service Provider",
+    ...providerLines,
+    "",
+    "## Maintenance Timeline Summary",
+    formatReportTimeline(timeline),
+    "",
+    "## Admin-only Proof",
+    formatReportAttachmentList(proofAttachments),
+    "",
+    "## Final Status / Resolution",
+    `- Current Status: ${formatReportStatus(request.status)}`,
+    `- Resolution Note: ${formatReportListValue(request.resolution_note, "None recorded")}`,
+    `- Completion Date: ${formatReportDate(request.resolved_at || request.closed_at)}`,
+    `- Reopen History: ${
+      request.reopen_history?.length
+        ? request.reopen_history
+            .map((entry) => `${formatReportDate(entry.reopened_at)} - ${entry.note || "No note recorded"}`)
+            .join("; ")
+        : "None recorded"
+    }`,
+  ].join("\n");
+};
+
+const buildTenantMaintenanceSummary = ({ request, timeline, title }) => {
+  const typeLabel = getMaintenanceCategoryLabel(request);
+  const statusLabel = formatReportStatus(request.status);
+  const tenantAttachments = [
+    ...buildReportAttachmentSummaries(request.attachments, { tenantSafe: true }),
+    ...(request.conversation || []).flatMap((entry) =>
+      buildReportAttachmentSummaries(entry.attachments, { tenantSafe: true }),
+    ),
+  ];
+  const tenantUpdates = timeline
+    .filter((item) => item.visibility === "tenant")
+    .filter((item) => item.title !== "Request created" || item.note)
+    .map((item) => {
+      const parts = [`${formatReportDate(item.timestamp)} - ${item.title}`];
+      if (item.status) parts.push(`Status: ${formatReportStatus(item.status)}`);
+      if (item.note) parts.push(item.note);
+      if (item.attachments?.length) {
+        parts.push(`Attachments: ${item.attachments.map((attachment) => attachment.name).join(", ")}`);
+      }
+      return `- ${parts.join(". ")}`;
+    });
+
+  const providerStatus = request.assignedProviderName || request.assigned_to
+    ? "A service provider has been assigned."
+    : "No service provider assignment has been shared yet.";
+  const completionLine = ["resolved", "completed", "closed"].includes(normalizeMaintenanceStatus(request.status))
+    ? `The request was marked ${statusLabel.toLowerCase()} on ${formatReportDate(request.resolved_at || request.closed_at)}.`
+    : "Our team will provide updates when the next step is confirmed.";
+
+  return [
+    `# ${title}`,
+    "",
+    `Your maintenance request for ${typeLabel} is currently ${statusLabel}.`,
+    `The request was submitted on ${formatReportDate(request.created_at)}.`,
+    providerStatus,
+    completionLine,
+    "",
+    "## Request Details",
+    `- Request ID: ${request.request_id}`,
+    `- Branch: ${ROOM_BRANCH_LABELS[request.branch] || request.branch || "Branch pending"}`,
+    `- Request Type: ${typeLabel}`,
+    `- Current Status: ${statusLabel}`,
+    "",
+    "## Tenant-visible Updates",
+    tenantUpdates.length ? tenantUpdates.join("\n") : "- No tenant-visible updates have been recorded yet.",
+    "",
+    "## Tenant-visible Attachments",
+    formatReportAttachmentList(tenantAttachments),
+  ].join("\n");
+};
+
+const buildMaintenanceReportAiContext = ({ request, tenant, timeline, reportType }) => {
+  const tenantSafe = reportType === "tenant";
+  return {
+    request: {
+      requestId: request.request_id,
+      tenantName: tenantSafe ? undefined : tenant?.full_name,
+      userId: tenantSafe ? undefined : request.user_id,
+      branch: ROOM_BRANCH_LABELS[request.branch] || request.branch || null,
+      requestType: getMaintenanceCategoryLabel(request),
+      urgency: request.urgency,
+      status: formatReportStatus(request.status),
+      createdAt: formatReportDate(request.created_at),
+      updatedAt: formatReportDate(request.updated_at),
+      description: request.description,
+      hasAssignedProvider: Boolean(request.assignedProviderName || request.assigned_to),
+      providerName: tenantSafe ? undefined : request.assignedProviderName || request.assigned_to || null,
+      providerContact: tenantSafe ? request.assignedProviderContact || null : request.assignedProviderContact || null,
+      providerNotes: tenantSafe ? request.assignedProviderNotes || null : request.assignedProviderNotes || null,
+      internalNotes: tenantSafe ? [request.notes, request.resolution_note].filter(Boolean) : [],
+    },
+    timeline: timeline.map((item) => ({
+      timestamp: formatReportDate(item.timestamp),
+      title: item.title,
+      visibility: formatReportVisibility(item.visibility),
+      actorRole: item.actorRole || null,
+      note: item.note || null,
+      attachments: item.attachments?.map((attachment) => attachment.name) || [],
+      removalReason: tenantSafe ? null : item.removalReason || null,
+      providerName: tenantSafe ? null : item.providerName || null,
+    })),
+  };
+};
+
+const buildMaintenanceReportPayload = async ({
+  request,
+  tenant,
+  adminUser,
+  reportType,
+}) => {
+  const safeReportType = reportType === "tenant" ? "tenant" : "admin";
+  const title =
+    safeReportType === "tenant"
+      ? `Maintenance Tenant Summary - ${request.request_id}`
+      : `Maintenance Admin Report - ${request.request_id}`;
+  const timeline = buildMaintenanceReportTimeline(request, { reportType: safeReportType });
+  const standardSummary =
+    safeReportType === "tenant"
+      ? buildTenantMaintenanceSummary({ request, tenant, timeline, title })
+      : buildAdminMaintenanceReport({ request, tenant, timeline, title });
+  const generated = await generateMaintenanceReportText({
+    reportType: safeReportType,
+    title,
+    standardSummary,
+    context: buildMaintenanceReportAiContext({ request, tenant, timeline, reportType: safeReportType }),
+  });
+
+  return {
+    reportType: safeReportType,
+    title,
+    summary: generated.summary,
+    generatedAt: new Date().toISOString(),
+    generatedBy:
+      `${adminUser?.firstName || ""} ${adminUser?.lastName || ""}`.trim() ||
+      adminUser?.email ||
+      adminUser?.user_id ||
+      null,
+    provider: generated.provider,
+    unavailable: generated.unavailable,
+    message: generated.message,
   };
 };
 
@@ -2046,6 +2556,52 @@ export const generateAdminMaintenanceUpdate = async (req, res, next) => {
     });
 
     sendSuccess(res, result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/m/maintenance/admin/:requestId/generate-report
+ */
+export const generateAdminMaintenanceReport = async (req, res, next) => {
+  try {
+    const reportType = String(req.body?.reportType || "").trim().toLowerCase();
+    if (!["admin", "tenant"].includes(reportType)) {
+      throw new AppError(
+        "Report type must be admin or tenant.",
+        400,
+        "INVALID_REPORT_TYPE",
+        [
+          {
+            field: "reportType",
+            message: "Choose Admin Report or Tenant Summary.",
+          },
+        ],
+      );
+    }
+
+    const request = await findAccessibleRequest(req.params.requestId, {
+      includeArchived: true,
+    });
+    ensureAdminAccess(request, req);
+
+    const adminUser = await getDbUser(req.user.uid);
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select(USER_SELECT_FIELDS)
+      .lean();
+    const requestSnapshot = {
+      ...request.toObject(),
+      tenant: serializeTenantSummary(tenantUser, request),
+    };
+    const report = await buildMaintenanceReportPayload({
+      request: requestSnapshot,
+      tenant: requestSnapshot.tenant,
+      adminUser,
+      reportType,
+    });
+
+    sendSuccess(res, report);
   } catch (error) {
     next(error);
   }

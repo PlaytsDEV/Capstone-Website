@@ -107,6 +107,13 @@ router.post(
   maintenanceController.generateAdminMaintenanceUpdate,
 );
 router.post(
+  "/admin/:requestId/generate-report",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.generateAdminMaintenanceReport,
+);
+router.post(
   "/admin/:requestId/suggest-provider",
   verifyAdmin,
   filterByBranch,

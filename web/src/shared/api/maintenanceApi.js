@@ -152,6 +152,12 @@ export const maintenanceApi = {
       body: JSON.stringify({}),
     }),
 
+  generateAdminReport: (requestId, payload) =>
+    authFetch(`/m/maintenance/admin/${requestId}/generate-report`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
   suggestAdminProvider: (requestId) =>
     authFetch(`/m/maintenance/admin/${requestId}/suggest-provider`, {
       method: "POST",

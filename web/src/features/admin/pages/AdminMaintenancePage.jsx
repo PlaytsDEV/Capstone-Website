@@ -31,6 +31,7 @@ import {
  useArchiveMaintenanceRequest,
  useAssignMaintenanceProvider,
  useGenerateMaintenanceUpdate,
+ useGenerateMaintenanceReport,
  useMaintenanceRequest,
  useRemoveMaintenanceAttachment,
  useRestoreMaintenanceRequest,
@@ -119,6 +120,10 @@ const ATTACHMENT_REMOVAL_REASONS = [
 ];
 const PROVIDER_MANUAL_CHOICE = "__manual__";
 const PROVIDER_NONE_CHOICE = "";
+const REPORT_TYPE_LABELS = {
+ admin: "Admin Report",
+ tenant: "Tenant Summary",
+};
 const VALID_MAINTENANCE_BRANCHES = new Set(BRANCH_OPTIONS.map((branch) => branch.value));
 const ASSIGN_BRANCH_OPTIONS = [
  { value: "guadalupe", label: "Guadalupe" },
@@ -1174,6 +1179,83 @@ function ConfirmationModal({
  );
 }
 
+function ReportPreviewModal({
+ open,
+ report,
+ isCopying = false,
+ onCopy,
+ onDownload,
+ onClose,
+}) {
+ if (!open || !report) return null;
+ const label = REPORT_TYPE_LABELS[report.reportType] || "Maintenance Report";
+ const isTenant = report.reportType === "tenant";
+
+ return (
+ <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/50 px-4 py-6">
+ <section
+ role="dialog"
+ aria-modal="true"
+ aria-labelledby="maintenance-report-preview-title"
+ className="flex max-h-[calc(100vh-2rem)] w-full max-w-4xl flex-col rounded-xl border border-border bg-card shadow-2xl"
+ >
+ <div className="border-b border-border p-5">
+ <div className="flex flex-wrap items-start justify-between gap-3">
+ <div>
+ <div className="flex flex-wrap items-center gap-2">
+ <h2 id="maintenance-report-preview-title" className="text-lg font-semibold text-card-foreground">
+ {report.title || label}
+ </h2>
+ <SectionBadge tone={isTenant ? "blue" : "amber"}>{label}</SectionBadge>
+ </div>
+ {report.message ? (
+ <p className="mt-2 text-sm text-muted-foreground">{report.message}</p>
+ ) : null}
+ </div>
+ <button
+ type="button"
+ className="inline-flex h-9 items-center justify-center rounded-lg border border-border px-3 text-sm font-medium text-muted-foreground hover:bg-muted"
+ onClick={onClose}
+ >
+ Close
+ </button>
+ </div>
+ </div>
+
+ <div className="min-h-0 flex-1 overflow-y-auto p-5">
+ <pre className="whitespace-pre-wrap rounded-lg border border-border bg-muted/20 p-4 text-sm leading-6 text-card-foreground">
+ {report.summary}
+ </pre>
+ </div>
+
+ <div className="flex flex-col-reverse gap-2 border-t border-border p-5 sm:flex-row sm:justify-end">
+ <button
+ type="button"
+ className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-medium text-card-foreground hover:bg-muted"
+ onClick={onDownload}
+ >
+ <FileDown size={14} />
+ Download .txt
+ </button>
+ <button
+ type="button"
+ className="inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold shadow-sm hover:opacity-90 disabled:opacity-60"
+ style={{
+ backgroundColor: "var(--primary)",
+ color: "var(--primary-foreground)",
+ }}
+ onClick={onCopy}
+ disabled={isCopying}
+ >
+ <ClipboardList size={14} />
+ {isCopying ? "Copying..." : "Copy Summary"}
+ </button>
+ </div>
+ </section>
+ </div>
+ );
+}
+
 function AssignBranchModal({
  open,
  branch,
@@ -1736,6 +1818,8 @@ export default function AdminMaintenancePage() {
  branch: "",
  error: "",
  });
+ const [reportPreview, setReportPreview] = useState(null);
+ const [isCopyingReport, setIsCopyingReport] = useState(false);
  const [attachmentRemovalDialog, setAttachmentRemovalDialog] = useState({
  open: false,
  target: null,
@@ -1801,6 +1885,7 @@ export default function AdminMaintenancePage() {
  const assignBranchMutation = useAssignMaintenanceBranch();
  const assignProviderMutation = useAssignMaintenanceProvider();
  const generateUpdateMutation = useGenerateMaintenanceUpdate();
+ const generateReportMutation = useGenerateMaintenanceReport();
  const suggestProviderMutation = useSuggestMaintenanceProvider();
 
  const requests = requestsData?.requests || [];
@@ -3037,6 +3122,64 @@ export default function AdminMaintenancePage() {
  }
  };
 
+ const handleGenerateReport = async (reportType) => {
+ if (!selectedRequest) return;
+ try {
+ const result = await generateReportMutation.mutateAsync({
+ requestId: selectedRequest.request_id,
+ reportType,
+ });
+ setReportPreview(result);
+ if (result?.message) {
+ showNotification(result.message, "info");
+ } else {
+ showNotification(`${REPORT_TYPE_LABELS[reportType] || "Report"} generated.`, "success");
+ }
+ } catch (reportError) {
+ const message = getMaintenanceApiErrorMessage(
+ reportError,
+ "Failed to generate maintenance report.",
+ );
+ showNotification(message, "error");
+ }
+ };
+
+ const handleCopyReport = async () => {
+ if (!reportPreview?.summary) return;
+ setIsCopyingReport(true);
+ try {
+ if (!navigator.clipboard?.writeText) {
+ throw new Error("Clipboard unavailable");
+ }
+ await navigator.clipboard.writeText(reportPreview.summary);
+ showNotification("Summary copied.", "success");
+ } catch {
+ showNotification("Copy failed. Please select and copy the summary manually.", "error");
+ } finally {
+ setIsCopyingReport(false);
+ }
+ };
+
+ const handleDownloadReport = () => {
+ if (!reportPreview?.summary) return;
+ const requestId = selectedRequest?.request_id || reportPreview.title || "maintenance";
+ const safeRequestId = String(requestId).replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "");
+ const reportSlug =
+ reportPreview.reportType === "tenant" ? "tenant-summary" : "admin-report";
+ const blob = new Blob([reportPreview.summary], {
+ type: "text/plain;charset=utf-8",
+ });
+ const url = URL.createObjectURL(blob);
+ const link = document.createElement("a");
+ link.href = url;
+ link.download = `maintenance-${reportSlug}-${safeRequestId || "request"}.txt`;
+ document.body.appendChild(link);
+ link.click();
+ link.remove();
+ URL.revokeObjectURL(url);
+ showNotification("Report downloaded.", "success");
+ };
+
  const handleSummaryFilter = (index) => {
  if (index === -1) {
  setSummaryCardKey(null);
@@ -3566,7 +3709,10 @@ export default function AdminMaintenancePage() {
  columns={columns}
  data={filteredRequests}
  loading={isLoading}
- onRowClick={(row) => setSelectedRequestId(row.request_id)}
+ onRowClick={(row) => {
+ setReportPreview(null);
+ setSelectedRequestId(row.request_id);
+ }}
  pagination={{
  page: currentPage,
  pageSize: ITEMS_PER_PAGE,
@@ -3599,7 +3745,10 @@ export default function AdminMaintenancePage() {
  <DetailDrawer
  width={1200}
  open={Boolean(selectedRequestId)}
- onClose={() => setSelectedRequestId(null)}
+ onClose={() => {
+ setSelectedRequestId(null);
+ setReportPreview(null);
+ }}
  title="Maintenance Request"
  subtitle={selectedRequest ? `Request #${selectedRequest.request_id}` : ""}
  footer={
@@ -3632,7 +3781,10 @@ export default function AdminMaintenancePage() {
  <button
  type="button"
  className="inline-flex h-10 items-center justify-center rounded-lg border border-border px-5 text-sm font-medium text-muted-foreground hover:bg-muted"
- onClick={() => setSelectedRequestId(null)}
+ onClick={() => {
+ setSelectedRequestId(null);
+ setReportPreview(null);
+ }}
  >
  Close
  </button>
@@ -3665,15 +3817,14 @@ export default function AdminMaintenancePage() {
  <DrawerSkeleton rows={4} />
  </div>
  ) : (
- <div>
- <div className="grid gap-6 lg:grid-cols-3">
- <div className="space-y-6 lg:col-span-2">
+ <div className="space-y-6">
+ <div className="grid gap-6 md:grid-cols-2">
  <div className="rounded-xl border border-border bg-card p-5">
  <DetailDrawer.Section
  label={(
  <>
  <ClipboardList size={14} />
- Request Overview
+ Request Details
  </>
  )}
  >
@@ -3740,50 +3891,85 @@ export default function AdminMaintenancePage() {
  {formatSlaState(selectedRequest.slaState)}
  </span>
  </DetailDrawer.Row>
- <DetailDrawer.Row
- label="Target Resolution"
- value={
- selectedRequest.slaState?.targetAt
- ? fmtDateTime(selectedRequest.slaState.targetAt)
- : "Not set"
- }
- />
- <DetailDrawer.Row
- label="Assigned At"
- value={
- selectedRequest.assignment?.assignedAt
- ? fmtDateTime(selectedRequest.assignment.assignedAt)
- : "Not assigned"
- }
- />
- <DetailDrawer.Row
- label="Started At"
- value={
- selectedRequest.assignment?.startedAt
- ? fmtDateTime(selectedRequest.assignment.startedAt)
- : "Not started"
- }
- />
- <DetailDrawer.Row
- label="Resolved At"
- value={
- selectedRequest.assignment?.resolvedAt
- ? fmtDateTime(selectedRequest.assignment.resolvedAt)
- : "Not resolved"
- }
- />
  </DetailDrawer.Section>
+ {selectedRequest.description ? (
+ <div className="mt-4 border-t border-border pt-4">
+ <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Description
+ </div>
+ <p className="whitespace-pre-wrap text-sm leading-relaxed text-card-foreground">
+ {selectedRequest.description}
+ </p>
+ </div>
+ ) : null}
+ </div>
+
+ <ServiceProviderAssignmentPanel
+ request={selectedRequest}
+ providers={serviceProviders}
+ isLoadingProviders={isLoadingProviders}
+ selectedChoice={providerChoice}
+ manualProvider={manualProvider}
+ saveForFuture={saveManualProviderForFuture}
+ fieldErrors={{
+ ...providerFieldErrors,
+ assigned_to: providerFieldErrors.assigned_to || updateFieldErrors.assigned_to,
+ }}
+ formMessage={providerFormMessage}
+ suggestion={providerSuggestion}
+ isAssigning={assignProviderMutation.isPending}
+ isSuggesting={suggestProviderMutation.isPending}
+ disabled={isSelectedRequestLocked || selectedRequest.isArchived}
+ onChoiceChange={handleProviderChoiceChange}
+ onManualChange={handleManualProviderChange}
+ onSaveForFutureChange={setSaveManualProviderForFuture}
+ onAssign={handleAssignProvider}
+ onSuggest={handleSuggestProvider}
+ onUseSuggestion={handleUseSuggestedProvider}
+ />
  </div>
 
  <div className="rounded-xl border border-border bg-card p-5">
- <DetailDrawer.Section
- label={(
- <>
- <Clock3 size={14} />
- Maintenance Timeline
- </>
- )}
+ <div className="mb-1 flex items-center gap-2">
+ <Clock3 size={14} className="text-muted-foreground" />
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Maintenance History
+ </span>
+ </div>
+ <p className="mb-5 text-sm text-muted-foreground">
+ All request updates, notes, attachments, provider assignments, and tenant messages are recorded here.
+ </p>
+ <div className="mb-5 rounded-lg border border-border bg-muted/30 px-4 py-3">
+ <div className="flex flex-wrap items-center justify-between gap-3">
+ <div>
+ <div className="text-sm font-semibold text-card-foreground">Maintenance Summary / Report</div>
+ <p className="mt-1 text-xs text-muted-foreground">
+ Generate a preview from the recorded request details and timeline. Nothing is sent automatically.
+ </p>
+ </div>
+ <div className="flex flex-wrap gap-2">
+ <button
+ type="button"
+ className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-medium text-card-foreground hover:bg-muted disabled:opacity-60"
+ onClick={() => handleGenerateReport("admin")}
+ disabled={generateReportMutation.isPending}
  >
+ <FileText size={14} />
+ {generateReportMutation.isPending ? "Generating..." : "Generate Admin Report"}
+ </button>
+ <button
+ type="button"
+ className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-medium text-card-foreground hover:bg-muted disabled:opacity-60"
+ onClick={() => handleGenerateReport("tenant")}
+ disabled={generateReportMutation.isPending}
+ >
+ <MessageSquare size={14} />
+ {generateReportMutation.isPending ? "Generating..." : "Generate Tenant Summary"}
+ </button>
+ </div>
+ </div>
+ </div>
+
  {!selectedRequest.isArchived ? (
  <form
  className="mb-5 rounded-lg border border-dashed border-border bg-muted/30 p-4"
@@ -3955,157 +4141,6 @@ export default function AdminMaintenancePage() {
  !removeAttachmentMutation.isPending
  }
  />
- </DetailDrawer.Section>
- </div>
-
- <div className="rounded-xl border border-border bg-card p-5">
- <DetailDrawer.Section
- label={(
- <>
- <AlertTriangle size={14} />
- Issue Details
- </>
- )}
- >
- <div className="text-sm text-card-foreground">{selectedRequest.description}</div>
- </DetailDrawer.Section>
- </div>
-
- </div>
-
- <div className="space-y-6">
- <ServiceProviderAssignmentPanel
- request={selectedRequest}
- providers={serviceProviders}
- isLoadingProviders={isLoadingProviders}
- selectedChoice={providerChoice}
- manualProvider={manualProvider}
- saveForFuture={saveManualProviderForFuture}
- fieldErrors={{
- ...providerFieldErrors,
- assigned_to: providerFieldErrors.assigned_to || updateFieldErrors.assigned_to,
- }}
- formMessage={providerFormMessage}
- suggestion={providerSuggestion}
- isAssigning={assignProviderMutation.isPending}
- isSuggesting={suggestProviderMutation.isPending}
- disabled={isSelectedRequestLocked || selectedRequest.isArchived}
- onChoiceChange={handleProviderChoiceChange}
- onManualChange={handleManualProviderChange}
- onSaveForFutureChange={setSaveManualProviderForFuture}
- onAssign={handleAssignProvider}
- onSuggest={handleSuggestProvider}
- onUseSuggestion={handleUseSuggestedProvider}
- />
-
- <div className="rounded-xl border border-border bg-card p-5">
- <DetailDrawer.Section
- label={(
- <>
- <MessageSquare size={14} />
- Admin Note
- <SectionBadge tone="amber">Admin Only</SectionBadge>
- </>
- )}
- >
- <p className="mb-4 text-sm text-muted-foreground">
- These updates are for admin tracking and will not be shown to the tenant.
- </p>
- {isSelectedRequestLocked || selectedRequest.isArchived ? (
- <div className="rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-warning-dark">
- Closed, cancelled, and archived requests are read-only here. Admin notes,
- assignments, and status changes are disabled.
- </div>
- ) : null}
-
- <form
- id="maintenance-admin-form"
- className="mt-4 space-y-4"
- onSubmit={handleSubmitUpdate}
- >
- {updateFormMessage ? (
- <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
- {updateFormMessage}
- </div>
- ) : null}
-
- <label id="maintenance-update-field-status" className="block">
- <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
- Status
- </span>
- <select
- value={draftStatus}
- onChange={(event) => {
- setDraftStatus(event.target.value);
- clearUpdateFieldError("status");
- }}
- disabled={isSelectedRequestLocked || selectedRequest.isArchived}
- aria-invalid={Boolean(updateFieldErrors.status)}
- className={buildFieldClassName(
- Boolean(updateFieldErrors.status),
- "mt-2 h-11 w-full rounded-lg border bg-card px-3 text-sm text-card-foreground focus:outline-none focus:ring-2",
- )}
- >
- {selectedRequestStatusOptions.map((status) => (
- <option key={status} value={status}>
- {formatMaintenanceStatus(status)}
- </option>
- ))}
- </select>
- {updateFieldErrors.status ? (
- <p className="mt-1 text-xs text-rose-600">{updateFieldErrors.status}</p>
- ) : null}
- </label>
-
- <label id="maintenance-update-field-notes" className="block">
- <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
- Resolution Notes
- </span>
- <textarea
- rows="6"
- placeholder="Internal resolution or status note for this request."
- value={draftNotes}
- onChange={(event) => {
- setDraftNotes(event.target.value);
- clearUpdateFieldError("notes");
- }}
- disabled={isSelectedRequestLocked || selectedRequest.isArchived}
- aria-invalid={Boolean(updateFieldErrors.notes)}
- className={buildFieldClassName(
- Boolean(updateFieldErrors.notes),
- "mt-2 w-full rounded-lg border bg-card px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2",
- )}
- />
- {updateFieldErrors.notes ? (
- <p className="mt-1 text-xs text-rose-600">{updateFieldErrors.notes}</p>
- ) : null}
- </label>
-
- <label id="maintenance-update-field-work_log_note" className="block">
- <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
- Admin Note
- </span>
- <textarea
- rows="3"
- placeholder="Optional admin note for the maintenance timeline."
- value={draftWorkLogNote}
- onChange={(event) => {
- setDraftWorkLogNote(event.target.value);
- clearUpdateFieldError("work_log_note");
- }}
- disabled={isSelectedRequestLocked || selectedRequest.isArchived}
- aria-invalid={Boolean(updateFieldErrors.work_log_note)}
- className={buildFieldClassName(
- Boolean(updateFieldErrors.work_log_note),
- "mt-2 w-full rounded-lg border bg-card px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2",
- )}
- />
- {updateFieldErrors.work_log_note ? (
- <p className="mt-1 text-xs text-rose-600">{updateFieldErrors.work_log_note}</p>
- ) : null}
- </label>
- </form>
- </DetailDrawer.Section>
  </div>
 
  <div className="rounded-xl border border-border bg-card p-5">
@@ -4113,7 +4148,7 @@ export default function AdminMaintenancePage() {
  label={(
  <>
  <MessageSquare size={14} />
- Message to Tenant
+ Update for Tenant
  <SectionBadge>Visible to Tenant</SectionBadge>
  </>
  )}
@@ -4137,7 +4172,7 @@ export default function AdminMaintenancePage() {
  <div className="rounded-lg border border-border bg-muted/30 px-3 py-3">
  <div className="flex flex-wrap items-center justify-between gap-3">
  <p className="text-xs text-muted-foreground">
- AI drafted updates are based on the request timeline. Please review before sending.
+ AI drafts are based on the request timeline. Please review before sending.
  </p>
  <button
  type="button"
@@ -4286,11 +4321,127 @@ export default function AdminMaintenancePage() {
  </form>
  </DetailDrawer.Section>
  </div>
+
+ <div className="rounded-xl border border-border bg-card p-5">
+ <DetailDrawer.Section
+ label={(
+ <>
+ <MessageSquare size={14} />
+ Admin Notes
+ <SectionBadge tone="amber">Admin Only</SectionBadge>
+ </>
+ )}
+ >
+ <p className="mb-4 text-sm text-muted-foreground">
+ These updates are for admin tracking and will not be shown to the tenant.
+ </p>
+ {isSelectedRequestLocked || selectedRequest.isArchived ? (
+ <div className="rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-warning-dark">
+ Closed, cancelled, and archived requests are read-only here. Admin notes,
+ assignments, and status changes are disabled.
  </div>
+ ) : null}
+
+ <form
+ id="maintenance-admin-form"
+ className="mt-4 space-y-4"
+ onSubmit={handleSubmitUpdate}
+ >
+ {updateFormMessage ? (
+ <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+ {updateFormMessage}
+ </div>
+ ) : null}
+
+ <label id="maintenance-update-field-status" className="block">
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Status
+ </span>
+ <select
+ value={draftStatus}
+ onChange={(event) => {
+ setDraftStatus(event.target.value);
+ clearUpdateFieldError("status");
+ }}
+ disabled={isSelectedRequestLocked || selectedRequest.isArchived}
+ aria-invalid={Boolean(updateFieldErrors.status)}
+ className={buildFieldClassName(
+ Boolean(updateFieldErrors.status),
+ "mt-2 h-11 w-full rounded-lg border bg-card px-3 text-sm text-card-foreground focus:outline-none focus:ring-2",
+ )}
+ >
+ {selectedRequestStatusOptions.map((status) => (
+ <option key={status} value={status}>
+ {formatMaintenanceStatus(status)}
+ </option>
+ ))}
+ </select>
+ {updateFieldErrors.status ? (
+ <p className="mt-1 text-xs text-rose-600">{updateFieldErrors.status}</p>
+ ) : null}
+ </label>
+
+ <label id="maintenance-update-field-notes" className="block">
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Resolution Notes
+ </span>
+ <textarea
+ rows="6"
+ placeholder="Internal resolution or status note for this request."
+ value={draftNotes}
+ onChange={(event) => {
+ setDraftNotes(event.target.value);
+ clearUpdateFieldError("notes");
+ }}
+ disabled={isSelectedRequestLocked || selectedRequest.isArchived}
+ aria-invalid={Boolean(updateFieldErrors.notes)}
+ className={buildFieldClassName(
+ Boolean(updateFieldErrors.notes),
+ "mt-2 w-full rounded-lg border bg-card px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2",
+ )}
+ />
+ {updateFieldErrors.notes ? (
+ <p className="mt-1 text-xs text-rose-600">{updateFieldErrors.notes}</p>
+ ) : null}
+ </label>
+
+ <label id="maintenance-update-field-work_log_note" className="block">
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Admin Notes
+ </span>
+ <textarea
+ rows="3"
+ placeholder="Optional admin note for the maintenance timeline."
+ value={draftWorkLogNote}
+ onChange={(event) => {
+ setDraftWorkLogNote(event.target.value);
+ clearUpdateFieldError("work_log_note");
+ }}
+ disabled={isSelectedRequestLocked || selectedRequest.isArchived}
+ aria-invalid={Boolean(updateFieldErrors.work_log_note)}
+ className={buildFieldClassName(
+ Boolean(updateFieldErrors.work_log_note),
+ "mt-2 w-full rounded-lg border bg-card px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2",
+ )}
+ />
+ {updateFieldErrors.work_log_note ? (
+ <p className="mt-1 text-xs text-rose-600">{updateFieldErrors.work_log_note}</p>
+ ) : null}
+ </label>
+ </form>
+ </DetailDrawer.Section>
  </div>
  </div>
  )}
  </DetailDrawer>
+ <ReportPreviewModal
+ open={Boolean(reportPreview)}
+ report={reportPreview}
+ isCopying={isCopyingReport}
+ onCopy={handleCopyReport}
+ onDownload={handleDownloadReport}
+ onClose={() => setReportPreview(null)}
+ />
  <ConfirmationModal
  open={Boolean(archiveDialogMode)}
  title={archiveDialogMode === "restore" ? "Restore Request" : "Archive Request"}

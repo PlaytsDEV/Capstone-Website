@@ -62,6 +62,28 @@ const stripSensitiveProviderDetails = (text, request = {}) => {
   return output.replace(/\b(?:\+?63|0)\d[\d\s().-]{7,}\d\b/g, "[contact hidden]");
 };
 
+const clampReportText = (value) =>
+  String(value || "").trim().replace(/\r\n/g, "\n").slice(0, 7000);
+
+const stripTenantReportSensitiveDetails = (text, context = {}) => {
+  let output = clampReportText(text);
+  const sensitiveValues = [
+    context?.providerContact,
+    context?.providerNotes,
+    ...(Array.isArray(context?.internalNotes) ? context.internalNotes : []),
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+
+  for (const value of sensitiveValues) {
+    output = output.split(value).join("[hidden]");
+  }
+
+  return output
+    .replace(/\b(?:\+?63|0)\d[\d\s().-]{7,}\d\b/g, "[contact hidden]")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[contact hidden]");
+};
+
 const buildFallbackDraft = (request = {}) => {
   const type = request.typeLabel || request.request_type || "maintenance";
   const status = request.status || "pending";
@@ -138,6 +160,84 @@ export const generateMaintenanceUpdateDraft = async ({ request, timeline = [] } 
       basedOn,
       provider: "unavailable",
       unavailable: true,
+    };
+  }
+};
+
+export const generateMaintenanceReportText = async ({
+  reportType = "admin",
+  title = "Maintenance Report",
+  standardSummary = "",
+  context = {},
+} = {}) => {
+  const safeReportType = reportType === "tenant" ? "tenant" : "admin";
+  const fallbackMessage =
+    "AI summary is unavailable, so a standard report was generated from the recorded timeline.";
+  const fallbackSummary =
+    safeReportType === "tenant"
+      ? stripTenantReportSensitiveDetails(standardSummary, context)
+      : clampReportText(standardSummary);
+
+  if (!hasGeminiKey()) {
+    return {
+      summary: fallbackSummary,
+      provider: "rule-based",
+      unavailable: true,
+      message: fallbackMessage,
+    };
+  }
+
+  const safetyRules = safeReportType === "tenant"
+    ? [
+        "This is a tenant-safe summary. Do not include provider contact numbers, provider notes, admin notes, internal proof, removed attachments, removed file URLs, private comments, internal ratings, or internal feedback.",
+        "Use friendly wording and only tenant-visible updates from the JSON context.",
+      ]
+    : [
+        "This is an admin-only case report. Keep admin-only facts if they are present in the JSON context.",
+        "Do not add facts, progress, visits, dates, providers, or outcomes that are not present.",
+      ];
+  const aiContext = safeReportType === "tenant"
+    ? {
+        ...context,
+        providerContact: undefined,
+        providerNotes: undefined,
+        internalNotes: undefined,
+      }
+    : context;
+
+  const prompt = [
+    `Improve the clarity of this ${safeReportType === "tenant" ? "tenant maintenance summary" : "admin maintenance report"} for Lilycrest.`,
+    "Use only the recorded facts in the JSON context and standard report text.",
+    "Do not invent repair actions, technician visits, dates, provider names, provider contacts, or completion status.",
+    "Preserve the section structure and keep the output suitable for preview and copy/paste.",
+    ...safetyRules,
+    "Return only the report text.",
+    JSON.stringify({
+      title,
+      reportType: safeReportType,
+      context: aiContext,
+      standardReport: clampReportText(standardSummary),
+    }),
+  ].join("\n\n");
+
+  try {
+    const generated = clampReportText(await callGemini(prompt));
+    const summary = generated || fallbackSummary;
+    return {
+      summary:
+        safeReportType === "tenant"
+          ? stripTenantReportSensitiveDetails(summary, context)
+          : summary,
+      provider: "gemini",
+      unavailable: false,
+      message: null,
+    };
+  } catch {
+    return {
+      summary: fallbackSummary,
+      provider: "rule-based",
+      unavailable: true,
+      message: fallbackMessage,
     };
   }
 };

@@ -98,6 +98,7 @@ const {
   assignAdminMaintenanceBranch,
   assignAdminMaintenanceProvider,
   suggestAdminMaintenanceProvider,
+  generateAdminMaintenanceReport,
   sendTenantReply,
   uploadAdminMaintenanceAttachment,
   removeAdminMaintenanceAttachment,
@@ -188,6 +189,9 @@ const buildRequestDoc = (overrides = {}) => {
     cancelled_at: null,
     reopened_at: null,
     resolved_at: null,
+    closed_at: null,
+    work_started_at: null,
+    resolution_note: null,
     branch: "gil-puyat",
     roomId: "room_1",
     reservationId: "reservation_1",
@@ -224,15 +228,47 @@ const buildRequestDoc = (overrides = {}) => {
         cancelled_at: this.cancelled_at,
         reopened_at: this.reopened_at,
         resolved_at: this.resolved_at,
+        closed_at: this.closed_at,
+        work_started_at: this.work_started_at,
+        resolution_note: this.resolution_note,
         branch: this.branch,
         roomId: this.roomId,
         reservationId: this.reservationId,
+        isArchived: this.isArchived,
+        archivedAt: this.archivedAt,
+        archivedBy: this.archivedBy,
+        restoredAt: this.restoredAt,
+        restoredBy: this.restoredBy,
       };
     },
     ...overrides,
   };
 
   return doc;
+};
+
+const withoutGeminiEnv = async (callback) => {
+  const previous = {
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    GOOGLE_AI_API_KEY: process.env.GOOGLE_AI_API_KEY,
+    GEMINI_MODEL: process.env.GEMINI_MODEL,
+  };
+
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.GOOGLE_AI_API_KEY;
+  delete process.env.GEMINI_MODEL;
+
+  try {
+    await callback();
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
 };
 
 describe("maintenanceController", () => {
@@ -2089,6 +2125,293 @@ describe("maintenanceController", () => {
       }),
     );
     expect(next).not.toHaveBeenCalled();
+  });
+
+  test("generateAdminMaintenanceReport includes admin-only case file details", async () => {
+    await withoutGeminiEnv(async () => {
+      const requestDoc = buildRequestDoc({
+        status: "completed",
+        assigned_to: "Makati Plumbing Services",
+        assignedProviderName: "Makati Plumbing Services",
+        assignedProviderContact: "09171234567",
+        assignedProviderCategory: "Plumbing",
+        assignedProviderNotes: "Internal provider note",
+        assignedProviderSource: "directory",
+        notes: "Internal admin note",
+        resolution_note: "Leak repaired and area checked.",
+        resolved_at: new Date("2026-04-09T11:00:00.000Z"),
+        attachments: [
+          {
+            name: "tenant-leak.jpg",
+            uri: "https://storage.example.com/tenant-leak.jpg",
+            visibility: "tenant_admin",
+          },
+          {
+            name: "old-photo.jpg",
+            uri: "https://storage.example.com/old-photo.jpg",
+            visibility: "tenant_admin",
+            isRemoved: true,
+            removedAt: new Date("2026-04-09T09:00:00.000Z"),
+            removedReason: "Wrong file attached",
+            removedByName: "Branch Admin",
+            removedByRole: "branch_admin",
+            removedScope: "request",
+          },
+        ],
+        statusHistory: [
+          {
+            event: "note_updated",
+            status: "pending",
+            actor_name: "Branch Admin",
+            actor_role: "branch_admin",
+            note: "Internal admin note",
+            timestamp: new Date("2026-04-08T11:00:00.000Z"),
+          },
+          {
+            event: "service_provider_assigned",
+            status: "pending",
+            actor_name: "Branch Admin",
+            actor_role: "branch_admin",
+            providerName: "Makati Plumbing Services",
+            note: "Internal provider assignment",
+            timestamp: new Date("2026-04-08T12:00:00.000Z"),
+          },
+        ],
+        work_log: [
+          {
+            logged_at: new Date("2026-04-09T10:00:00.000Z"),
+            actor_name: "Branch Admin",
+            actor_role: "branch_admin",
+            note: "Admin-only proof note",
+            attachments: [
+              {
+                name: "proof.jpg",
+                uri: "https://storage.example.com/proof.jpg",
+                visibility: "admin_only",
+              },
+            ],
+          },
+        ],
+        conversation: [
+          {
+            created_at: new Date("2026-04-08T13:00:00.000Z"),
+            sender_name: "Branch Admin",
+            sender_role: "branch_admin",
+            message: "We have received your maintenance request.",
+            attachments: [],
+          },
+        ],
+      });
+      maintenanceFindOne.mockResolvedValue(requestDoc);
+      userFindOne.mockImplementation((query) => {
+        if (query.firebaseUid === "firebase-admin-1") {
+          return buildLeanQuery({
+            _id: "admin_user_1",
+            user_id: "admin_1",
+            firstName: "Branch",
+            lastName: "Admin",
+            email: "admin@example.com",
+            branch: "gil-puyat",
+            role: "branch_admin",
+          });
+        }
+
+        if (query.user_id === requestDoc.user_id) {
+          return buildLeanQuery({
+            _id: "tenant_user_1",
+            user_id: requestDoc.user_id,
+            firstName: "Lily",
+            lastName: "Tenant",
+            email: "lily@example.com",
+            branch: "gil-puyat",
+            role: "tenant",
+          });
+        }
+
+        return buildLeanQuery(null);
+      });
+
+      const req = {
+        user: { uid: "firebase-admin-1" },
+        params: { requestId: requestDoc.request_id },
+        body: { reportType: "admin" },
+        branchFilter: "gil-puyat",
+        isOwner: false,
+      };
+      const res = {};
+      const next = jest.fn();
+
+      await generateAdminMaintenanceReport(req, res, next);
+
+      const report = sendSuccess.mock.calls[0][1];
+      expect(report).toEqual(
+        expect.objectContaining({
+          reportType: "admin",
+          title: `Maintenance Admin Report - ${requestDoc.request_id}`,
+          provider: "rule-based",
+          unavailable: true,
+        }),
+      );
+      expect(report.summary).toContain("Makati Plumbing Services");
+      expect(report.summary).toContain("09171234567");
+      expect(report.summary).toContain("Internal provider note");
+      expect(report.summary).toContain("Internal admin note");
+      expect(report.summary).toContain("proof.jpg");
+      expect(report.summary).toContain("Wrong file attached");
+      expect(report.summary).toContain("We have received your maintenance request.");
+      expect(next).not.toHaveBeenCalled();
+    });
+  });
+
+  test("generateAdminMaintenanceReport filters tenant summaries server-side", async () => {
+    await withoutGeminiEnv(async () => {
+      const requestDoc = buildRequestDoc({
+        status: "in_progress",
+        assigned_to: "Makati Plumbing Services",
+        assignedProviderName: "Makati Plumbing Services",
+        assignedProviderContact: "09171234567",
+        assignedProviderCategory: "Plumbing",
+        assignedProviderNotes: "Internal provider note",
+        notes: "Internal admin note",
+        attachments: [
+          {
+            name: "tenant-leak.jpg",
+            uri: "https://storage.example.com/tenant-leak.jpg",
+            visibility: "tenant_admin",
+          },
+          {
+            name: "removed-tenant-file.jpg",
+            uri: "https://storage.example.com/removed-tenant-file.jpg",
+            visibility: "tenant_admin",
+            isRemoved: true,
+            removedAt: new Date("2026-04-09T09:00:00.000Z"),
+            removedReason: "Sensitive information visible",
+            removedByName: "Branch Admin",
+            removedByRole: "branch_admin",
+            removedScope: "tenant_only",
+          },
+        ],
+        statusHistory: [
+          {
+            event: "note_updated",
+            status: "pending",
+            actor_name: "Branch Admin",
+            actor_role: "branch_admin",
+            note: "Internal admin note",
+            timestamp: new Date("2026-04-08T11:00:00.000Z"),
+          },
+          {
+            event: "service_provider_assigned",
+            status: "pending",
+            actor_name: "Branch Admin",
+            actor_role: "branch_admin",
+            providerName: "Makati Plumbing Services",
+            note: "Internal provider assignment",
+            timestamp: new Date("2026-04-08T12:00:00.000Z"),
+          },
+          {
+            event: "status_changed",
+            status: "in_progress",
+            actor_name: "Branch Admin",
+            actor_role: "branch_admin",
+            note: "Internal status note",
+            timestamp: new Date("2026-04-08T12:30:00.000Z"),
+          },
+        ],
+        work_log: [
+          {
+            logged_at: new Date("2026-04-09T10:00:00.000Z"),
+            actor_name: "Branch Admin",
+            actor_role: "branch_admin",
+            note: "Admin-only proof note",
+            attachments: [
+              {
+                name: "proof.jpg",
+                uri: "https://storage.example.com/proof.jpg",
+                visibility: "admin_only",
+              },
+            ],
+          },
+        ],
+        conversation: [
+          {
+            created_at: new Date("2026-04-08T13:00:00.000Z"),
+            sender_name: "Branch Admin",
+            sender_role: "branch_admin",
+            message: "We have received your maintenance request.",
+            attachments: [
+              {
+                name: "tenant-visible-update.jpg",
+                uri: "https://storage.example.com/tenant-visible-update.jpg",
+                visibility: "tenant_admin",
+              },
+            ],
+          },
+        ],
+      });
+      maintenanceFindOne.mockResolvedValue(requestDoc);
+      userFindOne.mockImplementation((query) => {
+        if (query.firebaseUid === "firebase-admin-1") {
+          return buildLeanQuery({
+            _id: "admin_user_1",
+            user_id: "admin_1",
+            firstName: "Branch",
+            lastName: "Admin",
+            email: "admin@example.com",
+            branch: "gil-puyat",
+            role: "branch_admin",
+          });
+        }
+
+        if (query.user_id === requestDoc.user_id) {
+          return buildLeanQuery({
+            _id: "tenant_user_1",
+            user_id: requestDoc.user_id,
+            firstName: "Lily",
+            lastName: "Tenant",
+            email: "lily@example.com",
+            branch: "gil-puyat",
+            role: "tenant",
+          });
+        }
+
+        return buildLeanQuery(null);
+      });
+
+      const req = {
+        user: { uid: "firebase-admin-1" },
+        params: { requestId: requestDoc.request_id },
+        body: { reportType: "tenant" },
+        branchFilter: "gil-puyat",
+        isOwner: false,
+      };
+      const res = {};
+      const next = jest.fn();
+
+      await generateAdminMaintenanceReport(req, res, next);
+
+      const report = sendSuccess.mock.calls[0][1];
+      expect(report).toEqual(
+        expect.objectContaining({
+          reportType: "tenant",
+          title: `Maintenance Tenant Summary - ${requestDoc.request_id}`,
+          provider: "rule-based",
+          unavailable: true,
+        }),
+      );
+      expect(report.summary).toContain("A service provider has been assigned.");
+      expect(report.summary).toContain("We have received your maintenance request.");
+      expect(report.summary).toContain("tenant-visible-update.jpg");
+      expect(report.summary).not.toContain("09171234567");
+      expect(report.summary).not.toContain("Makati Plumbing Services");
+      expect(report.summary).not.toContain("Internal provider note");
+      expect(report.summary).not.toContain("Internal admin note");
+      expect(report.summary).not.toContain("Admin-only proof note");
+      expect(report.summary).not.toContain("proof.jpg");
+      expect(report.summary).not.toContain("removed-tenant-file.jpg");
+      expect(report.summary).not.toContain("Sensitive information visible");
+      expect(next).not.toHaveBeenCalled();
+    });
   });
 
   test("getMyRequests does not expose provider contact details to tenants", async () => {
