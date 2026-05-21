@@ -59,7 +59,9 @@ cd web && npm run dev
 | `FRONTEND_URL`          | `http://localhost:3000`   | Frontend URL for CORS            |
 | `PAYMONGO_SECRET_KEY`   | `sk_test_...`             | PayMongo API secret key          |
 | `PAYMONGO_WEBHOOK_SECRET`| `whsk_...`               | PayMongo webhook signing key     |
-| `IMAGEKIT_PRIVATE_KEY`  | `private_...`             | ImageKit private key for uploads |
+| `ATTACHMENT_STORAGE_DRIVER` | `firebase`            | Use Firebase Storage for backend attachment uploads |
+| `FIREBASE_STORAGE_BUCKET` | `project.appspot.com`   | Server-side Firebase Storage bucket for attachments |
+| `PUBLIC_API_URL`        | `http://localhost:5000` | Public backend origin used for local attachment links |
 
 ### Frontend (`web/.env`)
 

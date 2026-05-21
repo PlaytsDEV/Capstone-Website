@@ -21,6 +21,7 @@ import {
     REOPENABLE_MAINTENANCE_STATUSES,
     canAdminTransitionMaintenanceStatus,
     formatMaintenanceTypeLabel,
+    formatMaintenanceStatusLabel,
     getResolutionEstimate,
     isAdminMutableMaintenanceStatus,
     isValidMaintenanceStatus,
@@ -28,16 +29,29 @@ import {
     normalizeMaintenanceType,
     normalizeMaintenanceUrgency,
 } from "../config/maintenance.js";
+import { ROOM_BRANCHES, ROOM_BRANCH_LABELS } from "../config/branches.js";
 import {
     AppError,
     sendSuccess,
 } from "../middleware/errorHandler.js";
-import { MaintenanceRequest, User } from "../models/index.js";
+import { MaintenanceRequest, ServiceProvider, User } from "../models/index.js";
+import { toCategoryKey } from "../models/ServiceProvider.js";
 import { buildLegacyDescription } from "../utils/maintenanceMigration.js";
 import { notify } from "../utils/notificationService.js";
 import { clean } from "../utils/sanitize.js";
 import { DELETED_ACCOUNT_LABEL } from "../utils/userReference.js";
-import { resolveUploadBranch } from "../services/attachmentUploadService.js";
+import {
+  generateMaintenanceUpdateDraft,
+  generateMaintenanceReportText,
+  suggestMaintenanceProviderFromDirectory,
+} from "../services/maintenanceAiService.js";
+import {
+  MAINTENANCE_UPLOAD_BRANCH_ERROR_MESSAGE,
+  resolveMaintenanceRequestBranch,
+  resolveMaintenanceRequestStorageBranch,
+  resolveUploadBranch,
+  uploadMaintenanceRequestAttachmentFile,
+} from "../services/attachmentUploadService.js";
 
 const USER_SELECT_FIELDS =
   "user_id firstName lastName email phone branch role";
@@ -62,11 +76,13 @@ const SUPPORTED_PROGRESS_ATTACHMENT_MIME_TYPES = new Set([
   "image/jpeg",
   "image/png",
   "image/webp",
+  "image/heic",
+  "image/heif",
   "image/*",
   "application/pdf",
 ]);
 const SUPPORTED_PROGRESS_ATTACHMENT_EXTENSION_PATTERN =
-  /\.(jpe?g|png|webp|pdf)(?:$|[?#])/i;
+  /\.(jpe?g|png|webp|heic|heif|pdf)(?:$|[?#])/i;
 
 const buildMaintenanceRequestId = () =>
   `maint_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
@@ -97,6 +113,11 @@ const toOptionalText = (value) => {
   if (value == null) return null;
   const sanitized = clean(String(value)).trim();
   return sanitized ? sanitized : null;
+};
+
+const normalizeRoomBranch = (value) => {
+  const branch = String(value || "").trim().toLowerCase();
+  return ROOM_BRANCHES.includes(branch) ? branch : null;
 };
 
 const buildActorSnapshot = (user) => ({
@@ -176,16 +197,7 @@ const getAttachmentUri = (entry) => {
   }
 
   return (
-    toOptionalText(entry?.uri) ||
     toOptionalText(entry?.url) ||
-    toOptionalText(entry?.href) ||
-    toOptionalText(entry?.src) ||
-    toOptionalText(entry?.imageUrl) ||
-    toOptionalText(entry?.imageURL) ||
-    toOptionalText(entry?.image_url) ||
-    toOptionalText(entry?.fileUrl) ||
-    toOptionalText(entry?.fileURL) ||
-    toOptionalText(entry?.file_url) ||
     toOptionalText(entry?.downloadUrl) ||
     toOptionalText(entry?.downloadURL) ||
     toOptionalText(entry?.download_url) ||
@@ -195,11 +207,148 @@ const getAttachmentUri = (entry) => {
     toOptionalText(entry?.secureUrl) ||
     toOptionalText(entry?.secureURL) ||
     toOptionalText(entry?.secure_url) ||
+    toOptionalText(entry?.uri) ||
+    toOptionalText(entry?.href) ||
+    toOptionalText(entry?.src) ||
+    toOptionalText(entry?.imageUrl) ||
+    toOptionalText(entry?.imageURL) ||
+    toOptionalText(entry?.image_url) ||
+    toOptionalText(entry?.fileUrl) ||
+    toOptionalText(entry?.fileURL) ||
+    toOptionalText(entry?.file_url) ||
     toOptionalText(entry?.mediaUrl) ||
     toOptionalText(entry?.mediaURL) ||
     toOptionalText(entry?.media_url) ||
     toOptionalText(entry?.path)
   );
+};
+
+const normalizeRemovalScope = (value) => {
+  const scope = String(value || "").trim().toLowerCase();
+  if (["tenant_only", "tenant-only", "tenant"].includes(scope)) return "tenant_only";
+  if (["request", "all", "request_only", "request-only"].includes(scope)) return "request";
+  return "";
+};
+
+const normalizeProviderSource = (value) => {
+  const source = String(value || "").trim().toLowerCase();
+  if (["directory", "saved", "provider"].includes(source)) return "directory";
+  if (["manual", "other"].includes(source)) return "manual";
+  if (["none", "unassign", "unassigned", "clear"].includes(source)) return "none";
+  return "";
+};
+
+const normalizeTextList = (items = []) =>
+  [...new Set(
+    (Array.isArray(items) ? items : [items])
+      .flatMap((item) => String(item || "").split(","))
+      .map((item) => toOptionalText(item))
+      .filter(Boolean),
+  )];
+
+const getMaintenanceCategoryLabel = (request) =>
+  formatMaintenanceTypeLabel(request?.request_type || "maintenance");
+
+const GENERIC_MAINTENANCE_FALLBACK_CATEGORIES = Object.freeze([
+  "Maintenance",
+  "General Maintenance",
+]);
+
+const buildCategoryCandidatesFromValues = (values) => {
+  const labels = (Array.isArray(values) ? values : [values]).flatMap((value) => {
+    const raw = toOptionalText(value);
+    const normalizedType = normalizeMaintenanceType(raw);
+    const label = normalizedType ? formatMaintenanceTypeLabel(normalizedType) : raw;
+    return [raw, normalizedType, label].filter(Boolean);
+  });
+
+  return {
+    labels: [...new Set(labels)],
+    keys: [...new Set(labels.map(toCategoryKey).filter(Boolean))],
+  };
+};
+
+const getCategoryCandidates = (value) => {
+  if (!toOptionalText(value)) return { labels: [], keys: [] };
+  return buildCategoryCandidatesFromValues(value);
+};
+
+const isGenericMaintenanceCategory = (value) => {
+  const raw = toOptionalText(value);
+  if (!raw) return false;
+  return normalizeMaintenanceType(raw) === "maintenance" || toCategoryKey(raw) === "general-maintenance";
+};
+
+const getGenericMaintenanceFallbackCandidates = (value) =>
+  isGenericMaintenanceCategory(value)
+    ? buildCategoryCandidatesFromValues(GENERIC_MAINTENANCE_FALLBACK_CATEGORIES)
+    : { labels: [], keys: [] };
+
+const getAssignableProviderCategoryCandidates = (value) => {
+  const category = getCategoryCandidates(value);
+  if (!isGenericMaintenanceCategory(value)) return category;
+  const fallback = getGenericMaintenanceFallbackCandidates(value);
+
+  return {
+    labels: [...new Set([...category.labels, ...fallback.labels])],
+    keys: [...new Set([...category.keys, ...fallback.keys])],
+  };
+};
+
+const providerMatchesMaintenanceRequest = (provider, request) => {
+  if (!provider || provider.status !== "active") return false;
+  const branch = resolveMaintenanceRequestBranch(request);
+  if (!branch || !provider.branchCoverage?.includes(branch)) return false;
+  const category = getAssignableProviderCategoryCandidates(request.request_type);
+  if (category.keys.length === 0) return true;
+  const providerKeys = Array.isArray(provider.serviceCategoryKeys)
+    ? provider.serviceCategoryKeys
+    : (provider.serviceCategories || []).map(toCategoryKey);
+  return providerKeys.some((key) => category.keys.includes(key));
+};
+
+const buildProviderDirectoryFilter = (
+  request,
+  category = getCategoryCandidates(request?.request_type),
+) => {
+  const branch = resolveMaintenanceRequestBranch(request);
+  return {
+    status: "active",
+    ...(branch ? { branchCoverage: branch } : {}),
+    ...(category.keys.length || category.labels.length
+      ? {
+          $or: [
+            ...(category.keys.length ? [{ serviceCategoryKeys: { $in: category.keys } }] : []),
+            ...(category.labels.length ? [{ serviceCategories: { $in: category.labels } }] : []),
+          ],
+        }
+      : {}),
+  };
+};
+
+const buildGenericProviderDirectoryFilter = (request) => {
+  const category = getGenericMaintenanceFallbackCandidates(request?.request_type);
+  if (category.keys.length === 0 && category.labels.length === 0) return null;
+  return buildProviderDirectoryFilter(request, category);
+};
+
+const serializeAssignedProvider = (request, { includeInternal = true } = {}) => {
+  if (!includeInternal) return null;
+  const name = request.assignedProviderName || request.assigned_to || null;
+  if (!name) return null;
+
+  return {
+    id: request.assignedProviderId ? String(request.assignedProviderId) : null,
+    name,
+    contactNumber: request.assignedProviderContact || null,
+    category: request.assignedProviderCategory || null,
+    notes: request.assignedProviderNotes || null,
+    source: request.assignedProviderSource || (request.assignedProviderId ? "directory" : "manual"),
+    assignedAt: request.assigned_at ?? null,
+    assignedBy: request.assignedBy ?? null,
+    assignedByName: request.assignedByName ?? null,
+    assignedByRole: request.assignedByRole ?? null,
+  };
 };
 
 const deriveAttachmentName = (uri, index = 0) => {
@@ -316,6 +465,10 @@ const normalizeAttachmentEntry = (entry, index = 0, metadataOptions = {}) => {
         : null,
   });
   const normalized = {
+    id:
+      (typeof entry === "object" && entry
+        ? toOptionalText(entry?.id) || toOptionalText(entry?.attachmentId)
+        : null) || crypto.randomUUID(),
     name,
     uri,
     type,
@@ -330,6 +483,9 @@ const normalizeAttachmentEntry = (entry, index = 0, metadataOptions = {}) => {
   if (typeof entry === "object" && entry?.storagePath) {
     normalized.storagePath = entry.storagePath;
   }
+  if (typeof entry === "object" && entry?.provider) {
+    normalized.provider = entry.provider;
+  }
 
   return {
     ...normalized,
@@ -342,12 +498,16 @@ const normalizeAttachmentEntry = (entry, index = 0, metadataOptions = {}) => {
  * record but nulls out URIs that are not safe HTTP(S) URLs so the frontend
  * can show an "unavailable" state instead of silently hiding the attachment.
  */
+const shouldHideAttachmentFromTenantOutput = (entry) => {
+  if (!entry || typeof entry !== "object") return false;
+  // Both removal scopes hide the file from tenant output. The "request" scope
+  // is stronger and is also filtered from normal admin displays in the UI.
+  if (entry.isRemoved) return true;
+  return entry.visibility === "admin_only";
+};
+
 const sanitizeAttachmentForOutput = (entry, index = 0, { includeInternal = true } = {}) => {
-  if (
-    !includeInternal &&
-    typeof entry === "object" &&
-    entry?.visibility === "admin_only"
-  ) {
+  if (!includeInternal && shouldHideAttachmentFromTenantOutput(entry)) {
     return null;
   }
 
@@ -375,6 +535,10 @@ const sanitizeAttachmentForOutput = (entry, index = 0, { includeInternal = true 
         name
       : name;
   const output = {
+    id:
+      (typeof entry === "object" && entry
+        ? entry?.id || entry?.attachmentId || entry?.storagePath
+        : null) || safeUri || `${name}-${index}`,
     name,
     uri: safeUri,
     type,
@@ -388,6 +552,18 @@ const sanitizeAttachmentForOutput = (entry, index = 0, { includeInternal = true 
   if (size !== null) output.size = size;
   if (typeof entry === "object" && entry?.storagePath) {
     output.storagePath = entry.storagePath;
+  }
+  if (typeof entry === "object" && entry?.provider) {
+    output.provider = entry.provider;
+  }
+  if (typeof entry === "object" && entry?.isRemoved) {
+    output.isRemoved = true;
+    output.removedAt = entry.removedAt || null;
+    output.removedBy = entry.removedBy || null;
+    output.removedByRole = entry.removedByRole || null;
+    output.removedByName = entry.removedByName || null;
+    output.removedReason = entry.removedReason || null;
+    output.removedScope = entry.removedScope || null;
   }
 
   return {
@@ -443,7 +619,7 @@ const validateIncomingAttachments = (
     if (!hasSupportedProgressAttachmentType(normalized)) {
       errors.push({
         field: `${fieldPrefix}.${index}.type`,
-        message: "This file type is not supported. Please upload a photo or PDF.",
+        message: "This file type is not supported. Please upload a JPEG, PNG, WebP, HEIC, HEIF, or PDF file.",
       });
     }
   });
@@ -474,6 +650,35 @@ const sanitizeAttachmentsForOutput = (attachments, options = {}) => {
   return attachments
     .map((entry, index) => sanitizeAttachmentForOutput(entry, index, options))
     .filter(Boolean);
+};
+
+const serializeUploadedMaintenanceAttachment = (attachment = {}) => {
+  const url =
+    toOptionalText(attachment.url) ||
+    toOptionalText(attachment.downloadUrl) ||
+    toOptionalText(attachment.uri);
+  const visibility =
+    attachment.visibility === "admin_only" ? "admin_only" : "tenant_visible";
+
+  return {
+    id: attachment.id || attachment.storagePath || url,
+    name: attachment.name || attachment.originalName || attachment.filename || "Attachment",
+    url,
+    uri: url,
+    downloadUrl: url,
+    type: attachment.type || attachment.mimeType || "application/octet-stream",
+    mimeType: attachment.mimeType || attachment.type || "application/octet-stream",
+    size: attachment.size ?? null,
+    visibility,
+    uploadedBy: attachment.uploadedBy || null,
+    uploadedAt: attachment.uploadedAt || new Date().toISOString(),
+    storagePath: attachment.storagePath || null,
+    context: attachment.context || null,
+    relatedId: attachment.relatedId || null,
+    branchId: attachment.branchId || attachment.branch || null,
+    branch: attachment.branch || attachment.branchId || null,
+    provider: attachment.provider || null,
+  };
 };
 
 const buildRequestIdentifierQuery = (requestId) => {
@@ -537,9 +742,23 @@ const serializeTenantSummary = (user, request) => {
   };
 };
 
+const INTERNAL_STATUS_EVENTS = new Set([
+  "admin_proof_uploaded",
+  "attachment_removed_tenant",
+  "attachment_removed_request",
+  "archived",
+  "restored",
+  "branch_assigned_manually",
+  "service_provider_assigned",
+  "service_provider_changed",
+  "service_provider_unassigned",
+]);
+
 const sanitizeStatusHistoryForOutput = (statusHistory, { includeInternal = true } = {}) =>
   Array.isArray(statusHistory)
-    ? statusHistory.map((entry) => ({
+    ? statusHistory
+        .filter((entry) => includeInternal || !INTERNAL_STATUS_EVENTS.has(entry?.event))
+        .map((entry) => ({
         ...entry,
         note:
           includeInternal || ["tenant", "applicant"].includes(entry?.actor_role)
@@ -569,7 +788,7 @@ const serializeMaintenanceRequest = (
     description: request.description,
     urgency: request.urgency,
     status: request.status,
-    assigned_to: request.assigned_to ?? null,
+    assigned_to: includeInternal ? request.assigned_to ?? null : null,
     notes: includeInternal ? request.notes ?? null : null,
     attachments: sanitizeAttachmentsForOutput(request.attachments, { includeInternal }),
     reopen_note: request.reopen_note ?? null,
@@ -577,11 +796,24 @@ const serializeMaintenanceRequest = (
     statusHistory: sanitizeStatusHistoryForOutput(request.statusHistory, { includeInternal }),
     slaState: getSlaState(request),
     assignment: {
-      assignedTo: request.assigned_to ?? null,
+      assignedTo: includeInternal ? request.assigned_to ?? null : null,
       assignedAt: request.assigned_at ?? null,
       startedAt: request.work_started_at ?? null,
       resolvedAt: request.resolved_at ?? null,
+      provider: serializeAssignedProvider(request, { includeInternal }),
     },
+    assignedProvider: serializeAssignedProvider(request, { includeInternal }),
+    assignedProviderId: includeInternal && request.assignedProviderId
+      ? String(request.assignedProviderId)
+      : null,
+    assignedProviderName: includeInternal ? request.assignedProviderName ?? null : null,
+    assignedProviderContact: includeInternal ? request.assignedProviderContact ?? null : null,
+    assignedProviderCategory: includeInternal ? request.assignedProviderCategory ?? null : null,
+    assignedProviderNotes: includeInternal ? request.assignedProviderNotes ?? null : null,
+    assignedProviderSource: includeInternal ? request.assignedProviderSource ?? null : null,
+    assignedBy: includeInternal ? request.assignedBy ?? null : null,
+    assignedByName: includeInternal ? request.assignedByName ?? null : null,
+    assignedByRole: includeInternal ? request.assignedByRole ?? null : null,
     workLog,
     conversation: Array.isArray(request.conversation)
       ? request.conversation.map((entry) => ({
@@ -601,13 +833,526 @@ const serializeMaintenanceRequest = (
     branch: request.branch || null,
     roomId: request.roomId || null,
     reservationId: request.reservationId || null,
+    isArchived: Boolean(request.isArchived),
+    archivedAt: request.archivedAt ?? null,
+    archivedBy: request.archivedBy ?? null,
+    restoredAt: request.restoredAt ?? null,
+    restoredBy: request.restoredBy ?? null,
 
     // Compatibility aliases for legacy consumers still in the repo.
     title: `${formatMaintenanceTypeLabel(request.request_type)} Request`,
     category: request.request_type,
     date: request.created_at,
-    assignedTo: request.assigned_to ?? null,
+    assignedTo: includeInternal ? request.assigned_to ?? null : null,
     completionNote: includeInternal ? request.resolution_note ?? request.notes ?? null : null,
+  };
+};
+
+const REPORT_TYPE_LABELS = Object.freeze({
+  admin: "Admin Report",
+  tenant: "Tenant Summary",
+});
+
+const TENANT_REPORT_SAFE_STATUS_EVENTS = new Set([
+  "submitted",
+  "status_changed",
+  "reopened",
+]);
+
+const REPORT_INTERNAL_STATUS_EVENTS = new Set([
+  ...INTERNAL_STATUS_EVENTS,
+  "assignment_updated",
+  "note_updated",
+]);
+
+const formatReportDate = (value) => {
+  if (!value) return "Not recorded";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not recorded";
+  return date.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
+};
+
+const formatReportListValue = (value, fallback = "Not recorded") =>
+  toOptionalText(value) || fallback;
+
+const formatReportRole = (role) =>
+  toOptionalText(role)?.replace(/_/g, " ") || "unknown role";
+
+const formatReportActor = ({ name, role } = {}) => {
+  const actorName = toOptionalText(name) || "Unknown";
+  const actorRole = formatReportRole(role);
+  return `${actorName} (${actorRole})`;
+};
+
+const formatReportVisibility = (visibility) =>
+  visibility === "tenant" ? "Visible to Tenant" : "Admin Only";
+
+const formatReportStatus = (status) =>
+  status ? formatMaintenanceStatusLabel(status) : "Not recorded";
+
+const formatReportSlaState = (request) => {
+  const state = getSlaState(request);
+  const label = String(state?.label || "not_recorded").replace(/_/g, " ");
+  return label.replace(/\b\w/g, (letter) => letter.toUpperCase());
+};
+
+const getReportStatusTitle = (entry = {}) => {
+  switch (entry.event) {
+    case "submitted":
+      return "Request created";
+    case "status_changed":
+      if (entry.status === "completed" || entry.status === "resolved") return "Request completed";
+      if (entry.status === "cancelled") return "Request cancelled";
+      if (entry.status === "closed") return "Request closed";
+      return "Status updated";
+    case "assignment_updated":
+      return "Assigned service provider updated";
+    case "note_updated":
+      return "Admin note updated";
+    case "reopened":
+      return "Request reopened";
+    case "archived":
+      return "Request archived";
+    case "restored":
+      return "Request restored";
+    case "branch_assigned_manually":
+      return "Branch assigned manually";
+    case "admin_proof_uploaded":
+      return "Admin-only proof uploaded";
+    case "attachment_removed_tenant":
+      return "Attachment removed from tenant view";
+    case "attachment_removed_request":
+      return "Attachment removed from request display";
+    case "service_provider_assigned":
+      return "Service provider assigned";
+    case "service_provider_changed":
+      return "Service provider changed";
+    case "service_provider_unassigned":
+      return "Service provider unassigned";
+    default:
+      return entry.event ? entry.event.replace(/_/g, " ") : "Maintenance updated";
+  }
+};
+
+const isReportAttachmentRemoved = (attachment = {}) =>
+  Boolean(attachment?.isRemoved || attachment?.removedAt || attachment?.removedScope);
+
+const isTenantVisibleReportAttachment = (attachment = {}) =>
+  !isReportAttachmentRemoved(attachment) && attachment?.visibility !== "admin_only";
+
+const getReportAttachmentName = (attachment = {}, index = 0) =>
+  toOptionalText(
+    attachment.name ||
+      attachment.originalName ||
+      attachment.filename ||
+      attachment.fileName ||
+      attachment.displayName,
+  ) ||
+  deriveAttachmentName(getAttachmentUri(attachment), index);
+
+const buildReportAttachmentSummaries = (
+  attachments,
+  { tenantSafe = false, includeRemoved = false } = {},
+) =>
+  (Array.isArray(attachments) ? attachments : [])
+    .map((attachment, index) => ({ attachment, index }))
+    .filter(({ attachment }) => {
+      if (tenantSafe) return isTenantVisibleReportAttachment(attachment);
+      if (!includeRemoved && isReportAttachmentRemoved(attachment)) return false;
+      return true;
+    })
+    .map(({ attachment, index }) => ({
+      name: getReportAttachmentName(attachment, index),
+      type: attachment?.mimeType || attachment?.type || "file",
+      visibility: attachment?.visibility === "admin_only" ? "admin" : "tenant",
+      removed: isReportAttachmentRemoved(attachment),
+      removalReason: attachment?.removedReason || null,
+      removedScope: attachment?.removedScope || null,
+    }));
+
+const buildReportTimelineItem = ({
+  title,
+  timestamp,
+  actorName,
+  actorRole,
+  visibility = "admin",
+  note = null,
+  attachments = [],
+  attachmentName = null,
+  removalReason = null,
+  status = null,
+  branch = null,
+  providerName = null,
+  previousProviderName = null,
+}) => ({
+  title,
+  timestamp,
+  actorName,
+  actorRole,
+  visibility,
+  note,
+  attachments,
+  attachmentName,
+  removalReason,
+  status,
+  branch,
+  providerName,
+  previousProviderName,
+});
+
+const buildMaintenanceReportTimeline = (request, { reportType = "admin" } = {}) => {
+  const tenantSafe = reportType === "tenant";
+  const items = [];
+
+  items.push(buildReportTimelineItem({
+    title: "Request created",
+    timestamp: request.created_at,
+    actorName: request.tenant?.full_name || request.user_id,
+    actorRole: "tenant",
+    visibility: "tenant",
+    note: request.description,
+    attachments: buildReportAttachmentSummaries(request.attachments, { tenantSafe }),
+    status: request.status,
+  }));
+
+  if (!tenantSafe) {
+    (request.attachments || [])
+      .filter(isReportAttachmentRemoved)
+      .forEach((attachment, index) => {
+        items.push(buildReportTimelineItem({
+          title:
+            attachment.removedScope === "tenant_only"
+              ? "Attachment removed from tenant view"
+              : "Attachment removed from request display",
+          timestamp: attachment.removedAt || request.updated_at,
+          actorName: attachment.removedByName || attachment.removedBy,
+          actorRole: attachment.removedByRole,
+          visibility: "admin",
+          attachmentName: getReportAttachmentName(attachment, index),
+          removalReason: attachment.removedReason || "No reason recorded",
+        }));
+      });
+  }
+
+  (request.statusHistory || []).forEach((entry) => {
+    const event = entry.event || "status";
+    const isTenantSafeEvent = TENANT_REPORT_SAFE_STATUS_EVENTS.has(event);
+    if (tenantSafe && (!isTenantSafeEvent || REPORT_INTERNAL_STATUS_EVENTS.has(event))) {
+      return;
+    }
+
+    items.push(buildReportTimelineItem({
+      title: getReportStatusTitle(entry),
+      timestamp: entry.timestamp,
+      actorName: entry.actor_name,
+      actorRole: entry.actor_role,
+      visibility: tenantSafe ? "tenant" : REPORT_INTERNAL_STATUS_EVENTS.has(event) ? "admin" : "tenant",
+      note:
+        tenantSafe && !["tenant", "applicant"].includes(entry.actor_role)
+          ? null
+          : entry.note,
+      attachmentName: tenantSafe ? null : entry.attachmentName,
+      removalReason: tenantSafe ? null : entry.removedReason,
+      status: entry.status,
+      branch: tenantSafe ? null : entry.branch,
+      providerName: tenantSafe ? null : entry.providerName,
+      previousProviderName: tenantSafe ? null : entry.previousProviderName,
+    }));
+  });
+
+  (request.reopen_history || []).forEach((entry) => {
+    items.push(buildReportTimelineItem({
+      title: "Request reopened",
+      timestamp: entry.reopened_at || entry.timestamp,
+      actorName: entry.actor_name || request.tenant?.full_name || request.user_id,
+      actorRole: entry.actor_role || "tenant",
+      visibility: "tenant",
+      note: entry.note,
+      status: request.status,
+    }));
+  });
+
+  (request.conversation || []).forEach((entry) => {
+    const attachments = buildReportAttachmentSummaries(entry.attachments, { tenantSafe });
+    items.push(buildReportTimelineItem({
+      title: entry.message ? "Message sent to tenant" : "Attachment sent to tenant",
+      timestamp: entry.created_at,
+      actorName: entry.sender_name,
+      actorRole: entry.sender_role,
+      visibility: "tenant",
+      note: entry.message,
+      attachments,
+    }));
+
+    if (!tenantSafe) {
+      (entry.attachments || [])
+        .filter(isReportAttachmentRemoved)
+        .forEach((attachment, index) => {
+          items.push(buildReportTimelineItem({
+            title:
+              attachment.removedScope === "tenant_only"
+                ? "Attachment removed from tenant view"
+                : "Attachment removed from request display",
+            timestamp: attachment.removedAt || entry.created_at,
+            actorName: attachment.removedByName || attachment.removedBy,
+            actorRole: attachment.removedByRole,
+            visibility: "admin",
+            attachmentName: getReportAttachmentName(attachment, index),
+            removalReason: attachment.removedReason || "No reason recorded",
+          }));
+        });
+    }
+  });
+
+  if (!tenantSafe) {
+    (request.work_log || []).forEach((entry) => {
+      const attachments = buildReportAttachmentSummaries(entry.attachments);
+      items.push(buildReportTimelineItem({
+        title: attachments.length > 0 ? "Admin-only proof uploaded" : "Admin note added",
+        timestamp: entry.logged_at,
+        actorName: entry.actor_name,
+        actorRole: entry.actor_role,
+        visibility: "admin",
+        note: entry.note,
+        attachments,
+      }));
+
+      (entry.attachments || [])
+        .filter(isReportAttachmentRemoved)
+        .forEach((attachment, index) => {
+          items.push(buildReportTimelineItem({
+            title: "Attachment removed from request display",
+            timestamp: attachment.removedAt || entry.logged_at,
+            actorName: attachment.removedByName || attachment.removedBy,
+            actorRole: attachment.removedByRole,
+            visibility: "admin",
+            attachmentName: getReportAttachmentName(attachment, index),
+            removalReason: attachment.removedReason || "No reason recorded",
+          }));
+        });
+    });
+  }
+
+  return items
+    .filter((item) => item.timestamp)
+    .sort((left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime());
+};
+
+const formatReportAttachmentList = (attachments = []) => {
+  if (!attachments.length) return "None recorded";
+  return attachments
+    .map((attachment) => {
+      const suffix = attachment.removed
+        ? ` (removed${attachment.removalReason ? `: ${attachment.removalReason}` : ""})`
+        : "";
+      return `- ${attachment.name}${suffix}`;
+    })
+    .join("\n");
+};
+
+const formatReportTimeline = (timeline = []) => {
+  if (!timeline.length) return "- No timeline entries recorded.";
+  return timeline
+    .map((item) => {
+      const lines = [
+        `- ${formatReportDate(item.timestamp)} | ${item.title} | ${formatReportVisibility(item.visibility)}`,
+        `  Actor: ${formatReportActor({ name: item.actorName, role: item.actorRole })}`,
+      ];
+      if (item.status) lines.push(`  Status: ${formatReportStatus(item.status)}`);
+      if (item.note) lines.push(`  Note: ${item.note}`);
+      if (item.attachmentName) lines.push(`  Attachment: ${item.attachmentName}`);
+      if (item.attachments?.length) {
+        lines.push(`  Attachments: ${item.attachments.map((attachment) => attachment.name).join(", ")}`);
+      }
+      if (item.removalReason) lines.push(`  Removal reason: ${item.removalReason}`);
+      if (item.branch) lines.push(`  Branch: ${ROOM_BRANCH_LABELS[item.branch] || item.branch}`);
+      if (item.providerName) lines.push(`  Provider: ${item.providerName}`);
+      if (item.previousProviderName) lines.push(`  Previous provider: ${item.previousProviderName}`);
+      return lines.join("\n");
+    })
+    .join("\n");
+};
+
+const buildAdminMaintenanceReport = ({ request, tenant, timeline, title }) => {
+  const initialAttachments = buildReportAttachmentSummaries(request.attachments);
+  const proofAttachments = (request.work_log || [])
+    .flatMap((entry) => buildReportAttachmentSummaries(entry.attachments))
+    .filter((attachment) => attachment.visibility === "admin" || attachment.name);
+  const providerName = request.assignedProviderName || request.assigned_to || null;
+  const providerLines = providerName
+    ? [
+        `- Provider: ${providerName}`,
+        `- Source: ${formatReportListValue(request.assignedProviderSource, "Not recorded")}`,
+        `- Category: ${formatReportListValue(request.assignedProviderCategory, "Not recorded")}`,
+        `- Contact: ${formatReportListValue(request.assignedProviderContact, "Not recorded")}`,
+        `- Notes: ${formatReportListValue(request.assignedProviderNotes, "None recorded")}`,
+      ]
+    : ["- Not assigned"];
+
+  return [
+    `# ${title}`,
+    "",
+    "## Request Information",
+    `- Request ID: ${request.request_id}`,
+    `- Tenant name: ${tenant?.full_name || "Unknown Tenant"}`,
+    `- User ID: ${request.user_id}`,
+    `- Branch: ${ROOM_BRANCH_LABELS[request.branch] || request.branch || "Branch missing"}`,
+    `- Request Type: ${getMaintenanceCategoryLabel(request)}`,
+    `- Urgency: ${formatReportListValue(request.urgency)}`,
+    `- Current Status: ${formatReportStatus(request.status)}`,
+    `- SLA Health: ${formatReportSlaState(request)}`,
+    `- Created At: ${formatReportDate(request.created_at)}`,
+    `- Updated At: ${formatReportDate(request.updated_at)}`,
+    "",
+    "## Issue Details",
+    request.description || "No issue description recorded.",
+    "",
+    "Initial tenant attachments:",
+    formatReportAttachmentList(initialAttachments),
+    "",
+    "## Service Provider",
+    ...providerLines,
+    "",
+    "## Maintenance Timeline Summary",
+    formatReportTimeline(timeline),
+    "",
+    "## Admin-only Proof",
+    formatReportAttachmentList(proofAttachments),
+    "",
+    "## Final Status / Resolution",
+    `- Current Status: ${formatReportStatus(request.status)}`,
+    `- Resolution Note: ${formatReportListValue(request.resolution_note, "None recorded")}`,
+    `- Completion Date: ${formatReportDate(request.resolved_at || request.closed_at)}`,
+    `- Reopen History: ${
+      request.reopen_history?.length
+        ? request.reopen_history
+            .map((entry) => `${formatReportDate(entry.reopened_at)} - ${entry.note || "No note recorded"}`)
+            .join("; ")
+        : "None recorded"
+    }`,
+  ].join("\n");
+};
+
+const buildTenantMaintenanceSummary = ({ request, timeline, title }) => {
+  const typeLabel = getMaintenanceCategoryLabel(request);
+  const statusLabel = formatReportStatus(request.status);
+  const tenantAttachments = [
+    ...buildReportAttachmentSummaries(request.attachments, { tenantSafe: true }),
+    ...(request.conversation || []).flatMap((entry) =>
+      buildReportAttachmentSummaries(entry.attachments, { tenantSafe: true }),
+    ),
+  ];
+  const tenantUpdates = timeline
+    .filter((item) => item.visibility === "tenant")
+    .filter((item) => item.title !== "Request created" || item.note)
+    .map((item) => {
+      const parts = [`${formatReportDate(item.timestamp)} - ${item.title}`];
+      if (item.status) parts.push(`Status: ${formatReportStatus(item.status)}`);
+      if (item.note) parts.push(item.note);
+      if (item.attachments?.length) {
+        parts.push(`Attachments: ${item.attachments.map((attachment) => attachment.name).join(", ")}`);
+      }
+      return `- ${parts.join(". ")}`;
+    });
+
+  const providerStatus = request.assignedProviderName || request.assigned_to
+    ? "A service provider has been assigned."
+    : "No service provider assignment has been shared yet.";
+  const completionLine = ["resolved", "completed", "closed"].includes(normalizeMaintenanceStatus(request.status))
+    ? `The request was marked ${statusLabel.toLowerCase()} on ${formatReportDate(request.resolved_at || request.closed_at)}.`
+    : "Our team will provide updates when the next step is confirmed.";
+
+  return [
+    `# ${title}`,
+    "",
+    `Your maintenance request for ${typeLabel} is currently ${statusLabel}.`,
+    `The request was submitted on ${formatReportDate(request.created_at)}.`,
+    providerStatus,
+    completionLine,
+    "",
+    "## Request Details",
+    `- Request ID: ${request.request_id}`,
+    `- Branch: ${ROOM_BRANCH_LABELS[request.branch] || request.branch || "Branch pending"}`,
+    `- Request Type: ${typeLabel}`,
+    `- Current Status: ${statusLabel}`,
+    "",
+    "## Tenant-visible Updates",
+    tenantUpdates.length ? tenantUpdates.join("\n") : "- No tenant-visible updates have been recorded yet.",
+    "",
+    "## Tenant-visible Attachments",
+    formatReportAttachmentList(tenantAttachments),
+  ].join("\n");
+};
+
+const buildMaintenanceReportAiContext = ({ request, tenant, timeline, reportType }) => {
+  const tenantSafe = reportType === "tenant";
+  return {
+    request: {
+      requestId: request.request_id,
+      tenantName: tenantSafe ? undefined : tenant?.full_name,
+      userId: tenantSafe ? undefined : request.user_id,
+      branch: ROOM_BRANCH_LABELS[request.branch] || request.branch || null,
+      requestType: getMaintenanceCategoryLabel(request),
+      urgency: request.urgency,
+      status: formatReportStatus(request.status),
+      createdAt: formatReportDate(request.created_at),
+      updatedAt: formatReportDate(request.updated_at),
+      description: request.description,
+      hasAssignedProvider: Boolean(request.assignedProviderName || request.assigned_to),
+      providerName: tenantSafe ? undefined : request.assignedProviderName || request.assigned_to || null,
+      providerContact: tenantSafe ? request.assignedProviderContact || null : request.assignedProviderContact || null,
+      providerNotes: tenantSafe ? request.assignedProviderNotes || null : request.assignedProviderNotes || null,
+      internalNotes: tenantSafe ? [request.notes, request.resolution_note].filter(Boolean) : [],
+    },
+    timeline: timeline.map((item) => ({
+      timestamp: formatReportDate(item.timestamp),
+      title: item.title,
+      visibility: formatReportVisibility(item.visibility),
+      actorRole: item.actorRole || null,
+      note: item.note || null,
+      attachments: item.attachments?.map((attachment) => attachment.name) || [],
+      removalReason: tenantSafe ? null : item.removalReason || null,
+      providerName: tenantSafe ? null : item.providerName || null,
+    })),
+  };
+};
+
+const buildMaintenanceReportPayload = async ({
+  request,
+  tenant,
+  adminUser,
+  reportType,
+}) => {
+  const safeReportType = reportType === "tenant" ? "tenant" : "admin";
+  const title =
+    safeReportType === "tenant"
+      ? `Maintenance Tenant Summary - ${request.request_id}`
+      : `Maintenance Admin Report - ${request.request_id}`;
+  const timeline = buildMaintenanceReportTimeline(request, { reportType: safeReportType });
+  const standardSummary =
+    safeReportType === "tenant"
+      ? buildTenantMaintenanceSummary({ request, tenant, timeline, title })
+      : buildAdminMaintenanceReport({ request, tenant, timeline, title });
+  const generated = await generateMaintenanceReportText({
+    reportType: safeReportType,
+    title,
+    standardSummary,
+    context: buildMaintenanceReportAiContext({ request, tenant, timeline, reportType: safeReportType }),
+  });
+
+  return {
+    reportType: safeReportType,
+    title,
+    summary: generated.summary,
+    generatedAt: new Date().toISOString(),
+    generatedBy:
+      `${adminUser?.firstName || ""} ${adminUser?.lastName || ""}`.trim() ||
+      adminUser?.email ||
+      adminUser?.user_id ||
+      null,
+    provider: generated.provider,
+    unavailable: generated.unavailable,
+    message: generated.message,
   };
 };
 
@@ -622,12 +1367,15 @@ const loadTenantMap = async (requests) => {
   return new Map(users.map((user) => [user.user_id, user]));
 };
 
-const findAccessibleRequest = async (requestId) => {
+const findAccessibleRequest = async (
+  requestId,
+  { includeArchived = false } = {},
+) => {
   const request = await MaintenanceRequest.findOne(
     buildRequestIdentifierQuery(requestId),
   );
 
-  if (!request || request.isArchived) {
+  if (!request || (!includeArchived && request.isArchived)) {
     throw new AppError("Maintenance request not found", 404, "REQUEST_NOT_FOUND");
   }
 
@@ -670,6 +1418,105 @@ const normalizeAdminUpdatePayload = (payload = {}, attachmentMetadata = {}) => {
   };
 };
 
+const resolveArchiveFilter = (value) => {
+  const archive = String(value || "active").trim().toLowerCase();
+  if (["active", "archived", "all"].includes(archive)) return archive;
+  return "active";
+};
+
+const getAttachmentBuckets = (request) => {
+  const buckets = [
+    {
+      source: "request",
+      label: "request attachments",
+      attachments: request.attachments,
+    },
+  ];
+
+  (request.conversation || []).forEach((entry, entryIndex) => {
+    buckets.push({
+      source: "conversation",
+      label: "tenant conversation",
+      entry,
+      entryIndex,
+      attachments: entry.attachments,
+    });
+  });
+
+  (request.work_log || []).forEach((entry, entryIndex) => {
+    buckets.push({
+      source: "work_log",
+      label: "admin work log",
+      entry,
+      entryIndex,
+      attachments: entry.attachments,
+    });
+  });
+
+  return buckets;
+};
+
+const findAttachmentTarget = (request, target = {}) => {
+  const source = toOptionalText(target.source || target.collection);
+  const entryIndex =
+    target.entryIndex === undefined || target.entryIndex === null
+      ? null
+      : Number(target.entryIndex);
+  const attachmentIndex =
+    target.attachmentIndex === undefined || target.attachmentIndex === null
+      ? null
+      : Number(target.attachmentIndex);
+  const targetId = toOptionalText(target.attachmentId || target.id);
+  const targetUri = toOptionalText(target.uri || target.url || target.downloadUrl);
+
+  for (const bucket of getAttachmentBuckets(request)) {
+    if (source && bucket.source !== source) continue;
+    if (
+      bucket.source !== "request" &&
+      Number.isInteger(entryIndex) &&
+      bucket.entryIndex !== entryIndex
+    ) {
+      continue;
+    }
+
+    const attachments = Array.isArray(bucket.attachments) ? bucket.attachments : [];
+    for (let index = 0; index < attachments.length; index += 1) {
+      const attachment = attachments[index];
+      const attachmentUri = getAttachmentUri(attachment);
+      const attachmentId = toOptionalText(
+        attachment?.id || attachment?.attachmentId || attachment?.storagePath,
+      );
+      const indexMatches =
+        Number.isInteger(attachmentIndex) && attachmentIndex === index;
+      const idMatches = targetId && attachmentId && targetId === attachmentId;
+      const uriMatches = targetUri && attachmentUri && targetUri === attachmentUri;
+
+      if (indexMatches || idMatches || uriMatches) {
+        return {
+          ...bucket,
+          attachment,
+          attachmentIndex: index,
+        };
+      }
+    }
+  }
+
+  return null;
+};
+
+const emitMaintenanceUpdated = async (request) => {
+  try {
+    const { emitToAdmins } = await import("../utils/socket.js");
+    emitToAdmins("ticket:updated", {
+      requestId: String(request._id),
+      status: request.status,
+      isArchived: Boolean(request.isArchived),
+    });
+  } catch {
+    // non-fatal; HTTP update already succeeded
+  }
+};
+
 const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
   if (normalizeMaintenanceStatus(request.status) === "closed") {
     throw new AppError(
@@ -706,23 +1553,28 @@ const applyAdminUpdateToRequest = ({ request, adminUser, payload }) => {
   }
 
   if (hasAssignedField && nextAssignedTo && nextAssignedTo.length < 2) {
-    throw new AppError("Assigned staff name is too short", 400, "INVALID_ASSIGNEE", [
+    throw new AppError("Assigned service provider name is too short", 400, "INVALID_ASSIGNEE", [
       {
         field: "assigned_to",
-        message: "Assigned staff name must be at least 2 characters.",
+        message: "Assigned service provider must be at least 2 characters.",
       },
     ]);
   }
 
-  if (nextStatus === "in_progress" && !nextAssignedTo && !request.assigned_to) {
+  if (
+    nextStatus === "in_progress" &&
+    !nextAssignedTo &&
+    !request.assigned_to &&
+    !request.assignedProviderName
+  ) {
     throw new AppError(
-      "Please assign a staff member or team before marking this request as In Progress.",
+      "Please assign a service provider before marking this request as In Progress.",
       400,
       "ASSIGNEE_REQUIRED",
       [
         {
           field: "assigned_to",
-          message: "Please assign a staff member or team before marking this request as In Progress.",
+          message: "Please assign a service provider before marking this request as In Progress.",
         },
       ],
     );
@@ -904,7 +1756,10 @@ export const getMyRequests = async (req, res, next) => {
  */
 export const getAdminAll = async (req, res, next) => {
   try {
-    const query = { isArchived: false };
+    const archiveFilter = resolveArchiveFilter(
+      req.query.archive || req.query.archived || req.query.view,
+    );
+    const query = {};
     const limit = parseLimit(req.query.limit, MAINTENANCE_LIMIT_MAX);
     const branch = resolveAdminBranchFilter(req);
     const status = normalizeMaintenanceStatus(req.query.status);
@@ -916,6 +1771,8 @@ export const getAdminAll = async (req, res, next) => {
     const dateFrom = toOptionalText(req.query.date_from);
     const dateTo = toOptionalText(req.query.date_to);
 
+    if (archiveFilter === "active") query.isArchived = false;
+    if (archiveFilter === "archived") query.isArchived = true;
     if (branch) query.branch = branch;
     if (status) {
       if (!isValidMaintenanceStatus(status)) {
@@ -1130,9 +1987,12 @@ export const createRequestCompat = async (req, res, next) => {
 export const getRequestById = async (req, res, next) => {
   try {
     const dbUser = await getDbUser(req.user.uid);
-    const request = await findAccessibleRequest(req.params.requestId);
+    const isAdminViewer = dbUser.role === "owner" || dbUser.role === "branch_admin";
+    const request = await findAccessibleRequest(req.params.requestId, {
+      includeArchived: isAdminViewer,
+    });
 
-    if (dbUser.role === "owner" || dbUser.role === "branch_admin") {
+    if (isAdminViewer) {
       if (dbUser.role !== "owner" && request.branch !== dbUser.branch) {
         throw new AppError("Access denied", 403, "FORBIDDEN");
       }
@@ -1147,9 +2007,9 @@ export const getRequestById = async (req, res, next) => {
 
     sendSuccess(res, {
       request: serializeMaintenanceRequest(
-        request.toObject(),
-        serializeTenantSummary(tenantUser, request),
-        { includeInternal: dbUser.role === "owner" || dbUser.role === "branch_admin" },
+      request.toObject(),
+      serializeTenantSummary(tenantUser, request),
+      { includeInternal: isAdminViewer },
       ),
     });
   } catch (error) {
@@ -1392,6 +2252,415 @@ export const updateAdminRequestStatus = async (req, res, next) => {
 };
 
 /**
+ * POST /api/m/maintenance/admin/:requestId/assign-provider
+ * Assign, change, or clear the external service provider for a request.
+ */
+export const assignAdminMaintenanceProvider = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId);
+    ensureAdminAccess(request, req);
+
+    if (request.isArchived) {
+      throw new AppError(
+        "Archived maintenance requests cannot be updated.",
+        409,
+        "REQUEST_ARCHIVED",
+      );
+    }
+
+    if (["cancelled", "closed"].includes(normalizeMaintenanceStatus(request.status))) {
+      throw new AppError(
+        "Closed maintenance requests cannot be updated.",
+        409,
+        "REQUEST_CLOSED",
+      );
+    }
+
+    const adminUser = await getDbUser(req.user.uid);
+    const actor = buildActorSnapshot(adminUser);
+    const providerSource = normalizeProviderSource(
+      req.body?.providerSource || req.body?.source,
+    );
+    if (!providerSource) {
+      throw new AppError(
+        "Please choose a service provider assignment option.",
+        400,
+        "INVALID_PROVIDER_SOURCE",
+        [{ field: "providerSource", message: "Please choose a service provider assignment option." }],
+      );
+    }
+
+    const previousProviderName = request.assignedProviderName || request.assigned_to || null;
+    const eventTimestamp = new Date();
+    let nextProvider = null;
+    let event = "service_provider_assigned";
+
+    if (providerSource === "none") {
+      if (!previousProviderName) {
+        const tenantUser = await User.findOne({ user_id: request.user_id })
+          .select(USER_SELECT_FIELDS)
+          .lean();
+
+        sendSuccess(res, {
+          message: "No service provider is assigned yet.",
+          request: serializeMaintenanceRequest(
+            request.toObject(),
+            serializeTenantSummary(tenantUser, request),
+          ),
+        });
+        return;
+      }
+      event = "service_provider_unassigned";
+      request.assignedProviderId = null;
+      request.assignedProviderName = null;
+      request.assignedProviderContact = null;
+      request.assignedProviderCategory = null;
+      request.assignedProviderNotes = null;
+      request.assignedProviderSource = null;
+      request.assignedBy = actor.actor_id;
+      request.assignedByName = actor.actor_name;
+      request.assignedByRole = actor.actor_role;
+      request.assigned_to = null;
+      request.assigned_at = null;
+    } else if (providerSource === "directory") {
+      const providerId = toOptionalText(req.body?.providerId || req.body?.assignedProviderId);
+      if (!providerId || !mongoose.Types.ObjectId.isValid(providerId)) {
+        throw new AppError("Please select a saved service provider.", 400, "PROVIDER_REQUIRED", [
+          { field: "providerId", message: "Please select a saved service provider." },
+        ]);
+      }
+
+      const provider = await ServiceProvider.findById(providerId).select("+serviceCategoryKeys");
+      if (!provider) {
+        throw new AppError("Service provider not found.", 404, "SERVICE_PROVIDER_NOT_FOUND");
+      }
+      if (!providerMatchesMaintenanceRequest(provider, request)) {
+        throw new AppError(
+          "This provider is not active for the request branch and type.",
+          400,
+          "PROVIDER_NOT_AVAILABLE",
+          [{ field: "providerId", message: "This provider is not active for the request branch and type." }],
+        );
+      }
+
+      nextProvider = {
+        id: provider._id,
+        name: provider.providerName,
+        contact: provider.contactNumber,
+        category: provider.serviceCategories?.[0] || getMaintenanceCategoryLabel(request),
+        notes: toOptionalText(req.body?.notes) || provider.notes || null,
+        source: "directory",
+      };
+    } else if (providerSource === "manual") {
+      const providerName = toOptionalText(req.body?.providerName);
+      const contactNumber = toOptionalText(req.body?.contactNumber);
+      const serviceType = toOptionalText(req.body?.serviceType || req.body?.category);
+      const notes = toOptionalText(req.body?.notes);
+
+      const validationErrors = [];
+      if (!providerName) validationErrors.push({ field: "providerName", message: "Provider name is required." });
+      if (!contactNumber) validationErrors.push({ field: "contactNumber", message: "Contact number is required." });
+      if (!serviceType) validationErrors.push({ field: "serviceType", message: "Service type is required." });
+      if (validationErrors.length > 0) {
+        throw new AppError(
+          "Please complete the manual provider details.",
+          400,
+          "VALIDATION_ERROR",
+          validationErrors,
+        );
+      }
+
+      let savedProvider = null;
+      const saveForFuture = Boolean(req.body?.saveForFuture);
+      if (saveForFuture) {
+        const branch = resolveMaintenanceRequestBranch(request);
+        if (!branch) {
+          throw new AppError(
+            "This request needs a branch before saving a provider for future use.",
+            400,
+            "PROVIDER_BRANCH_REQUIRED",
+            [
+              {
+                field: "saveForFuture",
+                message: "Repair or assign the request branch before saving this provider for future use.",
+              },
+            ],
+          );
+        }
+        savedProvider = await ServiceProvider.create({
+          providerName,
+          contactNumber,
+          serviceCategories: normalizeTextList([serviceType, getMaintenanceCategoryLabel(request)]),
+          branchCoverage: [branch],
+          notes,
+          status: "active",
+          createdBy: adminUser.user_id || String(adminUser._id || ""),
+          updatedBy: adminUser.user_id || String(adminUser._id || ""),
+        });
+      }
+
+      nextProvider = {
+        id: savedProvider?._id || null,
+        name: savedProvider?.providerName || providerName,
+        contact: savedProvider?.contactNumber || contactNumber,
+        category: serviceType,
+        notes,
+        source: savedProvider ? "directory" : "manual",
+      };
+    }
+
+    if (nextProvider) {
+      event = previousProviderName
+        ? previousProviderName === nextProvider.name
+          ? "service_provider_assigned"
+          : "service_provider_changed"
+        : "service_provider_assigned";
+      request.assignedProviderId = nextProvider.id || null;
+      request.assignedProviderName = nextProvider.name;
+      request.assignedProviderContact = nextProvider.contact;
+      request.assignedProviderCategory = nextProvider.category;
+      request.assignedProviderNotes = nextProvider.notes;
+      request.assignedProviderSource = nextProvider.source;
+      request.assignedBy = actor.actor_id;
+      request.assignedByName = actor.actor_name;
+      request.assignedByRole = actor.actor_role;
+      request.assigned_to = nextProvider.name;
+      request.assigned_at = eventTimestamp;
+    }
+
+    appendStatusHistory(request, {
+      event,
+      status: request.status,
+      ...actor,
+      note: toOptionalText(req.body?.notes) || null,
+      timestamp: eventTimestamp,
+      providerId: request.assignedProviderId || null,
+      providerName: request.assignedProviderName || null,
+      previousProviderName,
+      providerSource: request.assignedProviderSource || null,
+    });
+
+    await request.save();
+    await emitMaintenanceUpdated(request);
+
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select(USER_SELECT_FIELDS)
+      .lean();
+
+    sendSuccess(res, {
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(tenantUser, request),
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PATCH /api/m/maintenance/admin/:requestId/branch
+ * Owner-only manual branch repair for requests that still have no valid branch.
+ */
+export const assignAdminMaintenanceBranch = async (req, res, next) => {
+  try {
+    if (!req.isOwner) {
+      throw new AppError(
+        "Only the owner can assign a missing maintenance request branch.",
+        403,
+        "OWNER_ONLY",
+      );
+    }
+
+    const branch = normalizeRoomBranch(req.body?.branch);
+    if (!branch) {
+      throw new AppError("Please select a valid branch.", 400, "INVALID_BRANCH", [
+        { field: "branch", message: "Please select Guadalupe or Gil Puyat." },
+      ]);
+    }
+
+    const request = await findAccessibleRequest(req.params.requestId, {
+      includeArchived: true,
+    });
+    const currentBranch = normalizeRoomBranch(request.branch);
+    if (currentBranch) {
+      throw new AppError(
+        "This maintenance request already has a branch assigned.",
+        409,
+        "REQUEST_BRANCH_ALREADY_ASSIGNED",
+        [{ field: "branch", message: "This request already has a valid branch." }],
+      );
+    }
+
+    const ownerUser = await getDbUser(req.user.uid);
+    const branchLabel = ROOM_BRANCH_LABELS[branch] || branch;
+    const assignedAt = new Date();
+    const actor = buildActorSnapshot(ownerUser);
+
+    request.branch = branch;
+    appendStatusHistory(request, {
+      event: "branch_assigned_manually",
+      status: request.status,
+      ...actor,
+      actor_name: "Dormitory Owner",
+      note: `Branch: ${branchLabel}`,
+      branch,
+      timestamp: assignedAt,
+    });
+
+    await request.save();
+    await emitMaintenanceUpdated(request);
+
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select(USER_SELECT_FIELDS)
+      .lean();
+
+    sendSuccess(res, {
+      message: `Branch assigned manually: ${branchLabel}.`,
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(tenantUser, request),
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/m/maintenance/admin/:requestId/generate-update
+ */
+export const generateAdminMaintenanceUpdate = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId, {
+      includeArchived: true,
+    });
+    ensureAdminAccess(request, req);
+
+    const timeline = [
+      ...(Array.isArray(request.statusHistory) ? request.statusHistory : []),
+      ...(Array.isArray(request.work_log) ? request.work_log : []),
+      ...(Array.isArray(request.conversation) ? request.conversation : []),
+    ].sort((left, right) => {
+      const leftTime = new Date(left.timestamp || left.logged_at || left.created_at || 0).getTime();
+      const rightTime = new Date(right.timestamp || right.logged_at || right.created_at || 0).getTime();
+      return leftTime - rightTime;
+    });
+
+    const result = await generateMaintenanceUpdateDraft({
+      request: {
+        ...request.toObject(),
+        typeLabel: getMaintenanceCategoryLabel(request),
+      },
+      timeline,
+    });
+
+    sendSuccess(res, result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/m/maintenance/admin/:requestId/generate-report
+ */
+export const generateAdminMaintenanceReport = async (req, res, next) => {
+  try {
+    const reportType = String(req.body?.reportType || "").trim().toLowerCase();
+    if (!["admin", "tenant"].includes(reportType)) {
+      throw new AppError(
+        "Report type must be admin or tenant.",
+        400,
+        "INVALID_REPORT_TYPE",
+        [
+          {
+            field: "reportType",
+            message: "Choose Admin Report or Tenant Summary.",
+          },
+        ],
+      );
+    }
+
+    const request = await findAccessibleRequest(req.params.requestId, {
+      includeArchived: true,
+    });
+    ensureAdminAccess(request, req);
+
+    const adminUser = await getDbUser(req.user.uid);
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select(USER_SELECT_FIELDS)
+      .lean();
+    const requestSnapshot = {
+      ...request.toObject(),
+      tenant: serializeTenantSummary(tenantUser, request),
+    };
+    const report = await buildMaintenanceReportPayload({
+      request: requestSnapshot,
+      tenant: requestSnapshot.tenant,
+      adminUser,
+      reportType,
+    });
+
+    sendSuccess(res, report);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/m/maintenance/admin/:requestId/suggest-provider
+ */
+export const suggestAdminMaintenanceProvider = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId, {
+      includeArchived: true,
+    });
+    ensureAdminAccess(request, req);
+
+    const requestBranch = resolveMaintenanceRequestBranch(request);
+    if (!requestBranch) {
+      sendSuccess(res, {
+        message: "This request needs a branch before a saved provider can be suggested.",
+        recommendation: null,
+        unavailableReason: "missing_branch",
+      });
+      return;
+    }
+
+    let providers = await ServiceProvider.find(buildProviderDirectoryFilter(request))
+      .select("+serviceCategoryKeys")
+      .lean();
+    const fallbackFilter = buildGenericProviderDirectoryFilter(request);
+    if (providers.length === 0 && fallbackFilter) {
+      providers = await ServiceProvider.find(fallbackFilter)
+        .select("+serviceCategoryKeys")
+        .lean();
+    }
+
+    if (providers.length === 0) {
+      sendSuccess(res, {
+        message: "No matching saved providers found for this branch and request type.",
+        recommendation: null,
+      });
+      return;
+    }
+
+    const suggestion = await suggestMaintenanceProviderFromDirectory({
+      request: {
+        ...request.toObject(),
+        typeLabel: getMaintenanceCategoryLabel(request),
+        branchLabel: ROOM_BRANCH_LABELS[request.branch] || request.branch,
+      },
+      providers,
+    });
+
+    sendSuccess(res, suggestion);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * POST /api/m/maintenance/admin/:requestId/reply
  * Tenant-facing admin/staff reply with optional attachments.
  */
@@ -1485,6 +2754,342 @@ export const sendAdminReply = async (req, res, next) => {
         },
       );
     }
+
+    sendSuccess(res, {
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(tenantUser, request),
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/m/maintenance/admin/:requestId/attachments
+ * Maintenance-specific admin attachment upload. Branch is resolved server-side
+ * from the request and its tenant/room/reservation anchors.
+ */
+export const uploadAdminMaintenanceAttachment = async (req, res, next) => {
+  try {
+    const requestId = toOptionalText(req.params.requestId || req.body?.maintenanceRequestId);
+    if (!requestId) {
+      throw new AppError(
+        "Maintenance request ID is required.",
+        400,
+        "REQUEST_ID_REQUIRED",
+      );
+    }
+
+    const request = await findAccessibleRequest(requestId);
+    const branchResolution = await resolveMaintenanceRequestStorageBranch(
+      request,
+    );
+    const branch = branchResolution.branch;
+    if (!branch) {
+      throw new AppError(
+        MAINTENANCE_UPLOAD_BRANCH_ERROR_MESSAGE,
+        400,
+        "MAINTENANCE_REQUEST_BRANCH_REQUIRED",
+      );
+    }
+    if (!req.isOwner && req.branchFilter !== branch) {
+      throw new AppError("Access denied", 403, "FORBIDDEN");
+    }
+
+    const storedBranch = resolveMaintenanceRequestBranch(request);
+    if (storedBranch !== branch) {
+      request.branch = branch;
+      if (!request.roomId && branchResolution.roomId) {
+        request.roomId = branchResolution.roomId;
+      }
+      if (!request.reservationId && branchResolution.reservationId) {
+        request.reservationId = branchResolution.reservationId;
+      }
+      await request.save({ validateModifiedOnly: true });
+    }
+
+    const adminUser = await getDbUser(req.user.uid);
+    const rawVisibility = toOptionalText(req.body?.visibility || req.body?.type) || "tenant_visible";
+    const isInternal = ["admin_only", "admin-only", "internal"].includes(rawVisibility);
+    const attachment = await uploadMaintenanceRequestAttachmentFile({
+      req,
+      file: req.file,
+      maintenanceRequest: request,
+      visibility: isInternal ? "admin_only" : "tenant_visible",
+      context: isInternal ? "maintenance_internal_note" : "maintenance_reply",
+      uploadedBy: adminUser?.user_id || String(adminUser?._id || ""),
+      senderRole: adminUser?.role || "admin",
+    });
+
+    sendSuccess(
+      res,
+      {
+        attachment: serializeUploadedMaintenanceAttachment(attachment),
+      },
+      201,
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/m/maintenance/admin/:requestId/proof
+ * Saves an admin-only proof attachment into the maintenance work log.
+ */
+export const saveAdminMaintenanceProof = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId);
+    ensureAdminAccess(request, req);
+
+    if (request.isArchived) {
+      throw new AppError(
+        "Archived maintenance requests cannot be updated.",
+        409,
+        "REQUEST_ARCHIVED",
+      );
+    }
+
+    const adminUser = await getDbUser(req.user.uid);
+    const note = toOptionalText(req.body?.note || req.body?.work_log_note);
+    const rawAttachments =
+      req.body?.attachments !== undefined
+        ? req.body.attachments
+        : req.body?.work_log_attachments;
+    const attachmentErrors = validateIncomingWorkLogAttachments(rawAttachments);
+    const attachments = normalizeAttachments(rawAttachments, {
+      context: "maintenance_internal_note",
+      visibility: "admin_only",
+      branchId: request.branch,
+      uploadedBy: adminUser?.user_id,
+      senderRole: adminUser?.role || "admin",
+      relatedId: request.request_id,
+    });
+
+    if (attachmentErrors.length > 0) {
+      throw new AppError(
+        attachmentErrors[0]?.message || "Invalid attachment format.",
+        400,
+        "VALIDATION_ERROR",
+        attachmentErrors,
+      );
+    }
+
+    if (attachments.length === 0) {
+      throw new AppError(
+        "Please upload a proof attachment before saving.",
+        400,
+        "PROOF_ATTACHMENT_REQUIRED",
+      );
+    }
+
+    const eventTimestamp = new Date();
+    appendWorkLogEntry(request, {
+      note: note || "Admin-only proof uploaded.",
+      attachments,
+      ...buildActorSnapshot(adminUser),
+      logged_at: eventTimestamp,
+      entry_type: "admin_proof",
+      visibility: "admin_only",
+    });
+    appendStatusHistory(request, {
+      event: "admin_proof_uploaded",
+      status: request.status,
+      ...buildActorSnapshot(adminUser),
+      note: note || null,
+      timestamp: eventTimestamp,
+    });
+
+    await request.save();
+
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select(USER_SELECT_FIELDS)
+      .lean();
+
+    await emitMaintenanceUpdated(request);
+
+    sendSuccess(res, {
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(tenantUser, request),
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PATCH /api/m/maintenance/admin/:requestId/archive
+ */
+export const archiveAdminMaintenanceRequest = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId, {
+      includeArchived: true,
+    });
+    ensureAdminAccess(request, req);
+    const adminUser = await getDbUser(req.user.uid);
+
+    if (!request.isArchived) {
+      const eventTimestamp = new Date();
+      request.isArchived = true;
+      request.archivedAt = eventTimestamp;
+      request.archivedBy = adminUser?.user_id || String(adminUser?._id || "");
+      appendStatusHistory(request, {
+        event: "archived",
+        status: request.status,
+        ...buildActorSnapshot(adminUser),
+        note: toOptionalText(req.body?.reason) || null,
+        timestamp: eventTimestamp,
+      });
+      await request.save();
+      await emitMaintenanceUpdated(request);
+    }
+
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select(USER_SELECT_FIELDS)
+      .lean();
+
+    sendSuccess(res, {
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(tenantUser, request),
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PATCH /api/m/maintenance/admin/:requestId/restore
+ */
+export const restoreAdminMaintenanceRequest = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId, {
+      includeArchived: true,
+    });
+    ensureAdminAccess(request, req);
+    const adminUser = await getDbUser(req.user.uid);
+
+    if (request.isArchived) {
+      const eventTimestamp = new Date();
+      request.isArchived = false;
+      request.restoredAt = eventTimestamp;
+      request.restoredBy = adminUser?.user_id || String(adminUser?._id || "");
+      appendStatusHistory(request, {
+        event: "restored",
+        status: request.status,
+        ...buildActorSnapshot(adminUser),
+        note: toOptionalText(req.body?.reason) || null,
+        timestamp: eventTimestamp,
+      });
+      await request.save();
+      await emitMaintenanceUpdated(request);
+    }
+
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select(USER_SELECT_FIELDS)
+      .lean();
+
+    sendSuccess(res, {
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(tenantUser, request),
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PATCH /api/m/maintenance/admin/:requestId/attachments/remove
+ */
+export const removeAdminMaintenanceAttachment = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId, {
+      includeArchived: true,
+    });
+    ensureAdminAccess(request, req);
+    const adminUser = await getDbUser(req.user.uid);
+    const scope = normalizeRemovalScope(req.body?.scope || req.body?.removedScope);
+
+    if (request.isArchived) {
+      throw new AppError(
+        "Archived maintenance requests cannot be updated.",
+        409,
+        "REQUEST_ARCHIVED",
+      );
+    }
+
+    if (!scope) {
+      throw new AppError(
+        "Please choose how to remove this attachment.",
+        400,
+        "INVALID_REMOVAL_SCOPE",
+      );
+    }
+
+    const target = findAttachmentTarget(request, req.body || {});
+    if (!target?.attachment) {
+      throw new AppError(
+        "Attachment not found.",
+        404,
+        "ATTACHMENT_NOT_FOUND",
+      );
+    }
+
+    const eventTimestamp = new Date();
+    const reason = toOptionalText(req.body?.reason || req.body?.removedReason);
+    if (!reason || reason.toLowerCase() === "other") {
+      throw new AppError(
+        "Please provide a reason for removing this attachment.",
+        400,
+        "REMOVAL_REASON_REQUIRED",
+      );
+    }
+
+    const actor = buildActorSnapshot(adminUser);
+    target.attachment.isRemoved = true;
+    target.attachment.removedAt = eventTimestamp;
+    target.attachment.removedBy = actor.actor_id;
+    target.attachment.removedByRole = actor.actor_role;
+    target.attachment.removedByName = actor.actor_name;
+    target.attachment.removedReason = reason;
+    target.attachment.removedScope = scope;
+
+    appendStatusHistory(request, {
+      event:
+        scope === "tenant_only"
+          ? "attachment_removed_tenant"
+          : "attachment_removed_request",
+      status: request.status,
+      ...actor,
+      note: reason || getAttachmentUri(target.attachment) || target.attachment.name || null,
+      timestamp: eventTimestamp,
+      attachmentName: target.attachment.name || target.attachment.filename || null,
+      attachmentId:
+        target.attachment.id ||
+        target.attachment.attachmentId ||
+        target.attachment.storagePath ||
+        null,
+      removedScope: scope,
+      source: target.source,
+    });
+
+    request.markModified(target.source === "request" ? "attachments" : target.source);
+    if (target.source === "conversation") request.markModified("conversation");
+    if (target.source === "work_log") request.markModified("work_log");
+
+    await request.save();
+    await emitMaintenanceUpdated(request);
+
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select(USER_SELECT_FIELDS)
+      .lean();
 
     sendSuccess(res, {
       request: serializeMaintenanceRequest(
@@ -1807,6 +3412,9 @@ export default {
   updateRequest,
   updateAdminRequestStatus,
   updateAdminRequestStatusCompat,
+  assignAdminMaintenanceProvider,
+  generateAdminMaintenanceUpdate,
+  suggestAdminMaintenanceProvider,
   sendAdminReply,
   updateAdminBulkRequests,
   getCompletionStats,

@@ -1,6 +1,7 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import {
  AlertTriangle,
+ Archive,
  CheckCircle2,
  ChevronDown,
  ChevronUp,
@@ -9,10 +10,15 @@ import {
  FileDown,
  FileText,
  Image as ImageIcon,
+ Lightbulb,
  MessageSquare,
  Paperclip,
+ PhoneCall,
  RefreshCcw,
+ RotateCcw,
  Search,
+ ShieldCheck,
+ Sparkles,
  UserRound,
  Wrench,
  XCircle,
@@ -21,8 +27,18 @@ import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import {
  useAdminMaintenanceRequests,
+ useAssignMaintenanceBranch,
+ useArchiveMaintenanceRequest,
+ useAssignMaintenanceProvider,
+ useGenerateMaintenanceUpdate,
+ useGenerateMaintenanceReport,
  useMaintenanceRequest,
+ useRemoveMaintenanceAttachment,
+ useRestoreMaintenanceRequest,
+ useSaveMaintenanceProof,
  useSendMaintenanceReply,
+ useServiceProviders,
+ useSuggestMaintenanceProvider,
  useUpdateMaintenanceRequest,
 } from "../../../shared/hooks/queries/useMaintenance";
 import { showNotification } from "../../../shared/utils/notification";
@@ -40,11 +56,12 @@ import {
  getMaintenanceAttachmentLabel,
  getMaintenanceAttachmentName,
  getMaintenanceAttachmentUri,
+ isViewableMaintenanceAttachmentUri,
  normalizeMaintenanceAttachments,
 } from "../../../shared/utils/maintenanceAttachments";
 import { exportToCSV } from "../../../shared/utils/exportUtils";
 import { BRANCH_OPTIONS, BRANCH_DISPLAY_NAMES } from "../../../shared/utils/constants";
-import { uploadToFirebaseStorage } from "../../../shared/utils/firebaseStorageUpload";
+import { maintenanceApi } from "../../../shared/api/apiClient";
 import {
  normalizeBranchFilterValue,
  syncBranchSearchParam,
@@ -64,7 +81,18 @@ const SUPPORTED_PROGRESS_ATTACHMENT_TYPES = new Set([
  "image/jpeg",
  "image/png",
  "image/webp",
+ "image/heic",
+ "image/heif",
  "application/pdf",
+]);
+const SUPPORTED_PROGRESS_ATTACHMENT_EXTENSIONS = new Set([
+ ".jpg",
+ ".jpeg",
+ ".png",
+ ".webp",
+ ".heic",
+ ".heif",
+ ".pdf",
 ]);
 const UPDATE_FIELD_ORDER = [
  "status",
@@ -74,6 +102,33 @@ const UPDATE_FIELD_ORDER = [
  "attachments",
 ];
 const REPLY_FIELD_ORDER = ["reply_message", "reply_attachments"];
+const PROOF_FIELD_ORDER = ["proof_attachments", "proof_note"];
+const ARCHIVE_FILTER_OPTIONS = [
+ { key: "active", label: "Active" },
+ { key: "archived", label: "Archived" },
+ { key: "all", label: "All" },
+];
+const ATTACHMENT_REMOVAL_REASONS = [
+ "Wrong file attached",
+ "Duplicate attachment",
+ "Sensitive information visible",
+ "Blurry or unreadable file",
+ "Attached to the wrong request",
+ "Outdated file",
+ "Uploaded by mistake",
+ "Other",
+];
+const PROVIDER_MANUAL_CHOICE = "__manual__";
+const PROVIDER_NONE_CHOICE = "";
+const REPORT_TYPE_LABELS = {
+ admin: "Admin Report",
+ tenant: "Tenant Summary",
+};
+const VALID_MAINTENANCE_BRANCHES = new Set(BRANCH_OPTIONS.map((branch) => branch.value));
+const ASSIGN_BRANCH_OPTIONS = [
+ { value: "guadalupe", label: "Guadalupe" },
+ { value: "gil-puyat", label: "Gil Puyat" },
+];
 
 const fmtDate = (value) => {
  const date = new Date(value);
@@ -262,7 +317,7 @@ const matchesSummaryCard = ({ request, cardKey, dateFrom, dateTo }) => {
  case "unassigned_high":
  return (
  request.urgency === "high" &&
- !String(request.assigned_to || "").trim() &&
+ !getAssignedProviderName(request) &&
  isNonTerminal(request.status)
  );
  case "exceptions":
@@ -330,6 +385,75 @@ const ROLE_LABELS = {
  applicant: "Tenant",
 };
 
+const normalizeMaintenanceBranch = (value) => {
+ const branch = String(value || "").trim().toLowerCase();
+ return VALID_MAINTENANCE_BRANCHES.has(branch) ? branch : "";
+};
+
+const hasValidRequestBranch = (request) => Boolean(normalizeMaintenanceBranch(request?.branch));
+
+const formatBranchLabel = (value) => {
+ const branch = normalizeMaintenanceBranch(value);
+ if (!branch) return "Branch missing";
+ return BRANCH_DISPLAY_NAMES[branch] || branch;
+};
+
+const getRequestBranch = (request) =>
+ normalizeMaintenanceBranch(request?.branch);
+
+const getAssignedProviderName = (request) =>
+ request?.assignedProvider?.name ||
+ request?.assignedProviderName ||
+ request?.assigned_to ||
+ "";
+
+const getAssignedProviderContact = (request) =>
+ request?.assignedProvider?.contactNumber ||
+ request?.assignedProviderContact ||
+ "";
+
+const getAssignedProviderCategory = (request) =>
+ request?.assignedProvider?.category ||
+ request?.assignedProviderCategory ||
+ (request?.request_type ? getMaintenanceTypeMeta(request.request_type).label : "");
+
+const getProviderBranchCoverageLabel = (provider) =>
+ (provider?.branchCoverage || [])
+ .map((branch) => BRANCH_DISPLAY_NAMES[branch] || branch)
+ .filter(Boolean)
+ .join(", ") || "No branch coverage";
+
+const getProviderCategoryLabel = (provider) =>
+ (provider?.serviceCategories || []).filter(Boolean).join(", ") || "No service category";
+
+const BranchBadge = ({ branch }) => {
+ const label = formatBranchLabel(branch);
+ const isMissing = label === "Branch missing";
+
+ return (
+ <span
+ className={`inline-flex w-fit items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${
+ isMissing
+ ? "border-rose-200 bg-rose-50 text-rose-700"
+ : "border-sky-200 bg-sky-50 text-sky-700"
+ }`}
+ >
+ {label}
+ </span>
+ );
+};
+
+const BranchTableText = ({ branch }) => {
+ const label = formatBranchLabel(branch);
+ const isMissing = label === "Branch missing";
+
+ return (
+ <span className={isMissing ? "text-sm font-medium text-amber-700" : "text-sm text-card-foreground"}>
+ {label}
+ </span>
+ );
+};
+
 const formatSenderLabel = ({ role, name, fallback = "Staff update" } = {}) => {
  const roleLabel = ROLE_LABELS[String(role || "").toLowerCase()] || "Staff";
  const displayName = String(name || "").trim();
@@ -345,6 +469,7 @@ const createFilterPayload = ({
  dateFrom,
  dateTo,
  branch,
+ archiveView,
 }) => {
  const filters = { limit: 200 };
 
@@ -354,6 +479,7 @@ const createFilterPayload = ({
  if (dateFrom) filters.date_from = dateFrom;
  if (dateTo) filters.date_to = dateTo;
  if (branch && branch !== "all") filters.branch = branch;
+ if (archiveView && archiveView !== "active") filters.archive = archiveView;
 
  return filters;
 };
@@ -373,110 +499,61 @@ const getAvatarPalette = (name = "") => {
 };
 
 const isRemoteUri = (uri) => {
-  if (!uri) return false;
-  try {
-    const { protocol } = new URL(uri);
-    return protocol === "https:" || protocol === "http:";
-  } catch {
-    return false;
-  }
+ return isViewableMaintenanceAttachmentUri(uri);
 };
 
-const getMaintenanceRequestMongoId = (request) =>
- request?._id ||
- request?.mongoId ||
- request?.maintenanceRequestId ||
- "";
-
-const getMaintenanceRequestCode = (request) =>
+const getMaintenanceRequestUploadId = (request) =>
  request?.requestId ||
  request?.request_id ||
  request?.ticketId ||
  request?.maintenanceId ||
  request?.id ||
+ request?._id ||
  "";
 
-const normalizeMaintenanceBranchCandidate = (value) => {
- if (!value) return "";
- if (typeof value === "object") {
- return normalizeMaintenanceBranchCandidate(
- value.value ||
- value.slug ||
- value.code ||
- value.branchId ||
- value.branch ||
- value._id ||
- value.id ||
- value.name ||
- value.label,
- );
- }
+const getUploadedAttachmentUrl = (attachment = {}) =>
+ attachment.url || attachment.downloadUrl || attachment.uri || "";
 
- const raw = String(value).trim();
- if (!raw) return "";
-
- const directMatch = BRANCH_OPTIONS.find((branch) => branch.value === raw);
- if (directMatch) return directMatch.value;
-
- const normalized = raw.toLowerCase();
- const displayMatch = BRANCH_OPTIONS.find(
- (branch) =>
- branch.value.toLowerCase() === normalized ||
- branch.label.toLowerCase() === normalized ||
- BRANCH_DISPLAY_NAMES[branch.value]?.toLowerCase() === normalized,
- );
-
- return displayMatch?.value || raw;
-};
-
-const isKnownMaintenanceBranch = (branchId) =>
- BRANCH_OPTIONS.some((branch) => branch.value === branchId);
-
-const getMaintenanceRequestUploadBranchId = (request) => {
- const candidates = [
- request?.branchId ||
- request?.branch_id,
- request?.branch ||
- request?.branch?.value ||
- request?.branch?.slug ||
- request?.branch?.code ||
- request?.branch?._id ||
- request?.branch?.id,
- request?.tenant?.branchId ||
- request?.tenant?.branch,
- ];
-
- for (const candidate of candidates) {
- const branchId = normalizeMaintenanceBranchCandidate(candidate);
- if (isKnownMaintenanceBranch(branchId)) return branchId;
- }
-
- return "";
-};
-
-const buildMaintenanceAttachmentUploadOptions = (request, options = {}) => {
- const maintenanceRequestId = getMaintenanceRequestMongoId(request);
- const requestId = getMaintenanceRequestCode(request) || maintenanceRequestId;
- const relatedId = maintenanceRequestId || requestId;
- const branchId = getMaintenanceRequestUploadBranchId(request);
+const buildUploadedAdminAttachment = ({ clientId, file, attachment = {} }) => {
+ const uri = getUploadedAttachmentUrl(attachment);
+ const type = attachment.type || attachment.mimeType || file.type || "application/octet-stream";
 
  return {
- ...options,
- maintenanceRequestId: maintenanceRequestId || requestId,
- requestId,
- relatedId,
- relatedType: "maintenance_request",
- ...(branchId ? { branchId } : {}),
+ ...attachment,
+ clientId,
+ name: attachment.name || file.name,
+ uri,
+ url: uri,
+ downloadUrl: uri,
+ type,
+ mimeType: attachment.mimeType || type,
+ size: attachment.size ?? file.size,
+ storagePath: attachment.storagePath,
+ uploadStatus: "uploaded",
  };
 };
 
 const createAttachmentClientId = () =>
  `maintenance-attachment-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+const getAttachmentFileExtension = (file) => {
+ const name = String(file?.name || "").toLowerCase();
+ const dotIndex = name.lastIndexOf(".");
+ return dotIndex >= 0 ? name.slice(dotIndex) : "";
+};
+
+const isSupportedProgressAttachmentFile = (file) => {
+ const type = String(file?.type || "").toLowerCase();
+ if (SUPPORTED_PROGRESS_ATTACHMENT_TYPES.has(type)) return true;
+
+ return (!type || type === "application/octet-stream") &&
+ SUPPORTED_PROGRESS_ATTACHMENT_EXTENSIONS.has(getAttachmentFileExtension(file));
+};
+
 const validateProgressAttachmentFile = (file) => {
  if (!file) return "No file selected.";
- if (!SUPPORTED_PROGRESS_ATTACHMENT_TYPES.has(String(file.type || "").toLowerCase())) {
- return "This file type is not supported. Please upload a photo or PDF.";
+ if (!isSupportedProgressAttachmentFile(file)) {
+ return "This file type is not supported. Please upload a JPEG, PNG, WebP, HEIC, HEIF, or PDF file.";
  }
  if (file.size > MAX_MAINTENANCE_ATTACHMENT_SIZE) {
  return "This file is too large. Please upload a file under 5 MB.";
@@ -643,12 +720,1052 @@ function AttachmentThumbnail({ attachment, index }) {
  );
 }
 
+const isRemovedAttachment = (attachment) => Boolean(attachment?.isRemoved);
+
+const getActiveAttachments = (attachments = []) =>
+ Array.isArray(attachments)
+ ? attachments.filter((attachment) => !isRemovedAttachment(attachment))
+ : [];
+
+const getAttachmentRemoveTarget = ({
+ source,
+ entryIndex = null,
+ attachment,
+ attachmentIndex,
+}) => ({
+ source,
+ entryIndex,
+ attachmentIndex,
+ attachmentId: attachment?.id || attachment?.attachmentId || attachment?.storagePath || null,
+ uri: getMaintenanceAttachmentUri(attachment),
+});
+
+const buildTimelineActor = ({
+ role,
+ name,
+ fallback = "Unknown admin",
+} = {}) => formatSenderLabel({ role, name, fallback });
+
+const getStatusTimelineTitle = (entry = {}) => {
+ switch (entry.event) {
+ case "submitted":
+ return "Request created";
+ case "status_changed":
+ if (entry.status === "completed" || entry.status === "resolved") return "Request completed";
+ if (entry.status === "cancelled") return "Request cancelled";
+ if (entry.status === "closed") return "Request closed";
+ return "Status updated";
+ case "assignment_updated":
+ return "Assigned service provider updated";
+ case "note_updated":
+ return "Admin note updated";
+ case "reopened":
+ return "Request reopened";
+ case "archived":
+ return "Request archived";
+ case "restored":
+ return "Request restored";
+ case "branch_assigned_manually":
+ return "Branch assigned manually";
+ case "admin_proof_uploaded":
+ return "Admin-only proof uploaded";
+ case "attachment_removed_tenant":
+ return "Attachment removed from tenant view";
+ case "attachment_removed_request":
+ return "Attachment removed from request display";
+ case "service_provider_assigned":
+ return "Service provider assigned";
+ case "service_provider_changed":
+ return "Service provider changed";
+ case "service_provider_unassigned":
+ return "Service provider unassigned";
+ default:
+ return entry.event ? entry.event.replace(/_/g, " ") : "Maintenance updated";
+ }
+};
+
+const getTimelineVisibility = (item = {}) =>
+ item.visibility === "tenant" ? "Visible to Tenant" : "Admin Only";
+
+const buildMaintenanceTimeline = (request) => {
+ if (!request) return [];
+ const items = [];
+
+ items.push({
+ key: "created",
+ type: "created",
+ title: "Request created",
+ message: request.description,
+ actorName: request.tenant?.full_name || request.user_id,
+ actorRole: "tenant",
+ actorPrefix: "Submitted by",
+ timestamp: request.created_at,
+ visibility: "tenant",
+ attachments: getActiveAttachments(request.attachments),
+ attachmentTargets: getActiveAttachments(request.attachments).map((attachment) => {
+ const originalIndex = (request.attachments || []).indexOf(attachment);
+ return getAttachmentRemoveTarget({
+ source: "request",
+ attachment,
+ attachmentIndex: originalIndex,
+ });
+ }),
+ });
+
+ (request.attachments || []).filter(isRemovedAttachment).forEach((attachment, attachmentIndex) => {
+ items.push({
+ key: `request-removed-${attachmentIndex}`,
+ type: "attachment_removed",
+ title:
+ attachment.removedScope === "tenant_only"
+ ? "Attachment removed from tenant view"
+ : "Attachment removed from request display",
+ message: attachment.removedReason,
+ actorName: attachment.removedByName || attachment.removedBy,
+ actorRole: attachment.removedByRole,
+ actorPrefix: "Removed by",
+ timestamp: attachment.removedAt || request.updated_at,
+ visibility: "admin",
+ attachmentName: getMaintenanceAttachmentName(attachment, attachmentIndex),
+ attachments: [],
+ removed: true,
+ });
+ });
+
+ (request.statusHistory || []).forEach((entry, index) => {
+ if (["admin_proof_uploaded", "attachment_removed_tenant", "attachment_removed_request"].includes(entry.event)) {
+ return;
+ }
+ items.push({
+ key: `status-${entry.timestamp || index}-${index}`,
+ type: entry.event || "status",
+ title: getStatusTimelineTitle(entry),
+ message: entry.note,
+ actorName: entry.actor_name,
+ actorRole: entry.actor_role,
+ actorPrefix:
+ entry.event === "admin_proof_uploaded"
+ ? "Uploaded by"
+ : entry.event?.startsWith("attachment_removed")
+ ? "Removed by"
+ : entry.event === "branch_assigned_manually"
+ ? "Assigned by"
+ : ["archived", "restored"].includes(entry.event)
+ ? "Updated by"
+ : "Updated by",
+ timestamp: entry.timestamp,
+ visibility:
+ ["archived", "restored", "branch_assigned_manually", "admin_proof_uploaded", "attachment_removed_tenant", "attachment_removed_request", "note_updated", "service_provider_assigned", "service_provider_changed", "service_provider_unassigned"].includes(entry.event)
+ ? "admin"
+ : "tenant",
+ meta: entry.status ? formatMaintenanceStatus(entry.status) : "",
+ removedScope: entry.removedScope,
+ attachmentName: entry.attachmentName,
+ branch: entry.branch,
+ providerName: entry.providerName,
+ previousProviderName: entry.previousProviderName,
+ });
+ });
+
+ const statusReopenTimestamps = new Set(
+ (request.statusHistory || [])
+ .filter((entry) => entry.event === "reopened" && entry.timestamp)
+ .map((entry) => new Date(entry.timestamp).getTime()),
+ );
+ (request.reopen_history || []).forEach((entry, index) => {
+ const reopenedAt = entry.reopened_at || entry.timestamp;
+ const reopenedTime = reopenedAt ? new Date(reopenedAt).getTime() : null;
+ if (reopenedTime && statusReopenTimestamps.has(reopenedTime)) return;
+ items.push({
+ key: `reopen-${reopenedAt || index}-${index}`,
+ type: "reopened",
+ title: "Request reopened",
+ message: entry.note,
+ actorName: entry.actor_name || request.tenant?.full_name || request.user_id,
+ actorRole: entry.actor_role || "tenant",
+ actorPrefix: "Reopened by",
+ timestamp: reopenedAt,
+ visibility: "tenant",
+ meta: entry.previous_status
+ ? `From ${formatMaintenanceStatus(entry.previous_status)}`
+ : "",
+ });
+ });
+
+ (request.conversation || []).forEach((entry, entryIndex) => {
+ const activeAttachments = getActiveAttachments(entry.attachments);
+ const removedAttachments = (entry.attachments || []).filter(isRemovedAttachment);
+ items.push({
+ key: `conversation-${entry.created_at || entryIndex}-${entryIndex}`,
+ type: "conversation",
+ title: entry.message ? "Message sent to tenant" : "Attachment sent to tenant",
+ message: entry.message,
+ actorName: entry.sender_name,
+ actorRole: entry.sender_role,
+ actorPrefix: "Sent by",
+ timestamp: entry.created_at,
+ visibility: "tenant",
+ attachments: activeAttachments,
+ attachmentTargets: activeAttachments.map((attachment) => {
+ const originalIndex = (entry.attachments || []).indexOf(attachment);
+ return getAttachmentRemoveTarget({
+ source: "conversation",
+ entryIndex,
+ attachment,
+ attachmentIndex: originalIndex,
+ });
+ }),
+ });
+
+ removedAttachments.forEach((attachment, attachmentIndex) => {
+ items.push({
+ key: `conversation-removed-${entryIndex}-${attachmentIndex}`,
+ type: "attachment_removed",
+ title:
+ attachment.removedScope === "tenant_only"
+ ? "Attachment removed from tenant view"
+ : "Attachment removed from request display",
+ message: attachment.removedReason,
+ actorName: attachment.removedByName || attachment.removedBy,
+ actorRole: attachment.removedByRole,
+ actorPrefix: "Removed by",
+ timestamp: attachment.removedAt || entry.created_at,
+ visibility: "admin",
+ attachmentName: getMaintenanceAttachmentName(attachment, attachmentIndex),
+ attachments: [],
+ removed: true,
+ });
+ });
+ });
+
+ (request.workLog || []).forEach((entry, entryIndex) => {
+ const activeAttachments = getActiveAttachments(entry.attachments);
+ const title =
+ entry.entry_type === "admin_proof" || activeAttachments.length > 0
+ ? "Admin-only proof uploaded"
+ : "Admin note added";
+ items.push({
+ key: `worklog-${entry.logged_at || entryIndex}-${entryIndex}`,
+ type: entry.entry_type || "work_log",
+ title,
+ message: entry.note,
+ actorName: entry.actor_name,
+ actorRole: entry.actor_role,
+ actorPrefix:
+ entry.entry_type === "admin_proof" || activeAttachments.length > 0
+ ? "Uploaded by"
+ : "Updated by",
+ timestamp: entry.logged_at,
+ visibility: "admin",
+ attachments: activeAttachments,
+ attachmentTargets: activeAttachments.map((attachment) => {
+ const originalIndex = (entry.attachments || []).indexOf(attachment);
+ return getAttachmentRemoveTarget({
+ source: "work_log",
+ entryIndex,
+ attachment,
+ attachmentIndex: originalIndex,
+ });
+ }),
+ });
+
+ (entry.attachments || []).filter(isRemovedAttachment).forEach((attachment, attachmentIndex) => {
+ items.push({
+ key: `worklog-removed-${entryIndex}-${attachmentIndex}`,
+ type: "attachment_removed",
+ title: "Attachment removed from request display",
+ message: attachment.removedReason,
+ actorName: attachment.removedByName || attachment.removedBy,
+ actorRole: attachment.removedByRole,
+ actorPrefix: "Removed by",
+ timestamp: attachment.removedAt || entry.logged_at,
+ visibility: "admin",
+ attachmentName: getMaintenanceAttachmentName(attachment, attachmentIndex),
+ attachments: [],
+ removed: true,
+ });
+ });
+ });
+
+ return items
+ .filter((item) => item.timestamp)
+ .sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime());
+};
+
+function TimelineAttachmentList({
+ attachments = [],
+ targets = [],
+ onRemove,
+ canRemove = false,
+ removed = false,
+}) {
+ if (!attachments.length) return null;
+
+ return (
+ <div className="mt-3 grid gap-3">
+ {attachments.map((attachment, attachmentIndex) => {
+ const attachmentUri = getMaintenanceAttachmentUri(attachment);
+ const isViewable = isRemoteUri(attachmentUri) && !removed;
+ const attachmentName = getMaintenanceAttachmentName(attachment, attachmentIndex);
+ const key = `${attachment.id || attachmentUri || attachmentName}-${attachmentIndex}`;
+ const content = (
+ <>
+ <AttachmentThumbnail attachment={attachment} index={attachmentIndex} />
+ <div className="min-w-0 flex-1">
+ <span className="block truncate text-sm font-medium text-card-foreground">
+ {attachmentName}
+ </span>
+ <span className={removed ? "text-xs text-rose-600" : "text-xs text-muted-foreground"}>
+ {removed ? "Attachment removed" : getMaintenanceAttachmentLabel(attachment)}
+ </span>
+ </div>
+ </>
+ );
+
+ return (
+ <div
+ key={key}
+ className={`flex items-center gap-3 rounded-lg border border-border bg-card p-3 ${removed ? "opacity-70" : ""}`}
+ >
+ {isViewable ? (
+ <a
+ href={attachmentUri}
+ target="_blank"
+ rel="noreferrer"
+ className="flex min-w-0 flex-1 items-center gap-3 hover:opacity-90"
+ >
+ {content}
+ </a>
+ ) : (
+ <div className="flex min-w-0 flex-1 items-center gap-3">{content}</div>
+ )}
+ {canRemove && !removed ? (
+ <button
+ type="button"
+ className="shrink-0 text-xs font-semibold text-rose-600 hover:text-rose-700"
+ onClick={() => onRemove?.(targets[attachmentIndex])}
+ >
+ Remove Attachment
+ </button>
+ ) : null}
+ </div>
+ );
+ })}
+ </div>
+ );
+}
+
+function MaintenanceTimeline({
+ items = [],
+ onRemoveAttachment,
+ canRemoveAttachments = false,
+}) {
+ if (!items.length) {
+ return (
+ <div className="flex items-center gap-2 text-sm text-muted-foreground">
+ <Clock3 size={16} />
+ No timeline entries recorded yet.
+ </div>
+ );
+ }
+
+ return (
+ <div className="space-y-3">
+ {items.map((item) => (
+ <article
+ key={item.key}
+ className="rounded-lg border border-border bg-card p-3"
+ >
+ <div className="flex flex-wrap items-start justify-between gap-3">
+ <div>
+ <strong className="block text-sm font-semibold text-card-foreground">
+ {item.title}
+ </strong>
+ <span className="mt-1 block text-xs text-muted-foreground">
+ {fmtDateTime(item.timestamp)}
+ {item.meta ? ` - ${item.meta}` : ""}
+ </span>
+ </div>
+ <SectionBadge tone={item.visibility === "tenant" ? "blue" : "amber"}>
+ {getTimelineVisibility(item)}
+ </SectionBadge>
+ </div>
+ <div className="mt-2 text-xs text-muted-foreground">
+ {item.actorPrefix || "Updated by"}: {buildTimelineActor({
+ role: item.actorRole,
+ name: item.actorName,
+ fallback: "Unknown admin",
+ })}
+ </div>
+ {item.message ? (
+ <p className="mt-2 text-sm text-muted-foreground">
+ {item.type === "attachment_removed" ? `Reason: ${item.message}` : item.message}
+ </p>
+ ) : null}
+ {item.attachmentName ? (
+ <p className="mt-2 text-sm text-muted-foreground">File: {item.attachmentName}</p>
+ ) : null}
+ {item.branch ? (
+ <p className="mt-2 text-sm text-muted-foreground">Branch: {formatBranchLabel(item.branch)}</p>
+ ) : null}
+ {item.providerName ? (
+ <p className="mt-2 text-sm text-muted-foreground">Provider: {item.providerName}</p>
+ ) : null}
+ {item.previousProviderName ? (
+ <p className="mt-1 text-sm text-muted-foreground">Previous provider: {item.previousProviderName}</p>
+ ) : null}
+ <TimelineAttachmentList
+ attachments={item.attachments}
+ targets={item.attachmentTargets}
+ onRemove={onRemoveAttachment}
+ canRemove={canRemoveAttachments}
+ removed={item.removed}
+ />
+ </article>
+ ))}
+ </div>
+ );
+}
+
+function ConfirmationModal({
+ open,
+ title,
+ message,
+ confirmLabel,
+ confirmTone = "rose",
+ isPending = false,
+ onCancel,
+ onConfirm,
+}) {
+ if (!open) return null;
+
+ const confirmClassName =
+ confirmTone === "emerald"
+ ? "bg-emerald-600 text-white hover:bg-emerald-700"
+ : "bg-rose-600 text-white hover:bg-rose-700";
+
+ return (
+ <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/50 px-4 py-6">
+ <section
+ role="dialog"
+ aria-modal="true"
+ aria-labelledby="maintenance-confirm-title"
+ className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl"
+ >
+ <h2 id="maintenance-confirm-title" className="text-lg font-semibold text-card-foreground">
+ {title}
+ </h2>
+ <p className="mt-3 text-sm leading-6 text-muted-foreground">{message}</p>
+ <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+ <button
+ type="button"
+ className="inline-flex h-10 items-center justify-center rounded-lg border border-border px-4 text-sm font-medium text-muted-foreground hover:bg-muted"
+ onClick={onCancel}
+ disabled={isPending}
+ >
+ Cancel
+ </button>
+ <button
+ type="button"
+ className={`inline-flex h-10 items-center justify-center rounded-lg px-4 text-sm font-semibold shadow-sm disabled:cursor-not-allowed disabled:opacity-60 ${confirmClassName}`}
+ onClick={onConfirm}
+ disabled={isPending}
+ >
+ {isPending ? "Working..." : confirmLabel}
+ </button>
+ </div>
+ </section>
+ </div>
+ );
+}
+
+function ReportPreviewModal({
+ open,
+ report,
+ isCopying = false,
+ onCopy,
+ onDownload,
+ onClose,
+}) {
+ if (!open || !report) return null;
+ const label = REPORT_TYPE_LABELS[report.reportType] || "Maintenance Report";
+ const isTenant = report.reportType === "tenant";
+
+ return (
+ <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/50 px-4 py-6">
+ <section
+ role="dialog"
+ aria-modal="true"
+ aria-labelledby="maintenance-report-preview-title"
+ className="flex max-h-[calc(100vh-2rem)] w-full max-w-4xl flex-col rounded-xl border border-border bg-card shadow-2xl"
+ >
+ <div className="border-b border-border p-5">
+ <div className="flex flex-wrap items-start justify-between gap-3">
+ <div>
+ <div className="flex flex-wrap items-center gap-2">
+ <h2 id="maintenance-report-preview-title" className="text-lg font-semibold text-card-foreground">
+ {report.title || label}
+ </h2>
+ <SectionBadge tone={isTenant ? "blue" : "amber"}>{label}</SectionBadge>
+ </div>
+ {report.message ? (
+ <p className="mt-2 text-sm text-muted-foreground">{report.message}</p>
+ ) : null}
+ </div>
+ <button
+ type="button"
+ className="inline-flex h-9 items-center justify-center rounded-lg border border-border px-3 text-sm font-medium text-muted-foreground hover:bg-muted"
+ onClick={onClose}
+ >
+ Close
+ </button>
+ </div>
+ </div>
+
+ <div className="min-h-0 flex-1 overflow-y-auto p-5">
+ <pre className="whitespace-pre-wrap rounded-lg border border-border bg-muted/20 p-4 text-sm leading-6 text-card-foreground">
+ {report.summary}
+ </pre>
+ </div>
+
+ <div className="flex flex-col-reverse gap-2 border-t border-border p-5 sm:flex-row sm:justify-end">
+ <button
+ type="button"
+ className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-medium text-card-foreground hover:bg-muted"
+ onClick={onDownload}
+ >
+ <FileDown size={14} />
+ Download .txt
+ </button>
+ <button
+ type="button"
+ className="inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold shadow-sm hover:opacity-90 disabled:opacity-60"
+ style={{
+ backgroundColor: "var(--primary)",
+ color: "var(--primary-foreground)",
+ }}
+ onClick={onCopy}
+ disabled={isCopying}
+ >
+ <ClipboardList size={14} />
+ {isCopying ? "Copying..." : "Copy Summary"}
+ </button>
+ </div>
+ </section>
+ </div>
+ );
+}
+
+function AssignBranchModal({
+ open,
+ branch,
+ error = "",
+ isPending = false,
+ onBranchChange,
+ onCancel,
+ onConfirm,
+}) {
+ if (!open) return null;
+ const canSubmit = Boolean(branch) && !isPending;
+
+ return (
+ <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/50 px-4 py-6">
+ <section
+ role="dialog"
+ aria-modal="true"
+ aria-labelledby="maintenance-assign-branch-title"
+ className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl"
+ >
+ <h2 id="maintenance-assign-branch-title" className="text-lg font-semibold text-card-foreground">
+ Assign Branch
+ </h2>
+ <p className="mt-3 text-sm leading-6 text-muted-foreground">
+ This request has no branch assigned. Please select the correct branch so it can be managed properly.
+ </p>
+
+ <label className="mt-5 block">
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Branch
+ </span>
+ <select
+ value={branch}
+ onChange={(event) => onBranchChange(event.target.value)}
+ disabled={isPending}
+ className="mt-2 h-11 w-full rounded-lg border border-border bg-card px-3 text-sm text-card-foreground focus:outline-none focus:ring-2 focus:ring-slate-100"
+ >
+ <option value="">Select branch</option>
+ {ASSIGN_BRANCH_OPTIONS.map((option) => (
+ <option key={option.value} value={option.value}>
+ {option.label}
+ </option>
+ ))}
+ </select>
+ </label>
+
+ {error ? (
+ <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+ {error}
+ </div>
+ ) : null}
+
+ <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+ <button
+ type="button"
+ className="inline-flex h-10 items-center justify-center rounded-lg border border-border px-4 text-sm font-medium text-muted-foreground hover:bg-muted"
+ onClick={onCancel}
+ disabled={isPending}
+ >
+ Cancel
+ </button>
+ <button
+ type="button"
+ className="inline-flex h-10 items-center justify-center rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+ onClick={onConfirm}
+ disabled={!canSubmit}
+ >
+ {isPending ? "Saving..." : "Save Branch"}
+ </button>
+ </div>
+ </section>
+ </div>
+ );
+}
+
+function AttachmentRemovalModal({
+ open,
+ scope,
+ reason,
+ customReason,
+ error,
+ isPending = false,
+ onScopeChange,
+ onReasonChange,
+ onCustomReasonChange,
+ onCancel,
+ onConfirm,
+}) {
+ if (!open) return null;
+
+ const hasScope = Boolean(scope);
+ const hasReason = reason && (reason !== "Other" || Boolean(customReason.trim()));
+ const canSubmit = hasScope && hasReason && !isPending;
+ const options = [
+ {
+ value: "tenant_only",
+ title: "Remove for Tenant",
+ description:
+ "The tenant will no longer be able to view or download this attachment. Admins can still see the removal record in the maintenance timeline.",
+ },
+ {
+ value: "request",
+ title: "Remove from Request",
+ description:
+ "This attachment will be hidden from normal admin and tenant attachment displays. A removal record will still remain in the admin timeline.",
+ },
+ ];
+
+ return (
+ <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/50 px-4 py-6">
+ <section
+ role="dialog"
+ aria-modal="true"
+ aria-labelledby="maintenance-remove-attachment-title"
+ className="max-h-[calc(100vh-2rem)] w-full max-w-xl overflow-y-auto rounded-xl border border-border bg-card p-5 shadow-2xl"
+ >
+ <h2 id="maintenance-remove-attachment-title" className="text-lg font-semibold text-card-foreground">
+ Who should no longer see this attachment?
+ </h2>
+
+ <div className="mt-4 grid gap-3">
+ {options.map((option) => {
+ const selected = scope === option.value;
+ return (
+ <label
+ key={option.value}
+ className={`flex cursor-pointer gap-3 rounded-lg border p-4 transition ${
+ selected
+ ? "border-primary bg-primary/5 ring-2 ring-primary/20"
+ : "border-border bg-card hover:bg-muted/50"
+ }`}
+ >
+ <input
+ type="radio"
+ name="attachment-removal-scope"
+ value={option.value}
+ checked={selected}
+ onChange={() => onScopeChange(option.value)}
+ className="mt-1 h-4 w-4 accent-primary"
+ disabled={isPending}
+ />
+ <span>
+ <span className="block text-sm font-semibold text-card-foreground">{option.title}</span>
+ <span className="mt-1 block text-sm leading-5 text-muted-foreground">
+ {option.description}
+ </span>
+ </span>
+ </label>
+ );
+ })}
+ </div>
+
+ <label className="mt-5 block">
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Reason for removal
+ </span>
+ <select
+ value={reason}
+ onChange={(event) => onReasonChange(event.target.value)}
+ disabled={isPending}
+ className="mt-2 h-11 w-full rounded-lg border border-border bg-card px-3 text-sm text-card-foreground focus:outline-none focus:ring-2 focus:ring-slate-100"
+ >
+ <option value="">Select a reason</option>
+ {ATTACHMENT_REMOVAL_REASONS.map((option) => (
+ <option key={option} value={option}>
+ {option}
+ </option>
+ ))}
+ </select>
+ </label>
+
+ {reason === "Other" ? (
+ <label className="mt-4 block">
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Please specify reason
+ </span>
+ <textarea
+ rows="3"
+ value={customReason}
+ onChange={(event) => onCustomReasonChange(event.target.value)}
+ disabled={isPending}
+ className="mt-2 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-slate-100"
+ placeholder="Enter a clear removal reason."
+ />
+ </label>
+ ) : null}
+
+ {error ? (
+ <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+ {error}
+ </div>
+ ) : null}
+
+ <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+ <button
+ type="button"
+ className="inline-flex h-10 items-center justify-center rounded-lg border border-border px-4 text-sm font-medium text-muted-foreground hover:bg-muted"
+ onClick={onCancel}
+ disabled={isPending}
+ >
+ Cancel
+ </button>
+ <button
+ type="button"
+ className="inline-flex h-10 items-center justify-center rounded-lg bg-rose-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+ onClick={onConfirm}
+ disabled={!canSubmit}
+ >
+ {isPending ? "Removing..." : "Remove Attachment"}
+ </button>
+ </div>
+ </section>
+ </div>
+ );
+}
+
+function ServiceProviderAssignmentPanel({
+ request,
+ providers = [],
+ isLoadingProviders = false,
+ selectedChoice,
+ manualProvider,
+ saveForFuture,
+ fieldErrors = {},
+ formMessage = "",
+ suggestion = null,
+ isAssigning = false,
+ isSuggesting = false,
+ disabled = false,
+ onChoiceChange,
+ onManualChange,
+ onSaveForFutureChange,
+ onAssign,
+ onSuggest,
+ onUseSuggestion,
+}) {
+ const currentName = getAssignedProviderName(request);
+ const currentContact = getAssignedProviderContact(request);
+ const currentCategory = getAssignedProviderCategory(request);
+ const currentNotes =
+ request?.assignedProvider?.notes ||
+ request?.assignedProviderNotes ||
+ "";
+ const currentProviderId =
+ request?.assignedProvider?.id ||
+ request?.assignedProviderId ||
+ "";
+ const currentProviderSource =
+ request?.assignedProvider?.source ||
+ request?.assignedProviderSource ||
+ (currentName ? (currentProviderId ? "directory" : "manual") : "none");
+ const selectedProvider = providers.find((provider) => provider.id === selectedChoice);
+ const showManualFields = selectedChoice === PROVIDER_MANUAL_CHOICE;
+ const requestBranch = formatBranchLabel(getRequestBranch(request));
+ const hasRequestBranch = Boolean(getRequestBranch(request));
+ const requestCategory = request?.request_type
+ ? getMaintenanceTypeMeta(request.request_type).label
+ : "Maintenance";
+ const manualValuesChanged =
+ manualProvider.providerName.trim() !== String(currentName || "").trim() ||
+ manualProvider.contactNumber.trim() !== String(currentContact || "").trim() ||
+ manualProvider.serviceType.trim() !== String(currentCategory || "").trim() ||
+ manualProvider.notes.trim() !== String(currentNotes || "").trim();
+ const hasAssignmentChanges =
+ selectedChoice === PROVIDER_NONE_CHOICE
+ ? Boolean(currentName || currentProviderId)
+ : selectedChoice === PROVIDER_MANUAL_CHOICE
+ ? currentProviderSource !== "manual" || manualValuesChanged || saveForFuture
+ : selectedChoice !== currentProviderId ||
+ currentProviderSource !== "directory" ||
+ manualProvider.notes.trim() !== String(currentNotes || "").trim();
+
+ return (
+ <div className="rounded-xl border border-border bg-card p-5">
+ <DetailDrawer.Section
+ label={(
+ <>
+ <PhoneCall size={14} />
+ Assigned Service Provider
+ <SectionBadge tone="amber">Admin Only</SectionBadge>
+ </>
+ )}
+ >
+ <p className="mb-4 text-sm text-muted-foreground">
+ Provider details are internal. Tenants only see updates that admins send manually.
+ </p>
+
+ <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+ <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Current Assignment
+ </div>
+ {currentName ? (
+ <div className="mt-2 space-y-1 text-card-foreground">
+ <div className="font-semibold">{currentName}</div>
+ {currentCategory ? <div className="text-xs text-muted-foreground">{currentCategory}</div> : null}
+ {currentContact ? (
+ <div className="text-xs text-muted-foreground">Contact: {currentContact}</div>
+ ) : null}
+ </div>
+ ) : (
+ <div className="mt-2 text-sm text-muted-foreground">Not assigned yet</div>
+ )}
+ </div>
+
+ {formMessage ? (
+ <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+ {formMessage}
+ </div>
+ ) : null}
+
+ <div className="mt-4 grid gap-3">
+ <label id="maintenance-update-field-assigned_to" className="block">
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Choose Provider
+ </span>
+ <select
+ value={selectedChoice}
+ onChange={(event) => onChoiceChange(event.target.value)}
+ disabled={disabled || isAssigning}
+ aria-invalid={Boolean(fieldErrors.assigned_to)}
+ className={buildFieldClassName(
+ Boolean(fieldErrors.assigned_to),
+ "mt-2 h-11 w-full rounded-lg border bg-card px-3 text-sm text-card-foreground focus:outline-none focus:ring-2",
+ )}
+ >
+ <option value={PROVIDER_NONE_CHOICE}>Not assigned yet</option>
+ {providers.map((provider) => (
+ <option key={provider.id} value={provider.id}>
+ {provider.providerName}
+ </option>
+ ))}
+ <option value={PROVIDER_MANUAL_CHOICE}>Other / Manual Entry</option>
+ </select>
+ {fieldErrors.assigned_to ? (
+ <p className="mt-1 text-xs text-rose-600">{fieldErrors.assigned_to}</p>
+ ) : null}
+ </label>
+
+ {isLoadingProviders ? (
+ <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+ Loading service providers...
+ </div>
+ ) : providers.length === 0 ? (
+ <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-warning-dark">
+ {hasRequestBranch
+ ? "No matching service providers found for this branch and request type. Use Manual Entry."
+ : "This request is missing a branch. Repair the branch before choosing a saved provider."}
+ </div>
+ ) : null}
+
+ {selectedProvider ? (
+ <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
+ <div className="font-semibold text-card-foreground">{selectedProvider.providerName}</div>
+ <div className="mt-1 text-xs text-muted-foreground">
+ Category: {getProviderCategoryLabel(selectedProvider)}
+ </div>
+ <div className="text-xs text-muted-foreground">
+ Branches: {getProviderBranchCoverageLabel(selectedProvider)}
+ </div>
+ <div className="text-xs text-muted-foreground">
+ Contact: {selectedProvider.contactNumber}
+ </div>
+ {selectedProvider.notes ? (
+ <div className="mt-2 text-xs text-muted-foreground">{selectedProvider.notes}</div>
+ ) : null}
+ </div>
+ ) : null}
+
+ {showManualFields ? (
+ <div className="grid gap-3 rounded-lg border border-border bg-muted/20 p-3">
+ <label>
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Provider Name
+ </span>
+ <input
+ value={manualProvider.providerName}
+ onChange={(event) => onManualChange("providerName", event.target.value)}
+ disabled={disabled || isAssigning}
+ className={buildFieldClassName(
+ Boolean(fieldErrors.providerName),
+ "mt-2 h-10 w-full rounded-lg border bg-card px-3 text-sm text-card-foreground focus:outline-none focus:ring-2",
+ )}
+ placeholder="Provider or company name"
+ />
+ {fieldErrors.providerName ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.providerName}</p> : null}
+ </label>
+ <label>
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Contact Number
+ </span>
+ <input
+ value={manualProvider.contactNumber}
+ onChange={(event) => onManualChange("contactNumber", event.target.value)}
+ disabled={disabled || isAssigning}
+ className={buildFieldClassName(
+ Boolean(fieldErrors.contactNumber),
+ "mt-2 h-10 w-full rounded-lg border bg-card px-3 text-sm text-card-foreground focus:outline-none focus:ring-2",
+ )}
+ placeholder="09XXXXXXXXX"
+ />
+ {fieldErrors.contactNumber ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.contactNumber}</p> : null}
+ </label>
+ <label>
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Service Type
+ </span>
+ <input
+ value={manualProvider.serviceType}
+ onChange={(event) => onManualChange("serviceType", event.target.value)}
+ disabled={disabled || isAssigning}
+ className={buildFieldClassName(
+ Boolean(fieldErrors.serviceType),
+ "mt-2 h-10 w-full rounded-lg border bg-card px-3 text-sm text-card-foreground focus:outline-none focus:ring-2",
+ )}
+ placeholder={requestCategory}
+ />
+ {fieldErrors.serviceType ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.serviceType}</p> : null}
+ </label>
+ <label>
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Notes
+ </span>
+ <textarea
+ rows="3"
+ value={manualProvider.notes}
+ onChange={(event) => onManualChange("notes", event.target.value)}
+ disabled={disabled || isAssigning}
+ className="mt-2 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-card-foreground focus:outline-none focus:ring-2 focus:ring-slate-100"
+ placeholder="Optional internal provider notes"
+ />
+ </label>
+ <label className="flex items-start gap-2 text-sm text-muted-foreground">
+ <input
+ type="checkbox"
+ checked={saveForFuture}
+ onChange={(event) => onSaveForFutureChange(event.target.checked)}
+ disabled={disabled || isAssigning || !hasRequestBranch}
+ className="mt-1 h-4 w-4 accent-primary"
+ />
+ <span>
+ {hasRequestBranch
+ ? `Save this provider for future use in ${requestBranch} ${requestCategory} requests.`
+ : "Repair the request branch before saving this provider for future use."}
+ </span>
+ </label>
+ </div>
+ ) : null}
+
+ {suggestion ? (
+ <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-sm text-sky-800">
+ {suggestion.recommendedProviderName ? (
+ <>
+ <div className="font-semibold">Suggested: {suggestion.recommendedProviderName}</div>
+ <div className="mt-1">{suggestion.reason}</div>
+ <button
+ type="button"
+ className="mt-2 text-xs font-semibold text-sky-900 underline"
+ onClick={() => onUseSuggestion(suggestion.recommendedProviderId)}
+ disabled={disabled || isAssigning}
+ >
+ Use suggestion
+ </button>
+ </>
+ ) : (
+ suggestion.message || "No matching saved providers found for this branch and request type."
+ )}
+ </div>
+ ) : null}
+
+ <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+ AI suggestions are based on saved maintenance records and provider directory. Please review before confirming.
+ </div>
+
+ <div className="flex flex-wrap justify-end gap-2">
+ <button
+ type="button"
+ className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-medium text-card-foreground hover:bg-muted disabled:opacity-60"
+ onClick={onSuggest}
+ disabled={disabled || isSuggesting || isAssigning}
+ >
+ <Lightbulb size={14} />
+ {isSuggesting ? "Suggesting..." : "Suggest Provider"}
+ </button>
+ <button
+ type="button"
+ className="inline-flex h-10 items-center justify-center rounded-lg px-4 text-sm font-semibold shadow-sm hover:opacity-90 disabled:opacity-60"
+ style={{
+ backgroundColor: "var(--primary)",
+ color: "var(--primary-foreground)",
+ }}
+ onClick={onAssign}
+ disabled={disabled || isAssigning || !hasAssignmentChanges}
+ title={!hasAssignmentChanges ? "No assignment changes to save." : undefined}
+ >
+ {isAssigning ? "Saving..." : "Save Assignment"}
+ </button>
+ </div>
+ </div>
+ </DetailDrawer.Section>
+ </div>
+ );
+}
+
 export default function AdminMaintenancePage() {
  const { user } = useAuth();
  const isOwner = user?.role === "owner";
  const [searchParams, setSearchParams] = useSearchParams();
 
  const [statusFilter, setStatusFilter] = useState("all");
+ const [archiveView, setArchiveView] = useState("active");
  const [requestTypeFilter, setRequestTypeFilter] = useState("all");
  const [urgencyFilter, setUrgencyFilter] = useState("all");
  const [slaFilter, setSlaFilter] = useState("all");
@@ -669,7 +1786,17 @@ export default function AdminMaintenancePage() {
  const [selectedRequestId, setSelectedRequestId] = useState(null);
  const [draftStatus, setDraftStatus] = useState("viewed");
  const [draftNotes, setDraftNotes] = useState("");
- const [draftAssignedTo, setDraftAssignedTo] = useState("");
+ const [providerChoice, setProviderChoice] = useState(PROVIDER_NONE_CHOICE);
+ const [manualProvider, setManualProvider] = useState({
+ providerName: "",
+ contactNumber: "",
+ serviceType: "",
+ notes: "",
+ });
+ const [saveManualProviderForFuture, setSaveManualProviderForFuture] = useState(false);
+ const [providerFieldErrors, setProviderFieldErrors] = useState({});
+ const [providerFormMessage, setProviderFormMessage] = useState("");
+ const [providerSuggestion, setProviderSuggestion] = useState(null);
  const [draftWorkLogNote, setDraftWorkLogNote] = useState("");
  const [draftWorkLogAttachments, setDraftWorkLogAttachments] = useState([]);
  const [uploadingUpdateAttachment, setUploadingUpdateAttachment] = useState(false);
@@ -680,6 +1807,28 @@ export default function AdminMaintenancePage() {
  const [uploadingReplyAttachment, setUploadingReplyAttachment] = useState(false);
  const [replyFieldErrors, setReplyFieldErrors] = useState({});
  const [replyFormMessage, setReplyFormMessage] = useState("");
+ const [proofNote, setProofNote] = useState("");
+ const [proofAttachments, setProofAttachments] = useState([]);
+ const [uploadingProofAttachment, setUploadingProofAttachment] = useState(false);
+ const [proofFieldErrors, setProofFieldErrors] = useState({});
+ const [proofFormMessage, setProofFormMessage] = useState("");
+ const [archiveDialogMode, setArchiveDialogMode] = useState(null);
+ const [branchAssignmentDialog, setBranchAssignmentDialog] = useState({
+ open: false,
+ branch: "",
+ error: "",
+ });
+ const [reportPreview, setReportPreview] = useState(null);
+ const [isCopyingReport, setIsCopyingReport] = useState(false);
+ const [updateType, setUpdateType] = useState("status_update");
+ const [attachmentRemovalDialog, setAttachmentRemovalDialog] = useState({
+ open: false,
+ target: null,
+ scope: "",
+ reason: "",
+ customReason: "",
+ error: "",
+ });
 
  const listFilters = useMemo(
  () =>
@@ -690,8 +1839,10 @@ export default function AdminMaintenancePage() {
  dateFrom,
  dateTo,
  branch: isOwner ? branchFilter : null,
+ archiveView,
  }),
  [
+ archiveView,
  branchFilter,
  dateFrom,
  dateTo,
@@ -710,8 +1861,9 @@ export default function AdminMaintenancePage() {
  dateFrom,
  dateTo,
  branch: isOwner ? branchFilter : null,
+ archiveView,
  }),
- [branchFilter, dateFrom, dateTo, isOwner, requestTypeFilter, urgencyFilter],
+ [archiveView, branchFilter, dateFrom, dateTo, isOwner, requestTypeFilter, urgencyFilter],
  );
 
  const {
@@ -727,10 +1879,37 @@ export default function AdminMaintenancePage() {
  } = useMaintenanceRequest(selectedRequestId);
  const updateRequestMutation = useUpdateMaintenanceRequest();
  const sendReplyMutation = useSendMaintenanceReply();
+ const saveProofMutation = useSaveMaintenanceProof();
+ const removeAttachmentMutation = useRemoveMaintenanceAttachment();
+ const archiveRequestMutation = useArchiveMaintenanceRequest();
+ const restoreRequestMutation = useRestoreMaintenanceRequest();
+ const assignBranchMutation = useAssignMaintenanceBranch();
+ const assignProviderMutation = useAssignMaintenanceProvider();
+ const generateUpdateMutation = useGenerateMaintenanceUpdate();
+ const generateReportMutation = useGenerateMaintenanceReport();
+ const suggestProviderMutation = useSuggestMaintenanceProvider();
 
  const requests = requestsData?.requests || [];
  const summaryRequests = summaryData?.requests || requests;
  const selectedRequest = requestDetailData?.request || null;
+ const providerFilters = useMemo(() => {
+ if (!selectedRequest) return {};
+ const branchId = getRequestBranch(selectedRequest);
+ const category = selectedRequest.request_type
+ ? getMaintenanceTypeMeta(selectedRequest.request_type).label
+ : "";
+ return {
+ branchId,
+ category,
+ };
+ }, [selectedRequest]);
+ const {
+ data: providerData,
+ isLoading: isLoadingProviders,
+ } = useServiceProviders(providerFilters, {
+ enabled: Boolean(selectedRequest && getRequestBranch(selectedRequest)),
+ });
+ const serviceProviders = providerData?.providers || [];
  const selectedRequestStatusOptions = useMemo(
  () => getAllowedAdminMaintenanceStatuses(selectedRequest?.status),
  [selectedRequest?.status],
@@ -741,7 +1920,6 @@ export default function AdminMaintenancePage() {
  const hasDraftChanges = Boolean(selectedRequest) && (
  draftStatus !== (selectedRequest.status || "") ||
  draftNotes.trim() !== String(selectedRequest.notes || "").trim() ||
- draftAssignedTo.trim() !== String(selectedRequest.assigned_to || "").trim() ||
  Boolean(draftWorkLogNote.trim()) ||
  draftWorkLogAttachments.length > 0
  );
@@ -750,6 +1928,13 @@ export default function AdminMaintenancePage() {
  );
  const hasBlockingReplyAttachment = replyAttachments.some(
  isBlockingWorkLogAttachment,
+ );
+ const hasBlockingProofAttachment = proofAttachments.some(
+ isBlockingWorkLogAttachment,
+ );
+ const timelineItems = useMemo(
+ () => buildMaintenanceTimeline(selectedRequest),
+ [selectedRequest],
  );
 
  const summaryItems = useMemo(
@@ -797,7 +1982,7 @@ export default function AdminMaintenancePage() {
  const haystack = [
  request.request_id,
  request.description,
- request.assigned_to,
+ getAssignedProviderName(request),
  request.user_id,
  request.tenant?.user_id,
  request.tenant?.full_name,
@@ -833,6 +2018,16 @@ export default function AdminMaintenancePage() {
  chips.push({
  key: `status-${statusFilter}`,
  label: `Status: ${formatMaintenanceStatus(statusFilter)}`,
+ });
+ }
+
+ if (archiveView !== "active") {
+ const archiveLabel =
+ ARCHIVE_FILTER_OPTIONS.find((item) => item.key === archiveView)?.label ||
+ archiveView;
+ chips.push({
+ key: `archive-${archiveView}`,
+ label: `View: ${archiveLabel}`,
  });
  }
 
@@ -911,6 +2106,7 @@ export default function AdminMaintenancePage() {
 
  return chips;
  }, [
+ archiveView,
  branchFilter,
  dateFrom,
  dateTo,
@@ -927,6 +2123,7 @@ export default function AdminMaintenancePage() {
  useEffect(() => {
  setCurrentPage(1);
  }, [
+ archiveView,
  branchFilter,
  dateFrom,
  dateTo,
@@ -968,7 +2165,33 @@ export default function AdminMaintenancePage() {
 
  setDraftStatus(initialStatus);
  setDraftNotes(selectedRequest.notes || "");
- setDraftAssignedTo(selectedRequest.assigned_to || "");
+ const assignedProviderId =
+ selectedRequest.assignedProvider?.id ||
+ selectedRequest.assignedProviderId ||
+ "";
+ const assignedProviderSource =
+ selectedRequest.assignedProvider?.source ||
+ selectedRequest.assignedProviderSource ||
+ "";
+ const hasAssignedProviderName = Boolean(getAssignedProviderName(selectedRequest));
+ setProviderChoice(
+ assignedProviderSource === "manual" || (!assignedProviderId && hasAssignedProviderName)
+ ? PROVIDER_MANUAL_CHOICE
+ : assignedProviderId || PROVIDER_NONE_CHOICE,
+ );
+ setManualProvider({
+ providerName: getAssignedProviderName(selectedRequest),
+ contactNumber: getAssignedProviderContact(selectedRequest),
+ serviceType: getAssignedProviderCategory(selectedRequest),
+ notes:
+ selectedRequest.assignedProvider?.notes ||
+ selectedRequest.assignedProviderNotes ||
+ "",
+ });
+ setSaveManualProviderForFuture(false);
+ setProviderFieldErrors({});
+ setProviderFormMessage("");
+ setProviderSuggestion(null);
  setDraftWorkLogNote("");
  setDraftWorkLogAttachments([]);
  setUpdateFieldErrors({});
@@ -977,6 +2200,25 @@ export default function AdminMaintenancePage() {
  setReplyAttachments([]);
  setReplyFieldErrors({});
  setReplyFormMessage("");
+ setProofNote("");
+ setProofAttachments([]);
+ setProofFieldErrors({});
+ setProofFormMessage("");
+ setUpdateType("status_update");
+ setArchiveDialogMode(null);
+ setBranchAssignmentDialog({
+ open: false,
+ branch: "",
+ error: "",
+ });
+ setAttachmentRemovalDialog({
+ open: false,
+ target: null,
+ scope: "",
+ reason: "",
+ customReason: "",
+ error: "",
+ });
  }, [selectedRequest, selectedRequestStatusOptions]);
 
  const clearUpdateFieldError = (field) => {
@@ -997,6 +2239,16 @@ export default function AdminMaintenancePage() {
  return next;
  });
  if (replyFormMessage) setReplyFormMessage("");
+ };
+
+ const clearProofFieldError = (field) => {
+ setProofFieldErrors((current) => {
+ if (!current[field]) return current;
+ const next = { ...current };
+ delete next[field];
+ return next;
+ });
+ if (proofFormMessage) setProofFormMessage("");
  };
 
  const scrollToFirstUpdateError = (errors) => {
@@ -1029,18 +2281,33 @@ export default function AdminMaintenancePage() {
  }, 0);
  };
 
+ const scrollToFirstProofError = (errors) => {
+ const firstField = PROOF_FIELD_ORDER.find((field) => errors[field]);
+ if (!firstField) return;
+
+ window.setTimeout(() => {
+ const fieldNode = document.getElementById(`maintenance-proof-field-${firstField}`);
+ if (!fieldNode) return;
+ fieldNode.scrollIntoView({ behavior: "smooth", block: "center" });
+ const focusTarget = fieldNode.matches?.("input,select,textarea,button")
+ ? fieldNode
+ : fieldNode.querySelector("input,select,textarea,button");
+ focusTarget?.focus?.({ preventScroll: true });
+ }, 0);
+ };
+
  const validateMaintenanceUpdateForm = () => {
  const errors = {};
  const allowedStatuses = new Set(selectedRequestStatusOptions);
  const normalizedStatus = String(draftStatus || "").trim();
- const assignedTo = draftAssignedTo.trim();
+ const assignedTo = getAssignedProviderName(selectedRequest);
 
  if (!normalizedStatus || !allowedStatuses.has(normalizedStatus)) {
  errors.status = "Please choose a valid status for this request.";
  }
 
  if (normalizedStatus === "in_progress" && !assignedTo) {
- errors.assigned_to = "Please assign a staff member or team before marking this request as In Progress.";
+ errors.assigned_to = "Please assign a service provider before marking this request as In Progress.";
  }
 
  if (
@@ -1049,10 +2316,6 @@ export default function AdminMaintenancePage() {
  !draftWorkLogNote.trim()
  ) {
  errors.notes = "Please add resolution notes or a completion work log before marking this request as Resolved.";
- }
-
- if (assignedTo && assignedTo.length < 2) {
- errors.assigned_to = "Assigned staff name must be at least 2 characters.";
  }
 
  if (uploadingUpdateAttachment) {
@@ -1079,6 +2342,14 @@ export default function AdminMaintenancePage() {
  if (files.length === 0) return;
 
  clearUpdateFieldError("attachments");
+ const maintenanceRequestId = getMaintenanceRequestUploadId(selectedRequest);
+ if (!maintenanceRequestId) {
+ const message = "Failed to upload attachment. Please try again.";
+ setUpdateFieldErrors((current) => ({ ...current, attachments: message }));
+ showNotification(message, "error");
+ event.target.value = "";
+ return;
+ }
  setUploadingUpdateAttachment(true);
 
  try {
@@ -1115,34 +2386,25 @@ export default function AdminMaintenancePage() {
  ]);
 
  try {
-  const { downloadUrl: uri, storagePath, size, attachment: uploadedAttachment } = await uploadToFirebaseStorage(
-  file,
-  buildMaintenanceAttachmentUploadOptions(selectedRequest, {
-  documentType: "maintenance-attachment",
-  context: "maintenance_internal_note",
-  visibility: "admin_only",
-  }),
-  );
+ const uploadResult = await maintenanceApi.uploadAdminMaintenanceAttachment(
+ maintenanceRequestId,
+ file,
+ { visibility: "admin_only" },
+ );
+ const uploadedAttachment = uploadResult?.attachment || uploadResult;
  setDraftWorkLogAttachments((current) =>
  current.map((attachment) =>
  attachment.clientId === clientId
-  ? {
-  clientId,
-  name: file.name,
-  uri,
-  type: file.type || "application/octet-stream",
-  size,
-  storagePath,
-  ...uploadedAttachment,
-  uploadStatus: "uploaded",
-  }
+ ? buildUploadedAdminAttachment({ clientId, file, attachment: uploadedAttachment })
  : attachment,
  ),
  );
- showNotification("Attachment uploaded.", "success");
+ showNotification("Upload complete.", "success");
  } catch (uploadError) {
- const message =
- uploadError.message || "Attachment upload failed. Please try again.";
+ const message = getMaintenanceApiErrorMessage(
+ uploadError,
+ "Failed to upload attachment. Please try again.",
+ );
  setDraftWorkLogAttachments((current) =>
  current.map((attachment) =>
  attachment.clientId === clientId
@@ -1161,9 +2423,9 @@ export default function AdminMaintenancePage() {
  showNotification(message, "error");
  }
  }
- } catch (uploadError) {
+ } catch {
  showNotification(
- uploadError.message || "Attachment upload failed. Please try again.",
+ "Failed to upload attachment. Please try again.",
  "error",
  );
  } finally {
@@ -1195,6 +2457,14 @@ export default function AdminMaintenancePage() {
  if (files.length === 0) return;
 
  clearReplyFieldError("reply_attachments");
+ const maintenanceRequestId = getMaintenanceRequestUploadId(selectedRequest);
+ if (!maintenanceRequestId) {
+ const message = "Failed to upload attachment. Please try again.";
+ setReplyFieldErrors((current) => ({ ...current, reply_attachments: message }));
+ showNotification(message, "error");
+ event.target.value = "";
+ return;
+ }
  setUploadingReplyAttachment(true);
 
  try {
@@ -1231,34 +2501,25 @@ export default function AdminMaintenancePage() {
  ]);
 
  try {
-  const { downloadUrl: uri, storagePath, size, attachment: uploadedAttachment } = await uploadToFirebaseStorage(
-  file,
-  buildMaintenanceAttachmentUploadOptions(selectedRequest, {
-  documentType: "maintenance-reply-attachment",
-  context: "maintenance_reply",
-  visibility: "tenant_admin",
-  }),
-  );
+ const uploadResult = await maintenanceApi.uploadAdminMaintenanceAttachment(
+ maintenanceRequestId,
+ file,
+ { visibility: "tenant_visible" },
+ );
+ const uploadedAttachment = uploadResult?.attachment || uploadResult;
  setReplyAttachments((current) =>
  current.map((attachment) =>
  attachment.clientId === clientId
-  ? {
-  clientId,
-  name: file.name,
-  uri,
-  type: file.type || "application/octet-stream",
-  size,
-  storagePath,
-  ...uploadedAttachment,
-  uploadStatus: "uploaded",
-  }
+ ? buildUploadedAdminAttachment({ clientId, file, attachment: uploadedAttachment })
  : attachment,
  ),
  );
- showNotification("Attachment uploaded.", "success");
+ showNotification("Upload complete.", "success");
  } catch (uploadError) {
- const message =
- uploadError.message || "Attachment upload failed. Please try again.";
+ const message = getMaintenanceApiErrorMessage(
+ uploadError,
+ "Failed to upload attachment. Please try again.",
+ );
  setReplyAttachments((current) =>
  current.map((attachment) =>
  attachment.clientId === clientId
@@ -1277,9 +2538,9 @@ export default function AdminMaintenancePage() {
  showNotification(message, "error");
  }
  }
- } catch (uploadError) {
+ } catch {
  showNotification(
- uploadError.message || "Attachment upload failed. Please try again.",
+ "Failed to upload attachment. Please try again.",
  "error",
  );
  } finally {
@@ -1306,8 +2567,348 @@ export default function AdminMaintenancePage() {
  });
  };
 
+ const handleProofAttachmentUpload = async (event) => {
+ const files = Array.from(event.target.files || []).filter(Boolean);
+ if (files.length === 0) return;
+
+ clearProofFieldError("proof_attachments");
+ const maintenanceRequestId = getMaintenanceRequestUploadId(selectedRequest);
+ if (!maintenanceRequestId) {
+ const message = "Failed to upload attachment. Please try again.";
+ setProofFieldErrors((current) => ({ ...current, proof_attachments: message }));
+ showNotification(message, "error");
+ event.target.value = "";
+ return;
+ }
+ setUploadingProofAttachment(true);
+
+ try {
+ for (const file of files) {
+ const clientId = createAttachmentClientId();
+ const validationMessage = validateProgressAttachmentFile(file);
+
+ if (validationMessage) {
+ setProofAttachments((current) => [
+ ...current,
+ {
+ clientId,
+ name: file.name,
+ type: file.type || "application/octet-stream",
+ uploadStatus: "invalid",
+ error: validationMessage,
+ },
+ ]);
+ setProofFieldErrors((current) => ({
+ ...current,
+ proof_attachments: validationMessage,
+ }));
+ continue;
+ }
+
+ setProofAttachments((current) => [
+ ...current,
+ {
+ clientId,
+ name: file.name,
+ type: file.type || "application/octet-stream",
+ uploadStatus: "uploading",
+ },
+ ]);
+
+ try {
+ const uploadResult = await maintenanceApi.uploadAdminMaintenanceAttachment(
+ maintenanceRequestId,
+ file,
+ { visibility: "admin_only" },
+ );
+ const uploadedAttachment = uploadResult?.attachment || uploadResult;
+ setProofAttachments((current) =>
+ current.map((attachment) =>
+ attachment.clientId === clientId
+ ? buildUploadedAdminAttachment({ clientId, file, attachment: uploadedAttachment })
+ : attachment,
+ ),
+ );
+ showNotification("Upload complete.", "success");
+ } catch (uploadError) {
+ const message = getMaintenanceApiErrorMessage(
+ uploadError,
+ "Failed to upload attachment. Please try again.",
+ );
+ setProofAttachments((current) =>
+ current.map((attachment) =>
+ attachment.clientId === clientId
+ ? {
+ ...attachment,
+ uploadStatus: "failed",
+ error: message,
+ }
+ : attachment,
+ ),
+ );
+ setProofFieldErrors((current) => ({
+ ...current,
+ proof_attachments: message,
+ }));
+ showNotification(message, "error");
+ }
+ }
+ } finally {
+ setUploadingProofAttachment(false);
+ event.target.value = "";
+ }
+ };
+
+ const handleRemoveProofAttachment = (attachmentKey) => {
+ setProofAttachments((current) => {
+ const next = current.filter(
+ (attachment, index) =>
+ getWorkLogAttachmentKey(attachment, index) !== attachmentKey,
+ );
+ const stillBlocked = next.some(isBlockingWorkLogAttachment);
+ setProofFieldErrors((errors) => {
+ if (stillBlocked) return errors;
+ const nextErrors = { ...errors };
+ delete nextErrors.proof_attachments;
+ return nextErrors;
+ });
+ if (!stillBlocked && proofFormMessage) setProofFormMessage("");
+ return next;
+ });
+ };
+
+ const validateProofForm = () => {
+ const errors = {};
+ if (uploadingProofAttachment) {
+ errors.proof_attachments = "Please wait until the proof file finishes uploading.";
+ } else if (proofAttachments.some((attachment) => attachment.uploadStatus === "failed")) {
+ errors.proof_attachments = "Attachment upload failed. Please try again.";
+ } else if (proofAttachments.some((attachment) => attachment.uploadStatus === "invalid")) {
+ errors.proof_attachments = "Please remove the invalid attachment before saving.";
+ } else if (proofAttachments.some((attachment) => !isUploadedWorkLogAttachment(attachment))) {
+ errors.proof_attachments = "Please remove the invalid attachment before saving.";
+ } else if (proofAttachments.length === 0) {
+ errors.proof_attachments = "Please upload a proof attachment before saving.";
+ }
+ return errors;
+ };
+
+ const handleSaveProof = async (event) => {
+ event.preventDefault();
+ if (!selectedRequest) return;
+
+ const validationErrors = validateProofForm();
+ if (Object.keys(validationErrors).length > 0) {
+ const summaryMessage = getFormSummaryMessage(
+ validationErrors,
+ "Please fix the highlighted fields before saving proof.",
+ );
+ setProofFieldErrors(validationErrors);
+ setProofFormMessage(summaryMessage);
+ scrollToFirstProofError(validationErrors);
+ showNotification(summaryMessage, "error");
+ return;
+ }
+
+ const attachments = normalizeMaintenanceAttachments(proofAttachments)
+ .filter((attachment) => isRemoteUri(getMaintenanceAttachmentUri(attachment)));
+
+ try {
+ await saveProofMutation.mutateAsync({
+ requestId: selectedRequest.request_id,
+ payload: {
+ note: proofNote,
+ attachments,
+ },
+ });
+ showNotification("Admin-only proof saved.", "success");
+ setProofNote("");
+ setProofAttachments([]);
+ setProofFieldErrors({});
+ setProofFormMessage("");
+ } catch (submitError) {
+ const message = getMaintenanceApiErrorMessage(
+ submitError,
+ "Failed to save proof.",
+ );
+ setProofFormMessage(message);
+ showNotification(message, "error");
+ }
+ };
+
+ const handleArchiveRequest = async () => {
+ if (!selectedRequest) return;
+ setArchiveDialogMode("archive");
+ };
+
+ const handleRestoreRequest = async () => {
+ if (!selectedRequest) return;
+ setArchiveDialogMode("restore");
+ };
+
+ const handleConfirmArchiveAction = async () => {
+ if (!selectedRequest || !archiveDialogMode) return;
+ const isRestore = archiveDialogMode === "restore";
+
+ try {
+ if (isRestore) {
+ await restoreRequestMutation.mutateAsync({
+ requestId: selectedRequest.request_id,
+ payload: {},
+ });
+ showNotification("Maintenance request restored.", "success");
+ setArchiveView("active");
+ } else {
+ await archiveRequestMutation.mutateAsync({
+ requestId: selectedRequest.request_id,
+ payload: {},
+ });
+ showNotification("Maintenance request archived.", "success");
+ setArchiveView("archived");
+ }
+ setArchiveDialogMode(null);
+ } catch (archiveError) {
+ showNotification(
+ getMaintenanceApiErrorMessage(
+ archiveError,
+ isRestore ? "Failed to restore request." : "Failed to archive request.",
+ ),
+ "error",
+ );
+ }
+ };
+
+ const handleOpenAssignBranch = () => {
+ if (!selectedRequest || !isOwner || hasValidRequestBranch(selectedRequest)) return;
+ setBranchAssignmentDialog({
+ open: true,
+ branch: "",
+ error: "",
+ });
+ };
+
+ const handleCloseAssignBranch = () => {
+ if (assignBranchMutation.isPending) return;
+ setBranchAssignmentDialog({
+ open: false,
+ branch: "",
+ error: "",
+ });
+ };
+
+ const handleConfirmAssignBranch = async () => {
+ if (!selectedRequest) return;
+ const branch = normalizeMaintenanceBranch(branchAssignmentDialog.branch);
+ if (!branch) {
+ setBranchAssignmentDialog((current) => ({
+ ...current,
+ error: "Please select Guadalupe or Gil Puyat.",
+ }));
+ return;
+ }
+
+ try {
+ await assignBranchMutation.mutateAsync({
+ requestId: selectedRequest.request_id,
+ branch,
+ });
+ showNotification("Maintenance request branch assigned.", "success");
+ setBranchAssignmentDialog({
+ open: false,
+ branch: "",
+ error: "",
+ });
+ } catch (assignError) {
+ const message = getMaintenanceApiErrorMessage(
+ assignError,
+ "Failed to assign branch.",
+ );
+ setBranchAssignmentDialog((current) => ({ ...current, error: message }));
+ showNotification(message, "error");
+ }
+ };
+
+ const handleRemoveSavedAttachment = (target) => {
+ if (!selectedRequest || !target) return;
+ setAttachmentRemovalDialog({
+ open: true,
+ target,
+ scope: "",
+ reason: "",
+ customReason: "",
+ error: "",
+ });
+ };
+
+ const handleCloseAttachmentRemovalDialog = () => {
+ if (removeAttachmentMutation.isPending) return;
+ setAttachmentRemovalDialog({
+ open: false,
+ target: null,
+ scope: "",
+ reason: "",
+ customReason: "",
+ error: "",
+ });
+ };
+
+ const handleSubmitAttachmentRemoval = async () => {
+ if (!selectedRequest || !attachmentRemovalDialog.target) return;
+ const scope = attachmentRemovalDialog.scope;
+ const selectedReason = attachmentRemovalDialog.reason;
+ const customReason = attachmentRemovalDialog.customReason.trim();
+ const reason = selectedReason === "Other" ? customReason : selectedReason;
+
+ if (!scope) {
+ setAttachmentRemovalDialog((current) => ({
+ ...current,
+ error: "Please choose who should no longer see this attachment.",
+ }));
+ return;
+ }
+
+ if (!reason) {
+ setAttachmentRemovalDialog((current) => ({
+ ...current,
+ error: "Please select a reason for removing this attachment.",
+ }));
+ return;
+ }
+
+ try {
+ await removeAttachmentMutation.mutateAsync({
+ requestId: selectedRequest.request_id,
+ payload: {
+ ...attachmentRemovalDialog.target,
+ scope,
+ removedReason: reason,
+ },
+ });
+ showNotification("Attachment removed.", "success");
+ setAttachmentRemovalDialog({
+ open: false,
+ target: null,
+ scope: "",
+ reason: "",
+ customReason: "",
+ error: "",
+ });
+ } catch (removeError) {
+ const errorMessage = getMaintenanceApiErrorMessage(
+ removeError,
+ "Failed to remove attachment.",
+ );
+ setAttachmentRemovalDialog((current) => ({ ...current, error: errorMessage }));
+ showNotification(
+ errorMessage,
+ "error",
+ );
+ }
+ };
+
  const handleResetFilters = () => {
  setStatusFilter("all");
+ setArchiveView("active");
  setRequestTypeFilter("all");
  setUrgencyFilter("all");
  setSlaFilter("all");
@@ -1325,12 +2926,12 @@ export default function AdminMaintenancePage() {
  filteredRequests.map((request) => ({
  requestId: request.request_id,
  tenantName: request.tenant?.full_name || "Unknown Tenant",
- branch: request.tenant?.branch || request.branch || "",
+ branch: getRequestBranch(request),
  requestType: getMaintenanceTypeMeta(request.request_type).label,
  urgency: getMaintenanceUrgencyMeta(request.urgency).label,
  status: formatMaintenanceStatus(request.status),
  sla: formatSlaState(request.slaState),
- assignedTo: request.assigned_to || "Unassigned",
+ assignedTo: getAssignedProviderName(request) || "Unassigned",
  createdAt: fmtDateTime(request.created_at),
  updatedAt: fmtDateTime(request.updated_at),
  })),
@@ -1342,12 +2943,243 @@ export default function AdminMaintenancePage() {
  { key: "urgency", label: "Urgency" },
  { key: "status", label: "Status" },
  { key: "sla", label: "SLA State" },
- { key: "assignedTo", label: "Assigned To" },
+ { key: "assignedTo", label: "Assigned Service Provider" },
  { key: "createdAt", label: "Created At" },
  { key: "updatedAt", label: "Updated At" },
  ],
  "maintenance-requests",
  );
+ };
+
+ const clearProviderFieldError = (field) => {
+ setProviderFieldErrors((current) => {
+ if (!current[field]) return current;
+ const next = { ...current };
+ delete next[field];
+ return next;
+ });
+ if (providerFormMessage) setProviderFormMessage("");
+ };
+
+ const handleProviderChoiceChange = (choice) => {
+ setProviderChoice(choice);
+ setProviderSuggestion(null);
+ setProviderFieldErrors({});
+ setProviderFormMessage("");
+ clearUpdateFieldError("assigned_to");
+ if (choice === PROVIDER_MANUAL_CHOICE && !manualProvider.serviceType) {
+ setManualProvider((current) => ({
+ ...current,
+ serviceType: selectedRequest?.request_type
+ ? getMaintenanceTypeMeta(selectedRequest.request_type).label
+ : current.serviceType,
+ }));
+ }
+ };
+
+ const handleManualProviderChange = (field, value) => {
+ setManualProvider((current) => ({ ...current, [field]: value }));
+ clearProviderFieldError(field);
+ clearProviderFieldError("assigned_to");
+ };
+
+ const validateProviderAssignment = () => {
+ const errors = {};
+ if (providerChoice === PROVIDER_MANUAL_CHOICE) {
+ if (!manualProvider.providerName.trim()) {
+ errors.providerName = "Provider name is required.";
+ }
+ if (!manualProvider.contactNumber.trim()) {
+ errors.contactNumber = "Contact number is required.";
+ }
+ if (!manualProvider.serviceType.trim()) {
+ errors.serviceType = "Service type is required.";
+ }
+ return errors;
+ }
+
+ if (providerChoice && !serviceProviders.some((provider) => provider.id === providerChoice)) {
+ errors.assigned_to = "Please select an available saved service provider.";
+ }
+
+ return errors;
+ };
+
+ const handleAssignProvider = async () => {
+ if (!selectedRequest) return;
+ if (
+ providerChoice === PROVIDER_NONE_CHOICE &&
+ !getAssignedProviderName(selectedRequest) &&
+ !selectedRequest.assignedProviderId &&
+ !selectedRequest.assignedProvider?.id
+ ) {
+ showNotification("No service provider is assigned yet.", "info");
+ return;
+ }
+ const validationErrors = validateProviderAssignment();
+ if (Object.keys(validationErrors).length > 0) {
+ const message = getFormSummaryMessage(
+ validationErrors,
+ "Please complete the service provider assignment.",
+ );
+ setProviderFieldErrors(validationErrors);
+ setProviderFormMessage(message);
+ showNotification(message, "error");
+ return;
+ }
+
+ const payload =
+ providerChoice === PROVIDER_NONE_CHOICE
+ ? { providerSource: "none" }
+ : providerChoice === PROVIDER_MANUAL_CHOICE
+ ? {
+ providerSource: "manual",
+ providerName: manualProvider.providerName.trim(),
+ contactNumber: manualProvider.contactNumber.trim(),
+ serviceType: manualProvider.serviceType.trim(),
+ notes: manualProvider.notes.trim(),
+ saveForFuture: saveManualProviderForFuture,
+ }
+ : {
+ providerSource: "directory",
+ providerId: providerChoice,
+ notes: manualProvider.notes.trim(),
+ };
+
+ try {
+ await assignProviderMutation.mutateAsync({
+ requestId: selectedRequest.request_id,
+ payload,
+ });
+ setProviderFieldErrors({});
+ setProviderFormMessage("");
+ setProviderSuggestion(null);
+ showNotification("Service provider assignment saved.", "success");
+ } catch (assignmentError) {
+ const mappedErrors = mapMaintenanceApiErrors(assignmentError);
+ const message = getMaintenanceApiErrorMessage(
+ assignmentError,
+ "Failed to assign service provider.",
+ );
+ setProviderFieldErrors(mappedErrors);
+ setProviderFormMessage(message);
+ showNotification(message, "error");
+ }
+ };
+
+ const handleSuggestProvider = async () => {
+ if (!selectedRequest) return;
+ setProviderSuggestion(null);
+ try {
+ const suggestion = await suggestProviderMutation.mutateAsync({
+ requestId: selectedRequest.request_id,
+ });
+ setProviderSuggestion(suggestion);
+ if (suggestion?.recommendedProviderName) {
+ showNotification("Service provider suggestion ready.", "success");
+ } else {
+ showNotification(
+ suggestion?.message || "No matching saved providers found for this branch and request type.",
+ "info",
+ );
+ }
+ } catch (suggestError) {
+ const message = getMaintenanceApiErrorMessage(
+ suggestError,
+ "Failed to suggest a service provider.",
+ );
+ setProviderFormMessage(message);
+ showNotification(message, "error");
+ }
+ };
+
+ const handleUseSuggestedProvider = (providerId) => {
+ if (!providerId) return;
+ setProviderChoice(providerId);
+ setProviderFieldErrors({});
+ setProviderFormMessage("");
+ };
+
+ const handleGenerateUpdate = async () => {
+ if (!selectedRequest) return;
+ try {
+ const result = await generateUpdateMutation.mutateAsync({
+ requestId: selectedRequest.request_id,
+ });
+ if (result?.unavailable) {
+ showNotification(result.draft || "AI drafting is currently unavailable.", "info");
+ return;
+ }
+ if (result?.draft) {
+ setReplyMessage(result.draft);
+ clearReplyFieldError("reply_message");
+ showNotification("AI draft generated. Please review before sending.", "success");
+ }
+ } catch (generateError) {
+ const message = getMaintenanceApiErrorMessage(
+ generateError,
+ "AI drafting is currently unavailable. Please write the update manually.",
+ );
+ showNotification(message, "error");
+ }
+ };
+
+ const handleGenerateReport = async (reportType) => {
+ if (!selectedRequest) return;
+ try {
+ const result = await generateReportMutation.mutateAsync({
+ requestId: selectedRequest.request_id,
+ reportType,
+ });
+ setReportPreview(result);
+ if (result?.message) {
+ showNotification(result.message, "info");
+ } else {
+ showNotification(`${REPORT_TYPE_LABELS[reportType] || "Report"} generated.`, "success");
+ }
+ } catch (reportError) {
+ const message = getMaintenanceApiErrorMessage(
+ reportError,
+ "Failed to generate maintenance report.",
+ );
+ showNotification(message, "error");
+ }
+ };
+
+ const handleCopyReport = async () => {
+ if (!reportPreview?.summary) return;
+ setIsCopyingReport(true);
+ try {
+ if (!navigator.clipboard?.writeText) {
+ throw new Error("Clipboard unavailable");
+ }
+ await navigator.clipboard.writeText(reportPreview.summary);
+ showNotification("Summary copied.", "success");
+ } catch {
+ showNotification("Copy failed. Please select and copy the summary manually.", "error");
+ } finally {
+ setIsCopyingReport(false);
+ }
+ };
+
+ const handleDownloadReport = () => {
+ if (!reportPreview?.summary) return;
+ const requestId = selectedRequest?.request_id || reportPreview.title || "maintenance";
+ const safeRequestId = String(requestId).replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "");
+ const reportSlug =
+ reportPreview.reportType === "tenant" ? "tenant-summary" : "admin-report";
+ const blob = new Blob([reportPreview.summary], {
+ type: "text/plain;charset=utf-8",
+ });
+ const url = URL.createObjectURL(blob);
+ const link = document.createElement("a");
+ link.href = url;
+ link.download = `maintenance-${reportSlug}-${safeRequestId || "request"}.txt`;
+ document.body.appendChild(link);
+ link.click();
+ link.remove();
+ URL.revokeObjectURL(url);
+ showNotification("Report downloaded.", "success");
  };
 
  const handleSummaryFilter = (index) => {
@@ -1401,7 +3233,6 @@ export default function AdminMaintenancePage() {
  payload: {
  status: draftStatus,
  notes: draftNotes,
- assigned_to: draftAssignedTo,
  work_log_note: draftWorkLogNote,
  work_log_attachments: workLogAttachments,
  },
@@ -1492,7 +3323,7 @@ export default function AdminMaintenancePage() {
  attachments: uploadedReplyAttachments,
  },
  });
- showNotification("Reply sent to tenant.", "success");
+ showNotification("Update sent to tenant.", "success");
  setReplyMessage("");
  setReplyAttachments([]);
  setReplyFieldErrors({});
@@ -1502,7 +3333,7 @@ export default function AdminMaintenancePage() {
  const hasMappedErrors = Object.keys(mappedErrors).length > 0;
  const errorSummary = getMaintenanceApiErrorMessage(
  submitError,
- "Failed to send reply.",
+ "Failed to send update.",
  );
  if (hasMappedErrors) {
  setReplyFieldErrors(mappedErrors);
@@ -1513,6 +3344,13 @@ export default function AdminMaintenancePage() {
  }
  showNotification(errorSummary, "error");
  }
+ };
+
+ const handleUnifiedSubmit = (event) => {
+ if (!selectedRequest) return;
+ if (updateType === "tenant_reply") return handleSendReply(event);
+ if (updateType === "admin_proof") return handleSaveProof(event);
+ return handleSubmitUpdate(event);
  };
 
  const columns = useMemo(
@@ -1542,15 +3380,11 @@ export default function AdminMaintenancePage() {
  </div>
  ),
  },
- ...(isOwner
- ? [
  {
  key: "branch",
  label: "Branch",
- render: (row) => row.tenant?.branch || row.branch || "-",
+ render: (row) => <BranchTableText branch={getRequestBranch(row)} />,
  },
- ]
- : []),
  {
  key: "request_type",
  label: "Type",
@@ -1637,8 +3471,8 @@ export default function AdminMaintenancePage() {
  },
  {
  key: "assigned_to",
- label: "Assigned To",
- render: (row) => row.assigned_to || "Unassigned",
+ label: "Assigned Service Provider",
+ render: (row) => getAssignedProviderName(row) || "Unassigned",
  },
  {
  key: "created_at",
@@ -1647,7 +3481,7 @@ export default function AdminMaintenancePage() {
  render: (row) => fmtDate(row.created_at),
  },
  ],
- [isOwner],
+ [],
  );
 
  return (
@@ -1658,8 +3492,7 @@ export default function AdminMaintenancePage() {
  <div className="mb-4">
  <h1 className="mb-1 text-2xl font-semibold text-foreground">Maintenance</h1>
  <p className="mt-1 text-sm text-muted-foreground">
- Manage tenant repair requests, assign work, and keep the tenant-visible
- pattern responsive up to date
+ Manage tenant repair requests, service provider assignments, and tenant updates.
  </p>
  </div>
  <SummaryBar
@@ -1704,6 +3537,39 @@ export default function AdminMaintenancePage() {
  ))}
  </select>
  </label>
+
+ <label className="min-w-[160px] flex-1">
+ <span className="sr-only">Archive View</span>
+ <select
+ value={archiveView}
+ onChange={(event) => setArchiveView(event.target.value)}
+ className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-muted-foreground focus:border-border focus:outline-none focus:ring-2 focus:ring-slate-100"
+ >
+ {ARCHIVE_FILTER_OPTIONS.map((option) => (
+ <option key={option.key} value={option.key}>
+ {option.label}
+ </option>
+ ))}
+ </select>
+ </label>
+
+ {isOwner ? (
+ <label className="min-w-[170px] flex-1">
+ <span className="sr-only">Branch</span>
+ <select
+ value={branchFilter}
+ onChange={(event) => setBranchFilter(event.target.value)}
+ className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-muted-foreground focus:border-border focus:outline-none focus:ring-2 focus:ring-slate-100"
+ >
+ <option value="all">All Branches</option>
+ {BRANCH_OPTIONS.map((branch) => (
+ <option key={branch.value} value={branch.value}>
+ {branch.label}
+ </option>
+ ))}
+ </select>
+ </label>
+ ) : null}
 
  <label className="min-w-[180px] flex-1">
  <span className="sr-only">Urgency</span>
@@ -1795,24 +3661,6 @@ export default function AdminMaintenancePage() {
  </select>
  </label>
 
- {isOwner ? (
- <label className="xl:col-span-3">
- <span className="sr-only">Branch</span>
- <select
- value={branchFilter}
- onChange={(event) => setBranchFilter(event.target.value)}
- className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-muted-foreground focus:border-border focus:outline-none focus:ring-2 focus:ring-slate-100"
- >
- <option value="all">All branches</option>
- {BRANCH_OPTIONS.map((branch) => (
- <option key={branch.value} value={branch.value}>
- {branch.label}
- </option>
- ))}
- </select>
- </label>
- ) : null}
-
  <label className="xl:col-span-2">
  <span className="sr-only">Date From</span>
  <input
@@ -1870,7 +3718,10 @@ export default function AdminMaintenancePage() {
  columns={columns}
  data={filteredRequests}
  loading={isLoading}
- onRowClick={(row) => setSelectedRequestId(row.request_id)}
+ onRowClick={(row) => {
+ setReportPreview(null);
+ setSelectedRequestId(row.request_id);
+ }}
  pagination={{
  page: currentPage,
  pageSize: ITEMS_PER_PAGE,
@@ -1903,16 +3754,46 @@ export default function AdminMaintenancePage() {
  <DetailDrawer
  width={1200}
  open={Boolean(selectedRequestId)}
- onClose={() => setSelectedRequestId(null)}
+ onClose={() => {
+ setSelectedRequestId(null);
+ setReportPreview(null);
+ }}
  title="Maintenance Request"
  subtitle={selectedRequest ? `Request #${selectedRequest.request_id}` : ""}
  footer={
  selectedRequest ? (
  <div className="flex items-center justify-between gap-3">
+ <div className="flex items-center gap-2">
+ {selectedRequest.isArchived ? (
+ <button
+ type="button"
+ className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-emerald-200 px-4 text-sm font-medium text-emerald-700 hover:bg-emerald-50"
+ onClick={handleRestoreRequest}
+ disabled={restoreRequestMutation.isPending}
+ >
+ <RotateCcw size={14} />
+ {restoreRequestMutation.isPending ? "Restoring..." : "Restore"}
+ </button>
+ ) : (
+ <button
+ type="button"
+ className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-amber-200 px-4 text-sm font-medium text-amber-700 hover:bg-amber-50"
+ onClick={handleArchiveRequest}
+ disabled={archiveRequestMutation.isPending}
+ >
+ <Archive size={14} />
+ {archiveRequestMutation.isPending ? "Archiving..." : "Archive"}
+ </button>
+ )}
+ </div>
+ <div className="flex items-center gap-3">
  <button
  type="button"
  className="inline-flex h-10 items-center justify-center rounded-lg border border-border px-5 text-sm font-medium text-muted-foreground hover:bg-muted"
- onClick={() => setSelectedRequestId(null)}
+ onClick={() => {
+ setSelectedRequestId(null);
+ setReportPreview(null);
+ }}
  >
  Close
  </button>
@@ -1925,15 +3806,24 @@ export default function AdminMaintenancePage() {
    color: "var(--primary-foreground)",
  }}
  disabled={
- updateRequestMutation.isPending ||
- uploadingUpdateAttachment ||
- hasBlockingWorkLogAttachment ||
  isSelectedRequestLocked ||
- !hasDraftChanges
+ selectedRequest.isArchived ||
+ updateRequestMutation.isPending ||
+ sendReplyMutation.isPending ||
+ saveProofMutation.isPending ||
+ (updateType === "status_update" && (!hasDraftChanges || uploadingUpdateAttachment || hasBlockingWorkLogAttachment)) ||
+ (updateType === "internal_note" && !draftWorkLogNote.trim()) ||
+ (updateType === "admin_proof" && (uploadingProofAttachment || hasBlockingProofAttachment)) ||
+ (updateType === "tenant_reply" && (uploadingReplyAttachment || hasBlockingReplyAttachment))
  }
  >
- {updateRequestMutation.isPending ? "Saving..." : "Save Internal Progress"}
+ {(updateRequestMutation.isPending || sendReplyMutation.isPending || saveProofMutation.isPending)
+ ? "Saving..."
+ : updateType === "tenant_reply"
+ ? "Send to Tenant"
+ : "Save Internal Update"}
  </button>
+ </div>
  </div>
  ) : null
  }
@@ -1943,15 +3833,15 @@ export default function AdminMaintenancePage() {
  <DrawerSkeleton rows={4} />
  </div>
  ) : (
- <div>
- <div className="grid gap-6 lg:grid-cols-3">
- <div className="space-y-6 lg:col-span-2">
+ <div className="space-y-4">
+ {/* ── Top row: Request Details + Service Provider ── */}
+ <div className="grid gap-4 md:grid-cols-2">
  <div className="rounded-xl border border-border bg-card p-5">
  <DetailDrawer.Section
  label={(
  <>
  <ClipboardList size={14} />
- Request Overview
+ Request Details
  </>
  )}
  >
@@ -1965,11 +3855,22 @@ export default function AdminMaintenancePage() {
  label="User ID"
  value={selectedRequest.tenant?.user_id || selectedRequest.user_id}
  />
- <DetailDrawer.Row
- label="Branch"
- value={selectedRequest.tenant?.branch || selectedRequest.branch || "-"}
- />
- <DetailDrawer.Row label="Request Type">
+ <DetailDrawer.Row label="Branch">
+ <div className="flex flex-wrap items-center gap-2">
+ <BranchBadge branch={getRequestBranch(selectedRequest)} />
+ {isOwner && !hasValidRequestBranch(selectedRequest) ? (
+ <button
+ type="button"
+ className="inline-flex h-8 items-center justify-center rounded-lg border border-amber-200 px-3 text-xs font-semibold text-amber-700 hover:bg-amber-50"
+ onClick={handleOpenAssignBranch}
+ disabled={assignBranchMutation.isPending}
+ >
+ Assign Branch
+ </button>
+ ) : null}
+ </div>
+ </DetailDrawer.Row>
+ <DetailDrawer.Row label="Type">
  {getMaintenanceTypeMeta(selectedRequest.request_type).label}
  </DetailDrawer.Row>
  <DetailDrawer.Row label="Urgency">
@@ -1986,15 +3887,15 @@ export default function AdminMaintenancePage() {
  <DetailDrawer.Row label="Status">
  <StatusBadge status={selectedRequest.status} />
  </DetailDrawer.Row>
- <DetailDrawer.Row label="Created At" value={fmtDateTime(selectedRequest.created_at)} />
- <DetailDrawer.Row label="Updated At" value={fmtDateTime(selectedRequest.updated_at)} />
+ <DetailDrawer.Row label="Submitted" value={fmtDateTime(selectedRequest.created_at)} />
+ <DetailDrawer.Row label="Last Updated" value={fmtDateTime(selectedRequest.updated_at)} />
  <DetailDrawer.Row label="SLA">
  <span
  style={{
  display: "inline-flex",
  alignItems: "center",
  gap: 6,
- padding: "6px 12px",
+ padding: "4px 10px",
  borderRadius: 999,
  background: getSlaTone(selectedRequest.slaState).bg,
  color: getSlaTone(selectedRequest.slaState).color,
@@ -2005,420 +3906,97 @@ export default function AdminMaintenancePage() {
  {formatSlaState(selectedRequest.slaState)}
  </span>
  </DetailDrawer.Row>
- <DetailDrawer.Row
- label="Target Resolution"
- value={
- selectedRequest.slaState?.targetAt
- ? fmtDateTime(selectedRequest.slaState.targetAt)
- : "Not set"
- }
- />
- <DetailDrawer.Row
- label="Assigned At"
- value={
- selectedRequest.assignment?.assignedAt
- ? fmtDateTime(selectedRequest.assignment.assignedAt)
- : "Not assigned"
- }
- />
- <DetailDrawer.Row
- label="Started At"
- value={
- selectedRequest.assignment?.startedAt
- ? fmtDateTime(selectedRequest.assignment.startedAt)
- : "Not started"
- }
- />
- <DetailDrawer.Row
- label="Resolved At"
- value={
- selectedRequest.assignment?.resolvedAt
- ? fmtDateTime(selectedRequest.assignment.resolvedAt)
- : "Not resolved"
- }
- />
  </DetailDrawer.Section>
+ {selectedRequest.description ? (
+ <div className="mt-3 border-t border-border pt-3">
+ <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Description
  </div>
-
- <div className="rounded-xl border border-border bg-card p-5">
- <DetailDrawer.Section
- label={(
- <>
- <MessageSquare size={14} />
- Tenant Reply History
- <SectionBadge>Visible to tenant</SectionBadge>
- </>
- )}
- >
- {selectedRequest.conversation?.length || selectedRequest.notes ? (
- <div className="space-y-3">
- {selectedRequest.notes ? (
- <article className="rounded-lg border border-border bg-card p-3">
- <strong className="block text-xs font-semibold text-card-foreground">
- Legacy Admin Response
- </strong>
- <span className="text-xs text-muted-foreground">
- Saved before the reply thread was separated
- </span>
- <p className="mt-2 text-sm text-muted-foreground">{selectedRequest.notes}</p>
- </article>
- ) : null}
- {selectedRequest.conversation?.map((entry, index) => (
- <article
- key={`${entry.created_at}-${index}`}
- className="rounded-lg border border-border bg-card p-3"
- >
- <strong className="block text-sm font-semibold text-card-foreground">
- Sent by {formatSenderLabel({
- role: entry.sender_role,
- name: entry.sender_name,
- fallback: "Maintenance reply",
- })}
- </strong>
- <span className="mt-1 block text-xs text-muted-foreground">
- {fmtDateTime(entry.created_at)}
- </span>
- {entry.message ? (
- <p className="mt-2 text-sm text-muted-foreground">{entry.message}</p>
- ) : null}
- {entry.attachments?.length ? (
- <div className="mt-3 grid gap-3">
- {entry.attachments.map((attachment, attachmentIndex) => {
- const attachmentUri = getMaintenanceAttachmentUri(attachment);
- const isViewable = isRemoteUri(attachmentUri);
- const attachmentName = getMaintenanceAttachmentName(attachment, attachmentIndex);
- const key = `${attachmentUri || attachmentName}-${attachmentIndex}`;
-
- if (isViewable) {
- return (
- <a
- key={key}
- href={attachmentUri}
- target="_blank"
- rel="noreferrer"
- className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 hover:bg-muted"
- >
- <AttachmentThumbnail attachment={attachment} index={attachmentIndex} />
- <div className="min-w-0 flex-1">
- <span className="block truncate text-sm font-medium text-card-foreground">
- {attachmentName}
- </span>
- <span className="text-xs text-muted-foreground">
- {getMaintenanceAttachmentLabel(attachment)}
- </span>
- </div>
- <span className="shrink-0 text-xs font-semibold text-primary">Open</span>
- </a>
- );
- }
-
- return (
- <div
- key={key}
- className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 opacity-50"
- >
- <AttachmentThumbnail attachment={attachment} index={attachmentIndex} />
- <div className="min-w-0">
- <span className="block truncate text-sm font-medium text-card-foreground">
- {attachmentName}
- </span>
- <span className="text-xs text-destructive">Attachment unavailable</span>
- </div>
- </div>
- );
- })}
- </div>
- ) : null}
- </article>
- ))}
- </div>
- ) : (
- <div className="rounded-lg border border-dashed border-border bg-muted/30 p-4 text-sm text-muted-foreground">
- <div className="flex items-center gap-2 font-medium text-card-foreground">
- <MessageSquare size={16} />
- No tenant-facing replies yet.
- </div>
- <p className="mt-1 text-xs text-muted-foreground">
- Messages sent here will appear in the tenant's maintenance request history.
+ <p className="whitespace-pre-wrap text-sm leading-relaxed text-card-foreground">
+ {selectedRequest.description}
  </p>
  </div>
- )}
- </DetailDrawer.Section>
- </div>
-
- <div className="rounded-xl border border-border bg-card p-5">
- <DetailDrawer.Section
- label={(
- <>
- <AlertTriangle size={14} />
- Issue Details
- </>
- )}
- >
- <div className="text-sm text-card-foreground">{selectedRequest.description}</div>
- </DetailDrawer.Section>
- </div>
-
- <div className="rounded-xl border border-border bg-card p-5">
- <DetailDrawer.Section
- label={(
- <>
- <ImageIcon size={14} />
- Attachments
- </>
- )}
- >
- {selectedRequest.attachments?.length ? (
- <div className="grid gap-3 md:grid-cols-2">
- {selectedRequest.attachments.map((attachment, index) => {
- const attachmentUri = getMaintenanceAttachmentUri(attachment);
- const isViewable = isRemoteUri(attachmentUri);
- const attachmentName = getMaintenanceAttachmentName(attachment, index);
- const key = `${attachmentUri || attachmentName}-${index}`;
-
- if (isViewable) {
- return (
- <a
- key={key}
- href={attachmentUri}
- target="_blank"
- rel="noreferrer"
- className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 hover:bg-muted"
- >
- <AttachmentThumbnail attachment={attachment} index={index} />
- <div className="min-w-0">
- <span className="block truncate text-sm font-medium text-card-foreground">
- {attachmentName}
- </span>
- <span className="text-xs text-muted-foreground">
- {getMaintenanceAttachmentLabel(attachment)}
- </span>
- </div>
- </a>
- );
- }
-
- return (
- <div
- key={key}
- className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 opacity-50"
- >
- <AttachmentThumbnail attachment={attachment} index={index} />
- <div className="min-w-0">
- <span className="block truncate text-sm font-medium text-card-foreground">
- {attachmentName}
- </span>
- <span className="text-xs text-destructive">Attachment unavailable</span>
- </div>
- </div>
- );
- })}
- </div>
- ) : (
- <div className="flex items-center gap-2 text-sm text-muted-foreground">
- <ImageIcon size={16} />
- No attachments uploaded.
- </div>
- )}
- </DetailDrawer.Section>
- </div>
-
- <div className="rounded-xl border border-border bg-card p-5">
- <DetailDrawer.Section
- label={(
- <>
- <RefreshCcw size={14} />
- Reopen History
- </>
- )}
- >
- {selectedRequest.reopen_history?.length ? (
- <div className="space-y-3">
- {selectedRequest.reopen_history.map((entry, index) => (
- <article
- key={`${entry.reopened_at}-${index}`}
- className="rounded-lg border border-border bg-card p-3"
- >
- <strong className="block text-xs font-semibold text-card-foreground">
- {fmtDateTime(entry.reopened_at)}
- </strong>
- <span className="text-xs text-muted-foreground">
- Reopened from {formatMaintenanceStatus(entry.previous_status)}
- </span>
- <p className="mt-2 text-sm text-muted-foreground">
- {entry.note || "No reopen note provided."}
- </p>
- </article>
- ))}
- </div>
- ) : (
- <div className="flex items-center gap-2 text-sm text-muted-foreground">
- <RefreshCcw size={16} />
- This request has not been reopened.
- </div>
- )}
- </DetailDrawer.Section>
- </div>
- </div>
-
- <div className="space-y-6">
- <div className="rounded-xl border border-border bg-card p-5">
- <DetailDrawer.Section
- label={(
- <>
- <Clock3 size={14} />
- Status Timeline
- </>
- )}
- >
- {selectedRequest.statusHistory?.length ? (
- <div className="space-y-3">
- {selectedRequest.statusHistory.map((entry, index) => (
- <article
- key={`${entry.timestamp}-${entry.status}-${index}`}
- className="rounded-lg border border-border bg-card p-3"
- >
- <strong className="block text-xs font-semibold text-card-foreground">
- {fmtDateTime(entry.timestamp)}
- </strong>
- <span className="text-xs text-muted-foreground">
- {formatMaintenanceStatus(entry.status)}
- {entry.actor_name
- ? ` - ${formatSenderLabel({ role: entry.actor_role, name: entry.actor_name })}`
- : ""}
- </span>
- <p className="mt-2 text-sm text-muted-foreground">
- {entry.note || entry.event || "Status updated."}
- </p>
- </article>
- ))}
- </div>
- ) : (
- <div className="flex items-center gap-2 text-sm text-muted-foreground">
- <Clock3 size={16} />
- No timeline entries recorded yet.
- </div>
- )}
- </DetailDrawer.Section>
- </div>
-
- <div className="rounded-xl border border-border bg-card p-5">
- <DetailDrawer.Section
- label={(
- <>
- <ClipboardList size={14} />
- Work Log
- </>
- )}
- >
- {selectedRequest.workLog?.length ? (
- <div className="space-y-3">
- {selectedRequest.workLog.map((entry, index) => (
- <article
- key={`${entry.logged_at}-${index}`}
- className="rounded-lg border border-border bg-card p-3"
- >
- <strong className="block text-xs font-semibold text-card-foreground">
- {fmtDateTime(entry.logged_at)}
- </strong>
- <span className="text-xs text-muted-foreground">
- {formatSenderLabel({
- role: entry.actor_role,
- name: entry.actor_name,
- fallback: "Staff update",
- })}
- </span>
- <p className="mt-2 text-sm text-muted-foreground">{entry.note}</p>
- {entry.attachments?.length ? (
- <div className="mt-3 grid gap-3">
- {entry.attachments.map((attachment, attachmentIndex) => {
- const attachmentUri = getMaintenanceAttachmentUri(attachment);
- const isViewable = isRemoteUri(attachmentUri);
- const attachmentName = getMaintenanceAttachmentName(attachment, attachmentIndex);
- const key = `${attachmentUri || attachmentName}-${attachmentIndex}`;
-
- if (isViewable) {
- return (
- <a
- key={key}
- href={attachmentUri}
- target="_blank"
- rel="noreferrer"
- className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 hover:bg-muted"
- >
- <AttachmentThumbnail attachment={attachment} index={attachmentIndex} />
- <div className="min-w-0">
- <span className="block truncate text-sm font-medium text-card-foreground">
- {attachmentName}
- </span>
- <span className="text-xs text-muted-foreground">
- {getMaintenanceAttachmentLabel(attachment)}
- </span>
- </div>
- </a>
- );
- }
-
- return (
- <div
- key={key}
- className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 opacity-50"
- >
- <AttachmentThumbnail attachment={attachment} index={attachmentIndex} />
- <div className="min-w-0">
- <span className="block truncate text-sm font-medium text-card-foreground">
- {attachmentName}
- </span>
- <span className="text-xs text-destructive">Attachment unavailable</span>
- </div>
- </div>
- );
- })}
- </div>
  ) : null}
- </article>
- ))}
- </div>
- ) : (
- <div className="flex items-center gap-2 text-sm text-muted-foreground">
- <ClipboardList size={16} />
- No work log entries yet.
- </div>
- )}
- </DetailDrawer.Section>
  </div>
 
+ <ServiceProviderAssignmentPanel
+ request={selectedRequest}
+ providers={serviceProviders}
+ isLoadingProviders={isLoadingProviders}
+ selectedChoice={providerChoice}
+ manualProvider={manualProvider}
+ saveForFuture={saveManualProviderForFuture}
+ fieldErrors={{
+ ...providerFieldErrors,
+ assigned_to: providerFieldErrors.assigned_to || updateFieldErrors.assigned_to,
+ }}
+ formMessage={providerFormMessage}
+ suggestion={providerSuggestion}
+ isAssigning={assignProviderMutation.isPending}
+ isSuggesting={suggestProviderMutation.isPending}
+ disabled={isSelectedRequestLocked || selectedRequest.isArchived}
+ onChoiceChange={handleProviderChoiceChange}
+ onManualChange={handleManualProviderChange}
+ onSaveForFutureChange={setSaveManualProviderForFuture}
+ onAssign={handleAssignProvider}
+ onSuggest={handleSuggestProvider}
+ onUseSuggestion={handleUseSuggestedProvider}
+ />
+ </div>
+
+ {/* ── Add Maintenance Update (unified) ── */}
  <div className="rounded-xl border border-border bg-card p-5">
- <DetailDrawer.Section
- label={(
- <>
- <MessageSquare size={14} />
- Internal Progress
- <SectionBadge tone="amber">Internal only</SectionBadge>
- </>
+ <div className="mb-3 flex items-center justify-between gap-2">
+ <div className="flex items-center gap-2">
+ <Wrench size={14} className="text-muted-foreground" />
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Add Maintenance Update
+ </span>
+ </div>
+ {updateType === "tenant_reply" ? (
+ <SectionBadge>Visible to Tenant</SectionBadge>
+ ) : (
+ <SectionBadge tone="amber">Admin Only</SectionBadge>
  )}
- >
- <p className="mb-4 text-sm text-muted-foreground">
- These updates are for admin tracking and will not be shown to the tenant.
- </p>
- {isSelectedRequestLocked ? (
- <div className="rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-warning-dark">
- Closed and cancelled requests are locked records. Admin notes,
- assignments, and status changes are disabled.
+ </div>
+
+ {isSelectedRequestLocked || selectedRequest.isArchived ? (
+ <div className="mb-3 rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-warning-dark">
+ {selectedRequest.isArchived
+ ? "Archived requests are read-only until restored."
+ : "Closed and cancelled requests are locked. Updates are disabled."}
  </div>
  ) : null}
 
- <form
- id="maintenance-admin-form"
- className="mt-4 space-y-4"
- onSubmit={handleSubmitUpdate}
- >
- {updateFormMessage ? (
+ <form id="maintenance-admin-form" className="space-y-3" onSubmit={handleUnifiedSubmit}>
+ {(updateType === "tenant_reply" ? replyFormMessage :
+ updateType === "admin_proof" ? proofFormMessage :
+ updateFormMessage) ? (
  <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
- {updateFormMessage}
+ {updateType === "tenant_reply" ? replyFormMessage :
+ updateType === "admin_proof" ? proofFormMessage :
+ updateFormMessage}
  </div>
  ) : null}
 
+ <label className="block">
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Update Type
+ </span>
+ <select
+ value={updateType}
+ onChange={(event) => setUpdateType(event.target.value)}
+ disabled={isSelectedRequestLocked || selectedRequest.isArchived}
+ className="mt-2 h-11 w-full rounded-lg border border-border bg-card px-3 text-sm text-card-foreground focus:outline-none focus:ring-2"
+ >
+ <option value="status_update">Status Update</option>
+ <option value="internal_note">Internal Note</option>
+ <option value="admin_proof">Admin-only Proof</option>
+ <option value="tenant_reply">Tenant Reply</option>
+ </select>
+ </label>
+
+ {updateType === "status_update" ? (
  <label id="maintenance-update-field-status" className="block">
  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
  Status
@@ -2429,7 +4007,7 @@ export default function AdminMaintenancePage() {
  setDraftStatus(event.target.value);
  clearUpdateFieldError("status");
  }}
- disabled={isSelectedRequestLocked}
+ disabled={isSelectedRequestLocked || selectedRequest.isArchived}
  aria-invalid={Boolean(updateFieldErrors.status)}
  className={buildFieldClassName(
  Boolean(updateFieldErrors.status),
@@ -2446,44 +4024,22 @@ export default function AdminMaintenancePage() {
  <p className="mt-1 text-xs text-rose-600">{updateFieldErrors.status}</p>
  ) : null}
  </label>
-
- <label id="maintenance-update-field-assigned_to" className="block">
- <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
- Assign To
- </span>
- <input
- type="text"
- placeholder="Staff member or team"
- value={draftAssignedTo}
- onChange={(event) => {
- setDraftAssignedTo(event.target.value);
- clearUpdateFieldError("assigned_to");
- }}
- disabled={isSelectedRequestLocked}
- aria-invalid={Boolean(updateFieldErrors.assigned_to)}
- className={buildFieldClassName(
- Boolean(updateFieldErrors.assigned_to),
- "mt-2 h-11 w-full rounded-lg border bg-card px-3 text-sm text-card-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2",
- )}
- />
- {updateFieldErrors.assigned_to ? (
- <p className="mt-1 text-xs text-rose-600">{updateFieldErrors.assigned_to}</p>
  ) : null}
- </label>
 
+ {updateType === "status_update" ? (
  <label id="maintenance-update-field-notes" className="block">
  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
  Resolution Notes
  </span>
  <textarea
- rows="6"
- placeholder="Internal resolution or status note for this request."
+ rows="3"
+ placeholder="Internal resolution or progress note for this request."
  value={draftNotes}
  onChange={(event) => {
  setDraftNotes(event.target.value);
  clearUpdateFieldError("notes");
  }}
- disabled={isSelectedRequestLocked}
+ disabled={isSelectedRequestLocked || selectedRequest.isArchived}
  aria-invalid={Boolean(updateFieldErrors.notes)}
  className={buildFieldClassName(
  Boolean(updateFieldErrors.notes),
@@ -2494,20 +4050,24 @@ export default function AdminMaintenancePage() {
  <p className="mt-1 text-xs text-rose-600">{updateFieldErrors.notes}</p>
  ) : null}
  </label>
+ ) : null}
 
+ {(updateType === "status_update" || updateType === "internal_note") ? (
  <label id="maintenance-update-field-work_log_note" className="block">
  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
- Work Log Note
+ {updateType === "status_update" ? "Note (optional)" : "Note"}
  </span>
  <textarea
- rows="3"
- placeholder="Optional internal progress note for the work log."
+ rows={updateType === "internal_note" ? 4 : 3}
+ placeholder={updateType === "internal_note"
+ ? "Write an internal note for the admin timeline."
+ : "Add an optional note to the admin timeline."}
  value={draftWorkLogNote}
  onChange={(event) => {
  setDraftWorkLogNote(event.target.value);
  clearUpdateFieldError("work_log_note");
  }}
- disabled={isSelectedRequestLocked}
+ disabled={isSelectedRequestLocked || selectedRequest.isArchived}
  aria-invalid={Boolean(updateFieldErrors.work_log_note)}
  className={buildFieldClassName(
  Boolean(updateFieldErrors.work_log_note),
@@ -2518,51 +4078,73 @@ export default function AdminMaintenancePage() {
  <p className="mt-1 text-xs text-rose-600">{updateFieldErrors.work_log_note}</p>
  ) : null}
  </label>
+ ) : null}
 
- <label id="maintenance-update-field-attachments" className="block">
+ {updateType === "admin_proof" ? (
+ <>
+ {isSelectedRequestLocked ? (
+ <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-warning-dark">
+ Closed and cancelled requests are locked. Admin-only proof upload is disabled.
+ </div>
+ ) : null}
+ <label id="maintenance-proof-field-proof_note" className="block">
  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
- Internal progress attachments
+ Note (optional)
  </span>
- <p className="mt-1 text-xs text-muted-foreground">
- These notes and files are for internal tracking only.
- </p>
+ <textarea
+ rows="2"
+ placeholder="Add context for this proof."
+ value={proofNote}
+ onChange={(event) => {
+ setProofNote(event.target.value);
+ clearProofFieldError("proof_note");
+ }}
+ disabled={isSelectedRequestLocked || saveProofMutation.isPending}
+ aria-invalid={Boolean(proofFieldErrors.proof_note)}
+ className={buildFieldClassName(
+ Boolean(proofFieldErrors.proof_note),
+ "mt-2 w-full rounded-lg border bg-card px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2",
+ )}
+ />
+ {proofFieldErrors.proof_note ? (
+ <p className="mt-1 text-xs text-rose-600">{proofFieldErrors.proof_note}</p>
+ ) : null}
+ </label>
+ <label id="maintenance-proof-field-proof_attachments" className="block">
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Proof File
+ </span>
  <div
  className={`mt-2 flex flex-wrap items-center gap-3 rounded-lg border p-3 ${
- updateFieldErrors.attachments ? "border-rose-500" : "border-transparent"
+ proofFieldErrors.proof_attachments ? "border-rose-500" : "border-transparent"
  }`}
  >
  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-card-foreground hover:bg-muted">
  <Paperclip size={14} />
- {uploadingUpdateAttachment ? "Uploading attachment..." : "Upload internal file"}
+ {uploadingProofAttachment ? "Uploading..." : "Attach file"}
  <input
  type="file"
  hidden
  multiple
- accept="image/jpeg,image/png,image/webp,application/pdf"
- onChange={handleWorkLogAttachmentUpload}
- disabled={isSelectedRequestLocked || uploadingUpdateAttachment}
+ accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
+ onChange={handleProofAttachmentUpload}
+ disabled={isSelectedRequestLocked || uploadingProofAttachment || saveProofMutation.isPending}
  />
  </label>
- <span className="text-xs text-muted-foreground">
- Photos and PDFs uploaded here stay in the admin work log.
- </span>
+ <span className="text-xs text-muted-foreground">Photo or PDF — stays in admin timeline only.</span>
  </div>
- {updateFieldErrors.attachments ? (
- <p className="mt-1 text-xs text-rose-600">{updateFieldErrors.attachments}</p>
+ {proofFieldErrors.proof_attachments ? (
+ <p className="mt-1 text-xs text-rose-600">{proofFieldErrors.proof_attachments}</p>
  ) : null}
-
- {draftWorkLogAttachments.length ? (
- <div className="mt-3 grid gap-2">
- {draftWorkLogAttachments.map((attachment, index) => {
- const attachmentUri = getMaintenanceAttachmentUri(attachment);
+ {proofAttachments.length ? (
+ <div className="mt-2 grid gap-2">
+ {proofAttachments.map((attachment, index) => {
  const attachmentKey = getWorkLogAttachmentKey(attachment, index);
  const uploadStatus = attachment.uploadStatus || "uploaded";
  const statusMessage =
- uploadStatus === "uploading"
- ? "Uploading attachment..."
- : uploadStatus === "uploaded"
- ? "Attachment uploaded."
- : attachment.error || "Please remove the invalid attachment before saving.";
+ uploadStatus === "uploading" ? "Uploading..." :
+ uploadStatus === "uploaded" ? "Uploaded." :
+ attachment.error || "Remove and try again.";
  return (
  <div
  key={attachmentKey}
@@ -2574,24 +4156,18 @@ export default function AdminMaintenancePage() {
  <div className="truncate text-sm font-medium text-card-foreground">
  {getMaintenanceAttachmentName(attachment, index)}
  </div>
- <div
- className={`text-xs ${
- isBlockingWorkLogAttachment(attachment)
- ? "text-rose-600"
- : uploadStatus === "uploaded"
- ? "text-emerald-600"
- : "text-muted-foreground"
- }`}
- >
- {statusMessage}
- {uploadStatus === "uploaded" ? ` ${getMaintenanceAttachmentLabel(attachment)}` : ""}
+ <div className={`text-xs ${
+ isBlockingWorkLogAttachment(attachment) ? "text-rose-600" :
+ uploadStatus === "uploaded" ? "text-emerald-600" : "text-muted-foreground"
+ }`}>
+ {statusMessage}{uploadStatus === "uploaded" ? ` ${getMaintenanceAttachmentLabel(attachment)}` : ""}
  </div>
  </div>
  <button
  type="button"
  className="text-xs font-medium text-rose-600 hover:text-rose-700"
- onClick={() => handleRemoveWorkLogAttachment(attachmentKey)}
- disabled={isSelectedRequestLocked}
+ onClick={() => handleRemoveProofAttachment(attachmentKey)}
+ disabled={isSelectedRequestLocked || saveProofMutation.isPending}
  >
  Remove
  </button>
@@ -2601,39 +4177,14 @@ export default function AdminMaintenancePage() {
  </div>
  ) : null}
  </label>
- </form>
- </DetailDrawer.Section>
- </div>
-
- <div className="rounded-xl border border-border bg-card p-5">
- <DetailDrawer.Section
- label={(
- <>
- <MessageSquare size={14} />
- Tenant-Facing Reply
- <SectionBadge>Visible to tenant</SectionBadge>
  </>
- )}
- >
- <p className="mb-4 text-sm text-muted-foreground">
- This message and its attachments will be visible to the tenant.
- </p>
- {isSelectedRequestLocked ? (
- <div className="rounded-lg border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-warning-dark">
- Closed and cancelled requests are locked records. Tenant replies are disabled.
- </div>
  ) : null}
 
- <form className="mt-4 space-y-4" onSubmit={handleSendReply}>
- {replyFormMessage ? (
- <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
- {replyFormMessage}
- </div>
- ) : null}
-
+ {updateType === "tenant_reply" ? (
+ <>
  <label id="maintenance-reply-field-reply_message" className="block">
  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
- Message
+ Message to Tenant
  </span>
  <textarea
  rows="4"
@@ -2643,7 +4194,7 @@ export default function AdminMaintenancePage() {
  setReplyMessage(event.target.value);
  clearReplyFieldError("reply_message");
  }}
- disabled={isSelectedRequestLocked || sendReplyMutation.isPending}
+ disabled={isSelectedRequestLocked || selectedRequest.isArchived || sendReplyMutation.isPending}
  aria-invalid={Boolean(replyFieldErrors.reply_message)}
  className={buildFieldClassName(
  Boolean(replyFieldErrors.reply_message),
@@ -2657,7 +4208,7 @@ export default function AdminMaintenancePage() {
 
  <label id="maintenance-reply-field-reply_attachments" className="block">
  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
- Tenant-visible attachments
+ Attachments for Tenant
  </span>
  <div
  className={`mt-2 flex flex-wrap items-center gap-3 rounded-lg border p-3 ${
@@ -2666,18 +4217,23 @@ export default function AdminMaintenancePage() {
  >
  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium text-card-foreground hover:bg-muted">
  <Paperclip size={14} />
- {uploadingReplyAttachment ? "Uploading attachment..." : "Upload tenant-visible file"}
+ {uploadingReplyAttachment ? "Uploading..." : "Upload file"}
  <input
  type="file"
  hidden
  multiple
- accept="image/jpeg,image/png,image/webp,application/pdf"
+ accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
  onChange={handleReplyAttachmentUpload}
- disabled={isSelectedRequestLocked || uploadingReplyAttachment || sendReplyMutation.isPending}
+ disabled={
+ isSelectedRequestLocked ||
+ selectedRequest.isArchived ||
+ uploadingReplyAttachment ||
+ sendReplyMutation.isPending
+ }
  />
  </label>
  <span className="text-xs text-muted-foreground">
- Attach photos or PDFs the tenant can open from reply history.
+ Photo or PDF — visible to tenant in their request history.
  </span>
  </div>
  {replyFieldErrors.reply_attachments ? (
@@ -2685,15 +4241,15 @@ export default function AdminMaintenancePage() {
  ) : null}
 
  {replyAttachments.length ? (
- <div className="mt-3 grid gap-2">
+ <div className="mt-2 grid gap-2">
  {replyAttachments.map((attachment, index) => {
  const attachmentKey = getWorkLogAttachmentKey(attachment, index);
  const uploadStatus = attachment.uploadStatus || "uploaded";
  const statusMessage =
  uploadStatus === "uploading"
- ? "Uploading attachment..."
+ ? "Uploading..."
  : uploadStatus === "uploaded"
- ? "Attachment uploaded."
+ ? "Uploaded."
  : attachment.error || "Please remove the invalid attachment before sending.";
  return (
  <div
@@ -2723,7 +4279,7 @@ export default function AdminMaintenancePage() {
  type="button"
  className="text-xs font-medium text-rose-600 hover:text-rose-700"
  onClick={() => handleRemoveReplyAttachment(attachmentKey)}
- disabled={isSelectedRequestLocked || sendReplyMutation.isPending}
+ disabled={isSelectedRequestLocked || selectedRequest.isArchived || sendReplyMutation.isPending}
  >
  Remove
  </button>
@@ -2734,32 +4290,163 @@ export default function AdminMaintenancePage() {
  ) : null}
  </label>
 
- <div className="flex justify-end">
+ <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+ <p className="text-xs text-muted-foreground">
+ AI drafts are based on the request timeline. Review before sending.
+ </p>
  <button
- type="submit"
- className="inline-flex h-10 items-center justify-center rounded-lg px-5 text-sm font-semibold shadow-sm hover:opacity-90"
- style={{
- backgroundColor: "var(--primary)",
- color: "var(--primary-foreground)",
- }}
+ type="button"
+ className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-medium text-card-foreground hover:bg-muted disabled:opacity-60"
+ onClick={handleGenerateUpdate}
  disabled={
  isSelectedRequestLocked ||
+ selectedRequest.isArchived ||
  sendReplyMutation.isPending ||
- uploadingReplyAttachment ||
- hasBlockingReplyAttachment
+ generateUpdateMutation.isPending
  }
  >
- {sendReplyMutation.isPending ? "Sending..." : "Send Reply"}
+ <Sparkles size={14} />
+ {generateUpdateMutation.isPending ? "Generating..." : "Generate Update"}
  </button>
  </div>
+ </>
+ ) : null}
+
+ <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+ {updateType === "tenant_reply" ? (
+ <>
+ <MessageSquare size={13} className="shrink-0 text-emerald-600" />
+ <span>This update will be sent and shown to the tenant.</span>
+ </>
+ ) : (
+ <>
+ <ShieldCheck size={13} className="shrink-0 text-amber-600" />
+ <span>This update will only appear in the admin timeline — not visible to the tenant.</span>
+ </>
+ )}
+ </div>
  </form>
- </DetailDrawer.Section>
+ </div>
+
+ {/* ── Maintenance Timeline ── */}
+ <div className="rounded-xl border border-border bg-card p-5">
+ <div className="mb-3 flex items-center gap-2">
+ <Clock3 size={14} className="text-muted-foreground" />
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Maintenance Timeline
+ </span>
+ </div>
+
+ <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3">
+ <div>
+ <div className="text-sm font-semibold text-card-foreground">Generate Report</div>
+ <p className="mt-0.5 text-xs text-muted-foreground">
+ Preview a report from the request details and timeline. Nothing is sent automatically.
+ </p>
+ </div>
+ <div className="flex flex-wrap gap-2">
+ <button
+ type="button"
+ className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-medium text-card-foreground hover:bg-muted disabled:opacity-60"
+ onClick={() => handleGenerateReport("admin")}
+ disabled={generateReportMutation.isPending}
+ >
+ <FileText size={12} />
+ {generateReportMutation.isPending ? "Generating..." : "Admin Report"}
+ </button>
+ <button
+ type="button"
+ className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-medium text-card-foreground hover:bg-muted disabled:opacity-60"
+ onClick={() => handleGenerateReport("tenant")}
+ disabled={generateReportMutation.isPending}
+ >
+ <MessageSquare size={12} />
+ {generateReportMutation.isPending ? "Generating..." : "Tenant Summary"}
+ </button>
  </div>
  </div>
+
+ <MaintenanceTimeline
+ items={timelineItems}
+ onRemoveAttachment={handleRemoveSavedAttachment}
+ canRemoveAttachments={
+ !selectedRequest.isArchived &&
+ !removeAttachmentMutation.isPending
+ }
+ />
  </div>
  </div>
  )}
  </DetailDrawer>
+ <ReportPreviewModal
+ open={Boolean(reportPreview)}
+ report={reportPreview}
+ isCopying={isCopyingReport}
+ onCopy={handleCopyReport}
+ onDownload={handleDownloadReport}
+ onClose={() => setReportPreview(null)}
+ />
+ <ConfirmationModal
+ open={Boolean(archiveDialogMode)}
+ title={archiveDialogMode === "restore" ? "Restore Request" : "Archive Request"}
+ message={
+ archiveDialogMode === "restore"
+ ? "This request will return to the active maintenance list."
+ : "This request will be hidden from the active list but can still be viewed in Archived Requests."
+ }
+ confirmLabel={archiveDialogMode === "restore" ? "Restore Request" : "Archive Request"}
+ confirmTone={archiveDialogMode === "restore" ? "emerald" : "rose"}
+ isPending={archiveRequestMutation.isPending || restoreRequestMutation.isPending}
+ onCancel={() => setArchiveDialogMode(null)}
+ onConfirm={handleConfirmArchiveAction}
+ />
+ <AssignBranchModal
+ open={branchAssignmentDialog.open}
+ branch={branchAssignmentDialog.branch}
+ error={branchAssignmentDialog.error}
+ isPending={assignBranchMutation.isPending}
+ onCancel={handleCloseAssignBranch}
+ onConfirm={handleConfirmAssignBranch}
+ onBranchChange={(branch) =>
+ setBranchAssignmentDialog((current) => ({
+ ...current,
+ branch,
+ error: "",
+ }))
+ }
+ />
+ <AttachmentRemovalModal
+ open={attachmentRemovalDialog.open}
+ scope={attachmentRemovalDialog.scope}
+ reason={attachmentRemovalDialog.reason}
+ customReason={attachmentRemovalDialog.customReason}
+ error={attachmentRemovalDialog.error}
+ isPending={removeAttachmentMutation.isPending}
+ onCancel={handleCloseAttachmentRemovalDialog}
+ onConfirm={handleSubmitAttachmentRemoval}
+ onScopeChange={(scope) =>
+ setAttachmentRemovalDialog((current) => ({
+ ...current,
+ scope,
+ error: "",
+ }))
+ }
+ onReasonChange={(reason) =>
+ setAttachmentRemovalDialog((current) => ({
+ ...current,
+ reason,
+ customReason: reason === "Other" ? current.customReason : "",
+ error: "",
+ }))
+ }
+ onCustomReasonChange={(customReason) =>
+ setAttachmentRemovalDialog((current) => ({
+ ...current,
+ customReason,
+ error: "",
+ }))
+ }
+ />
  </PageShell.Content>
  </PageShell>
  </div>

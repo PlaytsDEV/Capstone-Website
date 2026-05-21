@@ -267,6 +267,8 @@ export const updateInquiry = async (req, res, next) => {
     delete updateData._id;
     delete updateData.createdAt;
 
+    let emailSent = null; // null = no email attempted
+
     // Handle response submission using the model's respond method
     if (req.body.response && req.body.response.trim()) {
       const adminUser = await User.findOne({ firebaseUid: req.user.uid });
@@ -285,18 +287,36 @@ export const updateInquiry = async (req, res, next) => {
       delete updateData.status; // Status is set by respond() method
 
       // Send email notification to customer
+      const branchNameMap = {
+        "gil-puyat": "Gil Puyat",
+        guadalupe: "Guadalupe",
+        general: "Lilycrest",
+      };
       const branchName =
-        existingInquiry.branch === "gil-puyat" ? "Gil Puyat" : "Guadalupe";
-      const emailResult = await sendInquiryResponseEmail({
-        to: existingInquiry.email,
-        customerName: existingInquiry.name,
-        inquirySubject: existingInquiry.message,
-        response: req.body.response.trim(),
-        branchName: branchName,
-      });
+        branchNameMap[existingInquiry.branch] || "Lilycrest";
 
-      if (emailResult.success) {
-      } else {
+      emailSent = false;
+      try {
+        const emailResult = await sendInquiryResponseEmail({
+          to: existingInquiry.email,
+          customerName: existingInquiry.name,
+          inquirySubject: existingInquiry.subject,
+          response: req.body.response.trim(),
+          branchName,
+        });
+
+        emailSent = emailResult.success;
+        if (!emailResult.success) {
+          console.error(
+            `[INQUIRY] Email failed for inquiry ${id} to ${existingInquiry.email}:`,
+            emailResult.error || emailResult.message,
+          );
+        }
+      } catch (emailErr) {
+        console.error(
+          `[INQUIRY] Email error for inquiry ${id}:`,
+          emailErr.message,
+        );
       }
 
     }
@@ -328,6 +348,7 @@ export const updateInquiry = async (req, res, next) => {
     res.json({
       message: "Inquiry updated successfully",
       inquiry,
+      emailSent,
     });
 
     try {

@@ -10,6 +10,9 @@ const roomFindById = jest.fn();
 const stayFindOne = jest.fn();
 const bedHistoryFindOne = jest.fn();
 const chatConversationFindById = jest.fn();
+const serviceProviderFind = jest.fn();
+const serviceProviderFindById = jest.fn();
+const serviceProviderCreate = jest.fn();
 const sendSuccess = jest.fn();
 const maintenanceUpdated = jest.fn();
 let lastCreatedMaintenanceRequest = null;
@@ -52,6 +55,11 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   ChatConversation: {
     findById: chatConversationFindById,
   },
+  ServiceProvider: {
+    find: serviceProviderFind,
+    findById: serviceProviderFindById,
+    create: serviceProviderCreate,
+  },
   User: {
     find: userFind,
     findOne: userFindOne,
@@ -87,10 +95,20 @@ const {
   createRequest,
   reopenMyRequest,
   sendAdminReply,
+  assignAdminMaintenanceBranch,
+  assignAdminMaintenanceProvider,
+  suggestAdminMaintenanceProvider,
+  generateAdminMaintenanceReport,
   sendTenantReply,
+  uploadAdminMaintenanceAttachment,
+  removeAdminMaintenanceAttachment,
   updateAdminRequestStatus,
 } = await import("./maintenanceController.js");
-const { resolveUploadBranch } = await import("../services/attachmentUploadService.js");
+const {
+  resolveMaintenanceRequestBranch,
+  resolveMaintenanceRequestStorageBranch,
+  resolveUploadBranch,
+} = await import("../services/attachmentUploadService.js");
 
 const buildLeanQuery = (result) => ({
   select: jest.fn(() => ({
@@ -150,6 +168,15 @@ const buildRequestDoc = (overrides = {}) => {
     urgency: "high",
     status: "pending",
     assigned_to: null,
+    assignedProviderId: null,
+    assignedProviderName: null,
+    assignedProviderContact: null,
+    assignedProviderCategory: null,
+    assignedProviderNotes: null,
+    assignedProviderSource: null,
+    assignedBy: null,
+    assignedByName: null,
+    assignedByRole: null,
     notes: null,
     attachments: [],
     conversation: [],
@@ -162,6 +189,9 @@ const buildRequestDoc = (overrides = {}) => {
     cancelled_at: null,
     reopened_at: null,
     resolved_at: null,
+    closed_at: null,
+    work_started_at: null,
+    resolution_note: null,
     branch: "gil-puyat",
     roomId: "room_1",
     reservationId: "reservation_1",
@@ -177,6 +207,15 @@ const buildRequestDoc = (overrides = {}) => {
         urgency: this.urgency,
         status: this.status,
         assigned_to: this.assigned_to,
+        assignedProviderId: this.assignedProviderId,
+        assignedProviderName: this.assignedProviderName,
+        assignedProviderContact: this.assignedProviderContact,
+        assignedProviderCategory: this.assignedProviderCategory,
+        assignedProviderNotes: this.assignedProviderNotes,
+        assignedProviderSource: this.assignedProviderSource,
+        assignedBy: this.assignedBy,
+        assignedByName: this.assignedByName,
+        assignedByRole: this.assignedByRole,
         notes: this.notes,
         attachments: this.attachments,
         conversation: this.conversation,
@@ -189,15 +228,47 @@ const buildRequestDoc = (overrides = {}) => {
         cancelled_at: this.cancelled_at,
         reopened_at: this.reopened_at,
         resolved_at: this.resolved_at,
+        closed_at: this.closed_at,
+        work_started_at: this.work_started_at,
+        resolution_note: this.resolution_note,
         branch: this.branch,
         roomId: this.roomId,
         reservationId: this.reservationId,
+        isArchived: this.isArchived,
+        archivedAt: this.archivedAt,
+        archivedBy: this.archivedBy,
+        restoredAt: this.restoredAt,
+        restoredBy: this.restoredBy,
       };
     },
     ...overrides,
   };
 
   return doc;
+};
+
+const withoutGeminiEnv = async (callback) => {
+  const previous = {
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    GOOGLE_AI_API_KEY: process.env.GOOGLE_AI_API_KEY,
+    GEMINI_MODEL: process.env.GEMINI_MODEL,
+  };
+
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.GOOGLE_AI_API_KEY;
+  delete process.env.GEMINI_MODEL;
+
+  try {
+    await callback();
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
 };
 
 describe("maintenanceController", () => {
@@ -213,6 +284,9 @@ describe("maintenanceController", () => {
     stayFindOne.mockReset();
     bedHistoryFindOne.mockReset();
     chatConversationFindById.mockReset();
+    serviceProviderFind.mockReset();
+    serviceProviderFindById.mockReset();
+    serviceProviderCreate.mockReset();
     sendSuccess.mockReset();
     maintenanceUpdated.mockReset();
     lastCreatedMaintenanceRequest = null;
@@ -351,6 +425,75 @@ describe("maintenanceController", () => {
     expect(resolution.relatedId).toBe(storedRequest.request_id);
   });
 
+  test("resolveUploadBranch accepts display-name branch values on legacy maintenance requests", async () => {
+    const storedRequest = buildRequestDoc({
+      branch: "Gil Puyat Branch",
+      branchId: null,
+      roomId: null,
+      reservationId: null,
+    });
+    userFindOne.mockReturnValue(
+      buildSelectLeanQuery({
+        _id: "admin_user_1",
+        user_id: "admin_1",
+        firebaseUid: "admin_firebase_uid",
+        role: "branch_admin",
+        branch: "Gil Puyat Branch",
+      }),
+    );
+    maintenanceFindOne.mockReturnValue(buildLeanQuery(storedRequest));
+
+    const resolution = await resolveUploadBranch({
+      user: { uid: "admin_firebase_uid" },
+      body: {
+        context: "maintenance_internal_note",
+        requestId: storedRequest.request_id,
+        relatedId: storedRequest.request_id,
+      },
+      query: {},
+      headers: {},
+    });
+
+    expect(resolution.branch).toBe("gil-puyat");
+    expect(resolution.context).toBe("maintenance_internal_note");
+  });
+
+  test("resolveUploadBranch lets owners use an explicit branch for branchless legacy maintenance requests", async () => {
+    const storedRequest = buildRequestDoc({
+      branch: null,
+      branchId: null,
+      roomId: null,
+      reservationId: null,
+    });
+    userFindOne
+      .mockReturnValueOnce(
+        buildSelectLeanQuery({
+          _id: "owner_user_1",
+          user_id: "owner_1",
+          firebaseUid: "owner_firebase_uid",
+          role: "owner",
+          branch: "",
+        }),
+      )
+      .mockReturnValueOnce(buildSelectLeanQuery(null));
+    maintenanceFindOne.mockReturnValue(buildLeanQuery(storedRequest));
+
+    const resolution = await resolveUploadBranch({
+      user: { uid: "owner_firebase_uid" },
+      body: {
+        context: "maintenance_internal_note",
+        requestId: storedRequest.request_id,
+        relatedId: storedRequest.request_id,
+        branchId: "guadalupe",
+      },
+      query: {},
+      headers: {},
+    });
+
+    expect(resolution.branch).toBe("guadalupe");
+    expect(resolution.source).toBe("maintenance_request");
+  });
+
   test("resolveUploadBranch supports Mongo id maintenanceRequestId", async () => {
     const storedRequest = buildRequestDoc({
       _id: "507f1f77bcf86cd799439099",
@@ -460,6 +603,101 @@ describe("maintenanceController", () => {
       statusCode: 403,
       code: "UPLOAD_BRANCH_FORBIDDEN",
     });
+  });
+
+  test("resolveMaintenanceRequestBranch only derives branch from the maintenance request record", () => {
+    expect(resolveMaintenanceRequestBranch({ branch: "Gil Puyat Branch" })).toBe("gil-puyat");
+    expect(resolveMaintenanceRequestBranch({ branchId: "guadalupe" })).toBe("guadalupe");
+    expect(resolveMaintenanceRequestBranch({ tenant: { branch: "gil-puyat" } })).toBe("");
+  });
+
+  test("resolveMaintenanceRequestStorageBranch resolves legacy request branch from tenant profile", async () => {
+    const storedRequest = buildRequestDoc({
+      branch: null,
+      branchId: null,
+      roomId: null,
+      reservationId: null,
+    });
+    userFindOne.mockReturnValue(
+      buildSelectLeanQuery({
+        _id: "tenant_user_1",
+        user_id: storedRequest.user_id,
+        role: "tenant",
+        branch: "Gil Puyat Branch",
+      }),
+    );
+
+    const resolution = await resolveMaintenanceRequestStorageBranch(storedRequest);
+
+    expect(userFindOne).toHaveBeenCalledWith({ user_id: storedRequest.user_id });
+    expect(resolution).toEqual(
+      expect.objectContaining({
+        branch: "gil-puyat",
+        source: "maintenance_tenant_profile",
+      }),
+    );
+  });
+
+  test("resolveMaintenanceRequestStorageBranch resolves legacy request branch from active stay room", async () => {
+    const storedRequest = buildRequestDoc({
+      branch: null,
+      branchId: null,
+      roomId: null,
+      reservationId: null,
+    });
+    userFindOne.mockReturnValue(
+      buildSelectLeanQuery({
+        _id: "507f1f77bcf86cd799439021",
+        user_id: storedRequest.user_id,
+        role: "tenant",
+        branch: "",
+      }),
+    );
+    stayFindOne.mockReturnValue(
+      buildSortSelectLeanQuery({
+        branch: "",
+        roomId: "room_legacy_1",
+        reservationId: "reservation_legacy_1",
+      }),
+    );
+    roomFindById.mockReturnValue(
+      buildSelectLeanQuery({
+        _id: "room_legacy_1",
+        branch: "Guadalupe",
+      }),
+    );
+
+    const resolution = await resolveMaintenanceRequestStorageBranch(storedRequest);
+
+    expect(resolution).toEqual(
+      expect.objectContaining({
+        branch: "guadalupe",
+        source: "maintenance_active_stay",
+        roomId: "room_legacy_1",
+        reservationId: "reservation_legacy_1",
+      }),
+    );
+  });
+
+  test("resolveMaintenanceRequestStorageBranch does not use manual fallback branches", async () => {
+    const storedRequest = buildRequestDoc({
+      branch: null,
+      branchId: null,
+      roomId: null,
+      reservationId: null,
+    });
+    userFindOne.mockReturnValue(buildSelectLeanQuery(null));
+
+    const resolution = await resolveMaintenanceRequestStorageBranch(storedRequest, {
+      fallbackBranch: "Guadalupe",
+    });
+
+    expect(resolution).toEqual(
+      expect.objectContaining({
+        branch: "",
+        source: "unresolved",
+      }),
+    );
   });
 
   test("getAdminAll exposes remote attachment URL aliases", async () => {
@@ -650,6 +888,85 @@ describe("maintenanceController", () => {
     const request = sendSuccess.mock.calls[0][1].requests[0];
     expect(request.conversation[0].attachments).toHaveLength(1);
     expect(request.conversation[0].attachments[0].name).toBe("tenant-visible.jpg");
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("getMyRequests hides request-scope removed attachments from tenants", async () => {
+    const storedRequest = buildRequestDoc({
+      attachments: [
+        {
+          name: "initial-removed.jpg",
+          uri: "https://storage.example.com/maintenance/initial-removed.jpg",
+          type: "image/jpeg",
+          isRemoved: true,
+          removedScope: "request",
+          removedReason: "Wrong file attached",
+        },
+        {
+          name: "initial-active.jpg",
+          uri: "https://storage.example.com/maintenance/initial-active.jpg",
+          type: "image/jpeg",
+        },
+      ],
+      conversation: [
+        {
+          message: "Here are the repair photos.",
+          sender_side: "admin",
+          created_at: new Date("2026-04-09T10:30:00.000Z"),
+          attachments: [
+            {
+              name: "tenant-removed.jpg",
+              uri: "https://storage.example.com/maintenance/tenant-removed.jpg",
+              type: "image/jpeg",
+              isRemoved: true,
+              removedScope: "tenant_only",
+              removedReason: "Sensitive information visible",
+            },
+            {
+              name: "request-removed.jpg",
+              uri: "https://storage.example.com/maintenance/request-removed.jpg",
+              type: "image/jpeg",
+              isRemoved: true,
+              removedScope: "request",
+              removedReason: "Attached to the wrong request",
+            },
+            {
+              name: "tenant-active.jpg",
+              uri: "https://storage.example.com/maintenance/tenant-active.jpg",
+              type: "image/jpeg",
+            },
+          ],
+        },
+      ],
+    });
+    maintenanceFind.mockReturnValue(buildListQuery([storedRequest]));
+    userFindOne.mockReturnValue(
+      buildLeanQuery({
+        _id: "tenant_user_1",
+        user_id: "user_95f39d5b4ea4",
+        firstName: "Lily",
+        lastName: "Tenant",
+        email: "lily@example.com",
+        phone: "0917",
+        branch: "gil-puyat",
+        role: "tenant",
+      }),
+    );
+
+    const req = {
+      user: { uid: "firebase-tenant-1" },
+      query: {},
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await getMyRequests(req, res, next);
+
+    const request = sendSuccess.mock.calls[0][1].requests[0];
+    expect(request.attachments).toHaveLength(1);
+    expect(request.attachments[0].name).toBe("initial-active.jpg");
+    expect(request.conversation[0].attachments).toHaveLength(1);
+    expect(request.conversation[0].attachments[0].name).toBe("tenant-active.jpg");
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -1187,6 +1504,984 @@ describe("maintenanceController", () => {
     expect(next).toHaveBeenCalledTimes(1);
     expect(next.mock.calls[0][0].code).toBe("REPLY_REQUIRED");
     expect(next.mock.calls[0][0].details[0].field).toBe("message");
+  });
+
+  test("removeAdminMaintenanceAttachment requires a removal reason", async () => {
+    const requestDoc = buildRequestDoc({
+      attachments: [
+        {
+          id: "attachment_1",
+          name: "wrong-photo.jpg",
+          uri: "https://storage.example.com/wrong-photo.jpg",
+          type: "image/jpeg",
+        },
+      ],
+      markModified: jest.fn(),
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockImplementation(({ firebaseUid }) =>
+      buildLeanQuery(
+        firebaseUid === "firebase-admin-1"
+          ? {
+              _id: "admin_user_1",
+              user_id: "admin_1",
+              firstName: "Branch",
+              lastName: "Admin",
+              email: "admin@example.com",
+              phone: "0918",
+              branch: "gil-puyat",
+              role: "branch_admin",
+            }
+          : null,
+      ),
+    );
+
+    const req = {
+      user: { uid: "firebase-admin-1" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        source: "request",
+        attachmentIndex: 0,
+        scope: "tenant_only",
+      },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await removeAdminMaintenanceAttachment(req, res, next);
+
+    expect(requestDoc.save).not.toHaveBeenCalled();
+    expect(requestDoc.attachments[0].isRemoved).toBeUndefined();
+    expect(next).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "REMOVAL_REASON_REQUIRED",
+        statusCode: 400,
+      }),
+    );
+  });
+
+  test("removeAdminMaintenanceAttachment logs request-scope removals", async () => {
+    const markModified = jest.fn();
+    const requestDoc = buildRequestDoc({
+      conversation: [
+        {
+          message: "Photo attached.",
+          sender_side: "admin",
+          created_at: new Date("2026-04-09T10:30:00.000Z"),
+          attachments: [
+            {
+              id: "attachment_1",
+              name: "wrong-request.jpg",
+              uri: "https://storage.example.com/wrong-request.jpg",
+              type: "image/jpeg",
+            },
+          ],
+        },
+      ],
+      statusHistory: [],
+      markModified,
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockImplementation((query) => {
+      if (query.firebaseUid === "firebase-admin-1") {
+        return buildLeanQuery({
+          _id: "admin_user_1",
+          user_id: "admin_1",
+          firstName: "Branch",
+          lastName: "Admin",
+          email: "admin@example.com",
+          phone: "0918",
+          branch: "gil-puyat",
+          role: "branch_admin",
+        });
+      }
+
+      if (query.user_id === requestDoc.user_id) {
+        return buildLeanQuery({
+          _id: "tenant_user_1",
+          user_id: requestDoc.user_id,
+          firstName: "Lily",
+          lastName: "Tenant",
+          email: "lily@example.com",
+          phone: "0917",
+          branch: "gil-puyat",
+          role: "tenant",
+        });
+      }
+
+      return buildLeanQuery(null);
+    });
+
+    const req = {
+      user: { uid: "firebase-admin-1" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        source: "conversation",
+        entryIndex: 0,
+        attachmentIndex: 0,
+        scope: "request",
+        removedReason: "Attached to the wrong request",
+      },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await removeAdminMaintenanceAttachment(req, res, next);
+
+    const attachment = requestDoc.conversation[0].attachments[0];
+    expect(attachment.isRemoved).toBe(true);
+    expect(attachment.removedScope).toBe("request");
+    expect(attachment.removedReason).toBe("Attached to the wrong request");
+    expect(requestDoc.statusHistory).toEqual([
+      expect.objectContaining({
+        event: "attachment_removed_request",
+        note: "Attached to the wrong request",
+        removedScope: "request",
+        source: "conversation",
+        attachmentName: "wrong-request.jpg",
+      }),
+    ]);
+    expect(markModified).toHaveBeenCalledWith("conversation");
+    expect(requestDoc.save).toHaveBeenCalledTimes(1);
+    expect(sendSuccess).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("assignAdminMaintenanceBranch lets owner assign a missing branch and logs timeline", async () => {
+    const requestDoc = buildRequestDoc({
+      branch: null,
+      roomId: null,
+      reservationId: null,
+      statusHistory: [],
+      save: jest.fn().mockResolvedValue(undefined),
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockImplementation((query) => {
+      if (query.firebaseUid === "firebase-owner-1") {
+        return buildLeanQuery({
+          _id: "owner_user_1",
+          user_id: "owner_1",
+          firstName: "Dorm",
+          lastName: "Owner",
+          email: "owner@example.com",
+          phone: "0918",
+          branch: null,
+          role: "owner",
+        });
+      }
+
+      if (query.user_id === requestDoc.user_id) {
+        return buildLeanQuery({
+          _id: "tenant_user_1",
+          user_id: requestDoc.user_id,
+          firstName: "Lily",
+          lastName: "Tenant",
+          email: "lily@example.com",
+          phone: "0917",
+          branch: "gil-puyat",
+          role: "tenant",
+        });
+      }
+
+      return buildLeanQuery(null);
+    });
+
+    const req = {
+      user: { uid: "firebase-owner-1" },
+      params: { requestId: requestDoc.request_id },
+      body: { branch: "guadalupe" },
+      branchFilter: null,
+      isOwner: true,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await assignAdminMaintenanceBranch(req, res, next);
+
+    expect(requestDoc.branch).toBe("guadalupe");
+    expect(requestDoc.statusHistory).toEqual([
+      expect.objectContaining({
+        event: "branch_assigned_manually",
+        actor_name: "Dormitory Owner",
+        actor_role: "owner",
+        branch: "guadalupe",
+        note: "Branch: Guadalupe",
+      }),
+    ]);
+    expect(requestDoc.save).toHaveBeenCalledTimes(1);
+    expect(sendSuccess).toHaveBeenCalledWith(
+      res,
+      expect.objectContaining({
+        message: "Branch assigned manually: Guadalupe.",
+      }),
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("assignAdminMaintenanceBranch rejects branch admins", async () => {
+    const req = {
+      user: { uid: "firebase-admin-1" },
+      params: { requestId: "maint_a1b2c3d4e5f6" },
+      body: { branch: "gil-puyat" },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await assignAdminMaintenanceBranch(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "OWNER_ONLY",
+        statusCode: 403,
+      }),
+    );
+    expect(maintenanceFindOne).not.toHaveBeenCalled();
+    expect(sendSuccess).not.toHaveBeenCalled();
+  });
+
+  test("assignAdminMaintenanceBranch does not overwrite an existing valid branch", async () => {
+    const requestDoc = buildRequestDoc({
+      branch: "gil-puyat",
+      statusHistory: [],
+      save: jest.fn().mockResolvedValue(undefined),
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+
+    const req = {
+      user: { uid: "firebase-owner-1" },
+      params: { requestId: requestDoc.request_id },
+      body: { branch: "guadalupe" },
+      branchFilter: null,
+      isOwner: true,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await assignAdminMaintenanceBranch(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "REQUEST_BRANCH_ALREADY_ASSIGNED",
+        statusCode: 409,
+      }),
+    );
+    expect(requestDoc.branch).toBe("gil-puyat");
+    expect(requestDoc.save).not.toHaveBeenCalled();
+    expect(sendSuccess).not.toHaveBeenCalled();
+  });
+
+  test("assignAdminMaintenanceProvider assigns a saved provider and logs timeline", async () => {
+    const requestDoc = buildRequestDoc({
+      statusHistory: [],
+      save: jest.fn().mockResolvedValue(undefined),
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    const provider = {
+      _id: "507f1f77bcf86cd799439012",
+      providerName: "Makati Plumbing Services",
+      contactNumber: "09171234567",
+      serviceCategories: ["Plumbing"],
+      serviceCategoryKeys: ["plumbing"],
+      branchCoverage: ["gil-puyat"],
+      status: "active",
+      notes: "Usually available within the day.",
+    };
+    serviceProviderFindById.mockReturnValue({
+      select: jest.fn().mockResolvedValue(provider),
+    });
+    userFindOne.mockImplementation((query) => {
+      if (query.firebaseUid === "firebase-admin-1") {
+        return buildLeanQuery({
+          _id: "admin_user_1",
+          user_id: "admin_1",
+          firstName: "Branch",
+          lastName: "Admin",
+          email: "admin@example.com",
+          phone: "0918",
+          branch: "gil-puyat",
+          role: "branch_admin",
+        });
+      }
+
+      if (query.user_id === requestDoc.user_id) {
+        return buildLeanQuery({
+          _id: "tenant_user_1",
+          user_id: requestDoc.user_id,
+          firstName: "Lily",
+          lastName: "Tenant",
+          email: "lily@example.com",
+          phone: "0917",
+          branch: "gil-puyat",
+          role: "tenant",
+        });
+      }
+
+      return buildLeanQuery(null);
+    });
+
+    const req = {
+      user: { uid: "firebase-admin-1" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        providerSource: "directory",
+        providerId: provider._id,
+        notes: "Called provider for inspection.",
+      },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await assignAdminMaintenanceProvider(req, res, next);
+
+    expect(requestDoc.assigned_to).toBe("Makati Plumbing Services");
+    expect(requestDoc.assignedProviderContact).toBe("09171234567");
+    expect(requestDoc.assignedProviderSource).toBe("directory");
+    expect(requestDoc.statusHistory).toEqual([
+      expect.objectContaining({
+        event: "service_provider_assigned",
+        providerName: "Makati Plumbing Services",
+        note: "Called provider for inspection.",
+      }),
+    ]);
+    expect(requestDoc.save).toHaveBeenCalledTimes(1);
+    expect(sendSuccess).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("assignAdminMaintenanceProvider accepts a general maintenance provider for generic maintenance requests", async () => {
+    const requestDoc = buildRequestDoc({
+      request_type: "maintenance",
+      statusHistory: [],
+      save: jest.fn().mockResolvedValue(undefined),
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    const provider = {
+      _id: "507f1f77bcf86cd799439099",
+      providerName: "Lilycrest General Maintenance Provider Placeholder",
+      contactNumber: "09XX XXX XXXX",
+      serviceCategories: ["General Maintenance"],
+      serviceCategoryKeys: ["general-maintenance"],
+      branchCoverage: ["gil-puyat"],
+      status: "active",
+      notes: "General maintenance placeholder.",
+    };
+    serviceProviderFindById.mockReturnValue({
+      select: jest.fn().mockResolvedValue(provider),
+    });
+    userFindOne.mockImplementation((query) => {
+      if (query.firebaseUid === "firebase-admin-1") {
+        return buildLeanQuery({
+          _id: "admin_user_1",
+          user_id: "admin_1",
+          firstName: "Branch",
+          lastName: "Admin",
+          email: "admin@example.com",
+          phone: "0918",
+          branch: "gil-puyat",
+          role: "branch_admin",
+        });
+      }
+
+      if (query.user_id === requestDoc.user_id) {
+        return buildLeanQuery({
+          _id: "tenant_user_1",
+          user_id: requestDoc.user_id,
+          firstName: "Lily",
+          lastName: "Tenant",
+          email: "lily@example.com",
+          phone: "0917",
+          branch: "gil-puyat",
+          role: "tenant",
+        });
+      }
+
+      return buildLeanQuery(null);
+    });
+
+    const req = {
+      user: { uid: "firebase-admin-1" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        providerSource: "directory",
+        providerId: provider._id,
+      },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await assignAdminMaintenanceProvider(req, res, next);
+
+    expect(requestDoc.assignedProviderName).toBe(
+      "Lilycrest General Maintenance Provider Placeholder",
+    );
+    expect(requestDoc.assignedProviderCategory).toBe("General Maintenance");
+    expect(requestDoc.save).toHaveBeenCalledTimes(1);
+    expect(sendSuccess).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("assignAdminMaintenanceProvider treats unassigning an already unassigned request as a no-op", async () => {
+    const requestDoc = buildRequestDoc({
+      assigned_to: null,
+      assignedProviderName: null,
+      assignedProviderId: null,
+      statusHistory: [],
+      save: jest.fn().mockResolvedValue(undefined),
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockImplementation((query) => {
+      if (query.firebaseUid === "firebase-admin-1") {
+        return buildLeanQuery({
+          _id: "admin_user_1",
+          user_id: "admin_1",
+          firstName: "Branch",
+          lastName: "Admin",
+          email: "admin@example.com",
+          phone: "0918",
+          branch: "gil-puyat",
+          role: "branch_admin",
+        });
+      }
+
+      if (query.user_id === requestDoc.user_id) {
+        return buildLeanQuery({
+          _id: "tenant_user_1",
+          user_id: requestDoc.user_id,
+          firstName: "Lily",
+          lastName: "Tenant",
+          email: "lily@example.com",
+          phone: "0917",
+          branch: "gil-puyat",
+          role: "tenant",
+        });
+      }
+
+      return buildLeanQuery(null);
+    });
+
+    const req = {
+      user: { uid: "firebase-admin-1" },
+      params: { requestId: requestDoc.request_id },
+      body: { providerSource: "none" },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await assignAdminMaintenanceProvider(req, res, next);
+
+    expect(requestDoc.statusHistory).toEqual([]);
+    expect(requestDoc.save).not.toHaveBeenCalled();
+    expect(sendSuccess).toHaveBeenCalledWith(res, expect.objectContaining({
+      message: "No service provider is assigned yet.",
+    }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("assignAdminMaintenanceProvider rejects saving a future provider when request branch is missing", async () => {
+    const requestDoc = buildRequestDoc({
+      branch: null,
+      roomId: null,
+      reservationId: null,
+      save: jest.fn().mockResolvedValue(undefined),
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockReturnValue(
+      buildLeanQuery({
+        _id: "owner_user_1",
+        user_id: "owner_1",
+        firstName: "Dorm",
+        lastName: "Owner",
+        email: "owner@example.com",
+        phone: "0918",
+        branch: null,
+        role: "owner",
+      }),
+    );
+
+    const req = {
+      user: { uid: "firebase-owner-1" },
+      params: { requestId: requestDoc.request_id },
+      body: {
+        providerSource: "manual",
+        providerName: "Manual Plumbing Co.",
+        contactNumber: "09171234567",
+        serviceType: "Plumbing",
+        saveForFuture: true,
+      },
+      branchFilter: null,
+      isOwner: true,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await assignAdminMaintenanceProvider(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "PROVIDER_BRANCH_REQUIRED",
+        statusCode: 400,
+      }),
+    );
+    expect(serviceProviderCreate).not.toHaveBeenCalled();
+    expect(requestDoc.save).not.toHaveBeenCalled();
+    expect(sendSuccess).not.toHaveBeenCalled();
+  });
+
+  test("suggestAdminMaintenanceProvider does not suggest providers for branchless requests", async () => {
+    const requestDoc = buildRequestDoc({
+      branch: null,
+      roomId: null,
+      reservationId: null,
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+
+    const req = {
+      user: { uid: "firebase-owner-1" },
+      params: { requestId: requestDoc.request_id },
+      branchFilter: null,
+      isOwner: true,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await suggestAdminMaintenanceProvider(req, res, next);
+
+    expect(serviceProviderFind).not.toHaveBeenCalled();
+    expect(sendSuccess).toHaveBeenCalledWith(
+      res,
+      expect.objectContaining({
+        recommendation: null,
+        unavailableReason: "missing_branch",
+      }),
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("suggestAdminMaintenanceProvider falls back to general maintenance providers for generic requests", async () => {
+    const requestDoc = buildRequestDoc({
+      request_type: "maintenance",
+      branch: "gil-puyat",
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    const generalProvider = {
+      _id: "507f1f77bcf86cd799439099",
+      providerName: "Lilycrest General Maintenance Provider Placeholder",
+      contactNumber: "09XX XXX XXXX",
+      serviceCategories: ["General Maintenance"],
+      serviceCategoryKeys: ["general-maintenance"],
+      branchCoverage: ["gil-puyat"],
+      status: "active",
+      notes: "General maintenance placeholder.",
+    };
+    serviceProviderFind
+      .mockReturnValueOnce(buildSelectLeanQuery([]))
+      .mockReturnValueOnce(buildSelectLeanQuery([generalProvider]));
+
+    const req = {
+      user: { uid: "firebase-owner-1" },
+      params: { requestId: requestDoc.request_id },
+      branchFilter: null,
+      isOwner: true,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await suggestAdminMaintenanceProvider(req, res, next);
+
+    expect(serviceProviderFind).toHaveBeenCalledTimes(2);
+    expect(serviceProviderFind.mock.calls[0][0]).toMatchObject({
+      status: "active",
+      branchCoverage: "gil-puyat",
+    });
+    expect(serviceProviderFind.mock.calls[1][0]).toMatchObject({
+      status: "active",
+      branchCoverage: "gil-puyat",
+    });
+    expect(serviceProviderFind.mock.calls[1][0].$or).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          serviceCategoryKeys: {
+            $in: expect.arrayContaining(["maintenance", "general-maintenance"]),
+          },
+        }),
+      ]),
+    );
+    expect(sendSuccess).toHaveBeenCalledWith(
+      res,
+      expect.objectContaining({
+        recommendedProviderName: "Lilycrest General Maintenance Provider Placeholder",
+      }),
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("generateAdminMaintenanceReport includes admin-only case file details", async () => {
+    await withoutGeminiEnv(async () => {
+      const requestDoc = buildRequestDoc({
+        status: "completed",
+        assigned_to: "Makati Plumbing Services",
+        assignedProviderName: "Makati Plumbing Services",
+        assignedProviderContact: "09171234567",
+        assignedProviderCategory: "Plumbing",
+        assignedProviderNotes: "Internal provider note",
+        assignedProviderSource: "directory",
+        notes: "Internal admin note",
+        resolution_note: "Leak repaired and area checked.",
+        resolved_at: new Date("2026-04-09T11:00:00.000Z"),
+        attachments: [
+          {
+            name: "tenant-leak.jpg",
+            uri: "https://storage.example.com/tenant-leak.jpg",
+            visibility: "tenant_admin",
+          },
+          {
+            name: "old-photo.jpg",
+            uri: "https://storage.example.com/old-photo.jpg",
+            visibility: "tenant_admin",
+            isRemoved: true,
+            removedAt: new Date("2026-04-09T09:00:00.000Z"),
+            removedReason: "Wrong file attached",
+            removedByName: "Branch Admin",
+            removedByRole: "branch_admin",
+            removedScope: "request",
+          },
+        ],
+        statusHistory: [
+          {
+            event: "note_updated",
+            status: "pending",
+            actor_name: "Branch Admin",
+            actor_role: "branch_admin",
+            note: "Internal admin note",
+            timestamp: new Date("2026-04-08T11:00:00.000Z"),
+          },
+          {
+            event: "service_provider_assigned",
+            status: "pending",
+            actor_name: "Branch Admin",
+            actor_role: "branch_admin",
+            providerName: "Makati Plumbing Services",
+            note: "Internal provider assignment",
+            timestamp: new Date("2026-04-08T12:00:00.000Z"),
+          },
+        ],
+        work_log: [
+          {
+            logged_at: new Date("2026-04-09T10:00:00.000Z"),
+            actor_name: "Branch Admin",
+            actor_role: "branch_admin",
+            note: "Admin-only proof note",
+            attachments: [
+              {
+                name: "proof.jpg",
+                uri: "https://storage.example.com/proof.jpg",
+                visibility: "admin_only",
+              },
+            ],
+          },
+        ],
+        conversation: [
+          {
+            created_at: new Date("2026-04-08T13:00:00.000Z"),
+            sender_name: "Branch Admin",
+            sender_role: "branch_admin",
+            message: "We have received your maintenance request.",
+            attachments: [],
+          },
+        ],
+      });
+      maintenanceFindOne.mockResolvedValue(requestDoc);
+      userFindOne.mockImplementation((query) => {
+        if (query.firebaseUid === "firebase-admin-1") {
+          return buildLeanQuery({
+            _id: "admin_user_1",
+            user_id: "admin_1",
+            firstName: "Branch",
+            lastName: "Admin",
+            email: "admin@example.com",
+            branch: "gil-puyat",
+            role: "branch_admin",
+          });
+        }
+
+        if (query.user_id === requestDoc.user_id) {
+          return buildLeanQuery({
+            _id: "tenant_user_1",
+            user_id: requestDoc.user_id,
+            firstName: "Lily",
+            lastName: "Tenant",
+            email: "lily@example.com",
+            branch: "gil-puyat",
+            role: "tenant",
+          });
+        }
+
+        return buildLeanQuery(null);
+      });
+
+      const req = {
+        user: { uid: "firebase-admin-1" },
+        params: { requestId: requestDoc.request_id },
+        body: { reportType: "admin" },
+        branchFilter: "gil-puyat",
+        isOwner: false,
+      };
+      const res = {};
+      const next = jest.fn();
+
+      await generateAdminMaintenanceReport(req, res, next);
+
+      const report = sendSuccess.mock.calls[0][1];
+      expect(report).toEqual(
+        expect.objectContaining({
+          reportType: "admin",
+          title: `Maintenance Admin Report - ${requestDoc.request_id}`,
+          provider: "rule-based",
+          unavailable: true,
+        }),
+      );
+      expect(report.summary).toContain("Makati Plumbing Services");
+      expect(report.summary).toContain("09171234567");
+      expect(report.summary).toContain("Internal provider note");
+      expect(report.summary).toContain("Internal admin note");
+      expect(report.summary).toContain("proof.jpg");
+      expect(report.summary).toContain("Wrong file attached");
+      expect(report.summary).toContain("We have received your maintenance request.");
+      expect(next).not.toHaveBeenCalled();
+    });
+  });
+
+  test("generateAdminMaintenanceReport filters tenant summaries server-side", async () => {
+    await withoutGeminiEnv(async () => {
+      const requestDoc = buildRequestDoc({
+        status: "in_progress",
+        assigned_to: "Makati Plumbing Services",
+        assignedProviderName: "Makati Plumbing Services",
+        assignedProviderContact: "09171234567",
+        assignedProviderCategory: "Plumbing",
+        assignedProviderNotes: "Internal provider note",
+        notes: "Internal admin note",
+        attachments: [
+          {
+            name: "tenant-leak.jpg",
+            uri: "https://storage.example.com/tenant-leak.jpg",
+            visibility: "tenant_admin",
+          },
+          {
+            name: "removed-tenant-file.jpg",
+            uri: "https://storage.example.com/removed-tenant-file.jpg",
+            visibility: "tenant_admin",
+            isRemoved: true,
+            removedAt: new Date("2026-04-09T09:00:00.000Z"),
+            removedReason: "Sensitive information visible",
+            removedByName: "Branch Admin",
+            removedByRole: "branch_admin",
+            removedScope: "tenant_only",
+          },
+        ],
+        statusHistory: [
+          {
+            event: "note_updated",
+            status: "pending",
+            actor_name: "Branch Admin",
+            actor_role: "branch_admin",
+            note: "Internal admin note",
+            timestamp: new Date("2026-04-08T11:00:00.000Z"),
+          },
+          {
+            event: "service_provider_assigned",
+            status: "pending",
+            actor_name: "Branch Admin",
+            actor_role: "branch_admin",
+            providerName: "Makati Plumbing Services",
+            note: "Internal provider assignment",
+            timestamp: new Date("2026-04-08T12:00:00.000Z"),
+          },
+          {
+            event: "status_changed",
+            status: "in_progress",
+            actor_name: "Branch Admin",
+            actor_role: "branch_admin",
+            note: "Internal status note",
+            timestamp: new Date("2026-04-08T12:30:00.000Z"),
+          },
+        ],
+        work_log: [
+          {
+            logged_at: new Date("2026-04-09T10:00:00.000Z"),
+            actor_name: "Branch Admin",
+            actor_role: "branch_admin",
+            note: "Admin-only proof note",
+            attachments: [
+              {
+                name: "proof.jpg",
+                uri: "https://storage.example.com/proof.jpg",
+                visibility: "admin_only",
+              },
+            ],
+          },
+        ],
+        conversation: [
+          {
+            created_at: new Date("2026-04-08T13:00:00.000Z"),
+            sender_name: "Branch Admin",
+            sender_role: "branch_admin",
+            message: "We have received your maintenance request.",
+            attachments: [
+              {
+                name: "tenant-visible-update.jpg",
+                uri: "https://storage.example.com/tenant-visible-update.jpg",
+                visibility: "tenant_admin",
+              },
+            ],
+          },
+        ],
+      });
+      maintenanceFindOne.mockResolvedValue(requestDoc);
+      userFindOne.mockImplementation((query) => {
+        if (query.firebaseUid === "firebase-admin-1") {
+          return buildLeanQuery({
+            _id: "admin_user_1",
+            user_id: "admin_1",
+            firstName: "Branch",
+            lastName: "Admin",
+            email: "admin@example.com",
+            branch: "gil-puyat",
+            role: "branch_admin",
+          });
+        }
+
+        if (query.user_id === requestDoc.user_id) {
+          return buildLeanQuery({
+            _id: "tenant_user_1",
+            user_id: requestDoc.user_id,
+            firstName: "Lily",
+            lastName: "Tenant",
+            email: "lily@example.com",
+            branch: "gil-puyat",
+            role: "tenant",
+          });
+        }
+
+        return buildLeanQuery(null);
+      });
+
+      const req = {
+        user: { uid: "firebase-admin-1" },
+        params: { requestId: requestDoc.request_id },
+        body: { reportType: "tenant" },
+        branchFilter: "gil-puyat",
+        isOwner: false,
+      };
+      const res = {};
+      const next = jest.fn();
+
+      await generateAdminMaintenanceReport(req, res, next);
+
+      const report = sendSuccess.mock.calls[0][1];
+      expect(report).toEqual(
+        expect.objectContaining({
+          reportType: "tenant",
+          title: `Maintenance Tenant Summary - ${requestDoc.request_id}`,
+          provider: "rule-based",
+          unavailable: true,
+        }),
+      );
+      expect(report.summary).toContain("A service provider has been assigned.");
+      expect(report.summary).toContain("We have received your maintenance request.");
+      expect(report.summary).toContain("tenant-visible-update.jpg");
+      expect(report.summary).not.toContain("09171234567");
+      expect(report.summary).not.toContain("Makati Plumbing Services");
+      expect(report.summary).not.toContain("Internal provider note");
+      expect(report.summary).not.toContain("Internal admin note");
+      expect(report.summary).not.toContain("Admin-only proof note");
+      expect(report.summary).not.toContain("proof.jpg");
+      expect(report.summary).not.toContain("removed-tenant-file.jpg");
+      expect(report.summary).not.toContain("Sensitive information visible");
+      expect(next).not.toHaveBeenCalled();
+    });
+  });
+
+  test("getMyRequests does not expose provider contact details to tenants", async () => {
+    const storedRequest = buildRequestDoc({
+      assigned_to: "Makati Plumbing Services",
+      assignedProviderName: "Makati Plumbing Services",
+      assignedProviderContact: "09171234567",
+      assignedProviderCategory: "Plumbing",
+      assignedProviderSource: "directory",
+    });
+    maintenanceFind.mockReturnValue(buildListQuery([storedRequest]));
+    userFindOne.mockReturnValue(
+      buildLeanQuery({
+        _id: "tenant_user_1",
+        user_id: "user_95f39d5b4ea4",
+        firstName: "Lily",
+        lastName: "Tenant",
+        email: "lily@example.com",
+        phone: "0917",
+        branch: "gil-puyat",
+        role: "tenant",
+      }),
+    );
+
+    const req = {
+      user: { uid: "firebase-tenant-1" },
+      query: {},
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await getMyRequests(req, res, next);
+
+    const request = sendSuccess.mock.calls[0][1].requests[0];
+    expect(request.assigned_to).toBeNull();
+    expect(request.assignedProviderContact).toBeNull();
+    expect(request.assignedProvider).toBeNull();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("uploadAdminMaintenanceAttachment returns clear error when request has no branch", async () => {
+    const requestDoc = buildRequestDoc({
+      branch: null,
+      branchId: null,
+      roomId: null,
+      reservationId: null,
+    });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+    userFindOne.mockReturnValue(buildSelectLeanQuery(null));
+
+    const req = {
+      params: { requestId: requestDoc.request_id },
+      body: { maintenanceRequestId: requestDoc.request_id, visibility: "tenant_visible" },
+      user: { uid: "admin-firebase-1" },
+      isOwner: true,
+      branchFilter: null,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await uploadAdminMaintenanceAttachment(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "This maintenance request has no branch assigned. Please check the tenant’s room or branch details before uploading.",
+        statusCode: 400,
+        code: "MAINTENANCE_REQUEST_BRANCH_REQUIRED",
+      }),
+    );
+    expect(sendSuccess).not.toHaveBeenCalled();
   });
 
   test("sendAdminReply denies branch admin access to another branch request", async () => {

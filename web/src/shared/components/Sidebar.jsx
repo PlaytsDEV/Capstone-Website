@@ -24,7 +24,7 @@ import { USER_ROLES } from "../utils/constants";
 import ConfirmModal from "./ConfirmModal";
 import { showNotification } from "../utils/notification";
 import { buildSignOutSuccessFlash } from "../utils/authToasts";
-import "./sidebar.css";
+import "./Sidebar.css";
 
 const MOBILE_BP = 768;
 

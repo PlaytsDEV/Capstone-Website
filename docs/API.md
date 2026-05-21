@@ -172,6 +172,17 @@ Key patterns:
 
 ---
 
+## Uploads (`/api/attachments`)
+
+| Method | Endpoint  | Auth | Description |
+| ------ | --------- | ---- | ----------- |
+| POST   | `/`       | JWT  | Upload a branch-scoped attachment file |
+| POST   | `/upload` | JWT  | Compatibility alias for attachment upload |
+
+Maintenance uploads send multipart form data with `file`, `context`, `visibility`, and when available `maintenanceRequestId` or `requestId`.
+
+---
+
 ## Audit Logs (`/api/audit-logs`)
 
 | Method | Endpoint                   | Auth  | Description                |

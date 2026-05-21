@@ -30,29 +30,77 @@ const adminBranchRoom = (branch) => `admins:branch:${branch}`;
 const isOwnerLike = (role, claims = {}) =>
   isOwnerRole(role) || Boolean(claims.owner || claims.superadmin);
 
+const getSocketOrigin = (socket) => socket.handshake.headers?.origin || "";
+const getSocketTransport = (socket) =>
+  socket.conn?.transport?.name ||
+  socket.handshake.query?.transport ||
+  "unknown";
+
 /**
  * Initialize Socket.IO on an existing HTTP server
  * @param {import("http").Server} httpServer
- * @param {string[]} allowedOrigins - CORS origins
+ * @param {Object} options
+ * @param {string[]} options.allowedOrigins - CORS origins for logging/debug
+ * @param {(origin?: string) => boolean} options.isOriginAllowed - shared CORS matcher
  */
-export function initSocket(httpServer, allowedOrigins = []) {
+export function initSocket(httpServer, options = {}) {
+  const {
+    allowedOrigins = [],
+    isOriginAllowed = () => true,
+  } = Array.isArray(options)
+    ? { allowedOrigins: options, isOriginAllowed: (origin) => !origin || options.includes(origin) }
+    : options;
+
   io = new Server(httpServer, {
     cors: {
-      origin: allowedOrigins,
+      origin: (origin, callback) => {
+        if (isOriginAllowed(origin)) {
+          callback(null, true);
+          return;
+        }
+
+        logger.warn({ origin }, "Socket.IO CORS rejected origin");
+        callback(new Error("Not allowed by Socket.IO CORS"));
+      },
+      methods: ["GET", "POST"],
       credentials: true,
     },
     transports: ["polling", "websocket"],
   });
 
+  io.engine.on("connection_error", (error) => {
+    logger.warn(
+      {
+        code: error.code,
+        message: error.message,
+        context: error.context,
+        origin: error.req?.headers?.origin,
+        transport: error.req?._query?.transport,
+      },
+      "Socket.IO engine connection error",
+    );
+  });
+
   io.use(async (socket, next) => {
+    const origin = getSocketOrigin(socket);
+    const transport = getSocketTransport(socket);
+
     try {
       const token = socket.handshake.auth?.token;
       if (!token) {
+        logger.warn(
+          { socketId: socket.id, origin, transport },
+          "Socket authentication missing token",
+        );
         return next(new Error("Authentication required"));
       }
 
       const auth = getAuth();
       if (!auth) {
+        logger.warn(
+          { socketId: socket.id, origin, transport },
+          "Socket authentication unavailable",
+        );
         return next(new Error("Authentication unavailable"));
       }
 
@@ -62,6 +110,18 @@ export function initSocket(httpServer, allowedOrigins = []) {
         .lean();
 
       if (!dbUser || dbUser.isArchived || dbUser.accountStatus !== "active") {
+        logger.warn(
+          {
+            socketId: socket.id,
+            origin,
+            transport,
+            firebaseUid: decoded.uid,
+            userId: dbUser?._id ? String(dbUser._id) : null,
+            accountStatus: dbUser?.accountStatus,
+            isArchived: dbUser?.isArchived,
+          },
+          "Socket authentication rejected user",
+        );
         return next(new Error("User not allowed"));
       }
 
@@ -69,7 +129,10 @@ export function initSocket(httpServer, allowedOrigins = []) {
       socket.data.claims = decoded;
       return next();
     } catch (error) {
-      logger.warn({ err: error }, "Socket authentication failed");
+      logger.warn(
+        { err: error, socketId: socket.id, origin, transport },
+        "Socket authentication failed",
+      );
       return next(new Error("Authentication failed"));
     }
   });
@@ -79,6 +142,7 @@ export function initSocket(httpServer, allowedOrigins = []) {
     const claims = socket.data.claims || {};
     const userId = dbUser?._id ? String(dbUser._id) : "";
     const role = String(dbUser?.role || "").toLowerCase();
+    const origin = getSocketOrigin(socket);
 
     if (userId) {
       socket.join(`user:${userId}`);
@@ -94,12 +158,59 @@ export function initSocket(httpServer, allowedOrigins = []) {
       }
     }
 
-    socket.on("disconnect", () => {
+    logger.info(
+      {
+        socketId: socket.id,
+        userId,
+        role,
+        branch: dbUser?.branch || null,
+        origin,
+        transport: getSocketTransport(socket),
+      },
+      "Socket connected",
+    );
+
+    socket.conn.once("upgrade", (transport) => {
+      logger.info(
+        {
+          socketId: socket.id,
+          userId,
+          origin,
+          transport: transport.name,
+        },
+        "Socket transport upgraded",
+      );
+    });
+
+    socket.on("disconnect", (reason) => {
+      logger.info(
+        {
+          socketId: socket.id,
+          userId,
+          origin,
+          transport: getSocketTransport(socket),
+          reason,
+        },
+        "Socket disconnected",
+      );
       // Cleanup handled automatically by Socket.IO
+    });
+
+    socket.on("error", (error) => {
+      logger.warn(
+        {
+          err: error,
+          socketId: socket.id,
+          userId,
+          origin,
+          transport: getSocketTransport(socket),
+        },
+        "Socket error",
+      );
     });
   });
 
-  logger.info("Socket.IO initialized");
+  logger.info({ allowedOrigins }, "Socket.IO initialized");
   return io;
 }
 

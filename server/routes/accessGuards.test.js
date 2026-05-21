@@ -56,7 +56,12 @@ await jest.unstable_mockModule("../middleware/rateLimiter.js", () => ({
   apiLimiter: noop,
 }));
 await jest.unstable_mockModule("../config/firebase.js", () => ({
+  default: { storage: jest.fn() },
   getAuth: jest.fn(),
+}));
+await jest.unstable_mockModule("../services/attachmentUploadService.js", () => ({
+  ATTACHMENT_TYPE_ERROR_MESSAGE: "Unsupported attachment type",
+  isAllowedAttachmentFile: jest.fn(() => true),
 }));
 await jest.unstable_mockModule("../utils/auditLogger.js", () => ({
   default: { log: jest.fn() },
@@ -184,10 +189,26 @@ await jest.unstable_mockModule("../controllers/maintenanceController.js", () => 
   updateRequest: noop,
   updateAdminRequestStatus: noop,
   updateAdminRequestStatusCompat: noop,
+  assignAdminMaintenanceProvider: noop,
+  assignAdminMaintenanceBranch: noop,
+  generateAdminMaintenanceUpdate: noop,
+  generateAdminMaintenanceReport: noop,
+  suggestAdminMaintenanceProvider: noop,
+  uploadAdminMaintenanceAttachment: noop,
+  saveAdminMaintenanceProof: noop,
+  removeAdminMaintenanceAttachment: noop,
+  archiveAdminMaintenanceRequest: noop,
+  restoreAdminMaintenanceRequest: noop,
   sendAdminReply: noop,
+  sendTenantReply: noop,
   updateAdminBulkRequests: noop,
   getCompletionStats: noop,
   getIssueFrequency: noop,
+}));
+await jest.unstable_mockModule("../controllers/serviceProviderController.js", () => ({
+  listServiceProviders: noop,
+  createServiceProvider: noop,
+  updateServiceProvider: noop,
 }));
 await jest.unstable_mockModule("../controllers/branchSummaryController.js", () => ({
   getOwnerBranchSummaries: noop,
@@ -202,6 +223,7 @@ const auditRoutes = (await import("./auditRoutes.js")).default;
 const branchSummaryRoutes = (await import("./branchSummaryRoutes.js")).default;
 const digitalTwinRoutes = (await import("./digitalTwinRoutes.js")).default;
 const maintenanceRoutes = (await import("./maintenanceContractRoutes.js")).default;
+const serviceProviderRoutes = (await import("./serviceProviderRoutes.js")).default;
 
 function getRouteHandlers(router, path, method) {
   const layer = router.stack.find(
@@ -369,6 +391,36 @@ describe("route access guards", () => {
       "/admin/:requestId/reply",
       "post",
     );
+    const adminAssignProviderHandlers = getRouteHandlers(
+      maintenanceRoutes,
+      "/admin/:requestId/assign-provider",
+      "post",
+    );
+    const adminAssignBranchHandlers = getRouteHandlers(
+      maintenanceRoutes,
+      "/admin/:requestId/branch",
+      "patch",
+    );
+    const adminGenerateUpdateHandlers = getRouteHandlers(
+      maintenanceRoutes,
+      "/admin/:requestId/generate-update",
+      "post",
+    );
+    const adminGenerateReportHandlers = getRouteHandlers(
+      maintenanceRoutes,
+      "/admin/:requestId/generate-report",
+      "post",
+    );
+    const adminSuggestProviderHandlers = getRouteHandlers(
+      maintenanceRoutes,
+      "/admin/:requestId/suggest-provider",
+      "post",
+    );
+    const adminAttachmentHandlers = getRouteHandlers(
+      maintenanceRoutes,
+      "/admin/:requestId/attachments",
+      "post",
+    );
     const legacyBranchHandlers = getRouteHandlers(maintenanceRoutes, "/branch", "get");
 
     expect(adminListHandlers).toContain(verifyAdmin);
@@ -395,10 +447,47 @@ describe("route access guards", () => {
       ),
     ).toBe(true);
 
+    expect(adminAttachmentHandlers).toContain(verifyAdmin);
+    expect(adminAttachmentHandlers).toContain(filterByBranch);
+    expect(
+      adminAttachmentHandlers.some(
+        (handler) => handler.requiredPermission === "manageMaintenance",
+      ),
+    ).toBe(true);
+
+    [adminAssignProviderHandlers, adminAssignBranchHandlers, adminGenerateUpdateHandlers, adminGenerateReportHandlers, adminSuggestProviderHandlers].forEach(
+      (handlers) => {
+        expect(handlers).toContain(verifyAdmin);
+        expect(handlers).toContain(filterByBranch);
+        expect(
+          handlers.some(
+            (handler) => handler.requiredPermission === "manageMaintenance",
+          ),
+        ).toBe(true);
+      },
+    );
+
     expect(
       legacyBranchHandlers.some(
         (handler) => handler.requiredPermission === "manageMaintenance",
       ),
     ).toBe(true);
+  });
+
+  test("service provider routes enforce manageMaintenance", () => {
+    const listHandlers = getRouteHandlers(serviceProviderRoutes, "/", "get");
+    const createHandlers = getRouteHandlers(serviceProviderRoutes, "/", "post");
+    const updateHandlers = getRouteHandlers(serviceProviderRoutes, "/:id", "patch");
+
+    [listHandlers, createHandlers, updateHandlers].forEach((handlers) => {
+      expect(handlers).toContain(verifyToken);
+      expect(handlers).toContain(verifyAdmin);
+      expect(handlers).toContain(filterByBranch);
+      expect(
+        handlers.some(
+          (handler) => handler.requiredPermission === "manageMaintenance",
+        ),
+      ).toBe(true);
+    });
   });
 });

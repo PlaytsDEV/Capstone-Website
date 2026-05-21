@@ -20,7 +20,11 @@
 import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { useAuth } from "./useAuth";
-import { API_ORIGIN } from "../api/baseUrl";
+import { SOCKET_BASE_URL } from "../api/baseUrl";
+import {
+  SOCKET_CLIENT_OPTIONS,
+  describeSocketTarget,
+} from "../api/socketConfig";
 import { getFreshToken } from "../api/httpClient";
 
 export default function useChatSocket({
@@ -31,6 +35,8 @@ export default function useChatSocket({
 } = {}) {
   const { user } = useAuth();
   const socketRef = useRef(null);
+  const lastSocketErrorRef = useRef("");
+  const hasLoggedConnectionRef = useRef(false);
   const [isConnected, setIsConnected] = useState(false);
 
   // Keep callback refs stable so the effect doesn't re-run on every render
@@ -51,15 +57,45 @@ export default function useChatSocket({
       const token = await getFreshToken();
       if (cancelled || !token) return;
 
-      const socket = io(API_ORIGIN, {
+      const socket = io(SOCKET_BASE_URL, {
         auth: { token },
-        transports: ["websocket", "polling"],
-        reconnectionAttempts: 5,
-        reconnectionDelay: 3000,
+        ...SOCKET_CLIENT_OPTIONS,
       });
 
-      socket.on("connect", () => setIsConnected(true));
-      socket.on("disconnect", () => setIsConnected(false));
+      socket.on("connect", () => {
+        lastSocketErrorRef.current = "";
+        setIsConnected(true);
+        const transport = socket.io.engine?.transport?.name || "unknown";
+        if (!hasLoggedConnectionRef.current) {
+          hasLoggedConnectionRef.current = true;
+          console.info(`[socket] Chat connected to real-time server (${transport}).`);
+        }
+        socket.io.engine?.once("upgrade", (upgradedTransport) => {
+          console.info(`[socket] Chat transport upgraded to ${upgradedTransport.name}.`);
+        });
+      });
+      socket.on("disconnect", (reason) => {
+        setIsConnected(false);
+        if (reason !== "io client disconnect") {
+          console.info(`[socket] Chat disconnected (${reason || "unknown reason"}). HTTP loading is unaffected.`);
+        }
+      });
+
+      socket.on("connect_error", (error) => {
+        setIsConnected(false);
+        const message = error?.message || "connection failed";
+        if (lastSocketErrorRef.current !== message) {
+          lastSocketErrorRef.current = message;
+          console.warn(
+            `[socket] Chat real-time connection unavailable (${message}). Target: ${describeSocketTarget()}. Chat HTTP loading is unaffected.`,
+          );
+        }
+      });
+
+      socket.on("reconnect_failed", () => {
+        setIsConnected(false);
+        console.warn("[socket] Chat real-time reconnect attempts exhausted.");
+      });
 
       socket.on("chat:message-new", (payload = {}) => {
         const { message, conversationId } = payload;

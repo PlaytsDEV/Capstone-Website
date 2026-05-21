@@ -91,6 +91,41 @@ const attachmentSchema = new mongoose.Schema(
       default: null,
       min: 0,
     },
+    isRemoved: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    removedAt: {
+      type: Date,
+      default: null,
+    },
+    removedBy: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    removedByRole: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    removedByName: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    removedReason: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    removedScope: {
+      type: String,
+      enum: ["tenant_only", "request", null],
+      default: null,
+      index: true,
+    },
   },
   { _id: false, strict: false },
 );
@@ -148,6 +183,51 @@ const statusHistorySchema = new mongoose.Schema(
     timestamp: {
       type: Date,
       required: true,
+    },
+    providerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ServiceProvider",
+      default: null,
+    },
+    providerName: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    previousProviderName: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    providerSource: {
+      type: String,
+      enum: ["directory", "manual", null],
+      default: null,
+    },
+    branch: {
+      type: String,
+      enum: [...ROOM_BRANCHES, null],
+      default: null,
+    },
+    attachmentName: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    attachmentId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    removedScope: {
+      type: String,
+      enum: ["tenant_only", "request", null],
+      default: null,
+    },
+    source: {
+      type: String,
+      default: null,
+      trim: true,
     },
   },
   { _id: false },
@@ -274,6 +354,53 @@ const maintenanceRequestSchema = new mongoose.Schema(
       default: null,
       trim: true,
     },
+    assignedProviderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ServiceProvider",
+      default: null,
+      index: true,
+    },
+    assignedProviderName: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    assignedProviderContact: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    assignedProviderCategory: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    assignedProviderNotes: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    assignedProviderSource: {
+      type: String,
+      enum: ["directory", "manual", null],
+      default: null,
+      index: true,
+    },
+    assignedBy: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    assignedByName: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    assignedByRole: {
+      type: String,
+      default: null,
+      trim: true,
+    },
     notes: {
       type: String,
       default: null,
@@ -362,6 +489,24 @@ const maintenanceRequestSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
+    archivedAt: {
+      type: Date,
+      default: null,
+    },
+    archivedBy: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    restoredAt: {
+      type: Date,
+      default: null,
+    },
+    restoredBy: {
+      type: String,
+      default: null,
+      trim: true,
+    },
     // Prevents duplicate SLA breach notifications for the same unresolved breach.
     // Reset to false whenever status changes so re-escalation fires correctly.
     // Covered by the compound index { status, urgency, created_at, slaBreachNotified }.
@@ -391,6 +536,7 @@ const MAINTENANCE_ARRAY_CAPS = {
   work_log: 200,
   statusHistory: 200,
   reopen_history: 30,
+  conversation: 200,
 };
 
 maintenanceRequestSchema.pre("save", function (next) {

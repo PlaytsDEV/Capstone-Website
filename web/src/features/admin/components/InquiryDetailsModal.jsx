@@ -45,9 +45,13 @@ export default function InquiryDetailsModal({ inquiry, onClose, onUpdate }) {
  setError(null);
 
  try {
- await inquiryApi.respond(inquiry._id, response);
+ const result = await inquiryApi.respond(inquiry._id, response);
  setSuccess(true);
  setResponse("");
+
+ if (result?.emailSent === false) {
+ setError("Response saved but email could not be sent to the customer.");
+ }
 
  timerRef.current = setTimeout(() => {
  onUpdate?.();

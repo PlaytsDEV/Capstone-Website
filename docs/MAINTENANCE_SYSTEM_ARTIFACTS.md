@@ -226,8 +226,8 @@ Important behavior:
    - urgency
    - description
    - optional attachments
-5. Attachments are uploaded through ImageKit before form submit.
-6. Frontend sends `POST /api/m/maintenance`.
+5. Frontend sends `POST /api/m/maintenance` to create the request.
+6. If new-request attachments were selected, the frontend uploads them through `/api/attachments` with the created request ID and patches the pending request.
 7. Backend:
    - finds MongoDB user by Firebase UID
   - validates type, urgency, and minimum description length
