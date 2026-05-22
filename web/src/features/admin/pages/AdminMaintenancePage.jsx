@@ -140,9 +140,6 @@ const REPORT_EXPORT_COLUMNS = [
 ];
 const MAINTENANCE_TABS = [
  { key: "requests", label: "Requests", icon: ClipboardList },
- { key: "analytics", label: "Analytics", icon: Sparkles },
- { key: "branch_reports", label: "Branch Reports", icon: FileText },
- { key: "service_providers", label: "Service Providers", icon: UserRound },
 ];
 const ASSIGNMENT_FILTER_OPTIONS = [
  { key: "all", label: "All assignments" },
@@ -1170,6 +1167,132 @@ const buildMaintenanceTimeline = (request) => {
  .sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime());
 };
 
+const REPORT_NA = "Not available";
+const cleanReportLine = (line) =>
+ String(line || "")
+ .replace(/^#{1,6}\s*/, "")
+ .replace(/^\s*[-*]\s*/, "")
+ .replace(/\*\*/g, "")
+ .trim();
+
+const parseReportSummarySections = (summary, reportType = "admin") => {
+ const sections = [];
+ let current = { title: "Summary", rows: [] };
+
+ getReportSummaryLines(summary).forEach((rawLine) => {
+ const line = cleanReportLine(rawLine);
+ if (!line) return;
+ const isHeading = /^#{1,6}\s/.test(rawLine) || /^[A-Z][A-Za-z\s/]+:$/.test(line);
+ if (isHeading && current.rows.length) {
+ sections.push(current);
+ current = { title: line.replace(/:$/, ""), rows: [] };
+ } else if (isHeading) {
+ current.title = line.replace(/:$/, "");
+ } else {
+ current.rows.push(line);
+ }
+ });
+
+ if (current.rows.length) sections.push(current);
+
+ const safeSections = sections.filter((section) => {
+ if (reportType !== "tenant") return true;
+ return !/internal|admin only|debug|backend|private staff|assignment note/i.test(section.title);
+ });
+
+ return safeSections.length ? safeSections : [{ title: "Summary", rows: [REPORT_NA] }];
+};
+
+const getRequestReportMeta = (request) => {
+ const branch = getRequestBranch(request);
+ return {
+ requestId: request?.request_id || REPORT_NA,
+ tenantName: request?.tenant?.full_name || request?.tenantName || REPORT_NA,
+ userId: request?.tenant?.user_id || request?.user_id || REPORT_NA,
+ branch: branch ? formatBranchLabel(branch) : REPORT_NA,
+ room: request?.roomName || request?.room || request?.roomNumber || request?.unit || REPORT_NA,
+ requestType: request?.request_type ? getMaintenanceTypeMeta(request.request_type).label : REPORT_NA,
+ urgency: request?.urgency ? getMaintenanceUrgencyMeta(request.urgency).label : REPORT_NA,
+ status: request?.status ? formatMaintenanceStatus(request.status) : REPORT_NA,
+ createdAt: request?.created_at ? fmtDateTime(request.created_at) : REPORT_NA,
+ updatedAt: request?.updated_at ? fmtDateTime(request.updated_at) : REPORT_NA,
+ description: request?.description || REPORT_NA,
+ };
+};
+
+const getReportTimelineRows = (request, reportType = "admin") =>
+ buildMaintenanceTimeline(request)
+ .filter((item) => reportType !== "tenant" || item.visibility === "tenant")
+ .map((item) => {
+ const attachmentCount = Array.isArray(item.attachments) ? item.attachments.length : 0;
+ return [
+ fmtDateTime(item.timestamp),
+ item.actorName || REPORT_NA,
+ item.title || REPORT_NA,
+ item.message || item.meta || REPORT_NA,
+ attachmentCount ? `${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"}` : "",
+ ].filter(Boolean).join(" | ");
+ });
+
+const getReportAttachmentsRows = (request, reportType = "admin") => {
+ const attachments = getActiveAttachments(request?.attachments || []);
+ if (!attachments.length) return [REPORT_NA];
+ return attachments.map((attachment, index) =>
+ `${index + 1}. ${getMaintenanceAttachmentName(attachment, index)} (${getMaintenanceAttachmentLabel(attachment)})`,
+ );
+};
+
+const getReportProviderRows = (request, reportType = "admin") => {
+ const providerName = getAssignedProviderName(request);
+ if (!providerName) return ["Assigned provider: Not assigned"];
+ const rows = [
+ `Assigned provider: ${providerName}`,
+ `Service type: ${getAssignedProviderCategory(request) || REPORT_NA}`,
+ ];
+ if (reportType !== "tenant") {
+ rows.push(`Contact: ${getAssignedProviderContact(request) || REPORT_NA}`);
+ if (request?.assignedProviderNotes) rows.push(`Internal notes: ${request.assignedProviderNotes}`);
+ }
+ return rows;
+};
+
+const getStructuredReportSections = (report, request) => {
+ const reportType = report?.reportType || "admin";
+ const summarySections = parseReportSummarySections(report?.summary, reportType);
+ const timelineRows = getReportTimelineRows(request, reportType);
+ const sections = [
+ {
+ title: "Issue Details",
+ rows: [
+ getRequestReportMeta(request).description,
+ ...getReportAttachmentsRows(request, reportType).map((row) => `Attachment: ${row}`),
+ ],
+ },
+ {
+ title: "Service Provider Details",
+ rows: getReportProviderRows(request, reportType),
+ },
+ {
+ title: reportType === "tenant" ? "Tenant Visible Timeline" : "Maintenance Timeline / Status History",
+ rows: timelineRows.length ? timelineRows : [REPORT_NA],
+ },
+ ...summarySections,
+ ];
+
+ if (reportType === "admin") {
+ const internalRows = buildMaintenanceTimeline(request)
+ .filter((item) => item.visibility !== "tenant")
+ .map((item) => `${fmtDateTime(item.timestamp)} | ${item.title || REPORT_NA} | ${item.message || REPORT_NA}`);
+ sections.push({
+ title: "Admin Internal Updates",
+ description: "Admin Only - confidential internal maintenance notes and staff activity.",
+ rows: internalRows.length ? internalRows : [REPORT_NA],
+ });
+ }
+
+ return sections;
+};
+
 function TimelineAttachmentList({
  attachments = [],
  targets = [],
@@ -1420,20 +1543,62 @@ function ReportExportDropdown({
  disabled = false,
  onExport,
 }) {
+ const label = REPORT_TYPE_LABELS[reportType] || "Maintenance Report";
  const options = [
- { key: "pdf", label: "Download as PDF", onClick: () => onExport("pdf") },
- { key: "csv", label: "Download as CSV", onClick: () => onExport("csv") },
- ...(reportType === "admin"
- ? [{ key: "txt", label: "Download as TXT", onClick: () => onExport("txt") }]
- : []),
+ { key: "pdf", label: `Download ${label} PDF`, onClick: () => onExport("pdf") },
+ { key: "csv", label: `Download ${label} CSV`, onClick: () => onExport("csv") },
  ];
 
  return <MaintenanceExportDropdown options={options} disabled={disabled} placement="top" />;
 }
 
+function ReportInfoGrid({ items = [] }) {
+ return (
+ <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+ {items.map((item) => (
+ <div key={item.label} className="rounded-lg border border-slate-200 bg-white p-3">
+ <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+ {item.label}
+ </div>
+ <div className="mt-1 break-words text-sm font-semibold text-slate-900">
+ {item.value || REPORT_NA}
+ </div>
+ </div>
+ ))}
+ </div>
+ );
+}
+
+function ReportViewerSection({ section }) {
+ const rows = Array.isArray(section?.rows) && section.rows.length ? section.rows : [REPORT_NA];
+ return (
+ <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+ <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 pb-2">
+ <h3 className="text-sm font-bold text-slate-900">{section.title}</h3>
+ {/admin only|internal|confidential/i.test(`${section.title} ${section.description || ""}`) ? (
+ <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-amber-700">
+ Admin Only
+ </span>
+ ) : null}
+ </div>
+ {section.description ? (
+ <p className="mt-2 text-xs leading-5 text-slate-500">{section.description}</p>
+ ) : null}
+ <div className="mt-3 space-y-2">
+ {rows.map((row, index) => (
+ <div key={`${section.title}-${index}`} className="rounded-lg bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-700">
+ {row}
+ </div>
+ ))}
+ </div>
+ </section>
+ );
+}
+
 function ReportPreviewModal({
  open,
  report,
+ request,
  isCopying = false,
  isSending = false,
  onCopy,
@@ -1444,6 +1609,11 @@ function ReportPreviewModal({
  if (!open || !report) return null;
  const label = REPORT_TYPE_LABELS[report.reportType] || "Maintenance Report";
  const isTenant = report.reportType === "tenant";
+ const meta = getRequestReportMeta(request);
+ const sections = getStructuredReportSections(report, request);
+ const reportTypeTone = isTenant
+ ? "border-sky-200 bg-sky-50 text-sky-800"
+ : "border-amber-200 bg-amber-50 text-amber-800";
 
  return (
  <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/50 px-4 py-6">
@@ -1451,24 +1621,29 @@ function ReportPreviewModal({
  role="dialog"
  aria-modal="true"
  aria-labelledby="maintenance-report-preview-title"
- className="flex max-h-[calc(100vh-2rem)] w-full max-w-4xl flex-col rounded-xl border border-border bg-card shadow-2xl"
+ className="flex max-h-[calc(100vh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-2xl"
  >
- <div className="border-b border-border p-5">
+ <div className="border-b border-slate-200 bg-[#0f2742] p-5 text-white">
  <div className="flex flex-wrap items-start justify-between gap-3">
  <div>
+ <div className="text-xs font-bold uppercase tracking-[0.18em] text-amber-300">
+ Lilycrest Residences
+ </div>
  <div className="flex flex-wrap items-center gap-2">
- <h2 id="maintenance-report-preview-title" className="text-lg font-semibold text-card-foreground">
+ <h2 id="maintenance-report-preview-title" className="text-xl font-bold">
  {report.title || label}
  </h2>
- <SectionBadge tone={isTenant ? "blue" : "amber"}>{label}</SectionBadge>
+ <span className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${reportTypeTone}`}>
+ {label}
+ </span>
  </div>
- {report.message ? (
- <p className="mt-2 text-sm text-muted-foreground">{report.message}</p>
- ) : null}
+ <p className="mt-2 text-sm text-slate-200">
+ Generated {report.generatedAt ? fmtDateTime(report.generatedAt) : fmtDateTime(new Date())}
+ </p>
  </div>
  <button
  type="button"
- className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground hover:bg-muted"
+ className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 text-white hover:bg-white/10"
  onClick={onClose}
  aria-label="Close report preview"
  >
@@ -1478,9 +1653,37 @@ function ReportPreviewModal({
  </div>
 
  <div className="min-h-0 flex-1 overflow-y-auto p-5">
- <pre className="whitespace-pre-wrap rounded-lg border border-border bg-muted/20 p-4 text-sm leading-6 text-card-foreground">
- {report.summary}
- </pre>
+ {report.message ? (
+ <div className="mb-4 rounded-lg border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+ {report.message}
+ </div>
+ ) : null}
+ <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+ <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+ <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-slate-700">Request Information</h3>
+ <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">
+ Request {meta.requestId}
+ </span>
+ </div>
+ <ReportInfoGrid
+ items={[
+ { label: "Tenant", value: meta.tenantName },
+ ...(isTenant ? [] : [{ label: "User ID", value: meta.userId }]),
+ { label: "Branch", value: meta.branch },
+ { label: "Room/Unit", value: meta.room },
+ { label: "Request Type", value: meta.requestType },
+ { label: "Urgency", value: meta.urgency },
+ { label: "Status", value: meta.status },
+ { label: "Created", value: meta.createdAt },
+ { label: "Updated", value: meta.updatedAt },
+ ]}
+ />
+ </div>
+ <div className="space-y-4">
+ {sections.map((section, index) => (
+ <ReportViewerSection key={`${section.title}-${index}`} section={section} />
+ ))}
+ </div>
  </div>
 
  <div className="flex flex-col gap-2 border-t border-border p-5 sm:flex-row sm:justify-end">
@@ -1489,21 +1692,6 @@ function ReportPreviewModal({
  onExport={onExport}
  disabled={!report.summary}
  />
- {isTenant ? (
- <button
- type="button"
- className="inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold shadow-sm hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
- style={{
- backgroundColor: "var(--primary)",
- color: "var(--primary-foreground)",
- }}
- onClick={onSendToTenant}
- disabled={isSending}
- >
- <MessageSquare size={14} />
- {isSending ? "Sending..." : "Send to Tenant"}
- </button>
- ) : (
  <button
  type="button"
  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold shadow-sm hover:opacity-90 disabled:opacity-60"
@@ -1517,7 +1705,17 @@ function ReportPreviewModal({
  <ClipboardList size={14} />
  {isCopying ? "Copying..." : "Copy Summary"}
  </button>
- )}
+ {isTenant ? (
+ <button
+ type="button"
+ className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+ onClick={onSendToTenant}
+ disabled={isSending}
+ >
+ <MessageSquare size={14} />
+ {isSending ? "Sending..." : "Send to Tenant"}
+ </button>
+ ) : null}
  <button
  type="button"
  className="inline-flex h-10 items-center justify-center rounded-lg border border-border px-4 text-sm font-medium text-muted-foreground hover:bg-muted"
@@ -4021,53 +4219,61 @@ const handleExport = () => {
  const handleExportReport = (format) => {
  if (!reportPreview?.summary) return;
  const filenameBase = getReportFilenameBase(reportPreview, selectedRequest);
- const lines = getReportSummaryLines(reportPreview.summary);
+ const meta = getRequestReportMeta(selectedRequest);
+ const label = REPORT_TYPE_LABELS[reportPreview.reportType] || "Maintenance Report";
+ const sections = [
+ {
+ title: "Request Information",
+ rows: [
+ `Request ID: ${meta.requestId}`,
+ `Tenant name: ${meta.tenantName}`,
+ ...(reportPreview.reportType === "admin" ? [`User ID: ${meta.userId}`] : []),
+ `Branch: ${meta.branch}`,
+ `Room/unit: ${meta.room}`,
+ `Request type: ${meta.requestType}`,
+ `Urgency: ${meta.urgency}`,
+ `Current status: ${meta.status}`,
+ `Created date: ${meta.createdAt}`,
+ `Updated date: ${meta.updatedAt}`,
+ ],
+ },
+ ...getStructuredReportSections(reportPreview, selectedRequest),
+ ];
 
  if (format === "pdf") {
  exportReportPdf({
  title: reportPreview.title || REPORT_TYPE_LABELS[reportPreview.reportType] || "Maintenance Report",
- subtitle: reportPreview.generatedAt
- ? `${REPORT_TYPE_LABELS[reportPreview.reportType] || "Maintenance Report"} - Generated ${fmtDateTime(reportPreview.generatedAt)}`
- : REPORT_TYPE_LABELS[reportPreview.reportType] || "Maintenance Report",
+ subtitle: `${label} - Request ${meta.requestId}`,
+ badge: label,
+ generatedAt: reportPreview.generatedAt,
+ footerText: "Generated by Lilycrest Maintenance Management System",
  filename: `${filenameBase}.pdf`,
- sections: [
- {
- title: "Summary",
- rows: lines,
- },
- ],
+ sections,
  });
  showNotification("PDF downloaded successfully.", "success");
  return;
  }
 
  if (format === "csv") {
- exportToCSV(
- lines.map((line, index) => ({
+ const csvRows = sections.flatMap((section) =>
+ (section.rows || [REPORT_NA]).map((row, index) => ({
+ section: section.title,
  lineNumber: index + 1,
- content: line,
+ content: row,
  })),
- REPORT_EXPORT_COLUMNS,
- filenameBase,
  );
+  exportToCSV(
+ csvRows,
+ [
+ { key: "section", label: "Section" },
+ ...REPORT_EXPORT_COLUMNS,
+ ],
+  filenameBase,
+  );
  showNotification("CSV downloaded successfully.", "success");
  return;
  }
 
- if (format === "txt" && reportPreview.reportType === "admin") {
- const blob = new Blob([reportPreview.summary], {
- type: "text/plain;charset=utf-8",
- });
- const url = URL.createObjectURL(blob);
- const link = document.createElement("a");
- link.href = url;
- link.download = `${filenameBase}.txt`;
- document.body.appendChild(link);
- link.click();
- link.remove();
- URL.revokeObjectURL(url);
- showNotification("TXT downloaded successfully.", "success");
- }
  };
 
  const handleRequestSendTenantSummary = () => {
@@ -4491,7 +4697,7 @@ const handleExport = () => {
  Manage tenant repair requests, reporting, service provider performance, and branch maintenance insights.
  </p>
  </div>
- <PageShell tabs={MAINTENANCE_TABS} activeTab={activeTab} onTabChange={handleTabChange}>
+ <PageShell>
  <PageShell.Summary>
  {activeTab === "requests" ? (
  <SummaryBar
@@ -5532,6 +5738,7 @@ const handleExport = () => {
  <ReportPreviewModal
  open={Boolean(reportPreview)}
  report={reportPreview}
+ request={selectedRequest}
  isCopying={isCopyingReport}
  isSending={sendTenantSummaryMutation.isPending}
  onCopy={handleCopyReport}
