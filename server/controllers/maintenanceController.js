@@ -46,6 +46,10 @@ import {
   suggestMaintenanceProviderFromDirectory,
 } from "../services/maintenanceAiService.js";
 import {
+  buildMaintenanceAnalytics,
+  buildMaintenanceBranchReport,
+} from "../services/maintenanceAnalyticsService.js";
+import {
   MAINTENANCE_UPLOAD_BRANCH_ERROR_MESSAGE,
   resolveMaintenanceRequestBranch,
   resolveMaintenanceRequestStorageBranch,
@@ -59,7 +63,7 @@ const USER_SELECT_FIELDS =
 const MAINTENANCE_LIMIT_MAX = 200;
 const SLA_TARGET_HOURS = Object.freeze({
   low: 120,
-  normal: 48,
+  normal: 72,
   high: 24,
 });
 const DUPLICATE_REQUEST_WINDOW_HOURS = 12;
@@ -113,6 +117,19 @@ const toOptionalText = (value) => {
   if (value == null) return null;
   const sanitized = clean(String(value)).trim();
   return sanitized ? sanitized : null;
+};
+
+const sanitizeDigitsOnly = (value) => String(value || "").replace(/\D/g, "");
+
+const parseOptionalAmount = (value, field) => {
+  if (value === undefined || value === null || value === "") return null;
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 0) {
+    throw new AppError("Enter a valid amount.", 400, "INVALID_AMOUNT", [
+      { field, message: "Enter a valid amount." },
+    ]);
+  }
+  return amount;
 };
 
 const normalizeRoomBranch = (value) => {
@@ -1300,9 +1317,9 @@ const buildMaintenanceReportAiContext = ({ request, tenant, timeline, reportType
       description: request.description,
       hasAssignedProvider: Boolean(request.assignedProviderName || request.assigned_to),
       providerName: tenantSafe ? undefined : request.assignedProviderName || request.assigned_to || null,
-      providerContact: tenantSafe ? request.assignedProviderContact || null : request.assignedProviderContact || null,
-      providerNotes: tenantSafe ? request.assignedProviderNotes || null : request.assignedProviderNotes || null,
-      internalNotes: tenantSafe ? [request.notes, request.resolution_note].filter(Boolean) : [],
+      providerContact: tenantSafe ? undefined : request.assignedProviderContact || null,
+      providerNotes: tenantSafe ? undefined : request.assignedProviderNotes || null,
+      internalNotes: tenantSafe ? [] : [request.notes, request.resolution_note].filter(Boolean),
     },
     timeline: timeline.map((item) => ({
       timestamp: formatReportDate(item.timestamp),
@@ -1389,6 +1406,105 @@ const resolveAdminBranchFilter = (req) => {
   }
 
   return req.branchFilter || null;
+};
+
+const parseReportBoolean = (value) =>
+  ["1", "true", "yes", "on"].includes(String(value || "").trim().toLowerCase());
+
+const parseReportDateRange = ({ dateFrom, dateTo } = {}) => {
+  const today = new Date();
+  const fallbackFrom = new Date(today);
+  fallbackFrom.setDate(fallbackFrom.getDate() - 30);
+
+  const startText = toOptionalText(dateFrom);
+  const endText = toOptionalText(dateTo);
+  const start = startText ? new Date(`${startText}T00:00:00`) : fallbackFrom;
+  const end = endText ? new Date(`${endText}T23:59:59.999`) : today;
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) {
+    throw new AppError("Invalid report date range", 400, "INVALID_DATE_RANGE");
+  }
+
+  return {
+    from: start,
+    to: end,
+    fromText: start.toISOString().slice(0, 10),
+    toText: end.toISOString().slice(0, 10),
+  };
+};
+
+const buildMaintenanceReportQuery = (req) => {
+  const dateRange = parseReportDateRange({
+    dateFrom: req.query.date_from || req.query.dateFrom,
+    dateTo: req.query.date_to || req.query.dateTo,
+  });
+  const branch = resolveAdminBranchFilter(req);
+  const status = normalizeMaintenanceStatus(req.query.status);
+  const requestType = normalizeMaintenanceType(req.query.request_type || req.query.category);
+  const urgency = normalizeMaintenanceUrgency(req.query.urgency);
+
+  if (status && !isValidMaintenanceStatus(status)) {
+    throw new AppError("Invalid maintenance status filter", 400, "INVALID_STATUS");
+  }
+  if (requestType && !MAINTENANCE_REQUEST_TYPES.includes(requestType)) {
+    throw new AppError("Invalid maintenance request type filter", 400, "INVALID_REQUEST_TYPE");
+  }
+  if (urgency && !MAINTENANCE_URGENCY_LEVELS.includes(urgency)) {
+    throw new AppError("Invalid maintenance urgency filter", 400, "INVALID_URGENCY");
+  }
+
+  const query = {
+    isArchived: false,
+    created_at: {
+      $gte: dateRange.from,
+      $lte: dateRange.to,
+    },
+  };
+  if (branch) query.branch = branch;
+  if (status) query.status = status;
+  if (requestType) query.request_type = requestType;
+  if (urgency) query.urgency = urgency;
+
+  return {
+    query,
+    filters: {
+      branch: branch || "all",
+      dateFrom: dateRange.fromText,
+      dateTo: dateRange.toText,
+      status: status || "all",
+      requestType: requestType || "all",
+      urgency: urgency || "all",
+      provider: toOptionalText(req.query.provider) || "all",
+      assignmentStatus: toOptionalText(req.query.assignment_status || req.query.assignmentStatus) || "all",
+      slaHealth: toOptionalText(req.query.sla_health || req.query.slaHealth) || "all",
+      overdueOnly: parseReportBoolean(req.query.overdue_only || req.query.overdueOnly),
+    },
+  };
+};
+
+const buildAdminGeneratedBy = (adminUser) =>
+  `${adminUser?.firstName || ""} ${adminUser?.lastName || ""}`.trim() ||
+  adminUser?.email ||
+  adminUser?.user_id ||
+  null;
+
+const loadMaintenanceAnalyticsPayload = async (req) => {
+  const { query, filters } = buildMaintenanceReportQuery(req);
+  const limit = parseLimit(req.query.limit, MAINTENANCE_LIMIT_MAX);
+  const requests = await MaintenanceRequest.find(query)
+    .sort({ created_at: -1 })
+    .limit(limit)
+    .lean();
+  const tenantMap = await loadTenantMap(requests);
+  const adminUser = await getDbUser(req.user.uid);
+
+  return buildMaintenanceAnalytics({
+    requests,
+    tenantMap,
+    filters,
+    generatedBy: buildAdminGeneratedBy(adminUser),
+    isOwner: Boolean(req.isOwner),
+  });
 };
 
 const ensureMinimumDescriptionLength = (description) =>
@@ -1826,6 +1942,55 @@ export const getAdminAll = async (req, res, next) => {
           serializeTenantSummary(tenantMap.get(request.user_id), request),
         ),
       ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/m/maintenance/admin/analytics
+ */
+export const getAdminMaintenanceAnalytics = async (req, res, next) => {
+  try {
+    const analytics = await loadMaintenanceAnalyticsPayload(req);
+    sendSuccess(res, analytics);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/m/maintenance/admin/reports/branch
+ */
+export const getAdminMaintenanceBranchReport = async (req, res, next) => {
+  try {
+    const analytics = await loadMaintenanceAnalyticsPayload(req);
+    sendSuccess(res, buildMaintenanceBranchReport(analytics));
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/m/maintenance/admin/reports/providers
+ */
+export const getAdminMaintenanceProviderReport = async (req, res, next) => {
+  try {
+    const analytics = await loadMaintenanceAnalyticsPayload(req);
+    sendSuccess(res, {
+      scope: analytics.scope,
+      filters: analytics.filters,
+      summary: {
+        providerCount: analytics.providerPerformance.length,
+        assignedRequests: analytics.summary.assignedRequests,
+        overdueAssignedRequests: analytics.providerPerformance.reduce(
+          (sum, provider) => sum + provider.overdueRequests,
+          0,
+        ),
+      },
+      providers: analytics.providerPerformance,
+      providerOptions: analytics.providerOptions,
     });
   } catch (error) {
     next(error);
@@ -2353,14 +2518,18 @@ export const assignAdminMaintenanceProvider = async (req, res, next) => {
       };
     } else if (providerSource === "manual") {
       const providerName = toOptionalText(req.body?.providerName);
-      const contactNumber = toOptionalText(req.body?.contactNumber);
+      const contactNumber = sanitizeDigitsOnly(req.body?.contactNumber);
       const serviceType = toOptionalText(req.body?.serviceType || req.body?.category);
       const notes = toOptionalText(req.body?.notes);
+      const minRate = parseOptionalAmount(req.body?.minRate ?? req.body?.minimumRate, "minRate");
+      const maxRate = parseOptionalAmount(req.body?.maxRate ?? req.body?.maximumRate, "maxRate");
 
       const validationErrors = [];
-      if (!providerName) validationErrors.push({ field: "providerName", message: "Provider name is required." });
-      if (!contactNumber) validationErrors.push({ field: "contactNumber", message: "Contact number is required." });
-      if (!serviceType) validationErrors.push({ field: "serviceType", message: "Service type is required." });
+      if (!providerName || providerName.length < 3) validationErrors.push({ field: "providerName", message: "Provider name must be at least 3 characters." });
+      if (!/^09\d{9}$/.test(contactNumber)) validationErrors.push({ field: "contactNumber", message: "Enter a valid 11-digit Philippine mobile number starting with 09." });
+      if (!serviceType || serviceType.length < 3) validationErrors.push({ field: "serviceType", message: "Service type must be at least 3 characters." });
+      if (notes && notes.length < 10) validationErrors.push({ field: "notes", message: "Provider notes must be at least 10 characters." });
+      if (minRate !== null && maxRate !== null && maxRate < minRate) validationErrors.push({ field: "maxRate", message: "Enter a valid amount." });
       if (validationErrors.length > 0) {
         throw new AppError(
           "Please complete the manual provider details.",
@@ -2393,6 +2562,8 @@ export const assignAdminMaintenanceProvider = async (req, res, next) => {
           serviceCategories: normalizeTextList([serviceType, getMaintenanceCategoryLabel(request)]),
           branchCoverage: [branch],
           notes,
+          minRate,
+          maxRate,
           status: "active",
           createdBy: adminUser.user_id || String(adminUser._id || ""),
           updatedBy: adminUser.user_id || String(adminUser._id || ""),
@@ -2602,6 +2773,93 @@ export const generateAdminMaintenanceReport = async (req, res, next) => {
     });
 
     sendSuccess(res, report);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/m/maintenance/admin/:requestId/send-tenant-summary
+ * Generates the tenant-safe maintenance summary server-side and sends it as a
+ * tenant-facing maintenance conversation entry.
+ */
+export const sendAdminTenantSummary = async (req, res, next) => {
+  try {
+    const request = await findAccessibleRequest(req.params.requestId);
+    ensureAdminAccess(request, req);
+
+    if (["cancelled", "closed"].includes(normalizeMaintenanceStatus(request.status))) {
+      throw new AppError(
+        "Closed maintenance requests cannot receive new replies.",
+        409,
+        "REQUEST_CLOSED",
+      );
+    }
+
+    const adminUser = await getDbUser(req.user.uid);
+    const tenantUser = await User.findOne({ user_id: request.user_id })
+      .select(USER_SELECT_FIELDS)
+      .lean();
+    const requestSnapshot = {
+      ...request.toObject(),
+      tenant: serializeTenantSummary(tenantUser, request),
+    };
+    const report = await buildMaintenanceReportPayload({
+      request: requestSnapshot,
+      tenant: requestSnapshot.tenant,
+      adminUser,
+      reportType: "tenant",
+    });
+    const message = toOptionalText(report.summary);
+
+    if (!message) {
+      throw new AppError(
+        "Tenant summary could not be generated.",
+        500,
+        "TENANT_SUMMARY_UNAVAILABLE",
+      );
+    }
+
+    const eventTimestamp = new Date();
+    appendConversationEntry(request, {
+      message,
+      attachments: [],
+      sender_id: adminUser?.user_id || null,
+      sender_name:
+        `${adminUser?.firstName || ""} ${adminUser?.lastName || ""}`.trim() ||
+        adminUser?.email ||
+        adminUser?.user_id ||
+        null,
+      sender_role: adminUser?.role || null,
+      sender_side: "admin",
+      created_at: eventTimestamp,
+    });
+    request.updated_at = eventTimestamp;
+
+    await request.save();
+
+    if (tenantUser?._id) {
+      await notify.maintenanceUpdated(
+        tenantUser._id,
+        request.request_type,
+        request.status,
+        request.request_id,
+        {
+          statusChanged: false,
+          hasAdminNote: true,
+          hasProgressEntry: false,
+          hasProgressAttachments: false,
+        },
+      );
+    }
+
+    sendSuccess(res, {
+      report,
+      request: serializeMaintenanceRequest(
+        request.toObject(),
+        serializeTenantSummary(tenantUser, request),
+      ),
+    });
   } catch (error) {
     next(error);
   }
@@ -3400,6 +3658,9 @@ export const updateRequest = updateAdminRequestStatusCompat;
 export default {
   getMyRequests,
   getAdminAll,
+  getAdminMaintenanceAnalytics,
+  getAdminMaintenanceBranchReport,
+  getAdminMaintenanceProviderReport,
   getByBranch,
   createRequest,
   createRequestCompat,
@@ -3414,6 +3675,8 @@ export default {
   updateAdminRequestStatusCompat,
   assignAdminMaintenanceProvider,
   generateAdminMaintenanceUpdate,
+  generateAdminMaintenanceReport,
+  sendAdminTenantSummary,
   suggestAdminMaintenanceProvider,
   sendAdminReply,
   updateAdminBulkRequests,

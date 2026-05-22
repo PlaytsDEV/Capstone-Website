@@ -13,6 +13,19 @@ const toOptionalText = (value) => {
   return sanitized ? sanitized : null;
 };
 
+const sanitizeDigitsOnly = (value) => String(value || "").replace(/\D/g, "");
+
+const parseOptionalAmount = (value, field) => {
+  if (value === undefined || value === null || value === "") return null;
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 0) {
+    throw new AppError("Enter a valid amount.", 400, "INVALID_PROVIDER_RATE", [
+      { field, message: "Enter a valid amount." },
+    ]);
+  }
+  return amount;
+};
+
 const normalizeBranch = (value) => {
   const branch = String(value || "").trim().toLowerCase();
   return ROOM_BRANCHES.includes(branch) ? branch : "";
@@ -74,6 +87,10 @@ const serializeServiceProvider = (provider) => {
     serviceCategories: Array.isArray(doc.serviceCategories) ? doc.serviceCategories : [],
     branchCoverage: Array.isArray(doc.branchCoverage) ? doc.branchCoverage : [],
     notes: doc.notes || null,
+    location: doc.location || null,
+    minRate: doc.minRate ?? null,
+    maxRate: doc.maxRate ?? null,
+    tags: Array.isArray(doc.tags) ? doc.tags : [],
     status: doc.status || "active",
     averageResponseTime: doc.averageResponseTime || null,
     internalRating: doc.internalRating ?? null,
@@ -140,7 +157,7 @@ const buildProviderFilter = (
 
 const normalizeProviderPayload = (payload = {}, req) => {
   const providerName = toOptionalText(payload.providerName || payload.name);
-  const contactNumber = toOptionalText(payload.contactNumber || payload.phone);
+  const contactNumber = sanitizeDigitsOnly(payload.contactNumber || payload.phone);
   const serviceCategories = normalizeTextList(
     payload.serviceCategories || payload.categories || payload.serviceType,
   );
@@ -161,6 +178,11 @@ const normalizeProviderPayload = (payload = {}, req) => {
   if (!contactNumber) {
     throw new AppError("Contact number is required.", 400, "PROVIDER_CONTACT_REQUIRED", [
       { field: "contactNumber", message: "Contact number is required." },
+    ]);
+  }
+  if (!/^09\d{9}$/.test(contactNumber)) {
+    throw new AppError("Enter a valid 11-digit Philippine mobile number starting with 09.", 400, "INVALID_PROVIDER_CONTACT", [
+      { field: "contactNumber", message: "Enter a valid 11-digit Philippine mobile number starting with 09." },
     ]);
   }
   if (serviceCategories.length === 0) {
@@ -193,6 +215,13 @@ const normalizeProviderPayload = (payload = {}, req) => {
       { field: "internalRating", message: "Internal rating must be between 1 and 5." },
     ]);
   }
+  const minRate = parseOptionalAmount(payload.minRate ?? payload.minimumRate, "minRate");
+  const maxRate = parseOptionalAmount(payload.maxRate ?? payload.maximumRate, "maxRate");
+  if (minRate !== null && maxRate !== null && maxRate < minRate) {
+    throw new AppError("Maximum rate cannot be lower than minimum rate.", 400, "INVALID_PROVIDER_RATE_RANGE", [
+      { field: "maxRate", message: "Enter a valid amount." },
+    ]);
+  }
 
   return {
     providerName,
@@ -201,6 +230,10 @@ const normalizeProviderPayload = (payload = {}, req) => {
     branchCoverage,
     status,
     notes: toOptionalText(payload.notes),
+    location: toOptionalText(payload.location),
+    minRate,
+    maxRate,
+    tags: normalizeTextList(payload.tags),
     averageResponseTime: toOptionalText(payload.averageResponseTime),
     internalRating,
     internalFeedback: normalizeTextList(payload.internalFeedback),
@@ -266,6 +299,10 @@ export const updateServiceProvider = async (req, res, next) => {
         branchCoverage: req.body.branchCoverage ?? provider.branchCoverage,
         status: req.body.status ?? provider.status,
         notes: req.body.notes ?? provider.notes,
+        location: req.body.location ?? provider.location,
+        minRate: req.body.minRate ?? provider.minRate,
+        maxRate: req.body.maxRate ?? provider.maxRate,
+        tags: req.body.tags ?? provider.tags,
         averageResponseTime: req.body.averageResponseTime ?? provider.averageResponseTime,
         internalRating: req.body.internalRating ?? provider.internalRating,
         internalFeedback: req.body.internalFeedback ?? provider.internalFeedback,
