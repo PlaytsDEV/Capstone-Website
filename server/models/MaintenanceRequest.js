@@ -269,6 +269,37 @@ const workLogSchema = new mongoose.Schema(
 
 const conversationEntrySchema = new mongoose.Schema(
   {
+    update_id: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    type: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    kind: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    visibility: {
+      type: String,
+      enum: ["tenant", "internal", null],
+      default: "tenant",
+      index: true,
+    },
+    visibleToTenant: {
+      type: Boolean,
+      default: true,
+      index: true,
+    },
+    isTenantVisible: {
+      type: Boolean,
+      default: true,
+      index: true,
+    },
     message: {
       type: String,
       default: null,
@@ -454,6 +485,14 @@ const maintenanceRequestSchema = new mongoose.Schema(
       type: [conversationEntrySchema],
       default: [],
     },
+    publicReplies: {
+      type: [conversationEntrySchema],
+      default: [],
+    },
+    tenantReplies: {
+      type: [conversationEntrySchema],
+      default: [],
+    },
 
     // Internal compatibility/supporting fields
     resolved_at: {
@@ -537,6 +576,8 @@ const MAINTENANCE_ARRAY_CAPS = {
   statusHistory: 200,
   reopen_history: 30,
   conversation: 200,
+  publicReplies: 200,
+  tenantReplies: 200,
 };
 
 maintenanceRequestSchema.pre("save", function (next) {
