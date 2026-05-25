@@ -155,7 +155,7 @@ export default function ReservationSidePanel({ reservation, onClick }) {
  accent: "#2563EB",
  soft: "rgba(37, 99, 235, 0.10)",
  border: "rgba(37, 99, 235, 0.24)",
- label: "Legacy Visit Approved",
+ label: "Visit Approved",
  }
  : panelState === "scheduled"
  ? {

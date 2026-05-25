@@ -63,8 +63,6 @@ const PersonalInfoSection = ({
   setFirstName,
   middleName,
   setMiddleName,
-  nickname,
-  setNickname,
   mobileNumber,
   setMobileNumber,
   birthday,
@@ -105,17 +103,17 @@ const PersonalInfoSection = ({
   personalNotes,
   setPersonalNotes,
   handleNameInput,
-  handlePhoneInput,
   handleGeneralInput,
   validateField,
   fieldErrors,
+  clearFieldError,
   birthdayMin,
   birthdayMax,
   showValidationErrors,
 }) => (
   <>
-    {/* Names */}
-    <div className="form-row">
+    {/* Names — 3-column row */}
+    <div className="form-row form-row--3col">
       <NameField
         label="Last Name"
         value={lastName}
@@ -138,8 +136,6 @@ const PersonalInfoSection = ({
         required
         showValidationErrors={showValidationErrors}
       />
-    </div>
-    <div className="form-row">
       <NameField
         label="Middle Name"
         value={middleName}
@@ -150,15 +146,6 @@ const PersonalInfoSection = ({
         errors={fieldErrors}
         optional
         showValidationErrors={showValidationErrors}
-      />
-      <NameField
-        label="Nickname"
-        value={nickname}
-        setter={setNickname}
-        fieldKey="nickname"
-        handler={handleNameInput}
-        validate={validateField}
-        errors={fieldErrors}
       />
     </div>
 
@@ -202,8 +189,8 @@ const PersonalInfoSection = ({
       />
     </div>
 
-    {/* Gender / Marital */}
-    <div className="form-row">
+    {/* Gender / Marital / Nationality — 3-column row */}
+    <div className="form-row form-row--3col">
       <div className="form-group" data-field="gender">
         <label className="form-label">
           Gender <span className="rf-required">*</span>
@@ -239,7 +226,8 @@ const PersonalInfoSection = ({
           <option value="">Select status...</option>
           <option value="single">Single</option>
           <option value="married">Married</option>
-          <option value="other">Other</option>
+          <option value="widowed">Widowed</option>
+          <option value="separated">Separated</option>
         </select>
         <FieldError
           error={
@@ -249,59 +237,61 @@ const PersonalInfoSection = ({
           }
         />
       </div>
-    </div>
-
-    {/* Nationality / Education */}
-    <div className="form-row">
       <div className="form-group" data-field="nationality">
         <label className="form-label">
           Nationality <span className="rf-required">*</span>
         </label>
-        <input
-          type="text"
-          className="form-input"
-          placeholder="e.g., Filipino"
+        <select
+          className="form-select"
           value={nationality}
           onChange={(e) => setNationality(e.target.value)}
-          onBlur={() =>
-            validateField("nationality", nationality, (v) => ({
-              valid: Boolean(v?.trim()),
-              error: v?.trim() ? null : "Nationality is required",
-            }))
-          }
           style={{ border: errBorder(showValidationErrors, nationality) }}
-        />
+        >
+          <option value="">Select nationality...</option>
+          <option value="Filipino">Filipino</option>
+          <option value="American">American</option>
+          <option value="Chinese">Chinese</option>
+          <option value="Japanese">Japanese</option>
+          <option value="Korean">Korean</option>
+          <option value="Indian">Indian</option>
+          <option value="Other">Other</option>
+        </select>
         <FieldError
           error={
             showValidationErrors && !nationality
               ? "Nationality is required"
-              : fieldErrors.nationality
+              : null
           }
         />
       </div>
+    </div>
+
+    {/* Education — single field */}
+    <div className="form-row">
       <div className="form-group" data-field="educationLevel">
-      <label className="form-label">
-        Educational Attainment <span className="rf-required">*</span>
-      </label>
-      <select
-        className="form-select"
-        value={educationLevel}
-        onChange={(e) => setEducationLevel(e.target.value)}
-        style={{ border: errBorder(showValidationErrors, educationLevel) }}
-      >
-        <option value="">Select level...</option>
-        <option value="highschool">High School</option>
-        <option value="college">College</option>
-        <option value="vocational">Vocational</option>
-        <option value="graduate">Graduate</option>
-      </select>
-      <FieldError
-        error={
-          showValidationErrors && !educationLevel
-            ? "Education level is required"
-            : null
-        }
-      />
+        <label className="form-label">
+          Educational Attainment <span className="rf-required">*</span>
+        </label>
+        <select
+          className="form-select"
+          value={educationLevel}
+          onChange={(e) => setEducationLevel(e.target.value)}
+          style={{ border: errBorder(showValidationErrors, educationLevel) }}
+        >
+          <option value="">Select level...</option>
+          <option value="elementary">Elementary</option>
+          <option value="highschool">High School</option>
+          <option value="vocational">Vocational</option>
+          <option value="college">College</option>
+          <option value="graduate">Graduate / Post-Graduate</option>
+        </select>
+        <FieldError
+          error={
+            showValidationErrors && !educationLevel
+              ? "Education level is required"
+              : null
+          }
+        />
       </div>
     </div>
 
@@ -522,7 +512,9 @@ const BirthdaySelectField = ({
     if (nextBirthday) {
       validateField("birthday", nextBirthday, validateBirthday);
     } else {
-      validateField("birthday", "", () => ({ valid: true, error: null }));
+      // Incomplete date — clear stale error but don't mark as valid
+      // (submission validation will catch the missing birthday)
+      validateField("birthday", "", () => ({ valid: false, error: null }));
     }
   };
 

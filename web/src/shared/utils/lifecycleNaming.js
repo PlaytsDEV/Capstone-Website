@@ -180,7 +180,7 @@ export const RESERVATION_STAGE_MAP = Object.freeze({
     label: "Viewing Preference Selected",
   },
   visit_pending: { step: 2, total: 5, label: "Visit Scheduled" },
-  visit_approved: { step: 3, total: 5, label: "Legacy Visit Approved" },
+  visit_approved: { step: 3, total: 5, label: "Visit Approved" },
   pending_application_review: {
     step: 3,
     total: 5,
@@ -203,9 +203,9 @@ export const RESERVATION_STAGE_GUIDANCE = Object.freeze({
   viewing_preference_selected:
     "Viewing preference selected. Waiting for the tenant to submit the application and documents.",
   visit_pending:
-    "Legacy visit schedule pending approval. Review it in the Visit Schedules tab.",
+    "Visit schedule pending approval. Review it in the Visit Schedules tab.",
   visit_approved:
-    "Legacy visit approved. Waiting for the tenant to complete the application.",
+    "Visit approved. Waiting for the tenant to complete the application.",
   pending_application_review:
     "Application and documents submitted. Payment stays locked until admin review is complete.",
   needs_revision:

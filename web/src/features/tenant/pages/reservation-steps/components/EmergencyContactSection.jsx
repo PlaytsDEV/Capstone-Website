@@ -12,7 +12,7 @@ const EmergencyContactSection = ({
  emergencyRelationship, setEmergencyRelationship,
  emergencyContactNumber, setEmergencyContactNumber,
  healthConcerns, setHealthConcerns,
- handlePhoneInput, validateField, fieldErrors,
+ validateField, fieldErrors,
  showValidationErrors,
 }) => (
  <>
@@ -28,13 +28,6 @@ const EmergencyContactSection = ({
  value={emergencyContactName}
  onChange={(e) => {
  setEmergencyContactName(e.target.value);
- validateField("emergencyContactName", e.target.value, (v) => {
- const valid = v && v.trim().length >= 2;
- return {
- valid,
- error: valid ? null : "Please enter the contact person's full name",
- };
- });
  }}
  onBlur={() =>
  validateField("emergencyContactName", emergencyContactName, (v) => {

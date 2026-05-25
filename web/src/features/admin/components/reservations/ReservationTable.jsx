@@ -53,7 +53,7 @@ export function statusLabel(status) {
  case "visit_pending":
  return "Visit Pending";
  case "visit_approved":
- return "Legacy Visit Approved";
+ return "Visit Approved";
  case "pending_application_review":
   return "Pending Review";
  case "needs_revision":

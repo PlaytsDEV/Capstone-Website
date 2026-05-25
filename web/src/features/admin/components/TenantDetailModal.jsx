@@ -215,8 +215,10 @@ export default function TenantDetailModal({ tenant, onClose }) {
  throw new Error("A valid meter reading (kWh) is required.");
  }
  const res = await reservationApi.moveOut(tenant.reservationId, {
+ confirm: true,
+ finalUtilityReading: meterReading,
+ moveOutDate: new Date().toISOString(),
  notes: "Admin move-out",
- meterReading,
  });
  const extra = res.electricityResult
  ? `\nMove-out reading recorded: ${res.electricityResult.meterReading} kWh`

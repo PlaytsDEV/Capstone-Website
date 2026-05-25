@@ -395,6 +395,27 @@ const notify = {
     ),
 
   /**
+   * Move-out completed — notify tenant with mobile push
+   */
+  moveOutComplete: (userId, roomName) =>
+    createNotificationWithPush(
+      userId,
+      "general",
+      "Move-Out Complete",
+      `You have been moved out from ${roomName}. Thank you for staying at Lilycrest!`,
+      { entityType: "stay" },
+      () =>
+        sendMobilePushToRecipients([userId], {
+          title: "Move-Out Complete",
+          body: `You have been moved out from ${roomName}. Thank you for staying at Lilycrest!`,
+          data: {
+            type: "move_out",
+            screen: "home",
+          },
+        }),
+    ),
+
+  /**
    * General notification
    */
   general: (userId, title, message, options = {}) =>

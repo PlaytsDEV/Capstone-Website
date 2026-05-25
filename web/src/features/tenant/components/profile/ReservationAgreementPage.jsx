@@ -156,7 +156,7 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  if (s === "viewing_preference_selected")
  return { label: "Viewing Preference Selected", bg: "#2563EB" };
  if (s === "visit_approved" || reservation.scheduleApproved || reservation.visitApproved)
- return { label: "Legacy Visit Approved", bg: "#7C3AED" };
+ return { label: "Visit Approved", bg: "#7C3AED" };
  if (s === "visit_pending" || (reservation.visitDate && !reservation.scheduleRejected))
  return { label: "Visit Scheduled", bg: "#2563EB" };
  if (reservation.scheduleRejected)
