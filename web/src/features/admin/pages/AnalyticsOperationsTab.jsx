@@ -100,18 +100,59 @@ export default function AnalyticsOperationsTab({
  title: "Operations Report",
  subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
  filename: `operations-report-${range}.pdf`,
- kpis: metricCards.map((item) => ({ label: item.label, value: item.value })),
+ reportType: "Operations",
+ kpis: metricCards.map((item, i) => ({
+ label: item.label,
+ value: item.value,
+ sub: "",
+ highlight: i === 0,
+ })),
+ aiInsight: {
+ headline: insightData?.insight?.headline || "Operations summary",
+ summary: insightData?.insight?.summary || "",
+ confidence: insightData?.insight?.confidence === "high" ? 85
+ : insightData?.insight?.confidence === "medium" ? 60
+ : insightData?.insight?.confidence === "low" ? 35
+ : 0,
+ confidenceLabel: insightData?.insight?.confidence
+ ? `${insightData.insight.confidence.charAt(0).toUpperCase() + insightData.insight.confidence.slice(1)}`
+ : "",
+ standout: insightData?.insight?.keyFindings || [],
+ watch: insightData?.insight?.riskAlerts || [],
+ nextSteps: insightData?.insight?.recommendedActions || [],
+ },
  sections: [
- ...buildInsightPdfSections(insightData, "AI Operations Summary"),
  {
  title: "Peak Inquiry Windows",
- rows: inquiryWindows.map((item) => `${item.label}: ${item.count} inquiries`),
+ type: "table",
+ headers: ["Window", "Inquiries"],
+ rows: inquiryWindows.map((item) => ({
+ Window: item.label,
+ Inquiries: item.count || 0,
+ })),
  },
  {
  title: "Recent Reservations",
- rows: reservations.slice(0, 12).map(
- (item) => `${item.guestName} • ${item.roomName} • ${item.status} • ${formatDate(item.createdAt)}`,
- ),
+ type: "table",
+ headers: ["Guest", "Room", "Status", "Created"],
+ rows: reservations.slice(0, 12).map((item) => ({
+ Guest: item.guestName || "-",
+ Room: item.roomName || "-",
+ Status: item.status || "-",
+ Created: formatDate(item.createdAt),
+ })),
+ },
+ {
+ title: "Maintenance Snapshot",
+ type: "table",
+ headers: ["Request ID", "Type", "Urgency", "Status", "SLA"],
+ rows: maintenanceIssues.slice(0, 12).map((item) => ({
+ "Request ID": item.requestId || "-",
+ Type: item.typeLabel || "-",
+ Urgency: item.urgency || "-",
+ Status: item.status || "-",
+ SLA: item.slaState || "-",
+ })),
  },
  ],
  });

@@ -122,21 +122,58 @@ export default function AnalyticsOverviewTab({
  };
 
  const exportPdf = () => {
+ const forecastInsight = forecast?.insights || {};
  handlePdfExport({
  title: "Analytics Overview",
  subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
  filename: `analytics-overview-${range}.pdf`,
- kpis: metricCards.map((item) => ({ label: item.label, value: item.value })),
+ reportType: "Overview",
+ kpis: metricCards.map((item, i) => ({
+ label: item.label,
+ value: item.value,
+ sub: "",
+ highlight: i === 0,
+ })),
+ aiInsight: {
+ headline: forecastInsight?.headline || "Overview summary",
+ summary: (forecastInsight?.recommendations || []).slice(0, 2).join(" "),
+ confidence: forecast?.sufficientHistory ? 70 : 35,
+ confidenceLabel: forecast?.sufficientHistory ? "Medium" : "Low",
+ standout: forecastInsight?.recommendations || [],
+ watch: [],
+ nextSteps: (forecastInsight?.recommendations || []).slice(0, 3),
+ },
  sections: [
  {
  title: "Reservation Status",
- rows: Object.entries(reservationStatus).map(([status, count]) => `${status}: ${count}`),
+ type: "table",
+ headers: ["Status", "Count"],
+ rows: Object.entries(reservationStatus).map(([status, count]) => ({
+ Status: status,
+ Count: count,
+ })),
  },
  {
  title: "Recent Reservations",
- rows: reservations.slice(0, 10).map(
- (item) => `${item.guestName || "Unknown"} • ${item.roomType || "-"} • ${item.status || "pending"}`,
- ),
+ type: "table",
+ headers: ["Guest", "Room Type", "Status", "Move In"],
+ rows: reservations.slice(0, 10).map((item) => ({
+ Guest: item.guestName || "Unknown",
+ "Room Type": item.roomType || "-",
+ Status: item.status || "pending",
+ "Move In": formatDate(item.moveInDate),
+ })),
+ },
+ {
+ title: "Recent Inquiries",
+ type: "table",
+ headers: ["Name", "Email", "Branch", "Created"],
+ rows: inquiries.slice(0, 10).map((item) => ({
+ Name: item.name || "Unknown",
+ Email: item.email || "-",
+ Branch: formatBranch(item.branch),
+ Created: formatDateTime(item.createdAt),
+ })),
  },
  ],
  });
