@@ -63,6 +63,8 @@ const PersonalInfoSection = ({
   setFirstName,
   middleName,
   setMiddleName,
+  nickname,
+  setNickname,
   mobileNumber,
   setMobileNumber,
   birthday,
@@ -147,6 +149,23 @@ const PersonalInfoSection = ({
         optional
         showValidationErrors={showValidationErrors}
       />
+    </div>
+
+    {/* Nickname — standalone optional row */}
+    <div className="form-row">
+      <div className="form-group" data-field="nickname">
+        <label className="form-label">
+          Nickname <span className="rf-optional-label">(Optional)</span>
+        </label>
+        <input
+          type="text"
+          className="form-input"
+          placeholder="Nickname"
+          maxLength={32}
+          value={nickname}
+          onChange={(e) => handleNameInput(e.target.value, setNickname)}
+        />
+      </div>
     </div>
 
     {/* Phone & Birthday */}
