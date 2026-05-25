@@ -206,7 +206,7 @@ server/
 │   ├── announcementRoutes.js    # /api/announcements/*
 │   ├── maintenanceRoutes.js     # /api/maintenance/*
 │   ├── notificationRoutes.js    # /api/notifications/*
-│   ├── uploadRoutes.js          # /api/upload/*
+│   ├── attachmentRoutes.js      # /api/attachments/*
 │   ├── webhookRoutes.js         # /api/webhooks/*
 │   └── auditRoutes.js           # /api/audit-logs/*
 │

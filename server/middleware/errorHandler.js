@@ -174,6 +174,34 @@ export const globalErrorHandler = (err, req, res, _next) => {
     );
   }
 
+  // Multer upload errors
+  if (err.name === "MulterError") {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return sendError(
+        res,
+        "File is too large. Maximum size is 5 MB.",
+        400,
+        "FILE_TOO_LARGE",
+      );
+    }
+
+    if (err.code === "LIMIT_FILE_COUNT") {
+      return sendError(
+        res,
+        "Please upload one file at a time.",
+        400,
+        "TOO_MANY_FILES",
+      );
+    }
+
+    return sendError(
+      res,
+      err.message || "File upload failed.",
+      400,
+      err.code || "UPLOAD_FAILED",
+    );
+  }
+
   // AppError (our custom errors)
   if (err.isOperational) {
     return sendError(res, err.message, err.statusCode, err.code, err.details);

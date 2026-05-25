@@ -4,6 +4,8 @@ import { fileURLToPath } from "url";
 import { dirname, resolve } from "path";
 import User from "../models/User.js";
 import MaintenanceRequest from "../models/MaintenanceRequest.js";
+import { ROOM_BRANCHES } from "../config/branches.js";
+import { resolveMaintenanceRequestStorageBranch } from "../services/attachmentUploadService.js";
 import {
   buildStableMaintenanceRequestId,
   buildStableUserId,
@@ -150,15 +152,86 @@ async function backfillMaintenanceRequests() {
   return insertedCount;
 }
 
+async function repairMaintenanceRequestBranches() {
+  const branchlessQuery = {
+    $or: [
+      { branch: { $exists: false } },
+      { branch: null },
+      { branch: "" },
+      { branch: { $nin: ROOM_BRANCHES } },
+    ],
+  };
+  const candidates = await MaintenanceRequest.find(branchlessQuery)
+    .sort({ created_at: -1, createdAt: -1 })
+    .lean();
+
+  console.log(
+    `${shouldWrite ? "Repairing" : "Dry run for"} ${candidates.length} maintenance request branch record(s).`,
+  );
+
+  let fixedCount = 0;
+  const unresolved = [];
+
+  for (const request of candidates) {
+    const requestKey = request.request_id || request._id?.toString?.() || String(request._id);
+    const resolution = await resolveMaintenanceRequestStorageBranch(request);
+
+    if (!resolution.branch) {
+      unresolved.push(requestKey);
+      console.log(`${requestKey} -> unresolved`);
+      continue;
+    }
+
+    const update = {
+      branch: resolution.branch,
+    };
+    if (!request.roomId && resolution.roomId) {
+      update.roomId = resolution.roomId;
+    }
+    if (!request.reservationId && resolution.reservationId) {
+      update.reservationId = resolution.reservationId;
+    }
+
+    console.log(
+      `${requestKey} -> ${resolution.branch} (${resolution.source})`,
+    );
+
+    if (shouldWrite) {
+      const result = await MaintenanceRequest.updateOne(
+        { _id: request._id },
+        { $set: update },
+      );
+      if (result.modifiedCount > 0) {
+        fixedCount += 1;
+      }
+    } else {
+      fixedCount += 1;
+    }
+  }
+
+  if (unresolved.length > 0) {
+    console.log(
+      `Unresolved maintenance request branch record(s): ${unresolved.join(", ")}`,
+    );
+  }
+
+  return {
+    fixedCount,
+    unresolvedCount: unresolved.length,
+    unresolved,
+  };
+}
+
 async function main() {
   await mongoose.connect(MONGODB_URI);
 
   const updatedUsers = await backfillUserIds();
   const insertedMaintenance = await backfillMaintenanceRequests();
+  const branchRepairSummary = await repairMaintenanceRequestBranches();
 
   console.log(
     shouldWrite
-      ? `Updated ${updatedUsers} user(s) and inserted ${insertedMaintenance} maintenance request(s).`
+      ? `Updated ${updatedUsers} user(s), inserted ${insertedMaintenance} maintenance request(s), repaired ${branchRepairSummary.fixedCount} branch value(s), and left ${branchRepairSummary.unresolvedCount} unresolved.`
       : "Dry run complete. Re-run with --write to persist changes.",
   );
 

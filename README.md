@@ -51,7 +51,7 @@ The platform serves four distinct user roles — public visitors, applicants/ten
 | **Backend**    | Express.js, MongoDB (Mongoose ODM), Firebase Admin SDK, Socket.io                 |
 | **Payments**   | PayMongo (Checkout Sessions, Webhooks)                                            |
 | **Email**      | Nodemailer (Gmail SMTP)                                                           |
-| **Uploads**    | ImageKit (client-side uploads with server auth)                                   |
+| **Uploads**    | Firebase Storage plus `/api/attachments` for branch-scoped maintenance files      |
 | **Auth**       | Firebase Authentication (Email/Password, Google OAuth)                            |
 | **Scheduling** | node-cron (grace periods, bed lock cleanup, overdue billing)                      |
 | **Security**   | Helmet, input sanitization, CSRF protection, rate limiting, RBAC, branch isolation|
@@ -96,7 +96,8 @@ EMAIL_PASSWORD=your-app-specific-password
 FRONTEND_URL=http://localhost:3000
 PAYMONGO_SECRET_KEY=your-paymongo-secret-key
 PAYMONGO_WEBHOOK_SECRET=your-webhook-signing-key
-IMAGEKIT_PRIVATE_KEY=your-imagekit-private-key
+ATTACHMENT_STORAGE_DRIVER=firebase
+FIREBASE_STORAGE_BUCKET=your-project.appspot.com
 ```
 
 **Frontend** — create `web/.env`:
@@ -218,7 +219,7 @@ The backend exposes RESTful API endpoints organized by domain:
 | Notifications  | `/api/notifications`   | JWT            |
 | Users          | `/api/users`           | Admin          |
 | Audit Logs     | `/api/audit-logs`      | Admin          |
-| Uploads        | `/api/upload`          | JWT            |
+| Uploads        | `/api/attachments`     | JWT            |
 | Webhooks       | `/api/webhooks`        | HMAC Signature |
 | Health         | `/api/health`          | Public         |
 
@@ -268,7 +269,7 @@ Deploy to **Railway**, **Render**, or any Node.js-compatible platform. Ensure al
 - [ ] Use production MongoDB Atlas URI with IP whitelist
 - [ ] Use production Firebase credentials
 - [ ] Set production PayMongo keys and webhook secret
-- [ ] Configure ImageKit production credentials
+- [ ] Configure Firebase Storage for `/api/attachments`
 
 ---
 

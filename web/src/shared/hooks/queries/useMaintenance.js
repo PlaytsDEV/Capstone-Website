@@ -33,6 +33,33 @@ export function useAdminMaintenanceRequests(filters) {
   return { ...query, refresh };
 }
 
+export function useMaintenanceAnalytics(filters, options = {}) {
+  return useQuery({
+    queryKey: ["maintenance", "analytics", filters],
+    queryFn: () => maintenanceApi.getAdminAnalytics(filters),
+    enabled: options.enabled !== false,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useMaintenanceBranchReport(filters, options = {}) {
+  return useQuery({
+    queryKey: ["maintenance", "branchReport", filters],
+    queryFn: () => maintenanceApi.getAdminBranchReport(filters),
+    enabled: options.enabled !== false,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useMaintenanceProviderReport(filters, options = {}) {
+  return useQuery({
+    queryKey: ["maintenance", "providerReport", filters],
+    queryFn: () => maintenanceApi.getAdminProviderReport(filters),
+    enabled: options.enabled !== false,
+    placeholderData: keepPreviousData,
+  });
+}
+
 /** Fetch single maintenance request */
 export function useMaintenanceRequest(requestId) {
   return useQuery({
@@ -142,6 +169,147 @@ export function useSendMaintenanceReply() {
   return useMutation({
     mutationFn: ({ requestId, payload }) =>
       maintenanceApi.sendAdminReply(requestId, payload),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
+      if (variables?.requestId) {
+        qc.invalidateQueries({
+          queryKey: queryKeys.maintenance.detail(variables.requestId),
+        });
+      }
+    },
+  });
+}
+
+export function useSaveMaintenanceProof() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, payload }) =>
+      maintenanceApi.saveAdminProof(requestId, payload),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
+      if (variables?.requestId) {
+        qc.invalidateQueries({
+          queryKey: queryKeys.maintenance.detail(variables.requestId),
+        });
+      }
+    },
+  });
+}
+
+export function useRemoveMaintenanceAttachment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, payload }) =>
+      maintenanceApi.removeAdminAttachment(requestId, payload),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
+      if (variables?.requestId) {
+        qc.invalidateQueries({
+          queryKey: queryKeys.maintenance.detail(variables.requestId),
+        });
+      }
+    },
+  });
+}
+
+export function useServiceProviders(filters, options = {}) {
+  return useQuery({
+    queryKey: queryKeys.maintenance.serviceProviders(filters),
+    queryFn: () => maintenanceApi.getServiceProviders(filters),
+    enabled: options.enabled !== false,
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useAssignMaintenanceProvider() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, payload }) =>
+      maintenanceApi.assignAdminProvider(requestId, payload),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
+      qc.invalidateQueries({ queryKey: ["maintenance", "serviceProviders"] });
+      if (variables?.requestId) {
+        qc.invalidateQueries({
+          queryKey: queryKeys.maintenance.detail(variables.requestId),
+        });
+      }
+    },
+  });
+}
+
+export function useAssignMaintenanceBranch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, branch }) =>
+      maintenanceApi.assignAdminBranch(requestId, { branch }),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
+      qc.invalidateQueries({ queryKey: ["maintenance", "serviceProviders"] });
+      if (variables?.requestId) {
+        qc.invalidateQueries({
+          queryKey: queryKeys.maintenance.detail(variables.requestId),
+        });
+      }
+    },
+  });
+}
+
+export function useGenerateMaintenanceUpdate() {
+  return useMutation({
+    mutationFn: ({ requestId }) => maintenanceApi.generateAdminUpdate(requestId),
+  });
+}
+
+export function useGenerateMaintenanceReport() {
+  return useMutation({
+    mutationFn: ({ requestId, reportType }) =>
+      maintenanceApi.generateAdminReport(requestId, { reportType }),
+  });
+}
+
+export function useSendMaintenanceTenantSummary() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId }) => maintenanceApi.sendAdminTenantSummary(requestId),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
+      if (variables?.requestId) {
+        qc.invalidateQueries({
+          queryKey: queryKeys.maintenance.detail(variables.requestId),
+        });
+      }
+    },
+  });
+}
+
+export function useSuggestMaintenanceProvider() {
+  return useMutation({
+    mutationFn: ({ requestId }) => maintenanceApi.suggestAdminProvider(requestId),
+  });
+}
+
+export function useArchiveMaintenanceRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, payload }) =>
+      maintenanceApi.archiveAdminRequest(requestId, payload),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
+      if (variables?.requestId) {
+        qc.invalidateQueries({
+          queryKey: queryKeys.maintenance.detail(variables.requestId),
+        });
+      }
+    },
+  });
+}
+
+export function useRestoreMaintenanceRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ requestId, payload }) =>
+      maintenanceApi.restoreAdminRequest(requestId, payload),
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: queryKeys.maintenance.all });
       if (variables?.requestId) {

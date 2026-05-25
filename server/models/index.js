@@ -56,6 +56,7 @@ import BedHistory from "./BedHistory.js";
 import Stay from "./Stay.js";
 import BackupConfig from "./BackupConfig.js";
 import BackupRecord from "./BackupRecord.js";
+import ServiceProvider from "./ServiceProvider.js";
 import {
   CANONICAL_RESERVATION_STATUSES,
   USER_ROLE_NAMES,
@@ -100,6 +101,7 @@ export {
   Stay,
   BackupConfig,
   BackupRecord,
+  ServiceProvider,
 };
 
 // ============================================================================
@@ -203,6 +205,7 @@ export default {
   Stay,
   BackupConfig,
   BackupRecord,
+  ServiceProvider,
   Notification,
   Payment,
   LoginLog,

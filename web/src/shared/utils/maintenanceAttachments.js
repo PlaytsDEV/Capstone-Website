@@ -5,16 +5,7 @@ const toText = (value) =>
   typeof value === "string" ? value.trim() : "";
 
 const getAttachmentUriCandidates = (attachment) => [
-  attachment?.uri,
   attachment?.url,
-  attachment?.href,
-  attachment?.src,
-  attachment?.imageUrl,
-  attachment?.imageURL,
-  attachment?.image_url,
-  attachment?.fileUrl,
-  attachment?.fileURL,
-  attachment?.file_url,
   attachment?.downloadUrl,
   attachment?.downloadURL,
   attachment?.download_url,
@@ -24,6 +15,15 @@ const getAttachmentUriCandidates = (attachment) => [
   attachment?.secureUrl,
   attachment?.secureURL,
   attachment?.secure_url,
+  attachment?.uri,
+  attachment?.href,
+  attachment?.src,
+  attachment?.imageUrl,
+  attachment?.imageURL,
+  attachment?.image_url,
+  attachment?.fileUrl,
+  attachment?.fileURL,
+  attachment?.file_url,
   attachment?.mediaUrl,
   attachment?.mediaURL,
   attachment?.media_url,
@@ -61,6 +61,45 @@ export const getMaintenanceAttachmentUri = (attachment) => {
   }
 
   return pickFirstText(...getAttachmentUriCandidates(attachment));
+};
+
+const isLocalHostName = (hostname = "") => {
+  const value = String(hostname || "").toLowerCase();
+  return value === "localhost" || value === "127.0.0.1" || value === "::1" || value === "[::1]";
+};
+
+const getCurrentHostname = () =>
+  typeof window !== "undefined" ? window.location.hostname : "";
+
+export const isLegacyLocalMaintenanceUploadUri = (uri) => {
+  const source = toText(uri);
+  if (!source) return false;
+
+  try {
+    const parsed = new URL(
+      source,
+      typeof window !== "undefined" ? window.location.origin : "https://placeholder.local",
+    );
+    return (
+      parsed.pathname.startsWith("/uploads/attachments/") &&
+      !isLocalHostName(parsed.hostname) &&
+      !isLocalHostName(getCurrentHostname())
+    );
+  } catch {
+    return false;
+  }
+};
+
+export const isViewableMaintenanceAttachmentUri = (uri) => {
+  const source = toText(uri);
+  if (!source || isLegacyLocalMaintenanceUploadUri(source)) return false;
+
+  try {
+    const { protocol } = new URL(source);
+    return protocol === "https:" || protocol === "http:";
+  } catch {
+    return false;
+  }
 };
 
 export const getMaintenanceAttachmentName = (attachment, index = 0) =>
@@ -145,6 +184,27 @@ export const normalizeMaintenanceAttachment = (attachment, index = 0) => {
   const size = getMaintenanceAttachmentSize(attachment);
   if (size !== null) normalized.size = size;
   if (attachment?.storagePath) normalized.storagePath = attachment.storagePath;
+  [
+    "id",
+    "attachmentId",
+    "provider",
+    "visibility",
+    "uploadedBy",
+    "uploadedAt",
+    "branch",
+    "branchId",
+    "context",
+    "relatedId",
+    "isRemoved",
+    "removedAt",
+    "removedBy",
+    "removedByRole",
+    "removedByName",
+    "removedReason",
+    "removedScope",
+  ].forEach((field) => {
+    if (attachment?.[field] !== undefined) normalized[field] = attachment[field];
+  });
 
   return {
     ...normalized,

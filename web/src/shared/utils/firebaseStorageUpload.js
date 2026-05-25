@@ -1,9 +1,9 @@
 /**
  * Firebase Storage Upload Utility
  *
- * Replaces ImageKit for all applicant file uploads.
- * Uploads directly to Firebase Storage and returns an HTTPS download URL
- * that is safe to store in MongoDB.
+ * Replaces ImageKit for applicant file uploads.
+ * Maintenance attachments are routed through the backend attachment service so
+ * the API can enforce branch ownership, visibility, and storage metadata.
  *
  * Storage path:  applicant-documents/{firebaseUid}/{documentType}/{timestamp}-{safeFilename}
  * Provider tag:  "firebase-storage"
@@ -20,7 +20,18 @@ const ALLOWED_MIME_TYPES = [
   "image/jpeg",
   "image/png",
   "image/webp",
+  "image/heic",
+  "image/heif",
   "application/pdf",
+];
+const ALLOWED_FILE_EXTENSIONS = [
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".webp",
+  ".heic",
+  ".heif",
+  ".pdf",
 ];
 
 const BACKEND_ATTACHMENT_DOCUMENT_TYPES = new Set([
@@ -37,6 +48,23 @@ const getDefaultAttachmentContext = (documentType) => {
   if (documentType === "maintenance-reply-attachment") return "maintenance_reply";
   if (documentType === "maintenance-attachment") return "maintenance_request";
   return "";
+};
+
+const getMaintenanceDocumentType = (context) =>
+  context === "maintenance_reply" ? "maintenance-reply-attachment" : "maintenance-attachment";
+
+const getFileExtension = (file) => {
+  const name = String(file?.name || "").toLowerCase();
+  const dotIndex = name.lastIndexOf(".");
+  return dotIndex >= 0 ? name.slice(dotIndex) : "";
+};
+
+const isAllowedFileType = (file) => {
+  const type = String(file?.type || "").toLowerCase();
+  if (ALLOWED_MIME_TYPES.includes(type)) return true;
+
+  return (!type || type === "application/octet-stream") &&
+    ALLOWED_FILE_EXTENSIONS.includes(getFileExtension(file));
 };
 
 async function uploadToBackendAttachmentService(file, opts = {}) {
@@ -71,16 +99,20 @@ async function uploadToBackendAttachmentService(file, opts = {}) {
     throw new Error("Upload completed but the returned URL is invalid. Please try again.");
   }
 
+  const downloadUrl = attachment.downloadUrl || attachment.url || attachment.uri;
+
   return {
-    downloadUrl: attachment.downloadUrl || attachment.url || attachment.uri,
+    ...attachment,
+    uri: downloadUrl,
+    url: downloadUrl,
+    downloadUrl,
     storagePath: attachment.storagePath,
     originalName: attachment.originalName || file.name,
-    mimeType: attachment.mimeType || file.type,
+    mimeType: attachment.mimeType || attachment.type || file.type,
     size: attachment.size ?? file.size,
     uploadedAt: attachment.uploadedAt || new Date().toISOString(),
     provider: attachment.provider || "server-attachment",
     attachment,
-    ...attachment,
   };
 }
 
@@ -97,10 +129,10 @@ export function validateFile(file) {
     const sizeMB = (file.size / 1024 / 1024).toFixed(1);
     return { valid: false, error: `File too large (${sizeMB} MB). Maximum is 5 MB.` };
   }
-  if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+  if (!isAllowedFileType(file)) {
     return {
       valid: false,
-      error: "Only JPEG, PNG, WebP, and PDF files are allowed.",
+      error: "Only JPEG, PNG, WebP, HEIC, HEIF, and PDF files are allowed.",
     };
   }
   return { valid: true };
@@ -241,6 +273,21 @@ export async function uploadToFirebaseStorage(file, opts = {}, onProgress) {
       },
     );
   });
+}
+
+export async function uploadMaintenanceAttachment(file, opts = {}, onProgress) {
+  const context = opts.context || getDefaultAttachmentContext(opts.documentType) || "maintenance_request";
+
+  return uploadToFirebaseStorage(
+    file,
+    {
+      ...opts,
+      documentType: opts.documentType || getMaintenanceDocumentType(context),
+      context,
+      visibility: opts.visibility || "tenant_admin",
+    },
+    onProgress,
+  );
 }
 
 /**

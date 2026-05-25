@@ -58,6 +58,7 @@ import settingsRoutes from "./routes/settingsRoutes.js";
 import analyticsRoutes from "./routes/analyticsRoutes.js";
 import branchSummaryRoutes from "./routes/branchSummaryRoutes.js";
 import backupRoutes from "./routes/backupRoutes.js";
+import serviceProviderRoutes from "./routes/serviceProviderRoutes.js";
 import { initSocket } from "./utils/socket.js";
 import mobileRoutes from "./mobile/mobileRoutes.mjs";
 
@@ -93,14 +94,25 @@ const escapeRegex = (value = "") => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 const wildcardToRegex = (pattern = "") =>
   new RegExp(`^${escapeRegex(pattern).replace(/\\\*/g, ".*")}$`, "i");
 
-const allowedOriginRules = (
-  process.env.CORS_ORIGINS ||
-  process.env.FRONTEND_URL ||
-  "http://localhost:3000,http://localhost:3001"
-)
-  .split(",")
-  .map((origin) => normalizeOrigin(origin))
-  .filter(Boolean);
+const DEFAULT_ALLOWED_ORIGINS = [
+  "http://localhost:3000",
+  "http://localhost:3001",
+  "http://localhost:5173",
+  "https://www.lilycrest.space",
+  "https://lilycrest.space",
+];
+
+const allowedOriginRules = [
+  ...(process.env.CORS_ORIGINS || "")
+    .split(",")
+    .map((origin) => normalizeOrigin(origin)),
+  ...(process.env.FRONTEND_URL || "")
+    .split(",")
+    .map((origin) => normalizeOrigin(origin)),
+  ...DEFAULT_ALLOWED_ORIGINS,
+]
+  .filter(Boolean)
+  .filter((origin, index, origins) => origins.indexOf(origin) === index);
 
 const allowedOriginMatchers = allowedOriginRules.map((rule) =>
   rule.includes("*") ? wildcardToRegex(rule) : rule,
@@ -129,6 +141,21 @@ const isTruthyEnv = (value, fallback = false) => {
 };
 
 const shouldStartScheduler = () => isTruthyEnv(process.env.ENABLE_SCHEDULER, true);
+
+const setUploadStaticHeaders = (res) => {
+  // Uploaded files are intentionally consumed by the frontend on a separate
+  // origin/subdomain, so override Helmet's default same-origin resource policy
+  // only for this public static file surface.
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+  if (!res.getHeader("Access-Control-Allow-Origin")) {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  }
+};
+
+const uploadStaticHeaders = (_req, res, next) => {
+  setUploadStaticHeaders(res);
+  next();
+};
 
 const runPermissionBackfill = async () => {
   try {
@@ -257,9 +284,11 @@ app.use(express.json({ limit: "8mb" }));
 app.use(express.urlencoded({ extended: true, limit: "8mb" }));
 app.use(
   "/uploads",
+  uploadStaticHeaders,
   express.static(path.join(__dirname, "uploads"), {
     maxAge: "1d",
     fallthrough: true,
+    setHeaders: setUploadStaticHeaders,
   }),
 );
 app.use(requestLogger);
@@ -274,6 +303,7 @@ app.use("/api/billing", billingRoutes);
 app.use("/api/announcements", announcementRoutes);
 app.use("/api/m/maintenance", maintenanceRoutes);
 app.use("/api/maintenance", maintenanceRoutes);
+app.use("/api/service-providers", serviceProviderRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/attachments", attachmentRoutes);
@@ -393,10 +423,10 @@ const bootstrap = async () => {
     logger.info(`API available at http://localhost:${PORT}/api`);
     logger.info(`Health check: http://localhost:${PORT}/api/health`);
 
-    const socketAllowedOrigins = allowedOriginRules.filter(
-      (origin) => !origin.includes("*"),
-    );
-    initSocket(server, socketAllowedOrigins);
+    initSocket(server, {
+      allowedOrigins: allowedOriginRules,
+      isOriginAllowed,
+    });
     startBackgroundServices(mongoConnected);
   });
 

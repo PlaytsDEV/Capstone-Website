@@ -78,6 +78,15 @@ export const maintenanceApi = {
   getAdminAll: (filters = {}) =>
     authFetch(`/m/maintenance/admin/all${buildQueryString(filters)}`),
 
+  getAdminAnalytics: (filters = {}) =>
+    authFetch(`/m/maintenance/admin/analytics${buildQueryString(filters)}`),
+
+  getAdminBranchReport: (filters = {}) =>
+    authFetch(`/m/maintenance/admin/reports/branch${buildQueryString(filters)}`),
+
+  getAdminProviderReport: (filters = {}) =>
+    authFetch(`/m/maintenance/admin/reports/providers${buildQueryString(filters)}`),
+
   /**
    * Update maintenance request status/notes/assignment (admin only)
    */
@@ -93,6 +102,107 @@ export const maintenanceApi = {
   sendAdminReply: (requestId, payload) =>
     authFetch(`/m/maintenance/admin/${requestId}/reply`, {
       method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  /**
+   * Upload an admin maintenance attachment. Branch is resolved server-side from
+   * the maintenance request and related tenant/room/reservation records.
+   */
+  uploadAdminMaintenanceAttachment: (
+    requestId,
+    file,
+    { visibility = "tenant_visible" } = {},
+  ) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("maintenanceRequestId", requestId);
+    formData.append("visibility", visibility);
+
+    return authFetch(`/m/maintenance/admin/${requestId}/attachments`, {
+      method: "POST",
+      body: formData,
+    });
+  },
+
+  /**
+   * Save already-uploaded admin-only proof attachments into the work log.
+   */
+  saveAdminProof: (requestId, payload) =>
+    authFetch(`/m/maintenance/admin/${requestId}/proof`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  /**
+   * Soft-remove an attachment from tenant view or normal request display.
+   */
+  removeAdminAttachment: (requestId, payload) =>
+    authFetch(`/m/maintenance/admin/${requestId}/attachments/remove`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  assignAdminProvider: (requestId, payload) =>
+    authFetch(`/m/maintenance/admin/${requestId}/assign-provider`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  assignAdminBranch: (requestId, payload) =>
+    authFetch(`/m/maintenance/admin/${requestId}/branch`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  generateAdminUpdate: (requestId) =>
+    authFetch(`/m/maintenance/admin/${requestId}/generate-update`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+
+  generateAdminReport: (requestId, payload) =>
+    authFetch(`/m/maintenance/admin/${requestId}/generate-report`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  sendAdminTenantSummary: (requestId) =>
+    authFetch(`/m/maintenance/admin/${requestId}/send-tenant-summary`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+
+  suggestAdminProvider: (requestId) =>
+    authFetch(`/m/maintenance/admin/${requestId}/suggest-provider`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+
+  getServiceProviders: (filters = {}) =>
+    authFetch(`/service-providers${buildQueryString(filters)}`),
+
+  createServiceProvider: (payload) =>
+    authFetch("/service-providers", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  updateServiceProvider: (providerId, payload) =>
+    authFetch(`/service-providers/${providerId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  archiveAdminRequest: (requestId, payload = {}) =>
+    authFetch(`/m/maintenance/admin/${requestId}/archive`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+
+  restoreAdminRequest: (requestId, payload = {}) =>
+    authFetch(`/m/maintenance/admin/${requestId}/restore`, {
+      method: "PATCH",
       body: JSON.stringify(payload),
     }),
 
