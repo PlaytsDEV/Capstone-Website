@@ -108,8 +108,8 @@ export default function BillingReportPage() {
  ], `billing-report-${range}`);
  };
 
- const handlePdfExport = () => {
- exportReportPdf({
+ const handlePdfExport = async () => {
+ await exportReportPdf({
  title: "Billing & Collections Report",
  subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
  filename: `billing-report-${range}.pdf`,

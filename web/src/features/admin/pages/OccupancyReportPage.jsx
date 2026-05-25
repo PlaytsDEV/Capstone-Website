@@ -117,8 +117,8 @@ export default function OccupancyReportPage() {
  ], `occupancy-report-${range}`);
  };
 
- const handlePdfExport = () => {
- exportReportPdf({
+ const handlePdfExport = async () => {
+ await exportReportPdf({
  title: "Occupancy Report",
  subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
  filename: `occupancy-report-${range}.pdf`,

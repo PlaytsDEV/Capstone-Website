@@ -115,8 +115,8 @@ export default function OperationsReportPage() {
  ], `operations-report-${range}`);
  };
 
- const handlePdfExport = () => {
- exportReportPdf({
+ const handlePdfExport = async () => {
+ await exportReportPdf({
  title: "Operations Report",
  subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
  filename: `operations-report-${range}.pdf`,
