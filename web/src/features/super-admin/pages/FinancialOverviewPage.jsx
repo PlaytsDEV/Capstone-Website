@@ -92,8 +92,8 @@ export default function FinancialOverviewPage() {
  ], `financials-overdue-rooms-${range}`);
  };
 
- const handlePdfExport = () => {
- exportReportPdf({
+ const handlePdfExport = async () => {
+ await exportReportPdf({
  title: "Financial Overview",
  subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
  filename: `financial-overview-${range}.pdf`,

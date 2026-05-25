@@ -80,8 +80,8 @@ export function handleCsvExport(data, columns, filename) {
  exportToCSV(data, columns, filename);
 }
 
-export function handlePdfExport(config) {
- exportReportPdf(config);
+export async function handlePdfExport(config) {
+    await exportReportPdf(config);
 }
 
 export function useReportInsights({ reportType, range, branch }) {
