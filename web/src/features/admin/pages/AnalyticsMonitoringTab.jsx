@@ -84,21 +84,59 @@ export default function AnalyticsMonitoringTab({ branch, range, onBranchChange, 
  title: "System Monitoring",
  subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
  filename: `system-monitoring-${range}.pdf`,
- kpis: metricCards.map((item) => ({ label: item.label, value: item.value })),
+ reportType: "Monitoring",
+ kpis: metricCards.map((item, i) => ({
+ label: item.label,
+ value: item.value,
+ sub: "",
+ highlight: i === 0,
+ })),
+ aiInsight: {
+ headline: insightData?.insight?.headline || "Security summary",
+ summary: insightData?.insight?.summary || "",
+ confidence: insightData?.insight?.confidence === "high" ? 85
+ : insightData?.insight?.confidence === "medium" ? 60
+ : insightData?.insight?.confidence === "low" ? 35
+ : 0,
+ confidenceLabel: insightData?.insight?.confidence
+ ? `${insightData.insight.confidence.charAt(0).toUpperCase() + insightData.insight.confidence.slice(1)}`
+ : "",
+ standout: insightData?.insight?.keyFindings || [],
+ watch: insightData?.insight?.riskAlerts || [],
+ nextSteps: insightData?.insight?.recommendedActions || [],
+ },
  sections: [
- ...buildInsightPdfSections(insightData, "AI Security Summary"),
  {
  title: "Branch Security Summary",
- rows: branchSummary.map(
- (item) =>
- `${item.label}: ${item.totalEvents} events, ${item.criticalCount} critical, ${item.accessOverrideCount} overrides`,
- ),
+ type: "table",
+ headers: ["Branch", "Events", "Critical", "Overrides"],
+ rows: branchSummary.map((item) => ({
+ Branch: item.label,
+ Events: item.totalEvents || 0,
+ Critical: item.criticalCount || 0,
+ Overrides: item.accessOverrideCount || 0,
+ })),
  },
  {
  title: "Recent Security Events",
- rows: recentSecurityEvents.slice(0, 12).map(
- (item) => `${item.action} • ${formatBranch(item.branch)} • ${item.severity} • ${formatDate(item.timestamp)}`,
- ),
+ type: "table",
+ headers: ["Event", "Branch", "Severity", "Date"],
+ rows: recentSecurityEvents.slice(0, 12).map((item) => ({
+ Event: item.action || "-",
+ Branch: formatBranch(item.branch),
+ Severity: item.severity || "-",
+ Date: formatDate(item.timestamp),
+ })),
+ },
+ {
+ title: "Suspicious IP Activity",
+ type: "table",
+ headers: ["IP Address", "Failed Logins", "Last Seen"],
+ rows: suspiciousIps.slice(0, 12).map((item) => ({
+ "IP Address": item.ipAddress || "-",
+ "Failed Logins": item.attempts || 0,
+ "Last Seen": formatDateTime(item.lastSeenAt),
+ })),
  },
  ],
  });

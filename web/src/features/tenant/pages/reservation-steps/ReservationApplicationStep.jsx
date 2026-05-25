@@ -262,6 +262,7 @@ const ReservationApplicationStep = ({
       setStartDate, setOccupation, setPreviousEmployment, setCompanyIDReason,
       setReferralSource, setReferrerName, setTargetMoveInDate, setEstimatedMoveInTime,
       setWorkSchedule, setWorkScheduleOther, setPersonalNotes, setPreferredRoomNumber,
+      setGender,
     ].forEach((s) => s(""));
 
     setGender(""); setMaritalStatus(""); setNationality(""); setEducationLevel(""); setLeaseDuration(""); setValidIDType("");
@@ -327,7 +328,7 @@ const ReservationApplicationStep = ({
         </CollapsibleSection>
 
         <CollapsibleSection number={2} title="Personal Information" sectionKey="personal" isOpen={openSections.personal} onToggle={() => toggleSection("personal")} sectionRef={(el) => { sectionRefs.current.personal = el; }} contentClassName={readonlyContentClass}>
-          <PersonalInfoSection {...{ lastName, setLastName, firstName, setFirstName, middleName, setMiddleName, mobileNumber, setMobileNumber, birthday, setBirthday, gender, setGender, maritalStatus, setMaritalStatus, nationality, setNationality, educationLevel, setEducationLevel, addressUnitHouseNo, setAddressUnitHouseNo, addressStreet, setAddressStreet, addressRegion, setAddressRegion, addressBarangay, setAddressBarangay, addressCity, setAddressCity, addressProvince, setAddressProvince, validIDFront, setValidIDFront, validIDBack, setValidIDBack, validIDType, setValidIDType, documentPrechecks, runningDocumentChecks, onRunDocumentPrecheck, nbiClearance, setNbiClearance, nbiReason, setNbiReason, personalNotes, setPersonalNotes, handleNameInput, handleGeneralInput, validateField, fieldErrors, clearFieldError, birthdayMin, birthdayMax, showValidationErrors }} />
+          <PersonalInfoSection {...{ lastName, setLastName, firstName, setFirstName, middleName, setMiddleName, mobileNumber, setMobileNumber, birthday, setBirthday, gender, setGender, maritalStatus, setMaritalStatus, nationality, setNationality, educationLevel, setEducationLevel, addressUnitHouseNo, setAddressUnitHouseNo, addressStreet, setAddressStreet, addressRegion, setAddressRegion, addressBarangay, setAddressBarangay, addressCity, setAddressCity, addressProvince, setAddressProvince, validIDFront, setValidIDFront, validIDBack, setValidIDBack, validIDType, setValidIDType, documentPrechecks, runningDocumentChecks, onRunDocumentPrecheck, nbiClearance, setNbiClearance, nbiReason, setNbiReason, personalNotes, setPersonalNotes, handleNameInput, handlePhoneInput, handleGeneralInput, validateField, fieldErrors, clearFieldError, birthdayMin, birthdayMax, showValidationErrors }} />
         </CollapsibleSection>
 
         <CollapsibleSection number={3} title="Emergency Contact" sectionKey="emergency" isOpen={openSections.emergency} onToggle={() => toggleSection("emergency")} sectionRef={(el) => { sectionRefs.current.emergency = el; }} contentClassName={readonlyContentClass}>

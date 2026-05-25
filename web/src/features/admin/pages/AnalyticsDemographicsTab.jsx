@@ -141,28 +141,64 @@ export default function AnalyticsDemographicsTab({
  };
 
  const exportPdf = () => {
+  const insight = insightData?.insight;
   handlePdfExport({
    title: "Tenant Demographics Report",
    subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
    filename: `demographics-report-${range}.pdf`,
-   kpis: metricCards.map((item) => ({ label: item.label, value: item.value })),
+   reportType: "Demographics",
+   kpis: metricCards.map((item, i) => ({
+    label: item.label,
+    value: item.value,
+    sub: "",
+    highlight: i === 0,
+   })),
+   aiInsight: {
+    headline: insight?.headline || "Demographics summary",
+    summary: insight?.summary || "",
+    confidence: insight?.confidence === "high" ? 85
+     : insight?.confidence === "medium" ? 60
+     : insight?.confidence === "low" ? 35
+     : 0,
+    confidenceLabel: insight?.confidence
+     ? `${insight.confidence.charAt(0).toUpperCase() + insight.confidence.slice(1)}`
+     : "",
+    standout: insight?.keyFindings || [],
+    watch: insight?.riskAlerts || [],
+    nextSteps: insight?.recommendedActions || [],
+   },
    sections: [
-    ...buildInsightPdfSections(insightData, "AI Demographics Summary"),
     {
      title: "Occupation Mix",
-     rows: occupationMix.map((item) => `${item.label}: ${item.value} tenants`),
+     type: "table",
+     headers: ["Segment", "Tenants"],
+     rows: occupationMix.map((item) => ({
+      Segment: item.label,
+      Tenants: item.value,
+     })),
     },
     {
      title: "Reservation Volume by Month",
+     type: "table",
+     headers: ["Month", "Reservations"],
      rows: reservationsByMonth
       .filter((item) => item.count > 0)
-      .map((item) => `${item.label}: ${item.count} reservations`),
+      .map((item) => ({
+       Month: item.label,
+       Reservations: item.count,
+      })),
     },
     {
      title: "Top Geographic Origins",
+     type: "table",
+     headers: ["Province", "City", "Tenants"],
      rows: geographicOrigin
       .slice(0, 10)
-      .map((item) => `${item.province}${item.city ? ` (${item.city})` : ""}: ${item.count}`),
+      .map((item) => ({
+       Province: item.province || "-",
+       City: item.city || "-",
+       Tenants: item.count || 0,
+      })),
     },
    ],
   });

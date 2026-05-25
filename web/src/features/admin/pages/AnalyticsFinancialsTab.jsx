@@ -78,21 +78,59 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
  title: "Financial Overview",
  subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
  filename: `financial-overview-${range}.pdf`,
- kpis: metricCards.map((item) => ({ label: item.label, value: item.value })),
+ reportType: "Financials",
+ kpis: metricCards.map((item, i) => ({
+ label: item.label,
+ value: item.value,
+ sub: "",
+ highlight: i === 0,
+ })),
+ aiInsight: {
+ headline: insightData?.insight?.headline || "Financial summary",
+ summary: insightData?.insight?.summary || "",
+ confidence: insightData?.insight?.confidence === "high" ? 85
+ : insightData?.insight?.confidence === "medium" ? 60
+ : insightData?.insight?.confidence === "low" ? 35
+ : 0,
+ confidenceLabel: insightData?.insight?.confidence
+ ? `${insightData.insight.confidence.charAt(0).toUpperCase() + insightData.insight.confidence.slice(1)}`
+ : "",
+ standout: insightData?.insight?.keyFindings || [],
+ watch: insightData?.insight?.riskAlerts || [],
+ nextSteps: insightData?.insight?.recommendedActions || [],
+ },
  sections: [
- ...buildInsightPdfSections(insightData, "AI Financial Summary"),
  {
  title: "Branch Comparison",
- rows: branchComparison.map(
- (item) =>
- `${item.label}: collected ${formatPeso(item.collectedRevenue)}, overdue ${formatPeso(item.overdueAmount)}, collection rate ${item.collectionRate}%`,
- ),
+ type: "table",
+ headers: ["Branch", "Collected", "Overdue", "Collection Rate"],
+ rows: branchComparison.map((item) => ({
+ Branch: item.label,
+ Collected: formatPeso(item.collectedRevenue),
+ Overdue: formatPeso(item.overdueAmount),
+ "Collection Rate": `${item.collectionRate}%`,
+ })),
+ },
+ {
+ title: "Monthly Collections",
+ type: "table",
+ headers: ["Month", "Collected", "Billed"],
+ rows: revenueByMonth.map((item) => ({
+ Month: item.label,
+ Collected: formatPeso(item.collectedRevenue),
+ Billed: formatPeso(item.billedAmount),
+ })),
  },
  {
  title: "Top Overdue Rooms",
- rows: overdueRooms.slice(0, 12).map(
- (item) => `${item.roomName} • ${formatBranch(item.branch)} • ${formatPeso(item.outstandingBalance)}`,
- ),
+ type: "table",
+ headers: ["Room", "Branch", "Outstanding", "Overdue Bills"],
+ rows: overdueRooms.slice(0, 12).map((item) => ({
+ Room: item.roomName,
+ Branch: formatBranch(item.branch),
+ Outstanding: formatPeso(item.outstandingBalance),
+ "Overdue Bills": item.overdueCount ?? 0,
+ })),
  },
  ],
  });

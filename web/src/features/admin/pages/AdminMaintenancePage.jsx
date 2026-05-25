@@ -3904,16 +3904,16 @@ const handleExport = () => {
  showNotification("CSV downloaded successfully.", "success");
  };
 
- const handleExportAnalytics = (format) => {
+ const handleExportAnalytics = async (format) => {
  if (!analyticsData) return;
  try {
- if (format === "pdf") {
- exportReportPdf({
+    if (format === "pdf") {
+      await exportReportPdf({
  title: "Maintenance Analytics",
  subtitle: `${analyticsData.scope?.branchLabel || "All Branches"} - ${analyticsData.filters?.dateFrom || ""} to ${analyticsData.filters?.dateTo || ""}`,
  filename: "maintenance-analytics.pdf",
  sections: buildReportPdfSections(analyticsData, "Maintenance Analytics"),
- });
+      });
  showNotification("PDF downloaded successfully.", "success");
  return;
  }
@@ -3923,16 +3923,16 @@ const handleExport = () => {
  }
  };
 
- const handleExportBranchReport = (format) => {
+ const handleExportBranchReport = async (format) => {
  if (!branchReportData) return;
  try {
- if (format === "pdf") {
- exportReportPdf({
+    if (format === "pdf") {
+      await exportReportPdf({
  title: branchReportData.title || "Maintenance Branch Report",
  subtitle: `${branchReportData.scope?.branchLabel || "All Branches"} - ${branchReportData.filters?.dateFrom || ""} to ${branchReportData.filters?.dateTo || ""}`,
  filename: "maintenance-branch-report.pdf",
  sections: buildReportPdfSections(branchReportData, "Maintenance Branch Report"),
- });
+      });
  showNotification("PDF downloaded successfully.", "success");
  return;
  }
@@ -4216,7 +4216,7 @@ const handleExport = () => {
  }
  };
 
- const handleExportReport = (format) => {
+ const handleExportReport = async (format) => {
  if (!reportPreview?.summary) return;
  const filenameBase = getReportFilenameBase(reportPreview, selectedRequest);
  const meta = getRequestReportMeta(selectedRequest);
@@ -4240,8 +4240,8 @@ const handleExport = () => {
  ...getStructuredReportSections(reportPreview, selectedRequest),
  ];
 
- if (format === "pdf") {
- exportReportPdf({
+  if (format === "pdf") {
+    await exportReportPdf({
  title: reportPreview.title || REPORT_TYPE_LABELS[reportPreview.reportType] || "Maintenance Report",
  subtitle: `${label} - Request ${meta.requestId}`,
  badge: label,

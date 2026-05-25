@@ -190,27 +190,65 @@ export default function AnalyticsConsolidatedTab({
   };
 
   const exportPdf = () => {
+    const insight = insightsQuery.data?.insight || insightsQuery.data || {};
     handlePdfExport({
       title: "Consolidated Owner Report",
       subtitle: `${buildRangeLabel(range)} operations / ${buildRangeLabel(monthRange)} billing - ${formatBranch(scopeBranch)}`,
       filename: `consolidated-report-${range}.pdf`,
-      kpis: metricCards.map((item) => ({ label: item.label, value: item.value })),
+      reportType: "Consolidated",
+      kpis: metricCards.map((item, i) => ({
+        label: item.label,
+        value: item.value,
+        sub: "",
+        highlight: i === 0,
+      })),
+      aiInsight: {
+        headline: insight?.headline || "Consolidated summary",
+        summary: insight?.summary || "",
+        confidence: insight?.confidence === "high" ? 85
+          : insight?.confidence === "medium" ? 60
+          : insight?.confidence === "low" ? 35
+          : 0,
+        confidenceLabel: insight?.confidence
+          ? `${insight.confidence.charAt(0).toUpperCase() + insight.confidence.slice(1)}`
+          : "",
+        standout: insight?.keyFindings || [],
+        watch: insight?.riskAlerts || [],
+        nextSteps: insight?.recommendedActions || [],
+      },
       sections: [
         {
           title: "Branch Comparison",
-          rows: branchRows.map(
-            (item) =>
-              `${item.label}: ${item.occupancyRate || 0}% occupancy, ${formatPeso(item.collectedRevenue || 0)} collected, ${formatPeso(item.overdueAmount || 0)} overdue`,
-          ),
+          type: "table",
+          headers: ["Branch", "Occupancy", "Collected", "Overdue", "Open Maintenance"],
+          rows: branchRows.map((item) => ({
+            Branch: item.label,
+            Occupancy: `${item.occupancyRate || 0}%`,
+            Collected: formatPeso(item.collectedRevenue || 0),
+            Overdue: formatPeso(item.overdueAmount || 0),
+            "Open Maintenance": item.activeTickets || 0,
+          })),
         },
         {
           title: "Operations Snapshot",
+          type: "table",
+          headers: ["Metric", "Value"],
           rows: [
-            `Reservations: ${operationsData?.kpis?.reservations || 0}`,
-            `Inquiries: ${operationsData?.kpis?.inquiries || 0}`,
-            `Maintenance requests: ${operationsData?.kpis?.maintenanceRequests || 0}`,
-            `On-time fix rate: ${operationsData?.kpis?.slaComplianceRateLabel || "0%"}`,
+            { Metric: "Reservations", Value: operationsData?.kpis?.reservations || 0 },
+            { Metric: "Inquiries", Value: operationsData?.kpis?.inquiries || 0 },
+            { Metric: "Maintenance requests", Value: operationsData?.kpis?.maintenanceRequests || 0 },
+            { Metric: "On-time fix rate", Value: operationsData?.kpis?.slaComplianceRateLabel || "0%" },
           ],
+        },
+        {
+          title: "Collection Trend",
+          type: "table",
+          headers: ["Month", "Collected", "Billed"],
+          rows: revenueByMonth.map((item) => ({
+            Month: item.label,
+            Collected: formatPeso(item.collectedRevenue || 0),
+            Billed: formatPeso(item.billedAmount || 0),
+          })),
         },
       ],
     });
