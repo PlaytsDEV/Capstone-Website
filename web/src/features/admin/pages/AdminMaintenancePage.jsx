@@ -32,10 +32,14 @@ import {
  useAssignMaintenanceProvider,
  useGenerateMaintenanceUpdate,
  useGenerateMaintenanceReport,
+ useMaintenanceAnalytics,
+ useMaintenanceBranchReport,
+ useMaintenanceProviderReport,
  useMaintenanceRequest,
  useRemoveMaintenanceAttachment,
  useRestoreMaintenanceRequest,
  useSaveMaintenanceProof,
+ useSendMaintenanceTenantSummary,
  useSendMaintenanceReply,
  useServiceProviders,
  useSuggestMaintenanceProvider,
@@ -60,6 +64,7 @@ import {
  normalizeMaintenanceAttachments,
 } from "../../../shared/utils/maintenanceAttachments";
 import { exportToCSV } from "../../../shared/utils/exportUtils";
+import { exportReportPdf } from "../../../shared/utils/reportPdf";
 import { BRANCH_OPTIONS, BRANCH_DISPLAY_NAMES } from "../../../shared/utils/constants";
 import { maintenanceApi } from "../../../shared/api/apiClient";
 import {
@@ -74,6 +79,11 @@ import {
  StatusBadge,
  SummaryBar,
 } from "../components/shared";
+import AnalyticsBarChart from "../components/shared/AnalyticsBarChart";
+import AnalyticsDonutChart from "../components/shared/AnalyticsDonutChart";
+import AnalyticsLineChart from "../components/shared/AnalyticsLineChart";
+import ReportChartPanel from "../components/shared/ReportChartPanel";
+import ReportMetricCard from "../components/shared/ReportMetricCard";
 
 const ITEMS_PER_PAGE = 10;
 const MAX_MAINTENANCE_ATTACHMENT_SIZE = 5 * 1024 * 1024;
@@ -124,11 +134,82 @@ const REPORT_TYPE_LABELS = {
  admin: "Admin Report",
  tenant: "Tenant Summary",
 };
+const REPORT_EXPORT_COLUMNS = [
+ { key: "lineNumber", label: "Line" },
+ { key: "content", label: "Content" },
+];
+const MAINTENANCE_TABS = [
+ { key: "requests", label: "Requests", icon: ClipboardList },
+];
+const ASSIGNMENT_FILTER_OPTIONS = [
+ { key: "all", label: "All assignments" },
+ { key: "assigned", label: "Assigned" },
+ { key: "unassigned", label: "Unassigned" },
+];
+const ANALYTICS_SLA_OPTIONS = [
+ { key: "all", label: "All SLA health" },
+ { key: "overdue", label: "Overdue" },
+ { key: "due_soon", label: "Due Soon" },
+ { key: "on_track", label: "On Track" },
+ { key: "completed", label: "Completed" },
+ { key: "closed", label: "Closed" },
+];
 const VALID_MAINTENANCE_BRANCHES = new Set(BRANCH_OPTIONS.map((branch) => branch.value));
 const ASSIGN_BRANCH_OPTIONS = [
  { value: "guadalupe", label: "Guadalupe" },
  { value: "gil-puyat", label: "Gil Puyat" },
 ];
+const PH_MOBILE_ERROR = "Enter a valid 11-digit Philippine mobile number starting with 09.";
+const AMOUNT_ERROR = "Enter a valid amount.";
+const TEXT_MIN_LENGTHS = {
+ issueTitle: 5,
+ description: 15,
+ adminRemarks: 10,
+ replyMessage: 10,
+ progressUpdate: 10,
+ providerNotes: 10,
+ providerName: 3,
+ serviceType: 3,
+};
+
+const sanitizeDigitsOnly = (value) => String(value || "").replace(/\D/g, "");
+const sanitizeAmountInput = (value) => {
+ const cleaned = String(value || "").replace(/[^\d.]/g, "");
+ const [whole = "", ...decimalParts] = cleaned.split(".");
+ const decimal = decimalParts.join("").slice(0, 2);
+ return decimalParts.length ? `${whole}.${decimal}` : whole;
+};
+const formatPeso = (min, max = null) => {
+ const format = (value) => {
+ const amount = Number(value);
+ if (!Number.isFinite(amount)) return "";
+ return `PHP ${amount.toLocaleString("en-PH", {
+ minimumFractionDigits: amount % 1 === 0 ? 0 : 2,
+ maximumFractionDigits: 2,
+ })}`;
+ };
+ const minLabel = format(min);
+ const maxLabel = format(max);
+ if (minLabel && maxLabel && Number(min) !== Number(max)) return `${minLabel} - ${maxLabel}`;
+ return minLabel || maxLabel || "Rate not recorded";
+};
+const validatePhilippineMobile = (value, { required = true } = {}) => {
+ const digits = sanitizeDigitsOnly(value);
+ if (!digits) return required ? PH_MOBILE_ERROR : "";
+ return /^09\d{9}$/.test(digits) ? "" : PH_MOBILE_ERROR;
+};
+const validateAmount = (value, { required = false } = {}) => {
+ const text = String(value ?? "").trim();
+ if (!text) return required ? AMOUNT_ERROR : "";
+ const amount = Number(text);
+ return Number.isFinite(amount) && amount >= 0 ? "" : AMOUNT_ERROR;
+};
+const validateMinimumText = (value, min, label, { required = true } = {}) => {
+ const text = String(value || "").trim();
+ if (!text) return required ? `${label} is required.` : "";
+ if (text.length < min) return `${label} must be at least ${min} characters.`;
+ return "";
+};
 
 const fmtDate = (value) => {
  const date = new Date(value);
@@ -150,6 +231,36 @@ const fmtDateTime = (value) => {
  hour: "numeric",
  minute: "2-digit",
  });
+};
+
+const getReportFilenameBase = (report, selectedRequest) => {
+ const requestId = report?.requestId || selectedRequest?.request_id || report?.title || "maintenance";
+ const safeRequestId = String(requestId)
+ .replace(/[^a-z0-9_-]+/gi, "-")
+ .replace(/^-+|-+$/g, "");
+ const reportSlug = report?.reportType === "tenant" ? "tenant-summary" : "admin-report";
+ return `maintenance-${reportSlug}-${safeRequestId || "request"}`;
+};
+
+const getReportSummaryLines = (summary) => String(summary || "").split(/\r?\n/);
+
+const toDateInputValue = (date) => {
+ const next = date instanceof Date ? date : new Date(date);
+ if (Number.isNaN(next.getTime())) return "";
+ const year = next.getFullYear();
+ const month = String(next.getMonth() + 1).padStart(2, "0");
+ const day = String(next.getDate()).padStart(2, "0");
+ return `${year}-${month}-${day}`;
+};
+
+const getDefaultMaintenanceReportRange = () => {
+ const end = new Date();
+ const start = new Date();
+ start.setDate(start.getDate() - 30);
+ return {
+ dateFrom: toDateInputValue(start),
+ dateTo: toDateInputValue(end),
+ };
 };
 
 const formatSlaState = (slaState) => {
@@ -426,6 +537,9 @@ const getProviderBranchCoverageLabel = (provider) =>
 const getProviderCategoryLabel = (provider) =>
  (provider?.serviceCategories || []).filter(Boolean).join(", ") || "No service category";
 
+const getProviderRateLabel = (provider) =>
+ formatPeso(provider?.minRate ?? provider?.minimumRate, provider?.maxRate ?? provider?.maximumRate);
+
 const BranchBadge = ({ branch }) => {
  const label = formatBranchLabel(branch);
  const isMissing = label === "Branch missing";
@@ -483,6 +597,52 @@ const createFilterPayload = ({
 
  return filters;
 };
+
+const createReportFilterPayload = (filters = {}, { isOwner = false, userBranch = "" } = {}) => {
+ const branch = isOwner ? filters.branch : userBranch;
+ return {
+ limit: 200,
+ date_from: filters.dateFrom,
+ date_to: filters.dateTo,
+ ...(branch && branch !== "all" ? { branch } : {}),
+ ...(filters.status && filters.status !== "all" ? { status: filters.status } : {}),
+ ...(filters.requestType && filters.requestType !== "all" ? { request_type: filters.requestType } : {}),
+ ...(filters.urgency && filters.urgency !== "all" ? { urgency: filters.urgency } : {}),
+ ...(filters.provider && filters.provider !== "all" ? { provider: filters.provider } : {}),
+ ...(filters.assignmentStatus && filters.assignmentStatus !== "all"
+ ? { assignment_status: filters.assignmentStatus }
+ : {}),
+ ...(filters.slaHealth && filters.slaHealth !== "all" ? { sla_health: filters.slaHealth } : {}),
+ ...(filters.overdueOnly ? { overdue_only: "true" } : {}),
+ };
+};
+
+const REPORT_REQUEST_COLUMNS = [
+ { key: "requestId", label: "Request ID" },
+ { key: "tenantName", label: "Tenant Name" },
+ { key: "branchLabel", label: "Branch" },
+ { key: "room", label: "Room/Unit" },
+ { key: "requestTypeLabel", label: "Request Type" },
+ { key: "urgencyLabel", label: "Urgency" },
+ { key: "statusLabel", label: "Status" },
+ { key: "assignedProvider", label: "Assigned Service Provider" },
+ { key: "createdAt", label: "Created Date" },
+ { key: "updatedAt", label: "Last Updated" },
+ { key: "resolutionAt", label: "Resolution Date" },
+ { key: "slaLabel", label: "SLA Status" },
+];
+
+const PROVIDER_REPORT_COLUMNS = [
+ { key: "providerName", label: "Provider Name" },
+ { key: "contactNumber", label: "Contact Number" },
+ { key: "assignedRequests", label: "Assigned Requests" },
+ { key: "completedRequests", label: "Completed Requests" },
+ { key: "activeRequests", label: "Pending/In Progress" },
+ { key: "overdueRequests", label: "Overdue Assigned" },
+ { key: "averageCompletionTimeLabel", label: "Average Completion Time" },
+ { key: "lastAssignedRequestDate", label: "Last Assigned Request" },
+ { key: "relatedRequestTypes", label: "Related Request Types", formatter: (value) => (Array.isArray(value) ? value.join("; ") : value) },
+];
 
 const AVATAR_PALETTES = [
   { bg: "bg-blue-700",    text: "text-white"    },
@@ -676,6 +836,21 @@ const mapMaintenanceApiErrors = (error, { scope = "progress" } = {}) => {
  nextErrors.reply_attachments = message;
  } else if (rawField.includes("reply") || rawField.includes("message") || rawField.includes("body")) {
  nextErrors.reply_message = message;
+ }
+ continue;
+ }
+
+ if (scope === "provider") {
+ if (rawField.includes("providername") || rawField.includes("provider_name")) {
+ nextErrors.providerName = message;
+ } else if (rawField.includes("contact") || rawField.includes("phone")) {
+ nextErrors.contactNumber = message;
+ } else if (rawField.includes("servicetype") || rawField.includes("category")) {
+ nextErrors.serviceType = message;
+ } else if (rawField.includes("note")) {
+ nextErrors.notes = message;
+ } else if (rawField.includes("provider") || rawField.includes("assigned")) {
+ nextErrors.assigned_to = message;
  }
  continue;
  }
@@ -992,6 +1167,132 @@ const buildMaintenanceTimeline = (request) => {
  .sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime());
 };
 
+const REPORT_NA = "Not available";
+const cleanReportLine = (line) =>
+ String(line || "")
+ .replace(/^#{1,6}\s*/, "")
+ .replace(/^\s*[-*]\s*/, "")
+ .replace(/\*\*/g, "")
+ .trim();
+
+const parseReportSummarySections = (summary, reportType = "admin") => {
+ const sections = [];
+ let current = { title: "Summary", rows: [] };
+
+ getReportSummaryLines(summary).forEach((rawLine) => {
+ const line = cleanReportLine(rawLine);
+ if (!line) return;
+ const isHeading = /^#{1,6}\s/.test(rawLine) || /^[A-Z][A-Za-z\s/]+:$/.test(line);
+ if (isHeading && current.rows.length) {
+ sections.push(current);
+ current = { title: line.replace(/:$/, ""), rows: [] };
+ } else if (isHeading) {
+ current.title = line.replace(/:$/, "");
+ } else {
+ current.rows.push(line);
+ }
+ });
+
+ if (current.rows.length) sections.push(current);
+
+ const safeSections = sections.filter((section) => {
+ if (reportType !== "tenant") return true;
+ return !/internal|admin only|debug|backend|private staff|assignment note/i.test(section.title);
+ });
+
+ return safeSections.length ? safeSections : [{ title: "Summary", rows: [REPORT_NA] }];
+};
+
+const getRequestReportMeta = (request) => {
+ const branch = getRequestBranch(request);
+ return {
+ requestId: request?.request_id || REPORT_NA,
+ tenantName: request?.tenant?.full_name || request?.tenantName || REPORT_NA,
+ userId: request?.tenant?.user_id || request?.user_id || REPORT_NA,
+ branch: branch ? formatBranchLabel(branch) : REPORT_NA,
+ room: request?.roomName || request?.room || request?.roomNumber || request?.unit || REPORT_NA,
+ requestType: request?.request_type ? getMaintenanceTypeMeta(request.request_type).label : REPORT_NA,
+ urgency: request?.urgency ? getMaintenanceUrgencyMeta(request.urgency).label : REPORT_NA,
+ status: request?.status ? formatMaintenanceStatus(request.status) : REPORT_NA,
+ createdAt: request?.created_at ? fmtDateTime(request.created_at) : REPORT_NA,
+ updatedAt: request?.updated_at ? fmtDateTime(request.updated_at) : REPORT_NA,
+ description: request?.description || REPORT_NA,
+ };
+};
+
+const getReportTimelineRows = (request, reportType = "admin") =>
+ buildMaintenanceTimeline(request)
+ .filter((item) => reportType !== "tenant" || item.visibility === "tenant")
+ .map((item) => {
+ const attachmentCount = Array.isArray(item.attachments) ? item.attachments.length : 0;
+ return [
+ fmtDateTime(item.timestamp),
+ item.actorName || REPORT_NA,
+ item.title || REPORT_NA,
+ item.message || item.meta || REPORT_NA,
+ attachmentCount ? `${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"}` : "",
+ ].filter(Boolean).join(" | ");
+ });
+
+const getReportAttachmentsRows = (request, reportType = "admin") => {
+ const attachments = getActiveAttachments(request?.attachments || []);
+ if (!attachments.length) return [REPORT_NA];
+ return attachments.map((attachment, index) =>
+ `${index + 1}. ${getMaintenanceAttachmentName(attachment, index)} (${getMaintenanceAttachmentLabel(attachment)})`,
+ );
+};
+
+const getReportProviderRows = (request, reportType = "admin") => {
+ const providerName = getAssignedProviderName(request);
+ if (!providerName) return ["Assigned provider: Not assigned"];
+ const rows = [
+ `Assigned provider: ${providerName}`,
+ `Service type: ${getAssignedProviderCategory(request) || REPORT_NA}`,
+ ];
+ if (reportType !== "tenant") {
+ rows.push(`Contact: ${getAssignedProviderContact(request) || REPORT_NA}`);
+ if (request?.assignedProviderNotes) rows.push(`Internal notes: ${request.assignedProviderNotes}`);
+ }
+ return rows;
+};
+
+const getStructuredReportSections = (report, request) => {
+ const reportType = report?.reportType || "admin";
+ const summarySections = parseReportSummarySections(report?.summary, reportType);
+ const timelineRows = getReportTimelineRows(request, reportType);
+ const sections = [
+ {
+ title: "Issue Details",
+ rows: [
+ getRequestReportMeta(request).description,
+ ...getReportAttachmentsRows(request, reportType).map((row) => `Attachment: ${row}`),
+ ],
+ },
+ {
+ title: "Service Provider Details",
+ rows: getReportProviderRows(request, reportType),
+ },
+ {
+ title: reportType === "tenant" ? "Tenant Visible Timeline" : "Maintenance Timeline / Status History",
+ rows: timelineRows.length ? timelineRows : [REPORT_NA],
+ },
+ ...summarySections,
+ ];
+
+ if (reportType === "admin") {
+ const internalRows = buildMaintenanceTimeline(request)
+ .filter((item) => item.visibility !== "tenant")
+ .map((item) => `${fmtDateTime(item.timestamp)} | ${item.title || REPORT_NA} | ${item.message || REPORT_NA}`);
+ sections.push({
+ title: "Admin Internal Updates",
+ description: "Admin Only - confidential internal maintenance notes and staff activity.",
+ rows: internalRows.length ? internalRows : [REPORT_NA],
+ });
+ }
+
+ return sections;
+};
+
 function TimelineAttachmentList({
  attachments = [],
  targets = [],
@@ -1179,17 +1480,140 @@ function ConfirmationModal({
  );
 }
 
+function MaintenanceExportDropdown({
+ options = [],
+ disabled = false,
+ align = "right",
+ placement = "bottom",
+}) {
+ const [open, setOpen] = useState(false);
+ const visibleOptions = options.filter(Boolean);
+
+ return (
+ <div
+ className="relative"
+ onBlur={(event) => {
+ if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+ }}
+ >
+ <button
+ type="button"
+ className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 text-sm font-semibold text-card-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+ onClick={() => setOpen((current) => !current)}
+ disabled={disabled || visibleOptions.length === 0}
+ aria-haspopup="menu"
+ aria-expanded={open}
+ >
+ <FileDown size={14} />
+ Export
+ <ChevronDown size={14} />
+ </button>
+ {open ? (
+ <div
+ role="menu"
+ className={`absolute z-[1300] min-w-56 overflow-hidden rounded-lg border border-border bg-card py-1 shadow-xl ${
+ placement === "top" ? "bottom-full mb-2" : "top-full mt-2"
+ } ${
+ align === "left" ? "left-0" : "left-0 sm:left-auto sm:right-0"
+ }`}
+ >
+ {visibleOptions.map((option) => (
+ <button
+ key={option.key}
+ type="button"
+ role="menuitem"
+ className="flex w-full items-center px-4 py-2 text-left text-sm text-card-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+ onClick={() => {
+ setOpen(false);
+ option.onClick?.();
+ }}
+ disabled={option.disabled}
+ >
+ {option.label}
+ </button>
+ ))}
+ </div>
+ ) : null}
+ </div>
+ );
+}
+
+function ReportExportDropdown({
+ reportType,
+ disabled = false,
+ onExport,
+}) {
+ const label = REPORT_TYPE_LABELS[reportType] || "Maintenance Report";
+ const options = [
+ { key: "pdf", label: `Download ${label} PDF`, onClick: () => onExport("pdf") },
+ { key: "csv", label: `Download ${label} CSV`, onClick: () => onExport("csv") },
+ ];
+
+ return <MaintenanceExportDropdown options={options} disabled={disabled} placement="top" />;
+}
+
+function ReportInfoGrid({ items = [] }) {
+ return (
+ <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+ {items.map((item) => (
+ <div key={item.label} className="rounded-lg border border-slate-200 bg-white p-3">
+ <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+ {item.label}
+ </div>
+ <div className="mt-1 break-words text-sm font-semibold text-slate-900">
+ {item.value || REPORT_NA}
+ </div>
+ </div>
+ ))}
+ </div>
+ );
+}
+
+function ReportViewerSection({ section }) {
+ const rows = Array.isArray(section?.rows) && section.rows.length ? section.rows : [REPORT_NA];
+ return (
+ <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+ <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 pb-2">
+ <h3 className="text-sm font-bold text-slate-900">{section.title}</h3>
+ {/admin only|internal|confidential/i.test(`${section.title} ${section.description || ""}`) ? (
+ <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-amber-700">
+ Admin Only
+ </span>
+ ) : null}
+ </div>
+ {section.description ? (
+ <p className="mt-2 text-xs leading-5 text-slate-500">{section.description}</p>
+ ) : null}
+ <div className="mt-3 space-y-2">
+ {rows.map((row, index) => (
+ <div key={`${section.title}-${index}`} className="rounded-lg bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-700">
+ {row}
+ </div>
+ ))}
+ </div>
+ </section>
+ );
+}
+
 function ReportPreviewModal({
  open,
  report,
+ request,
  isCopying = false,
+ isSending = false,
  onCopy,
- onDownload,
+ onExport,
+ onSendToTenant,
  onClose,
 }) {
  if (!open || !report) return null;
  const label = REPORT_TYPE_LABELS[report.reportType] || "Maintenance Report";
  const isTenant = report.reportType === "tenant";
+ const meta = getRequestReportMeta(request);
+ const sections = getStructuredReportSections(report, request);
+ const reportTypeTone = isTenant
+ ? "border-sky-200 bg-sky-50 text-sky-800"
+ : "border-amber-200 bg-amber-50 text-amber-800";
 
  return (
  <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/50 px-4 py-6">
@@ -1197,46 +1621,77 @@ function ReportPreviewModal({
  role="dialog"
  aria-modal="true"
  aria-labelledby="maintenance-report-preview-title"
- className="flex max-h-[calc(100vh-2rem)] w-full max-w-4xl flex-col rounded-xl border border-border bg-card shadow-2xl"
+ className="flex max-h-[calc(100vh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-slate-50 shadow-2xl"
  >
- <div className="border-b border-border p-5">
+ <div className="border-b border-slate-200 bg-[#0f2742] p-5 text-white">
  <div className="flex flex-wrap items-start justify-between gap-3">
  <div>
+ <div className="text-xs font-bold uppercase tracking-[0.18em] text-amber-300">
+ Lilycrest Residences
+ </div>
  <div className="flex flex-wrap items-center gap-2">
- <h2 id="maintenance-report-preview-title" className="text-lg font-semibold text-card-foreground">
+ <h2 id="maintenance-report-preview-title" className="text-xl font-bold">
  {report.title || label}
  </h2>
- <SectionBadge tone={isTenant ? "blue" : "amber"}>{label}</SectionBadge>
+ <span className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${reportTypeTone}`}>
+ {label}
+ </span>
  </div>
- {report.message ? (
- <p className="mt-2 text-sm text-muted-foreground">{report.message}</p>
- ) : null}
+ <p className="mt-2 text-sm text-slate-200">
+ Generated {report.generatedAt ? fmtDateTime(report.generatedAt) : fmtDateTime(new Date())}
+ </p>
  </div>
  <button
  type="button"
- className="inline-flex h-9 items-center justify-center rounded-lg border border-border px-3 text-sm font-medium text-muted-foreground hover:bg-muted"
+ className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 text-white hover:bg-white/10"
  onClick={onClose}
+ aria-label="Close report preview"
  >
- Close
+ <XCircle size={16} />
  </button>
  </div>
  </div>
 
  <div className="min-h-0 flex-1 overflow-y-auto p-5">
- <pre className="whitespace-pre-wrap rounded-lg border border-border bg-muted/20 p-4 text-sm leading-6 text-card-foreground">
- {report.summary}
- </pre>
+ {report.message ? (
+ <div className="mb-4 rounded-lg border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+ {report.message}
+ </div>
+ ) : null}
+ <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+ <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+ <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-slate-700">Request Information</h3>
+ <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">
+ Request {meta.requestId}
+ </span>
+ </div>
+ <ReportInfoGrid
+ items={[
+ { label: "Tenant", value: meta.tenantName },
+ ...(isTenant ? [] : [{ label: "User ID", value: meta.userId }]),
+ { label: "Branch", value: meta.branch },
+ { label: "Room/Unit", value: meta.room },
+ { label: "Request Type", value: meta.requestType },
+ { label: "Urgency", value: meta.urgency },
+ { label: "Status", value: meta.status },
+ { label: "Created", value: meta.createdAt },
+ { label: "Updated", value: meta.updatedAt },
+ ]}
+ />
+ </div>
+ <div className="space-y-4">
+ {sections.map((section, index) => (
+ <ReportViewerSection key={`${section.title}-${index}`} section={section} />
+ ))}
+ </div>
  </div>
 
- <div className="flex flex-col-reverse gap-2 border-t border-border p-5 sm:flex-row sm:justify-end">
- <button
- type="button"
- className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border px-4 text-sm font-medium text-card-foreground hover:bg-muted"
- onClick={onDownload}
- >
- <FileDown size={14} />
- Download .txt
- </button>
+ <div className="flex flex-col gap-2 border-t border-border p-5 sm:flex-row sm:justify-end">
+ <ReportExportDropdown
+ reportType={report.reportType}
+ onExport={onExport}
+ disabled={!report.summary}
+ />
  <button
  type="button"
  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold shadow-sm hover:opacity-90 disabled:opacity-60"
@@ -1250,8 +1705,183 @@ function ReportPreviewModal({
  <ClipboardList size={14} />
  {isCopying ? "Copying..." : "Copy Summary"}
  </button>
+ {isTenant ? (
+ <button
+ type="button"
+ className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+ onClick={onSendToTenant}
+ disabled={isSending}
+ >
+ <MessageSquare size={14} />
+ {isSending ? "Sending..." : "Send to Tenant"}
+ </button>
+ ) : null}
+ <button
+ type="button"
+ className="inline-flex h-10 items-center justify-center rounded-lg border border-border px-4 text-sm font-medium text-muted-foreground hover:bg-muted"
+ onClick={onClose}
+ >
+ Close
+ </button>
  </div>
  </section>
+ </div>
+ );
+}
+
+function MaintenanceReportFilters({
+ filters,
+ isOwner,
+ userBranch,
+ providerOptions = [],
+ onChange,
+ title = "Filters",
+}) {
+ const branchValue = isOwner ? filters.branch : userBranch;
+ return (
+ <section className="rounded-xl border border-border bg-card p-5">
+ <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+ <div>
+ <h2 className="text-sm font-semibold text-card-foreground">{title}</h2>
+ <p className="mt-1 text-xs text-muted-foreground">
+ Refine the reporting view without changing the operational request queue.
+ </p>
+ </div>
+ <label className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-muted-foreground">
+ <input
+ type="checkbox"
+ checked={Boolean(filters.overdueOnly)}
+ onChange={(event) => onChange("overdueOnly", event.target.checked)}
+ />
+ Overdue only
+ </label>
+ </div>
+ <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+ <label>
+ <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Branch</span>
+ <select
+ value={branchValue || ""}
+ onChange={(event) => onChange("branch", event.target.value)}
+ disabled={!isOwner}
+ className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-muted-foreground disabled:bg-muted"
+ >
+ {isOwner ? <option value="all">All Branches</option> : null}
+ {BRANCH_OPTIONS.map((branch) => (
+ <option key={branch.value} value={branch.value}>{branch.label}</option>
+ ))}
+ </select>
+ </label>
+ <label>
+ <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Date From</span>
+ <input type="date" value={filters.dateFrom} onChange={(event) => onChange("dateFrom", event.target.value)} className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-muted-foreground" />
+ </label>
+ <label>
+ <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Date To</span>
+ <input type="date" value={filters.dateTo} onChange={(event) => onChange("dateTo", event.target.value)} className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-muted-foreground" />
+ </label>
+ <label>
+ <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Status</span>
+ <select value={filters.status} onChange={(event) => onChange("status", event.target.value)} className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-muted-foreground">
+ <option value="all">All statuses</option>
+ {SUMMARY_STATUSES.map((status) => <option key={status.key} value={status.key}>{status.label}</option>)}
+ </select>
+ </label>
+ <label>
+ <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Request Type</span>
+ <select value={filters.requestType} onChange={(event) => onChange("requestType", event.target.value)} className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-muted-foreground">
+ <option value="all">All request types</option>
+ {MAINTENANCE_REQUEST_TYPES.map((type) => <option key={type} value={type}>{getMaintenanceTypeMeta(type).label}</option>)}
+ </select>
+ </label>
+ <label>
+ <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Urgency</span>
+ <select value={filters.urgency} onChange={(event) => onChange("urgency", event.target.value)} className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-muted-foreground">
+ <option value="all">All urgency levels</option>
+ {MAINTENANCE_URGENCY_LEVELS.map((urgency) => <option key={urgency} value={urgency}>{getMaintenanceUrgencyMeta(urgency).label}</option>)}
+ </select>
+ </label>
+ <label>
+ <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Service Provider</span>
+ <select value={filters.provider} onChange={(event) => onChange("provider", event.target.value)} className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-muted-foreground">
+ <option value="all">All providers</option>
+ {providerOptions.map((provider) => <option key={provider} value={provider}>{provider}</option>)}
+ </select>
+ </label>
+ <label>
+ <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Assignment</span>
+ <select value={filters.assignmentStatus} onChange={(event) => onChange("assignmentStatus", event.target.value)} className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-muted-foreground">
+ {ASSIGNMENT_FILTER_OPTIONS.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
+ </select>
+ </label>
+ <label>
+ <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">SLA Health</span>
+ <select value={filters.slaHealth} onChange={(event) => onChange("slaHealth", event.target.value)} className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-muted-foreground">
+ {ANALYTICS_SLA_OPTIONS.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
+ </select>
+ </label>
+ </div>
+ </section>
+ );
+}
+
+function MaintenanceMetricsGrid({ summary = {}, isOwner = false }) {
+ const metrics = [
+ ["Total Requests", summary.totalRequests ?? 0, "blue"],
+ ["Pending Requests", summary.pendingRequests ?? 0, "amber"],
+ ["In Progress", summary.inProgressRequests ?? 0, "violet"],
+ ["Completed", summary.completedRequests ?? 0, "green"],
+ ["Overdue", summary.overdueRequests ?? 0, "rose"],
+ ["Cancelled/Rejected", summary.cancelledRejectedRequests ?? 0, "rose"],
+ ["Avg Response", summary.averageResponseTimeLabel || "Not enough data", "blue"],
+ ["Avg Resolution", summary.averageResolutionTimeLabel || "Not enough data", "green"],
+ ["Most Common Issue", summary.mostCommonIssueType || "Not enough data", "violet"],
+ ["Assigned", summary.assignedRequests ?? 0, "blue"],
+ ["Unassigned", summary.unassignedRequests ?? 0, "amber"],
+ ...(isOwner ? [["Top Branch", summary.branchWithMostRequests || "Not enough data", "green"]] : []),
+ ];
+ return (
+ <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+ {metrics.map(([label, value, tone]) => (
+ <ReportMetricCard key={label} label={label} value={value} tone={tone} />
+ ))}
+ </div>
+ );
+}
+
+function MaintenanceAnalyticsCharts({ data, isOwner }) {
+ const charts = data?.charts || {};
+ const emptyTitle = "No maintenance data";
+ const emptyDescription = "No maintenance data found for the selected filters.";
+ return (
+ <div className="grid gap-4 xl:grid-cols-2">
+ <ReportChartPanel title="Requests by Status">
+ <AnalyticsDonutChart data={charts.requestsByStatus || []} centerLabel={{ value: data?.summary?.totalRequests || 0, label: "Requests" }} emptyTitle={emptyTitle} emptyDescription={emptyDescription} />
+ </ReportChartPanel>
+ <ReportChartPanel title="Requests by Issue Type">
+ <AnalyticsBarChart data={charts.requestsByIssueType || []} bars={[{ key: "value", label: "Requests", color: "#0ea5e9" }]} emptyTitle={emptyTitle} emptyDescription={emptyDescription} />
+ </ReportChartPanel>
+ <ReportChartPanel title="Requests by Urgency">
+ <AnalyticsDonutChart data={charts.requestsByUrgency || []} emptyTitle={emptyTitle} emptyDescription={emptyDescription} />
+ </ReportChartPanel>
+ <ReportChartPanel title="Monthly Maintenance Trend">
+ <AnalyticsLineChart data={charts.monthlyTrend || []} lines={[{ key: "total", label: "Total" }, { key: "completed", label: "Completed" }, { key: "overdue", label: "Overdue" }]} emptyTitle={emptyTitle} emptyDescription={emptyDescription} />
+ </ReportChartPanel>
+ <ReportChartPanel title="Overdue Requests Overview">
+ <AnalyticsDonutChart data={charts.overdueOverview || []} emptyTitle={emptyTitle} emptyDescription={emptyDescription} />
+ </ReportChartPanel>
+ {isOwner ? (
+ <>
+ <ReportChartPanel title="Requests per Branch">
+ <AnalyticsBarChart data={charts.requestsPerBranch || []} bars={[{ key: "value", label: "Requests", color: "#6366f1" }]} emptyTitle={emptyTitle} emptyDescription={emptyDescription} />
+ </ReportChartPanel>
+ <ReportChartPanel title="Average Resolution Time per Branch">
+ <AnalyticsBarChart data={charts.averageResolutionTimePerBranch || []} bars={[{ key: "value", label: "Hours", color: "#10b981" }]} emptyTitle={emptyTitle} emptyDescription={emptyDescription} />
+ </ReportChartPanel>
+ <ReportChartPanel title="Overdue Requests by Branch">
+ <AnalyticsBarChart data={charts.overdueRequestsByBranch || []} bars={[{ key: "value", label: "Overdue", color: "#ef4444" }]} emptyTitle={emptyTitle} emptyDescription={emptyDescription} />
+ </ReportChartPanel>
+ </>
+ ) : null}
  </div>
  );
 }
@@ -1485,6 +2115,7 @@ function ServiceProviderAssignmentPanel({
  isAssigning = false,
  isSuggesting = false,
  disabled = false,
+ assignmentDisabled = false,
  onChoiceChange,
  onManualChange,
  onSaveForFutureChange,
@@ -1518,6 +2149,8 @@ function ServiceProviderAssignmentPanel({
  manualProvider.providerName.trim() !== String(currentName || "").trim() ||
  manualProvider.contactNumber.trim() !== String(currentContact || "").trim() ||
  manualProvider.serviceType.trim() !== String(currentCategory || "").trim() ||
+ String(manualProvider.minRate || "").trim() ||
+ String(manualProvider.maxRate || "").trim() ||
  manualProvider.notes.trim() !== String(currentNotes || "").trim();
  const hasAssignmentChanges =
  selectedChoice === PROVIDER_NONE_CHOICE
@@ -1527,6 +2160,9 @@ function ServiceProviderAssignmentPanel({
  : selectedChoice !== currentProviderId ||
  currentProviderSource !== "directory" ||
  manualProvider.notes.trim() !== String(currentNotes || "").trim();
+ const comparisonRows = Array.isArray(suggestion?.comparison)
+ ? suggestion.comparison
+ : [];
 
  return (
  <div className="rounded-xl border border-border bg-card p-5">
@@ -1618,6 +2254,9 @@ function ServiceProviderAssignmentPanel({
  <div className="text-xs text-muted-foreground">
  Contact: {selectedProvider.contactNumber}
  </div>
+ <div className="text-xs text-muted-foreground">
+ Estimated rate: {getProviderRateLabel(selectedProvider)}
+ </div>
  {selectedProvider.notes ? (
  <div className="mt-2 text-xs text-muted-foreground">{selectedProvider.notes}</div>
  ) : null}
@@ -1631,6 +2270,7 @@ function ServiceProviderAssignmentPanel({
  Provider Name
  </span>
  <input
+ id="maintenance-provider-field-providerName"
  value={manualProvider.providerName}
  onChange={(event) => onManualChange("providerName", event.target.value)}
  disabled={disabled || isAssigning}
@@ -1647,6 +2287,9 @@ function ServiceProviderAssignmentPanel({
  Contact Number
  </span>
  <input
+ id="maintenance-provider-field-contactNumber"
+ inputMode="numeric"
+ maxLength={11}
  value={manualProvider.contactNumber}
  onChange={(event) => onManualChange("contactNumber", event.target.value)}
  disabled={disabled || isAssigning}
@@ -1663,6 +2306,7 @@ function ServiceProviderAssignmentPanel({
  Service Type
  </span>
  <input
+ id="maintenance-provider-field-serviceType"
  value={manualProvider.serviceType}
  onChange={(event) => onManualChange("serviceType", event.target.value)}
  disabled={disabled || isAssigning}
@@ -1676,16 +2320,58 @@ function ServiceProviderAssignmentPanel({
  </label>
  <label>
  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Estimated Min Rate
+ </span>
+ <input
+ id="maintenance-provider-field-minRate"
+ inputMode="decimal"
+ value={manualProvider.minRate}
+ onChange={(event) => onManualChange("minRate", event.target.value)}
+ disabled={disabled || isAssigning}
+ className={buildFieldClassName(
+ Boolean(fieldErrors.minRate),
+ "mt-2 h-10 w-full rounded-lg border bg-card px-3 text-sm text-card-foreground focus:outline-none focus:ring-2",
+ )}
+ placeholder="800"
+ />
+ {fieldErrors.minRate ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.minRate}</p> : null}
+ </label>
+ <label>
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+ Estimated Max Rate
+ </span>
+ <input
+ id="maintenance-provider-field-maxRate"
+ inputMode="decimal"
+ value={manualProvider.maxRate}
+ onChange={(event) => onManualChange("maxRate", event.target.value)}
+ disabled={disabled || isAssigning}
+ className={buildFieldClassName(
+ Boolean(fieldErrors.maxRate),
+ "mt-2 h-10 w-full rounded-lg border bg-card px-3 text-sm text-card-foreground focus:outline-none focus:ring-2",
+ )}
+ placeholder="1500"
+ />
+ {fieldErrors.maxRate ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.maxRate}</p> : null}
+ </label>
+ <label>
+ <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
  Notes
  </span>
  <textarea
+ id="maintenance-provider-field-notes"
  rows="3"
  value={manualProvider.notes}
  onChange={(event) => onManualChange("notes", event.target.value)}
  disabled={disabled || isAssigning}
- className="mt-2 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-card-foreground focus:outline-none focus:ring-2 focus:ring-slate-100"
+ aria-invalid={Boolean(fieldErrors.notes)}
+ className={buildFieldClassName(
+ Boolean(fieldErrors.notes),
+ "mt-2 w-full rounded-lg border bg-card px-3 py-2 text-sm text-card-foreground focus:outline-none focus:ring-2",
+ )}
  placeholder="Optional internal provider notes"
  />
+ {fieldErrors.notes ? <p className="mt-1 text-xs text-rose-600">{fieldErrors.notes}</p> : null}
  </label>
  <label className="flex items-start gap-2 text-sm text-muted-foreground">
  <input
@@ -1705,18 +2391,57 @@ function ServiceProviderAssignmentPanel({
  ) : null}
 
  {suggestion ? (
- <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-sm text-sky-800">
+ <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-3 text-sm text-sky-800">
  {suggestion.recommendedProviderName ? (
  <>
- <div className="font-semibold">Suggested: {suggestion.recommendedProviderName}</div>
- <div className="mt-1">{suggestion.reason}</div>
+ <div className="flex flex-wrap items-center gap-2">
+ <div className="font-semibold">Recommended: {suggestion.recommendedProviderName}</div>
+ {suggestion.bestOptionBadge ? (
+ <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-sky-900">
+ {suggestion.bestOptionBadge}
+ </span>
+ ) : null}
+ </div>
+ <div className="mt-1 text-xs text-sky-900">
+ {suggestion.serviceType ? `${suggestion.serviceType} service` : "Maintenance service"}
+ {" - "}
+ {suggestion.estimatedRateLabel || "Rate not recorded"}
+ </div>
+ <div className="mt-2">{suggestion.reason}</div>
+ {comparisonRows.length ? (
+ <div className="mt-3 overflow-x-auto rounded-lg border border-sky-100 bg-white">
+ <table className="min-w-full text-left text-xs">
+ <thead className="bg-sky-50 text-sky-900">
+ <tr>
+ <th className="px-3 py-2 font-semibold">Provider</th>
+ <th className="px-3 py-2 font-semibold">Estimated Rate</th>
+ <th className="px-3 py-2 font-semibold">Strength</th>
+ <th className="px-3 py-2 font-semibold">AI Rating</th>
+ </tr>
+ </thead>
+ <tbody className="divide-y divide-sky-100 text-sky-900">
+ {comparisonRows.map((row) => (
+ <tr key={row.providerId || row.providerName}>
+ <td className="px-3 py-2 font-medium">{row.providerName}</td>
+ <td className="px-3 py-2">{row.estimatedRateLabel || "Rate not recorded"}</td>
+ <td className="px-3 py-2">{row.strength || "Recommended option"}</td>
+ <td className="px-3 py-2">{row.aiRating ?? 0}%</td>
+ </tr>
+ ))}
+ </tbody>
+ </table>
+ </div>
+ ) : null}
+ <p className="mt-2 text-xs text-sky-900">
+ Rates are estimated and may change depending on the actual repair scope.
+ </p>
  <button
  type="button"
- className="mt-2 text-xs font-semibold text-sky-900 underline"
+ className="mt-3 inline-flex h-8 items-center justify-center rounded-md bg-sky-900 px-3 text-xs font-semibold text-white hover:bg-sky-950 disabled:opacity-60"
  onClick={() => onUseSuggestion(suggestion.recommendedProviderId)}
  disabled={disabled || isAssigning}
  >
- Use suggestion
+ Select Provider
  </button>
  </>
  ) : (
@@ -1747,7 +2472,7 @@ function ServiceProviderAssignmentPanel({
  color: "var(--primary-foreground)",
  }}
  onClick={onAssign}
- disabled={disabled || isAssigning || !hasAssignmentChanges}
+ disabled={disabled || assignmentDisabled || isAssigning || !hasAssignmentChanges || Object.keys(fieldErrors).some((key) => Boolean(fieldErrors[key]))}
  title={!hasAssignmentChanges ? "No assignment changes to save." : undefined}
  >
  {isAssigning ? "Saving..." : "Save Assignment"}
@@ -1762,7 +2487,13 @@ function ServiceProviderAssignmentPanel({
 export default function AdminMaintenancePage() {
  const { user } = useAuth();
  const isOwner = user?.role === "owner";
+ const userBranch = normalizeMaintenanceBranch(user?.branch);
  const [searchParams, setSearchParams] = useSearchParams();
+ const requestedTab = searchParams.get("tab");
+ const [activeTab, setActiveTab] = useState(
+ MAINTENANCE_TABS.some((tab) => tab.key === requestedTab) ? requestedTab : "requests",
+ );
+ const defaultReportRange = useMemo(() => getDefaultMaintenanceReportRange(), []);
 
  const [statusFilter, setStatusFilter] = useState("all");
  const [archiveView, setArchiveView] = useState("active");
@@ -1783,6 +2514,32 @@ export default function AdminMaintenancePage() {
  const [summaryCardKey, setSummaryCardKey] = useState(null);
  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
  const [currentPage, setCurrentPage] = useState(1);
+ const [analyticsFilters, setAnalyticsFilters] = useState({
+ branch: isOwner ? "all" : userBranch,
+ dateFrom: defaultReportRange.dateFrom,
+ dateTo: defaultReportRange.dateTo,
+ status: "all",
+ requestType: "all",
+ urgency: "all",
+ provider: "all",
+ assignmentStatus: "all",
+ slaHealth: "all",
+ overdueOnly: false,
+ });
+ const [branchReportFilters, setBranchReportFilters] = useState({
+ branch: isOwner ? "all" : userBranch,
+ dateFrom: defaultReportRange.dateFrom,
+ dateTo: defaultReportRange.dateTo,
+ status: "all",
+ requestType: "all",
+ urgency: "all",
+ provider: "all",
+ assignmentStatus: "all",
+ slaHealth: "all",
+ overdueOnly: false,
+ });
+ const [analyticsRequestPage, setAnalyticsRequestPage] = useState(1);
+ const [branchReportRequestPage, setBranchReportRequestPage] = useState(1);
  const [selectedRequestId, setSelectedRequestId] = useState(null);
  const [draftStatus, setDraftStatus] = useState("viewed");
  const [draftNotes, setDraftNotes] = useState("");
@@ -1820,6 +2577,7 @@ export default function AdminMaintenancePage() {
  });
  const [reportPreview, setReportPreview] = useState(null);
  const [isCopyingReport, setIsCopyingReport] = useState(false);
+ const [sendTenantSummaryDialogOpen, setSendTenantSummaryDialogOpen] = useState(false);
  const [updateType, setUpdateType] = useState("status_update");
  const [attachmentRemovalDialog, setAttachmentRemovalDialog] = useState({
  open: false,
@@ -1866,6 +2624,15 @@ export default function AdminMaintenancePage() {
  [archiveView, branchFilter, dateFrom, dateTo, isOwner, requestTypeFilter, urgencyFilter],
  );
 
+ const analyticsQueryFilters = useMemo(
+ () => createReportFilterPayload(analyticsFilters, { isOwner, userBranch }),
+ [analyticsFilters, isOwner, userBranch],
+ );
+ const branchReportQueryFilters = useMemo(
+ () => createReportFilterPayload(branchReportFilters, { isOwner, userBranch }),
+ [branchReportFilters, isOwner, userBranch],
+ );
+
  const {
  data: requestsData,
  isLoading,
@@ -1873,6 +2640,30 @@ export default function AdminMaintenancePage() {
  error,
  } = useAdminMaintenanceRequests(listFilters);
  const { data: summaryData } = useAdminMaintenanceRequests(summaryFilters);
+ const {
+ data: analyticsData,
+ isLoading: isAnalyticsLoading,
+ isError: isAnalyticsError,
+ error: analyticsError,
+ } = useMaintenanceAnalytics(analyticsQueryFilters, {
+ enabled: activeTab === "analytics",
+ });
+ const {
+ data: branchReportData,
+ isLoading: isBranchReportLoading,
+ isError: isBranchReportError,
+ error: branchReportError,
+ } = useMaintenanceBranchReport(branchReportQueryFilters, {
+ enabled: activeTab === "branch_reports",
+ });
+ const {
+ data: providerReportData,
+ isLoading: isProviderReportLoading,
+ isError: isProviderReportError,
+ error: providerReportError,
+ } = useMaintenanceProviderReport(branchReportQueryFilters, {
+ enabled: activeTab === "service_providers",
+ });
  const {
  data: requestDetailData,
  isLoading: isDetailLoading,
@@ -1887,6 +2678,7 @@ export default function AdminMaintenancePage() {
  const assignProviderMutation = useAssignMaintenanceProvider();
  const generateUpdateMutation = useGenerateMaintenanceUpdate();
  const generateReportMutation = useGenerateMaintenanceReport();
+ const sendTenantSummaryMutation = useSendMaintenanceTenantSummary();
  const suggestProviderMutation = useSuggestMaintenanceProvider();
 
  const requests = requestsData?.requests || [];
@@ -2135,6 +2927,13 @@ export default function AdminMaintenancePage() {
  ]);
 
  useEffect(() => {
+ const nextTab = MAINTENANCE_TABS.some((tab) => tab.key === requestedTab)
+ ? requestedTab
+ : "requests";
+ setActiveTab((current) => (current === nextTab ? current : nextTab));
+ }, [requestedTab]);
+
+ useEffect(() => {
  const nextBranch = normalizeBranchFilterValue({
  requestedBranch: isOwner ? requestedBranch : null,
  allValue: "all",
@@ -2154,6 +2953,16 @@ export default function AdminMaintenancePage() {
  if (nextParams.toString() === searchParams.toString()) return;
  setSearchParams(nextParams, { replace: true });
  }, [branchFilter, isOwner, searchParams, setSearchParams, user?.role]);
+
+ useEffect(() => {
+ if (isOwner) return;
+ setAnalyticsFilters((current) =>
+ current.branch === userBranch ? current : { ...current, branch: userBranch },
+ );
+ setBranchReportFilters((current) =>
+ current.branch === userBranch ? current : { ...current, branch: userBranch },
+ );
+ }, [isOwner, userBranch]);
 
  useEffect(() => {
  if (!selectedRequest) return;
@@ -2183,6 +2992,8 @@ export default function AdminMaintenancePage() {
  providerName: getAssignedProviderName(selectedRequest),
  contactNumber: getAssignedProviderContact(selectedRequest),
  serviceType: getAssignedProviderCategory(selectedRequest),
+ minRate: "",
+ maxRate: "",
  notes:
  selectedRequest.assignedProvider?.notes ||
  selectedRequest.assignedProviderNotes ||
@@ -2296,6 +3107,53 @@ export default function AdminMaintenancePage() {
  }, 0);
  };
 
+ const scrollToFirstProviderError = (errors) => {
+ const firstField = ["assigned_to", "providerName", "contactNumber", "serviceType", "minRate", "maxRate", "notes"].find((field) => errors[field]);
+ if (!firstField) return;
+
+ window.setTimeout(() => {
+ const fieldNode =
+ document.getElementById(`maintenance-provider-field-${firstField}`) ||
+ document.getElementById(`maintenance-update-field-${firstField}`);
+ if (!fieldNode) return;
+ fieldNode.scrollIntoView({ behavior: "smooth", block: "center" });
+ const focusTarget = fieldNode.matches?.("input,select,textarea,button")
+ ? fieldNode
+ : fieldNode.querySelector("input,select,textarea,button");
+ focusTarget?.focus?.({ preventScroll: true });
+ }, 0);
+ };
+
+ const setUpdateFieldError = (field, message) => {
+ setUpdateFieldErrors((current) => {
+ const next = { ...current };
+ if (message) next[field] = message;
+ else delete next[field];
+ return next;
+ });
+ if (!message && updateFormMessage) setUpdateFormMessage("");
+ };
+
+ const setReplyFieldError = (field, message) => {
+ setReplyFieldErrors((current) => {
+ const next = { ...current };
+ if (message) next[field] = message;
+ else delete next[field];
+ return next;
+ });
+ if (!message && replyFormMessage) setReplyFormMessage("");
+ };
+
+ const setProofFieldError = (field, message) => {
+ setProofFieldErrors((current) => {
+ const next = { ...current };
+ if (message) next[field] = message;
+ else delete next[field];
+ return next;
+ });
+ if (!message && proofFormMessage) setProofFormMessage("");
+ };
+
  const validateMaintenanceUpdateForm = () => {
  const errors = {};
  const allowedStatuses = new Set(selectedRequestStatusOptions);
@@ -2317,6 +3175,22 @@ export default function AdminMaintenancePage() {
  ) {
  errors.notes = "Please add resolution notes or a completion work log before marking this request as Resolved.";
  }
+
+ const resolutionNoteError = validateMinimumText(
+ draftNotes,
+ TEXT_MIN_LENGTHS.adminRemarks,
+ "Resolution notes",
+ { required: false },
+ );
+ if (draftNotes.trim() && resolutionNoteError) errors.notes = resolutionNoteError;
+
+ const workLogNoteError = validateMinimumText(
+ draftWorkLogNote,
+ TEXT_MIN_LENGTHS.progressUpdate,
+ updateType === "internal_note" ? "Admin remarks" : "Progress update",
+ { required: updateType === "internal_note" },
+ );
+ if (workLogNoteError) errors.work_log_note = workLogNoteError;
 
  if (uploadingUpdateAttachment) {
  errors.attachments = "Please wait until the attachment finishes uploading.";
@@ -2457,6 +3331,7 @@ export default function AdminMaintenancePage() {
  if (files.length === 0) return;
 
  clearReplyFieldError("reply_attachments");
+ if (!replyMessage.trim()) clearReplyFieldError("reply_message");
  const maintenanceRequestId = getMaintenanceRequestUploadId(selectedRequest);
  if (!maintenanceRequestId) {
  const message = "Failed to upload attachment. Please try again.";
@@ -2679,6 +3554,13 @@ export default function AdminMaintenancePage() {
 
  const validateProofForm = () => {
  const errors = {};
+ const proofNoteError = validateMinimumText(
+ proofNote,
+ TEXT_MIN_LENGTHS.adminRemarks,
+ "Admin remarks",
+ { required: false },
+ );
+ if (proofNoteError) errors.proof_note = proofNoteError;
  if (uploadingProofAttachment) {
  errors.proof_attachments = "Please wait until the proof file finishes uploading.";
  } else if (proofAttachments.some((attachment) => attachment.uploadStatus === "failed")) {
@@ -2921,7 +3803,7 @@ export default function AdminMaintenancePage() {
  setShowAdvancedFilters(false);
  };
 
- const handleExport = () => {
+const handleExport = () => {
  exportToCSV(
  filteredRequests.map((request) => ({
  requestId: request.request_id,
@@ -2949,6 +3831,121 @@ export default function AdminMaintenancePage() {
  ],
  "maintenance-requests",
  );
+ showNotification("CSV downloaded successfully.", "success");
+ };
+
+ const handleTabChange = (tabKey) => {
+ if (!MAINTENANCE_TABS.some((tab) => tab.key === tabKey)) return;
+ setActiveTab(tabKey);
+ const nextParams = new URLSearchParams(searchParams);
+ if (tabKey === "requests") {
+ nextParams.delete("tab");
+ } else {
+ nextParams.set("tab", tabKey);
+ }
+ setSearchParams(nextParams, { replace: true });
+ };
+
+ const updateAnalyticsFilter = (field, value) => {
+ setAnalyticsRequestPage(1);
+ setAnalyticsFilters((current) => ({ ...current, [field]: value }));
+ };
+
+ const updateBranchReportFilter = (field, value) => {
+ setBranchReportRequestPage(1);
+ setBranchReportFilters((current) => ({ ...current, [field]: value }));
+ };
+
+ const buildReportPdfSections = (report, title = "Maintenance Report") => {
+ const summary = report?.summary || {};
+ const breakdowns = report?.breakdowns || {};
+ const requests = report?.requests || [];
+ return [
+ {
+ title: "Summary",
+ rows: [
+ `Total requests: ${summary.totalRequests ?? 0}`,
+ `Pending requests: ${summary.pendingRequests ?? 0}`,
+ `In progress requests: ${summary.inProgressRequests ?? 0}`,
+ `Completed requests: ${summary.completedRequests ?? 0}`,
+ `Overdue requests: ${summary.overdueRequests ?? 0}`,
+ `Average response time: ${summary.averageResponseTimeLabel || "Not enough data"}`,
+ `Average resolution time: ${summary.averageResolutionTimeLabel || "Not enough data"}`,
+ `Most common issue: ${summary.mostCommonIssueType || "Not enough data"}`,
+ ],
+ },
+ {
+ title: "Status Breakdown",
+ rows: (breakdowns.status || []).map((item) => `${item.label}: ${item.value}`),
+ },
+ {
+ title: "Issue Type Breakdown",
+ rows: (breakdowns.issueType || []).map((item) => `${item.label}: ${item.value}`),
+ },
+ {
+ title: "Filtered Requests",
+ rows: requests.map(
+ (request) =>
+ `${request.requestId} | ${request.tenantName} | ${request.branchLabel} | ${request.requestTypeLabel} | ${request.statusLabel} | ${request.assignedProvider} | ${request.sla?.label || ""}`,
+ ),
+ },
+ ].filter((section) => section.rows.length > 0 || section.title === "Summary");
+ };
+
+ const exportReportRequestsCsv = (requests, filename) => {
+ exportToCSV(
+ (requests || []).map((request) => ({
+ ...request,
+ slaLabel: request.sla?.label || "",
+ })),
+ REPORT_REQUEST_COLUMNS,
+ filename,
+ );
+ showNotification("CSV downloaded successfully.", "success");
+ };
+
+ const handleExportAnalytics = (format) => {
+ if (!analyticsData) return;
+ try {
+ if (format === "pdf") {
+ exportReportPdf({
+ title: "Maintenance Analytics",
+ subtitle: `${analyticsData.scope?.branchLabel || "All Branches"} - ${analyticsData.filters?.dateFrom || ""} to ${analyticsData.filters?.dateTo || ""}`,
+ filename: "maintenance-analytics.pdf",
+ sections: buildReportPdfSections(analyticsData, "Maintenance Analytics"),
+ });
+ showNotification("PDF downloaded successfully.", "success");
+ return;
+ }
+ exportReportRequestsCsv(analyticsData.requests, "maintenance-analytics");
+ } catch {
+ showNotification("Unable to export report. Please try again.", "error");
+ }
+ };
+
+ const handleExportBranchReport = (format) => {
+ if (!branchReportData) return;
+ try {
+ if (format === "pdf") {
+ exportReportPdf({
+ title: branchReportData.title || "Maintenance Branch Report",
+ subtitle: `${branchReportData.scope?.branchLabel || "All Branches"} - ${branchReportData.filters?.dateFrom || ""} to ${branchReportData.filters?.dateTo || ""}`,
+ filename: "maintenance-branch-report.pdf",
+ sections: buildReportPdfSections(branchReportData, "Maintenance Branch Report"),
+ });
+ showNotification("PDF downloaded successfully.", "success");
+ return;
+ }
+ exportReportRequestsCsv(branchReportData.requests, "maintenance-branch-report");
+ } catch {
+ showNotification("Unable to export report. Please try again.", "error");
+ }
+ };
+
+ const handleExportProviderReport = () => {
+ if (!providerReportData) return;
+ exportToCSV(providerReportData.providers || [], PROVIDER_REPORT_COLUMNS, "maintenance-service-providers");
+ showNotification("CSV downloaded successfully.", "success");
  };
 
  const clearProviderFieldError = (field) => {
@@ -2978,23 +3975,72 @@ export default function AdminMaintenancePage() {
  };
 
  const handleManualProviderChange = (field, value) => {
- setManualProvider((current) => ({ ...current, [field]: value }));
- clearProviderFieldError(field);
+ const nextValue =
+ field === "contactNumber"
+ ? sanitizeDigitsOnly(value).slice(0, 11)
+ : ["minRate", "maxRate"].includes(field)
+ ? sanitizeAmountInput(value)
+ : value;
+ setManualProvider((current) => ({ ...current, [field]: nextValue }));
+ const message =
+ field === "providerName"
+ ? validateMinimumText(nextValue, TEXT_MIN_LENGTHS.providerName, "Provider name")
+ : field === "contactNumber"
+ ? validatePhilippineMobile(nextValue)
+ : field === "serviceType"
+ ? validateMinimumText(nextValue, TEXT_MIN_LENGTHS.serviceType, "Service type")
+ : field === "minRate" || field === "maxRate"
+ ? validateAmount(nextValue, { required: false })
+ : field === "notes"
+ ? validateMinimumText(nextValue, TEXT_MIN_LENGTHS.providerNotes, "Provider notes", { required: false })
+ : "";
+ setProviderFieldErrors((current) => {
+ const next = { ...current };
+ if (message) next[field] = message;
+ else delete next[field];
+ return next;
+ });
+ if (!message && providerFormMessage) setProviderFormMessage("");
  clearProviderFieldError("assigned_to");
  };
 
  const validateProviderAssignment = () => {
  const errors = {};
  if (providerChoice === PROVIDER_MANUAL_CHOICE) {
- if (!manualProvider.providerName.trim()) {
- errors.providerName = "Provider name is required.";
+ const providerNameError = validateMinimumText(
+ manualProvider.providerName,
+ TEXT_MIN_LENGTHS.providerName,
+ "Provider name",
+ );
+ const contactError = validatePhilippineMobile(manualProvider.contactNumber);
+ const serviceTypeError = validateMinimumText(
+ manualProvider.serviceType,
+ TEXT_MIN_LENGTHS.serviceType,
+ "Service type",
+ );
+ const notesError = validateMinimumText(
+ manualProvider.notes,
+ TEXT_MIN_LENGTHS.providerNotes,
+ "Provider notes",
+ { required: false },
+ );
+ const minRateError = validateAmount(manualProvider.minRate, { required: false });
+ const maxRateError = validateAmount(manualProvider.maxRate, { required: false });
+ if (providerNameError) errors.providerName = providerNameError;
+ if (contactError) errors.contactNumber = contactError;
+ if (serviceTypeError) errors.serviceType = serviceTypeError;
+ if (minRateError) errors.minRate = minRateError;
+ if (maxRateError) errors.maxRate = maxRateError;
+ if (
+ !minRateError &&
+ !maxRateError &&
+ manualProvider.minRate !== "" &&
+ manualProvider.maxRate !== "" &&
+ Number(manualProvider.maxRate) < Number(manualProvider.minRate)
+ ) {
+ errors.maxRate = "Maximum rate cannot be lower than minimum rate.";
  }
- if (!manualProvider.contactNumber.trim()) {
- errors.contactNumber = "Contact number is required.";
- }
- if (!manualProvider.serviceType.trim()) {
- errors.serviceType = "Service type is required.";
- }
+ if (notesError) errors.notes = notesError;
  return errors;
  }
 
@@ -3024,6 +4070,7 @@ export default function AdminMaintenancePage() {
  );
  setProviderFieldErrors(validationErrors);
  setProviderFormMessage(message);
+ scrollToFirstProviderError(validationErrors);
  showNotification(message, "error");
  return;
  }
@@ -3037,6 +4084,8 @@ export default function AdminMaintenancePage() {
  providerName: manualProvider.providerName.trim(),
  contactNumber: manualProvider.contactNumber.trim(),
  serviceType: manualProvider.serviceType.trim(),
+ minRate: manualProvider.minRate === "" ? undefined : Number(manualProvider.minRate),
+ maxRate: manualProvider.maxRate === "" ? undefined : Number(manualProvider.maxRate),
  notes: manualProvider.notes.trim(),
  saveForFuture: saveManualProviderForFuture,
  }
@@ -3056,7 +4105,7 @@ export default function AdminMaintenancePage() {
  setProviderSuggestion(null);
  showNotification("Service provider assignment saved.", "success");
  } catch (assignmentError) {
- const mappedErrors = mapMaintenanceApiErrors(assignmentError);
+ const mappedErrors = mapMaintenanceApiErrors(assignmentError, { scope: "provider" });
  const message = getMaintenanceApiErrorMessage(
  assignmentError,
  "Failed to assign service provider.",
@@ -3124,14 +4173,19 @@ export default function AdminMaintenancePage() {
  }
  };
 
- const handleGenerateReport = async (reportType) => {
- if (!selectedRequest) return;
+ const handleGenerateReport = async (reportType, requestIdOverride = null) => {
+ const requestId = requestIdOverride || selectedRequest?.request_id;
+ if (!requestId) return;
  try {
  const result = await generateReportMutation.mutateAsync({
- requestId: selectedRequest.request_id,
+ requestId,
  reportType,
  });
- setReportPreview(result);
+ setReportPreview({
+ ...result,
+ requestId,
+ });
+ setSendTenantSummaryDialogOpen(false);
  if (result?.message) {
  showNotification(result.message, "info");
  } else {
@@ -3162,24 +4216,93 @@ export default function AdminMaintenancePage() {
  }
  };
 
- const handleDownloadReport = () => {
+ const handleExportReport = (format) => {
  if (!reportPreview?.summary) return;
- const requestId = selectedRequest?.request_id || reportPreview.title || "maintenance";
- const safeRequestId = String(requestId).replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "");
- const reportSlug =
- reportPreview.reportType === "tenant" ? "tenant-summary" : "admin-report";
- const blob = new Blob([reportPreview.summary], {
- type: "text/plain;charset=utf-8",
+ const filenameBase = getReportFilenameBase(reportPreview, selectedRequest);
+ const meta = getRequestReportMeta(selectedRequest);
+ const label = REPORT_TYPE_LABELS[reportPreview.reportType] || "Maintenance Report";
+ const sections = [
+ {
+ title: "Request Information",
+ rows: [
+ `Request ID: ${meta.requestId}`,
+ `Tenant name: ${meta.tenantName}`,
+ ...(reportPreview.reportType === "admin" ? [`User ID: ${meta.userId}`] : []),
+ `Branch: ${meta.branch}`,
+ `Room/unit: ${meta.room}`,
+ `Request type: ${meta.requestType}`,
+ `Urgency: ${meta.urgency}`,
+ `Current status: ${meta.status}`,
+ `Created date: ${meta.createdAt}`,
+ `Updated date: ${meta.updatedAt}`,
+ ],
+ },
+ ...getStructuredReportSections(reportPreview, selectedRequest),
+ ];
+
+ if (format === "pdf") {
+ exportReportPdf({
+ title: reportPreview.title || REPORT_TYPE_LABELS[reportPreview.reportType] || "Maintenance Report",
+ subtitle: `${label} - Request ${meta.requestId}`,
+ badge: label,
+ generatedAt: reportPreview.generatedAt,
+ footerText: "Generated by Lilycrest Maintenance Management System",
+ filename: `${filenameBase}.pdf`,
+ sections,
  });
- const url = URL.createObjectURL(blob);
- const link = document.createElement("a");
- link.href = url;
- link.download = `maintenance-${reportSlug}-${safeRequestId || "request"}.txt`;
- document.body.appendChild(link);
- link.click();
- link.remove();
- URL.revokeObjectURL(url);
- showNotification("Report downloaded.", "success");
+ showNotification("PDF downloaded successfully.", "success");
+ return;
+ }
+
+ if (format === "csv") {
+ const csvRows = sections.flatMap((section) =>
+ (section.rows || [REPORT_NA]).map((row, index) => ({
+ section: section.title,
+ lineNumber: index + 1,
+ content: row,
+ })),
+ );
+  exportToCSV(
+ csvRows,
+ [
+ { key: "section", label: "Section" },
+ ...REPORT_EXPORT_COLUMNS,
+ ],
+  filenameBase,
+  );
+ showNotification("CSV downloaded successfully.", "success");
+ return;
+ }
+
+ };
+
+ const handleRequestSendTenantSummary = () => {
+ if (reportPreview?.reportType !== "tenant") return;
+ setSendTenantSummaryDialogOpen(true);
+ };
+
+ const handleConfirmSendTenantSummary = async () => {
+ const requestId = reportPreview?.requestId || selectedRequest?.request_id;
+ if (!requestId || reportPreview?.reportType !== "tenant") return;
+
+ try {
+ const result = await sendTenantSummaryMutation.mutateAsync({ requestId });
+ if (result?.report) {
+ setReportPreview((current) =>
+ current
+ ? {
+ ...current,
+ ...result.report,
+ requestId,
+ }
+ : current,
+ );
+ }
+ setSendTenantSummaryDialogOpen(false);
+ showNotification("Tenant summary sent successfully.", "success");
+ } catch {
+ showNotification("Unable to send tenant summary. Please try again.", "error");
+ }
  };
 
  const handleSummaryFilter = (index) => {
@@ -3273,7 +4396,16 @@ export default function AdminMaintenancePage() {
  errors.reply_attachments = "Please remove the invalid attachment before sending.";
  }
 
- if (!replyMessage.trim() && replyAttachments.length === 0) {
+ const replyTextError = validateMinimumText(
+ replyMessage,
+ TEXT_MIN_LENGTHS.replyMessage,
+ "Reply to tenant",
+ { required: replyAttachments.length === 0 },
+ );
+
+ if (replyTextError) {
+ errors.reply_message = replyTextError;
+ } else if (!replyMessage.trim() && replyAttachments.length === 0) {
  errors.reply_message = "Please enter a message or attach a file before sending.";
  }
 
@@ -3484,26 +4616,100 @@ export default function AdminMaintenancePage() {
  [],
  );
 
+ const analyticsColumns = useMemo(
+ () => [
+ { key: "requestId", label: "Request ID" },
+ { key: "tenantName", label: "Tenant Name" },
+ { key: "branchLabel", label: "Branch" },
+ { key: "room", label: "Room/Unit", render: (row) => row.room || "Not recorded" },
+ { key: "requestTypeLabel", label: "Request Type" },
+ { key: "urgencyLabel", label: "Urgency" },
+ { key: "statusLabel", label: "Status" },
+ { key: "assignedProvider", label: "Assigned Service Provider" },
+ { key: "createdAt", label: "Created", render: (row) => fmtDate(row.createdAt) },
+ { key: "updatedAt", label: "Last Updated", render: (row) => fmtDate(row.updatedAt) },
+ { key: "resolutionAt", label: "Resolution", render: (row) => row.resolutionAt ? fmtDate(row.resolutionAt) : "Not completed" },
+ {
+ key: "sla",
+ label: "SLA",
+ render: (row) => (
+ <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+ row.sla?.key === "overdue"
+ ? "bg-rose-50 text-rose-700"
+ : row.sla?.key === "due_soon"
+ ? "bg-amber-50 text-amber-700"
+ : row.sla?.key === "completed"
+ ? "bg-emerald-50 text-emerald-700"
+ : "bg-sky-50 text-sky-700"
+ }`}>
+ {row.sla?.label || "On Track"}
+ </span>
+ ),
+ },
+ {
+ key: "actions",
+ label: "Actions",
+ render: (row) => (
+ <div className="flex flex-wrap gap-1" onClick={(event) => event.stopPropagation()}>
+ <button type="button" className="rounded-md border border-border px-2 py-1 text-[11px] font-semibold text-muted-foreground hover:bg-muted" onClick={() => setSelectedRequestId(row.requestId)}>View Request</button>
+ <button type="button" className="rounded-md border border-border px-2 py-1 text-[11px] font-semibold text-muted-foreground hover:bg-muted" onClick={() => { setSelectedRequestId(row.requestId); handleGenerateReport("admin", row.requestId); }}>Admin Report</button>
+ <button type="button" className="rounded-md border border-border px-2 py-1 text-[11px] font-semibold text-muted-foreground hover:bg-muted" onClick={() => { setSelectedRequestId(row.requestId); handleGenerateReport("tenant", row.requestId); }}>Tenant Summary</button>
+ </div>
+ ),
+ },
+ ],
+ [handleGenerateReport],
+ );
+
+ const providerColumns = useMemo(
+ () => [
+ { key: "providerName", label: "Provider Name" },
+ { key: "contactNumber", label: "Contact Number", render: (row) => row.contactNumber || "Not recorded" },
+ { key: "assignedRequests", label: "Assigned" },
+ { key: "completedRequests", label: "Completed" },
+ { key: "activeRequests", label: "Pending/In Progress" },
+ { key: "overdueRequests", label: "Overdue" },
+ { key: "averageCompletionTimeLabel", label: "Avg Completion" },
+ { key: "lastAssignedRequestDate", label: "Last Assigned", render: (row) => row.lastAssignedRequestDate ? fmtDate(row.lastAssignedRequestDate) : "Not recorded" },
+ { key: "relatedRequestTypes", label: "Request Types", render: (row) => row.relatedRequestTypes?.join(", ") || "Not recorded" },
+ ],
+ [],
+ );
+
+ const currentUpdateValidationErrors =
+ selectedRequest && updateType === "tenant_reply"
+ ? validateReplyForm()
+ : selectedRequest && updateType === "admin_proof"
+ ? validateProofForm()
+ : selectedRequest
+ ? validateMaintenanceUpdateForm()
+ : {};
+ const isCurrentUpdateInvalid = Object.keys(currentUpdateValidationErrors).length > 0;
+ const isManualProviderInvalid =
+ providerChoice === PROVIDER_MANUAL_CHOICE &&
+ Object.keys(validateProviderAssignment()).length > 0;
+
  return (
- <div>
- <PageShell>
- <PageShell.Summary>
  <div>
  <div className="mb-4">
  <h1 className="mb-1 text-2xl font-semibold text-foreground">Maintenance</h1>
  <p className="mt-1 text-sm text-muted-foreground">
- Manage tenant repair requests, service provider assignments, and tenant updates.
+ Manage tenant repair requests, reporting, service provider performance, and branch maintenance insights.
  </p>
  </div>
+ <PageShell>
+ <PageShell.Summary>
+ {activeTab === "requests" ? (
  <SummaryBar
  items={summaryItems}
  activeIndex={activeSummaryIndex}
  onItemClick={(index) => handleSummaryFilter(index)}
  />
- </div>
+ ) : null}
  </PageShell.Summary>
 
  <PageShell.Actions>
+ {activeTab === "requests" ? (
  <section className="mt-5 rounded-xl border border-border bg-card px-5 py-5">
  <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
  Find requests quickly
@@ -3622,15 +4828,17 @@ export default function AdminMaintenancePage() {
  )}
  </button>
 
- <button
- type="button"
- className="inline-flex h-10 min-w-[130px] items-center justify-center gap-2 rounded-md border border-border bg-card px-4 text-sm font-medium text-card-foreground hover:bg-muted"
- onClick={handleExport}
+ <MaintenanceExportDropdown
+ options={[
+ {
+ key: "requests-csv",
+ label: "Download List as CSV",
+ onClick: handleExport,
+ disabled: filteredRequests.length === 0,
+ },
+ ]}
  disabled={filteredRequests.length === 0}
- >
- <FileDown size={14} />
- Export CSV
- </button>
+ />
 
  <button
  type="button"
@@ -3720,6 +4928,7 @@ export default function AdminMaintenancePage() {
  loading={isLoading}
  onRowClick={(row) => {
  setReportPreview(null);
+ setSendTenantSummaryDialogOpen(false);
  setSelectedRequestId(row.request_id);
  }}
  pagination={{
@@ -3748,15 +4957,136 @@ export default function AdminMaintenancePage() {
  </div>
  </div>
  </section>
+ ) : null}
  </PageShell.Actions>
 
  <PageShell.Content>
+ {activeTab === "analytics" ? (
+ <div className="space-y-5">
+ <div className="flex flex-wrap items-center justify-between gap-3">
+ <div>
+ <h2 className="text-lg font-semibold text-card-foreground">Maintenance Analytics Dashboard</h2>
+ <p className="mt-1 text-sm text-muted-foreground">Performance insights based on recorded maintenance data.</p>
+ </div>
+ <MaintenanceExportDropdown
+ options={[
+ { key: "analytics-pdf", label: "Download Analytics as PDF", onClick: () => handleExportAnalytics("pdf"), disabled: !analyticsData },
+ { key: "analytics-csv", label: "Download Analytics as CSV", onClick: () => handleExportAnalytics("csv"), disabled: !analyticsData },
+ ]}
+ disabled={!analyticsData}
+ />
+ </div>
+ <MaintenanceReportFilters filters={analyticsFilters} isOwner={isOwner} userBranch={userBranch} providerOptions={analyticsData?.providerOptions || []} onChange={updateAnalyticsFilter} title="Analytics filters" />
+ {isAnalyticsError ? (
+ <div className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-700">{analyticsError?.message || "Unable to load maintenance analytics. Please try again."}</div>
+ ) : isAnalyticsLoading ? (
+ <DrawerSkeleton rows={5} />
+ ) : (analyticsData?.requests || []).length === 0 ? (
+ <div className="rounded-xl border border-dashed border-border bg-card p-10 text-center text-sm text-muted-foreground">No maintenance data found for the selected filters.</div>
+ ) : (
+ <>
+ <MaintenanceMetricsGrid summary={analyticsData?.summary} isOwner={isOwner} />
+ <MaintenanceAnalyticsCharts data={analyticsData} isOwner={isOwner} />
+ <section className="rounded-xl border border-border bg-card p-5">
+ <h3 className="mb-3 text-sm font-semibold text-card-foreground">Filtered Maintenance Requests</h3>
+ <DataTable
+ columns={analyticsColumns}
+ data={analyticsData?.requests || []}
+ loading={isAnalyticsLoading}
+ onRowClick={(row) => setSelectedRequestId(row.requestId)}
+ pagination={{ page: analyticsRequestPage, pageSize: ITEMS_PER_PAGE, total: analyticsData?.requests?.length || 0, onPageChange: setAnalyticsRequestPage }}
+ emptyState={{ icon: Wrench, title: "No maintenance data found", description: "No maintenance data found for the selected filters." }}
+ />
+ </section>
+ </>
+ )}
+ </div>
+ ) : null}
+
+ {activeTab === "branch_reports" ? (
+ <div className="space-y-5">
+ <div className="flex flex-wrap items-center justify-between gap-3">
+ <div>
+ <h2 className="text-lg font-semibold text-card-foreground">Branch-Level Maintenance Report</h2>
+ <p className="mt-1 text-sm text-muted-foreground">Generate official branch reports from selected filters.</p>
+ </div>
+ <MaintenanceExportDropdown
+ options={[
+ { key: "branch-pdf", label: "Download as PDF", onClick: () => handleExportBranchReport("pdf"), disabled: !branchReportData },
+ { key: "branch-csv", label: "Download as CSV", onClick: () => handleExportBranchReport("csv"), disabled: !branchReportData },
+ ]}
+ disabled={!branchReportData}
+ />
+ </div>
+ <MaintenanceReportFilters filters={branchReportFilters} isOwner={isOwner} userBranch={userBranch} providerOptions={branchReportData?.providerOptions || analyticsData?.providerOptions || []} onChange={updateBranchReportFilter} title="Report filters" />
+ {isBranchReportError ? (
+ <div className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-700">{branchReportError?.message || "Unable to generate branch report. Please try again."}</div>
+ ) : isBranchReportLoading ? (
+ <DrawerSkeleton rows={5} />
+ ) : (
+ <section className="rounded-xl border border-border bg-card p-5">
+ <div className="mb-5">
+ <h3 className="text-base font-semibold text-card-foreground">{branchReportData?.title || "Maintenance Branch Report"}</h3>
+ <p className="mt-1 text-xs text-muted-foreground">
+ {branchReportData?.scope?.branchLabel || "All Branches"} - {branchReportData?.filters?.dateFrom || ""} to {branchReportData?.filters?.dateTo || ""} - Generated by {branchReportData?.scope?.generatedBy || "Admin"}
+ </p>
+ </div>
+ {(branchReportData?.requests || []).length === 0 ? (
+ <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">No maintenance data found for the selected filters.</div>
+ ) : (
+ <>
+ <MaintenanceMetricsGrid summary={branchReportData?.summary} isOwner={isOwner} />
+ <div className="mt-5 grid gap-4 lg:grid-cols-2">
+ <ReportChartPanel title="Status Breakdown"><AnalyticsDonutChart data={branchReportData?.breakdowns?.status || []} /></ReportChartPanel>
+ <ReportChartPanel title="Issue Type Breakdown"><AnalyticsBarChart data={branchReportData?.breakdowns?.issueType || []} bars={[{ key: "value", label: "Requests" }]} /></ReportChartPanel>
+ </div>
+ <div className="mt-5">
+ <DataTable
+ columns={analyticsColumns}
+ data={branchReportData?.requests || []}
+ loading={isBranchReportLoading}
+ onRowClick={(row) => setSelectedRequestId(row.requestId)}
+ pagination={{ page: branchReportRequestPage, pageSize: ITEMS_PER_PAGE, total: branchReportData?.requests?.length || 0, onPageChange: setBranchReportRequestPage }}
+ emptyState={{ icon: FileText, title: "No report rows", description: "No maintenance data found for the selected filters." }}
+ />
+ </div>
+ </>
+ )}
+ </section>
+ )}
+ </div>
+ ) : null}
+
+ {activeTab === "service_providers" ? (
+ <div className="space-y-5">
+ <div className="flex flex-wrap items-center justify-between gap-3">
+ <div>
+ <h2 className="text-lg font-semibold text-card-foreground">Service Provider Performance</h2>
+ <p className="mt-1 text-sm text-muted-foreground">Assignment, completion, and overdue performance by provider.</p>
+ </div>
+ <MaintenanceExportDropdown options={[{ key: "providers-csv", label: "Download as CSV", onClick: handleExportProviderReport, disabled: !providerReportData }]} disabled={!providerReportData} />
+ </div>
+ <MaintenanceReportFilters filters={branchReportFilters} isOwner={isOwner} userBranch={userBranch} providerOptions={providerReportData?.providerOptions || []} onChange={updateBranchReportFilter} title="Provider filters" />
+ {isProviderReportError ? (
+ <div className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-700">{providerReportError?.message || "Unable to load service provider data. Please try again."}</div>
+ ) : isProviderReportLoading ? (
+ <DrawerSkeleton rows={5} />
+ ) : (providerReportData?.providers || []).length === 0 ? (
+ <div className="rounded-xl border border-dashed border-border bg-card p-10 text-center text-sm text-muted-foreground">No service provider data available yet.</div>
+ ) : (
+ <DataTable columns={providerColumns} data={providerReportData?.providers || []} loading={isProviderReportLoading} emptyState={{ icon: UserRound, title: "No service provider data available yet.", description: "Provider assignments will appear here once requests are assigned." }} />
+ )}
+ </div>
+ ) : null}
+
+ {activeTab === "requests" ? (
  <DetailDrawer
  width={1200}
  open={Boolean(selectedRequestId)}
  onClose={() => {
  setSelectedRequestId(null);
  setReportPreview(null);
+ setSendTenantSummaryDialogOpen(false);
  }}
  title="Maintenance Request"
  subtitle={selectedRequest ? `Request #${selectedRequest.request_id}` : ""}
@@ -3793,6 +5123,7 @@ export default function AdminMaintenancePage() {
  onClick={() => {
  setSelectedRequestId(null);
  setReportPreview(null);
+ setSendTenantSummaryDialogOpen(false);
  }}
  >
  Close
@@ -3811,6 +5142,7 @@ export default function AdminMaintenancePage() {
  updateRequestMutation.isPending ||
  sendReplyMutation.isPending ||
  saveProofMutation.isPending ||
+ isCurrentUpdateInvalid ||
  (updateType === "status_update" && (!hasDraftChanges || uploadingUpdateAttachment || hasBlockingWorkLogAttachment)) ||
  (updateType === "internal_note" && !draftWorkLogNote.trim()) ||
  (updateType === "admin_proof" && (uploadingProofAttachment || hasBlockingProofAttachment)) ||
@@ -3935,6 +5267,7 @@ export default function AdminMaintenancePage() {
  isAssigning={assignProviderMutation.isPending}
  isSuggesting={suggestProviderMutation.isPending}
  disabled={isSelectedRequestLocked || selectedRequest.isArchived}
+ assignmentDisabled={isManualProviderInvalid}
  onChoiceChange={handleProviderChoiceChange}
  onManualChange={handleManualProviderChange}
  onSaveForFutureChange={setSaveManualProviderForFuture}
@@ -4036,8 +5369,12 @@ export default function AdminMaintenancePage() {
  placeholder="Internal resolution or progress note for this request."
  value={draftNotes}
  onChange={(event) => {
- setDraftNotes(event.target.value);
- clearUpdateFieldError("notes");
+ const value = event.target.value;
+ setDraftNotes(value);
+ setUpdateFieldError(
+ "notes",
+ validateMinimumText(value, TEXT_MIN_LENGTHS.adminRemarks, "Resolution notes", { required: false }),
+ );
  }}
  disabled={isSelectedRequestLocked || selectedRequest.isArchived}
  aria-invalid={Boolean(updateFieldErrors.notes)}
@@ -4064,8 +5401,17 @@ export default function AdminMaintenancePage() {
  : "Add an optional note to the admin timeline."}
  value={draftWorkLogNote}
  onChange={(event) => {
- setDraftWorkLogNote(event.target.value);
- clearUpdateFieldError("work_log_note");
+ const value = event.target.value;
+ setDraftWorkLogNote(value);
+ setUpdateFieldError(
+ "work_log_note",
+ validateMinimumText(
+ value,
+ TEXT_MIN_LENGTHS.progressUpdate,
+ updateType === "internal_note" ? "Admin remarks" : "Progress update",
+ { required: updateType === "internal_note" },
+ ),
+ );
  }}
  disabled={isSelectedRequestLocked || selectedRequest.isArchived}
  aria-invalid={Boolean(updateFieldErrors.work_log_note)}
@@ -4096,8 +5442,12 @@ export default function AdminMaintenancePage() {
  placeholder="Add context for this proof."
  value={proofNote}
  onChange={(event) => {
- setProofNote(event.target.value);
- clearProofFieldError("proof_note");
+ const value = event.target.value;
+ setProofNote(value);
+ setProofFieldError(
+ "proof_note",
+ validateMinimumText(value, TEXT_MIN_LENGTHS.adminRemarks, "Admin remarks", { required: false }),
+ );
  }}
  disabled={isSelectedRequestLocked || saveProofMutation.isPending}
  aria-invalid={Boolean(proofFieldErrors.proof_note)}
@@ -4191,8 +5541,14 @@ export default function AdminMaintenancePage() {
  placeholder="Write a message for the tenant."
  value={replyMessage}
  onChange={(event) => {
- setReplyMessage(event.target.value);
- clearReplyFieldError("reply_message");
+ const value = event.target.value;
+ setReplyMessage(value);
+ setReplyFieldError(
+ "reply_message",
+ validateMinimumText(value, TEXT_MIN_LENGTHS.replyMessage, "Reply to tenant", {
+ required: replyAttachments.length === 0,
+ }),
+ );
  }}
  disabled={isSelectedRequestLocked || selectedRequest.isArchived || sendReplyMutation.isPending}
  aria-invalid={Boolean(replyFieldErrors.reply_message)}
@@ -4378,13 +5734,30 @@ export default function AdminMaintenancePage() {
  </div>
  )}
  </DetailDrawer>
+ ) : null}
  <ReportPreviewModal
  open={Boolean(reportPreview)}
  report={reportPreview}
+ request={selectedRequest}
  isCopying={isCopyingReport}
+ isSending={sendTenantSummaryMutation.isPending}
  onCopy={handleCopyReport}
- onDownload={handleDownloadReport}
- onClose={() => setReportPreview(null)}
+ onExport={handleExportReport}
+ onSendToTenant={handleRequestSendTenantSummary}
+ onClose={() => {
+ setReportPreview(null);
+ setSendTenantSummaryDialogOpen(false);
+ }}
+ />
+ <ConfirmationModal
+ open={sendTenantSummaryDialogOpen}
+ title="Send Tenant Summary?"
+ message="This will send the tenant-safe maintenance summary to the tenant. Internal admin notes will not be included."
+ confirmLabel="Send Summary"
+ confirmTone="emerald"
+ isPending={sendTenantSummaryMutation.isPending}
+ onCancel={() => setSendTenantSummaryDialogOpen(false)}
+ onConfirm={handleConfirmSendTenantSummary}
  />
  <ConfirmationModal
  open={Boolean(archiveDialogMode)}

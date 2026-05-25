@@ -78,6 +78,27 @@ router.get(
   requirePermission("manageMaintenance"),
   maintenanceController.getAdminAll,
 );
+router.get(
+  "/admin/analytics",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.getAdminMaintenanceAnalytics,
+);
+router.get(
+  "/admin/reports/branch",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.getAdminMaintenanceBranchReport,
+);
+router.get(
+  "/admin/reports/providers",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.getAdminMaintenanceProviderReport,
+);
 router.patch(
   "/admin/:requestId/status",
   verifyAdmin,
@@ -112,6 +133,13 @@ router.post(
   filterByBranch,
   requirePermission("manageMaintenance"),
   maintenanceController.generateAdminMaintenanceReport,
+);
+router.post(
+  "/admin/:requestId/send-tenant-summary",
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageMaintenance"),
+  maintenanceController.sendAdminTenantSummary,
 );
 router.post(
   "/admin/:requestId/suggest-provider",

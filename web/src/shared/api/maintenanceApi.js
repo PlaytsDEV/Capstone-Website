@@ -78,6 +78,15 @@ export const maintenanceApi = {
   getAdminAll: (filters = {}) =>
     authFetch(`/m/maintenance/admin/all${buildQueryString(filters)}`),
 
+  getAdminAnalytics: (filters = {}) =>
+    authFetch(`/m/maintenance/admin/analytics${buildQueryString(filters)}`),
+
+  getAdminBranchReport: (filters = {}) =>
+    authFetch(`/m/maintenance/admin/reports/branch${buildQueryString(filters)}`),
+
+  getAdminProviderReport: (filters = {}) =>
+    authFetch(`/m/maintenance/admin/reports/providers${buildQueryString(filters)}`),
+
   /**
    * Update maintenance request status/notes/assignment (admin only)
    */
@@ -156,6 +165,12 @@ export const maintenanceApi = {
     authFetch(`/m/maintenance/admin/${requestId}/generate-report`, {
       method: "POST",
       body: JSON.stringify(payload),
+    }),
+
+  sendAdminTenantSummary: (requestId) =>
+    authFetch(`/m/maintenance/admin/${requestId}/send-tenant-summary`, {
+      method: "POST",
+      body: JSON.stringify({}),
     }),
 
   suggestAdminProvider: (requestId) =>

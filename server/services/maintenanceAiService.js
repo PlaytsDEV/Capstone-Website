@@ -242,16 +242,95 @@ export const generateMaintenanceReportText = async ({
   }
 };
 
-const scoreProvider = (provider = {}, request = {}) => {
-  let score = 0;
-  const rating = Number(provider.internalRating || 0);
-  if (Number.isFinite(rating)) score += rating * 10;
-  if (provider.averageResponseTime) score += 3;
-  if (request.urgency === "high" && /hour|same day|today|within/i.test(provider.averageResponseTime || provider.notes || "")) {
-    score += 8;
-  }
-  if ((provider.internalFeedback || []).length > 0) score += 2;
-  return score;
+const formatPesoRange = (minRate, maxRate) => {
+  const format = (value) => {
+    const amount = Number(value);
+    if (!Number.isFinite(amount)) return "";
+    return `PHP ${amount.toLocaleString("en-PH", {
+      minimumFractionDigits: amount % 1 === 0 ? 0 : 2,
+      maximumFractionDigits: 2,
+    })}`;
+  };
+  const minLabel = format(minRate);
+  const maxLabel = format(maxRate);
+  if (minLabel && maxLabel && Number(minRate) !== Number(maxRate)) return `${minLabel} - ${maxLabel}`;
+  return minLabel || maxLabel || "Rate not recorded";
+};
+
+const getProviderRateMidpoint = (provider = {}) => {
+  const minRate = Number(provider.minRate ?? provider.minimumRate);
+  const maxRate = Number(provider.maxRate ?? provider.maximumRate);
+  if (Number.isFinite(minRate) && Number.isFinite(maxRate)) return (minRate + maxRate) / 2;
+  if (Number.isFinite(minRate)) return minRate;
+  if (Number.isFinite(maxRate)) return maxRate;
+  return null;
+};
+
+const parseResponseHours = (value) => {
+  const text = String(value || "").toLowerCase();
+  const firstNumber = Number(text.match(/\d+(\.\d+)?/)?.[0]);
+  if (!Number.isFinite(firstNumber)) return null;
+  if (text.includes("minute")) return firstNumber / 60;
+  if (text.includes("day")) return firstNumber * 24;
+  return firstNumber;
+};
+
+const getProviderStrength = (scores = {}) => {
+  const entries = [
+    ["Best Price", scores.price],
+    ["Best Rated", scores.rating],
+    ["Closest Provider", scores.location],
+    ["Fastest Response", scores.response],
+  ];
+  const [label] = entries.sort((left, right) => right[1] - left[1])[0] || ["Best Overall"];
+  return scores.total >= 90 ? "Best Overall" : label;
+};
+
+const scoreProvider = (provider = {}, request = {}, context = {}) => {
+  const providerKeys = new Set([
+    ...(Array.isArray(provider.serviceCategoryKeys) ? provider.serviceCategoryKeys : []),
+    ...(Array.isArray(provider.serviceCategories) ? provider.serviceCategories : []),
+  ].map((item) => String(item || "").toLowerCase()));
+  const requestType = String(request?.request_type || request?.typeLabel || "").toLowerCase();
+  const serviceMatch = requestType && [...providerKeys].some((key) => key.includes(requestType) || requestType.includes(key))
+    ? 100
+    : 75;
+
+  const rateMidpoint = getProviderRateMidpoint(provider);
+  const price = rateMidpoint && context.maxRate && context.minRate !== context.maxRate
+    ? Math.max(0, Math.min(100, 100 - ((rateMidpoint - context.minRate) / (context.maxRate - context.minRate)) * 100))
+    : rateMidpoint
+      ? 80
+      : 55;
+
+  const rating = Number(provider.averageRating ?? provider.internalRating ?? 0);
+  const ratingScore = Number.isFinite(rating) && rating > 0 ? Math.min(100, (rating / 5) * 100) : 60;
+
+  const requestBranch = String(request?.branchLabel || request?.branch || "").toLowerCase();
+  const locationText = String(provider.location || provider.notes || "").toLowerCase();
+  const locationScore = locationText && requestBranch && locationText.includes(requestBranch) ? 100 : 70;
+
+  const responseHours = parseResponseHours(provider.estimatedResponseTime || provider.averageResponseTime || provider.notes);
+  const responseScore = responseHours == null
+    ? 65
+    : Math.max(40, Math.min(100, 100 - Math.max(responseHours - 1, 0) * 10));
+
+  const total = Math.round(
+    serviceMatch * 0.4 +
+    price * 0.25 +
+    ratingScore * 0.2 +
+    locationScore * 0.1 +
+    responseScore * 0.05,
+  );
+
+  return {
+    total,
+    serviceMatch,
+    price,
+    rating: ratingScore,
+    location: locationScore,
+    response: responseScore,
+  };
 };
 
 export const suggestMaintenanceProviderFromDirectory = async ({
@@ -265,21 +344,55 @@ export const suggestMaintenanceProviderFromDirectory = async ({
     };
   }
 
-  const ranked = [...providers].sort((left, right) => {
-    const scoreDelta = scoreProvider(right, request) - scoreProvider(left, request);
+  const rateMidpoints = providers
+    .map(getProviderRateMidpoint)
+    .filter((value) => Number.isFinite(value));
+  const scoreContext = {
+    minRate: rateMidpoints.length ? Math.min(...rateMidpoints) : null,
+    maxRate: rateMidpoints.length ? Math.max(...rateMidpoints) : null,
+  };
+  const ranked = [...providers]
+    .map((provider) => {
+      const scores = scoreProvider(provider, request, scoreContext);
+      return {
+        provider,
+        scores,
+        strength: getProviderStrength(scores),
+      };
+    })
+    .sort((left, right) => {
+    const scoreDelta = right.scores.total - left.scores.total;
     if (scoreDelta !== 0) return scoreDelta;
-    return String(left.providerName || "").localeCompare(String(right.providerName || ""));
+    return String(left.provider.providerName || "").localeCompare(String(right.provider.providerName || ""));
   });
-  const recommended = ranked[0];
-  const alternative = ranked[1] || null;
+  const recommendedRow = ranked[0];
+  const recommended = recommendedRow.provider;
+  const alternative = ranked[1]?.provider || null;
   const baseReason = `Matches ${request?.typeLabel || request?.request_type || "this request type"} requests and covers ${request?.branchLabel || request?.branch || "the request branch"}.`;
+  const comparison = ranked.slice(0, 5).map(({ provider, scores, strength }) => ({
+    providerId: String(provider._id || provider.id || ""),
+    providerName: provider.providerName,
+    serviceType: provider.serviceCategories?.[0] || request?.typeLabel || request?.request_type || "Maintenance",
+    estimatedRateLabel: formatPesoRange(provider.minRate ?? provider.minimumRate, provider.maxRate ?? provider.maximumRate),
+    minRate: provider.minRate ?? provider.minimumRate ?? null,
+    maxRate: provider.maxRate ?? provider.maximumRate ?? null,
+    strength,
+    aiRating: scores.total,
+  }));
 
   return {
     recommendedProviderId: String(recommended._id || recommended.id || ""),
     recommendedProviderName: recommended.providerName,
+    serviceType: recommended.serviceCategories?.[0] || request?.typeLabel || request?.request_type || "Maintenance",
+    estimatedRateLabel: formatPesoRange(recommended.minRate ?? recommended.minimumRate, recommended.maxRate ?? recommended.maximumRate),
+    minRate: recommended.minRate ?? recommended.minimumRate ?? null,
+    maxRate: recommended.maxRate ?? recommended.maximumRate ?? null,
+    bestOptionBadge: recommendedRow.strength,
+    aiRating: recommendedRow.scores.total,
     reason: recommended.averageResponseTime
-      ? `${baseReason} Average response time: ${recommended.averageResponseTime}.`
-      : baseReason,
+      ? `${baseReason} It has a ${recommendedRow.scores.total}% AI rating based on service match, estimated rate, reliability, location, and response time. Estimated response time: ${recommended.averageResponseTime}.`
+      : `${baseReason} It has a ${recommendedRow.scores.total}% AI rating based on service match, estimated rate, reliability, location, and response time.`,
+    comparison,
     alternativeProviderId: alternative ? String(alternative._id || alternative.id || "") : null,
     alternativeProviderName: alternative?.providerName || null,
     provider: hasGeminiKey() ? "gemini-safe-directory" : "heuristic-fallback",

@@ -51,6 +51,25 @@ const serviceProviderSchema = new mongoose.Schema(
       default: null,
       trim: true,
     },
+    location: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    minRate: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+    maxRate: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+    tags: {
+      type: [String],
+      default: [],
+    },
     status: {
       type: String,
       enum: ["active", "inactive"],
@@ -95,6 +114,7 @@ serviceProviderSchema.pre("validate", function normalizeProvider(next) {
   this.branchCoverage = normalizeTextList(this.branchCoverage).map((branch) =>
     branch.toLowerCase(),
   );
+  this.tags = normalizeTextList(this.tags);
   this.internalFeedback = normalizeTextList(this.internalFeedback);
   next();
 });

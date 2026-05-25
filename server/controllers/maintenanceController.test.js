@@ -91,6 +91,9 @@ await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
 
 const {
   getAdminAll,
+  getAdminMaintenanceAnalytics,
+  getAdminMaintenanceBranchReport,
+  getAdminMaintenanceProviderReport,
   getMyRequests,
   createRequest,
   reopenMyRequest,
@@ -99,6 +102,7 @@ const {
   assignAdminMaintenanceProvider,
   suggestAdminMaintenanceProvider,
   generateAdminMaintenanceReport,
+  sendAdminTenantSummary,
   sendTenantReply,
   uploadAdminMaintenanceAttachment,
   removeAdminMaintenanceAttachment,
@@ -2412,6 +2416,173 @@ describe("maintenanceController", () => {
       expect(report.summary).not.toContain("Sensitive information visible");
       expect(next).not.toHaveBeenCalled();
     });
+  });
+
+  test("sendAdminTenantSummary sends only tenant-safe report content", async () => {
+    await withoutGeminiEnv(async () => {
+      const requestDoc = buildRequestDoc({
+        status: "in_progress",
+        assigned_to: "Makati Plumbing Services",
+        assignedProviderName: "Makati Plumbing Services",
+        assignedProviderContact: "09171234567",
+        assignedProviderCategory: "Plumbing",
+        assignedProviderNotes: "Internal provider note",
+        notes: "Internal admin note",
+        resolution_note: "Private completion decision",
+        attachments: [
+          {
+            name: "tenant-leak.jpg",
+            uri: "https://storage.example.com/tenant-leak.jpg",
+            visibility: "tenant_admin",
+          },
+        ],
+        statusHistory: [
+          {
+            event: "note_updated",
+            status: "pending",
+            actor_name: "Branch Admin",
+            actor_role: "branch_admin",
+            note: "Internal admin note",
+            timestamp: new Date("2026-04-08T11:00:00.000Z"),
+          },
+          {
+            event: "service_provider_assigned",
+            status: "pending",
+            actor_name: "Branch Admin",
+            actor_role: "branch_admin",
+            providerName: "Makati Plumbing Services",
+            note: "Internal provider assignment",
+            timestamp: new Date("2026-04-08T12:00:00.000Z"),
+          },
+        ],
+        work_log: [
+          {
+            logged_at: new Date("2026-04-09T10:00:00.000Z"),
+            actor_name: "Branch Admin",
+            actor_role: "branch_admin",
+            note: "Admin-only proof note",
+            attachments: [
+              {
+                name: "proof.jpg",
+                uri: "https://storage.example.com/proof.jpg",
+                visibility: "admin_only",
+              },
+            ],
+          },
+        ],
+        conversation: [
+          {
+            created_at: new Date("2026-04-08T13:00:00.000Z"),
+            sender_name: "Branch Admin",
+            sender_role: "branch_admin",
+            message: "We have received your maintenance request.",
+            attachments: [],
+          },
+        ],
+      });
+      maintenanceFindOne.mockResolvedValue(requestDoc);
+      userFindOne.mockImplementation((query) => {
+        if (query.firebaseUid === "firebase-admin-1") {
+          return buildLeanQuery({
+            _id: "admin_user_1",
+            user_id: "admin_1",
+            firstName: "Branch",
+            lastName: "Admin",
+            email: "admin@example.com",
+            branch: "gil-puyat",
+            role: "branch_admin",
+          });
+        }
+
+        if (query.user_id === requestDoc.user_id) {
+          return buildLeanQuery({
+            _id: "tenant_user_1",
+            user_id: requestDoc.user_id,
+            firstName: "Lily",
+            lastName: "Tenant",
+            email: "lily@example.com",
+            branch: "gil-puyat",
+            role: "tenant",
+          });
+        }
+
+        return buildLeanQuery(null);
+      });
+
+      const req = {
+        user: { uid: "firebase-admin-1" },
+        params: { requestId: requestDoc.request_id },
+        body: {},
+        branchFilter: "gil-puyat",
+        isOwner: false,
+      };
+      const res = {};
+      const next = jest.fn();
+
+      await sendAdminTenantSummary(req, res, next);
+
+      expect(requestDoc.conversation).toHaveLength(2);
+      const sentMessage = requestDoc.conversation[1].message;
+      expect(sentMessage).toContain("A service provider has been assigned.");
+      expect(sentMessage).toContain("We have received your maintenance request.");
+      expect(sentMessage).toContain("tenant-leak.jpg");
+      expect(sentMessage).not.toContain("09171234567");
+      expect(sentMessage).not.toContain("Makati Plumbing Services");
+      expect(sentMessage).not.toContain("Internal provider note");
+      expect(sentMessage).not.toContain("Internal admin note");
+      expect(sentMessage).not.toContain("Private completion decision");
+      expect(sentMessage).not.toContain("Admin-only proof note");
+      expect(sentMessage).not.toContain("proof.jpg");
+      expect(requestDoc.conversation[1]).toEqual(
+        expect.objectContaining({
+          sender_id: "admin_1",
+          sender_name: "Branch Admin",
+          sender_role: "branch_admin",
+          sender_side: "admin",
+          attachments: [],
+        }),
+      );
+      expect(requestDoc.save).toHaveBeenCalledTimes(1);
+      expect(maintenanceUpdated).toHaveBeenCalledWith(
+        "tenant_user_1",
+        "plumbing",
+        "in_progress",
+        requestDoc.request_id,
+        {
+          statusChanged: false,
+          hasAdminNote: true,
+          hasProgressEntry: false,
+          hasProgressAttachments: false,
+        },
+      );
+      expect(sendSuccess.mock.calls[0][1].report).toEqual(
+        expect.objectContaining({
+          reportType: "tenant",
+          title: `Maintenance Tenant Summary - ${requestDoc.request_id}`,
+        }),
+      );
+      expect(next).not.toHaveBeenCalled();
+    });
+  });
+
+  test("sendAdminTenantSummary denies branch admin access to another branch request", async () => {
+    const requestDoc = buildRequestDoc({ branch: "guadalupe" });
+    maintenanceFindOne.mockResolvedValue(requestDoc);
+
+    const req = {
+      user: { uid: "firebase-admin-1" },
+      params: { requestId: requestDoc.request_id },
+      branchFilter: "gil-puyat",
+      isOwner: false,
+    };
+    const res = {};
+    const next = jest.fn();
+
+    await sendAdminTenantSummary(req, res, next);
+
+    expect(requestDoc.save).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next.mock.calls[0][0].code).toBe("FORBIDDEN");
   });
 
   test("getMyRequests does not expose provider contact details to tenants", async () => {
