@@ -25,6 +25,7 @@ import ConfirmModal from "./ConfirmModal";
 import { showNotification } from "../utils/notification";
 import { buildSignOutSuccessFlash } from "../utils/authToasts";
 import "./Sidebar.css";
+import logo from "../../assets/images/LOGO.svg";
 
 const MOBILE_BP = 768;
 
@@ -197,7 +198,9 @@ export default function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleColl
     <>
       <div className="sidebar-header">
         <Link to="/" className="sidebar-brand">
-          <div className="sidebar-brand-mark"><Bed size={18} /></div>
+          <div className="sidebar-brand-mark" style={{ width: 28, height: 28, borderRadius: 6, overflow: "hidden" }}>
+            <img src={logo} alt="Lilycrest logo" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+          </div>
           <span className="sidebar-brand-name">Lilycrest</span>
         </Link>
 
@@ -212,7 +215,7 @@ export default function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleColl
         )}
       </div>
 
-      <div className="sidebar-identity">
+      {/* <div className="sidebar-identity">
         <div className="sidebar-avatar">
           {user?.profileImage ? (
             <img src={user.profileImage} alt="Profile" className="sidebar-avatar-img" />
@@ -224,7 +227,7 @@ export default function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleColl
           <p className="sidebar-identity-name">{fullName}</p>
           <p className="sidebar-identity-email">{email}</p>
         </div>
-      </div>
+      </div> */}
 
       <div className="sidebar-cta-wrap">
         <button type="button" className="sidebar-cta" onClick={() => handleItemClick({ path: "/applicant/check-availability" })} title="Browse Rooms">
@@ -272,7 +275,9 @@ export default function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleColl
         <div className="sidebar-topbar">
           <button type="button" className="sidebar-topbar-menu" onClick={toggleSidebar} aria-label="Open menu"><Menu size={20} /></button>
           <Link to="/" className="sidebar-topbar-brand">
-            <div className="sidebar-brand-mark" style={{ width: 28, height: 28, borderRadius: 6 }}><Bed size={14} /></div>
+            <div className="sidebar-brand-mark" style={{ width: 28, height: 28, borderRadius: 6, overflow: "hidden" }}>
+              <img src={logo} alt="Lilycrest logo" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+            </div>
             <span>Lilycrest</span>
           </Link>
         </div>
