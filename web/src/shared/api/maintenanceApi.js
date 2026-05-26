@@ -21,13 +21,13 @@ export const maintenanceApi = {
    * Get current tenant's maintenance requests
    */
   getMyRequests: (filters = {}) =>
-    authFetch(`/m/maintenance/me${buildQueryString(filters)}`),
+    authFetch(`/maintenance/me${buildQueryString(filters)}`),
 
   /**
    * Create maintenance request
    */
   createRequest: (requestData) =>
-    authFetch("/m/maintenance", {
+    authFetch("/maintenance", {
       method: "POST",
       body: JSON.stringify(requestData),
     }),
@@ -36,7 +36,7 @@ export const maintenanceApi = {
    * Update a pending maintenance request
    */
   updateMyRequest: (requestId, requestData) =>
-    authFetch(`/m/maintenance/${requestId}`, {
+    authFetch(`/maintenance/${requestId}`, {
       method: "PUT",
       body: JSON.stringify(requestData),
     }),
@@ -45,7 +45,7 @@ export const maintenanceApi = {
    * Cancel a pending maintenance request
    */
   cancelRequest: (requestId) =>
-    authFetch(`/m/maintenance/${requestId}/cancel`, {
+    authFetch(`/maintenance/${requestId}/cancel`, {
       method: "PATCH",
     }),
 
@@ -53,7 +53,7 @@ export const maintenanceApi = {
    * Reopen a resolved/completed maintenance request
    */
   reopenRequest: (requestId, note) =>
-    authFetch(`/m/maintenance/${requestId}/reopen`, {
+    authFetch(`/maintenance/${requestId}/reopen`, {
       method: "PATCH",
       body: JSON.stringify({ reopen_note: note }),
     }),
@@ -62,7 +62,7 @@ export const maintenanceApi = {
    * Send a tenant reply with optional attachments.
    */
   sendTenantReply: (requestId, payload) =>
-    authFetch(`/m/maintenance/${requestId}/reply`, {
+    authFetch(`/maintenance/${requestId}/reply`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
@@ -70,28 +70,28 @@ export const maintenanceApi = {
   /**
    * Get maintenance request details
    */
-  getRequest: (requestId) => authFetch(`/m/maintenance/${requestId}`),
+  getRequest: (requestId) => authFetch(`/maintenance/${requestId}`),
 
   /**
    * Get all admin maintenance requests
    */
   getAdminAll: (filters = {}) =>
-    authFetch(`/m/maintenance/admin/all${buildQueryString(filters)}`),
+    authFetch(`/maintenance/admin/all${buildQueryString(filters)}`),
 
   getAdminAnalytics: (filters = {}) =>
-    authFetch(`/m/maintenance/admin/analytics${buildQueryString(filters)}`),
+    authFetch(`/maintenance/admin/analytics${buildQueryString(filters)}`),
 
   getAdminBranchReport: (filters = {}) =>
-    authFetch(`/m/maintenance/admin/reports/branch${buildQueryString(filters)}`),
+    authFetch(`/maintenance/admin/reports/branch${buildQueryString(filters)}`),
 
   getAdminProviderReport: (filters = {}) =>
-    authFetch(`/m/maintenance/admin/reports/providers${buildQueryString(filters)}`),
+    authFetch(`/maintenance/admin/reports/providers${buildQueryString(filters)}`),
 
   /**
    * Update maintenance request status/notes/assignment (admin only)
    */
   updateAdminRequestStatus: (requestId, payload) =>
-    authFetch(`/m/maintenance/admin/${requestId}/status`, {
+    authFetch(`/maintenance/admin/${requestId}/status`, {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
@@ -100,7 +100,7 @@ export const maintenanceApi = {
    * Send a tenant-facing admin reply with optional attachments.
    */
   sendAdminReply: (requestId, payload) =>
-    authFetch(`/m/maintenance/admin/${requestId}/reply`, {
+    authFetch(`/maintenance/admin/${requestId}/reply`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
@@ -119,7 +119,7 @@ export const maintenanceApi = {
     formData.append("maintenanceRequestId", requestId);
     formData.append("visibility", visibility);
 
-    return authFetch(`/m/maintenance/admin/${requestId}/attachments`, {
+    return authFetch(`/maintenance/admin/${requestId}/attachments`, {
       method: "POST",
       body: formData,
     });
@@ -129,7 +129,7 @@ export const maintenanceApi = {
    * Save already-uploaded admin-only proof attachments into the work log.
    */
   saveAdminProof: (requestId, payload) =>
-    authFetch(`/m/maintenance/admin/${requestId}/proof`, {
+    authFetch(`/maintenance/admin/${requestId}/proof`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
@@ -138,43 +138,43 @@ export const maintenanceApi = {
    * Soft-remove an attachment from tenant view or normal request display.
    */
   removeAdminAttachment: (requestId, payload) =>
-    authFetch(`/m/maintenance/admin/${requestId}/attachments/remove`, {
+    authFetch(`/maintenance/admin/${requestId}/attachments/remove`, {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
 
   assignAdminProvider: (requestId, payload) =>
-    authFetch(`/m/maintenance/admin/${requestId}/assign-provider`, {
+    authFetch(`/maintenance/admin/${requestId}/assign-provider`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
 
   assignAdminBranch: (requestId, payload) =>
-    authFetch(`/m/maintenance/admin/${requestId}/branch`, {
+    authFetch(`/maintenance/admin/${requestId}/branch`, {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
 
   generateAdminUpdate: (requestId) =>
-    authFetch(`/m/maintenance/admin/${requestId}/generate-update`, {
+    authFetch(`/maintenance/admin/${requestId}/generate-update`, {
       method: "POST",
       body: JSON.stringify({}),
     }),
 
   generateAdminReport: (requestId, payload) =>
-    authFetch(`/m/maintenance/admin/${requestId}/generate-report`, {
+    authFetch(`/maintenance/admin/${requestId}/generate-report`, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
 
   sendAdminTenantSummary: (requestId) =>
-    authFetch(`/m/maintenance/admin/${requestId}/send-tenant-summary`, {
+    authFetch(`/maintenance/admin/${requestId}/send-tenant-summary`, {
       method: "POST",
       body: JSON.stringify({}),
     }),
 
   suggestAdminProvider: (requestId) =>
-    authFetch(`/m/maintenance/admin/${requestId}/suggest-provider`, {
+    authFetch(`/maintenance/admin/${requestId}/suggest-provider`, {
       method: "POST",
       body: JSON.stringify({}),
     }),
@@ -195,13 +195,13 @@ export const maintenanceApi = {
     }),
 
   archiveAdminRequest: (requestId, payload = {}) =>
-    authFetch(`/m/maintenance/admin/${requestId}/archive`, {
+    authFetch(`/maintenance/admin/${requestId}/archive`, {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
 
   restoreAdminRequest: (requestId, payload = {}) =>
-    authFetch(`/m/maintenance/admin/${requestId}/restore`, {
+    authFetch(`/maintenance/admin/${requestId}/restore`, {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
@@ -210,7 +210,7 @@ export const maintenanceApi = {
    * Bulk update maintenance requests (admin only)
    */
   bulkUpdateAdminRequests: (payload) =>
-    authFetch("/m/maintenance/admin/bulk", {
+    authFetch("/maintenance/admin/bulk", {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),

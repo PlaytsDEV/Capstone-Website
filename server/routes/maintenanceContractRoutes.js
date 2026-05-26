@@ -4,11 +4,11 @@
  * ============================================================================
  *
  * Canonical contract routes:
- * - Tenant: /api/m/maintenance/*
- * - Admin:  /api/m/maintenance/admin/*
+ * - Tenant: /api/maintenance/*
+ * - Admin:  /api/maintenance/admin/*
  *
- * This router also exposes temporary compatibility aliases so the same
- * implementation can be mounted under /api/maintenance during rollout.
+ * Also mounted at /api/m/maintenance for mobile session-token auth.
+ * The web frontend should always use /api/maintenance (Firebase auth).
  *
  * ============================================================================
  */
