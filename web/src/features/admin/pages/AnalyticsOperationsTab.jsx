@@ -20,6 +20,7 @@ import {
  handlePdfExport,
  MetricGrid,
  RANGE_OPTIONS_SHORT,
+ unwrapTableRows,
  useReportInsights,
 } from "./analyticsTabShared";
 
@@ -63,7 +64,7 @@ export default function AnalyticsOperationsTab({
  range,
  branch: isOwner ? branch : undefined,
  });
- const maintenanceIssues = Array.isArray(data?.tables?.maintenanceIssues) ? data?.tables?.maintenanceIssues : [];
+ const maintenanceIssues = unwrapTableRows(data?.tables?.maintenanceIssues);
  const reservations = Array.isArray(data?.tables?.reservations) ? data?.tables?.reservations : [];
  const inquiryWindows = Array.isArray(data?.tables?.peakInquiryWindows) ? data?.tables?.peakInquiryWindows : [];
  const reservationsByPeriod = data?.series?.reservationsByPeriod || [];

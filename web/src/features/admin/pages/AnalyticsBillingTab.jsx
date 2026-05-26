@@ -23,6 +23,7 @@ import {
   handlePdfExport,
   MetricGrid,
   RANGE_OPTIONS_LONG,
+  unwrapTableRows,
   useReportInsights,
 } from "./analyticsTabShared";
 
@@ -70,9 +71,7 @@ export default function AnalyticsBillingTab({
     range,
     branch: isOwner ? branch : undefined,
   });
-  const overdueAccounts = Array.isArray(data?.tables?.overdueAccounts)
-    ? data?.tables?.overdueAccounts
-    : [];
+  const overdueAccounts = unwrapTableRows(data?.tables?.overdueAccounts);
   const unpaidBalances = Array.isArray(data?.tables?.unpaidBalances)
     ? data?.tables?.unpaidBalances
     : [];

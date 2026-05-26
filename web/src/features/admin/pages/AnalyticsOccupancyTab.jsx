@@ -21,6 +21,7 @@ import {
   handlePdfExport,
   MetricGrid,
   RANGE_OPTIONS_SHORT,
+  unwrapTableRows,
   useReportInsights,
 } from "./analyticsTabShared";
 
@@ -107,9 +108,7 @@ export default function AnalyticsOccupancyTab({
     branch: isOwner ? branch : undefined,
   });
 
-  const inventory = Array.isArray(data?.tables?.inventory)
-    ? data?.tables?.inventory
-    : [];
+  const inventory = unwrapTableRows(data?.tables?.inventory);
   const roomTypes = Array.isArray(data?.tables?.roomTypes)
     ? data?.tables?.roomTypes
     : [];
