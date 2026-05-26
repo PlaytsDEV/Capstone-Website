@@ -212,9 +212,9 @@ export const getPhysicalVisitApplicantState = (reservation = {}) => {
     case "schedule_approved":
       return {
         statusKey: status,
-        title: "Schedule Approved — Attend Your Visit",
+        title: "Visit Confirmed — Attend Your Visit",
         message:
-          "Your visit schedule has been approved. Please attend on the scheduled date. You may continue to the tenant application after admin records your visit.",
+          "Your visit schedule has been confirmed. Please attend on the scheduled date. You may continue to the tenant application after admin records your visit.",
         buttonLabel: "Review Visit ->",
         route: "/applicant/reservation?step=2",
         canFillApplication: false,

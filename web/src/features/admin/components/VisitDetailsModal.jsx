@@ -37,7 +37,7 @@ const STATUS_CONFIGS = [
 
 const getStatusCfg = (schedule) =>
  STATUS_CONFIGS.find((c) => c.test(schedule)) || {
- bg: "#FEF3C7", color: "#92400E", dot: "#f59e0b", label: "Pending Approval",
+ bg: "#E0EBF5", color: "#0A5C9B", dot: "#3b82f6", label: "Awaiting Visit",
  };
 
 /* ─── sub-components ─────────────────────────────────── */
@@ -107,8 +107,7 @@ export default function VisitDetailsModal({ schedule, onClose, onUpdate }) {
  const showRejectBtn =
   !schedule.visitApproved &&
   !schedule.scheduleRejected &&
-  !schedule.scheduleApproved &&
-  !["visit_completed", "no_show", "visit_cancelled", "schedule_approved"].includes(
+  !["visit_completed", "no_show", "visit_cancelled"].includes(
     schedule.visitStatus,
   );
  const cfg = getStatusCfg(schedule);

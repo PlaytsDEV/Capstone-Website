@@ -1,15 +1,16 @@
 // Statuses where the schedule needs admin approval before an outcome can be recorded.
-// Outcome actions (mark visited / no-show) are NOT available here.
+// With auto-approved schedules, this set is effectively empty for new bookings.
+// Kept for backward-compat with legacy records that may still lack scheduleApproved.
 const SCHEDULE_PENDING_STATUSES = new Set([
   "",
-  "physical_visit_scheduled",
-  "rescheduled",   // reschedule resets scheduleApproved=false; needs re-approval first
 ]);
 
 // Statuses where the schedule is approved and the visit is actively expected.
 // Outcome actions (mark visited / no-show) ARE available here.
 const SCHEDULE_ACTIVE_STATUSES = new Set([
+  "physical_visit_scheduled",
   "schedule_approved",
+  "rescheduled",
 ]);
 
 const RESCHEDULABLE_VISIT_STATUSES = new Set([
@@ -60,12 +61,12 @@ export function getVisitManagementAvailability({
   return {
     completed,
     helperMessage: completed ? VISIT_COMPLETED_LOCK_MESSAGE : "",
-    // Approve/reject schedule: only while pending admin review
-    canApproveSchedule: !completed && hasVisitSchedule && isPending,
-    canRejectSchedule: !completed && hasVisitSchedule && isPending,
-    // Outcome recording: only once schedule is approved (active)
-    canMarkVisited: !completed && hasVisitSchedule && isActive,
-    canMarkNoShow: !completed && hasVisitSchedule && isActive,
+    // Approve schedule: no longer needed — schedules are auto-approved at booking time
+    canApproveSchedule: false,
+    canRejectSchedule: !completed && hasVisitSchedule && (isPending || isActive),
+    // Outcome recording: available once schedule exists (auto-approved)
+    canMarkVisited: !completed && hasVisitSchedule && (isPending || isActive),
+    canMarkNoShow: !completed && hasVisitSchedule && (isPending || isActive),
     canReschedule: !completed && reschedulable,
     canCancelVisit: !completed && hasVisitSchedule && (isPending || isActive),
     canAllowWithoutVisit: !completed && canProceedWithoutVisit,

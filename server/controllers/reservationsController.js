@@ -306,15 +306,16 @@ const VISIT_APPLICATION_LOCK_STATUSES = Object.freeze([
   "visit_cancelled",
 ]);
 const VISIT_MANAGEMENT_ACTIONS_BY_STATUS = Object.freeze({
-  // Submitted by applicant, awaiting admin review — outcome actions not yet available
+  // Schedules are now auto-approved — outcome actions available immediately
   physical_visit_scheduled: Object.freeze([
-    "approve_schedule",
+    "mark_visited",
+    "mark_no_show",
     "reject_schedule",
     "reschedule",
     "cancel_visit",
     "allow_without_visit",
   ]),
-  // Admin approved the schedule — outcome actions now available
+  // Schedule approved (auto or legacy) — outcome actions available
   schedule_approved: Object.freeze([
     "mark_visited",
     "mark_no_show",
@@ -322,9 +323,10 @@ const VISIT_MANAGEMENT_ACTIONS_BY_STATUS = Object.freeze({
     "cancel_visit",
     "allow_without_visit",
   ]),
-  // Admin rescheduled — awaiting re-approval before outcome can be recorded
+  // Rescheduled — auto-approved, outcome actions available
   rescheduled: Object.freeze([
-    "approve_schedule",
+    "mark_visited",
+    "mark_no_show",
     "reject_schedule",
     "reschedule",
     "cancel_visit",
@@ -3440,14 +3442,16 @@ export const manageReservationVisit = async (req, res, next) => {
       });
     }
 
+    // Schedules are now auto-approved at booking time, so this guard
+    // is effectively a no-op for new reservations.  Keep it for legacy
+    // records that may still have scheduleApproved=false, but auto-fix
+    // rather than blocking the admin.
     if (
       (action === "mark_visited" || action === "mark_no_show") &&
       !reservation.scheduleApproved
     ) {
-      return res.status(422).json({
-        error: "The visit schedule must be approved before recording an outcome. Approve the schedule first.",
-        code: "SCHEDULE_NOT_APPROVED",
-      });
+      reservation.scheduleApproved = true;
+      reservation.scheduleApprovedAt = reservation.scheduleApprovedAt || now;
     }
 
     if (action === "approve_schedule") {
@@ -3592,8 +3596,9 @@ export const manageReservationVisit = async (req, res, next) => {
       reservation.visitDate = validation.date;
       reservation.visitTime = nextVisitTime;
       reservation.visitScheduledAt = now;
-      reservation.scheduleApproved = false;
-      reservation.scheduleApprovedAt = null;
+      // Auto-approve the rescheduled visit (no admin gate)
+      reservation.scheduleApproved = true;
+      reservation.scheduleApprovedAt = now;
       reservation.visitApproved = false;
       reservation.scheduleRejected = false;
       reservation.scheduleRejectedAt = null;
@@ -3607,7 +3612,7 @@ export const manageReservationVisit = async (req, res, next) => {
           "viewing_preference_selected",
         )
       ) {
-        reservation.status = "visit_pending";
+        reservation.status = "visit_approved";
       }
       applyVisitOutcome({
         reservation,
@@ -4409,7 +4414,10 @@ export const updateReservationByUser = async (req, res, next) => {
       // Stamp the submission time — this is "when the tenant scheduled the visit",
       // NOT the visit appointment date. Always refresh on rescheduling too.
       updates.visitScheduledAt = new Date();
-      updates.visitStatus = "physical_visit_scheduled";
+      // Auto-approve the visit schedule (no admin gate needed)
+      updates.scheduleApproved = true;
+      updates.scheduleApprovedAt = new Date();
+      updates.visitStatus = "schedule_approved";
       updates.visitOutcomeNotes = "";
       updates.visitOutcomeUpdatedAt = null;
       updates.visitOutcomeUpdatedBy = null;
@@ -4530,7 +4538,8 @@ export const updateReservationByUser = async (req, res, next) => {
         LEGACY_VISIT_STATUSES,
       )
     ) {
-      updates.status = "visit_pending";
+      // Auto-approved schedule → skip visit_pending, go straight to visit_approved
+      updates.status = "visit_approved";
     } else if (
       effectiveViewingPreference &&
       preferenceRelatedUpdate &&
@@ -4544,7 +4553,7 @@ export const updateReservationByUser = async (req, res, next) => {
       updates.agreedToPrivacy &&
       hasReservationStatus(reservation.status, LEGACY_VISIT_STATUSES)
     ) {
-      updates.status = "visit_pending";
+      updates.status = "visit_approved";
     }
     if (false && updates.visitDate && updates.agreedToPrivacy) {
       if (hasReservationStatus(reservation.status, "pending")) {

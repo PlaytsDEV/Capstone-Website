@@ -12,7 +12,7 @@ export const CONFIRM_VISIT_SCHEDULE_LABEL = "Confirm Visit Schedule";
 export const SAVE_VIEWING_PREFERENCE_LABEL = SUBMIT_VIEWING_PREFERENCE_LABEL;
 
 export function getVisitScheduleSubmitLabel(selectedVisit) {
-  if (selectedVisit === "physical_visit") return "Submit Physical Visit Request";
+  if (selectedVisit === "physical_visit") return "Submit";
   if (selectedVisit === "remote_2d_viewing") return "Submit Remote Viewing Request";
   if (selectedVisit === "urgent_move_in_review") return "Submit Priority Review Request";
   return SUBMIT_VIEWING_PREFERENCE_LABEL;

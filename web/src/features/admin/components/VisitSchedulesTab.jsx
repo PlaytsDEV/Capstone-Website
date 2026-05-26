@@ -74,27 +74,17 @@ function VisitSchedulesTab() {
     [rawReservations],
   );
 
-  // Awaiting admin schedule approval
-  const pendingApproval = useMemo(
+  // All active visits awaiting the applicant to show up (schedules auto-approved)
+  const awaitingVisit = useMemo(
     () =>
       schedules.filter(
         (s) =>
           !s.isHistorical &&
-          !s.scheduleApproved &&
-          !s.scheduleRejected &&
-          !s.visitApproved,
-      ),
-    [schedules],
-  );
-  // Schedule approved by admin, visit not yet recorded
-  const confirmed = useMemo(
-    () =>
-      schedules.filter(
-        (s) =>
-          !s.isHistorical &&
-          s.scheduleApproved &&
           !s.visitApproved &&
-          !s.scheduleRejected,
+          !s.scheduleRejected &&
+          s.visitStatus !== "no_show" &&
+          s.visitStatus !== "visit_completed" &&
+          s.visitStatus !== "visit_cancelled",
       ),
     [schedules],
   );
@@ -190,24 +180,7 @@ function VisitSchedulesTab() {
     );
   };
 
-  const handleApproveSchedule = (id) => {
-    confirmAction(
-      "Approve Visit Schedule",
-      "Confirm this visit appointment? The applicant will be notified that their schedule is approved.",
-      "info",
-      "Approve Schedule",
-      async () => {
-        setActionLoading(id);
-        try {
-          await reservationApi.manageVisit(id, { action: "approve_schedule" });
-        } finally {
-          setActionLoading(null);
-        }
-      },
-      "Visit schedule approved successfully.",
-      "Failed to approve visit schedule. Please try again.",
-    );
-  };
+
 
   const handleMarkNoShow = (id) => {
     confirmAction(
@@ -262,16 +235,10 @@ function VisitSchedulesTab() {
     () => [
       { label: "All", value: schedules.length, icon: Calendar, color: "blue" },
       {
-        label: "Pending Approval",
-        value: pendingApproval.length,
+        label: "Awaiting Visit",
+        value: awaitingVisit.length,
         icon: Clock,
         color: "orange",
-      },
-      {
-        label: "Confirmed",
-        value: confirmed.length,
-        icon: CheckCircle,
-        color: "blue",
       },
       {
         label: "Visit Completed",
@@ -294,11 +261,10 @@ function VisitSchedulesTab() {
       { label: "Cancelled", value: cancelled.length, icon: Ban, color: "red" },
     ],
     [
+      awaitingVisit.length,
       cancelled.length,
       completed.length,
-      confirmed.length,
       noShows.length,
-      pendingApproval.length,
       rejected.length,
       schedules.length,
     ],
@@ -307,12 +273,11 @@ function VisitSchedulesTab() {
   const displayData = useMemo(() => {
     let base;
     if (activeFilter === 0) base = schedules;
-    else if (activeFilter === 1) base = pendingApproval;
-    else if (activeFilter === 2) base = confirmed;
-    else if (activeFilter === 3) base = completed;
-    else if (activeFilter === 4) base = noShows;
-    else if (activeFilter === 5) base = rejected;
-    else if (activeFilter === 6) base = cancelled;
+    else if (activeFilter === 1) base = awaitingVisit;
+    else if (activeFilter === 2) base = completed;
+    else if (activeFilter === 3) base = noShows;
+    else if (activeFilter === 4) base = rejected;
+    else if (activeFilter === 5) base = cancelled;
     else base = schedules;
 
     const query = searchTerm.trim().toLowerCase();
@@ -348,12 +313,11 @@ function VisitSchedulesTab() {
     return result;
   }, [
     activeFilter,
+    awaitingVisit,
     branchFilter,
     cancelled,
     completed,
-    confirmed,
     noShows,
-    pendingApproval,
     rejected,
     schedules,
     searchTerm,
@@ -587,12 +551,10 @@ function VisitSchedulesTab() {
                     } else if (row.visitStatus === "no_show") {
                       activeStatus = "overdue";
                       activeLabel = "No-Show";
-                    } else if (row.scheduleApproved) {
-                      activeStatus = "active";
-                      activeLabel = "Sched. Confirmed";
                     } else {
-                      activeStatus = "pending";
-                      activeLabel = "Pending Approval";
+                      // Schedules are auto-approved — show "Awaiting Visit"
+                      activeStatus = "active";
+                      activeLabel = "Awaiting Visit";
                     }
                     statusNode = (
                       <div>
@@ -723,30 +685,8 @@ function VisitSchedulesTab() {
                             </button>
                           ) : (
                             <>
-                              {/* Pending Approval: Approve + Reject */}
-                              {!row.scheduleApproved && !row.scheduleRejected && !row.visitApproved && row.visitStatus !== "no_show" && (
-                                <>
-                                  <button
-                                    className="px-2.5 py-1.5 bg-[color:var(--success-light)] hover:bg-[color:var(--success)]/20 text-[color:var(--success-dark)] dark:text-[color:var(--success-dark)] font-medium rounded-md transition-colors flex items-center gap-1.5 text-sm"
-                                    disabled={actionLoading === row.id}
-                                    onClick={() => handleApproveSchedule(row.id)}
-                                  >
-                                    <Check className="w-3.5 h-3.5" />
-                                    Approve
-                                  </button>
-                                  <button
-                                    className="px-2.5 py-1.5 bg-[color:var(--danger-light)] hover:bg-[color:var(--danger)]/20 text-[color:var(--danger-dark)] dark:text-[color:var(--danger-dark)] font-medium rounded-md transition-colors flex items-center gap-1.5 text-sm"
-                                    disabled={actionLoading === row.id}
-                                    title="Reject schedule"
-                                    onClick={() => setSelectedSchedule(row)}
-                                  >
-                                    <XIcon className="w-3.5 h-3.5" />
-                                    Reject
-                                  </button>
-                                </>
-                              )}
-                              {/* Schedule Confirmed: Mark Visited + No-Show */}
-                              {row.scheduleApproved && !row.visitApproved && row.visitStatus !== "no_show" && !row.scheduleRejected && (
+                              {/* Visit actions: Mark Visited + No-Show + Reject (schedules auto-approved) */}
+                              {!row.visitApproved && row.visitStatus !== "no_show" && row.visitStatus !== "visit_completed" && !row.scheduleRejected && (
                                 <>
                                   <button
                                     className="px-2.5 py-1.5 bg-[color:var(--success-light)] hover:bg-[color:var(--success)]/20 text-[color:var(--success-dark)] dark:text-[color:var(--success-dark)] font-medium rounded-md transition-colors flex items-center gap-1.5 text-sm"
@@ -763,6 +703,15 @@ function VisitSchedulesTab() {
                                   >
                                     <AlertCircle className="w-3.5 h-3.5" />
                                     No-Show
+                                  </button>
+                                  <button
+                                    className="px-2.5 py-1.5 bg-[color:var(--danger-light)] hover:bg-[color:var(--danger)]/20 text-[color:var(--danger-dark)] dark:text-[color:var(--danger-dark)] font-medium rounded-md transition-colors flex items-center gap-1.5 text-sm"
+                                    disabled={actionLoading === row.id}
+                                    title="Reject schedule"
+                                    onClick={() => setSelectedSchedule(row)}
+                                  >
+                                    <XIcon className="w-3.5 h-3.5" />
+                                    Reject
                                   </button>
                                 </>
                               )}

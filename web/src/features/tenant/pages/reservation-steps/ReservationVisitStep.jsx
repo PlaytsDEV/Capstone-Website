@@ -249,7 +249,7 @@ function Modal({ show, onBackdropClick, children }) {
   return createPortal(
     <div className="rf-modal-portal" onClick={onBackdropClick} aria-modal="true" role="dialog">
       <div className="rf-modal-backdrop" aria-hidden="true" />
-      <div className="rf-modal-card">{children}</div>
+      <div className="rf-modal-card" onClick={(e) => e.stopPropagation()}>{children}</div>
     </div>,
     document.body,
   );
@@ -287,7 +287,7 @@ const ReservationVisitStep = ({
   const { user: firebaseUser, loading: authLoading } = useFirebaseAuth();
   const [policiesAccepted, setPoliciesAccepted] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showConfirmSubmitModal, setShowConfirmSubmitModal] = useState(false);
   const [showPoliciesModal, setShowPoliciesModal] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [resolvedVisitCode, setResolvedVisitCode] = useState(visitCode || null);
@@ -397,10 +397,10 @@ const ReservationVisitStep = ({
     const slotAvailability = dateAvailability?.slots?.find((slot) => slot.label === visitTime);
     if (slotAvailability && !slotAvailability.available) { showNotification(slotAvailability.disabledReason || "That time slot is unavailable.", "error", 3000); document.getElementById("visit-time-section")?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
     if (!policiesAccepted) { showNotification("Please agree to the policies and terms to continue.", "error", 3000); document.getElementById("visit-policies-section")?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
-    setShowConfirmModal(true);
+    setShowConfirmSubmitModal(true);
   };
 
-  const handleContinue = async () => {
+  const handleContinueValidation = () => {
     if (isSaving) return;
     if (!selectedVisit) { showNotification("Please choose a viewing preference before submitting.", "error", 3000); return; }
     if (!canSubmitViewingPreference) { showNotification(VIEWING_PREFERENCE_LOCKED_MESSAGE, "info", 5000); return; }
@@ -413,6 +413,11 @@ const ReservationVisitStep = ({
 
     if (selectedVisit === "remote_2d_viewing" && remoteViewingAcknowledged !== true) { showNotification("Please acknowledge the photo-based 2D remote viewing notice before continuing.", "error", 3500); return; }
 
+    setShowConfirmSubmitModal(true);
+  };
+
+  const handleConfirmedSubmit = async () => {
+    setShowConfirmSubmitModal(false);
     setIsSaving(true);
     try {
       const savedVisitCode = await onSaveVisit?.();
@@ -752,7 +757,7 @@ const ReservationVisitStep = ({
                 <div className="content-card"><div className="rf-selection-confirm rf-selection-confirm--inline"><CheckCircle size={14} /><span>Current selection: <strong>Priority Viewing Review</strong></span></div><div className="rf-urgent-banner"><div className="rf-urgent-banner__icon"><Zap size={22} /></div><div className="rf-urgent-banner__body"><div className="rf-urgent-banner__title">Priority Viewing Review</div><div className="rf-urgent-banner__subtitle">Submit this request if you need admin to review your selected room and reservation sooner. Your tenant application and required documents must still be submitted and approved before payment becomes available.</div></div></div><div className="rf-urgent-steps"><div className="rf-urgent-steps__label">What happens next</div>{["Your priority viewing request is sent to the admin.","Admin reviews your selected room and reservation details sooner.","You still need to submit your tenant application and required documents.","Payment becomes available only after your application is approved."].map((step, idx) => (<div key={idx} className="rf-urgent-step-row"><div className="rf-urgent-step-num">{idx + 1}</div><div className="rf-urgent-step-text">{step}</div></div>))}</div><div className="card-section-title" style={{ paddingTop: 0, marginTop: 4, borderTop: "none" }}><Home size={15} style={{ marginRight: 6, flexShrink: 0 }} />Selected Room Summary</div><div className="rf-room-details-grid">{roomDetails.map(([label, value]) => (<div key={label} className="rf-room-details-grid__item"><span className="rf-room-details-grid__label">{label}</span><strong className="rf-room-details-grid__value">{value}</strong></div>))}</div></div>
               )}
 
-              <div className="stage-buttons"><button type="button" className="btn btn-secondary" onClick={canResubmitSamePhysicalVisit ? goToDashboard : handleBackToSelection}>{canResubmitSamePhysicalVisit ? "Back to Dashboard" : "Back"}</button><button type="button" className="btn btn-primary" onClick={handleContinue} disabled={isSaving || !canSubmitViewingPreference}>{isSaving ? "Saving..." : getVisitScheduleSubmitLabel(selectedVisit)}</button></div>
+              <div className="stage-buttons"><button type="button" className="btn btn-secondary" onClick={canResubmitSamePhysicalVisit ? goToDashboard : handleBackToSelection}>{canResubmitSamePhysicalVisit ? "Back to Dashboard" : "Back"}</button><button type="button" className="btn btn-primary" onClick={handleContinueValidation} disabled={isSaving || !canSubmitViewingPreference}>{isSaving ? "Saving..." : getVisitScheduleSubmitLabel(selectedVisit)}</button></div>
             </>
           )}
         </>
@@ -784,6 +789,57 @@ const ReservationVisitStep = ({
             <button type="button" className="rf-modal-close-btn" onClick={() => setPreviewImageIndex(null)} aria-label="Close image preview"><X size={18} /></button>
           </div>
           {previewImageIndex !== null && (<img src={roomImages[previewImageIndex]} alt={`Room photo ${previewImageIndex + 1}`} className="rf-photo-preview-modal__image" style={{ width: "100%", borderRadius: 8 }} />)}
+        </div>
+      </Modal>
+
+      <Modal show={showConfirmSubmitModal} onBackdropClick={() => setShowConfirmSubmitModal(false)}>
+        <div className="rf-modal-confirm" style={{ padding: 24, maxWidth: 420 }}>
+          <button type="button" className="rf-modal-close-btn" onClick={() => setShowConfirmSubmitModal(false)} aria-label="Close"><X size={18} /></button>
+          <div className="rf-modal-icon-wrap"><Calendar size={24} color="#2563EB" /></div>
+          <h3 className="rf-modal-title">Confirm Submission</h3>
+          <p className="rf-modal-subtitle">
+            {selectedVisit === "physical_visit"
+              ? "Please review your visit schedule before submitting."
+              : selectedVisit === "remote_2d_viewing"
+              ? "Please confirm your remote viewing request."
+              : "Please confirm your priority review request."}
+          </p>
+
+          <div className="rf-receipt-rows" style={{ textAlign: "left", marginTop: 12 }}>
+            <div className="rf-receipt-row">
+              <span className="rf-receipt-row__label">Viewing Preference</span>
+              <span className="rf-receipt-row__value">{VISIT_OPTIONS.find((o) => o.value === selectedVisit)?.title || "Not selected"}</span>
+            </div>
+            <div className="rf-receipt-row">
+              <span className="rf-receipt-row__label">Room</span>
+              <span className="rf-receipt-row__value">{toDisplayString(room.roomNumber || room.name, "Room")}</span>
+            </div>
+            <div className="rf-receipt-row">
+              <span className="rf-receipt-row__label">Branch</span>
+              <span className="rf-receipt-row__value">{room.branch ? toTitleCase(toDisplayString(room.branch)) : "N/A"}</span>
+            </div>
+            {selectedVisit === "physical_visit" && (
+              <>
+                <div className="rf-receipt-row">
+                  <span className="rf-receipt-row__label">Visit Date</span>
+                  <span className="rf-receipt-row__value" style={{ fontWeight: 600 }}>{fmtDateFull(visitDate)}</span>
+                </div>
+                <div className="rf-receipt-row">
+                  <span className="rf-receipt-row__label">Visit Time</span>
+                  <span className="rf-receipt-row__value" style={{ fontWeight: 600 }}>{visitTime}</span>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="rf-modal-actions" style={{ marginTop: 20 }}>
+            <button type="button" className="btn btn-primary" onClick={handleConfirmedSubmit} disabled={isSaving}>
+              {isSaving ? "Submitting..." : "Confirm"}
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={() => setShowConfirmSubmitModal(false)}>
+              Go Back
+            </button>
+          </div>
         </div>
       </Modal>
     </div>

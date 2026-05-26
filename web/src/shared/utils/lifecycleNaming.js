@@ -72,7 +72,7 @@ export const RESERVATION_STATUS_LABELS = Object.freeze({
   pending: "Room Selected",
   viewing_preference_selected: "Viewing Preference Selected",
   visit_pending: "Visit Pending",
-  visit_approved: "Visit Schedule Approved",
+  visit_approved: "Visit Confirmed",
   pending_application_review: "Pending Application Review",
   needs_revision: "Needs Revision",
   approved_for_payment: "Approved for Payment",
@@ -203,9 +203,9 @@ export const RESERVATION_STAGE_GUIDANCE = Object.freeze({
   viewing_preference_selected:
     "Viewing preference selected. Waiting for the tenant to submit the application and documents.",
   visit_pending:
-    "Visit schedule pending approval. Review it in the Visit Schedules tab.",
+    "Visit scheduled and auto-confirmed. Waiting for the applicant to attend.",
   visit_approved:
-    "Visit approved. Waiting for the tenant to complete the application.",
+    "Visit confirmed. Waiting for the tenant to complete the application.",
   pending_application_review:
     "Application and documents submitted. Payment stays locked until admin review is complete.",
   needs_revision:

@@ -119,8 +119,8 @@ export function getReservationProgress(reservation) {
 
  const isApplicationEditable =
  hasReservationStatus(status, "needs_revision") && !hasPayment && !isConfirmed;
- const isSchedulePendingApproval =
- isVisitScheduled && !reservation.scheduleApproved && !isScheduleRejected;
+ // Schedules are auto-approved at booking time — no admin approval step needed
+ const isSchedulePendingApproval = false;
  const isPaymentPendingApproval = hasReservationStatus(status, "payment_pending");
 
  const steps = [
@@ -163,7 +163,7 @@ export function getReservationProgress(reservation) {
  ? "completed"
  : currentStepIndex === 1 &&
    isPhysicalVisitPreference(reservation) &&
-   reservation.scheduleApproved
+   isVisitScheduled
  ? "awaiting_visit"
  : "locked",
  completedDate:
