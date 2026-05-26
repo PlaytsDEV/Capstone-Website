@@ -390,7 +390,7 @@ const reservationSchema = new mongoose.Schema(
     birthday: Date,
     gender: {
       type: String,
-      enum: ["male", "female", "other", "prefer-not-to-say", "", null],
+      enum: ["male", "female", "other", "prefer-not-to-say", "", null],  // UI only offers male/female; legacy values preserved for existing records
       default: null,
     },
     maritalStatus: String, // "single", "married", "divorced", "widowed"

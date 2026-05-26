@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { ChevronDown, User } from "lucide-react";
 import ConfirmModal from "../../../../shared/components/ConfirmModal";
 import FormScrollArrows from "../../../../shared/components/FormScrollArrows";
@@ -244,11 +244,6 @@ const ReservationApplicationStep = ({
   const toggleSection = (sectionKey) => setOpenSections((prev) => ({ ...prev, [sectionKey]: !prev[sectionKey] }));
 
   const handleNameInput = (value, setter) => setter(value.replace(/\d+/g, ""));
-  const handlePhoneInput = (value, setter) => {
-    let cleaned = value.replace(/[^0-9+]/g, "");
-    if (!cleaned.startsWith("+63")) cleaned = "+63" + cleaned.replace(/^\+?63?/, "");
-    if (cleaned.length <= 13) setter(cleaned);
-  };
   const handleGeneralInput = (value, setter, maxLength = 100) => { if (value.length <= maxLength) setter(value); };
   const validateField = (fieldName, value, validator) => { const result = validator(value); setFieldErrors((p) => ({ ...p, [fieldName]: result.error })); return result.valid; };
   const clearFieldError = (fieldName) => setFieldErrors((p) => (p[fieldName] ? { ...p, [fieldName]: null } : p));
@@ -261,7 +256,7 @@ const ReservationApplicationStep = ({
 
   const doResetAll = () => {
     [
-      setFirstName, setLastName, setMiddleName, setNickname, setMobileNumber,
+      setFirstName, setLastName, setMiddleName, setMobileNumber,
       setBirthday, setAddressUnitHouseNo, setAddressStreet, setAddressBarangay,
       setAddressCity, setAddressProvince, setAddressRegion, setNbiReason,
       setEmergencyContactName, setEmergencyRelationship, setEmergencyContactNumber,
@@ -269,10 +264,10 @@ const ReservationApplicationStep = ({
       setStartDate, setOccupation, setPreviousEmployment, setCompanyIDReason,
       setReferralSource, setReferrerName, setTargetMoveInDate, setEstimatedMoveInTime,
       setWorkSchedule, setWorkScheduleOther, setPersonalNotes, setPreferredRoomNumber,
-      setGender,
+      setGender, setNickname,
     ].forEach((s) => s(""));
 
-    setMaritalStatus(""); setNationality(""); setEducationLevel(""); setLeaseDuration(""); setValidIDType("");
+    setGender(""); setMaritalStatus(""); setNationality(""); setEducationLevel(""); setLeaseDuration(""); setValidIDType("");
     [setSelfiePhoto, setValidIDFront, setValidIDBack, setNbiClearance, setCompanyID].forEach((s) => s(null));
     setAgreedToPrivacy(false); setAgreedToCertification(false);
     setFieldErrors({});
@@ -281,8 +276,7 @@ const ReservationApplicationStep = ({
 
   const devAutoFill = () => {
     setFirstName("Juan"); setLastName("Dela Cruz"); setMiddleName("Santos"); setNickname("JD");
-    setMobileNumber("+639171234567"); setBirthday("2000-05-15");
-    setGender("male");
+    setMobileNumber("+639171234567"); setBirthday("2000-05-15"); setGender("male");
     setMaritalStatus("single"); setNationality("Filipino"); setEducationLevel("college");
     setValidIDType("national_id"); setAddressUnitHouseNo("Unit 12-B"); setAddressStreet("Rizal Avenue");
     setPersonalNotes("Test applicant - dev auto-fill"); setNbiReason(""); setCompanyIDReason("");
@@ -294,7 +288,7 @@ const ReservationApplicationStep = ({
     setOpenSections(buildOpenSectionState(true));
   };
 
-  const { birthdayMin, birthdayMax, moveInMin, moveInMax } = getDateConstraints();
+  const { birthdayMin, birthdayMax, moveInMin, moveInMax } = useMemo(() => getDateConstraints(), []);
   const readonlyContentClass = readOnly ? "rf-readonly-wrapper" : "";
 
   return (
@@ -304,13 +298,15 @@ const ReservationApplicationStep = ({
         <div className="rf-app-header__content">
           <div className="rf-app-header__copy">
             <div className="main-header-badge"><span>Step 3 · Verification</span></div>
-            <h2 className="rf-app-header__title">Tenant Application</h2>
+            <div className="rf-app-header__title-row">
+              <h2 className="rf-app-header__title">Tenant Application</h2>
+              {saveStatus && <span className="rf-save-status">{saveStatus === "saving" ? "Saving…" : "✓ Saved"}</span>}
+            </div>
             <p className="rf-app-header__subtitle">Complete all fields below. Required fields are marked with <span className="rf-required">*</span></p>
           </div>
 
           {!readOnly && (
             <div className="rf-app-actions">
-              {saveStatus && <span className="rf-save-status">{saveStatus}</span>}
               <button type="button" onClick={handleResetAll} className="rf-reset-btn">Reset All</button>
               {import.meta.env.DEV && <button type="button" onClick={devAutoFill} className="rf-dev-fill-btn">⚡ Dev Auto-Fill</button>}
             </div>
@@ -338,7 +334,7 @@ const ReservationApplicationStep = ({
         </CollapsibleSection>
 
         <CollapsibleSection number={3} title="Emergency Contact" sectionKey="emergency" isOpen={openSections.emergency} onToggle={() => toggleSection("emergency")} sectionRef={(el) => { sectionRefs.current.emergency = el; }} contentClassName={readonlyContentClass}>
-          <EmergencyContactSection {...{ emergencyContactName, setEmergencyContactName, emergencyRelationship, setEmergencyRelationship, emergencyContactNumber, setEmergencyContactNumber, healthConcerns, setHealthConcerns, handlePhoneInput, validateField, fieldErrors, showValidationErrors }} />
+          <EmergencyContactSection {...{ emergencyContactName, setEmergencyContactName, emergencyRelationship, setEmergencyRelationship, emergencyContactNumber, setEmergencyContactNumber, healthConcerns, setHealthConcerns, validateField, fieldErrors, showValidationErrors }} />
         </CollapsibleSection>
 
         <CollapsibleSection number={4} title="Employment / School" sectionKey="employment" isOpen={openSections.employment} onToggle={() => toggleSection("employment")} sectionRef={(el) => { sectionRefs.current.employment = el; }} contentClassName={readonlyContentClass}>

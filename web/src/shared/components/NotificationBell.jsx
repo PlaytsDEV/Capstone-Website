@@ -14,24 +14,24 @@ import "./NotificationBell.css";
 
 const TYPE_ICONS = {
  reservation_created: "📋",
- reservation_approved: "✅",
- reservation_rejected: "❌",
- reservation_confirmed: "✅",
- reservation_cancelled: "❌",
- reservation_expired: "⏰",
- reservation_noshow: "🚫",
- payment_received: "💳",
- payment_verified: "✅",
- payment_approved: "💳",
- payment_rejected: "💳",
- visit_approved: "🏠",
- visit_rejected: "🚫",
- account_suspended: "⚠️",
- account_reactivated: "🔔",
- account_banned: "🚫",
- announcement: "📢",
- system: "ℹ️",
- general: "ℹ️",
+ reservation_approved: "✓",
+ reservation_rejected: "✕",
+ reservation_confirmed: "✓",
+ reservation_cancelled: "✕",
+ reservation_expired: "⏱",
+ reservation_noshow: "—",
+ payment_received: "₱",
+ payment_verified: "✓",
+ payment_approved: "₱",
+ payment_rejected: "₱",
+ visit_approved: "⌂",
+ visit_rejected: "—",
+ account_suspended: "!",
+ account_reactivated: "↻",
+ account_banned: "⊘",
+ announcement: "▣",
+ system: "i",
+ general: "i",
 };
 
 const BellIcon = ({ hasUnread }) => (
@@ -146,11 +146,8 @@ export default function NotificationBell() {
  markAsRead.mutate(notification._id);
  }
 
- const actionUrl = getNotificationActionUrl(notification);
- if (actionUrl) {
  setIsOpen(false);
- navigate(actionUrl);
- }
+ navigate(isAdmin() ? "/admin/notifications" : "/applicant/profile", isAdmin() ? undefined : { state: { tab: "notifications" } });
  };
 
  return (
@@ -198,9 +195,10 @@ export default function NotificationBell() {
  className="nb-mark-all-btn"
  onClick={() => markAllAsRead.mutate()}
  disabled={markAllAsRead.isPending}
+ title="Mark all as read"
  >
  <CheckAllIcon />
- <span>Mark all read</span>
+ <span>Read all</span>
  </button>
  ) : null}
  </div>
@@ -234,8 +232,8 @@ export default function NotificationBell() {
  role="button"
  tabIndex={0}
  >
- <span className="nb-item-icon">
- {TYPE_ICONS[notification.type] || "•"}
+ <span className="nb-item-icon" aria-hidden="true">
+ {TYPE_ICONS[notification.type] || "·"}
  </span>
  <div className="nb-item-content">
  <p className="nb-item-title">{notification.title}</p>
@@ -256,10 +254,10 @@ export default function NotificationBell() {
  className="nb-view-all-btn"
  onClick={() => {
   setIsOpen(false);
-  navigate(isAdmin() ? "/admin/notifications" : "/applicant/notifications");
+  navigate(isAdmin() ? "/admin/notifications" : "/applicant/profile", isAdmin() ? undefined : { state: { tab: "notifications" } });
  }}
  >
- View all notifications
+ View all
  </button>
  </div>
  ) : null}

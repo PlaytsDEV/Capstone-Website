@@ -367,7 +367,7 @@ const deriveStage = (r) => {
 
  // Step 2-3 — Visit pipeline
  if (s === "visit_approved" || r.scheduleApproved || r.visitApproved)
- return { color: "#7C3AED", bg: "#EDE9FE", label: "Legacy Visit Approved" };
+ return { color: "#7C3AED", bg: "#EDE9FE", label: "Visit Approved" };
 
  if (s === "visit_pending" || (r.visitDate && !r.scheduleRejected))
  return { color: "#2563EB", bg: "#DBEAFE", label: "Visit Scheduled" };

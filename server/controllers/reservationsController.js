@@ -4648,7 +4648,12 @@ export const updateReservationByUser = async (req, res, next) => {
       // keys ("emergencyContact.name") for MongoDB $set — NOT as flat JS props.
       const missingRequired = [];
       const hasVal = (v) => v != null && String(v).trim().length > 0;
-      const isValidPHPhone = (v) => v != null && /^09\d{9}$/.test(String(v));
+      const isValidPHPhone = (v) => {
+        if (v == null) return false;
+        const s = String(v).trim();
+        // Accept local (09XXXXXXXXX), E.164 (+639XXXXXXXXX), or bare (639XXXXXXXXX)
+        return /^09\d{9}$/.test(s) || /^\+?639\d{9}$/.test(s);
+      };
       const isValidTargetMoveInDate = (value) => {
         if (!hasVal(value)) return false;
         const date = dayjs(value);
@@ -5741,7 +5746,8 @@ export const renewContract = async (req, res, next) => {
 export const moveOutReservation = async (req, res, next) => {
   try {
     const { reservationId } = req.params;
-    const { meterReading } = req.body || {};
+    const { meterReading, finalUtilityReading } = req.body || {};
+    const resolvedReading = finalUtilityReading ?? meterReading;
     if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
 
     const reservation = await Reservation.findById(reservationId)
@@ -5761,7 +5767,7 @@ export const moveOutReservation = async (req, res, next) => {
     }
 
     // Meter reading is required at move-out
-    if (meterReading == null || isNaN(Number(meterReading))) {
+    if (resolvedReading == null || isNaN(Number(resolvedReading))) {
       return res.status(400).json({
         error: "A meter reading (kWh) is required when moving out a tenant.",
         code: "METER_READING_REQUIRED",
@@ -5779,17 +5785,15 @@ export const moveOutReservation = async (req, res, next) => {
     const oldData = reservation.toObject();
     const result = await moveOutStayWorkflow({
       reservationId,
-      payload: req.body,
+      payload: { ...req.body, finalUtilityReading: Number(resolvedReading) },
       actorId: actor?._id || null,
     });
 
     const { notify } = await import("../utils/notificationService.js");
     const roomName = result.reservation.roomId?.name || "your room";
-    notify.general(
+    await notify.moveOutComplete(
       result.reservation.userId?._id || result.reservation.userId,
-      "Move-Out Complete",
-      `You have been moved out from ${roomName}. Thank you for staying at Lilycrest!`,
-      { entityType: "stay" },
+      roomName,
     );
 
     await auditLogger.logModification(

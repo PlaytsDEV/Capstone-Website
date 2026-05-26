@@ -263,23 +263,11 @@ const ReservationPaymentStep = ({
             }`}
             id="reservation-payment-help"
           >
-            {agreedToFeePolicy ? (
-              <>
-                <RefreshCw size={15} aria-hidden="true" />
-                <span>
-                  If checkout was interrupted, use this button again. Only
-                  completed PayMongo payments will confirm the reservation.
-                </span>
-              </>
-            ) : (
-              <>
-                <AlertCircle size={15} aria-hidden="true" />
-                <span>
-                  Please acknowledge the non-refundable fee policy before
-                  payment.
-                </span>
-              </>
-            )}
+            <AlertCircle size={15} aria-hidden="true" />
+            <span>
+              Please acknowledge the non-refundable fee policy before
+              payment.
+            </span>
           </div>
         </section>
       )}

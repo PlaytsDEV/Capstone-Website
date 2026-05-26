@@ -301,6 +301,11 @@ app.use("/api/inquiries", publicLimiter, inquiryRoutes);
 app.use("/api/audit-logs", auditRoutes);
 app.use("/api/billing", billingRoutes);
 app.use("/api/announcements", announcementRoutes);
+// Mobile app routes use session_token auth. Mount them before the maintenance
+// contract so tenant mobile /api/m/maintenance/* requests are not intercepted
+// by the web Firebase-token middleware. Web/admin maintenance routes still
+// fall through to the contract router below.
+app.use("/api/m", mobileRoutes);
 app.use("/api/m/maintenance", maintenanceRoutes);
 app.use("/api/maintenance", maintenanceRoutes);
 app.use("/api/service-providers", serviceProviderRoutes);
@@ -315,9 +320,6 @@ app.use("/api/settings", settingsRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/branches", branchSummaryRoutes);
 app.use("/api/backups", backupRoutes);
-
-// ─── Mobile App Routes (LilyCrest-Clean backend bridge) ─────────────────────
-app.use("/api/m", mobileRoutes);
 
 app.get("/api/health", async (req, res) => {
   const checks = {};

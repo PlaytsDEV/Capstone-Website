@@ -55,9 +55,6 @@ export const TenantMaintenancePage = React.lazy(
 export const TenantAnnouncementsPage = React.lazy(
   () => import("../features/tenant/pages/AnnouncementsPage"),
 );
-export const TenantNotificationsPage = React.lazy(
-  () => import("../features/tenant/pages/NotificationsPage"),
-);
 
 export const AdminLayout = React.lazy(
   () => import("../features/admin/components/AdminLayout"),

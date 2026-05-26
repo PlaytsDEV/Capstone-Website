@@ -162,9 +162,27 @@ const appendWorkLogEntry = (request, entry) => {
 };
 
 const appendConversationEntry = (request, entry) => {
+  const normalizedEntry = {
+    ...entry,
+    update_id: entry.update_id || `reply_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`,
+    type: entry.type || (entry.sender_side === "tenant" ? "tenant_reply" : "admin_reply"),
+    kind: entry.kind || entry.type || (entry.sender_side === "tenant" ? "tenant_reply" : "admin_reply"),
+    visibility: "tenant",
+    visibleToTenant: true,
+    isTenantVisible: true,
+  };
+
   request.conversation = [
     ...(Array.isArray(request.conversation) ? request.conversation : []),
-    entry,
+    normalizedEntry,
+  ];
+  request.publicReplies = [
+    ...(Array.isArray(request.publicReplies) ? request.publicReplies : []),
+    normalizedEntry,
+  ];
+  request.tenantReplies = [
+    ...(Array.isArray(request.tenantReplies) ? request.tenantReplies : []),
+    normalizedEntry,
   ];
 };
 
@@ -560,6 +578,7 @@ const sanitizeAttachmentForOutput = (entry, index = 0, { includeInternal = true 
     uri: safeUri,
     type,
     url: safeUri,
+    downloadUrl: safeUri,
     filename: name,
     originalName,
     mimeType: type,
@@ -572,6 +591,10 @@ const sanitizeAttachmentForOutput = (entry, index = 0, { includeInternal = true 
   }
   if (typeof entry === "object" && entry?.provider) {
     output.provider = entry.provider;
+  }
+  if (typeof entry === "object") {
+    output.uploadedAt = entry?.uploadedAt || entry?.createdAt || entry?.created_at || null;
+    output.createdAt = entry?.createdAt || entry?.created_at || entry?.uploadedAt || null;
   }
   if (typeof entry === "object" && entry?.isRemoved) {
     output.isRemoved = true;
@@ -667,6 +690,71 @@ const sanitizeAttachmentsForOutput = (attachments, options = {}) => {
   return attachments
     .map((entry, index) => sanitizeAttachmentForOutput(entry, index, options))
     .filter(Boolean);
+};
+
+const PUBLIC_CONVERSATION_TYPES = new Set([
+  "admin_reply",
+  "admin_update",
+  "tenant_reply",
+  "tenant_summary",
+  "summary",
+]);
+
+const INTERNAL_CONVERSATION_TYPES = new Set([
+  "status_change",
+  "status_changed",
+  "status_update",
+  "workflow_action",
+  "viewed",
+  "processing",
+  "draft_saved",
+  "internal_note",
+  "internal_log",
+  "admin_log",
+  "audit",
+  "history",
+]);
+
+const getConversationEntryType = (entry = {}) =>
+  String(entry.type || entry.kind || entry.event || entry.action || "")
+    .trim()
+    .toLowerCase();
+
+const getConversationEntryMessage = (entry = {}) =>
+  toOptionalText(entry.message || entry.summary || entry.tenantSummary || entry.body || entry.text) ||
+  "";
+
+const isTenantVisibleConversationEntry = (entry = {}) => {
+  if (!entry || typeof entry !== "object") return false;
+  if (entry.visibleToTenant === false || entry.isTenantVisible === false) return false;
+  if (entry.internal === true || entry.adminOnly === true || entry.isInternal === true) return false;
+
+  const visibility = String(entry.visibility || entry.audience || "").trim().toLowerCase();
+  if (["internal", "admin", "admin_only", "admin-only", "private", "workflow"].includes(visibility)) {
+    return false;
+  }
+
+  const type = getConversationEntryType(entry);
+  if (INTERNAL_CONVERSATION_TYPES.has(type)) return false;
+  if (type && !PUBLIC_CONVERSATION_TYPES.has(type)) return false;
+
+  const senderSide = String(entry.sender_side || entry.senderSide || "").trim().toLowerCase();
+  const senderRole = String(
+    entry.sender_role || entry.senderRole || entry.actor_role || entry.actorRole || entry.role || "",
+  )
+    .trim()
+    .toLowerCase();
+  const attachments = sanitizeAttachmentsForOutput(entry.attachments, { includeInternal: false });
+  const hasTenantContent = Boolean(getConversationEntryMessage(entry) || attachments.length);
+
+  return Boolean(
+    hasTenantContent &&
+      (["admin", "tenant"].includes(senderSide) ||
+        senderRole.includes("admin") ||
+        senderRole.includes("owner") ||
+        ["tenant", "applicant"].includes(senderRole) ||
+        PUBLIC_CONVERSATION_TYPES.has(type)),
+  );
 };
 
 const serializeUploadedMaintenanceAttachment = (attachment = {}) => {
@@ -796,6 +884,31 @@ const serializeMaintenanceRequest = (
       }))
     : [];
 
+  const publicReplies = Array.isArray(request.publicReplies) && request.publicReplies.length
+    ? request.publicReplies
+    : Array.isArray(request.tenantReplies) && request.tenantReplies.length
+      ? request.tenantReplies
+      : Array.isArray(request.conversation)
+        ? request.conversation
+        : [];
+  const serializedPublicReplies = publicReplies
+    .filter((entry) => includeInternal || isTenantVisibleConversationEntry(entry))
+    .map((entry) => ({
+      ...entry,
+      type: entry.type || (entry.sender_side === "tenant" ? "tenant_reply" : "admin_reply"),
+      kind: entry.kind || entry.type || (entry.sender_side === "tenant" ? "tenant_reply" : "admin_reply"),
+      visibility: "tenant",
+      visibleToTenant: true,
+      isTenantVisible: true,
+      senderName: entry.sender_name || entry.senderName || entry.actor_name || null,
+      senderRole: entry.sender_role || entry.senderRole || entry.actor_role || null,
+      actor_name: entry.sender_name || entry.senderName || entry.actor_name || null,
+      actor_role: entry.sender_role || entry.senderRole || entry.actor_role || null,
+      createdAt: entry.createdAt || entry.created_at || entry.timestamp || null,
+      sentAt: entry.createdAt || entry.created_at || entry.timestamp || null,
+      attachments: sanitizeAttachmentsForOutput(entry?.attachments, { includeInternal: false }),
+    }));
+
   return {
     id: request.request_id,
     _id: request._id,
@@ -810,7 +923,9 @@ const serializeMaintenanceRequest = (
     attachments: sanitizeAttachmentsForOutput(request.attachments, { includeInternal }),
     reopen_note: request.reopen_note ?? null,
     reopen_history: Array.isArray(request.reopen_history) ? request.reopen_history : [],
-    statusHistory: sanitizeStatusHistoryForOutput(request.statusHistory, { includeInternal }),
+    statusHistory: includeInternal
+      ? sanitizeStatusHistoryForOutput(request.statusHistory, { includeInternal })
+      : [],
     slaState: getSlaState(request),
     assignment: {
       assignedTo: includeInternal ? request.assigned_to ?? null : null,
@@ -832,11 +947,30 @@ const serializeMaintenanceRequest = (
     assignedByName: includeInternal ? request.assignedByName ?? null : null,
     assignedByRole: includeInternal ? request.assignedByRole ?? null : null,
     workLog,
-    conversation: Array.isArray(request.conversation)
+    conversation: includeInternal && Array.isArray(request.conversation)
       ? request.conversation.map((entry) => ({
           ...entry,
           attachments: sanitizeAttachmentsForOutput(entry?.attachments, { includeInternal }),
         }))
+      : serializedPublicReplies,
+    publicReplies: serializedPublicReplies,
+    tenantReplies: serializedPublicReplies,
+    thread: serializedPublicReplies,
+    internalLogs: includeInternal
+      ? [
+          ...(Array.isArray(request.work_log) ? request.work_log : []).map((entry) => ({
+            ...entry,
+            visibility: "internal",
+            visibleToTenant: false,
+            isTenantVisible: false,
+          })),
+          ...(Array.isArray(request.statusHistory) ? request.statusHistory : []).map((entry) => ({
+            ...entry,
+            visibility: "internal",
+            visibleToTenant: false,
+            isTenantVisible: false,
+          })),
+        ]
       : [],
     resolutionNote: includeInternal ? request.resolution_note ?? null : null,
     created_at: request.created_at,
@@ -2170,12 +2304,25 @@ export const getRequestById = async (req, res, next) => {
         ? dbUser
         : await User.findOne({ user_id: request.user_id }).select(USER_SELECT_FIELDS).lean();
 
-    sendSuccess(res, {
-      request: serializeMaintenanceRequest(
+    const serializedRequest = serializeMaintenanceRequest(
       request.toObject(),
       serializeTenantSummary(tenantUser, request),
       { includeInternal: isAdminViewer },
-      ),
+    );
+
+    if (!isAdminViewer && process.env.NODE_ENV !== "production") {
+      console.log("[maintenance:tenant-detail]", {
+        requestId: serializedRequest.request_id,
+        threadCount: serializedRequest.thread.length,
+        replyAttachmentCount: serializedRequest.thread.reduce(
+          (count, entry) => count + (Array.isArray(entry.attachments) ? entry.attachments.length : 0),
+          0,
+        ),
+      });
+    }
+
+    sendSuccess(res, {
+      request: serializedRequest,
     });
   } catch (error) {
     next(error);
@@ -2822,6 +2969,8 @@ export const sendAdminTenantSummary = async (req, res, next) => {
 
     const eventTimestamp = new Date();
     appendConversationEntry(request, {
+      type: "tenant_summary",
+      kind: "tenant_summary",
       message,
       attachments: [],
       sender_id: adminUser?.user_id || null,

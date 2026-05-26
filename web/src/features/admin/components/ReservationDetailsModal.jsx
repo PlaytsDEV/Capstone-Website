@@ -439,6 +439,7 @@ export default function ReservationDetailsModal({
  variant: "info",
  onConfirm: null,
  });
+ const [revisionModal, setRevisionModal] = useState({ open: false });
 
  useBodyScrollLock(Boolean(reservation));
  useEscapeClose(Boolean(reservation), onClose);
@@ -1530,21 +1531,7 @@ export default function ReservationDetailsModal({
  {allowedActions.includes("needs_revision") && (
  <button
  className="rdm-action rdm-action-dark"
- onClick={() => {
- if (!adminNotes.trim()) {
- showNotification("Add a reason in Admin Notes before requesting revision.", "warning");
- return;
- }
- doAction(
- "requestRevision",
- () =>
- reservationApi.update(reservation.id, {
- status: "needs_revision",
- applicationReviewReason: adminNotes.trim(),
- }),
- "Revision request sent to applicant",
- );
- }}
+ onClick={() => setRevisionModal({ open: true })}
  disabled={isSubmitting}
  >
  Request Revision
@@ -1815,7 +1802,166 @@ export default function ReservationDetailsModal({
  variant={confirmModal.variant}
  confirmText={confirmModal.confirmText || "Confirm"}
  />
+
+ {revisionModal.open && (
+ <RevisionReasonModal
+ onClose={() => setRevisionModal({ open: false })}
+ onSubmit={(reason) => {
+ setRevisionModal({ open: false });
+ doAction(
+ "requestRevision",
+ () =>
+ reservationApi.update(reservation.id, {
+ status: "needs_revision",
+ applicationReviewReason: reason,
+ }),
+ "Revision request sent to applicant",
+ );
+ }}
+ />
+ )}
  </>,
  document.body,
  );
+}
+
+/* ──────────────────────────────────────────────────────────────
+ RevisionReasonModal — template-based revision request modal
+────────────────────────────────────────────────────────────── */
+
+const REVISION_TEMPLATES = [
+  {
+    id: "blurry_id",
+    label: "Blurry / Unreadable ID",
+    text: "Your uploaded ID photo is blurry or unreadable. Please re-upload a clear, well-lit photo of your valid government ID (front and back).",
+  },
+  {
+    id: "wrong_doc_type",
+    label: "Wrong Document Type",
+    text: "The document you uploaded does not match the required type. Please upload the correct document as specified in the requirements.",
+  },
+  {
+    id: "incomplete_info",
+    label: "Incomplete Information",
+    text: "Some required fields in your application are incomplete or contain placeholder text. Please review and fill out all required fields.",
+  },
+  {
+    id: "mismatch_name",
+    label: "Name Mismatch",
+    text: "The name on your submitted ID does not match the name in your application form. Please correct your application details or upload the correct ID.",
+  },
+  {
+    id: "missing_nbi",
+    label: "Missing NBI Clearance",
+    text: "Your NBI Clearance document is missing or was not uploaded. Please upload a valid NBI Clearance, or provide a reason if you are unable to obtain one.",
+  },
+  {
+    id: "expired_id",
+    label: "Expired ID",
+    text: "The ID you submitted appears to be expired. Please upload a current, non-expired government-issued ID.",
+  },
+  {
+    id: "selfie_issue",
+    label: "Selfie Photo Issue",
+    text: "Your selfie photo does not meet the requirements. Please upload a clear, recent photo of yourself with adequate lighting and a neutral background.",
+  },
+  {
+    id: "company_id_missing",
+    label: "Missing Company / School ID",
+    text: "Your company or school ID was not uploaded. Please upload a valid company or school ID, or provide a reason if unavailable.",
+  },
+];
+
+function RevisionReasonModal({ onClose, onSubmit }) {
+  const [selected, setSelected] = useState([]);
+  const [customNote, setCustomNote] = useState("");
+
+  const toggleTemplate = (template) => {
+    setSelected((prev) =>
+      prev.find((t) => t.id === template.id)
+        ? prev.filter((t) => t.id !== template.id)
+        : [...prev, template],
+    );
+  };
+
+  const composedReason = [
+    ...selected.map((t) => `• ${t.text}`),
+    ...(customNote.trim() ? [`• ${customNote.trim()}`] : []),
+  ].join("\n");
+
+  const canSubmit = selected.length > 0 || customNote.trim().length > 0;
+
+  return (
+    <div className="rdm-revision-overlay" onClick={onClose}>
+      <div
+        className="rdm-revision-modal"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="rdm-revision-header">
+          <h3 className="rdm-revision-title">Request Revision</h3>
+          <p className="rdm-revision-subtitle">
+            Select the reason(s) for requesting a revision. The applicant will
+            see these in their notification.
+          </p>
+        </div>
+
+        <div className="rdm-revision-templates">
+          {REVISION_TEMPLATES.map((tpl) => {
+            const isActive = selected.find((t) => t.id === tpl.id);
+            return (
+              <button
+                key={tpl.id}
+                type="button"
+                className={`rdm-revision-chip ${isActive ? "rdm-revision-chip--active" : ""}`}
+                onClick={() => toggleTemplate(tpl)}
+              >
+                <span className="rdm-revision-chip-check">
+                  {isActive ? "✓" : "+"}
+                </span>
+                {tpl.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="rdm-revision-custom">
+          <label className="rdm-revision-custom-label">
+            Additional notes (optional)
+          </label>
+          <textarea
+            className="rdm-notes-input"
+            placeholder="Add specific details about what needs to be corrected..."
+            value={customNote}
+            onChange={(e) => setCustomNote(e.target.value)}
+            rows="3"
+          />
+        </div>
+
+        {composedReason && (
+          <div className="rdm-revision-preview">
+            <span className="rdm-revision-preview-label">Preview</span>
+            <p className="rdm-revision-preview-text">{composedReason}</p>
+          </div>
+        )}
+
+        <div className="rdm-revision-actions">
+          <button
+            type="button"
+            className="rdm-action rdm-action-outline"
+            onClick={onClose}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="rdm-action rdm-action-dark"
+            disabled={!canSubmit}
+            onClick={() => onSubmit(composedReason)}
+          >
+            Send Revision Request
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }

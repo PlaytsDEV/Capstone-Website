@@ -332,7 +332,7 @@ const AddressCascadeFields = ({
  }
  style={{ border: errBorder(showValidationErrors, addressUnitHouseNo) }}
  />
- {(showValidationErrors && !addressUnitHouseNo) || fieldErrors.addressUnitHouseNo ? (
+ {((showValidationErrors && !addressUnitHouseNo) || fieldErrors.addressUnitHouseNo) ? (
  <div className="rf-field-error">
  {showValidationErrors && !addressUnitHouseNo
  ? "Unit / House No. is required"
@@ -366,7 +366,7 @@ const AddressCascadeFields = ({
  }
  style={{ border: errBorder(showValidationErrors, addressStreet) }}
  />
- {(showValidationErrors && !addressStreet) || fieldErrors.addressStreet ? (
+ {((showValidationErrors && !addressStreet) || fieldErrors.addressStreet) ? (
  <div className="rf-field-error">
  {showValidationErrors && !addressStreet
  ? "Street is required"
@@ -398,11 +398,11 @@ const AddressCascadeFields = ({
  </option>
  ))}
  </select>
- {(showValidationErrors && !addressRegion) || fieldErrors.addressRegion ? (
-  <div className="rf-field-error">
-  {showValidationErrors && !addressRegion ? "Region is required" : fieldErrors.addressRegion}
-  </div>
- ) : null}
+ {((showValidationErrors && !addressRegion) || fieldErrors.addressRegion) ? (
+   <div className="rf-field-error">
+   {showValidationErrors && !addressRegion ? "Region is required" : fieldErrors.addressRegion}
+   </div>
+  ) : null}
  </div>
 
  {/* Province (disabled until region is selected, hidden for NCR) */}
@@ -433,14 +433,14 @@ const AddressCascadeFields = ({
  </option>
  ))}
  </select>
- {(showValidationErrors && regionSelected && !addressProvince) ||
- fieldErrors.addressProvince ? (
-  <div className="rf-field-error">
-  {showValidationErrors && regionSelected && !addressProvince
-   ? "Province is required"
-   : fieldErrors.addressProvince}
-  </div>
- ) : null}
+ {((showValidationErrors && regionSelected && !addressProvince) ||
+  fieldErrors.addressProvince) ? (
+   <div className="rf-field-error">
+   {showValidationErrors && regionSelected && !addressProvince
+    ? "Province is required"
+    : fieldErrors.addressProvince}
+   </div>
+  ) : null}
  </div>
  )}
 
@@ -473,14 +473,14 @@ const AddressCascadeFields = ({
  </option>
  ))}
  </select>
- {(showValidationErrors && provinceReady && regionSelected && !addressCity) ||
- fieldErrors.addressCity ? (
-  <div className="rf-field-error">
-  {showValidationErrors && provinceReady && regionSelected && !addressCity
-   ? "City is required"
-   : fieldErrors.addressCity}
-  </div>
- ) : null}
+ {((showValidationErrors && provinceReady && regionSelected && !addressCity) ||
+  fieldErrors.addressCity) ? (
+   <div className="rf-field-error">
+   {showValidationErrors && provinceReady && regionSelected && !addressCity
+    ? "City is required"
+    : fieldErrors.addressCity}
+   </div>
+  ) : null}
  </div>
 
  {/* Barangay (disabled until city is selected) */}
@@ -510,14 +510,14 @@ const AddressCascadeFields = ({
  </option>
  ))}
  </select>
- {(showValidationErrors && cityReady && !addressBarangay) ||
- fieldErrors.addressBarangay ? (
-  <div className="rf-field-error">
-  {showValidationErrors && cityReady && !addressBarangay
-   ? "Barangay is required"
-   : fieldErrors.addressBarangay}
-  </div>
- ) : null}
+ {((showValidationErrors && cityReady && !addressBarangay) ||
+  fieldErrors.addressBarangay) ? (
+   <div className="rf-field-error">
+   {showValidationErrors && cityReady && !addressBarangay
+    ? "Barangay is required"
+    : fieldErrors.addressBarangay}
+   </div>
+  ) : null}
  </div>
  </>
  );

@@ -29,7 +29,7 @@ export default function StatusBadge({ status, label: customLabel }) {
     if (s === "viewing_preference_selected") return "Viewing Preference Selected";
     if (s === "visit_pending") return "Visit Pending";
     if (s === "cancellation_requested") return "Cancellation Requested";
-    if (s === "visit_approved") return "Legacy Visit Approved";
+    if (s === "visit_approved") return "Visit Approved";
     if (s === "pending_application_review") return "Pending Review";
     if (s === "needs_revision") return "Needs Revision";
     if (s === "approved_for_payment") return "Approved for Payment";

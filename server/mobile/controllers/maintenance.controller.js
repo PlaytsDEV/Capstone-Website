@@ -17,6 +17,22 @@ const VALID_URGENCIES = ['low', 'normal', 'high'];
 const VALID_STATUSES = ['pending', 'viewed', 'in_progress', 'resolved', 'completed', 'rejected', 'cancelled'];
 const IMAGE_FILE_PATTERN = /\.(avif|bmp|gif|heic|jpeg|jpg|png|svg|webp)(?:$|[?#])/i;
 const PDF_FILE_PATTERN = /\.pdf(?:$|[?#])/i;
+const PUBLIC_REPLY_TYPES = new Set(['admin_reply', 'admin_update', 'tenant_reply', 'tenant_summary', 'summary']);
+const INTERNAL_THREAD_TYPES = new Set([
+  'status_change',
+  'status_changed',
+  'status_visible',
+  'internal_note',
+  'internal_log',
+  'workflow_action',
+  'viewed',
+  'processing',
+  'draft_saved',
+  'tenant_submitted',
+  'tenant_cancelled',
+  'tenant_reopened',
+  'tenant_confirmed_resolved',
+]);
 
 function attachmentText(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -118,11 +134,26 @@ function normalizeAttachmentEntry(entry, index = 0) {
   if (!uri || !isRemoteUri(uri)) return null;
 
   const name = getAttachmentName(entry, uri, index);
-  return {
+  const type = inferAttachmentType(entry, name, uri);
+  const normalized = {
     name,
     uri,
-    type: inferAttachmentType(entry, name, uri),
+    url: uri,
+    downloadUrl: uri,
+    filename: name,
+    type,
+    mimeType: type,
   };
+
+  if (typeof entry === 'object' && entry) {
+    const size = Number(entry.size ?? entry.fileSize);
+    if (Number.isFinite(size) && size >= 0) normalized.size = size;
+    if (entry.storagePath) normalized.storagePath = entry.storagePath;
+    normalized.uploadedAt = entry.uploadedAt || entry.createdAt || entry.created_at || null;
+    normalized.createdAt = entry.createdAt || entry.created_at || entry.uploadedAt || null;
+  }
+
+  return normalized;
 }
 
 function normalizeAttachmentList(attachments) {
@@ -131,6 +162,129 @@ function normalizeAttachmentList(attachments) {
       .map((entry, index) => normalizeAttachmentEntry(entry, index))
       .filter(Boolean)
     : [];
+}
+
+function getEntryTimestamp(entry = {}) {
+  return entry.created_at || entry.createdAt || entry.timestamp || entry.logged_at || entry.updated_at || entry.updatedAt || null;
+}
+
+function getEntryTimeValue(entry = {}) {
+  const date = new Date(getEntryTimestamp(entry) || 0);
+  const time = date.getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function getEntryType(entry = {}) {
+  return String(entry.type || entry.kind || entry.event || '').trim().toLowerCase();
+}
+
+function getEntryMessage(entry = {}) {
+  return String(entry.message || entry.summary || entry.tenantSummary || entry.note || entry.content || '').trim();
+}
+
+function normalizeSenderRole(role = '', fallback = 'admin') {
+  const normalized = String(role || fallback || '').trim().toLowerCase().replace(/\s+/g, '_');
+  if (['tenant', 'applicant', 'you'].includes(normalized)) return 'tenant';
+  if (['owner', 'property_owner'].includes(normalized)) return 'owner';
+  if (['branch_admin', 'branch'].includes(normalized)) return 'branch_admin';
+  if (['service_provider', 'provider', 'technician'].includes(normalized)) return 'service_provider';
+  if (['system', 'maintenance_system'].includes(normalized)) return 'system';
+  return 'admin';
+}
+
+function senderLabelFromRole(role = '', fallbackName = '') {
+  const normalized = normalizeSenderRole(role);
+  if (normalized === 'tenant') return 'You';
+  if (normalized === 'owner') return 'Owner';
+  if (normalized === 'branch_admin') return 'Branch Admin';
+  if (normalized === 'service_provider') return 'Service Provider';
+  if (normalized === 'system') return 'Maintenance Team';
+  return fallbackName || 'Branch Admin';
+}
+
+function isTenantVisibleEntry(entry = {}) {
+  const visibility = String(entry.visibility || (entry.visibleToTenant === false ? 'internal' : 'tenant')).toLowerCase();
+  if (visibility === 'internal' || entry.visibleToTenant === false || entry.isTenantVisible === false) return false;
+  if (entry.internal === true || entry.adminOnly === true || entry.isInternal === true) return false;
+  const type = getEntryType(entry);
+  if (INTERNAL_THREAD_TYPES.has(type)) return false;
+  if (type && !PUBLIC_REPLY_TYPES.has(type)) return false;
+  if (normalizeSenderRole(entry.sender_role || entry.senderRole || entry.actor_role || entry.role) === 'system') return false;
+  const attachments = normalizeAttachmentList(entry.attachments);
+  return Boolean(getEntryMessage(entry) || attachments.length || entry.summary || entry.tenantSummary);
+}
+
+function normalizePublicReplyType(entry = {}) {
+  const type = getEntryType(entry);
+  if (type === 'tenant_summary' || type === 'summary') return 'tenant_summary';
+  if (type === 'tenant_reply') return 'tenant_reply';
+  if (type === 'admin_reply') return 'admin_reply';
+  return normalizeSenderRole(entry.sender_role || entry.senderRole || entry.actor_role || entry.role) === 'tenant'
+    ? 'tenant_reply'
+    : 'admin_reply';
+}
+
+function mapPublicReplyForTenant(entry = {}, index = 0) {
+  if (!isTenantVisibleEntry(entry)) return null;
+  const timestamp = getEntryTimestamp(entry);
+  const senderSide = String(entry.sender_side || entry.senderSide || '').toLowerCase();
+  const role = normalizeSenderRole(
+    entry.sender_role || entry.senderRole || entry.actor_role || entry.role,
+    senderSide === 'tenant' ? 'tenant' : 'admin',
+  );
+  const type = normalizePublicReplyType(entry);
+  const attachments = normalizeAttachmentList(entry.attachments);
+
+  return {
+    update_id: entry.update_id || entry.id || `${type}_${timestamp || index}`,
+    type,
+    kind: type,
+    title: type === 'tenant_summary'
+      ? 'Maintenance Summary'
+      : role === 'tenant'
+        ? 'Follow-up from You'
+        : 'Admin Reply',
+    senderName: entry.senderName || entry.sender_name || entry.actor_name || senderLabelFromRole(role),
+    senderRole: role,
+    actor_name: entry.actor_name || entry.sender_name || senderLabelFromRole(role),
+    actor_role: role,
+    message: getEntryMessage(entry),
+    attachments,
+    summary: entry.summary || entry.tenantSummary || null,
+    tenantSummary: entry.summary || entry.tenantSummary || null,
+    visibleToTenant: true,
+    isTenantVisible: true,
+    visibility: 'tenant',
+    created_at: timestamp,
+    createdAt: timestamp,
+  };
+}
+
+function dedupeThread(entries = []) {
+  const seen = new Set();
+  return entries.filter((entry, index) => {
+    if (!entry) return false;
+    const key = entry.update_id || `${entry.type || 'reply'}:${entry.created_at || index}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function buildTenantThread(request = {}) {
+  const sources = [
+    ...(Array.isArray(request.publicReplies) ? request.publicReplies : []),
+    ...(Array.isArray(request.tenantReplies) ? request.tenantReplies : []),
+    ...(Array.isArray(request.conversation) ? request.conversation : []),
+    ...(Array.isArray(request.updates) ? request.updates : []),
+  ];
+
+  return dedupeThread(sources.map(mapPublicReplyForTenant).filter(Boolean))
+    .sort((left, right) => getEntryTimeValue(left) - getEntryTimeValue(right));
+}
+
+function latestTenantVisibleUpdate(thread = []) {
+  return [...thread].sort((left, right) => getEntryTimeValue(right) - getEntryTimeValue(left))[0] || null;
 }
 
 function asObjectId(value) {
@@ -171,19 +325,36 @@ function stripInternalRequestFields(request) {
 function stripTenantRequestFields(request) {
   const clean = stripInternalRequestFields(request);
   if (!clean) return clean;
+  const thread = buildTenantThread(clean);
+  const latestUpdate = latestTenantVisibleUpdate(thread);
 
   delete clean.notes;
   delete clean.resolution_note;
   delete clean.completionNote;
   delete clean.work_log;
   delete clean.workLog;
+  delete clean.statusHistory;
+  delete clean.internalLogs;
 
-  if (Array.isArray(clean.statusHistory)) {
-    clean.statusHistory = clean.statusHistory.map((entry) => ({
-      ...entry,
-      note: ['tenant', 'applicant'].includes(entry?.actor_role) ? entry.note || null : null,
-    }));
-  }
+  clean.attachments = normalizeAttachmentList(clean.attachments);
+  clean.conversation = thread;
+  clean.updates = thread;
+  clean.thread = thread;
+  clean.publicReplies = thread;
+  clean.tenantReplies = thread;
+  clean.latestTenantVisibleUpdate = latestUpdate
+    ? {
+        update_id: latestUpdate.update_id,
+        type: latestUpdate.type,
+        title: latestUpdate.title,
+        senderName: latestUpdate.senderName,
+        senderRole: latestUpdate.senderRole,
+        preview: latestUpdate.message || (latestUpdate.attachments?.length ? `${latestUpdate.attachments.length} attachment${latestUpdate.attachments.length > 1 ? 's' : ''} sent.` : latestUpdate.title),
+        hasAttachments: Array.isArray(latestUpdate.attachments) && latestUpdate.attachments.length > 0,
+        attachmentCount: Array.isArray(latestUpdate.attachments) ? latestUpdate.attachments.length : 0,
+        created_at: latestUpdate.created_at,
+      }
+    : null;
 
   return clean;
 }
@@ -210,6 +381,15 @@ function normalizeRequestForPrimary(request, user = {}) {
   normalized.reopen_note = normalized.reopen_note ?? null;
 
   normalized.attachments = normalizeAttachmentList(normalized.attachments);
+  normalized.conversation = Array.isArray(normalized.conversation)
+    ? normalized.conversation.map((entry) => ({
+      ...entry,
+      attachments: normalizeAttachmentList(entry?.attachments),
+    }))
+    : [];
+  const publicReplies = buildTenantThread(normalized);
+  normalized.publicReplies = publicReplies;
+  normalized.tenantReplies = publicReplies;
   normalized.reopen_history = Array.isArray(normalized.reopen_history) ? normalized.reopen_history : [];
   normalized.statusHistory = Array.isArray(normalized.statusHistory) ? normalized.statusHistory : [];
 
@@ -408,6 +588,102 @@ async function getMyMaintenance(req, res) {
   } catch (error) {
     console.error('Get maintenance error:', error);
     res.status(500).json({ detail: 'Failed to fetch maintenance requests' });
+  }
+}
+
+// Get one tenant-owned maintenance request with public admin replies.
+async function getMaintenanceDetail(req, res) {
+  try {
+    const db = getDb();
+    const { requestId } = req.params;
+    const located = await findRequestForUser(db, requestId, req.user.user_id);
+
+    if (!located) {
+      return res.status(404).json({ detail: 'Request not found' });
+    }
+
+    const payload = stripTenantRequestFields(located.request);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[mobile maintenance:detail]', {
+        requestId,
+        threadCount: Array.isArray(payload.thread) ? payload.thread.length : 0,
+        replyAttachmentCount: Array.isArray(payload.thread)
+          ? payload.thread.reduce((count, entry) => count + (Array.isArray(entry.attachments) ? entry.attachments.length : 0), 0)
+          : 0,
+      });
+    }
+    res.json(payload);
+  } catch (error) {
+    console.error('Get maintenance detail error:', error);
+    res.status(500).json({ detail: 'Failed to fetch maintenance request' });
+  }
+}
+
+async function sendTenantReply(req, res) {
+  try {
+    const db = getDb();
+    const { requestId } = req.params;
+    const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+    const attachments = normalizeAttachmentList(req.body?.attachments);
+
+    if (!message && attachments.length === 0) {
+      return res.status(400).json({ detail: 'Message or attachment is required' });
+    }
+
+    const located = await findRequestForUser(db, requestId, req.user.user_id);
+    if (!located) {
+      return res.status(404).json({ detail: 'Request not found' });
+    }
+
+    const closedStatuses = ['cancelled', 'closed', 'rejected'];
+    if (closedStatuses.includes(String(located.request.status || '').toLowerCase())) {
+      return res.status(400).json({ detail: 'This request is closed.' });
+    }
+
+    const now = new Date();
+    const reply = {
+      update_id: `reply_${uuidv4().replace(/-/g, '').substring(0, 12)}`,
+      type: 'tenant_reply',
+      kind: 'tenant_reply',
+      visibility: 'tenant',
+      visibleToTenant: true,
+      isTenantVisible: true,
+      message,
+      attachments,
+      sender_id: req.user.user_id || null,
+      sender_name: actorNameFromUser(req.user),
+      sender_role: 'tenant',
+      sender_side: 'tenant',
+      created_at: now,
+      createdAt: now,
+    };
+    const conversation = Array.isArray(located.request.conversation)
+      ? [...located.request.conversation, reply]
+      : [reply];
+    const publicReplies = Array.isArray(located.request.publicReplies)
+      ? [...located.request.publicReplies, reply]
+      : [reply];
+
+    await db.collection(located.collectionName).updateOne(
+      { request_id: requestId },
+      {
+        $set: {
+          conversation,
+          publicReplies,
+          tenantReplies: publicReplies,
+          updated_at: now,
+          updatedAt: now,
+        },
+      }
+    );
+
+    const updatedSource = await db.collection(located.collectionName).findOne({ request_id: requestId });
+    const updated = await promoteRequestToPrimary(db, updatedSource, req.user)
+      .catch(() => updatedSource);
+    res.status(201).json(stripTenantRequestFields(updated));
+  } catch (error) {
+    console.error('Tenant maintenance reply error:', error);
+    res.status(500).json({ detail: 'Failed to send maintenance reply' });
   }
 }
 
@@ -740,7 +1016,9 @@ async function adminGetAll(req, res) {
 
 module.exports = {
   getMyMaintenance,
+  getMaintenanceDetail,
   createMaintenance,
+  sendTenantReply,
   updateMaintenance,
   cancelMaintenance,
   reopenMaintenance,

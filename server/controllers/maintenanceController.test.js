@@ -184,6 +184,8 @@ const buildRequestDoc = (overrides = {}) => {
     notes: null,
     attachments: [],
     conversation: [],
+    publicReplies: [],
+    tenantReplies: [],
     reopen_note: null,
     reopen_history: [],
     statusHistory: [],
@@ -223,6 +225,8 @@ const buildRequestDoc = (overrides = {}) => {
         notes: this.notes,
         attachments: this.attachments,
         conversation: this.conversation,
+        publicReplies: this.publicReplies,
+        tenantReplies: this.tenantReplies,
         reopen_note: this.reopen_note,
         reopen_history: this.reopen_history,
         statusHistory: this.statusHistory,
@@ -838,7 +842,7 @@ describe("maintenanceController", () => {
     expect(request.workLog).toEqual([]);
     expect(request.resolutionNote).toBeNull();
     expect(request.completionNote).toBeNull();
-    expect(request.statusHistory[0].note).toBeNull();
+    expect(request.statusHistory).toEqual([]);
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -1424,6 +1428,8 @@ describe("maintenanceController", () => {
     await sendAdminReply(req, res, next);
 
     expect(requestDoc.conversation).toHaveLength(1);
+    expect(requestDoc.publicReplies).toHaveLength(1);
+    expect(requestDoc.tenantReplies).toHaveLength(1);
     expect(requestDoc.conversation[0]).toEqual(
       expect.objectContaining({
         message: "We uploaded the repair progress photo.",
@@ -1448,6 +1454,25 @@ describe("maintenanceController", () => {
             uploadedBy: "admin_1",
             senderRole: "owner",
             relatedId: requestDoc.request_id,
+          }),
+        ],
+      }),
+    );
+    const responseRequest = sendSuccess.mock.calls[0][1].request;
+    expect(responseRequest.thread).toHaveLength(1);
+    expect(responseRequest.thread[0]).toEqual(
+      expect.objectContaining({
+        message: "We uploaded the repair progress photo.",
+        type: "admin_reply",
+        senderRole: "owner",
+        sentAt: expect.any(Date),
+        attachments: [
+          expect.objectContaining({
+            name: "progress.jpg",
+            url: "https://storage.example.com/maintenance/progress.jpg",
+            downloadUrl: "https://storage.example.com/maintenance/progress.jpg",
+            mimeType: "image/jpeg",
+            size: 123456,
           }),
         ],
       }),
@@ -2535,6 +2560,8 @@ describe("maintenanceController", () => {
       expect(sentMessage).not.toContain("proof.jpg");
       expect(requestDoc.conversation[1]).toEqual(
         expect.objectContaining({
+          type: "tenant_summary",
+          kind: "tenant_summary",
           sender_id: "admin_1",
           sender_name: "Branch Admin",
           sender_role: "branch_admin",

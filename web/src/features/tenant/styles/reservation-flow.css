@@ -537,6 +537,7 @@ html[data-theme="dark"] .rf-receipt-header__badge { color: var(--rf-success-text
 .form-group  { margin-bottom: 18px; }
 .form-helper { font-size: 12px; color: var(--rf-text-muted); margin-top: 4px; line-height: 1.4; }
 .form-row    { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-row.form-row--3col { grid-template-columns: 1fr 1fr 1fr; }
 
 .form-textarea {
   width: 100%;
@@ -803,16 +804,19 @@ html[data-theme="dark"] .rf-receipt-header__badge { color: var(--rf-success-text
 
 .rf-date-card { box-sizing: border-box; height: 80px; padding: 9px 8px; border-radius: 10px; border: 2px solid var(--rf-border-card); background: var(--rf-surface); display: flex; flex-direction: column; justify-content: center; text-align: center; transition: all 0.15s ease; cursor: pointer; }
 .rf-date-card:hover { background: var(--rf-hover-bg); border-color: var(--rf-text-muted); }
-.rf-date-card.disabled { background: var(--rf-surface-alt); border-color: var(--rf-border-card); cursor: not-allowed; opacity: 0.68; }
-.rf-date-card.disabled:hover { background: var(--rf-surface-alt); border-color: var(--rf-border-card); }
+.rf-date-card.disabled { background: var(--rf-surface-alt); border-color: transparent; cursor: not-allowed; opacity: 0.40; }
+.rf-date-card.disabled:hover { background: var(--rf-surface-alt); border-color: transparent; }
 .rf-date-card.selected { border-color: var(--rf-selection-border); background: var(--rf-selection-bg); }
 
 .rf-date-day { font-size: 11px; font-weight: 600; color: var(--rf-text-muted); text-transform: uppercase; margin-bottom: 4px; }
+.rf-date-card:not(.disabled) .rf-date-day { color: var(--rf-text-secondary); }
 .rf-date-card.selected .rf-date-day { color: var(--rf-accent); }
 .rf-date-num { font-size: 16px; font-weight: 700; color: var(--rf-text-secondary); white-space: nowrap; }
+.rf-date-card:not(.disabled) .rf-date-num { color: var(--rf-text-heading); }
 .rf-date-card.selected .rf-date-num { color: var(--rf-text-heading); }
 .rf-date-card small { display: block; font-size: 10px; font-weight: 600; color: var(--rf-text-muted); text-transform: uppercase; margin-top: 3px; line-height: 1; }
-.rf-date-card.disabled small { color: var(--rf-error-text); opacity: 0.8; }
+.rf-date-card:not(.disabled) small { color: var(--rf-text-secondary); }
+.rf-date-card.disabled small { color: var(--rf-text-muted); }
 .rf-date-card.selected small { color: var(--rf-accent); }
 
 .rf-today-pill { position: absolute; top: -9px; left: 50%; transform: translateX(-50%); background: var(--rf-today-bg); color: var(--rf-today-text); font-size: 9px; font-weight: 700; letter-spacing: 0.04em; padding: 2px 6px; border-radius: 20px; white-space: nowrap; }
@@ -1033,7 +1037,36 @@ html[data-theme="dark"] .rf-receipt-header__badge { color: var(--rf-success-text
 
 /* ============ TOP ACTIONS BAR ============ */
 .rf-top-actions { display: flex; align-items: center; justify-content: flex-end; margin-bottom: 4px; gap: 12px; }
-.rf-save-status { font-size: 12px; color: var(--rf-save-status); font-style: italic; }
+.rf-save-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  font-style: normal;
+  color: var(--rf-success-text, #15803d);
+  background: var(--rf-success-bg, #f0fdf4);
+  border: 1px solid var(--rf-success, #22c55e);
+  padding: 4px 12px;
+  border-radius: 20px;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  animation: rfSaveFadeIn 0.3s ease;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+@keyframes rfSaveFadeIn {
+  from { opacity: 0; transform: translateY(-2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.rf-app-header__title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
 .rf-reset-btn { background: none; border: 1px solid var(--rf-reset-border); border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: 500; color: var(--rf-reset-color); cursor: pointer; font-family: "Inter", sans-serif; transition: all var(--rf-transition); }
 .rf-reset-btn:hover { border-color: var(--rf-text-muted); color: var(--rf-text); }
 .rf-dev-fill-btn { background: var(--rf-warning); border: none; border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600; color: white; cursor: pointer; font-family: "Inter", sans-serif; }
@@ -1494,7 +1527,7 @@ html[data-theme="dark"] .rf-receipt-header__badge { color: var(--rf-success-text
   .rf-room-banner-price { text-align: left; }
 
   .reservation-card, .content-card { padding: 18px 14px; border-radius: 10px; }
-  .form-row { grid-template-columns: 1fr; gap: 10px; }
+  .form-row, .form-row.form-row--3col { grid-template-columns: 1fr; gap: 10px; }
 
   .main-header-title, .stage-title { font-size: 1rem; }
   .summary-section  { padding: 14px; }
