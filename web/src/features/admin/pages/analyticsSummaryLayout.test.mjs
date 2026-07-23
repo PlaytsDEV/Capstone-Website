@@ -14,20 +14,14 @@ async function readSource(fileName) {
 test("analytics summary keeps a KPI-plus-chart overview structure", async () => {
   const source = await readSource("AnalyticsPage.jsx");
 
-  assert.match(source, /className="analytics-summary-focus flex flex-col gap-6"/);
-  assert.match(source, /className="analytics-summary-layout"/);
-  assert.match(source, /className="analytics-summary-overview__header"/);
-  assert.match(source, /className="analytics-summary-sections__header"/);
-  assert.match(source, /className="analytics-summary-section-header__title"/);
-  assert.match(source, /data-summary-overview="true"/);
-  assert.match(source, /data-summary-overview-block=\{sectionKey\}/);
-  assert.match(source, /sectionKey="occupancy"/);
-  assert.match(source, /sectionKey="billing"/);
-  assert.match(source, /sectionKey="operations"/);
-  assert.match(source, /data-summary-focus-section="occupancy"/);
-  assert.match(source, /data-summary-focus-section="billing"/);
-  assert.match(source, /data-summary-focus-section="operations"/);
-  assert.match(source, /data-summary-focus-sections="true"/);
+  assert.match(source, /className="analytics-container"/);
+  assert.match(source, /className="analytics-layout"/);
+  assert.match(source, /className="analytics-topbar"/);
+  assert.match(source, /className="analytics-main"/);
+  assert.match(source, /activeTab === "overview"/);
+  assert.match(source, /activeTab === "occupancy"/);
+  assert.match(source, /activeTab === "revenue"/);
+  assert.match(source, /activeTab === "operations"/);
 });
 
 test("analytics summary no longer renders the legacy stacked summary section helper", async () => {
@@ -44,15 +38,12 @@ test("analytics summary no longer renders the legacy stacked summary section hel
   assert.doesNotMatch(source, /data-summary-owner-shortcuts="true"/);
 });
 
-test("analytics summary opts into compact toolbar mode", async () => {
+test("analytics summary opts into topbar and layout controls", async () => {
   const source = await readSource("AnalyticsPage.jsx");
-  const toolbarSource = await readSource(
-    path.join("..", "components", "shared", "AnalyticsToolbar.jsx"),
-  );
 
-  assert.match(source, /<AnalyticsToolbar[\s\S]*compact/);
-  assert.match(toolbarSource, /compact = false/);
-  assert.match(toolbarSource, /const sectionClassName = compact/);
+  assert.match(source, /className="analytics-topbar"/);
+  assert.match(source, /className="analytics-filter-row"/);
+  assert.match(source, /className="analytics-select"/);
 });
 
 test("analytics summary uses default page scrolling instead of an inner chart scroller", async () => {

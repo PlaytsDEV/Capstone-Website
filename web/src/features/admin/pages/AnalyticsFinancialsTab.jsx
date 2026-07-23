@@ -49,9 +49,9 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
  });
  const branchComparison = data?.series?.branchComparison || [];
  const revenueByMonth = data?.series?.revenueByMonth || [];
- const overdueAging = data?.series?.overdueAging || [];
- const overdueRooms = unwrapTableRows(data?.tables?.overdueRooms);
- const pagedRooms = overdueRooms.slice((page - 1) * 10, page * 10);
+ const overdueAccounts = data?.tables?.overdueRooms;
+ const overdueRooms = unwrapTableRows(overdueAccounts);
+ const overdueRoomsPagination = overdueAccounts?.pagination;
 
  const metricCards = [
  { label: "Collected", value: data?.kpis?.collectedRevenueLabel || "PHP 0", tone: "green" },
@@ -87,7 +87,7 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
  highlight: i === 0,
  })),
  aiInsight: {
- headline: insightData?.insight?.headline || "Financial summary",
+ headline: insightData?.insight?.headline || "AI Financial Summary",
  summary: insightData?.insight?.summary || "",
  confidence: insightData?.insight?.confidence === "high" ? 85
  : insightData?.insight?.confidence === "medium" ? 60
@@ -237,12 +237,13 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
  <ReportChartPanel title="Overdue exposure tables" subtitle="Rooms carrying the highest unpaid balance">
  <DataTable
  columns={OVERDUE_ROOM_COLUMNS}
- data={pagedRooms}
+ data={overdueRooms}
  loading={isLoading}
+ serverPagination
  pagination={{
  page,
  pageSize: 10,
- total: overdueRooms.length,
+ total: overdueRoomsPagination.total,
  onPageChange: setPage,
  }}
  emptyState={{
