@@ -64,6 +64,30 @@
   line-height: 1.3;
 }
 
+/* ── New Badge ── */
+.res-badge-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background-color: var(--accent-green-bg, #ecfdf5);
+  color: var(--accent-green, #047857);
+  border: 1px solid color-mix(in srgb, var(--accent-green, #10b981) 35%, transparent);
+}
+
+.res-badge-new__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--accent-green, #10b981);
+  animation: pulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
 /* ── Step progress pill ── */
 .res-step-pill {
   display: inline-flex;

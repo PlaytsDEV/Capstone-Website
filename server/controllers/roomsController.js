@@ -23,6 +23,70 @@ import {
   ACTIVE_OCCUPANCY_STATUS_QUERY,
   reservationStatusesForQuery,
 } from "../utils/lifecycleNaming.js";
+const ACTIVE_BED_HOLD_STATUSES = Object.freeze([
+  "pending",
+  "viewing_preference_selected",
+  "visit_pending",
+  "visit_approved",
+  "pending_application_review",
+  "needs_revision",
+  "approved_for_payment",
+  "payment_pending",
+  "reserved",
+  "moveIn",
+]);
+
+const syncRealtimeBedStatuses = async (rooms) => {
+  if (!Array.isArray(rooms) || rooms.length === 0) return rooms;
+  const roomIds = rooms.map((r) => r._id).filter(Boolean);
+  if (roomIds.length === 0) return rooms;
+
+  const activeReservations = await Reservation.find({
+    roomId: { $in: roomIds },
+    status: { $in: ACTIVE_BED_HOLD_STATUSES },
+    isArchived: { $ne: true },
+  })
+    .select("roomId selectedBed status")
+    .lean();
+
+  if (activeReservations.length === 0) return rooms;
+
+  const resByRoom = new Map();
+  for (const resDoc of activeReservations) {
+    const key = String(resDoc.roomId);
+    if (!resByRoom.has(key)) resByRoom.set(key, []);
+    resByRoom.get(key).push(resDoc);
+  }
+
+  return rooms.map((room) => {
+    const roomReservations = resByRoom.get(String(room._id)) || [];
+    if (roomReservations.length === 0 || !Array.isArray(room.beds)) return room;
+
+    const updatedBeds = room.beds.map((bed) => {
+      const bId = bed.id ? String(bed.id) : null;
+      const bMongoId = bed._id ? String(bed._id) : null;
+      const bNum = bed.bedNumber != null ? String(bed.bedNumber) : null;
+
+      const matchingHold = roomReservations.find((resDoc) => {
+        const selId = resDoc.selectedBed?.id ? String(resDoc.selectedBed.id) : null;
+        const selNum = resDoc.selectedBed?.bedNumber != null ? String(resDoc.selectedBed.bedNumber) : null;
+        return (
+          (selId && (selId === bId || selId === bMongoId || selId === bNum)) ||
+          (selNum && (selNum === bNum || selNum === bId))
+        );
+      });
+
+      if (matchingHold) {
+        const nextStatus = matchingHold.status === "moveIn" ? "occupied" : "reserved";
+        return { ...bed, status: nextStatus, available: false };
+      }
+
+      return bed;
+    });
+
+    return { ...room, beds: updatedBeds };
+  });
+};
 
 const ROOM_CREATE_FIELDS = Object.freeze([
   "name",
@@ -554,7 +618,8 @@ export const getRooms = async (req, res, next) => {
         .select("-__v")
         .sort({ branch: 1, floor: 1, roomNumber: 1 })
         .lean();
-      sendSuccess(res, attachBranchSettings(rooms, settings));
+      const syncedRooms = await syncRealtimeBedStatuses(rooms);
+      sendSuccess(res, attachBranchSettings(syncedRooms, settings));
       return;
     }
 
@@ -566,8 +631,9 @@ export const getRooms = async (req, res, next) => {
       .limit(pageSize)
       .lean();
 
+    const syncedRooms = await syncRealtimeBedStatuses(rooms);
     sendSuccess(res, {
-      items: attachBranchSettings(rooms, settings),
+      items: attachBranchSettings(syncedRooms, settings),
       pagination: {
         page,
         pageSize,
@@ -594,7 +660,8 @@ export const getRoomById = async (req, res, next) => {
     }
 
     const settings = await getBusinessSettings();
-    const [normalizedRoom] = attachBranchSettings([room], settings);
+    const [syncedRoom] = await syncRealtimeBedStatuses([room]);
+    const [normalizedRoom] = attachBranchSettings([syncedRoom], settings);
     sendSuccess(res, normalizedRoom);
   } catch (error) {
     next(error);

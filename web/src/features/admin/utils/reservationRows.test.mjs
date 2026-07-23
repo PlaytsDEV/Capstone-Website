@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   getArchivedByName,
+  isNewReservation,
   mapReservationAdminRow,
   mapVisitScheduleRows,
 } from "./reservationRows.js";
@@ -93,3 +94,12 @@ test("getArchivedByName falls back to email or dash", () => {
   );
   assert.equal(getArchivedByName(null), "-");
 });
+
+test("isNewReservation correctly evaluates recency", () => {
+  const recentDate = new Date().toISOString();
+  const oldDate = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+
+  assert.equal(isNewReservation({ createdAt: recentDate }), true);
+  assert.equal(isNewReservation({ createdAt: oldDate }), false);
+});
+

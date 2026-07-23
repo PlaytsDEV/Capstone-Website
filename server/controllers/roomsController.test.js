@@ -61,10 +61,7 @@ await jest.unstable_mockModule("../middleware/errorHandler.js", () => ({
     }
   },
 }));
-await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
-  ACTIVE_OCCUPANCY_STATUS_QUERY: ["reserved", "moveIn"],
-  reservationStatusesForQuery: (...statuses) => statuses.flat(),
-}));
+
 
 const {
   createRoom,

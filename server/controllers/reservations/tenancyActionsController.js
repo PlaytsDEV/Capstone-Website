@@ -325,6 +325,7 @@ export const moveOutReservation = async (req, res, next) => {
       reservation: serializeReservation(result.reservation),
       stay: result.stay,
       finalBillingSummary: result.billingSummary,
+      depositSettlement: result.depositSettlement,
     });
   } catch (error) {
     logger.error({ err: error, requestId: req.id }, "Move-out error");

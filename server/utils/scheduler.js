@@ -699,6 +699,121 @@ const shouldRunWarmupJobs = (override) => {
   return !["0", "false", "no", "off"].includes(configured);
 };
 
+// ─── Job 14: Consecutive Overdue Detection (daily at 01:20) ─────────────
+
+async function detectConsecutiveOverdueMonths() {
+  try {
+    const activeReservations = await Reservation.find({
+      status: "moveIn",
+      isArchived: { $ne: true },
+    }).populate("roomId", "branch name roomNumber");
+
+    let totalFlagged = 0;
+    const now = new Date();
+
+    for (const reservation of activeReservations) {
+      if (!reservation.userId) continue;
+
+      const bills = await Bill.find({
+        $or: [
+          { reservationId: reservation._id },
+          { userId: reservation.userId },
+        ],
+        isArchived: false,
+      })
+        .sort({ billingMonth: -1, createdAt: -1 })
+        .lean();
+
+      if (bills.length === 0) continue;
+
+      const monthlyStatusMap = new Map();
+      for (const bill of bills) {
+        if (!bill.billingMonth) continue;
+        const monthKey = dayjs(bill.billingMonth).format("YYYY-MM");
+        if (!monthlyStatusMap.has(monthKey)) {
+          monthlyStatusMap.set(monthKey, []);
+        }
+        monthlyStatusMap.get(monthKey).push(bill);
+      }
+
+      const sortedMonths = Array.from(monthlyStatusMap.keys()).sort((a, b) => (a < b ? 1 : -1));
+      let consecutiveCount = 0;
+
+      for (const monthKey of sortedMonths) {
+        const monthBills = monthlyStatusMap.get(monthKey);
+        const hasOverdueInMonth = monthBills.some((b) => {
+          const isOverdueStatus = b.status === "overdue";
+          const isPastDueWithBalance =
+            b.status !== "paid" &&
+            b.dueDate &&
+            new Date(b.dueDate) < now &&
+            (b.totalAmount || 0) - (b.amountPaid || 0) > 0;
+          return isOverdueStatus || isPastDueWithBalance;
+        });
+
+        if (hasOverdueInMonth) {
+          consecutiveCount++;
+        } else {
+          break;
+        }
+      }
+
+      const isEligible = consecutiveCount >= 3;
+      const wasEligible = Boolean(reservation.eligibleForTermination);
+
+      if (isEligible && !wasEligible) {
+        reservation.consecutiveOverdueMonths = consecutiveCount;
+        reservation.eligibleForTermination = true;
+        reservation.terminationEligibilityDetectedAt = new Date();
+        reservation.terminationEligibilityAlertSentAt = new Date();
+        await reservation.save();
+
+        totalFlagged++;
+
+        const branch = reservation.roomId?.branch;
+        const tenantName = reservation.userId
+          ? `${reservation.userId.firstName || ""} ${reservation.userId.lastName || ""}`.trim()
+          : "Tenant";
+        const roomLabel = reservation.roomId?.name || reservation.roomId?.roomNumber || "room";
+
+        try {
+          const adminQuery = {
+            role: { $in: ["branch_admin", "owner"] },
+            isArchived: false,
+            accountStatus: "active",
+          };
+          if (branch) adminQuery.branch = branch;
+          const admins = await User.find(adminQuery).select("_id").lean();
+
+          for (const admin of admins) {
+            notify.general(
+              admin._id,
+              "Termination Eligibility Alert",
+              `Tenant ${tenantName} (${roomLabel}) has ${consecutiveCount} consecutive months of overdue bills. Contract termination is eligible for administrative review.`,
+              { entityType: "reservation", entityId: reservation._id },
+            );
+          }
+        } catch (adminNotifyErr) {
+          logger.warn({ err: adminNotifyErr }, "Failed to alert admins on termination eligibility");
+        }
+      } else if (!isEligible && wasEligible) {
+        reservation.eligibleForTermination = false;
+        reservation.consecutiveOverdueMonths = consecutiveCount;
+        await reservation.save();
+      } else if (reservation.consecutiveOverdueMonths !== consecutiveCount) {
+        reservation.consecutiveOverdueMonths = consecutiveCount;
+        await reservation.save();
+      }
+    }
+
+    if (totalFlagged > 0) {
+      logger.info({ count: totalFlagged }, "Consecutive overdue termination eligibility flags updated");
+    }
+  } catch (error) {
+    logger.error({ err: error }, "Consecutive overdue detection failed");
+  }
+}
+
 export function startScheduler(options = {}) {
   if (scheduledJobs.length > 0) {
     logger.warn(
@@ -712,6 +827,7 @@ export function startScheduler(options = {}) {
     setImmediate(() => {
       void cleanupExpiredBedLocks();
       void markOverdueBills();
+      void detectConsecutiveOverdueMonths();
     });
   }
 
@@ -752,6 +868,14 @@ export function startScheduler(options = {}) {
     cron.schedule("10 1 * * *", computeOverduePenalties, {
       scheduled: true,
       name: "overdue-penalty-computation",
+    }),
+  );
+
+  // Job 4b: Consecutive overdue detection — daily at 01:20 (after penalties)
+  scheduledJobs.push(
+    cron.schedule("20 1 * * *", detectConsecutiveOverdueMonths, {
+      scheduled: true,
+      name: "consecutive-overdue-detection",
     }),
   );
 
@@ -853,6 +977,7 @@ export {
   archiveStaleCancelled,
   dispatchScheduledAnnouncements,
   detectSlaBreaches,
+  detectConsecutiveOverdueMonths,
 };
 
 export default { startScheduler, stopScheduler };

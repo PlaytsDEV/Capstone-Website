@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Ban,
   Calendar,
@@ -10,6 +10,7 @@ import {
   X as XIcon,
   AlertCircle,
   CalendarDays,
+  ChevronDown,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { reservationApi } from "../../../shared/api/apiClient";
@@ -45,6 +46,133 @@ function initials(name = "") {
   return parts.length >= 2
     ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
     : (parts[0]?.[0] || "?").toUpperCase();
+}
+
+function VisitActionMenu({
+  row,
+  actionLoading,
+  handleVerify,
+  handleMarkNoShow,
+  setSelectedSchedule,
+  handleDelete,
+  handleDeleteHistoryEntry,
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isOpen]);
+
+  const canPerformVisitActions =
+    !row.visitApproved &&
+    row.visitStatus !== "no_show" &&
+    row.visitStatus !== "visit_completed" &&
+    !row.scheduleRejected;
+
+  return (
+    <div
+      ref={menuRef}
+      className="relative flex items-center justify-end"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        disabled={actionLoading === row.id}
+        className="px-3 py-1.5 text-xs font-medium rounded-lg border border-[var(--border-light)] bg-card text-foreground hover:bg-muted transition-colors flex items-center gap-1.5 shadow-xs disabled:opacity-50"
+      >
+        <span>Actions</span>
+        <ChevronDown
+          className={`w-3.5 h-3.5 transition-transform duration-150 ${
+            isOpen ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+
+      {isOpen && (
+        <div className="absolute right-0 top-9 z-50 min-w-[160px] rounded-lg border border-[var(--border-light)] bg-card p-1.5 shadow-lg animate-in fade-in zoom-in-95 duration-100 text-left">
+          {row.isHistorical ? (
+            <button
+              className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium text-[color:var(--danger)] hover:bg-[color:var(--danger-light)] transition-colors"
+              onClick={() => {
+                setIsOpen(false);
+                handleDeleteHistoryEntry(row.reservationId, row.historyIndex);
+              }}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Delete History Entry
+            </button>
+          ) : (
+            <>
+              {canPerformVisitActions && (
+                <>
+                  <button
+                    className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium text-[color:var(--success-dark)] hover:bg-[color:var(--success-light)] transition-colors"
+                    disabled={actionLoading === row.id}
+                    onClick={() => {
+                      setIsOpen(false);
+                      handleVerify(row.id);
+                    }}
+                  >
+                    <Check className="w-3.5 h-3.5 text-[color:var(--success)]" />
+                    Mark Visited
+                  </button>
+
+                  <button
+                    className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium text-[color:var(--warning-dark,#92400E)] hover:bg-[color:var(--warning-light,#FEF3C7)] transition-colors"
+                    disabled={actionLoading === row.id}
+                    onClick={() => {
+                      setIsOpen(false);
+                      handleMarkNoShow(row.id);
+                    }}
+                  >
+                    <AlertCircle className="w-3.5 h-3.5 text-[color:var(--warning)]" />
+                    No-Show
+                  </button>
+
+                  <button
+                    className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium text-[color:var(--danger-dark)] hover:bg-[color:var(--danger-light)] transition-colors"
+                    disabled={actionLoading === row.id}
+                    onClick={() => {
+                      setIsOpen(false);
+                      setSelectedSchedule(row);
+                    }}
+                  >
+                    <XIcon className="w-3.5 h-3.5 text-[color:var(--danger)]" />
+                    Reject
+                  </button>
+
+                  <div className="my-1 border-t border-[var(--border-light)]" />
+                </>
+              )}
+
+              <button
+                className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium text-[color:var(--danger)] hover:bg-[color:var(--danger-light)] transition-colors"
+                onClick={() => {
+                  setIsOpen(false);
+                  handleDelete(row.id);
+                }}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Archive Schedule
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function VisitSchedulesTab() {
@@ -668,63 +796,16 @@ function VisitSchedulesTab() {
                         </div>
                       </td>
                       <td className="py-4 px-4">{statusNode}</td>
-                      <td className="py-4 px-4">
-                        <div className="flex items-center justify-end gap-2">
-                          {row.isHistorical ? (
-                            <button
-                              className="p-1.5 hover:bg-red-50 text-red-500 hover:text-red-600 rounded-md transition-colors"
-                              title="Delete this history entry"
-                              onClick={() =>
-                                handleDeleteHistoryEntry(
-                                  row.reservationId,
-                                  row.historyIndex,
-                                )
-                              }
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          ) : (
-                            <>
-                              {/* Visit actions: Mark Visited + No-Show + Reject (schedules auto-approved) */}
-                              {!row.visitApproved && row.visitStatus !== "no_show" && row.visitStatus !== "visit_completed" && !row.scheduleRejected && (
-                                <>
-                                  <button
-                                    className="px-2.5 py-1.5 bg-[color:var(--success-light)] hover:bg-[color:var(--success)]/20 text-[color:var(--success-dark)] dark:text-[color:var(--success-dark)] font-medium rounded-md transition-colors flex items-center gap-1.5 text-sm"
-                                    disabled={actionLoading === row.id}
-                                    onClick={() => handleVerify(row.id)}
-                                  >
-                                    <Check className="w-3.5 h-3.5" />
-                                    Mark Visited
-                                  </button>
-                                  <button
-                                    className="px-2.5 py-1.5 bg-[color:var(--warning-light,#FEF3C7)] hover:bg-[color:var(--warning)]/20 text-[color:var(--warning-dark,#92400E)] font-medium rounded-md transition-colors flex items-center gap-1.5 text-sm"
-                                    disabled={actionLoading === row.id}
-                                    onClick={() => handleMarkNoShow(row.id)}
-                                  >
-                                    <AlertCircle className="w-3.5 h-3.5" />
-                                    No-Show
-                                  </button>
-                                  <button
-                                    className="px-2.5 py-1.5 bg-[color:var(--danger-light)] hover:bg-[color:var(--danger)]/20 text-[color:var(--danger-dark)] dark:text-[color:var(--danger-dark)] font-medium rounded-md transition-colors flex items-center gap-1.5 text-sm"
-                                    disabled={actionLoading === row.id}
-                                    title="Reject schedule"
-                                    onClick={() => setSelectedSchedule(row)}
-                                  >
-                                    <XIcon className="w-3.5 h-3.5" />
-                                    Reject
-                                  </button>
-                                </>
-                              )}
-                              <button
-                                className="p-1.5 hover:bg-red-50 text-red-500 hover:text-red-600 rounded-md transition-colors"
-                                title="Delete schedule"
-                                onClick={() => handleDelete(row.id)}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </>
-                          )}
-                        </div>
+                      <td className="py-4 px-4 text-right">
+                        <VisitActionMenu
+                          row={row}
+                          actionLoading={actionLoading}
+                          handleVerify={handleVerify}
+                          handleMarkNoShow={handleMarkNoShow}
+                          setSelectedSchedule={setSelectedSchedule}
+                          handleDelete={handleDelete}
+                          handleDeleteHistoryEntry={handleDeleteHistoryEntry}
+                        />
                       </td>
                     </tr>
                   );

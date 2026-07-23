@@ -545,32 +545,34 @@ const ReservationVisitStep = ({
         </>
       ) : (
         <>
-          <div className="content-card rf-step2-main-card">
-            <div className="rf-step2-inner-header">
-              <div className="main-header-badge"><span>Step 2 · Viewing Preference</span></div>
-              <h2 className="main-header-title">Choose Your Viewing Preference</h2>
-              <p className="main-header-subtitle">Select how you would like to view the room before completing your tenant application. Payment will only be available after your application and required documents are approved.</p>
-            </div>
-            <div className="rf-step2-header-sep" />
-            <div className="card-section-title"><Eye size={15} style={{ marginRight: 6, flexShrink: 0 }} />How would you like to view the room?</div>
-            <div className="rf-option-cards">
-              {VISIT_OPTIONS.map((option) => {
-                const OptionIcon = OPTION_ICONS[option.value];
-                const isSelected = draftViewingPreference === option.value;
-                const disabledByPreferenceLock = optionSelectionLocked && !isSelected;
-                return (
-                  <button key={option.value} type="button" className={`rf-option-card${isSelected ? " selected" : ""}`} data-option={option.value} disabled={disabledByPreferenceLock} title={disabledByPreferenceLock ? VIEWING_PREFERENCE_LOCKED_MESSAGE : undefined} onClick={() => { if (disabledByPreferenceLock) { showNotification(VIEWING_PREFERENCE_LOCKED_MESSAGE, "info", 5000); return; } setDraftViewingPreference(option.value); setIsEditingPhysicalVisit(false); if (option.value !== "physical_visit") { setVisitDate(""); setVisitTime(""); } }} aria-pressed={isSelected}>
-                    <div className="rf-option-card__icon"><OptionIcon size={20} /></div>
-                    <div className="rf-option-card__body"><span className="rf-option-card__title">{option.title}</span><span className="rf-option-card__desc">{option.description}</span></div>
-                    <div className="rf-option-card__check">{isSelected && <CheckCircle size={12} color="white" />}</div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
           {!activePreferenceView && (
-            <div className="stage-buttons"><button type="button" className="btn btn-secondary" onClick={goToDashboard}>Back to Dashboard</button><button type="button" className="btn btn-primary" onClick={handleSelectionContinue} disabled={!draftViewingPreference}>Continue</button></div>
+            <>
+              <div className="content-card rf-step2-main-card">
+                <div className="rf-step2-inner-header">
+                  <div className="main-header-badge"><span>Step 2 · Viewing Preference</span></div>
+                  <h2 className="main-header-title">Choose Your Viewing Preference</h2>
+                  <p className="main-header-subtitle">Select how you would like to view the room before completing your tenant application. Payment will only be available after your application and required documents are approved.</p>
+                </div>
+                <div className="rf-step2-header-sep" />
+                <div className="card-section-title"><Eye size={15} style={{ marginRight: 6, flexShrink: 0 }} />How would you like to view the room?</div>
+                <div className="rf-option-cards">
+                  {VISIT_OPTIONS.map((option) => {
+                    const OptionIcon = OPTION_ICONS[option.value];
+                    const isSelected = draftViewingPreference === option.value;
+                    const disabledByPreferenceLock = optionSelectionLocked && !isSelected;
+                    return (
+                      <button key={option.value} type="button" className={`rf-option-card${isSelected ? " selected" : ""}`} data-option={option.value} disabled={disabledByPreferenceLock} title={disabledByPreferenceLock ? VIEWING_PREFERENCE_LOCKED_MESSAGE : undefined} onClick={() => { if (disabledByPreferenceLock) { showNotification(VIEWING_PREFERENCE_LOCKED_MESSAGE, "info", 5000); return; } setDraftViewingPreference(option.value); setIsEditingPhysicalVisit(false); if (option.value !== "physical_visit") { setVisitDate(""); setVisitTime(""); } }} aria-pressed={isSelected}>
+                        <div className="rf-option-card__icon"><OptionIcon size={20} /></div>
+                        <div className="rf-option-card__body"><span className="rf-option-card__title">{option.title}</span><span className="rf-option-card__desc">{option.description}</span></div>
+                        <div className="rf-option-card__check">{isSelected && <CheckCircle size={12} color="white" />}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="stage-buttons"><button type="button" className="btn btn-secondary" onClick={goToDashboard}>Back to Dashboard</button><button type="button" className="btn btn-primary" onClick={handleSelectionContinue} disabled={!draftViewingPreference}>Continue</button></div>
+            </>
           )}
 
           {activePreferenceView && (

@@ -539,6 +539,16 @@ html[data-theme="dark"] .rf-receipt-header__badge { color: var(--rf-success-text
 .form-row    { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .form-row.form-row--3col { grid-template-columns: 1fr 1fr 1fr; }
 
+.rf-date-part-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1.2fr;
+  gap: 6px;
+}
+.rf-date-part-row--error .form-select {
+  border-color: #dc2626;
+}
+
+
 .form-textarea {
   width: 100%;
   padding: 10px 14px;
@@ -764,9 +774,354 @@ html[data-theme="dark"] .rf-receipt-header__badge { color: var(--rf-success-text
 .rf-success-banner .info-box-title { color: var(--rf-success-text); }
 .rf-success-banner .info-text { color: var(--rf-success-text-alt); }
 
-.rf-payment-info-box { background: var(--rf-success-bg); border-left: 3px solid var(--rf-success); padding: 14px 16px; border-radius: 0 var(--rf-radius-sm) var(--rf-radius-sm) 0; }
-.rf-payment-info-box .info-box-title { color: var(--rf-success-text); }
-.rf-payment-info-box .info-text { color: var(--rf-success-text-alt); }
+.rf-payment-info-box {
+  background: var(--rf-success-bg, rgba(16, 185, 129, 0.06));
+  border: 1px solid var(--rf-celebration-border, rgba(16, 185, 129, 0.2));
+  border-left: 4px solid var(--rf-success, #10b981);
+  border-radius: var(--rf-radius-sm, 8px);
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+.rf-payment-info-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.rf-payment-info-box .info-box-title { color: var(--rf-success-text); font-size: 0.9rem; font-weight: 600; margin-bottom: 0; }
+.rf-payment-info-box .info-text { color: var(--rf-success-text-alt); font-size: 0.83rem; line-height: 1.5; margin: 0; }
+
+/* ============ STEP 4 — RESERVATION FEE PAYMENT (STREAMLINED & HIGH CONTRAST) ============ */
+.rf-payment-stage {
+  animation: rfSlideIn 0.35s ease both;
+}
+
+.rf-payment-card-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+/* Payment Hero Card - Always crisp dark background for guaranteed white text contrast */
+.rf-payment-summary-hero {
+  background: linear-gradient(135deg, #0c375f 0%, #061e36 100%);
+  color: #ffffff;
+  border-radius: var(--rf-radius-lg, 16px);
+  padding: 26px 30px;
+  box-shadow: 0 8px 24px rgba(12, 55, 95, 0.28);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.rf-payment-amount-box {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.rf-payment-amount-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #cbd5e1;
+}
+
+.rf-payment-amount-value {
+  font-size: 2.3rem;
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+.rf-payment-amount-badge {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  padding: 4px 12px;
+  border-radius: 20px;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.rf-payment-room-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 16px;
+  background: #ffffff !important;
+  border-radius: 12px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.rf-room-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: #f8fafc !important;
+  border: 1px solid #e2e8f0 !important;
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: #0f172a !important;
+}
+
+.rf-payment-summary-hero .summary-label,
+.rf-room-chip .summary-label {
+  color: #475569 !important;
+  font-size: 0.8rem;
+  font-weight: 600 !important;
+}
+
+.rf-payment-summary-hero .summary-value,
+.rf-room-chip .summary-value {
+  font-weight: 700 !important;
+  color: #0f172a !important;
+}
+
+.rf-payment-summary-hero .rf-chip-sub,
+.rf-chip-sub {
+  font-size: 0.78rem;
+  color: #64748b !important;
+}
+
+.rf-payment-summary-hero .rf-chip-icon,
+.rf-chip-icon {
+  color: #e7710f !important;
+  flex-shrink: 0;
+}
+
+/* Payment Checkout Section */
+.rf-payment-checkout-section {
+  background: var(--rf-surface);
+  border: 1.5px solid var(--rf-border);
+  border-radius: var(--rf-radius-lg, 16px);
+  padding: 26px 30px;
+  box-shadow: var(--rf-shadow-md);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.rf-payment-methods-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--rf-border);
+}
+
+.rf-payment-methods-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--rf-text);
+}
+
+.rf-payment-methods-pills {
+  display: flex;
+  gap: 8px;
+}
+
+.rf-pay-pill {
+  font-size: 0.78rem;
+  font-weight: 700;
+  background: var(--rf-surface-alt);
+  color: var(--rf-text);
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1.5px solid var(--rf-border);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+html[data-theme="dark"] .rf-pay-pill {
+  background: #1e293b;
+  color: #f8fafc;
+  border-color: #334155;
+}
+
+.rf-policy-ack-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 18px;
+  border-radius: var(--rf-radius-sm, 10px);
+  border: 1.5px solid var(--rf-border);
+  background: var(--rf-surface-alt);
+  cursor: pointer;
+  transition: all var(--rf-transition);
+}
+
+.rf-policy-ack-box:hover {
+  border-color: var(--rf-accent);
+  background: var(--rf-surface);
+}
+
+.rf-policy-ack-box.is-checked {
+  border-color: var(--rf-success);
+  background: var(--rf-success-bg, rgba(16, 185, 129, 0.08));
+}
+
+.rf-policy-ack-box.is-disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.rf-policy-checkbox-wrapper {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.rf-policy-checkbox {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0 !important;
+  cursor: pointer;
+  z-index: 2;
+  margin: 0;
+}
+
+.rf-policy-checkbox:disabled {
+  cursor: not-allowed;
+}
+
+.rf-policy-custom-check {
+  position: absolute;
+  inset: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  border: 2px solid var(--rf-border);
+  background: var(--rf-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  transition: all var(--rf-transition);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.rf-policy-ack-box:hover .rf-policy-custom-check {
+  border-color: var(--rf-accent);
+}
+
+.rf-policy-ack-box.is-checked .rf-policy-custom-check {
+  background: var(--rf-success);
+  border-color: var(--rf-success);
+  color: white;
+}
+
+.rf-policy-label {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--rf-text);
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.rf-policy-label strong {
+  color: var(--rf-accent);
+  font-weight: 700;
+}
+
+.rf-policy-ack-box.is-checked .rf-policy-label {
+  color: var(--rf-success-text);
+}
+
+.btn-pay-online-reservation {
+  height: 52px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #ffffff !important;
+  border-radius: var(--rf-radius-sm, 10px);
+  background: linear-gradient(135deg, var(--rf-accent) 0%, var(--rf-accent-hover) 100%);
+  box-shadow: 0 4px 14px rgba(231, 113, 15, 0.32);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  width: 100%;
+}
+
+.btn-pay-online-reservation * {
+  color: #ffffff !important;
+}
+
+.btn-pay-online-reservation:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 22px rgba(231, 113, 15, 0.42);
+}
+
+.rf-payment-footer-note {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  margin-top: 4px;
+}
+
+.rf-hint-ready {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--rf-success-text);
+  font-weight: 700;
+}
+
+.rf-hint-pending {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: #b45309;
+  font-weight: 600;
+}
+
+html[data-theme="dark"] .rf-hint-pending {
+  color: #fbbf24;
+}
+
+.rf-security-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--rf-text-secondary);
+  font-weight: 600;
+}
+
+@media (max-width: 600px) {
+  .rf-payment-summary-hero,
+  .rf-payment-checkout-section {
+    padding: 20px 18px;
+  }
+
+  .rf-payment-amount-value {
+    font-size: 1.95rem;
+  }
+
+  .rf-payment-methods-bar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
 
 .rf-rejection-banner { background: var(--rf-error-bg); border: 1px solid var(--rf-error-border); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; display: flex; gap: 12px; align-items: flex-start; }
 .rf-rejection-banner__title  { font-size: 14px; font-weight: 600; color: var(--rf-error-text); margin-bottom: 4px; }
@@ -1059,15 +1414,15 @@ html[data-theme="dark"] .rf-receipt-header__badge { color: var(--rf-success-text
 .rf-save-status {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  font-weight: 600;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 500;
   font-style: normal;
-  color: var(--rf-success-text, #15803d);
-  background: var(--rf-success-bg, #f0fdf4);
-  border: 1px solid var(--rf-success, #22c55e);
-  padding: 4px 12px;
-  border-radius: 20px;
+  color: var(--rf-success-text-alt, #059669);
+  background: var(--rf-success-bg, rgba(16, 185, 129, 0.08));
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  padding: 2px 7px;
+  border-radius: 6px;
   letter-spacing: 0.01em;
   white-space: nowrap;
   animation: rfSaveFadeIn 0.3s ease;
@@ -1431,25 +1786,41 @@ html[data-theme="dark"] .rf-receipt-header__badge { color: var(--rf-success-text
 /* ============ FILE UPLOAD FIELD ============ */
 .rf-file-input-hidden { display: none; }
 
-.rf-upload-zone { padding: 16px; border: 2px dashed var(--rf-border-card); border-radius: 8px; text-align: center; cursor: pointer; transition: all 0.3s; margin-top: 8px; background: transparent; }
-.rf-upload-zone:hover           { background: var(--rf-hover-bg); }
+.rf-upload-zone { padding: 18px 16px; border: 2px dashed var(--rf-border-card); border-radius: 12px; text-align: center; cursor: pointer; transition: all 0.25s ease; margin-top: 8px; background: var(--rf-surface, #ffffff); }
+.rf-upload-zone:hover           { background: var(--rf-hover-bg); border-color: var(--rf-accent); }
 .rf-upload-zone--error          { border-color: var(--rf-error-text); background: var(--rf-error-bg); }
 .rf-upload-zone--success        { border-color: var(--rf-success); background: var(--rf-success-bg); }
-.rf-upload-zone--uploading      { opacity: 0.85; cursor: wait; }
+.rf-upload-zone--uploading      { border-color: var(--rf-accent); background: rgba(231, 113, 15, 0.04); cursor: wait; }
 .rf-upload-zone--disabled       { opacity: 0.62; cursor: not-allowed; background: var(--rf-surface-alt); }
 .rf-upload-zone--disabled:hover { background: var(--rf-surface-alt); }
 
-.rf-upload-status              { font-size: 14px; font-weight: 500; margin-bottom: 4px; display: flex; align-items: center; justify-content: center; gap: 6px; }
-.rf-upload-status--uploading   { color: var(--rf-accent); }
-.rf-upload-status--success     { color: var(--rf-success); font-weight: 600; }
+.rf-upload-loading             { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 6px 0; }
+.rf-upload-spinner             { animation: rfSpin 0.9s linear infinite; color: var(--rf-accent); flex-shrink: 0; }
 
-.rf-upload-filename            { font-size: 12px; color: var(--rf-text-muted); margin-bottom: 8px; }
-.rf-upload-progress-track      { width: 100%; height: 6px; background: var(--rf-surface-alt); border-radius: 3px; overflow: hidden; }
-.rf-upload-progress-fill       { height: 100%; background: linear-gradient(90deg, var(--rf-accent), var(--rf-warning)); border-radius: 3px; transition: width 0.2s ease; }
+@keyframes rfSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.rf-upload-status              { font-size: 14px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.rf-upload-status--uploading   { color: var(--rf-accent); }
+.rf-upload-status--success     { color: var(--rf-success); }
+
+.rf-upload-filename            { font-size: 12px; color: var(--rf-text-muted); font-weight: 500; }
+.rf-upload-progress-track      { width: 100%; max-width: 320px; height: 6px; background: var(--rf-surface-alt, #e2e8f0); border-radius: 999px; overflow: hidden; margin: 6px auto 0; position: relative; }
+.rf-upload-progress-fill       { height: 100%; background: linear-gradient(90deg, var(--rf-accent, #e7710f), #f97316, var(--rf-accent, #e7710f)); background-size: 200% 100%; animation: rfShimmer 1.8s linear infinite; border-radius: 999px; transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
+
+@keyframes rfShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
 .rf-upload-meta                { font-size: 12px; color: var(--rf-text-subtle); display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
 .rf-upload-meta__name          { font-weight: 500; color: var(--rf-text-secondary); }
 .rf-upload-meta__dot           { color: var(--rf-border-card); }
-.rf-upload-replace-hint        { font-size: 11px; color: var(--rf-text-muted); margin-top: 4px; }
+.rf-upload-replace-hint        { font-size: 11px; color: var(--rf-text-muted); }
+.rf-upload-actions-row         { display: inline-flex; align-items: center; justify-content: center; gap: 6px; margin-top: 4px; }
+.rf-upload-clear-btn           { background: none; border: none; color: var(--rf-error-text, #dc2626); font-size: 11px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; border-radius: 4px; transition: all 0.15s ease; font-family: inherit; }
+.rf-upload-clear-btn:hover     { background: rgba(220, 38, 38, 0.1); color: #b91c1c; }
 .rf-upload-preview             { display: inline-flex; margin-top: 6px; color: var(--rf-accent); font-size: 12px; font-weight: 700; text-decoration: none; }
 .rf-upload-preview:hover       { text-decoration: underline; }
 .rf-upload-hint                { font-size: 12px; color: var(--rf-text-muted); margin-top: 4px; }

@@ -28,7 +28,7 @@ export function computeLeaseEndDate(reservation) {
   const leaseDuration = Number(reservation?.leaseDuration || 0);
   if (!Number.isFinite(leaseDuration) || leaseDuration <= 0) return null;
 
-  const end = dayjs(moveInDate).add(leaseDuration, "month");
+  const end = dayjs(moveInDate).add(leaseDuration, "month").subtract(1, "day");
   return end.isValid() ? end.toDate() : null;
 }
 

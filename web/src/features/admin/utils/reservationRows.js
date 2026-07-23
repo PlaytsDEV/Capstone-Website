@@ -40,58 +40,69 @@ export function getArchivedByName(archivedBy) {
  return name || archivedBy.email || "-";
 }
 
-export function mapReservationAdminRow(reservation) {
- const branchCode = reservation.roomId?.branch || "";
+export function isNewReservation(reservation, maxAgeHours = 48) {
+  if (!reservation?.createdAt) return false;
+  const created = new Date(reservation.createdAt);
+  const now = new Date();
+  const diffMs = now.getTime() - created.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+  return diffHours >= 0 && diffHours <= maxAgeHours;
+}
 
- return {
- id: reservation._id,
- reservationCode: reservation.reservationCode || "-",
- customer:
- `${reservation.userId?.firstName || ""} ${reservation.userId?.lastName || ""}`.trim() ||
- "Unknown",
- email: reservation.userId?.email || "-",
- phone: reservation.mobileNumber || reservation.phone || "-",
- room: reservation.roomId?.name || reservation.roomId?.roomNumber || "-",
- roomType: reservation.roomId?.type || "",
- selectedBed: reservation.selectedBed || null,
- branchCode,
- branch: getBranchLabel(branchCode),
- moveInDate: reservation.moveInDate,
- moveOutDate: reservation.moveOutDate,
- status: reservation.status || "pending",
- totalPrice: reservation.totalPrice,
- paymentStatus: reservation.paymentStatus,
- viewingPreference: reservation.viewingPreference,
- viewingType: reservation.viewingType,
- visitDate: reservation.visitDate,
- visitTime: reservation.visitTime,
- visitApproved: Boolean(reservation.visitApproved),
- visitScheduledAt: reservation.visitScheduledAt,
- visitStatus: reservation.visitStatus || null,
- visitOutcomeNotes: reservation.visitOutcomeNotes || "",
- visitOutcomeUpdatedAt: reservation.visitOutcomeUpdatedAt || null,
- visitOutcomeUpdatedByName: reservation.visitOutcomeUpdatedByName || "",
- visitHistory: reservation.visitHistory || [],
- scheduleApproved: Boolean(reservation.scheduleApproved),
- scheduleApprovedAt: reservation.scheduleApprovedAt || null,
- scheduleRejected: Boolean(reservation.scheduleRejected),
- scheduleRejectedAt: reservation.scheduleRejectedAt || null,
- scheduleRejectionReason: reservation.scheduleRejectionReason || "",
- cancellationRequested: Boolean(reservation.cancellationRequested),
- cancellationStatus: reservation.cancellationStatus || null,
- cancellationReason: reservation.cancellationReason || null,
- cancellationRequestedAt: reservation.cancellationRequestedAt || null,
- cancellationRequestedBy: reservation.cancellationRequestedBy || null,
- cancellationAdminNote: reservation.cancellationAdminNote || null,
- isArchived: Boolean(reservation.isArchived),
- archivedAt: reservation.archivedAt || null,
- archivedBy: reservation.archivedBy || null,
- archivedByName: getArchivedByName(reservation.archivedBy),
- archivedPreviousStatus: reservation.archivedPreviousStatus || reservation.status || null,
- archiveReason: reservation.archiveReason || "",
- createdAt: reservation.createdAt,
- _raw: reservation,
- };
+export function mapReservationAdminRow(reservation) {
+  const branchCode = reservation.roomId?.branch || "";
+  const isNew = isNewReservation(reservation);
+
+  return {
+    id: reservation._id,
+    reservationCode: reservation.reservationCode || "-",
+    customer:
+      `${reservation.userId?.firstName || ""} ${reservation.userId?.lastName || ""}`.trim() ||
+      "Unknown",
+    email: reservation.userId?.email || "-",
+    phone: reservation.mobileNumber || reservation.phone || "-",
+    room: reservation.roomId?.name || reservation.roomId?.roomNumber || "-",
+    roomType: reservation.roomId?.type || "",
+    selectedBed: reservation.selectedBed || null,
+    branchCode,
+    branch: getBranchLabel(branchCode),
+    moveInDate: reservation.moveInDate,
+    moveOutDate: reservation.moveOutDate,
+    status: reservation.status || "pending",
+    isNew,
+    totalPrice: reservation.totalPrice,
+    paymentStatus: reservation.paymentStatus,
+    viewingPreference: reservation.viewingPreference,
+    viewingType: reservation.viewingType,
+    visitDate: reservation.visitDate,
+    visitTime: reservation.visitTime,
+    visitApproved: Boolean(reservation.visitApproved),
+    visitScheduledAt: reservation.visitScheduledAt,
+    visitStatus: reservation.visitStatus || null,
+    visitOutcomeNotes: reservation.visitOutcomeNotes || "",
+    visitOutcomeUpdatedAt: reservation.visitOutcomeUpdatedAt || null,
+    visitOutcomeUpdatedByName: reservation.visitOutcomeUpdatedByName || "",
+    visitHistory: reservation.visitHistory || [],
+    scheduleApproved: Boolean(reservation.scheduleApproved),
+    scheduleApprovedAt: reservation.scheduleApprovedAt || null,
+    scheduleRejected: Boolean(reservation.scheduleRejected),
+    scheduleRejectedAt: reservation.scheduleRejectedAt || null,
+    scheduleRejectionReason: reservation.scheduleRejectionReason || "",
+    cancellationRequested: Boolean(reservation.cancellationRequested),
+    cancellationStatus: reservation.cancellationStatus || null,
+    cancellationReason: reservation.cancellationReason || null,
+    cancellationRequestedAt: reservation.cancellationRequestedAt || null,
+    cancellationRequestedBy: reservation.cancellationRequestedBy || null,
+    cancellationAdminNote: reservation.cancellationAdminNote || null,
+    isArchived: Boolean(reservation.isArchived),
+    archivedAt: reservation.archivedAt || null,
+    archivedBy: reservation.archivedBy || null,
+    archivedByName: getArchivedByName(reservation.archivedBy),
+    archivedPreviousStatus: reservation.archivedPreviousStatus || reservation.status || null,
+    archiveReason: reservation.archiveReason || "",
+    createdAt: reservation.createdAt,
+    _raw: reservation,
+  };
 }
 
 export function checkOverdueReservation(reservation, now = new Date()) {

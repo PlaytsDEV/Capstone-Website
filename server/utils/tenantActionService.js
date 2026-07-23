@@ -588,6 +588,36 @@ export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {
       reservation.moveOutDate = moveOutAt;
       reservation.currentStayId = activeStay._id;
       reservation.latestStayStatus = activeStay.status;
+
+      // ── Deposit Forfeiture (Lease Contract — Section 4) ─────────────────────
+      // If the tenant vacates before the lease end date, the security deposit
+      // is automatically forfeited (early vacancy rule). The deposit is never
+      // used to offset active rent bills — this is purely a settlement field.
+      // The 30-day refund deadline and final refund amount are set here as
+      // initial values; admin completes the settlement via the move-out modal.
+      const leaseEndDate = activeStay.leaseEndDate
+        ? new Date(activeStay.leaseEndDate)
+        : null;
+      const isEarlyVacancy = leaseEndDate && moveOutAt < leaseEndDate;
+
+      if (isEarlyVacancy) {
+        reservation.depositForfeited = true;
+        reservation.depositForfeitureReason = "early_vacancy";
+        reservation.depositForfeitedAt = new Date();
+        reservation.depositRefundAmount = 0;
+        reservation.depositRefundDeadline = null;
+      } else {
+        reservation.depositForfeited = false;
+        reservation.depositForfeitureReason = null;
+        reservation.depositForfeitedAt = null;
+        // Refund deadline = moveOutDate + 30 days (per lease contract)
+        reservation.depositRefundDeadline = dayjs(moveOutAt).add(30, "day").toDate();
+        // depositRefundAmount is null until admin finalises settlement
+        // (accounts for keyReturned toggle and outstanding bills)
+        reservation.depositRefundAmount = null;
+      }
+      // ────────────────────────────────────────────────────────────────────────
+
       await reservation.save({ session });
 
       const tenant = await User.findById(reservation.userId?._id || reservation.userId).session(session);
@@ -619,6 +649,17 @@ export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {
         reservation,
         stay: activeStay.toObject(),
         billingSummary,
+        depositSettlement: {
+          depositForfeited: reservation.depositForfeited,
+          depositForfeitureReason: reservation.depositForfeitureReason,
+          depositForfeitedAt: reservation.depositForfeitedAt,
+          depositRefundDeadline: reservation.depositRefundDeadline,
+          depositRefundAmount: reservation.depositRefundAmount,
+          keyReturned: reservation.keyReturned,
+          isEarlyVacancy: Boolean(isEarlyVacancy),
+          leaseEndDate: leaseEndDate,
+          actualMoveOutDate: moveOutAt,
+        },
       };
     });
     return result;

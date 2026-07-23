@@ -586,7 +586,23 @@ export async function validateSelectedBedForReservation({
   submittedBed,
   excludeReservationId = null,
 }) {
-  if (!room || !Array.isArray(room.beds) || room.beds.length === 0) {
+  if (!room) {
+    throw new AppError("Room not found", 404, "ROOM_NOT_FOUND");
+  }
+
+  let beds = Array.isArray(room.beds) && room.beds.length > 0 ? room.beds : [];
+  if (beds.length === 0 && room.capacity > 0) {
+    const defaultPositions = ["upper", "lower", "upper", "lower"];
+    beds = Array.from({ length: room.capacity }, (_, idx) => ({
+      id: `bed-${idx + 1}`,
+      bedNumber: idx + 1,
+      position: defaultPositions[idx % defaultPositions.length],
+      status: "available",
+      label: `Bed ${idx + 1}`,
+    }));
+  }
+
+  if (beds.length === 0) {
     throw new AppError("No beds defined for this room", 400, "BED_SELECTION_REQUIRED");
   }
 
@@ -594,21 +610,86 @@ export async function validateSelectedBedForReservation({
   const bedId = submittedBed?.id || (typeof submittedBed === "string" ? submittedBed : null);
   const bedNumber = submittedBed?.bedNumber || (typeof submittedBed === "number" ? submittedBed : null);
 
+  // 1. If explicit bedId or bedNumber provided, search for match in room beds
   if (bedId) {
-    targetBed = room.beds.find((b) => String(b._id || b.id) === String(bedId));
-  } else if (bedNumber) {
-    targetBed = room.beds.find((b) => b.bedNumber === bedNumber);
-  } else if (room.beds.length === 1) {
-    targetBed = room.beds[0];
+    const targetIdStr = String(bedId).trim();
+    targetBed = beds.find((b) => {
+      const bIdStr = b.id ? String(b.id) : null;
+      const bMongoIdStr = b._id ? String(b._id) : null;
+      const bNumStr = b.bedNumber != null ? String(b.bedNumber) : null;
+      return bIdStr === targetIdStr || bMongoIdStr === targetIdStr || bNumStr === targetIdStr;
+    });
   }
 
+  if (!targetBed && bedNumber != null) {
+    targetBed = beds.find((b) => Number(b.bedNumber) === Number(bedNumber));
+  }
+
+  // 2. If single bed in room and no explicit bed specified, default to it
+  if (!targetBed && beds.length === 1 && !submittedBed) {
+    targetBed = beds[0];
+  }
+
+  // 3. Fallback: If no target bed selected yet (e.g. submittedBed is null/omitted or bedId didn't match),
+  // auto-assign the first available, non-held bed in the room
+  if (!targetBed) {
+    for (const candidateBed of beds) {
+      const candidateStatus = candidateBed.status || "available";
+      if (
+        candidateStatus !== "occupied" &&
+        candidateStatus !== "maintenance" &&
+        candidateStatus !== "locked"
+      ) {
+        const candidateIdentifiers = [
+          candidateBed._id ? String(candidateBed._id) : null,
+          candidateBed.id ? String(candidateBed.id) : null,
+          candidateBed.bedNumber != null ? String(candidateBed.bedNumber) : null,
+        ].filter(Boolean);
+
+        const candidateIdFilter =
+          candidateIdentifiers.length === 1
+            ? candidateIdentifiers[0]
+            : { $in: candidateIdentifiers };
+
+        const holdQuery = {
+          roomId: room._id,
+          "selectedBed.id": candidateIdFilter,
+          status: { $in: ACTIVE_BED_HOLD_STATUSES },
+          isArchived: { $ne: true },
+        };
+        if (excludeReservationId) {
+          holdQuery._id = { $ne: excludeReservationId };
+        }
+
+        const activeHold = await Reservation.findOne(holdQuery).select("_id").lean();
+        if (!activeHold) {
+          targetBed = candidateBed;
+          break;
+        }
+      }
+    }
+  }
+
+  // 4. If still no target bed found, throw conflict
   if (!targetBed) {
     throw new AppError(BED_UNAVAILABLE_MESSAGE, 409, "BED_UNAVAILABLE");
   }
 
+  // 5. Verify the targetBed is not held by another active reservation
+  const targetIdentifiers = [
+    targetBed._id ? String(targetBed._id) : null,
+    targetBed.id ? String(targetBed.id) : null,
+    targetBed.bedNumber != null ? String(targetBed.bedNumber) : null,
+  ].filter(Boolean);
+
+  const selectedBedIdFilter =
+    targetIdentifiers.length === 1
+      ? targetIdentifiers[0]
+      : { $in: targetIdentifiers };
+
   const query = {
     roomId: room._id,
-    "selectedBed.id": String(targetBed._id || targetBed.id),
+    "selectedBed.id": selectedBedIdFilter,
     status: { $in: ACTIVE_BED_HOLD_STATUSES },
     isArchived: { $ne: true },
   };
@@ -622,9 +703,10 @@ export async function validateSelectedBedForReservation({
   }
 
   return {
-    id: String(targetBed._id || targetBed.id),
-    bedNumber: targetBed.bedNumber,
-    label: targetBed.label || `Bed ${targetBed.bedNumber}`,
+    id: String(targetBed.id || targetBed._id || targetBed.bedNumber || 1),
+    bedNumber: targetBed.bedNumber || 1,
+    position: targetBed.position || "single",
+    label: targetBed.label || `Bed ${targetBed.bedNumber || 1}`,
   };
 }
 
@@ -1211,10 +1293,17 @@ export const buildReservationPricing = async ({
     branchId === "guadalupe" && branchSettings?.isApplianceFeeEnabled
       ? roundMoney(applianceFeeAmountPerUnit * totalApplianceQuantity)
       : 0;
-  const totalPrice = roundMoney(monthlyRent + applianceFees);
-  const reservationFeeAmount = roundMoney(
-    settings?.reservationFeeAmount ?? BUSINESS.DEPOSIT_AMOUNT,
-  );
+  const securityDeposit = monthlyRent;
+  const grossMoveInCashOut = roundMoney(monthlyRent + securityDeposit);
+  const netMoveInBalanceDue = roundMoney(Math.max(0, grossMoveInCashOut - reservationFeeAmount));
+
+  const moveInCashOut = {
+    monthlyAdvance: monthlyRent,
+    securityDeposit,
+    grossTotal: grossMoveInCashOut,
+    reservationFeeDeductible: reservationFeeAmount,
+    netAmountDue: netMoveInBalanceDue,
+  };
 
   return {
     selectedAppliances: validatedSelectedAppliances,
@@ -1222,12 +1311,14 @@ export const buildReservationPricing = async ({
     applianceFees,
     totalPrice,
     reservationFeeAmount,
+    moveInCashOut,
     breakdown: {
       monthlyRent,
       selectedAppliances: validatedSelectedAppliances,
       applianceFees,
       totalPrice,
       reservationFeeAmount,
+      moveInCashOut,
       branchId,
       branchName: ROOM_BRANCH_LABELS[branchId] || room?.branch || "",
       pricingSource: {

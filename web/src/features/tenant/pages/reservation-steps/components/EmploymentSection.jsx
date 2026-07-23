@@ -218,32 +218,36 @@ const EmploymentSection = ({
  />
  </div>
 
- <div className="form-group" data-field="companyIDReason">
- <label className="form-label">
- If not yet available, please indicate reason below{" "}
- <span className="rf-required">*</span>
- </label>
- <textarea
- className="form-textarea"
- value={companyIDReason}
- onChange={(e) => {
- const nextValue = e.target.value;
- setCompanyIDReason(nextValue);
- if (nextValue?.trim()) {
- clearFieldError?.("companyIDReason");
- }
- }}
- placeholder="N/A if Company ID has been submitted"
- style={{
- border: !companyID
- ? errBorder(showValidationErrors, companyIDReason)
- : undefined,
- }}
- />
- {showValidationErrors && !companyID && !companyIDReason && (
- <FieldError error="Please upload Company ID or provide a reason" />
- )}
- </div>
+  <div className="form-group" data-field="companyIDReason">
+    <label className="form-label">
+      If not yet available, please indicate reason below{" "}
+      {!companyID && <span className="rf-required">*</span>}
+    </label>
+    <textarea
+      className="form-textarea"
+      value={companyIDReason}
+      onChange={(e) => {
+        const nextValue = e.target.value;
+        setCompanyIDReason(nextValue);
+        if (nextValue?.trim()) {
+          clearFieldError?.("companyIDReason");
+        }
+      }}
+      placeholder={
+        companyID
+          ? "Optional (Company ID uploaded)"
+          : "Reason why Company ID is not yet available"
+      }
+      style={{
+        border: !companyID
+          ? errBorder(showValidationErrors, companyIDReason)
+          : undefined,
+      }}
+    />
+    {showValidationErrors && !companyID && !companyIDReason && (
+      <FieldError error="Please upload Company ID or provide a reason" />
+    )}
+  </div>
  </>
 );
 

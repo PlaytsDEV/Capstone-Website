@@ -151,8 +151,8 @@ const PersonalInfoSection = ({
       />
     </div>
 
-    {/* Nickname — standalone optional row */}
-    <div className="form-row">
+    {/* Nickname, Gender, Nationality — 3-column row */}
+    <div className="form-row form-row--3col">
       <div className="form-group" data-field="nickname">
         <label className="form-label">
           Nickname <span className="rf-optional-label">(Optional)</span>
@@ -166,9 +166,58 @@ const PersonalInfoSection = ({
           onChange={(e) => handleNameInput(e.target.value, setNickname)}
         />
       </div>
+      <div className="form-group" data-field="gender">
+        <label className="form-label">
+          Gender <span className="rf-required">*</span>
+        </label>
+        <select
+          className="form-select"
+          value={gender}
+          onChange={(e) => setGender(e.target.value)}
+          style={{ border: errBorder(showValidationErrors, gender) }}
+        >
+          <option value="">Select gender...</option>
+          <option value="male">Male</option>
+          <option value="female">Female</option>
+          <option value="other">Other</option>
+          <option value="prefer-not-to-say">Prefer not to say</option>
+        </select>
+        <FieldError
+          error={
+            showValidationErrors && !gender ? "Gender is required" : null
+          }
+        />
+      </div>
+      <div className="form-group" data-field="nationality">
+        <label className="form-label">
+          Nationality <span className="rf-required">*</span>
+        </label>
+        <select
+          className="form-select"
+          value={nationality}
+          onChange={(e) => setNationality(e.target.value)}
+          style={{ border: errBorder(showValidationErrors, nationality) }}
+        >
+          <option value="">Select nationality...</option>
+          <option value="Filipino">Filipino</option>
+          <option value="American">American</option>
+          <option value="Chinese">Chinese</option>
+          <option value="Japanese">Japanese</option>
+          <option value="Korean">Korean</option>
+          <option value="Indian">Indian</option>
+          <option value="Other">Other</option>
+        </select>
+        <FieldError
+          error={
+            showValidationErrors && !nationality
+              ? "Nationality is required"
+              : null
+          }
+        />
+      </div>
     </div>
 
-    {/* Phone & Birthday */}
+    {/* Phone & Birthday — 2-column row */}
     <div className="form-row">
       <div className="form-group" data-field="mobileNumber">
         <label className="form-label">
@@ -208,30 +257,8 @@ const PersonalInfoSection = ({
       />
     </div>
 
-    {/* Gender / Marital / Nationality — 3-column row */}
-    <div className="form-row form-row--3col">
-      <div className="form-group" data-field="gender">
-        <label className="form-label">
-          Gender <span className="rf-required">*</span>
-        </label>
-        <select
-          className="form-select"
-          value={gender}
-          onChange={(e) => setGender(e.target.value)}
-          style={{ border: errBorder(showValidationErrors, gender) }}
-        >
-          <option value="">Select gender...</option>
-          <option value="male">Male</option>
-          <option value="female">Female</option>
-          <option value="other">Other</option>
-          <option value="prefer-not-to-say">Prefer not to say</option>
-        </select>
-        <FieldError
-          error={
-            showValidationErrors && !gender ? "Gender is required" : null
-          }
-        />
-      </div>
+    {/* Marital Status & Education — 2-column row */}
+    <div className="form-row">
       <div className="form-group" data-field="maritalStatus">
         <label className="form-label">
           Marital Status <span className="rf-required">*</span>
@@ -256,37 +283,6 @@ const PersonalInfoSection = ({
           }
         />
       </div>
-      <div className="form-group" data-field="nationality">
-        <label className="form-label">
-          Nationality <span className="rf-required">*</span>
-        </label>
-        <select
-          className="form-select"
-          value={nationality}
-          onChange={(e) => setNationality(e.target.value)}
-          style={{ border: errBorder(showValidationErrors, nationality) }}
-        >
-          <option value="">Select nationality...</option>
-          <option value="Filipino">Filipino</option>
-          <option value="American">American</option>
-          <option value="Chinese">Chinese</option>
-          <option value="Japanese">Japanese</option>
-          <option value="Korean">Korean</option>
-          <option value="Indian">Indian</option>
-          <option value="Other">Other</option>
-        </select>
-        <FieldError
-          error={
-            showValidationErrors && !nationality
-              ? "Nationality is required"
-              : null
-          }
-        />
-      </div>
-    </div>
-
-    {/* Education — single field */}
-    <div className="form-row">
       <div className="form-group" data-field="educationLevel">
         <label className="form-label">
           Educational Attainment <span className="rf-required">*</span>
@@ -447,13 +443,17 @@ const PersonalInfoSection = ({
     <div className="form-group" data-field="nbiReason">
       <label className="form-label">
         If not yet available, please indicate reason below{" "}
-        <span className="rf-required">*</span>
+        {!nbiClearance && <span className="rf-required">*</span>}
       </label>
       <textarea
         className="form-textarea"
         value={nbiReason}
         onChange={(e) => setNbiReason(e.target.value)}
-        placeholder="N/A if NBI Clearance has been submitted"
+        placeholder={
+          nbiClearance
+            ? "Optional (NBI Clearance uploaded)"
+            : "Reason why NBI Clearance is not yet available"
+        }
         style={{
           border: !nbiClearance
             ? errBorder(showValidationErrors, nbiReason)

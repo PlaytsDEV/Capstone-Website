@@ -114,6 +114,32 @@ function ReservationsPage() {
   const [selectedReservation, setSelectedReservation] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortState, setSortState] = useState({ key: "createdAt", dir: "desc" });
+  const [seenIds, setSeenIds] = useState(() => {
+    try {
+      const stored = localStorage.getItem("admin_seen_reservation_ids");
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  const markAsSeen = useCallback((id) => {
+    if (!id) return;
+    setSeenIds((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev).add(id);
+      try {
+        localStorage.setItem(
+          "admin_seen_reservation_ids",
+          JSON.stringify(Array.from(next)),
+        );
+      } catch {
+        // ignore storage errors
+      }
+      return next;
+    });
+  }, []);
+
   const [confirmModal, setConfirmModal] = useState({
     open: false,
     title: "",
@@ -131,8 +157,15 @@ function ReservationsPage() {
   const error = queryError?.message || null;
 
   const reservations = useMemo(
-    () => rawReservations.map(mapReservationAdminRow),
-    [rawReservations],
+    () =>
+      rawReservations.map((raw) => {
+        const row = mapReservationAdminRow(raw);
+        return {
+          ...row,
+          isNew: row.isNew && !seenIds.has(row.id),
+        };
+      }),
+    [rawReservations, seenIds],
   );
 
   const activeReservations = useMemo(
@@ -189,6 +222,8 @@ function ReservationsPage() {
           ? true
           : statusFilter === "archived"
             ? true
+          : statusFilter === "new"
+            ? reservation.isNew
           : statusFilter === "overdue"
             ? checkOverdueReservation(reservation)
             : statusFilter === "in_progress"
@@ -351,6 +386,7 @@ function ReservationsPage() {
         key: "status",
         options: [
           { value: "all", label: "All Status" },
+          { value: "new", label: "New Reservations" },
           { value: "pending_application_review", label: "Pending Review" },
           { value: "approved_for_payment", label: "Approved for Payment" },
           { value: "cancellation_requested", label: "Cancellation Requests" },
@@ -438,6 +474,7 @@ function ReservationsPage() {
 
   const handleView = useCallback(
     async (reservationId) => {
+      markAsSeen(reservationId);
       try {
         const reservation = await prefetchReservationDetail(reservationId);
         setSelectedReservation({
@@ -624,7 +661,18 @@ function ReservationsPage() {
                 {rowInitials}
               </div>
               <div className="res-applicant-info">
-                <span className="res-applicant-name">{row.customer}</span>
+                <div className="flex items-center gap-2">
+                  <span className="res-applicant-name">{row.customer}</span>
+                  {row.isNew && (
+                    <span
+                      className="res-badge-new"
+                      title="New reservation (created within 48 hours)"
+                    >
+                      <span className="res-badge-new__dot" />
+                      NEW
+                    </span>
+                  )}
+                </div>
                 <span className="res-applicant-email">{row.email}</span>
                 <span className="res-applicant-code">{row.phone}</span>
               </div>
@@ -925,8 +973,17 @@ function ReservationsPage() {
                               {initials(row.customer)}
                             </div>
                             <div>
-                              <div className="font-medium text-foreground">
-                                {row.customer}
+                              <div className="flex items-center gap-2 font-medium text-foreground">
+                                <span>{row.customer}</span>
+                                {row.isNew && (
+                                  <span
+                                    className="res-badge-new"
+                                    title="New reservation (created within 48 hours)"
+                                  >
+                                    <span className="res-badge-new__dot" />
+                                    NEW
+                                  </span>
+                                )}
                               </div>
                               <div className="text-xs text-muted-foreground">
                                 {row.email}

@@ -29,13 +29,13 @@ const ACTION_MSGS = {
  confirmText: "Yes, Move In",
  variant: "info",
  },
- cancel: {
- title: "Cancel reservation",
- message:
- "This will permanently remove the reservation. The reservation fee is non-refundable, and the bed will be released.",
- confirmText: "Cancel reservation",
- variant: "danger",
- },
+  cancel: {
+    title: "Cancel Reservation",
+    message:
+      "This will permanently remove the reservation. The reservation fee is non-refundable, and the bed will be released.",
+    confirmText: "Cancel Reservation",
+    variant: "danger",
+  },
  approveCancellation: {
  title: "Approve Cancellation Request",
  message:
@@ -1486,7 +1486,7 @@ export default function ReservationDetailsModal({
 
  {allowedActions.includes("moveIn") && (
  <button
- className="rdm-action rdm-action-dark"
+ className="rdm-action rdm-action-primary"
  onClick={() => {
  setMeterReadingVal("");
  setShowMeterPrompt(true);
@@ -1494,7 +1494,7 @@ export default function ReservationDetailsModal({
  disabled={isSubmitting}
  title="Mark tenant as moved in and record the initial meter reading"
  >
- Mark as moved in
+ Mark as Moved In
  </button>
  )}
 
@@ -1510,7 +1510,7 @@ export default function ReservationDetailsModal({
 
  {allowedActions.includes("approve_for_payment") && (
  <button
- className="rdm-action rdm-action-dark"
+ className="rdm-action rdm-action-primary"
  onClick={() =>
  doAction(
  "approveForPayment",
@@ -1540,7 +1540,7 @@ export default function ReservationDetailsModal({
 
  {allowedActions.includes("rejected") && (
  <button
- className="rdm-action rdm-action-dark rdm-action-dark-cancel"
+ className="rdm-action rdm-action-danger-outline"
  onClick={() => {
  if (!adminNotes.trim()) {
  showNotification("Add a reason in Admin Notes before rejecting.", "warning");
@@ -1558,14 +1558,14 @@ export default function ReservationDetailsModal({
  }}
  disabled={isSubmitting}
  >
- Reject
+ Reject Application
  </button>
  )}
 
  {cancellationPending && (
    <>
      <button
-       className="rdm-action rdm-action-dark rdm-action-dark-cancel"
+       className="rdm-action rdm-action-danger-outline"
        onClick={() =>
          doAction(
            "approveCancellation",
@@ -1594,7 +1594,7 @@ export default function ReservationDetailsModal({
  )}
  {allowedActions.includes("cancelled") && !cancellationPending && (
  <button
- className="rdm-action rdm-action-dark rdm-action-dark-cancel"
+ className="rdm-action rdm-action-danger-outline"
  onClick={() =>
  doAction(
  "cancel",
@@ -1607,7 +1607,7 @@ export default function ReservationDetailsModal({
  }
  disabled={isSubmitting}
  >
- Cancel reservation
+ Cancel Reservation
  </button>
  )}
  </div>

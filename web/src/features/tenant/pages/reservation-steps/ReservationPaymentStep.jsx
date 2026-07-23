@@ -1,16 +1,19 @@
 import React from "react";
 import {
   formatBranch,
-  formatRoomType,
   fmtDate,
 } from "../../../../shared/utils/formatDate";
 import {
-  AlertCircle,
-  CreditCard,
-  Receipt,
-  RefreshCw,
   ShieldCheck,
+  CreditCard,
   Lock,
+  RefreshCw,
+  ChevronRight,
+  Check,
+  Home,
+  Calendar,
+  AlertCircle,
+  CheckCircle2,
 } from "lucide-react";
 
 const formatCurrency = (amount) =>
@@ -39,8 +42,8 @@ const toDisplayString = (value, fallback = "") => {
 };
 
 /**
- * Step 4 - Reservation Fee Payment
- * PayMongo online checkout only (GCash, Maya, Card).
+ * Step 4 - Reservation Fee Payment (Streamlined & Responsive)
+ * PayMongo online checkout (GCash, Maya, Card).
  */
 const ReservationPaymentStep = ({
   reservationData,
@@ -60,38 +63,31 @@ const ReservationPaymentStep = ({
   const reservationFeeAmount = Number.isFinite(Number(reservationData?.reservationFeeAmount))
     ? Number(reservationData.reservationFeeAmount)
     : 2000;
-  const monthlyRent = Number.isFinite(Number(room.price || room.monthlyRent))
-    ? Number(room.price || room.monthlyRent)
-    : 0;
-  const selectedBedPosition = toDisplayString(reservationData?.selectedBed?.position, "Bed");
-  const selectedBedId = toDisplayString(reservationData?.selectedBed?.id);
-  const canPay = agreedToFeePolicy && !isLoading && !payingOnline;
-  const payButtonLabel = payingOnline
-    ? "Redirecting to secure checkout..."
-    : `Pay ${formatCurrency(reservationFeeAmount)} Securely`;
+  const monthlyRent = Number(
+    reservationData?.monthlyRent ??
+      reservationData?.moveInCashOut?.monthlyAdvance ??
+      room?.monthlyPrice ??
+      room?.price ??
+      0,
+  );
+  const moveInCashOut = reservationData?.moveInCashOut || {
+    monthlyAdvance: monthlyRent,
+    securityDeposit: monthlyRent,
+    grossTotal: monthlyRent * 2,
+    reservationFeeDeductible: reservationFeeAmount,
+    netAmountDue: Math.max(0, monthlyRent * 2 - reservationFeeAmount),
+  };
 
-  const paymentFacts = [
-    {
-      icon: ShieldCheck,
-      title: "Secure checkout",
-      text: "PayMongo handles the payment page.",
-    },
-    {
-      icon: CreditCard,
-      title: "GCash, Maya, or card",
-      text: "Choose your preferred online method.",
-    },
-    {
-      icon: Receipt,
-      title: "Receipt after payment",
-      text: "The receipt becomes available once confirmed.",
-    },
-    {
-      icon: RefreshCw,
-      title: "Safe to retry",
-      text: "Interrupted checkout can be resumed from here.",
-    },
-  ];
+  const selectedBedPosition = toDisplayString(reservationData?.selectedBed?.position, "");
+  const selectedBedId = toDisplayString(reservationData?.selectedBed?.id);
+  const bedDisplay = selectedBedPosition
+    ? `${selectedBedPosition}${selectedBedId ? ` (${selectedBedId})` : ""}`
+    : "";
+
+  const canPay = agreedToFeePolicy && !isLoading && !payingOnline && paymentAvailable && !readOnly;
+  const payButtonLabel = payingOnline
+    ? "Redirecting to PayMongo..."
+    : `Pay ${formatCurrency(reservationFeeAmount)} Securely`;
 
   const handlePayClick = () => {
     if (!canPay) return;
@@ -100,179 +96,199 @@ const ReservationPaymentStep = ({
 
   return (
     <div className="reservation-card rf-payment-stage">
+      {/* Header */}
       <div className="main-header">
         <div className="main-header-badge">
           <span>Step 4 - Finalization</span>
         </div>
         <h2 className="main-header-title">Reservation Fee Payment</h2>
         <p className="main-header-subtitle">
-          Review your reservation details and pay the one-time reservation fee
-          of {formatCurrency(reservationFeeAmount)} to secure your room. Payment will only be available after admin approves your application.
+          Pay the one-time reservation fee deposit to lock and secure your room.
         </p>
       </div>
 
+      {/* Payment Complete Banner */}
       {readOnly && (
         <div className="rf-success-banner rf-payment-complete-banner">
           <ShieldCheck size={22} aria-hidden="true" />
           <div>
             <div className="info-box-title">Payment Complete</div>
             <div className="info-text">
-              Your reservation fee has been paid and your room is reserved.
+              Your reservation fee of {formatCurrency(reservationFeeAmount)} has been paid and your room is reserved.
             </div>
           </div>
         </div>
       )}
 
       <div className={readOnly ? "rf-readonly-wrapper" : ""}>
-        <section className="content-card rf-payment-summary-card">
-          <div className="card-section-title">
-            <div className="icon">
-              <Receipt size={16} aria-hidden="true" />
-            </div>
-            Reservation Breakdown
-          </div>
-
-          <div className="summary-section rf-payment-summary">
-            <div className="summary-row rf-payment-room-row">
-              <span className="summary-label">Selected Room</span>
-              <span className="summary-value">{roomName}</span>
-            </div>
-            <div className="summary-row">
-              <span className="summary-label">Branch</span>
-              <span className="summary-value">{formatBranch(room.branch)}</span>
-            </div>
-            <div className="summary-row">
-              <span className="summary-label">Room Type</span>
-              <span className="summary-value">{formatRoomType(room.type)}</span>
-            </div>
-            <div className="summary-row">
-              <span className="summary-label">Monthly Rent</span>
-              <span className="summary-value rf-payment-rent">
-                {formatCurrency(monthlyRent)}
-              </span>
-            </div>
-            <div className="summary-row">
-              <span className="summary-label">Lease Duration</span>
-              <span className="summary-value">{leaseDuration || 12} months</span>
-            </div>
-            <div className="summary-row">
-              <span className="summary-label">Target Move-In Date</span>
-              <span className="summary-value">{fmtDate(targetMoveInDate)}</span>
-            </div>
-            {reservationData?.selectedBed && (
-              <div className="summary-row">
-                <span className="summary-label">Selected Bed</span>
-                <span className="summary-value">
-                  {selectedBedPosition}
-                  {selectedBedId ? ` (${selectedBedId})` : ""}
-                </span>
-              </div>
-            )}
-            <div className="total-section rf-payment-total">
-              <span>Reservation Fee (One-time)</span>
-              <span className="total-amount">
+        <div className="rf-payment-card-wrap">
+          {/* Card 1: Payment Hero & Essential Room Summary */}
+          <div className="rf-payment-summary-hero">
+            <div className="rf-payment-amount-box">
+              <span className="rf-payment-amount-label">One-Time Reservation Deposit</span>
+              <div className="rf-payment-amount-value total-amount">
                 {formatCurrency(reservationFeeAmount)}
-              </span>
-            </div>
-          </div>
-        </section>
-
-        <section className="content-card rf-payment-trust-card">
-          <div className="card-section-title">
-            <div className="icon">
-              <ShieldCheck size={16} aria-hidden="true" />
-            </div>
-            Secure Online Payment
-          </div>
-
-          {!paymentAvailable && !readOnly ? (
-            <div className="rf-locked-banner" style={{ margin: '14px 0', padding: '16px', background: '#FEF2F2', borderRadius: '12px', border: '1px solid #FCA5A5' }}>
-              <div className="info-box-title" style={{ color: '#991B1B', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'bold' }}>
-                <Lock size={15} /> Payment Locked — Pending Review
               </div>
-              <div className="info-text" style={{ color: '#B91C1C', marginTop: '6px', fontSize: '0.9rem' }}>
-                Your application is still under review. Payment will become available once
-                your application and documents are approved.
-                {applicationReviewReason ? ` Latest admin note: ${applicationReviewReason}` : ""}
-              </div>
+              <span className="rf-payment-amount-badge">Deductible Partial Payment</span>
             </div>
-          ) : (
-            <>
-              <div className="rf-payment-info-box">
-                <div className="info-box-title">PayMongo secure checkout</div>
-                <div className="info-text">
-                  You will be redirected to PayMongo to complete the payment. Your
-                  reservation is secured only after PayMongo confirms the payment.
+
+            <div className="rf-payment-room-chips summary-section rf-payment-summary">
+              <div className="rf-room-chip summary-row rf-payment-room-row">
+                <Home size={14} className="rf-chip-icon" />
+                <span className="summary-label">Room:</span>
+                <span className="summary-value">{roomName}</span>
+                {formatBranch(room.branch) && (
+                  <span className="rf-chip-sub">({formatBranch(room.branch)})</span>
+                )}
+              </div>
+
+              {bedDisplay && (
+                <div className="rf-room-chip summary-row">
+                  <span className="summary-label">Bed:</span>
+                  <span className="summary-value">{bedDisplay}</span>
+                </div>
+              )}
+
+              {targetMoveInDate && (
+                <div className="rf-room-chip summary-row">
+                  <Calendar size={14} className="rf-chip-icon" />
+                  <span className="summary-label">Target Move-In:</span>
+                  <span className="summary-value">{fmtDate(targetMoveInDate)}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Move-In Cash-Out Deductible Breakdown (Section 4 Lease Rule) */}
+            {monthlyRent > 0 && (
+              <div className="rf-movein-breakdown" style={{ marginTop: '16px', padding: '14px', borderRadius: '10px', background: 'rgba(255, 255, 255, 0.04)', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: '8px', color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Move-In Financial Breakdown
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '4px' }}>
+                  <span>1st Month Advance Rent:</span>
+                  <span>{formatCurrency(moveInCashOut.monthlyAdvance)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '4px' }}>
+                  <span>1 Month Security Deposit:</span>
+                  <span>{formatCurrency(moveInCashOut.securityDeposit)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#60a5fa', fontWeight: 600, borderTop: '1px dashed rgba(255, 255, 255, 0.1)', paddingTop: '4px', marginBottom: '4px' }}>
+                  <span>Gross Move-In Total:</span>
+                  <span>{formatCurrency(moveInCashOut.grossTotal)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#34d399', fontWeight: 600, marginBottom: '4px' }}>
+                  <span>Less: Reservation Deposit (Paying Now):</span>
+                  <span>- {formatCurrency(reservationFeeAmount)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#f8fafc', fontWeight: 700, borderTop: '1px solid rgba(255, 255, 255, 0.15)', paddingTop: '6px', marginTop: '4px' }}>
+                  <span>Est. Remaining Due at Move-In:</span>
+                  <span>{formatCurrency(moveInCashOut.netAmountDue)}</span>
                 </div>
               </div>
-              <div className="rf-payment-facts" aria-label="Payment details">
-                {paymentFacts.map(({ icon: Icon, title, text }) => (
-                  <div className="rf-payment-fact" key={title}>
-                    <span className="rf-payment-fact-icon">
-                      <Icon size={18} aria-hidden="true" />
-                    </span>
-                    <span>
-                      <strong>{title}</strong>
-                      <small>{text}</small>
-                    </span>
-                  </div>
-                ))}
+            )}
+          </div>
+
+          {/* Card 2: Checkout Action Section */}
+          <div className="rf-payment-checkout-section">
+            {!paymentAvailable && !readOnly ? (
+              <div className="rf-locked-banner rf-payment-locked-box" style={{ margin: 0, padding: '16px', borderRadius: '12px' }}>
+                <div className="info-box-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Lock size={16} /> Payment Locked — Application Under Review
+                </div>
+                <div className="info-text" style={{ marginTop: '6px' }}>
+                  Your application is currently under admin review. Payment will automatically unlock once approved.
+                  {applicationReviewReason ? ` Latest note: ${applicationReviewReason}` : ""}
+                </div>
               </div>
-            </>
-          )}
-        </section>
+            ) : (
+              !readOnly && (
+                <>
+                  {/* Accepted Payment Methods */}
+                  <div className="rf-payment-methods-bar">
+                    <span className="rf-payment-methods-label">Accepted Online Methods:</span>
+                    <div className="rf-payment-methods-pills">
+                      <span className="rf-pay-pill">GCash</span>
+                      <span className="rf-pay-pill">Maya</span>
+                      <span className="rf-pay-pill">Cards</span>
+                    </div>
+                  </div>
+
+                  {/* Non-Refundable Fee Policy Checkbox */}
+                  <div
+                    className={`rf-fee-policy-check rf-policy-ack-box ${agreedToFeePolicy ? "is-checked" : ""} ${
+                      isLoading || payingOnline ? "is-disabled" : ""
+                    }`}
+                    onClick={() => {
+                      if (!isLoading && !payingOnline) {
+                        setAgreedToFeePolicy(!agreedToFeePolicy);
+                      }
+                    }}
+                  >
+                    <div className="rf-policy-checkbox-wrapper">
+                      <input
+                        type="checkbox"
+                        id="agreedToFeePolicy"
+                        checked={Boolean(agreedToFeePolicy)}
+                        onChange={(e) => setAgreedToFeePolicy(e.target.checked)}
+                        disabled={isLoading || payingOnline}
+                        className="rf-policy-checkbox"
+                      />
+                      <div className="rf-policy-custom-check" aria-hidden="true">
+                        {agreedToFeePolicy && <Check size={12} strokeWidth={3.5} />}
+                      </div>
+                    </div>
+                    <label htmlFor="agreedToFeePolicy" className="rf-policy-label" onClick={(e) => e.stopPropagation()}>
+                      <span>
+                        I understand that the <strong>{formatCurrency(reservationFeeAmount)}</strong> reservation fee is non-refundable.
+                      </span>
+                    </label>
+                  </div>
+
+                  {/* Pay Button */}
+                  <button
+                    onClick={handlePayClick}
+                    className={`btn btn-primary btn-pay-online-reservation ${payingOnline ? "is-loading" : ""}`}
+                    disabled={!canPay}
+                    aria-describedby="reservation-payment-help"
+                  >
+                    {payingOnline ? (
+                      <span className="rf-pay-btn-inner rf-pay-btn-icon">
+                        <RefreshCw size={18} className="rf-spin" aria-hidden="true" />
+                        <span>Redirecting to PayMongo...</span>
+                      </span>
+                    ) : (
+                      <span className="rf-pay-btn-inner rf-pay-btn-icon">
+                        <CreditCard size={18} aria-hidden="true" />
+                        <span>{payButtonLabel}</span>
+                        <ChevronRight size={18} aria-hidden="true" />
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Security Note & State Hint */}
+                  <div className="rf-payment-footer-note" id="reservation-payment-help">
+                    <div className={`rf-payment-state-hint ${agreedToFeePolicy ? "rf-payment-state-hint--ready" : ""}`}>
+                      {agreedToFeePolicy ? (
+                        <span className="rf-hint-ready">
+                          <CheckCircle2 size={14} /> Policy acknowledged. Click button above to continue.
+                        </span>
+                      ) : (
+                        <span className="rf-hint-pending">
+                          <AlertCircle size={14} /> Please acknowledge the non-refundable fee policy above to proceed.
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )
+            )}
+          </div>
+        </div>
       </div>
-
-      {!readOnly && paymentAvailable && (
-        <section className="content-card rf-payment-action-card">
-          <label className="rf-fee-policy-check">
-            <input
-              type="checkbox"
-              checked={Boolean(agreedToFeePolicy)}
-              onChange={(event) => setAgreedToFeePolicy(event.target.checked)}
-              disabled={isLoading || payingOnline}
-            />
-            <span>
-              I understand the reservation fee is non-refundable once paid.
-            </span>
-          </label>
-
-          <div className="stage-buttons rf-payment-actions">
-            <div className="rf-payment-action-copy">
-              <strong>Ready to secure your room?</strong>
-              <span>
-                Confirm the policy, then continue to PayMongo checkout.
-              </span>
-            </div>
-            <button
-              onClick={handlePayClick}
-              className="btn btn-primary btn-pay-online-reservation"
-              disabled={!canPay}
-              aria-describedby="reservation-payment-help"
-            >
-              <span className="rf-pay-btn-icon">
-                <CreditCard size={16} aria-hidden="true" />
-                {payButtonLabel}
-              </span>
-            </button>
-          </div>
-
-          <div
-            className={`rf-payment-state-hint${
-              agreedToFeePolicy ? " rf-payment-state-hint--ready" : ""
-            }`}
-            id="reservation-payment-help"
-          >
-            <AlertCircle size={15} aria-hidden="true" />
-            <span>
-              Please acknowledge the non-refundable fee policy before
-              payment.
-            </span>
-          </div>
-        </section>
-      )}
     </div>
   );
 };
 
 export default ReservationPaymentStep;
+
+

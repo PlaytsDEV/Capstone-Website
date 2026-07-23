@@ -708,6 +708,64 @@ const reservationSchema = new mongoose.Schema(
       default: false,
     },
 
+    // --- Security Deposit Settlement (Lease Contract Rules) ---
+    // Populated at move-out time. depositForfeited is auto-set by the system
+    // when actualMoveOutDate < leaseEndDate (early vacancy). keyReturned is
+    // admin-assessed only — never auto-set.
+    depositForfeited: {
+      type: Boolean,
+      default: false,
+    },
+    // 'early_vacancy' | 'admin_decision' | null
+    depositForfeitureReason: {
+      type: String,
+      enum: ["early_vacancy", "admin_decision", null],
+      default: null,
+    },
+    depositForfeitedAt: {
+      type: Date,
+      default: null,
+    },
+    // null = not yet assessed by admin; true/false = assessed
+    keyReturned: {
+      type: Boolean,
+      default: null,
+    },
+    keyReturnAssessedAt: {
+      type: Date,
+      default: null,
+    },
+    // Auto-set to moveOutDate + 30 days when deposit is NOT forfeited
+    depositRefundDeadline: {
+      type: Date,
+      default: null,
+    },
+    // Computed at move-out: 0 if forfeited, else securityDeposit - keyDeduction - unpaidBills
+    depositRefundAmount: {
+      type: Number,
+      default: null,
+    },
+
+    // --- Contract Termination Eligibility (Lease Contract — Section 10) ---
+    // Tracked by scheduler job to alert branch admin when tenant has 3+ consecutive
+    // months of overdue bills. Advisory flag only — never auto-terminates.
+    consecutiveOverdueMonths: {
+      type: Number,
+      default: 0,
+    },
+    eligibleForTermination: {
+      type: Boolean,
+      default: false,
+    },
+    terminationEligibilityDetectedAt: {
+      type: Date,
+      default: null,
+    },
+    terminationEligibilityAlertSentAt: {
+      type: Date,
+      default: null,
+    },
+
     // --- Post-Payment Cancellation Request ---
     // Tenant submits a request; admin confirms before bed is released.
     // Fee is strictly non-refundable regardless of outcome.

@@ -19,7 +19,7 @@ graph TB
         MW["Middleware Pipeline<br/>Helmet → RequestId → CORS<br/>→ RateLimit → Compression<br/>→ Logger → Auth → RBAC"]
         WR["Web Routes (22 routers)<br/>Firebase JWT auth"]
         MR["Mobile Routes<br/>Session-token auth"]
-        CRON["Cron Scheduler<br/>(14 background jobs)"]
+        CRON["Cron Scheduler<br/>(15 background jobs)"]
         SVC["Services Layer<br/>(AI, Billing, Analytics)"]
     end
 
@@ -151,7 +151,7 @@ Request → Helmet → RequestId → CORS → RateLimit → Compression → Logg
 
 ---
 
-### 2.6 Background Job Scheduler (14 Cron Jobs)
+### 2.6 Background Job Scheduler (15 Cron Jobs)
 
 | Job | Schedule | Purpose |
 |:----|:---------|:--------|
@@ -160,6 +160,7 @@ Request → Helmet → RequestId → CORS → RateLimit → Compression → Logg
 | Bed lock cleanup | Every 2 min | Release expired bed holds |
 | Overdue bill marking | Daily 01:00 | Transition bill status |
 | Penalty computation | Daily 01:10 | Calculate late fees |
+| Consecutive overdue detection | Daily 01:20 | 3-month overdue termination flag |
 | Payment reminders | Daily 08:00 | 5/3/1 day warnings |
 | Contract expiration | Daily 09:00 | 30/15/7/1 day alerts |
 | Firebase↔MongoDB sync | Daily 03:00 | Orphan cleanup |
@@ -272,6 +273,7 @@ ReactDOM.createRoot
 | **Code splitting** | Centralized `lazyPages.js` with Suspense | All 33 pages lazy-loaded |
 | **Cron scheduler** | node-cron with retry + admin alerting | Production-grade job system |
 | **Graceful shutdown** | SIGTERM/SIGINT handlers + MongoDB close | Proper cleanup with timeout |
+| **Lease Contract Rules Engine** | Schema fields + scheduler job + move-out workflow | Deposit forfeiture, termination eligibility flag, lease date anniversary alignment |
 
 ---
 
@@ -372,6 +374,37 @@ Reservation (checked_in) → Scheduler (midnight) → rentGenerator.js → Bill 
                                                  → penaltyCalculator.js → Late fee computation
 ```
 
+### 5.4 Move-Out & Deposit Settlement Flow (Lease Contract Rules)
+
+```
+Admin triggers Move-Out
+  → moveOutStayWorkflow() [tenantActionService.js]
+      → Validate: status = 'moveIn', confirm = true, finalUtilityReading provided
+      → Check moveOutAt vs activeStay.leaseEndDate
+          → Early Vacancy? (moveOutAt < leaseEndDate)
+              YES → depositForfeited = true
+                    depositForfeitureReason = 'early_vacancy'
+                    depositRefundAmount = 0
+                    depositRefundDeadline = null
+              NO  → depositForfeited = false
+                    depositRefundDeadline = moveOutDate + 30 days
+                    depositRefundAmount = null (pending admin settlement)
+      → Stay.status = 'completed' | 'terminated'
+      → Reservation.status = 'moveOut'
+      → Room bed vacated + occupancy decremented
+      → UtilityReading created (final meter reading)
+      → depositSettlement object returned in API response
+
+Scheduler (daily 01:20) → detectConsecutiveOverdueMonths()
+  → For each active (moveIn) reservation:
+      → Fetch bills sorted by billingMonth DESC
+      → Count streak of consecutive months with overdue/unpaid balance
+      → streak >= 3 → eligibleForTermination = true
+                       terminationEligibilityDetectedAt = now
+                       Alert all branch admins via notify.general()
+      → streak < 3 (was eligible) → eligibleForTermination = false (auto-clears)
+```
+
 ---
 
 ## 6. Strategic Recommendations
@@ -398,6 +431,14 @@ Migrated domain services from `utils/` into `server/services/`:
 - `services/notifications/` (notificationService, notificationVisibility, mobilePushService, announcementDispatch)
 - `services/maintenance/` (maintenanceAiService, maintenanceAnalyticsService)
 - `services/audit/` (auditLogger)
+
+#### 3. Lease Contract Rules Integration — ✅ COMPLETED
+
+Translated physical lease contract into system rules across 4 phases:
+- **Phase 1:** Reservation fee deductible — `buildReservationPricing()` in `_helpers.js` exposes `moveInCashOut` envelope; `ReservationPaymentStep.jsx` renders Move-In Financial Breakdown.
+- **Phase 2:** Deposit forfeiture on early vacancy — 7 new fields on `Reservation.js`; `moveOutStayWorkflow()` in `tenantActionService.js` auto-sets forfeiture vs. 30-day refund deadline; `depositSettlement` returned in move-out API response.
+- **Phase 3:** 3-consecutive-month overdue termination flag — 4 new fields on `Reservation.js`; new cron Job 4b (`detectConsecutiveOverdueMonths`, daily 01:20) sets `eligibleForTermination: true` and alerts branch admins.
+- **Phase 4:** Lease date anniversary alignment — `computeLeaseEndDate()` in `tenantWorkspace.js` subtracts 1 day so Aug 20 + 6 months → Feb 19, not Feb 20. Unit tests updated and passing.
 
 ### 6.2 High Priority
 
@@ -447,11 +488,12 @@ Moved root debug scripts (`check.js`, `check_db.js`, `check-endpoint.js`, `test-
 | Lazy-Loaded Pages | **33** | Suspense split pages |
 | Route Guards | **5** | RBAC & auth guards |
 | Custom Hooks | **9** | Shared React hooks |
-| Background Cron Jobs | **14** | Scheduled system jobs |
+| Background Cron Jobs | **15** | Scheduled system jobs |
 | Zustand Stores | **1** | Client state store |
 | Backend Test Files | **~25** | Controller & service unit/integration tests |
+| Net New Reservation Schema Fields | **11** | Added for lease contract rules (7 deposit + 4 termination) |
 
 ---
 
 > [!IMPORTANT]
-> This audit reflects the live codebase structure following the modular refactoring of controllers, service layer restructuring, auth error standardization, and root script archiving.
+> This audit reflects the live codebase structure following the modular refactoring of controllers, service layer restructuring, auth error standardization, root script archiving, and full lease contract rule integration (Phases 1–4). All 4 phases completed and verified 2026-07-23.

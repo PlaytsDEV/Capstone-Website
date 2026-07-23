@@ -1,7 +1,7 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { uploadToFirebaseStorage, validateFile } from "../../../../../shared/utils/firebaseStorageUpload";
 import { useAuth } from "../../../../../shared/hooks/useAuth";
-import { CheckCircle, AlertTriangle, Upload } from "lucide-react";
+import { CheckCircle, AlertTriangle, Upload, Loader2, Trash2 } from "lucide-react";
 import {
  DOCUMENT_PRECHECK_MESSAGES,
  getApplicantDocumentPrecheckMessage,
@@ -72,8 +72,32 @@ const FileUploadField = ({
  const [uploading, setUploading] = useState(false);
  const [uploadSuccess, setUploadSuccess] = useState(false);
  const [progress, setProgress] = useState(0);
+ const [displayProgress, setDisplayProgress] = useState(0);
  const [error, setError] = useState(null);
  const [fileMeta, setFileMeta] = useState(null);
+
+ // Smoothly interpolate displayProgress towards real target progress
+ useEffect(() => {
+   if (!uploading) {
+     setDisplayProgress(0);
+     return;
+   }
+
+   const intervalId = setInterval(() => {
+     setDisplayProgress((prev) => {
+       if (prev < progress) {
+         const diff = progress - prev;
+         const step = Math.max(1, Math.min(diff, Math.ceil(diff * 0.25)));
+         return prev + step;
+       } else if (prev < 90 && progress < 90) {
+         return prev + 1;
+       }
+       return prev;
+     });
+   }, 40);
+
+   return () => clearInterval(intervalId);
+ }, [progress, uploading]);
 
  // An existing HTTPS URL (saved from a previous session) counts as uploaded.
  // uploadSuccess covers the just-uploaded case before the value prop updates.
@@ -84,6 +108,19 @@ const FileUploadField = ({
  const handleClick = () => {
  if (!uploading) inputRef.current?.click();
  };
+
+ const handleClear = (event) => {
+    event?.stopPropagation();
+    setUploadSuccess(false);
+    setFileMeta(null);
+    setError(null);
+    setProgress(0);
+    setDisplayProgress(0);
+    if (inputRef.current) {
+      inputRef.current.value = "";
+    }
+    onChange("");
+  };
 
  const processFile = async (file) => {
  if (!file) return;
@@ -104,17 +141,21 @@ const FileUploadField = ({
  setError(null);
  setUploading(true);
  setUploadSuccess(false);
- setProgress(0);
+ setProgress(10);
+ setDisplayProgress(5);
 
  try {
  const result = await uploadToFirebaseStorage(
  file,
  { uid: user?.firebaseUid, documentType },
- (pct) => setProgress(pct),
+ (pct) => setProgress(Math.max(10, pct)),
  );
+ setProgress(100);
+ setDisplayProgress(100);
+ // Brief pause at 100% so user sees completion before morphing to success
+ await new Promise((resolve) => setTimeout(resolve, 350));
  setUploading(false);
  setUploadSuccess(true);
- setProgress(100);
  onChange(result.downloadUrl);
  try {
  await onUploadComplete?.(result.downloadUrl, file);
@@ -125,6 +166,7 @@ const FileUploadField = ({
  setUploading(false);
  setUploadSuccess(false);
  setProgress(0);
+ setDisplayProgress(0);
  setError(err.message || "Upload failed. Please try again.");
  // Keep the File object in state so the user can retry without re-selecting
  onChange(file);
@@ -152,9 +194,10 @@ const FileUploadField = ({
  }
  };
 
- const aiStatus = normalizePrecheckStatus(aiCheck, isChecking);
- const precheckDisplay = getPrecheckDisplay(aiCheck, aiStatus);
- const showAiFeedback = Boolean(precheckDisplay);
+  const hasAttachedFile = isUploaded || isFile || Boolean(value);
+  const aiStatus = normalizePrecheckStatus(aiCheck, isChecking);
+  const precheckDisplay = getPrecheckDisplay(aiCheck, aiStatus);
+  const showAiFeedback = Boolean(precheckDisplay) && hasAttachedFile;
 
  const zoneClass = [
  "rf-upload-zone",
@@ -191,16 +234,21 @@ const FileUploadField = ({
  tabIndex={0}
  >
  {uploading ? (
- <>
+ <div className="rf-upload-loading">
  <div className="rf-upload-status rf-upload-status--uploading">
- Uploading... {progress}%
+ <Loader2 size={16} className="rf-upload-spinner" />
+ <span>{displayProgress < 100 ? `Uploading... ${displayProgress}%` : "Processing file..."}</span>
  </div>
- <div className="rf-upload-hint">Saving to secure cloud storage</div>
- {fileMeta ? <div className="rf-upload-filename">{truncateName(fileMeta.name)}</div> : null}
+ {fileMeta ? (
+ <div className="rf-upload-filename">{truncateName(fileMeta.name)}</div>
+ ) : null}
  <div className="rf-upload-progress-track">
- <div className="rf-upload-progress-fill" style={{ width: `${progress}%` }} />
+ <div
+ className="rf-upload-progress-fill"
+ style={{ width: `${Math.max(displayProgress, 5)}%` }}
+ />
  </div>
- </>
+ </div>
  ) : isUploaded ? (
  <div>
  <div className="rf-upload-status rf-upload-status--success">
@@ -215,11 +263,36 @@ const FileUploadField = ({
  ) : (
  <div className="rf-upload-hint">File uploaded</div>
  )}
- <div className="rf-upload-replace-hint">Click to replace</div>
+ <div className="rf-upload-actions-row">
+ <span className="rf-upload-replace-hint">Click to replace</span>
+ <span className="rf-upload-meta__dot">·</span>
+ <button
+ type="button"
+ className="rf-upload-clear-btn"
+ onClick={handleClear}
+ title="Remove attached file"
+ >
+ <Trash2 size={12} /> Remove
+ </button>
+ </div>
  </div>
  ) : isFile ? (
+ <div>
  <div className="rf-upload-status rf-upload-status--success">
  <CheckCircle size={14} /> {value.name}
+ </div>
+ <div className="rf-upload-actions-row">
+ <span className="rf-upload-replace-hint">Click to replace</span>
+ <span className="rf-upload-meta__dot">·</span>
+ <button
+ type="button"
+ className="rf-upload-clear-btn"
+ onClick={handleClear}
+ title="Remove attached file"
+ >
+ <Trash2 size={12} /> Remove
+ </button>
+ </div>
  </div>
  ) : (
  <>
@@ -234,13 +307,15 @@ const FileUploadField = ({
  </div>
  ) : null}
 
- {hint && !error ? <div className="rf-upload-hint">{hint}</div> : null}
+ {hint && !error && !uploading && !isUploaded ? (
+ <div className="rf-upload-hint">{hint}</div>
+ ) : null}
 
  {!isUploaded && !isFile && !uploading && !error ? (
  <div className="rf-upload-limit">Max 5MB · JPEG, PNG, or PDF</div>
  ) : null}
 
- {showAiFeedback && !error ? (
+ {showAiFeedback && !error && !uploading ? (
  <div className={`rf-upload-ai-status rf-upload-ai-status--${aiStatusTone}`}>
  <>
  <strong>{precheckDisplay.label}</strong>
