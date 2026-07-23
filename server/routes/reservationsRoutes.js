@@ -451,7 +451,7 @@ router.put(
   verifyToken,
   verifyAdmin,
   filterByBranch,
-  requirePermission("manageReservations"),
+  requireAnyPermission(["manageReservations", "manageTenants"]),
   renewContract,
 );
 
@@ -473,7 +473,7 @@ router.put(
   verifyToken,
   verifyAdmin,
   filterByBranch,
-  requirePermission("manageReservations"),
+  requireAnyPermission(["manageReservations", "manageTenants"]),
   moveOutReservation,
 );
 
@@ -495,7 +495,7 @@ router.put(
   verifyToken,
   verifyAdmin,
   filterByBranch,
-  requirePermission("manageReservations"),
+  requireAnyPermission(["manageReservations", "manageTenants"]),
   transferTenant,
 );
 
