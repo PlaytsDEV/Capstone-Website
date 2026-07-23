@@ -146,6 +146,77 @@ describe("computeBilling - strict segmented mode", () => {
       }),
     );
   });
+
+  test("handles multi-tenant transition with mid-cycle move-out and new tenant move-in", () => {
+    const utilityPeriod = {
+      startDate: new Date("2026-03-01T00:00:00.000Z"),
+      endDate: new Date("2026-04-01T00:00:00.000Z"),
+      startReading: 100,
+      endReading: 300,
+      ratePerUnit: 10,
+    };
+
+    const readings = [
+      {
+        reading: 100,
+        date: new Date("2026-03-01T00:00:00.000Z"),
+        eventType: "periodStart",
+      },
+      {
+        reading: 180,
+        date: new Date("2026-03-15T00:00:00.000Z"),
+        eventType: "moveOut",
+      },
+      {
+        reading: 300,
+        date: new Date("2026-04-01T00:00:00.000Z"),
+        eventType: "periodEnd",
+      },
+    ];
+
+    const tenantEvents = [
+      {
+        tenantId: "tenant-outgoing",
+        tenantName: "Outgoing Tenant",
+        moveInReading: 100,
+        moveOutReading: 180,
+      },
+      {
+        tenantId: "tenant-incoming",
+        tenantName: "Incoming Tenant",
+        moveInReading: 180,
+        moveOutReading: null,
+      },
+    ];
+
+    const result = computeBilling({
+      utilityPeriod,
+      readings,
+      reservations: [],
+      tenantEvents,
+      forceSegmented: true,
+    });
+
+    expect(result.strategy).toBe("segment-based-strict");
+    expect(result.segments).toHaveLength(2);
+    // Segment 1: 100 -> 180 (80 kWh = PHP 800) for outgoing tenant
+    expect(result.segments[0].unitsConsumed).toBe(80);
+    expect(result.segments[0].sharePerTenantCost).toBe(800);
+    // Segment 2: 180 -> 300 (120 kWh = PHP 1200) for incoming tenant
+    expect(result.segments[1].unitsConsumed).toBe(120);
+    expect(result.segments[1].sharePerTenantCost).toBe(1200);
+
+    const outgoingSummary = result.tenantSummaries.find(
+      (t) => t.tenantId === "tenant-outgoing",
+    );
+    const incomingSummary = result.tenantSummaries.find(
+      (t) => t.tenantId === "tenant-incoming",
+    );
+
+    expect(outgoingSummary.billAmount).toBe(800);
+    expect(incomingSummary.billAmount).toBe(1200);
+    expect(result.computedTotalCost).toBe(2000);
+  });
 });
 
 describe("computeBilling - water occupancy mode", () => {

@@ -119,7 +119,7 @@ const roomSchema = new mongoose.Schema(
           id: { type: String },
           position: {
             type: String,
-            enum: ["upper", "lower", "single"],
+            enum: ["upper", "lower"],
             required: true,
           },
           // 5-state: available, locked (temp hold), reserved (confirmed), occupied, maintenance
@@ -183,6 +183,8 @@ const roomSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
   },
 );
 

@@ -5,6 +5,7 @@ const roomArchive = jest.fn();
 const roomFindOne = jest.fn();
 const roomFind = jest.fn();
 const reservationCountDocuments = jest.fn();
+const stayCountDocuments = jest.fn();
 const billingPeriodCountDocuments = jest.fn();
 const utilityPeriodCountDocuments = jest.fn();
 const maintenanceCountDocuments = jest.fn();
@@ -32,6 +33,7 @@ await jest.unstable_mockModule("../models/index.js", () => ({
     countDocuments: reservationCountDocuments,
     find: reservationFind,
   },
+  Stay: { countDocuments: stayCountDocuments },
   BillingPeriod: { countDocuments: billingPeriodCountDocuments },
   UtilityPeriod: { countDocuments: utilityPeriodCountDocuments },
   MaintenanceRequest: { countDocuments: maintenanceCountDocuments },
@@ -93,6 +95,7 @@ describe("roomsController", () => {
     roomFind.mockReset();
     reservationFind.mockReset();
     reservationCountDocuments.mockReset();
+    stayCountDocuments.mockReset();
     billingPeriodCountDocuments.mockReset();
     utilityPeriodCountDocuments.mockReset();
     maintenanceCountDocuments.mockReset();
@@ -152,7 +155,7 @@ describe("roomsController", () => {
 
     expect(Room).toHaveBeenCalledWith(
       expect.objectContaining({
-        beds: [{ id: "bed-1", position: "single", status: "available" }],
+        beds: [{ id: "bed-1", position: "lower", status: "available" }],
       }),
     );
     expect(sendSuccess).toHaveBeenCalledWith(
@@ -257,6 +260,7 @@ describe("roomsController", () => {
       archive: roomArchive,
     });
     reservationCountDocuments.mockResolvedValue(0);
+    stayCountDocuments.mockResolvedValue(0);
     billingPeriodCountDocuments.mockResolvedValue(0);
     utilityPeriodCountDocuments.mockResolvedValue(0);
     maintenanceCountDocuments.mockResolvedValue(2);

@@ -1,5 +1,4 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+import { describe, expect, test } from "@jest/globals";
 
 import {
   resolveArchivedRestoreStatus,
@@ -7,47 +6,43 @@ import {
 } from "./reservationArchive.js";
 
 test("resolveArchivePreviousStatus reads the stored archived previous status", () => {
-  assert.equal(
+  expect(
     resolveArchivePreviousStatus({
       archivedPreviousStatus: "cancelled",
       status: "archived",
-    }),
-    "cancelled",
-  );
+    })
+  ).toBe("cancelled");
 });
+
 test("resolveArchivedRestoreStatus restores safe terminal statuses", () => {
-  assert.equal(
+  expect(
     resolveArchivedRestoreStatus({
       archivedPreviousStatus: "rejected",
       status: "archived",
-    }),
-    "rejected",
-  );
+    })
+  ).toBe("rejected");
 
-  assert.equal(
+  expect(
     resolveArchivedRestoreStatus({
       archivedPreviousStatus: "moveOut",
       status: "archived",
-    }),
-    "moveOut",
-  );
+    })
+  ).toBe("moveOut");
 });
 
 test("resolveArchivedRestoreStatus falls back to cancelled for active previous statuses", () => {
-  assert.equal(
+  expect(
     resolveArchivedRestoreStatus({
       archivedPreviousStatus: "reserved",
       status: "archived",
-    }),
-    "cancelled",
-  );
+    })
+  ).toBe("cancelled");
 });
 
 test("resolveArchivedRestoreStatus uses current cancelled status when metadata is missing", () => {
-  assert.equal(
+  expect(
     resolveArchivedRestoreStatus({
       status: "cancelled",
-    }),
-    "cancelled",
-  );
+    })
+  ).toBe("cancelled");
 });

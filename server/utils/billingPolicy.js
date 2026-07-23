@@ -211,8 +211,8 @@ export function resolveBillStatus(billLike, now = new Date()) {
   return "pending";
 }
 
-export function syncBillAmounts(bill, { preserveStatus = false } = {}) {
-  const snapshot = getVisibleBillSnapshot(bill);
+export function syncBillAmounts(bill, { preserveStatus = false, now = new Date() } = {}) {
+  const snapshot = getVisibleBillSnapshot(bill, now);
 
   bill.grossAmount = snapshot.grossAmount;
   bill.totalAmount = snapshot.totalAmount;

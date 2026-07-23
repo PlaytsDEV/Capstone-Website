@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { ROOM_BRANCHES } from "../config/branches.js";
 
 const tenantShareSchema = new mongoose.Schema(
   {
@@ -39,7 +40,7 @@ const waterBillingRecordSchema = new mongoose.Schema(
     },
     branch: {
       type: String,
-      enum: ["gil-puyat", "guadalupe"],
+      enum: ROOM_BRANCHES,
       required: true,
       index: true,
     },

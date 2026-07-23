@@ -169,7 +169,7 @@ describe("syncBillAmounts", () => {
       paymentDate: null,
     };
 
-    syncBillAmounts(bill);
+    syncBillAmounts(bill, { now: new Date("2026-06-01T00:00:00.000Z") });
 
     expect(bill.grossAmount).toBe(5500);
     expect(bill.totalAmount).toBe(3500);
@@ -297,7 +297,8 @@ describe("syncBillAmounts", () => {
       paymentDate: new Date("2026-06-01T00:00:00.000Z"),
     };
 
-    syncBillAmounts(bill);
+    const refDate = new Date("2026-06-01T00:00:00.000Z");
+    syncBillAmounts(bill, { now: refDate });
     expect(bill.status).toBe("paid");
     expect(bill.totalAmount).toBe(1000);
 
@@ -307,13 +308,13 @@ describe("syncBillAmounts", () => {
       issuedAt: new Date("2026-06-10T00:00:00.000Z"),
       dueDate: new Date("2026-06-17T00:00:00.000Z"),
     };
-    const reopened = getVisibleBillSnapshot(bill);
+    const reopened = getVisibleBillSnapshot(bill, refDate);
 
     expect(reopened.totalAmount).toBe(1500);
     expect(reopened.remainingAmount).toBe(500);
     expect(reopened.status).toBe("partially-paid");
 
-    syncBillAmounts(bill);
+    syncBillAmounts(bill, { now: refDate });
 
     expect(bill.totalAmount).toBe(1500);
     expect(bill.remainingAmount).toBe(500);

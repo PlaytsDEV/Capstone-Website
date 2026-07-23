@@ -73,7 +73,7 @@ export default function RoomConfigModal({
       ...beds,
       {
         id: `bed-${beds.length + 1}`,
-        position: "single",
+        position: beds.length % 2 === 0 ? "upper" : "lower",
         status: "available",
       },
     ]);
@@ -252,7 +252,7 @@ export default function RoomConfigModal({
                         />
                         <select
                           className="bed-position"
-                          value={bed.position || "single"}
+                          value={bed.position || "lower"}
                           onChange={(event) =>
                             handleBedFieldChange(
                               bed.id,
@@ -262,7 +262,6 @@ export default function RoomConfigModal({
                           }
                           disabled={isLocked}
                         >
-                          <option value="single">Single</option>
                           <option value="upper">Upper</option>
                           <option value="lower">Lower</option>
                         </select>

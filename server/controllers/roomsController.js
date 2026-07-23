@@ -5,6 +5,7 @@
 import {
   Room,
   Reservation,
+  Stay,
   BillingPeriod,
   UtilityPeriod,
   MaintenanceRequest,
@@ -60,7 +61,7 @@ const SYSTEM_OWNED_BED_FIELDS = Object.freeze([
 
 const SYSTEM_OWNED_BED_STATUSES = new Set(["locked", "reserved", "occupied"]);
 const ADMIN_EDITABLE_BED_STATUSES = new Set(["available", "maintenance"]);
-const BED_POSITIONS = new Set(["upper", "lower", "single"]);
+const BED_POSITIONS = new Set(["upper", "lower"]);
 
 const normalizeRoomType = (rawType) => {
   if (!rawType) return null;
@@ -144,7 +145,7 @@ const pickFields = (payload, allowedFields) =>
 const generateDefaultBeds = (type, capacity) => {
   if (type === "private") {
     return [
-      { id: "bed-1", position: "single", status: "available" },
+      { id: "bed-1", position: "lower", status: "available" },
     ];
   }
 
@@ -357,7 +358,7 @@ const assertAdminMutableBed = (bed, action) => {
 };
 
 const normalizeBedPosition = (value) => {
-  const normalized = String(value || "single").trim().toLowerCase();
+  const normalized = String(value || "lower").trim().toLowerCase();
   if (!BED_POSITIONS.has(normalized)) {
     throw new AppError(
       `Invalid bed position. Use one of: ${[...BED_POSITIONS].join(", ")}.`,
@@ -745,6 +746,21 @@ export const updateRoom = async (req, res, next) => {
       roomNumber: nextRoomNumber,
     });
 
+    if (
+      roomData.capacity !== undefined &&
+      roomData.capacity < (existingRoom.currentOccupancy || 0)
+    ) {
+      throw new AppError(
+        `Cannot reduce capacity to ${roomData.capacity} because current occupancy is ${existingRoom.currentOccupancy || 0}.`,
+        409,
+        "ROOM_CAPACITY_TOO_LOW",
+        {
+          currentOccupancy: existingRoom.currentOccupancy || 0,
+          requestedCapacity: roomData.capacity,
+        },
+      );
+    }
+
     Object.assign(existingRoom, roomData);
     await existingRoom.save();
 
@@ -771,6 +787,7 @@ export const deleteRoom = async (req, res, next) => {
 
     const [
       activeReservationCount,
+      activeStayCount,
       openBillingPeriodCount,
       openUtilityPeriodCount,
       openMaintenanceCount,
@@ -781,6 +798,10 @@ export const deleteRoom = async (req, res, next) => {
         status: {
           $nin: reservationStatusesForQuery("moveOut", "cancelled", "archived"),
         },
+      }),
+      Stay.countDocuments({
+        roomId,
+        status: { $in: ["active", "ending_soon"] },
       }),
       BillingPeriod.countDocuments({
         roomId,
@@ -801,16 +822,18 @@ export const deleteRoom = async (req, res, next) => {
 
     if (
       activeReservationCount > 0 ||
+      activeStayCount > 0 ||
       openBillingPeriodCount > 0 ||
       openUtilityPeriodCount > 0 ||
       openMaintenanceCount > 0
     ) {
       throw new AppError(
-        "Room cannot be archived while it has active reservations, open billing periods, open utility periods, or unresolved maintenance work.",
+        "Room cannot be archived while it has active reservations, active stays, open billing periods, open utility periods, or unresolved maintenance work.",
         409,
         "ROOM_ARCHIVE_BLOCKED",
         {
           activeReservationCount,
+          activeStayCount,
           openBillingPeriodCount,
           openUtilityPeriodCount,
           openMaintenanceCount,

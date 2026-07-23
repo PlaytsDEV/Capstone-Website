@@ -80,7 +80,7 @@ await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
   canTransitionReservationStatus: jest.fn((current, next) => {
     if (current === next) return true;
     if (current === "pending") {
-      return ["visit_pending", "viewing_preference_selected", "pending_application_review"].includes(next);
+      return ["visit_pending", "visit_approved", "viewing_preference_selected", "pending_application_review"].includes(next);
     }
     return true;
   }),
@@ -123,6 +123,8 @@ await jest.unstable_mockModule("../utils/notificationService.js", () => ({
     general: notifyGeneral,
     cancellationRequested: notifyCancellationRequested,
     cancellationRequestAlert: notifyCancellationRequestAlert,
+    moveOutComplete: jest.fn().mockResolvedValue(null),
+    reservationCancelled: jest.fn().mockResolvedValue(null),
   },
 }));
 
@@ -608,7 +610,7 @@ describe("reservationsController.updateReservation access hardening", () => {
     expect(res.statusCode).toBe(200);
     expect(moveOutStayWorkflow).toHaveBeenCalledWith({
       reservationId: "507f1f77bcf86cd799439011",
-      payload: req.body,
+      payload: { ...req.body, finalUtilityReading: 128 },
       actorId: null,
     });
     expect(res.body.message).toBe("Tenant moved out successfully");
@@ -1146,8 +1148,8 @@ describe("reservationsController.updateReservation access hardening", () => {
           visitTime: "09:00 AM",
           visitCode: expect.stringMatching(/^VIS-/),
           visitScheduledAt: expect.any(Date),
-          visitStatus: "physical_visit_scheduled",
-          status: "visit_pending",
+          visitStatus: "schedule_approved",
+          status: "visit_approved",
         }),
       }),
       { new: true, runValidators: true },
@@ -1753,9 +1755,10 @@ describe("reservationsController.updateReservation access hardening", () => {
     });
     visitAvailabilityFindOne.mockResolvedValue({
       branch: "gil-puyat",
-      enabledWeekdays: [1, 2, 3, 4, 5],
+      enabledWeekdays: [0, 1, 2, 3, 4, 5, 6],
       slots: [{ label: "02:00 PM", enabled: true, capacity: 5 }],
       blackoutDates: [],
+      weekdaySystem: "js-get-day",
     });
     roomFind.mockReturnValue({
       distinct: jest.fn().mockResolvedValue(["room-1"]),
@@ -1770,7 +1773,7 @@ describe("reservationsController.updateReservation access hardening", () => {
       params: { reservationId: "507f1f77bcf86cd799439014" },
       body: {
         action: "reschedule",
-        visitDate: "2026-05-21",
+        visitDate: "2099-05-21",
         visitTime: "02:00 PM",
         note: "Move to the afternoon slot.",
       },
@@ -1784,7 +1787,7 @@ describe("reservationsController.updateReservation access hardening", () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.body?.reservation?.visitStatus).toBe("rescheduled");
-    expect(reservation.status).toBe("visit_pending");
+    expect(reservation.status).toBe("visit_approved");
     expect(visitAvailabilityFindOne).toHaveBeenCalledWith({ branch: "gil-puyat" });
     expect(reservation.visitTime).toBe("02:00 PM");
     expect(save).toHaveBeenCalled();
