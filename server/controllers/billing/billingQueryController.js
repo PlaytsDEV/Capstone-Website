@@ -1,0 +1,385 @@
+import dayjs from "dayjs";
+import { Bill, Room, User, Reservation } from "../../models/index.js";
+import {
+  getVisibleBillSnapshot,
+  getVisibleBillCharges,
+  getReservationRecurringFees,
+} from "../../utils/billingPolicy.js";
+import {
+  CURRENT_RESIDENT_STATUS_QUERY,
+  readMoveInDate,
+} from "../../utils/lifecycleNaming.js";
+import {
+  getAdminInfo,
+  fetchBills,
+  formatBillReference,
+  ensureTenantCurrentRentBill,
+  buildBillPaymentFlow,
+  buildTenantUtilityBreakdown,
+  getTenantBillForRequest,
+  suggestRent,
+  getRoomPublishState,
+} from "./_helpers.js";
+import { isUtilityChargeVisible } from "../../utils/billingPolicy.js";
+
+export const getCurrentBilling = async (req, res, next) => {
+  try {
+    const { uid } = req.user;
+    const dbUser = await User.findOne({ firebaseUid: uid }).lean();
+    if (!dbUser) return res.status(404).json({ error: "User not found" });
+    const activeStay = await ensureTenantCurrentRentBill(dbUser._id);
+    if (!activeStay)
+      return res.status(404).json({ error: "No active stay found" });
+
+    const now = dayjs();
+    let currentBill = await Bill.findOne({
+      reservationId: activeStay._id,
+      status: { $ne: "draft" },
+      isArchived: false,
+      billingCycleStart: {
+        $lte: now.startOf("day").toDate(),
+      },
+      billingCycleEnd: {
+        $gt: now.startOf("day").toDate(),
+      },
+    }).sort({ billingCycleStart: -1, createdAt: -1 });
+    if (!currentBill) {
+      currentBill = await Bill.findOne({
+        reservationId: activeStay._id,
+        status: { $ne: "draft" },
+        isArchived: false,
+      }).sort({ billingCycleStart: -1, billingMonth: -1, createdAt: -1 });
+    }
+    if (!currentBill)
+      return res.status(404).json({ error: "No current bill found" });
+
+    const visible = getVisibleBillSnapshot(currentBill);
+    res.json({
+      currentBalance: visible.remainingAmount,
+      totalAmount: visible.totalAmount,
+      grossAmount: visible.grossAmount,
+      reservationCreditApplied: currentBill.reservationCreditApplied || 0,
+      paidAmount: currentBill.paidAmount || 0,
+      remainingAmount: visible.remainingAmount,
+      dueDate: visible.dueDate,
+      issuedAt: visible.issuedAt,
+      billingCycleStart: currentBill.billingCycleStart,
+      billingCycleEnd: currentBill.billingCycleEnd,
+      utilityCycleStart: currentBill.utilityCycleStart || null,
+      utilityCycleEnd: currentBill.utilityCycleEnd || null,
+      utilityReadingDate: currentBill.utilityReadingDate || null,
+      additionalCharges: currentBill.additionalCharges || [],
+      status: visible.status,
+      charges: visible.charges,
+      paymentProof: currentBill.paymentProof || { verificationStatus: "none" },
+      paymentFlow: buildBillPaymentFlow(currentBill, visible),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getBillingHistory = async (req, res, next) => {
+  try {
+    const { uid } = req.user;
+    const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+    const dbUser = await User.findOne({ firebaseUid: uid }).lean();
+    if (!dbUser) return res.status(404).json({ error: "User not found" });
+
+    const bills = await Bill.find({
+      userId: dbUser._id,
+      status: { $ne: "draft" },
+      isArchived: false,
+    })
+      .sort({ billingCycleStart: -1, billingMonth: -1, createdAt: -1 })
+      .limit(limit);
+    res.json({
+      count: bills.length,
+      bills: bills.map((b) => {
+        const visible = getVisibleBillSnapshot(b);
+        return {
+          id: b._id,
+          date: b.billingMonth,
+          dueDate: visible.dueDate,
+          issuedAt: visible.issuedAt,
+          amount: visible.totalAmount,
+          grossAmount: visible.grossAmount,
+          billingCycleStart: b.billingCycleStart,
+          billingCycleEnd: b.billingCycleEnd,
+          reservationCreditApplied: b.reservationCreditApplied || 0,
+          paidAmount: b.paidAmount || 0,
+          remainingAmount: visible.remainingAmount,
+          utilityCycleStart: b.utilityCycleStart || null,
+          utilityCycleEnd: b.utilityCycleEnd || null,
+          utilityReadingDate: b.utilityReadingDate || null,
+          additionalCharges: b.additionalCharges || [],
+          status: visible.status,
+          charges: visible.charges,
+          paymentDate: b.paymentDate,
+          paymentProof: b.paymentProof || { verificationStatus: "none" },
+          paymentFlow: buildBillPaymentFlow(b, visible),
+        };
+      }),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getBillingStats = async (req, res, next) => {
+  try {
+    const isOwner = req.isOwner;
+    const branch = req.branchFilter;
+    if (
+      !isOwner &&
+      (!branch || !["gil-puyat", "guadalupe"].includes(branch))
+    )
+      return res.status(403).json({ error: "Invalid branch" });
+    const monthlyRevenue = await Bill.getMonthlyRevenueByBranch(branch, 12);
+    const paymentStats = await Bill.getPaymentStats(branch);
+    res.json({ branch, monthlyRevenue, paymentStats });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getBillsByBranch = async (req, res, next) => {
+  try {
+    const isOwner = req.isOwner;
+    const branch = req.branchFilter ||
+      (isOwner && req.query.branch ? req.query.branch : null);
+
+    if (!branch) {
+      if (isOwner) {
+        const result = await fetchBills({ isArchived: false }, req.query);
+        return res.json(result);
+      }
+      return res.status(403).json({ error: "Invalid branch" });
+    }
+    if (!["gil-puyat", "guadalupe"].includes(branch))
+      return res.status(403).json({ error: "Invalid branch" });
+
+    const result = await fetchBills({ branch, isArchived: false }, req.query);
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getRoomsWithTenants = async (req, res, next) => {
+  try {
+    const admin = await getAdminInfo(req);
+    const branch =
+      admin.isOwner && req.query.branch ? req.query.branch : admin.branch;
+    const filter = { isArchived: false };
+    if (branch) filter.branch = branch;
+
+    const rooms = await Room.find(filter)
+      .select(
+        "name roomNumber branch type capacity currentOccupancy beds price monthlyPrice",
+      )
+      .sort({ name: 1 });
+
+    const roomIds = rooms.map((r) => r._id);
+    const allReservations = await Reservation.find({
+      roomId: { $in: roomIds },
+      status: { $in: CURRENT_RESIDENT_STATUS_QUERY },
+      isArchived: { $ne: true },
+    })
+      .populate("userId", "firstName lastName email")
+      .lean();
+
+    const reservationsByRoom = new Map();
+    for (const r of allReservations) {
+      const key = String(r.roomId);
+      if (!reservationsByRoom.has(key)) reservationsByRoom.set(key, []);
+      reservationsByRoom.get(key).push(r);
+    }
+
+    res.json({
+      rooms: rooms.map((room) => {
+        const reservations = reservationsByRoom.get(String(room._id)) || [];
+
+        const tenants = reservations
+          .filter((r) => r.userId)
+          .map((r) => {
+            const bed = room.beds.find(
+              (b) =>
+                b.occupiedBy?.reservationId?.toString() === r._id.toString(),
+            );
+            return {
+              userId: r.userId._id,
+              reservationId: r._id,
+              name:
+                `${r.userId.firstName || ""} ${r.userId.lastName || ""}`.trim() ||
+                "Tenant",
+              email: r.userId.email || "",
+              moveInDate: readMoveInDate(r),
+              monthlyRent: suggestRent(r, room, readMoveInDate(r)),
+              customCharges: getReservationRecurringFees(r).additionalCharges,
+              bedPosition: bed?.position || null,
+            };
+          });
+
+        return {
+          id: room._id,
+          name: room.name,
+          roomNumber: room.roomNumber,
+          branch: room.branch,
+          type: room.type,
+          capacity: room.capacity,
+          currentOccupancy: tenants.length,
+          tenantCount: tenants.length,
+          roomPrice: room.monthlyPrice || room.price || 0,
+          tenants,
+        };
+      }),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getMyBills = async (req, res, next) => {
+  try {
+    const dbUser = await User.findOne({ firebaseUid: req.user.uid }).lean();
+    if (!dbUser) return res.status(404).json({ error: "User not found" });
+
+    await ensureTenantCurrentRentBill(dbUser._id);
+
+    const bills = await Bill.find({
+      userId: dbUser._id,
+      status: { $ne: "draft" },
+      isArchived: false,
+    })
+      .populate("roomId", "name branch type")
+      .sort({ billingCycleStart: -1, billingMonth: -1, createdAt: -1 })
+      .lean();
+
+    const billResponses = await Promise.all(
+      bills.map(async (b) => {
+        const utilityBreakdowns = {};
+        const visibleCharges = getVisibleBillCharges(b);
+        if (Number(visibleCharges.electricity || 0) > 0) {
+          utilityBreakdowns.electricity =
+            await buildTenantUtilityBreakdown({ dbUser, bill: b, utilityType: "electricity" });
+        }
+        if (Number(visibleCharges.water || 0) > 0) {
+          utilityBreakdowns.water =
+            await buildTenantUtilityBreakdown({ dbUser, bill: b, utilityType: "water" });
+        }
+
+        const visible = getVisibleBillSnapshot(b);
+        return {
+          id: b._id,
+          billReference: formatBillReference(b),
+          billingMonth: b.billingMonth,
+          billingCycleStart: b.billingCycleStart,
+          billingCycleEnd: b.billingCycleEnd,
+          dueDate: visible.dueDate,
+          issuedAt: visible.issuedAt,
+          utilityCycleStart: b.utilityCycleStart || null,
+          utilityCycleEnd: b.utilityCycleEnd || null,
+          utilityReadingDate: b.utilityReadingDate || null,
+          utilityPeriodId: null,
+          additionalCharges: b.additionalCharges || [],
+          charges: visible.charges,
+          totalAmount: visible.totalAmount,
+          grossAmount: visible.grossAmount,
+          reservationCreditApplied: b.reservationCreditApplied || 0,
+          paidAmount: b.paidAmount || 0,
+          remainingAmount: visible.remainingAmount,
+          status: visible.status,
+          proRataDays: b.proRataDays,
+          isFirstCycleBill: !!b.isFirstCycleBill,
+          room: b.roomId?.name || "N/A",
+          branch: b.branch,
+          paymentProof: b.paymentProof || { verificationStatus: "none" },
+          paymentFlow: buildBillPaymentFlow(b, visible),
+          penaltyDetails: b.penaltyDetails || { daysLate: 0 },
+          delivery: b.delivery || {},
+          pdfPath: b.pdfPath || null,
+          pdfAvailable: Boolean(b.pdfPath),
+          pdfGeneratedAt: b.pdfGeneratedAt || null,
+          createdAt: b.createdAt,
+          utilityBreakdowns,
+        };
+      }),
+    );
+
+    res.json({
+      bills: billResponses,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getRoomReadiness = async (req, res, next) => {
+  try {
+    const admin = await getAdminInfo(req);
+    const branch =
+      admin.isOwner && req.query.branch ? req.query.branch : (req.branchFilter || admin.branch);
+    const roomFilter = { isArchived: false };
+    if (branch) roomFilter.branch = branch;
+
+    const rooms = await Room.find(roomFilter)
+      .select("name roomNumber branch type")
+      .sort({ name: 1 })
+      .lean();
+
+    const readiness = await Promise.all(rooms.map((room) => getRoomPublishState(room)));
+    const cycleSource = readiness.find((entry) => entry.electricityPeriod || entry.waterPeriod);
+
+    res.json({
+      cycleStart:
+        cycleSource?.electricityPeriod?.startDate ||
+        cycleSource?.waterPeriod?.startDate ||
+        null,
+      cycleEnd:
+        cycleSource?.electricityPeriod?.endDate ||
+        cycleSource?.waterPeriod?.endDate ||
+        null,
+      rooms: readiness.map((entry) => ({
+        roomId: entry.roomId,
+        roomName: entry.roomName,
+        branch: entry.branch,
+        type: entry.type,
+        waterApplicable: entry.waterApplicable,
+        draftBillCount: entry.draftBillCount,
+        issuedBillCount: entry.issuedBillCount,
+        electricityStatus: entry.electricityStatus,
+        waterStatus: entry.waterStatus,
+        isReadyToPublish: entry.isReadyToPublish,
+        publishState: entry.publishState,
+        blockingReason: entry.blockingReason,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getMyUtilityBreakdownByBillId = async (req, res, next) => {
+  try {
+    const { billId, utilityType } = req.params;
+    if (!["electricity", "water"].includes(utilityType)) {
+      return res.status(400).json({ error: "Invalid utility type" });
+    }
+
+    const { dbUser, bill } = await getTenantBillForRequest(req, billId);
+    if (!dbUser) return res.status(404).json({ error: "User not found" });
+    if (!bill) return res.status(404).json({ error: "Bill not found" });
+    if (!isUtilityChargeVisible(bill, utilityType)) {
+      return res.status(404).json({ error: `No ${utilityType} breakdown found for this bill` });
+    }
+    const breakdown = await buildTenantUtilityBreakdown({ dbUser, bill, utilityType });
+    if (!breakdown) {
+      return res.status(404).json({ error: `No ${utilityType} breakdown found for this bill` });
+    }
+
+    return res.json(breakdown);
+  } catch (error) {
+    next(error);
+  }
+};

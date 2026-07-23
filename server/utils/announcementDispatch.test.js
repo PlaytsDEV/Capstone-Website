@@ -28,6 +28,10 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   },
 }));
 
+await jest.unstable_mockModule("../services/notifications/notificationService.js", () => ({
+  createNotification,
+}));
+
 await jest.unstable_mockModule("./notificationService.js", () => ({
   createNotification,
 }));

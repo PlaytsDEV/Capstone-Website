@@ -83,21 +83,30 @@ server/
 ├── config/                ← 12 files: DB, Firebase, branches, roles, email, etc.
 ├── middleware/             ← 10 files: auth, RBAC, permissions, rate limiting, errors
 ├── models/                ← 29 Mongoose models + index.js barrel
-├── controllers/           ← 20 controllers + 17 test files
+├── controllers/           ← 20 root proxies + 17 specialized subcontrollers
+│   ├── reservations/      ← 7 subcontrollers + _helpers.js + barrel index.js
+│   ├── maintenance/       ← 5 subcontrollers + _helpers.js + barrel index.js
+│   └── billing/           ← 4 subcontrollers + _helpers.js + barrel index.js
 ├── routes/                ← 24 route files + 1 test file
-├── services/              ← 5 service modules + 5 test files (AI, billing, analytics)
-├── utils/                 ← 56 utility modules + tests (billing engine, scheduler, etc.)
+├── services/              ← Domain services (billing, occupancy, notifications, maintenance, audit) + AI services
+│   ├── billing/           ← billingEngine, billingPolicy, rentGenerator, penaltyCalculator, etc.
+│   ├── occupancy/         ← occupancyManager, bedLockCleanup
+│   ├── notifications/     ← notificationService, mobilePushService, etc.
+│   ├── maintenance/       ← maintenanceAiService, maintenanceAnalyticsService
+│   └── audit/             ← auditLogger
+├── utils/                 ← Pure utilities (sanitize, roomLabel, etc.) & backward-compat proxies
 ├── validation/            ← 2 files: Zod schemas + validate middleware
 ├── mobile/                ← Self-contained mobile sub-app (own controllers/routes/middleware)
-├── scripts/               ← Migration & seed scripts
+├── scripts/               ← Migration & seed scripts + archived debug scripts
+│   └── archived/          ← Archived root debug scripts
 └── uploads/               ← Static file storage
 ```
 
-### 2.2 Architectural Paradigm: **Layered MVC + Domain Utilities**
+### 2.2 Architectural Paradigm: **Layered MVC + Domain Services**
 
-The backend follows a **layer-based architecture** (not feature-based):
-- **Routes** → **Middleware Chain** → **Controllers** → **Models**
-- A substantial **utils/** layer acts as a de-facto **service/domain logic** layer
+The backend follows a **layer-based architecture**:
+- **Routes** → **Middleware Chain** → **Controllers (Proxies + Subcontrollers)** → **Domain Services** → **Models**
+- Key business and domain workflows previously in `utils/` are now structured in `services/<domain>/`.
 
 ### 2.3 Model Registry (29 Models)
 
@@ -111,21 +120,22 @@ The backend follows a **layer-based architecture** (not feature-based):
 | **System** | AuditLog, BusinessSettings, VisitAvailability, BackupConfig, BackupRecord |
 | **Inquiry** | Inquiry |
 
-> [!NOTE]
-> The KI documentation references 9 models and 18 models respectively. The **actual count is 29**, showing significant schema growth since documentation was last updated.
+---
 
 ### 2.4 Controller Complexity Analysis
 
-| Controller | Size (KB) | Concern |
-|:-----------|----------:|:--------|
-| reservationsController.js | **211** | ⚠️ **God controller** — highest risk |
-| maintenanceController.js | **125** | ⚠️ Very large |
-| billingController.js | **98** | ⚠️ Very large |
-| analyticsController.js | **75** | Large but acceptable (aggregation-heavy) |
-| utilityBillingController.js | **66** | Large |
-| usersController.js | **43** | Moderate |
+| Controller | Size (KB) | Concern / Status |
+|:-----------|----------:|:-----------------|
+| billingController.js | **100** | ⚠️ Very large (Target for Phase 4 refactoring) |
+| analyticsController.js | **77** | Large but acceptable (aggregation-heavy) |
+| utilityBillingController.js | **67** | Large |
+| usersController.js | **44** | Moderate |
 | chatController.js | **34** | Moderate |
-| authController.js | **33** | Moderate |
+| authController.js | **34** | Moderate |
+| reservationsController.js | **<1** (Proxy) | ✅ **RESOLVED** — Decomposed into `controllers/reservations/` (7 subcontrollers) |
+| maintenanceController.js | **<1** (Proxy) | ✅ **RESOLVED** — Decomposed into `controllers/maintenance/` (5 subcontrollers) |
+
+---
 
 ### 2.5 Middleware Pipeline (8 Layers)
 
@@ -138,6 +148,8 @@ Request → Helmet → RequestId → CORS → RateLimit → Compression → Logg
 2. `verifyAdmin` / `verifyOwner` / `verifyApplicant` — Role gates (Firebase claims → MongoDB fallback)
 3. `filterByBranch` — Multi-tenant branch isolation
 4. `requirePermission(key)` / `requireAnyPermission([keys])` — Granular RBAC
+
+---
 
 ### 2.6 Background Job Scheduler (14 Cron Jobs)
 
@@ -219,6 +231,8 @@ ReactDOM.createRoot
 | **Form state** | Local useState | Per-component, no form library |
 | **Theme** | React Context | ThemeProvider in public features |
 
+---
+
 ### 3.4 API Layer Architecture
 
 **Two-tier HTTP client:**
@@ -253,28 +267,25 @@ ReactDOM.createRoot
 | **In-memory token cache** | SHA-256 keyed LRU Map with TTL | Saves ~200ms/request |
 | **Centralized model barrel** | `models/index.js` with named + default exports | Single import source |
 | **Domain-decomposed API layer** | 25 separate API modules behind barrel | Clean separation of concerns |
+| **Decomposed Controller Proxies** | Barrel proxies for `reservationsController` & `maintenanceController` | Clean modularity with zero breaking API changes |
+| **Domain Services Layer** | Modular `services/` subdirectories (`billing`, `occupancy`, etc.) | Clear separation of business logic from pure utils |
 | **Code splitting** | Centralized `lazyPages.js` with Suspense | All 33 pages lazy-loaded |
 | **Cron scheduler** | node-cron with retry + admin alerting | Production-grade job system |
 | **Graceful shutdown** | SIGTERM/SIGINT handlers + MongoDB close | Proper cleanup with timeout |
 
-### 4.2 Anti-Patterns & Issues Found ⚠️
+---
 
-#### CRITICAL: God Controller
+### 4.2 Anti-Patterns & Issues Audit Status ⚠️
 
-> [!CAUTION]
-> `reservationsController.js` at **211 KB** (5,000+ lines estimated) is the single largest risk in the codebase. It likely contains reservation creation, status transitions, visit management, cancellation flows, archival, occupancy sync, and move-out logic all in one file.
+#### RESOLVED: God Controllers (`reservationsController.js` & `maintenanceController.js`)
 
-**Impact:** Merge conflicts, cognitive overload, testing difficulty, deployment risk.
+> [!NOTE]
+> `reservationsController.js` (previously 211 KB) and `maintenanceController.js` (previously 125 KB) have been fully decomposed into specialized domain subcontrollers under `server/controllers/reservations/` and `server/controllers/maintenance/`. The root controller files remain as thin backward-compatibility proxies.
 
-#### HIGH: Blurred Service/Utility Boundary
+#### RESOLVED: Blurred Service/Utility Boundary
 
-The `server/utils/` directory contains **56 files** performing roles that span:
-- **Domain services** (`billingEngine.js`, `occupancyManager.js`, `tenantWorkspace.js`)
-- **Pure utilities** (`sanitize.js`, `roomLabel.js`)
-- **Infrastructure** (`scheduler.js`, `socket.js`, `pdfGenerator.js`)
-- **Business rules** (`billingPolicy.js`, `utilityFlowRules.js`, `penaltyCalculator.js`)
-
-This directory has become a catch-all. The actual `services/` directory has only 5 files and is underutilized.
+> [!NOTE]
+> Domain logic modules previously residing in `server/utils/` (`billingEngine.js`, `occupancyManager.js`, `notificationService.js`, `auditLogger.js`, etc.) have been migrated to domain packages under `server/services/`. Root `utils/` imports act as backward-compatibility proxies.
 
 #### HIGH: Dual HTTP Client Confusion
 
@@ -284,18 +295,10 @@ Two HTTP abstractions coexist:
 
 Additionally, `axios` is listed as a frontend dependency (`^1.13.4`) but the codebase uses native `fetch()`. Axios appears to be a dead dependency.
 
-#### MEDIUM: Inconsistent Response Patterns in Auth Middleware
+#### RESOLVED: Inconsistent Response Patterns in Auth Middleware
 
-The auth middleware (`auth.js`) uses raw `res.status().json()` directly, while the error handler middleware uses the standardized `sendError()` helper. This creates two different error shapes for auth failures vs. business logic failures.
-
-```javascript
-// auth.js — raw shape
-res.status(401).json({ error: "...", code: "..." })
-
-// errorHandler.js — standardized shape
-sendError(res, "...", 401, "...", details)
-// → { success: false, error: { code, message, details }, meta: {...} }
-```
+> [!NOTE]
+> The auth middleware (`auth.js`) has been refactored to use standardized `sendError()` helpers, matching the uniform error envelope across the API.
 
 #### MEDIUM: Minimal Zustand Usage
 
@@ -322,9 +325,10 @@ These monolithic page components likely contain data fetching, state management,
 
 The `server/mobile/` directory contains its own `controllers/`, `routes/`, `middleware/`, `services/`, `config/`, and `utils/` — a parallel structure to the main server. This creates risk of logic drift between web and mobile code paths for shared operations (e.g., maintenance requests).
 
-#### LOW: Stale Files & Scripts
+#### RESOLVED: Stale Files & Scripts
 
-Multiple diagnostic/test scripts exist at the server root: `check.js`, `check_db.js`, `check-endpoint.js`, `test-endpoint.js`, `test3.cjs`, `test_delete.cjs`, `script.cjs`. These appear to be ad-hoc debug artifacts.
+> [!NOTE]
+> All root diagnostic and test scripts (`check.js`, `check_db.js`, `check-endpoint.js`, `test-endpoint.js`, `test3.cjs`, `test_delete.cjs`, `script.cjs`, `test-counts.js`) have been archived into `server/scripts/archived/`.
 
 ---
 
@@ -374,109 +378,80 @@ Reservation (checked_in) → Scheduler (midnight) → rentGenerator.js → Bill 
 
 ### 6.1 Critical Priority
 
-#### 1. Decompose `reservationsController.js` (211 KB)
+#### 1. Decompose `reservationsController.js` (211 KB) — ✅ COMPLETED
 
-Split into domain-focused controller modules:
+Split into domain-focused controller modules under `server/controllers/reservations/`:
+- `index.js` (barrel export)
+- `reservationCrudController.js`
+- `reservationLifecycleController.js`
+- `visitManagementController.js`
+- `cancellationController.js`
+- `tenantWorkspaceController.js`
+- `tenancyActionsController.js`
+- `_helpers.js`
 
-```
-controllers/reservations/
-├── index.js                    ← Re-exports for backward compat
-├── reservationCrudController.js
-├── reservationLifecycleController.js
-├── visitManagementController.js
-├── cancellationController.js
-├── tenantWorkspaceController.js
-└── occupancyController.js      ← Already exists, extend
-```
+#### 2. Restructure `utils/` into Proper Service Layers — ✅ COMPLETED
 
-#### 2. Restructure `utils/` into Proper Service Layers
-
-```
-server/
-├── services/
-│   ├── billing/          ← billingEngine, billingPolicy, penaltyCalculator, rentGenerator
-│   ├── occupancy/        ← occupancyManager, bedLockCleanup
-│   ├── notifications/    ← notificationService, mobilePush, announcementDispatch
-│   ├── scheduling/       ← scheduler, gracePeriodJob, slaAlertJob
-│   ├── ai/               ← analyticsInsights, billingIntelligence, maintenanceAi
-│   └── reservations/     ← reservationHelpers, visitAvailability, tenantActionService
-├── utils/                ← Pure utilities only (sanitize, roomLabel, etc.)
-└── infra/                ← socket, pdfGenerator, email templates
-```
+Migrated domain services from `utils/` into `server/services/`:
+- `services/billing/` (billingEngine, billingPolicy, penaltyCalculator, rentGenerator, billSettlement, billingAudit, paymentLedger)
+- `services/occupancy/` (occupancyManager, bedLockCleanup)
+- `services/notifications/` (notificationService, notificationVisibility, mobilePushService, announcementDispatch)
+- `services/maintenance/` (maintenanceAiService, maintenanceAnalyticsService)
+- `services/audit/` (auditLogger)
 
 ### 6.2 High Priority
 
-#### 3. Standardize Auth Error Responses
+#### 3. Standardize Auth Error Responses — ✅ COMPLETED
 
-Wrap all auth middleware responses in `sendError()` to ensure uniform `{ success, error: { code, message } }` shape across the entire API surface.
+Refactored `middleware/auth.js` to wrap responses in `sendError()` helper for uniform API responses.
 
-#### 4. Decompose Monolithic Page Components
+#### 4. Decompose Monolithic Page Components — 🟡 PLANNED
 
-Extract `AdminMaintenancePage.jsx` (192 KB) and other large pages into composition patterns:
-
-```
-features/admin/pages/maintenance/
-├── AdminMaintenancePage.jsx      ← Orchestrator only
-├── MaintenanceTable.jsx
-├── MaintenanceFilters.jsx
-├── MaintenanceDetailModal.jsx
-├── MaintenanceCreateForm.jsx
-└── hooks/
-    ├── useMaintenanceQuery.js
-    └── useMaintenanceActions.js
-```
+Extract `AdminMaintenancePage.jsx` (192 KB) and other large pages into composition patterns.
 
 ### 6.3 Medium Priority
 
-#### 5. Audit and Remove Dead Dependencies
+#### 5. Audit and Remove Dead Dependencies — 🟡 PLANNED
 
-- **Axios** (`web/package.json`) — Frontend uses native `fetch()` via `httpClient.js`. Remove unless mobile or scripts depend on it.
-- Rename `apiClient.js` to `apiBarrel.js` or `index.js` to clarify it's a re-export hub, not a client.
+- **Axios** (`web/package.json`) — Frontend uses native `fetch()` via `httpClient.js`.
+- Rename `apiClient.js` to `apiBarrel.js` or `index.js` to clarify it's a re-export hub.
 
-#### 6. Evaluate Zustand Necessity
+#### 6. Evaluate Zustand Necessity — 🟡 PLANNED
 
-With only 1 store (`notificationStore`), consider migrating to React Query's built-in subscription mechanism or a simple React Context to eliminate the dependency.
+With only 1 store (`notificationStore`), evaluate migrating to React Query subscriptions or React Context.
 
-#### 7. Clean Up Root-Level Scripts
+#### 7. Clean Up Root-Level Scripts — ✅ COMPLETED
 
-Archive or remove: `check.js`, `check_db.js`, `check-endpoint.js`, `test-endpoint.js`, `test3.cjs`, `test_delete.cjs`, `script.cjs`, `old_elec.js`, `old_elec_utf8.js`.
+Moved root debug scripts (`check.js`, `check_db.js`, `check-endpoint.js`, `test-endpoint.js`, `test3.cjs`, `test_delete.cjs`, `script.cjs`, `test-counts.js`) to `server/scripts/archived/`.
 
 ### 6.4 Scaling Considerations
 
 #### 8. Mobile/Web Logic Unification
-
-Create shared service modules that both the web routes and mobile routes consume, eliminating the parallel controller/service structure in `server/mobile/`.
-
 #### 9. Database Index Audit
-
-With 29 models and complex aggregation pipelines (analytics, billing), conduct a MongoDB index coverage audit using `explain()` on the heaviest queries (analytics dashboard, billing generation, reservation listing).
-
 #### 10. API Versioning Preparation
-
-The current API has no versioning prefix (all routes are `/api/*`). For future breaking changes, consider introducing `/api/v1/*` namespacing at the router level.
 
 ---
 
 ## 7. Quantitative Summary
 
-| Metric | Count |
-|:-------|------:|
-| Mongoose Models | **29** |
-| Backend Controllers | **20** |
-| Backend Route Files | **24** |
-| Middleware Modules | **10** |
-| Backend Utility Modules | **56** |
-| Backend Service Modules | **5** |
-| Frontend API Modules | **25** |
-| Frontend Feature Modules | **4** (admin, tenant, public, super-admin) |
-| Lazy-Loaded Pages | **33** |
-| Route Guards | **5** |
-| Custom Hooks | **9** |
-| Background Cron Jobs | **14** |
-| Zustand Stores | **1** |
-| Backend Test Files | **~25** |
+| Metric | Count | Notes |
+|:-------|------:|:------|
+| Mongoose Models | **29** | Core database schemas |
+| Backend Root Controllers | **20** | Facade/proxy modules for backward compat |
+| Backend Subcontrollers | **13** | Specialized domain subcontrollers (`reservations/` & `maintenance/`) |
+| Backend Route Files | **24** | Express routers |
+| Middleware Modules | **10** | Pipeline layers |
+| Backend Service Packages | **5** | Domain service packages (`billing`, `occupancy`, `notifications`, `maintenance`, `audit`) |
+| Frontend API Modules | **25** | Domain-specific API services |
+| Frontend Feature Modules | **4** | admin, tenant, public, super-admin |
+| Lazy-Loaded Pages | **33** | Suspense split pages |
+| Route Guards | **5** | RBAC & auth guards |
+| Custom Hooks | **9** | Shared React hooks |
+| Background Cron Jobs | **14** | Scheduled system jobs |
+| Zustand Stores | **1** | Client state store |
+| Backend Test Files | **~25** | Controller & service unit/integration tests |
 
 ---
 
 > [!IMPORTANT]
-> The KI documentation is significantly outdated — it references 9 models vs. the actual 29, and 16 controllers vs. the actual 20. This audit should serve as the new architectural baseline.
+> This audit reflects the live codebase structure following the modular refactoring of controllers, service layer restructuring, auth error standardization, and root script archiving.

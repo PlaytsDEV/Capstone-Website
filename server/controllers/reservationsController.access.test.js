@@ -104,7 +104,7 @@ await jest.unstable_mockModule("../config/email.js", () => ({
   sendDocumentsRejectedEmail: jest.fn(),
 }));
 await jest.unstable_mockModule("../services/reservationDocumentPrecheckService.js", () => ({
-  isAllowedReservationDocumentUrl: jest.fn(() => true),
+  isAllowedReservationDocumentUrl: jest.fn((url) => typeof url === "string" && !url.startsWith("file://") && !url.startsWith("http://localhost")),
   runReservationDocumentPrecheck: jest.fn(),
 }));
 await jest.unstable_mockModule("../middleware/errorHandler.js", () => ({

@@ -56,7 +56,7 @@ import {
   moveOutReservation,
   transferTenant,
   getMyContract,
-} from "../controllers/reservationsController.js";
+} from "../controllers/reservations/index.js";
 import {
   getRoomOccupancy,
   getBranchOccupancyStatistics,

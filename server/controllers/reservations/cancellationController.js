@@ -1,0 +1,374 @@
+/**
+ * ============================================================================
+ * CANCELLATION CONTROLLER
+ * ============================================================================
+ *
+ * Handles reservation cancellations, post-payment cancellation requests, and admin approval/rejection.
+ */
+
+import { Reservation } from "../../models/index.js";
+import logger from "../../middleware/logger.js";
+import auditLogger from "../../utils/auditLogger.js";
+import {
+  isValidObjectId,
+  invalidIdResponse,
+  syncReservationUserLifecycle,
+} from "../../utils/reservationHelpers.js";
+import {
+  normalizeReservationStatus,
+} from "../../utils/lifecycleNaming.js";
+import { updateOccupancyOnReservationChange } from "../../utils/occupancyManager.js";
+import { notify } from "../../utils/notificationService.js";
+import {
+  findDbUser,
+  notifyAdminsOfCancellationRequest,
+} from "./_helpers.js";
+
+const APPLICANT_CANCELLABLE_STATUSES = new Set([
+  "pending",
+  "viewing_preference_selected",
+  "visit_pending",
+  "visit_approved",
+  "pending_application_review",
+  "needs_revision",
+  "approved_for_payment",
+  "payment_pending",
+  "reserved",
+]);
+
+const hasPaidReservationFee = (reservation = {}) => {
+  const status = normalizeReservationStatus(reservation.status);
+  return Boolean(
+    reservation.paymentStatus === "paid" ||
+      reservation.paymentDate ||
+      reservation.reservedAt ||
+      status === "reserved" ||
+      reservation.paymongoPaymentId,
+  );
+};
+
+export const cancelReservationByUser = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const dbUser = await findDbUser(req.user.uid);
+    if (!dbUser)
+      return res.status(404).json({ error: "User not found.", code: "USER_NOT_FOUND" });
+
+    const reservation = await Reservation.findById(reservationId);
+    if (!reservation)
+      return res.status(404).json({ error: "Reservation not found.", code: "RESERVATION_NOT_FOUND" });
+
+    if (String(reservation.userId) !== String(dbUser._id))
+      return res.status(403).json({
+        error: "You can only cancel your own reservation.",
+        code: "RESERVATION_ACCESS_DENIED",
+      });
+
+    if (normalizeReservationStatus(reservation.status) === "cancelled") {
+      return res.status(409).json({
+        error: "This reservation is already cancelled.",
+        code: "ALREADY_CANCELLED",
+      });
+    }
+
+    if (hasPaidReservationFee(reservation)) {
+      return res.status(409).json({
+        error: "This reservation has a paid reservation fee. Please use the cancellation request process.",
+        code: "PAID_RESERVATION_MUST_USE_REQUEST_FLOW",
+      });
+    }
+
+    if (!APPLICANT_CANCELLABLE_STATUSES.has(normalizeReservationStatus(reservation.status))) {
+      return res.status(409).json({
+        error: `A reservation with status "${reservation.status}" cannot be cancelled by the applicant.`,
+        code: "CANCELLATION_NOT_ALLOWED",
+      });
+    }
+
+    const now = new Date();
+    const visitHistoryUpdate = [];
+    if (reservation.visitDate) {
+      visitHistoryUpdate.push(...(reservation.visitHistory || []), {
+        visitDate: reservation.visitDate,
+        visitTime: reservation.visitTime,
+        viewingType: reservation.viewingType || "inperson",
+        status: "cancelled",
+        scheduledAt: reservation.visitScheduledAt || reservation.createdAt,
+      });
+    }
+
+    const updates = {
+      status: "cancelled",
+      cancelledAt: now,
+      cancelledBy: dbUser._id,
+      cancellationSource: "applicant",
+      cancellationReason: req.body.reason || null,
+      reservationFeeRefundable: false,
+      reservationFeeForfeited: true,
+      ...(visitHistoryUpdate.length > 0 && { visitHistory: visitHistoryUpdate }),
+    };
+
+    const updated = await Reservation.findByIdAndUpdate(
+      reservationId,
+      { $set: updates },
+      { new: true, runValidators: true },
+    )
+      .populate("userId", "firstName lastName email")
+      .populate("roomId", "name branch type");
+
+    try {
+      await updateOccupancyOnReservationChange(updated, { status: reservation.status });
+    } catch (occupancyErr) {
+      logger.warn({ err: occupancyErr, reservationId }, "Cancel: occupancy update failed (non-fatal)");
+    }
+
+    try {
+      await syncReservationUserLifecycle({
+        status: "cancelled",
+        previousStatus: reservation.status,
+        userId: dbUser._id,
+        roomId: reservation.roomId,
+        reservationId: reservation._id,
+      });
+    } catch (lifecycleErr) {
+      logger.warn({ err: lifecycleErr, reservationId }, "Cancel: lifecycle sync failed (non-fatal)");
+    }
+
+    const notifCode = updated.reservationCode || "N/A";
+    notify
+      .reservationCancelled(dbUser._id, notifCode, req.body.reason || "Cancelled by applicant")
+      .catch((e) => logger.warn({ err: e }, "Cancel notification failed (non-fatal)"));
+
+    return res.json({
+      message: "Reservation cancelled. The reservation fee is non-refundable.",
+      reservation: updated,
+      feeForfeited: true,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const requestCancellationByUser = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const dbUser = await findDbUser(req.user.uid);
+    if (!dbUser)
+      return res.status(404).json({ error: "User not found.", code: "USER_NOT_FOUND" });
+
+    const reservation = await Reservation.findById(reservationId);
+    if (!reservation)
+      return res.status(404).json({ error: "Reservation not found.", code: "NOT_FOUND" });
+
+    if (String(reservation.userId) !== String(dbUser._id))
+      return res.status(403).json({ error: "Unauthorized.", code: "UNAUTHORIZED" });
+
+    if (!hasPaidReservationFee(reservation)) {
+      return res.status(409).json({
+        error: "This reservation has not been paid. Use the direct cancel instead.",
+        code: "NOT_PAID_USE_DIRECT_CANCEL",
+      });
+    }
+
+    const normalizedStatus = normalizeReservationStatus(reservation.status);
+    if (!APPLICANT_CANCELLABLE_STATUSES.has(normalizedStatus)) {
+      return res.status(409).json({
+        error: `A reservation with status "${reservation.status}" cannot be cancelled.`,
+        code: "CANCELLATION_NOT_ALLOWED",
+      });
+    }
+
+    if (reservation.cancellationRequested && reservation.cancellationStatus === "pending") {
+      notifyAdminsOfCancellationRequest(reservation, dbUser).catch((notifyErr) => {
+        logger.warn({ err: notifyErr }, "[CancelRequest] Pending request admin notification failed (non-fatal)");
+      });
+      return res.status(409).json({
+        error: "A cancellation request is already pending review.",
+        code: "CANCELLATION_REQUEST_ALREADY_PENDING",
+      });
+    }
+
+    const oldData = reservation.toObject();
+    const now = new Date();
+    reservation.cancellationRequested = true;
+    reservation.cancellationRequestedAt = now;
+    reservation.cancellationRequestedBy = dbUser._id;
+    reservation.cancellationStatus = "pending";
+    reservation.cancellationReason = req.body.reason || null;
+    await reservation.save();
+
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservation._id,
+      oldData,
+      reservation.toObject(),
+      "Cancellation request submitted",
+    );
+
+    await notify.cancellationRequested(dbUser._id, reservation.reservationCode).catch((notifyErr) => {
+      logger.warn({ err: notifyErr }, "[CancelRequest] Tenant notification failed (non-fatal)");
+    });
+
+    try {
+      await notifyAdminsOfCancellationRequest(reservation, dbUser);
+    } catch (notifyErr) {
+      logger.warn({ err: notifyErr }, "[CancelRequest] Admin notification failed (non-fatal)");
+    }
+
+    res.json({ message: "Cancellation request submitted. Pending admin review.", reservation });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "requestCancellationByUser error");
+    next(error);
+  }
+};
+
+export const approveCancellationRequest = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const dbUser = await findDbUser(req.user.uid);
+    if (!dbUser)
+      return res.status(404).json({ error: "User not found.", code: "USER_NOT_FOUND" });
+
+    const reservation = await Reservation.findById(reservationId).populate("roomId");
+    if (!reservation)
+      return res.status(404).json({ error: "Reservation not found.", code: "NOT_FOUND" });
+
+    if (!reservation.cancellationRequested || reservation.cancellationStatus !== "pending") {
+      return res.status(409).json({
+        error: "No pending cancellation request found for this reservation.",
+        code: "NO_PENDING_REQUEST",
+      });
+    }
+
+    const now = new Date();
+    const adminNote = req.body.note || null;
+    const oldData = reservation.toObject();
+    const previousStatus = reservation.status;
+
+    const visitHistoryUpdate = [];
+    if (reservation.visitDate) {
+      visitHistoryUpdate.push(...(reservation.visitHistory || []), {
+        visitDate: reservation.visitDate,
+        visitTime: reservation.visitTime,
+        viewingType: reservation.viewingType || "inperson",
+        status: "cancelled",
+        scheduledAt: reservation.visitScheduledAt || reservation.createdAt,
+      });
+    }
+
+    reservation.status = "cancelled";
+    reservation.cancelledAt = now;
+    reservation.cancelledBy = dbUser._id;
+    reservation.cancellationSource = "admin";
+    reservation.reservationFeeRefundable = false;
+    reservation.reservationFeeForfeited = true;
+    reservation.cancellationStatus = "approved";
+    reservation.cancellationReviewedAt = now;
+    reservation.cancellationReviewedBy = dbUser._id;
+    reservation.cancellationAdminNote = adminNote;
+    if (visitHistoryUpdate.length > 0) reservation.visitHistory = visitHistoryUpdate;
+    reservation.visitDate = null;
+    reservation.visitTime = null;
+    reservation.visitScheduledAt = null;
+    await reservation.save();
+
+    try {
+      await updateOccupancyOnReservationChange(
+        {
+          ...reservation.toObject(),
+          roomId: reservation.roomId?._id || reservation.roomId,
+        },
+        oldData,
+      );
+    } catch (occupancyErr) {
+      logger.warn(
+        { err: occupancyErr, requestId: req.id },
+        "[ApproveCancellation] Occupancy update failed (non-fatal)",
+      );
+    }
+
+    await syncReservationUserLifecycle({
+      status: "cancelled",
+      previousStatus,
+      userId: reservation.userId,
+      roomId: reservation.roomId,
+      reservationId: reservation._id,
+    }).catch((err) => logger.warn({ err }, "[ApproveCancellation] User lifecycle sync failed (non-fatal)"));
+
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservation._id,
+      oldData,
+      reservation.toObject(),
+      "Cancellation request approved",
+    );
+
+    await notify.cancellationApproved(reservation.userId, reservation.reservationCode).catch((notifyErr) => {
+      logger.warn({ err: notifyErr }, "[ApproveCancellation] Tenant notification failed (non-fatal)");
+    });
+
+    res.json({ message: "Cancellation request approved. Reservation cancelled and bed released.", reservation });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "approveCancellationRequest error");
+    next(error);
+  }
+};
+
+export const rejectCancellationRequest = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const dbUser = await findDbUser(req.user.uid);
+    if (!dbUser)
+      return res.status(404).json({ error: "User not found.", code: "USER_NOT_FOUND" });
+
+    const reservation = await Reservation.findById(reservationId);
+    if (!reservation)
+      return res.status(404).json({ error: "Reservation not found.", code: "NOT_FOUND" });
+
+    if (!reservation.cancellationRequested || reservation.cancellationStatus !== "pending") {
+      return res.status(409).json({
+        error: "No pending cancellation request found for this reservation.",
+        code: "NO_PENDING_REQUEST",
+      });
+    }
+
+    const now = new Date();
+    const adminNote = req.body.note || null;
+    const oldData = reservation.toObject();
+
+    reservation.cancellationStatus = "rejected";
+    reservation.cancellationReviewedAt = now;
+    reservation.cancellationReviewedBy = dbUser._id;
+    reservation.cancellationAdminNote = adminNote;
+    reservation.cancellationRequested = false;
+    await reservation.save();
+
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservation._id,
+      oldData,
+      reservation.toObject(),
+      "Cancellation request rejected",
+    );
+
+    await notify.cancellationRejected(reservation.userId, reservation.reservationCode, adminNote).catch((notifyErr) => {
+      logger.warn({ err: notifyErr }, "[RejectCancellation] Tenant notification failed (non-fatal)");
+    });
+
+    res.json({ message: "Cancellation request rejected. Reservation remains active.", reservation });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "rejectCancellationRequest error");
+    next(error);
+  }
+};

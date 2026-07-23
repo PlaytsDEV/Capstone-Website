@@ -318,6 +318,13 @@ export const serializeReservation = (
 
   const serialized = {
     ...plain,
+    visitStatus: plain.visitStatus ?? reservation.visitStatus,
+    visitApproved: plain.visitApproved ?? reservation.visitApproved,
+    scheduleApproved: plain.scheduleApproved ?? reservation.scheduleApproved,
+    scheduleRejected: plain.scheduleRejected ?? reservation.scheduleRejected,
+    visitDate: plain.visitDate ?? reservation.visitDate,
+    visitTime: plain.visitTime ?? reservation.visitTime,
+    viewingPreference: plain.viewingPreference ?? reservation.viewingPreference,
     status,
     reservationStatus: status,
     moveInDate,

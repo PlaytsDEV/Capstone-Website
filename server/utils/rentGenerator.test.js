@@ -33,6 +33,7 @@ await jest.unstable_mockModule("../models/index.js", () => {
     Reservation: {
       find: reservationFind,
     },
+    User: {},
   };
 });
 
@@ -45,6 +46,10 @@ await jest.unstable_mockModule("../middleware/logger.js", () => ({
 }));
 
 await jest.unstable_mockModule("./notificationService.js", () => ({
+  default: notify,
+}));
+
+await jest.unstable_mockModule("../services/notifications/notificationService.js", () => ({
   default: notify,
 }));
 

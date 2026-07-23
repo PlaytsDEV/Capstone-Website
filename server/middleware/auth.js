@@ -35,6 +35,7 @@ import {
   setCachedAccountStatus as _setCachedAccountStatus,
   invalidateAccountStatusCache,
 } from "../utils/accountStatusCache.js";
+import { sendError } from "./errorHandler.js";
 
 export { invalidateAccountStatusCache };
 
@@ -105,31 +106,31 @@ export const verifyToken = async (req, res, next) => {
     const auth = getAuth();
 
     if (!auth) {
-      return res.status(503).json({
-        error:
-          "Authentication is temporarily unavailable. Firebase Admin is not initialized.",
-        code: "FIREBASE_ADMIN_NOT_INITIALIZED",
-      });
+      return sendError(
+        res,
+        "Authentication is temporarily unavailable. Firebase Admin is not initialized.",
+        503,
+        "FIREBASE_ADMIN_NOT_INITIALIZED",
+      );
     }
 
     // Extract the Authorization header
     const authHeader = req.headers.authorization;
 
     if (!authHeader) {
-      return res.status(401).json({
-        error: "No authorization header provided",
-        code: "AUTH_HEADER_MISSING",
-      });
+      return sendError(
+        res,
+        "No authorization header provided",
+        401,
+        "AUTH_HEADER_MISSING",
+      );
     }
 
     // Extract the token from "Bearer <token>" format
     const token = authHeader.split("Bearer ")[1];
 
     if (!token) {
-      return res.status(401).json({
-        error: "No token provided",
-        code: "TOKEN_MISSING",
-      });
+      return sendError(res, "No token provided", 401, "TOKEN_MISSING");
     }
 
     // Try cache first — saves ~200ms per request
@@ -155,12 +156,12 @@ export const verifyToken = async (req, res, next) => {
 
     if (accountStatus && accountStatus !== "active") {
       const statusMap = {
-        suspended: { error: "Your account has been suspended. Contact support.", code: "ACCOUNT_SUSPENDED" },
-        banned: { error: "Your account has been banned.", code: "ACCOUNT_BANNED" },
-        pending_verification: { error: "Your account is pending verification.", code: "ACCOUNT_PENDING_VERIFICATION" },
+        suspended: { message: "Your account has been suspended. Contact support.", code: "ACCOUNT_SUSPENDED" },
+        banned: { message: "Your account has been banned.", code: "ACCOUNT_BANNED" },
+        pending_verification: { message: "Your account is pending verification.", code: "ACCOUNT_PENDING_VERIFICATION" },
       };
       const info = statusMap[accountStatus];
-      if (info) return res.status(403).json(info);
+      if (info) return sendError(res, info.message, 403, info.code);
     }
 
     if (
@@ -178,10 +179,12 @@ export const verifyToken = async (req, res, next) => {
           : "";
 
       if (!deviceId || !sessionId) {
-        return res.status(401).json({
-          error: "Session verification required. Please sign in again.",
-          code: "OTP_SESSION_REQUIRED",
-        });
+        return sendError(
+          res,
+          "Session verification required. Please sign in again.",
+          401,
+          "OTP_SESSION_REQUIRED",
+        );
       }
 
       const session = await UserSession.findValidOtpSession(
@@ -191,10 +194,12 @@ export const verifyToken = async (req, res, next) => {
       );
 
       if (!session) {
-        return res.status(401).json({
-          error: "Your session expired. Please verify again.",
-          code: "OTP_SESSION_INVALID",
-        });
+        return sendError(
+          res,
+          "Your session expired. Please verify again.",
+          401,
+          "OTP_SESSION_INVALID",
+        );
       }
 
       session.lastActivityAt = new Date();
@@ -219,10 +224,7 @@ export const verifyToken = async (req, res, next) => {
       errorCode = "TOKEN_MALFORMED";
     }
 
-    res.status(401).json({
-      error: errorMessage,
-      code: errorCode,
-    });
+    sendError(res, errorMessage, 401, errorCode);
   }
 };
 
@@ -247,10 +249,12 @@ export const verifyAdmin = async (req, res, next) => {
   try {
     // Ensure verifyToken was called first
     if (!req.user || !req.user.uid) {
-      return res.status(401).json({
-        error: "User not authenticated. Apply verifyToken middleware first.",
-        code: "USER_NOT_AUTHENTICATED",
-      });
+      return sendError(
+        res,
+        "User not authenticated. Apply verifyToken middleware first.",
+        401,
+        "USER_NOT_AUTHENTICATED",
+      );
     }
 
     // Check custom claims from Firebase ID token (fast path)
@@ -269,17 +273,16 @@ export const verifyAdmin = async (req, res, next) => {
       return next();
     }
 
-    return res.status(403).json({
-      error: "Access denied. Admin privileges required.",
-      code: "ADMIN_ACCESS_DENIED",
-    });
+    return sendError(
+      res,
+      "Access denied. Admin privileges required.",
+      403,
+      "ADMIN_ACCESS_DENIED",
+    );
   } catch (error) {
     console.error("❌ Admin verification error:", error.message);
 
-    res.status(403).json({
-      error: "Access denied",
-      code: "ACCESS_DENIED",
-    });
+    sendError(res, "Access denied", 403, "ACCESS_DENIED");
   }
 };
 
@@ -304,10 +307,12 @@ export const verifyOwner = async (req, res, next) => {
   try {
     // Ensure verifyToken was called first
     if (!req.user || !req.user.uid) {
-      return res.status(401).json({
-        error: "User not authenticated. Apply verifyToken middleware first.",
-        code: "USER_NOT_AUTHENTICATED",
-      });
+      return sendError(
+        res,
+        "User not authenticated. Apply verifyToken middleware first.",
+        401,
+        "USER_NOT_AUTHENTICATED",
+      );
     }
 
     // Check custom claims from Firebase ID token (fast path)
@@ -327,17 +332,16 @@ export const verifyOwner = async (req, res, next) => {
       return next();
     }
 
-    return res.status(403).json({
-      error: "Access denied. Owner privileges required.",
-      code: "OWNER_ACCESS_DENIED",
-    });
+    return sendError(
+      res,
+      "Access denied. Owner privileges required.",
+      403,
+      "OWNER_ACCESS_DENIED",
+    );
   } catch (error) {
     console.error("❌ Owner verification error:", error.message);
 
-    res.status(403).json({
-      error: "Access denied",
-      code: "ACCESS_DENIED",
-    });
+    sendError(res, "Access denied", 403, "ACCESS_DENIED");
   }
 };
 
@@ -365,28 +369,34 @@ export const verifyApplicant = async (req, res, next) => {
   try {
     // Ensure verifyToken was called first
     if (!req.user || !req.user.uid) {
-      return res.status(401).json({
-        error: "User not authenticated. Apply verifyToken middleware first.",
-        code: "USER_NOT_AUTHENTICATED",
-      });
+      return sendError(
+        res,
+        "User not authenticated. Apply verifyToken middleware first.",
+        401,
+        "USER_NOT_AUTHENTICATED",
+      );
     }
 
     // Check that user does NOT have admin privileges
     // This prevents admins from accessing applicant-only endpoints
     if (req.user.branch_admin || req.user.owner) {
-      return res.status(403).json({
-        error: "Access denied. Applicant endpoint - admin access not allowed.",
-        code: "APPLICANT_ENDPOINT_ADMIN_DENIED",
-      });
+      return sendError(
+        res,
+        "Access denied. Applicant endpoint - admin access not allowed.",
+        403,
+        "APPLICANT_ENDPOINT_ADMIN_DENIED",
+      );
     }
 
     // Fallback: Check MongoDB role (handles missing/stale Firebase custom claims)
     const dbUser = await User.findOne({ firebaseUid: req.user.uid });
     if (dbUser && (dbUser.role === "branch_admin" || dbUser.role === "owner")) {
-      return res.status(403).json({
-        error: "Access denied. Applicant endpoint - admin access not allowed.",
-        code: "APPLICANT_ENDPOINT_ADMIN_DENIED",
-      });
+      return sendError(
+        res,
+        "Access denied. Applicant endpoint - admin access not allowed.",
+        403,
+        "APPLICANT_ENDPOINT_ADMIN_DENIED",
+      );
     }
 
     // User is not an admin (applicant/tenant), proceed to route handler
@@ -394,9 +404,6 @@ export const verifyApplicant = async (req, res, next) => {
   } catch (error) {
     console.error("❌ Applicant verification error:", error.message);
 
-    res.status(403).json({
-      error: "Access denied",
-      code: "ACCESS_DENIED",
-    });
+    sendError(res, "Access denied", 403, "ACCESS_DENIED");
   }
 };

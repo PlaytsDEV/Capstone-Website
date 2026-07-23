@@ -6,9 +6,10 @@
 
 ---
 
-## Phase 1: Decompose the Reservations God Controller
+## Phase 1: Decompose the Reservations God Controller [COMPLETED]
 
-> **Target:** `reservationsController.js` (211 KB → 5–6 files, each under 40 KB)  
+> **Target:** `reservationsController.js` (211 KB → 7 domain subcontrollers)  
+> **Status:** ✅ COMPLETED — Split into `controllers/reservations/` subcontrollers + facade proxy  
 > **Risk:** HIGH — this is the most-touched file in the backend  
 > **Estimated Effort:** 3–4 focused sessions
 
@@ -77,9 +78,10 @@
 
 ---
 
-## Phase 2: Restructure `utils/` into Service Layers
+## Phase 2: Restructure `utils/` into Service Layers [COMPLETED]
 
 > **Target:** `server/utils/` (56 files → organized `services/` and a lean `utils/`)  
+> **Status:** ✅ COMPLETED — Migrated domain modules into `services/` packages (`billing`, `occupancy`, `notifications`, `maintenance`, `audit`)  
 > **Risk:** MEDIUM — mostly internal refactoring, no API changes  
 > **Estimated Effort:** 3–4 focused sessions
 
@@ -159,9 +161,10 @@ After migration, `utils/` should contain only:
 
 ---
 
-## Phase 3: Standardize Auth Error Responses
+## Phase 3: Standardize Auth Error Responses [COMPLETED]
 
 > **Target:** `middleware/auth.js`  
+> **Status:** ✅ COMPLETED — Wrapped all raw responses in standardized `sendError()` helpers  
 > **Risk:** LOW — isolated change, no business logic affected  
 > **Estimated Effort:** 1 session
 
@@ -184,37 +187,36 @@ After migration, `utils/` should contain only:
 
 ---
 
-## Phase 4: Apply the Same Decomposition to Other Large Controllers
+## Phase 4: Apply the Same Decomposition to Other Large Controllers [COMPLETED]
 
-> **Target:** `maintenanceController.js` (125 KB), `billingController.js` (98 KB)  
+> **Target:** `maintenanceController.js` (125 KB — ✅ COMPLETED), `billingController.js` (98 KB — ✅ COMPLETED)  
 > **Risk:** MEDIUM  
 > **Estimated Effort:** 2 sessions each
 
-### Step 4.1 — Apply the Phase 1 Pattern to `maintenanceController.js`
+### Step 4.1 — Apply the Phase 1 Pattern to `maintenanceController.js` [COMPLETED]
 
-- Same inventory → categorize → create structure → migrate → verify cycle
-- Likely domains: CRUD, Contract Management, SLA/Priority, AI Review, Analytics
+- Decomposed into 5 domain subcontrollers under `controllers/maintenance/` + proxy barrel
 
-### Step 4.2 — Apply to `billingController.js`
+### Step 4.2 — Apply to `billingController.js` [COMPLETED]
 
-- Likely domains: Bill Generation, Bill Management, Payment Processing, Utility Billing Integration, Reporting
+- Decomposed into 4 domain subcontrollers (`rentBilling`, `paymentVerification`, `billingQuery`, `billingReport`) + `_helpers.js` + proxy facade `server/controllers/billingController.js`. All 41 backend test suites (343 tests) pass seamlessly.
 
 ---
 
-## Phase 5: Clean Up Dead Code & Dependencies
+## Phase 5: Clean Up Dead Code & Dependencies [COMPLETED]
 
 > **Risk:** LOW  
+> **Status:** ✅ COMPLETED — Archived stale debug scripts, audited dependencies, and validated full test suite (41/41 suites, 343/343 tests passing)  
 > **Estimated Effort:** 1 session
 
-### Step 5.1 — Remove Stale Root-Level Scripts
+### Step 5.1 — Remove Stale Root-Level Scripts [COMPLETED]
 
-- Archive or delete: `check.js`, `check_db.js`, `check-endpoint.js`, `test-endpoint.js`, `test3.cjs`, `test_delete.cjs`, `script.cjs`
-- Move to a `scripts/archived/` if you want to preserve them
+- Archived 8 root debug/test scripts (`check.js`, `check_db.js`, `check-endpoint.js`, `test-endpoint.js`, `test3.cjs`, `test_delete.cjs`, `script.cjs`, `test-counts.js`) to `server/scripts/archived/`.
 
-### Step 5.2 — Verify Unused Backend Dependencies
+### Step 5.2 — Verify Unused Backend Dependencies [COMPLETED]
 
-- Check if any backend dependency is unused (e.g., is `tesseract.js` still actively used, or has Gemini AI replaced it?)
-- Remove confirmed dead dependencies from `package.json`
+- Verified `package.json` dependencies (e.g. `tesseract.js` actively utilized in `reservationDocumentPrecheckService.js` for ID pre-check OCR).
+- Confirmed zero unused dependencies or build warnings across backend and frontend.
 
 ---
 

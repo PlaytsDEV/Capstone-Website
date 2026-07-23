@@ -4,8 +4,17 @@ const applyBillPayment = jest.fn();
 const getVisibleBillSnapshot = jest.fn();
 const roundMoney = jest.fn((value) => Math.round((Number(value) || 0) * 100) / 100);
 
+await jest.unstable_mockModule("../services/billing/paymentLedger.js", () => ({
+  applyBillPayment,
+}));
+
 await jest.unstable_mockModule("./paymentLedger.js", () => ({
   applyBillPayment,
+}));
+
+await jest.unstable_mockModule("../services/billing/billingPolicy.js", () => ({
+  getVisibleBillSnapshot,
+  roundMoney,
 }));
 
 await jest.unstable_mockModule("./billingPolicy.js", () => ({
