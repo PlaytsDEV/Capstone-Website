@@ -142,6 +142,13 @@ export default function OccupancyTrendCard({ data = {} }) {
                 style={{ fontSize: "12px" }}
                 key="dashboard-occupancy-yaxis"
               />
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                stroke="var(--muted-foreground)"
+                style={{ fontSize: "12px" }}
+                key="dashboard-occupancy-yaxis-right"
+              />
               <Tooltip
                 key="dashboard-occupancy-tooltip"
                 contentStyle={{
@@ -175,13 +182,6 @@ export default function OccupancyTrendCard({ data = {} }) {
                 name="Occupancy Rate (%)"
                 yAxisId="right"
                 key="dashboard-occupancy-area-rate"
-              />
-              <YAxis
-                yAxisId="right"
-                orientation="right"
-                stroke="var(--muted-foreground)"
-                style={{ fontSize: "12px" }}
-                key="dashboard-occupancy-yaxis-right"
               />
             </AreaChart>
           </ResponsiveContainer>

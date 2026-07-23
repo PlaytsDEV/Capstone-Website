@@ -50,19 +50,29 @@ const TABLE_PAGE_MAX_LIMIT = 100;
 
 const PENDING_RESERVATION_STATUSES = Object.freeze([
   "pending",
+  "viewing_preference_selected",
   "visit_pending",
   "visit_approved",
+  "pending_application_review",
+  "needs_revision",
+  "approved_for_payment",
   "payment_pending",
 ]);
 
 const APPROVED_RESERVATION_STATUSES = Object.freeze(ACTIVE_OCCUPANCY_STATUS_QUERY);
-const REJECTED_RESERVATION_STATUSES = Object.freeze(["cancelled"]);
+const REJECTED_RESERVATION_STATUSES = Object.freeze(["rejected", "cancelled"]);
 const NON_OCCUPANCY_RESERVATION_STATUSES = new Set([
   "pending",
+  "viewing_preference_selected",
   "visit_pending",
   "visit_approved",
+  "pending_application_review",
+  "needs_revision",
+  "approved_for_payment",
   "payment_pending",
+  "rejected",
   "cancelled",
+  "archived",
 ]);
 const ROOM_TYPE_ORDER = Object.freeze([
   "private",
@@ -290,9 +300,12 @@ const fetchRevenueCollected = async (branchesIncluded, sinceDate) => {
       $match: {
         isArchived: false,
         branch: { $in: branchesIncluded },
-        paymentDate: { $gte: sinceDate },
         paidAmount: { $gt: 0 },
         status: { $in: ["paid", "partially-paid"] },
+        $or: [
+          { paymentDate: { $gte: sinceDate } },
+          { paymentDate: null, updatedAt: { $gte: sinceDate } },
+        ],
       },
     },
     {
@@ -324,9 +337,16 @@ const fetchRecentReservations = async (roomIds) =>
     .populate("roomId", "name roomNumber branch type")
     .lean();
 
+const getInquiryBranches = (branchesIncluded) => {
+  if (Array.isArray(branchesIncluded) && !branchesIncluded.includes("general")) {
+    return [...branchesIncluded, "general"];
+  }
+  return branchesIncluded;
+};
+
 const fetchRecentInquiries = async (branchesIncluded) =>
   Inquiry.find({
-    branch: { $in: branchesIncluded },
+    branch: { $in: getInquiryBranches(branchesIncluded) },
     isArchived: { $ne: true },
   })
     .sort({ createdAt: -1 })
@@ -367,7 +387,7 @@ const fetchScopedMaintenanceRequests = async (branchesIncluded, query = {}) =>
 const fetchScopedInquiries = async (branchesIncluded, query = {}) =>
   Inquiry.find({
     isArchived: { $ne: true },
-    branch: { $in: branchesIncluded },
+    branch: { $in: getInquiryBranches(branchesIncluded) },
     ...query,
   })
     .sort({ createdAt: -1 })
@@ -1989,7 +2009,7 @@ export const getDashboardAnalytics = async (req, res, next) => {
           status: { $in: OPEN_MAINTENANCE_STATUSES },
         }),
         Inquiry.countDocuments({
-          branch: { $in: scope.branchesIncluded },
+          branch: { $in: getInquiryBranches(scope.branchesIncluded) },
           isArchived: { $ne: true },
           createdAt: { $gte: sinceDate },
         }),
