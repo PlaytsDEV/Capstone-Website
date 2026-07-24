@@ -123,10 +123,12 @@ export default function GenerateBillModal({
  <div className="room-info-item">
  <span className="room-card-branch">{selectedRoom.branch}</span>
  </div>
- <div className="room-info-item">
- <Users size={12} />
- {selectedRoom.tenantCount}/{selectedRoom.capacity} occupied
- </div>
+  <div className="room-info-item">
+    <Users size={12} />
+    {String(selectedRoom.type || "").toLowerCase().includes("private")
+      ? `${Math.min(1, selectedRoom.tenantCount)}/1 occupied`
+      : `${selectedRoom.tenantCount}/${selectedRoom.capacity} occupied`}
+  </div>
  <div
  className="room-info-item"
  style={{ textTransform: "capitalize" }}

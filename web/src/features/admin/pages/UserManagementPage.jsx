@@ -258,8 +258,12 @@ function UserManagementPage() {
     user: null,
   });
 
-  const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState(
+    () => searchParams.get("search") || "",
+  );
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(
+    () => (searchParams.get("search") || "").trim(),
+  );
   const [roleFilter, setRoleFilter] = useState("all");
   const requestedBranch = searchParams.get("branch");
   const [branchFilter, setBranchFilter] = useState(() =>
@@ -272,6 +276,13 @@ function UserManagementPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 10;
+
+  useEffect(() => {
+    const urlSearch = searchParams.get("search");
+    if (urlSearch !== null && urlSearch !== searchQuery) {
+      setSearchQuery(urlSearch);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     const timer = setTimeout(() => {

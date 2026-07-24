@@ -30,9 +30,9 @@ dotenv.config();
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/lilycrest-dormitory";
 
 const NEW_PRICING = {
-  "private":           { price: 14400, monthlyPrice: 13500 },
-  "double-sharing":    { price:  8000, monthlyPrice:  7200 },
-  "quadruple-sharing": { price:  6300, monthlyPrice:  5400 },
+  "private":           { price: 14400, monthlyPrice: 13500, shortTermRate: 14400, longTermDiscountPercent: 10 },
+  "double-sharing":    { price:  8000, monthlyPrice:  7200, shortTermRate:  8000, longTermDiscountPercent: 20 },
+  "quadruple-sharing": { price:  6300, monthlyPrice:  5400, shortTermRate:  6300, longTermDiscountPercent: 10 },
 };
 
 async function run() {
@@ -43,12 +43,19 @@ async function run() {
     for (const [type, pricing] of Object.entries(NEW_PRICING)) {
       const result = await Room.updateMany(
         { type },
-        { $set: { price: pricing.price, monthlyPrice: pricing.monthlyPrice } },
+        {
+          $set: {
+            price: pricing.price,
+            monthlyPrice: pricing.monthlyPrice,
+            shortTermRate: pricing.shortTermRate,
+            longTermDiscountPercent: pricing.longTermDiscountPercent,
+          },
+        },
       );
       console.log(`${type}: Updated ${result.modifiedCount} rooms (matched ${result.matchedCount})`);
     }
 
-    console.log("\n✅ Pricing update complete!");
+    console.log("\n✅ System discount & pricing update complete!");
     process.exit(0);
   } catch (error) {
     console.error("❌ Pricing update failed:", error);

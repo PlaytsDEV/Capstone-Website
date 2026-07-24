@@ -323,42 +323,48 @@ body.modal-open {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-md) var(--spacing-lg);
+  gap: var(--spacing-md);
+  padding: 10px 16px;
   background: var(--bg-card);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border-light);
-  transition: box-shadow var(--duration-fast) var(--ease-out);
+  transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
+  min-height: 54px;
 }
 
 .bed-item:hover {
+  border-color: var(--border-default);
   box-shadow: var(--shadow-sm);
 }
 
 .bed-info {
   display: flex;
   align-items: center;
-  gap: var(--spacing-md);
-  flex-wrap: wrap;
+  gap: 12px;
+  flex: 1;
   min-width: 0;
+  flex-wrap: nowrap;
 }
 
 .bed-actions {
   display: flex;
   align-items: center;
-  gap: var(--spacing-xs);
+  gap: 6px;
   flex-shrink: 0;
 }
 
 .bed-id {
-  font-weight: 650;
+  font-weight: 600;
   color: var(--text-primary);
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  padding: 2px 6px;
+  border-radius: var(--radius-md);
+  padding: 0 10px;
+  height: 34px;
   font-size: var(--font-size-sm);
   background: var(--bg-card);
-  max-width: 90px;
+  width: 95px;
+  flex-shrink: 0;
+  transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
 }
 
 .bed-id:focus {
@@ -367,18 +373,149 @@ body.modal-open {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--ring) 18%, transparent);
 }
 
+.bed-id:disabled {
+  background: var(--bg-inset);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
 .bed-position {
   font-size: var(--font-size-sm);
-  color: var(--text-muted);
+  font-weight: 500;
+  color: var(--text-secondary);
   background: var(--bg-inset);
-  border: 1px solid var(--border-light);
-  padding: 2px var(--spacing-sm);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default);
+  padding: 0 10px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out);
 }
 
 .bed-position:focus {
   outline: none;
   border-color: var(--ring);
+}
+
+.bed-position:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* =============================================================================
+   STATUS BADGES
+   ============================================================================= */
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  height: 34px;
+  border-radius: var(--radius-full, 9999px);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  flex-shrink: 0;
+}
+
+.status-badge--available {
+  background: color-mix(in srgb, #10b981 12%, transparent);
+  color: #047857;
+  border-color: color-mix(in srgb, #10b981 25%, transparent);
+}
+
+.status-badge--maintenance {
+  background: color-mix(in srgb, #f97316 12%, transparent);
+  color: #c2410c;
+  border-color: color-mix(in srgb, #f97316 25%, transparent);
+}
+
+.status-badge--occupied {
+  background: color-mix(in srgb, #2563eb 12%, transparent);
+  color: #1d4ed8;
+  border-color: color-mix(in srgb, #2563eb 25%, transparent);
+}
+
+.status-badge--reserved {
+  background: color-mix(in srgb, #d97706 12%, transparent);
+  color: #b45309;
+  border-color: color-mix(in srgb, #d97706 25%, transparent);
+}
+
+/* =============================================================================
+   BED OCCUPANT BADGE
+   ============================================================================= */
+
+.bed-occupant-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  height: 34px;
+  border-radius: var(--radius-full, 9999px);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--duration-fast, 150ms) var(--ease-out, ease-out);
+  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--primary, #3b82f6) 12%, transparent);
+  color: var(--primary, #2563eb);
+  text-decoration: none;
+  white-space: nowrap;
+  max-width: 220px;
+  flex-shrink: 0;
+}
+
+.bed-occupant-badge:hover {
+  background: color-mix(in srgb, var(--primary, #3b82f6) 22%, transparent);
+  border-color: color-mix(in srgb, var(--primary, #3b82f6) 40%, transparent);
+  transform: translateY(-1px);
+}
+
+.bed-occupant-badge--occupied {
+  background: color-mix(in srgb, #2563eb 12%, transparent);
+  color: #1d4ed8;
+  border-color: color-mix(in srgb, #2563eb 25%, transparent);
+}
+
+.bed-occupant-badge--occupied:hover {
+  background: color-mix(in srgb, #2563eb 22%, transparent);
+}
+
+.bed-occupant-badge--reserved {
+  background: color-mix(in srgb, #d97706 12%, transparent);
+  color: #b45309;
+  border-color: color-mix(in srgb, #d97706 25%, transparent);
+}
+
+.bed-occupant-badge--reserved:hover {
+  background: color-mix(in srgb, #d97706 22%, transparent);
+}
+
+.bed-occupant-icon {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.bed-occupant-name {
+  white-space: nowrap;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bed-occupant-link-icon {
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: transform var(--duration-fast, 150ms) ease;
+}
+
+.bed-occupant-badge:hover .bed-occupant-link-icon {
+  transform: translate(1px, -1px);
+  opacity: 1;
 }
 
 .no-beds {
@@ -398,61 +535,97 @@ body.modal-open {
 }
 
 /* =============================================================================
-   BED ACTION BUTTONS — compact variants
+   BED ACTION DROPDOWN MENU — Triple-dot popup
    ============================================================================= */
 
-.bed-btn {
+.bed-action-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.bed-menu-trigger {
+  width: 34px;
+  height: 34px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-default);
   background: var(--bg-card);
-  color: var(--text-primary);
+  color: var(--text-muted);
   cursor: pointer;
-  font-size: var(--font-size-sm);
-  font-weight: 600;
   transition: all var(--duration-fast) var(--ease-out);
-  white-space: nowrap;
 }
 
-.bed-btn:disabled {
+.bed-menu-trigger:hover,
+.bed-menu-trigger--active {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-xs, 0 1px 2px rgba(0, 0, 0, 0.05));
+}
+
+.bed-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 100;
+  min-width: 175px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.12));
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: bedMenuFadeIn 120ms var(--ease-out, ease-out);
+}
+
+@keyframes bedMenuFadeIn {
+  from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.bed-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+
+.bed-menu-item:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.bed-menu-item:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 
-/* Square icon-only button (move/remove) */
-.bed-btn--icon {
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  flex-shrink: 0;
-}
-
-/* Labeled button (maintenance toggle) */
-.bed-btn--labeled {
-  gap: var(--spacing-xs);
-  padding: 4px 10px;
-  height: 30px;
-}
-
-.bed-btn--remove {
+.bed-menu-item--danger {
   color: var(--status-error);
 }
 
-.bed-btn--remove:hover:not(:disabled) {
-  border-color: var(--status-error);
+.bed-menu-item--danger:hover:not(:disabled) {
   background: var(--status-error-bg);
+  color: var(--status-error);
 }
 
-.bed-btn--active {
-  background: var(--primary);
-  color: var(--primary-foreground);
-  border-color: transparent;
-}
-
-.bed-btn--active:hover:not(:disabled) {
-  filter: brightness(0.93);
+.bed-menu-divider {
+  height: 1px;
+  background: var(--border-light);
+  margin: 3px 0;
 }
 
 /* =============================================================================

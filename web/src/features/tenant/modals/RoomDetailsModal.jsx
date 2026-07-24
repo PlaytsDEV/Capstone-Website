@@ -8,6 +8,11 @@ import {
  MapPin,
  Users,
  X,
+ Calculator,
+ Calendar,
+ ShieldCheck,
+ CreditCard,
+ Info,
 } from "lucide-react";
 import SpotlightCard from "../components/SpotlightCard";
 import BedSelector from "../components/BedSelector";
@@ -60,11 +65,112 @@ export default function RoomDetailsModal({
  calculateApplianceFees,
  availableAppliances,
  proceedButtonText = "Proceed to Reservation",
+ selectedLeaseDuration = "6",
+ onSelectLeaseDuration,
+ targetMoveInDate,
+ onTargetMoveInDateChange,
 }) {
  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+ const [internalLeaseDuration, setInternalLeaseDuration] = useState("6");
+ const [internalMoveInDate, setInternalMoveInDate] = useState(() => {
+   const d = new Date();
+   d.setDate(d.getDate() + 30);
+   return d.toISOString().split("T")[0];
+ });
+
  useEscapeClose(isOpen && !!room, onClose);
 
  if (!isOpen || !room) return null;
+
+ const activeLeaseDuration =
+   onSelectLeaseDuration && selectedLeaseDuration
+     ? selectedLeaseDuration
+     : internalLeaseDuration;
+
+ const handleLeaseChange = (val) => {
+   setInternalLeaseDuration(val);
+   if (onSelectLeaseDuration) {
+     onSelectLeaseDuration(val);
+   }
+ };
+
+ const activeMoveInDate = targetMoveInDate || internalMoveInDate;
+
+ const handleMoveInChange = (val) => {
+   setInternalMoveInDate(val);
+   if (onTargetMoveInDateChange) {
+     onTargetMoveInDateChange(val);
+   }
+ };
+
+  // Pricing & Discount logic based on official flyer
+  const getFlyerRates = (roomType) => {
+    const norm = String(roomType || "").toLowerCase();
+    if (norm.includes("double")) {
+      return {
+        regularShort: 10000,
+        shortTerm: 8000,
+        regularLong: 9000,
+        longTerm: 7200,
+        discountPercent: 20,
+      };
+    }
+    if (norm.includes("private")) {
+      return {
+        regularShort: 16000,
+        shortTerm: 14400,
+        regularLong: 15000,
+        longTerm: 13500,
+        discountPercent: 10,
+      };
+    }
+    // Quadruple Sharing
+    return {
+      regularShort: 7000,
+      shortTerm: 6300,
+      regularLong: 6000,
+      longTerm: 5400,
+      discountPercent: 10,
+    };
+  };
+
+  const flyer = getFlyerRates(room.type);
+  const isDiscountEnabled = room.isDiscountEnabled !== false;
+
+  const leaseMonths = parseInt(activeLeaseDuration, 10) || 6;
+  const isLongTerm = leaseMonths >= 6;
+
+  // Active regular base rate from flyer
+  const activeRegularRate = isLongTerm ? flyer.regularLong : flyer.regularShort;
+
+  // Active net monthly rent (uses room record override if set, else official flyer rate)
+  let activeMonthlyRate = isLongTerm
+    ? (room.monthlyPrice || room.price || flyer.longTerm)
+    : (room.shortTermRate || flyer.shortTerm);
+
+  // If long-term discounts are globally disabled, revert to regular base rate with 0% discount
+  if (!isDiscountEnabled) {
+    activeMonthlyRate = activeRegularRate;
+  }
+
+  // Calculate flyer discount amount & percent for 100% mathematical consistency with official flyer
+  const activeFlyerDiscount = (isDiscountEnabled && activeRegularRate > activeMonthlyRate)
+    ? (activeRegularRate - activeMonthlyRate)
+    : 0;
+
+  const discountPercent = (isDiscountEnabled && activeRegularRate > 0 && activeFlyerDiscount > 0)
+    ? Math.round((activeFlyerDiscount / activeRegularRate) * 100)
+    : 0;
+
+  const shortTermRate = flyer.shortTerm;
+  const longTermRate = isDiscountEnabled ? (room.monthlyPrice || room.price || flyer.longTerm) : flyer.regularLong;
+  const monthlyDiscountAmount = activeFlyerDiscount;
+  const totalSavingsAmount = activeFlyerDiscount * leaseMonths;
+
+ const applianceFeesAmount = calculateApplianceFees ? calculateApplianceFees() : 0;
+ const securityDepositAmount = activeMonthlyRate;
+ const calculatedUpfrontTotal = activeMonthlyRate + securityDepositAmount + applianceFeesAmount;
+ const calculatedContractTotal = (activeMonthlyRate + applianceFeesAmount) * leaseMonths;
 
  const images = getImages(room);
  const requiresBedSelection =
@@ -430,12 +536,154 @@ export default function RoomDetailsModal({
  </div>
  )}
 
+  {/* Interactive Upfront Move-in Cost Calculator */}
+  <div className="bg-muted/60 rounded-xl p-5 border border-border/80 space-y-4">
+    <div className="flex items-center justify-between">
+      <h3 className="font-semibold flex items-center gap-2" style={{ color: "var(--text-heading, #0A1628)" }}>
+        <Calculator className="w-5 h-5" style={{ color: "var(--color-accent, #D4AF37)" }} />
+        Move-in Cost & Lease Calculator
+      </h3>
+      {isLongTerm ? (
+        <span className="text-xs px-2.5 py-1 rounded-full font-bold bg-amber-500 text-slate-950">
+          {monthlyDiscountAmount > 0 ? `${discountPercent}% OFF (Long-Term Rate)` : "Long-Term Standard Rate"}
+        </span>
+      ) : (
+        <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-muted border border-border text-muted-foreground">
+          Short-Term Standard Rate
+        </span>
+      )}
+    </div>
+
+    {/* Lease Term Selection */}
+    <div>
+      <label className="block text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1.5">
+        <Calendar className="w-3.5 h-3.5" />
+        Select Preferred Lease Term
+      </label>
+      <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
+        {[
+          { value: "1", label: "1 mo" },
+          { value: "2", label: "2 mos" },
+          { value: "3", label: "3 mos" },
+          { value: "4", label: "4 mos" },
+          { value: "5", label: "5 mos" },
+          { value: "6", label: "6 mos" },
+          { value: "12", label: "1 yr" },
+        ].map((term) => {
+          const isSelected = activeLeaseDuration === term.value;
+          const isTermLong = parseInt(term.value, 10) >= 6;
+          return (
+            <button
+              key={term.value}
+              type="button"
+              onClick={() => handleLeaseChange(term.value)}
+              className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition-all border relative ${
+                isSelected
+                  ? "shadow-sm border-amber-500"
+                  : "bg-card border-border hover:border-amber-500/50 text-muted-foreground"
+              }`}
+              style={{
+                backgroundColor: isSelected ? "var(--color-accent, #D4AF37)" : undefined,
+                color: isSelected ? "#0A1628" : undefined,
+              }}
+            >
+              {term.label}
+              {isTermLong && discountPercent > 0 && (
+                <span className="block text-[9px] font-normal opacity-80">
+                  {discountPercent}% OFF
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+
+    {/* Cost Breakdown Card — Transparent Itemization matching Flyer */}
+    <div className="bg-card rounded-lg p-4 border border-border space-y-2.5 shadow-xs">
+      <div className="flex justify-between items-center text-sm">
+        <span className="text-muted-foreground flex items-center gap-1.5">
+          Regular Base Rate ({isLongTerm ? "Long-Term" : "Short-Term"})
+        </span>
+        <span className={`font-medium text-muted-foreground ${activeFlyerDiscount > 0 ? "line-through" : ""}`}>
+          ₱{activeRegularRate.toLocaleString()} / mo
+        </span>
+      </div>
+
+      {activeFlyerDiscount > 0 && (
+        <div className="flex justify-between items-center text-sm font-medium text-emerald-600 dark:text-emerald-400">
+          <span className="flex items-center gap-1.5">
+            <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-xs font-bold">
+              -{discountPercent}% OFF
+            </span>
+            Flyer Promo Discount
+          </span>
+          <span>- ₱{activeFlyerDiscount.toLocaleString()} / mo</span>
+        </div>
+      )}
+
+      <div className="flex justify-between items-center text-sm font-semibold border-t border-dashed border-border/80 pt-2">
+        <span className="text-card-foreground">Effective Monthly Room Rent</span>
+        <span className="text-amber-600 dark:text-amber-400 text-base font-bold">
+          ₱{activeMonthlyRate.toLocaleString()} / mo
+        </span>
+      </div>
+
+      {applianceFeesAmount > 0 && (
+        <div className="flex justify-between items-center text-sm" style={{ color: "var(--color-accent, #D4AF37)" }}>
+          <span>Appliance Add-ons</span>
+          <span className="font-medium">+ ₱{applianceFeesAmount.toLocaleString()} / mo</span>
+        </div>
+      )}
+
+      <div className="flex justify-between items-center text-sm">
+        <span className="text-muted-foreground flex items-center gap-1">
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+          Security Deposit (1 Month Rent - Refundable)
+        </span>
+        <span className="font-medium">₱{securityDepositAmount.toLocaleString()}</span>
+      </div>
+
+      <div className="border-t border-border pt-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Estimated Upfront Move-in Total
+          </p>
+          <p className="text-[11px] text-muted-foreground">
+            Includes 1st Month Rent + Refundable Deposit + Appliances
+          </p>
+        </div>
+        <div className="sm:text-right">
+          <span className="text-2xl font-bold" style={{ color: "var(--color-accent, #D4AF37)" }}>
+            ₱{calculatedUpfrontTotal.toLocaleString()}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    {/* Long-Term Savings Banner */}
+    {isLongTerm && totalSavingsAmount > 0 && (
+      <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-xs font-medium flex items-center justify-between">
+        <span>
+          🎉 <strong>Long-Term Savings:</strong> You save ₱{totalSavingsAmount.toLocaleString()} over your {leaseMonths}-month contract commitment!
+        </span>
+      </div>
+    )}
+
+    <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+      <span>Total contract commitment ({activeLeaseDuration} {leaseMonths === 1 ? "month" : "months"}):</span>
+      <span className="font-semibold text-card-foreground">
+        ₱{calculatedContractTotal.toLocaleString()}
+      </span>
+    </div>
+  </div>
+
  <div>
  <h3 className="font-semibold mb-3" style={{ color: "var(--text-heading, #0A1628)" }}>
  Policies & Important Notes
  </h3>
  <div className="space-y-2">
- {room.policies.map((policy, index) => (
+ {(room.policies || []).map((policy, index) => (
  <div key={index} className="flex items-start gap-2">
  <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: "var(--color-accent)" }} />
  <span className="text-sm text-card-foreground">{policy}</span>

@@ -1,313 +1,326 @@
-    import { useEffect, useMemo, useRef, useState } from "react";
-    import { createPortal } from "react-dom";
-    import { useQueryClient } from "@tanstack/react-query";
-    import {
-    AlertTriangle,
-    ArrowRightLeft,
-    RefreshCcw,
-    UserRoundCheck,
-    Users,
-    MoreHorizontal,
-    LogOut,
-    CreditCard,
-    Filter,
-    Clock3,
-    } from "lucide-react";
-    import { useAuth } from "../../../shared/hooks/useAuth";
-    import {
-    useTenantActionContext,
-    useTenantWorkspace,
-    useTenantWorkspaceDetail,
-    } from "../../../shared/hooks/queries/useReservations";
-    import { reservationApi } from "../../../shared/api/apiClient";
-    import { showNotification } from "../../../shared/utils/notification";
-    import { StatusBadge } from "../components/shared";
-    import TenantDetailModal from "../components/TenantDetailModal";
-    import TenantFilterBar from "../components/TenantFilterBar";
-    import {
-    MoveOutModal,
-    RenewLeaseModal,
-    TransferTenantModal,
-    } from "../components/TenantWorkspaceModals";
-    import { formatBranch } from "../utils/formatters";
-    import {
-    getTenantActionMeta,
-    hasEnabledTenantAction,
-    openTenantAction,
-    } from "./tenantWorkspaceActions.mjs";
-    import "../styles/design-tokens.css";
-    import "../styles/admin-tenants.css";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  AlertTriangle,
+  ArrowRightLeft,
+  RefreshCcw,
+  UserRoundCheck,
+  Users,
+  MoreHorizontal,
+  LogOut,
+  CreditCard,
+  Filter,
+  Clock3,
+} from "lucide-react";
+import { useAuth } from "../../../shared/hooks/useAuth";
+import {
+  useTenantActionContext,
+  useTenantWorkspace,
+  useTenantWorkspaceDetail,
+} from "../../../shared/hooks/queries/useReservations";
+import { reservationApi } from "../../../shared/api/apiClient";
+import { showNotification } from "../../../shared/utils/notification";
+import { StatusBadge } from "../components/shared";
+import TenantDetailModal from "../components/TenantDetailModal";
+import TenantFilterBar from "../components/TenantFilterBar";
+import {
+  MoveOutModal,
+  RenewLeaseModal,
+  TransferTenantModal,
+} from "../components/TenantWorkspaceModals";
+import { formatBranch } from "../utils/formatters";
+import {
+  getTenantActionMeta,
+  hasEnabledTenantAction,
+  openTenantAction,
+} from "./tenantWorkspaceActions.mjs";
+import "../styles/design-tokens.css";
+import "../styles/admin-tenants.css";
 
-    const ITEMS_PER_PAGE = 10;
+const ITEMS_PER_PAGE = 10;
 
-    const QUICK_FILTERS = [
-    { key: "expiring_soon", label: "Expiring Soon" },
-    { key: "needs_action", label: "Needs Action" },
-    { key: "overdue", label: "Overdue" },
-    ];
+const QUICK_FILTERS = [
+  { key: "expiring_soon", label: "Expiring Soon" },
+  { key: "needs_action", label: "Needs Action" },
+  { key: "overdue", label: "Overdue" },
+];
 
-    const TENANT_ACTION_ITEMS = [
-    {
-        key: "renew",
-        type: "renew",
-        label: "Renew Lease",
-        icon: RefreshCcw,
-        className: "",
-    },
-    {
-        key: "transfer",
-        type: "transfer",
-        label: "Transfer Room",
-        icon: ArrowRightLeft,
-        className: "",
-    },
-    {
-        key: "moveOut",
-        type: "moveOut",
-        label: "Move Out",
-        icon: LogOut,
-        className: "tenant-dropdown-item--danger",
-    },
-    ];
+const TENANT_ACTION_ITEMS = [
+  {
+    key: "renew",
+    type: "renew",
+    label: "Renew Lease",
+    icon: RefreshCcw,
+    className: "",
+  },
+  {
+    key: "transfer",
+    type: "transfer",
+    label: "Transfer Room",
+    icon: ArrowRightLeft,
+    className: "",
+  },
+  {
+    key: "moveOut",
+    type: "moveOut",
+    label: "Move Out",
+    icon: LogOut,
+    className: "tenant-dropdown-item--danger",
+  },
+];
 
-    const fmtDate = (value) =>
-    value
-        ? new Date(value).toLocaleDateString("en-PH", {
-            year: "numeric",
-            month: "short",
-            day: "numeric",
-        })
-        : "—";
+const fmtDate = (value) =>
+  value
+    ? new Date(value).toLocaleDateString("en-PH", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    : "—";
 
-    const fmtMoney = (value) =>
-    typeof value === "number"
-        ? `PHP ${value.toLocaleString(undefined, {
-            minimumFractionDigits: value % 1 === 0 ? 0 : 2,
-            maximumFractionDigits: 2,
-        })}`
-        : "—";
+const fmtMoney = (value) =>
+  typeof value === "number"
+    ? `PHP ${value.toLocaleString(undefined, {
+        minimumFractionDigits: value % 1 === 0 ? 0 : 2,
+        maximumFractionDigits: 2,
+      })}`
+    : "—";
 
-    const toDateInputValue = (value) => {
-    if (!value) return "";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "";
-    return date.toISOString().slice(0, 10);
-    };
+const toDateInputValue = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+};
 
-    function actionTone(action) {
-    if (action === "verify_payment" || action === "review_overdue_account") {
-        return "tenant-next-action--danger";
-    }
-    if (action === "renew_lease" || action === "process_move_out") {
-        return "tenant-next-action--warning";
-    }
-    return "tenant-next-action--neutral";
-    }
+function actionTone(action) {
+  if (action === "verify_payment" || action === "review_overdue_account") {
+    return "tenant-next-action--danger";
+  }
+  if (action === "renew_lease" || action === "process_move_out") {
+    return "tenant-next-action--warning";
+  }
+  return "tenant-next-action--neutral";
+}
 
-    function matchesDateRange(value, from, to) {
-    if (!from && !to) return true;
-    if (!value) return false;
+function matchesDateRange(value, from, to) {
+  if (!from && !to) return true;
+  if (!value) return false;
 
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return false;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
 
-    if (from) {
-        const fromDate = new Date(from);
-        if (date < fromDate) return false;
-    }
+  if (from) {
+    const fromDate = new Date(from);
+    if (date < fromDate) return false;
+  }
 
-    if (to) {
-        const toDate = new Date(to);
-        toDate.setHours(23, 59, 59, 999);
-        if (date > toDate) return false;
-    }
+  if (to) {
+    const toDate = new Date(to);
+    toDate.setHours(23, 59, 59, 999);
+    if (date > toDate) return false;
+  }
 
-    return true;
-    }
+  return true;
+}
 
-    const RowActionsMenu = ({ row, onSelect, onAction }) => {
-    const [open, setOpen] = useState(false);
-    const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
-    const triggerRef = useRef(null);
-    const menuRef = useRef(null);
-    const hasActionMenu = hasEnabledTenantAction(
-        row,
-        TENANT_ACTION_ITEMS.map(({ key }) => key),
+const RowActionsMenu = ({ row, onSelect, onAction }) => {
+  const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
+  const triggerRef = useRef(null);
+  const menuRef = useRef(null);
+  const hasActionMenu = hasEnabledTenantAction(
+    row,
+    TENANT_ACTION_ITEMS.map(({ key }) => key),
+  );
+
+  const notifyBlocked = (actionMeta) => {
+    showNotification(
+      actionMeta?.reason || "This action is not available for this tenant.",
+      "error",
+      3500,
     );
+  };
 
-    const notifyBlocked = (actionMeta) => {
-        showNotification(
-        actionMeta?.reason || "This action is not available for this tenant.",
-        "error",
-        3500,
-        );
+  const updateMenuPosition = () => {
+    const trigger = triggerRef.current;
+    if (!trigger || typeof window === "undefined") return;
+
+    const triggerRect = trigger.getBoundingClientRect();
+    const menuWidth = 190;
+    const menuHeight = 135;
+
+    let left = triggerRect.right - menuWidth;
+    if (left < 12) left = 12;
+
+    let top = triggerRect.bottom + 6;
+    if (top + menuHeight > window.innerHeight - 12) {
+      top = Math.max(12, triggerRect.top - menuHeight - 6);
+    }
+
+    setMenuPosition({ top, left });
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    updateMenuPosition();
+
+    const handleScrollOrResize = () => updateMenuPosition();
+    window.addEventListener("scroll", handleScrollOrResize, true);
+    window.addEventListener("resize", handleScrollOrResize);
+
+    return () => {
+      window.removeEventListener("scroll", handleScrollOrResize, true);
+      window.removeEventListener("resize", handleScrollOrResize);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handleClickOutside = (e) => {
+      const trigger = triggerRef.current;
+      const menu = menuRef.current;
+      if (
+        trigger &&
+        menu &&
+        !trigger.contains(e.target) &&
+        !menu.contains(e.target)
+      ) {
+        setOpen(false);
+      }
     };
 
-    const updateMenuPosition = () => {
-        const trigger = triggerRef.current;
-        if (!trigger || typeof window === "undefined") return;
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
 
-        const triggerRect = trigger.getBoundingClientRect();
-        const menuRect = menuRef.current?.getBoundingClientRect();
-        const menuWidth = menuRect?.width || 180;
-        const menuHeight = menuRect?.height || 140;
-        const gutter = 8;
+  return (
+    <div className="tenant-row-menu" onClick={(e) => e.stopPropagation()}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="tenant-row-menu-btn"
+        title="More actions"
+        aria-label="More tenant options"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((prev) => !prev);
+        }}
+      >
+        <MoreHorizontal size={16} />
+      </button>
 
-        const left = Math.min(
-        Math.max(gutter, triggerRect.right - menuWidth),
-        window.innerWidth - menuWidth - gutter,
-        );
-
-        const preferredTop = triggerRect.bottom + 6;
-        const top =
-        preferredTop + menuHeight <= window.innerHeight - gutter
-            ? preferredTop
-            : Math.max(gutter, triggerRect.top - menuHeight - 6);
-
-        setMenuPosition({ top, left });
-    };
-
-    useEffect(() => {
-        if (!open) return;
-        updateMenuPosition();
-
-        const rafId = window.requestAnimationFrame(updateMenuPosition);
-        const handleViewportChange = () => setOpen(false);
-
-        window.addEventListener("resize", handleViewportChange);
-        document.addEventListener("scroll", handleViewportChange, true);
-
-        return () => {
-        window.cancelAnimationFrame(rafId);
-        window.removeEventListener("resize", handleViewportChange);
-        document.removeEventListener("scroll", handleViewportChange, true);
-        };
-    }, [open]);
-
-    return (
-        <div
-        className="flex items-center justify-center gap-2"
-        data-action-cell="true"
-        >
-        <button
-            type="button"
-            className="text-sm font-medium text-[#c99700] hover:text-[#ad8400] hover:underline"
-            onClick={(e) => {
-            e.stopPropagation();
-            onSelect(row.reservationId);
-            }}
-        >
-            View Details
-        </button>
-
-        {hasActionMenu ? (
-            <div style={{ position: "relative" }}>
-            <button
-                ref={triggerRef}
-                type="button"
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
+      {open
+        ? createPortal(
+            <>
+              <div
+                className="tenant-dropdown-backdrop"
                 onClick={(e) => {
-                e.stopPropagation();
-                setOpen((o) => !o);
+                  e.stopPropagation();
+                  setOpen(false);
                 }}
-            >
-                <MoreHorizontal size={14} />
-            </button>
-
-            {open && typeof document !== "undefined"
-                ? createPortal(
-                    <>
-                    <button
+              />
+              <div
+                ref={menuRef}
+                className="tenant-dropdown-portal"
+                style={{
+                  position: "fixed",
+                  top: `${menuPosition.top}px`,
+                  left: `${menuPosition.left}px`,
+                  zIndex: 9999,
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {TENANT_ACTION_ITEMS.map(
+                  ({ key, type, label, icon: Icon, className }) => {
+                    const actionMeta = getTenantActionMeta(row, key);
+                    return (
+                      <button
+                        key={key}
                         type="button"
-                        className="fixed inset-0 z-[59]"
-                        data-action-portal="true"
-                        aria-label="Close tenant actions"
-                        onClick={() => setOpen(false)}
-                    />
-                    <div
-                        ref={menuRef}
-                        className="fixed z-[60] w-48 overflow-hidden rounded-lg border border-[var(--border-light)] bg-popover shadow-lg"
-                        data-action-portal="true"
-                        style={{
-                        top: `${menuPosition.top}px`,
-                        left: `${menuPosition.left}px`,
+                        className={`tenant-dropdown-item ${className} ${
+                          !actionMeta.enabled
+                            ? "tenant-dropdown-item--disabled"
+                            : ""
+                        }`}
+                        disabled={!actionMeta.enabled}
+                        aria-disabled={!actionMeta.enabled}
+                        title={actionMeta.reason || ""}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const opened = openTenantAction({
+                            tenant: row,
+                            actionKey: key,
+                            actionType: type,
+                            notifyBlocked,
+                            onAction,
+                          });
+                          if (opened) {
+                            setOpen(false);
+                          }
                         }}
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        {TENANT_ACTION_ITEMS.map(
-                        ({ key, type, label, icon: Icon, className }) => {
-                            const actionMeta = getTenantActionMeta(row, key);
-                            return (
-                            <button
-                                key={key}
-                                type="button"
-                                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted ${
-                                className === "tenant-dropdown-item--danger"
-                                    ? "text-red-600"
-                                    : "text-foreground"
-                                }`}
-                                aria-disabled={!actionMeta.enabled}
-                                title={actionMeta.reason || ""}
-                                onMouseDown={(e) => e.stopPropagation()}
-                                onClick={(e) => {
-                                e.stopPropagation();
-                                const opened = openTenantAction({
-                                    tenant: row,
-                                    actionKey: key,
-                                    actionType: type,
-                                    notifyBlocked,
-                                    onAction,
-                                });
-                                if (opened) {
-                                    setOpen(false);
-                                }
-                                }}
-                            >
-                                <Icon size={14} /> {label}
-                            </button>
-                            );
-                        },
-                        )}
-                    </div>
-                    </>,
-                    document.body,
-                )
-                : null}
-            </div>
-        ) : null}
-        </div>
-    );
-    };
+                      >
+                        <Icon size={14} /> {label}
+                      </button>
+                    );
+                  },
+                )}
+              </div>
+            </>,
+            document.body,
+          )
+        : null}
+    </div>
+  );
+};
 
-    export default function TenantsWorkspacePage() {
-    const { user, loading: authLoading } = useAuth();
-    const queryClient = useQueryClient();
-    const isOwner = user?.role === "owner";
-    const [searchTerm, setSearchTerm] = useState("");
-    const [branchFilter, setBranchFilter] = useState(
-        isOwner ? "all" : user?.branch || "all",
-    );
-    const [leaseStatusFilter, setLeaseStatusFilter] = useState("all");
-    const [paymentStatusFilter, setPaymentStatusFilter] = useState("all");
-    const [stayStatusFilter, setStayStatusFilter] = useState("all");
-    const [dateFrom, setDateFrom] = useState("");
-    const [dateTo, setDateTo] = useState("");
-    const [quickFilters, setQuickFilters] = useState([]);
-    const [isFilterBarOpen, setIsFilterBarOpen] = useState(false);
-    const [selectedReservationId, setSelectedReservationId] = useState(null);
-    const [actionState, setActionState] = useState({ type: null, tenant: null });
-    const [currentPage, setCurrentPage] = useState(1);
-    const [actionLoading, setActionLoading] = useState(null);
+export default function TenantsWorkspacePage() {
+  const { user, loading: authLoading } = useAuth();
+  const [searchParams] = useSearchParams();
+  const queryClient = useQueryClient();
+  const isOwner = user?.role === "owner";
+  const [searchTerm, setSearchTerm] = useState(
+    () => searchParams.get("search") || "",
+  );
+  const [branchFilter, setBranchFilter] = useState(
+    isOwner ? "all" : user?.branch || "all",
+  );
+  const [leaseStatusFilter, setLeaseStatusFilter] = useState("all");
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState("all");
+  const [stayStatusFilter, setStayStatusFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [quickFilters, setQuickFilters] = useState([]);
+  const [isFilterBarOpen, setIsFilterBarOpen] = useState(false);
+  const [selectedReservationId, setSelectedReservationId] = useState(
+    () => searchParams.get("reservationId") || null,
+  );
+  const [actionState, setActionState] = useState({ type: null, tenant: null });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [actionLoading, setActionLoading] = useState(null);
 
-    const hasActiveFilters =
-      Boolean(searchTerm.trim()) ||
-      branchFilter !== "all" ||
-      leaseStatusFilter !== "all" ||
-      paymentStatusFilter !== "all" ||
-      stayStatusFilter !== "all" ||
-      Boolean(dateFrom || dateTo) ||
-      quickFilters.length > 0;
+  useEffect(() => {
+    const urlSearch = searchParams.get("search");
+    if (urlSearch !== null && urlSearch !== searchTerm) {
+      setSearchTerm(urlSearch);
+    }
+    const urlResId = searchParams.get("reservationId");
+    if (urlResId !== null && urlResId !== selectedReservationId) {
+      setSelectedReservationId(urlResId);
+    }
+  }, [searchParams]);
+
+  const hasActiveFilters =
+    Boolean(searchTerm.trim()) ||
+    branchFilter !== "all" ||
+    leaseStatusFilter !== "all" ||
+    paymentStatusFilter !== "all" ||
+    stayStatusFilter !== "all" ||
+    Boolean(dateFrom || dateTo) ||
+    quickFilters.length > 0;
 
     const previousHasActiveFilters = useRef(hasActiveFilters);
 

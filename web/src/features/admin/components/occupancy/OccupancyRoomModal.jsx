@@ -107,29 +107,35 @@ export default function OccupancyRoomModal({ room, loadingDetails, onClose }) {
  ) : (
  <>
  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
- <div>
- <div className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground font-semibold mb-1">Room Type</div>
- <div className="text-sm font-medium text-foreground">{formatRoomType(roomInfo.type || roomInfo.roomType)}</div>
- </div>
- <div>
- <div className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground font-semibold mb-1">Capacity</div>
- <div className="text-sm font-medium text-foreground">{roomInfo.capacity || 0} beds</div>
- </div>
- <div>
- <div className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground font-semibold mb-1">Committed Occupancy</div>
- <div className="text-sm font-medium text-foreground">{roomInfo.currentOccupancy || roomInfo.occupancy || 0}</div>
- </div>
- <div>
- <div className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground font-semibold mb-1">Occupancy Rate</div>
- <div className="text-sm font-medium text-foreground">
- {Math.round(
- ((roomInfo.currentOccupancy || roomInfo.occupancy || 0) /
- (roomInfo.capacity || 1)) *
- 100,
- )}
- %
- </div>
- </div>
+              {(() => {
+                const isPrivateModal = String(roomInfo.type || roomInfo.roomType || "").toLowerCase().includes("private");
+                const modalOcc = isPrivateModal
+                  ? Math.min(1, roomInfo.currentOccupancy || roomInfo.occupancy || 0)
+                  : roomInfo.currentOccupancy || roomInfo.occupancy || 0;
+                const modalCap = isPrivateModal ? 1 : (roomInfo.capacity || 1);
+                const modalRate = Math.min(100, Math.round((modalOcc / modalCap) * 100));
+
+                return (
+                  <>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground font-semibold mb-1">Room Type</div>
+                      <div className="text-sm font-medium text-foreground">{formatRoomType(roomInfo.type || roomInfo.roomType)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground font-semibold mb-1">Capacity</div>
+                      <div className="text-sm font-medium text-foreground">{isPrivateModal ? "1 (Solo Room)" : `${roomInfo.capacity || 0} beds`}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground font-semibold mb-1">Committed Occupancy</div>
+                      <div className="text-sm font-medium text-foreground">{isPrivateModal ? `${modalOcc} room` : modalOcc}</div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground font-semibold mb-1">Occupancy Rate</div>
+                      <div className="text-sm font-medium text-foreground">{modalRate}%</div>
+                    </div>
+                  </>
+                );
+              })()}
  </div>
 
  {occupiedBeds?.length > 0 && (

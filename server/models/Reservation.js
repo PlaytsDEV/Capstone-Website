@@ -514,6 +514,14 @@ const reservationSchema = new mongoose.Schema(
       ref: "User",
       default: null,
     },
+    isViewedByAdmin: {
+      type: Boolean,
+      default: false,
+    },
+    adminViewedAt: {
+      type: Date,
+      default: null,
+    },
     approvedForPaymentAt: {
       type: Date,
       default: null,

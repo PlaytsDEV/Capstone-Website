@@ -54,6 +54,12 @@ export const BUSINESS = {
   /** Days after which cancelled reservations are auto-archived (soft deleted).
    *  Archived records are hidden from active tables but preserved for analytics. */
   ARCHIVE_CANCELLED_AFTER_DAYS: 7,
+
+  /** Minimum lease duration in months to qualify for long-term lease rate/discount. */
+  LONG_TERM_LEASE_MIN_MONTHS: 6,
+
+  /** Default system-wide discount percentage applied to long-term lease contracts. */
+  DEFAULT_LONG_TERM_DISCOUNT_PERCENT: 10,
 };
 
 // ─── Cache Tuning ─────────────────────────────────────────────────────────────

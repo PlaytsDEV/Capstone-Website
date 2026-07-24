@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 import {
  AlertTriangle,
  Archive,
+ Calendar,
  Clock3,
  Droplets,
  Info,
+ Percent,
  Save,
  Settings2,
  UserCog,
@@ -40,59 +42,100 @@ const DEFAULT_BRANCH_OVERRIDES = {
 };
 
 const DEFAULT_FORM = {
- reservationFeeAmount: 2000,
- penaltyRatePerDay: 50,
- defaultElectricityRatePerKwh: 16,
- defaultWaterRatePerUnit: 0,
- noShowGraceDays: 7,
- stalePendingHours: 2,
- staleVisitPendingHours: 336,
- visitPendingWarnDays: 12,
- staleVisitApprovedHours: 48,
- stalePaymentPendingHours: 48,
- archiveCancelledAfterDays: 7,
- branchOverrides: DEFAULT_BRANCH_OVERRIDES,
- changedBy: null,
- changedAt: null,
- updatedAt: null,
+  reservationFeeAmount: 2000,
+  penaltyRatePerDay: 50,
+  defaultElectricityRatePerKwh: 16,
+  defaultWaterRatePerUnit: 0,
+  longTermLeaseMinMonths: 6,
+  defaultLongTermDiscountPercent: 10,
+  isDiscountEnabled: true,
+  quadrupleDiscountPercent: 10,
+  doubleDiscountPercent: 20,
+  privateDiscountPercent: 10,
+  noShowGraceDays: 7,
+  stalePendingHours: 2,
+  staleVisitPendingHours: 336,
+  visitPendingWarnDays: 12,
+  staleVisitApprovedHours: 48,
+  stalePaymentPendingHours: 48,
+  archiveCancelledAfterDays: 7,
+  branchOverrides: DEFAULT_BRANCH_OVERRIDES,
+  changedBy: null,
+  changedAt: null,
+  updatedAt: null,
 };
 
 const BILLING_FIELDS = [
- {
- key: "reservationFeeAmount",
- label: "Reservation Deposit",
- description: "Deposit required to confirm a reservation before move-in.",
- icon: Settings2,
- step: "100",
- formatValue: (value) => `PHP ${Number(value || 0).toLocaleString("en-PH")}`,
- },
- {
- key: "penaltyRatePerDay",
- label: "Late Payment Penalty",
- description: "Daily penalty added to overdue balances.",
- icon: AlertTriangle,
- step: "1",
- formatValue: (value) =>
- `PHP ${Number(value || 0).toLocaleString("en-PH")} / day`,
- },
- {
- key: "defaultElectricityRatePerKwh",
- label: "Default Electricity Rate",
- description: "Prefill used when admins open a new electricity billing period.",
- icon: Zap,
- step: "0.01",
- formatValue: (value) =>
- `PHP ${Number(value || 0).toLocaleString("en-PH")} / kWh`,
- },
- {
- key: "defaultWaterRatePerUnit",
- label: "Default Water Rate",
- description: "Prefill used when admins prepare water charges.",
- icon: Droplets,
- step: "0.01",
- formatValue: (value) =>
- `PHP ${Number(value || 0).toLocaleString("en-PH")} / unit`,
- },
+  {
+    key: "reservationFeeAmount",
+    label: "Reservation Deposit",
+    description: "Deposit required to confirm a reservation before move-in.",
+    icon: Settings2,
+    step: "100",
+    formatValue: (value) => `PHP ${Number(value || 0).toLocaleString("en-PH")}`,
+  },
+  {
+    key: "penaltyRatePerDay",
+    label: "Late Payment Penalty",
+    description: "Daily penalty added to overdue balances.",
+    icon: AlertTriangle,
+    step: "1",
+    formatValue: (value) =>
+      `PHP ${Number(value || 0).toLocaleString("en-PH")} / day`,
+  },
+  {
+    key: "defaultElectricityRatePerKwh",
+    label: "Default Electricity Rate",
+    description: "Prefill used when admins open a new electricity billing period.",
+    icon: Zap,
+    step: "0.01",
+    formatValue: (value) =>
+      `PHP ${Number(value || 0).toLocaleString("en-PH")} / kWh`,
+  },
+  {
+    key: "defaultWaterRatePerUnit",
+    label: "Default Water Rate",
+    description: "Prefill used when admins prepare water charges.",
+    icon: Droplets,
+    step: "0.01",
+    formatValue: (value) =>
+      `PHP ${Number(value || 0).toLocaleString("en-PH")} / unit`,
+  },
+];
+
+const LEASE_PRICING_FIELDS = [
+  {
+    key: "longTermLeaseMinMonths",
+    label: "Long-Term Minimum Months",
+    description: "Minimum lease duration (in months) to qualify for long-term rate discounts.",
+    icon: Calendar,
+    step: "1",
+    formatValue: (value) => `${Number(value || 0).toLocaleString("en-PH")} months`,
+  },
+  {
+    key: "quadrupleDiscountPercent",
+    label: "Quadruple Sharing Discount",
+    description: "Long-term lease discount percentage for Quadruple Sharing rooms (e.g. 10%).",
+    icon: Percent,
+    step: "1",
+    formatValue: (value) => `${Number(value || 0).toLocaleString("en-PH")}%`,
+  },
+  {
+    key: "doubleDiscountPercent",
+    label: "Double Sharing Discount",
+    description: "Long-term lease discount percentage for Double Sharing rooms (e.g. 20%).",
+    icon: Percent,
+    step: "1",
+    formatValue: (value) => `${Number(value || 0).toLocaleString("en-PH")}%`,
+  },
+  {
+    key: "privateDiscountPercent",
+    label: "Private Room Discount",
+    description: "Long-term lease discount percentage for Private rooms (e.g. 10%).",
+    icon: Percent,
+    step: "1",
+    formatValue: (value) => `${Number(value || 0).toLocaleString("en-PH")}%`,
+  },
 ];
 
 const LIFECYCLE_FIELDS = [
@@ -158,9 +201,10 @@ const RETENTION_FIELDS = [
 ];
 
 const POLICY_KEYS = [
- ...BILLING_FIELDS.map((field) => field.key),
- ...LIFECYCLE_FIELDS.map((field) => field.key),
- ...RETENTION_FIELDS.map((field) => field.key),
+  ...BILLING_FIELDS.map((field) => field.key),
+  ...LEASE_PRICING_FIELDS.map((field) => field.key),
+  ...LIFECYCLE_FIELDS.map((field) => field.key),
+  ...RETENTION_FIELDS.map((field) => field.key),
 ];
 
 const normalizeBranchOverrides = (branchOverrides = {}) => ({
@@ -288,6 +332,7 @@ export default function SystemSettingsPage() {
  acc[key] = Number(form[key]);
  return acc;
  }, {});
+ payload.isDiscountEnabled = Boolean(form.isDiscountEnabled);
  const data = await settingsApi.updateBusinessSettings(payload);
  applyServerSettings(data);
  showNotification("Policies and defaults updated.", "success");
@@ -393,6 +438,69 @@ export default function SystemSettingsPage() {
  )}
  </div>
  </section>
+
+  <section className="sa2-card sa-settings-section">
+    <div className="sa-settings-section-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div>
+        <h2 className="sa2-card-title">Lease & Pricing Policies</h2>
+        <p className="sa-settings-section-copy">
+          Configure short-term vs. long-term lease rules and discount percentages per room type.
+        </p>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "var(--bg-muted, rgba(0,0,0,0.04))", padding: "8px 14px", borderRadius: "12px", border: "1px solid var(--border-color, #E5E7EB)" }}>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: "12px", fontWeight: "700", color: "var(--text-heading)" }}>
+            Enable Long-Term Discounts
+          </div>
+          <div style={{ fontSize: "11px", color: form.isDiscountEnabled ? "#10B981" : "#F59E0B", fontWeight: "600" }}>
+            {form.isDiscountEnabled ? "Active (Promo Rates Applied)" : "Disabled (0% Discount Applied)"}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => updateField("isDiscountEnabled", !form.isDiscountEnabled)}
+          disabled={savingPolicies}
+          style={{
+            width: "44px",
+            height: "24px",
+            borderRadius: "12px",
+            backgroundColor: form.isDiscountEnabled ? "#D97706" : "#9CA3AF",
+            border: "none",
+            cursor: savingPolicies ? "not-allowed" : "pointer",
+            position: "relative",
+            transition: "background-color 0.2s",
+            padding: "2px",
+          }}
+        >
+          <div
+            style={{
+              width: "20px",
+              height: "20px",
+              borderRadius: "50%",
+              backgroundColor: "#FFFFFF",
+              transform: form.isDiscountEnabled ? "translateX(20px)" : "translateX(0)",
+              transition: "transform 0.2s",
+            }}
+          />
+        </button>
+      </div>
+    </div>
+
+    {!form.isDiscountEnabled && (
+      <div style={{ margin: "12px 0", padding: "12px 16px", borderRadius: "8px", background: "rgba(245, 158, 11, 0.12)", border: "1px solid rgba(245, 158, 11, 0.3)", color: "#B45309", fontSize: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+        <AlertTriangle style={{ width: 16, height: 16, flexShrink: 0 }} />
+        <span>
+          <strong>Discounts Disabled:</strong> All room long-term rates will match standard short-term rates (0% discount applied). Tenants will pay standard monthly rent regardless of lease duration.
+        </span>
+      </div>
+    )}
+
+    <div className="sa-settings-form-grid">
+      {LEASE_PRICING_FIELDS.map((field) =>
+        renderFieldCard(field, form, updateField, savingPolicies),
+      )}
+    </div>
+  </section>
 
  <section className="sa2-card sa-settings-section">
  <div className="sa-settings-section-header">

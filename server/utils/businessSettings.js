@@ -40,6 +40,12 @@ export const DEFAULT_BUSINESS_SETTINGS = Object.freeze({
   maxPenaltyCapPercent: BUSINESS.MAX_PENALTY_CAP_PERCENT,
   defaultElectricityRatePerKwh: BUSINESS.DEFAULT_ELECTRICITY_RATE_PER_KWH,
   defaultWaterRatePerUnit: 0,
+  longTermLeaseMinMonths: BUSINESS.LONG_TERM_LEASE_MIN_MONTHS || 6,
+  defaultLongTermDiscountPercent: BUSINESS.DEFAULT_LONG_TERM_DISCOUNT_PERCENT || 10,
+  isDiscountEnabled: true,
+  quadrupleDiscountPercent: 10,
+  doubleDiscountPercent: 20,
+  privateDiscountPercent: 10,
   ...DEFAULT_POLICY_SETTINGS,
 });
 
@@ -153,8 +159,15 @@ export function serializeBusinessSettings(settingsLike = {}) {
   };
 
   for (const key of BUSINESS_SETTING_KEYS) {
-    serialized[key] =
-      parseFiniteNumber(source[key]) ?? DEFAULT_BUSINESS_SETTINGS[key];
+    if (key === "isDiscountEnabled") {
+      serialized.isDiscountEnabled =
+        typeof source.isDiscountEnabled === "boolean"
+          ? source.isDiscountEnabled
+          : DEFAULT_BUSINESS_SETTINGS.isDiscountEnabled;
+    } else {
+      serialized[key] =
+        parseFiniteNumber(source[key]) ?? DEFAULT_BUSINESS_SETTINGS[key];
+    }
   }
 
   return serialized;

@@ -61,6 +61,7 @@ function CheckAvailabilityPage() {
  const [selectedRoom, setSelectedRoom] = useState(null);
  const [selectedAppliances, setSelectedAppliances] = useState({});
  const [selectedBed, setSelectedBed] = useState(null);
+ const [selectedLeaseDuration, setSelectedLeaseDuration] = useState("6");
  const [showLoginConfirmBeforeReserve, setShowLoginConfirmBeforeReserve] =
  useState(false);
  const [changeRoomLocked, setChangeRoomLocked] = useState(false);
@@ -186,11 +187,14 @@ function CheckAvailabilityPage() {
  : "Full"
  : `${availableBeds} bed${availableBeds === 1 ? "" : "s"} available`,
  price: typeof room.price === "number" ? room.price : 0,
+ monthlyPrice: typeof room.monthlyPrice === "number" ? room.monthlyPrice : null,
+ shortTermRate: typeof room.shortTermRate === "number" ? room.shortTermRate : null,
+ longTermDiscountPercent: typeof room.longTermDiscountPercent === "number" ? room.longTermDiscountPercent : null,
  image: primaryImage,
  description: room.description || "",
  bedLayout:
  mappedType === "Private"
- ? "2 Single Beds"
+ ? "Private Room"
  : mappedType === "Shared"
  ? "2 Single Beds"
  : "4 Single Beds",
@@ -201,6 +205,7 @@ function CheckAvailabilityPage() {
  policies: room.policies || [],
  applianceFeeEnabled: !!room.applianceFeeEnabled,
  applianceFeeAmountPerUnit: Number(room.applianceFeeAmountPerUnit || 0),
+ isDiscountEnabled: room.isDiscountEnabled !== undefined ? Boolean(room.isDiscountEnabled) : true,
  };
  }),
  [rawRooms],
@@ -261,18 +266,20 @@ function CheckAvailabilityPage() {
  };
 
  // ── Room details / appliances ──────────────────────────────
- const openRoomDetails = (room) => {
- setSelectedRoom(room);
- setSelectedAppliances({});
- setSelectedBed(null);
- setIsDetailsModalOpen(true);
- };
- const closeRoomDetails = () => {
- setIsDetailsModalOpen(false);
- setSelectedRoom(null);
- setSelectedAppliances({});
- setSelectedBed(null);
- };
+  const openRoomDetails = (room) => {
+    setSelectedRoom(room);
+    setSelectedAppliances({});
+    setSelectedBed(null);
+    setSelectedLeaseDuration("6");
+    setIsDetailsModalOpen(true);
+  };
+  const closeRoomDetails = () => {
+    setIsDetailsModalOpen(false);
+    setSelectedRoom(null);
+    setSelectedAppliances({});
+    setSelectedBed(null);
+    setSelectedLeaseDuration("6");
+  };
  const handleApplianceQuantityChange = (id, qty) => {
  setSelectedAppliances((prev) => ({
  ...prev,
@@ -349,21 +356,22 @@ function CheckAvailabilityPage() {
  return;
  }
 
- try {
- const checkInDate = new Date();
- checkInDate.setDate(checkInDate.getDate() + 30);
- const payload = {
- roomId: selectedRoom.roomId,
- selectedBed: selectedBed
- ? { id: selectedBed.id, position: selectedBed.position }
- : null,
- selectedAppliances: buildSelectedAppliancesPayload(),
- moveInDate: checkInDate.toISOString(),
- totalPrice: selectedRoom.price || 5000,
- applianceFees: calculateApplianceFees(),
- viewingType: null,
- agreedToPrivacy: false,
- };
+    try {
+      const checkInDate = new Date();
+      checkInDate.setDate(checkInDate.getDate() + 30);
+      const payload = {
+        roomId: selectedRoom.roomId,
+        selectedBed: selectedBed
+          ? { id: selectedBed.id, position: selectedBed.position }
+          : null,
+        selectedAppliances: buildSelectedAppliancesPayload(),
+        leaseDuration: selectedLeaseDuration || "6",
+        moveInDate: checkInDate.toISOString(),
+        totalPrice: selectedRoom.price || 5000,
+        applianceFees: calculateApplianceFees(),
+        viewingType: null,
+        agreedToPrivacy: false,
+      };
  try {
  await reservationApi.create(payload);
  } catch (createErr) {
@@ -648,6 +656,8 @@ function CheckAvailabilityPage() {
  selectedAppliances={selectedAppliances}
  onApplianceQuantityChange={handleApplianceQuantityChange}
  calculateApplianceFees={calculateApplianceFees}
+ selectedLeaseDuration={selectedLeaseDuration}
+ onSelectLeaseDuration={setSelectedLeaseDuration}
  availableAppliances={AVAILABLE_APPLIANCES.map((appliance) => ({
  ...appliance,
  price: selectedRoom?.applianceFeeAmountPerUnit || appliance.price,

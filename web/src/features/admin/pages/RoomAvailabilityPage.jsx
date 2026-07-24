@@ -58,6 +58,14 @@ const getDotColor = (status) => {
   }
 };
 
+const getEffectiveOccupancy = (room) => {
+  if (!room) return 0;
+  const occupiedFromBeds = (room.beds || []).filter(
+    (b) => b.status === "occupied" || b.status === "reserved" || Boolean(b.occupiedBy?.userId)
+  ).length;
+  return Math.max(Number(room.currentOccupancy || 0), occupiedFromBeds);
+};
+
 const getDotLabel = (status) => {
   switch (status) {
     case "occupied":
@@ -207,14 +215,15 @@ function RoomAvailabilityPage() {
             ? 0
             : room.capacity - bedsInMaintenance;
 
+          const occupiedCount = getEffectiveOccupancy(room);
           let displayStatus = "available";
           if (roomLevelMaintenance) displayStatus = "maintenance";
           else if (
-            room.currentOccupancy >= effectiveCapacity &&
+            occupiedCount >= effectiveCapacity &&
             effectiveCapacity > 0
           )
             displayStatus = "full";
-          else if (room.currentOccupancy > 0) displayStatus = "partial";
+          else if (occupiedCount > 0) displayStatus = "partial";
           return displayStatus === roomStatusFilter;
         })();
 
@@ -329,15 +338,15 @@ function RoomAvailabilityPage() {
   const stats = useMemo(() => {
     const total = rooms.length;
     const occupied = rooms.reduce(
-      (sum, r) => sum + (r.currentOccupancy || 0),
+      (sum, r) => sum + getEffectiveOccupancy(r),
       0,
     );
     const capacity = rooms.reduce((sum, r) => sum + (r.capacity || 0), 0);
-    const full = rooms.filter((r) => r.currentOccupancy >= r.capacity).length;
+    const full = rooms.filter((r) => getEffectiveOccupancy(r) >= r.capacity).length;
     const partial = rooms.filter(
-      (r) => r.currentOccupancy > 0 && r.currentOccupancy < r.capacity,
+      (r) => getEffectiveOccupancy(r) > 0 && getEffectiveOccupancy(r) < r.capacity,
     ).length;
-    const available = rooms.filter((r) => r.currentOccupancy === 0).length;
+    const available = rooms.filter((r) => getEffectiveOccupancy(r) === 0).length;
     const maintenance = rooms.filter((r) => {
       const mBeds = (r.beds || []).filter(
         (b) => b.status === "maintenance",
@@ -495,8 +504,10 @@ function RoomAvailabilityPage() {
         type: formatRoomType(room.type),
         floor: room.floor,
         capacity: room.capacity,
-        currentOccupancy: room.currentOccupancy || 0,
-        status: `${room.currentOccupancy || 0}/${room.capacity || 0}`,
+        currentOccupancy: getEffectiveOccupancy(room),
+        status: String(room.type || "").toLowerCase().includes("private")
+          ? `${Math.min(1, getEffectiveOccupancy(room))}/1`
+          : `${getEffectiveOccupancy(room)}/${room.capacity || 0}`,
       })),
       [
         { key: "roomName", label: "Room Name" },
@@ -971,14 +982,15 @@ function RoomAvailabilityPage() {
                           ? 0
                           : room.capacity - bedsInMaintenance;
 
+                        const occupiedCount = getEffectiveOccupancy(room);
                         let displayStatus = "available";
                         if (roomLevelMaintenance) displayStatus = "maintenance";
                         else if (
-                          room.currentOccupancy >= effectiveCapacity &&
+                          occupiedCount >= effectiveCapacity &&
                           effectiveCapacity > 0
                         )
                           displayStatus = "full";
-                        else if (room.currentOccupancy > 0)
+                        else if (occupiedCount > 0)
                           displayStatus = "partial";
 
                         const config = getRoomStatusConfig(displayStatus);
@@ -1030,14 +1042,16 @@ function RoomAvailabilityPage() {
                             ) : (
                               <>
                                 <span className="text-xs text-muted-foreground font-medium">
-                                  {room.currentOccupancy || 0}/{effectiveCapacity}
+                                  {String(room.type || "").toLowerCase().includes("private")
+                                    ? `${Math.min(1, occupiedCount)}/1`
+                                    : `${getEffectiveOccupancy(room)}/${effectiveCapacity}`}
                                   {bedsInMaintenance > 0 && (
                                     <span className="ml-[2px]">
                                       ({bedsInMaintenance}M)
                                     </span>
                                   )}
                                 </span>
-                                {soonestBedVacancy && room.currentOccupancy > 0 && (
+                                {soonestBedVacancy && getEffectiveOccupancy(room) > 0 && (
                                   <span
                                     className="text-[10px] font-semibold mt-1 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full"
                                     style={{
@@ -1203,8 +1217,14 @@ function RoomAvailabilityPage() {
                     item.nextExpectedVacancy,
                   );
                   const tone = getForecastTone(daysUntil);
-                  const occupancyPct = Math.round(
-                    ((item.currentOccupancy || 0) / (item.capacity || 1)) * 100,
+                  const isPrivateForecastItem = String(item.type || "").toLowerCase().includes("private");
+                  const effectiveForecastCapacity = isPrivateForecastItem ? 1 : (item.capacity || 1);
+                  const effectiveForecastOccupancy = isPrivateForecastItem ? Math.min(1, item.currentOccupancy || 0) : (item.currentOccupancy || 0);
+                  const occupancyPct = Math.min(
+                    100,
+                    Math.round(
+                      (effectiveForecastOccupancy / effectiveForecastCapacity) * 100,
+                    ),
                   );
 
                   return (
@@ -1241,7 +1261,9 @@ function RoomAvailabilityPage() {
                             Committed
                           </span>
                           <strong>
-                            {item.currentOccupancy || 0}/{item.capacity || 0}
+                            {String(item.type || "").toLowerCase().includes("private")
+                              ? `${Math.min(1, item.currentOccupancy || 0)}/1`
+                              : `${item.currentOccupancy || 0}/${item.capacity || 0}`}
                           </strong>
                         </div>
                         <div>

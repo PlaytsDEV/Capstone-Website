@@ -4,6 +4,7 @@ import RequireNonAdmin from "../../shared/guards/RequireNonAdmin";
 import ProtectedRoute from "../../shared/components/ProtectedRoute";
 import { RouteShell } from "./RouteShell";
 import { PublicFrame } from "./PublicFrame";
+import GlobalLoading from "../../shared/components/GlobalLoading";
 import {
   LandingPage,
   PrivacyPolicyPage,
@@ -51,7 +52,7 @@ export function PublicRoutes() {
           path="/signin"
           element={
             <RequireNonAdmin>
-              <RouteShell name="SignIn">
+              <RouteShell name="SignIn" fallback={<GlobalLoading />}>
                 <SignIn />
               </RouteShell>
             </RequireNonAdmin>
@@ -61,7 +62,7 @@ export function PublicRoutes() {
           path="/signup"
           element={
             <RequireNonAdmin>
-              <RouteShell name="SignUp">
+              <RouteShell name="SignUp" fallback={<GlobalLoading />}>
                 <SignUp />
               </RouteShell>
             </RequireNonAdmin>
@@ -71,7 +72,7 @@ export function PublicRoutes() {
           path="/forgot-password"
           element={
             <RequireNonAdmin>
-              <RouteShell name="ForgotPassword">
+              <RouteShell name="ForgotPassword" fallback={<GlobalLoading />}>
                 <ForgotPassword />
               </RouteShell>
             </RequireNonAdmin>
@@ -81,7 +82,7 @@ export function PublicRoutes() {
           path="/verify-otp"
           element={
             <RequireNonAdmin>
-              <RouteShell name="OtpVerify">
+              <RouteShell name="OtpVerify" fallback={<GlobalLoading />}>
                 <OtpVerify />
               </RouteShell>
             </RequireNonAdmin>
@@ -99,7 +100,7 @@ export function PublicRoutes() {
           path="/reset-password"
           element={
             <RequireNonAdmin>
-              <RouteShell name="ResetPassword">
+              <RouteShell name="ResetPassword" fallback={<GlobalLoading />}>
                 <ResetPassword />
               </RouteShell>
             </RequireNonAdmin>

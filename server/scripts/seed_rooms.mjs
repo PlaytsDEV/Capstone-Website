@@ -7,9 +7,9 @@ dotenv.config();
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/lilycrest-dormitory";
 
 const PRICING = {
-  "private":           { price: 14400, monthlyPrice: 13500, capacity: 1, beds: ["upper", "lower"] }, 
-  "double-sharing":    { price:  8000, monthlyPrice:  7200, capacity: 2, beds: ["upper", "lower"] }, 
-  "quadruple-sharing": { price:  6300, monthlyPrice:  5400, capacity: 4, beds: ["upper", "lower", "upper", "lower"] }, 
+  "private":           { price: 14400, monthlyPrice: 13500, shortTermRate: 14400, longTermDiscountPercent: 10, capacity: 1, beds: ["upper", "lower"] }, 
+  "double-sharing":    { price:  8000, monthlyPrice:  7200, shortTermRate:  8000, longTermDiscountPercent: 20, capacity: 2, beds: ["upper", "lower"] }, 
+  "quadruple-sharing": { price:  6300, monthlyPrice:  5400, shortTermRate:  6300, longTermDiscountPercent: 10, capacity: 4, beds: ["upper", "lower", "upper", "lower"] }, 
 };
 
 const baseAmenities = ["Air Conditioning", "WiFi", "Double Decker Bed", "Mattress", "Table", "Chair", "Cabinet", "Shower Water Heater"];
@@ -85,6 +85,8 @@ const runSeeder = async () => {
         capacity: config.capacity,
         price: config.price,
         monthlyPrice: config.monthlyPrice,
+        shortTermRate: config.shortTermRate,
+        longTermDiscountPercent: config.longTermDiscountPercent,
         description: desc,
         amenities: baseAmenities,
         beds: beds,

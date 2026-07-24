@@ -37,6 +37,7 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   BillingPeriod: { countDocuments: billingPeriodCountDocuments },
   UtilityPeriod: { countDocuments: utilityPeriodCountDocuments },
   MaintenanceRequest: { countDocuments: maintenanceCountDocuments },
+  User: { find: jest.fn() },
   ROOM_BRANCHES: ["gil-puyat", "guadalupe"],
 }));
 
@@ -68,6 +69,8 @@ const {
   updateRoom,
   getOccupancyConsistency,
   deleteRoom,
+  addBed,
+  getMaxBedsForRoomType,
 } = await import("./roomsController.js");
 
 const createResponse = () => ({
@@ -275,5 +278,72 @@ describe("roomsController", () => {
     expect(next).toHaveBeenCalledTimes(1);
     expect(next.mock.calls[0][0].code).toBe("ROOM_ARCHIVE_BLOCKED");
     expect(next.mock.calls[0][0].details.openMaintenanceCount).toBe(2);
+  });
+
+  test("addBed blocks adding 5th bed to a quadruple-sharing room", async () => {
+    roomFindOne.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439011",
+      name: "GP-QUAD-1",
+      type: "quadruple-sharing",
+      branch: "gil-puyat",
+      beds: [
+        { id: "bed-1", position: "upper", status: "available" },
+        { id: "bed-2", position: "lower", status: "available" },
+        { id: "bed-3", position: "upper", status: "available" },
+        { id: "bed-4", position: "lower", status: "available" },
+      ],
+      toObject() {
+        return { ...this };
+      },
+      save: roomSave,
+    });
+
+    const req = {
+      params: { roomId: "507f1f77bcf86cd799439011" },
+      body: { position: "upper" },
+      branchFilter: "gil-puyat",
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await addBed(req, res, next);
+
+    expect(roomSave).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next.mock.calls[0][0].code).toBe("BED_LIMIT_REACHED");
+  });
+
+  test("addBed allows adding 4th bed to a quadruple-sharing room with 3 beds", async () => {
+    const mockRoom = {
+      _id: "507f1f77bcf86cd799439022",
+      name: "GP-QUAD-2",
+      type: "quadruple-sharing",
+      branch: "gil-puyat",
+      capacity: 3,
+      beds: [
+        { id: "bed-1", position: "upper", status: "available" },
+        { id: "bed-2", position: "lower", status: "available" },
+        { id: "bed-3", position: "upper", status: "available" },
+      ],
+      toObject() {
+        return { ...this };
+      },
+      save: roomSave,
+    };
+    roomFindOne.mockResolvedValue(mockRoom);
+
+    const req = {
+      params: { roomId: "507f1f77bcf86cd799439022" },
+      body: { position: "lower" },
+      branchFilter: "gil-puyat",
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await addBed(req, res, next);
+
+    expect(roomSave).toHaveBeenCalledTimes(1);
+    expect(sendSuccess).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
   });
 });

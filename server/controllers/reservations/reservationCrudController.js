@@ -141,6 +141,14 @@ export const getReservationById = async (req, res) => {
       });
     }
 
+    if (isAdminRole(dbUser.role) && !reservation.isViewedByAdmin) {
+      reservation.isViewedByAdmin = true;
+      reservation.adminViewedAt = new Date();
+      await reservation.save().catch((err) => {
+        logger.warn({ err, reservationId }, "Failed to update isViewedByAdmin on reservation view");
+      });
+    }
+
     res.json(serializeReservation(reservation));
   } catch (error) {
     logger.error({ err: error, requestId: req.id }, "Fetch reservation error");

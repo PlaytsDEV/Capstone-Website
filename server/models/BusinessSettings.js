@@ -113,6 +113,39 @@ const businessSettingsSchema = new mongoose.Schema(
       default: BUSINESS.ARCHIVE_CANCELLED_AFTER_DAYS,
       min: 0,
     },
+    longTermLeaseMinMonths: {
+      type: Number,
+      default: BUSINESS.LONG_TERM_LEASE_MIN_MONTHS || 6,
+      min: 1,
+    },
+    defaultLongTermDiscountPercent: {
+      type: Number,
+      default: BUSINESS.DEFAULT_LONG_TERM_DISCOUNT_PERCENT || 10,
+      min: 0,
+      max: 100,
+    },
+    isDiscountEnabled: {
+      type: Boolean,
+      default: true,
+    },
+    quadrupleDiscountPercent: {
+      type: Number,
+      default: 10,
+      min: 0,
+      max: 100,
+    },
+    doubleDiscountPercent: {
+      type: Number,
+      default: 20,
+      min: 0,
+      max: 100,
+    },
+    privateDiscountPercent: {
+      type: Number,
+      default: 10,
+      min: 0,
+      max: 100,
+    },
     branchOverrides: {
       type: Map,
       of: branchOverrideSchema,

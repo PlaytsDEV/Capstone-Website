@@ -440,17 +440,83 @@
   flex-shrink: 0;
 }
 
-/* Price */
-.ca-card-price {
-  font-size: 17px;
-  font-weight: 700;
-  color: var(--text-heading);
+/* Price Section — Ultra-Minimalist & Theme Adaptive */
+.ca-card-price-container {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color, rgba(229, 231, 235, 0.7));
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-start;
 }
 
-.ca-card-price span {
-  font-size: 13px;
-  font-weight: 400;
-  color: var(--text-muted);
+.ca-price-prefix {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted, #6B7280);
+  margin-right: 3px;
+}
+
+.ca-price-primary {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #D97706;
+  letter-spacing: -0.02em;
+}
+
+.ca-price-unit {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted, #6B7280);
+  margin-left: 3px;
+}
+
+.ca-price-badge-long {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2.5px 8px;
+  border-radius: 9999px;
+  background-color: rgba(217, 119, 6, 0.12);
+  color: #B45309;
+  border: 1px solid rgba(217, 119, 6, 0.25);
+  letter-spacing: 0.01em;
+}
+
+.ca-price-badge-std {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2.5px 8px;
+  border-radius: 9999px;
+  background-color: rgba(107, 114, 128, 0.1);
+  color: var(--text-muted, #6B7280);
+  border: 1px solid rgba(107, 114, 128, 0.2);
+}
+
+.ca-price-sub-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-muted, #6B7280);
+}
+
+.ca-price-sub-amount {
+  font-weight: 700;
+  color: var(--text-heading, #1F2937);
+}
+
+html[data-theme="dark"] .ca-price-primary {
+  color: #F59E0B;
+}
+
+html[data-theme="dark"] .ca-price-badge-long {
+  background-color: rgba(245, 158, 11, 0.18);
+  color: #FBBF24;
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+html[data-theme="dark"] .ca-price-sub-amount {
+  color: #F3F4F6;
 }
 
 /* ── Empty State ─────────────────────────────────────────────────── */

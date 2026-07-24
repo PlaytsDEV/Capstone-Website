@@ -1250,12 +1250,13 @@ export const validateSelectedAppliancesForReservation = ({
   return validatedAppliances;
 };
 
-export const resolveReservationRent = ({ room, leaseDuration }) => {
+export const resolveReservationRent = ({ room, leaseDuration, isDiscountEnabled }) => {
   const parsedLeaseDuration = Number(leaseDuration);
-  const roomPrice = Number(room?.price ?? 0);
+  const roomPrice = Number(room?.shortTermRate ?? room?.price ?? 0);
   const roomMonthlyPrice = Number(room?.monthlyPrice ?? room?.price ?? 0);
+  const discountActive = isDiscountEnabled !== false && room?.isDiscountEnabled !== false;
   const shouldUseMonthlyPrice =
-    Number.isFinite(parsedLeaseDuration) && parsedLeaseDuration >= 6;
+    discountActive && Number.isFinite(parsedLeaseDuration) && parsedLeaseDuration >= 6;
 
   const preferredRent = shouldUseMonthlyPrice ? roomMonthlyPrice : roomPrice;
   if (Number.isFinite(preferredRent) && preferredRent >= 0) {
@@ -1276,7 +1277,7 @@ export const buildReservationPricing = async ({
   const settings = await getBusinessSettings();
   const branchId = String(room?.branch || "").toLowerCase();
   const branchSettings = getBranchSettings(branchId, settings);
-  const monthlyRent = resolveReservationRent({ room, leaseDuration });
+  const monthlyRent = resolveReservationRent({ room, leaseDuration, isDiscountEnabled: settings?.isDiscountEnabled });
   const validatedSelectedAppliances = validateSelectedAppliancesForReservation({
     selectedAppliances,
     branchId,

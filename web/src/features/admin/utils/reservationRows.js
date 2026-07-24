@@ -51,7 +51,8 @@ export function isNewReservation(reservation, maxAgeHours = 48) {
 
 export function mapReservationAdminRow(reservation) {
   const branchCode = reservation.roomId?.branch || "";
-  const isNew = isNewReservation(reservation);
+  const isViewedByAdmin = Boolean(reservation.isViewedByAdmin);
+  const isNew = isNewReservation(reservation) && !isViewedByAdmin;
 
   return {
     id: reservation._id,
@@ -69,6 +70,7 @@ export function mapReservationAdminRow(reservation) {
     moveInDate: reservation.moveInDate,
     moveOutDate: reservation.moveOutDate,
     status: reservation.status || "pending",
+    isViewedByAdmin,
     isNew,
     totalPrice: reservation.totalPrice,
     paymentStatus: reservation.paymentStatus,

@@ -16,6 +16,7 @@ const WHOLE_NUMBER_FIELDS = new Set([
   "staleVisitApprovedHours",
   "stalePaymentPendingHours",
   "archiveCancelledAfterDays",
+  "longTermLeaseMinMonths",
 ]);
 
 const FIELD_ERROR_LABELS = Object.freeze({
@@ -31,6 +32,11 @@ const FIELD_ERROR_LABELS = Object.freeze({
   stalePaymentPendingHours: "Stale payment pending hours",
   archiveCancelledAfterDays: "Archive cancelled after days",
   applianceFeeAmountPerUnit: "Appliance fee amount",
+  longTermLeaseMinMonths: "Long-term lease minimum months",
+  defaultLongTermDiscountPercent: "Default long-term discount percentage",
+  quadrupleDiscountPercent: "Quadruple sharing discount percentage",
+  doubleDiscountPercent: "Double sharing discount percentage",
+  privateDiscountPercent: "Private room discount percentage",
 });
 
 const SETTINGS_ENTITY_TYPE = "business_settings";
@@ -49,6 +55,12 @@ const buildComparablePayload = (payload) => ({
   staleVisitApprovedHours: payload.staleVisitApprovedHours,
   stalePaymentPendingHours: payload.stalePaymentPendingHours,
   archiveCancelledAfterDays: payload.archiveCancelledAfterDays,
+  longTermLeaseMinMonths: payload.longTermLeaseMinMonths,
+  defaultLongTermDiscountPercent: payload.defaultLongTermDiscountPercent,
+  isDiscountEnabled: payload.isDiscountEnabled,
+  quadrupleDiscountPercent: payload.quadrupleDiscountPercent,
+  doubleDiscountPercent: payload.doubleDiscountPercent,
+  privateDiscountPercent: payload.privateDiscountPercent,
   branchOverrides: payload.branchOverrides,
 });
 
@@ -118,6 +130,10 @@ export async function updateBusinessRules(req, res, next) {
     const beforePayload = buildSettingsPayload(settings);
     const touchedBranchOverrides = {};
     let branchOverridePatch = null;
+
+    if (req.body.isDiscountEnabled !== undefined) {
+      settings.isDiscountEnabled = Boolean(req.body.isDiscountEnabled);
+    }
 
     for (const fieldKey of Object.keys(FIELD_ERROR_LABELS)) {
       if (

@@ -101,7 +101,9 @@ function ReservationsPage() {
   const isOwner = user?.role === "owner";
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState("reservations");
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState(
+    () => searchParams.get("search") || "",
+  );
   const [statusFilter, setStatusFilter] = useState("all");
   const requestedBranch = searchParams.get("branch");
   const [branchFilter, setBranchFilter] = useState(() =>
@@ -140,6 +142,13 @@ function ReservationsPage() {
     });
   }, []);
 
+  useEffect(() => {
+    const urlSearch = searchParams.get("search");
+    if (urlSearch !== null && urlSearch !== searchTerm) {
+      setSearchTerm(urlSearch);
+    }
+  }, [searchParams]);
+
   const [confirmModal, setConfirmModal] = useState({
     open: false,
     title: "",
@@ -162,7 +171,7 @@ function ReservationsPage() {
         const row = mapReservationAdminRow(raw);
         return {
           ...row,
-          isNew: row.isNew && !seenIds.has(row.id),
+          isNew: row.isNew && !raw.isViewedByAdmin && !seenIds.has(row.id),
         };
       }),
     [rawReservations, seenIds],
@@ -550,10 +559,11 @@ function ReservationsPage() {
     if (activeTab !== "reservations") return;
     const reservationId = searchParams.get("reservationId");
     if (!reservationId) return;
+    markAsSeen(reservationId);
     if (selectedReservation?.id === reservationId) return;
 
     handleView(reservationId);
-  }, [activeTab, handleView, searchParams, selectedReservation?.id]);
+  }, [activeTab, handleView, markAsSeen, searchParams, selectedReservation?.id]);
 
   const refetchReservations = useCallback(
     () => queryClient.invalidateQueries({ queryKey: ["reservations"] }),
@@ -961,6 +971,7 @@ function ReservationsPage() {
                       <tr
                         key={row.id}
                         className="border-b border-[var(--border-light)] hover:bg-muted/30 transition-colors cursor-pointer"
+                        onClick={() => handleView(row.id)}
                         onMouseEnter={() =>
                           prefetchReservationDetail(row.id).catch(() => {})
                         }

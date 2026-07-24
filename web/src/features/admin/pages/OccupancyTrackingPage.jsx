@@ -534,18 +534,17 @@ function OccupancyTrackingPage({ isEmbedded = false }) {
                 </span>
               </div>
               <div className="text-lg font-semibold text-foreground">
-                {roomTypeStats.private.occupied}/
-                {roomTypeStats.private.capacity}
+                {roomTypeStats.private.occupied} occupied
                 <span className="text-sm font-normal text-muted-foreground ml-1">
                   (
-                  {roomTypeStats.private.capacity > 0
+                  {roomTypeStats.private.count > 0
                     ? Math.round(
                         (roomTypeStats.private.occupied /
-                          roomTypeStats.private.capacity) *
+                          roomTypeStats.private.count) *
                           100,
                       )
                     : 0}
-                  %)
+                  % rooms)
                 </span>
               </div>
             </div>

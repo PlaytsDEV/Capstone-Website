@@ -2,6 +2,7 @@ const { ObjectId } = require('mongodb');
 const { getDb } = require('../config/database');
 const {
   CHATBOT_SYSTEM_PROMPT,
+  buildLeasingSystemPrompt,
   KNOWLEDGE_BASE,
   ESCALATION_KEYWORDS,
   DEFAULT_FOLLOWUPS,
@@ -128,11 +129,62 @@ function pickFollowups(knowledgeEntries, intent) {
 }
 
 /**
+ * Dynamically fetches live room prices from MongoDB and hydrates the Leasing Assistant prompt.
+ */
+async function fetchHydratedLeasingPrompt(db, branch = 'gil-puyat') {
+  try {
+    const rooms = await db.collection('rooms').find(
+      { branch, isArchived: { $ne: true } },
+      { projection: { type: 1, price: 1, monthlyPrice: 1 } }
+    ).toArray();
+
+    if (!rooms || rooms.length === 0) {
+      return buildLeasingSystemPrompt();
+    }
+
+    const quad = rooms.find((r) => r.type === 'quadruple-sharing') || {};
+    const double = rooms.find((r) => r.type === 'double-sharing') || {};
+    const privateRoom = rooms.find((r) => r.type === 'private') || {};
+
+    const formatNum = (num, fallback) =>
+      typeof num === 'number' && !isNaN(num) && num > 0 ? num.toLocaleString('en-PH') : fallback;
+
+    const quadShort = formatNum(quad.price, '6,300');
+    const quadLong = formatNum(quad.monthlyPrice, '5,400');
+    const quadSav = formatNum((quad.price || 6300) - (quad.monthlyPrice || 5400), '900');
+
+    const doubleShort = formatNum(double.price, '8,000');
+    const doubleLong = formatNum(double.monthlyPrice, '7,200');
+    const doubleSav = formatNum((double.price || 8000) - (double.monthlyPrice || 7200), '800');
+
+    const privateShort = formatNum(privateRoom.price, '14,400');
+    const privateLong = formatNum(privateRoom.monthlyPrice, '13,500');
+    const privateSav = formatNum((privateRoom.price || 14400) - (privateRoom.monthlyPrice || 13500), '900');
+
+    return buildLeasingSystemPrompt({
+      quadShort,
+      quadLong,
+      quadSavings: quadSav,
+      doubleShort,
+      doubleLong,
+      doubleSavings: doubleSav,
+      privateShort,
+      privateLong,
+      privateSavings: privateSav,
+    });
+  } catch (err) {
+    console.error('[Chatbot] Error fetching room rates for leasing prompt:', err);
+    return buildLeasingSystemPrompt();
+  }
+}
+
+/**
  * Build a rich, context-aware prompt for Gemini.
  * This is the heart of the AI-first approach.
  */
-function buildAIPrompt(userMessage, contextLines, knowledgeHints, conversationHistory, isEmotional = false) {
+function buildAIPrompt(userMessage, contextLines, knowledgeHints, conversationHistory, isEmotional = false, systemPromptOverride = null) {
   const timeContext = `Current time: ${new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}`;
+  const baseSystemPrompt = systemPromptOverride || CHATBOT_SYSTEM_PROMPT;
   const contextBlock = contextLines.length > 0
     ? `\nTENANT CONTEXT:\n${contextLines.join('\n')}`
     : '';
@@ -146,7 +198,7 @@ function buildAIPrompt(userMessage, contextLines, knowledgeHints, conversationHi
     ? '\n\nNOTE: The tenant appears frustrated or upset. Lead your response with genuine empathy in the first sentence before addressing their issue.'
     : '';
 
-  return `${CHATBOT_SYSTEM_PROMPT}\n\n${timeContext}${contextBlock}${knowledgeBlock}${historyBlock}${emotionalHint}\n\nTenant: ${userMessage}`;
+  return `${baseSystemPrompt}\n\n${timeContext}${contextBlock}${knowledgeBlock}${historyBlock}${emotionalHint}\n\nTenant: ${userMessage}`;
 }
 
 async function ensureLiveChatRequest(db, sessionId, userId, userName, userEmail, reason) {
@@ -398,8 +450,20 @@ async function sendMessage(req, res) {
         meta.intent = 'greeting';
         meta.confidence = 1;
       } else {
-        // Normal message — AI-first, always
-        const prompt = buildAIPrompt(userMessage, contextLines, knowledgeHints, conversationHistory, isEmotional);
+        // Normal message — AI-first, check if message is related to leasing/pricing/rooms
+        let systemPromptOverride = null;
+        const isLeasingInquiry =
+          meta.intent === 'reservation' ||
+          /(price|rate|cost|rent|how much|quad|double|private|room rate|deposit|advance|short-term|long-term|move-in)/i.test(userMessage);
+
+        if (isLeasingInquiry) {
+          const branch = activeReservation?.branch || 'gil-puyat';
+          systemPromptOverride = await fetchHydratedLeasingPrompt(db, branch);
+        }
+
+        const prompt = buildAIPrompt(
+          userMessage, contextLines, knowledgeHints, conversationHistory, isEmotional, systemPromptOverride
+        );
         const { text } = await sendGeminiMessage(sessionId, prompt);
 
         if (text && !looksLikeCode(text)) {
