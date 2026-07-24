@@ -189,6 +189,8 @@ function CheckAvailabilityPage() {
  price: typeof room.price === "number" ? room.price : 0,
  monthlyPrice: typeof room.monthlyPrice === "number" ? room.monthlyPrice : null,
  shortTermRate: typeof room.shortTermRate === "number" ? room.shortTermRate : null,
+ regularLongRate: typeof room.regularLongRate === "number" ? room.regularLongRate : null,
+ regularShortRate: typeof room.regularShortRate === "number" ? room.regularShortRate : null,
  longTermDiscountPercent: typeof room.longTermDiscountPercent === "number" ? room.longTermDiscountPercent : null,
  image: primaryImage,
  description: room.description || "",
@@ -206,6 +208,10 @@ function CheckAvailabilityPage() {
  applianceFeeEnabled: !!room.applianceFeeEnabled,
  applianceFeeAmountPerUnit: Number(room.applianceFeeAmountPerUnit || 0),
  isDiscountEnabled: room.isDiscountEnabled !== undefined ? Boolean(room.isDiscountEnabled) : true,
+ quadrupleDiscountPercent: typeof room.quadrupleDiscountPercent === "number" ? room.quadrupleDiscountPercent : 10,
+ doubleDiscountPercent: typeof room.doubleDiscountPercent === "number" ? room.doubleDiscountPercent : 20,
+ privateDiscountPercent: typeof room.privateDiscountPercent === "number" ? room.privateDiscountPercent : 10,
+ longTermLeaseMinMonths: typeof room.longTermLeaseMinMonths === "number" ? room.longTermLeaseMinMonths : 6,
  };
  }),
  [rawRooms],
@@ -270,7 +276,7 @@ function CheckAvailabilityPage() {
     setSelectedRoom(room);
     setSelectedAppliances({});
     setSelectedBed(null);
-    setSelectedLeaseDuration("6");
+    setSelectedLeaseDuration(String(room?.longTermLeaseMinMonths || 6));
     setIsDetailsModalOpen(true);
   };
   const closeRoomDetails = () => {

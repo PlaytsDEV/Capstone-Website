@@ -103,57 +103,68 @@ export default function RoomDetailsModal({
    }
  };
 
-  // Pricing & Discount logic based on official flyer
-  const getFlyerRates = (roomType) => {
+  const getFlyerRates = (roomType, targetRoom = {}) => {
     const norm = String(roomType || "").toLowerCase();
+    let regularLong = targetRoom.regularLongRate ?? 6000;
+    let regularShort = targetRoom.regularShortRate ?? 7000;
+    let defaultDiscount = targetRoom.quadrupleDiscountPercent ?? 10;
+
     if (norm.includes("double")) {
-      return {
-        regularShort: 10000,
-        shortTerm: 8000,
-        regularLong: 9000,
-        longTerm: 7200,
-        discountPercent: 20,
-      };
+      regularLong = targetRoom.regularLongRate ?? 9000;
+      regularShort = targetRoom.regularShortRate ?? 10000;
+      defaultDiscount = targetRoom.doubleDiscountPercent ?? 20;
+    } else if (norm.includes("private")) {
+      regularLong = targetRoom.regularLongRate ?? 15000;
+      regularShort = targetRoom.regularShortRate ?? 16000;
+      defaultDiscount = targetRoom.privateDiscountPercent ?? 10;
+    } else {
+      regularLong = targetRoom.regularLongRate ?? 6000;
+      regularShort = targetRoom.regularShortRate ?? 7000;
+      defaultDiscount = targetRoom.quadrupleDiscountPercent ?? 10;
     }
-    if (norm.includes("private")) {
-      return {
-        regularShort: 16000,
-        shortTerm: 14400,
-        regularLong: 15000,
-        longTerm: 13500,
-        discountPercent: 10,
-      };
+
+    const discountPercent = typeof targetRoom.longTermDiscountPercent === "number"
+      ? targetRoom.longTermDiscountPercent
+      : defaultDiscount;
+
+    let longTerm = typeof targetRoom.monthlyPrice === "number" && targetRoom.monthlyPrice > 0
+      ? targetRoom.monthlyPrice
+      : Math.round(regularLong * (1 - discountPercent / 100));
+
+    let shortTerm = typeof targetRoom.shortTermRate === "number" && targetRoom.shortTermRate > 0
+      ? targetRoom.shortTermRate
+      : (typeof targetRoom.price === "number" && targetRoom.price > 0 ? targetRoom.price : Math.round(regularShort * (1 - discountPercent / 100)));
+
+    if (discountPercent > 0 && discountPercent < 100) {
+      regularLong = Math.round(longTerm / (1 - discountPercent / 100));
+      regularShort = Math.round(shortTerm / (1 - discountPercent / 100));
     }
-    // Quadruple Sharing
+
     return {
-      regularShort: 7000,
-      shortTerm: 6300,
-      regularLong: 6000,
-      longTerm: 5400,
-      discountPercent: 10,
+      regularShort,
+      shortTerm,
+      regularLong,
+      longTerm,
+      discountPercent,
     };
   };
 
-  const flyer = getFlyerRates(room.type);
+  const flyer = getFlyerRates(room.type, room);
   const isDiscountEnabled = room.isDiscountEnabled !== false;
 
-  const leaseMonths = parseInt(activeLeaseDuration, 10) || 6;
-  const isLongTerm = leaseMonths >= 6;
+  const minMonths = room.longTermLeaseMinMonths ?? 6;
+  const leaseMonths = parseInt(activeLeaseDuration, 10) || minMonths;
+  const isLongTerm = leaseMonths >= minMonths;
 
-  // Active regular base rate from flyer
+  // Active regular base rate from flyer (short-term vs long-term base rate)
   const activeRegularRate = isLongTerm ? flyer.regularLong : flyer.regularShort;
 
-  // Active net monthly rent (uses room record override if set, else official flyer rate)
-  let activeMonthlyRate = isLongTerm
-    ? (room.monthlyPrice || room.price || flyer.longTerm)
-    : (room.shortTermRate || flyer.shortTerm);
+  // Active net monthly rent (discount applies to both short-term and long-term base rates)
+  let activeMonthlyRate = isDiscountEnabled
+    ? (isLongTerm ? flyer.longTerm : flyer.shortTerm)
+    : activeRegularRate;
 
-  // If long-term discounts are globally disabled, revert to regular base rate with 0% discount
-  if (!isDiscountEnabled) {
-    activeMonthlyRate = activeRegularRate;
-  }
-
-  // Calculate flyer discount amount & percent for 100% mathematical consistency with official flyer
+  // Calculate flyer discount amount & percent for 100% mathematical consistency
   const activeFlyerDiscount = (isDiscountEnabled && activeRegularRate > activeMonthlyRate)
     ? (activeRegularRate - activeMonthlyRate)
     : 0;
@@ -162,8 +173,8 @@ export default function RoomDetailsModal({
     ? Math.round((activeFlyerDiscount / activeRegularRate) * 100)
     : 0;
 
-  const shortTermRate = flyer.shortTerm;
-  const longTermRate = isDiscountEnabled ? (room.monthlyPrice || room.price || flyer.longTerm) : flyer.regularLong;
+  const shortTermRate = isDiscountEnabled ? flyer.shortTerm : flyer.regularShort;
+  const longTermRate = isDiscountEnabled ? (room.monthlyPrice || flyer.longTerm) : flyer.regularLong;
   const monthlyDiscountAmount = activeFlyerDiscount;
   const totalSavingsAmount = activeFlyerDiscount * leaseMonths;
 
@@ -543,13 +554,13 @@ export default function RoomDetailsModal({
         <Calculator className="w-5 h-5" style={{ color: "var(--color-accent, #D4AF37)" }} />
         Move-in Cost & Lease Calculator
       </h3>
-      {isLongTerm ? (
+      {isDiscountEnabled && discountPercent > 0 ? (
         <span className="text-xs px-2.5 py-1 rounded-full font-bold bg-amber-500 text-slate-950">
-          {monthlyDiscountAmount > 0 ? `${discountPercent}% OFF (Long-Term Rate)` : "Long-Term Standard Rate"}
+          {discountPercent}% OFF Promo Rate
         </span>
       ) : (
         <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-muted border border-border text-muted-foreground">
-          Short-Term Standard Rate
+          Standard Base Rate
         </span>
       )}
     </div>
@@ -561,41 +572,41 @@ export default function RoomDetailsModal({
         Select Preferred Lease Term
       </label>
       <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
-        {[
-          { value: "1", label: "1 mo" },
-          { value: "2", label: "2 mos" },
-          { value: "3", label: "3 mos" },
-          { value: "4", label: "4 mos" },
-          { value: "5", label: "5 mos" },
-          { value: "6", label: "6 mos" },
-          { value: "12", label: "1 yr" },
-        ].map((term) => {
-          const isSelected = activeLeaseDuration === term.value;
-          const isTermLong = parseInt(term.value, 10) >= 6;
-          return (
-            <button
-              key={term.value}
-              type="button"
-              onClick={() => handleLeaseChange(term.value)}
-              className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition-all border relative ${
-                isSelected
-                  ? "shadow-sm border-amber-500"
-                  : "bg-card border-border hover:border-amber-500/50 text-muted-foreground"
-              }`}
-              style={{
-                backgroundColor: isSelected ? "var(--color-accent, #D4AF37)" : undefined,
-                color: isSelected ? "#0A1628" : undefined,
-              }}
-            >
-              {term.label}
-              {isTermLong && discountPercent > 0 && (
-                <span className="block text-[9px] font-normal opacity-80">
-                  {discountPercent}% OFF
-                </span>
-              )}
-            </button>
-          );
-        })}
+        {(() => {
+          const defaultTerms = [1, 2, 3, 4, 5, 6, 12];
+          if (!defaultTerms.includes(minMonths)) {
+            defaultTerms.push(minMonths);
+            defaultTerms.sort((a, b) => a - b);
+          }
+          return defaultTerms.map((m) => {
+            const valStr = String(m);
+            const labelStr = m === 12 ? "1 yr" : `${m} mo${m > 1 ? "s" : ""}`;
+            const isSelected = activeLeaseDuration === valStr;
+            return (
+              <button
+                key={valStr}
+                type="button"
+                onClick={() => handleLeaseChange(valStr)}
+                className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition-all border relative ${
+                  isSelected
+                    ? "shadow-sm border-amber-500"
+                    : "bg-card border-border hover:border-amber-500/50 text-muted-foreground"
+                }`}
+                style={{
+                  backgroundColor: isSelected ? "var(--color-accent, #D4AF37)" : undefined,
+                  color: isSelected ? "#0A1628" : undefined,
+                }}
+              >
+                {labelStr}
+                {isDiscountEnabled && discountPercent > 0 && (
+                  <span className="block text-[9px] font-normal opacity-80">
+                    {discountPercent}% OFF
+                  </span>
+                )}
+              </button>
+            );
+          });
+        })()}
       </div>
     </div>
 
@@ -661,11 +672,11 @@ export default function RoomDetailsModal({
       </div>
     </div>
 
-    {/* Long-Term Savings Banner */}
-    {isLongTerm && totalSavingsAmount > 0 && (
+    {/* Total Savings Banner */}
+    {totalSavingsAmount > 0 && (
       <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-xs font-medium flex items-center justify-between">
         <span>
-          🎉 <strong>Long-Term Savings:</strong> You save ₱{totalSavingsAmount.toLocaleString()} over your {leaseMonths}-month contract commitment!
+          🎉 <strong>Total Savings:</strong> You save ₱{totalSavingsAmount.toLocaleString()} over your {leaseMonths}-month contract commitment!
         </span>
       </div>
     )}

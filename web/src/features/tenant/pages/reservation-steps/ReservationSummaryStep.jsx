@@ -141,7 +141,7 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
 
   const selectedBed = reservationData?.selectedBed;
   const applianceFees = toFiniteNumber(reservationData?.applianceFees, 0);
-  const monthlyRent = toFiniteNumber(room.price || room.monthlyPrice, 0);
+  const monthlyRent = toFiniteNumber(room.monthlyPrice || room.price, 0);
   const estimatedMonthlyTotal = monthlyRent + applianceFees;
   const reservationFeeAmount = toFiniteNumber(reservationData?.reservationFeeAmount, 2000);
   const availableSlots = getAvailableSlots(room);

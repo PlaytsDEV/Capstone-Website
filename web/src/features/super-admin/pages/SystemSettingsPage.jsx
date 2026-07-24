@@ -105,17 +105,9 @@ const BILLING_FIELDS = [
 
 const LEASE_PRICING_FIELDS = [
   {
-    key: "longTermLeaseMinMonths",
-    label: "Long-Term Minimum Months",
-    description: "Minimum lease duration (in months) to qualify for long-term rate discounts.",
-    icon: Calendar,
-    step: "1",
-    formatValue: (value) => `${Number(value || 0).toLocaleString("en-PH")} months`,
-  },
-  {
     key: "quadrupleDiscountPercent",
     label: "Quadruple Sharing Discount",
-    description: "Long-term lease discount percentage for Quadruple Sharing rooms (e.g. 10%).",
+    description: "Discount percentage for Quadruple Sharing rooms (e.g. 10%).",
     icon: Percent,
     step: "1",
     formatValue: (value) => `${Number(value || 0).toLocaleString("en-PH")}%`,
@@ -123,7 +115,7 @@ const LEASE_PRICING_FIELDS = [
   {
     key: "doubleDiscountPercent",
     label: "Double Sharing Discount",
-    description: "Long-term lease discount percentage for Double Sharing rooms (e.g. 20%).",
+    description: "Discount percentage for Double Sharing rooms (e.g. 20%).",
     icon: Percent,
     step: "1",
     formatValue: (value) => `${Number(value || 0).toLocaleString("en-PH")}%`,
@@ -131,7 +123,7 @@ const LEASE_PRICING_FIELDS = [
   {
     key: "privateDiscountPercent",
     label: "Private Room Discount",
-    description: "Long-term lease discount percentage for Private rooms (e.g. 10%).",
+    description: "Discount percentage for Private rooms (e.g. 10%).",
     icon: Percent,
     step: "1",
     formatValue: (value) => `${Number(value || 0).toLocaleString("en-PH")}%`,
@@ -444,13 +436,13 @@ export default function SystemSettingsPage() {
       <div>
         <h2 className="sa2-card-title">Lease & Pricing Policies</h2>
         <p className="sa-settings-section-copy">
-          Configure short-term vs. long-term lease rules and discount percentages per room type.
+          Configure discount percentages per room type automatically applied to room base prices for both short-term and long-term stays.
         </p>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "var(--bg-muted, rgba(0,0,0,0.04))", padding: "8px 14px", borderRadius: "12px", border: "1px solid var(--border-color, #E5E7EB)" }}>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: "12px", fontWeight: "700", color: "var(--text-heading)" }}>
-            Enable Long-Term Discounts
+            Enable Room Discounts
           </div>
           <div style={{ fontSize: "11px", color: form.isDiscountEnabled ? "#10B981" : "#F59E0B", fontWeight: "600" }}>
             {form.isDiscountEnabled ? "Active (Promo Rates Applied)" : "Disabled (0% Discount Applied)"}
@@ -490,7 +482,7 @@ export default function SystemSettingsPage() {
       <div style={{ margin: "12px 0", padding: "12px 16px", borderRadius: "8px", background: "rgba(245, 158, 11, 0.12)", border: "1px solid rgba(245, 158, 11, 0.3)", color: "#B45309", fontSize: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
         <AlertTriangle style={{ width: 16, height: 16, flexShrink: 0 }} />
         <span>
-          <strong>Discounts Disabled:</strong> All room long-term rates will match standard short-term rates (0% discount applied). Tenants will pay standard monthly rent regardless of lease duration.
+          <strong>Discounts Disabled:</strong> All rooms will revert to standard base rates (0% discount applied). Tenants will pay standard monthly rent regardless of lease duration.
         </span>
       </div>
     )}

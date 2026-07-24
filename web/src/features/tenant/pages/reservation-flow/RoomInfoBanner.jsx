@@ -39,7 +39,7 @@ const RoomInfoBanner = ({ room }) => {
     room.title || room.name || room.roomNumber || room.id,
     "Room",
   );
-  const roomPrice = toFiniteNumber(room.price || room.monthlyPrice || room.monthlyRent, 0);
+  const roomPrice = toFiniteNumber(room.monthlyPrice || room.price || room.monthlyRent, 0);
 
   return (
     <div className="rf-room-banner">

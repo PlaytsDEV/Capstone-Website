@@ -40,26 +40,60 @@ const RoomCard = React.memo(({ room, onClick }) => {
 
   const isPrivate = String(room.type || "").toLowerCase().includes("private");
 
-  // Pricing & Discount logic strictly aligned with official flyer
-  const getFlyerRates = (roomType) => {
+  const minMonths = room.longTermLeaseMinMonths ?? 6;
+
+  const getFlyerRates = (roomType, targetRoom = {}) => {
     const norm = String(roomType || "").toLowerCase();
+    let regularLong = targetRoom.regularLongRate ?? 6000;
+    let regularShort = targetRoom.regularShortRate ?? 7000;
+    let defaultDiscount = targetRoom.quadrupleDiscountPercent ?? 10;
+
     if (norm.includes("double")) {
-      return { regularShort: 10000, shortTerm: 8000, regularLong: 9000, longTerm: 7200, discountPercent: 20 };
+      regularLong = targetRoom.regularLongRate ?? 9000;
+      regularShort = targetRoom.regularShortRate ?? 10000;
+      defaultDiscount = targetRoom.doubleDiscountPercent ?? 20;
+    } else if (norm.includes("private")) {
+      regularLong = targetRoom.regularLongRate ?? 15000;
+      regularShort = targetRoom.regularShortRate ?? 16000;
+      defaultDiscount = targetRoom.privateDiscountPercent ?? 10;
+    } else {
+      regularLong = targetRoom.regularLongRate ?? 6000;
+      regularShort = targetRoom.regularShortRate ?? 7000;
+      defaultDiscount = targetRoom.quadrupleDiscountPercent ?? 10;
     }
-    if (norm.includes("private")) {
-      return { regularShort: 16000, shortTerm: 14400, regularLong: 15000, longTerm: 13500, discountPercent: 10 };
+
+    const discountPercent = typeof targetRoom.longTermDiscountPercent === "number"
+      ? targetRoom.longTermDiscountPercent
+      : defaultDiscount;
+
+    let longTerm = typeof targetRoom.monthlyPrice === "number" && targetRoom.monthlyPrice > 0
+      ? targetRoom.monthlyPrice
+      : Math.round(regularLong * (1 - discountPercent / 100));
+
+    let shortTerm = typeof targetRoom.shortTermRate === "number" && targetRoom.shortTermRate > 0
+      ? targetRoom.shortTermRate
+      : (typeof targetRoom.price === "number" && targetRoom.price > 0 ? targetRoom.price : Math.round(regularShort * (1 - discountPercent / 100)));
+
+    if (discountPercent > 0 && discountPercent < 100) {
+      regularLong = Math.round(longTerm / (1 - discountPercent / 100));
+      regularShort = Math.round(shortTerm / (1 - discountPercent / 100));
     }
-    return { regularShort: 7000, shortTerm: 6300, regularLong: 6000, longTerm: 5400, discountPercent: 10 };
+
+    return {
+      regularShort,
+      shortTerm,
+      regularLong,
+      longTerm,
+      discountPercent,
+    };
   };
 
-  const flyer = getFlyerRates(room.type);
+  const flyer = getFlyerRates(room.type, room);
   const isDiscountEnabled = room.isDiscountEnabled !== false;
 
-  const shortTermRate = room.shortTermRate || flyer.shortTerm || flyer.regularShort;
   const activeRegularRate = flyer.regularLong;
-  const longTermRate = !isDiscountEnabled
-    ? activeRegularRate
-    : (room.monthlyPrice || room.price || flyer.longTerm);
+  const longTermRate = !isDiscountEnabled ? flyer.regularLong : (room.monthlyPrice || flyer.longTerm);
+  const shortTermRate = !isDiscountEnabled ? flyer.regularShort : (room.shortTermRate || flyer.shortTerm);
 
   const activeFlyerDiscount = (isDiscountEnabled && activeRegularRate > longTermRate)
     ? (activeRegularRate - longTermRate)
@@ -82,7 +116,7 @@ const RoomCard = React.memo(({ room, onClick }) => {
         {/* Discount Badge */}
         {discountPercent > 0 && (
           <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full text-[11px] font-bold shadow-md bg-amber-500 text-slate-950 z-10">
-            {discountPercent}% OFF (6+ mos)
+            {discountPercent}% OFF ({minMonths}+ mos)
           </div>
         )}
 

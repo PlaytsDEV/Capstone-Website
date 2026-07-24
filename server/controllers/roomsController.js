@@ -579,15 +579,78 @@ const buildRoomQueryFilter = (query = {}) => {
   return filter;
 };
 
+const getRoomDiscountDetails = (roomType, settings, room) => {
+  const isDiscountEnabled = settings?.isDiscountEnabled !== false && room?.isDiscountEnabled !== false;
+  const normType = String(roomType || "").toLowerCase();
+
+  let baseLongRate = 6000;
+  let baseShortRate = 7000;
+  let configuredDiscountPercent = settings?.quadrupleDiscountPercent ?? 10;
+
+  if (normType.includes("double")) {
+    baseLongRate = 9000;
+    baseShortRate = 10000;
+    configuredDiscountPercent = settings?.doubleDiscountPercent ?? 20;
+  } else if (normType.includes("private")) {
+    baseLongRate = 15000;
+    baseShortRate = 16000;
+    configuredDiscountPercent = settings?.privateDiscountPercent ?? 10;
+  } else {
+    baseLongRate = 6000;
+    baseShortRate = 7000;
+    configuredDiscountPercent =
+      settings?.quadrupleDiscountPercent ??
+      settings?.defaultLongTermDiscountPercent ??
+      10;
+  }
+
+  // Allow custom undiscounted base rates if explicitly configured on the room object
+  if (typeof room?.regularLongRate === "number" && room.regularLongRate > 0) {
+    baseLongRate = room.regularLongRate;
+  }
+  if (typeof room?.regularShortRate === "number" && room.regularShortRate > 0) {
+    baseShortRate = room.regularShortRate;
+  }
+
+  // Dynamically evaluate discount percentage from Super Admin System Settings
+  const discountPercent = isDiscountEnabled ? configuredDiscountPercent : 0;
+
+  const monthlyPrice = isDiscountEnabled
+    ? Math.round(baseLongRate * (1 - discountPercent / 100))
+    : baseLongRate;
+
+  const shortTermRate = isDiscountEnabled
+    ? Math.round(baseShortRate * (1 - discountPercent / 100))
+    : baseShortRate;
+
+  return {
+    isDiscountEnabled,
+    longTermDiscountPercent: discountPercent,
+    monthlyPrice,
+    shortTermRate,
+    regularLongRate: baseLongRate,
+    regularShortRate: baseShortRate,
+    longTermLeaseMinMonths: settings?.longTermLeaseMinMonths ?? 6,
+    quadrupleDiscountPercent: settings?.quadrupleDiscountPercent ?? 10,
+    doubleDiscountPercent: settings?.doubleDiscountPercent ?? 20,
+    privateDiscountPercent: settings?.privateDiscountPercent ?? 10,
+  };
+};
+
 const attachBranchSettings = (rooms, settings) =>
   rooms.map((room) => {
     const normalizedRoom = normalizeRoom(room);
     const branchSettings = getBranchSettings(normalizedRoom.branch, settings);
+    const discountDetails = getRoomDiscountDetails(
+      normalizedRoom.type,
+      settings,
+      normalizedRoom,
+    );
     return {
       ...normalizedRoom,
+      ...discountDetails,
       applianceFeeEnabled: !!branchSettings?.isApplianceFeeEnabled,
       applianceFeeAmountPerUnit: branchSettings?.applianceFeeAmountPerUnit ?? 0,
-      isDiscountEnabled: settings?.isDiscountEnabled ?? true,
     };
   });
 

@@ -1250,23 +1250,65 @@ export const validateSelectedAppliancesForReservation = ({
   return validatedAppliances;
 };
 
-export const resolveReservationRent = ({ room, leaseDuration, isDiscountEnabled }) => {
+export const resolveReservationRent = ({ room, leaseDuration, isDiscountEnabled, settings }) => {
   const parsedLeaseDuration = Number(leaseDuration);
-  const roomPrice = Number(room?.shortTermRate ?? room?.price ?? 0);
-  const roomMonthlyPrice = Number(room?.monthlyPrice ?? room?.price ?? 0);
+  const minMonths = settings?.longTermLeaseMinMonths ?? room?.longTermLeaseMinMonths ?? 6;
   const discountActive = isDiscountEnabled !== false && room?.isDiscountEnabled !== false;
-  const shouldUseMonthlyPrice =
-    discountActive && Number.isFinite(parsedLeaseDuration) && parsedLeaseDuration >= 6;
+  const isLongTerm = Number.isFinite(parsedLeaseDuration) && parsedLeaseDuration >= minMonths;
 
-  const preferredRent = shouldUseMonthlyPrice ? roomMonthlyPrice : roomPrice;
+  const normType = String(room?.type || "").toLowerCase();
+  let baseLongRate = 6000;
+  let baseShortRate = 7000;
+  let configuredDiscountPercent = settings?.quadrupleDiscountPercent ?? room?.quadrupleDiscountPercent ?? 10;
+
+  if (normType.includes("double")) {
+    baseLongRate = 9000;
+    baseShortRate = 10000;
+    configuredDiscountPercent = settings?.doubleDiscountPercent ?? room?.doubleDiscountPercent ?? 20;
+  } else if (normType.includes("private")) {
+    baseLongRate = 15000;
+    baseShortRate = 16000;
+    configuredDiscountPercent = settings?.privateDiscountPercent ?? room?.privateDiscountPercent ?? 10;
+  } else {
+    baseLongRate = 6000;
+    baseShortRate = 7000;
+    configuredDiscountPercent =
+      settings?.quadrupleDiscountPercent ??
+      room?.quadrupleDiscountPercent ??
+      settings?.defaultLongTermDiscountPercent ??
+      10;
+  }
+
+  if (
+    typeof room?.price === "number" &&
+    room.price > 0 &&
+    room.price !== 6000 &&
+    room.price !== 9000 &&
+    room.price !== 15000
+  ) {
+    baseLongRate = room.price;
+  }
+  if (
+    typeof room?.shortTermRate === "number" &&
+    room.shortTermRate > 0 &&
+    room.shortTermRate !== 7000 &&
+    room.shortTermRate !== 10000 &&
+    room.shortTermRate !== 16000
+  ) {
+    baseShortRate = room.shortTermRate;
+  }
+
+  const discountPercent = discountActive ? configuredDiscountPercent : 0;
+  const baseRate = isLongTerm ? baseLongRate : baseShortRate;
+  const preferredRent = discountActive
+    ? Math.round(baseRate * (1 - discountPercent / 100))
+    : baseRate;
+
   if (Number.isFinite(preferredRent) && preferredRent >= 0) {
     return roundMoney(preferredRent);
   }
 
-  const fallbackRent = shouldUseMonthlyPrice ? roomPrice : roomMonthlyPrice;
-  return Number.isFinite(fallbackRent) && fallbackRent >= 0
-    ? roundMoney(fallbackRent)
-    : 0;
+  return roundMoney(baseRate || 6000);
 };
 
 export const buildReservationPricing = async ({
@@ -1277,7 +1319,12 @@ export const buildReservationPricing = async ({
   const settings = await getBusinessSettings();
   const branchId = String(room?.branch || "").toLowerCase();
   const branchSettings = getBranchSettings(branchId, settings);
-  const monthlyRent = resolveReservationRent({ room, leaseDuration, isDiscountEnabled: settings?.isDiscountEnabled });
+  const monthlyRent = resolveReservationRent({
+    room,
+    leaseDuration,
+    isDiscountEnabled: settings?.isDiscountEnabled,
+    settings,
+  });
   const validatedSelectedAppliances = validateSelectedAppliancesForReservation({
     selectedAppliances,
     branchId,
