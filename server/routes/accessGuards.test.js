@@ -103,6 +103,10 @@ await jest.unstable_mockModule("../controllers/reservationsController.js", () =>
   archiveReservation: noop,
   restoreReservation: noop,
   renewContract: noop,
+  createRenewalOffer: noop,
+  cancelRenewalOffer: noop,
+  respondToRenewalOffer: noop,
+  getMyRenewalOffers: noop,
   moveOutReservation: noop,
   transferTenant: noop,
   getMyContract: noop,
@@ -171,10 +175,6 @@ await jest.unstable_mockModule("../controllers/auditController.js", () => ({
   getFailedLogins: noop,
   cleanupAuditLogs: noop,
 }));
-await jest.unstable_mockModule("../controllers/digitalTwinController.js", () => ({
-  getSnapshot: noop,
-  getRoomDetail: noop,
-}));
 await jest.unstable_mockModule("../controllers/maintenanceController.js", () => ({
   getMyRequests: noop,
   getAdminAll: noop,
@@ -225,7 +225,6 @@ const billingRoutes = (await import("./billingRoutes.js")).default;
 const announcementRoutes = (await import("./announcementRoutes.js")).default;
 const auditRoutes = (await import("./auditRoutes.js")).default;
 const branchSummaryRoutes = (await import("./branchSummaryRoutes.js")).default;
-const digitalTwinRoutes = (await import("./digitalTwinRoutes.js")).default;
 const maintenanceRoutes = (await import("./maintenanceContractRoutes.js")).default;
 const serviceProviderRoutes = (await import("./serviceProviderRoutes.js")).default;
 
@@ -333,11 +332,10 @@ describe("route access guards", () => {
     }
   });
 
-  test("room, announcement, audit, and digital twin routes use module permissions", () => {
+  test("room, announcement, and audit routes use module permissions", () => {
     const roomHandlers = getRouteHandlers(roomsRoutes, "/:roomId", "delete");
     const announcementHandlers = getRouteHandlers(announcementRoutes, "/", "post");
     const auditHandlers = getRouteHandlers(auditRoutes, "/", "get");
-    const twinHandlers = getRouteHandlers(digitalTwinRoutes, "/snapshot", "get");
 
     expect(
       roomHandlers.some((handler) => handler.requiredPermission === "manageRooms"),
@@ -349,9 +347,6 @@ describe("route access guards", () => {
     ).toBe(true);
     expect(
       auditHandlers.some((handler) => handler.requiredPermission === "viewReports"),
-    ).toBe(true);
-    expect(
-      twinHandlers.some((handler) => handler.requiredPermission === "viewReports"),
     ).toBe(true);
   });
 

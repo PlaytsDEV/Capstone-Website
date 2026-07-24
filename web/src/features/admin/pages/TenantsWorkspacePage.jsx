@@ -1052,6 +1052,14 @@
             detail={actionTenantDetail}
             loading={actionLoading === "renew"}
             onClose={() => setActionState({ type: null, tenant: null })}
+            onOfferSubmit={(offerPayload) =>
+              runAction("renew_offer", async () => {
+                return reservationApi.createRenewalOffer(
+                  actionState.tenant.reservationId,
+                  offerPayload,
+                );
+              })
+            }
             onSubmit={(payload) =>
               runAction("renew", async () => {
                 const currentLeaseEnd =

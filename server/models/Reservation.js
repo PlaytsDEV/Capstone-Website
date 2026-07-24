@@ -676,6 +676,27 @@ const reservationSchema = new mongoose.Schema(
       ],
       default: [],
     },
+    renewalOffers: {
+      type: [
+        {
+          offerId: { type: String, required: true },
+          months: { type: Number, required: true },
+          proposedRent: { type: Number, default: null },
+          notes: { type: String, default: "" },
+          status: {
+            type: String,
+            enum: ["pending", "accepted", "declined", "cancelled", "expired"],
+            default: "pending",
+          },
+          expiresAt: { type: Date, default: null },
+          createdAt: { type: Date, default: Date.now },
+          createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+          respondedAt: { type: Date, default: null },
+          tenantResponseReason: { type: String, default: "" },
+        },
+      ],
+      default: [],
+    },
 
     // --- Applicant Cancellation ---
     // Set when a tenant cancels their own reservation pre-move-in.

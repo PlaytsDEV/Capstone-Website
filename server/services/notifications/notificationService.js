@@ -174,10 +174,35 @@ const notify = {
       `Your visit schedule has been rejected. ${reason || "Please reschedule."}`,
       { entityType: "reservation" }),
 
-  paymentApproved: (userId, billingMonth, amount) =>
-    createNotification(userId, "payment_approved", "Payment Approved",
-      `Your payment of ₱${amount} for ${billingMonth} has been approved.`,
-      { entityType: "bill" }),
+  paymentApproved: (userId, billingMonth, amount, options = {}) => {
+    const title = "Payment Approved";
+    const formattedAmount = typeof amount === "number" ? amount.toLocaleString() : amount;
+    const message = `Your payment of ₱${formattedAmount} for ${billingMonth} has been approved.`;
+    const billId = options.billId || null;
+
+    return createNotificationWithPush(
+      userId,
+      "payment_approved",
+      title,
+      message,
+      {
+        entityType: "bill",
+        entityId: billId ? String(billId) : null,
+        actionUrl: billId ? `/billing?billId=${String(billId)}` : "/billing",
+      },
+      () =>
+        sendMobilePushToRecipients([userId], {
+          title,
+          body: message,
+          data: {
+            type: "payment_approved",
+            billing_id: billId ? String(billId) : "",
+            screen: "billing",
+            url: billId ? `/bill-details?billId=${String(billId)}` : "/(tabs)/billing",
+          },
+        }),
+    );
+  },
 
   billingNotice: (
     userId,
@@ -213,10 +238,34 @@ const notify = {
         }),
     ),
 
-  paymentRejected: (userId, billingMonth, reason) =>
-    createNotification(userId, "payment_rejected", "Payment Rejected",
-      `Your payment for ${billingMonth} was rejected. ${reason || "Please resubmit."} `,
-      { entityType: "bill" }),
+  paymentRejected: (userId, billingMonth, reason, options = {}) => {
+    const title = "Payment Rejected";
+    const message = `Your payment for ${billingMonth} was rejected. ${reason || "Please resubmit."}`;
+    const billId = options.billId || null;
+
+    return createNotificationWithPush(
+      userId,
+      "payment_rejected",
+      title,
+      message,
+      {
+        entityType: "bill",
+        entityId: billId ? String(billId) : null,
+        actionUrl: billId ? `/billing?billId=${String(billId)}` : "/billing",
+      },
+      () =>
+        sendMobilePushToRecipients([userId], {
+          title,
+          body: message,
+          data: {
+            type: "payment_rejected",
+            billing_id: billId ? String(billId) : "",
+            screen: "billing",
+            url: billId ? `/bill-details?billId=${String(billId)}` : "/(tabs)/billing",
+          },
+        }),
+    );
+  },
 
   billGenerated: async (userId, billingMonth, totalAmount, dueDate, options = {}) =>
     createNotificationWithPush(
@@ -271,20 +320,85 @@ const notify = {
       "Your account has been reactivated. You can now log in and use the system.",
       { entityType: "user" }),
 
-  billDueReminder: (userId, billingMonth, totalAmount, daysUntilDue) =>
-    createNotification(userId, "bill_due_reminder", "Payment Reminder",
-      `Your bill of ₱${totalAmount.toLocaleString()} for ${billingMonth} is due in ${daysUntilDue} day${daysUntilDue === 1 ? "" : "s"}.`,
-      { entityType: "bill" }),
+  billDueReminder: (userId, billingMonth, totalAmount, daysUntilDue, options = {}) => {
+    const title = "Payment Reminder";
+    const message = `Your bill of ₱${totalAmount.toLocaleString()} for ${billingMonth} is due in ${daysUntilDue} day${daysUntilDue === 1 ? "" : "s"}.`;
+    const billId = options.billId || null;
 
-  penaltyApplied: (userId, billingMonth, penaltyAmount, daysLate) =>
-    createNotification(userId, "penalty_applied", "Late Payment Penalty",
-      `A penalty of ₱${penaltyAmount.toLocaleString()} (${daysLate} day${daysLate === 1 ? "" : "s"} late) has been applied to your ${billingMonth} bill.`,
-      { entityType: "bill" }),
+    return createNotificationWithPush(
+      userId,
+      "bill_due_reminder",
+      title,
+      message,
+      {
+        entityType: "bill",
+        entityId: billId ? String(billId) : null,
+        actionUrl: billId ? `/billing?billId=${String(billId)}` : "/billing",
+      },
+      () =>
+        sendMobilePushToRecipients([userId], {
+          title,
+          body: message,
+          data: {
+            type: "bill_due_reminder",
+            billing_id: billId ? String(billId) : "",
+            screen: "billing",
+            url: billId ? `/bill-details?billId=${String(billId)}` : "/(tabs)/billing",
+          },
+        }),
+    );
+  },
 
-  contractExpiring: (userId, roomName, daysRemaining) =>
-    createNotification(userId, "contract_expiring", "Lease Expiring Soon",
-      `Your lease for ${roomName} expires in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"}. Please contact the admin to renew or arrange move-out.`,
-      { entityType: "reservation" }),
+  penaltyApplied: (userId, billingMonth, penaltyAmount, daysLate, options = {}) => {
+    const title = "Late Payment Penalty";
+    const message = `A penalty of ₱${penaltyAmount.toLocaleString()} (${daysLate} day${daysLate === 1 ? "" : "s"} late) has been applied to your ${billingMonth} bill.`;
+    const billId = options.billId || null;
+
+    return createNotificationWithPush(
+      userId,
+      "penalty_applied",
+      title,
+      message,
+      {
+        entityType: "bill",
+        entityId: billId ? String(billId) : null,
+        actionUrl: billId ? `/billing?billId=${String(billId)}` : "/billing",
+      },
+      () =>
+        sendMobilePushToRecipients([userId], {
+          title,
+          body: message,
+          data: {
+            type: "penalty_applied",
+            billing_id: billId ? String(billId) : "",
+            screen: "billing",
+            url: billId ? `/bill-details?billId=${String(billId)}` : "/(tabs)/billing",
+          },
+        }),
+    );
+  },
+
+  contractExpiring: (userId, roomName, daysRemaining) => {
+    const title = "Lease Expiring Soon";
+    const message = `Your lease for ${roomName} expires in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"}. Please contact the admin to renew or arrange move-out.`;
+
+    return createNotificationWithPush(
+      userId,
+      "contract_expiring",
+      title,
+      message,
+      { entityType: "reservation", actionUrl: "/applicant/profile" },
+      () =>
+        sendMobilePushToRecipients([userId], {
+          title,
+          body: message,
+          data: {
+            type: "contract_expiring",
+            screen: "home",
+          },
+        }),
+    );
+  },
 
   reservationExpired: (userId, reservationCode, roomName) =>
     createNotification(userId, "reservation_expired", "Reservation Expired",

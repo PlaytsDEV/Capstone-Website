@@ -53,6 +53,10 @@ import {
   archiveReservation,
   restoreReservation,
   renewContract,
+  createRenewalOffer,
+  cancelRenewalOffer,
+  respondToRenewalOffer,
+  getMyRenewalOffers,
   moveOutReservation,
   transferTenant,
   getMyContract,
@@ -201,6 +205,14 @@ router.get(
  * @returns {Object} Contract details (lease dates, progress, room/bed info)
  */
 router.get("/my-contract", verifyToken, getMyContract);
+
+/**
+ * GET /api/reservations/my-renewal-offers
+ *
+ * Get pending lease renewal offers for the logged-in tenant.
+ * Access: Authenticated tenants
+ */
+router.get("/my-renewal-offers", verifyToken, getMyRenewalOffers);
 
 /**
  * GET /api/reservations/:reservationId
@@ -453,6 +465,42 @@ router.put(
   filterByBranch,
   requireAnyPermission(["manageReservations", "manageTenants"]),
   renewContract,
+);
+
+/**
+ * POST /api/reservations/:reservationId/renewal-offer
+ * Issue a contract renewal offer to a tenant.
+ */
+router.post(
+  "/:reservationId/renewal-offer",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requireAnyPermission(["manageReservations", "manageTenants"]),
+  createRenewalOffer,
+);
+
+/**
+ * POST /api/reservations/:reservationId/renewal-offer/:offerId/cancel
+ * Cancel a pending contract renewal offer.
+ */
+router.post(
+  "/:reservationId/renewal-offer/:offerId/cancel",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requireAnyPermission(["manageReservations", "manageTenants"]),
+  cancelRenewalOffer,
+);
+
+/**
+ * POST /api/reservations/:reservationId/renewal-offer/:offerId/respond
+ * Respond (accept/decline) to a contract renewal offer.
+ */
+router.post(
+  "/:reservationId/renewal-offer/:offerId/respond",
+  verifyToken,
+  respondToRenewalOffer,
 );
 
 /**

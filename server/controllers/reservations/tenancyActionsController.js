@@ -255,6 +255,284 @@ export const renewContract = async (req, res, next) => {
   }
 };
 
+/**
+ * Create a contract renewal offer (Admin action)
+ */
+export const createRenewalOffer = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    const { months = 6, proposedRent, notes = "", expiresAt } = req.body;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const reservation = await Reservation.findById(reservationId)
+      .populate("roomId", "name roomNumber branch")
+      .populate("userId", "firstName lastName email phone");
+    if (!reservation) {
+      return res.status(404).json({ error: "Reservation not found", code: "RESERVATION_NOT_FOUND" });
+    }
+
+    const denied = checkBranchAccess(res, req.branchFilter, reservation.roomId?.branch);
+    if (denied) return;
+
+    if (!hasReservationStatus(reservation.status, "moveIn")) {
+      return res.status(400).json({ error: "Only active moved-in tenants can receive renewal offers.", code: "INVALID_STATUS" });
+    }
+
+    const hasPending = (reservation.renewalOffers || []).some((o) => o.status === "pending");
+    if (hasPending) {
+      return res.status(409).json({ error: "A pending renewal offer already exists for this tenant.", code: "PENDING_OFFER_EXISTS" });
+    }
+
+    const actor = await findDbUser(req.user.uid);
+    const offerId = `OFFER-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+    const newOffer = {
+      offerId,
+      months: Number(months) || 6,
+      proposedRent: proposedRent ? Number(proposedRent) : null,
+      notes: String(notes || "").trim(),
+      status: "pending",
+      expiresAt: expiresAt ? new Date(expiresAt) : dayjs().add(14, "day").toDate(),
+      createdAt: new Date(),
+      createdBy: actor?._id || null,
+    };
+
+    if (!reservation.renewalOffers) reservation.renewalOffers = [];
+    reservation.renewalOffers.push(newOffer);
+    await reservation.save();
+
+    const { notify } = await import("../../utils/notificationService.js");
+    const tenantId = reservation.userId?._id || reservation.userId;
+    if (tenantId) {
+      await notify.general(
+        tenantId,
+        "Lease Renewal Offer",
+        `You received a ${months}-month lease renewal offer for ${reservation.roomId?.name || "your room"}. Please respond before ${dayjs(newOffer.expiresAt).format("MMM D, YYYY")}.`,
+        { entityType: "reservation", entityId: reservation._id, action: "renewal_offer" }
+      );
+    }
+
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservationId,
+      {},
+      { offer: newOffer },
+      `Created lease renewal offer (${months} months)`
+    );
+
+    res.status(201).json({
+      message: "Renewal offer sent to tenant successfully",
+      offer: newOffer,
+      reservation: serializeReservation(reservation),
+    });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "Create renewal offer error");
+    await auditLogger.logError(req, error, "Failed to create renewal offer");
+    handleReservationError(res, error, "create renewal offer");
+  }
+};
+
+/**
+ * Cancel a pending renewal offer (Admin action)
+ */
+export const cancelRenewalOffer = async (req, res, next) => {
+  try {
+    const { reservationId, offerId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const reservation = await Reservation.findById(reservationId).populate("roomId", "branch");
+    if (!reservation) {
+      return res.status(404).json({ error: "Reservation not found", code: "RESERVATION_NOT_FOUND" });
+    }
+
+    const denied = checkBranchAccess(res, req.branchFilter, reservation.roomId?.branch);
+    if (denied) return;
+
+    const offer = (reservation.renewalOffers || []).find((o) => o.offerId === offerId);
+    if (!offer) {
+      return res.status(404).json({ error: "Renewal offer not found", code: "OFFER_NOT_FOUND" });
+    }
+    if (offer.status !== "pending") {
+      return res.status(400).json({ error: `Cannot cancel an offer with status '${offer.status}'`, code: "INVALID_OFFER_STATUS" });
+    }
+
+    offer.status = "cancelled";
+    offer.respondedAt = new Date();
+    await reservation.save();
+
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservationId,
+      {},
+      { offerId },
+      "Cancelled lease renewal offer"
+    );
+
+    res.json({
+      message: "Renewal offer cancelled",
+      reservation: serializeReservation(reservation),
+    });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "Cancel renewal offer error");
+    await auditLogger.logError(req, error, "Failed to cancel renewal offer");
+    handleReservationError(res, error, "cancel renewal offer");
+  }
+};
+
+/**
+ * Respond to a renewal offer (Tenant or Admin action)
+ */
+export const respondToRenewalOffer = async (req, res, next) => {
+  try {
+    const { reservationId, offerId } = req.params;
+    const { action, tenantResponseReason = "" } = req.body;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+    if (!["accept", "decline"].includes(action)) {
+      return res.status(400).json({ error: "Action must be 'accept' or 'decline'", code: "INVALID_ACTION" });
+    }
+
+    const reservation = await Reservation.findById(reservationId)
+      .populate("roomId", "name roomNumber branch monthlyPrice price")
+      .populate("userId", "firstName lastName email");
+    if (!reservation) {
+      return res.status(404).json({ error: "Reservation not found", code: "RESERVATION_NOT_FOUND" });
+    }
+
+    const offer = (reservation.renewalOffers || []).find((o) => o.offerId === offerId);
+    if (!offer) {
+      return res.status(404).json({ error: "Renewal offer not found", code: "OFFER_NOT_FOUND" });
+    }
+    if (offer.status !== "pending") {
+      return res.status(400).json({ error: `Offer is no longer pending (current status: ${offer.status})`, code: "OFFER_EXPIRED_OR_RESOLVED" });
+    }
+
+    const actor = await findDbUser(req.user.uid);
+
+    if (action === "decline") {
+      offer.status = "declined";
+      offer.respondedAt = new Date();
+      offer.tenantResponseReason = String(tenantResponseReason || "").trim();
+      await reservation.save();
+
+      const { notify } = await import("../../utils/notificationService.js");
+      await notify.general(
+        reservation.userId?._id || reservation.userId,
+        "Renewal Declined",
+        `You declined the lease renewal offer for ${reservation.roomId?.name || "your room"}.`,
+        { entityType: "reservation", entityId: reservation._id }
+      );
+
+      await auditLogger.logModification(
+        req,
+        "reservation",
+        reservationId,
+        {},
+        { offerId, action: "decline", reason: tenantResponseReason },
+        `Tenant declined renewal offer: ${tenantResponseReason}`
+      );
+
+      return res.json({
+        message: "Renewal offer declined",
+        reservation: serializeReservation(reservation),
+      });
+    }
+
+    const { Stay } = await import("../../models/index.js");
+    const activeStay = await Stay.findOne({ reservationId: reservation._id, status: "active" });
+
+    let currentEndDate = activeStay?.leaseEndDate || computeLeaseEndDate(reservation) || new Date();
+    const newStartDate = dayjs(currentEndDate).add(1, "day").toDate();
+    const newEndDate = dayjs(newStartDate).add(offer.months, "month").subtract(1, "day").toDate();
+
+    const renewPayload = {
+      confirm: true,
+      newLeaseStartDate: newStartDate,
+      newLeaseEndDate: newEndDate,
+      monthlyRent: offer.proposedRent || getMonthlyRent(reservation),
+      notes: `Accepted Renewal Offer (${offer.months} months). ${offer.notes || ""}`.trim(),
+    };
+
+    const result = await renewStayWorkflow({
+      reservationId,
+      payload: renewPayload,
+      actorId: actor?._id || null,
+    });
+
+    offer.status = "accepted";
+    offer.respondedAt = new Date();
+    offer.tenantResponseReason = String(tenantResponseReason || "").trim();
+    await reservation.save();
+
+    const { notify } = await import("../../utils/notificationService.js");
+    const roomName = reservation.roomId?.name || "your room";
+
+    await notify.general(
+      reservation.userId?._id || reservation.userId,
+      "Lease Renewed!",
+      `Your lease renewal for ${roomName} has been processed! Extended by ${offer.months} months through ${dayjs(newEndDate).format("MMM D, YYYY")}.`,
+      { entityType: "stay" }
+    );
+
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservationId,
+      {},
+      { offerId, action: "accept", newEndDate },
+      `Tenant accepted renewal offer (${offer.months} months)`
+    );
+
+    res.json({
+      message: "Renewal offer accepted and lease extended successfully!",
+      reservation: serializeReservation(result.reservation),
+      stay: result.stay,
+    });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "Respond to renewal offer error");
+    await auditLogger.logError(req, error, "Failed to respond to renewal offer");
+    handleReservationError(res, error, "respond to renewal offer");
+  }
+};
+
+/**
+ * Get active renewal offers for logged-in tenant
+ */
+export const getMyRenewalOffers = async (req, res, next) => {
+  try {
+    const actor = await findDbUser(req.user.uid);
+    if (!actor) {
+      return res.status(404).json({ error: "User not found", code: "USER_NOT_FOUND" });
+    }
+
+    const reservations = await Reservation.find({
+      userId: actor._id,
+      isArchived: { $ne: true },
+      "renewalOffers.0": { $exists: true },
+    })
+      .populate("roomId", "name roomNumber branch monthlyPrice price")
+      .lean();
+
+    const offers = [];
+    for (const resItem of reservations) {
+      for (const offer of resItem.renewalOffers || []) {
+        offers.push({
+          ...offer,
+          reservationId: String(resItem._id),
+          roomName: resItem.roomId?.name || resItem.roomId?.roomNumber || "Room",
+          branch: resItem.roomId?.branch || "",
+        });
+      }
+    }
+
+    res.json({ offers });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "Get my renewal offers error");
+    handleReservationError(res, error, "get renewal offers");
+  }
+};
+
 export const moveOutReservation = async (req, res, next) => {
   try {
     const { reservationId } = req.params;

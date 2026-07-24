@@ -8,6 +8,7 @@ import { useReservations } from "../../../shared/hooks/queries/useReservations";
 import { useQueryClient } from "@tanstack/react-query";
 import { readMoveInDate } from "../../../shared/utils/lifecycleNaming";
 import { exportToCSV } from "../../../shared/utils/exportUtils";
+import { exportReportPdf } from "../../../shared/utils/reportPdf";
 import {
  StatGridSkeleton,
  TableSkeleton,
@@ -157,6 +158,49 @@ function PaymentRequestsTab() {
  exportToCSV(rows, PAYMENT_CSV_COLUMNS, `payment_requests_${new Date().toISOString().slice(0, 10)}`);
  };
 
+ const handleExportPDF = async () => {
+ const branchLabel = branchFilter === "all" ? "All Branches" : branchFilter;
+ await exportReportPdf({
+ title: "Payment Requests Report",
+ subtitle: `Scope: ${branchLabel} • ${new Date().toLocaleDateString("en-PH")}`,
+ filename: `payment_requests_${branchFilter.toLowerCase().replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.pdf`,
+ reportType: "Payments",
+ kpis: [
+ { label: "Pending Verification", value: pendingPayments.length },
+ { label: "Verified Payments", value: verifiedPayments.length },
+ { label: "Total Revenue", value: `₱${verifiedPayments.reduce((s, p) => s + p.totalPrice, 0).toLocaleString()}` },
+ ],
+ sections: [
+ {
+ title: "Pending Verifications",
+ headers: ["Code", "Tenant", "Room", "Branch", "Amount", "Status"],
+ rows: pendingPayments.map((p) => ({
+ Code: p.reservationCode,
+ Tenant: p.customer,
+ Room: p.room,
+ Branch: p.branch,
+ Amount: `₱${(p.totalPrice || 0).toLocaleString()}`,
+ Status: p.paymentStatus,
+ })),
+ type: "table",
+ },
+ {
+ title: "Verified Payments",
+ headers: ["Code", "Tenant", "Room", "Branch", "Amount", "Status"],
+ rows: verifiedPayments.map((p) => ({
+ Code: p.reservationCode,
+ Tenant: p.customer,
+ Room: p.room,
+ Branch: p.branch,
+ Amount: `₱${(p.totalPrice || 0).toLocaleString()}`,
+ Status: p.paymentStatus,
+ })),
+ type: "table",
+ },
+ ],
+ });
+ };
+
  const byBranch = (list) =>
  branchFilter === "all" ? list : list.filter((p) => p.branch === branchFilter);
 
@@ -246,6 +290,26 @@ function PaymentRequestsTab() {
   >
   ⬇ Export CSV
   </button>
+  <button
+              onClick={handleExportPDF}
+              disabled={payments.length === 0}
+              style={{
+                padding: "6px 16px",
+                borderRadius: "8px",
+                border: "1px solid #D1D5DB",
+                fontSize: "13px",
+                fontWeight: "500",
+                cursor: payments.length === 0 ? "not-allowed" : "pointer",
+                backgroundColor: "#0A1628",
+                color: "white",
+                opacity: payments.length === 0 ? 0.5 : 1,
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+              }}
+            >
+              📄 Export PDF
+            </button>
   </div>
  </div>
 

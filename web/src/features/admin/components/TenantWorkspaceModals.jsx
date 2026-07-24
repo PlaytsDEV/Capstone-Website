@@ -80,9 +80,14 @@ export function RenewLeaseModal({
   loading,
   onClose,
   onSubmit,
+  onOfferSubmit,
 }) {
+  const [mode, setMode] = useState("direct"); // "direct" or "offer"
   const [newLeaseStartDate, setNewLeaseStartDate] = useState("");
   const [newLeaseEndDate, setNewLeaseEndDate] = useState("");
+  const [offerMonths, setOfferMonths] = useState(6);
+  const [proposedRent, setProposedRent] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
@@ -95,18 +100,40 @@ export function RenewLeaseModal({
     const nextEnd = currentEnd ? new Date(currentEnd) : new Date();
     nextEnd.setMonth(nextEnd.getMonth() + 12);
 
+    const expiry = new Date();
+    expiry.setDate(expiry.getDate() + 14);
+
     setNewLeaseStartDate(toDateInputValue(nextStart));
     setNewLeaseEndDate(toDateInputValue(nextEnd));
+    setOfferMonths(6);
+    setProposedRent(detail?.basicInfo?.monthlyRent || tenant?.monthlyRent || "");
+    setExpiresAt(toDateInputValue(expiry));
     setNotes("");
-  }, [open, detail, context]);
+    setMode("direct");
+  }, [open, detail, context, tenant]);
 
   const extensionHistory =
     context?.renewalHistory || detail?.leaseInfo?.extensionHistory || [];
 
+  const handleConfirm = () => {
+    if (mode === "offer") {
+      if (onOfferSubmit) {
+        onOfferSubmit({
+          months: Number(offerMonths) || 6,
+          proposedRent: proposedRent ? Number(proposedRent) : null,
+          expiresAt,
+          notes,
+        });
+      }
+    } else {
+      onSubmit({ newLeaseStartDate, newLeaseEndDate, notes });
+    }
+  };
+
   return (
     <TenantModalShell
       open={open}
-      title={`Renew Lease${tenant?.tenantName ? ` • ${tenant.tenantName}` : ""}`}
+      title={`Renew Lease / Offer${tenant?.tenantName ? ` • ${tenant.tenantName}` : ""}`}
       onClose={onClose}
       footer={
         <>
@@ -120,40 +147,111 @@ export function RenewLeaseModal({
           <button
             type="button"
             className="tenant-modal-btn tenant-modal-btn--primary"
-            disabled={loading || !newLeaseEndDate}
-            onClick={() => onSubmit({ newLeaseStartDate, newLeaseEndDate, notes })}
+            disabled={loading || (mode === "direct" && !newLeaseEndDate)}
+            onClick={handleConfirm}
           >
-            {loading ? "Saving..." : "Renew Lease"}
+            {loading ? "Processing..." : mode === "offer" ? "Send Renewal Offer" : "Renew Lease"}
           </button>
         </>
       }
     >
-      <div className="tenant-modal-grid">
-        <label className="tenant-modal-field">
-          <span>Current Lease End</span>
-          <input
-            type="text"
-            value={fmtDate(detail?.leaseInfo?.leaseEndDate || tenant?.leaseEndDate)}
-            readOnly
-          />
-        </label>
-        <label className="tenant-modal-field">
-          <span>New Lease End Date</span>
-          <input
-            type="date"
-            value={newLeaseEndDate}
-            onChange={(event) => setNewLeaseEndDate(event.target.value)}
-          />
-        </label>
+      <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+        <button
+          type="button"
+          style={{
+            flex: 1,
+            padding: "8px 12px",
+            borderRadius: 8,
+            border: mode === "direct" ? "2px solid #E8734A" : "1px solid #CBD5E1",
+            background: mode === "direct" ? "#FFF7ED" : "#fff",
+            color: mode === "direct" ? "#E8734A" : "#64748B",
+            fontWeight: 600,
+            fontSize: 13,
+            cursor: "pointer",
+          }}
+          onClick={() => setMode("direct")}
+        >
+          Direct Renewal
+        </button>
+        <button
+          type="button"
+          style={{
+            flex: 1,
+            padding: "8px 12px",
+            borderRadius: 8,
+            border: mode === "offer" ? "2px solid #E8734A" : "1px solid #CBD5E1",
+            background: mode === "offer" ? "#FFF7ED" : "#fff",
+            color: mode === "offer" ? "#E8734A" : "#64748B",
+            fontWeight: 600,
+            fontSize: 13,
+            cursor: "pointer",
+          }}
+          onClick={() => setMode("offer")}
+        >
+          Send Official Offer
+        </button>
       </div>
 
+      {mode === "direct" ? (
+        <div className="tenant-modal-grid">
+          <label className="tenant-modal-field">
+            <span>Current Lease End</span>
+            <input
+              type="text"
+              value={fmtDate(detail?.leaseInfo?.leaseEndDate || tenant?.leaseEndDate)}
+              readOnly
+            />
+          </label>
+          <label className="tenant-modal-field">
+            <span>New Lease End Date</span>
+            <input
+              type="date"
+              value={newLeaseEndDate}
+              onChange={(event) => setNewLeaseEndDate(event.target.value)}
+            />
+          </label>
+        </div>
+      ) : (
+        <div className="tenant-modal-grid">
+          <label className="tenant-modal-field">
+            <span>Offer Duration (Months)</span>
+            <select
+              value={offerMonths}
+              onChange={(e) => setOfferMonths(e.target.value)}
+            >
+              <option value={3}>3 Months</option>
+              <option value={6}>6 Months</option>
+              <option value={12}>12 Months (1 Year)</option>
+              <option value={24}>24 Months (2 Years)</option>
+            </select>
+          </label>
+          <label className="tenant-modal-field">
+            <span>Proposed Monthly Rent (₱)</span>
+            <input
+              type="number"
+              placeholder="Leave blank for current rent"
+              value={proposedRent}
+              onChange={(e) => setProposedRent(e.target.value)}
+            />
+          </label>
+          <label className="tenant-modal-field">
+            <span>Offer Expiry Date</span>
+            <input
+              type="date"
+              value={expiresAt}
+              onChange={(e) => setExpiresAt(e.target.value)}
+            />
+          </label>
+        </div>
+      )}
+
       <label className="tenant-modal-field">
-        <span>Notes</span>
+        <span>Notes / Message to Tenant</span>
         <textarea
-          rows={4}
+          rows={3}
           value={notes}
           onChange={(event) => setNotes(event.target.value)}
-          placeholder="Optional renewal notes"
+          placeholder={mode === "offer" ? "Message for tenant in renewal notification..." : "Optional renewal notes"}
         />
       </label>
 

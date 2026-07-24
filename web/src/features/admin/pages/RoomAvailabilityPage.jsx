@@ -8,6 +8,7 @@ import {
   Settings,
   Plus,
   Bed,
+  Calendar,
   Wrench,
   DoorOpen,
   Search,
@@ -21,8 +22,7 @@ import RoomFormModal from "../components/rooms/RoomFormModal";
 import DeleteRoomModal from "../components/rooms/DeleteRoomModal";
 
 // Hooks & API
-import { useDigitalTwinSnapshot } from "../../../shared/hooks/queries/useDigitalTwin";
-import { useVacancyForecast } from "../../../shared/hooks/queries/useRooms";
+import { useRooms, useVacancyForecast } from "../../../shared/hooks/queries/useRooms";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { usePermissions } from "../../../shared/hooks/usePermissions";
 import { roomApi } from "../../../shared/api/apiClient";
@@ -171,9 +171,10 @@ function RoomAvailabilityPage() {
   // and rely entirely on client-side filtering for the branch selection.
   const defaultBranch =
     user?.branch && user.role !== "owner" ? user.branch : "all";
-  const { data: snapshot, isLoading: loading } =
-    useDigitalTwinSnapshot(defaultBranch);
-  const rooms = snapshot?.rooms ?? [];
+  const { data: roomsData, isLoading: loading } = useRooms(
+    defaultBranch === "all" ? {} : { branch: defaultBranch },
+  );
+  const rooms = Array.isArray(roomsData) ? roomsData : (roomsData?.items ?? []);
   const forecastBranch = defaultBranch === "all" ? null : defaultBranch;
   const { data: forecastResponse, isLoading: forecastLoading } =
     useVacancyForecast({
@@ -442,7 +443,6 @@ function RoomAvailabilityPage() {
       );
 
       showNotification("Room configuration updated", "success");
-      queryClient.invalidateQueries({ queryKey: ["digital-twin", "snapshot"] });
       queryClient.invalidateQueries({ queryKey: ["rooms"] });
       setSelectedRoom(null);
     } catch (err) {
@@ -460,7 +460,7 @@ function RoomAvailabilityPage() {
         await roomApi.create(payload);
         showNotification("Room created successfully", "success");
       }
-      queryClient.invalidateQueries({ queryKey: ["digital-twin", "snapshot"] });
+      queryClient.invalidateQueries({ queryKey: ["rooms"] });
       setShowCreateModal(false);
       setEditingRoom(null);
     } catch (err) {
@@ -473,7 +473,7 @@ function RoomAvailabilityPage() {
     try {
       await roomApi.delete(roomId);
       showNotification("Room archived successfully", "success");
-      queryClient.invalidateQueries({ queryKey: ["digital-twin", "snapshot"] });
+      queryClient.invalidateQueries({ queryKey: ["rooms"] });
       setDeletingRoom(null);
     } catch (err) {
       showNotification(err.message || "Failed to archive room", "error");
@@ -983,19 +983,30 @@ function RoomAvailabilityPage() {
 
                         const config = getRoomStatusConfig(displayStatus);
 
+                        const soonestBedVacancy =
+                          (room.beds || [])
+                            .map((b) => b.expectedVacancyDate)
+                            .filter(Boolean)
+                            .sort((a, b) => new Date(a) - new Date(b))[0] ||
+                          room.nextExpectedVacancy;
+                        const vacancyDays = getDaysUntilVacancy(soonestBedVacancy);
+                        const vacancyTooltip = soonestBedVacancy
+                          ? ` | Expected Vacancy: ${formatForecastDate(soonestBedVacancy)} (${vacancyDays != null ? (vacancyDays <= 0 ? "Overdue/Today" : `${vacancyDays}d left`) : ""})`
+                          : "";
+
                         return (
                           <button
                             key={room._id || room.id}
                             onClick={() => {
                               if (can("manageRooms")) handleConfigure(room);
                             }}
-                            className={`group relative rounded-xl p-4 hover:shadow-md transition-all duration-200 text-center flex flex-col items-center justify-center w-[118px] h-[116px] ${!can("manageRooms") ? "cursor-default" : "cursor-pointer"}`}
+                            className={`group relative rounded-xl p-3.5 hover:shadow-md transition-all duration-200 text-center flex flex-col items-center justify-center w-[124px] min-h-[120px] ${!can("manageRooms") ? "cursor-default" : "cursor-pointer"}`}
                             style={{
                               backgroundColor: "var(--card)",
 
                               border: "1px solid var(--border)",
                             }}
-                            title={`${room.name || room.roomNumber} - ${config.label}${bedsInMaintenance > 0 ? ` (${bedsInMaintenance} bed${bedsInMaintenance > 1 ? "s" : ""} in maintenance)` : ""}`}
+                            title={`${room.name || room.roomNumber} - ${config.label}${bedsInMaintenance > 0 ? ` (${bedsInMaintenance} bed${bedsInMaintenance > 1 ? "s" : ""} in maintenance)` : ""}${vacancyTooltip}`}
                           >
                             <div
                               className={`absolute top-3 right-3 w-2.5 h-2.5 rounded-full ${config.dot}`}
@@ -1003,12 +1014,12 @@ function RoomAvailabilityPage() {
 
                             {bedsInMaintenance > 0 && !roomLevelMaintenance && (
                               <div className="absolute top-3 left-3 text-muted-foreground">
-                                <Wrench className="w-4 h-4" />
+                                <Wrench className="w-3.5 h-3.5" />
                               </div>
                             )}
 
                             <Bed className="w-5 h-5 text-muted-foreground/80 mb-1 group-hover:text-primary transition-colors" />
-                            <span className="text-[18px] font-bold text-foreground dark:text-foreground tracking-tight leading-none mb-1.5">
+                            <span className="text-[17px] font-bold text-foreground dark:text-foreground tracking-tight leading-none mb-1">
                               {room.roomNumber}
                             </span>
 
@@ -1017,14 +1028,28 @@ function RoomAvailabilityPage() {
                                 Maintenance
                               </span>
                             ) : (
-                              <span className="text-xs text-muted-foreground font-medium">
-                                {room.currentOccupancy || 0}/{effectiveCapacity}
-                                {bedsInMaintenance > 0 && (
-                                  <span className="ml-[2px]">
-                                    ({bedsInMaintenance}M)
+                              <>
+                                <span className="text-xs text-muted-foreground font-medium">
+                                  {room.currentOccupancy || 0}/{effectiveCapacity}
+                                  {bedsInMaintenance > 0 && (
+                                    <span className="ml-[2px]">
+                                      ({bedsInMaintenance}M)
+                                    </span>
+                                  )}
+                                </span>
+                                {soonestBedVacancy && room.currentOccupancy > 0 && (
+                                  <span
+                                    className="text-[10px] font-semibold mt-1 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full"
+                                    style={{
+                                      backgroundColor: vacancyDays <= 7 ? "var(--status-error-bg, rgba(239, 68, 68, 0.1))" : "var(--primary-bg, rgba(59, 130, 246, 0.1))",
+                                      color: vacancyDays <= 7 ? "var(--status-error, #ef4444)" : "var(--primary, #3b82f6)",
+                                    }}
+                                  >
+                                    <Calendar className="w-2.5 h-2.5" />
+                                    {vacancyDays <= 0 ? "Due" : `${vacancyDays}d`}
                                   </span>
                                 )}
-                              </span>
+                              </>
                             )}
                           </button>
                         );

@@ -268,20 +268,3 @@ export function emitRoomUpdate(roomId, data = {}) {
   }
 }
 
-/**
- * Broadcast a digital-twin state change to all admins.
- * Called when room occupancy, maintenance, or billing status changes.
- *
- * @param {string} branch - The branch that changed (optional)
- * @param {string|ObjectId} roomId - The specific room that changed (optional)
- */
-export function emitDigitalTwinUpdate(branch = null, roomId = null) {
-  if (io) {
-    io.to("admins").emit("digital-twin:updated", {
-      branch,
-      roomId: roomId ? String(roomId) : null,
-      timestamp: new Date().toISOString(),
-    });
-  }
-}
-

@@ -477,7 +477,7 @@ const UtilityBillingTab = ({
   // Pagination
   const PERIODS_PER_PAGE = 5;
   const TIMELINE_PER_PAGE = 8;
-  const ROOMS_PER_PAGE = 3;
+  const ROOMS_PER_PAGE = 5;
   const [periodsPage, setPeriodsPage] = useState(1);
   const [timelinePage, setTimelinePage] = useState(1);
   const [roomsPage, setRoomsPage] = useState(1);
@@ -1803,7 +1803,7 @@ const UtilityBillingTab = ({
 
         <div className="space-y-4">
           {!selectedRoomId ? (
-            <div className="flex min-h-[320px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card px-6 py-10 text-center">
+            <div className="flex min-h-[440px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card px-6 py-10 text-center">
               <Zap size={36} strokeWidth={1.5} className="text-slate-300" />
               <p className="mt-3 text-sm font-semibold text-card-foreground">
                 Select a room to continue
@@ -1816,7 +1816,7 @@ const UtilityBillingTab = ({
             </div>
           ) : (
             <>
-              <div className="rounded-[14px] border border-border bg-card px-5 py-4 shadow-[0_1px_0_rgba(15,23,42,0.02)] min-h-[455px]">
+              <div className="rounded-[14px] border border-border bg-card px-5 py-4 shadow-[0_1px_0_rgba(15,23,42,0.02)] min-h-[440px]">
                 <div className="flex items-center gap-3">
                   <span
                     className="inline-flex h-7 w-7 items-center justify-center rounded-md text-primary

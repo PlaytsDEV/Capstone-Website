@@ -110,12 +110,6 @@ export const queryKeys = {
     overview: (branch) => ["financial", "overview", branch || "all"],
   },
 
-  // ── Digital Twin ──
-  digitalTwin: {
-    snapshot: (branch) => ["digital-twin", "snapshot", branch || "all"],
-    roomDetail: (roomId) => ["digital-twin", "roomDetail", roomId],
-  },
-
   // ── Electricity Billing ──
   electricity: {
     rooms: (branch) => ["electricity", "rooms", branch || "all"],

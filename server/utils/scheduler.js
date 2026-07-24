@@ -229,7 +229,7 @@ async function computeOverduePenalties() {
       // Notify tenant (only on first penalty or when it increases significantly)
       if (oldPenalty === 0 && bill.userId) {
         const month = dayjs(bill.billingMonth).format("MMMM YYYY");
-        notify.penaltyApplied(bill.userId._id || bill.userId, month, newPenalty, daysLate);
+        notify.penaltyApplied(bill.userId._id || bill.userId, month, newPenalty, daysLate, { billId: bill._id });
       }
     }
 
@@ -268,7 +268,7 @@ async function sendPaymentReminders() {
         }
 
         const month = dayjs(bill.billingMonth).format("MMMM YYYY");
-        notify.billDueReminder(bill.userId, month, bill.totalAmount, daysAhead);
+        await notify.billDueReminder(bill.userId, month, bill.totalAmount, daysAhead, { billId: bill._id });
         sent++;
       }
     }
@@ -305,7 +305,7 @@ async function checkContractExpirations() {
       // Send alert only on exact reminder days
       if (alertDays.includes(daysRemaining)) {
         const roomName = reservation.roomId?.name || "your room";
-        notify.contractExpiring(reservation.userId, roomName, daysRemaining);
+        await notify.contractExpiring(reservation.userId, roomName, daysRemaining);
         sent++;
       }
     }

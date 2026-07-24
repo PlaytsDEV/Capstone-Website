@@ -38,6 +38,18 @@ export default function OccupancyRoomModal({ room, loadingDetails, onClose }) {
  bed.occupant?.since ||
  null;
 
+ const formatExpectedVacancy = (bed) =>
+ bed.expectedVacancyDate ||
+ bed.occupiedBy?.expectedVacancyDate ||
+ bed.occupant?.expectedVacancyDate ||
+ null;
+
+ const formatDaysRemaining = (bed) =>
+ bed.daysRemaining ??
+ bed.occupiedBy?.daysRemaining ??
+ bed.occupant?.daysRemaining ??
+ null;
+
  const getBedTone = (kind) => {
  switch (kind) {
  case "occupied":
@@ -143,6 +155,21 @@ export default function OccupancyRoomModal({ room, loadingDetails, onClose }) {
  {new Date(
  formatOccupiedSince(bed),
  ).toLocaleDateString()}
+ </p>
+ )}
+ {formatExpectedVacancy(bed) && (
+ <p className="text-xs font-semibold text-primary mt-1">
+ Expected Vacancy:{" "}
+ {new Date(formatExpectedVacancy(bed)).toLocaleDateString(undefined, {
+ month: "short",
+ day: "numeric",
+ year: "numeric",
+ })}
+ {formatDaysRemaining(bed) != null && (
+ <span className="ml-1 opacity-90 font-medium">
+ ({formatDaysRemaining(bed) <= 0 ? "Overdue / Due today" : `${formatDaysRemaining(bed)} days left`})
+ </span>
+ )}
  </p>
  )}
  </div>

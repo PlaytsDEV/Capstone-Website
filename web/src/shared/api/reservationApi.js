@@ -271,4 +271,36 @@ export const reservationApi = {
       body: JSON.stringify(data),
       }),
     ),
+
+  /**
+   * Create lease renewal offer (admin only)
+   */
+  createRenewalOffer: (reservationId, data) =>
+    authFetch(`/reservations/${reservationId}/renewal-offer`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  /**
+   * Cancel lease renewal offer (admin only)
+   */
+  cancelRenewalOffer: (reservationId, offerId) =>
+    authFetch(`/reservations/${reservationId}/renewal-offer/${offerId}/cancel`, {
+      method: "POST",
+    }),
+
+  /**
+   * Respond to lease renewal offer (tenant or admin)
+   */
+  respondToRenewalOffer: (reservationId, offerId, action, tenantResponseReason = "") =>
+    authFetch(`/reservations/${reservationId}/renewal-offer/${offerId}/respond`, {
+      method: "POST",
+      body: JSON.stringify({ action, tenantResponseReason }),
+    }),
+
+  /**
+   * Get current tenant's active renewal offers
+   */
+  getMyRenewalOffers: () =>
+    authFetch("/reservations/my-renewal-offers"),
 };

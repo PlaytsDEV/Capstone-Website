@@ -11,12 +11,13 @@ import mongoose from "mongoose";
 import Room from "../../models/Room.js";
 import Reservation from "../../models/Reservation.js";
 import logger from "../../middleware/logger.js";
-import { emitRoomUpdate, emitDigitalTwinUpdate } from "../../utils/socket.js";
+import { emitRoomUpdate } from "../../utils/socket.js";
 import {
   ACTIVE_OCCUPANCY_STATUS_QUERY,
   hasReservationStatus,
   normalizeReservationStatus,
 } from "../../utils/lifecycleNaming.js";
+import dayjs from "dayjs";
 import { resolveReferencedUser } from "../../utils/userReference.js";
 
 const ACTIVE_OCCUPANCY_STATUSES = ACTIVE_OCCUPANCY_STATUS_QUERY;
@@ -27,6 +28,34 @@ const getDisplayStatusForReservation = (status) =>
 const buildOccupantSnapshot = (userRef, reservation, occupiedSince = null) => {
   if (!userRef) return null;
   const occupant = resolveReferencedUser(userRef);
+
+  let expectedVacancyDate = null;
+  let daysRemaining = null;
+
+  if (reservation) {
+    const moveInDate =
+      reservation.moveInDate ||
+      reservation.checkInDate ||
+      reservation.targetMoveInDate ||
+      occupiedSince ||
+      reservation.createdAt;
+
+    const baseDuration = Number(reservation.leaseDuration || 0);
+    const extensions = Array.isArray(reservation.leaseExtensions)
+      ? reservation.leaseExtensions.reduce(
+          (sum, ext) => sum + (Number(ext.addedMonths) || 0),
+          0,
+        )
+      : 0;
+    const totalMonths = baseDuration + extensions;
+
+    if (moveInDate && totalMonths > 0) {
+      const expectedEnd = dayjs(moveInDate).add(totalMonths, "month");
+      expectedVacancyDate = expectedEnd.toDate();
+      daysRemaining = Math.max(0, expectedEnd.diff(dayjs(), "day"));
+    }
+  }
+
   return {
     _id: occupant.id,
     name: occupant.name,
@@ -35,6 +64,8 @@ const buildOccupantSnapshot = (userRef, reservation, occupiedSince = null) => {
     reservationId: reservation?._id || null,
     reservationStatus: reservation?.status || null,
     occupiedSince,
+    expectedVacancyDate,
+    daysRemaining,
   };
 };
 
@@ -332,7 +363,6 @@ export const updateOccupancyOnReservationChange = async (
         available: finalRoom.available,
         capacity: finalRoom.capacity,
       });
-      emitDigitalTwinUpdate(finalRoom.branch || null, finalRoom._id);
     }
 
     return finalRoom;

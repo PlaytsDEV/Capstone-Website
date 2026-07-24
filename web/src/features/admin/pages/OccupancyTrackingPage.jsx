@@ -11,10 +11,9 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { digitalTwinApi } from "../../../shared/api/digitalTwinApi";
+import { roomApi } from "../../../shared/api/roomApi";
 import { formatRoomType, formatBranch } from "../utils/formatters";
-import { useVacancyForecast } from "../../../shared/hooks/queries/useRooms";
-import { useDigitalTwinSnapshot } from "../../../shared/hooks/queries/useDigitalTwin";
+import { useRooms, useVacancyForecast } from "../../../shared/hooks/queries/useRooms";
 import {
   CardSkeleton,
   StatGridSkeleton,
@@ -96,15 +95,15 @@ function OccupancyTrackingPage({ isEmbedded = false }) {
   const isInitialPageRender = useRef(true);
 
   const {
-    data: snapshot,
+    data: roomsData,
     isLoading: loading,
     error: queryError,
-  } = useDigitalTwinSnapshot("all");
+  } = useRooms();
   const { data: vacancyResponse } = useVacancyForecast({
     branch: branchFilter === "all" ? null : branchFilter,
   });
   const error = queryError ? "Failed to load occupancy data" : null;
-  const allRooms = snapshot?.rooms || [];
+  const allRooms = Array.isArray(roomsData) ? roomsData : (roomsData?.items ?? []);
   const rooms = useMemo(() => {
     if (branchFilter === "all") return allRooms;
 
@@ -131,10 +130,9 @@ function OccupancyTrackingPage({ isEmbedded = false }) {
     setShowRoomDetails(true);
     setSelectedRoom({ room, beds: room.beds || [] });
     try {
-      const detailedData = await digitalTwinApi.getRoomDetail(room._id);
+      const detailedData = await roomApi.getById(room._id);
       setSelectedRoom({
-        ...detailedData,
-        room: detailedData?.room || room,
+        room: detailedData || room,
         beds: detailedData?.beds || room.beds || [],
       });
     } catch (err) {

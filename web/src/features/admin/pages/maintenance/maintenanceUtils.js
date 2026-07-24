@@ -28,6 +28,7 @@ import {
   getMaintenanceAttachmentName,
   getMaintenanceAttachmentUri,
   isViewableMaintenanceAttachmentUri,
+  normalizeMaintenanceAttachments,
 } from "../../../../shared/utils/maintenanceAttachments";
 
 export {
@@ -36,6 +37,7 @@ export {
   getMaintenanceAttachmentName,
   getMaintenanceAttachmentUri,
   isViewableMaintenanceAttachmentUri,
+  normalizeMaintenanceAttachments,
 };
 
 export const ITEMS_PER_PAGE = 10;
@@ -1170,6 +1172,26 @@ export const getStructuredReportSections = (report, request) => {
   }
 
   return sections;
+};
+
+export const formatMaintenanceReportAsText = (report, request) => {
+  if (!report && !request) return "";
+  const title = report?.title || "Maintenance Report";
+  const sections = getStructuredReportSections(report, request);
+  const textLines = [`=== ${title.toUpperCase()} ===`, ""];
+
+  sections.forEach((section) => {
+    textLines.push(`--- ${section.title} ---`);
+    if (section.description) {
+      textLines.push(section.description);
+    }
+    (section.rows || []).forEach((row) => {
+      textLines.push(`• ${row}`);
+    });
+    textLines.push("");
+  });
+
+  return textLines.join("\n").trim();
 };
 
 export const formatMaintenanceCsvRows = (requests = []) =>

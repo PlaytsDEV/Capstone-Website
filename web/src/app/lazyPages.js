@@ -89,9 +89,6 @@ export const AdminChatPage = React.lazy(
 export const InquiriesPage = React.lazy(
   () => import("../features/admin/pages/InquiriesPage"),
 );
-export const DigitalTwinPage = React.lazy(
-  () => import("../features/admin/pages/DigitalTwinPage"),
-);
 export const MaintenancePage = React.lazy(
   () => import("../features/admin/pages/AdminMaintenancePage.jsx"),
 );

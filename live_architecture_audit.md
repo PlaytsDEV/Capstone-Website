@@ -405,6 +405,30 @@ Scheduler (daily 01:20) → detectConsecutiveOverdueMonths()
       → streak < 3 (was eligible) → eligibleForTermination = false (auto-clears)
 ```
 
+### 5.5 Lease Contract Renewal Offer Flow
+
+```
+Admin (Tenants Workspace)
+  → Opens RenewLeaseModal → Selects "Send Official Offer"
+  → Enters offer duration (e.g. 6 months), proposed rate (PHP), expiry date, notes
+  → POST /api/reservations/:id/renewal-offer [createRenewalOffer]
+      → Appends offer object to Reservation.renewalOffers schema array
+      → Sends push notification & in-app notification to tenant
+
+Tenant (My Contract Tab)
+  → GET /api/reservations/my-renewal-offers [getMyRenewalOffers]
+  → Sees interactive "Official Lease Renewal Offer" card
+  → Chooses "Accept Renewal" or "Decline" (with decline reason modal)
+      → POST /api/reservations/:id/renewal-offer/:offerId/respond [respondToRenewalOffer]
+          → If Accepted:
+              → Calls renewStayWorkflow() in tenantActionService.js
+              → Extends stay & reservation lease dates automatically
+              → Creates audit log & notifies admin
+          → If Declined:
+              → Updates offer status to 'declined' with tenantResponseReason
+              → Notifies branch admins
+```
+
 ---
 
 ## 6. Strategic Recommendations
@@ -440,36 +464,44 @@ Translated physical lease contract into system rules across 4 phases:
 - **Phase 3:** 3-consecutive-month overdue termination flag — 4 new fields on `Reservation.js`; new cron Job 4b (`detectConsecutiveOverdueMonths`, daily 01:20) sets `eligibleForTermination: true` and alerts branch admins.
 - **Phase 4:** Lease date anniversary alignment — `computeLeaseEndDate()` in `tenantWorkspace.js` subtracts 1 day so Aug 20 + 6 months → Feb 19, not Feb 20. Unit tests updated and passing.
 
+#### 4. Lease Contract Renewal Offer System — ✅ COMPLETED
+
+Implemented structured lease renewal proposal and resident acceptance lifecycle:
+- **Schema:** Added `renewalOffers` schema array to `Reservation.js` (`offerId`, `months`, `proposedRent`, `status`, `expiresAt`, `createdAt`, `createdBy`, `tenantResponseReason`).
+- **Backend:** Created 4 domain endpoints (`createRenewalOffer`, `cancelRenewalOffer`, `respondToRenewalOffer`, `getMyRenewalOffers`) in `tenancyActionsController.js`.
+- **Tenant Portal:** Updated `ContractTab.jsx` to render an interactive Renewal Offer card with Accept / Decline options and response prompt.
+- **Admin Workspace:** Enhanced `RenewLeaseModal` in `TenantWorkspaceModals.jsx` to support dual modes: Direct Renewal vs. Send Official Renewal Offer.
+
 ### 6.2 High Priority
 
-#### 3. Standardize Auth Error Responses — ✅ COMPLETED
+#### 5. Standardize Auth Error Responses — ✅ COMPLETED
 
 Refactored `middleware/auth.js` to wrap responses in `sendError()` helper for uniform API responses.
 
-#### 4. Decompose Monolithic Page Components — 🟡 PLANNED
+#### 6. Decompose Monolithic Page Components — 🟡 PLANNED
 
 Extract `AdminMaintenancePage.jsx` (192 KB) and other large pages into composition patterns.
 
 ### 6.3 Medium Priority
 
-#### 5. Audit and Remove Dead Dependencies — 🟡 PLANNED
+#### 7. Audit and Remove Dead Dependencies — 🟡 PLANNED
 
 - **Axios** (`web/package.json`) — Frontend uses native `fetch()` via `httpClient.js`.
 - Rename `apiClient.js` to `apiBarrel.js` or `index.js` to clarify it's a re-export hub.
 
-#### 6. Evaluate Zustand Necessity — 🟡 PLANNED
+#### 8. Evaluate Zustand Necessity — 🟡 PLANNED
 
 With only 1 store (`notificationStore`), evaluate migrating to React Query subscriptions or React Context.
 
-#### 7. Clean Up Root-Level Scripts — ✅ COMPLETED
+#### 9. Clean Up Root-Level Scripts — ✅ COMPLETED
 
 Moved root debug scripts (`check.js`, `check_db.js`, `check-endpoint.js`, `test-endpoint.js`, `test3.cjs`, `test_delete.cjs`, `script.cjs`, `test-counts.js`) to `server/scripts/archived/`.
 
 ### 6.4 Scaling Considerations
 
-#### 8. Mobile/Web Logic Unification
-#### 9. Database Index Audit
-#### 10. API Versioning Preparation
+#### 10. Mobile/Web Logic Unification
+#### 11. Database Index Audit
+#### 12. API Versioning Preparation
 
 ---
 
@@ -490,10 +522,10 @@ Moved root debug scripts (`check.js`, `check_db.js`, `check-endpoint.js`, `test-
 | Custom Hooks | **9** | Shared React hooks |
 | Background Cron Jobs | **15** | Scheduled system jobs |
 | Zustand Stores | **1** | Client state store |
-| Backend Test Files | **~25** | Controller & service unit/integration tests |
-| Net New Reservation Schema Fields | **11** | Added for lease contract rules (7 deposit + 4 termination) |
+| Backend Test Suites | **41** | 343 unit/integration tests passing (100%) |
+| Net New Reservation Schema Fields | **19** | Added for contract rules (7 deposit + 4 termination + 8 renewal offer) |
 
 ---
 
 > [!IMPORTANT]
-> This audit reflects the live codebase structure following the modular refactoring of controllers, service layer restructuring, auth error standardization, root script archiving, and full lease contract rule integration (Phases 1–4). All 4 phases completed and verified 2026-07-23.
+> This audit reflects the live codebase structure following modular refactoring of controllers, service layer restructuring, auth error standardization, root script archiving, full lease contract rule integration (Phases 1–4), and the complete Lease Contract Renewal Offer system. All 41 test suites (343 tests) verified passing as of 2026-07-24.

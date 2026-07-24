@@ -486,7 +486,11 @@ const MonthlyBillCard = ({ bill }) => {
  if (rentOnlyTotal < 0) rentOnlyTotal = 0;
 
  return (
- <div style={{ ...s.billCard, borderColor: open ? "#cbd5e1" : "var(--border-card)" }}>
+ <div style={{
+ ...s.billCard,
+ borderColor: open ? "#cbd5e1" : "var(--border-card)",
+ ...(bill.status === "overdue" ? { borderLeft: "3px solid #DC2626" } : {}),
+ }}>
  <button onClick={() => setOpen(!open)} style={s.billHeader}>
  <Package size={16} color="#64748b" />
  <div style={{ flex: 1, marginLeft: 10, textAlign: "left" }}>
@@ -528,14 +532,41 @@ const MonthlyBillCard = ({ bill }) => {
  </span>
  </div>
  
- {charges.penalty > 0 && (
+ {charges.penalty > 0 && (() => {
+ const daysLate = Number(bill.penaltyDetails?.daysLate || 0);
+ const ratePerDay = Number(bill.penaltyDetails?.ratePerDay || 0);
+ const hasBreakdown = daysLate > 0 && ratePerDay > 0;
+ return (
+ <>
  <div style={elecS.tableRow2}>
- <span style={{ ...elecS.tableCell2, color: "#DC2626" }}>Late Penalty</span>
+ <span style={{ ...elecS.tableCell2, color: "#DC2626" }}>
+ Late Penalty
+ {hasBreakdown && (
+ <span style={{ fontWeight: 400, fontSize: 11, color: "#ef4444", marginLeft: 4 }}>
+ ({daysLate}d × ₱{ratePerDay.toLocaleString("en-PH")}/day)
+ </span>
+ )}
+ </span>
  <span style={{ ...elecS.tableCell2, color: "#DC2626", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
  {fmt(charges.penalty)}
  </span>
  </div>
- )}
+ <div style={{
+ display: "flex", alignItems: "flex-start", gap: 6,
+ padding: "8px 12px", margin: "4px 0 2px",
+ background: "#fef2f2", borderRadius: 8,
+ fontSize: 11, lineHeight: 1.5, color: "#991b1b",
+ }}>
+ <AlertCircle size={13} color="#DC2626" style={{ flexShrink: 0, marginTop: 1 }} />
+ <span>
+ {hasBreakdown
+ ? `This bill is ${daysLate} day${daysLate === 1 ? "" : "s"} past due. A late fee of ₱${ratePerDay.toLocaleString("en-PH")} per day is applied automatically. Pay promptly to prevent further increases.`
+ : "A late payment penalty has been applied to this bill. Please settle your balance to avoid further charges."}
+ </span>
+ </div>
+ </>
+ );
+ })()}
  {charges.discount > 0 && (
  <div style={elecS.tableRow2}>
  <span style={{ ...elecS.tableCell2, color: "#059669" }}>Discount</span>

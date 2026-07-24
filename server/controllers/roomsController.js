@@ -12,6 +12,7 @@ import {
   ROOM_BRANCHES,
 } from "../models/index.js";
 import auditLogger from "../utils/auditLogger.js";
+import dayjs from "dayjs";
 import {
   getBusinessSettings,
   getBranchSettings,
@@ -46,7 +47,9 @@ const syncRealtimeBedStatuses = async (rooms) => {
     status: { $in: ACTIVE_BED_HOLD_STATUSES },
     isArchived: { $ne: true },
   })
-    .select("roomId selectedBed status")
+    .select(
+      "roomId selectedBed status moveInDate checkInDate targetMoveInDate createdAt leaseDuration leaseExtensions",
+    )
     .lean();
 
   if (activeReservations.length === 0) return rooms;
@@ -78,13 +81,49 @@ const syncRealtimeBedStatuses = async (rooms) => {
 
       if (matchingHold) {
         const nextStatus = matchingHold.status === "moveIn" ? "occupied" : "reserved";
-        return { ...bed, status: nextStatus, available: false };
+        let expectedVacancyDate = null;
+        let daysRemaining = null;
+
+        const moveInDate =
+          matchingHold.moveInDate ||
+          matchingHold.checkInDate ||
+          matchingHold.targetMoveInDate ||
+          matchingHold.createdAt;
+
+        const baseDuration = Number(matchingHold.leaseDuration || 0);
+        const extensions = Array.isArray(matchingHold.leaseExtensions)
+          ? matchingHold.leaseExtensions.reduce((sum, ext) => sum + (Number(ext.addedMonths) || 0), 0)
+          : 0;
+        const totalMonths = baseDuration + extensions;
+
+        if (moveInDate && totalMonths > 0) {
+          const expectedEnd = dayjs(moveInDate).add(totalMonths, "month");
+          expectedVacancyDate = expectedEnd.toDate();
+          daysRemaining = Math.max(0, expectedEnd.diff(dayjs(), "day"));
+        }
+
+        return {
+          ...bed,
+          status: nextStatus,
+          available: false,
+          expectedVacancyDate,
+          daysRemaining,
+        };
       }
 
       return bed;
     });
 
-    return { ...room, beds: updatedBeds };
+    const vacantDates = updatedBeds
+      .map((b) => b.expectedVacancyDate)
+      .filter(Boolean)
+      .sort((a, b) => new Date(a) - new Date(b));
+
+    return {
+      ...room,
+      beds: updatedBeds,
+      nextExpectedVacancy: vacantDates[0] || room.nextExpectedVacancy || null,
+    };
   });
 };
 
