@@ -44,17 +44,18 @@ const RoomCard = React.memo(({ room, onClick }) => {
   const getFlyerRates = (roomType) => {
     const norm = String(roomType || "").toLowerCase();
     if (norm.includes("double")) {
-      return { regularLong: 9000, longTerm: 7200, discountPercent: 20 };
+      return { regularShort: 10000, shortTerm: 8000, regularLong: 9000, longTerm: 7200, discountPercent: 20 };
     }
     if (norm.includes("private")) {
-      return { regularLong: 15000, longTerm: 13500, discountPercent: 10 };
+      return { regularShort: 16000, shortTerm: 14400, regularLong: 15000, longTerm: 13500, discountPercent: 10 };
     }
-    return { regularLong: 6000, longTerm: 5400, discountPercent: 10 };
+    return { regularShort: 7000, shortTerm: 6300, regularLong: 6000, longTerm: 5400, discountPercent: 10 };
   };
 
   const flyer = getFlyerRates(room.type);
   const isDiscountEnabled = room.isDiscountEnabled !== false;
 
+  const shortTermRate = room.shortTermRate || flyer.shortTerm || flyer.regularShort;
   const activeRegularRate = flyer.regularLong;
   const longTermRate = !isDiscountEnabled
     ? activeRegularRate
