@@ -412,7 +412,8 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       if (!currentRoom) {
         throw Object.assign(new Error("Current room not found."), { statusCode: 404, code: "CURRENT_ROOM_NOT_FOUND" });
       }
-      currentRoom.vacateBed(activeStay.bedId);
+      // Vacate current bed and mark as cleaning_in_progress for turnover
+      currentRoom.markBedForCleaning(activeStay.bedId);
       currentRoom.currentOccupancy = Math.max(0, Number(currentRoom.currentOccupancy || 0) - 1);
       currentRoom.updateAvailability();
       await currentRoom.save({ session });
@@ -424,6 +425,45 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       );
       targetRoom.updateAvailability();
       await targetRoom.save({ session });
+
+      const sourceMeterReading = payload.sourceRoomMeterReading ?? payload.meterReading;
+      const targetMeterReading = payload.targetRoomMeterReading ?? payload.newRoomMeterReading;
+
+      if (sourceMeterReading != null && !Number.isNaN(Number(sourceMeterReading))) {
+        await UtilityReading.create(
+          [
+            {
+              utilityType: "electricity",
+              roomId: currentRoom._id,
+              branch: currentRoom.branch || "",
+              reading: Number(sourceMeterReading),
+              date: effectiveTransferDate,
+              eventType: "moveOut",
+              tenantId: reservation.userId?._id || reservation.userId,
+              recordedBy: actorId,
+            },
+          ],
+          { session },
+        );
+      }
+
+      if (targetMeterReading != null && !Number.isNaN(Number(targetMeterReading))) {
+        await UtilityReading.create(
+          [
+            {
+              utilityType: "electricity",
+              roomId: targetRoom._id,
+              branch: targetRoom.branch || "",
+              reading: Number(targetMeterReading),
+              date: effectiveTransferDate,
+              eventType: "moveIn",
+              tenantId: reservation.userId?._id || reservation.userId,
+              recordedBy: actorId,
+            },
+          ],
+          { session },
+        );
+      }
 
       const activeHistory = await BedHistory.findOne({
         reservationId: reservation._id,
@@ -439,6 +479,8 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         activeHistory.closedByAction = "transfer";
         activeHistory.reason = payload.reason || "Room transfer";
         activeHistory.notes = payload.notes || "";
+        if (sourceMeterReading != null) activeHistory.transferSourceReading = Number(sourceMeterReading);
+        if (targetMeterReading != null) activeHistory.transferTargetReading = Number(targetMeterReading);
         await activeHistory.save({ session });
       }
 
@@ -456,6 +498,8 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
             status: "active",
             reason: payload.reason || "Room transfer",
             notes: payload.notes || "",
+            transferSourceReading: sourceMeterReading != null ? Number(sourceMeterReading) : null,
+            transferTargetReading: targetMeterReading != null ? Number(targetMeterReading) : null,
           },
         ],
         { session },
@@ -554,7 +598,8 @@ export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {
 
       const room = await Room.findById(activeStay.roomId).session(session);
       if (room) {
-        room.vacateBed(activeStay.bedId);
+        // Mark bed status as cleaning_in_progress for room turnover
+        room.markBedForCleaning(activeStay.bedId);
         room.currentOccupancy = Math.max(0, Number(room.currentOccupancy || 0) - 1);
         room.updateAvailability();
         await room.save({ session });
@@ -589,16 +634,19 @@ export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {
       reservation.currentStayId = activeStay._id;
       reservation.latestStayStatus = activeStay.status;
 
-      // ── Deposit Forfeiture (Lease Contract — Section 4) ─────────────────────
-      // If the tenant vacates before the lease end date, the security deposit
-      // is automatically forfeited (early vacancy rule). The deposit is never
-      // used to offset active rent bills — this is purely a settlement field.
-      // The 30-day refund deadline and final refund amount are set here as
-      // initial values; admin completes the settlement via the move-out modal.
+      // ── Deposit Forfeiture & Settlement Calculation ──────────────────────────
       const leaseEndDate = activeStay.leaseEndDate
         ? new Date(activeStay.leaseEndDate)
         : null;
       const isEarlyVacancy = leaseEndDate && moveOutAt < leaseEndDate;
+
+      const securityDepositAmount = Number(reservation.monthlyRent || reservation.totalPrice || 0);
+      const outstandingBal = Number(billingSummary.currentBalance || 0);
+      const damageDeductions = Number(payload.damageDeductions || 0);
+      const keyDeduction = payload.keyReturned === false ? 500 : 0;
+      const netSettlement = isEarlyVacancy
+        ? 0
+        : Math.max(0, securityDepositAmount - outstandingBal - damageDeductions - keyDeduction);
 
       if (isEarlyVacancy) {
         reservation.depositForfeited = true;
@@ -606,17 +654,33 @@ export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {
         reservation.depositForfeitedAt = new Date();
         reservation.depositRefundAmount = 0;
         reservation.depositRefundDeadline = null;
+        reservation.depositRefundStatus = "forfeited";
       } else {
         reservation.depositForfeited = false;
         reservation.depositForfeitureReason = null;
         reservation.depositForfeitedAt = null;
-        // Refund deadline = moveOutDate + 30 days (per lease contract)
         reservation.depositRefundDeadline = dayjs(moveOutAt).add(30, "day").toDate();
-        // depositRefundAmount is null until admin finalises settlement
-        // (accounts for keyReturned toggle and outstanding bills)
-        reservation.depositRefundAmount = null;
+        reservation.depositRefundAmount = netSettlement;
+        reservation.depositRefundStatus = "pending";
       }
-      // ────────────────────────────────────────────────────────────────────────
+
+      if (payload.keyReturned !== undefined) {
+        reservation.keyReturned = Boolean(payload.keyReturned);
+        reservation.keyReturnAssessedAt = new Date();
+      }
+
+      reservation.finalSettlementSummary = {
+        securityDeposit: securityDepositAmount,
+        outstandingBalance: outstandingBal,
+        finalUtilityCharge: Number(payload.finalUtilityReading || 0),
+        damageDeductions,
+        keyDeduction,
+        netAmount: netSettlement,
+        settlementType: isEarlyVacancy
+          ? "forfeited"
+          : (netSettlement > 0 ? "refund" : (outstandingBal > 0 ? "payment_due" : "zero_balance")),
+        settledAt: new Date(),
+      };
 
       await reservation.save({ session });
 

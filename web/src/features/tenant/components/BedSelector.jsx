@@ -1,121 +1,121 @@
 import React from "react";
 import "../styles/bed-selector.css";
+import { getBedDisplayLabel, groupBedsByBunk } from "../../shared/utils/bedIdentifier";
 
 /**
- * Visual Bed Selector — minimalist double-deck bunk bed layout.
+ * Visual Bed Selector — minimalist double-deck bunk bed layout (Bunk A, Bunk B... Upper / Lower).
  */
 const BedSelector = ({ beds = [], selectedBed, onSelect, readOnly = false }) => {
- if (!beds.length) return null;
+  if (!beds.length) return null;
 
- const upperBeds = beds.filter((b) => b.position === "upper");
- const lowerBeds = beds.filter((b) => b.position === "lower");
- const singleBeds = beds.filter((b) => b.position === "single");
+  const { bunks, singleBeds } = groupBedsByBunk(beds);
 
- const bunkUnits = [];
- const maxBunks = Math.max(upperBeds.length, lowerBeds.length);
- for (let i = 0; i < maxBunks; i++) {
- bunkUnits.push({ upper: upperBeds[i] || null, lower: lowerBeds[i] || null });
- }
+  const getStatus = (bed) => {
+    if (!bed) return "empty";
+    if (bed.status) return bed.status; // available, occupied, reserved, locked, maintenance
+    return bed.available === false ? "occupied" : "available";
+  };
 
- const getStatus = (bed) => {
- if (!bed) return "empty";
- if (bed.status) return bed.status; // available, occupied, reserved, locked, maintenance
- return bed.available === false ? "occupied" : "available";
- };
+  const isSelectable = (bed) => {
+    if (readOnly || !bed) return false;
+    const status = getStatus(bed);
+    return status === "available";
+  };
 
- const isSelectable = (bed) => {
- if (readOnly || !bed) return false;
- const status = getStatus(bed);
- return status === "available";
- };
- const isSelected = (bed) => bed && selectedBed?.id === bed.id;
+  const isSelected = (bed) => bed && selectedBed?.id === bed.id;
 
- const handleClick = (bed) => {
- if (!isSelectable(bed)) return;
- onSelect?.({ id: bed.id, position: bed.position });
- };
+  const handleClick = (bed, bunkBlock) => {
+    if (!isSelectable(bed)) return;
+    onSelect?.({
+      id: bed.id,
+      position: bed.position,
+      bunkBlock: bed.bunkBlock || bunkBlock,
+      code: bed.code,
+    });
+  };
 
- const renderBed = (bed, label) => {
- if (!bed) return null;
- const status = getStatus(bed);
- const selected = isSelected(bed);
- const selectable = isSelectable(bed);
+  const renderBed = (bed, fallbackLabel, indexInRoom = 0, bunkBlock = "A") => {
+    if (!bed) return null;
+    const status = getStatus(bed);
+    const selected = isSelected(bed);
+    const selectable = isSelectable(bed);
+    const displayLabel = getBedDisplayLabel(bed, indexInRoom);
 
- return (
- <div
- className={`bs-bed bs-${status} ${selected ? "bs-selected" : ""} ${selectable ? "bs-clickable" : ""}`}
- onClick={() => handleClick(bed)}
- role={selectable ? "button" : undefined}
- tabIndex={selectable ? 0 : undefined}
- onKeyDown={(e) => {
- if (selectable && (e.key === "Enter" || e.key ===" ")) {
- e.preventDefault();
- handleClick(bed);
- }
- }}
- >
- <div className="bs-bed-content">
- <div className="bs-bed-left">
- <div className={`bs-dot bs-dot-${status}`} />
- <div>
- <div className="bs-label">{label}</div>
- <div className="bs-id">{bed.id}</div>
- </div>
- </div>
- <div className="bs-badge">
- {selected
- ? "✓ Selected"
- : status === "occupied"
- ? "Occupied"
- : status === "reserved"
- ? "🔒 Reserved"
- : status === "locked"
- ? "🔧 Locked"
- : status === "maintenance"
- ? "Locked"
- : "Available"}
- </div>
- </div>
- </div>
- );
- };
+    return (
+      <div
+        className={`bs-bed bs-${status} ${selected ? "bs-selected" : ""} ${selectable ? "bs-clickable" : ""}`}
+        onClick={() => handleClick(bed, bunkBlock)}
+        role={selectable ? "button" : undefined}
+        tabIndex={selectable ? 0 : undefined}
+        onKeyDown={(e) => {
+          if (selectable && (e.key === "Enter" || e.key === " ")) {
+            e.preventDefault();
+            handleClick(bed, bunkBlock);
+          }
+        }}
+      >
+        <div className="bs-bed-content">
+          <div className="bs-bed-left">
+            <div className={`bs-dot bs-dot-${status}`} />
+            <div>
+              <div className="bs-label">{displayLabel}</div>
+              <div className="bs-id">{bed.code || bed.id}</div>
+            </div>
+          </div>
+          <div className="bs-badge">
+            {selected
+              ? "✓ Selected"
+              : status === "occupied"
+              ? "Occupied"
+              : status === "reserved"
+              ? "🔒 Reserved"
+              : status === "locked"
+              ? "🔧 Locked"
+              : status === "maintenance"
+              ? "Locked"
+              : "Available"}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
- return (
- <div className="bed-selector">
- <div className="bs-header">
- <h4 className="bs-title">Select Your Bed</h4>
- <div className="bs-legend">
- <span className="bs-legend-item"><span className="bs-legend-dot bs-legend-avail" />Available</span>
- <span className="bs-legend-item"><span className="bs-legend-dot bs-legend-occ" />Occupied</span>
- <span className="bs-legend-item"><span className="bs-legend-dot bs-legend-resv" />Reserved</span>
- <span className="bs-legend-item"><span className="bs-legend-dot bs-legend-lock" />Locked</span>
- </div>
- </div>
+  return (
+    <div className="bed-selector">
+      <div className="bs-header">
+        <h4 className="bs-title">Select Your Bed</h4>
+        <div className="bs-legend">
+          <span className="bs-legend-item"><span className="bs-legend-dot bs-legend-avail" />Available</span>
+          <span className="bs-legend-item"><span className="bs-legend-dot bs-legend-occ" />Occupied</span>
+          <span className="bs-legend-item"><span className="bs-legend-dot bs-legend-resv" />Reserved</span>
+          <span className="bs-legend-item"><span className="bs-legend-dot bs-legend-lock" />Locked</span>
+        </div>
+      </div>
 
- <div className="bs-bunks">
- {bunkUnits.map((bunk, i) => (
- <div key={`bunk-${i}`} className="bs-frame">
- <div className="bs-frame-label">Bunk {i + 1}</div>
- <div className="bs-tier">
- {renderBed(bunk.upper, "Upper")}
- </div>
- <div className="bs-divider" />
- <div className="bs-tier">
- {renderBed(bunk.lower, "Lower")}
- </div>
- </div>
- ))}
+      <div className="bs-bunks">
+        {bunks.map((bunk, i) => (
+          <div key={`bunk-${bunk.bunkBlock || i}`} className="bs-frame">
+            <div className="bs-frame-label">{bunk.bunkLabel}</div>
+            <div className="bs-tier">
+              {renderBed(bunk.upper, "Upper", i * 2, bunk.bunkBlock)}
+            </div>
+            <div className="bs-divider" />
+            <div className="bs-tier">
+              {renderBed(bunk.lower, "Lower", i * 2 + 1, bunk.bunkBlock)}
+            </div>
+          </div>
+        ))}
 
- {singleBeds.map((bed) => (
- <div key={bed.id} className="bs-frame bs-frame-single">
- <div className="bs-tier">
- {renderBed(bed, "Single")}
- </div>
- </div>
- ))}
- </div>
- </div>
- );
+        {singleBeds.map((bed, i) => (
+          <div key={bed.id} className="bs-frame bs-frame-single">
+            <div className="bs-tier">
+              {renderBed(bed, "Single", i)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 };
 
 export default BedSelector;

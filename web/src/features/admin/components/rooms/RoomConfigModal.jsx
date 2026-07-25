@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { formatRoomType, formatBranch } from "../../utils/formatters";
+import { getBedDisplayLabel } from "../../../../shared/utils/bedIdentifier";
 import {
   ArrowDown,
   ArrowUp,
@@ -353,6 +354,9 @@ export default function RoomConfigModal({
                         className="bed-item"
                       >
                         <div className="bed-info">
+                          <span className="text-xs font-semibold text-muted-foreground mr-1">
+                            {getBedDisplayLabel(bed, index)}
+                          </span>
                           <input
                             className="bed-id"
                             value={bed.id || ""}

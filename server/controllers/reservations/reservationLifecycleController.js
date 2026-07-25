@@ -253,6 +253,7 @@ export const updateReservation = async (req, res, next) => {
       req.body.applicationReviewedAt = new Date();
       req.body.applicationReviewedBy = req.adminId || null;
       req.body.approvedForPaymentAt = new Date();
+      req.body.paymentExpiresAt = dayjs().add(24, "hour").toDate();
       req.body.applicationReviewReason = null;
     }
 
@@ -289,6 +290,26 @@ export const updateReservation = async (req, res, next) => {
         return res.status(400).json({
           error: "A meter reading (kWh) is required when moving in a tenant.",
           code: "METER_READING_REQUIRED",
+        });
+      }
+
+      // Meter reading continuity check against previous room reading
+      const previousReadingDoc = await UtilityReading.findOne({
+        roomId: existingReservation.roomId?._id || existingReservation.roomId,
+        isArchived: false,
+      })
+        .sort({ date: -1, createdAt: -1 })
+        .lean();
+
+      if (
+        previousReadingDoc &&
+        Number.isFinite(previousReadingDoc.reading) &&
+        Number(req.body.meterReading) < previousReadingDoc.reading
+      ) {
+        return res.status(400).json({
+          error: `Initial meter reading (${req.body.meterReading} kWh) cannot be lower than the room's previous reading (${previousReadingDoc.reading} kWh).`,
+          code: "METER_READING_CONTINUITY_ERROR",
+          previousReading: previousReadingDoc.reading,
         });
       }
 

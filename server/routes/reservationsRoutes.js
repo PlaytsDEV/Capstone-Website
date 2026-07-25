@@ -59,6 +59,7 @@ import {
   getMyRenewalOffers,
   moveOutReservation,
   transferTenant,
+  processDepositRefund,
   getMyContract,
   updateVisitPreferenceAndSchedule,
   saveApplicationDraft,
@@ -593,6 +594,22 @@ router.put(
   filterByBranch,
   requireAnyPermission(["manageReservations", "manageTenants"]),
   transferTenant,
+);
+
+/**
+ * PUT /api/reservations/:reservationId/deposit-refund
+ *
+ * Mark deposit refund status and payout reference.
+ *
+ * Access: Admin | Owner
+ */
+router.put(
+  "/:reservationId/deposit-refund",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requireAnyPermission(["manageReservations", "manageTenants"]),
+  processDepositRefund,
 );
 
 export default router;

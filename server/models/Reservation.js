@@ -203,6 +203,8 @@ const reservationSchema = new mongoose.Schema(
     selectedBed: {
       id: String,
       position: String, // "upper", "lower", "single"
+      bunkBlock: String, // "A", "B", etc.
+      code: String, // "101-A-U", etc.
     },
 
     // =========================================================================
@@ -787,6 +789,59 @@ const reservationSchema = new mongoose.Schema(
     depositRefundAmount: {
       type: Number,
       default: null,
+    },
+    depositRefundStatus: {
+      type: String,
+      enum: ["pending", "approved", "processed", "forfeited"],
+      default: "pending",
+    },
+    depositRefundReference: {
+      type: String,
+      default: "",
+    },
+    depositRefundProcessedAt: {
+      type: Date,
+      default: null,
+    },
+    paymentExpiresAt: {
+      type: Date,
+      default: null,
+    },
+    depositRefundProcessedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    refundDisbursementMethod: {
+      type: String,
+      enum: ["gcash", "bank_transfer", "cash", "other", null],
+      default: null,
+    },
+    refundAccountName: {
+      type: String,
+      default: "",
+    },
+    refundAccountNumber: {
+      type: String,
+      default: "",
+    },
+    refundBankName: {
+      type: String,
+      default: "",
+    },
+    finalSettlementSummary: {
+      securityDeposit: { type: Number, default: 0 },
+      outstandingBalance: { type: Number, default: 0 },
+      finalUtilityCharge: { type: Number, default: 0 },
+      damageDeductions: { type: Number, default: 0 },
+      keyDeduction: { type: Number, default: 0 },
+      netAmount: { type: Number, default: 0 },
+      settlementType: {
+        type: String,
+        enum: ["refund", "payment_due", "zero_balance", "forfeited", null],
+        default: null,
+      },
+      settledAt: { type: Date, default: null },
     },
 
     // --- Contract Termination Eligibility (Lease Contract — Section 10) ---

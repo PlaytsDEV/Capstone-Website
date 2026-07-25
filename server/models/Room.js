@@ -130,13 +130,21 @@ const roomSchema = new mongoose.Schema(
           id: { type: String },
           position: {
             type: String,
-            enum: ["upper", "lower"],
+            enum: ["upper", "lower", "single"],
             required: true,
+          },
+          bunkBlock: {
+            type: String,
+            default: "A",
+          },
+          code: {
+            type: String,
+            default: null,
           },
           // 5-state: available, locked (temp hold), reserved (confirmed), occupied, maintenance
           status: {
             type: String,
-            enum: ["available", "locked", "reserved", "occupied", "maintenance"],
+            enum: ["available", "locked", "reserved", "occupied", "maintenance", "cleaning_in_progress"],
             default: "available",
           },
           // Lock expiry for temporary bed holds
@@ -297,6 +305,37 @@ roomSchema.methods.vacateBed = function (bedId) {
 };
 
 /**
+ * Mark a bed as cleaning_in_progress during move-out turnover
+ * @param {string} bedId - The bed ID to mark for cleaning
+ * @returns {boolean} - true if successful
+ */
+roomSchema.methods.markBedForCleaning = function (bedId) {
+  const bed = this.beds.find((b) => b.id === bedId);
+  if (!bed) return false;
+
+  bed.status = "cleaning_in_progress";
+  bed.occupiedBy = {
+    userId: null,
+    reservationId: null,
+    occupiedSince: null,
+  };
+  return true;
+};
+
+/**
+ * Complete bed turnover cleaning (cleaning_in_progress -> available)
+ * @param {string} bedId - The bed ID to mark clean
+ * @returns {boolean} - true if successful
+ */
+roomSchema.methods.completeBedCleaning = function (bedId) {
+  const bed = this.beds.find((b) => b.id === bedId);
+  if (!bed) return false;
+
+  bed.status = "available";
+  return true;
+};
+
+/**
  * Lock a bed for maintenance (admin only)
  * @param {string} bedId - The bed ID to lock
  * @returns {boolean} - true if successful
@@ -342,6 +381,23 @@ roomSchema.methods.lockBed = function (bedId, userId, lockMinutes = 10) {
   bed.status = "locked";
   bed.lockedBy = userId;
   bed.lockExpiresAt = new Date(Date.now() + lockMinutes * 60 * 1000);
+  return true;
+};
+
+/**
+ * Extend an existing bed lock for a user (called during active draft autosaves)
+ * @param {string} bedId - The bed ID
+ * @param {ObjectId} userId - User holding the lock
+ * @param {number} extensionMinutes - Minutes to extend (default 15, max 30)
+ * @returns {boolean} - true if lock was extended
+ */
+roomSchema.methods.extendBedLock = function (bedId, userId, extensionMinutes = 15) {
+  const bed = this.beds.find((b) => b.id === bedId);
+  if (!bed || bed.status !== "locked") return false;
+  if (String(bed.lockedBy) !== String(userId)) return false;
+  const maxLock = Date.now() + 30 * 60 * 1000;
+  const targetLock = Date.now() + extensionMinutes * 60 * 1000;
+  bed.lockExpiresAt = new Date(Math.min(maxLock, targetLock));
   return true;
 };
 

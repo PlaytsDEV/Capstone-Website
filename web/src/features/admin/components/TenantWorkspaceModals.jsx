@@ -288,12 +288,16 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
   const rooms = Array.isArray(roomsData) ? roomsData : roomsData.rooms || [];
   const [roomId, setRoomId] = useState("");
   const [bedId, setBedId] = useState("");
+  const [sourceRoomMeterReading, setSourceRoomMeterReading] = useState("");
+  const [targetRoomMeterReading, setTargetRoomMeterReading] = useState("");
   const [reason, setReason] = useState("Room transfer");
 
   useEffect(() => {
     if (!open) return;
     setRoomId("");
     setBedId("");
+    setSourceRoomMeterReading("");
+    setTargetRoomMeterReading("");
     setReason("Room transfer");
   }, [open]);
 
@@ -313,6 +317,10 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
   );
   const availableBeds = selectedRoom?.beds?.filter((bed) => bed.status === "available") || [];
 
+  const currentPrice = Number(detail?.basicInfo?.monthlyRent || tenant?.monthlyRent || 0);
+  const newPrice = Number(selectedRoom?.monthlyPrice || selectedRoom?.price || 0);
+  const priceDiff = newPrice - currentPrice;
+
   return (
     <TenantModalShell
       open={open}
@@ -331,7 +339,15 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
             type="button"
             className="tenant-modal-btn tenant-modal-btn--primary"
             disabled={loading || !roomId || !bedId}
-            onClick={() => onSubmit({ roomId, bedId, reason })}
+            onClick={() =>
+              onSubmit({
+                roomId,
+                bedId,
+                reason,
+                sourceRoomMeterReading: sourceRoomMeterReading ? Number(sourceRoomMeterReading) : null,
+                targetRoomMeterReading: targetRoomMeterReading ? Number(targetRoomMeterReading) : null,
+              })
+            }
           >
             {loading ? "Saving..." : "Transfer Tenant"}
           </button>
@@ -339,8 +355,7 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
       }
     >
       <div className="tenant-modal-callout">
-        Transfers are limited to the same branch and only to beds that are
-        available at submit time.
+        Transfers are limited to the same branch. Old bed will automatically enter turnover status.
       </div>
 
       <div className="tenant-modal-grid">
@@ -372,7 +387,7 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
             <option value="">Select a room</option>
             {availableRooms.map((room) => (
               <option key={room._id || room.id} value={room._id || room.id}>
-                {room.name || room.roomNumber}
+                {room.name || room.roomNumber} ({fmtMoney(room.monthlyPrice || room.price)})
               </option>
             ))}
           </select>
@@ -395,10 +410,41 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
         </label>
       </div>
 
+      {roomId && priceDiff !== 0 && (
+        <div className="tenant-modal-callout" style={{ background: "#EFF6FF", borderLeftColor: "#3B82F6", color: "#1E40AF" }}>
+          Monthly Rent Adjustment: {priceDiff > 0 ? `+${fmtMoney(priceDiff)}/mo` : `-${fmtMoney(Math.abs(priceDiff))}/mo`} (Old: {fmtMoney(currentPrice)} → New: {fmtMoney(newPrice)})
+        </div>
+      )}
+
+      <div className="tenant-modal-grid">
+        <label className="tenant-modal-field">
+          <span>Current Room Final Meter (kWh)</span>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="Optional departing meter reading"
+            value={sourceRoomMeterReading}
+            onChange={(e) => setSourceRoomMeterReading(e.target.value)}
+          />
+        </label>
+        <label className="tenant-modal-field">
+          <span>New Room Opening Meter (kWh)</span>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="Optional target meter reading"
+            value={targetRoomMeterReading}
+            onChange={(e) => setTargetRoomMeterReading(e.target.value)}
+          />
+        </label>
+      </div>
+
       <label className="tenant-modal-field">
         <span>Reason</span>
         <textarea
-          rows={4}
+          rows={3}
           value={reason}
           onChange={(event) => setReason(event.target.value)}
           placeholder="Required transfer reason"
@@ -412,6 +458,8 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit 
   const [moveOutDate, setMoveOutDate] = useState("");
   const [moveOutTime, setMoveOutTime] = useState("10:00");
   const [meterReading, setMeterReading] = useState("");
+  const [keyReturned, setKeyReturned] = useState(true);
+  const [damageDeductions, setDamageDeductions] = useState("");
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
@@ -419,10 +467,24 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit 
     setMoveOutDate(toDateInputValue(new Date()));
     setMoveOutTime("10:00");
     setMeterReading("");
+    setKeyReturned(true);
+    setDamageDeductions("");
     setNotes("");
   }, [open]);
 
   const moveOutReason = tenant?.allowedActions?.moveOut?.reason || "";
+  const leaseEndDate = detail?.leaseInfo?.leaseEndDate || tenant?.leaseEndDate;
+  const isEarlyVacancy = Boolean(
+    leaseEndDate && moveOutDate && new Date(moveOutDate) < new Date(leaseEndDate)
+  );
+
+  const securityDeposit = Number(detail?.basicInfo?.monthlyRent || tenant?.monthlyRent || 0);
+  const outstandingBal = Number(detail?.paymentInfo?.currentBalance ?? tenant?.currentBalance ?? 0);
+  const damageFee = Number(damageDeductions || 0);
+  const keyFee = keyReturned ? 0 : 500;
+  const netSettlement = isEarlyVacancy
+    ? 0
+    : Math.max(0, securityDeposit - outstandingBal - damageFee - keyFee);
 
   return (
     <TenantModalShell
@@ -447,6 +509,8 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit 
                 moveOutDate,
                 moveOutTime,
                 meterReading: Number(meterReading),
+                keyReturned,
+                damageDeductions: Number(damageDeductions || 0),
                 notes,
               })
             }
@@ -461,7 +525,7 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit 
           <span>Lease End</span>
           <input
             type="text"
-            value={fmtDate(detail?.leaseInfo?.leaseEndDate || tenant?.leaseEndDate)}
+            value={fmtDate(leaseEndDate)}
             readOnly
           />
         </label>
@@ -469,7 +533,7 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit 
           <span>Current Balance</span>
           <input
             type="text"
-            value={fmtMoney(detail?.paymentInfo?.currentBalance ?? tenant?.currentBalance)}
+            value={fmtMoney(outstandingBal)}
             readOnly
           />
         </label>
@@ -480,6 +544,12 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit 
           {moveOutReason}
         </div>
       ) : null}
+
+      {isEarlyVacancy && (
+        <div className="tenant-modal-callout tenant-modal-callout--danger">
+          ⚠️ Early Vacancy Detected: Moving out before lease end date ({fmtDate(leaseEndDate)}) will result in automatic deposit forfeiture (Section 4).
+        </div>
+      )}
 
       <div className="tenant-modal-grid">
         <label className="tenant-modal-field">
@@ -500,24 +570,84 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit 
         </label>
       </div>
 
+      <div className="tenant-modal-grid">
+        <label className="tenant-modal-field">
+          <span>Final Meter Reading (kWh)</span>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="e.g. 1450.50"
+            value={meterReading}
+            onChange={(event) => setMeterReading(event.target.value)}
+          />
+        </label>
+        <label className="tenant-modal-field">
+          <span>Key / Access Card Returned</span>
+          <select
+            value={keyReturned ? "yes" : "no"}
+            onChange={(e) => setKeyReturned(e.target.value === "yes")}
+          >
+            <option value="yes">Yes (Key Handed Over)</option>
+            <option value="no">No (₱500 Replacement Deduction)</option>
+          </select>
+        </label>
+      </div>
+
       <label className="tenant-modal-field">
-        <span>Meter Reading (kWh)</span>
+        <span>Damage / Cleaning Fee Deductions (₱)</span>
         <input
           type="number"
           min="0"
           step="0.01"
-          value={meterReading}
-          onChange={(event) => setMeterReading(event.target.value)}
+          placeholder="0.00"
+          value={damageDeductions}
+          onChange={(e) => setDamageDeductions(e.target.value)}
         />
       </label>
+
+      {/* Live Financial Clearance Calculator */}
+      <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10, padding: 14, marginTop: 10, marginBottom: 15 }}>
+        <h4 style={{ margin: "0 0 10px 0", fontSize: 13, color: "#334155", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          Financial Settlement Calculator
+        </h4>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 12px", fontSize: 12, color: "#475569" }}>
+          <span>Security Deposit Held:</span>
+          <strong style={{ textAlign: "right" }}>{fmtMoney(securityDeposit)}</strong>
+          <span>Less: Unpaid Balance:</span>
+          <span style={{ textAlign: "right", color: outstandingBal > 0 ? "#DC2626" : "#64748B" }}>
+            -{fmtMoney(outstandingBal)}
+          </span>
+          {keyFee > 0 && (
+            <>
+              <span>Less: Key Fee:</span>
+              <span style={{ textAlign: "right", color: "#DC2626" }}>-{fmtMoney(keyFee)}</span>
+            </>
+          )}
+          {damageFee > 0 && (
+            <>
+              <span>Less: Damage Fee:</span>
+              <span style={{ textAlign: "right", color: "#DC2626" }}>-{fmtMoney(damageFee)}</span>
+            </>
+          )}
+          <div style={{ gridColumn: "span 2", borderTop: "1px solid #CBD5E1", paddingTop: 8, marginTop: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <strong style={{ fontSize: 13, color: "#0F172A" }}>
+              {isEarlyVacancy ? "Deposit Status:" : "Estimated Refundable Deposit:"}
+            </strong>
+            <strong style={{ fontSize: 14, color: isEarlyVacancy ? "#DC2626" : "#16A34A" }}>
+              {isEarlyVacancy ? "FORFEITED (Early Vacancy)" : fmtMoney(netSettlement)}
+            </strong>
+          </div>
+        </div>
+      </div>
 
       <label className="tenant-modal-field">
         <span>Final Notes</span>
         <textarea
-          rows={4}
+          rows={3}
           value={notes}
           onChange={(event) => setNotes(event.target.value)}
-          placeholder="Optional move-out notes"
+          placeholder="Optional move-out clearance notes"
         />
       </label>
     </TenantModalShell>

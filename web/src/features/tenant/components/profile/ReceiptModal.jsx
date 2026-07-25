@@ -1,6 +1,7 @@
 import React from "react";
 import { formatPaymentMethod } from "../../../../shared/utils/formatPaymentMethod";
 import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
+import { getBedDisplayLabel } from "../../../../shared/utils/bedIdentifier";
 
 /**
  * Full-page receipt modal showing detailed info per reservation step.
@@ -10,33 +11,38 @@ import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
  */
 
 const ReceiptRow = ({
- label,
- value,
- valueColor,
- valueWeight,
- valueSize,
- capitalize,
+  label,
+  value,
+  valueColor,
+  valueWeight,
+  valueSize,
+  capitalize,
 }) => (
- <div
- style={{
- display: "flex",
- justifyContent: "space-between",
- padding: "8px 0",
- borderBottom: "1px solid #E5E7EB",
- }}
- >
- <span style={{ color: "#6B7280" }}>{label}</span>
- <span
- style={{
- color: valueColor || "#1F2937",
- fontWeight: valueWeight || "600",
- fontSize: valueSize,
- textTransform: capitalize ? "capitalize" : undefined,
- }}
- >
- {value}
- </span>
- </div>
+  <div
+    style={{
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: "12px",
+      padding: "8px 0",
+      borderBottom: "1px solid #E5E7EB",
+    }}
+  >
+    <span style={{ color: "#6B7280", flexShrink: 0 }}>{label}</span>
+    <span
+      style={{
+        color: valueColor || "#1F2937",
+        fontWeight: valueWeight || "600",
+        fontSize: valueSize || "13px",
+        textTransform: capitalize ? "capitalize" : undefined,
+        textAlign: "right",
+        wordBreak: "break-word",
+        overflowWrap: "anywhere",
+      }}
+    >
+      {value}
+    </span>
+  </div>
 );
 
 const SectionTitle = ({ children }) => (
@@ -159,16 +165,13 @@ const RoomReceipt = ({ reservation }) => (
  </div>
  </div>
 
- {reservation?.selectedBed && (
- <div style={{ marginBottom: "12px" }}>
- <SectionTitle>Selected Slot</SectionTitle>
- <ReceiptRow label="Bed/Slot ID" value={reservation.selectedBed.id} />
- <ReceiptRow
- label="Position"
- value={reservation.selectedBed.position || "Standard"}
- />
- </div>
- )}
+  {reservation?.selectedBed && (
+    <div style={{ marginBottom: "12px" }}>
+      <SectionTitle>Selected Slot</SectionTitle>
+      <ReceiptRow label="Bed Location" value={getBedDisplayLabel(reservation.selectedBed)} />
+      <ReceiptRow label="Bed ID" value={reservation.selectedBed.code || reservation.selectedBed.id} />
+    </div>
+  )}
 
  <div style={{ marginBottom: "12px" }}>
  <SectionTitle>Room Amenities</SectionTitle>

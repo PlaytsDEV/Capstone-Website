@@ -25,6 +25,7 @@ import {
 import dayjs from "dayjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { generateDepositReceipt, viewDepositReceipt } from "../../../../shared/utils/receiptGenerator";
+import { getBedDisplayLabel } from "../../../../shared/utils/bedIdentifier";
 import { useCurrentUser } from "../../../../shared/hooks/queries/useUsers";
 import { reservationApi } from "../../../../shared/api/reservationApi";
 import { showNotification } from "../../../../shared/utils/notification";
@@ -69,6 +70,36 @@ function getAmenityIcon(amenity) {
  if (key.includes(match)) return Icon;
  }
  return ShieldCheck;
+}
+
+function getEffectiveMonthlyRent(reservation) {
+  if (!reservation) return 0;
+  const room = reservation.roomId || {};
+  const leaseDuration = Number(reservation.leaseDuration || 12);
+  const normType = String(room.type || "").toLowerCase();
+
+  let baseLongRate = room.regularLongRate ?? 6000;
+  let discountPercent = room.quadrupleDiscountPercent ?? 10;
+
+  if (normType.includes("double")) {
+    baseLongRate = room.regularLongRate ?? 9000;
+    discountPercent = room.doubleDiscountPercent ?? 20;
+  } else if (normType.includes("private")) {
+    baseLongRate = room.regularLongRate ?? 15000;
+    discountPercent = room.privateDiscountPercent ?? 10;
+  }
+
+  const isLongTerm = leaseDuration >= 6;
+  const computedRent = isLongTerm
+    ? Math.round(baseLongRate * (1 - discountPercent / 100))
+    : (room.regularShortRate ?? 7000);
+
+  const rawRent = reservation.monthlyRent;
+  if (!rawRent || rawRent === 5670 || (isLongTerm && rawRent > baseLongRate)) {
+    return computedRent;
+  }
+
+  return rawRent;
 }
 
 /* ── Main Component ────────────────────────────────── */
@@ -123,7 +154,7 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  const amenities = room.amenities || [];
  const heroImage = images[selectedImage] || images[0] || null;
  const code = reservation.reservationCode || "—";
- const bookedOn = dayjs(reservation.createdAt).format("MMMM D, YYYY");
+ const bookedOn = dayjs(reservation.createdAt).format("MMMM D, YYYY [at] h:mm A");
  const moveInDate = readMoveInDate(reservation) || reservation.targetMoveInDate;
  const moveInDateLabel = moveInDate
  ? dayjs(moveInDate).format("MMMM D, YYYY")
@@ -133,8 +164,10 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  const isReservedApplicant =
  hasReservationStatus(reservationStatus, "reserved") && !isFullTenantReservation;
  const personLabel = isFullTenantReservation ? "Tenant" : "Applicant";
+ const resFirstName = reservation.firstName || profile?.firstName || "";
+ const resLastName = reservation.lastName || profile?.lastName || "";
  const personName =
- `${profile?.firstName || reservation.firstName || ""} ${profile?.lastName || reservation.lastName || ""}`.trim() ||
+ `${resFirstName} ${resLastName}`.trim() ||
  personLabel;
  const reservationFeeLabel = isFullTenantReservation ? "Deposit" : "Reservation Fee";
  const paymentDescriptor = isFullTenantReservation ? "deposit" : "reservation fee";
@@ -164,10 +197,10 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  return { label: "Room Selected", bg: "#0EA5E9" };
  })();
 
- const monthlyRent = reservation.monthlyRent || reservation.totalPrice || room.price || 0;
+ const monthlyRent = getEffectiveMonthlyRent(reservation);
  const reservationFeeAmount = reservation.reservationFeeAmount || 2000;
  const paymentDate = reservation.paymentDate
- ? dayjs(reservation.paymentDate).format("MMMM D, YYYY")
+ ? dayjs(reservation.paymentDate).format("MMMM D, YYYY [at] h:mm A")
  : null;
  const cancellationUi = getReservationCancellationUiState(reservation);
  const branchDisplay =
@@ -471,9 +504,7 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  <Bed size={14} /> Assigned Bed
  </span>
  <span style={{ color: "var(--text-heading, #0A1628)", fontWeight: 600 }}>
- {reservation.selectedBed?.position
- ? reservation.selectedBed.position.charAt(0).toUpperCase() + reservation.selectedBed.position.slice(1) +" Bed"
- : "TBD"}
+ {reservation.selectedBed ? getBedDisplayLabel(reservation.selectedBed) : "TBD"}
  </span>
  </div>
  )}

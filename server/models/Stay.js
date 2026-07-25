@@ -34,6 +34,14 @@ const staySchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    bunkBlock: {
+      type: String,
+      default: "A",
+    },
+    bedCode: {
+      type: String,
+      default: null,
+    },
     leaseStartDate: {
       type: Date,
       required: true,

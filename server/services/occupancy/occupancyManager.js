@@ -128,6 +128,8 @@ export const deriveRoomOccupancyState = (room, reservations = []) => {
     return {
       id: bed.id,
       position: bed.position,
+      bunkBlock: bed.bunkBlock || (bed.position === "single" ? "none" : "A"),
+      code: bed.code || null,
       status,
       lockExpiresAt: bed.lockExpiresAt || null,
       lockedBy: bed.lockedBy || null,
@@ -191,6 +193,8 @@ export const deriveRoomOccupancyState = (room, reservations = []) => {
     occupiedBeds: occupiedBeds.map((bed) => ({
       bedId: bed.id,
       position: bed.position,
+      bunkBlock: bed.bunkBlock,
+      code: bed.code,
       occupiedBy: {
         userId: bed.occupant?._id || null,
         userName: bed.occupant?.name || "Unknown",
@@ -203,6 +207,8 @@ export const deriveRoomOccupancyState = (room, reservations = []) => {
     reservedBeds: reservedBeds.map((bed) => ({
       bedId: bed.id,
       position: bed.position,
+      bunkBlock: bed.bunkBlock,
+      code: bed.code,
       reservedBy: {
         userId: bed.occupant?._id || null,
         userName: bed.occupant?.name || "Unknown",

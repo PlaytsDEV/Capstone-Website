@@ -66,11 +66,17 @@ const runSeeder = async () => {
       }
       
       const config = PRICING[data.type];
-      const beds = config.beds.map((pos, idx) => ({
-        id: `bed-${idx+1}`,
-        position: pos,
-        status: "available"
-      }));
+      const beds = config.beds.map((pos, idx) => {
+        const bunkBlock = String.fromCharCode(65 + Math.floor(idx / 2)); // A for idx 0,1; B for idx 2,3
+        const tierCode = pos === "upper" ? "U" : pos === "lower" ? "L" : "S";
+        return {
+          id: `bed-${idx+1}`,
+          position: pos,
+          bunkBlock: bunkBlock,
+          code: `${data.roomNumber}-${bunkBlock}-${tierCode}`,
+          status: "available"
+        };
+      });
 
       const desc = ["713", "813", "913", "1013"].includes(data.roomNumber) && data.branch === "gil-puyat" 
         ? "Private Premium" 

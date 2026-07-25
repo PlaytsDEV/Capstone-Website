@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { formatRoomType } from "../../utils/formatters";
 import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
 import { DrawerSkeleton } from "../../../../shared/components/LoadingSkeletons";
+import { getBedDisplayLabel } from "../../../../shared/utils/bedIdentifier";
 
 export default function OccupancyRoomModal({ room, loadingDetails, onClose }) {
  useEscapeClose(true, onClose);
@@ -19,9 +20,8 @@ export default function OccupancyRoomModal({ room, loadingDetails, onClose }) {
  const maintenanceBeds = room.maintenanceBeds || beds.filter((bed) => bed.status === "maintenance");
 
  const title = roomInfo.name || roomInfo.roomName || "Room";
- const formatBedLabel = (bed) => {
- const position = bed.position || "bed";
- return `${position.charAt(0).toUpperCase()}${position.slice(1)} (${bed.bedId || bed.id})`;
+ const formatBedLabel = (bed, index = 0) => {
+   return getBedDisplayLabel(bed, index);
  };
  const formatOccupantName = (bed) =>
  bed.occupiedBy?.userName ||

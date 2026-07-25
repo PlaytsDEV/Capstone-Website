@@ -94,6 +94,18 @@ const bedHistorySchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    transferSourceReading: {
+      type: Number,
+      default: null,
+    },
+    transferTargetReading: {
+      type: Number,
+      default: null,
+    },
+    proratedRentAdjustment: {
+      type: Number,
+      default: null,
+    },
   },
   {
     timestamps: true,

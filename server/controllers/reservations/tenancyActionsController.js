@@ -695,3 +695,49 @@ export const transferTenant = async (req, res, next) => {
     handleReservationError(res, error, "transfer");
   }
 };
+
+export const processDepositRefund = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    const { status = "processed", reference = "", notes = "" } = req.body;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const reservation = await Reservation.findById(reservationId).populate("roomId", "branch");
+    if (!reservation) {
+      return res.status(404).json({ error: "Reservation not found", code: "RESERVATION_NOT_FOUND" });
+    }
+
+    const denied = checkBranchAccess(res, req.branchFilter, reservation.roomId?.branch);
+    if (denied) return;
+
+    const actor = await findDbUser(req.user.uid);
+    const oldData = reservation.toObject();
+
+    reservation.depositRefundStatus = status;
+    reservation.depositRefundReference = String(reference || "").trim();
+    reservation.depositRefundProcessedAt = new Date();
+    reservation.depositRefundProcessedBy = actor?._id || null;
+    if (notes) {
+      reservation.notes = `${reservation.notes ? reservation.notes + " | " : ""}Deposit payout (${status}): ${notes}`;
+    }
+    await reservation.save();
+
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservationId,
+      oldData,
+      reservation.toObject(),
+      `Processed deposit refund status to '${status}' with reference '${reference}'`,
+    );
+
+    res.json({
+      message: `Deposit refund marked as ${status}`,
+      reservation: serializeReservation(reservation),
+    });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "Process deposit refund error");
+    await auditLogger.logError(req, error, "Failed to process deposit refund");
+    handleReservationError(res, error, "process deposit refund");
+  }
+};

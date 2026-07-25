@@ -724,6 +724,8 @@ export async function validateSelectedBedForReservation({
     id: String(targetBed.id || targetBed._id || targetBed.bedNumber || 1),
     bedNumber: targetBed.bedNumber || 1,
     position: targetBed.position || "single",
+    bunkBlock: targetBed.bunkBlock || (targetBed.position === "single" ? "none" : "A"),
+    code: targetBed.code || `${room.roomNumber || ""}-${targetBed.bunkBlock || "A"}-${targetBed.position === "upper" ? "U" : targetBed.position === "lower" ? "L" : "S"}`,
     label: targetBed.label || `Bed ${targetBed.bedNumber || 1}`,
   };
 }
@@ -1274,46 +1276,31 @@ export const resolveReservationRent = ({ room, leaseDuration, isDiscountEnabled,
   const discountActive = isDiscountEnabled !== false && room?.isDiscountEnabled !== false;
   const isLongTerm = Number.isFinite(parsedLeaseDuration) && parsedLeaseDuration >= minMonths;
 
+  if (isLongTerm && typeof room?.monthlyPrice === "number" && room.monthlyPrice > 0) {
+    return roundMoney(room.monthlyPrice);
+  }
+
   const normType = String(room?.type || "").toLowerCase();
   let baseLongRate = 6000;
   let baseShortRate = 7000;
   let configuredDiscountPercent = settings?.quadrupleDiscountPercent ?? room?.quadrupleDiscountPercent ?? 10;
 
   if (normType.includes("double")) {
-    baseLongRate = 9000;
-    baseShortRate = 10000;
+    baseLongRate = room?.regularLongRate ?? 9000;
+    baseShortRate = room?.regularShortRate ?? 10000;
     configuredDiscountPercent = settings?.doubleDiscountPercent ?? room?.doubleDiscountPercent ?? 20;
   } else if (normType.includes("private")) {
-    baseLongRate = 15000;
-    baseShortRate = 16000;
+    baseLongRate = room?.regularLongRate ?? 15000;
+    baseShortRate = room?.regularShortRate ?? 16000;
     configuredDiscountPercent = settings?.privateDiscountPercent ?? room?.privateDiscountPercent ?? 10;
   } else {
-    baseLongRate = 6000;
-    baseShortRate = 7000;
+    baseLongRate = room?.regularLongRate ?? 6000;
+    baseShortRate = room?.regularShortRate ?? 7000;
     configuredDiscountPercent =
       settings?.quadrupleDiscountPercent ??
       room?.quadrupleDiscountPercent ??
       settings?.defaultLongTermDiscountPercent ??
       10;
-  }
-
-  if (
-    typeof room?.price === "number" &&
-    room.price > 0 &&
-    room.price !== 6000 &&
-    room.price !== 9000 &&
-    room.price !== 15000
-  ) {
-    baseLongRate = room.price;
-  }
-  if (
-    typeof room?.shortTermRate === "number" &&
-    room.shortTermRate > 0 &&
-    room.shortTermRate !== 7000 &&
-    room.shortTermRate !== 10000 &&
-    room.shortTermRate !== 16000
-  ) {
-    baseShortRate = room.shortTermRate;
   }
 
   const discountPercent = discountActive ? configuredDiscountPercent : 0;

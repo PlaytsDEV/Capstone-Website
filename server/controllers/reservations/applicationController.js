@@ -161,6 +161,19 @@ export const saveApplicationDraft = async (req, res, next) => {
       .populate(...POPULATE_USER)
       .populate(...POPULATE_ROOM);
 
+    // Refresh active bed hold lock on draft saves (prevents silent expiration during form entry)
+    if (reservation.roomId && reservation.selectedBed?.id) {
+      try {
+        const targetRoom = await Room.findById(reservation.roomId);
+        if (targetRoom) {
+          targetRoom.extendBedLock(reservation.selectedBed.id, dbUser._id, 15);
+          await targetRoom.save();
+        }
+      } catch (lockErr) {
+        // Non-fatal bed lock extension error
+      }
+    }
+
     return res.json({
       message: "Application draft saved successfully",
       reservation: serializeReservation(updatedReservation),

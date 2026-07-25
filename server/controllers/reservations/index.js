@@ -42,6 +42,7 @@ export {
   moveOutReservation,
   checkoutReservation,
   transferTenant,
+  processDepositRefund,
 } from "./tenancyActionsController.js";
 
 // 5. CRUD Domain

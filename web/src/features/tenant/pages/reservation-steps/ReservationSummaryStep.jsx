@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { formatBranch, formatRoomType } from "../../../../shared/utils/formatDate";
 import { getRoomImages as getFallbackRoomImages } from "../check-availability/checkAvailabilityConstants";
-import { ROOM_SELECTION_LOCKED_MESSAGE } from "../../utils/reservationRoomLock";
+import { getBedDisplayLabel } from "../../../../shared/utils/bedIdentifier";
 
 const toDisplayString = (value, fallback = "") => {
   if (value === null || value === undefined) return fallback;
@@ -68,12 +68,7 @@ const getRoomName = (room) =>
 
 const getSelectedBedLabel = (selectedBed) => {
   if (!selectedBed) return "No bed selected";
-  const positionText = toDisplayString(selectedBed.position);
-  const position = positionText
-    ? `${toTitle(positionText)} Bed`
-    : "Selected Bed";
-  const bedId = toDisplayString(selectedBed.id);
-  return bedId ? `${position} (${bedId})` : position;
+  return getBedDisplayLabel(selectedBed);
 };
 
 const getAvailableSlots = (room) => {

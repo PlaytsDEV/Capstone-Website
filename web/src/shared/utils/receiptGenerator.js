@@ -1,5 +1,7 @@
 import jsPDF from "jspdf";
 import defaultLogo from "../../assets/images/LOGO.png";
+import { formatPaymentMethod } from "./formatPaymentMethod.js";
+import { getBedDisplayLabel } from "./bedIdentifier.js";
 
 /**
  * Safe number formatter — avoids toLocaleString locale issues in jsPDF context.
@@ -42,6 +44,15 @@ const COLORS = {
 const safeString = (value, fallback = "—") => {
   if (value === null || value === undefined || value === "") return fallback;
   return String(value);
+};
+
+/**
+ * Formats strings cleanly for PDF without inserting artificial mid-word spaces.
+ * Only breaks at natural split points (e.g. '@', '_', '-') if necessary.
+ */
+const sanitizeForPdfWrap = (str) => {
+  if (!str || typeof str !== "string") return str;
+  return str.trim();
 };
 
 const formatDate = (value) => {
@@ -121,37 +132,49 @@ const drawPill = (doc, x, y, label, fill, textColor, border = fill) => {
 
 const drawSectionTitle = (doc, x, y, title, subtitle = "") => {
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(10.3);
+  doc.setFontSize(10.5);
   doc.setTextColor(...COLORS.text);
   doc.text(title, x, y);
   if (subtitle) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8.0);
     doc.setTextColor(...COLORS.muted);
-    doc.text(subtitle, x, y + 4.2);
+    doc.text(subtitle, x, y + 4.5);
   }
 };
 
 const drawField = (doc, x, y, w, label, value) => {
   const labelText = safeString(label);
-  const valueText = safeString(value);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7.2);
-  doc.setTextColor(...COLORS.subMuted);
-  doc.text(labelText.toUpperCase(), x, y);
+  const rawValueText = safeString(value);
+  const valueText = sanitizeForPdfWrap(rawValueText);
 
-  const lines = doc.splitTextToSize(valueText, w);
+  // Label styling — sharp, legible 7.8pt with clear contrast
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(9.0);
-  doc.setTextColor(...COLORS.body);
-  doc.text(lines, x, y + 4.9);
+  doc.setFontSize(7.8);
+  doc.setTextColor(...COLORS.muted);
+  doc.text(labelText.toUpperCase(), x, y);
+  doc.text(String(label).toUpperCase(), x, y);
 
-  return 5.0 + lines.length * 4.1;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9.2);
+  doc.setTextColor(...COLORS.text);
+
+  const cleanVal = sanitizeForPdfWrap(safeString(value));
+
+  if (cleanVal.length > 28) {
+    doc.setFontSize(8.2);
+  }
+
+  const lines = doc.splitTextToSize(cleanVal, w);
+  doc.text(lines, x, y + 4.6);
+
+  return 5.2 + lines.length * 4.2;
 };
 
 const renderTwoColumnCard = (doc, x, y, w, title, fields, options = {}) => {
   const pad = options.pad || PAGE.pad;
-  const headerH = options.headerH || 13;
+  // Increase header height when subtitle is present to prevent label collision
+  const headerH = options.headerH || (options.subtitle ? 17 : 12);
   const colGap = options.colGap || 4;
   const innerW = w - pad * 2;
   const colW = (innerW - colGap) / 2;
@@ -163,17 +186,18 @@ const renderTwoColumnCard = (doc, x, y, w, title, fields, options = {}) => {
 
   const rowHeights = rows.map((pair) => {
     const heights = pair.map((field) => {
-      const lines = doc.splitTextToSize(safeString(field.value), colW);
-      return 5.0 + lines.length * 4.1;
+      const wrapped = sanitizeForPdfWrap(safeString(field.value));
+      const lines = doc.splitTextToSize(wrapped, colW);
+      return 5.2 + lines.length * 4.2;
     });
     return Math.max(...heights, 0);
   });
 
-  const totalBodyH = rowHeights.reduce((sum, value) => sum + value, 0) + Math.max(rows.length - 1, 0) * 5;
-  const cardH = Math.max(options.minHeight || 38, pad + headerH + totalBodyH + pad);
+  const totalBodyH = rowHeights.reduce((sum, value) => sum + value, 0) + Math.max(rows.length - 1, 0) * 6;
+  const cardH = Math.max(options.minHeight || 40, pad + headerH + totalBodyH + pad);
 
   drawRoundedCard(doc, x, y, w, cardH, options.fill || COLORS.card, options.border || COLORS.border);
-  drawSectionTitle(doc, x + pad, y + 6.8, title, options.subtitle || "");
+  drawSectionTitle(doc, x + pad, y + 6.2, title, options.subtitle || "");
 
   let cy = y + headerH;
   rows.forEach((pair, rowIndex) => {
@@ -190,7 +214,67 @@ const renderTwoColumnCard = (doc, x, y, w, title, fields, options = {}) => {
       drawField(doc, rightX, cy, colW, rightField.label, rightField.value);
     }
 
-    cy += rowH + 5;
+    cy += rowH + 6;
+  });
+
+  return { height: cardH };
+};
+
+const renderInfoBlockCard = (doc, x, y, w, title, items, options = {}) => {
+  const pad = options.pad || PAGE.pad;
+  const headerH = options.headerH || (options.subtitle ? 18 : 12);
+  const innerW = w - pad * 2;
+
+  let contentH = 0;
+  items.forEach((item) => {
+    const titleText = safeString(item.title);
+    const descText = safeString(item.desc);
+    const fullText = `• ${titleText}: ${descText}`;
+    const lines = doc.splitTextToSize(fullText, innerW);
+    contentH += lines.length * 4.5 + 2.5;
+  });
+
+  const cardH = Math.max(options.minHeight || 38, pad + headerH + contentH + pad - 2);
+
+  drawRoundedCard(doc, x, y, w, cardH, options.fill || COLORS.card, options.border || COLORS.border);
+  drawSectionTitle(doc, x + pad, y + 6.2, title, options.subtitle || "");
+
+  let cy = y + headerH;
+  items.forEach((item) => {
+    const titleText = safeString(item.title);
+    const descText = safeString(item.desc);
+    const prefix = `• ${titleText}: `;
+
+    // Draw bold bullet title
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.2);
+    doc.setTextColor(...COLORS.text);
+    doc.text(prefix, x + pad, cy);
+
+    const prefixW = doc.getTextWidth(prefix);
+
+    // Draw description text without duplicating title
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.0);
+    doc.setTextColor(...COLORS.body);
+
+    const firstLineW = innerW - prefixW;
+    const descLines = doc.splitTextToSize(descText, firstLineW);
+
+    if (descLines.length === 1) {
+      doc.text(descLines[0], x + pad + prefixW, cy);
+      cy += 6.0;
+    } else {
+      doc.text(descLines[0], x + pad + prefixW, cy);
+      cy += 4.5;
+      const remainingText = descText.slice(descLines[0].length).trim();
+      const remainingLines = doc.splitTextToSize(remainingText, innerW - 4);
+      remainingLines.forEach((rLine) => {
+        doc.text(rLine, x + pad + 4, cy);
+        cy += 4.5;
+      });
+      cy += 1.5;
+    }
   });
 
   return { height: cardH };
@@ -205,21 +289,24 @@ const renderSummaryCard = (doc, x, y, w, config) => {
   doc.setFillColor(...COLORS.accentSoft);
   doc.roundedRect(x + 1.2, y + 1.2, w - 2.4, 3, 2, 2, "F");
 
+  const leftX = x + pad;
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(9.2);
+  doc.setFontSize(8.0);
   doc.setTextColor(...COLORS.accent);
-  doc.text(config.label || "PAYMENT SUMMARY", x + pad, y + 8);
+  doc.text(config.label || "PAYMENT SUMMARY", leftX, y + 12);
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(24);
+  doc.setFontSize(19);
   doc.setTextColor(...COLORS.text);
-  doc.text(config.amount || "PHP 0.00", x + pad, y + 21);
+  doc.text(safeString(config.amount), leftX, y + 21);
 
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.setTextColor(...COLORS.muted);
-  const descriptionLines = doc.splitTextToSize(safeString(config.description), leftW - pad);
-  doc.text(descriptionLines, x + pad, y + 30);
+  if (config.description) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.2);
+    doc.setTextColor(...COLORS.muted);
+    const descLines = doc.splitTextToSize(config.description, leftW - pad);
+    doc.text(descLines, leftX, y + 28);
+  }
 
   const metaX = x + leftW + pad;
   const metaY = y + 11;
@@ -283,7 +370,7 @@ const renderFooter = (doc, pageWidth, pageHeight, note) => {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.6);
   doc.setTextColor(...COLORS.muted);
-  doc.text(safeString(note, "Premium billing and receipt records for Lilycrest Dormitory."), pageWidth / 2, footerY + 6.2, { align: "center" });
+  doc.text(safeString(note, "Official receipt records for Lilycrest Dormitory."), pageWidth / 2, footerY + 6.2, { align: "center" });
 };
 
 const renderBrandHeader = (doc, logoData, x, y, title, subtitle) => {
@@ -310,20 +397,7 @@ const renderBrandHeader = (doc, logoData, x, y, title, subtitle) => {
 };
 
 /**
- * Builds the PDF receipt, faithfully matching the server-side email template
- * (generatePaymentReceiptHtml in server/config/email.js).
- *
- * Color references from the email:
- *   Header/Footer bg : #183153  → [24, 49, 83]
- *   Gold label       : #D4982B  → [212, 152, 43]
- *   Dark text        : #111827  → [17, 24, 39]
- *   Body text        : #374151  → [55, 65, 81]
- *   Muted / labels   : #9CA3AF  → [156, 163, 175]
- *   Sub-muted        : #6B7280  → [107, 114, 128]
- *   Divider line     : #E5E7EB  → [229, 231, 235]
- *
- * NOTE: jsPDF's built-in Helvetica font does NOT support U+20B1 (₱).
- * Use "PHP" as the currency prefix in all doc.text() calls.
+ * Builds the PDF receipt for a reservation payment.
  */
 async function buildReceiptDoc(reservation, profile) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
@@ -340,91 +414,80 @@ async function buildReceiptDoc(reservation, profile) {
   const logoData = await loadImageAsDataURL(defaultLogo);
 
   const room = reservation.roomId || {};
-  const fullName = profile
-    ? `${profile.firstName || ""} ${profile.lastName || ""}`.trim() || "—"
-    : "—";
+  const resFn = reservation.firstName || profile?.firstName || "";
+  const resLn = reservation.lastName || profile?.lastName || "";
+  const fullName = `${resFn} ${resLn}`.trim() || "—";
 
-  const roomName = room.name || "Room";
+  const roomName = room.name || room.roomNumber || "Room";
   const branch =
     room.branch === "gil-puyat" ? "Gil Puyat"
       : room.branch === "guadalupe" ? "Guadalupe"
       : room.branch || "Lilycrest";
-  const paymentMethod = reservation.paymentMethod === "paymongo"
-    ? "Online Payment"
-    : safeString(reservation.paymentMethod, "Online Payment");
+  const paymentMethod = formatPaymentMethod(reservation.paymentMethod);
   const refId = reservation.paymongoPaymentId
     || reservation.reservationCode
     || reservation._id?.slice(-8)?.toUpperCase()
     || "—";
   const amountText = reservation.amountPaid
     ? `PHP ${fmtAmt(reservation.amountPaid)}`
-    : "PHP 2,000.00";
+    : `PHP ${fmtAmt(reservation.reservationFeeAmount || 2000)}`;
 
   renderBrandHeader(doc, logoData, margin, y + 1, "Lilycrest Dormitory", "Reservation payment receipt");
-  const pillW = drawPill(doc, pageWidth - margin - 22, y + 2, "PAID", COLORS.successSoft, COLORS.successText, COLORS.successBorder);
+  drawPill(doc, pageWidth - margin - 22, y + 2, "PAID", COLORS.successSoft, COLORS.successText, COLORS.successBorder);
 
   y += 18;
 
+  // 1. Top Summary Card — Authoritative Transaction Header
   const summary = renderSummaryCard(doc, margin, y, contentW, {
     label: "PAYMENT RECEIVED",
     amount: amountText,
     description: `Security deposit for ${roomName} at ${branch}.`,
     metaFields: [
       { label: "Receipt reference", value: refId },
-      { label: "Payment date", value: formatDate(reservation.paymentDate) },
+      { label: "Payment date", value: formatDate(reservation.paymentDate || reservation.updatedAt) },
       { label: "Payment method", value: paymentMethod },
     ],
   });
   y += summary.height + 6;
 
-  const reservationFields = [
-    { label: "Tenant", value: fullName },
-    { label: "Email", value: profile?.email || "—" },
-    { label: "Room", value: roomName },
-    { label: "Branch", value: branch },
-    { label: "Lease", value: `${reservation.leaseDuration || 12} months` },
-    { label: "Move-in", value: formatDate(reservation.targetMoveInDate || reservation.finalMoveInDate) },
-    { label: "Bed", value: reservation.selectedBed?.position || "—" },
-    { label: "Reference", value: refId },
-  ];
+  const bedLabel = getBedDisplayLabel(reservation.selectedBed);
 
-  const paymentFields = [
-    { label: "Payment method", value: paymentMethod },
-    { label: "Payment date", value: formatDate(reservation.paymentDate) },
-    { label: "Amount paid", value: amountText },
-    { label: "Receipt status", value: "PAID" },
-  ];
+  const roomTypeLabel = room.type
+    ? room.type.replace(/[_-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    : "Standard";
 
-  const row1Left = renderTwoColumnCard(doc, margin, y, leftW, "Reservation details", reservationFields, {
-    fill: COLORS.card,
-  });
-  const row1Right = renderTwoColumnCard(doc, rightX, y, leftW, "Payment details", paymentFields, {
-    fill: COLORS.card,
-  });
-
-  y += Math.max(row1Left.height, row1Right.height) + 6;
-
-  const tenantCard = renderTwoColumnCard(doc, margin, y, leftW, "Tenant information", [
+  // 2. Tenant Personal Contact Info (ZERO overlap with Summary card)
+  const tenantFields = [
     { label: "Tenant name", value: fullName },
-    { label: "Tenant email", value: profile?.email || "—" },
+    { label: "Tenant email", value: profile?.email || reservation.email || "—" },
+    { label: "Mobile contact", value: profile?.mobileNumber || reservation.mobileNumber || "—" },
+    { label: "Emergency contact", value: reservation.emergencyContactName || "On File" },
+  ];
+
+  // 3. Room & Lease Details (ZERO overlap with Summary card)
+  const reservationFields = [
     { label: "Room", value: roomName },
     { label: "Branch", value: branch },
-  ], {
-    fill: COLORS.card,
-  });
-
-  const billingCard = renderTwoColumnCard(doc, rightX, y, leftW, "Billing details", [
-    { label: "Security deposit", value: amountText },
-    { label: "Reference", value: refId },
+    { label: "Bed / Slot", value: bedLabel },
+    { label: "Room type", value: roomTypeLabel },
     { label: "Lease duration", value: `${reservation.leaseDuration || 12} months` },
-    { label: "Move-in date", value: formatDate(reservation.targetMoveInDate || reservation.finalMoveInDate) },
-  ], {
+    { label: "Target move-in", value: formatDate(reservation.targetMoveInDate || reservation.finalMoveInDate) },
+  ];
+
+  const row1Left = renderTwoColumnCard(doc, margin, y, leftW, "Tenant information", tenantFields, {
     fill: COLORS.card,
+    subtitle: "Account holder contact details",
+    minHeight: 48,
+  });
+  const row1Right = renderTwoColumnCard(doc, rightX, y, leftW, "Room & lease details", reservationFields, {
+    fill: COLORS.card,
+    subtitle: "Allocation and move-in schedule",
+    minHeight: 48,
   });
 
-  y += Math.max(tenantCard.height, billingCard.height) + 8;
+  y += Math.max(row1Left.height, row1Right.height) + 12;
 
-  renderFooter(doc, pageWidth, pageHeight, "Premium receipt records for Lilycrest Dormitory.");
+  renderFooter(doc, pageWidth, pageHeight, "Official receipt records for Lilycrest Dormitory.");
 
   return doc;
 }
@@ -506,17 +569,17 @@ async function buildBillingReceiptDoc(bill) {
   y += summary.height + 6;
 
   const tenantFields = [
-    { label: "Tenant", value: tenantName },
-    { label: "Email", value: bill.email || bill.tenantEmail || "—" },
+    { label: "Tenant name", value: tenantName },
+    { label: "Tenant email", value: bill.email || bill.tenantEmail || "—" },
     { label: "Room", value: safeString(bill.room) },
     { label: "Branch", value: safeString(bill.branch) },
   ];
 
   const billingFields = [
     { label: "Billing period", value: monthLabel },
-    { label: "Payment date", value: formatDate(bill.paymentDate || bill.updatedAt) },
-    { label: "Receipt reference", value: refId },
     { label: "Payment status", value: "PAID" },
+    { label: "Due date", value: formatDate(bill.dueDate) },
+    { label: "Total paid", value: `PHP ${fmtAmt(amount)}` },
   ];
 
   const row1Left = renderTwoColumnCard(doc, margin, y, leftW, "Tenant information", tenantFields, {
@@ -526,7 +589,7 @@ async function buildBillingReceiptDoc(bill) {
 
   const row1Right = renderTwoColumnCard(doc, rightX, y, leftW, "Billing details", billingFields, {
     fill: COLORS.card,
-    subtitle: "Invoice period and receipt metadata",
+    subtitle: "Invoice period and payment status",
   });
 
   y += Math.max(row1Left.height, row1Right.height) + 6;

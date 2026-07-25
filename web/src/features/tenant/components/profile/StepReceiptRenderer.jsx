@@ -7,24 +7,29 @@ import { formatPaymentMethod } from "../../../../shared/utils/formatPaymentMetho
  */
 
 const ReceiptRow = ({ label, value, valueColor, valueStyle }) => (
- <div
- style={{
- display: "flex",
- justifyContent: "space-between",
- padding: "4px 0",
- }}
- >
- <span style={{ color: "#6B7280" }}>{label}</span>
- <span
- style={{
- color: valueColor || "#1F2937",
- fontWeight: "500",
- ...valueStyle,
- }}
- >
- {value}
- </span>
- </div>
+  <div
+    style={{
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: "12px",
+      padding: "4px 0",
+    }}
+  >
+    <span style={{ color: "#6B7280", flexShrink: 0 }}>{label}</span>
+    <span
+      style={{
+        color: valueColor || "#1F2937",
+        fontWeight: "500",
+        textAlign: "right",
+        wordBreak: "break-word",
+        overflowWrap: "anywhere",
+        ...valueStyle,
+      }}
+    >
+      {value}
+    </span>
+  </div>
 );
 
 const ReceiptContainer = ({ bg, border, children }) => (
