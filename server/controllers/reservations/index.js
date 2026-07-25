@@ -62,6 +62,18 @@ export {
   manageReservationVisit,
 } from "./reservationLifecycleController.js";
 
+// 7. Visit Scheduling Domain
+export {
+  updateVisitPreferenceAndSchedule,
+} from "./visitSchedulingController.js";
+
+// 8. Application & Payment Domain
+export {
+  saveApplicationDraft,
+  submitApplication,
+  uploadPaymentProof,
+} from "./applicationController.js";
+
 // 7. Shared Helpers & Cache Invalidation
 export {
   invalidateUserCache,

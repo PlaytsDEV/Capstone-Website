@@ -33,6 +33,7 @@ export default function StatusBadge({ status, label: customLabel }) {
     if (s === "pending_application_review") return "Pending Review";
     if (s === "needs_revision") return "Needs Revision";
     if (s === "approved_for_payment") return "Approved for Payment";
+    if (s === "partial") return "Proof Submitted";
     if (!s) return "Pending";
     
     // Convert to proper case: capitalize each word

@@ -113,6 +113,50 @@ export const reservationApi = {
     ),
 
   /**
+   * Update visit preference & scheduling (tenant only)
+   */
+  updateVisitPreference: (reservationId, data) =>
+    withLifecycleNormalization(
+      authFetch(`/reservations/${reservationId}/visit`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    ),
+
+  /**
+   * Save tenant application draft (tenant only)
+   */
+  saveApplicationDraft: (reservationId, data) =>
+    withLifecycleNormalization(
+      authFetch(`/reservations/${reservationId}/application/draft`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    ),
+
+  /**
+   * Submit tenant application (tenant only)
+   */
+  submitApplication: (reservationId, data) =>
+    withLifecycleNormalization(
+      authFetch(`/reservations/${reservationId}/application/submit`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    ),
+
+  /**
+   * Upload proof of payment for reservation fee (tenant only)
+   */
+  uploadPaymentProof: (reservationId, data) =>
+    withLifecycleNormalization(
+      authFetch(`/reservations/${reservationId}/payment`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    ),
+
+  /**
    * Validate applicant valid ID using backend OCR/manual review fallback.
    */
   validateIdDocument: (reservationId, data) =>

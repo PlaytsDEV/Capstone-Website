@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, MapPin } from "lucide-react";
 /**
  * Redesigned Room Card — soft shadows, bed availability dots, muted type badge.
  */
-const RoomCard = React.memo(({ room, onClick }) => {
+const RoomCard = React.memo(({ room, onClick, selectedLeaseTermFilter = "All" }) => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const images = room.images?.length ? room.images : [room.image];
 
@@ -199,15 +199,42 @@ const RoomCard = React.memo(({ room, onClick }) => {
           <span>{room.branch}</span>
         </div>
 
-        {/* Ultra-Minimalist Single Price UI */}
-        <div className="ca-card-price-container">
-          {shortTermRate > longTermRate && (
-            <span className="ca-price-prefix">from</span>
+        {/* Transparent Price UI with Lease Term Awareness */}
+        <div className="ca-card-price-container flex items-center flex-wrap gap-1.5">
+          {selectedLeaseTermFilter === "shortTerm" ? (
+            <>
+              <span className="ca-price-primary">
+                ₱{shortTermRate.toLocaleString()}
+              </span>
+              <span className="ca-price-unit">/ mo</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300">
+                Short-Term
+              </span>
+            </>
+          ) : selectedLeaseTermFilter === "longTerm" ? (
+            <>
+              <span className="ca-price-primary">
+                ₱{longTermRate.toLocaleString()}
+              </span>
+              <span className="ca-price-unit">/ mo</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">
+                Long-Term Rate
+              </span>
+            </>
+          ) : (
+            <>
+              {shortTermRate > longTermRate && (
+                <span className="ca-price-prefix">Starts at</span>
+              )}
+              <span className="ca-price-primary">
+                ₱{longTermRate.toLocaleString()}
+              </span>
+              <span className="ca-price-unit">/ mo</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-500/10 text-amber-700 border border-amber-500/20 dark:text-amber-300">
+                Flexi-Lease
+              </span>
+            </>
           )}
-          <span className="ca-price-primary">
-            ₱{(longTermRate || shortTermRate).toLocaleString()}
-          </span>
-          <span className="ca-price-unit">/ mo</span>
         </div>
       </div>
     </div>

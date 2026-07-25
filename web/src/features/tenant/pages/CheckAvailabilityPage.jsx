@@ -54,6 +54,7 @@ function CheckAvailabilityPage() {
  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
  const [selectedBranch, setSelectedBranch] = useState("All");
  const [selectedRoomType, setSelectedRoomType] = useState("All");
+ const [selectedLeaseTermFilter, setSelectedLeaseTermFilter] = useState("All");
  const [minPrice, setMinPrice] = useState(0);
  const [maxPrice, setMaxPrice] = useState(15000);
  const [isInquiryModalOpen, setIsInquiryModalOpen] = useState(false);
@@ -227,56 +228,68 @@ function CheckAvailabilityPage() {
 
  // ── Capacity validation (dev-only debug removed) ─────────
 
- // ── Filtering ──────────────────────────────────────────────
- const getAvailableRoomTypes = () => {
- if (selectedBranch === "Guadalupe") return ["All", "Quadruple"];
- return ["All", "Private", "Shared", "Quadruple"];
- };
- const availableRoomTypes = getAvailableRoomTypes();
+  // ── Filtering ──────────────────────────────────────────────
+  const getAvailableRoomTypes = () => {
+    if (selectedBranch === "Guadalupe") return ["All", "Quadruple"];
+    return ["All", "Private", "Shared", "Quadruple"];
+  };
+  const availableRoomTypes = getAvailableRoomTypes();
 
- const filteredRooms = rooms.filter((room) => {
- const matchesSearch =
- room.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
- room.branch.toLowerCase().includes(searchQuery.toLowerCase());
- return (
- matchesSearch &&
- (selectedBranch === "All" || room.branch === selectedBranch) &&
- (selectedRoomType === "All" || room.type === selectedRoomType) &&
- room.price >= minPrice &&
- room.price <= maxPrice
- );
- });
+  const filteredRooms = rooms.filter((room) => {
+    const matchesSearch =
+      room.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      room.branch.toLowerCase().includes(searchQuery.toLowerCase());
 
- // Reset to page 1 when filters change
- useEffect(() => {
- setCurrentPage(1);
- }, [searchQuery, selectedBranch, selectedRoomType, minPrice, maxPrice]);
+    let effectivePrice = room.price;
+    if (selectedLeaseTermFilter === "shortTerm") {
+      effectivePrice = room.shortTermRate || room.regularShortRate || room.price;
+    } else if (selectedLeaseTermFilter === "longTerm") {
+      effectivePrice = room.monthlyPrice || room.regularLongRate || room.price;
+    }
 
- // Paginated rooms
- const totalPages = Math.max(1, Math.ceil(filteredRooms.length / ROOMS_PER_PAGE));
- const paginatedRooms = filteredRooms.slice(
- (currentPage - 1) * ROOMS_PER_PAGE,
- currentPage * ROOMS_PER_PAGE,
- );
+    return (
+      matchesSearch &&
+      (selectedBranch === "All" || room.branch === selectedBranch) &&
+      (selectedRoomType === "All" || room.type === selectedRoomType) &&
+      effectivePrice >= minPrice &&
+      effectivePrice <= maxPrice
+    );
+  });
 
- const handleBranchFilter = (branch) => {
- setSelectedBranch(branch);
- setSelectedRoomType("All");
- };
- const clearAllFilters = () => {
- setSelectedBranch("All");
- setSelectedRoomType("All");
- setMinPrice(0);
- setMaxPrice(15000);
- setSearchQuery("");
- };
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedBranch, selectedRoomType, selectedLeaseTermFilter, minPrice, maxPrice]);
 
- // ── Room details / appliances ──────────────────────────────
+  // Paginated rooms
+  const totalPages = Math.max(1, Math.ceil(filteredRooms.length / ROOMS_PER_PAGE));
+  const paginatedRooms = filteredRooms.slice(
+    (currentPage - 1) * ROOMS_PER_PAGE,
+    currentPage * ROOMS_PER_PAGE,
+  );
+
+  const handleBranchFilter = (branch) => {
+    setSelectedBranch(branch);
+    setSelectedRoomType("All");
+  };
+  const clearAllFilters = () => {
+    setSelectedBranch("All");
+    setSelectedRoomType("All");
+    setSelectedLeaseTermFilter("All");
+    setMinPrice(0);
+    setMaxPrice(15000);
+    setSearchQuery("");
+  };
+
+  // ── Room details / appliances ──────────────────────────────
   const openRoomDetails = (room) => {
     setSelectedRoom(room);
     setSelectedAppliances({});
     setSelectedBed(null);
-    setSelectedLeaseDuration(String(room?.longTermLeaseMinMonths || 6));
+    const initialDuration = selectedLeaseTermFilter === "shortTerm"
+      ? "3"
+      : String(room?.longTermLeaseMinMonths || 6);
+    setSelectedLeaseDuration(initialDuration);
     setIsDetailsModalOpen(true);
   };
   const closeRoomDetails = () => {
@@ -508,20 +521,22 @@ function CheckAvailabilityPage() {
  <div className="min-h-screen" style={{ backgroundColor: "var(--surface-page)" }}>
  <LoginConfirmBeforeReserveModal />
 
- <AvailabilityHeader
- user={user}
- searchQuery={searchQuery}
- setSearchQuery={setSearchQuery}
- selectedBranch={selectedBranch}
- onBranchFilter={handleBranchFilter}
- selectedRoomType={selectedRoomType}
- onRoomTypeFilter={setSelectedRoomType}
- availableRoomTypes={availableRoomTypes}
- maxPrice={maxPrice}
- setMaxPrice={setMaxPrice}
- onClearAll={clearAllFilters}
- onLogout={() => setShowLogoutConfirm(true)}
- />
+      <AvailabilityHeader
+        user={user}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        selectedBranch={selectedBranch}
+        onBranchFilter={handleBranchFilter}
+        selectedRoomType={selectedRoomType}
+        onRoomTypeFilter={setSelectedRoomType}
+        availableRoomTypes={availableRoomTypes}
+        selectedLeaseTermFilter={selectedLeaseTermFilter}
+        onLeaseTermFilterChange={setSelectedLeaseTermFilter}
+        maxPrice={maxPrice}
+        setMaxPrice={setMaxPrice}
+        onClearAll={clearAllFilters}
+        onLogout={() => setShowLogoutConfirm(true)}
+      />
 
  <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
@@ -572,6 +587,7 @@ function CheckAvailabilityPage() {
  <RoomCard
  key={room.id}
  room={room}
+ selectedLeaseTermFilter={selectedLeaseTermFilter}
  onClick={() => openRoomDetails(room)}
  />
  ))

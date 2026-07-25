@@ -137,6 +137,7 @@ const formatSelectedAppliance = (item) => {
 const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnly }) => {
   const [activePhotoIndex, setActivePhotoIndex] = React.useState(0);
   const [viewerOpen, setViewerOpen] = React.useState(false);
+  const [showRoomChangeConfirm, setShowRoomChangeConfirm] = React.useState(false);
   const room = reservationData?.room || {};
 
   const selectedBed = reservationData?.selectedBed;
@@ -309,7 +310,18 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
         <div className="stage-buttons rf-summary-actions" style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
           <div>
             {onChangeRoom && (
-              <button type="button" onClick={onChangeRoom} className="btn btn-secondary" style={{ marginRight: 8 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (reservationData?.visitDate || reservationData?.visitScheduledAt) {
+                    setShowRoomChangeConfirm(true);
+                  } else {
+                    onChangeRoom();
+                  }
+                }}
+                className="btn btn-secondary"
+                style={{ marginRight: 8 }}
+              >
                 <ArrowLeft size={16} /> Change Selected Room
               </button>
             )}
@@ -346,6 +358,42 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
           </div>
         </div>
       </div>
+      {/* Room Change Confirmation Modal */}
+      {showRoomChangeConfirm && createPortal(
+        <div className="rf-photo-viewer" role="dialog" aria-modal="true" style={{ backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl space-y-4 border border-slate-100" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 text-amber-600">
+              <div className="p-2.5 bg-amber-50 rounded-xl">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900">Change Selected Room?</h3>
+            </div>
+            <p className="text-sm text-slate-600 leading-relaxed">
+              Changing your room will cancel your currently scheduled room visit and require selecting a new visit slot for the new room.
+            </p>
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+                onClick={() => setShowRoomChangeConfirm(false)}
+              >
+                Keep Current Room
+              </button>
+              <button
+                type="button"
+                className="px-4 py-2 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-xl transition-colors shadow-sm"
+                onClick={() => {
+                  setShowRoomChangeConfirm(false);
+                  onChangeRoom();
+                }}
+              >
+                Confirm Change
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };

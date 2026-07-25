@@ -110,13 +110,10 @@ export const cancelReservationByUser = async (req, res, next) => {
       ...(visitHistoryUpdate.length > 0 && { visitHistory: visitHistoryUpdate }),
     };
 
-    const updated = await Reservation.findByIdAndUpdate(
-      reservationId,
-      { $set: updates },
-      { new: true, runValidators: true },
-    )
-      .populate("userId", "firstName lastName email")
-      .populate("roomId", "name branch type");
+    Object.assign(reservation, updates);
+    const updated = await reservation.save();
+    await updated.populate("userId", "firstName lastName email");
+    await updated.populate("roomId", "name branch type");
 
     try {
       await updateOccupancyOnReservationChange(updated, { status: reservation.status });

@@ -61,7 +61,7 @@ export const LoginConfirmModal = ({ show, onLogin, onDismiss }) => {
  </p>
  <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
  <button onClick={onDismiss} style={btnLight}>
- Go Back
+ Cancel
  </button>
  <button
  onClick={onLogin}
@@ -94,12 +94,12 @@ export const CancelConfirmModal = ({ show, onConfirm, onDismiss }) => {
  Discard Changes?
  </h2>
  <p style={{ marginBottom: "24px", color: "#666", lineHeight: "1.6" }}>
- Are you sure you want to go back? Your current progress will be lost
+ Are you sure you want to exit? Your current progress will be lost
  and you'll need to start over.
  </p>
  <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
  <button onClick={onDismiss} style={btnLight}>
- Continue
+ Keep Editing
  </button>
  <button
  onClick={onConfirm}
@@ -110,7 +110,7 @@ export const CancelConfirmModal = ({ show, onConfirm, onDismiss }) => {
  border: "none",
  }}
  >
- Go Back
+ Discard Changes
  </button>
  </div>
  </div>

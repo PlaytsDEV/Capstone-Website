@@ -581,6 +581,24 @@ export function isActiveBedAssignmentDuplicateError(error) {
   return false;
 }
 
+export function isActiveUserReservationDuplicateError(error) {
+  if (!error) return false;
+  if (error.code === 11000) {
+    const keyPattern = error.keyPattern || {};
+    if (keyPattern.userId && !keyPattern.roomId) {
+      return true;
+    }
+    const message = String(error.message || "");
+    if (
+      message.includes("unique_active_user_reservation") ||
+      (message.includes("userId") && !message.includes("roomId"))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export async function validateSelectedBedForReservation({
   room,
   submittedBed,
@@ -1341,6 +1359,10 @@ export const buildReservationPricing = async ({
     branchId === "guadalupe" && branchSettings?.isApplianceFeeEnabled
       ? roundMoney(applianceFeeAmountPerUnit * totalApplianceQuantity)
       : 0;
+  const reservationFeeAmount = roundMoney(
+    Number(settings?.reservationFeeAmount ?? BUSINESS.DEPOSIT_AMOUNT),
+  );
+  const totalPrice = roundMoney(monthlyRent + applianceFees);
   const securityDeposit = monthlyRent;
   const grossMoveInCashOut = roundMoney(monthlyRent + securityDeposit);
   const netMoveInBalanceDue = roundMoney(Math.max(0, grossMoveInCashOut - reservationFeeAmount));
@@ -1745,8 +1767,16 @@ export const normalizeVisitStatusKey = (value) => {
   return VISIT_OUTCOME_STATUSES.includes(canonical) ? canonical : "";
 };
 
-export const isVisitApplicationUnlocked = (visitStatus) =>
-  VISIT_APPLICATION_UNLOCK_STATUSES.includes(normalizeVisitStatusKey(visitStatus));
+export const isVisitApplicationUnlocked = (visitStatusOrReservation) => {
+  if (typeof visitStatusOrReservation === "object" && visitStatusOrReservation !== null) {
+    if (visitStatusOrReservation.isOutOfTown === true && visitStatusOrReservation.isOutOfTownApproved === true) {
+      return true;
+    }
+    const visitStatus = getEffectiveVisitStatusKey(visitStatusOrReservation);
+    return VISIT_APPLICATION_UNLOCK_STATUSES.includes(normalizeVisitStatusKey(visitStatus));
+  }
+  return VISIT_APPLICATION_UNLOCK_STATUSES.includes(normalizeVisitStatusKey(visitStatusOrReservation));
+};
 
 export const getEffectiveVisitStatusKey = (reservation = {}) => {
   const obj = typeof reservation?.toObject === "function" ? reservation.toObject() : reservation;

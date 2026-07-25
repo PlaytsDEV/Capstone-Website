@@ -16,7 +16,9 @@ import {
   invalidIdResponse,
   handleReservationError,
   validateMoveInDate,
+  syncReservationUserLifecycle,
 } from "../../utils/reservationHelpers.js";
+import { updateOccupancyOnReservationChange } from "../../utils/occupancyManager.js";
 import {
   CURRENT_RESIDENT_STATUS_QUERY,
   normalizeReservationPayload,
@@ -40,6 +42,7 @@ import {
   loadReservableRoom,
   ensureRoomReservationCapacity,
   isActiveBedAssignmentDuplicateError,
+  isActiveUserReservationDuplicateError,
   validateSelectedBedForReservation,
 } from "./_helpers.js";
 
@@ -276,11 +279,24 @@ export const createReservation = async (req, res) => {
       userId: dbUser._id,
       roomId: room._id,
       selectedBed,
+      // intendedMoveInDate = canonical field for tenant's desired move-in date (Step 1).
+      // targetMoveInDate kept for backward compat with older records.
+      intendedMoveInDate: b.moveInDate
+        ? new Date(b.moveInDate)
+        : b.targetMoveInDate
+          ? new Date(b.targetMoveInDate)
+          : null,
       targetMoveInDate: b.targetMoveInDate
         ? new Date(b.targetMoveInDate)
         : null,
       leaseDuration: b.leaseDuration || null,
-      billingEmail: ((b.billingEmail || dbUser.email) ?? "").toLowerCase().trim() || null,
+      billingEmail: (() => {
+        const BASIC_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        const raw = (b.billingEmail || "").toLowerCase().trim();
+        // Fall back silently to user email if submitted billingEmail is malformed.
+        const resolved = (raw && BASIC_EMAIL_RE.test(raw)) ? raw : (dbUser.email ?? "").toLowerCase().trim();
+        return resolved || null;
+      })(),
       roomConfirmed: b.roomConfirmed === true,
       viewingPreference,
       viewingType: deriveViewingType(viewingPreference) || b.viewingType || null,
@@ -377,6 +393,21 @@ export const createReservation = async (req, res) => {
       return res.status(409).json({
         error: BED_UNAVAILABLE_MESSAGE,
         code: "BED_UNAVAILABLE",
+      });
+    }
+    if (isActiveUserReservationDuplicateError(error)) {
+      const existingActive = await Reservation.findOne({
+        userId: dbUser._id,
+        status: {
+          $nin: reservationStatusesForQuery("cancelled", "archived", "moveOut", "rejected"),
+        },
+        isArchived: { $ne: true },
+      }).select("_id status").lean();
+      return res.status(400).json({
+        error: "You already have an active reservation. Please complete or cancel it before creating a new one.",
+        code: "RESERVATION_ALREADY_EXISTS",
+        existingReservationId: existingActive?._id,
+        existingStatus: existingActive?.status,
       });
     }
     logger.error({ err: error, requestId: req.id }, "Create reservation error");

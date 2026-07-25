@@ -7,6 +7,7 @@ import {
   getApplicationSaveStatusText,
   getSerializableUploadUrl,
   hasRecoverableApplicationDraft,
+  hasSubstantiveApplicationDraft,
 } from "./applicationDraftAutosave.js";
 
 test("application draft storage key is scoped by user and reservation", () => {
@@ -31,6 +32,35 @@ test("recoverable draft detects backend application fields before submission", (
       applicationSubmittedAt: "2026-05-17T08:00:00.000Z",
     }),
     false,
+  );
+});
+
+test("substantive draft ignores basic profile prefill and detects actual form progress", () => {
+  // Basic profile / room selection defaults do NOT count as substantive draft
+  assert.equal(
+    hasSubstantiveApplicationDraft({
+      firstName: "Ana",
+      lastName: "Reyes",
+      mobileNumber: "09171234567",
+      preferredRoomNumber: "101",
+      leaseDuration: "6",
+    }),
+    false,
+  );
+
+  // Uploaded documents or custom form entries DO count as substantive draft
+  assert.equal(
+    hasSubstantiveApplicationDraft({
+      firstName: "Ana",
+      validIDFrontUrl: "https://storage.example/id-front.jpg",
+    }),
+    true,
+  );
+  assert.equal(
+    hasSubstantiveApplicationDraft({
+      emergencyContact: { name: "Maria Reyes" },
+    }),
+    true,
   );
 });
 

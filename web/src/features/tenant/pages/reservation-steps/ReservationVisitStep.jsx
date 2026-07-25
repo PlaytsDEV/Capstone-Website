@@ -423,7 +423,15 @@ const ReservationVisitStep = ({
       const savedVisitCode = await onSaveVisit?.();
       await onVisitSaved?.({ viewingPreference: selectedVisit, visitCode: savedVisitCode, visitDate, visitTime });
       if (selectedVisit === "physical_visit") setIsEditingPhysicalVisit(false);
-    } catch (error) { showNotification(error?.response?.data?.error || "We couldn't save your viewing preference. Please try again.", "error", 4000); } finally { setIsSaving(false); }
+    } catch (error) {
+      if (error?.response?.data?.code === "VISIT_SLOT_CONFLICT") {
+        refetchAvailability();
+        setVisitTime("");
+        showNotification("The selected time slot was just taken by another applicant. Please select an available slot.", "error", 5000);
+      } else {
+        showNotification(error?.response?.data?.error || "We couldn't save your viewing preference. Please try again.", "error", 4000);
+      }
+    } finally { setIsSaving(false); }
   };
 
   useEffect(() => { if (!hasSavedPhysicalVisit) setIsEditingPhysicalVisit(false); }, [hasSavedPhysicalVisit]);
@@ -771,7 +779,7 @@ const ReservationVisitStep = ({
           <div className="rf-modal-icon-wrap"><AlertTriangle size={24} color="#B45309" /></div>
           <h3 className="rf-modal-title">Change Viewing Preference?</h3>
           <p className="rf-modal-subtitle">Changing your viewing preference may reset your current viewing request. Do you want to continue?</p>
-          <div className="rf-modal-actions"><button type="button" className="btn btn-primary" onClick={handleConfirmPreferenceChange}>Continue</button><button type="button" className="btn btn-secondary" onClick={() => setShowChangeConfirm(false)}>Cancel</button></div>
+          <div className="rf-modal-actions"><button type="button" className="btn btn-secondary" onClick={() => setShowChangeConfirm(false)}>Cancel</button><button type="button" className="btn btn-primary" onClick={handleConfirmPreferenceChange}>Continue</button></div>
         </div>
       </Modal>
 
@@ -835,11 +843,11 @@ const ReservationVisitStep = ({
           </div>
 
           <div className="rf-modal-actions" style={{ marginTop: 20 }}>
+            <button type="button" className="btn btn-secondary" onClick={() => setShowConfirmSubmitModal(false)}>
+              Cancel
+            </button>
             <button type="button" className="btn btn-primary" onClick={handleConfirmedSubmit} disabled={isSaving}>
               {isSaving ? "Submitting..." : "Confirm"}
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={() => setShowConfirmSubmitModal(false)}>
-              Go Back
             </button>
           </div>
         </div>

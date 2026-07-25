@@ -65,6 +65,47 @@ const DRAFT_FIELD_PATHS = [
   "workScheduleOther",
 ];
 
+export const SUBSTANTIVE_DRAFT_FIELD_PATHS = [
+  "middleName",
+  "nickname",
+  "birthday",
+  "gender",
+  "maritalStatus",
+  "nationality",
+  "educationLevel",
+  "address.unitHouseNo",
+  "address.street",
+  "address.region",
+  "address.barangay",
+  "address.city",
+  "address.province",
+  "selfiePhotoUrl",
+  "validIDFrontUrl",
+  "validIDBackUrl",
+  "validIDType",
+  "idType",
+  "nbiClearanceUrl",
+  "nbiReason",
+  "companyIDUrl",
+  "companyIDReason",
+  "personalNotes",
+  "emergencyContact.name",
+  "emergencyContact.relationship",
+  "emergencyContact.contactNumber",
+  "healthConcerns",
+  "employment.employerSchool",
+  "employment.employerAddress",
+  "employment.employerContact",
+  "employment.startDate",
+  "employment.occupation",
+  "employment.previousEmployment",
+  "referralSource",
+  "referrerName",
+  "estimatedMoveInTime",
+  "workSchedule",
+  "workScheduleOther",
+];
+
 const getByPath = (source, path) =>
   path.split(".").reduce((current, key) => current?.[key], source);
 
@@ -86,6 +127,12 @@ export const hasRecoverableApplicationDraft = (reservation = {}) => {
   if (!reservation || typeof reservation !== "object") return false;
   if (reservation.applicationSubmittedAt) return false;
   return DRAFT_FIELD_PATHS.some((path) => hasValue(getByPath(reservation, path)));
+};
+
+export const hasSubstantiveApplicationDraft = (reservation = {}) => {
+  if (!reservation || typeof reservation !== "object") return false;
+  if (reservation.applicationSubmittedAt) return false;
+  return SUBSTANTIVE_DRAFT_FIELD_PATHS.some((path) => hasValue(getByPath(reservation, path)));
 };
 
 export const canAutoSaveApplicationDraft = ({

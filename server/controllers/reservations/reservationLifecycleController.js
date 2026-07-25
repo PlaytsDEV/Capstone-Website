@@ -324,6 +324,7 @@ export const updateReservation = async (req, res, next) => {
       }
 
       req.body.moveInDate = moveInDate;
+      req.body.confirmedMoveInDate = moveInDate;
     }
 
     const reservation = await Reservation.findById(reservationId);
@@ -721,6 +722,29 @@ export const updateReservationByUser = async (req, res, next) => {
       }
     }
 
+    // Deprecation guard: application submission must go through the dedicated endpoint.
+    if (req.body.submitApplication === true) {
+      return res.status(400).json({
+        error:
+          "Application submission must use POST /reservations/:id/application/submit.",
+        code: "USE_DEDICATED_SUBMIT_ENDPOINT",
+      });
+    }
+
+    // Deprecation guard: proof of payment upload must go through the dedicated endpoint.
+    if (req.body.proofOfPaymentUrl) {
+      return res.status(400).json({
+        error:
+          "Proof of payment upload must use POST /reservations/:id/payment.",
+        code: "USE_DEDICATED_PAYMENT_ENDPOINT",
+      });
+    }
+
+    if (req.body.cancelReservation === true) {
+      req.params.reservationId = reservationId;
+      return cancelReservationByUser(req, res, next);
+    }
+
     const roomSelectionUpdateRequested = ROOM_SELECTION_UPDATE_FIELDS.some(
       (field) => hasBodyField(field),
     );
@@ -732,11 +756,6 @@ export const updateReservationByUser = async (req, res, next) => {
         error: "Room selection is locked while your reservation is under review.",
         code: "RESERVATION_ROOM_SELECTION_LOCKED",
       });
-    }
-
-    if (req.body.cancelReservation === true) {
-      req.params.reservationId = reservationId;
-      return cancelReservationByUser(req, res, next);
     }
 
     const requestedRoomId = updates.roomId || reservation.roomId;
@@ -1453,16 +1472,31 @@ export const updateReservationByUser = async (req, res, next) => {
           code: "PAYMENT_LOCKED_PENDING_APPLICATION_REVIEW",
         });
       }
-      updates.paymentStatus = "pending";
+      // "partial" = proof uploaded, awaiting admin confirmation.
+      // "pending" is reserved for "not yet uploaded" state.
+      updates.paymentStatus = "partial";
       updates.paymentDate = new Date();
       updates.status = "payment_pending";
       const existing = await Reservation.findById(reservationId);
       if (!existing.paymentReference) {
-        const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-        let ref = "PAY-";
-        for (let i = 0; i < 6; i++)
-          ref += chars.charAt(Math.floor(Math.random() * chars.length));
-        updates.paymentReference = ref;
+        // Collision-safe generation — mirrors reservationCode retry pattern.
+        const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        let ref = null;
+        for (let attempt = 0; attempt < 5; attempt++) {
+          let candidate = "PAY-";
+          for (let i = 0; i < 6; i++)
+            candidate += CHARS.charAt(Math.floor(Math.random() * CHARS.length));
+          const taken = await Reservation.findOne({ paymentReference: candidate })
+            .select("_id")
+            .lean();
+          if (!taken) {
+            ref = candidate;
+            break;
+          }
+        }
+        // Timestamp fallback — non-fatal; sparse unique index still protects the DB.
+        updates.paymentReference =
+          ref || "PAY-" + Date.now().toString(36).toUpperCase().slice(-6);
       }
     }
 
@@ -1476,26 +1510,58 @@ export const updateReservationByUser = async (req, res, next) => {
       });
     }
 
-    if (
-      updates.status === "reserved" &&
-      !reservation.reservationCode &&
-      !updates.reservationCode
-    ) {
-      updates.reservationCode = await Reservation.generateUniqueReservationCode();
-    }
-
     const updateOperation = { $set: updates };
     if (Object.keys(unsetFields).length > 0) {
       updateOperation.$unset = unsetFields;
     }
 
-    const updatedReservation = await Reservation.findByIdAndUpdate(
-      reservationId,
-      updateOperation,
-      { new: true, runValidators: true },
-    )
-      .populate(...POPULATE_USER)
-      .populate(...POPULATE_ROOM);
+    let updatedReservation;
+    // If status transitions to "reserved", use document .save() so schema pre-save hooks
+    // (such as generateUniqueReservationCode) fire canonically.
+    if (updates.status === "reserved") {
+      const docToSave = await Reservation.findById(reservationId);
+      if (!docToSave) {
+        return res.status(404).json({ error: "Reservation not found", code: "RESERVATION_NOT_FOUND" });
+      }
+      Object.assign(docToSave, updates);
+      if (Object.keys(unsetFields).length > 0) {
+        for (const field of Object.keys(unsetFields)) {
+          docToSave.set(field, undefined);
+        }
+      }
+      updatedReservation = await docToSave.save();
+      await updatedReservation.populate(...POPULATE_USER);
+      await updatedReservation.populate(...POPULATE_ROOM);
+    } else {
+      const updateFilter = { _id: reservationId };
+      if (isApplicationSubmission && !previouslySubmittedApplication) {
+        updateFilter.applicationSubmittedAt = null;
+        updateFilter.status = {
+          $nin: [
+            "pending_application_review",
+            "approved_for_payment",
+            "payment_pending",
+            "reserved",
+            "moveIn",
+          ],
+        };
+      }
+
+      updatedReservation = await Reservation.findOneAndUpdate(
+        updateFilter,
+        updateOperation,
+        { new: true, runValidators: true },
+      )
+        .populate(...POPULATE_USER)
+        .populate(...POPULATE_ROOM);
+
+      if (!updatedReservation && isApplicationSubmission) {
+        return res.status(409).json({
+          error: "Application has already been submitted and is currently under review.",
+          code: "APPLICATION_ALREADY_SUBMITTED",
+        });
+      }
+    }
 
     res.json({
       message: "Reservation updated successfully",

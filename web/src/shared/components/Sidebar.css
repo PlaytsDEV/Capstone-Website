@@ -327,6 +327,63 @@ html[data-theme="dark"] .sidebar {
   color: var(--primary-foreground);
 }
 
+/* ── Notification Badge ── */
+.sidebar-badge {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  background: #ef4444;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.sidebar-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
+  animation: sidebarBadgePulse 1.8s infinite ease-in-out;
+}
+
+@keyframes sidebarBadgePulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.75);
+  }
+}
+
+/* Active navigation item badge contrast styling */
+.sidebar-nav-item.active .sidebar-badge {
+  background: #0f172a;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.sidebar-nav-item.active .sidebar-badge .sidebar-badge-dot {
+  background: #f87171;
+  box-shadow: 0 0 4px rgba(248, 113, 113, 0.8);
+}
+
+.sidebar-nav-item:hover .sidebar-badge {
+  transform: scale(1.05);
+}
+
 /* ── Footer ── */
 .sidebar-footer {
   padding: 12px 10px 14px;
@@ -391,11 +448,25 @@ html[data-theme="dark"] .sidebar {
   display: none;
 }
 
-.sidebar.collapsed .sidebar-nav-item span,
+.sidebar.collapsed .sidebar-nav-label,
 .sidebar.collapsed .sidebar-logout span {
   opacity: 0;
   width: 0;
   overflow: hidden;
+}
+
+.sidebar.collapsed .sidebar-nav-item .sidebar-badge {
+  position: absolute;
+  top: 5px;
+  right: 8px;
+  margin-left: 0;
+  padding: 2px 5px;
+  font-size: 0.65rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.sidebar.collapsed .sidebar-nav-item .sidebar-badge .sidebar-badge-dot {
+  display: none;
 }
 
 /* ── Mobile topbar ── */

@@ -208,6 +208,14 @@ const reservationSchema = new mongoose.Schema(
     // =========================================================================
     // STAGE 1: SUMMARY
     // =========================================================================
+    // Tenant's desired move-in date — captured at Step 1 (room summary).
+    // Replaces targetMoveInDate as the canonical "intended" date field.
+    intendedMoveInDate: {
+      type: Date,
+      default: null,
+    },
+    // @deprecated — kept for backward compatibility with older records.
+    // Write intendedMoveInDate instead. Read via readMoveInDate().
     targetMoveInDate: Date,
     leaseDuration: Number,
     billingEmail: String,
@@ -568,6 +576,12 @@ const reservationSchema = new mongoose.Schema(
     moveInDate: {
       type: Date,
       required: true,
+    },
+    // Admin-confirmed actual move-in date — set when admin executes the moveIn action.
+    // Takes precedence over moveInDate for lease calculations once populated.
+    confirmedMoveInDate: {
+      type: Date,
+      default: null,
     },
     checkInDate: {
       type: Date,
@@ -964,6 +978,20 @@ reservationSchema.index({ userId: 1, status: 1 });
 reservationSchema.index({ roomId: 1, moveInDate: 1 });
 // Admin listing: filter by status + archive flag together (avoids COLLSCAN)
 reservationSchema.index({ status: 1, isArchived: 1 });
+// Enforce single active reservation per user atomically at the database level
+reservationSchema.index(
+  { userId: 1 },
+  {
+    name: "unique_active_user_reservation",
+    unique: true,
+    partialFilterExpression: {
+      isArchived: false,
+      status: {
+        $nin: ["cancelled", "archived", "moveOut", "rejected"],
+      },
+    },
+  },
+);
 // Room-level status queries (e.g. find all moved-in reservations for a room)
 reservationSchema.index({ roomId: 1, status: 1 });
 reservationSchema.index(

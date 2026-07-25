@@ -223,7 +223,20 @@ export const hasUtilityEventType = (eventType, ...expectedEventTypes) => {
     .includes(normalized);
 };
 
-export const readMoveInDate = (value) => value?.moveInDate ?? null;
+/**
+ * Read the canonical move-in date from a reservation document.
+ * Priority order (highest → lowest):
+ *   1. confirmedMoveInDate — admin-confirmed actual move-in date (set at moveIn action)
+ *   2. moveInDate          — required schema field, set at creation / admin move-in
+ *   3. intendedMoveInDate  — tenant's desired date from Step 1
+ *   4. targetMoveInDate    — @deprecated legacy field, kept for old records
+ */
+export const readMoveInDate = (value) =>
+  value?.confirmedMoveInDate ??
+  value?.moveInDate ??
+  value?.intendedMoveInDate ??
+  value?.targetMoveInDate ??
+  null;
 
 export const readMoveOutDate = (value) => value?.moveOutDate ?? null;
 

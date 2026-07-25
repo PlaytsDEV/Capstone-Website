@@ -22,6 +22,8 @@ const AvailabilityHeader = ({
  selectedRoomType,
  onRoomTypeFilter,
  availableRoomTypes,
+ selectedLeaseTermFilter = "All",
+ onLeaseTermFilterChange,
  maxPrice,
  setMaxPrice,
  onClearAll,
@@ -82,6 +84,7 @@ const AvailabilityHeader = ({
  const hasActiveFilters =
  selectedBranch !== "All" ||
  selectedRoomType !== "All" ||
+ selectedLeaseTermFilter !== "All" ||
  maxPrice !== 15000 ||
  searchQuery.trim() !== "";
 
@@ -144,6 +147,17 @@ const AvailabilityHeader = ({
  {type === "All" ? "All Types" : type}
  </option>
  ))}
+ </select>
+
+ {/* Lease Term dropdown */}
+ <select
+ className="ca-filter-select"
+ value={selectedLeaseTermFilter}
+ onChange={(e) => onLeaseTermFilterChange && onLeaseTermFilterChange(e.target.value)}
+ >
+ <option value="All">All Stay Types</option>
+ <option value="longTerm">Long-Term (6+ mos)</option>
+ <option value="shortTerm">Short-Term (1–5 mos)</option>
  </select>
 
  {/* Price range slider — local state, commits on release */}

@@ -65,6 +65,7 @@ import {
   getApplicationSaveStatusText,
   getSerializableUploadUrl,
   hasRecoverableApplicationDraft,
+  hasSubstantiveApplicationDraft,
 } from "../utils/applicationDraftAutosave";
 
 // Returns a sessionStorage key scoped to the Firebase UID when known,
@@ -422,6 +423,15 @@ export default function useReservationFlow() {
   const applicationDraftSaveClearTimerRef = useRef(null);
   const lastSavedApplicationDraftRef = useRef("");
   const draftRecoveryShownRef = useRef(false);
+  const draftToastShownRef = useRef(false);
+
+  // Trigger toast notification when user enters Stage 3 (Application Form) if a draft was restored
+  useEffect(() => {
+    if (Number(currentStage) === 3 && draftRecoveryMessage && !draftToastShownRef.current) {
+      draftToastShownRef.current = true;
+      showNotification("Your saved progress has been restored.", "success", 3000);
+    }
+  }, [currentStage, draftRecoveryMessage, showNotification]);
 
   useEffect(() => {
     if (!profileName.firstName && !profileName.lastName) return;
@@ -820,7 +830,10 @@ export default function useReservationFlow() {
     draftRecoveryShownRef.current = true;
     setDraftRecoveryMessage("Your saved progress has been restored.");
     setLastApplicationDraftSavedAt(savedAt || new Date().toISOString());
-    showNotification("Your saved progress has been restored.", "success", 3000);
+    if (Number(currentStage) === 3 && !draftToastShownRef.current) {
+      draftToastShownRef.current = true;
+      showNotification("Your saved progress has been restored.", "success", 3000);
+    }
   };
 
   const restoreLocalApplicationDraftIfNeeded = (reservation = {}) => {
@@ -829,7 +842,7 @@ export default function useReservationFlow() {
     const targetReservationId =
       reservation?._id || reservation?.id || reservationId || "";
     const key = getApplicationDraftStorageKey(user?.firebaseUid, targetReservationId);
-    if (!key || hasRecoverableApplicationDraft(reservation)) return false;
+    if (!key || hasSubstantiveApplicationDraft(reservation)) return false;
     if (reservation?.applicationSubmittedAt) return false;
 
     try {
@@ -839,6 +852,7 @@ export default function useReservationFlow() {
       if (!draft?.payload) return false;
       if (draft.userId && draft.userId !== user?.firebaseUid) return false;
       if (draft.reservationId && draft.reservationId !== targetReservationId) return false;
+      if (!hasSubstantiveApplicationDraft(draft.payload)) return false;
 
       applyApplicationDraftPayload(draft.payload, draft);
       lastSavedApplicationDraftRef.current = JSON.stringify({
@@ -856,7 +870,7 @@ export default function useReservationFlow() {
   };
 
   const markBackendApplicationDraftRestored = (reservation = {}) => {
-    if (!hasRecoverableApplicationDraft(reservation)) return;
+    if (!hasSubstantiveApplicationDraft(reservation)) return;
     markApplicationDraftRestored(reservation.updatedAt || reservation.createdAt);
   };
 
@@ -2528,14 +2542,17 @@ export default function useReservationFlow() {
           validIDType,
           idType: validIDType,
         };
-        if (!applicationSubmitted) {
-          applicationPayload.submitApplication = true;
-        }
         if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
         if (applicationDraftSaveClearTimerRef.current) {
           clearTimeout(applicationDraftSaveClearTimerRef.current);
         }
-        await updateReservationDraft(applicationPayload);
+        if (!applicationSubmitted) {
+          // First-time submission: dedicated endpoint with parallel OCR + optimistic lock
+          await reservationApi.submitApplication(reservationId, applicationPayload);
+        } else {
+          // Re-submission (e.g. needs_revision): same dedicated endpoint handles idempotency
+          await reservationApi.submitApplication(reservationId, applicationPayload);
+        }
         const draftKey = getApplicationDraftStorageKey(user?.firebaseUid, reservationId);
         if (draftKey && typeof window !== "undefined" && window.localStorage) {
           window.localStorage.removeItem(draftKey);

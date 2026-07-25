@@ -9,6 +9,8 @@ import { reservationStatusesForQuery } from "./lifecycleNaming.js";
 const DATE_KEY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_AVAILABILITY_DAYS = 60;
 const ACTIVE_VISIT_STATUSES = reservationStatusesForQuery(
+  "pending",
+  "viewing_preference_selected",
   "visit_pending",
   "visit_approved",
 );

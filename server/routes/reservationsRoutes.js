@@ -60,6 +60,10 @@ import {
   moveOutReservation,
   transferTenant,
   getMyContract,
+  updateVisitPreferenceAndSchedule,
+  saveApplicationDraft,
+  submitApplication,
+  uploadPaymentProof,
 } from "../controllers/reservations/index.js";
 import {
   getRoomOccupancy,
@@ -296,6 +300,50 @@ router.put(
   verifyToken,
   verifyApplicant,
   updateReservationByUser,
+);
+
+/**
+ * PATCH /api/reservations/:reservationId/visit
+ * Update viewing preference and physical visit schedule (tenant only).
+ */
+router.patch(
+  "/:reservationId/visit",
+  verifyToken,
+  verifyApplicant,
+  updateVisitPreferenceAndSchedule,
+);
+
+/**
+ * PATCH /api/reservations/:reservationId/application/draft
+ * Save tenant application draft (tenant only).
+ */
+router.patch(
+  "/:reservationId/application/draft",
+  verifyToken,
+  verifyApplicant,
+  saveApplicationDraft,
+);
+
+/**
+ * POST /api/reservations/:reservationId/application/submit
+ * Submit tenant application with parallel document pre-checks and optimistic lock.
+ */
+router.post(
+  "/:reservationId/application/submit",
+  verifyToken,
+  verifyApplicant,
+  submitApplication,
+);
+
+/**
+ * POST /api/reservations/:reservationId/payment
+ * Upload proof of payment for reservation fee (tenant only).
+ */
+router.post(
+  "/:reservationId/payment",
+  verifyToken,
+  verifyApplicant,
+  uploadPaymentProof,
 );
 
 /**

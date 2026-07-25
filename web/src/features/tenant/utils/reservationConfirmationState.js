@@ -17,7 +17,8 @@ export const isPaymentConfirmed = (reservation = {}, options = {}) => {
 
   if (paymentStatus === "paid") return true;
   if (reservation?.paymongoPaymentId && reservation?.paymentDate) return true;
-  if (options.paymentApproved === true && paymentStatus !== "pending") return true;
+  // "partial" = proof uploaded but admin not yet confirmed — treat same as "pending" (not confirmed).
+  if (options.paymentApproved === true && paymentStatus !== "pending" && paymentStatus !== "partial") return true;
   return false;
 };
 
