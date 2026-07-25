@@ -83,7 +83,7 @@ server/
 ├── config/                ← 12 files: DB, Firebase, branches, roles, email, etc.
 ├── middleware/             ← 10 files: auth, RBAC, permissions, rate limiting, errors
 ├── models/                ← 29 Mongoose models + index.js barrel
-├── controllers/           ← 20 root proxies + 17 specialized subcontrollers
+├── controllers/           ← 20 root proxies + 16 specialized subcontrollers
 │   ├── reservations/      ← 7 subcontrollers + _helpers.js + barrel index.js
 │   ├── maintenance/       ← 5 subcontrollers + _helpers.js + barrel index.js
 │   └── billing/           ← 4 subcontrollers + _helpers.js + barrel index.js
@@ -126,7 +126,7 @@ The backend follows a **layer-based architecture**:
 
 | Controller | Size (KB) | Concern / Status |
 |:-----------|----------:|:-----------------|
-| billingController.js | **100** | ⚠️ Very large (Target for Phase 4 refactoring) |
+| billingController.js | **<1** (Proxy) | ✅ **RESOLVED** — Decomposed into `controllers/billing/` (4 subcontrollers + `_helpers.js`) |
 | analyticsController.js | **77** | Large but acceptable (aggregation-heavy) |
 | utilityBillingController.js | **67** | Large |
 | usersController.js | **44** | Moderate |
@@ -268,8 +268,9 @@ ReactDOM.createRoot
 | **In-memory token cache** | SHA-256 keyed LRU Map with TTL | Saves ~200ms/request |
 | **Centralized model barrel** | `models/index.js` with named + default exports | Single import source |
 | **Domain-decomposed API layer** | 25 separate API modules behind barrel | Clean separation of concerns |
-| **Decomposed Controller Proxies** | Barrel proxies for `reservationsController` & `maintenanceController` | Clean modularity with zero breaking API changes |
+| **Decomposed Controller Proxies** | Barrel proxies for `reservationsController`, `maintenanceController` & `billingController` | Clean modularity with zero breaking API changes |
 | **Domain Services Layer** | Modular `services/` subdirectories (`billing`, `occupancy`, etc.) | Clear separation of business logic from pure utils |
+| **Structured Bed Identification & Locking** | `Room.beds` subdocument schema (Bunk A/B Upper/Lower), 2-min lock TTL, bedIdentifier utils | Collision-safe bed assignment, visual UI selector, and receipt alignment |
 | **Code splitting** | Centralized `lazyPages.js` with Suspense | All 33 pages lazy-loaded |
 | **Cron scheduler** | node-cron with retry + admin alerting | Production-grade job system |
 | **Graceful shutdown** | SIGTERM/SIGINT handlers + MongoDB close | Proper cleanup with timeout |
@@ -279,15 +280,20 @@ ReactDOM.createRoot
 
 ### 4.2 Anti-Patterns & Issues Audit Status ⚠️
 
-#### RESOLVED: God Controllers (`reservationsController.js` & `maintenanceController.js`)
+#### RESOLVED: God Controllers (`reservationsController.js`, `maintenanceController.js` & `billingController.js`)
 
 > [!NOTE]
-> `reservationsController.js` (previously 211 KB) and `maintenanceController.js` (previously 125 KB) have been fully decomposed into specialized domain subcontrollers under `server/controllers/reservations/` and `server/controllers/maintenance/`. The root controller files remain as thin backward-compatibility proxies.
+> `reservationsController.js` (previously 211 KB), `maintenanceController.js` (previously 125 KB), and `billingController.js` (previously 100 KB) have been fully decomposed into specialized domain subcontrollers under `server/controllers/reservations/`, `server/controllers/maintenance/`, and `server/controllers/billing/`. The root controller files remain as thin backward-compatibility proxies.
 
 #### RESOLVED: Blurred Service/Utility Boundary
 
 > [!NOTE]
 > Domain logic modules previously residing in `server/utils/` (`billingEngine.js`, `occupancyManager.js`, `notificationService.js`, `auditLogger.js`, etc.) have been migrated to domain packages under `server/services/`. Root `utils/` imports act as backward-compatibility proxies.
+
+#### RESOLVED: Monolithic Page Component (`AdminMaintenancePage.jsx`)
+
+> [!NOTE]
+> `AdminMaintenancePage.jsx` (previously 192 KB monolithic page) has been decomposed into `web/src/features/admin/pages/maintenance/` featuring modular components (`MaintenanceTable`, `MaintenanceFilters`, `MaintenanceReportModal`, `ServiceProviderAssignmentPanel`, `MaintenanceTimeline`, `AttachmentRemovalModal`, `AssignBranchModal`, `ConfirmationModal`), custom hook (`useMaintenanceData`), and helpers (`maintenanceUtils.js`).
 
 #### HIGH: Dual HTTP Client Confusion
 
@@ -310,16 +316,16 @@ Zustand is a dependency with only **1 store** (`notificationStore`). Given TanSt
 
 Several admin pages are extremely large single-file components:
 
-| Component | Size (KB) |
-|:----------|----------:|
-| AdminMaintenancePage.jsx | **192** |
-| RoomAvailabilityPage.jsx | **52** |
-| UserManagementPage.jsx | **45** |
-| ReservationsPage.jsx | **44** |
-| TenantsWorkspacePage.jsx | **43** |
-| AdminAnnouncementsPage.jsx | **42** |
-| AnalyticsPage.jsx | **40** |
-| AdminChatPage.jsx | **40** |
+| Component | Size (KB) | Concern / Status |
+|:----------|----------:|:-----------------|
+| AdminMaintenancePage.jsx | **192** | ✅ **RESOLVED** — Modularized into `pages/maintenance/` subcomponents |
+| RoomAvailabilityPage.jsx | **52** | Large |
+| UserManagementPage.jsx | **45** | Moderate |
+| ReservationsPage.jsx | **44** | Moderate |
+| TenantsWorkspacePage.jsx | **43** | Moderate |
+| AdminAnnouncementsPage.jsx | **42** | Moderate |
+| AnalyticsPage.jsx | **40** | Moderate |
+| AdminChatPage.jsx | **40** | Moderate |
 
 These monolithic page components likely contain data fetching, state management, modal logic, and rendering all inline.
 
@@ -429,6 +435,23 @@ Tenant (My Contract Tab)
               → Notifies branch admins
 ```
 
+### 5.6 Structured Bed Identification & Locking Lifecycle
+
+```
+Tenant Selects Bed (BedSelector.jsx)
+  → POST /api/reservations/lock-bed [lockBed]
+      → Room.lockBed(bedId, userId, ttlMs=120000)
+      → Marks bed subdocument: status='locked', lockedBy=userId, lockedUntil=now+2m
+  → Reservation Submitted & Approved
+      → Room.occupyBed(bedId, reservationId, stayId)
+      → Updates bed subdocument: status='occupied', reservationId, stayId
+      → Stores assignedBedId ("101-A-U"), assignedBedCode ("Bunk A (Upper)"), assignedBunkId ("A"), assignedBedPosition ("upper")
+  → Receipt & Contract Generation (ReceiptGenerator.js & ReceiptModal.jsx)
+      → bedIdentifier.formatBedDisplayName() formats bed label for receipts & PDFs
+  → Cron Service (bedLockCleanup.js every 2 min / paymentExpirationService.js)
+      → Releases expired locks where lockedUntil < now AND status = 'locked'
+```
+
 ---
 
 ## 6. Strategic Recommendations
@@ -472,36 +495,50 @@ Implemented structured lease renewal proposal and resident acceptance lifecycle:
 - **Tenant Portal:** Updated `ContractTab.jsx` to render an interactive Renewal Offer card with Accept / Decline options and response prompt.
 - **Admin Workspace:** Enhanced `RenewLeaseModal` in `TenantWorkspaceModals.jsx` to support dual modes: Direct Renewal vs. Send Official Renewal Offer.
 
+#### 5. Decompose `billingController.js` (100 KB) — ✅ COMPLETED
+
+Split into domain-focused subcontrollers under `server/controllers/billing/`:
+- `index.js` (barrel export)
+- `billingQueryController.js`
+- `billingReportController.js`
+- `paymentVerificationController.js`
+- `rentBillingController.js`
+- `_helpers.js`
+
+#### 6. Structured Bed Identification & Locking System — ✅ COMPLETED
+
+Implemented schema-level bed tracking (`Room.beds` subdocument array with `bedId`, `bunkId`, `position`, `status`, `lockedBy`, `lockedUntil`), real-time locking with 2-minute TTL, automated expiration cleanup, visual `BedSelector.jsx`, and receipt sync (`bedIdentifier.js`).
+
 ### 6.2 High Priority
 
-#### 5. Standardize Auth Error Responses — ✅ COMPLETED
+#### 7. Standardize Auth Error Responses — ✅ COMPLETED
 
 Refactored `middleware/auth.js` to wrap responses in `sendError()` helper for uniform API responses.
 
-#### 6. Decompose Monolithic Page Components — 🟡 PLANNED
+#### 8. Decompose Monolithic Page Components — 🟡 IN PROGRESS
 
-Extract `AdminMaintenancePage.jsx` (192 KB) and other large pages into composition patterns.
+Extract `AdminMaintenancePage.jsx` (192 KB — ✅ COMPLETED, decomposed into `web/src/features/admin/pages/maintenance/`) and other large pages into composition patterns.
 
 ### 6.3 Medium Priority
 
-#### 7. Audit and Remove Dead Dependencies — 🟡 PLANNED
+#### 9. Audit and Remove Dead Dependencies — 🟡 PLANNED
 
 - **Axios** (`web/package.json`) — Frontend uses native `fetch()` via `httpClient.js`.
 - Rename `apiClient.js` to `apiBarrel.js` or `index.js` to clarify it's a re-export hub.
 
-#### 8. Evaluate Zustand Necessity — 🟡 PLANNED
+#### 10. Evaluate Zustand Necessity — 🟡 PLANNED
 
 With only 1 store (`notificationStore`), evaluate migrating to React Query subscriptions or React Context.
 
-#### 9. Clean Up Root-Level Scripts — ✅ COMPLETED
+#### 11. Clean Up Root-Level Scripts — ✅ COMPLETED
 
 Moved root debug scripts (`check.js`, `check_db.js`, `check-endpoint.js`, `test-endpoint.js`, `test3.cjs`, `test_delete.cjs`, `script.cjs`, `test-counts.js`) to `server/scripts/archived/`.
 
 ### 6.4 Scaling Considerations
 
-#### 10. Mobile/Web Logic Unification
-#### 11. Database Index Audit
-#### 12. API Versioning Preparation
+#### 12. Mobile/Web Logic Unification
+#### 13. Database Index Audit
+#### 14. API Versioning Preparation
 
 ---
 
@@ -511,7 +548,7 @@ Moved root debug scripts (`check.js`, `check_db.js`, `check-endpoint.js`, `test-
 |:-------|------:|:------|
 | Mongoose Models | **29** | Core database schemas |
 | Backend Root Controllers | **20** | Facade/proxy modules for backward compat |
-| Backend Subcontrollers | **13** | Specialized domain subcontrollers (`reservations/` & `maintenance/`) |
+| Backend Subcontrollers | **16** | Specialized domain subcontrollers (`reservations/` [7], `maintenance/` [5], `billing/` [4]) |
 | Backend Route Files | **24** | Express routers |
 | Middleware Modules | **10** | Pipeline layers |
 | Backend Service Packages | **5** | Domain service packages (`billing`, `occupancy`, `notifications`, `maintenance`, `audit`) |
@@ -520,10 +557,11 @@ Moved root debug scripts (`check.js`, `check_db.js`, `check-endpoint.js`, `test-
 | Lazy-Loaded Pages | **33** | Suspense split pages |
 | Route Guards | **5** | RBAC & auth guards |
 | Custom Hooks | **9** | Shared React hooks |
-| Background Cron Jobs | **15** | Scheduled system jobs |
+| Background Cron Jobs | **16** | Scheduled system jobs (includes bed lock cleanup) |
 | Zustand Stores | **1** | Client state store |
 | Backend Test Suites | **41** | 343 unit/integration tests passing (100%) |
 | Net New Reservation Schema Fields | **19** | Added for contract rules (7 deposit + 4 termination + 8 renewal offer) |
+| Structured Bed Identifiers | **4/room** | Quad dormitory bunk layout (Bunk A/B Upper/Lower) |
 
 ---
 
