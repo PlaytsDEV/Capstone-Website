@@ -71,6 +71,9 @@ export const RoomAvailabilityPage = React.lazy(
 export const TenantsWorkspacePage = React.lazy(
   () => import("../features/admin/pages/TenantsWorkspacePage"),
 );
+export const AdminContractsPage = React.lazy(
+  () => import("../features/admin/pages/AdminContractsPage"),
+);
 export const AuditLogsPage = React.lazy(
   () => import("../features/admin/pages/AuditLogsPage"),
 );

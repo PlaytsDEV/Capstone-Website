@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef } from "react";
 import {
  Edit2, User, Save, X, Camera, Mail,
- Briefcase, Globe, ChevronDown, Sparkles,
+ Briefcase, Globe, ChevronDown, Sparkles, Phone, MapPin, Home, CalendarDays,
 } from "lucide-react";
 import { fmtDate } from "../../../../shared/utils/formatDate";
 import { showNotification } from "../../../../shared/utils/notification";
@@ -377,6 +377,7 @@ const PersonalDetailsTab = ({
  const [uploading, setUploading] = useState(false);
  const [pendingFile, setPendingFile] = useState(null);
  const [localPreviewUrl, setLocalPreviewUrl] = useState(null);
+ const applicationDetailsLocked = profileData.role === "tenant";
 
  const initials = useMemo(() => {
  const f = (profileData.firstName || "").charAt(0).toUpperCase();
@@ -660,7 +661,7 @@ const PersonalDetailsTab = ({
  {uploading ? "Uploading…" : saving ? "Saving…" : "Save Changes"}
  </button>
  </>
- ) : (
+ ) : !applicationDetailsLocked ? (
  <button onClick={handleStartEditing} style={s.editBtn}
  onMouseEnter={(e) => {
  e.currentTarget.style.background = "rgba(255,140,66,0.06)";
@@ -672,7 +673,7 @@ const PersonalDetailsTab = ({
  }}>
  <Edit2 size={14} /> Edit Profile
  </button>
- )}
+ ) : null}
  </div>
  </div>
  </div>
@@ -701,7 +702,8 @@ const PersonalDetailsTab = ({
  </>
  ) : (
  <>
- <Field label="Full Name" field="firstName" value={fullName} onAdd={handleStartEditing} {...fp} />
+ <Field label="Full Name" field="firstName" value={fullName}
+ onAdd={applicationDetailsLocked ? undefined : handleStartEditing} {...fp} />
  <Field label="Email Address" field="email" value={profileData.email} {...fp} />
  </>
  )}
@@ -724,7 +726,8 @@ const PersonalDetailsTab = ({
  <div style={s.grid2}>
  {!isEditingProfile && (
  <Field label="Date of Birth" field="dateOfBirth" type="date"
- value={profileData.dateOfBirth} onAdd={handleStartEditing} {...fp} />
+ value={profileData.dateOfBirth}
+ onAdd={applicationDetailsLocked ? undefined : handleStartEditing} {...fp} />
  )}
  <SelectField label="Gender" field="gender"
  options={[
@@ -734,7 +737,8 @@ const PersonalDetailsTab = ({
  { value: "prefer-not-to-say", label: "Prefer not to say" },
  ]}
  editing={isEditingProfile} editData={editData} setEditData={setEditData}
- value={profileData.gender} onAdd={handleStartEditing} />
+ value={profileData.gender}
+ onAdd={applicationDetailsLocked ? undefined : handleStartEditing} />
  <SelectField label="Civil Status" field="civilStatus"
  options={[
  { value: "single", label: "Single" },
@@ -744,7 +748,8 @@ const PersonalDetailsTab = ({
  { value: "divorced", label: "Divorced" },
  ]}
  editing={isEditingProfile} editData={editData} setEditData={setEditData}
- value={profileData.civilStatus} onAdd={handleStartEditing} />
+ value={profileData.civilStatus}
+ onAdd={applicationDetailsLocked ? undefined : handleStartEditing} />
  </div>
 
  <div style={s.rowSep} />
@@ -753,22 +758,89 @@ const PersonalDetailsTab = ({
  <div style={s.grid2}>
  <Field label="Nationality" field="nationality"
  value={isEditingProfile ? (editData?.nationality || "") : profileData.nationality}
- onAdd={handleStartEditing} {...fp} />
+ onAdd={applicationDetailsLocked ? undefined : handleStartEditing} {...fp} />
  <Field label="Occupation / Profession" field="occupation"
  value={isEditingProfile ? (editData?.occupation || "") : profileData.occupation}
- onAdd={handleStartEditing} {...fp} />
+ onAdd={applicationDetailsLocked ? undefined : handleStartEditing} {...fp} />
  </div>
 
  {/* Note banner */}
  <div style={s.noteBanner}>
  <Sparkles size={14} color="#FF8C42" style={{ flexShrink: 0, marginTop: 1 }} />
  <p style={s.noteText}>
- Contact details and emergency contacts are collected during reservation applications.
+ {applicationDetailsLocked
+ ? "These details came from your approved application form and cannot be edited here. If you need to request a correction, please contact the admin."
+ : "Contact details and emergency contacts are collected during reservation applications."}
  </p>
  </div>
 
  </div>
  </div>
+
+ <div style={{ ...s.infoCard, marginTop: 16 }}>
+ <div style={s.sectionHeader}>
+ <div style={{ ...s.sectionAccent, background: "#0A2463" }} />
+ <div style={{ ...s.sectionIconWrap, background: "#0A246314" }}>
+ <Phone size={15} color="#0A2463" />
+ </div>
+ <h3 style={s.sectionTitle}>Contact Information</h3>
+ </div>
+ <div style={s.divider} />
+ <div style={s.sectionBody}>
+ <div style={s.grid2}>
+ <Field label="Contact Number" field="phone" value={profileData.phone} locked />
+ <Field label="Current Address" field="address" value={profileData.address} locked />
+ </div>
+ </div>
+ </div>
+
+ <div style={{ ...s.infoCard, marginTop: 16 }}>
+ <div style={s.sectionHeader}>
+ <div style={{ ...s.sectionAccent, background: "#0A2463" }} />
+ <div style={{ ...s.sectionIconWrap, background: "#0A246314" }}>
+ <User size={15} color="#0A2463" />
+ </div>
+ <h3 style={s.sectionTitle}>Emergency Contact</h3>
+ </div>
+ <div style={s.divider} />
+ <div style={s.sectionBody}>
+ <div style={s.grid2}>
+ <Field label="Name" field="emergencyContact" value={profileData.emergencyContact} locked />
+ <Field label="Relationship" field="emergencyRelationship" value={profileData.emergencyRelationship} locked />
+ <Field label="Contact Number" field="emergencyPhone" value={profileData.emergencyPhone} locked />
+ </div>
+ </div>
+ </div>
+
+ {profileData.role === "tenant" && (
+ <div style={{ ...s.infoCard, marginTop: 16 }}>
+ <div style={s.sectionHeader}>
+ <div style={{ ...s.sectionAccent, background: "#0A2463" }} />
+ <div style={{ ...s.sectionIconWrap, background: "#0A246314" }}>
+ <Home size={15} color="#0A2463" />
+ </div>
+ <h3 style={s.sectionTitle}>Current Stay</h3>
+ </div>
+ <div style={s.divider} />
+ <div style={s.sectionBody}>
+ <div style={s.grid2}>
+ <Field label="Branch" field="branch" value={profileData.occupancy?.branch} locked />
+ <Field label="Room" field="room" value={profileData.occupancy?.room} locked />
+ <Field label="Bed" field="bed" value={profileData.occupancy?.bed} locked />
+ <Field label="Move-in Date" field="moveInDate" value={profileData.occupancy?.moveInDate ? fmtDate(profileData.occupancy.moveInDate) : ""} locked />
+ </div>
+ <div style={s.rowSep} />
+ <div style={s.sectionHeader}>
+ <CalendarDays size={15} color="#0A2463" />
+ <h3 style={s.sectionTitle}>Lease Information</h3>
+ </div>
+ <div style={{ ...s.grid2, marginTop: 12 }}>
+ <Field label="Lease Start" field="leaseStart" value={profileData.lease?.startDate ? fmtDate(profileData.lease.startDate) : ""} locked />
+ <Field label="Lease End" field="leaseEnd" value={profileData.lease?.endDate ? fmtDate(profileData.lease.endDate) : ""} locked />
+ </div>
+ </div>
+ </div>
+ )}
  </div>
  );
 };

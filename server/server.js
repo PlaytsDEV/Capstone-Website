@@ -58,6 +58,8 @@ import analyticsRoutes from "./routes/analyticsRoutes.js";
 import branchSummaryRoutes from "./routes/branchSummaryRoutes.js";
 import backupRoutes from "./routes/backupRoutes.js";
 import serviceProviderRoutes from "./routes/serviceProviderRoutes.js";
+import contractRoutes from "./routes/contractRoutes.js";
+import mobileContractRoutes from "./routes/mobileContractRoutes.js";
 import { initSocket } from "./utils/socket.js";
 import mobileRoutes from "./mobile/mobileRoutes.mjs";
 
@@ -296,6 +298,7 @@ app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/rooms", roomRoutes);
 app.use("/api/reservations", reservationRoutes);
+app.use("/api/contracts", contractRoutes);
 app.use("/api/inquiries", publicLimiter, inquiryRoutes);
 app.use("/api/audit-logs", auditRoutes);
 app.use("/api/billing", billingRoutes);
@@ -304,6 +307,7 @@ app.use("/api/announcements", announcementRoutes);
 // contract so tenant mobile /api/m/maintenance/* requests are not intercepted
 // by the web Firebase-token middleware. Web/admin maintenance routes still
 // fall through to the contract router below.
+app.use("/api/m", mobileContractRoutes);
 app.use("/api/m", mobileRoutes);
 app.use("/api/m/maintenance", maintenanceRoutes);
 app.use("/api/maintenance", maintenanceRoutes);

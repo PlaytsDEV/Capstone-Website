@@ -123,6 +123,7 @@ const auditLogSchema = new mongoose.Schema(
         "user",
         "room",
         "reservation",
+        "contract",
         "inquiry",
         "billing",
         "announcement",

@@ -1,0 +1,932 @@
+import mongoose from "mongoose";
+import fs from "fs";
+import fsPromises from "fs/promises";
+import { Contract, Reservation, User } from "../models/index.js";
+import auditLogger from "../utils/auditLogger.js";
+import {
+  createDraftContract, findCurrentContract,
+  transitionContract, validateContractForGeneration,
+  validateContractRoomAssignment,
+  approveContractPricing,
+} from "../services/contractService.js";
+import { buildContractGenerationData } from "../services/contractGenerationDataService.js";
+import { generatePreparedContractPdf } from "../services/contractPdfService.js";
+import { resolvePrivateContractStorageKey } from "../services/contractPrivateStorageService.js";
+import { toTenantContractView } from "../services/tenantContractViewService.js";
+import { buildInitialPaymentSummary } from "../services/contractPricingService.js";
+import { resolveReservationContractEligibility } from "../services/reservationContractEligibilityService.js";
+import {
+  markContractPrinted,
+  rejectSignedContract,
+  resolveSignedContractPath,
+  updatePhysicalSignature,
+  uploadSignedContract,
+  verifySignedContract,
+} from "../services/contractSigningService.js";
+import {
+  resolveNotarizedContractPath,
+  rejectNotarizedContract,
+  uploadNotarizedContract,
+  verifyNotarizedContract,
+} from "../services/contractNotarizationService.js";
+import {
+  cleanUpSupersededTestVersions,
+  resetPreparedTestDocuments,
+} from "../services/contractPreparedDocumentCleanupService.js";
+import {
+  markContractReadyForPublication,
+  publishFinalContract,
+  resolvePublishedFinalDocument,
+} from "../services/contractPublicationService.js";
+
+const fail = (res, error) => res.status(error.statusCode || 500).json({
+  error: error.message || "Contract operation failed",
+  code: error.code || "CONTRACT_OPERATION_FAILED",
+  ...(error.details ? { details: error.details } : {}),
+});
+
+const actor = async (req) => {
+  const user = await User.findOne({ firebaseUid: req.user.uid }).select("_id role branch email").lean();
+  if (!user) throw Object.assign(new Error("Authenticated user not found."), { statusCode: 404, code: "USER_NOT_FOUND" });
+  req.user.mongoId = user._id;
+  req.user.role = user.role;
+  req.user.branch = user.branch || "";
+  return user;
+};
+
+export const assertContractBranchAccess = (req, contractBranch) => {
+  if (req.branchFilter && req.branchFilter !== contractBranch) {
+    throw Object.assign(new Error("You cannot access contracts from another branch."), {
+      statusCode: 403, code: "CONTRACT_BRANCH_ACCESS_DENIED",
+    });
+  }
+};
+
+export const createContract = async (req, res) => {
+  try {
+    const admin = await actor(req);
+    const contract = await createDraftContract({
+      reservationId: req.body?.reservationId,
+      stayId: req.body?.stayId || null,
+      actorId: admin._id,
+      allowedBranch: req.branchFilter,
+    });
+    assertContractBranchAccess(req, contract.branch);
+    await auditLogger.logModification(req, "contract", contract._id, null, contract.toObject(), "Created Contract draft");
+    res.status(201).json({ contract });
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+export const listContracts = async (req, res) => {
+  try {
+    const query = req.branchFilter ? { branch: req.branchFilter } : {};
+    const statusGroups = {
+      needs_attention: ["draft", "incomplete", "transfer_review_required"],
+      ready_to_generate: ["ready_for_generation"],
+      prepared: ["generated"],
+      pending_signing: ["awaiting_signatures", "partially_signed"],
+      pending_notarization: ["signed", "awaiting_notarization"],
+      ready_to_publish: ["notarized", "ready_for_publication"],
+      published: ["published"],
+      active: ["active"],
+      expiring_soon: ["expiring_soon"],
+      closed: ["expired", "terminated", "cancelled", "replaced", "archived", "renewed"],
+    };
+    if (req.query.status) {
+      query.status = statusGroups[req.query.status]
+        ? { $in: statusGroups[req.query.status] }
+        : req.query.status;
+    }
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
+    const contracts = await Contract.find(query).sort({ createdAt: -1 }).limit(limit).lean();
+    res.json({ contracts });
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+export const getContract = async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: "Invalid contract id.", code: "INVALID_CONTRACT_ID" });
+    const contract = await Contract.findById(req.params.id).populate([
+      { path: "printedBy", select: "firstName lastName email role" },
+      { path: "tenantSignatureConfirmedBy", select: "firstName lastName email role" },
+      { path: "lessorSignatureConfirmedBy", select: "firstName lastName email role" },
+      { path: "witnessSignatureConfirmedBy", select: "firstName lastName email role" },
+      { path: "signedUploadedBy", select: "firstName lastName email role" },
+      { path: "signingVerifiedBy", select: "firstName lastName email role" },
+      { path: "signedDocuments.uploadedBy", select: "firstName lastName email role" },
+      { path: "signedDocuments.verifiedBy", select: "firstName lastName email role" },
+      { path: "notarizedUploadedBy", select: "firstName lastName email role" },
+      { path: "notarizationVerifiedBy", select: "firstName lastName email role" },
+      { path: "notarizedDocuments.uploadedBy", select: "firstName lastName email role" },
+      { path: "notarizedDocuments.verifiedBy", select: "firstName lastName email role" },
+      { path: "notarizedDocuments.rejectedBy", select: "firstName lastName email role" },
+      { path: "readyForPublicationBy", select: "firstName lastName email role" },
+      { path: "publishedBy", select: "firstName lastName email role" },
+    ]);
+    if (!contract) return res.status(404).json({ error: "Contract not found.", code: "CONTRACT_NOT_FOUND" });
+    assertContractBranchAccess(req, contract.branch);
+    const reservation = await Reservation.findById(contract.reservationId)
+      .select("reservationFeeAmount paymentStatus").lean();
+    const contractObject = contract.toObject();
+    delete contractObject.signedStorageKey;
+    delete contractObject.notarizedStorageKey;
+    delete contractObject.finalStorageKey;
+    if (contractObject.finalDocument) {
+      delete contractObject.finalDocument.storageKey;
+      delete contractObject.finalDocument.fileHash;
+    }
+    contractObject.signedDocuments = (contractObject.signedDocuments || []).map(
+      ({ storageKey: _storageKey, ...document }) => document,
+    );
+    contractObject.notarizedDocuments = (contractObject.notarizedDocuments || []).map(
+      ({ storageKey: _storageKey, ...document }) => document,
+    );
+    contractObject.initialPaymentSummary = buildInitialPaymentSummary({
+      advanceRentAmount: contract.advanceRentAmount,
+      securityDepositAmount: contract.securityDepositAmount,
+      reservationFeeAmount: reservation?.reservationFeeAmount ?? contract.reservationFeeAmount,
+      approvedReservationFeeCreditAmount: contract.reservationFeeCreditAmount,
+      reservationPaymentStatus: reservation?.paymentStatus,
+    });
+    res.json({ contract: contractObject });
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+const loadSigningContract = async (req) => {
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    throw Object.assign(new Error("Invalid contract id."), { code: "INVALID_CONTRACT_ID", statusCode: 400 });
+  }
+  const contract = await Contract.findById(req.params.id);
+  if (!contract) throw Object.assign(new Error("Contract not found."), { code: "CONTRACT_NOT_FOUND", statusCode: 404 });
+  assertContractBranchAccess(req, contract.branch);
+  return contract;
+};
+
+const auditSigningChange = async (req, before, contract, action) => {
+  const after = contract.toObject();
+  await auditLogger.logModification(req, "contract", contract._id, before, after, action);
+  if (
+    before?.status !== after.status &&
+    ["partially_signed", "signed"].includes(after.status)
+  ) {
+    await auditLogger.logModification(
+      req,
+      "contract",
+      contract._id,
+      before,
+      after,
+      `Contract changed to ${after.status}`,
+    );
+  }
+};
+
+export const markPrinted = async (req, res) => {
+  try {
+    if (req.body?.confirmed !== true) return res.status(400).json({ error: "Printing confirmation is required.", code: "CONTRACT_PRINT_CONFIRMATION_REQUIRED" });
+    const admin = await actor(req);
+    const contract = await loadSigningContract(req);
+    const before = contract.toObject();
+    await markContractPrinted({ contract, actorId: admin._id });
+    await auditSigningChange(req, before, contract, "Contract marked printed");
+    res.json({ success: true, status: contract.status, printedAt: contract.printedAt, printedBy: contract.printedBy });
+  } catch (error) { fail(res, error); }
+};
+
+const signatureAction = (signer) => async (req, res) => {
+  try {
+    const admin = await actor(req);
+    const contract = await loadSigningContract(req);
+    const before = contract.toObject();
+    const result = await updatePhysicalSignature({
+      contract, signer, value: req.body?.status, actorId: admin._id,
+    });
+    await auditSigningChange(req, before, contract, `${signer} signature changed from ${result.previousValue} to ${result.newValue}`);
+    res.json({ success: true, status: contract.status, previousValue: result.previousValue, newValue: result.newValue });
+  } catch (error) { fail(res, error); }
+};
+export const updateTenantSignature = signatureAction("tenant");
+export const updateLessorSignature = signatureAction("lessor");
+export const updateWitnessSignatures = signatureAction("witnesses");
+
+export const uploadSignedDocument = async (req, res) => {
+  try {
+    const admin = await actor(req);
+    const contract = await loadSigningContract(req);
+    const before = contract.toObject();
+    const document = await uploadSignedContract({
+      contract, file: req.file, actorId: admin._id,
+      replacementReason: req.body?.replacementReason,
+    });
+    await auditSigningChange(req, before, contract, document.version === 1 ? "Signed Contract copy uploaded" : "Signed Contract copy replaced");
+    res.status(201).json({ success: true, document: {
+      version: document.version, fileName: document.fileName, fileHash: document.fileHash,
+      fileSize: document.fileSize, mimeType: document.mimeType, uploadedAt: document.uploadedAt,
+      preparedDocumentVersion: document.preparedDocumentVersion,
+    }, status: contract.status });
+  } catch (error) { fail(res, error); }
+};
+
+export const streamSignedDocument = async (req, res) => {
+  try {
+    const contract = await loadSigningContract(req);
+    const requested = req.params.version ? Number(req.params.version) : null;
+    const document = requested
+      ? contract.signedDocuments.find((item) => Number(item.version) === requested)
+      : [...(contract.signedDocuments || [])].filter((item) => !item.superseded)
+        .sort((a, b) => Number(b.version) - Number(a.version))[0];
+    if (!document) return res.status(404).json({ error: "Signed Contract file not found.", code: "SIGNED_DOCUMENT_NOT_FOUND" });
+    const absolute = resolveSignedContractPath(document.storageKey);
+    const stat = await fsPromises.stat(absolute).catch(() => null);
+    if (!stat?.isFile()) return res.status(404).json({ error: "Signed Contract file not found.", code: "SIGNED_DOCUMENT_NOT_FOUND" });
+    await auditLogger.logModification(req, "contract", contract._id, null, null,
+      `${req.query?.download === "true" ? "Downloaded" : "Previewed"} signed Contract ${contract.contractNumber} version ${document.version}, hash ${document.fileHash}`);
+    res.setHeader("Content-Type", document.mimeType);
+    res.setHeader("Content-Length", stat.size);
+    res.setHeader("Content-Disposition", `${req.query?.download === "true" ? "attachment" : "inline"}; filename="${document.fileName.replaceAll('"', "")}"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Pragma", "no-cache");
+    fs.createReadStream(absolute).on("error", (streamError) => res.destroy(streamError)).pipe(res);
+  } catch (error) { fail(res, error); }
+};
+
+export const verifySignedDocument = async (req, res) => {
+  try {
+    if (req.body?.confirmed !== true) return res.status(400).json({ error: "Verification confirmation is required.", code: "SIGNED_DOCUMENT_VERIFICATION_CONFIRMATION_REQUIRED" });
+    const admin = await actor(req);
+    const contract = await loadSigningContract(req);
+    const before = contract.toObject();
+    await verifySignedContract({ contract, actorId: admin._id, notes: req.body?.notes, checklist: req.body?.checklist });
+    await auditSigningChange(req, before, contract, "Signed Contract copy verified; Contract marked signed");
+    res.json({ success: true, status: contract.status, signingVerifiedAt: contract.signingVerifiedAt });
+  } catch (error) { fail(res, error); }
+};
+
+export const rejectSignedDocument = async (req, res) => {
+  try {
+    const admin = await actor(req);
+    const contract = await loadSigningContract(req);
+    const before = contract.toObject();
+    await rejectSignedContract({ contract, actorId: admin._id, reason: req.body?.reason });
+    await auditSigningChange(req, before, contract, "Signed Contract copy rejected");
+    res.json({ success: true, status: contract.status, rejectionReason: contract.signingRejectionReason });
+  } catch (error) { fail(res, error); }
+};
+
+export const uploadNotarizedDocument = async (req, res) => {
+  try {
+    const admin = await actor(req);
+    const contract = await loadSigningContract(req);
+    const before = contract.toObject();
+    const document = await uploadNotarizedContract({
+      contract, file: req.file, actorId: admin._id,
+      replacementReason: req.body?.replacementReason,
+      preparedDocumentVersion: req.body?.preparedDocumentVersion,
+      notarialDetails: req.body?.notarialDetails
+        ? JSON.parse(req.body.notarialDetails) : {},
+    });
+    await auditSigningChange(req, before, contract,
+      document.version === 1 ? "Notarized Contract copy uploaded" : "Notarized Contract copy replaced");
+    res.status(201).json({ success: true, status: contract.status, document: {
+      version: document.version, fileName: document.fileName, fileHash: document.fileHash,
+      fileSize: document.fileSize, mimeType: document.mimeType, uploadedAt: document.uploadedAt,
+    } });
+  } catch (error) { fail(res, error); }
+};
+
+export const streamNotarizedDocument = async (req, res) => {
+  try {
+    const contract = await loadSigningContract(req);
+    const requested = req.params.version ? Number(req.params.version) : null;
+    const document = requested
+      ? contract.notarizedDocuments.find((item) => Number(item.version) === requested)
+      : [...(contract.notarizedDocuments || [])].filter((item) => !item.superseded)
+        .sort((a, b) => Number(b.version) - Number(a.version))[0];
+    if (!document) return res.status(404).json({ error: "Notarized Contract file not found.", code: "NOTARIZED_DOCUMENT_NOT_FOUND" });
+    const absolute = resolveNotarizedContractPath(document.storageKey);
+    const stat = await fsPromises.stat(absolute).catch(() => null);
+    if (!stat?.isFile()) return res.status(404).json({ error: "Notarized Contract file not found.", code: "NOTARIZED_DOCUMENT_NOT_FOUND" });
+    await auditLogger.logModification(req, "contract", contract._id, null, null,
+      `${req.query?.download === "true" ? "Downloaded" : "Previewed"} notarized Contract ${contract.contractNumber} version ${document.version}, hash ${document.fileHash}`);
+    res.setHeader("Content-Type", document.mimeType);
+    res.setHeader("Content-Length", stat.size);
+    res.setHeader("Content-Disposition", `${req.query?.download === "true" ? "attachment" : "inline"}; filename="${document.fileName.replaceAll('"', "")}"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Pragma", "no-cache");
+    fs.createReadStream(absolute).on("error", (streamError) => res.destroy(streamError)).pipe(res);
+  } catch (error) { fail(res, error); }
+};
+
+export const verifyNotarizedDocument = async (req, res) => {
+  try {
+    if (req.body?.confirmed !== true) return res.status(400).json({
+      error: "Notarized-copy verification confirmation is required.",
+      code: "NOTARIZED_DOCUMENT_VERIFICATION_CONFIRMATION_REQUIRED",
+    });
+    const admin = await actor(req);
+    const contract = await loadSigningContract(req);
+    const before = contract.toObject();
+    await verifyNotarizedContract({
+      contract, actorId: admin._id, notes: req.body?.notes,
+      documentVersion: req.body?.documentVersion,
+      checklist: req.body?.checklist,
+    });
+    await auditSigningChange(req, before, contract,
+      "Signed-and-notarized Contract copy verified; Contract moved to notarized");
+    res.json({ success: true, status: contract.status, notarizationVerifiedAt: contract.notarizationVerifiedAt });
+  } catch (error) { fail(res, error); }
+};
+
+export const rejectNotarizedDocument = async (req, res) => {
+  try {
+    const admin = await actor(req);
+    const contract = await loadSigningContract(req);
+    const before = contract.toObject();
+    await rejectNotarizedContract({
+      contract, actorId: admin._id, reason: req.body?.reason,
+      documentVersion: req.body?.documentVersion,
+    });
+    await auditSigningChange(req, before, contract, "Signed-and-notarized Contract copy rejected");
+    res.json({
+      success: true, status: contract.status,
+      rejectionReason: contract.notarizationRejectionReason,
+    });
+  } catch (error) { fail(res, error); }
+};
+
+const publicationAudit = async (req, before, contract, action, channel = "admin_web") => {
+  const sourceVersion = contract.finalDocument?.sourceVersion || contract.notarizedDocumentVersion;
+  const hash = contract.finalDocument?.fileHash || contract.notarizedFileHash;
+  await auditLogger.logModification(
+    req, "contract", contract._id, before, contract.toObject(),
+    `${action}; channel=${channel}; contract=${contract.contractNumber}; branch=${contract.branch}; ` +
+    `tenant=${contract.tenantId}; sourceNotarizedVersion=${sourceVersion}; finalHash=${hash || "pending"}; ` +
+    `previousStatus=${before?.status || contract.status}; newStatus=${contract.status}`,
+  );
+};
+const assertPublicationTenant = async (contract) => {
+  const exists = await User.exists({ _id: contract.tenantId, role: { $in: ["tenant", "applicant"] } });
+  if (!exists) throw Object.assign(new Error("The Contract tenant owner could not be resolved."), {
+    code: "CONTRACT_TENANT_NOT_FOUND", statusCode: 422,
+  });
+};
+
+export const readyContractForPublication = async (req, res) => {
+  try {
+    if (req.body?.confirmed !== true) return res.status(400).json({
+      error: "Publication-readiness confirmation is required.",
+      code: "PUBLICATION_READINESS_CONFIRMATION_REQUIRED",
+    });
+    const admin = await actor(req);
+    const contract = await loadSigningContract(req);
+    await assertPublicationTenant(contract);
+    const before = contract.toObject();
+    await markContractReadyForPublication({ contract, actorId: admin._id });
+    await publicationAudit(req, before, contract, "Contract marked ready for publication");
+    res.json({
+      success: true,
+      status: contract.status,
+      readyForPublicationAt: contract.readyForPublicationAt,
+    });
+  } catch (error) { fail(res, error); }
+};
+
+export const publishContract = async (req, res) => {
+  try {
+    if (req.body?.confirmed !== true) return res.status(400).json({
+      error: "Final publication confirmation is required.",
+      code: "PUBLICATION_CONFIRMATION_REQUIRED",
+    });
+    const admin = await actor(req);
+    const contract = await loadSigningContract(req);
+    await assertPublicationTenant(contract);
+    const before = contract.toObject();
+    await publishFinalContract({
+      contract,
+      actorId: admin._id,
+      checklist: req.body?.checklist,
+      notes: req.body?.notes,
+    });
+    await publicationAudit(req, before, contract, "Publication review completed");
+    await publicationAudit(req, before, contract,
+      `Final Contract published at ${contract.publishedAt?.toISOString()}`);
+    res.json({
+      success: true,
+      status: contract.status,
+      publishedAt: contract.publishedAt,
+      finalDocument: {
+        fileName: contract.finalDocument.fileName,
+        fileSize: contract.finalDocument.fileSize,
+        mimeType: contract.finalDocument.mimeType,
+        pageCount: contract.finalDocument.pageCount,
+        sourceVersion: contract.finalDocument.sourceVersion,
+        publishedAt: contract.finalDocument.publishedAt,
+      },
+    });
+  } catch (error) { fail(res, error); }
+};
+
+const streamFinal = async ({ req, res, contract, channel }) => {
+  const resolved = await resolvePublishedFinalDocument(contract);
+  const download = req.query?.download === "1" || req.query?.download === "true";
+  await publicationAudit(
+    req, contract.toObject(), contract,
+    `${download ? "Downloaded" : "Previewed"} final Contract`, channel,
+  );
+  res.setHeader("Content-Type", resolved.finalDocument.mimeType);
+  res.setHeader("Content-Length", resolved.finalDocument.fileSize);
+  res.setHeader("Content-Disposition",
+    `${download ? "attachment" : "inline"}; filename="${resolved.finalDocument.fileName.replaceAll('"', "")}"`);
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("Pragma", "no-cache");
+  fs.createReadStream(resolved.absolutePath)
+    .on("error", (streamError) => res.destroy(streamError)).pipe(res);
+};
+
+export const streamFinalContract = async (req, res) => {
+  try {
+    const contract = await loadSigningContract(req);
+    await streamFinal({ req, res, contract, channel: "admin_web" });
+  } catch (error) { fail(res, error); }
+};
+
+export const validateContract = async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: "Invalid contract id.", code: "INVALID_CONTRACT_ID" });
+    const admin = await actor(req);
+    const contract = await Contract.findById(req.params.id);
+    if (!contract) return res.status(404).json({ error: "Contract not found.", code: "CONTRACT_NOT_FOUND" });
+    assertContractBranchAccess(req, contract.branch);
+    if (!["draft", "incomplete", "ready_for_generation"].includes(contract.status)) {
+      return res.status(409).json({ error: "Only draft-stage contracts can be validated.", code: "CONTRACT_NOT_VALIDATABLE" });
+    }
+    const validation = await validateContractForGeneration(contract, {
+      requestedTemplateId: req.body?.templateId || null,
+    });
+    try {
+      await validateContractRoomAssignment(contract);
+    } catch (compatibilityError) {
+      if (
+        ["ROOM_TYPE_NOT_ALLOWED_FOR_BRANCH", "CONTRACT_BRANCH_CONFLICT", "CONTRACT_ROOM_TYPE_CONFLICT"]
+          .includes(compatibilityError.code)
+      ) {
+        const oldData = contract.toObject();
+        if (contract.status !== "incomplete") {
+          await transitionContract(
+            contract,
+            "incomplete",
+            admin._id,
+            compatibilityError.message,
+          );
+        }
+        await auditLogger.logModification(
+          req,
+          "contract",
+          contract._id,
+          oldData,
+          contract.toObject(),
+          "Contract assignment compatibility validation failed",
+        );
+      }
+      throw compatibilityError;
+    }
+    const nextStatus = validation.status;
+    const oldData = contract.toObject();
+    if (contract.status !== nextStatus) await transitionContract(contract, nextStatus, admin._id, "Contract data validated");
+    if (validation.valid) {
+      Object.assign(contract, validation.generationData.pricing);
+      contract.templateType = validation.template.templateId;
+      contract.templateVersion = validation.template.templateVersion;
+      contract.legalContentVersion = validation.template.legalContentVersion;
+      contract.validatedGenerationData = validation.generationData;
+      contract.lastValidatedAt = new Date();
+      contract.updatedBy = admin._id;
+      await contract.save();
+    }
+    await auditLogger.logModification(req, "contract", contract._id, oldData, contract.toObject(), "Validated Contract data");
+    const { generationData, ...publicValidation } = validation;
+    res.json({ validation: publicValidation, contract });
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+export const approveGenerationPricing = async (req, res) => {
+  try {
+    if (req.body?.confirmed !== true) {
+      return res.status(400).json({
+        error: "Explicit pricing approval confirmation is required.",
+        code: "CONTRACT_PRICING_APPROVAL_CONFIRMATION_REQUIRED",
+      });
+    }
+    if (req.body?.decision !== "approve") {
+      return res.status(400).json({
+        error: "An explicit pricing approval decision is required.",
+        code: "CONTRACT_PRICING_APPROVAL_DECISION_REQUIRED",
+      });
+    }
+    const admin = await actor(req);
+    const contract = await Contract.findById(req.params.id);
+    if (!contract) return res.status(404).json({ error: "Contract not found.", code: "CONTRACT_NOT_FOUND" });
+    assertContractBranchAccess(req, contract.branch);
+    const before = contract.toObject();
+    await approveContractPricing({
+      contract, actorId: admin._id,
+      pricing: {
+        regularMonthlyRate: contract.regularMonthlyRate,
+        discountPercentage: contract.discountPercentage,
+        discountAmount: contract.discountAmount,
+        approvedMonthlyRate: contract.approvedMonthlyRate,
+        advanceRentAmount: contract.advanceRentAmount,
+        securityDepositAmount: contract.securityDepositAmount,
+        reservationFeeAmount: contract.reservationFeeAmount,
+      },
+      notes: req.body?.notes,
+    });
+    await auditLogger.logModification(
+      req, "contract", contract._id, before, contract.toObject(),
+      `Contract legal pricing approved for ${contract.contractNumber}`,
+    );
+    res.json({
+      success: true,
+      pricing: {
+        regularMonthlyRate: contract.regularMonthlyRate,
+        discountPercentage: contract.discountPercentage,
+        discountAmount: contract.discountAmount,
+        approvedMonthlyRate: contract.approvedMonthlyRate,
+        advanceRentAmount: contract.advanceRentAmount,
+        securityDepositAmount: contract.securityDepositAmount,
+        reservationFeeAmount: contract.reservationFeeAmount,
+        pricingApprovedAt: contract.pricingApprovedAt,
+        pricingApprovedBy: admin._id,
+        approverRole: admin.role,
+      },
+    });
+  } catch (error) { fail(res, error); }
+};
+
+export const confirmLegacyReservationApproval = async (req, res) => {
+  try {
+    if (req.body?.confirmed !== true) {
+      return res.status(400).json({ error: "Legacy approval confirmation is required.", code: "LEGACY_APPROVAL_CONFIRMATION_REQUIRED" });
+    }
+    const reason = String(req.body?.reason || "").trim();
+    if (!reason) {
+      return res.status(422).json({ error: "A reason is required.", code: "LEGACY_APPROVAL_REASON_REQUIRED" });
+    }
+    const admin = await actor(req);
+    const contract = await Contract.findById(req.params.id);
+    if (!contract) return res.status(404).json({ error: "Contract not found.", code: "CONTRACT_NOT_FOUND" });
+    assertContractBranchAccess(req, contract.branch);
+    const reservation = await Reservation.findById(contract.reservationId);
+    if (!reservation) return res.status(404).json({ error: "Reservation not found.", code: "RESERVATION_NOT_FOUND" });
+    const eligibility = resolveReservationContractEligibility(reservation.toObject(), {
+      tenantExists: Boolean(contract.tenantId),
+      roomExists: Boolean(contract.roomId),
+      bedExists: Boolean(contract.bedId || contract.bedLabel),
+    });
+    if (eligibility.approvalState !== "legacy_completed") {
+      return res.status(422).json({
+        error: "Only completed legacy Reservations with verified occupancy evidence can be confirmed.",
+        code: "LEGACY_RESERVATION_NOT_CONFIRMABLE",
+        details: eligibility,
+      });
+    }
+    const before = reservation.toObject();
+    const confirmedAt = new Date();
+    reservation.applicationReviewedAt = confirmedAt;
+    reservation.applicationReviewedBy = admin._id;
+    reservation.approvedForPaymentAt ||= confirmedAt;
+    reservation.legacyContractApprovalConfirmedAt = confirmedAt;
+    reservation.legacyContractApprovalConfirmedBy = admin._id;
+    reservation.legacyContractApprovalReason = reason;
+    await reservation.save();
+    await auditLogger.logModification(
+      req, "reservation", reservation._id, before, reservation.toObject(),
+      "Confirmed legacy Reservation approval for Contract generation",
+    );
+    const validation = await validateContractForGeneration(contract);
+    res.json({
+      success: true,
+      approval: { approvedBy: admin._id, approverRole: admin.role, approvedAt: confirmedAt, reason },
+      validation: { ...validation, generationData: undefined },
+    });
+  } catch (error) { fail(res, error); }
+};
+
+export const getGenerationPreview = async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: "Invalid contract id.", code: "INVALID_CONTRACT_ID" });
+    const contract = await Contract.findById(req.params.id);
+    if (!contract) return res.status(404).json({ error: "Contract not found.", code: "CONTRACT_NOT_FOUND" });
+    assertContractBranchAccess(req, contract.branch);
+    const validation = await validateContractForGeneration(contract, {
+      requestedTemplateId: req.query?.templateId || null,
+    });
+    let preview = validation.generationData;
+    if (!preview && validation.missingFields.length === 0) {
+      preview = await buildContractGenerationData(contract);
+    }
+    const { generationData, ...publicValidation } = validation;
+    res.json({
+      valid: validation.valid,
+      status: contract.status,
+      validation: publicValidation,
+      preview,
+    });
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+export const generatePreparedContract = async (req, res) => {
+  let contract = null;
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: "Invalid contract id.", code: "INVALID_CONTRACT_ID" });
+    const admin = await actor(req);
+    contract = await Contract.findById(req.params.id);
+    if (!contract) return res.status(404).json({ error: "Contract not found.", code: "CONTRACT_NOT_FOUND" });
+    assertContractBranchAccess(req, contract.branch);
+    const oldData = contract.toObject();
+    const result = await generatePreparedContractPdf({
+      contractId: contract._id,
+      actorId: admin._id,
+      regenerationReason: req.body?.regenerationReason || "",
+    });
+    const document = result.document.toObject ? result.document.toObject() : result.document;
+    await auditLogger.logModification(
+      req,
+      "contract",
+      result.contract._id,
+      oldData,
+      result.contract.toObject(),
+      result.isRegeneration ? "Prepared Contract PDF regenerated" : "Prepared Contract PDF generated",
+    );
+    if (result.isRegeneration) {
+      await auditLogger.logModification(
+        req,
+        "contract",
+        result.contract._id,
+        oldData,
+        result.contract.toObject(),
+        "Earlier prepared Contract version superseded",
+      );
+    }
+    res.status(201).json({
+      success: true,
+      contract: {
+        id: result.contract._id,
+        contractNumber: result.contract.contractNumber,
+        status: result.contract.status,
+        templateId: document.templateId,
+        templateVersion: document.templateVersion,
+        coordinateVersion: document.coordinateVersion,
+        generatedVersion: document.version,
+        generatedAt: document.generatedAt,
+        fileName: document.fileName,
+        fileHash: document.fileHash,
+        fileSize: document.fileSize,
+        pageCount: document.pageCount,
+      },
+    });
+  } catch (error) {
+    await auditLogger.logError(
+      req,
+      error,
+      `Prepared Contract generation failed${contract?.contractNumber ? `: ${contract.contractNumber}` : ""}`,
+    );
+    fail(res, error);
+  }
+};
+
+export const streamPreparedContract = async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ error: "Invalid contract id.", code: "INVALID_CONTRACT_ID" });
+    const contract = await Contract.findById(req.params.id);
+    if (!contract) return res.status(404).json({ error: "Contract not found.", code: "CONTRACT_NOT_FOUND" });
+    assertContractBranchAccess(req, contract.branch);
+    const newestDocument = [...(contract.preparedDocuments || [])]
+      .filter((entry) => entry.superseded !== true)
+      .sort((a, b) => Number(b.version) - Number(a.version))[0];
+    const requestedVersion = req.params.version
+      ? Number(req.params.version)
+      : Number(newestDocument?.version);
+    if (!Number.isInteger(requestedVersion) || requestedVersion < 1) {
+      return res.status(400).json({ error: "Invalid prepared document version.", code: "INVALID_DOCUMENT_VERSION" });
+    }
+    const document = contract.preparedDocuments.find(
+      (entry) => entry.version === requestedVersion,
+    );
+    if (!document) return res.status(404).json({ error: "Prepared Contract file not found.", code: "PREPARED_CONTRACT_NOT_FOUND" });
+    const absolutePath = resolvePrivateContractStorageKey(document.storageKey);
+    const stat = await fsPromises.stat(absolutePath).catch(() => null);
+    if (!stat?.isFile()) return res.status(404).json({ error: "Prepared Contract file not found.", code: "PREPARED_CONTRACT_NOT_FOUND" });
+    await auditLogger.logModification(
+      req,
+      "contract",
+      contract._id,
+      contract.toObject(),
+      contract.toObject(),
+      `Prepared Contract PDF downloaded by admin (version ${requestedVersion})`,
+    );
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Length", stat.size);
+    res.setHeader("Content-Disposition", `inline; filename="${document.fileName.replaceAll('"', "")}"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Pragma", "no-cache");
+    fs.createReadStream(absolutePath).on("error", (error) => {
+      if (!res.headersSent) fail(res, error);
+      else res.destroy(error);
+    }).pipe(res);
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+export const getTenantCurrentContract = async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.tenantId)) return res.status(400).json({ error: "Invalid tenant id.", code: "INVALID_TENANT_ID" });
+    const contract = await findCurrentContract({ tenantId: req.params.tenantId });
+    if (!contract) return res.status(404).json({ error: "No current Contract found.", code: "CONTRACT_NOT_FOUND" });
+    assertContractBranchAccess(req, contract.branch);
+    res.json({ contract });
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+const tenantActor = async (req) => {
+  const user = await User.findOne({ firebaseUid: req.user.uid }).select("_id role").lean();
+  if (!user) throw Object.assign(new Error("Authenticated user not found."), {
+    statusCode: 404, code: "USER_NOT_FOUND",
+  });
+  if (!["tenant", "applicant"].includes(user.role)) {
+    throw Object.assign(new Error("Access denied."), {
+      statusCode: 403, code: "TENANT_CONTRACT_ACCESS_DENIED",
+    });
+  }
+  req.user.mongoId = user._id;
+  req.user.role = user.role;
+  return user;
+};
+
+const findOwnedContract = async (req) => {
+  const user = await tenantActor(req);
+  if (!mongoose.isValidObjectId(req.params.contractId)) {
+    throw Object.assign(new Error("Contract not found."), {
+      statusCode: 404, code: "CONTRACT_NOT_FOUND",
+    });
+  }
+  const contract = await Contract.findOne({ _id: req.params.contractId, tenantId: user._id });
+  if (!contract) throw Object.assign(new Error("Contract not found."), {
+    statusCode: 404, code: "CONTRACT_NOT_FOUND",
+  });
+  return { user, contract };
+};
+
+export const getMyCurrentContract = async (req, res) => {
+  try {
+    const user = await tenantActor(req);
+    const contract = await Contract.findOne({ tenantId: user._id, isCurrent: true })
+      .sort({ createdAt: -1 });
+    res.json({ contract: toTenantContractView(contract) });
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+export const getMyContractHistory = async (req, res) => {
+  try {
+    const user = await tenantActor(req);
+    const contracts = await Contract.find({ tenantId: user._id }).sort({ createdAt: -1 });
+    res.json({ contracts: contracts.map((contract) => toTenantContractView(contract)) });
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+export const getMyContractDetails = async (req, res) => {
+  try {
+    const { contract } = await findOwnedContract(req);
+    res.json({ contract: toTenantContractView(contract) });
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+export const streamMyPreparedContract = async (req, res) => {
+  try {
+    const { contract } = await findOwnedContract(req);
+    const newestDocument = [...(contract.preparedDocuments || [])]
+      .filter((entry) => entry.superseded !== true)
+      .sort((a, b) => Number(b.version) - Number(a.version))[0];
+    const requestedVersion = req.params.version
+      ? Number(req.params.version)
+      : Number(newestDocument?.version);
+    if (!Number.isInteger(requestedVersion) || requestedVersion !== Number(newestDocument?.version)) {
+      return res.status(404).json({
+        error: "Prepared Contract file not found.",
+        code: "PREPARED_CONTRACT_NOT_FOUND",
+      });
+    }
+    const document = contract.preparedDocuments.find((entry) =>
+      Number(entry.version) === requestedVersion && entry.superseded !== true
+    );
+    if (!document) return res.status(404).json({
+      error: "Prepared Contract file not found.", code: "PREPARED_CONTRACT_NOT_FOUND",
+    });
+    const absolutePath = resolvePrivateContractStorageKey(document.storageKey);
+    const stat = await fsPromises.stat(absolutePath).catch(() => null);
+    if (!stat?.isFile()) return res.status(404).json({
+      error: "Prepared Contract file not found.", code: "PREPARED_CONTRACT_NOT_FOUND",
+    });
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Length", stat.size);
+    res.setHeader("Content-Disposition", `inline; filename="${document.fileName.replaceAll('"', "")}"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Pragma", "no-cache");
+    fs.createReadStream(absolutePath).on("error", (error) => {
+      if (!res.headersSent) fail(res, error);
+      else res.destroy(error);
+    }).pipe(res);
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+export const streamMyFinalContract = async (req, res) => {
+  try {
+    const { contract } = await findOwnedContract(req);
+    await streamFinal({ req, res, contract, channel: "tenant_web" });
+  } catch (error) { fail(res, error); }
+};
+
+export const cleanupSupersededTestVersions = async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: "Invalid contract id.", code: "INVALID_CONTRACT_ID" });
+    }
+    if (req.body?.confirmed !== true) {
+      return res.status(400).json({
+        error: "Explicit cleanup confirmation is required.",
+        code: "CONTRACT_CLEANUP_CONFIRMATION_REQUIRED",
+      });
+    }
+    const owner = await actor(req);
+    const before = await Contract.findById(req.params.id);
+    const result = await cleanUpSupersededTestVersions({
+      contractId: req.params.id,
+      actorRole: owner.role,
+      reason: req.body?.reason,
+    });
+    await auditLogger.logModification(
+      req,
+      "contract",
+      result.contract._id,
+      before?.toObject() || null,
+      result.contract.toObject(),
+      `Cleaned up superseded test prepared versions: ${result.report.reason}`,
+    );
+    res.json({ success: true, cleanup: result.report });
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+export const resetPreparedTestContract = async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: "Invalid contract id.", code: "INVALID_CONTRACT_ID" });
+    }
+    if (req.body?.confirmed !== true) {
+      return res.status(400).json({
+        error: "Explicit reset confirmation is required.",
+        code: "CONTRACT_RESET_CONFIRMATION_REQUIRED",
+      });
+    }
+    const owner = await actor(req);
+    const before = await Contract.findById(req.params.id);
+    const result = await resetPreparedTestDocuments({
+      contractId: req.params.id,
+      actorRole: owner.role,
+      actorId: owner._id,
+      reason: req.body?.reason,
+    });
+    await auditLogger.logModification(
+      req,
+      "contract",
+      result.contract._id,
+      before?.toObject() || null,
+      result.contract.toObject(),
+      `Reset prepared test documents: ${result.report.reason}`,
+    );
+    res.json({ success: true, reset: result.report });
+  } catch (error) {
+    fail(res, error);
+  }
+};

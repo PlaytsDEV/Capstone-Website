@@ -399,17 +399,8 @@ function buildReservationDocs(reservation) {
       file_url: reservation.proofOfPaymentUrl,
     });
   }
-  if (reservation.contractFileUrl) {
-    docs.push({
-      doc_id: `res_${resId}_contract`,
-      type: 'other',
-      label: 'Signed Contract',
-      status: 'verified',
-      uploaded_at: submittedAt,
-      source: 'reservation',
-      file_url: reservation.contractFileUrl,
-    });
-  }
+  // Contract files are intentionally excluded. Mobile Contract access is served
+  // from the tenant-owned canonical Contract record, never a Reservation URL.
 
   return docs;
 }

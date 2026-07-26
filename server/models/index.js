@@ -38,6 +38,8 @@ import LoginLog from "./LoginLog.js";
 import Room from "./Room.js";
 import BedHistory from "./BedHistory.js";
 import Stay from "./Stay.js";
+import Contract from "./Contract.js";
+import ContractCounter from "./ContractCounter.js";
 
 // 3. Reservations & Visit Domain
 import Reservation from "./Reservation.js";
@@ -118,6 +120,8 @@ export {
   UtilityReading,
   BedHistory,
   Stay,
+  Contract,
+  ContractCounter,
   BackupConfig,
   BackupRecord,
   ServiceProvider,
@@ -222,6 +226,8 @@ export default {
   UtilityReading,
   BedHistory,
   Stay,
+  Contract,
+  ContractCounter,
   BackupConfig,
   BackupRecord,
   ServiceProvider,

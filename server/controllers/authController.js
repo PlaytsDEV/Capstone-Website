@@ -18,8 +18,18 @@ import {
   sanitizePhone,
   sanitizeText,
 } from "../middleware/validation.js";
-import { LoginLog, User, UserSession } from "../models/index.js";
+import {
+  LoginLog,
+  Reservation,
+  Stay,
+  User,
+  UserSession,
+} from "../models/index.js";
 import auditLogger from "../utils/auditLogger.js";
+import {
+  resolveTenantOccupancyDetails,
+  resolveTenantPersonalDetails,
+} from "../services/tenantProfileService.js";
 
 
 const VALID_BRANCHES = ROOM_BRANCHES;
@@ -654,6 +664,34 @@ export const getProfile = async (req, res, next) => {
       });
     }
 
+    const reservation = await Reservation.findOne({
+      userId: user._id,
+      isArchived: { $ne: true },
+      status:
+        user.role === "tenant"
+          ? { $in: ["moveIn", "moveOut"] }
+          : { $nin: ["cancelled", "rejected", "archived"] },
+    })
+      .sort({ applicationSubmittedAt: -1, updatedAt: -1 })
+      .populate("roomId", "name roomNumber branch")
+      .lean();
+    const currentStay = reservation
+      ? await Stay.findOne({
+          reservationId: reservation._id,
+          status: { $in: ["active", "ending_soon", "renewed"] },
+        })
+          .sort({ leaseStartDate: -1 })
+          .lean()
+      : null;
+    const personalInformation = resolveTenantPersonalDetails({
+      user,
+      reservation: reservation || {},
+    });
+    const occupancy = resolveTenantOccupancyDetails({
+      reservation: reservation || {},
+      currentStay,
+    });
+
     res.json({
       id: user._id,
       user_id: user.user_id,
@@ -662,9 +700,9 @@ export const getProfile = async (req, res, next) => {
       username: user.username,
       firstName: user.firstName,
       lastName: user.lastName,
-      phone: user.phone,
-      profileImage: user.profileImage,
-      branch: user.branch,
+      phone: personalInformation.phone,
+      profileImage: personalInformation.profileImage,
+      branch: occupancy.branch || user.branch,
       role: user.role,
       permissions: user.permissions,
       tenantStatus: user.tenantStatus,
@@ -672,18 +710,27 @@ export const getProfile = async (req, res, next) => {
       isActive: user.isActive,
       isEmailVerified: user.isEmailVerified,
       // Extended profile fields
-      gender: user.gender || "",
-      civilStatus: user.civilStatus || "",
-      nationality: user.nationality || "",
-      occupation: user.occupation || "",
-      address: user.address || "",
-      city: user.city || "",
-      province: user.province || "",
+      gender: personalInformation.gender || "",
+      civilStatus: personalInformation.civilStatus || "",
+      nationality: personalInformation.nationality || "",
+      occupation: personalInformation.occupation || "",
+      address: personalInformation.currentAddress || "",
+      city: personalInformation.city || "",
+      province: personalInformation.province || "",
       zipCode: user.zipCode || "",
-      dateOfBirth: user.dateOfBirth || null,
-      emergencyContact: user.emergencyContact || "",
-      emergencyPhone: user.emergencyPhone || "",
-      emergencyRelationship: user.emergencyRelationship || "",
+      dateOfBirth: personalInformation.birthDate,
+      emergencyContact: personalInformation.emergencyContact.name || "",
+      emergencyPhone: personalInformation.emergencyContact.phone || "",
+      emergencyRelationship:
+        personalInformation.emergencyContact.relationship || "",
+      personalInformation,
+      emergencyContactDetails: personalInformation.emergencyContact,
+      occupancy,
+      lease: {
+        startDate: currentStay?.leaseStartDate || occupancy.moveInDate,
+        endDate: currentStay?.leaseEndDate || null,
+        status: currentStay?.status || null,
+      },
       // Legacy fields
       studentId: user.studentId || "",
       school: user.school || "",
@@ -698,8 +745,34 @@ export const getProfile = async (req, res, next) => {
 
 
 
+export const TENANT_APPLICATION_LOCKED_PROFILE_FIELDS = Object.freeze([
+  "firstName", "middleName", "lastName", "phone", "dateOfBirth", "gender",
+  "civilStatus", "maritalStatus", "nationality", "address", "city", "province",
+  "zipCode", "emergencyContact", "emergencyPhone", "emergencyRelationship",
+  "occupation", "employer", "school", "studentId", "yearLevel",
+]);
+
+export const findLockedTenantProfileFields = (body = {}, role = "") =>
+  String(role).toLowerCase() === "tenant"
+    ? TENANT_APPLICATION_LOCKED_PROFILE_FIELDS.filter((field) =>
+      Object.prototype.hasOwnProperty.call(body, field))
+    : [];
+
 export const updateProfile = async (req, res, next) => {
   try {
+    const profileOwner = await User.findOne({ firebaseUid: req.user.uid })
+      .select("_id role").lean();
+    if (!profileOwner) {
+      return res.status(404).json({ error: "User not found", code: "USER_NOT_FOUND" });
+    }
+    const lockedFields = findLockedTenantProfileFields(req.body, profileOwner.role);
+    if (lockedFields.length > 0) {
+      return res.status(403).json({
+        error: "Application-derived profile details cannot be edited by the tenant. Contact an administrator to request a correction.",
+        code: "TENANT_APPLICATION_PROFILE_FIELDS_READ_ONLY",
+        details: { lockedFields },
+      });
+    }
     // Sanitize input — core fields
     const firstName = req.body.firstName
       ? sanitizeName(req.body.firstName)

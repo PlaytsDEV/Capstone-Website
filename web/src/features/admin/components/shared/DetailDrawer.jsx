@@ -14,7 +14,7 @@ import useBodyScrollLock from "../../../../shared/hooks/useBodyScrollLock";
  * children: content
  * footer: ReactNode (optional sticky footer with action buttons)
  */
-export default function DetailDrawer({ open, onClose, title, subtitle, width = 760, children, footer }) {
+export default function DetailDrawer({ open, onClose, title, subtitle, width = 760, children, footer, className = "" }) {
   const drawerRef = useRef(null);
 
   useEffect(() => {
@@ -49,7 +49,7 @@ export default function DetailDrawer({ open, onClose, title, subtitle, width = 7
       {/* Drawer panel */}
       <div
         ref={drawerRef}
-        className="fixed left-1/2 top-1/2 z-[1000] flex flex-col w-full max-w-[92vw] max-h-[88vh] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl border border-[var(--border-default)] bg-[var(--bg-card)] shadow-[var(--shadow-xl)] animate-in fade-in zoom-in-95 duration-300"
+        className={`fixed left-1/2 top-1/2 z-[1000] flex flex-col w-full max-w-[92vw] max-h-[88vh] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl border border-[var(--border-default)] bg-[var(--bg-card)] shadow-[var(--shadow-xl)] animate-in fade-in zoom-in-95 duration-300 ${className}`}
         role="dialog"
         aria-modal="true"
         aria-label={typeof title === 'string' ? title : "Details"}

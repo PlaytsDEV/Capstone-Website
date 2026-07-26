@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   X,
@@ -22,6 +23,8 @@ import {
   useTenantActionContext,
 } from "../../../shared/hooks/queries/useReservations";
 import { reservationApi } from "../../../shared/api/apiClient";
+import { contractApi } from "../../../shared/api/contractApi";
+import { formatContractStatus, getContractNextAction } from "../utils/contractUi.mjs";
 import {
   RenewLeaseModal,
   TransferTenantModal,
@@ -202,12 +205,33 @@ export default function TenantDetailModal({ tenant, onClose }) {
   useEscapeClose(!!tenant, onClose);
 
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [dialogState, setDialogState] = useState({ type: null, loading: false, error: null });
+  const [dedicatedContract, setDedicatedContract] = useState(null);
+  const [contractLookupDone, setContractLookupDone] = useState(false);
 
   const reservationId = tenant?.reservationId || tenant?._id || tenant?.id;
 
   const { data: fetchedDetail } = useTenantWorkspaceDetail(reservationId);
   const { data: actionContext } = useTenantActionContext(reservationId);
+
+  useEffect(() => {
+    if (!tenant) return;
+    let active = true;
+    setContractLookupDone(false);
+    contractApi.listContracts({ limit: 100 })
+      .then(({ contracts = [] }) => {
+        if (!active) return;
+        const tenantId = tenant.tenantId?._id || tenant.tenantId || tenant.userId?._id || tenant.userId;
+        setDedicatedContract(contracts.find((item) =>
+          String(item.reservationId) === String(reservationId) ||
+          (tenantId && String(item.tenantId) === String(tenantId)),
+        ) || null);
+      })
+      .catch(() => { if (active) setDedicatedContract(null); })
+      .finally(() => { if (active) setContractLookupDone(true); });
+    return () => { active = false; };
+  }, [tenant, reservationId]);
 
   const normalizedTenant = useMemo(() => {
     if (!tenant) return null;
@@ -258,7 +282,7 @@ export default function TenantDetailModal({ tenant, onClose }) {
 
   if (!tenant) return null;
 
-  const contractStatus = tenant.contractStatus || tenant.status || "active";
+  const contractStatus = dedicatedContract?.status || null;
   const paymentStatus = tenant.paymentStatus || "paid";
   const occupancyStatus = tenant.occupancyStatus || "active";
   const nextAction = tenant.nextAction || "none";
@@ -307,11 +331,15 @@ export default function TenantDetailModal({ tenant, onClose }) {
  <div className="space-y-2">
  <div className="flex justify-between text-xs">
  <span className="text-muted-foreground">Emergency Contact</span>
- <span className="text-foreground font-medium">{tenant.emergencyContact || "Not provided"}</span>
+ <span className="text-foreground font-medium">{tenant.emergencyContact || "Not provided."}</span>
  </div>
  <div className="flex justify-between text-xs">
  <span className="text-muted-foreground">Emergency Phone</span>
- <span className="text-foreground font-medium">{tenant.emergencyPhone || "Not provided"}</span>
+ <span className="text-foreground font-medium">{tenant.emergencyPhone || "Not provided."}</span>
+ </div>
+ <div className="flex justify-between text-xs">
+ <span className="text-muted-foreground">Relationship</span>
+ <span className="text-foreground font-medium">{tenant.emergencyRelationship || "Not provided."}</span>
  </div>
  <div className="flex justify-between text-xs">
  <span className="text-muted-foreground">Move-in Date</span>
@@ -354,25 +382,35 @@ export default function TenantDetailModal({ tenant, onClose }) {
  Contract Details
  </h4>
  <div className="space-y-2">
+ {dedicatedContract ? <>
  <div className="flex justify-between text-xs">
  <span className="text-muted-foreground">Contract Status</span>
  <div className={`flex items-center gap-1 ${contractConfig.color}`}>
  <div className={`w-1.5 h-1.5 rounded-full ${contractConfig.dot}`} />
- <span className="font-medium text-xs">{contractConfig.label}</span>
+ <span className="font-medium text-xs">{formatContractStatus(dedicatedContract.status)}</span>
  </div>
  </div>
  <div className="flex justify-between text-xs">
  <span className="text-muted-foreground">Contract End</span>
- <span className="text-foreground font-medium">{tenant.contractEnd || tenant.moveOut || "N/A"}</span>
+ <span className="text-foreground font-medium">{formatDate(dedicatedContract.leaseEndDate)}</span>
  </div>
  <div className="flex justify-between text-xs">
  <span className="text-muted-foreground">Days Remaining</span>
- <span className="text-foreground font-medium">{tenant.daysRemaining ?? "N/A"}{typeof tenant.daysRemaining === "number" ?" days" : ""}</span>
+ <span className="text-foreground font-medium">{dedicatedContract.contractNumber || "Pending"}</span>
  </div>
  <div className="flex justify-between text-xs">
  <span className="text-muted-foreground">Next Action</span>
- <span className="text-foreground font-medium">{getNextActionLabel(nextAction)}</span>
+ <span className="text-foreground font-medium">{getContractNextAction(dedicatedContract.status)}</span>
  </div>
+ <button type="button" className="w-full mt-2 px-3 py-2 rounded-md bg-primary text-primary-foreground text-xs font-semibold" onClick={() => { onClose(); navigate(`/admin/contracts/${dedicatedContract._id}`); }}>
+ View Contract
+ </button>
+ </> : <div className="space-y-2">
+ <p className="text-xs text-muted-foreground">{contractLookupDone ? "No dedicated Contract record exists for this resident." : "Checking for a dedicated Contract record…"}</p>
+ {contractLookupDone && <button type="button" className="w-full px-3 py-2 rounded-md bg-primary text-primary-foreground text-xs font-semibold" onClick={() => { onClose(); navigate("/admin/contracts?create=true"); }}>
+ Create Contract Draft
+ </button>}
+ </div>}
  </div>
  </div>
  </div>
@@ -389,8 +427,16 @@ export default function TenantDetailModal({ tenant, onClose }) {
  <span className="text-foreground font-medium">{formatMoney(tenant.monthlyRate)}</span>
  </div>
  <div className="flex justify-between text-xs">
- <span className="text-muted-foreground">Initial Deposit</span>
- <span className="text-foreground font-medium">{formatMoney(tenant.initialDeposit)}</span>
+ <span className="text-muted-foreground">Advance Rent</span>
+ <span className="text-foreground font-medium">{formatMoney(tenant.advanceRent)}</span>
+ </div>
+ <div className="flex justify-between text-xs">
+ <span className="text-muted-foreground">Security Deposit</span>
+ <span className="text-foreground font-medium">{formatMoney(tenant.securityDeposit)}</span>
+ </div>
+ <div className="flex justify-between text-xs">
+ <span className="text-muted-foreground">Reservation Fee</span>
+ <span className="text-foreground font-medium">{formatMoney(tenant.reservationFee)}</span>
  </div>
  <div className="flex justify-between text-xs">
  <span className="text-muted-foreground">Payment Status</span>

@@ -22,6 +22,17 @@ web/build-admin/
 
 # Runtime logs
 .codex-run-logs/
+*.log
+coverage/
+server/coverage/
+web/coverage/
+
+# Contract runtime data and generated inspection artifacts.
+# Official immutable master templates are intentional runtime assets.
+server/private/**
+!server/private/contract-templates/
+!server/private/contract-templates/**
+server/scripts/render_contract_mask_debug.mjs
 
 # Editor / tool state
 .claude/
