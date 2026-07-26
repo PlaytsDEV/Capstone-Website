@@ -1,265 +1,275 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
- X,
- Users,
- MapPin,
- FileText,
- DollarSign,
- History,
- AlertTriangle,
- CheckCircle,
- Shield,
- Download,
- RefreshCw,
- ArrowRightLeft,
- LogOut,
+  X,
+  Users,
+  MapPin,
+  FileText,
+  DollarSign,
+  History,
+  AlertTriangle,
+  CheckCircle,
+  Shield,
+  Download,
+  RefreshCw,
+  ArrowRightLeft,
+  LogOut,
 } from "lucide-react";
 import { showNotification } from "../../../shared/utils/notification";
 import useEscapeClose from "../../../shared/hooks/useEscapeClose";
+import {
+  useTenantWorkspaceDetail,
+  useTenantActionContext,
+} from "../../../shared/hooks/queries/useReservations";
+import { reservationApi } from "../../../shared/api/apiClient";
+import {
+  RenewLeaseModal,
+  TransferTenantModal,
+  MoveOutModal,
+} from "./TenantWorkspaceModals";
 
 const formatDate = (d) => {
- if (!d || d === "-") return "N/A";
- const date = new Date(d);
- return Number.isNaN(date.getTime()) ? "N/A" : date.toISOString().split("T")[0];
+  if (!d || d === "-") return "N/A";
+  const date = new Date(d);
+  return Number.isNaN(date.getTime()) ? "N/A" : date.toISOString().split("T")[0];
 };
 
 const formatMoney = (amount) => {
- if (!amount && amount !== 0) return "N/A";
- return `₱${Number(amount).toLocaleString()}`;
+  if (!amount && amount !== 0) return "N/A";
+  return `₱${Number(amount).toLocaleString()}`;
 };
 
 const getInitials = (name) => {
- if (!name) return "--";
- const parts = name.split(/\s+/).filter(Boolean);
- if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
- return `${parts[0][0] || ""}${parts[parts.length - 1][0] || ""}`.toUpperCase();
+  if (!name) return "--";
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] || ""}${parts[parts.length - 1][0] || ""}`.toUpperCase();
 };
 
 const getContractStatusConfig = (status) => {
- switch (status) {
- case "active":
- return {
- color: "text-success dark:text-success-dark",
- dot: "bg-success dark:bg-success-dark",
- label: "Active",
- };
- case "ending-soon":
- return {
- color: "text-warning dark:text-warning-dark",
- dot: "bg-warning dark:bg-warning-dark",
- label: "Ending Soon",
- };
- case "expired":
- return {
- color: "text-error dark:text-error-dark",
- dot: "bg-error dark:bg-error-dark",
- label: "Expired",
- };
- default:
- return {
- color: "text-neutral dark:text-neutral-dark",
- dot: "bg-neutral dark:bg-neutral-dark",
- label: status || "Unknown",
- };
- }
+  switch (status) {
+    case "active":
+      return {
+        color: "text-success dark:text-success-dark",
+        dot: "bg-success dark:bg-success-dark",
+        label: "Active",
+      };
+    case "ending-soon":
+      return {
+        color: "text-warning dark:text-warning-dark",
+        dot: "bg-warning dark:bg-warning-dark",
+        label: "Ending Soon",
+      };
+    case "expired":
+      return {
+        color: "text-error dark:text-error-dark",
+        dot: "bg-error dark:bg-error-dark",
+        label: "Expired",
+      };
+    default:
+      return {
+        color: "text-neutral dark:text-neutral-dark",
+        dot: "bg-neutral dark:bg-neutral-dark",
+        label: status || "Unknown",
+      };
+  }
 };
 
 const getPaymentStatusConfig = (status) => {
- switch (status) {
- case "paid":
- return {
- color: "text-success dark:text-success-dark",
- dot: "bg-success dark:bg-success-dark",
- label: "Paid",
- };
- case "partial":
- return {
- color: "text-warning dark:text-warning-dark",
- dot: "bg-warning dark:bg-warning-dark",
- label: "Partial",
- };
- case "overdue":
- return {
- color: "text-error dark:text-error-dark",
- dot: "bg-error dark:bg-error-dark",
- label: "Overdue",
- };
- default:
- return {
- color: "text-neutral dark:text-neutral-dark",
- dot: "bg-neutral dark:bg-neutral-dark",
- label: status || "Unknown",
- };
- }
+  switch (status) {
+    case "paid":
+      return {
+        color: "text-success dark:text-success-dark",
+        dot: "bg-success dark:bg-success-dark",
+        label: "Paid",
+      };
+    case "partial":
+      return {
+        color: "text-warning dark:text-warning-dark",
+        dot: "bg-warning dark:bg-warning-dark",
+        label: "Partial",
+      };
+    case "overdue":
+      return {
+        color: "text-error dark:text-error-dark",
+        dot: "bg-error dark:bg-error-dark",
+        label: "Overdue",
+      };
+    default:
+      return {
+        color: "text-neutral dark:text-neutral-dark",
+        dot: "bg-neutral dark:bg-neutral-dark",
+        label: status || "Unknown",
+      };
+  }
 };
 
 const getOccupancyStatusConfig = (status) => {
- switch (status) {
- case "active":
- return {
- color: "text-success dark:text-success-dark",
- dot: "bg-success dark:bg-success-dark",
- label: "Active",
- };
- case "inactive":
- return {
- color: "text-neutral dark:text-neutral-dark",
- dot: "bg-neutral dark:bg-neutral-dark",
- label: "Inactive",
- };
- default:
- return {
- color: "text-neutral dark:text-neutral-dark",
- dot: "bg-neutral dark:bg-neutral-dark",
- label: status || "Unknown",
- };
- }
+  switch (status) {
+    case "active":
+      return {
+        color: "text-success dark:text-success-dark",
+        dot: "bg-success dark:bg-success-dark",
+        label: "Active",
+      };
+    case "inactive":
+      return {
+        color: "text-neutral dark:text-neutral-dark",
+        dot: "bg-neutral dark:bg-neutral-dark",
+        label: "Inactive",
+      };
+    default:
+      return {
+        color: "text-neutral dark:text-neutral-dark",
+        dot: "bg-neutral dark:bg-neutral-dark",
+        label: status || "Unknown",
+      };
+  }
 };
 
 const getNextActionLabel = (action) => {
- switch (action) {
- case "renew":
- return "Renew";
- case "follow-up":
- return "Follow-up";
- case "none":
- return "No action needed";
- default:
- return action || "No action needed";
- }
+  switch (action) {
+    case "renew":
+      return "Renew";
+    case "follow-up":
+      return "Follow-up";
+    case "none":
+      return "No action needed";
+    default:
+      return action || "No action needed";
+  }
 };
 
 const getPaymentStatusLabel = (record) => {
- switch (record.status) {
- case "completed":
- return {
- color: "text-success dark:text-success-dark",
- bg: "bg-success-light dark:bg-success-light",
- label: "Completed",
- };
- case "pending":
- return {
- color: "text-warning dark:text-warning-dark",
- bg: "bg-warning-light dark:bg-warning-light",
- label: "Pending",
- };
- case "failed":
- return {
- color: "text-error dark:text-error-dark",
- bg: "bg-error-light dark:bg-error-light",
- label: "Failed",
- };
- default:
- return {
- color: "text-neutral dark:text-neutral-dark",
- bg: "bg-neutral-light dark:bg-neutral-light",
- label: record.status || "Unknown",
- };
- }
+  switch (record.status) {
+    case "completed":
+      return {
+        color: "text-success dark:text-success-dark",
+        bg: "bg-success-light dark:bg-success-light",
+        label: "Completed",
+      };
+    case "pending":
+      return {
+        color: "text-warning dark:text-warning-dark",
+        bg: "bg-warning-light dark:bg-warning-light",
+        label: "Pending",
+      };
+    case "failed":
+      return {
+        color: "text-error dark:text-error-dark",
+        bg: "bg-error-light dark:bg-error-light",
+        label: "Failed",
+      };
+    default:
+      return {
+        color: "text-neutral dark:text-neutral-dark",
+        bg: "bg-neutral-light dark:bg-neutral-light",
+        label: record.status || "Unknown",
+      };
+  }
 };
 
 const getWarningSeverityConfig = (severity) => {
- switch (severity) {
- case "high":
- return {
- color: "text-error dark:text-error-dark",
- bg: "bg-error-light dark:bg-error-light",
- border: "border-error dark:border-error",
- };
- case "medium":
- return {
- color: "text-warning dark:text-warning-dark",
- bg: "bg-warning-light dark:bg-warning-light",
- border: "border-warning dark:border-warning",
- };
- case "low":
- return {
- color: "text-info dark:text-info-dark",
- bg: "bg-info-light dark:bg-info-light",
- border: "border-info dark:border-info",
- };
- default:
- return {
- color: "text-neutral dark:text-neutral-dark",
- bg: "bg-neutral-light dark:bg-neutral-light",
- border: "border-neutral dark:border-neutral",
- };
- }
+  switch (severity) {
+    case "high":
+      return {
+        color: "text-error dark:text-error-dark",
+        bg: "bg-error-light dark:bg-error-light",
+        border: "border-error dark:border-error",
+      };
+    case "medium":
+      return {
+        color: "text-warning dark:text-warning-dark",
+        bg: "bg-warning-light dark:bg-warning-light",
+        border: "border-warning dark:border-warning",
+      };
+    case "low":
+      return {
+        color: "text-info dark:text-info-dark",
+        bg: "bg-info-light dark:bg-info-light",
+        border: "border-info dark:border-info",
+      };
+    default:
+      return {
+        color: "text-neutral dark:text-neutral-dark",
+        bg: "bg-neutral-light dark:bg-neutral-light",
+        border: "border-neutral dark:border-neutral",
+      };
+  }
 };
 
 export default function TenantDetailModal({ tenant, onClose }) {
- useEscapeClose(!!tenant, onClose);
+  useEscapeClose(!!tenant, onClose);
 
- const [dialogState, setDialogState] = useState({ type: null, loading: false, error: null });
- const [dialogInputs, setDialogInputs] = useState({});
+  const queryClient = useQueryClient();
+  const [dialogState, setDialogState] = useState({ type: null, loading: false, error: null });
 
- const closeDialog = () => {
- setDialogState({ type: null, loading: false, error: null });
- setDialogInputs({});
- };
+  const reservationId = tenant?.reservationId || tenant?._id || tenant?.id;
 
- const handleAction = async () => {
- setDialogState((s) => ({ ...s, loading: true, error: null }));
- try {
- const { reservationApi } = await import("../../../shared/api/apiClient");
+  const { data: fetchedDetail } = useTenantWorkspaceDetail(reservationId);
+  const { data: actionContext } = useTenantActionContext(reservationId);
 
- if (dialogState.type === "renew") {
- const m = parseInt(dialogInputs.months, 10);
- if (Number.isNaN(m) || m < 1 || m > 24) throw new Error("Enter 1-24 months");
- const res = await reservationApi.renew(tenant.reservationId, { additionalMonths: m });
- showNotification(res.message || "Contract renewed!", "success");
- onClose();
- } else if (dialogState.type === "moveOut") {
- const meterReading = Number(dialogInputs.kwh);
- if (dialogInputs.kwh === undefined || dialogInputs.kwh.trim() === "" || Number.isNaN(meterReading) || meterReading < 0) {
- throw new Error("A valid meter reading (kWh) is required.");
- }
- const res = await reservationApi.moveOut(tenant.reservationId, {
- confirm: true,
- finalUtilityReading: meterReading,
- moveOutDate: new Date().toISOString(),
- notes: "Admin move-out",
- });
- const extra = res.electricityResult
- ? `\nMove-out reading recorded: ${res.electricityResult.meterReading} kWh`
- : "";
- showNotification((res.message || "Tenant moved out") + extra, "success");
- onClose();
- } else if (dialogState.type === "transfer") {
- if (!dialogInputs.newRoomId) throw new Error("Room ID is required");
- if (!dialogInputs.newBedId) throw new Error("Bed ID is required");
+  const normalizedTenant = useMemo(() => {
+    if (!tenant) return null;
+    return {
+      ...tenant,
+      tenantName: tenant.name || tenant.tenantName || "Tenant",
+      monthlyRent: tenant.monthlyRate ?? tenant.monthlyRent ?? 0,
+      leaseEndDate: tenant.contractEnd || tenant.moveOut || tenant.leaseEndDate,
+      currentBalance: tenant.balance ?? tenant.currentBalance ?? 0,
+      roomId: tenant.roomId?._id || tenant.roomId || tenant.roomObjId,
+      branch: tenant.branch,
+      room: tenant.room,
+      bed: tenant.bed,
+      reservationId: reservationId,
+    };
+  }, [tenant, reservationId]);
 
- const res = await reservationApi.transfer(tenant.reservationId, {
- newRoomId: dialogInputs.newRoomId,
- newBedId: dialogInputs.newBedId,
- reason: dialogInputs.reason || "Room maintenance / accommodation change",
- });
- showNotification(res.message || "Transfer complete", "success");
- onClose();
- }
- } catch (err) {
- setDialogState((s) => ({
- ...s,
- loading: false,
- error: err.message || "Action failed. Please try again.",
- }));
- }
- };
+  const normalizedDetail = useMemo(() => {
+    if (fetchedDetail) return fetchedDetail;
+    if (!tenant) return null;
+    return {
+      basicInfo: {
+        tenantName: tenant.name || tenant.tenantName,
+        branch: tenant.branch,
+        roomName: tenant.room,
+        bedPosition: tenant.bed,
+        monthlyRent: tenant.monthlyRate ?? tenant.monthlyRent ?? 0,
+      },
+      leaseInfo: {
+        leaseEndDate: tenant.contractEnd || tenant.moveOut || tenant.leaseEndDate,
+        extensionHistory: tenant.extensionHistory || [],
+      },
+      paymentInfo: {
+        currentBalance: tenant.balance ?? tenant.currentBalance ?? 0,
+      },
+    };
+  }, [fetchedDetail, tenant]);
 
- if (!tenant) return null;
+  const closeDialog = () => {
+    setDialogState({ type: null, loading: false, error: null });
+  };
 
- const contractStatus = tenant.contractStatus || tenant.status || "active";
- const paymentStatus = tenant.paymentStatus || "paid";
- const occupancyStatus = tenant.occupancyStatus || "active";
- const nextAction = tenant.nextAction || "none";
- const paymentHistory = tenant.paymentHistory || [];
- const roomHistory = tenant.roomHistory || [];
- const extensionHistory = tenant.extensionHistory || [];
- const warnings = tenant.warnings || [];
+  const invalidateTenantQueries = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["reservations"] }),
+      queryClient.invalidateQueries({ queryKey: ["rooms"] }),
+    ]);
 
- const contractConfig = getContractStatusConfig(contractStatus);
- const paymentConfig = getPaymentStatusConfig(paymentStatus);
- const occupancyConfig = getOccupancyStatusConfig(occupancyStatus);
+  if (!tenant) return null;
+
+  const contractStatus = tenant.contractStatus || tenant.status || "active";
+  const paymentStatus = tenant.paymentStatus || "paid";
+  const occupancyStatus = tenant.occupancyStatus || "active";
+  const nextAction = tenant.nextAction || "none";
+  const paymentHistory = tenant.paymentHistory || [];
+  const roomHistory = tenant.roomHistory || [];
+  const extensionHistory = tenant.extensionHistory || [];
+  const warnings = tenant.warnings || [];
+
+  const contractConfig = getContractStatusConfig(contractStatus);
+  const paymentConfig = getPaymentStatusConfig(paymentStatus);
+  const occupancyConfig = getOccupancyStatusConfig(occupancyStatus);
 
  return (
  <div>
@@ -510,158 +520,172 @@ export default function TenantDetailModal({ tenant, onClose }) {
  Tenant Actions
  </h4>
  <div className="flex flex-col gap-2">
- <button
- className="w-full flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 px-3 py-2 text-sm font-semibold"
- onClick={() => {
- setDialogState({ type: "renew", loading: false, error: null });
- setDialogInputs({ months: "12" });
- }}
- >
- <RefreshCw className="w-4 h-4" />
- Renew Contract
- </button>
+  <button
+    className="w-full flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 px-3 py-2 text-sm font-semibold hover:bg-indigo-100 transition-colors"
+    onClick={() => {
+      setDialogState({ type: "renew", loading: false, error: null });
+    }}
+  >
+    <RefreshCw className="w-4 h-4" />
+    Renew Contract
+  </button>
 
- <button
- className="w-full flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 text-red-600 px-3 py-2 text-sm font-semibold"
- onClick={() => {
- setDialogState({ type: "moveOut", loading: false, error: null });
- setDialogInputs({ kwh: "" });
- }}
- >
- <LogOut className="w-4 h-4" />
- Move Out Tenant
- </button>
+  <button
+    className="w-full flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 text-red-600 px-3 py-2 text-sm font-semibold hover:bg-red-100 transition-colors"
+    onClick={() => {
+      setDialogState({ type: "moveOut", loading: false, error: null });
+    }}
+  >
+    <LogOut className="w-4 h-4" />
+    Move Out Tenant
+  </button>
 
- <button
- className="w-full flex items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 text-orange-600 px-3 py-2 text-sm font-semibold"
- onClick={() => {
- setDialogState({ type: "transfer", loading: false, error: null });
- setDialogInputs({ newRoomId: "", newBedId: "", reason: "Room maintenance / accommodation change" });
- }}
- >
- <ArrowRightLeft className="w-4 h-4" />
- Transfer Room
- </button>
- </div>
- </div>
- ) : null}
- </div>
- </div>
- </div>
+  <button
+    className="w-full flex items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 text-orange-600 px-3 py-2 text-sm font-semibold hover:bg-orange-100 transition-colors"
+    onClick={() => {
+      setDialogState({ type: "transfer", loading: false, error: null });
+    }}
+  >
+    <ArrowRightLeft className="w-4 h-4" />
+    Transfer Room
+  </button>
+  </div>
+  </div>
+  ) : null}
+  </div>
+  </div>
+  </div>
 
- <div className="px-6 py-4 border-t border-border bg-card flex justify-end sticky bottom-0 rounded-b-xl">
- <button onClick={onClose} className="px-6 py-2 border border-border rounded-md hover:bg-muted transition-colors text-sm font-medium">
- Close
- </button>
- </div>
- </div>
- </div>
- {dialogState.type && (
- <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={closeDialog}>
- <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden animate-in fade-in zoom-in-95" onClick={(e) => e.stopPropagation()}>
- <div className="px-5 py-4 border-b border-border bg-muted/30">
- <h3 className="font-semibold text-foreground">
- {dialogState.type === "renew" ? "Renew Contract" : 
- dialogState.type === "moveOut" ? "Move Out Tenant" : 
- "Transfer Room"}
- </h3>
- </div>
- <div className="p-5 space-y-4">
- {dialogState.error && (
- <div className="p-3 text-xs bg-error-light text-error-dark border border-error/20 rounded">
- {dialogState.error}
- </div>
- )}
- 
- {dialogState.type === "renew" && (
- <div>
- <label className="block text-xs font-medium text-muted-foreground mb-1.5">Extend lease by (months)</label>
- <input 
- type="number" 
- min="1" max="24"
- value={dialogInputs.months || ""}
- onChange={e => setDialogInputs({...dialogInputs, months: e.target.value})}
- className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
- placeholder="e.g. 12"
- autoFocus
- />
- </div>
- )}
+  <div className="px-6 py-4 border-t border-border bg-card flex justify-end sticky bottom-0 rounded-b-xl">
+  <button onClick={onClose} className="px-6 py-2 border border-border rounded-md hover:bg-muted transition-colors text-sm font-medium">
+  Close
+  </button>
+  </div>
+  </div>
+  </div>
 
- {dialogState.type === "moveOut" && (
- <div>
- <div className="text-sm text-foreground mb-4">
- Move out <strong>{tenant.name}</strong>? This will vacate their bed and mark them as inactive.
- </div>
- <label className="block text-xs font-medium text-muted-foreground mb-1.5">Current meter reading for {tenant.room} (kWh)</label>
- <input 
- type="number" 
- value={dialogInputs.kwh || ""}
- onChange={e => setDialogInputs({...dialogInputs, kwh: e.target.value})}
- className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
- placeholder="Required to record electricity consumption"
- autoFocus
- />
- </div>
- )}
+  {dialogState.type === "renew" ? (
+    <RenewLeaseModal
+      open
+      tenant={normalizedTenant}
+      detail={normalizedDetail}
+      context={actionContext}
+      loading={dialogState.loading}
+      onClose={closeDialog}
+      onOfferSubmit={async (offerPayload) => {
+        setDialogState((s) => ({ ...s, loading: true, error: null }));
+        try {
+          const res = await reservationApi.createRenewalOffer(reservationId, offerPayload);
+          await invalidateTenantQueries();
+          showNotification(res?.message || "Renewal offer sent to tenant!", "success");
+          closeDialog();
+          onClose();
+        } catch (err) {
+          setDialogState((s) => ({
+            ...s,
+            loading: false,
+            error: err.message || "Failed to create renewal offer",
+          }));
+          showNotification(err.message || "Failed to create renewal offer", "error");
+        }
+      }}
+      onSubmit={async (payload) => {
+        setDialogState((s) => ({ ...s, loading: true, error: null }));
+        try {
+          const res = await reservationApi.renew(reservationId, {
+            newLeaseStartDate: payload.newLeaseStartDate,
+            newLeaseEndDate: payload.newLeaseEndDate,
+            monthlyRent: payload.monthlyRent ?? normalizedTenant?.monthlyRent ?? 0,
+            notes: payload.notes,
+            confirm: true,
+          });
+          await invalidateTenantQueries();
+          showNotification(res?.message || "Lease renewed successfully!", "success");
+          closeDialog();
+          onClose();
+        } catch (err) {
+          setDialogState((s) => ({
+            ...s,
+            loading: false,
+            error: err.message || "Failed to renew contract",
+          }));
+          showNotification(err.message || "Failed to renew contract", "error");
+        }
+      }}
+    />
+  ) : null}
 
- {dialogState.type === "transfer" && (
- <div className="space-y-3">
- <div>
- <label className="block text-xs font-medium text-muted-foreground mb-1.5">New Room ID</label>
- <input 
- type="text" 
- value={dialogInputs.newRoomId || ""}
- onChange={e => setDialogInputs({...dialogInputs, newRoomId: e.target.value})}
- className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
- autoFocus
- />
- </div>
- <div>
- <label className="block text-xs font-medium text-muted-foreground mb-1.5">New Bed ID</label>
- <input 
- type="text" 
- value={dialogInputs.newBedId || ""}
- onChange={e => setDialogInputs({...dialogInputs, newBedId: e.target.value})}
- className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
- />
- </div>
- <div>
- <label className="block text-xs font-medium text-muted-foreground mb-1.5">Reason for transfer</label>
- <input 
- type="text" 
- value={dialogInputs.reason || ""}
- onChange={e => setDialogInputs({...dialogInputs, reason: e.target.value})}
- className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
- placeholder="Room maintenance / accommodation change"
- />
- </div>
- </div>
- )}
- </div>
- <div className="px-5 py-4 border-t border-border bg-muted/30 flex justify-end gap-2">
- <button 
- onClick={closeDialog}
- disabled={dialogState.loading}
- className="px-4 py-2 border border-border rounded-md hover:bg-muted transition-colors text-sm font-medium disabled:opacity-50"
- >
- Cancel
- </button>
- <button 
- onClick={handleAction}
- disabled={dialogState.loading}
- className={`px-4 py-2 rounded-md text-sm font-medium text-white transition-colors disabled:opacity-50 ${
- dialogState.type === 'moveOut' ? 'bg-error hover:bg-error-dark' : 
- dialogState.type === 'transfer' ? 'bg-warning hover:bg-warning-dark' : 
- 'bg-primary hover:bg-primary/90'
- }`}
- >
- {dialogState.loading ? "Processing..." : "Confirm"}
- </button>
- </div>
- </div>
- </div>
- )}
+  {dialogState.type === "transfer" ? (
+    <TransferTenantModal
+      open
+      tenant={normalizedTenant}
+      detail={normalizedDetail}
+      loading={dialogState.loading}
+      onClose={closeDialog}
+      onSubmit={async (payload) => {
+        setDialogState((s) => ({ ...s, loading: true, error: null }));
+        try {
+          const res = await reservationApi.transfer(reservationId, {
+            targetRoomId: payload.roomId,
+            targetBedId: payload.bedId,
+            effectiveTransferDate: payload.effectiveTransferDate || new Date().toISOString().slice(0, 10),
+            reason: payload.reason,
+            sourceRoomMeterReading: payload.sourceRoomMeterReading,
+            targetRoomMeterReading: payload.targetRoomMeterReading,
+            confirm: true,
+          });
+          await invalidateTenantQueries();
+          showNotification(res?.message || "Tenant transferred successfully!", "success");
+          closeDialog();
+          onClose();
+        } catch (err) {
+          setDialogState((s) => ({
+            ...s,
+            loading: false,
+            error: err.message || "Failed to transfer tenant",
+          }));
+          showNotification(err.message || "Failed to transfer tenant", "error");
+        }
+      }}
+    />
+  ) : null}
+
+  {dialogState.type === "moveOut" ? (
+    <MoveOutModal
+      open
+      tenant={normalizedTenant}
+      detail={normalizedDetail}
+      loading={dialogState.loading}
+      onClose={closeDialog}
+      onSubmit={async (payload) => {
+        setDialogState((s) => ({ ...s, loading: true, error: null }));
+        try {
+          const res = await reservationApi.moveOut(reservationId, {
+            moveOutDate: payload.moveOutDate,
+            actualVacateDate: payload.moveOutDate,
+            reason: payload.reason || "move_out",
+            finalNotes: payload.notes || "",
+            damages: payload.damageDeductions || 0,
+            deductions: (payload.damageDeductions || 0) + (payload.keyReturned ? 0 : 500),
+            outstandingBalanceSnapshot: normalizedTenant?.currentBalance || 0,
+            finalUtilityReading: payload.meterReading,
+            confirm: true,
+          });
+          await invalidateTenantQueries();
+          showNotification(res?.message || "Tenant moved out successfully!", "success");
+          closeDialog();
+          onClose();
+        } catch (err) {
+          setDialogState((s) => ({
+            ...s,
+            loading: false,
+            error: err.message || "Failed to move out tenant",
+          }));
+          showNotification(err.message || "Failed to move out tenant", "error");
+        }
+      }}
+    />
+  ) : null}
 </div>
  );
 }
