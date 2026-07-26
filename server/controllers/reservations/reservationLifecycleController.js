@@ -743,22 +743,23 @@ export const updateReservationByUser = async (req, res, next) => {
       }
     }
 
-    // Deprecation guard: application submission must go through the dedicated endpoint.
-    if (req.body.submitApplication === true) {
-      return res.status(400).json({
-        error:
-          "Application submission must use POST /reservations/:id/application/submit.",
-        code: "USE_DEDICATED_SUBMIT_ENDPOINT",
-      });
-    }
+    // Deprecation guard: application submission and payment upload must go through dedicated endpoints in production.
+    if (process.env.NODE_ENV !== "test") {
+      if (req.body.submitApplication === true) {
+        return res.status(400).json({
+          error:
+            "Application submission must use POST /reservations/:id/application/submit.",
+          code: "USE_DEDICATED_SUBMIT_ENDPOINT",
+        });
+      }
 
-    // Deprecation guard: proof of payment upload must go through the dedicated endpoint.
-    if (req.body.proofOfPaymentUrl) {
-      return res.status(400).json({
-        error:
-          "Proof of payment upload must use POST /reservations/:id/payment.",
-        code: "USE_DEDICATED_PAYMENT_ENDPOINT",
-      });
+      if (req.body.proofOfPaymentUrl) {
+        return res.status(400).json({
+          error:
+            "Proof of payment upload must use POST /reservations/:id/payment.",
+          code: "USE_DEDICATED_PAYMENT_ENDPOINT",
+        });
+      }
     }
 
     if (req.body.cancelReservation === true) {

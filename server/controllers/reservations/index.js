@@ -46,6 +46,12 @@ export {
   checkoutReservation,
   transferTenant,
   processDepositRefund,
+  cancelTransferAction,
+  cancelMoveOutAction,
+  earlyTerminationAction,
+  swapRoomsAction,
+  triggerAbandonmentAction,
+  checkExtensionConflictAction,
 } from "./tenancyActionsController.js";
 
 // 5. CRUD Domain

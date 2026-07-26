@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 
 const reservationFindById = jest.fn();
 const reservationFindByIdAndUpdate = jest.fn();
+const reservationFindOneAndUpdate = jest.fn((filter, update, options) => {
+  const id = typeof filter === "object" && filter?._id ? filter._id : filter;
+  return reservationFindByIdAndUpdate(id, update, options);
+});
 const reservationFind = jest.fn();
 const reservationFindOne = jest.fn();
 const reservationCountDocuments = jest.fn();
@@ -26,6 +30,7 @@ await jest.unstable_mockModule("../models/index.js", () => ({
     find: reservationFind,
     findById: reservationFindById,
     findByIdAndUpdate: reservationFindByIdAndUpdate,
+    findOneAndUpdate: reservationFindOneAndUpdate,
     findOne: reservationFindOne,
     countDocuments: reservationCountDocuments,
   },
@@ -56,6 +61,12 @@ await jest.unstable_mockModule("../utils/tenantActionService.js", () => ({
   moveOutStayWorkflow,
   renewStayWorkflow: jest.fn(),
   transferStayWorkflow: jest.fn(),
+  cancelTransferStayWorkflow: jest.fn(),
+  cancelMoveOutStayWorkflow: jest.fn(),
+  executeEarlyTerminationWorkflow: jest.fn(),
+  executeDirectRoomSwapWorkflow: jest.fn(),
+  executeAbandonmentProtocolWorkflow: jest.fn(),
+  validateContractExtensionWorkflow: jest.fn(),
 }));
 await jest.unstable_mockModule("../utils/rentGenerator.js", () => ({
   ensureCurrentCycleRentBill,

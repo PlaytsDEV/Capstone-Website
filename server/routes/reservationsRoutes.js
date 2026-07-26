@@ -63,6 +63,12 @@ import {
   moveOutReservation,
   transferTenant,
   processDepositRefund,
+  cancelTransferAction,
+  cancelMoveOutAction,
+  earlyTerminationAction,
+  swapRoomsAction,
+  triggerAbandonmentAction,
+  checkExtensionConflictAction,
   getMyContract,
   updateVisitPreferenceAndSchedule,
   saveApplicationDraft,
@@ -612,6 +618,59 @@ router.put(
   filterByBranch,
   requireAnyPermission(["manageReservations", "manageTenants"]),
   moveOutReservation,
+);
+
+// SCENARIO 1: Mid-Lifecycle Contract & Occupancy Mutation Routes
+router.post(
+  "/:reservationId/cancel-transfer",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requireAnyPermission(["manageReservations", "manageTenants"]),
+  cancelTransferAction,
+);
+
+router.post(
+  "/:reservationId/cancel-moveout",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requireAnyPermission(["manageReservations", "manageTenants"]),
+  cancelMoveOutAction,
+);
+
+router.post(
+  "/:reservationId/early-termination",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requireAnyPermission(["manageReservations", "manageTenants"]),
+  earlyTerminationAction,
+);
+
+router.post(
+  "/room-swap",
+  verifyToken,
+  verifyAdmin,
+  requireAnyPermission(["manageReservations", "manageTenants"]),
+  swapRoomsAction,
+);
+
+router.post(
+  "/:reservationId/abandonment",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requireAnyPermission(["manageReservations", "manageTenants"]),
+  triggerAbandonmentAction,
+);
+
+router.get(
+  "/:reservationId/check-extension",
+  verifyToken,
+  verifyAdmin,
+  requireAnyPermission(["manageReservations", "manageTenants"]),
+  checkExtensionConflictAction,
 );
 
 /**

@@ -732,3 +732,238 @@ export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {
   }
 }
 
+/**
+ * SCENARIO 1 - Case 1: Post-Approval Transfer Cancellation
+ * Releases Room B lock and retains tenant active in Room A.
+ */
+export async function cancelTransferStayWorkflow(reservationId, actorId = null) {
+  const reservation = await Reservation.findById(reservationId).populate("roomId");
+  if (!reservation) {
+    throw new Error("Reservation not found");
+  }
+
+  if (reservation.pendingTransferRoomId) {
+    const targetRoom = await Room.findById(reservation.pendingTransferRoomId);
+    if (targetRoom) {
+      const bed = targetRoom.beds?.find(b => String(b.id) === String(reservation.pendingTransferBedId) || String(b._id) === String(reservation.pendingTransferBedId));
+      if (bed) {
+        bed.status = "available";
+        bed.lockType = null;
+        await targetRoom.save();
+      }
+    }
+  }
+
+  reservation.pendingTransferRoomId = null;
+  reservation.pendingTransferBedId = null;
+  reservation.transferStatus = "cancelled";
+  reservation.notes = `${reservation.notes ? reservation.notes + " | " : ""}Transfer cancelled by admin/tenant at ${new Date().toISOString()}`;
+  await reservation.save();
+
+  return {
+    success: true,
+    message: "Room transfer cancelled successfully. Target room lock released.",
+    reservation
+  };
+}
+
+/**
+ * SCENARIO 1 - Case 2: Post-Approval Move-Out Cancellation with Re-booking Conflict Check
+ */
+export async function cancelMoveOutStayWorkflow(reservationId, actorId = null) {
+  const reservation = await Reservation.findById(reservationId).populate("roomId");
+  if (!reservation) {
+    throw new Error("Reservation not found");
+  }
+
+  // Check if room/bed was already pre-booked by an incoming applicant
+  const conflictQuery = {
+    roomId: reservation.roomId._id || reservation.roomId,
+    status: { $in: ["reserved", "pending", "approved_for_payment"] },
+    isArchived: { $ne: true },
+    _id: { $ne: reservation._id }
+  };
+
+  const incomingConflict = await Reservation.findOne(conflictQuery).populate("userId", "firstName lastName email");
+  if (incomingConflict) {
+    return {
+      success: false,
+      conflict: true,
+      code: "REBOOKING_CONFLICT",
+      message: `Cannot cancel move-out: Room ${reservation.roomId.roomNumber || reservation.roomId.name} is pre-booked by incoming applicant ${incomingConflict.userId?.firstName} ${incomingConflict.userId?.lastName}. Administrative resolution required.`,
+      conflictingApplicant: incomingConflict
+    };
+  }
+
+  reservation.moveOutRequested = false;
+  reservation.moveOutDate = null;
+  reservation.moveOutReason = null;
+  reservation.status = "moveIn";
+  reservation.notes = `${reservation.notes ? reservation.notes + " | " : ""}Move-out request cancelled at ${new Date().toISOString()}`;
+  await reservation.save();
+
+  return {
+    success: true,
+    message: "Move-out request cancelled successfully. Active stay restored.",
+    reservation
+  };
+}
+
+/**
+ * SCENARIO 1 - Case 3: Early Contract Termination
+ */
+export async function executeEarlyTerminationWorkflow(reservationId, payload = {}, actorId = null) {
+  const { penaltyFee = 0, forfeitureReason = "early_termination" } = payload;
+  const reservation = await Reservation.findById(reservationId).populate("roomId");
+  if (!reservation) {
+    throw new Error("Reservation not found");
+  }
+
+  reservation.status = "moveOut";
+  reservation.moveOutDate = new Date();
+  reservation.depositForfeited = true;
+  reservation.depositForfeitureReason = forfeitureReason;
+  reservation.earlyTerminationPenalty = Number(penaltyFee);
+  reservation.notes = `${reservation.notes ? reservation.notes + " | " : ""}Early termination executed with penalty PHP ${penaltyFee}`;
+  await reservation.save();
+
+  // Free room inventory
+  const room = await Room.findById(reservation.roomId._id || reservation.roomId);
+  if (room && reservation.selectedBed?.id) {
+    const bed = room.beds.find(b => String(b.id) === String(reservation.selectedBed.id));
+    if (bed) {
+      bed.status = "available";
+      await room.save();
+    }
+  }
+
+  return {
+    success: true,
+    message: "Early termination executed successfully.",
+    reservation
+  };
+}
+
+/**
+ * SCENARIO 1 - Case 4: Direct Tenant Room Swap
+ */
+export async function executeDirectRoomSwapWorkflow(reservationAId, reservationBId, actorId = null) {
+  const session = await mongoose.startSession();
+  let result = null;
+
+  try {
+    await session.withTransaction(async () => {
+      const resA = await Reservation.findById(reservationAId).session(session);
+      const resB = await Reservation.findById(reservationBId).session(session);
+
+      if (!resA || !resB) {
+        throw new Error("One or both reservations not found for room swap");
+      }
+
+      // Swap room and bed assignments
+      const roomATemp = resA.roomId;
+      const bedATemp = resA.selectedBed;
+
+      resA.roomId = resB.roomId;
+      resA.selectedBed = resB.selectedBed;
+      resA.notes = `${resA.notes ? resA.notes + " | " : ""}Swapped room with tenant ${resB.userId} at ${new Date().toISOString()}`;
+
+      resB.roomId = roomATemp;
+      resB.selectedBed = bedATemp;
+      resB.notes = `${resB.notes ? resB.notes + " | " : ""}Swapped room with tenant ${resA.userId} at ${new Date().toISOString()}`;
+
+      await resA.save({ session });
+      await resB.save({ session });
+
+      result = {
+        success: true,
+        message: "Direct room swap executed successfully between tenants.",
+        tenantA: resA,
+        tenantB: resB
+      };
+    });
+
+    return result;
+  } finally {
+    await session.endSession();
+  }
+}
+
+/**
+ * SCENARIO 1 - Case 5: Unannounced Abandonment ("Ghost Tenant") Protocol
+ */
+export async function executeAbandonmentProtocolWorkflow(reservationId, payload = {}, actorId = null) {
+  const reservation = await Reservation.findById(reservationId).populate("roomId");
+  if (!reservation) {
+    throw new Error("Reservation not found");
+  }
+
+  reservation.status = "abandoned";
+  reservation.depositForfeited = true;
+  reservation.depositForfeitureReason = "unannounced_abandonment";
+  reservation.depositRefundAmount = 0;
+  reservation.abandonedAt = new Date();
+  reservation.notes = `${reservation.notes ? reservation.notes + " | " : ""}Abandonment protocol triggered by admin ${actorId || ""}`;
+  await reservation.save();
+
+  // Free bed inventory immediately
+  const room = await Room.findById(reservation.roomId._id || reservation.roomId);
+  if (room && reservation.selectedBed?.id) {
+    const bed = room.beds.find(b => String(b.id) === String(reservation.selectedBed.id));
+    if (bed) {
+      bed.status = "available";
+      await room.save();
+    }
+  }
+
+  // Update user status
+  const user = await User.findById(reservation.userId);
+  if (user) {
+    user.tenantStatus = "abandoned";
+    await user.save();
+  }
+
+  return {
+    success: true,
+    message: "Abandonment protocol completed. Bed inventory released and deposit forfeited.",
+    reservation
+  };
+}
+
+/**
+ * SCENARIO 1 - Case 6: Contract Extension vs Pre-Booking Lock Check
+ */
+export async function validateContractExtensionWorkflow(reservationId, requestedNewEndDate) {
+  const reservation = await Reservation.findById(reservationId);
+  if (!reservation) {
+    throw new Error("Reservation not found");
+  }
+
+  const room = await Room.findById(reservation.roomId);
+  if (!room) {
+    throw new Error("Room not found");
+  }
+
+  // Check for pre-bookings starting before requested new end date
+  const conflict = await Reservation.findOne({
+    roomId: reservation.roomId,
+    _id: { $ne: reservation._id },
+    status: { $in: ["reserved", "pending", "approved_for_payment"] },
+    isArchived: { $ne: true },
+    moveInDate: { $lte: new Date(requestedNewEndDate) }
+  }).populate("userId", "firstName lastName email");
+
+  if (conflict) {
+    return {
+      canExtend: false,
+      reason: `Cannot extend contract: Room ${room.roomNumber || room.name} is pre-booked starting ${dayjs(conflict.moveInDate).format("YYYY-MM-DD")} by ${conflict.userId?.firstName} ${conflict.userId?.lastName}.`
+    };
+  }
+
+  return {
+    canExtend: true,
+    message: "No pre-booking conflict found. Lease extension can proceed."
+  };
+}
+
+

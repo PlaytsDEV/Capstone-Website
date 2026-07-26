@@ -365,4 +365,32 @@ export const reservationApi = {
    */
   getMyRenewalOffers: () =>
     authFetch("/reservations/my-renewal-offers"),
+
+  // SCENARIO 1 API METHODS
+  cancelTransfer: (reservationId) =>
+    authFetch(`/reservations/${reservationId}/cancel-transfer`, { method: "POST" }),
+
+  cancelMoveOut: (reservationId) =>
+    authFetch(`/reservations/${reservationId}/cancel-moveout`, { method: "POST" }),
+
+  earlyTermination: (reservationId, data = {}) =>
+    authFetch(`/reservations/${reservationId}/early-termination`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  swapRooms: (reservationAId, reservationBId) =>
+    authFetch("/reservations/room-swap", {
+      method: "POST",
+      body: JSON.stringify({ reservationAId, reservationBId }),
+    }),
+
+  triggerAbandonment: (reservationId, data = {}) =>
+    authFetch(`/reservations/${reservationId}/abandonment`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  checkExtensionConflict: (reservationId, requestedEndDate) =>
+    authFetch(`/reservations/${reservationId}/check-extension?requestedEndDate=${encodeURIComponent(requestedEndDate)}`),
 };

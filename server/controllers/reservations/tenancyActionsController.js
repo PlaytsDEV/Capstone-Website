@@ -27,6 +27,12 @@ import {
   renewStayWorkflow,
   moveOutStayWorkflow,
   transferStayWorkflow,
+  cancelTransferStayWorkflow,
+  cancelMoveOutStayWorkflow,
+  executeEarlyTerminationWorkflow,
+  executeDirectRoomSwapWorkflow,
+  executeAbandonmentProtocolWorkflow,
+  validateContractExtensionWorkflow,
 } from "../../utils/tenantActionService.js";
 import { resolveArchivedRestoreStatus } from "../../utils/reservationArchive.js";
 import {
@@ -741,3 +747,166 @@ export const processDepositRefund = async (req, res, next) => {
     handleReservationError(res, error, "process deposit refund");
   }
 };
+
+/**
+ * SCENARIO 1 - Case 1: Post-Approval Transfer Cancellation
+ */
+export const cancelTransferAction = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const actor = await findDbUser(req.user.uid);
+    const result = await cancelTransferStayWorkflow(reservationId, actor?._id);
+
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservationId,
+      {},
+      result.reservation.toObject(),
+      "Cancelled approved room transfer and released target room lock"
+    );
+
+    res.json({ success: true, ...result });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "Cancel transfer error");
+    handleReservationError(res, error, "cancel transfer");
+  }
+};
+
+/**
+ * SCENARIO 1 - Case 2: Post-Approval Move-Out Cancellation Conflict Check
+ */
+export const cancelMoveOutAction = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const actor = await findDbUser(req.user.uid);
+    const result = await cancelMoveOutStayWorkflow(reservationId, actor?._id);
+
+    if (result.conflict) {
+      return res.status(409).json(result);
+    }
+
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservationId,
+      {},
+      result.reservation.toObject(),
+      "Cancelled move-out request and restored active stay status"
+    );
+
+    res.json({ success: true, ...result });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "Cancel move-out error");
+    handleReservationError(res, error, "cancel move-out");
+  }
+};
+
+/**
+ * SCENARIO 1 - Case 3: Early Contract Termination
+ */
+export const earlyTerminationAction = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    const { penaltyFee = 0, forfeitureReason = "early_termination" } = req.body;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const actor = await findDbUser(req.user.uid);
+    const result = await executeEarlyTerminationWorkflow(reservationId, { penaltyFee, forfeitureReason }, actor?._id);
+
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservationId,
+      {},
+      result.reservation.toObject(),
+      `Executed early contract termination with penalty fee PHP ${penaltyFee}`
+    );
+
+    res.json({ success: true, ...result });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "Early termination error");
+    handleReservationError(res, error, "execute early termination");
+  }
+};
+
+/**
+ * SCENARIO 1 - Case 4: Direct Tenant Room Swap
+ */
+export const swapRoomsAction = async (req, res, next) => {
+  try {
+    const { reservationAId, reservationBId } = req.body;
+    if (!isValidObjectId(reservationAId) || !isValidObjectId(reservationBId)) {
+      return res.status(400).json({ error: "Invalid reservation IDs provided for room swap", code: "INVALID_INPUT" });
+    }
+
+    const actor = await findDbUser(req.user.uid);
+    const result = await executeDirectRoomSwapWorkflow(reservationAId, reservationBId, actor?._id);
+
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservationAId,
+      {},
+      result,
+      `Executed direct room swap between reservation ${reservationAId} and ${reservationBId}`
+    );
+
+    res.json({ success: true, ...result });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "Direct room swap error");
+    handleReservationError(res, error, "execute room swap");
+  }
+};
+
+/**
+ * SCENARIO 1 - Case 5: Abandonment Protocol Trigger
+ */
+export const triggerAbandonmentAction = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const actor = await findDbUser(req.user.uid);
+    const result = await executeAbandonmentProtocolWorkflow(reservationId, req.body, actor?._id);
+
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservationId,
+      {},
+      result.reservation.toObject(),
+      "Triggered unannounced tenant abandonment protocol"
+    );
+
+    res.json({ success: true, ...result });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "Abandonment protocol error");
+    handleReservationError(res, error, "trigger abandonment protocol");
+  }
+};
+
+/**
+ * SCENARIO 1 - Case 6: Validate Extension Conflict
+ */
+export const checkExtensionConflictAction = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    const { requestedEndDate } = req.query;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+    if (!requestedEndDate) {
+      return res.status(400).json({ error: "requestedEndDate parameter is required", code: "INVALID_INPUT" });
+    }
+
+    const result = await validateContractExtensionWorkflow(reservationId, requestedEndDate);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "Extension conflict check error");
+    handleReservationError(res, error, "check contract extension conflict");
+  }
+};
+
