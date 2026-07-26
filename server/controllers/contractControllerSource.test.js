@@ -9,10 +9,9 @@ describe("secure prepared Contract responses", () => {
     expect(source.match(/Pragma", "no-cache"/g)).toHaveLength(5);
   });
 
-  test("default streams select the newest non-superseded prepared document", () => {
-    expect(source.match(/filter\(\(entry\) => entry\.superseded !== true\)/g))
-      .toHaveLength(2);
-    expect(source.match(/sort\(\(a, b\) => Number\(b\.version\) - Number\(a\.version\)\)/g))
-      .toHaveLength(4);
+  test("tenant stream delegates current-version selection to the canonical resolver", () => {
+    expect(source).toMatch(/selectCurrentPreparedDocument\(contract\)/);
+    expect(source).toMatch(/resolveCurrentPreparedDocument\(contract\)/);
+    expect(source).toMatch(/PREPARED_DOCUMENT_UNAVAILABLE/);
   });
 });

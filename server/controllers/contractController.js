@@ -13,6 +13,10 @@ import { buildContractGenerationData } from "../services/contractGenerationDataS
 import { generatePreparedContractPdf } from "../services/contractPdfService.js";
 import { resolvePrivateContractStorageKey } from "../services/contractPrivateStorageService.js";
 import { toTenantContractView } from "../services/tenantContractViewService.js";
+import {
+  resolveCurrentPreparedDocument,
+  selectCurrentPreparedDocument,
+} from "../services/preparedContractDocumentService.js";
 import { buildInitialPaymentSummary } from "../services/contractPricingService.js";
 import { resolveReservationContractEligibility } from "../services/reservationContractEligibilityService.js";
 import {
@@ -794,7 +798,13 @@ export const getMyCurrentContract = async (req, res) => {
     const user = await tenantActor(req);
     const contract = await Contract.findOne({ tenantId: user._id, isCurrent: true })
       .sort({ createdAt: -1 });
-    res.json({ contract: toTenantContractView(contract) });
+    let preparedDocument = null;
+    if (selectCurrentPreparedDocument(contract)) {
+      preparedDocument = await resolveCurrentPreparedDocument(contract)
+        .then((resolved) => resolved.document)
+        .catch(() => null);
+    }
+    res.json({ contract: toTenantContractView(contract, new Date(), { preparedDocument }) });
   } catch (error) {
     fail(res, error);
   }
@@ -822,32 +832,21 @@ export const getMyContractDetails = async (req, res) => {
 export const streamMyPreparedContract = async (req, res) => {
   try {
     const { contract } = await findOwnedContract(req);
-    const newestDocument = [...(contract.preparedDocuments || [])]
-      .filter((entry) => entry.superseded !== true)
-      .sort((a, b) => Number(b.version) - Number(a.version))[0];
+    const newestDocument = selectCurrentPreparedDocument(contract);
     const requestedVersion = req.params.version
       ? Number(req.params.version)
       : Number(newestDocument?.version);
     if (!Number.isInteger(requestedVersion) || requestedVersion !== Number(newestDocument?.version)) {
       return res.status(404).json({
-        error: "Prepared Contract file not found.",
-        code: "PREPARED_CONTRACT_NOT_FOUND",
+        error: "The prepared document is temporarily unavailable.",
+        code: "PREPARED_DOCUMENT_UNAVAILABLE",
       });
     }
-    const document = contract.preparedDocuments.find((entry) =>
-      Number(entry.version) === requestedVersion && entry.superseded !== true
-    );
-    if (!document) return res.status(404).json({
-      error: "Prepared Contract file not found.", code: "PREPARED_CONTRACT_NOT_FOUND",
-    });
-    const absolutePath = resolvePrivateContractStorageKey(document.storageKey);
-    const stat = await fsPromises.stat(absolutePath).catch(() => null);
-    if (!stat?.isFile()) return res.status(404).json({
-      error: "Prepared Contract file not found.", code: "PREPARED_CONTRACT_NOT_FOUND",
-    });
+    const { document, absolutePath, stat } = await resolveCurrentPreparedDocument(contract);
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Length", stat.size);
-    res.setHeader("Content-Disposition", `inline; filename="${document.fileName.replaceAll('"', "")}"`);
+    const disposition = req.query.download === "1" ? "attachment" : "inline";
+    res.setHeader("Content-Disposition", `${disposition}; filename="${document.fileName.replaceAll('"', "")}"`);
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("Pragma", "no-cache");
     fs.createReadStream(absolutePath).on("error", (error) => {

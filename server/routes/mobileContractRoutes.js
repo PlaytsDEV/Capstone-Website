@@ -7,6 +7,10 @@ import { resolvePrivateContractStorageKey } from "../services/contractPrivateSto
 import { toTenantContractView } from "../services/tenantContractViewService.js";
 import { resolvePublishedFinalDocument } from "../services/contractPublicationService.js";
 import auditLogger from "../utils/auditLogger.js";
+import {
+  resolveCurrentPreparedDocument,
+  selectCurrentPreparedDocument,
+} from "../services/preparedContractDocumentService.js";
 
 const router = express.Router();
 const asyncRoute = (handler) => (req, res, next) =>
@@ -57,7 +61,19 @@ const streamPdf = async (res, storageKey, fileName, disposition = "inline") => {
 
 router.get("/contracts/current", mobileTenant, asyncRoute(async (req, res) => {
   const contract = await ownedCurrentContract(req.mobileTenant._id);
-  return res.json({ contract: toTenantContractView(contract), emptyState: contract ? null : "Contract is being prepared." });
+  let preparedDocument = null;
+  if (selectCurrentPreparedDocument(contract)) {
+    preparedDocument = await resolveCurrentPreparedDocument(contract)
+      .then((resolved) => resolved.document)
+      .catch(() => null);
+  }
+  return res.json({
+    contract: toTenantContractView(contract, new Date(), {
+      preparedDocument,
+      documentBasePath: "/api/m/contracts",
+    }),
+    emptyState: contract ? null : "Contract is being prepared.",
+  });
 }));
 
 router.get("/contracts/:contractId/documents/prepared", mobileTenant, asyncRoute(async (req, res) => {
@@ -65,11 +81,17 @@ router.get("/contracts/:contractId/documents/prepared", mobileTenant, asyncRoute
     return res.status(404).json({ detail: "Prepared Contract is not available" });
   }
   const contract = await Contract.findOne({ _id: req.params.contractId, tenantId: req.mobileTenant._id, isCurrent: true });
-  const document = [...(contract?.preparedDocuments || [])]
-    .filter((entry) => entry.superseded !== true)
-    .sort((a, b) => Number(b.version) - Number(a.version))[0];
-  if (!document) return res.status(404).json({ detail: "Prepared Contract is not available" });
-  return streamPdf(res, document.storageKey, document.fileName, req.query.download === "1" ? "attachment" : "inline");
+  if (!contract) return res.status(404).json({
+    detail: "Contract not found.", code: "CONTRACT_NOT_FOUND",
+  });
+  const { document, absolutePath, stat } = await resolveCurrentPreparedDocument(contract);
+  const disposition = req.query.download === "1" ? "attachment" : "inline";
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Length", stat.size);
+  res.setHeader("Content-Disposition", `${disposition}; filename="${document.fileName.replaceAll('"', "")}"`);
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("Pragma", "no-cache");
+  return fs.createReadStream(absolutePath).pipe(res);
 }));
 
 router.get("/contracts/:contractId/documents/final", mobileTenant, asyncRoute(async (req, res) => {
@@ -106,11 +128,14 @@ router.get("/contracts/:contractId/documents/final", mobileTenant, asyncRoute(as
 // Backward-compatible replacement for the former hard-coded mobile lease PDF.
 router.get("/documents/contract", mobileTenant, asyncRoute(async (req, res) => {
   const contract = await ownedCurrentContract(req.mobileTenant._id);
-  const document = [...(contract?.preparedDocuments || [])]
-    .filter((entry) => entry.superseded !== true)
-    .sort((a, b) => Number(b.version) - Number(a.version))[0];
-  if (!document) return res.status(404).json({ detail: "Contract is being prepared." });
-  return streamPdf(res, document.storageKey, document.fileName, "attachment");
+  if (!contract) return res.status(404).json({ detail: "Contract is being prepared." });
+  const { document, absolutePath, stat } = await resolveCurrentPreparedDocument(contract);
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Length", stat.size);
+  res.setHeader("Content-Disposition", `attachment; filename="${document.fileName.replaceAll('"', "")}"`);
+  res.setHeader("Cache-Control", "private, no-store");
+  res.setHeader("Pragma", "no-cache");
+  return fs.createReadStream(absolutePath).pipe(res);
 }));
 
 export default router;

@@ -30,6 +30,13 @@ describe("tenant Contract safe view", () => {
     expect(view.preparedDocument).toMatchObject({
       available: true, currentVersion: 2, fileName: "current.pdf", fileSize: 42,
     });
+    expect(view).toMatchObject({
+      contractId: "contract-1",
+      preparedDocumentAvailable: true,
+      preparedDocumentVersion: 2,
+      preparedDocumentFileName: "current.pdf",
+      preparedDocumentFileSize: 42,
+    });
     expect(JSON.stringify(view)).not.toContain("storageKey");
     expect(JSON.stringify(view)).not.toContain("private/current.pdf");
   });
@@ -47,12 +54,14 @@ describe("tenant Contract safe view", () => {
       _id: "contract-1", status: "generated", generatedVersion: 1,
       preparedDocuments: [
         { version: 1, superseded: true, fileName: "old.pdf" },
-        { version: 2, superseded: false, fileName: "latest.pdf" },
+        { version: 2, superseded: false, fileName: "latest.pdf", storageKey: "latest.pdf" },
       ],
     });
     expect(view.preparedDocument).toMatchObject({
       available: true, currentVersion: 2, fileName: "latest.pdf",
     });
+    expect(view.preparedDocument.viewUrl)
+      .toBe("/api/contracts/my/contract-1/documents/prepared");
   });
 
   test("calculates days remaining once on the backend", () => {
@@ -80,7 +89,7 @@ describe("tenant Contract safe view", () => {
     expect(published.finalDocument).toMatchObject({
       available: true,
       fileName: "official.pdf",
-      viewUrl: "/api/m/contracts/contract-1/documents/final",
+      viewUrl: "/api/contracts/my/contract-1/documents/final",
     });
     expect(JSON.stringify(published)).not.toContain("private/final.pdf");
   });

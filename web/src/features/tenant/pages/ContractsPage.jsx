@@ -41,7 +41,7 @@ export default function ContractsPage() {
     try {
       const blob = documentType === "final"
         ? await tenantContractApi.getMyFinalContractFile(contract.id, mode === "download")
-        : await tenantContractApi.getMyPreparedContractFile(contract.id);
+        : await tenantContractApi.getMyPreparedContractFile(contract.id, mode === "download");
       const url = URL.createObjectURL(blob);
       if (mode === "download") {
         const anchor = document.createElement("a");
@@ -132,8 +132,8 @@ export default function ContractsPage() {
         <article className="tenant-contract-document">
           <div className="tenant-contract-document__icon"><FileText size={26} /></div>
           <div className="tenant-contract-document__content">
-            <h3>{contract.preparedDocument.available ? "Prepared Copy — Not Yet Signed or Notarized" : "Contract Document Not Yet Available"}</h3>
-            <p>{contract.preparedDocument.available ? "This document has not yet been physically signed or notarized." : "The dormitory administrator is still preparing your Contract document."}</p>
+            <h3>{contract.preparedDocument.available ? "Prepared Copy — Not Yet Signed or Notarized" : "Prepared Document Temporarily Unavailable"}</h3>
+            <p>{contract.preparedDocument.available ? "The final wet-signed and notarized Contract is still being processed." : "The prepared document is temporarily unavailable. Please contact the administrator."}</p>
             {contract.preparedDocument.available && <div className="tenant-contract-document__meta">
               <span>Version {contract.preparedDocument.currentVersion}</span>
               <span>Generated {date(contract.preparedDocument.generatedAt)}</span>
@@ -143,10 +143,10 @@ export default function ContractsPage() {
           </div>
           {contract.preparedDocument.available && <div className="tenant-contract-actions">
             <button type="button" className="tenant-contract-button tenant-contract-button--primary" disabled={Boolean(fileBusy)} onClick={() => retrieveFile("view")}>
-              {fileBusy === "view" && <LoaderCircle className="tenant-contract-spinner" size={16} />}<Eye size={16} />{fileBusy === "view" ? "Opening Contract…" : "View Contract"}
+              {fileBusy === "view" && <LoaderCircle className="tenant-contract-spinner" size={16} />}<Eye size={16} />{fileBusy === "view" ? "Opening Contract…" : "View Prepared Copy"}
             </button>
             <button type="button" className="tenant-contract-button tenant-contract-button--secondary" disabled={Boolean(fileBusy)} onClick={() => retrieveFile("download")}>
-              {fileBusy === "download" && <LoaderCircle className="tenant-contract-spinner" size={16} />}<Download size={16} />{fileBusy === "download" ? "Preparing Download…" : "Download PDF"}
+              {fileBusy === "download" && <LoaderCircle className="tenant-contract-spinner" size={16} />}<Download size={16} />{fileBusy === "download" ? "Preparing Download…" : "Download Prepared Copy"}
             </button>
           </div>}
         </article>

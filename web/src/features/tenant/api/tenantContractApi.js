@@ -1,11 +1,11 @@
 import { API_URL, authFetch, getFreshToken } from "../../../shared/api/httpClient";
 import { getSessionHeaders } from "../../../shared/api/authSession";
 
-const getPreparedBlob = async (contractId) => {
+const getPreparedBlob = async (contractId, download = false) => {
   const token = await getFreshToken();
   if (!token) throw new Error("Your session has expired. Please sign in again.");
   const response = await fetch(
-    `${API_URL}/contracts/my/${contractId}/documents/prepared`,
+    `${API_URL}/contracts/my/${contractId}/documents/prepared${download ? "?download=1" : ""}`,
     {
       headers: { Authorization: `Bearer ${token}`, ...getSessionHeaders() },
       cache: "no-store",
