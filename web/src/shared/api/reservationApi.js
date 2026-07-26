@@ -393,4 +393,11 @@ export const reservationApi = {
 
   checkExtensionConflict: (reservationId, requestedEndDate) =>
     authFetch(`/reservations/${reservationId}/check-extension?requestedEndDate=${encodeURIComponent(requestedEndDate)}`),
+
+  // SCENARIO 3: Deposit Reconciliation & Payouts
+  processDepositRefund: (reservationId, data = {}) =>
+    authFetch(`/reservations/${reservationId}/deposit-refund`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
 };
