@@ -211,4 +211,17 @@ export const billingApi = {
    */
   getVacancyDates: () =>
     authFetch("/payments/vacancy-dates"),
+
+  // SCENARIO 2 API METHODS
+  createMilestoneArrangement: (parentBillId, milestones) =>
+    authFetch("/billing/milestone-arrangement", {
+      method: "POST",
+      body: JSON.stringify({ parentBillId, milestones }),
+    }),
+
+  runLatePenaltyJob: () =>
+    authFetch("/billing/late-penalties/run", { method: "POST" }),
+
+  getPriorityQueue: () =>
+    authFetch("/billing/priority-queue"),
 };

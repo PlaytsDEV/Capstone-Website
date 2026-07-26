@@ -28,6 +28,9 @@ import {
   buildPublishResultFromPeriod,
 } from "./_helpers.js";
 import { sendDraftUtilityBills } from "../../utils/utilityBillFlow.js";
+import { createMilestoneSubInvoices } from "../../services/milestoneInvoiceService.js";
+import { executeLatePenaltyCron } from "../../services/penaltyEngineService.js";
+import { getTenantBillsInPriorityOrder } from "../../services/billingPriorityService.js";
 
 export const getRentBills = async (req, res, next) => {
   try {
@@ -660,3 +663,56 @@ export const publishRoomBills = async (req, res, next) => {
     next(error);
   }
 };
+
+// SCENARIO 2 CONTROLLER ACTIONS
+
+/**
+ * POST /api/billing/milestone-arrangement
+ */
+export const createMilestoneArrangementAction = async (req, res, next) => {
+  try {
+    const { parentBillId, milestones } = req.body;
+    const subInvoices = await createMilestoneSubInvoices(parentBillId, milestones, req.user.uid);
+    res.json({
+      success: true,
+      message: `Created ${subInvoices.length} milestone sub-invoices. Master bill voided.`,
+      subInvoices,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/billing/late-penalties/run
+ */
+export const runLatePenaltyJobAction = async (req, res, next) => {
+  try {
+    const result = await executeLatePenaltyCron();
+    res.json({
+      success: true,
+      message: `Processed late penalties for ${result.processedCount} overdue bills.`,
+      ...result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/billing/priority-queue
+ */
+export const getBillingPriorityQueueAction = async (req, res, next) => {
+  try {
+    const userId = req.user.id || req.user._id || req.query.tenantId;
+    const priorityBills = await getTenantBillsInPriorityOrder(userId);
+    res.json({
+      success: true,
+      count: priorityBills.length,
+      bills: priorityBills,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

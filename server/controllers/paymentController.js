@@ -25,6 +25,7 @@ import { updateOccupancyOnReservationChange } from "../utils/occupancyManager.js
 import { BUSINESS } from "../config/constants.js";
 import { getReservationFeeAmount } from "../utils/businessSettings.js";
 import { settlePaymongoBill } from "../utils/billSettlement.js";
+import { validateInvoiceVersionForCheckout } from "../services/penaltyEngineService.js";
 import {
   getBillRemainingAmount,
   getVisibleBillSnapshot,
@@ -215,6 +216,14 @@ export const createBillCheckout = async (req, res, next) => {
 
     if (String(bill.userId) !== String(dbUser._id)) {
       throw new AppError("You can only pay your own bills", 403, "FORBIDDEN");
+    }
+
+    const expectedVersion = req.body?.expectedVersion ?? req.query?.expectedVersion;
+    if (expectedVersion !== undefined && expectedVersion !== null) {
+      const versionCheck = await validateInvoiceVersionForCheckout(billId, expectedVersion);
+      if (!versionCheck.valid) {
+        throw new AppError(versionCheck.reason, 409, "INVOICE_VERSION_STALE");
+      }
     }
 
     if (getVisibleBillSnapshot(bill).status === "paid") {

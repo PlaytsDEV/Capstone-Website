@@ -154,6 +154,9 @@ await jest.unstable_mockModule("../controllers/billingController.js", () => ({
   applyPenalties: noop,
   getRoomReadiness: noop,
   publishRoomBills: noop,
+  getBillingPriorityQueueAction: noop,
+  createMilestoneArrangementAction: noop,
+  runLatePenaltyJobAction: noop,
 }));
 await jest.unstable_mockModule("../controllers/announcementsController.js", () => ({
   getAnnouncements: noop,

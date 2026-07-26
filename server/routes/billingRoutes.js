@@ -45,6 +45,34 @@ router.get("/history", billingController.getBillingHistory);
 router.get("/my-bills", billingController.getMyBills);
 
 /**
+ * GET /api/billing/priority-queue
+ * Get unpaid bills in strict priority sequence for tenant checkout.
+ */
+router.get("/priority-queue", billingController.getBillingPriorityQueueAction);
+
+/**
+ * POST /api/billing/milestone-arrangement
+ * Admin action to create milestone sub-invoices for payment arrangements.
+ */
+router.post(
+  "/milestone-arrangement",
+  verifyAdmin,
+  requirePermission("manageBilling"),
+  billingController.createMilestoneArrangementAction,
+);
+
+/**
+ * POST /api/billing/late-penalties/run
+ * Trigger automated late penalty cron job.
+ */
+router.post(
+  "/late-penalties/run",
+  verifyAdmin,
+  requirePermission("manageBilling"),
+  billingController.runLatePenaltyJobAction,
+);
+
+/**
  * GET /api/billing/:billId/pdf
  * Download a generated bill PDF. Tenants may download their own bills; admins
  * may download bills in their branch.
