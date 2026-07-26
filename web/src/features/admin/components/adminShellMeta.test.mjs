@@ -60,6 +60,7 @@ test("system navigation labels and ordering match the phase 1 IA", () => {
     { to: "/admin/audit-logs", text: "Audit & Security" },
     { to: "/admin/branches", text: "Branches" },
     { to: "/admin/settings", text: "Policies & Settings" },
+    { to: "/admin/backups", text: "System Backup" },
   ]);
 });
 

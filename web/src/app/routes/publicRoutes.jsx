@@ -18,6 +18,9 @@ import {
   ResetPassword,
 } from "../lazyPages";
 
+import LandingPageSkeleton from "../../features/public/components/LandingPageSkeleton";
+import PublicPageSkeleton from "../../shared/components/PublicPageSkeleton";
+
 export function PublicRoutes() {
   return (
     <>
@@ -26,7 +29,7 @@ export function PublicRoutes() {
           path="/"
           element={
             <ProtectedRoute requiredRole="applicant" requireAuth={false}>
-              <RouteShell name="LandingPage">
+              <RouteShell name="LandingPage" fallback={<LandingPageSkeleton />}>
                 <LandingPage />
               </RouteShell>
             </ProtectedRoute>
@@ -35,7 +38,7 @@ export function PublicRoutes() {
         <Route
           path="/privacy-policy"
           element={
-            <RouteShell name="PrivacyPolicy">
+            <RouteShell name="PrivacyPolicy" fallback={<PublicPageSkeleton />}>
               <PrivacyPolicyPage />
             </RouteShell>
           }
@@ -43,7 +46,7 @@ export function PublicRoutes() {
         <Route
           path="/terms-of-service"
           element={
-            <RouteShell name="TermsOfService">
+            <RouteShell name="TermsOfService" fallback={<PublicPageSkeleton />}>
               <TermsOfServicePage />
             </RouteShell>
           }
@@ -91,7 +94,7 @@ export function PublicRoutes() {
         <Route
           path="/auth-action"
           element={
-            <RouteShell name="AuthAction">
+            <RouteShell name="AuthAction" fallback={<PublicPageSkeleton />}>
               <AuthAction />
             </RouteShell>
           }
@@ -109,7 +112,7 @@ export function PublicRoutes() {
         <Route
           path="/verify-email"
           element={
-            <RouteShell name="VerifyEmail">
+            <RouteShell name="VerifyEmail" fallback={<PublicPageSkeleton />}>
               <VerifyEmail />
             </RouteShell>
           }

@@ -13,6 +13,14 @@ import {
   TenantAnnouncementsPage,
 } from "../lazyPages";
 
+import CheckAvailabilityPageSkeleton from "../../features/tenant/components/check-availability/CheckAvailabilityPageSkeleton";
+import TenantLayoutSkeleton from "../../shared/layouts/TenantLayoutSkeleton";
+import ProfilePageSkeleton from "../../features/tenant/components/profile/ProfilePageSkeleton";
+import ContractsPageSkeleton from "../../features/tenant/components/contracts/ContractsPageSkeleton";
+import BillingPageSkeleton from "../../features/tenant/components/billing/BillingPageSkeleton";
+import MaintenancePageSkeleton from "../../features/tenant/components/maintenance/MaintenancePageSkeleton";
+import AnnouncementsPageSkeleton from "../../features/tenant/components/announcements/AnnouncementsPageSkeleton";
+
 export function TenantRoutes() {
   return (
     <>
@@ -37,7 +45,7 @@ export function TenantRoutes() {
         path="/applicant/check-availability"
         element={
           <ProtectedRoute requiredRole="applicant" requireAuth={false}>
-            <RouteShell name="CheckAvailability">
+            <RouteShell name="CheckAvailability" fallback={<CheckAvailabilityPageSkeleton />}>
               <CheckAvailabilityPage />
             </RouteShell>
           </ProtectedRoute>
@@ -47,7 +55,7 @@ export function TenantRoutes() {
         path="/applicant"
         element={
           <ProtectedRoute requiredRole="applicant">
-            <RouteShell name="TenantLayout">
+            <RouteShell name="TenantLayout" fallback={<TenantLayoutSkeleton />}>
               <TenantLayout />
             </RouteShell>
           </ProtectedRoute>
@@ -56,7 +64,7 @@ export function TenantRoutes() {
         <Route
           path="reservation"
           element={
-            <RouteShell name="ReservationFlow">
+            <RouteShell name="ReservationFlow" fallback={<TenantLayoutSkeleton />}>
               <ReservationFlowPage />
             </RouteShell>
           }
@@ -64,7 +72,7 @@ export function TenantRoutes() {
         <Route
           path="profile"
           element={
-            <RouteShell name="Profile">
+            <RouteShell name="Profile" fallback={<ProfilePageSkeleton />}>
               <ProfilePage />
             </RouteShell>
           }
@@ -73,7 +81,7 @@ export function TenantRoutes() {
           path="contracts"
           element={
             <ProtectedRoute requiredRole="tenant">
-              <RouteShell name="Contracts">
+              <RouteShell name="Contracts" fallback={<ContractsPageSkeleton />}>
                 <ContractsPage />
               </RouteShell>
             </ProtectedRoute>
@@ -83,7 +91,7 @@ export function TenantRoutes() {
           path="billing"
           element={
             <ProtectedRoute requiredRole="tenant">
-              <RouteShell name="Billing">
+              <RouteShell name="Billing" fallback={<BillingPageSkeleton />}>
                 <TenantBillingPage />
               </RouteShell>
             </ProtectedRoute>
@@ -93,7 +101,7 @@ export function TenantRoutes() {
           path="maintenance"
           element={
             <ProtectedRoute requiredRole="tenant">
-              <RouteShell name="Maintenance">
+              <RouteShell name="Maintenance" fallback={<MaintenancePageSkeleton />}>
                 <TenantMaintenancePage />
               </RouteShell>
             </ProtectedRoute>
@@ -103,7 +111,7 @@ export function TenantRoutes() {
           path="announcements"
           element={
             <ProtectedRoute requiredRole="tenant">
-              <RouteShell name="Announcements">
+              <RouteShell name="Announcements" fallback={<AnnouncementsPageSkeleton />}>
                 <TenantAnnouncementsPage />
               </RouteShell>
             </ProtectedRoute>

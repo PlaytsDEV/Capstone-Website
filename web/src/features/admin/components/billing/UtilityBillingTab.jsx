@@ -401,7 +401,7 @@ const UtilityBillingTab = ({
   onOwnerBranchChange,
 }) => {
   const { user } = useAuth();
-  const isOwner = user?.role === "owner" || user?.role === "superadmin" /* legacy */;
+  const isOwner = user?.role === "owner";
   const notify = useBillingNotifier();
 
   /** Mask tenant name for privacy: "Leander Ponce" -> "Leander *****" */

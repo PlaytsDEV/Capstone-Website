@@ -1,6 +1,6 @@
 import React from "react";
 import "../styles/bed-selector.css";
-import { getBedDisplayLabel, groupBedsByBunk } from "../../shared/utils/bedIdentifier";
+import { getBedDisplayLabel, groupBedsByBunk } from "../../../shared/utils/bedIdentifier";
 
 /**
  * Visual Bed Selector — minimalist double-deck bunk bed layout (Bunk A, Bunk B... Upper / Lower).

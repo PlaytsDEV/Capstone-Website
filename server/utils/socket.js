@@ -28,7 +28,7 @@ const ADMIN_ROLES = new Set(ADMIN_ROLE_VALUES);
 
 const adminBranchRoom = (branch) => `admins:branch:${branch}`;
 const isOwnerLike = (role, claims = {}) =>
-  isOwnerRole(role) || Boolean(claims.owner || claims.superadmin);
+  isOwnerRole(role) || Boolean(claims.owner);
 
 const getSocketOrigin = (socket) => socket.handshake.headers?.origin || "";
 const getSocketTransport = (socket) =>
@@ -148,7 +148,7 @@ export function initSocket(httpServer, options = {}) {
       socket.join(`user:${userId}`);
     }
 
-    if (ADMIN_ROLES.has(role) || claims.branch_admin || claims.owner || claims.superadmin /* legacy */) {
+    if (ADMIN_ROLES.has(role) || claims.branch_admin || claims.owner) {
       socket.join("admins");
 
       if (isOwnerLike(role, claims)) {

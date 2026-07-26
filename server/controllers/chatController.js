@@ -355,13 +355,12 @@ async function resolveAdminContext(req) {
     dbUser?.role ||
     req.user?.dbRole ||
     (req.user?.owner ? "owner" : "") ||
-    (req.user?.superadmin ? "owner" : "") ||
     (req.user?.branch_admin ? "branch_admin" : "");
 
   const normalizedRole = String(role || "").toLowerCase();
   const isOwnerLike =
     isOwnerRole(normalizedRole) ||
-    Boolean(req.user.owner || req.user.superadmin /* legacy */);
+    Boolean(req.user.owner);
   const isBranchAdmin =
     normalizedRole === "branch_admin" || Boolean(req.user.branch_admin);
 

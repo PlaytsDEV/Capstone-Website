@@ -183,14 +183,13 @@ const userSchema = new mongoose.Schema(
     // --- Role & Reservation Status ---
     role: {
       type: String,
-      enum: ["applicant", "tenant", "branch_admin", "owner", "superadmin"],
+      enum: ["applicant", "tenant", "branch_admin", "owner"],
       default: "applicant",
       // Role lifecycle:
       // - "applicant" (registered, browsing, reserving — web only)
       // - "tenant" (signed contract, active resident — web + mobile)
       // - "branch_admin" (branch operations staff — web only)
-      // - "owner" (system owner, multi-branch — web only)
-      // - "superadmin" (legacy alias for owner — retained for backward compat)
+      // - "owner" (system owner / super admin, multi-branch — web only)
     },
 
     tenantStatus: {

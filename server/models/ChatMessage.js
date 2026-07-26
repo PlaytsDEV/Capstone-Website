@@ -26,7 +26,7 @@ const chatMessageSchema = new mongoose.Schema(
     },
     senderRole: {
       type: String,
-      enum: ["tenant", "admin", "owner", "superadmin" /* legacy — migrate via scripts/migrate-superadmin-to-owner.js */],
+      enum: ["tenant", "admin", "owner"],
       required: true,
       index: true,
     },

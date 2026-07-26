@@ -17,7 +17,7 @@ const tabs = [
 
 const AdminBillingPage = () => {
   const { user } = useAuth();
-  const isOwner = user?.role === "owner" || user?.role === "superadmin";
+  const isOwner = user?.role === "owner";
   const [activeTab, setActiveTab] = useState("electricity");
   const [branchFilter, setBranchFilter] = useState("");
 

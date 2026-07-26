@@ -1,0 +1,133 @@
+/* ═══════════════════════════════════════════════════
+   ToggleSwitch Component CSS — Design Tokens Compliant
+   ═══════════════════════════════════════════════════ */
+
+.ts-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  user-select: none;
+}
+
+/* Track Base */
+.ts-track {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  background-color: var(--muted-foreground, #94a3b8);
+  opacity: 0.5;
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  padding: 2px;
+  transition: background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.2s ease;
+  outline: none;
+}
+
+.ts-track:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary, #6366f1) 35%, transparent);
+}
+
+/* Checked State */
+.ts-track.ts-checked {
+  background-color: var(--success, #10b981);
+  opacity: 1;
+  border-color: color-mix(in srgb, var(--success, #10b981) 85%, black);
+}
+
+/* Thumb Knob */
+.ts-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background-color: #ffffff;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25);
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  flex-shrink: 0;
+}
+
+.ts-thumb-icon {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.ts-icon-check {
+  color: var(--success, #10b981);
+}
+
+.ts-icon-x {
+  color: var(--muted-foreground, #64748b);
+  opacity: 0.6;
+}
+
+/* Size Variants */
+
+/* Small (sm) */
+.ts-sm .ts-track {
+  width: 36px;
+  height: 20px;
+}
+.ts-sm .ts-thumb {
+  width: 14px;
+  height: 14px;
+}
+.ts-sm .ts-track.ts-checked .ts-thumb {
+  transform: translateX(16px);
+}
+.ts-sm .ts-thumb-icon {
+  width: 9px;
+  height: 9px;
+}
+
+/* Medium (md - default) */
+.ts-md .ts-track {
+  width: 46px;
+  height: 25px;
+}
+.ts-md .ts-thumb {
+  width: 19px;
+  height: 19px;
+}
+.ts-md .ts-track.ts-checked .ts-thumb {
+  transform: translateX(21px);
+}
+.ts-md .ts-thumb-icon {
+  width: 12px;
+  height: 12px;
+}
+
+/* Large (lg) */
+.ts-lg .ts-track {
+  width: 56px;
+  height: 30px;
+}
+.ts-lg .ts-thumb {
+  width: 24px;
+  height: 24px;
+}
+.ts-lg .ts-track.ts-checked .ts-thumb {
+  transform: translateX(26px);
+}
+.ts-lg .ts-thumb-icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* Disabled State */
+.ts-disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.ts-disabled .ts-track {
+  cursor: not-allowed;
+}
+
+.ts-label {
+  font-size: var(--font-size-sm, 14px);
+  color: var(--foreground, #1e293b);
+  cursor: pointer;
+  font-weight: 500;
+}
