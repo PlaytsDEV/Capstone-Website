@@ -407,3 +407,26 @@ export const verifyApplicant = async (req, res, next) => {
     sendError(res, "Access denied", 403, "ACCESS_DENIED");
   }
 };
+
+/**
+ * Verify Resource Ownership (IDOR Protection)
+ * Prevents tenants from inspecting or mutating resources of other tenants via URL parameter tampering.
+ */
+export const verifyResourceOwnership = (paramName = "tenantId") => {
+  return (req, res, next) => {
+    if (req.user?.branch_admin || req.user?.owner) {
+      return next();
+    }
+    const requestedId = req.params[paramName] || req.query[paramName] || req.body[paramName];
+    const authenticatedId = req.user?._id?.toString() || req.user?.mongoId?.toString() || req.user?.uid;
+    if (requestedId && authenticatedId && requestedId.toString() !== authenticatedId.toString()) {
+      return sendError(
+        res,
+        "Access denied. You can only access your own resources.",
+        403,
+        "IDOR_ACCESS_DENIED"
+      );
+    }
+    next();
+  };
+};

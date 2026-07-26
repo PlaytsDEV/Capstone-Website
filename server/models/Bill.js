@@ -198,9 +198,32 @@ const billSchema = new mongoose.Schema(
     // --- Payment Status ---
     status: {
       type: String,
-      enum: ["draft", "pending", "paid", "overdue", "partially-paid"],
+      enum: ["draft", "pending", "paid", "overdue", "partially-paid", "voided"],
       default: "pending",
       index: true,
+    },
+    // --- Milestone & Sub-Invoice Extensions ---
+    invoiceVersion: {
+      type: Number,
+      default: 1,
+    },
+    isMilestoneSubInvoice: {
+      type: Boolean,
+      default: false,
+    },
+    parentInvoiceId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Bill",
+      default: null,
+      index: true,
+    },
+    milestoneIndex: {
+      type: Number,
+      default: null,
+    },
+    milestoneDueDate: {
+      type: Date,
+      default: null,
     },
     paidAmount: {
       type: Number,

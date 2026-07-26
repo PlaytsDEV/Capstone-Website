@@ -553,6 +553,18 @@ const maintenanceRequestSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // Deduplication & Cost Attribution
+    deduplicationHash: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    chargeableTenantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
+    },
   },
   {
     collection: "maintenance_requests",

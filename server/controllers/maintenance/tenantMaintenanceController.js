@@ -7,6 +7,7 @@
  * reopening, listing, and tenant conversation replies.
  */
 
+import crypto from "crypto";
 import {
   MIN_MAINTENANCE_DESCRIPTION_LENGTH,
   MAINTENANCE_REQUEST_TYPES,
@@ -191,6 +192,11 @@ export const createRequest = async (req, res, next) => {
       relatedId: requestId,
     });
 
+    const deduplicationHash = crypto
+      .createHash("md5")
+      .update(`${dbUser.user_id}_${requestType}_${description.toLowerCase().trim()}`)
+      .digest("hex");
+
     const request = buildMaintenanceDocument({
       dbUser,
       branch: branchResolution.branch,
@@ -202,6 +208,7 @@ export const createRequest = async (req, res, next) => {
       urgency,
       attachments,
     });
+    request.deduplicationHash = deduplicationHash;
 
     await request.save();
 

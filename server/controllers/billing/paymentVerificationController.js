@@ -242,3 +242,27 @@ export const getPendingVerifications = async (req, res, next) => {
     next(error);
   }
 };
+
+import { createMilestoneSubInvoices } from "../../services/milestoneInvoiceService.js";
+
+export const approvePaymentArrangement = async (req, res, next) => {
+  try {
+    const { billId } = req.params;
+    const { milestones } = req.body;
+    const admin = await getAdminInfo(req);
+
+    const subInvoices = await createMilestoneSubInvoices(
+      billId,
+      milestones,
+      admin._id || admin.uid
+    );
+
+    res.json({
+      success: true,
+      message: `Payment arrangement approved. Generated ${subInvoices.length} milestone sub-invoices.`,
+      subInvoices,
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+};
