@@ -218,8 +218,11 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
     () => [...(contract?.preparedDocuments || [])].sort((a, b) => b.version - a.version),
     [contract],
   );
-  const currentPrepared = versions.find((document) => document.superseded !== true) || null;
-  const currentVersion = Number(currentPrepared?.version) || 0;
+  const preparedAvailable = contract?.documents?.prepared?.available === true;
+  const currentPreparedMetadata =
+    versions.find((document) => document.superseded !== true) || null;
+  const currentPrepared = preparedAvailable ? currentPreparedMetadata : null;
+  const currentVersion = Number(currentPreparedMetadata?.version) || 0;
   const canGenerate = contract?.status === "ready_for_generation" && validation?.valid === true;
   const canRegenerate = contract?.status === "generated" &&
     !contract?.signedStorageKey && !contract?.notarizedStorageKey && !contract?.finalStorageKey;
@@ -417,7 +420,11 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
   return (
     <DetailDrawer open={open} onClose={onClose} width={1320} className="contract-detail-drawer"
       title={contract?.contractNumber || "Contract Details"}
-      subtitle={contract ? getContractStage(contract.status) : "Loading Contract"}>
+      subtitle={contract
+        ? contract.status === "generated" && contract.documents?.prepared?.available !== true
+          ? "Prepared PDF Unavailable"
+          : getContractStage(contract.status)
+        : "Loading Contract"}>
       {loading && <div className="contract-loading">Loading Contract…</div>}
       {error && <div className="contract-alert contract-alert--error">{error}</div>}
       {contract && <>
@@ -488,7 +495,7 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
             <h4>Prepared Contract</h4>
             <div className="contract-action-row">
               {currentPrepared && <button className="contract-button" disabled={busy} onClick={() => openFile(currentPrepared.version, "preview")}><Eye size={16}/>View Prepared Copy</button>}
-              <button className="contract-button contract-button--secondary" disabled={busy} onClick={() => {
+              <button className="contract-button contract-button--secondary" disabled={busy || !preparedAvailable} onClick={() => {
                 showWorkflow({
                   title: "Mark Prepared Contract as Printed",
                   message: "Confirm that the prepared Contract has been physically printed for wet signing and in-person notarization.",
@@ -566,6 +573,10 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
           {contract.status === "generated" && !currentPrepared && <div className="contract-alert contract-alert--error" data-error-code="CURRENT_PREPARED_DOCUMENT_UNAVAILABLE">
             <strong>Current prepared document unavailable.</strong>
             <p>The Contract is marked as generated, but no current prepared file is available.</p>
+            {canRegenerate && !preparedAvailable &&
+              <button className="contract-button" type="button" onClick={() => setConfirmGeneration(true)}>
+                Regenerate Prepared Copy
+              </button>}
             <button className="contract-link-button" type="button" disabled={busy} onClick={validate}>Refresh Checks</button>
           </div>}
         </section>}
@@ -594,7 +605,11 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
             <span><small>Lease term</small>{formatContractValue(contract.roomType)} · {formatContractValue(contract.leaseType)}</span>
             <span><small>Lease dates</small>{date(contract.leaseStartDate)} — {date(contract.leaseEndDate)}</span>
             <span><small>Approved monthly rate</small>{money(contract.approvedMonthlyRate)}</span>
-            <span><small>Current stage</small>{getContractStage(contract.status)}</span>
+            <span><small>Current stage</small>{
+              contract.status === "generated" && !preparedAvailable
+                ? "Prepared PDF Unavailable"
+                : getContractStage(contract.status)
+            }</span>
           </div>
         </section>
 
@@ -611,7 +626,11 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
         </section>
 
         <section className="contract-panel contract-documents">
-          {!currentPrepared ? <div className="contract-document-empty"><strong>Prepared document</strong><span>Not yet generated</span></div> :
+          {!currentPrepared ? <div className="contract-document-empty"><strong>Prepared document</strong><span>
+            {currentPreparedMetadata
+              ? "The prepared Contract file is missing from storage. Regeneration is required."
+              : "Not yet generated"}
+          </span></div> :
             <><h3>Current Document Status</h3>
               <div className="contract-current-document">
                 <dl><dt>Prepared Version</dt><dd>{currentPrepared.version}</dd>

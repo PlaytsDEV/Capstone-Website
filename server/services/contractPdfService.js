@@ -15,9 +15,12 @@ import {
 } from "./contractPdfTextService.js";
 import {
   buildPreparedContractStorage,
-  removePrivateContractFile,
-  writePrivateContractAtomically,
 } from "./contractPrivateStorageService.js";
+import {
+  inspectPreparedContractDocument,
+  removePreparedContractDocument,
+  storePreparedContractDocument,
+} from "./contractDocumentStorageService.js";
 import { renderContractHtmlPdf } from "./contractHtmlPdfService.js";
 
 const pdfError = (message, code, statusCode = 400, details = undefined) =>
@@ -628,6 +631,7 @@ export const generatePreparedContractPdf = async ({
     ...(contract.preparedDocuments || []).map((document) => Number(document.version) || 0),
   ) + 1;
   const target = buildPreparedContractStorage({
+    contractId: String(contract._id),
     branch: contract.branch,
     year: contract.contractYear,
     contractNumber: contract.contractNumber,
@@ -639,16 +643,30 @@ export const generatePreparedContractPdf = async ({
   });
   const generatedAt = new Date();
   const fileHash = crypto.createHash("sha256").update(rendered.bytes).digest("hex");
-  let written = false;
+  let storedDocument = null;
   try {
-    await writePrivateContractAtomically(target, rendered.bytes);
-    written = true;
+    storedDocument = await storePreparedContractDocument({
+      target,
+      bytes: rendered.bytes,
+      metadata: {
+        contractId: contract._id,
+        contractNumber: contract.contractNumber,
+        documentType: "prepared",
+        version: generatedVersion,
+        fileHash,
+      },
+    });
+    await inspectPreparedContractDocument({
+      storageProvider: storedDocument.provider,
+      storageKey: storedDocument.storageKey,
+    });
     const previousStatus = contract.status;
     for (const document of contract.preparedDocuments || []) document.superseded = true;
     contract.preparedDocuments.push({
       documentType: "prepared",
       version: generatedVersion,
-      storageKey: target.storageKey,
+      storageProvider: storedDocument.provider,
+      storageKey: storedDocument.storageKey,
       fileName: target.fileName,
       fileHash,
       fileSize: rendered.bytes.length,
@@ -691,7 +709,12 @@ export const generatePreparedContractPdf = async ({
       isRegeneration,
     };
   } catch (error) {
-    if (written) await removePrivateContractFile(target.absolutePath).catch(() => {});
+    if (storedDocument) {
+      await removePreparedContractDocument({
+        storageProvider: storedDocument.provider,
+        storageKey: storedDocument.storageKey,
+      }).catch(() => {});
+    }
     throw error;
   }
 };

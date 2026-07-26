@@ -24,6 +24,11 @@ const preparedDocumentSchema = new mongoose.Schema(
   {
     documentType: { type: String, enum: ["prepared"], default: "prepared" },
     version: { type: Number, required: true, min: 1 },
+    storageProvider: {
+      type: String,
+      enum: ["local", "firebase-storage"],
+      default: "local",
+    },
     storageKey: { type: String, required: true },
     fileName: { type: String, required: true },
     fileHash: { type: String, required: true },

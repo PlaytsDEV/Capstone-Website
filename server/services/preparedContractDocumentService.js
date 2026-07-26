@@ -1,5 +1,4 @@
-import fsPromises from "fs/promises";
-import { resolvePrivateContractStorageKey } from "./contractPrivateStorageService.js";
+import { inspectPreparedContractDocument } from "./contractDocumentStorageService.js";
 
 export const PREPARED_DOCUMENT_VISIBLE_STATUSES = Object.freeze([
   "generated",
@@ -16,7 +15,7 @@ export const PREPARED_DOCUMENT_VISIBLE_STATUSES = Object.freeze([
 ]);
 
 const unavailableError = () => Object.assign(
-  new Error("The prepared document is temporarily unavailable."),
+  new Error("The prepared Contract has not been generated yet."),
   { statusCode: 404, code: "PREPARED_DOCUMENT_UNAVAILABLE" },
 );
 
@@ -36,13 +35,10 @@ export const resolveCurrentPreparedDocument = async (contract) => {
   const document = selectCurrentPreparedDocument(contract);
   if (!document) throw unavailableError();
 
-  let absolutePath;
-  try {
-    absolutePath = resolvePrivateContractStorageKey(document.storageKey);
-  } catch {
-    throw unavailableError();
-  }
-  const stat = await fsPromises.stat(absolutePath).catch(() => null);
-  if (!stat?.isFile()) throw unavailableError();
-  return { document, absolutePath, stat };
+  const stored = await inspectPreparedContractDocument(document);
+  return {
+    document,
+    ...stored,
+    stat: { size: stored.size, isFile: () => true },
+  };
 };

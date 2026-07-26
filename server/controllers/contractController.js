@@ -11,7 +11,7 @@ import {
 } from "../services/contractService.js";
 import { buildContractGenerationData } from "../services/contractGenerationDataService.js";
 import { generatePreparedContractPdf } from "../services/contractPdfService.js";
-import { resolvePrivateContractStorageKey } from "../services/contractPrivateStorageService.js";
+import { inspectPreparedContractDocument } from "../services/contractDocumentStorageService.js";
 import { toTenantContractView } from "../services/tenantContractViewService.js";
 import {
   resolveCurrentPreparedDocument,
@@ -104,7 +104,22 @@ export const listContracts = async (req, res) => {
         : req.query.status;
     }
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
-    const contracts = await Contract.find(query).sort({ createdAt: -1 }).limit(limit).lean();
+    const records = await Contract.find(query).sort({ createdAt: -1 }).limit(limit).lean();
+    const contracts = await Promise.all(records.map(async (contract) => {
+      let preparedDocumentAvailable = false;
+      if (selectCurrentPreparedDocument(contract)) {
+        preparedDocumentAvailable = await resolveCurrentPreparedDocument(contract)
+          .then(() => true)
+          .catch(() => false);
+      }
+      return {
+        ...contract,
+        preparedDocuments: (contract.preparedDocuments || []).map(
+          ({ storageKey: _storageKey, ...document }) => document,
+        ),
+        preparedDocumentAvailable,
+      };
+    }));
     res.json({ contracts });
   } catch (error) {
     fail(res, error);
@@ -136,6 +151,39 @@ export const getContract = async (req, res) => {
     const reservation = await Reservation.findById(contract.reservationId)
       .select("reservationFeeAmount paymentStatus").lean();
     const contractObject = contract.toObject();
+    let preparedAvailability = {
+      available: false,
+      documentId: null,
+      generatedAt: null,
+      fileName: null,
+      version: null,
+      issue: "not_generated",
+    };
+    const selectedPrepared = selectCurrentPreparedDocument(contract);
+    if (selectedPrepared) {
+      try {
+        const resolved = await resolveCurrentPreparedDocument(contract);
+        preparedAvailability = {
+          available: true,
+          documentId: `${contract._id}:prepared:${resolved.document.version}`,
+          generatedAt: resolved.document.generatedAt,
+          fileName: resolved.document.fileName,
+          version: resolved.document.version,
+          fileSize: resolved.size,
+          pageCount: resolved.document.pageCount,
+          issue: null,
+        };
+      } catch (availabilityError) {
+        preparedAvailability = {
+          available: false,
+          documentId: `${contract._id}:prepared:${selectedPrepared.version}`,
+          generatedAt: selectedPrepared.generatedAt,
+          fileName: selectedPrepared.fileName,
+          version: selectedPrepared.version,
+          issue: availabilityError.code || "PREPARED_DOCUMENT_UNAVAILABLE",
+        };
+      }
+    }
     delete contractObject.signedStorageKey;
     delete contractObject.notarizedStorageKey;
     delete contractObject.finalStorageKey;
@@ -149,6 +197,15 @@ export const getContract = async (req, res) => {
     contractObject.notarizedDocuments = (contractObject.notarizedDocuments || []).map(
       ({ storageKey: _storageKey, ...document }) => document,
     );
+    contractObject.preparedDocuments = (contractObject.preparedDocuments || []).map(
+      ({ storageKey: _storageKey, ...document }) => document,
+    );
+    contractObject.documents = {
+      prepared: preparedAvailability,
+      signed: { available: Boolean(contractObject.signedDocuments?.length) },
+      notarized: { available: Boolean(contractObject.notarizedDocuments?.length) },
+      final: { available: Boolean(contractObject.finalDocument) },
+    };
     contractObject.initialPaymentSummary = buildInitialPaymentSummary({
       advanceRentAmount: contract.advanceRentAmount,
       securityDepositAmount: contract.securityDepositAmount,
@@ -727,9 +784,7 @@ export const streamPreparedContract = async (req, res) => {
       (entry) => entry.version === requestedVersion,
     );
     if (!document) return res.status(404).json({ error: "Prepared Contract file not found.", code: "PREPARED_CONTRACT_NOT_FOUND" });
-    const absolutePath = resolvePrivateContractStorageKey(document.storageKey);
-    const stat = await fsPromises.stat(absolutePath).catch(() => null);
-    if (!stat?.isFile()) return res.status(404).json({ error: "Prepared Contract file not found.", code: "PREPARED_CONTRACT_NOT_FOUND" });
+    const resolved = await inspectPreparedContractDocument(document);
     await auditLogger.logModification(
       req,
       "contract",
@@ -739,11 +794,11 @@ export const streamPreparedContract = async (req, res) => {
       `Prepared Contract PDF downloaded by admin (version ${requestedVersion})`,
     );
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Length", stat.size);
+    res.setHeader("Content-Length", resolved.size);
     res.setHeader("Content-Disposition", `inline; filename="${document.fileName.replaceAll('"', "")}"`);
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("Pragma", "no-cache");
-    fs.createReadStream(absolutePath).on("error", (error) => {
+    resolved.createReadStream().on("error", (error) => {
       if (!res.headersSent) fail(res, error);
       else res.destroy(error);
     }).pipe(res);
@@ -842,14 +897,15 @@ export const streamMyPreparedContract = async (req, res) => {
         code: "PREPARED_DOCUMENT_UNAVAILABLE",
       });
     }
-    const { document, absolutePath, stat } = await resolveCurrentPreparedDocument(contract);
+    const { document, size: fileSize, createReadStream } =
+      await resolveCurrentPreparedDocument(contract);
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Length", stat.size);
+    res.setHeader("Content-Length", fileSize);
     const disposition = req.query.download === "1" ? "attachment" : "inline";
     res.setHeader("Content-Disposition", `${disposition}; filename="${document.fileName.replaceAll('"', "")}"`);
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("Pragma", "no-cache");
-    fs.createReadStream(absolutePath).on("error", (error) => {
+    createReadStream().on("error", (error) => {
       if (!res.headersSent) fail(res, error);
       else res.destroy(error);
     }).pipe(res);

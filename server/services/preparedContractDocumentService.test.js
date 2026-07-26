@@ -30,10 +30,10 @@ describe("current prepared Contract document resolver", () => {
     expect(selectCurrentPreparedDocument(contract()).version).toBe(2);
   });
 
-  test("missing private file returns the controlled unavailable error", async () => {
+  test("missing physical file is distinguished from missing metadata", async () => {
     await expect(resolveCurrentPreparedDocument(contract())).rejects.toMatchObject({
-      code: "PREPARED_DOCUMENT_UNAVAILABLE",
-      statusCode: 404,
+      code: "PREPARED_DOCUMENT_STORAGE_MISSING",
+      statusCode: 410,
     });
   });
 
