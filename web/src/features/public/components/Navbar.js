@@ -3,6 +3,7 @@ import { RippleButton } from "../../../registry/magicui/ripple-button";
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
+import useBodyScrollLock from "../../../shared/hooks/useBodyScrollLock";
 import ThemeToggleButton from "./ThemeToggleButton";
 import { useTheme } from "../context/ThemeContext";
 import logo from "../../../assets/images/LOGO.svg";
@@ -55,11 +56,7 @@ export function Navigation({ type } = {}) {
     return () => observers.forEach((obs) => obs.disconnect());
   }, []);
 
-  // Lock body scroll when mobile menu is open
-  useEffect(() => {
-    document.body.style.overflow = isMenuOpen ? "hidden" : "";
-    return () => { document.body.style.overflow = ""; };
-  }, [isMenuOpen]);
+  useBodyScrollLock(isMenuOpen);
 
   // Determine profile URL based on role
   const isAdmin = user?.role === "branch_admin" || user?.role === "owner";

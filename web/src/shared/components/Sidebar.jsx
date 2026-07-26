@@ -20,6 +20,7 @@ import {
 import { useAuth } from "../hooks/useAuth";
 import { useAppNavigation } from "../hooks/useAppNavigation";
 import { useUnreadCount } from "../hooks/queries/useNotifications";
+import useBodyScrollLock from "../hooks/useBodyScrollLock";
 import { USER_ROLES } from "../utils/constants";
 import ConfirmModal from "./ConfirmModal";
 import { showNotification } from "../utils/notification";
@@ -149,14 +150,7 @@ export default function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleColl
     return () => window.removeEventListener("resize", handleResize);
   }, [isOpen, toggleSidebar]);
 
-  useEffect(() => {
-    if (isMobile && isOpen) {
-      document.body.style.overflow = "hidden";
-      return () => { document.body.style.overflow = ""; };
-    }
-    document.body.style.overflow = "";
-    return undefined;
-  }, [isMobile, isOpen]);
+  useBodyScrollLock(isMobile && isOpen);
 
   const isItemActive = (item) => {
     if (item.path !== location.pathname) return false;

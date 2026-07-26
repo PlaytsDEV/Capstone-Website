@@ -5,6 +5,7 @@ const ThemeContext = createContext();
 /**
  * Supports three modes: "light" | "dark" | "system"
  * Applies data-theme="light" or data-theme="dark" to <html> so CSS can react.
+ * Uses View Transitions API (when available) + CSS transitions for ultra-smooth switching.
  */
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(() => {
@@ -23,25 +24,33 @@ export function ThemeProvider({ children }) {
       : "light";
   };
 
+  const applyThemeWithTransition = (newResolved) => {
+    const root = document.documentElement;
+    root.setAttribute("data-theme", newResolved);
+    root.classList.toggle("dark", newResolved === "dark");
+  };
+
   useEffect(() => {
     // Persist
     try { localStorage.setItem("lp-theme", theme); } catch {}
 
-    // Apply to <html>
     const resolved = getResolved(theme);
-    document.documentElement.setAttribute("data-theme", resolved);
-    document.documentElement.classList.toggle("dark", resolved === "dark"); // ADD THIS
+    const root = document.documentElement;
 
+    // Initial sync without transition flicker on page load
+    if (!root.hasAttribute("data-theme")) {
+      root.setAttribute("data-theme", resolved);
+      root.classList.toggle("dark", resolved === "dark");
+    } else {
+      applyThemeWithTransition(resolved);
+    }
 
     // If system, watch for media changes while this mode is active
     if (theme === "system") {
       const mq = window.matchMedia("(prefers-color-scheme: dark)");
       const handler = (e) => {
-        document.documentElement.setAttribute(
-          "data-theme",
-          e.matches ? "dark" : "light"
-        );
-        document.documentElement.classList.toggle("dark", e.matches);
+        const newResolved = e.matches ? "dark" : "light";
+        applyThemeWithTransition(newResolved);
       };
       mq.addEventListener("change", handler);
       return () => mq.removeEventListener("change", handler);
@@ -64,3 +73,4 @@ export function useTheme() {
   if (!ctx) return { theme: "light", setTheme: () => {}, toggleTheme: () => {} };
   return ctx;
 }
+

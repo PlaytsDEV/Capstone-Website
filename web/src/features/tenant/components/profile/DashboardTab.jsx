@@ -26,6 +26,7 @@ const DashboardTab = ({
  selectedReservation,
  visits,
  onGoToPersonal,
+ onGoToReservation,
 }) => {
  const navigate = useNavigate();
  const res = selectedReservation;
@@ -122,6 +123,7 @@ const DashboardTab = ({
  <ReservationDashboard
  reservation={selectedReservation}
  visits={visits}
+ onGoToReservation={onGoToReservation}
  />
  <div style={S.shortcutsGrid}>
  <button

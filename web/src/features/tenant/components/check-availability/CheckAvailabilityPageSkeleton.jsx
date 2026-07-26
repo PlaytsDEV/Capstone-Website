@@ -1,119 +1,72 @@
 import React from "react";
 import SkeletonPulse from "../../../../shared/components/SkeletonPulse";
+import CheckAvailabilitySkeleton from "./CheckAvailabilitySkeleton";
+import "../../styles/check-availability.css";
 
 /**
  * CheckAvailabilityPageSkeleton — Suspense fallback for the
  * /applicant/check-availability route (full-page bundle-load skeleton).
  *
- * Mirrors the real page structure:
- *   1. AvailabilityHeader (logo | filter bar | user button) — single sticky row
- *   2. Page title + result count bar
- *   3. Responsive room card grid (8 cards)
- *
- * NOTE: The inner CheckAvailabilitySkeleton (card-only) is used for DATA
- * loading *inside* the page. This skeleton wraps the whole page viewport.
+ * Mirrors the exact page layout:
+ *   1. AvailabilityHeader sticky top bar (Logo | Filter Bar | User control)
+ *   2. Main container (max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8)
+ *   3. Title section (Available Rooms + room count)
+ *   4. Room grid (ca-grid) with 6 card skeletons via CheckAvailabilitySkeleton
  */
 export default function CheckAvailabilityPageSkeleton() {
   return (
     <div
       aria-hidden="true"
-      style={{
-        minHeight: "100vh",
-        backgroundColor: "#f9fafb",
-        display: "flex",
-        flexDirection: "column",
-      }}
+      className="min-h-screen"
+      style={{ backgroundColor: "var(--surface-page)" }}
     >
       {/* ── 1. AvailabilityHeader ──────────────────────────────────────── */}
       <header
+        className="sticky top-0 z-50"
         style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 100,
-          background: "#ffffff",
-          borderBottom: "1px solid #e5e7eb",
-          padding: "0 24px",
-          height: 64,
-          display: "flex",
-          alignItems: "center",
-          gap: 16,
+          backgroundColor: "var(--surface-card)",
+          borderBottom: "1px solid var(--border-divider)",
         }}
       >
-        {/* Logo */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          <SkeletonPulse width="32px" height="32px" borderRadius="8px" />
-          <SkeletonPulse width="88px" height="14px" />
-        </div>
+        <div className="max-w-screen-2xl mx-auto px-8 lg:px-12">
+          <div className="ca-header-row">
+            {/* Logo */}
+            <div className="ca-logo" style={{ pointerEvents: "none" }}>
+              <SkeletonPulse width="32px" height="32px" borderRadius="8px" />
+              <SkeletonPulse width="80px" height="18px" />
+            </div>
 
-        {/* Filter bar (search + dropdowns) */}
-        <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10 }}>
-          {/* Search input */}
-          <SkeletonPulse height="38px" borderRadius="8px" style={{ flex: 2 }} />
-          {/* Branch dropdown */}
-          <SkeletonPulse width="110px" height="38px" borderRadius="8px" />
-          {/* Room type dropdown */}
-          <SkeletonPulse width="110px" height="38px" borderRadius="8px" />
-          {/* Lease term dropdown */}
-          <SkeletonPulse width="110px" height="38px" borderRadius="8px" />
-          {/* Price dropdown */}
-          <SkeletonPulse width="120px" height="38px" borderRadius="8px" />
-        </div>
+            {/* Filter bar */}
+            <div className="ca-filter-bar" style={{ pointerEvents: "none" }}>
+              {/* Search input pill */}
+              <SkeletonPulse height="38px" borderRadius="999px" style={{ flex: 1, minWidth: 160 }} />
+              {/* Filter dropdown pills */}
+              <SkeletonPulse width="110px" height="38px" borderRadius="999px" />
+              <SkeletonPulse width="120px" height="38px" borderRadius="999px" />
+              <SkeletonPulse width="110px" height="38px" borderRadius="999px" />
+              <SkeletonPulse width="130px" height="38px" borderRadius="999px" />
+            </div>
 
-        {/* User / Sign-in button */}
-        <SkeletonPulse width="90px" height="36px" borderRadius="999px" style={{ flexShrink: 0 }} />
+            {/* User / Sign-in button */}
+            <SkeletonPulse width="88px" height="36px" borderRadius="999px" style={{ flexShrink: 0 }} />
+          </div>
+        </div>
       </header>
 
-      {/* ── 2. Title + result count bar ───────────────────────────────── */}
-      <div
-        style={{
-          padding: "20px 32px 12px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <SkeletonPulse width="220px" height="22px" />
-          <SkeletonPulse width="140px" height="13px" />
+      {/* ── 2. Main Page Body ───────────────────────────────────────────── */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Title + result count bar */}
+        <div style={{ marginBottom: "16px" }}>
+          <SkeletonPulse width="180px" height="28px" style={{ marginBottom: "8px" }} />
+          <SkeletonPulse width="110px" height="14px" />
         </div>
-        {/* Pagination / view controls */}
-        <SkeletonPulse width="120px" height="32px" borderRadius="8px" />
-      </div>
 
-      {/* ── 3. Room card grid ─────────────────────────────────────────── */}
-      <div
-        style={{
-          flex: 1,
-          padding: "12px 32px 40px",
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
-          gap: 20,
-        }}
-      >
-        {Array.from({ length: 8 }).map((_, i) => (
-          <article
-            key={i}
-            style={{
-              borderRadius: 16,
-              border: "1px solid #e5e7eb",
-              overflow: "hidden",
-              background: "#ffffff",
-            }}
-          >
-            {/* Room image */}
-            <SkeletonPulse width="100%" height="200px" borderRadius="0" />
-            {/* Card body */}
-            <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
-              <SkeletonPulse width="70%" height="16px" />
-              <SkeletonPulse width="50%" height="13px" />
-              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
-                <SkeletonPulse width="80px" height="13px" />
-                <SkeletonPulse width="70px" height="18px" />
-              </div>
-            </div>
-          </article>
-        ))}
-      </div>
+        {/* Room card grid */}
+        <div className="ca-grid">
+          <CheckAvailabilitySkeleton count={6} />
+        </div>
+      </main>
     </div>
   );
 }
+

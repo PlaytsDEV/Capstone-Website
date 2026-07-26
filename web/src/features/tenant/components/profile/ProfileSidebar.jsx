@@ -21,6 +21,7 @@ import {
  Megaphone,
 } from "lucide-react";
 import ProfileAvatar, { getProfileInitials } from "../../../../shared/components/ProfileAvatar";
+import useBodyScrollLock from "../../../../shared/hooks/useBodyScrollLock";
 
 /* ── Timing ─────────────────────────────────────────────────────────────── */
 const TRANSITION = "0.3s cubic-bezier(0.4, 0, 0.2, 1)";
@@ -132,15 +133,7 @@ const ProfileSidebar = ({
  return () => window.removeEventListener("resize", handler);
  }, []);
 
- // Lock body scroll when drawer is open
- useEffect(() => {
- if (drawerOpen) {
- document.body.style.overflow = "hidden";
- } else {
- document.body.style.overflow = "";
- }
- return () => { document.body.style.overflow = ""; };
- }, [drawerOpen]);
+ useBodyScrollLock(drawerOpen);
 
  const handleNavClick = useCallback((tabId) => {
  setActiveTab(tabId);

@@ -2,6 +2,7 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { showNotification } from "../../../shared/utils/notification";
+import BaseModal from "../../../shared/components/BaseModal";
 
 import {
   Home,
@@ -472,6 +473,7 @@ export default function ReservationDashboard({
   visits = [],
   feedback = null,
   onDismissFeedback,
+  onGoToReservation,
 }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -983,7 +985,13 @@ export default function ReservationDashboard({
                 </span>
               ) : (
                 <button
-                  onClick={() => setShowRequestCancelModal(true)}
+                  onClick={() => {
+                    if (onGoToReservation) {
+                      onGoToReservation();
+                    } else {
+                      setShowRequestCancelModal(true);
+                    }
+                  }}
                   style={styles.footerLinkDanger}
                 >
                   Request Cancellation
@@ -991,7 +999,13 @@ export default function ReservationDashboard({
               )
             ) : (
               <button
-                onClick={() => setShowCancelModal(true)}
+                onClick={() => {
+                  if (onGoToReservation) {
+                    onGoToReservation();
+                  } else {
+                    setShowCancelModal(true);
+                  }
+                }}
                 style={styles.footerLinkDanger}
               >
                 Cancel reservation
@@ -1001,153 +1015,100 @@ export default function ReservationDashboard({
         )}
 
       {/* ── Cancel Confirmation Modal ─────────────────────────────────────── */}
-      {showCancelModal && (
-        <div
-          style={styles.modalOverlay}
-          onClick={() => {
-            if (!isCancelling) setShowCancelModal(false);
-          }}
-        >
-          <div
-            style={styles.modalCard}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div style={styles.modalIcon}>
-              <AlertCircle
-                size={36}
-                strokeWidth={2.2}
-                color="#B91C1C"
-                aria-hidden="true"
-              />
-            </div>
-            <h3 style={styles.modalTitle}>Cancel reservation?</h3>
-            <p style={styles.modalDesc}>
-              This will permanently remove your reservation for{" "}
-              <strong>{roomName}</strong>. This action cannot be undone.
-            </p>
-            <div style={styles.modalActions}>
-              <button
-                onClick={async () => {
-                  setIsCancelling(true);
-                  try {
-                    const { reservationApi } = await import(
-                      "../../../shared/api/reservationApi"
-                    );
-                    await reservationApi.updateByUser(reservation._id, {
-                      cancelReservation: true,
-                    });
-                    setShowCancelModal(false);
-                    showNotification(
-                      "Reservation cancelled successfully.",
-                      "success",
-                      3000,
-                    );
-                    queryClient.invalidateQueries({
-                      queryKey: ["reservations"],
-                    });
-                  } catch (err) {
-                    console.error("Cancel failed:", err);
-                    setIsCancelling(false);
-                    setShowCancelModal(false);
-                    showNotification(
-                      "Failed to cancel reservation. Please try again.",
-                      "error",
-                      4000,
-                    );
-                  }
-                }}
-                disabled={isCancelling}
-                style={{
-                  ...styles.modalBtnDanger,
-                  opacity: isCancelling ? 0.6 : 1,
-                }}
-              >
-                {isCancelling ? "Cancelling..." : "Cancel reservation"}
-              </button>
-              <button
-                onClick={() => setShowCancelModal(false)}
-                style={styles.modalBtnSecondary}
-              >
-                Keep it
-              </button>
-            </div>
-            <p style={styles.modalHint}>Press Esc or click outside to dismiss</p>
-          </div>
-        </div>
-      )}
+      <BaseModal
+        isOpen={showCancelModal}
+        onClose={() => {
+          if (!isCancelling) setShowCancelModal(false);
+        }}
+        title="Cancel Reservation?"
+        subtitle={`Room: ${roomName}`}
+        variant="warning"
+        size="sm"
+        cancelText="Keep it"
+        confirmText={isCancelling ? "Cancelling..." : "Cancel Reservation"}
+        loading={isCancelling}
+        onConfirm={async () => {
+          setIsCancelling(true);
+          try {
+            const { reservationApi } = await import(
+              "../../../shared/api/reservationApi"
+            );
+            await reservationApi.updateByUser(reservation._id, {
+              cancelReservation: true,
+            });
+            setShowCancelModal(false);
+            showNotification(
+              "Reservation cancelled successfully.",
+              "success",
+              3000,
+            );
+            queryClient.invalidateQueries({
+              queryKey: ["reservations"],
+            });
+          } catch (err) {
+            console.error("Cancel failed:", err);
+            setIsCancelling(false);
+            setShowCancelModal(false);
+            showNotification(
+              "Failed to cancel reservation. Please try again.",
+              "error",
+              4000,
+            );
+          }
+        }}
+      >
+        <p style={{ margin: 0, color: "var(--text-secondary, #475569)", lineHeight: 1.5 }}>
+          This will permanently remove your reservation for <strong>{roomName}</strong>. This action cannot be undone.
+        </p>
+      </BaseModal>
 
       {/* ── Request Cancellation Modal (paid reservations) ───────────────── */}
-      {showRequestCancelModal && (
-        <div
-          style={styles.modalOverlay}
-          onClick={() => {
-            if (!isRequesting) setShowRequestCancelModal(false);
-          }}
-        >
-          <div style={styles.modalCard} onClick={(e) => e.stopPropagation()}>
-            <div style={styles.modalIcon}>
-              <AlertCircle
-                size={36}
-                strokeWidth={2.2}
-                color="#B91C1C"
-                aria-hidden="true"
-              />
-            </div>
-            <h3 style={styles.modalTitle}>Request Cancellation?</h3>
-            <p style={styles.modalDesc}>
-              Your reservation fee for <strong>{roomName}</strong> is{" "}
-              <strong>non-refundable</strong>. Submitting this request will
-              place it under admin review. Your bed will only be released once
-              an admin approves.
-            </p>
-            <div style={styles.modalActions}>
-              <button
-                onClick={async () => {
-                  setIsRequesting(true);
-                  try {
-                    const { reservationApi } = await import(
-                      "../../../shared/api/reservationApi"
-                    );
-                    await reservationApi.requestCancellation(reservation._id);
-                    setShowRequestCancelModal(false);
-                    showNotification(
-                      "Cancellation request submitted. Pending admin review.",
-                      "success",
-                      4000,
-                    );
-                    queryClient.invalidateQueries({
-                      queryKey: ["reservations"],
-                    });
-                  } catch (err) {
-                    console.error("Cancellation request failed:", err);
-                    setIsRequesting(false);
-                    setShowRequestCancelModal(false);
-                    showNotification(
-                      "Failed to submit cancellation request. Please try again.",
-                      "error",
-                      4000,
-                    );
-                  }
-                }}
-                disabled={isRequesting}
-                style={{
-                  ...styles.modalBtnDanger,
-                  opacity: isRequesting ? 0.6 : 1,
-                }}
-              >
-                {isRequesting ? "Submitting..." : "Submit Request"}
-              </button>
-              <button
-                onClick={() => setShowRequestCancelModal(false)}
-                style={styles.modalBtnSecondary}
-              >
-                Keep it
-              </button>
-            </div>
-            <p style={styles.modalHint}>Press Esc or click outside to dismiss</p>
-          </div>
-        </div>
-      )}
+      <BaseModal
+        isOpen={showRequestCancelModal}
+        onClose={() => {
+          if (!isRequesting) setShowRequestCancelModal(false);
+        }}
+        title="Request Cancellation?"
+        subtitle={`Room: ${roomName}`}
+        variant="warning"
+        size="sm"
+        cancelText="Keep it"
+        confirmText={isRequesting ? "Submitting..." : "Submit Request"}
+        loading={isRequesting}
+        onConfirm={async () => {
+          setIsRequesting(true);
+          try {
+            const { reservationApi } = await import(
+              "../../../shared/api/reservationApi"
+            );
+            await reservationApi.requestCancellation(reservation._id);
+            setShowRequestCancelModal(false);
+            showNotification(
+              "Cancellation request submitted. Pending admin review.",
+              "success",
+              4000,
+            );
+            queryClient.invalidateQueries({
+              queryKey: ["reservations"],
+            });
+          } catch (err) {
+            console.error("Cancellation request failed:", err);
+            setIsRequesting(false);
+            setShowRequestCancelModal(false);
+            showNotification(
+              "Failed to submit cancellation request. Please try again.",
+              "error",
+              4000,
+            );
+          }
+        }}
+      >
+        <p style={{ margin: 0, color: "var(--text-secondary, #475569)", lineHeight: 1.5 }}>
+          Your reservation fee for <strong>{roomName}</strong> is{" "}
+          <strong>non-refundable</strong>. Submitting this request will
+          place it under admin review. Your bed will only be released once an admin approves.
+        </p>
+      </BaseModal>
     </div>
   );
 }

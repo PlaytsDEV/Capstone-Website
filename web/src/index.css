@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  scrollbar-gutter: stable;
+}
+
 /* =============================================================================
    LILYCREST DESIGN SYSTEM — CSS Custom Properties
    ============================================================================= */
@@ -242,7 +246,7 @@ section[id] {
   --lp-icon-bg: rgba(212, 175, 55, 0.10);
 }
 
-/* Smooth theme transition — scoped to layout containers only (not wildcard) */
+/* Smooth theme transition — scoped to layout containers and interactive elements */
 .landing-page,
 .landing-page section,
 .landing-page nav,
@@ -250,10 +254,10 @@ section[id] {
 .landing-page header,
 .landing-page [style*="--lp-"],
 .landing-page .lp-section-card {
-  transition: background-color 500ms ease,
-              color 500ms ease,
-              border-color 500ms ease,
-              box-shadow 500ms ease;
+  transition: background-color 180ms ease-in-out,
+              color 180ms ease-in-out,
+              border-color 180ms ease-in-out,
+              box-shadow 180ms ease-in-out;
 }
 
 .landing-page[data-theme="dark"] {
@@ -467,9 +471,31 @@ html[data-theme="dark"] {
   color-scheme: dark;
 }
 
-/* ── Global body ─────────────────────────────────────────────── */
-html {
-  transition: background-color 0.25s ease, color 0.25s ease;
+/* ── Simple, Smooth & Responsive Theme Transition ────────────── */
+
+html,
+body,
+#root,
+header,
+nav,
+aside,
+main,
+footer,
+section,
+.landing-page,
+.admin-layout,
+.tenant-layout,
+.sidebar,
+.topbar,
+.admin-topbar,
+.card,
+.bg-white,
+.bg-gray-50,
+.bg-gray-100 {
+  transition: background-color 180ms ease-in-out,
+              color 180ms ease-in-out,
+              border-color 180ms ease-in-out,
+              box-shadow 180ms ease-in-out;
 }
 
 body {

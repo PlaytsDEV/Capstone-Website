@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRooms } from "../../../shared/hooks/queries/useRooms";
+import useBodyScrollLock from "../../../shared/hooks/useBodyScrollLock";
 import { formatBranch } from "../utils/formatters";
 
 const fmtDate = (value) =>
@@ -28,11 +29,10 @@ const toDateInputValue = (value) => {
 };
 
 function TenantModalShell({ open, title, children, footer, onClose }) {
+  useBodyScrollLock(open);
+
   useEffect(() => {
     if (!open) return undefined;
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
 
     const handleKeyDown = (event) => {
       if (event.key === "Escape") onClose();
@@ -41,7 +41,6 @@ function TenantModalShell({ open, title, children, footer, onClose }) {
     document.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [open, onClose]);

@@ -16,6 +16,7 @@ import {
   Zap,
 } from "lucide-react";
 import { showNotification } from "../../../../shared/utils/notification";
+import useBodyScrollLock from "../../../../shared/hooks/useBodyScrollLock";
 import { useVisitAvailability } from "../../../../shared/hooks/queries/useReservations";
 import { useFirebaseAuth } from "../../../../shared/hooks/FirebaseAuthContext";
 import { getRemoteViewingImages } from "../check-availability/checkAvailabilityConstants";
@@ -236,13 +237,7 @@ function Modal({ show, onBackdropClick, children }) {
     return () => cancelAnimationFrame(timerRef.current);
   }, [show]);
 
-  useEffect(() => {
-    if (show) {
-      const prev = document.body.style.overflow;
-      document.body.style.overflow = "hidden";
-      return () => { document.body.style.overflow = prev; };
-    }
-  }, [show]);
+  useBodyScrollLock(show);
 
   if (!show) return null;
 

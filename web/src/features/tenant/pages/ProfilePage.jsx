@@ -422,6 +422,7 @@ const ProfilePage = () => {
  visits={visits}
  nextAction={nextAction}
  onGoToPersonal={() => handleTabChange("personal")}
+ onGoToReservation={() => handleTabChange("reservation")}
  />
  )}
 

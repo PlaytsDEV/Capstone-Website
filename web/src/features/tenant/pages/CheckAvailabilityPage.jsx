@@ -11,6 +11,7 @@ import { buildSignOutSuccessFlash } from "../../../shared/utils/authToasts";
 import { useRooms } from "../../../shared/hooks/queries/useRooms";
 import { queryClient } from "../../../shared/lib/queryClient";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
+import BaseModal from "../../../shared/components/BaseModal";
 import "../../../shared/styles/notification.css";
 import "../styles/check-availability.css";
 import InquiryModal from "../../public/modals/InquiryModal";
@@ -441,80 +442,34 @@ function CheckAvailabilityPage() {
  }
  };
 
- // ── Login confirm modal (inline, small) ────────────────────
- const LoginConfirmBeforeReserveModal = () => {
- if (!showLoginConfirmBeforeReserve) return null;
- return (
- <div
- className="fixed inset-0 z-[100] flex items-center justify-center"
- style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
- onClick={() => setShowLoginConfirmBeforeReserve(false)}
- >
- <div
- className="bg-card rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl"
- onClick={(e) => e.stopPropagation()}
- >
- <div className="text-center">
- <div
- className="w-14 h-14 rounded-full mx-auto mb-5 flex items-center justify-center"
- style={{ backgroundColor: "var(--color-accent-subtle)" }}
- >
- <svg
- width="24"
- height="24"
- viewBox="0 0 24 24"
- fill="none"
- stroke="var(--color-accent)"
- strokeWidth="2"
- strokeLinecap="round"
- strokeLinejoin="round"
- >
- <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
- <polyline points="10 17 15 12 10 7" />
- <line x1="15" y1="12" x2="3" y2="12" />
- </svg>
- </div>
- <h3
- className="text-xl font-semibold mb-2"
- style={{ color: "var(--text-heading)" }}
- >
- Sign in to continue
- </h3>
- <p className="text-muted-foreground text-sm leading-relaxed mb-6">
- You need an account to reserve a room. Sign in if you already have
- one, or create a new account — it only takes a minute.
- </p>
- <div className="flex gap-3">
- <button
- onClick={() => setShowLoginConfirmBeforeReserve(false)}
- className="flex-1 py-3 px-4 rounded-full border border-border text-muted-foreground text-sm font-medium hover:bg-muted transition-colors cursor-pointer"
- >
- Maybe later
- </button>
- <button
- onClick={() => {
- setShowLoginConfirmBeforeReserve(false);
- appNavigate("/signin", {
- flash: {
- type: "info",
- message: "Please sign in to reserve a room",
- },
- });
- }}
- className="flex-1 py-3 px-4 rounded-full text-sm font-medium hover:opacity-90 transition-opacity cursor-pointer"
- style={{
- backgroundColor: "var(--color-accent)",
- color: "var(--color-primary)",
- }}
- >
- Sign In
- </button>
- </div>
- </div>
- </div>
- </div>
- );
- };
+  // ── Login confirm modal ────────────────────
+  const LoginConfirmBeforeReserveModal = () => {
+    return (
+      <BaseModal
+        isOpen={showLoginConfirmBeforeReserve}
+        onClose={() => setShowLoginConfirmBeforeReserve(false)}
+        title="Sign in to continue"
+        subtitle="Account required for room reservation"
+        variant="info"
+        size="sm"
+        cancelText="Maybe later"
+        confirmText="Sign In"
+        onConfirm={() => {
+          setShowLoginConfirmBeforeReserve(false);
+          appNavigate("/signin", {
+            flash: {
+              type: "info",
+              message: "Please sign in to reserve a room",
+            },
+          });
+        }}
+      >
+        <p style={{ margin: 0, color: "var(--text-secondary, #475569)", lineHeight: 1.5 }}>
+          You need an account to reserve a room. Sign in if you already have one, or create a new account — it only takes a minute.
+        </p>
+      </BaseModal>
+    );
+  };
 
  // ── Render ─────────────────────────────────────────────────
  return (

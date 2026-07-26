@@ -1,4 +1,5 @@
 import { ATTACHMENT_REMOVAL_REASONS } from "../maintenanceUtils";
+import BaseModal from "../../../../../shared/components/BaseModal";
 
 export function AttachmentRemovalModal({
   open,
@@ -34,109 +35,125 @@ export function AttachmentRemovalModal({
   ];
 
   return (
-    <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/50 px-4 py-6">
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="maintenance-remove-attachment-title"
-        className="max-h-[calc(100vh-2rem)] w-full max-w-xl overflow-y-auto rounded-xl border border-border bg-card p-5 shadow-2xl"
-      >
-        <h2 id="maintenance-remove-attachment-title" className="text-lg font-semibold text-card-foreground">
-          Who should no longer see this attachment?
-        </h2>
-
-        <div className="mt-4 grid gap-3">
-          {options.map((option) => {
-            const selected = scope === option.value;
-            return (
-              <label
-                key={option.value}
-                className={`flex cursor-pointer gap-3 rounded-lg border p-4 transition ${
-                  selected
-                    ? "border-primary bg-primary/5 ring-2 ring-primary/20"
-                    : "border-border bg-card hover:bg-muted/50"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="attachment-removal-scope"
-                  value={option.value}
-                  checked={selected}
-                  onChange={() => onScopeChange(option.value)}
-                  className="mt-1 h-4 w-4 accent-primary"
-                  disabled={isPending}
-                />
-                <span>
-                  <span className="block text-sm font-semibold text-card-foreground">{option.title}</span>
-                  <span className="mt-1 block text-sm leading-5 text-muted-foreground">
-                    {option.description}
+    <BaseModal
+      isOpen={open}
+      onClose={onCancel}
+      title="Remove Attachment"
+      subtitle="Select visibility scope and reason for removing this file"
+      variant="danger"
+      size="md"
+      onConfirm={onConfirm}
+      confirmText={isPending ? "Removing..." : "Remove Attachment"}
+      cancelText="Cancel"
+      loading={isPending}
+      confirmDisabled={!canSubmit}
+    >
+      <div style={{ display: "grid", gap: 16 }}>
+        <div>
+          <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted, #64748b)", display: "block", marginBottom: 8 }}>
+            Scope of Removal
+          </span>
+          <div style={{ display: "grid", gap: 10 }}>
+            {options.map((option) => {
+              const selected = scope === option.value;
+              return (
+                <label
+                  key={option.value}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 12,
+                    padding: 12,
+                    borderRadius: 8,
+                    border: `1px solid ${selected ? "#dc2626" : "var(--border-card, #e2e8f0)"}`,
+                    background: selected ? "rgba(220, 38, 38, 0.04)" : "var(--surface-card, #fff)",
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="attachment-removal-scope"
+                    value={option.value}
+                    checked={selected}
+                    onChange={() => onScopeChange(option.value)}
+                    style={{ marginTop: 3, accentColor: "#dc2626" }}
+                    disabled={isPending}
+                  />
+                  <span>
+                    <span style={{ display: "block", fontSize: 14, fontWeight: 600, color: "var(--text-heading, #0f172a)" }}>
+                      {option.title}
+                    </span>
+                    <span style={{ display: "block", fontSize: 13, color: "var(--text-secondary, #475569)", marginTop: 2, lineHeight: 1.45 }}>
+                      {option.description}
+                    </span>
                   </span>
-                </span>
-              </label>
-            );
-          })}
+                </label>
+              );
+            })}
+          </div>
         </div>
 
-        <label className="mt-5 block">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+        <label style={{ display: "grid", gap: 6 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted, #64748b)" }}>
             Reason for removal
           </span>
           <select
             value={reason}
             onChange={(event) => onReasonChange(event.target.value)}
             disabled={isPending}
-            className="mt-2 h-11 w-full rounded-lg border border-border bg-card px-3 text-sm text-card-foreground focus:outline-none focus:ring-2 focus:ring-slate-100"
+            style={{
+              height: 40,
+              width: "100%",
+              borderRadius: 8,
+              border: "1px solid var(--border-card, #cbd5e1)",
+              padding: "0 12px",
+              fontSize: 13,
+              background: "var(--surface-card, #fff)",
+              outline: "none",
+            }}
           >
             <option value="">Select a reason</option>
-            {ATTACHMENT_REMOVAL_REASONS.map((option) => (
-              <option key={option} value={option}>
-                {option}
+            {ATTACHMENT_REMOVAL_REASONS.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
               </option>
             ))}
           </select>
         </label>
 
-        {reason === "Other" ? (
-          <label className="mt-4 block">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+        {reason === "Other" && (
+          <label style={{ display: "grid", gap: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-muted, #64748b)" }}>
               Please specify reason
             </span>
             <textarea
-              rows="3"
+              rows={3}
               value={customReason}
               onChange={(event) => onCustomReasonChange(event.target.value)}
               disabled={isPending}
-              className="mt-2 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-card-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-slate-100"
               placeholder="Enter a clear removal reason."
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                borderRadius: 8,
+                border: "1px solid var(--border-card, #cbd5e1)",
+                padding: 10,
+                fontSize: 13,
+                outline: "none",
+                fontFamily: "inherit",
+                resize: "vertical",
+              }}
             />
           </label>
-        ) : null}
+        )}
 
-        {error ? (
-          <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+        {error && (
+          <div style={{ padding: "10px 12px", borderRadius: 8, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", fontSize: 13 }}>
             {error}
           </div>
-        ) : null}
-
-        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            className="inline-flex h-10 items-center justify-center rounded-lg border border-border px-4 text-sm font-medium text-muted-foreground hover:bg-muted"
-            onClick={onCancel}
-            disabled={isPending}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="inline-flex h-10 items-center justify-center rounded-lg bg-rose-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
-            onClick={onConfirm}
-            disabled={!canSubmit}
-          >
-            {isPending ? "Removing..." : "Remove Attachment"}
-          </button>
-        </div>
-      </section>
-    </div>
+        )}
+      </div>
+    </BaseModal>
   );
 }

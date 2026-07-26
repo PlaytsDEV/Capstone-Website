@@ -31,8 +31,8 @@ export default function TenantLayoutSkeleton() {
           position: "fixed",
           top: 0,
           left: 0,
-          background: "#ffffff",
-          borderRight: "1px solid #e5e7eb",
+          background: "var(--surface-card, #ffffff)",
+          borderRight: "1px solid var(--border-divider, #e5e7eb)",
           display: "flex",
           flexDirection: "column",
           zIndex: 100,
@@ -42,7 +42,7 @@ export default function TenantLayoutSkeleton() {
         <div
           style={{
             padding: "16px 14px",
-            borderBottom: "1px solid #e5e7eb",
+            borderBottom: "1px solid var(--border-divider, #e5e7eb)",
             display: "flex",
             alignItems: "center",
             gap: 10,
@@ -56,7 +56,7 @@ export default function TenantLayoutSkeleton() {
         <div
           style={{
             padding: "14px",
-            borderBottom: "1px solid #e5e7eb",
+            borderBottom: "1px solid var(--border-divider, #e5e7eb)",
             display: "flex",
             alignItems: "center",
             gap: 10,
@@ -100,7 +100,7 @@ export default function TenantLayoutSkeleton() {
         </nav>
 
         {/* Sign Out */}
-        <div style={{ padding: "12px 14px", borderTop: "1px solid #e5e7eb" }}>
+        <div style={{ padding: "12px 14px", borderTop: "1px solid var(--border-divider, #e5e7eb)" }}>
           <SkeletonPulse height="34px" borderRadius="8px" />
         </div>
       </aside>
@@ -111,8 +111,8 @@ export default function TenantLayoutSkeleton() {
         <header
           style={{
             height: 56,
-            background: "#ffffff",
-            borderBottom: "1px solid #e5e7eb",
+            background: "var(--surface-card, #ffffff)",
+            borderBottom: "1px solid var(--border-divider, #e5e7eb)",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",

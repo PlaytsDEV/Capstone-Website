@@ -35,9 +35,10 @@ import {
  readMoveInDate,
 } from "../../../../shared/utils/lifecycleNaming";
 import {
- RESERVATION_FEE_NON_REFUNDABLE_NOTICE,
- getReservationCancellationUiState,
+  RESERVATION_FEE_NON_REFUNDABLE_NOTICE,
+  getReservationCancellationUiState,
 } from "./reservationCancellationUi";
+import { getRoomImages } from "../../pages/check-availability/checkAvailabilityConstants";
 
 /* ── Ordinal suffix helper ────────────────────────── */
 function ordinal(n) {
@@ -149,10 +150,16 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  );
  }
 
- const room = reservation.roomId || {};
- const images = room.images || [];
- const amenities = room.amenities || [];
- const heroImage = images[selectedImage] || images[0] || null;
+  const room = reservation.roomId || {};
+  const storedImages = Array.isArray(room.images)
+    ? room.images.filter((img) => typeof img === "string" && img.trim())
+    : [];
+  const images =
+    storedImages.length > 0
+      ? storedImages
+      : getRoomImages(room.type, room.branch);
+  const amenities = room.amenities || [];
+  const heroImage = images[selectedImage] || images[0] || null;
  const code = reservation.reservationCode || "—";
  const bookedOn = dayjs(reservation.createdAt).format("MMMM D, YYYY [at] h:mm A");
  const moveInDate = readMoveInDate(reservation) || reservation.targetMoveInDate;

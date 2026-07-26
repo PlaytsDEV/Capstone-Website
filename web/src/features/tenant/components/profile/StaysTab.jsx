@@ -22,6 +22,7 @@ import {
  ListSkeleton,
  StatGridSkeleton,
 } from "../../../../shared/components/LoadingSkeletons";
+import { getRoomImages } from "../../pages/check-availability/checkAvailabilityConstants";
 
 // Shared empty state style — matches My Bills
 const emptyStyle = {
@@ -59,6 +60,16 @@ const StayCard = ({ stay, isCurrent }) => {
  : room.branch === "guadalupe" ? "Guadalupe"
  : room.branch || "—";
 
+ const storedImages = Array.isArray(room.images)
+    ? room.images.filter((img) => typeof img === "string" && img.trim())
+    : [];
+  const roomImage =
+    storedImages.length > 0
+      ? storedImages[0]
+      : room.type && room.branch
+      ? getRoomImages(room.type, room.branch)[0]
+      : null;
+
  return (
  <div
  style={{
@@ -92,9 +103,9 @@ const StayCard = ({ stay, isCurrent }) => {
  justifyContent: "center",
  }}
  >
- {room.images?.[0] ? (
+ {roomImage ? (
  <img
- src={room.images[0]}
+ src={roomImage}
  alt={room.name}
  style={{ width: "100%", height: "100%", objectFit: "cover" }}
  onError={(e) => {
