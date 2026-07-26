@@ -26,37 +26,56 @@
  */
 
 // ============================================================================
-// MODEL IMPORTS
+// MODEL IMPORTS (Grouped by Functional Domain)
 // ============================================================================
 
+// 1. Identity & Auth Domain
 import User from "./User.js";
-import Room from "./Room.js";
-import Reservation from "./Reservation.js";
-import Inquiry from "./Inquiry.js";
-import AuditLog from "./AuditLog.js";
-import Bill from "./Bill.js";
-import MeterReading from "./MeterReading.js";
-import BillingPeriod from "./BillingPeriod.js";
-import BillingResult from "./BillingResult.js";
-import Announcement from "./Announcement.js";
-import MaintenanceRequest from "./MaintenanceRequest.js";
-import Notification from "./Notification.js";
-import Payment from "./Payment.js";
-import LoginLog from "./LoginLog.js";
 import UserSession from "./UserSession.js";
-import AcknowledgmentAccount from "./AcknowledgmentAccount.js";
-import BusinessSettings from "./BusinessSettings.js";
-import VisitAvailability from "./VisitAvailability.js";
-import ChatConversation from "./ChatConversation.js";
-import ChatMessage from "./ChatMessage.js";
-import WaterBillingRecord from "./WaterBillingRecord.js";
-import UtilityPeriod from "./UtilityPeriod.js";
-import UtilityReading from "./UtilityReading.js";
+import LoginLog from "./LoginLog.js";
+
+// 2. Rooms & Occupancy Domain
+import Room from "./Room.js";
 import BedHistory from "./BedHistory.js";
 import Stay from "./Stay.js";
+
+// 3. Reservations & Visit Domain
+import Reservation from "./Reservation.js";
+import VisitAvailability from "./VisitAvailability.js";
+
+// 4. Billing & Utility Domain (Active Modular System)
+import UtilityPeriod from "./UtilityPeriod.js";
+import UtilityReading from "./UtilityReading.js";
+import Bill from "./Bill.js";
+import Payment from "./Payment.js";
+import AcknowledgmentAccount from "./AcknowledgmentAccount.js";
+
+// 4b. Legacy Billing Models (@deprecated - replaced by UtilityPeriod, UtilityReading, Bill)
+/** @deprecated Replaced by UtilityPeriod & Bill */
+import BillingPeriod from "./BillingPeriod.js";
+/** @deprecated Integrated into Bill subdocuments */
+import BillingResult from "./BillingResult.js";
+/** @deprecated Replaced by UtilityReading */
+import MeterReading from "./MeterReading.js";
+/** @deprecated Replaced by UtilityPeriod */
+import WaterBillingRecord from "./WaterBillingRecord.js";
+
+// 5. Operations & Services Domain
+import MaintenanceRequest from "./MaintenanceRequest.js";
+import Inquiry from "./Inquiry.js";
+import Announcement from "./Announcement.js";
+import Notification from "./Notification.js";
+import ServiceProvider from "./ServiceProvider.js";
+
+// 6. Communication Domain
+import ChatConversation from "./ChatConversation.js";
+import ChatMessage from "./ChatMessage.js";
+
+// 7. System Administration Domain
+import AuditLog from "./AuditLog.js";
+import BusinessSettings from "./BusinessSettings.js";
 import BackupConfig from "./BackupConfig.js";
 import BackupRecord from "./BackupRecord.js";
-import ServiceProvider from "./ServiceProvider.js";
 import {
   CANONICAL_RESERVATION_STATUSES,
   USER_ROLE_NAMES,

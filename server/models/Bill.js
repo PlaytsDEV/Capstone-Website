@@ -346,6 +346,8 @@ billSchema.index({
   billingMonth: 1,
   isArchived: 1,
 });
+billSchema.index({ userId: 1, status: 1, dueDate: 1 });
+billSchema.index({ roomId: 1, utilityPeriod: 1 });
 
 // Prevent duplicate rent bills for the same reservation + billing cycle.
 // The partial filter excludes bills without a reservationId (utility-only bills).

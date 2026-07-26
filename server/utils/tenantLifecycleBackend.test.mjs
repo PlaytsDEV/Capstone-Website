@@ -55,7 +55,7 @@ test("Room model lockBed and extendBedLock operate correctly", () => {
   // Extend lock
   const extended = room.extendBedLock("bed-single", userId, 20);
   assert.equal(extended, true);
-  assert.ok(room.beds[0].lockExpiresAt > new Date());
+  assert.ok(room.beds[0].lockExpiresAt.getTime() > Date.now());
 });
 
 test("Reservation model supports settlement summary, deposit refund status, and payment expiration", () => {
@@ -116,3 +116,4 @@ test("BedHistory model supports dual-meter transfer audit fields", () => {
 test("paymentExpirationService exports checkAndReleaseExpiredPaymentHolds function", () => {
   assert.equal(typeof checkAndReleaseExpiredPaymentHolds, "function");
 });
+

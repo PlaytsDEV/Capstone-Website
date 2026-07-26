@@ -957,6 +957,14 @@ const reservationSchema = new mongoose.Schema(
 );
 
 // ============================================================================
+// INDEXES
+// ============================================================================
+
+reservationSchema.index({ tenant: 1, status: 1 });
+reservationSchema.index({ branch: 1, status: 1, isArchived: 1 });
+reservationSchema.index({ room: 1, bedId: 1, status: 1 });
+
+// ============================================================================
 // PRE-SAVE HOOKS
 // ============================================================================
 
