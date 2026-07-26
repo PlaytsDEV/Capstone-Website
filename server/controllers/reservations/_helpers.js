@@ -218,15 +218,19 @@ export const TENANT_WORKSPACE_FIELDS = [
   "leaseDuration",
   "leaseExtensions",
   "monthlyRent",
+  "totalPrice",
+  "reservationFeeAmount",
   "currentStayId",
   "latestStayStatus",
   "mobileNumber",
+  "birthday",
   "firstName",
   "lastName",
   "email",
   "gender",
   "nationality",
   "maritalStatus",
+  "address",
   "employment",
   "emergencyContact",
   "selectedBed",
@@ -236,7 +240,7 @@ export const TENANT_WORKSPACE_FIELDS = [
 ].join(" ");
 export const TENANT_WORKSPACE_USER = [
   "userId",
-  "firstName lastName email phone role tenantStatus branch",
+  "firstName lastName email phone profileImage role tenantStatus branch gender civilStatus nationality occupation address city province dateOfBirth emergencyContact emergencyPhone emergencyRelationship",
 ];
 export const TENANT_WORKSPACE_ROOM = ["roomId", "name roomNumber branch type price floor"];
 export const TIME_24H_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;

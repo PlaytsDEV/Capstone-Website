@@ -16,63 +16,6 @@ function getDocumentPayload(docId, user) {
   const userEmail = user?.email || 'tenant@example.com';
 
   const documents = {
-    contract: {
-      title: 'Lease Contract',
-      docType: 'LEASE AGREEMENT',
-      subtitle: `Prepared for: ${userName}`,
-      date: `Date Issued: ${today}`,
-      infoRows: [
-        { label: 'Tenant Name', value: userName },
-        { label: 'Email Address', value: userEmail },
-        { label: 'Date Issued', value: today },
-        { label: 'Property', value: 'LilyCrest Gil Puyat, Makati City' },
-      ],
-      sections: [
-        {
-          heading: 'Rental Period',
-          lines: [
-            'Month-to-month; either party may terminate with 30 days written notice.',
-          ],
-        },
-        {
-          heading: 'Monthly Rent',
-          lines: [
-            'Rent due every 5th of the month.',
-            'Grace period until the 7th.',
-            'Late fee: PHP 50 per day after grace period.',
-          ],
-        },
-        {
-          heading: 'Security Deposit',
-          lines: [
-            'Equivalent to one month rent.',
-            'Refundable after move-out inspection.',
-            'Damages and unpaid fees may be deducted.',
-          ],
-        },
-        {
-          heading: 'Utilities',
-          lines: [
-            'Water and WiFi included in the monthly rent.',
-            'Electricity billed separately based on sub-metered consumption.',
-          ],
-        },
-        {
-          heading: 'House Rules',
-          lines: [
-            'Tenant agrees to comply with all posted LilyCrest house rules.',
-            'Violations may result in warnings, fines, or tenancy review.',
-          ],
-        },
-        {
-          heading: 'Termination',
-          lines: [
-            '30-day written notice required from either party.',
-            'Early termination may forfeit security deposit.',
-          ],
-        },
-      ],
-    },
     valid_id: {
       title: 'Identification Record',
       docType: 'ID VERIFICATION',

@@ -14,6 +14,11 @@ const PAGE_META = {
     description:
       "Handle renewals, transfers, move-out actions, and current-stay visibility in one workspace.",
   },
+  "/admin/contracts": {
+    title: "Contracts",
+    description:
+      "Create, verify, generate, and review versioned prepared Contract copies from official templates.",
+  },
   "/admin/users": {
     title: "Accounts",
     description:
@@ -110,6 +115,9 @@ const ANALYTICS_DETAILS_META = {
 };
 
 export function getPageMeta(pathname, search = "") {
+  if (pathname.startsWith("/admin/contracts/")) {
+    return PAGE_META["/admin/contracts"];
+  }
   if (pathname === "/admin/analytics/details") {
     const params = new URLSearchParams(search);
     const tab = params.get("tab") || "occupancy";

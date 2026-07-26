@@ -8,6 +8,7 @@ import {
   ReservationsPage,
   RoomAvailabilityPage,
   TenantsWorkspacePage,
+  AdminContractsPage,
   AuditLogsPage,
   UserManagementPage,
   AdminBillingPage,
@@ -28,6 +29,7 @@ import {
   LEGACY_ANALYTICS_REDIRECTS,
 } from "../../features/admin/pages/analyticsNavigation.mjs";
 import AdminLayoutSkeleton from "../../features/admin/components/AdminLayoutSkeleton";
+import RequirePermission from "../../shared/guards/RequirePermission";
 import {
   AdminDashboardSkeleton,
   AdminTablePageSkeleton,
@@ -79,6 +81,26 @@ export function AdminRoutes() {
           <RouteShell name="Tenants" fallback={<AdminTablePageSkeleton />}>
             <TenantsWorkspacePage />
           </RouteShell>
+        }
+      />
+      <Route
+        path="contracts"
+        element={
+          <RequirePermission permission="manageTenants">
+            <RouteShell name="Contracts" fallback={<AdminTablePageSkeleton />}>
+              <AdminContractsPage />
+            </RouteShell>
+          </RequirePermission>
+        }
+      />
+      <Route
+        path="contracts/:contractId"
+        element={
+          <RequirePermission permission="manageTenants">
+            <RouteShell name="ContractDetails" fallback={<AdminTablePageSkeleton />}>
+              <AdminContractsPage />
+            </RouteShell>
+          </RequirePermission>
         }
       />
       <Route

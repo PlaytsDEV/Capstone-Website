@@ -83,3 +83,8 @@ test("system topbar copy uses the phase 1 labels", () => {
       "Control platform policies, defaults, safeguards, and shared operational behavior.",
   });
 });
+
+test("contract list and detail routes share Contract workspace metadata", () => {
+  assert.equal(getPageMeta("/admin/contracts").title, "Contracts");
+  assert.equal(getPageMeta("/admin/contracts/507f1f77bcf86cd799439011").title, "Contracts");
+});

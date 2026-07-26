@@ -15,6 +15,7 @@ import {
   Settings,
   Bell,
   Database,
+  FileSignature,
 } from "lucide-react";
 
 export const NAV_GROUPS = [
@@ -27,6 +28,7 @@ export const NAV_ITEMS = [
   { to: "/admin/reservations", icon: Calendar, text: "Reservations", group: "workspace", priority: 2 },
   { to: "/admin/room-availability", icon: DoorOpen, text: "Room Management", group: "workspace", priority: 3 },
   { to: "/admin/tenants", icon: Users, text: "Tenants", group: "workspace", priority: 4 },
+  { to: "/admin/contracts", icon: FileSignature, text: "Contracts", group: "workspace", priority: 4.5, permission: "manageTenants" },
   { to: "/admin/maintenance", icon: Wrench, text: "Maintenance", group: "workspace", priority: 5, permission: "manageMaintenance" },
   { to: "/admin/chat", icon: MessageSquareText, text: "Support Chat", group: "workspace", priority: 6 },
   { to: "/admin/billing", icon: CreditCard, text: "Billing", group: "workspace", priority: 7 },

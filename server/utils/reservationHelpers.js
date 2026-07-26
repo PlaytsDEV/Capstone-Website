@@ -9,6 +9,7 @@
 
 import dayjs from "dayjs";
 import { User, Room, Reservation } from "../models/index.js";
+import { buildTenantProfileSyncUpdates } from "../services/tenantProfileService.js";
 import {
   hasReservationStatus,
   normalizeReservationStatus,
@@ -323,6 +324,21 @@ export const syncReservationUserLifecycle = async ({
   user.role = nextState.role;
   user.tenantStatus = nextState.tenantStatus;
   user.branch = nextState.branch;
+
+  if (normalizedStatus === "moveIn" && reservationId) {
+    const applicationReservation = await Reservation.findById(reservationId)
+      .select(
+        "firstName lastName mobileNumber selfiePhotoUrl birthday gender maritalStatus nationality address emergencyContact employment",
+      );
+    const profileUpdates = buildTenantProfileSyncUpdates({
+      user,
+      reservation: applicationReservation || {},
+    });
+    for (const [field, value] of Object.entries(profileUpdates)) {
+      user[field] = value;
+    }
+  }
+
   await user.save();
   await syncFirebaseLifecycleClaims(user, {
     role: nextState.role,

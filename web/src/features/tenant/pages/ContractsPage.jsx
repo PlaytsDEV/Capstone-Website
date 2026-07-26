@@ -1,397 +1,156 @@
-import { useMemo } from "react";
-import { useReservations } from "../../../shared/hooks/queries/useReservations";
+import { useEffect, useState } from "react";
+import { Download, Eye, FileText, Info, LoaderCircle } from "lucide-react";
+import { tenantContractApi } from "../api/tenantContractApi";
+import {
+  formatContractType,
+  formatRoomBed,
+  formatTenantContractStatus,
+  getTenantContractError,
+  getTenantContractMessage,
+} from "../utils/tenantContractUi.mjs";
 import ContractsPageSkeleton from "../components/contracts/ContractsPageSkeleton";
 import "../styles/tenant-common.css";
 import "../styles/contracts.css";
-import {
- hasReservationStatus,
- readMoveInDate,
-} from "../../../shared/utils/lifecycleNaming";
 
-const ContractsPage = () => {
- const { data: rawReservations, isLoading: loading, error: queryError } = useReservations();
- const reservations = Array.isArray(rawReservations) ? rawReservations : [];
- const error = queryError ? (queryError.message || "Failed to load contracts") : null;
+const date = (value) => value ? new Date(value).toLocaleDateString("en-PH", {
+  year: "numeric", month: "long", day: "numeric",
+}) : "Not available";
+const money = (value) => value == null ? "Not available" : `₱${Number(value).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
+const fileSize = (value) => value == null ? "Not available" : `${(Number(value) / 1024).toFixed(1)} KB`;
 
- const isContractReservation = (reservation) =>
- hasReservationStatus(reservation?.status, "moveIn", "moveOut") &&
- readMoveInDate(reservation);
+const Detail = ({ label, value }) => <div className="tenant-contract-detail">
+  <span>{label}</span><strong>{value}</strong>
+</div>;
 
- // Active contract = admin moved the applicant in and the stay is active
- const activeContract = useMemo(
- () => reservations.find((r) => isContractReservation(r) && hasReservationStatus(r.status, "moveIn")),
- [reservations],
- );
+export default function ContractsPage() {
+  const [contract, setContract] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [fileBusy, setFileBusy] = useState("");
+  const [error, setError] = useState("");
 
- // Past contracts = previous moved-in stays only. Cancelled/reserved applications
- // are not contracts because the applicant never became a tenant.
- const pastContracts = useMemo(
- () =>
- reservations.filter(
- (r) =>
- isContractReservation(r) &&
- (r.status === "completed" || hasReservationStatus(r.status, "moveOut")),
- ),
- [reservations],
- );
+  useEffect(() => {
+    tenantContractApi.getMyCurrentContract()
+      .then((payload) => setContract(payload.contract || null))
+      .catch((requestError) => setError(getTenantContractError(requestError)))
+      .finally(() => setLoading(false));
+  }, []);
 
- const formatDate = (date) => {
- if (!date) return "—";
- return new Date(date).toLocaleDateString("en-PH", {
- year: "numeric",
- month: "long",
- day: "numeric",
- });
- };
+  const retrieveFile = async (mode, documentType = "prepared") => {
+    setFileBusy(`${documentType}-${mode}`);
+    setError("");
+    try {
+      const blob = documentType === "final"
+        ? await tenantContractApi.getMyFinalContractFile(contract.id, mode === "download")
+        : await tenantContractApi.getMyPreparedContractFile(contract.id);
+      const url = URL.createObjectURL(blob);
+      if (mode === "download") {
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = documentType === "final"
+          ? contract.finalDocument.fileName || "final-contract.pdf"
+          : contract.preparedDocument.fileName || "prepared-contract.pdf";
+        anchor.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } else {
+        window.open(url, "_blank", "noopener,noreferrer");
+        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      }
+    } catch (requestError) {
+      setError(getTenantContractError(requestError));
+    } finally {
+      setFileBusy("");
+    }
+  };
 
- const formatCurrency = (amount) =>
- `₱${Number(amount || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
+  if (loading) return <ContractsPageSkeleton />;
+  const notice = getTenantContractMessage(contract);
+  const assignment = formatRoomBed(contract?.roomNumber, contract?.bedLabel);
 
- const getStatusBadge = (status) => {
- const map = {
- moveIn: { label: "Active", className: "badge-active" },
- reserved: { label: "Upcoming", className: "badge-upcoming" },
- completed: { label: "Completed", className: "badge-completed" },
- moveOut: { label: "Completed", className: "badge-completed" },
- cancelled: { label: "Cancelled", className: "badge-cancelled" },
- };
- const normalizedStatus = hasReservationStatus(status, "moveIn")
- ? "moveIn"
- : hasReservationStatus(status, "moveOut")
- ? "moveOut"
- : status;
- const info = map[normalizedStatus] || { label: normalizedStatus, className: "badge-default" };
- return (
- <span className={`contract-badge ${info.className}`}>{info.label}</span>
- );
- };
+  return <main className="contracts-page tenant-contract-page">
+    <header className="contracts-header"><h1>My Contract</h1><p>View your lease details and prepared Contract document.</p></header>
+    {error && <div className="contracts-error" role="alert">{error}</div>}
+    {!contract ? <div className="contracts-empty">
+      <div className="empty-icon"><FileText size={42} /></div>
+      <h3>{notice.title}</h3><p>{notice.message}</p>
+    </div> : <>
+      <section aria-labelledby="contract-summary-title">
+        <h2 className="tenant-contract-section-title" id="contract-summary-title">Contract Summary</h2>
+        <article className="tenant-contract-summary">
+          <div className="tenant-contract-summary__heading">
+            <div><span>Contract number</span><h3>{contract.contractNumber || "Contract Record"}</h3>
+              <p>{formatContractType(contract.templateType, contract.roomType, contract.leaseType)}</p></div>
+            <span className="tenant-contract-status-badge">{formatTenantContractStatus(contract.status)}</span>
+          </div>
+          <div className="tenant-contract-summary__groups">
+            <div><h4>Property and Assignment</h4>
+              <Detail label="Branch" value={String(contract.branch || "Not available").replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase())} />
+              <Detail label="Property" value={contract.propertyName || "Not available"} />
+              <Detail label="Room" value={assignment.room} />
+              <Detail label="Bed/Slot" value={assignment.bed} />
+            </div>
+            <div><h4>Lease Information</h4>
+              <Detail label="Lease Start" value={date(contract.leaseStartDate)} />
+              <Detail label="Lease End" value={date(contract.leaseEndDate)} />
+              <Detail label="Duration" value={contract.leaseDurationMonths ? `${contract.leaseDurationMonths} months` : "Not available"} />
+              <Detail label="Days Remaining" value={contract.daysRemaining == null ? "Not available" : contract.daysRemaining < 0 ? "Expired" : `${contract.daysRemaining} days`} />
+            </div>
+          </div>
+          <div className="tenant-contract-financial"><Detail label="Approved Monthly Rate" value={money(contract.approvedMonthlyRate)} /></div>
+        </article>
+      </section>
 
- const computeEndDate = (startDate, months) => {
- if (!startDate || !months) return null;
- const end = new Date(startDate);
- end.setMonth(end.getMonth() + months);
- return end;
- };
+      <section className="tenant-contract-notice" aria-labelledby="contract-status-title">
+        <Info size={20} /><div><h2 id="contract-status-title">{notice.title}</h2><p>{notice.message}</p><strong>{notice.nextAction}</strong></div>
+      </section>
 
- const computeProgress = (startDate, months) => {
- if (!startDate || !months) return 0;
- const start = new Date(startDate).getTime();
- const end = computeEndDate(startDate, months)?.getTime();
- if (!end) return 0;
- const now = Date.now();
- if (now <= start) return 0;
- if (now >= end) return 100;
- return Math.round(((now - start) / (end - start)) * 100);
- };
-
- const renderContractCard = (reservation, isActive = false) => {
- const room = reservation.roomId;
- const startDate = readMoveInDate(reservation) || reservation.approvedDate;
- const endDate = computeEndDate(startDate, reservation.leaseDuration || 12);
- const progress = isActive
- ? computeProgress(startDate, reservation.leaseDuration || 12)
- : null;
- const monthsRemaining = endDate
- ? Math.max(
- 0,
- Math.ceil(
- (new Date(endDate) - new Date()) / (1000 * 60 * 60 * 24 * 30),
- ),
- )
- : null;
-
- return (
- <div
- className={`contract-card ${isActive ? "contract-active" : ""}`}
- key={reservation._id}
- >
- <div className="contract-card-header">
- <div className="contract-title-row">
- <h3>{room?.name || reservation.roomName || "Room Assignment"}</h3>
- {getStatusBadge(reservation.status)}
- </div>
- {reservation.reservationCode && (
- <span className="contract-code">
- #{reservation.reservationCode}
- </span>
- )}
- </div>
-
- <div className="contract-card-body">
- {/* Progress bar for active contract */}
- {isActive && progress !== null && (
- <div className="contract-progress">
- <div className="progress-header">
- <span>Lease Progress</span>
- <span>{progress}%</span>
- </div>
- <div className="progress-bar">
- <div
- className="progress-fill"
- style={{ width: `${progress}%` }}
- />
- </div>
- {monthsRemaining !== null && (
- <span className="progress-remaining">
- {monthsRemaining > 0
- ? `${monthsRemaining} month${monthsRemaining !== 1 ? "s" : ""} remaining`
- : "Contract period ended"}
- </span>
- )}
- </div>
- )}
-
- <div className="contract-details">
- <div className="detail-item">
- <span className="detail-icon">
- <svg
- width="16"
- height="16"
- viewBox="0 0 24 24"
- fill="none"
- stroke="currentColor"
- strokeWidth="2"
- strokeLinecap="round"
- strokeLinejoin="round"
- >
- <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
- <polyline points="9 22 9 12 15 12 15 22" />
- </svg>
- </span>
- <div>
- <div className="detail-label">Room</div>
- <div className="detail-value">
- {room?.name || "N/A"}
- {room?.type && ` — ${room.type}`}
- </div>
- </div>
- </div>
-
- <div className="detail-item">
- <span className="detail-icon">
- <svg
- width="16"
- height="16"
- viewBox="0 0 24 24"
- fill="none"
- stroke="currentColor"
- strokeWidth="2"
- strokeLinecap="round"
- strokeLinejoin="round"
- >
- <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
- <line x1="16" y1="2" x2="16" y2="6" />
- <line x1="8" y1="2" x2="8" y2="6" />
- <line x1="3" y1="10" x2="21" y2="10" />
- </svg>
- </span>
- <div>
- <div className="detail-label">Contract Period</div>
- <div className="detail-value">
- {formatDate(startDate)} —{" "}
- {endDate ? formatDate(endDate) : "Ongoing"}
- </div>
- </div>
- </div>
-
- <div className="detail-item">
- <span className="detail-icon">
- <svg
- width="16"
- height="16"
- viewBox="0 0 24 24"
- fill="none"
- stroke="currentColor"
- strokeWidth="2"
- strokeLinecap="round"
- strokeLinejoin="round"
- >
- <circle cx="12" cy="12" r="10" />
- <polyline points="12 6 12 12 16 14" />
- </svg>
- </span>
- <div>
- <div className="detail-label">Lease Duration</div>
- <div className="detail-value">
- {reservation.leaseDuration || 12} months
- </div>
- </div>
- </div>
-
- <div className="detail-item">
- <span className="detail-icon">
- <svg
- width="16"
- height="16"
- viewBox="0 0 24 24"
- fill="none"
- stroke="currentColor"
- strokeWidth="2"
- strokeLinecap="round"
- strokeLinejoin="round"
- >
- <line x1="12" y1="1" x2="12" y2="23" />
- <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
- </svg>
- </span>
- <div>
- <div className="detail-label">Monthly Rent</div>
- <div className="detail-value">
- {formatCurrency(reservation.totalPrice)}
- </div>
- </div>
- </div>
-
- {reservation.selectedBed && (
- <div className="detail-item">
- <span className="detail-icon">
- <svg
- width="16"
- height="16"
- viewBox="0 0 24 24"
- fill="none"
- stroke="currentColor"
- strokeWidth="2"
- strokeLinecap="round"
- strokeLinejoin="round"
- >
- <path d="M2 4v16" />
- <path d="M2 8h18a2 2 0 0 1 2 2v10" />
- <path d="M2 17h20" />
- <path d="M6 8v9" />
- </svg>
- </span>
- <div>
- <div className="detail-label">Bed Assignment</div>
- <div className="detail-value">
- {reservation.selectedBed.position
- ? `${reservation.selectedBed.position} bunk`
- : "Assigned"}
- </div>
- </div>
- </div>
- )}
-
- {reservation.branch && (
- <div className="detail-item">
- <span className="detail-icon">
- <svg
- width="16"
- height="16"
- viewBox="0 0 24 24"
- fill="none"
- stroke="currentColor"
- strokeWidth="2"
- strokeLinecap="round"
- strokeLinejoin="round"
- >
- <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
- <circle cx="12" cy="10" r="3" />
- </svg>
- </span>
- <div>
- <div className="detail-label">Branch</div>
- <div
- className="detail-value"
- style={{ textTransform: "capitalize" }}
- >
- {reservation.branch || room?.branch || "—"}
- </div>
- </div>
- </div>
- )}
- </div>
-
- {/* Download Contract PDF */}
- <button
- className="btn btn-primary-outline btn-sm"
- style={{
- marginTop: "16px",
- display: "flex",
- alignItems: "center",
- gap: "6px",
- width: "100%",
- justifyContent: "center",
- padding: "10px",
- borderRadius: "8px",
- fontSize: "13px",
- fontWeight: 600
- }}
- onClick={async () => {
- try {
- const { generateContractPDF } = await import("../../../shared/utils/pdfUtils");
- generateContractPDF(reservation);
- } catch (err) {
- console.error("PDF generation failed:", err);
- }
- }}
- >
- <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 1V10M8 10L4.5 6.5M8 10L11.5 6.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M2 14H14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
- Download Contract PDF
- </button>
- </div>
- </div>
- );
- };
-
- return (
- <div className="contracts-page">
- <div className="contracts-header">
- <h1>My Contracts</h1>
- <p>View your rental contract details and lease information</p>
- </div>
-
- {loading ? (
- <ContractsPageSkeleton />
- ) : error ? (
- <div className="contracts-error">{error}</div>
- ) : !activeContract &&
- pastContracts.length === 0 ? (
- <div className="contracts-empty">
- <div className="empty-icon">
- <svg
- width="48"
- height="48"
- viewBox="0 0 24 24"
- fill="none"
- stroke="currentColor"
- strokeWidth="1.5"
- strokeLinecap="round"
- strokeLinejoin="round"
- >
- <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
- <polyline points="14 2 14 8 20 8" />
- <line x1="16" y1="13" x2="8" y2="13" />
- <line x1="16" y1="17" x2="8" y2="17" />
- </svg>
- </div>
- <h3>No Contracts Yet</h3>
- <p>
- Your contract details will appear here after the admin moves you in
- and your account becomes a tenant.
- </p>
- </div>
- ) : (
- <>
- {/* Active Contract */}
- {activeContract && (
- <section className="contracts-section">
- <h2 className="section-title">Active Contract</h2>
- {renderContractCard(activeContract, true)}
- </section>
- )}
-
- {/* Past Contracts */}
- {pastContracts.length > 0 && (
- <section className="contracts-section">
- <h2 className="section-title">Past Contracts</h2>
- {pastContracts.map((r) => renderContractCard(r))}
- </section>
- )}
- </>
- )}
- </div>
- );
-};
-
-export default ContractsPage;
+      <section aria-labelledby="contract-document-title">
+        <h2 className="tenant-contract-section-title" id="contract-document-title">Contract Document</h2>
+        {contract.finalDocument?.available && <article className="tenant-contract-document tenant-contract-document--final">
+          <div className="tenant-contract-document__icon"><FileText size={26} /></div>
+          <div className="tenant-contract-document__content">
+            <h3>Final Signed and Notarized Contract</h3>
+            <p>Your published legal digital copy.</p>
+            <div className="tenant-contract-document__meta">
+              <span>{contract.contractNumber}</span>
+              <span>Published {date(contract.finalDocument.publishedAt)}</span>
+              <span>{date(contract.leaseStartDate)} — {date(contract.leaseEndDate)}</span>
+              <span>{contract.finalDocument.pageCount || "—"} page(s)</span>
+              <span>{fileSize(contract.finalDocument.fileSize)}</span>
+            </div>
+          </div>
+          <div className="tenant-contract-actions">
+            <button type="button" className="tenant-contract-button tenant-contract-button--primary"
+              disabled={Boolean(fileBusy)} onClick={() => retrieveFile("view", "final")}>
+              <Eye size={16}/>View Final Contract
+            </button>
+            <button type="button" className="tenant-contract-button tenant-contract-button--secondary"
+              disabled={Boolean(fileBusy)} onClick={() => retrieveFile("download", "final")}>
+              <Download size={16}/>Download Final Contract
+            </button>
+          </div>
+        </article>}
+        <article className="tenant-contract-document">
+          <div className="tenant-contract-document__icon"><FileText size={26} /></div>
+          <div className="tenant-contract-document__content">
+            <h3>{contract.preparedDocument.available ? "Prepared Copy — Not Yet Signed or Notarized" : "Contract Document Not Yet Available"}</h3>
+            <p>{contract.preparedDocument.available ? "This document has not yet been physically signed or notarized." : "The dormitory administrator is still preparing your Contract document."}</p>
+            {contract.preparedDocument.available && <div className="tenant-contract-document__meta">
+              <span>Version {contract.preparedDocument.currentVersion}</span>
+              <span>Generated {date(contract.preparedDocument.generatedAt)}</span>
+              <span>{contract.preparedDocument.pageCount || "—"} page{contract.preparedDocument.pageCount === 1 ? "" : "s"}</span>
+              <span>{fileSize(contract.preparedDocument.fileSize)}</span>
+            </div>}
+          </div>
+          {contract.preparedDocument.available && <div className="tenant-contract-actions">
+            <button type="button" className="tenant-contract-button tenant-contract-button--primary" disabled={Boolean(fileBusy)} onClick={() => retrieveFile("view")}>
+              {fileBusy === "view" && <LoaderCircle className="tenant-contract-spinner" size={16} />}<Eye size={16} />{fileBusy === "view" ? "Opening Contract…" : "View Contract"}
+            </button>
+            <button type="button" className="tenant-contract-button tenant-contract-button--secondary" disabled={Boolean(fileBusy)} onClick={() => retrieveFile("download")}>
+              {fileBusy === "download" && <LoaderCircle className="tenant-contract-spinner" size={16} />}<Download size={16} />{fileBusy === "download" ? "Preparing Download…" : "Download PDF"}
+            </button>
+          </div>}
+        </article>
+      </section>
+    </>}
+  </main>;
+}

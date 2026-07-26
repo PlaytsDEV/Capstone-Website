@@ -1,0 +1,147 @@
+/**
+ * Canonical applicant-to-tenant profile mapping.
+ *
+ * User is authoritative for current personal data. Reservation remains the
+ * application-history fallback, while Stay is authoritative for occupancy.
+ */
+const hasValue = (value) =>
+  value !== undefined &&
+  value !== null &&
+  (typeof value !== "string" || value.trim() !== "");
+
+const firstValue = (...values) => values.find(hasValue) ?? null;
+
+const joinAddress = (address = {}) =>
+  [
+    address.unitHouseNo,
+    address.street,
+    address.barangay,
+    address.city,
+    address.province,
+  ]
+    .filter(hasValue)
+    .map((value) => String(value).trim())
+    .join(", ");
+
+export function resolveTenantPersonalDetails({ user = {}, reservation = {} } = {}) {
+  const reservationAddress = reservation.address || {};
+  const emergency = reservation.emergencyContact || {};
+  const employment = reservation.employment || {};
+  const approvedApplication = Boolean(
+    reservation.applicationReviewedAt &&
+    reservation.applicationReviewedBy &&
+    !["needs_revision", "rejected"].includes(reservation.applicationStatus),
+  );
+  const preferred = (applicationValue, profileValue) =>
+    approvedApplication
+      ? firstValue(applicationValue, profileValue)
+      : firstValue(profileValue, applicationValue);
+  const firstName = preferred(reservation.firstName, user.firstName);
+  const middleName = firstValue(reservation.middleName);
+  const lastName = preferred(reservation.lastName, user.lastName);
+  const fullName = [firstName, middleName, lastName].filter(hasValue).join(" ");
+
+  return {
+    fullName: fullName || firstValue(user.email, reservation.email),
+    firstName,
+    middleName,
+    lastName,
+    email: preferred(reservation.email || reservation.billingEmail, user.email),
+    phone: preferred(reservation.mobileNumber, user.phone),
+    birthDate: preferred(reservation.birthday, user.dateOfBirth),
+    gender: preferred(reservation.gender, user.gender),
+    civilStatus: preferred(reservation.maritalStatus, user.civilStatus),
+    nationality: preferred(reservation.nationality, user.nationality),
+    occupation: preferred(employment.occupation, user.occupation),
+    currentAddress: preferred(joinAddress(reservationAddress), user.address),
+    city: preferred(reservationAddress.city, user.city),
+    province: preferred(reservationAddress.province, user.province),
+    profileImage: firstValue(user.profileImage, reservation.selfiePhotoUrl),
+    emergencyContact: {
+      name: firstValue(user.emergencyContact, emergency.name),
+      relationship: firstValue(
+        user.emergencyRelationship,
+        emergency.relationship,
+      ),
+      phone: firstValue(user.emergencyPhone, emergency.contactNumber),
+      address: null,
+    },
+  };
+}
+
+export function buildTenantProfileSyncUpdates({ user = {}, reservation = {} } = {}) {
+  const resolved = resolveTenantPersonalDetails({ user, reservation });
+  const candidates = {
+    firstName: resolved.firstName,
+    lastName: resolved.lastName,
+    phone: resolved.phone,
+    profileImage: resolved.profileImage,
+    gender: resolved.gender,
+    civilStatus: resolved.civilStatus,
+    nationality: resolved.nationality,
+    occupation: resolved.occupation,
+    address: resolved.currentAddress,
+    city: resolved.city,
+    province: resolved.province,
+    dateOfBirth: resolved.birthDate,
+    emergencyContact: resolved.emergencyContact.name,
+    emergencyRelationship: resolved.emergencyContact.relationship,
+    emergencyPhone: resolved.emergencyContact.phone,
+  };
+
+  return Object.fromEntries(
+    Object.entries(candidates).filter(
+      ([field, value]) => !hasValue(user[field]) && hasValue(value),
+    ),
+  );
+}
+
+export function resolveTenantOccupancyDetails({
+  reservation = {},
+  currentStay = null,
+} = {}) {
+  const room = reservation.roomId || {};
+  return {
+    branch: currentStay?.branch || room.branch || null,
+    room: room.name || room.roomNumber || null,
+    roomId: currentStay?.roomId || room._id || null,
+    bed:
+      currentStay?.bedCode ||
+      reservation.selectedBed?.position ||
+      reservation.selectedBed?.code ||
+      reservation.selectedBed?.id ||
+      null,
+    bedId: currentStay?.bedId || reservation.selectedBed?.id || null,
+    moveInDate:
+      currentStay?.leaseStartDate ||
+      reservation.confirmedMoveInDate ||
+      reservation.moveInDate ||
+      reservation.intendedMoveInDate ||
+      reservation.targetMoveInDate ||
+      null,
+    status: currentStay?.status || reservation.status || null,
+  };
+}
+
+export function resolveTenantFinancialSummary({
+  reservation = {},
+  currentBalance = 0,
+  paymentStatus = null,
+} = {}) {
+  const monthlyRate = firstValue(reservation.monthlyRent, reservation.totalPrice);
+  const approvedRate = hasValue(monthlyRate) ? Number(monthlyRate) : null;
+  const reservationFee = hasValue(reservation.reservationFeeAmount)
+    ? Number(reservation.reservationFeeAmount)
+    : null;
+
+  return {
+    monthlyRate: Number.isFinite(approvedRate) ? approvedRate : null,
+    advanceRent: Number.isFinite(approvedRate) ? approvedRate : null,
+    securityDeposit: Number.isFinite(approvedRate) ? approvedRate : null,
+    reservationFee: Number.isFinite(reservationFee) ? reservationFee : null,
+    paymentStatus: paymentStatus || reservation.paymentStatus || null,
+    currentBalance: Number.isFinite(Number(currentBalance))
+      ? Number(currentBalance)
+      : null,
+  };
+}

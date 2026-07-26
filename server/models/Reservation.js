@@ -540,6 +540,18 @@ const reservationSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    legacyContractApprovalConfirmedAt: { type: Date, default: null },
+    legacyContractApprovalConfirmedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    legacyContractApprovalReason: {
+      type: String,
+      default: null,
+      trim: true,
+      maxlength: 1500,
+    },
     reservedAt: {
       type: Date,
       default: null,

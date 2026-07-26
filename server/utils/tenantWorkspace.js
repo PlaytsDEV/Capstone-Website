@@ -5,6 +5,10 @@ import {
   readMoveInDate,
   readMoveOutDate,
 } from "./lifecycleNaming.js";
+import {
+  resolveTenantFinancialSummary,
+  resolveTenantPersonalDetails,
+} from "../services/tenantProfileService.js";
 
 export const LEASE_EXPIRING_SOON_DAYS = 30;
 
@@ -308,11 +312,16 @@ export function buildTenantWorkspaceEntry({
   });
 
   const tenantUser = reservation.userId || {};
-  const fullName =
-    `${tenantUser.firstName || reservation.firstName || ""} ${tenantUser.lastName || reservation.lastName || ""}`.trim() ||
-    tenantUser.email ||
-    reservation.email ||
-    "Unknown tenant";
+  const personalInformation = resolveTenantPersonalDetails({
+    user: tenantUser,
+    reservation,
+  });
+  const fullName = personalInformation.fullName || "Unknown tenant";
+  const financialSummary = resolveTenantFinancialSummary({
+    reservation,
+    currentBalance: billingSummary.currentBalance,
+    paymentStatus: billingSummary.paymentStatus,
+  });
 
   return {
     id: String(reservation._id || reservation.id),
@@ -350,12 +359,19 @@ export function buildTenantWorkspaceEntry({
     },
     basicInfo: {
       name: fullName,
-      email: tenantUser.email || reservation.email || "",
-      phone: tenantUser.phone || reservation.mobileNumber || "",
+      email: personalInformation.email || "",
+      phone: personalInformation.phone || "",
+      birthDate: personalInformation.birthDate,
+      address: personalInformation.currentAddress,
+      emergencyContactName: personalInformation.emergencyContact.name,
+      emergencyContactRelationship:
+        personalInformation.emergencyContact.relationship,
+      emergencyContactPhone: personalInformation.emergencyContact.phone,
       branch: reservation.roomId?.branch || "",
       room: reservation.roomId?.name || reservation.roomId?.roomNumber || "",
       bed: reservation.selectedBed?.position || reservation.selectedBed?.id || "",
     },
+    personalInformation,
     leaseInfo: {
       moveInDate: currentStay?.leaseStartDate || readMoveInDate(reservation),
       leaseEndDate,
@@ -387,7 +403,12 @@ export function buildTenantWorkspaceEntry({
       paymentStatus: billingSummary.paymentStatus,
       pendingVerification: billingSummary.hasPendingVerification,
       billCount: billingSummary.visibleBills.length,
+      monthlyRent: financialSummary.monthlyRate,
+      advanceRent: financialSummary.advanceRent,
+      securityDeposit: financialSummary.securityDeposit,
+      reservationFee: financialSummary.reservationFee,
     },
+    financialSummary,
     roomHistory,
     systemWarnings: warningFlags,
   };
