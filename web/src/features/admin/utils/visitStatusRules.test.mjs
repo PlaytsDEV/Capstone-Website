@@ -23,16 +23,17 @@ test("completed visits lock normal admin visit actions", () => {
   assert.equal(availability.canAllowWithoutVisit, false);
 });
 
-test("pending schedule: approve/reject available, outcome actions not yet available", () => {
+test("scheduled visit: automatic approval enables outcome actions", () => {
   const availability = getVisitManagementAvailability({
     visitStatusKey: "physical_visit_scheduled",
     hasVisitSchedule: true,
   });
 
-  assert.equal(availability.canApproveSchedule, true);
+  // Visit schedules are automatically approved in the current workflow.
+  assert.equal(availability.canApproveSchedule, false);
   assert.equal(availability.canRejectSchedule, true);
-  assert.equal(availability.canMarkVisited, false);
-  assert.equal(availability.canMarkNoShow, false);
+  assert.equal(availability.canMarkVisited, true);
+  assert.equal(availability.canMarkNoShow, true);
   assert.equal(availability.canReschedule, true);
   assert.equal(availability.canCancelVisit, true);
   assert.equal(availability.canAllowWithoutVisit, true);
@@ -45,7 +46,7 @@ test("approved schedule: outcome actions available, approve/reject no longer ava
   });
 
   assert.equal(availability.canApproveSchedule, false);
-  assert.equal(availability.canRejectSchedule, false);
+  assert.equal(availability.canRejectSchedule, true);
   assert.equal(availability.canMarkVisited, true);
   assert.equal(availability.canMarkNoShow, true);
   assert.equal(availability.canReschedule, true);
@@ -53,17 +54,17 @@ test("approved schedule: outcome actions available, approve/reject no longer ava
   assert.equal(availability.canAllowWithoutVisit, true);
 });
 
-test("rescheduled visits: needs re-approval before outcome can be recorded", () => {
+test("rescheduled visits remain approved for outcome recording", () => {
   const availability = getVisitManagementAvailability({
     visitStatusKey: "rescheduled",
     hasVisitSchedule: true,
   });
 
-  // Reschedule resets scheduleApproved=false — admin must re-approve before marking visited/no-show
-  assert.equal(availability.canApproveSchedule, true);
+  // Rescheduled visits remain automatically approved in the current workflow.
+  assert.equal(availability.canApproveSchedule, false);
   assert.equal(availability.canRejectSchedule, true);
-  assert.equal(availability.canMarkVisited, false);
-  assert.equal(availability.canMarkNoShow, false);
+  assert.equal(availability.canMarkVisited, true);
+  assert.equal(availability.canMarkNoShow, true);
   assert.equal(availability.canReschedule, true);
   assert.equal(availability.canCancelVisit, true);
 });

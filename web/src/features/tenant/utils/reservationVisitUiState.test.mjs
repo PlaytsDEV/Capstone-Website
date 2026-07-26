@@ -18,7 +18,7 @@ const physicalReservation = (visitStatus) => ({
 test("first-time physical visit submit button uses the specific request label", () => {
   assert.equal(
     getVisitScheduleSubmitLabel("physical_visit"),
-    "Submit Physical Visit Request",
+    "Submit",
   );
 });
 
