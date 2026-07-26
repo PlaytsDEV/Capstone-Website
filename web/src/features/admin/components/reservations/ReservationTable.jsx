@@ -86,48 +86,13 @@ export function checkOverdue(r) {
 }
 
 export default function ReservationTable({
- reservations,
- loading,
- error,
- LoadingComponent,
- onView,
- onDelete,
+  reservations,
+  loading,
+  error,
+  LoadingComponent,
+  onView,
+  onDelete,
 }) {
- if (loading) return LoadingComponent ? <LoadingComponent /> : <TableSkeleton rows={6} columns={6} />;
- if (error) return <div className="ar-error">Error: {error}</div>;
- if (reservations.length === 0) {
- return (
- <div className="ar-empty">
- <p className="ar-empty-title">No reservations found</p>
- <p className="ar-empty-sub">Try adjusting your search or filters</p>
- </div>
- );
- }
-
- return (
- <div style={{ overflowX: "auto" }}>
- <table
- className="ar-table"
- style={{ tableLayout: "fixed", width: "100%" }}
- >
- <thead>
- <tr>
- <th style={{ width: "12%" }}>Code</th>
- <th style={{ width: "24%" }}>Customer</th>
- <th style={{ width: "18%" }}>Room / Branch</th>
- <th style={{ width: "14%" }}>Move-in</th>
- <th style={{ width: "12%" }}>Status</th>
- <th style={{ width: "20%" }}>Actions</th>
- </tr>
- </thead>
- <tbody>
- {reservations.map((r) => {
- const overdue = checkOverdue(r);
- return (
- <tr
- key={r.id}
- className={overdue ? "ar-row-overdue" : ""}
- onClick={() => onView(r.id)}
  >
  <td>
  <span className="ar-cell-code">{r.reservationCode}</span>

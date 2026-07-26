@@ -117,39 +117,66 @@ export default function AdminLayoutSkeleton() {
           {/* Header row */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
-              <SkeletonPulse width="200px" height="24px" style={{ marginBottom: 8 }} />
-              <SkeletonPulse width="320px" height="13px" />
+              <SkeletonPulse width="180px" height="26px" style={{ marginBottom: 8 }} />
+              <SkeletonPulse width="340px" height="14px" />
             </div>
-            <SkeletonPulse width="120px" height="36px" borderRadius="8px" />
+            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              <SkeletonPulse width="130px" height="34px" borderRadius="8px" />
+              <SkeletonPulse width="110px" height="34px" borderRadius="8px" />
+            </div>
           </div>
 
-          {/* Stats card grid */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
-            {[1, 2, 3, 4].map((i) => (
+          {/* 5 KPI Stats Card Grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
+            {[1, 2, 3, 4, 5].map((i) => (
               <div key={i} style={{ padding: 20, background: "#ffffff", borderRadius: 12, border: "1px solid #e2e8f0" }}>
-                <SkeletonPulse width="80px" height="12px" style={{ marginBottom: 12 }} />
-                <SkeletonPulse width="110px" height="24px" style={{ marginBottom: 8 }} />
-                <SkeletonPulse width="60px" height="11px" />
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+                  <SkeletonPulse width="80px" height="11px" />
+                  <SkeletonPulse width="16px" height="16px" borderRadius="4px" />
+                </div>
+                <SkeletonPulse width="60px" height="28px" style={{ marginBottom: 6 }} />
+                <SkeletonPulse width="110px" height="11px" />
               </div>
             ))}
           </div>
 
-          {/* Main Table / Content Card */}
-          <div style={{ padding: 24, background: "#ffffff", borderRadius: 12, border: "1px solid #e2e8f0", display: "flex", flexDirection: "column", gap: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <SkeletonPulse width="160px" height="18px" />
-              <SkeletonPulse width="240px" height="32px" borderRadius="6px" />
+          {/* 2-Column Middle Grid (Recent Inquiries + Donut Chart) */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 24 }}>
+            {/* Recent Inquiries Card */}
+            <div style={{ padding: 24, background: "#ffffff", borderRadius: 12, border: "1px solid #e2e8f0", display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <SkeletonPulse width="160px" height="20px" />
+                <SkeletonPulse width="80px" height="14px" />
+              </div>
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid #f1f5f9" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <SkeletonPulse width="40px" height="40px" borderRadius="10px" />
+                    <div>
+                      <SkeletonPulse width="130px" height="14px" style={{ marginBottom: 6 }} />
+                      <SkeletonPulse width="180px" height="12px" />
+                    </div>
+                  </div>
+                  <SkeletonPulse width="70px" height="22px" borderRadius="6px" />
+                </div>
+              ))}
             </div>
 
-            {/* Table Rows Skeleton */}
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 0", borderBottom: "1px solid #f1f5f9" }}>
-                <SkeletonPulse width="180px" height="14px" />
-                <SkeletonPulse width="100px" height="14px" />
-                <SkeletonPulse width="120px" height="14px" />
-                <SkeletonPulse width="80px" height="24px" borderRadius="999px" />
+            {/* Reservation Status Donut Card */}
+            <div style={{ padding: 24, background: "#ffffff", borderRadius: 12, border: "1px solid #e2e8f0", display: "flex", flexDirection: "column", gap: 16 }}>
+              <SkeletonPulse width="140px" height="20px" />
+              <div style={{ display: "flex", justifyContent: "center", padding: "16px 0" }}>
+                <SkeletonPulse variant="circle" width="140px" />
               </div>
-            ))}
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {[1, 2, 3].map((i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between" }}>
+                    <SkeletonPulse width="90px" height="13px" />
+                    <SkeletonPulse width="30px" height="13px" />
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </main>
       </div>

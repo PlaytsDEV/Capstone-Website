@@ -219,7 +219,16 @@ export default function AdminNotificationsPage() {
       {/* ── List ── */}
       <div className="admin-notif-page__list">
         {isLoading ? (
-          <ListSkeleton rows={6} avatar />
+          Array.from({ length: 5 }).map((_, i) => (
+            <div key={`notif-skel-${i}`} className="admin-notif-page__item opacity-60 p-4 border-b border-border flex items-start gap-3">
+              <div className="h-8 w-8 rounded-full bg-muted animate-pulse shrink-0 mt-1" />
+              <div className="flex-1 min-w-0">
+                <div className="h-4 w-48 rounded bg-muted animate-pulse mb-2" />
+                <div className="h-3 w-3/4 rounded bg-muted animate-pulse mb-2" />
+                <div className="h-3 w-24 rounded bg-muted animate-pulse" />
+              </div>
+            </div>
+          ))
         ) : filtered.length === 0 ? (
           <div className="admin-notif-page__state">
             <Inbox size={28} />

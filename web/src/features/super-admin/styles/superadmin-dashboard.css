@@ -5,8 +5,8 @@
 @import "../../admin/styles/design-tokens.css";
 
 .sa2 {
-  padding: 40px 48px;
-  max-width: 1280px;
+  padding: 0;
+  max-width: 100%;
   font-family: var(--font-family);
 }
 

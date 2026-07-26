@@ -28,6 +28,13 @@ import {
   LEGACY_ANALYTICS_REDIRECTS,
 } from "../../features/admin/pages/analyticsNavigation.mjs";
 import AdminLayoutSkeleton from "../../features/admin/components/AdminLayoutSkeleton";
+import {
+  AdminDashboardSkeleton,
+  AdminTablePageSkeleton,
+  AdminCardGridSkeleton,
+  AdminFormPageSkeleton,
+  AdminChatSkeleton,
+} from "../../features/admin/components/AdminContentSkeletons";
 
 export function AdminRoutes() {
   return (
@@ -45,7 +52,7 @@ export function AdminRoutes() {
       <Route
         path="dashboard"
         element={
-          <RouteShell name="AdminDashboard" fallback={<AdminLayoutSkeleton />}>
+          <RouteShell name="AdminDashboard" fallback={<AdminDashboardSkeleton />}>
             <AdminDashboardPage />
           </RouteShell>
         }
@@ -53,7 +60,7 @@ export function AdminRoutes() {
       <Route
         path="reservations"
         element={
-          <RouteShell name="Reservations" fallback={<AdminLayoutSkeleton />}>
+          <RouteShell name="Reservations" fallback={<AdminTablePageSkeleton />}>
             <ReservationsPage />
           </RouteShell>
         }
@@ -61,7 +68,7 @@ export function AdminRoutes() {
       <Route
         path="room-availability"
         element={
-          <RouteShell name="RoomAvailability" fallback={<AdminLayoutSkeleton />}>
+          <RouteShell name="RoomAvailability" fallback={<AdminCardGridSkeleton />}>
             <RoomAvailabilityPage />
           </RouteShell>
         }
@@ -69,7 +76,7 @@ export function AdminRoutes() {
       <Route
         path="tenants"
         element={
-          <RouteShell name="Tenants" fallback={<AdminLayoutSkeleton />}>
+          <RouteShell name="Tenants" fallback={<AdminTablePageSkeleton />}>
             <TenantsWorkspacePage />
           </RouteShell>
         }
@@ -77,7 +84,7 @@ export function AdminRoutes() {
       <Route
         path="audit-logs"
         element={
-          <RouteShell name="AuditLogs" fallback={<AdminLayoutSkeleton />}>
+          <RouteShell name="AuditLogs" fallback={<AdminTablePageSkeleton />}>
             <AuditLogsPage />
           </RouteShell>
         }
@@ -85,7 +92,7 @@ export function AdminRoutes() {
       <Route
         path="users"
         element={
-          <RouteShell name="UserManagement" fallback={<AdminLayoutSkeleton />}>
+          <RouteShell name="UserManagement" fallback={<AdminTablePageSkeleton />}>
             <UserManagementPage />
           </RouteShell>
         }
@@ -93,7 +100,7 @@ export function AdminRoutes() {
       <Route
         path="billing"
         element={
-          <RouteShell name="AdminBilling" fallback={<AdminLayoutSkeleton />}>
+          <RouteShell name="AdminBilling" fallback={<AdminTablePageSkeleton />}>
             <AdminBillingPage />
           </RouteShell>
         }
@@ -101,7 +108,7 @@ export function AdminRoutes() {
       <Route
         path="announcements"
         element={
-          <RouteShell name="AdminAnnouncements" fallback={<AdminLayoutSkeleton />}>
+          <RouteShell name="AdminAnnouncements" fallback={<AdminTablePageSkeleton />}>
             <AdminAnnouncementsPage />
           </RouteShell>
         }
@@ -109,7 +116,7 @@ export function AdminRoutes() {
       <Route
         path="chat"
         element={
-          <RouteShell name="AdminChat" fallback={<AdminLayoutSkeleton />}>
+          <RouteShell name="AdminChat" fallback={<AdminChatSkeleton />}>
             <AdminChatPage />
           </RouteShell>
         }
@@ -117,7 +124,7 @@ export function AdminRoutes() {
       <Route
         path="maintenance"
         element={
-          <RouteShell name="AdminMaintenance" fallback={<AdminLayoutSkeleton />}>
+          <RouteShell name="AdminMaintenance" fallback={<AdminCardGridSkeleton />}>
             <MaintenancePage />
           </RouteShell>
         }
@@ -125,7 +132,7 @@ export function AdminRoutes() {
       <Route
         path="analytics"
         element={
-          <RouteShell name="Analytics" fallback={<AdminLayoutSkeleton />}>
+          <RouteShell name="Analytics" fallback={<AdminDashboardSkeleton />}>
             <AnalyticsPage />
           </RouteShell>
         }
@@ -133,7 +140,7 @@ export function AdminRoutes() {
       <Route
         path="analytics/details"
         element={
-          <RouteShell name="AnalyticsDetails" fallback={<AdminLayoutSkeleton />}>
+          <RouteShell name="AnalyticsDetails" fallback={<AdminDashboardSkeleton />}>
             <AnalyticsDetailsPage />
           </RouteShell>
         }
@@ -141,7 +148,7 @@ export function AdminRoutes() {
       <Route
         path="inquiries"
         element={
-          <RouteShell name="Inquiries" fallback={<AdminLayoutSkeleton />}>
+          <RouteShell name="Inquiries" fallback={<AdminTablePageSkeleton />}>
             <InquiriesPage />
           </RouteShell>
         }
@@ -149,7 +156,7 @@ export function AdminRoutes() {
       <Route
         path="notifications"
         element={
-          <RouteShell name="AdminNotifications" fallback={<AdminLayoutSkeleton />}>
+          <RouteShell name="AdminNotifications" fallback={<AdminTablePageSkeleton />}>
             <AdminNotificationsPage />
           </RouteShell>
         }
@@ -198,7 +205,7 @@ export function AdminRoutes() {
         path="branches"
         element={
           <ProtectedRoute requiredRole="owner">
-            <RouteShell name="Branches" fallback={<AdminLayoutSkeleton />}>
+            <RouteShell name="Branches" fallback={<AdminCardGridSkeleton />}>
               <BranchManagementPage />
             </RouteShell>
           </ProtectedRoute>
@@ -208,7 +215,7 @@ export function AdminRoutes() {
         path="settings"
         element={
           <ProtectedRoute requiredRole="owner">
-            <RouteShell name="Settings" fallback={<AdminLayoutSkeleton />}>
+            <RouteShell name="Settings" fallback={<AdminFormPageSkeleton />}>
               <SystemSettingsPage />
             </RouteShell>
           </ProtectedRoute>
@@ -218,7 +225,7 @@ export function AdminRoutes() {
         path="roles"
         element={
           <ProtectedRoute requiredRole="owner">
-            <RouteShell name="Roles" fallback={<AdminLayoutSkeleton />}>
+            <RouteShell name="Roles" fallback={<AdminFormPageSkeleton />}>
               <RolePermissionsPage />
             </RouteShell>
           </ProtectedRoute>
@@ -228,7 +235,7 @@ export function AdminRoutes() {
         path="backups"
         element={
           <ProtectedRoute requiredRole="owner">
-            <RouteShell name="SystemBackup" fallback={<AdminLayoutSkeleton />}>
+            <RouteShell name="SystemBackup" fallback={<AdminTablePageSkeleton />}>
               <SystemBackupPage />
             </RouteShell>
           </ProtectedRoute>

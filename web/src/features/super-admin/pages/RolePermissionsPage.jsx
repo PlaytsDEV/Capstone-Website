@@ -189,7 +189,29 @@ export default function RolePermissionsPage() {
         </div>
 
         {/* Loading / Error States */}
-        {isLoading ? <ListSkeleton rows={4} avatar /> : null}
+        {isLoading ? (
+          <div className="sa-perm-list">
+            {[1, 2].map((i) => (
+              <div key={i} className="sa2-card sa-perm-card p-6 opacity-60">
+                <div className="sa-perm-card-header flex justify-between items-center mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-muted animate-pulse shrink-0" />
+                    <div>
+                      <div className="h-4 w-36 rounded bg-muted animate-pulse mb-1" />
+                      <div className="h-3 w-48 rounded bg-muted animate-pulse" />
+                    </div>
+                  </div>
+                  <div className="h-6 w-24 rounded-full bg-muted animate-pulse" />
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-4">
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map((j) => (
+                    <div key={j} className="h-10 rounded-lg bg-muted animate-pulse" />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
         {!isLoading && error ? (
           <p className="sa2-empty">Failed to load permissions data.</p>
         ) : null}

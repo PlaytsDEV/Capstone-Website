@@ -20,6 +20,7 @@ import ContractsPageSkeleton from "../../features/tenant/components/contracts/Co
 import BillingPageSkeleton from "../../features/tenant/components/billing/BillingPageSkeleton";
 import MaintenancePageSkeleton from "../../features/tenant/components/maintenance/MaintenancePageSkeleton";
 import AnnouncementsPageSkeleton from "../../features/tenant/components/announcements/AnnouncementsPageSkeleton";
+import ReservationPageSkeleton from "../../features/tenant/components/reservation/ReservationPageSkeleton";
 
 export function TenantRoutes() {
   return (
@@ -64,7 +65,7 @@ export function TenantRoutes() {
         <Route
           path="reservation"
           element={
-            <RouteShell name="ReservationFlow" fallback={<TenantLayoutSkeleton />}>
+            <RouteShell name="ReservationFlow" fallback={<ReservationPageSkeleton />}>
               <ReservationFlowPage />
             </RouteShell>
           }

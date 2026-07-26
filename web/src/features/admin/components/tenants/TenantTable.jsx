@@ -170,8 +170,35 @@ export default function TenantTable({
  return (
  <div className="admin-tenants-table-body">
  {loading ? (
- <ListSkeleton rows={7} avatar style={{ padding: "16px" }} />
- ) : error ? (
+        Array.from({ length: 5 }).map((_, i) => (
+          <div key={`tenant-skel-${i}`} className="admin-tenants-row opacity-60">
+            <div className="admin-tenants-cell">
+              <div className="admin-tenants-profile">
+                <div className="h-9 w-9 rounded-full bg-muted animate-pulse shrink-0" />
+                <div className="h-4 w-28 rounded bg-muted animate-pulse" />
+              </div>
+            </div>
+            <div className="admin-tenants-cell">
+              <div className="h-5 w-16 rounded-full bg-muted animate-pulse" />
+            </div>
+            <div className="admin-tenants-cell">
+              <div className="h-4 w-20 rounded bg-muted animate-pulse" />
+            </div>
+            <div className="admin-tenants-cell">
+              <div className="h-4 w-20 rounded bg-muted animate-pulse" />
+            </div>
+            <div className="admin-tenants-cell">
+              <div className="h-4 w-20 rounded bg-muted animate-pulse" />
+            </div>
+            <div className="admin-tenants-cell">
+              <div className="h-4 w-32 rounded bg-muted animate-pulse mb-1" />
+            </div>
+            <div className="admin-tenants-cell">
+              <div className="h-7 w-14 rounded bg-muted animate-pulse" />
+            </div>
+          </div>
+        ))
+      ) : error ? (
  <div style={{ padding: "40px", textAlign: "center", color: "#ef4444" }}>
  {error}
  </div>
