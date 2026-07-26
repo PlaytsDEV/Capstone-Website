@@ -22,11 +22,11 @@ test("renders the three-part tenant Contract hierarchy without repetition", () =
 });
 
 test("keeps document actions and loading feedback visible", () => {
-  assert.match(page, /View Contract/);
-  assert.match(page, /Download PDF/);
+  assert.match(page, /View Prepared Copy/);
+  assert.match(page, /Download Prepared Copy/);
   assert.match(page, /Opening Contract/);
   assert.match(page, /Preparing Download/);
-  assert.match(page, /has not yet been physically signed or notarized/);
+  assert.match(page, /final wet-signed and notarized Contract is still being processed/);
   assert.match(page, /Final Signed and Notarized Contract/);
   assert.match(page, /View Final Contract/);
   assert.match(page, /Download Final Contract/);

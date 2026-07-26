@@ -45,12 +45,12 @@ export const formatRoomBed = (roomNumber, bedLabel) => {
 
 export const getTenantContractMessage = (contract) => {
   if (!contract) return {
-    title: "Contract Record Not Yet Available",
-    message: "Your dormitory administrator is still preparing your Contract record.",
+    title: "Your Contract is still being prepared.",
+    message: "A dedicated Contract record is not yet available.",
   };
   if (contract.status === "generated") return {
-    title: "Prepared",
-    message: "Prepared — Physical signing and notarization are pending.",
+    title: "Prepared Contract Available",
+    message: "Your prepared copy is available before physical signing and notarization.",
     nextAction: "The administrator will coordinate physical signing and in-person notarization.",
   };
   if (["awaiting_signatures", "partially_signed", "signed", "awaiting_notarization"]
@@ -78,8 +78,8 @@ export const getTenantContractMessage = (contract) => {
 
 export const getTenantContractError = (error) => {
   const code = error?.response?.data?.code;
-  if (code === "PREPARED_CONTRACT_NOT_FOUND") {
-    return "The prepared Contract file is temporarily unavailable. Please contact the dormitory administrator.";
+  if (["PREPARED_CONTRACT_NOT_FOUND", "PREPARED_DOCUMENT_UNAVAILABLE"].includes(code)) {
+    return "The prepared document is temporarily unavailable. Please contact the administrator.";
   }
   return "We could not load your Contract information. Please try again.";
 };

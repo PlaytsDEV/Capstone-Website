@@ -15,14 +15,14 @@ test("formats tenant Contract statuses without raw enum values", () => {
 
 test("does not infer an active Contract when no dedicated record exists", () => {
   const message = getTenantContractMessage(null);
-  assert.equal(message.title, "Contract Record Not Yet Available");
+  assert.equal(message.title, "Your Contract is still being prepared.");
   assert.doesNotMatch(message.title, /active/i);
 });
 
 test("prepared copies are explicitly unsigned and unnotarized", () => {
   const message = getTenantContractMessage({ status: "generated" });
-  assert.equal(message.title, "Prepared");
-  assert.match(message.message, /physical signing and notarization are pending/i);
+  assert.equal(message.title, "Prepared Contract Available");
+  assert.match(message.message, /prepared copy is available/i);
 });
 
 test("notarized status remains publication-pending and exposes no file details", () => {
@@ -51,5 +51,5 @@ test("formats Contract type and assignment naturally", () => {
 test("maps missing prepared files to a safe tenant message", () => {
   assert.match(getTenantContractError({
     response: { data: { code: "PREPARED_CONTRACT_NOT_FOUND" } },
-  }), /contact the dormitory administrator/i);
+  }), /contact the administrator/i);
 });
