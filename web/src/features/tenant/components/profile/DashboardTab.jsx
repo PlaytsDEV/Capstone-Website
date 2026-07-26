@@ -253,7 +253,8 @@ const S = {
  gap: 12,
  textAlign: "left",
  cursor: "pointer",
- transition: "transform 0.16s ease, box-shadow 0.16s ease",
+ boxShadow: "0 4px 14px rgba(0, 0, 0, 0.04)",
+ transition: "transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s ease, border-color 0.2s ease",
  },
  shortcutIconWrap: {
  width: 46,

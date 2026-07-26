@@ -11,8 +11,9 @@ import {
   Trash2,
   User,
   Search,
+  ArrowLeft,
 } from "lucide-react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { usePermissions } from "../../../shared/hooks/usePermissions";
@@ -95,6 +96,7 @@ const SUMMARY_FILTERS = [
   "archived",
 ];
 function ReservationsPage() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { can } = usePermissions();
   const queryClient = useQueryClient();
@@ -760,13 +762,15 @@ function ReservationsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-foreground mb-1">
-          Reservations
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Review applications, confirm documents, and move accepted residents
-          toward assignment.
-        </p>
+        <div>
+          <h1 className="text-2xl font-semibold text-foreground mb-1">
+            Reservations
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Review applications, confirm documents, and move accepted residents
+            toward assignment.
+          </p>
+        </div>
       </div>
 
       <div className="border-b" style={{ borderColor: "var(--border-light)" }}>

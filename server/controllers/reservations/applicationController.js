@@ -386,6 +386,10 @@ export const submitApplication = async (req, res, next) => {
         submittedBed,
         excludeReservationId: reservationId,
       });
+      if (updates.selectedBed?.id) {
+        room.extendBedLock(updates.selectedBed.id, dbUser._id, 15);
+        await room.save().catch(() => {});
+      }
     } catch (error) {
       if (error?.code === "BED_SELECTION_REQUIRED" || error?.code === "BED_NOT_FOUND" || error?.code === "BED_UNAVAILABLE") {
         return res.status(error.statusCode || 400).json({ error: error.message, code: error.code });

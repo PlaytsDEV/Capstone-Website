@@ -47,6 +47,9 @@ import {
   requestCancellationByUser,
   approveCancellationRequest,
   rejectCancellationRequest,
+  requestPreMoveInModification,
+  approvePreMoveInModification,
+  rejectPreMoveInModification,
   deleteReservation,
   extendReservation,
   releaseSlot,
@@ -405,6 +408,43 @@ router.post(
   filterByBranch,
   requirePermission("manageReservations"),
   rejectCancellationRequest,
+);
+
+/**
+ * POST /api/reservations/:reservationId/modification-request
+ * Tenant submits a pre-move-in modification request (e.g. move-in date change).
+ */
+router.post(
+  "/:reservationId/modification-request",
+  verifyToken,
+  verifyApplicant,
+  requestPreMoveInModification,
+);
+
+/**
+ * POST /api/reservations/:reservationId/modification-request/approve
+ * Admin approves a pre-move-in modification request.
+ */
+router.post(
+  "/:reservationId/modification-request/approve",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageReservations"),
+  approvePreMoveInModification,
+);
+
+/**
+ * POST /api/reservations/:reservationId/modification-request/reject
+ * Admin rejects a pre-move-in modification request.
+ */
+router.post(
+  "/:reservationId/modification-request/reject",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageReservations"),
+  rejectPreMoveInModification,
 );
 
 /**

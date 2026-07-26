@@ -117,12 +117,20 @@ export default function useSocketClient() {
         }
       });
 
-      socket.on("payment:updated", () => {
+      socket.on("payment:updated", (data) => {
+        if (data?.reservationId) {
+          qc.invalidateQueries({ queryKey: ["reservations", data.reservationId] });
+        }
         qc.invalidateQueries({ queryKey: ["reservations"] });
+        qc.invalidateQueries({ queryKey: ["tenant-workspace"] });
       });
 
-      socket.on("reservation:updated", () => {
+      socket.on("reservation:updated", (data) => {
+        if (data?.reservationId) {
+          qc.invalidateQueries({ queryKey: ["reservations", data.reservationId] });
+        }
         qc.invalidateQueries({ queryKey: ["reservations"] });
+        qc.invalidateQueries({ queryKey: ["tenant-workspace"] });
         qc.invalidateQueries({ queryKey: ["dashboard"] });
       });
 

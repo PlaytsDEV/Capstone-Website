@@ -369,3 +369,128 @@ export const rejectCancellationRequest = async (req, res, next) => {
     next(error);
   }
 };
+
+export const requestPreMoveInModification = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    const { requestedMoveInDate, reason } = req.body;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const dbUser = await findDbUser(req.user.uid);
+    if (!dbUser) return res.status(404).json({ error: "User not found.", code: "USER_NOT_FOUND" });
+
+    const reservation = await Reservation.findById(reservationId);
+    if (!reservation) return res.status(404).json({ error: "Reservation not found.", code: "NOT_FOUND" });
+
+    if (String(reservation.userId) !== String(dbUser._id)) {
+      return res.status(403).json({ error: "Unauthorized.", code: "UNAUTHORIZED" });
+    }
+
+    const currentStatus = normalizeReservationStatus(reservation.status);
+    if (currentStatus === "moveIn" || currentStatus === "moveOut" || currentStatus === "cancelled") {
+      return res.status(409).json({
+        error: "Pre-move-in modification is only allowed before move-in.",
+        code: "MODIFICATION_NOT_ALLOWED",
+      });
+    }
+
+    const now = new Date();
+    reservation.modificationRequested = true;
+    reservation.modificationRequestedAt = now;
+    reservation.modificationStatus = "pending";
+    reservation.modificationDetails = {
+      requestedMoveInDate: requestedMoveInDate ? new Date(requestedMoveInDate) : null,
+      reason: reason || "",
+      adminNote: "",
+      reviewedAt: null,
+      reviewedBy: null,
+    };
+    await reservation.save();
+
+    res.json({ message: "Modification request submitted successfully for admin review.", reservation });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "requestPreMoveInModification error");
+    next(error);
+  }
+};
+
+export const approvePreMoveInModification = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const dbUser = await findDbUser(req.user.uid);
+    if (!dbUser) return res.status(404).json({ error: "User not found.", code: "USER_NOT_FOUND" });
+
+    const reservation = await Reservation.findById(reservationId);
+    if (!reservation) return res.status(404).json({ error: "Reservation not found.", code: "NOT_FOUND" });
+
+    if (!reservation.modificationRequested || reservation.modificationStatus !== "pending") {
+      return res.status(409).json({
+        error: "No pending modification request found for this reservation.",
+        code: "NO_PENDING_MODIFICATION",
+      });
+    }
+
+    const now = new Date();
+    const details = reservation.modificationDetails || {};
+    if (details.requestedMoveInDate) {
+      reservation.intendedMoveInDate = details.requestedMoveInDate;
+      reservation.targetMoveInDate = details.requestedMoveInDate;
+      reservation.moveInDate = details.requestedMoveInDate;
+    }
+
+    reservation.modificationStatus = "approved";
+    reservation.modificationRequested = false;
+    reservation.modificationDetails = {
+      ...details,
+      adminNote: req.body.note || "Approved by admin",
+      reviewedAt: now,
+      reviewedBy: dbUser._id,
+    };
+    await reservation.save();
+
+    res.json({ message: "Modification request approved successfully.", reservation });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "approvePreMoveInModification error");
+    next(error);
+  }
+};
+
+export const rejectPreMoveInModification = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+
+    const dbUser = await findDbUser(req.user.uid);
+    if (!dbUser) return res.status(404).json({ error: "User not found.", code: "USER_NOT_FOUND" });
+
+    const reservation = await Reservation.findById(reservationId);
+    if (!reservation) return res.status(404).json({ error: "Reservation not found.", code: "NOT_FOUND" });
+
+    if (!reservation.modificationRequested || reservation.modificationStatus !== "pending") {
+      return res.status(409).json({
+        error: "No pending modification request found for this reservation.",
+        code: "NO_PENDING_MODIFICATION",
+      });
+    }
+
+    const now = new Date();
+    const details = reservation.modificationDetails || {};
+
+    reservation.modificationStatus = "rejected";
+    reservation.modificationRequested = false;
+    reservation.modificationDetails = {
+      ...details,
+      adminNote: req.body.note || "Rejected by admin",
+      reviewedAt: now,
+      reviewedBy: dbUser._id,
+    };
+    await reservation.save();
+
+    res.json({ message: "Modification request rejected.", reservation });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "rejectPreMoveInModification error");
+    next(error);
+  }
+};

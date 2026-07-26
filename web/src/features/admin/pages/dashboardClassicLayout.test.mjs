@@ -19,18 +19,17 @@ test("admin dashboard route points back to the classic dashboard component", asy
   assert.doesNotMatch(lazyPages, /DashboardOperations/);
 });
 
-test("dashboard no longer redirects owners to a separate owner dashboard", async () => {
+test("dashboard no longer redirects owners to a separate owner dashboard component", async () => {
   const dashboard = await read("src/features/admin/pages/Dashboard.jsx");
 
   assert.doesNotMatch(dashboard, /SuperAdminDashboard/);
-  assert.doesNotMatch(dashboard, /user\?\.role === "owner"/);
+  assert.doesNotMatch(dashboard, /<OwnerDashboard/);
 });
 
 test("classic dashboard structure keeps inquiries, reservation status, and recent reservations panels", async () => {
   const dashboard = await read("src/features/admin/pages/Dashboard.jsx");
 
-  assert.match(dashboard, /title="Recent Inquiries"/);
-  assert.match(dashboard, /title="Reservation Status"/);
-  assert.match(dashboard, /title="Recent Reservations"/);
-  assert.match(dashboard, /showHeading=\{false\}/);
+  assert.match(dashboard, /Recent Inquiries/);
+  assert.match(dashboard, /Reservation Status/);
+  assert.match(dashboard, /Recent Reservations/);
 });

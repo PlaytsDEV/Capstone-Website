@@ -9,7 +9,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import { ArrowUp, DollarSign } from "lucide-react";
+import { ArrowUp, ArrowDown, DollarSign } from "lucide-react";
 
 /**
  * RevenueTrendCard — Monthly billing and collections trend chart
@@ -48,6 +48,8 @@ export default function RevenueTrendCard({ data = {} }) {
     latestMonth && previousMonth
       ? `Collected payments moved from ${formatPeso(previousMonth.collected)} to ${formatPeso(latestMonth.collected)} in the latest visible month.`
       : "More than one billing month is needed before month-over-month movement can be called confidently.";
+
+  const isNegativeRevenue = changePercentage != null && changePercentage < 0;
 
   return (
     <div
@@ -101,10 +103,16 @@ export default function RevenueTrendCard({ data = {} }) {
                   </span>
                   {changePercentage != null && changePercentage !== 0 ? (
                     <span
-                      className="flex items-center gap-1 text-xs"
-                      style={{ color: "var(--success)" }}
+                      className="flex items-center gap-1 text-xs font-semibold"
+                      style={{
+                        color: isNegativeRevenue ? "var(--danger)" : "var(--success)",
+                      }}
                     >
-                      <ArrowUp className="w-3 h-3" />
+                      {isNegativeRevenue ? (
+                        <ArrowDown className="w-3 h-3" />
+                      ) : (
+                        <ArrowUp className="w-3 h-3" />
+                      )}
                       {Math.abs(changePercentage).toFixed(1)}%
                     </span>
                   ) : null}

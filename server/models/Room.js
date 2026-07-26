@@ -393,12 +393,21 @@ roomSchema.methods.lockBed = function (bedId, userId, lockMinutes = 10) {
  */
 roomSchema.methods.extendBedLock = function (bedId, userId, extensionMinutes = 15) {
   const bed = this.beds.find((b) => b.id === bedId);
-  if (!bed || bed.status !== "locked") return false;
-  if (String(bed.lockedBy) !== String(userId)) return false;
-  const maxLock = Date.now() + 30 * 60 * 1000;
-  const targetLock = Date.now() + extensionMinutes * 60 * 1000;
-  bed.lockExpiresAt = new Date(Math.min(maxLock, targetLock));
-  return true;
+  if (!bed) return false;
+  const now = new Date();
+  const isExpired = bed.status === "locked" && bed.lockExpiresAt && bed.lockExpiresAt < now;
+  const isOwnedByUser = bed.status === "locked" && String(bed.lockedBy) === String(userId);
+  const isAvailable = bed.status === "available";
+
+  if (isAvailable || isExpired || isOwnedByUser) {
+    bed.status = "locked";
+    bed.lockedBy = userId;
+    const maxLock = Date.now() + 30 * 60 * 1000;
+    const targetLock = Date.now() + extensionMinutes * 60 * 1000;
+    bed.lockExpiresAt = new Date(Math.min(maxLock, targetLock));
+    return true;
+  }
+  return false;
 };
 
 /**

@@ -9,7 +9,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import { TrendingUp, ArrowUp } from "lucide-react";
+import { TrendingUp, ArrowUp, ArrowDown } from "lucide-react";
 
 /**
  * OccupancyTrendCard — Weekly occupancy trend chart
@@ -42,6 +42,9 @@ export default function OccupancyTrendCard({ data = {} }) {
       ? `Occupancy moved from ${previousRate}% to ${currentRate}% across the selected window.`
       : "More than one occupancy snapshot is needed before a trend direction can be called confidently.";
 
+  const isPositiveTrend = trendChange != null && trendChange > 0;
+  const isNegativeTrend = trendChange != null && trendChange < 0;
+
   return (
     <div
       className="rounded-lg overflow-hidden"
@@ -54,7 +57,7 @@ export default function OccupancyTrendCard({ data = {} }) {
         <div className="flex items-start justify-between">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
-              <TrendingUp className="w-5 h-5 text-[color:var(--success)] dark:text-[color:var(--success)]" />
+              <TrendingUp className="w-5 h-5" style={{ color: "var(--success)" }} />
               <h3 className="text-lg font-semibold text-foreground">
                 Occupancy Trend
               </h3>
@@ -68,12 +71,21 @@ export default function OccupancyTrendCard({ data = {} }) {
                   Current Rate
                 </p>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-semibold text-[color:var(--success)] dark:text-[color:var(--success)]">
+                  <span className="text-3xl font-semibold" style={{ color: "var(--success)" }}>
                     {currentRate}%
                   </span>
                   {trendChange != null && trendChange !== 0 ? (
-                    <span className="flex items-center gap-1 text-xs text-[color:var(--success)] dark:text-[color:var(--success)]">
-                      <ArrowUp className="w-3 h-3" />
+                    <span
+                      className="flex items-center gap-1 text-xs font-semibold"
+                      style={{
+                        color: isNegativeTrend ? "var(--danger)" : "var(--success)",
+                      }}
+                    >
+                      {isNegativeTrend ? (
+                        <ArrowDown className="w-3 h-3" />
+                      ) : (
+                        <ArrowUp className="w-3 h-3" />
+                      )}
                       {Math.abs(trendChange).toFixed(1)}%
                     </span>
                   ) : null}

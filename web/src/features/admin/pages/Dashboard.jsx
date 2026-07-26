@@ -19,6 +19,7 @@ import {
   getReservationStatusLabel,
 } from "../utils/formatters";
 import { useDashboardData } from "../../../shared/hooks/queries/useDashboard";
+import { useAuth } from "../../../shared/hooks/useAuth";
 import {
   CardSkeleton,
   StatGridSkeleton,
@@ -36,41 +37,80 @@ function AlertBanner({ activeTickets, pendingReservations, unresolvedInquiries }
 
   const alerts = [];
   if (activeTickets > 0)
-    alerts.push({ text: `${activeTickets} active maintenance ticket${activeTickets === 1 ? "" : "s"} need attention`, to: "/admin/maintenance" });
+    alerts.push({
+      label: `${activeTickets} maintenance ticket${activeTickets === 1 ? "" : "s"}`,
+      icon: Wrench,
+      to: "/admin/maintenance",
+    });
   if (pendingReservations > 0)
-    alerts.push({ text: `${pendingReservations} reservation${pendingReservations === 1 ? "" : "s"} awaiting approval`, to: "/admin/reservations" });
+    alerts.push({
+      label: `${pendingReservations} pending reservation${pendingReservations === 1 ? "" : "s"}`,
+      icon: Calendar,
+      to: "/admin/reservations",
+    });
   if (unresolvedInquiries > 0)
-    alerts.push({ text: `${unresolvedInquiries} inquiry${unresolvedInquiries === 1 ? "" : "ies"} without a response`, to: "/admin/inquiries" });
+    alerts.push({
+      label: `${unresolvedInquiries} open inquiry${unresolvedInquiries === 1 ? "" : "s"}`,
+      icon: MessageSquare,
+      to: "/admin/inquiries",
+      state: { fromDashboard: true },
+    });
 
   if (alerts.length === 0) return null;
 
   return (
     <div
-      className="mb-6 rounded-xl border px-4 py-3 text-sm"
-      style={{ borderColor: "#FDE68A", backgroundColor: "#FFFBEB", color: "#92400E" }}
+      className="mb-5 flex flex-wrap items-center justify-between gap-2.5 rounded-lg border px-3.5 py-2 text-xs transition-all"
+      style={{
+        backgroundColor: "var(--dash-alert-bg)",
+        borderColor: "var(--dash-alert-border)",
+        borderLeft: "3px solid var(--warning)",
+        color: "var(--dash-alert-text)",
+      }}
     >
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-        <div>
-          <p style={{ fontWeight: 600, margin: "0 0 6px" }}>Action required</p>
-          <ul style={{ margin: 0, paddingLeft: 16, display: "flex", flexDirection: "column", gap: 2 }}>
-            {alerts.map((a) => (
-              <li key={a.to}>
-                <Link to={a.to} style={{ color: "#B45309", textDecoration: "underline" }}>{a.text}</Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <button
-          onClick={() => setDismissed(true)}
-          aria-label="Dismiss"
-          style={{ background: "none", border: "none", cursor: "pointer", color: "#B45309", fontSize: 18, lineHeight: 1, flexShrink: 0, padding: "0 2px" }}
+      <div className="flex flex-wrap items-center gap-2">
+        <span
+          className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider"
+          style={{ backgroundColor: "color-mix(in srgb, var(--warning) 22%, transparent)" }}
         >
-          ×
-        </button>
+          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: "var(--warning)" }} />
+          Action Required
+        </span>
+
+        <div className="flex flex-wrap items-center gap-1 text-xs font-medium">
+          {alerts.map((item, idx) => {
+            const Icon = item.icon;
+            return (
+              <div key={item.to} className="flex items-center gap-1">
+                {idx > 0 && <span className="opacity-40 mx-0.5">•</span>}
+                <Link
+                  to={item.to}
+                  state={item.state}
+                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 transition-all hover:bg-black/5 dark:hover:bg-white/10 hover:underline"
+                  style={{ color: "inherit" }}
+                >
+                  <Icon className="h-3.5 w-3.5 opacity-80" />
+                  <span>{item.label}</span>
+                  <ChevronRight className="h-3 w-3 opacity-60" />
+                </Link>
+              </div>
+            );
+          })}
+        </div>
       </div>
+
+      <button
+        onClick={() => setDismissed(true)}
+        aria-label="Dismiss banner"
+        className="flex h-5 w-5 items-center justify-center rounded-md text-xs opacity-70 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+        style={{ color: "inherit" }}
+      >
+        ✕
+      </button>
     </div>
   );
 }
+
 
 function DashboardLoadingSkeleton() {
   return (
@@ -93,7 +133,20 @@ function DashboardLoadingSkeleton() {
 }
 
 export default function Dashboard() {
-  const { data, isLoading, isError } = useDashboardData();
+  const { user } = useAuth();
+  const isOwner = user?.role === "super_admin" || user?.role === "owner";
+  const [range, setRange] = useState("30d");
+  const [branch, setBranch] = useState("all");
+
+  const queryParams = useMemo(
+    () => ({
+      range,
+      ...(isOwner ? { branch } : {}),
+    }),
+    [branch, isOwner, range],
+  );
+
+  const { data, isLoading, isError } = useDashboardData(queryParams);
 
   const reservations = data?.recentReservations || [];
   const inquiryItems = data?.recentInquiries || [];
@@ -213,20 +266,69 @@ export default function Dashboard() {
     <div className="dashboard-page-bg">
       <PageShell>
         <PageShell.Summary>
-          <div className="mb-6">
-            <h1
-              className="mb-1 text-2xl font-semibold"
-              style={{ color: "var(--color-text-primary)" }}
-            >
-              Dashboard
-            </h1>
-            <p
-              className="text-sm"
-              style={{ color: "var(--color-text-secondary)" }}
-            >
-              Monitor branch activity, guest pressures, and agent follow-up from
-              one operations view
-            </p>
+          <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1
+                className="mb-1 text-2xl font-semibold"
+                style={{ color: "var(--color-text-primary)" }}
+              >
+                Dashboard
+              </h1>
+              <p
+                className="text-sm"
+                style={{ color: "var(--color-text-secondary)" }}
+              >
+                Monitor branch activity, guest pressures, and agent follow-up from
+                one operations view
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              {isOwner && (
+                <div className="flex items-center gap-2">
+                  <label htmlFor="dashboard-branch-select" className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                    Branch:
+                  </label>
+                  <select
+                    id="dashboard-branch-select"
+                    value={branch}
+                    onChange={(e) => setBranch(e.target.value)}
+                    className="rounded-lg border px-3 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary"
+                    style={{
+                      borderColor: "var(--border-light)",
+                      backgroundColor: "var(--bg-card)",
+                      color: "var(--text-primary)",
+                    }}
+                  >
+                    <option value="all">All Branches</option>
+                    <option value="gil-puyat">Gil Puyat</option>
+                    <option value="guadalupe">Guadalupe</option>
+                  </select>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                <label htmlFor="dashboard-range-select" className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                  Range:
+                </label>
+                <select
+                  id="dashboard-range-select"
+                  value={range}
+                  onChange={(e) => setRange(e.target.value)}
+                  className="rounded-lg border px-3 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-primary"
+                  style={{
+                    borderColor: "var(--border-light)",
+                    backgroundColor: "var(--bg-card)",
+                    color: "var(--text-primary)",
+                  }}
+                >
+                  <option value="7d">Last 7 Days</option>
+                  <option value="30d">Last 30 Days</option>
+                  <option value="90d">Last 90 Days</option>
+                  <option value="12m">Last 12 Months</option>
+                </select>
+              </div>
+            </div>
           </div>
 
           {error && (
@@ -258,7 +360,7 @@ export default function Dashboard() {
               return (
                 <article
                   key={item.label}
-                  className="rounded-xl border p-5 shadow-sm transition-all hover:shadow-md"
+                  className="dash-card-hover rounded-xl border p-5"
                   style={{
                     borderColor: "var(--border-light)",
                     backgroundColor: "var(--bg-card)",
@@ -329,6 +431,7 @@ export default function Dashboard() {
                 </div>
                 <Link
                   to="/admin/inquiries"
+                  state={{ fromDashboard: true }}
                   className="inline-flex items-center gap-1 text-[13px] font-bold transition-opacity"
                   style={{ color: "var(--color-accent)" }}
                 >
@@ -394,13 +497,13 @@ export default function Dashboard() {
                           inq.status === "responded"
                             ? {
                                 backgroundColor:
-                                  "color-mix(in srgb, var(--info) 12%, transparent)",
-                                color: "var(--info)",
+                                  "color-mix(in srgb, var(--success) 12%, transparent)",
+                                color: "var(--success)",
                               }
                             : {
                                 backgroundColor:
-                                  "color-mix(in srgb, var(--success) 12%, transparent)",
-                                color: "var(--success)",
+                                  "color-mix(in srgb, var(--warning) 15%, transparent)",
+                                color: "var(--warning)",
                               }
                         }
                       >
@@ -450,6 +553,15 @@ export default function Dashboard() {
                   viewBox="0 0 200 200"
                   aria-label="Reservation status chart"
                 >
+                  <circle
+                    cx="100"
+                    cy="100"
+                    r="80"
+                    fill="none"
+                    stroke="var(--border-light)"
+                    strokeWidth="20"
+                    opacity={0.5}
+                  />
                   <circle
                     cx="100"
                     cy="100"

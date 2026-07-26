@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   MessageSquare,
   Search,
@@ -12,6 +13,7 @@ import {
   MoreVertical,
   Check,
   X as XIcon,
+  ArrowLeft,
 } from "lucide-react";
 import PageShell from "../components/shared/PageShell";
 import { reservationApi } from "../../../shared/api/apiClient";
@@ -53,7 +55,12 @@ function fmtDate(dateStr) {
 
 const SUMMARY_FILTERS = ["", "pending", "resolved"];
 
-function InquiriesPage() {
+function InquiriesPage({ isEmbedded = false }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const showBackToDashboard = !isEmbedded && Boolean(
+    location.state?.fromDashboard || window.history.state?.idx > 0
+  );
   const [selectedInquiry, setSelectedInquiry] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -79,12 +86,43 @@ function InquiriesPage() {
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / limit);
 
-
+  const handleBack = () => {
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate("/admin/dashboard");
+    }
+  };
 
   return (
     <PageShell>
-
       <PageShell.Content>
+        {!isEmbedded && (
+          <div className="flex flex-col gap-2 mb-4">
+            {showBackToDashboard && (
+              <div>
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-card text-xs font-semibold text-card-foreground shadow-sm transition-all hover:bg-muted hover:text-foreground cursor-pointer"
+                  title="Back to Dashboard"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  <span>Back to Dashboard</span>
+                </button>
+              </div>
+            )}
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-foreground">
+                Recent Inquiries
+              </h1>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Review, filter, and respond to applicant & resident inquiries.
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col gap-4 mb-6">
 
           <div className="flex flex-col md:flex-row gap-4">

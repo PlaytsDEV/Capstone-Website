@@ -22,12 +22,15 @@ export {
   precheckReservationDocument,
 } from "./visitManagementController.js";
 
-// 3. Cancellation Domain
+// 3. Cancellation & Modification Domain
 export {
   cancelReservationByUser,
   requestCancellationByUser,
   approveCancellationRequest,
   rejectCancellationRequest,
+  requestPreMoveInModification,
+  approvePreMoveInModification,
+  rejectPreMoveInModification,
 } from "./cancellationController.js";
 
 // 4. Tenancy Actions Domain

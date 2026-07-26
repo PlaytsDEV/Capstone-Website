@@ -900,6 +900,31 @@ const reservationSchema = new mongoose.Schema(
       default: null,
     },
 
+    // --- Pre-Move-In Modification Requests ---
+    modificationRequested: {
+      type: Boolean,
+      default: false,
+    },
+    modificationRequestedAt: {
+      type: Date,
+      default: null,
+    },
+    modificationStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected", null],
+      default: null,
+    },
+    modificationDetails: {
+      requestedMoveInDate: Date,
+      reason: String,
+      adminNote: String,
+      reviewedAt: Date,
+      reviewedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    },
+
     // --- Soft Delete ---
     isArchived: {
       type: Boolean,

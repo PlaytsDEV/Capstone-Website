@@ -314,8 +314,8 @@ export const updateReservation = async (req, res, next) => {
       }
 
       const moveInDate = combineLifecycleDateTime({
-        dateInput: null,
-        timeInput: null,
+        dateInput: req.body.actualMoveInDate || req.body.confirmedMoveInDate || req.body.moveInDate || null,
+        timeInput: req.body.moveInTime || null,
         fallbackDate: new Date(),
       });
       if (!moveInDate) {
