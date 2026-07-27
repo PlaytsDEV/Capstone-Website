@@ -15,6 +15,7 @@ import {
   Settings,
   User,
   Wrench,
+  MessageSquareText,
   X,
 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
@@ -72,6 +73,12 @@ const buildNavSections = (isTenant) => [
               label: "Announcements",
               icon: Megaphone,
               path: "/applicant/announcements",
+            },
+            {
+              id: "surveys",
+              label: "Feedback & Surveys",
+              icon: MessageSquareText,
+              path: "/applicant/surveys",
             },
           ]
         : []),

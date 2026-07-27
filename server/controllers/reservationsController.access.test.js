@@ -24,6 +24,8 @@ const notifyCancellationRequestAlert = jest.fn();
 const buildUserUpdatePayload = jest.fn(() => ({}));
 const getForbiddenTenantUpdateFields = jest.fn(() => []);
 const sendPhysicalVisitStatusEmail = jest.fn();
+const ensureMoveOutSurveyAssignment = jest.fn();
+const assertMoveOutSurveyComplete = jest.fn();
 
 await jest.unstable_mockModule("../models/index.js", () => ({
   Reservation: {
@@ -117,6 +119,10 @@ await jest.unstable_mockModule("../config/email.js", () => ({
 await jest.unstable_mockModule("../services/reservationDocumentPrecheckService.js", () => ({
   isAllowedReservationDocumentUrl: jest.fn((url) => typeof url === "string" && !url.startsWith("file://") && !url.startsWith("http://localhost")),
   runReservationDocumentPrecheck: jest.fn(),
+}));
+await jest.unstable_mockModule("../services/surveyAutomationService.js", () => ({
+  ensureMoveOutSurveyAssignment,
+  assertMoveOutSurveyComplete,
 }));
 await jest.unstable_mockModule("../middleware/errorHandler.js", () => ({
   sendSuccess: jest.fn(),
@@ -260,6 +266,10 @@ describe("reservationsController.updateReservation access hardening", () => {
     getForbiddenTenantUpdateFields.mockReset();
     getForbiddenTenantUpdateFields.mockReturnValue([]);
     sendPhysicalVisitStatusEmail.mockReset();
+    ensureMoveOutSurveyAssignment.mockReset();
+    ensureMoveOutSurveyAssignment.mockResolvedValue({ _id: "survey-assignment-1" });
+    assertMoveOutSurveyComplete.mockReset();
+    assertMoveOutSurveyComplete.mockResolvedValue({ status: "submitted" });
     sendPhysicalVisitStatusEmail.mockResolvedValue({ success: true });
     userFindOne.mockResolvedValue(null);
   });
@@ -626,6 +636,44 @@ describe("reservationsController.updateReservation access hardening", () => {
     });
     expect(res.body.message).toBe("Tenant moved out successfully");
     expect(next).not.toHaveBeenCalled();
+  });
+
+  test("move-out survey gate blocks occupancy mutation before the stay workflow", async () => {
+    const reservation = {
+      _id: "507f1f77bcf86cd799439011",
+      status: "moveIn",
+      userId: { _id: "tenant-1" },
+      roomId: { _id: "room-1", branch: "gil-puyat", name: "Room 1" },
+    };
+    reservationFindById.mockReturnValue({
+      populate: jest.fn().mockReturnThis(),
+      then: (resolve) => Promise.resolve(resolve(reservation)),
+    });
+    assertMoveOutSurveyComplete.mockRejectedValue(Object.assign(
+      new Error("The tenant must complete the required move-out survey before the move-out can be finalized."),
+      {
+        statusCode: 422,
+        code: "MOVE_OUT_SURVEY_REQUIRED",
+        surveyAssignmentId: "survey-assignment-1",
+      },
+    ));
+    const req = {
+      params: { reservationId: reservation._id },
+      body: { meterReading: 128 },
+      branchFilter: "gil-puyat",
+      user: { uid: "admin-uid" },
+    };
+    const res = createResponse();
+
+    await moveOutReservation(req, res, jest.fn());
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body).toMatchObject({
+      code: "MOVE_OUT_SURVEY_REQUIRED",
+      surveyAssignmentId: "survey-assignment-1",
+    });
+    expect(ensureMoveOutSurveyAssignment).toHaveBeenCalledWith(reservation);
+    expect(moveOutStayWorkflow).not.toHaveBeenCalled();
   });
 
   test("branch admins cannot update another branch visit availability", async () => {

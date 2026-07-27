@@ -78,6 +78,13 @@ import AuditLog from "./AuditLog.js";
 import BusinessSettings from "./BusinessSettings.js";
 import BackupConfig from "./BackupConfig.js";
 import BackupRecord from "./BackupRecord.js";
+import SurveyTemplate from "./SurveyTemplate.js";
+import SurveySchedule from "./SurveySchedule.js";
+import SurveyAssignment from "./SurveyAssignment.js";
+import SurveyResponse from "./SurveyResponse.js";
+import SurveyNotificationLog from "./SurveyNotificationLog.js";
+import SurveyAIReport from "./SurveyAIReport.js";
+import SurveyImprovementAction from "./SurveyImprovementAction.js";
 import {
   CANONICAL_RESERVATION_STATUSES,
   USER_ROLE_NAMES,
@@ -125,6 +132,13 @@ export {
   BackupConfig,
   BackupRecord,
   ServiceProvider,
+  SurveyTemplate,
+  SurveySchedule,
+  SurveyAssignment,
+  SurveyResponse,
+  SurveyNotificationLog,
+  SurveyAIReport,
+  SurveyImprovementAction,
 };
 
 // ============================================================================
@@ -235,6 +249,13 @@ export default {
   Payment,
   LoginLog,
   UserSession,
+  SurveyTemplate,
+  SurveySchedule,
+  SurveyAssignment,
+  SurveyResponse,
+  SurveyNotificationLog,
+  SurveyAIReport,
+  SurveyImprovementAction,
   ROOM_BRANCHES,
   INQUIRY_BRANCHES,
   ROOM_BRANCH_LABELS,

@@ -49,6 +49,11 @@ const PAGE_META = {
     description:
       "Review detailed analytics tabs, exports, and deeper operational breakdowns.",
   },
+  "/admin/analytics/feedback-surveys": {
+    title: "Feedback & Surveys",
+    description:
+      "Manage survey periods, monitor tenant responses, and review evidence-based satisfaction insights.",
+  },
   "/admin/maintenance": {
     title: "Maintenance",
     description:
