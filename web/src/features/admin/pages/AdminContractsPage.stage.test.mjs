@@ -9,8 +9,7 @@ const detail = readFileSync(
 );
 
 test("main Contract list renders one simplified lifecycle stage", () => {
-  assert.match(list, /: getContractStage\(row\.status\)/);
-  assert.match(list, /Prepared PDF Unavailable/);
+  assert.match(list, /label=\{getContractStage\(row\.status\)\}/);
   assert.doesNotMatch(list, /formatContractStatus\(row\.status\)/);
   assert.doesNotMatch(list, /contract-table-sub.*formatContractStatus/);
 });

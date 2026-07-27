@@ -90,13 +90,6 @@ export const createContract = async (req, res) => {
     await auditLogger.logModification(req, "contract", contract._id, null, contract.toObject(), "Created Contract draft");
     res.status(201).json({ contract });
   } catch (error) {
-    if (error.code === "DUPLICATE_CONTRACT") {
-      await auditLogger.logError(
-        req,
-        error,
-        "Duplicate initial Contract creation prevented",
-      );
-    }
     fail(res, error);
   }
 };

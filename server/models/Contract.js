@@ -105,28 +105,6 @@ const contractSchema = new mongoose.Schema(
     contractYear: { type: Number, required: true, immutable: true },
     contractSequence: { type: Number, required: true, immutable: true },
     version: { type: Number, default: 1, min: 1, immutable: true },
-    contractPurpose: {
-      type: String,
-      enum: ["initial", "renewal", "amendment", "replacement"],
-      default: "initial",
-      required: true,
-      index: true,
-    },
-    initialContractKey: { type: String, default: null, immutable: true },
-    initialStayKey: { type: String, default: null, immutable: true },
-    parentContractId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Contract",
-      default: null,
-    },
-    replacesContractId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Contract",
-      default: null,
-    },
-    replacementReason: { type: String, default: "", trim: true },
-    amendmentReason: { type: String, default: "", trim: true },
-    amendmentFields: { type: [String], default: [] },
     duplicateOfContractId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Contract",
@@ -143,9 +121,6 @@ const contractSchema = new mongoose.Schema(
     testPurpose: { type: String, default: "", trim: true },
     createdForTestingBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     createdForTestingAt: { type: Date, default: null },
-    voidedAt: { type: Date, default: null },
-    voidedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
-    voidReason: { type: String, default: "", trim: true },
     templateType: { type: String, trim: true, default: "" },
     roomType: { type: String, enum: ["private", "double-sharing", "quadruple-sharing"], required: true },
     leaseType: { type: String, enum: ["short_term", "long_term"], required: true },
@@ -278,22 +253,6 @@ const contractSchema = new mongoose.Schema(
 );
 
 contractSchema.index({ branch: 1, contractYear: 1, contractSequence: 1 }, { unique: true });
-contractSchema.index(
-  { initialContractKey: 1 },
-  {
-    unique: true,
-    partialFilterExpression: { initialContractKey: { $type: "string" } },
-    name: "unique_initial_contract_reservation",
-  },
-);
-contractSchema.index(
-  { initialStayKey: 1 },
-  {
-    unique: true,
-    partialFilterExpression: { initialStayKey: { $type: "string" } },
-    name: "unique_initial_contract_stay",
-  },
-);
 contractSchema.index({ tenantId: 1, isCurrent: 1, createdAt: -1 });
 contractSchema.index({ branch: 1, status: 1, createdAt: -1 });
 contractSchema.index(

@@ -10,13 +10,11 @@ export default function CreateContractDraftModal({ open, branch, onClose, onCrea
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [existingContract, setExistingContract] = useState(null);
 
   useEffect(() => {
     if (!open) return;
     setLoading(true);
     setError("");
-    setExistingContract(null);
     reservationApi.getTenantWorkspace({ branch })
       .then((payload) => setTenants(payload?.tenants || []))
       .catch((requestError) => setError(getContractErrorMessage(requestError)))
@@ -42,8 +40,8 @@ export default function CreateContractDraftModal({ open, branch, onClose, onCrea
       onCreated(response.contract);
     } catch (requestError) {
       const payload = requestError?.response?.data;
-      if (payload?.code === "DUPLICATE_CONTRACT" && payload?.details?.existingContract?.id) {
-        setExistingContract(payload.details.existingContract);
+      if (payload?.code === "DUPLICATE_CURRENT_CONTRACT" && payload?.details?.existingContractId) {
+        onExisting(payload.details.existingContractId);
       } else {
         setError(getContractErrorMessage(requestError));
       }
@@ -65,11 +63,7 @@ export default function CreateContractDraftModal({ open, branch, onClose, onCrea
         <div className="contract-modal__body">
           <label className="contract-field">
             <span>Tenant / Reservation</span>
-            <select value={selectedId} onChange={(event) => {
-              setSelectedId(event.target.value);
-              setExistingContract(null);
-              setError("");
-            }} disabled={loading}>
+            <select value={selectedId} onChange={(event) => setSelectedId(event.target.value)} disabled={loading}>
               <option value="">{loading ? "Loading eligible residents…" : "Select a resident"}</option>
               {tenants.map((tenant) => (
                 <option key={tenant.reservationId} value={tenant.reservationId}>
@@ -89,24 +83,10 @@ export default function CreateContractDraftModal({ open, branch, onClose, onCrea
             </div>
           )}
           {error && <div className="contract-alert contract-alert--error">{error}</div>}
-          {existingContract && <div className="contract-alert contract-alert--warning">
-            <strong>Contract Already Exists</strong>
-            <p>A contract has already been created for this reservation or stay. Use the existing Contract instead of creating another draft.</p>
-            <dl>
-              <dt>Contract No.</dt><dd>{existingContract.contractNumber}</dd>
-              <dt>Current Stage</dt><dd>{String(existingContract.status || "").replaceAll("_", " ")}</dd>
-              <dt>Tenant</dt><dd>{existingContract.tenantName || "—"}</dd>
-              <dt>Branch</dt><dd>{String(existingContract.branch || "").replaceAll("_", " ")}</dd>
-              <dt>Room / Bed</dt><dd>{[existingContract.roomNumber, existingContract.bedLabel].filter(Boolean).join(" / ") || "—"}</dd>
-              <dt>Updated</dt><dd>{existingContract.updatedAt ? new Date(existingContract.updatedAt).toLocaleDateString() : "—"}</dd>
-            </dl>
-            <button className="contract-button" type="button"
-              onClick={() => onExisting(existingContract.id)}>View Existing Contract</button>
-          </div>}
         </div>
         <footer>
           <button type="button" className="contract-button contract-button--secondary" onClick={onClose}>Cancel</button>
-          <button type="button" className="contract-button" disabled={!selected || saving || Boolean(existingContract)} onClick={submit}>
+          <button type="button" className="contract-button" disabled={!selected || saving} onClick={submit}>
             {saving ? "Creating…" : "Create Draft"}
           </button>
         </footer>
