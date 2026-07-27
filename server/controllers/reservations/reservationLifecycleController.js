@@ -97,6 +97,36 @@ export const updateReservation = async (req, res, next) => {
     const { reservationId } = req.params;
     if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
 
+    const dedicatedSettlementFields = [
+      "paymentStatus",
+      "paymentDate",
+      "paymongoPaymentId",
+      "paymongoSessionId",
+      "paymentAmount",
+      "paidAmount",
+      "paymentVerifiedAt",
+      "paymentVerifiedBy",
+      "paymentApprovedAt",
+      "paymentApprovedBy",
+      "proofOfPaymentUrl",
+    ];
+    const attemptedSettlementFields = dedicatedSettlementFields.filter(
+      (field) => req.body[field] !== undefined,
+    );
+    if (
+      attemptedSettlementFields.length > 0 ||
+      hasReservationStatus(req.body.status, "reserved")
+    ) {
+      return res.status(422).json({
+        code: "PAYMENT_SETTLEMENT_REQUIRES_DEDICATED_ENDPOINT",
+        message:
+          "Reservation payment confirmation must use the dedicated payment settlement workflow.",
+        error:
+          "Reservation payment confirmation must use the dedicated payment settlement workflow.",
+        details: { fields: attemptedSettlementFields },
+      });
+    }
+
     const existingReservation = await Reservation.findById(
       reservationId,
     ).populate("roomId", "branch");
@@ -200,18 +230,6 @@ export const updateReservation = async (req, res, next) => {
 
       if (req.body.visitDate) {
         req.body.visitDate = validation.date;
-      }
-    }
-
-    if (
-      req.body.status === "reserved" &&
-      !hasReservationStatus(existingReservation.status, "reserved")
-    ) {
-      req.body.paymentStatus = "paid";
-      req.body.approvedDate = new Date();
-      req.body.reservedAt = new Date();
-      if (!existingReservation.paymentDate) {
-        req.body.paymentDate = new Date();
       }
     }
 
@@ -357,9 +375,6 @@ export const updateReservation = async (req, res, next) => {
 
     const ADMIN_ALLOWED = [
       "status",
-      "paymentStatus",
-      "paymentDate",
-      "proofOfPaymentUrl",
       "notes",
       "moveInDate",
       "moveOutDate",

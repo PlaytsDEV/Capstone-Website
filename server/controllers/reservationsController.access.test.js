@@ -274,6 +274,47 @@ describe("reservationsController.updateReservation access hardening", () => {
     userFindOne.mockResolvedValue(null);
   });
 
+  test("generic admin update cannot mark a Reservation payment as paid", async () => {
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439011" },
+      body: { paymentStatus: "paid" },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await updateReservation(req, res, next);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body.code).toBe(
+      "PAYMENT_SETTLEMENT_REQUIRES_DEDICATED_ENDPOINT",
+    );
+    expect(res.body.details.fields).toContain("paymentStatus");
+    expect(reservationFindById).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test("generic admin update cannot reserve occupancy or replace payment evidence", async () => {
+    const req = {
+      params: { reservationId: "507f1f77bcf86cd799439011" },
+      body: {
+        status: "reserved",
+        proofOfPaymentUrl: "https://example.test/replacement.jpg",
+      },
+    };
+    const res = createResponse();
+    const next = jest.fn();
+
+    await updateReservation(req, res, next);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body.code).toBe(
+      "PAYMENT_SETTLEMENT_REQUIRES_DEDICATED_ENDPOINT",
+    );
+    expect(res.body.details.fields).toContain("proofOfPaymentUrl");
+    expect(reservationFindById).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
   test("allows cancellation request for paid reserved legacy records", async () => {
     const reservationDoc = {
       _id: "507f1f77bcf86cd799439011",

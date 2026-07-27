@@ -21,7 +21,6 @@ import {
   sendPaymentApprovedEmail,
   sendPaymentReceiptEmail,
 } from "../config/email.js";
-import { updateOccupancyOnReservationChange } from "../utils/occupancyManager.js";
 import { BUSINESS } from "../config/constants.js";
 import { getReservationFeeAmount } from "../utils/businessSettings.js";
 import { settlePaymongoBill } from "../utils/billSettlement.js";
@@ -36,6 +35,7 @@ import { notify } from "../utils/notificationService.js";
 import { sendSuccess, AppError } from "../middleware/errorHandler.js";
 import { normalizeReservationStatus } from "../utils/lifecycleNaming.js";
 import { isOwnerRole } from "../config/roles.js";
+import { settleReservationDeposit } from "../services/reservationDepositSettlementService.js";
 
 const FRONTEND_URL =
   process.env.FRONTEND_URL?.split(",")[0]?.trim() || "http://localhost:5173";
@@ -51,10 +51,6 @@ const PAYMENT_METHOD_LABELS = Object.freeze({
   qrph: "QR Ph",
   online: "Online Payment (PayMongo)",
 });
-
-function canAutoReserveReservation(status) {
-  return hasReservationStatus(status, "approved_for_payment", "payment_pending");
-}
 
 function isDepositCheckoutReady(reservation) {
   return (
@@ -72,67 +68,6 @@ const hasBillingPermission = (user) =>
   (user?.role === "branch_admin" &&
     Array.isArray(user.permissions) &&
     user.permissions.includes("manageBilling"));
-
-async function notifyAdminsOfDepositReview(reservation, paymentReference) {
-  try {
-    const branch = reservation?.roomId?.branch || null;
-    const admins = await User.find({
-      accountStatus: "active",
-      $or: [
-        ...(branch ? [{ role: "branch_admin", branch }] : [{ role: "branch_admin" }]),
-        { role: "owner" },
-      ],
-    }).select("_id").lean();
-
-    await Promise.all(
-      admins.map((admin) =>
-        notify.general(
-          admin._id,
-          "Reservation Payment Needs Review",
-          `A reservation deposit was paid before the reservation reached payment stage. Reference: ${paymentReference}.`,
-          {
-            entityType: "reservation",
-            entityId: reservation?._id ? String(reservation._id) : null,
-            actionUrl: "/admin/reservations",
-          },
-        ),
-      ),
-    );
-  } catch (error) {
-    logger.warn({ err: error }, "Failed to notify admins about deposit review");
-  }
-}
-
-async function markDepositForManualReview(reservation, paymentReference, paymentMethod) {
-  if (!reservation) return null;
-  if (!reservation.paymongoPaymentId) {
-    reservation.paymongoPaymentId = paymentReference;
-    reservation.paymentDate = new Date();
-    reservation.paymentMethod = paymentMethod || "paymongo";
-    reservation.notes = `${reservation.notes ? `${reservation.notes} | ` : ""}PayMongo deposit ${paymentReference} requires manual review because it arrived before payment stage.`;
-    await reservation.save();
-  }
-  logger.warn(
-    {
-      reservationId: reservation?._id ? String(reservation._id) : null,
-      status: normalizeReservationStatus(reservation.status),
-      paymentReference,
-      requiresReview: true,
-    },
-    "Deposit payment requires manual review",
-  );
-  await notifyAdminsOfDepositReview(reservation, paymentReference);
-  return {
-    _id: reservation._id,
-    reservationCode: reservation.reservationCode,
-    status: reservation.status,
-    paymentStatus: reservation.paymentStatus,
-    paymentMethod: reservation.paymentMethod,
-    paymentDate: reservation.paymentDate,
-    paymongoPaymentId: reservation.paymongoPaymentId,
-    requiresReview: true,
-  };
-}
 
 async function resolveSessionResourceAccess(metadata, dbUser) {
   if (metadata.userId && String(metadata.userId) !== String(dbUser._id)) {
@@ -351,7 +286,7 @@ export const createDepositCheckout = async (req, res, next) => {
     }
 
     const amount =
-      reservation.reservationFeeAmount || (await getReservationFeeAmount());
+      reservation.reservationFeeAmount ?? (await getReservationFeeAmount());
     if (
       !reservation.reservationFeeAmount ||
       reservation.reservationFeeAmount !== amount
@@ -535,49 +470,40 @@ export const checkSessionStatus = async (req, res, next) => {
             "Marking deposit as paid",
           );
 
-          const oldStatus = reservation.status;
           const paymentReference = paidPayments[0]?.id || sessionId;
-          const canAutoReserve = canAutoReserveReservation(reservation.status);
+          const payObj = paidPayments[0]?.attributes || paidPayments[0] || {};
+          const paidAmount = Number(payObj.amount || 0) / 100;
+          const currency = String(payObj.currency || "PHP").toUpperCase();
+          const settlement = await settleReservationDeposit({
+            reservationId: metadata.reservationId,
+            source: "paymongo",
+            paidAmount,
+            externalPaymentId: paymentReference,
+            externalSessionId: sessionId,
+            paymentReference,
+            idempotencyKey: `paymongo:${paymentReference}`,
+            evidence: {
+              paymentMethod: rawPaymentType || "paymongo",
+              currency,
+            },
+            paidAt: new Date(),
+            fallbackFeeResolver: getReservationFeeAmount,
+          });
+          const settledReservation = settlement.reservation;
+          paidReservationSnapshot = {
+            _id: settledReservation._id,
+            reservationCode: settledReservation.reservationCode,
+            status: settledReservation.status,
+            paymentStatus: settledReservation.paymentStatus,
+            paymentMethod: settledReservation.paymentMethod,
+            paymentDate: settledReservation.paymentDate,
+            paymongoPaymentId: settledReservation.paymongoPaymentId,
+            requiresReview: Boolean(settlement.reconciliationRequired),
+          };
 
-          if (!canAutoReserve) {
-            paidReservationSnapshot = await markDepositForManualReview(
-              reservation,
-              paymentReference,
-              rawPaymentType || "paymongo",
-            );
-          } else {
-            reservation.paymentStatus = "paid";
-            reservation.paymentDate = new Date();
-            reservation.paymentMethod = rawPaymentType || "paymongo";
-            reservation.paymongoPaymentId = paymentReference;
-            reservation.status = "reserved";
-            reservation.reservedAt = new Date();
-            reservation.approvedDate = reservation.approvedDate || new Date();
-            await reservation.save();
-            paidReservationSnapshot = {
-              _id: reservation._id,
-              reservationCode: reservation.reservationCode,
-              status: reservation.status,
-              paymentStatus: reservation.paymentStatus,
-              paymentMethod: reservation.paymentMethod,
-              paymentDate: reservation.paymentDate,
-              paymongoPaymentId: reservation.paymongoPaymentId,
-            };
-          }
-
-          if (canAutoReserve) {
-            await updateOccupancyOnReservationChange(reservation, {
-              status: oldStatus,
-            });
-            logger.info(
-              { reservationId: metadata.reservationId },
-              "Bed locked for reservation",
-            );
-          }
-
-          if (canAutoReserve) {
+          if (settlement.settled && !settlement.idempotent) {
             try {
-              const tenant = await User.findById(reservation.userId).lean();
+              const tenant = await User.findById(settledReservation.userId).lean();
               if (tenant?.email) {
                 const tenantName =
                   `${tenant.firstName || ""} ${tenant.lastName || ""}`.trim() ||
@@ -587,7 +513,8 @@ export const checkSessionStatus = async (req, res, next) => {
                   to: tenant.email,
                   tenantName,
                   amount:
-                    reservation.reservationFeeAmount || BUSINESS.DEPOSIT_AMOUNT,
+                    settledReservation.reservationFeeAmount ??
+                    BUSINESS.DEPOSIT_AMOUNT,
                   description: `Reservation Deposit - ${roomName}`,
                   paymentMethod: paymentMethod || "Online Payment (PayMongo)",
                   paymentDate: dayjs().format("MMMM D, YYYY"),

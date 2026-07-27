@@ -28,15 +28,22 @@
 
 import dayjs from "dayjs";
 import { verifyWebhookSignature } from "../config/paymongo.js";
-import { Reservation, Bill, User } from "../models/index.js";
+import {
+  Reservation,
+  Bill,
+  User,
+  PaymongoWebhookEvent,
+} from "../models/index.js";
 import { sendPaymentReceiptEmail } from "../config/email.js";
-import { updateOccupancyOnReservationChange } from "../utils/occupancyManager.js";
 import { notify } from "../utils/notificationService.js";
 import { settlePaymongoBill } from "../utils/billSettlement.js";
 import logger from "../middleware/logger.js";
 import { BUSINESS } from "../config/constants.js";
 import { getReservationFeeAmount } from "../utils/businessSettings.js";
-import { normalizeReservationStatus, hasReservationStatus } from "../utils/lifecycleNaming.js";
+import {
+  ReservationDepositSettlementError,
+  settleReservationDeposit,
+} from "../services/reservationDepositSettlementService.js";
 
 /* ─── helpers ───────────────────────────────────── */
 
@@ -52,10 +59,6 @@ function extractPaidAmount(eventData) {
   const payments = eventData?.attributes?.payments || [];
   const amountCents = payments[0]?.attributes?.amount;
   return amountCents ? amountCents / 100 : null;
-}
-
-function canAutoReserveReservation(status) {
-  return hasReservationStatus(status, "approved_for_payment", "payment_pending");
 }
 
 async function notifyAdminsOfDepositReview(reservation, paymentReference) {
@@ -100,78 +103,42 @@ async function notifyAdminsOfDepositReview(reservation, paymentReference) {
  *   4. Lock the bed via occupancy manager
  *   5. Notify tenant + send confirmation email
  */
-async function handleDepositPayment(metadata, eventData) {
+async function handleDepositPayment(metadata, eventData, context = {}) {
   const { reservationId } = metadata;
-
-  const reservation = await Reservation.findById(reservationId).populate(
-    "roomId",
-    "name branch",
-  );
-  if (!reservation) {
-    logger.warn({ reservationId }, "Webhook: Reservation not found, skipping");
-    return;
-  }
 
   const paymentId = extractPaymentId(eventData);
 
   // Idempotent — skip if already paid OR same PayMongo payment was processed.
-  if (
-    reservation.paymentStatus === "paid" ||
-    (reservation.paymongoPaymentId && reservation.paymongoPaymentId === paymentId)
-  ) {
-    logger.info(
-      { reservationId, paymentId },
-      "Webhook: Deposit already processed, skipping",
-    );
-    return;
-  }
-
-  // Save old status for occupancy tracking
-  const oldStatus = reservation.status;
-  const oldData = { status: oldStatus };
-
-  if (!reservation.reservationFeeAmount) {
-    reservation.reservationFeeAmount = await getReservationFeeAmount();
-  }
-
-  const canAutoReserve = canAutoReserveReservation(reservation.status);
-  if (!canAutoReserve) {
-    reservation.paymentDate = new Date();
-    reservation.paymentMethod = "paymongo";
-    reservation.paymongoPaymentId = paymentId;
-    reservation.notes = `${reservation.notes ? `${reservation.notes} | ` : ""}PayMongo deposit ${paymentId} requires manual review because it arrived before payment stage.`;
-    await reservation.save();
+  const paidAmount = extractPaidAmount(eventData);
+  const currency =
+    eventData?.attributes?.payments?.[0]?.attributes?.currency ||
+    eventData?.attributes?.currency ||
+    "PHP";
+  const result = await settleReservationDeposit({
+    reservationId,
+    source: "paymongo",
+    paidAmount,
+    externalPaymentId: paymentId,
+    externalSessionId: context.sessionId || null,
+    paymentReference: paymentId,
+    idempotencyKey: `paymongo:${context.eventId || paymentId}`,
+    evidence: { currency },
+    actor: { role: "paymongo_webhook" },
+    paidAt: new Date(),
+    fallbackFeeResolver: getReservationFeeAmount,
+  });
+  const reservation = result.reservation;
+  if (result.reconciliationRequired) {
     await notifyAdminsOfDepositReview(reservation, paymentId);
-
-    logger.warn(
-      {
-        reservationId,
-        oldStatus,
-        paymentId,
-        userId: String(reservation.userId),
-        requiresReview: true,
-      },
-      "Webhook: Deposit payment requires manual review",
-    );
-    return;
+    return result;
   }
-
-  reservation.paymentStatus = "paid";
-  reservation.paymentDate = new Date();
-  reservation.paymentMethod = "paymongo";
-  reservation.paymongoPaymentId = paymentId;
-  reservation.status = "reserved";
-  reservation.reservedAt = new Date();
-  reservation.approvedDate = reservation.approvedDate || new Date();
-
-  await reservation.save();
-
-  await updateOccupancyOnReservationChange(reservation, oldData);
+  if (typeof reservation.populate === "function") {
+    await reservation.populate("roomId", "name branch");
+  }
 
   logger.info(
     {
       reservationId,
-      oldStatus,
       newStatus: reservation.status,
       paymentId,
       userId: String(reservation.userId),
@@ -201,9 +168,7 @@ async function handleDepositPayment(metadata, eventData) {
     const tenant = await User.findById(reservation.userId).lean();
     if (tenant?.email) {
       const actualPaidAmount =
-        extractPaidAmount(eventData) ??
-        reservation.reservationFeeAmount ??
-        BUSINESS.DEPOSIT_AMOUNT;
+        paidAmount ?? reservation.reservationFeeAmount ?? BUSINESS.DEPOSIT_AMOUNT;
 
       const receiptPaymentId = extractPaymentId(eventData);
       const paymentDate = new Date().toLocaleDateString("en-PH", {
@@ -246,6 +211,39 @@ async function handleDepositPayment(metadata, eventData) {
   } catch (emailErr) {
     logger.error({ err: emailErr }, "Webhook: Failed to send receipt email");
   }
+  return result;
+}
+
+async function beginWebhookEvent({ eventId, eventType, metadata = {} }) {
+  const existing = await PaymongoWebhookEvent.findOne({ eventId });
+  if (existing?.processingStatus === "processed" || existing?.processingStatus === "ignored") {
+    return { record: existing, duplicate: true };
+  }
+  const record =
+    existing ||
+    (await PaymongoWebhookEvent.create({
+      provider: "paymongo",
+      eventId,
+      eventType,
+      signatureVerified: true,
+      processingStatus: "received",
+      safeMetadata: metadata,
+    }));
+  record.processingStatus = "processing";
+  record.attemptCount = Number(record.attemptCount || 0) + 1;
+  record.lastError = null;
+  await record.save();
+  return { record, duplicate: false };
+}
+
+async function finishWebhookEvent(record, processingStatus, error = null) {
+  record.processingStatus = processingStatus;
+  record.processedAt =
+    processingStatus === "processed" || processingStatus === "ignored"
+      ? new Date()
+      : null;
+  record.lastError = error ? String(error.message || error).slice(0, 500) : null;
+  await record.save();
 }
 
 /**
@@ -409,7 +407,10 @@ export const handlePaymongoWebhook = async (req, res) => {
       { err: sigError.message },
       "Webhook: Signature verification failed — returning 200",
     );
-    return res.status(200).json({ received: true });
+    return res.status(401).json({
+      received: false,
+      code: "INVALID_WEBHOOK_SIGNATURE",
+    });
   }
 
   // ── 2. Parse and log the event ───────────────────────────────────────────
@@ -435,19 +436,41 @@ export const handlePaymongoWebhook = async (req, res) => {
   // ── 3. Acknowledge receipt immediately ───────────────────────────────────
   // Send 200 BEFORE any async work so PayMongo does not time out waiting for
   // slow DB queries, Resend email delivery, or notification writes.
-  res.status(200).json({ received: true });
-  logger.info({ eventType, eventId, sessionId }, "Webhook: Responded 200 to PayMongo");
+  let eventRecord;
+  try {
+    const persisted = await beginWebhookEvent({
+      eventId,
+      eventType,
+      metadata: {
+        sessionId,
+        metadataType: metadata.type || null,
+        reservationId: metadata.reservationId || null,
+        billId: metadata.billId || null,
+      },
+    });
+    eventRecord = persisted.record;
+    if (persisted.duplicate) {
+      return res.status(200).json({ received: true, duplicate: true });
+    }
+  } catch (persistenceError) {
+    logger.error({ err: persistenceError, eventId }, "Webhook event persistence failed");
+    return res.status(503).json({
+      received: false,
+      code: "WEBHOOK_PERSISTENCE_FAILED",
+    });
+  }
 
   // ── 4. Ignore non-payment events ─────────────────────────────────────────
   if (eventType !== "checkout_session.payment.paid") {
     logger.info({ eventType, eventId }, "Webhook: Ignoring non-payment event");
-    return;
+    await finishWebhookEvent(eventRecord, "ignored");
+    return res.status(200).json({ received: true, ignored: true });
   }
 
   // ── 5. Process event (runs after 200 has been flushed to PayMongo) ────────
   try {
     if (metadata.type === "deposit") {
-      await handleDepositPayment(metadata, checkoutData);
+      await handleDepositPayment(metadata, checkoutData, { eventId, sessionId });
       logger.info(
         { eventId, sessionId, reservationId: metadata.reservationId },
         "Webhook: Deposit processing complete",
@@ -464,7 +487,19 @@ export const handlePaymongoWebhook = async (req, res) => {
         "Webhook: Unknown payment type in metadata",
       );
     }
+    await finishWebhookEvent(eventRecord, "processed");
+    return res.status(200).json({ received: true });
   } catch (processingError) {
+    const isReconciliationOutcome =
+      processingError instanceof ReservationDepositSettlementError &&
+      ["PAYMENT_AMOUNT_MISMATCH", "PAYMENT_CURRENCY_MISMATCH"].includes(
+        processingError.code,
+      );
+    await finishWebhookEvent(
+      eventRecord,
+      isReconciliationOutcome ? "processed" : "failed",
+      processingError,
+    );
     logger.error(
       {
         err: processingError,
@@ -473,8 +508,12 @@ export const handlePaymongoWebhook = async (req, res) => {
         sessionId,
         metadataType: metadata.type,
       },
-      "Webhook: Processing error after 200 response",
+      "Webhook: Processing error",
     );
+    return res.status(isReconciliationOutcome ? 200 : 500).json({
+      received: isReconciliationOutcome,
+      code: processingError.code || "WEBHOOK_PROCESSING_FAILED",
+    });
   }
 };
 
@@ -508,7 +547,10 @@ export const handlePaymongoSourceWebhook = async (req, res) => {
       { err: sigError.message },
       "Webhook(payment): Signature verification failed — returning 200",
     );
-    return res.status(200).json({ received: true });
+    return res.status(401).json({
+      received: false,
+      code: "INVALID_WEBHOOK_SIGNATURE",
+    });
   }
 
   // ── 2. Parse and log the event ───────────────────────────────────────────
@@ -535,6 +577,30 @@ export const handlePaymongoSourceWebhook = async (req, res) => {
   );
 
   // ── 3. Acknowledge receipt immediately ───────────────────────────────────
+  let eventRecord;
+  try {
+    const persisted = await beginWebhookEvent({
+      eventId,
+      eventType,
+      metadata: {
+        paymentId,
+        sessionId,
+        metadataType: metadata.type || null,
+        reservationId: metadata.reservationId || null,
+        billId: metadata.billId || null,
+      },
+    });
+    eventRecord = persisted.record;
+    if (persisted.duplicate) {
+      return res.status(200).json({ received: true, duplicate: true });
+    }
+  } catch (persistenceError) {
+    logger.error({ err: persistenceError, eventId }, "Webhook event persistence failed");
+    return res.status(503).json({
+      received: false,
+      code: "WEBHOOK_PERSISTENCE_FAILED",
+    });
+  }
   res.status(200).json({ received: true });
   logger.info({ eventType, eventId, paymentId }, "Webhook(payment): Responded 200 to PayMongo");
 
@@ -570,6 +636,7 @@ export const handlePaymongoSourceWebhook = async (req, res) => {
         await handleDepositPayment(
           { type: "deposit", reservationId: found.reservationId },
           syntheticEventData,
+          { eventId, sessionId },
         );
         logger.info(
           { eventId, paymentId, reservationId: found.reservationId },
@@ -624,7 +691,10 @@ export const handlePaymongoSourceWebhook = async (req, res) => {
       );
 
       if (checkoutMeta.type === "deposit") {
-        await handleDepositPayment(checkoutMeta, paymentData);
+        await handleDepositPayment(checkoutMeta, paymentData, {
+          eventId,
+          sessionId: checkoutSessionId,
+        });
         logger.info(
           { eventId, checkoutSessionId, reservationId: checkoutMeta.reservationId },
           "Webhook(payment): checkout_session deposit processing complete",
@@ -652,7 +722,14 @@ export const handlePaymongoSourceWebhook = async (req, res) => {
     } else {
       logger.info({ eventType, eventId }, "Webhook(payment): Ignoring unknown event type");
     }
+    await finishWebhookEvent(
+      eventRecord,
+      ["payment.paid", "checkout_session.payment.paid"].includes(eventType)
+        ? "processed"
+        : "ignored",
+    );
   } catch (processingError) {
+    await finishWebhookEvent(eventRecord, "failed", processingError);
     logger.error(
       { err: processingError, eventType, eventId, paymentId },
       "Webhook(payment): Processing error after 200 response",

@@ -85,6 +85,7 @@ import SurveyResponse from "./SurveyResponse.js";
 import SurveyNotificationLog from "./SurveyNotificationLog.js";
 import SurveyAIReport from "./SurveyAIReport.js";
 import SurveyImprovementAction from "./SurveyImprovementAction.js";
+import PaymongoWebhookEvent from "./PaymongoWebhookEvent.js";
 import {
   CANONICAL_RESERVATION_STATUSES,
   USER_ROLE_NAMES,
@@ -139,6 +140,7 @@ export {
   SurveyNotificationLog,
   SurveyAIReport,
   SurveyImprovementAction,
+  PaymongoWebhookEvent,
 };
 
 // ============================================================================
@@ -256,6 +258,7 @@ export default {
   SurveyNotificationLog,
   SurveyAIReport,
   SurveyImprovementAction,
+  PaymongoWebhookEvent,
   ROOM_BRANCHES,
   INQUIRY_BRANCHES,
   ROOM_BRANCH_LABELS,

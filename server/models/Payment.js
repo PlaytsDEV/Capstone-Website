@@ -40,7 +40,19 @@ const paymentSchema = new mongoose.Schema(
     billId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Bill",
-      required: true,
+      default: null,
+      index: true,
+    },
+    reservationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Reservation",
+      default: null,
+      index: true,
+    },
+    purpose: {
+      type: String,
+      enum: ["reservation_deposit", "rent", "utility", "penalty", "other"],
+      default: "other",
       index: true,
     },
 
@@ -58,10 +70,27 @@ const paymentSchema = new mongoose.Schema(
     },
     source: {
       type: String,
-      enum: ["admin-manual", "tenant-proof", "paymongo-polling", "paymongo-webhook"],
+      enum: [
+        "admin-manual",
+        "tenant-proof",
+        "paymongo-polling",
+        "paymongo-webhook",
+        "paymongo",
+        "manual_proof",
+        "manual_admin",
+        "legacy",
+      ],
       default: "admin-manual",
       index: true,
     },
+    expectedAmount: { type: Number, default: null, min: 0 },
+    paidAmount: { type: Number, default: null, min: 0 },
+    currency: { type: String, default: "PHP", uppercase: true, trim: true },
+    externalSessionId: { type: String, default: null, index: true },
+    paymentReference: { type: String, default: null, trim: true },
+    idempotencyKey: { type: String, default: null },
+    proofUrl: { type: String, default: null },
+    submittedAt: { type: Date, default: null },
     referenceNumber: {
       type: String,
       default: null,
@@ -86,7 +115,17 @@ const paymentSchema = new mongoose.Schema(
     // --- Status ---
     status: {
       type: String,
-      enum: ["pending", "approved", "paid", "rejected"],
+      enum: [
+        "pending",
+        "approved",
+        "paid",
+        "rejected",
+        "proof_submitted",
+        "under_review",
+        "confirmed",
+        "amount_mismatch",
+        "reconciliation_required",
+      ],
       default: "pending",
       index: true,
     },
@@ -101,6 +140,13 @@ const paymentSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    rejectedAt: { type: Date, default: null },
+    rejectedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    rejectionReasonCode: { type: String, default: null, trim: true },
     rejectionReason: {
       type: String,
       default: null,
@@ -131,7 +177,15 @@ const paymentSchema = new mongoose.Schema(
 
 paymentSchema.index({ tenantId: 1, createdAt: -1 });
 paymentSchema.index({ billId: 1, status: 1 });
+paymentSchema.index({ reservationId: 1, purpose: 1, createdAt: -1 });
 paymentSchema.index({ branch: 1, createdAt: -1 });
+paymentSchema.index(
+  { idempotencyKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { idempotencyKey: { $type: "string" } },
+  },
+);
 paymentSchema.index(
   { externalPaymentId: 1 },
   {
@@ -139,6 +193,22 @@ paymentSchema.index(
     partialFilterExpression: { externalPaymentId: { $type: "string" } },
   },
 );
+
+paymentSchema.pre("validate", function validateFinancialParent(next) {
+  if (!this.billId && !this.reservationId) {
+    this.invalidate(
+      "billId",
+      "A payment must reference either a bill or a reservation.",
+    );
+  }
+  if (this.billId && this.reservationId) {
+    this.invalidate(
+      "reservationId",
+      "A payment cannot reference both a bill and a reservation.",
+    );
+  }
+  next();
+});
 
 // ============================================================================
 // STATICS

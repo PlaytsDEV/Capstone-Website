@@ -17,6 +17,7 @@ const resolveBillStatus = jest.fn();
 const settlePaymongoBill = jest.fn();
 const sendSuccess = jest.fn();
 const notifyGeneral = jest.fn();
+const settleReservationDeposit = jest.fn();
 const mockLean = (value) => ({ lean: jest.fn().mockResolvedValue(value) });
 
 await jest.unstable_mockModule("../config/paymongo.js", () => ({
@@ -86,6 +87,10 @@ await jest.unstable_mockModule("../middleware/errorHandler.js", () => ({
 await jest.unstable_mockModule("../utils/notificationService.js", () => ({
   notify: { general: notifyGeneral },
 }));
+await jest.unstable_mockModule(
+  "../services/reservationDepositSettlementService.js",
+  () => ({ settleReservationDeposit }),
+);
 const {
   createBillCheckout,
   createDepositCheckout,
@@ -112,6 +117,21 @@ describe("paymentController", () => {
     settlePaymongoBill.mockReset();
     sendSuccess.mockReset();
     notifyGeneral.mockReset();
+    settleReservationDeposit.mockReset();
+    settleReservationDeposit.mockImplementation(async ({ reservationId, externalPaymentId }) => {
+      const query = reservationFindById(reservationId);
+      const reservation = query?.populate ? await query.populate() : await query;
+      if (!["approved_for_payment", "payment_pending"].includes(reservation.status)) {
+        reservation.paymongoPaymentId = externalPaymentId;
+        await reservation.save();
+        return { reservation, reconciliationRequired: true };
+      }
+      reservation.paymentStatus = "paid";
+      reservation.status = "reserved";
+      reservation.paymongoPaymentId = externalPaymentId;
+      await reservation.save();
+      return { reservation, settled: true, idempotent: false };
+    });
     userFind.mockReturnValue({
       select: jest.fn().mockReturnValue({
         lean: jest.fn().mockResolvedValue([]),
@@ -382,7 +402,7 @@ describe("paymentController", () => {
     expect(reservation.status).toBe("reserved");
     expect(reservation.paymongoPaymentId).toBe("pay_1");
     expect(reservation.save).toHaveBeenCalledTimes(1);
-    expect(updateOccupancyOnReservationChange).toHaveBeenCalledTimes(1);
+    expect(updateOccupancyOnReservationChange).not.toHaveBeenCalled();
     expect(sendSuccess).toHaveBeenCalledWith(
       res,
       expect.objectContaining({ sessionId: "cs_1", status: "paid" }),
