@@ -11,6 +11,7 @@ import {
   TenantBillingPage,
   TenantMaintenancePage,
   TenantAnnouncementsPage,
+  TenantSurveysPage,
 } from "../lazyPages";
 
 import CheckAvailabilityPageSkeleton from "../../features/tenant/components/check-availability/CheckAvailabilityPageSkeleton";
@@ -104,6 +105,16 @@ export function TenantRoutes() {
             <ProtectedRoute requiredRole="tenant">
               <RouteShell name="Maintenance" fallback={<MaintenancePageSkeleton />}>
                 <TenantMaintenancePage />
+              </RouteShell>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="surveys"
+          element={
+            <ProtectedRoute requiredRole="tenant">
+              <RouteShell name="TenantSurveys" fallback={<TenantLayoutSkeleton />}>
+                <TenantSurveysPage />
               </RouteShell>
             </ProtectedRoute>
           }

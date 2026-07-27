@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Navigate, useSearchParams } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import {
   BarChart3,
   Bed,
@@ -10,8 +10,10 @@ import {
   LayoutGrid,
   PhilippinePeso,
   CalendarDays,
+  ClipboardList,
 } from "lucide-react";
 import { useAuth } from "../../../shared/hooks/useAuth";
+import { usePermissions } from "../../../shared/hooks/usePermissions";
 import {
   useBillingReport,
   useOccupancyReport,
@@ -137,6 +139,8 @@ const styles = `
     gap: 0;
     border-bottom: none;
     margin-top: 12px;
+    overflow-x: auto;
+    white-space: nowrap;
   }
 
   .analytics-tab {
@@ -541,10 +545,13 @@ const styles = `
 
 function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
   const { user } = useAuth();
+  const { can } = usePermissions();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState("overview");
 
   const isOwner = user?.role === "owner";
+  const canViewSurveyAnalytics = can("viewSurveyAnalytics");
   const requestedRange = searchParams.get("range");
   const requestedBranch = searchParams.get("branch");
   const { range, branch } = normalizeAnalyticsSummaryState({
@@ -686,6 +693,10 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
     branch,
     isOwner,
   });
+  const surveyParams = new URLSearchParams(
+    isOwner && branch !== "all" ? { branch } : {},
+  );
+  const surveyAnalyticsHref = `/admin/analytics/feedback-surveys${surveyParams.size ? `?${surveyParams}` : ""}`;
 
   return (
     <div className="analytics-container">
@@ -759,6 +770,14 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
           >
             Operations
           </button>
+          {canViewSurveyAnalytics && (
+            <button
+              className="analytics-tab"
+              onClick={() => navigate(surveyAnalyticsHref)}
+            >
+              Feedback &amp; Surveys
+            </button>
+          )}
         </div>
       </div>
 
@@ -816,6 +835,15 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
                 <span className="analytics-quick-link-label">Consolidated Reports</span>
                 {!isOwner && <span className="analytics-quick-link-tag">Owner</span>}
               </a>
+              {canViewSurveyAnalytics && (
+                <a
+                  href={surveyAnalyticsHref}
+                  className="analytics-quick-link"
+                >
+                  <ClipboardList className="analytics-quick-link-icon" aria-hidden="true" />
+                  <span className="analytics-quick-link-label">Feedback &amp; Surveys</span>
+                </a>
+              )}
               <a
                 href={financialsDetailHref}
                 className={`analytics-quick-link ${!isOwner ? "is-disabled" : ""}`}

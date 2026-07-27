@@ -55,6 +55,9 @@ export const TenantMaintenancePage = React.lazy(
 export const TenantAnnouncementsPage = React.lazy(
   () => import("../features/tenant/pages/AnnouncementsPage"),
 );
+export const TenantSurveysPage = React.lazy(
+  () => import("../features/tenant/pages/SurveysPage.jsx"),
+);
 
 export const AdminLayout = React.lazy(
   () => import("../features/admin/components/AdminLayout"),
@@ -100,6 +103,9 @@ export const AnalyticsPage = React.lazy(
 );
 export const AnalyticsDetailsPage = React.lazy(
   () => import("../features/admin/pages/AnalyticsDetailsPage.jsx"),
+);
+export const SurveyAnalyticsPage = React.lazy(
+  () => import("../features/admin/pages/SurveyAnalyticsPage.jsx"),
 );
 export const BranchManagementPage = React.lazy(
   () => import("../features/super-admin/pages/BranchManagementPage"),

@@ -18,6 +18,7 @@ import {
   InquiriesPage,
   AnalyticsPage,
   AnalyticsDetailsPage,
+  SurveyAnalyticsPage,
   BranchManagementPage,
   RolePermissionsPage,
   SystemSettingsPage,
@@ -157,6 +158,16 @@ export function AdminRoutes() {
           <RouteShell name="Analytics" fallback={<AdminDashboardSkeleton />}>
             <AnalyticsPage />
           </RouteShell>
+        }
+      />
+      <Route
+        path="analytics/feedback-surveys"
+        element={
+          <RequirePermission permission="viewSurveyAnalytics">
+            <RouteShell name="SurveyAnalytics" fallback={<AdminDashboardSkeleton />}>
+              <SurveyAnalyticsPage />
+            </RouteShell>
+          </RequirePermission>
         }
       />
       <Route

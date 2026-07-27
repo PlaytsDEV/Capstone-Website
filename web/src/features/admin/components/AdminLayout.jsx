@@ -43,7 +43,9 @@ export default function AdminLayout() {
  contentRef.current?.scrollTo({ top: 0, behavior: "auto" });
  }, [location.pathname, location.search]);
 
- const breadcrumbs = ["Admin", pageMeta.title];
+ const breadcrumbs = location.pathname === "/admin/analytics/feedback-surveys"
+   ? ["Admin", "Analytics", pageMeta.title]
+   : ["Admin", pageMeta.title];
 
  return (
  <div className={`admin-layout ${collapsed ? "admin-layout--collapsed" : ""}`}>

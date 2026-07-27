@@ -88,6 +88,10 @@ async function retryJobOperation(fn, { label, branch = null } = {}) {
 import { generateAutomatedRentBills } from "./rentGenerator.js";
 import { dispatchDueScheduledAnnouncements } from "./announcementDispatch.js";
 import { detectSlaBreaches } from "./slaAlertJob.js";
+async function runSurveySchedulerJob() {
+  const { runSurveyScheduler } = await import("../services/surveyAutomationService.js");
+  return runSurveyScheduler();
+}
 
 // ─── Job 1: Overdue Move-In Detection (daily at 08:30) ──────────────────────────
 
@@ -952,6 +956,14 @@ export function startScheduler(options = {}) {
     }),
   );
 
+  scheduledJobs.push(
+    cron.schedule("15 7 * * *", runSurveySchedulerJob, {
+      scheduled: true,
+      timezone: process.env.APP_TIMEZONE || "Asia/Manila",
+      name: "survey-lifecycle-and-reminders",
+    }),
+  );
+
   return scheduledJobs.length;
 }
 
@@ -978,6 +990,7 @@ export {
   dispatchScheduledAnnouncements,
   detectSlaBreaches,
   detectConsecutiveOverdueMonths,
+  runSurveySchedulerJob,
 };
 
 export default { startScheduler, stopScheduler };

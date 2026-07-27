@@ -472,6 +472,18 @@
   box-shadow: var(--shadow-xs);
 }
 
+/* Shared Analytics section navigation, including nested survey analytics. */
+.analytics-tabs {
+  display: flex;
+  overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+}
+
+.analytics-tabs .analytics-tab {
+  flex: 0 0 auto;
+}
+
 /* Section Divider */
 .admin-section-divider {
   border: none;
