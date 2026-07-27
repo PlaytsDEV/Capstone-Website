@@ -11,7 +11,6 @@ import dayjs from "dayjs";
 export const roundMoney = (value) => Math.round((Number(value) || 0) * 100) / 100;
 export const UTILITY_CYCLE_DAY = 15;
 export const UTILITY_CHARGE_FIELDS = ["electricity", "water"];
-const RENT_DUE_BUSINESS_DAYS = 2;
 const RENT_GENERATION_LEAD_DAYS = 5;
 
 function normalizeBillingDate(dateLike) {
@@ -256,7 +255,7 @@ export function buildBillingCycle(checkInDate, cycleIndex = 0) {
 export function buildRentBillingCycle(moveInDate, cycleIndex = 0) {
   const start = dayjs(moveInDate).startOf("day").add(cycleIndex, "month");
   const end = start.add(1, "month");
-  const dueDate = addBusinessDays(end.toDate(), RENT_DUE_BUSINESS_DAYS);
+  const dueDate = start.toDate();
   const generationDate = dayjs(dueDate)
     .startOf("day")
     .subtract(RENT_GENERATION_LEAD_DAYS, "day")
@@ -270,6 +269,14 @@ export function buildRentBillingCycle(moveInDate, cycleIndex = 0) {
     generationDate,
     cycleIndex,
   };
+}
+
+export function getRentGraceDate(dueDate) {
+  return dayjs(dueDate).startOf("day").add(1, "day").toDate();
+}
+
+export function getRentPenaltyStartDate(dueDate) {
+  return dayjs(dueDate).startOf("day").add(2, "day").toDate();
 }
 
 export function resolveCurrentBillingCycle(checkInDate, referenceDate = new Date()) {
@@ -311,7 +318,7 @@ export function resolveCurrentRentBillingCycle(moveInDate, referenceDate = new D
     nextCycleStart = cycleStart.add(1, "month");
   }
 
-  return buildRentBillingCycle(anchor.toDate(), cycleIndex);
+  return buildRentBillingCycle(anchor.toDate(), Math.max(1, cycleIndex));
 }
 
 export function resolveVisibleRentBillingCycle(moveInDate, referenceDate = new Date()) {
@@ -319,7 +326,7 @@ export function resolveVisibleRentBillingCycle(moveInDate, referenceDate = new D
   const reference = normalizeBillingDate(referenceDate);
   if (!anchor || !reference) return null;
 
-  let cycleIndex = 0;
+  let cycleIndex = 1;
   let cycle = buildRentBillingCycle(anchor.toDate(), cycleIndex);
 
   if (reference.isBefore(dayjs(cycle.generationDate).startOf("day"))) {
