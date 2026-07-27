@@ -63,6 +63,7 @@ export const getContractNextAction = (status) =>
 
 const ERROR_MESSAGES = Object.freeze({
   DUPLICATE_CURRENT_CONTRACT: "A current Contract already exists for this Stay.",
+  DUPLICATE_CONTRACT: "A contract already exists for this approved reservation or stay.",
   CONTRACT_STATUS_NOT_GENERATABLE: "This Contract is not ready for prepared PDF generation.",
   CONTRACT_TEMPLATE_CHECKSUM_MISMATCH: "The official contract template failed its integrity check. Contract generation has been blocked.",
   CONTRACT_FIELD_OVERFLOW: "One or more contract values are too long for the official template. Review the tenant’s legal name or address.",
@@ -71,6 +72,10 @@ const ERROR_MESSAGES = Object.freeze({
   CONTRACT_BRANCH_ACCESS_DENIED: "You cannot access Contracts from another branch.",
   PERMISSION_DENIED: "Your account does not have permission to manage Contracts.",
   PREPARED_CONTRACT_NOT_FOUND: "The prepared PDF could not be found.",
+  PREPARED_DOCUMENT_UNAVAILABLE: "The prepared Contract has not been generated yet.",
+  PREPARED_DOCUMENT_STORAGE_MISSING: "The prepared Contract file is missing from storage.",
+  PREPARED_DOCUMENT_METADATA_INVALID: "The prepared Contract record is invalid and must be regenerated.",
+  CONTRACT_STORAGE_NOT_CONFIGURED: "Persistent Contract document storage is not configured.",
   CONTRACT_REGENERATION_NOT_ALLOWED: "Regeneration is blocked because Contract processing has progressed beyond the prepared-copy stage.",
   CONTRACT_PDF_BROWSER_UNAVAILABLE: "Contract PDF generation is temporarily unavailable because the document renderer is not configured on the server.",
 });

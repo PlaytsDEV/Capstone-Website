@@ -42,6 +42,24 @@ const terminalStatuses = new Set(["renewed", "terminated", "cancelled", "replace
 const serviceError = (message, code, statusCode = 400, details = undefined) =>
   Object.assign(new Error(message), { code, statusCode, details });
 
+const duplicateContractError = (existingContract) => serviceError(
+  "A contract already exists for this approved reservation or stay.",
+  "DUPLICATE_CONTRACT",
+  409,
+  {
+    existingContract: {
+      id: String(existingContract._id),
+      contractNumber: existingContract.contractNumber,
+      status: existingContract.status,
+      tenantName: existingContract.tenantLegalName,
+      branch: existingContract.branch,
+      roomNumber: existingContract.roomNumber,
+      bedLabel: existingContract.bedLabel || existingContract.bedId || "",
+      updatedAt: existingContract.updatedAt,
+    },
+  },
+);
+
 export const assertValidContractTransition = (from, to) => {
   if (!CONTRACT_TRANSITIONS[from]?.includes(to)) {
     throw serviceError(
@@ -128,20 +146,25 @@ export const createDraftContract = async ({
   const canonicalRoomType = validateBranchRoomType(branch, room.type);
   const property = resolveContractBranch(branch);
   const effectiveStayId = stay?._id || null;
-  const existingContract = effectiveStayId
-    ? await Contract.findOne({ stayId: effectiveStayId, isCurrent: true })
-      .select("_id contractNumber").lean()
-    : null;
-  if (existingContract) {
-    throw serviceError(
-      "A current Contract already exists for this Stay.",
-      "DUPLICATE_CURRENT_CONTRACT",
-      409,
-      {
-        existingContractId: String(existingContract._id),
-        contractNumber: existingContract.contractNumber,
-      },
+  const duplicateConditions = [
+    { reservationId: reservation._id },
+    { applicationId: reservation._id },
+    { initialContractKey: `reservation:${reservation._id}` },
+  ];
+  if (effectiveStayId) {
+    duplicateConditions.push(
+      { stayId: effectiveStayId },
+      { initialStayKey: `stay:${effectiveStayId}` },
     );
+  }
+  const existingContract = await Contract.findOne({
+    contractPurpose: { $in: ["initial", null] },
+    $or: duplicateConditions,
+  }).select(
+    "_id contractNumber status tenantLegalName branch roomNumber bedLabel bedId updatedAt",
+  ).lean();
+  if (existingContract) {
+    throw duplicateContractError(existingContract);
   }
 
   const leaseStartDate = stay?.leaseStartDate || reservation.confirmedMoveInDate ||
@@ -183,6 +206,9 @@ export const createDraftContract = async ({
   try {
     return await Contract.create({
       ...number,
+      contractPurpose: "initial",
+      initialContractKey: `reservation:${reservation._id}`,
+      initialStayKey: effectiveStayId ? `stay:${effectiveStayId}` : null,
       tenantId: tenant._id,
       applicationId: reservation._id,
       reservationId: reservation._id,
@@ -230,8 +256,24 @@ export const createDraftContract = async ({
       updatedBy: actorId,
     });
   } catch (error) {
-    if (error?.code === 11000 && error?.keyPattern?.stayId) {
-      throw serviceError("A current Contract already exists for this Stay.", "DUPLICATE_CURRENT_CONTRACT", 409);
+    if (
+      error?.code === 11000 &&
+      (error?.keyPattern?.initialContractKey || error?.keyPattern?.initialStayKey)
+    ) {
+      const winner = await Contract.findOne({
+        $or: [
+          { initialContractKey: `reservation:${reservation._id}` },
+          ...(effectiveStayId ? [{ initialStayKey: `stay:${effectiveStayId}` }] : []),
+        ],
+      }).select(
+        "_id contractNumber status tenantLegalName branch roomNumber bedLabel bedId updatedAt",
+      ).lean();
+      if (winner) throw duplicateContractError(winner);
+      throw serviceError(
+        "A contract already exists for this approved reservation or stay.",
+        "DUPLICATE_CONTRACT",
+        409,
+      );
     }
     throw error;
   }
