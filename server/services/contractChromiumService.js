@@ -21,8 +21,8 @@ const windowsBrowserPaths = (environment = process.env) => [
   environment["PROGRAMFILES(X86)"],
   environment.LOCALAPPDATA,
 ].filter(Boolean).flatMap((root) => [
-  path.join(root, "Google", "Chrome", "Application", "chrome.exe"),
-  path.join(root, "Chromium", "Application", "chrome.exe"),
+  path.win32.join(root, "Google", "Chrome", "Application", "chrome.exe"),
+  path.win32.join(root, "Chromium", "Application", "chrome.exe"),
 ]);
 
 const isExecutableFile = async (candidate, stat = fs.stat) => {
