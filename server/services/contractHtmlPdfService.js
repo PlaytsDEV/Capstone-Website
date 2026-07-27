@@ -1,12 +1,12 @@
 import { chromium } from "playwright-core";
-import path from "path";
+import {
+  browserUnavailableError,
+  resolveContractChromium,
+} from "./contractChromiumService.js";
 
 const escapeHtml = (value) => String(value ?? "")
   .replaceAll("&", "&amp;").replaceAll("<", "&lt;")
   .replaceAll(">", "&gt;").replaceAll('"', "&quot;");
-
-const chromeExecutable = () => process.env.CONTRACT_CHROMIUM_PATH
-  || path.join(process.env.PROGRAMFILES || "", "Google", "Chrome", "Application", "chrome.exe");
 
 const roomLabel = {
   private: "PRIVATE ROOM",
@@ -115,17 +115,33 @@ strong{font-weight:700}
 };
 
 export const renderContractHtmlPdf = async (data) => {
-  const browser = await chromium.launch({ headless: true, executablePath: chromeExecutable() });
+  const runtime = await resolveContractChromium();
+  let browser;
+  try {
+    browser = await chromium.launch({
+      headless: true,
+      executablePath: runtime.executablePath,
+      args: runtime.args,
+      timeout: 30_000,
+    });
+  } catch (error) {
+    throw browserUnavailableError(error);
+  }
+
   try {
     const page = await browser.newPage();
-    await page.setContent(buildContractHtml(data), { waitUntil: "load" });
-    const bytes = await page.pdf({
-      width: "8.5in", height: "13in", printBackground: true,
-      margin: { top: "0", right: "0", bottom: "0", left: "0" },
-      preferCSSPageSize: true,
-    });
-    return Buffer.from(bytes);
+    try {
+      await page.setContent(buildContractHtml(data), { waitUntil: "load", timeout: 30_000 });
+      const bytes = await page.pdf({
+        width: "8.5in", height: "13in", printBackground: true,
+        margin: { top: "0", right: "0", bottom: "0", left: "0" },
+        preferCSSPageSize: true,
+      });
+      return Buffer.from(bytes);
+    } finally {
+      await page.close().catch(() => {});
+    }
   } finally {
-    await browser.close();
+    await browser.close().catch(() => {});
   }
 };

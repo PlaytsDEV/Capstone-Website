@@ -72,6 +72,7 @@ const ERROR_MESSAGES = Object.freeze({
   PERMISSION_DENIED: "Your account does not have permission to manage Contracts.",
   PREPARED_CONTRACT_NOT_FOUND: "The prepared PDF could not be found.",
   CONTRACT_REGENERATION_NOT_ALLOWED: "Regeneration is blocked because Contract processing has progressed beyond the prepared-copy stage.",
+  CONTRACT_PDF_BROWSER_UNAVAILABLE: "Contract PDF generation is temporarily unavailable because the document renderer is not configured on the server.",
 });
 
 export const getContractErrorMessage = (error) => {
