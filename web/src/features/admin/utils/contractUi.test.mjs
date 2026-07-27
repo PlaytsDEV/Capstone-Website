@@ -59,3 +59,12 @@ test("maps backend contract errors to actionable messages", () => {
   });
   assert.match(message, /already exists/i);
 });
+
+test("hides Contract PDF browser paths behind a safe administrator message", () => {
+  assert.equal(
+    getContractErrorMessage({
+      response: { data: { code: "CONTRACT_PDF_BROWSER_UNAVAILABLE" } },
+    }),
+    "Contract PDF generation is temporarily unavailable because the document renderer is not configured on the server.",
+  );
+});
