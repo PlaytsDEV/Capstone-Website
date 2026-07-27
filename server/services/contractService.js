@@ -12,6 +12,8 @@ import {
 } from "./tenantProfileService.js";
 import { buildContractGenerationData } from "./contractGenerationDataService.js";
 import { resolveContractTemplate } from "./contractTemplateService.js";
+import { resolveContractLeasePricing } from "./contractPricingResolver.js";
+import { getBusinessSettings } from "../utils/businessSettings.js";
 
 export const CONTRACT_TRANSITIONS = Object.freeze({
   draft: ["incomplete", "ready_for_generation", "cancelled"],
@@ -178,12 +180,20 @@ export const createDraftContract = async ({
     ? Number(reservation.monthlyRent)
     : null;
   const financial = resolveTenantFinancialSummary({ reservation });
+  const settings = await getBusinessSettings();
+  const pricing = resolveContractLeasePricing({
+    room,
+    roomType: canonicalRoomType,
+    leaseDurationMonths,
+    approvedMonthlyRate: approvedRate,
+    longTermLeaseMinMonths: settings.longTermLeaseMinMonths,
+  });
   let resolvedTemplate = null;
   try {
     resolvedTemplate = resolveContractTemplate({
       branch,
       roomType: canonicalRoomType,
-      leaseType: leaseDurationMonths >= 6 ? "long-term" : "short-term",
+      leaseType: pricing.isLongTerm ? "long-term" : "short-term",
       leaseStartDate,
       leaseEndDate,
       leaseDurationMonths,
@@ -192,13 +202,6 @@ export const createDraftContract = async ({
     // A draft may preserve incomplete lease data. Full validation reports the
     // exact template/date issue before generation.
   }
-  const regularRate = Number.isFinite(Number(room.price)) ? Number(room.price) : null;
-  const discountAmount = regularRate !== null && approvedRate !== null
-    ? Math.max(0, regularRate - approvedRate)
-    : null;
-  const discount = regularRate > 0 && discountAmount !== null
-    ? Math.round((discountAmount / regularRate) * 10000) / 100
-    : null;
   const selectedBed = reservation.selectedBed || {};
   const person = resolveTenantPersonalDetails({ user: tenant, reservation });
   const number = await generateContractNumber(branch);
@@ -217,9 +220,9 @@ export const createDraftContract = async ({
       branch,
       version: 1,
       templateType: resolvedTemplate?.templateId ||
-        `${canonicalRoomType.replaceAll("-", "_")}_${leaseDurationMonths >= 6 ? "long_term" : "short_term"}`,
+        `${canonicalRoomType.replaceAll("-", "_")}_${pricing.leaseType}`,
       roomType: canonicalRoomType,
-      leaseType: leaseDurationMonths >= 6 ? "long_term" : "short_term",
+      leaseType: pricing.leaseType,
       propertyName: property.propertyName,
       propertyAddress: property.propertyAddress,
       roomNumber: room.roomNumber,
@@ -234,11 +237,11 @@ export const createDraftContract = async ({
       leaseStartDate,
       leaseEndDate,
       leaseDurationMonths,
-      regularMonthlyRate: regularRate,
-      discountPercentage: discount,
-      discountType: discount === 0 ? "none" : "percentage",
-      discountAmount,
-      approvedMonthlyRate: approvedRate,
+      regularMonthlyRate: pricing.regularMonthlyRate,
+      discountPercentage: pricing.discountPercentage,
+      discountType: pricing.discountPercentage === 0 ? "none" : "percentage",
+      discountAmount: pricing.discountAmount,
+      approvedMonthlyRate: pricing.approvedMonthlyRate,
       advanceRentAmount: financial.advanceRent,
       securityDepositAmount: financial.securityDeposit,
       reservationFeeAmount: reservation.reservationFeeAmount ?? null,
