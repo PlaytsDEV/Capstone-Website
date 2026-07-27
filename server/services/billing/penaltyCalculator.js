@@ -23,7 +23,10 @@ export async function computePenalty(bill, settings = null, now = dayjs()) {
     ? [settings.penaltyRatePerDay, settings.maxCapPercent]
     : await Promise.all([getPenaltyRatePerDay(), getMaxPenaltyCapPercent()]);
 
-  const daysLate = nowDayjs.diff(dayjs(bill.dueDate), "day");
+  const daysLate = Math.max(0, nowDayjs.startOf("day").diff(
+    dayjs(bill.dueDate).startOf("day"),
+    "day",
+  ) - 1);
 
   if (!Number.isFinite(daysLate) || daysLate <= 0) {
     return { penalty: 0, daysLate: 0, ratePerDay: configuredRate, capped: false };

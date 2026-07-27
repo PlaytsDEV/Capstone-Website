@@ -13,6 +13,7 @@ const updateOccupancyOnReservationChange = jest.fn();
 const paymentApproved = jest.fn();
 const notifyGeneral = jest.fn();
 const settlePaymongoBill = jest.fn();
+const confirmReservationPaymentFromWebhook = jest.fn();
 
 await jest.unstable_mockModule("../config/paymongo.js", () => ({
   verifyWebhookSignature,
@@ -61,9 +62,15 @@ await jest.unstable_mockModule("../utils/billSettlement.js", () => ({
 }));
 
 await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
+  CANONICAL_RESERVATION_STATUSES: ["payment_pending", "reserved"],
   normalizeReservationStatus: (status) => status,
   hasReservationStatus: jest.fn((status, ...expected) => expected.includes(status)),
 }));
+
+await jest.unstable_mockModule(
+  "../services/reservationPaymentConfirmationService.js",
+  () => ({ confirmReservationPaymentFromWebhook }),
+);
 
 const {
   handlePaymongoWebhook,
@@ -124,6 +131,7 @@ describe("handlePaymongoWebhook", () => {
     paymentApproved.mockReset();
     notifyGeneral.mockReset();
     settlePaymongoBill.mockReset();
+    confirmReservationPaymentFromWebhook.mockReset();
     userFind.mockReturnValue({
       select: jest.fn().mockReturnValue({
         lean: jest.fn().mockResolvedValue([]),
@@ -139,18 +147,8 @@ describe("handlePaymongoWebhook", () => {
       }),
     );
 
-    const reservation = {
-      _id: "res_1",
-      userId: "user_1",
-      roomId: { name: "Room 1" },
-      status: "reserved",
-      paymentStatus: "paid",
-      paymongoPaymentId: "pay_dup",
-      save: jest.fn(),
-    };
-
-    reservationFindById.mockReturnValue({
-      populate: jest.fn().mockResolvedValue(reservation),
+    confirmReservationPaymentFromWebhook.mockResolvedValue({
+      status: "already_processed",
     });
 
     const req = { body: Buffer.from("{}"), headers: { "paymongo-signature": "sig" } };
@@ -159,8 +157,8 @@ describe("handlePaymongoWebhook", () => {
     await handlePaymongoWebhook(req, res);
 
     expect(res.statusCode).toBe(200);
-    expect(res.body).toEqual({ received: true });
-    expect(reservation.save).not.toHaveBeenCalled();
+    expect(res.body).toEqual({ received: true, result: "already_processed" });
+    expect(confirmReservationPaymentFromWebhook).toHaveBeenCalledTimes(1);
     expect(updateOccupancyOnReservationChange).not.toHaveBeenCalled();
   });
 
@@ -185,8 +183,9 @@ describe("handlePaymongoWebhook", () => {
       }),
     };
 
-    reservationFindById.mockReturnValue({
-      populate: jest.fn().mockResolvedValue(reservation),
+    confirmReservationPaymentFromWebhook.mockResolvedValue({
+      status: "payment_confirmed",
+      reservation,
     });
     userFindById.mockReturnValue({
       lean: jest.fn().mockResolvedValue({
@@ -202,10 +201,12 @@ describe("handlePaymongoWebhook", () => {
     await handlePaymongoWebhook(req, res);
 
     expect(res.statusCode).toBe(200);
-    expect(reservation.paymentStatus).toBe("paid");
-    expect(reservation.status).toBe("reserved");
-    expect(reservation.paymongoPaymentId).toBe("pay_new");
-    expect(reservation.save).toHaveBeenCalledTimes(1);
+    expect(confirmReservationPaymentFromWebhook).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reservationId: "res_2",
+        paymentId: "pay_new",
+      }),
+    );
     expect(updateOccupancyOnReservationChange).toHaveBeenCalledTimes(1);
   });
 
@@ -230,8 +231,9 @@ describe("handlePaymongoWebhook", () => {
       }),
     };
 
-    reservationFindById.mockReturnValue({
-      populate: jest.fn().mockResolvedValue(reservation),
+    confirmReservationPaymentFromWebhook.mockResolvedValue({
+      status: "event_rejected",
+      reason: "RESERVATION_NOT_PAYMENT_PENDING",
     });
     userFindById.mockReturnValue({
       lean: jest.fn().mockResolvedValue({
@@ -249,8 +251,8 @@ describe("handlePaymongoWebhook", () => {
     expect(res.statusCode).toBe(200);
     expect(reservation.paymentStatus).toBe("pending");
     expect(reservation.status).toBe("pending_application_review");
-    expect(reservation.paymongoPaymentId).toBe("pay_midflow");
-    expect(reservation.save).toHaveBeenCalledTimes(1);
+    expect(reservation.paymongoPaymentId).toBeNull();
+    expect(reservation.save).not.toHaveBeenCalled();
     expect(updateOccupancyOnReservationChange).not.toHaveBeenCalled();
     expect(paymentApproved).not.toHaveBeenCalled();
     expect(sendPaymentReceiptEmail).not.toHaveBeenCalled();
@@ -357,7 +359,7 @@ describe("handlePaymongoWebhook", () => {
     expect(sendPaymentReceiptEmail).not.toHaveBeenCalled();
   });
 
-  test("always returns 200 when signature verification fails", async () => {
+  test("rejects invalid checkout webhook signatures", async () => {
     verifyWebhookSignature.mockImplementation(() => {
       throw new Error("invalid signature");
     });
@@ -367,11 +369,15 @@ describe("handlePaymongoWebhook", () => {
 
     await handlePaymongoWebhook(req, res);
 
-    expect(res.statusCode).toBe(200);
-    expect(res.body).toEqual({ received: true });
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toEqual({
+      received: false,
+      result: "event_rejected",
+      code: "INVALID_PAYMONGO_SIGNATURE",
+    });
   });
 
-  test("payment-level webhook also returns 200 when signature verification fails", async () => {
+  test("rejects invalid payment-level webhook signatures", async () => {
     verifyWebhookSignature.mockImplementation(() => {
       throw new Error("invalid signature");
     });
@@ -381,7 +387,11 @@ describe("handlePaymongoWebhook", () => {
 
     await handlePaymongoSourceWebhook(req, res);
 
-    expect(res.statusCode).toBe(200);
-    expect(res.body).toEqual({ received: true });
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toEqual({
+      received: false,
+      result: "event_rejected",
+      code: "INVALID_PAYMONGO_SIGNATURE",
+    });
   });
 });

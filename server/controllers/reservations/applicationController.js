@@ -585,6 +585,13 @@ export const uploadPaymentProof = async (req, res, next) => {
       });
     }
 
+    if (!reservation.offlinePaymentException?.approvedAt) {
+      return res.status(410).json({
+        error: "Manual payment proof is not available. Continue through the secure PayMongo checkout.",
+        code: "MANUAL_PAYMENT_PROOF_DISABLED",
+      });
+    }
+
     const proofOfPaymentUrl = req.body.proofOfPaymentUrl;
     if (!proofOfPaymentUrl || !isAllowedReservationDocumentUrl(proofOfPaymentUrl)) {
       return res.status(400).json({

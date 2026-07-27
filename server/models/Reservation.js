@@ -567,6 +567,12 @@ const reservationSchema = new mongoose.Schema(
       default: "bank",
     },
     proofOfPaymentUrl: String,
+    offlinePaymentException: {
+      approvedAt: { type: Date, default: null },
+      approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+      reason: { type: String, default: "" },
+      auditReference: { type: String, default: "" },
+    },
     paymentDate: {
       type: Date,
       default: null,
@@ -579,6 +585,27 @@ const reservationSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    paymentVerificationSource: {
+      type: String,
+      enum: ["paymongo_webhook", "offline_exception", null],
+      default: null,
+    },
+    paymentVerifiedAt: { type: Date, default: null },
+    paidAmount: { type: Number, default: null, min: 0 },
+    paymentCurrency: { type: String, default: "PHP", uppercase: true },
+    paymongoPaymentIntentId: { type: String, default: null },
+    paymongoReference: { type: String, default: null },
+    paymongoWebhookEventId: { type: String, default: null },
+    webhookReceivedAt: { type: Date, default: null },
+    reservationFeeAppliedTo: {
+      type: String,
+      enum: ["initial_move_in_charges", null],
+      default: null,
+    },
+    reservationFeeAppliedAt: { type: Date, default: null },
+    reservationFeeApplicationReference: { type: String, default: null },
+    checkoutExpiresAt: { type: Date, default: null },
+    reservationHoldExpiresAt: { type: Date, default: null },
     // Timestamp of when the internal receipt email was successfully sent.
     // Prevents duplicate receipt emails on repeated webhook deliveries.
     receiptSentAt: {

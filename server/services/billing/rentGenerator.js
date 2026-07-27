@@ -9,7 +9,6 @@
 import dayjs from "dayjs";
 import { Bill, Reservation } from "../../models/index.js";
 import {
-  getReservationCreditAvailable,
   getReservationRecurringFees,
   roundMoney,
   resolveVisibleRentBillingCycle,
@@ -106,10 +105,7 @@ export async function ensureCurrentCycleRentBill({
     "charges.rent": { $gt: 0 },
   }));
   const isFirstCycleBill = !hasPriorRentBill;
-  const creditAvailable = getReservationCreditAvailable(reservation);
-  const reservationCreditApplied = isFirstCycleBill
-    ? Math.min(grossAmount, creditAvailable)
-    : 0;
+  const reservationCreditApplied = 0;
 
   const bill = new Bill({
     reservationId: reservation._id,
@@ -153,12 +149,6 @@ export async function ensureCurrentCycleRentBill({
   }
 
   await bill.save();
-
-  if (reservationCreditApplied > 0 && typeof reservation.save === "function") {
-    reservation.reservationCreditConsumedAt = currentDay.toDate();
-    reservation.reservationCreditAppliedBillId = bill._id;
-    await reservation.save();
-  }
 
   if (notifyTenant) {
     const monthLabel = dayjs(billingMonthStartDate).format("MMMM YYYY");

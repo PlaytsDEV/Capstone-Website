@@ -17,6 +17,7 @@ const resolveBillStatus = jest.fn();
 const settlePaymongoBill = jest.fn();
 const sendSuccess = jest.fn();
 const notifyGeneral = jest.fn();
+const createReservationCheckout = jest.fn();
 const mockLean = (value) => ({ lean: jest.fn().mockResolvedValue(value) });
 
 await jest.unstable_mockModule("../config/paymongo.js", () => ({
@@ -86,6 +87,10 @@ await jest.unstable_mockModule("../middleware/errorHandler.js", () => ({
 await jest.unstable_mockModule("../utils/notificationService.js", () => ({
   notify: { general: notifyGeneral },
 }));
+await jest.unstable_mockModule(
+  "../services/paymongoReservationCheckoutService.js",
+  () => ({ createReservationCheckout }),
+);
 const {
   createBillCheckout,
   createDepositCheckout,
@@ -112,6 +117,7 @@ describe("paymentController", () => {
     settlePaymongoBill.mockReset();
     sendSuccess.mockReset();
     notifyGeneral.mockReset();
+    createReservationCheckout.mockReset();
     userFind.mockReturnValue({
       select: jest.fn().mockReturnValue({
         lean: jest.fn().mockResolvedValue([]),
@@ -214,6 +220,11 @@ describe("paymentController", () => {
     reservationFindById.mockReturnValue({
       populate: jest.fn().mockResolvedValue(reservation),
     });
+    createReservationCheckout.mockRejectedValue(
+      Object.assign(new Error("Payment locked"), {
+        code: "PAYMENT_LOCKED_PENDING_APPLICATION_REVIEW",
+      }),
+    );
 
     const req = { params: { resId: "res_early" }, user: { uid: "firebase-1" } };
     const res = {};
@@ -245,9 +256,11 @@ describe("paymentController", () => {
     reservationFindById.mockReturnValue({
       populate: jest.fn().mockResolvedValue(reservation),
     });
-    createCheckoutSession.mockResolvedValue({
+    createReservationCheckout.mockResolvedValue({
       checkoutUrl: "https://checkout.test/cs_deposit",
       sessionId: "cs_deposit",
+      expectedAmount: 10600,
+      currency: "PHP",
     });
 
     const req = { params: { resId: "res_ready" }, user: { uid: "firebase-1" } };
@@ -256,18 +269,12 @@ describe("paymentController", () => {
 
     await createDepositCheckout(req, res, next);
 
-    expect(createCheckoutSession).toHaveBeenCalledWith(
+    expect(createReservationCheckout).toHaveBeenCalledWith(
       expect.objectContaining({
-        amount: 2000,
-        metadata: expect.objectContaining({
-          type: "deposit",
-          reservationId: "res_ready",
-          userId: "tenant_1",
-        }),
+        reservation,
+        applicantId: "tenant_1",
       }),
     );
-    expect(reservation.paymongoSessionId).toBe("cs_deposit");
-    expect(reservation.save).toHaveBeenCalledTimes(1);
     expect(sendSuccess).toHaveBeenCalledWith(
       res,
       expect.objectContaining({
@@ -316,6 +323,11 @@ describe("paymentController", () => {
     reservationFindById.mockReturnValue({
       populate: jest.fn().mockResolvedValue(reservation),
     });
+    createReservationCheckout.mockRejectedValue(
+      Object.assign(new Error("Payment locked"), {
+        code: "PAYMENT_LOCKED_PENDING_APPLICATION_REVIEW",
+      }),
+    );
 
     const req = { params: { resId: "res_locked" }, user: { uid: "firebase-1" } };
     const res = {};
@@ -331,7 +343,7 @@ describe("paymentController", () => {
     );
   });
 
-  test("auto-reserves a paid payment_pending deposit exactly once", async () => {
+  test("does not treat a successful redirect poll as deposit confirmation", async () => {
     const reservation = {
       _id: "res_1",
       userId: "tenant_1",
@@ -378,19 +390,19 @@ describe("paymentController", () => {
 
     await checkSessionStatus(req, res, next);
 
-    expect(reservation.paymentStatus).toBe("paid");
-    expect(reservation.status).toBe("reserved");
-    expect(reservation.paymongoPaymentId).toBe("pay_1");
-    expect(reservation.save).toHaveBeenCalledTimes(1);
-    expect(updateOccupancyOnReservationChange).toHaveBeenCalledTimes(1);
+    expect(reservation.paymentStatus).toBe("pending");
+    expect(reservation.status).toBe("payment_pending");
+    expect(reservation.paymongoPaymentId).toBeUndefined();
+    expect(reservation.save).not.toHaveBeenCalled();
+    expect(updateOccupancyOnReservationChange).not.toHaveBeenCalled();
     expect(sendSuccess).toHaveBeenCalledWith(
       res,
-      expect.objectContaining({ sessionId: "cs_1", status: "paid" }),
+      expect.objectContaining({ sessionId: "cs_1", status: "processing" }),
     );
     expect(next).not.toHaveBeenCalled();
   });
 
-  test("marks out-of-sequence paid deposit sessions for manual review", async () => {
+  test("does not persist a client-polled out-of-sequence deposit payment", async () => {
     const reservation = {
       _id: "res_review",
       userId: "tenant_1",
@@ -434,27 +446,25 @@ describe("paymentController", () => {
 
     expect(reservation.paymentStatus).toBe("pending");
     expect(reservation.status).toBe("visit_approved");
-    expect(reservation.paymongoPaymentId).toBe("pay_review");
-    expect(reservation.save).toHaveBeenCalledTimes(1);
+    expect(reservation.paymongoPaymentId).toBeNull();
+    expect(reservation.save).not.toHaveBeenCalled();
     expect(updateOccupancyOnReservationChange).not.toHaveBeenCalled();
     expect(sendPaymentReceiptEmail).not.toHaveBeenCalled();
     expect(sendSuccess).toHaveBeenCalledWith(
       res,
       expect.objectContaining({
         sessionId: "cs_review",
-        status: "paid",
-        requiresReview: true,
+        status: "processing",
         reservation: expect.objectContaining({
           status: "visit_approved",
           paymentStatus: "pending",
-          requiresReview: true,
         }),
       }),
     );
     expect(next).not.toHaveBeenCalled();
   });
 
-  test("auto-reserves a paid deposit when PayMongo nests payments under payment_intent", async () => {
+  test("nested paid provider data remains processing until the webhook confirms it", async () => {
     const reservation = {
       _id: "res_2",
       userId: "tenant_1",
@@ -499,12 +509,12 @@ describe("paymentController", () => {
 
     await checkSessionStatus(req, res, next);
 
-    expect(reservation.paymentStatus).toBe("paid");
-    expect(reservation.status).toBe("reserved");
-    expect(reservation.paymongoPaymentId).toBe("pay_nested");
+    expect(reservation.paymentStatus).toBe("pending");
+    expect(reservation.status).toBe("payment_pending");
+    expect(reservation.paymongoPaymentId).toBeUndefined();
     expect(sendSuccess).toHaveBeenCalledWith(
       res,
-      expect.objectContaining({ sessionId: "cs_nested", status: "paid" }),
+      expect.objectContaining({ sessionId: "cs_nested", status: "processing" }),
     );
     expect(next).not.toHaveBeenCalled();
   });

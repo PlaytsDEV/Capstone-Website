@@ -58,8 +58,8 @@ export const handleReservationError = (res, error, action = "process") => {
     .status(500)
     .json({
       error: `Failed to ${action} reservation`,
-      details: error.message,
       code: `${action.toUpperCase().replace(/ /g, "_")}_RESERVATION_ERROR`,
+      correlationId: res.getHeader("X-Request-Id") || undefined,
     });
 };
 

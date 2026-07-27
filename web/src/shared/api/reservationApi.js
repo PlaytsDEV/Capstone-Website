@@ -101,6 +101,22 @@ export const reservationApi = {
       }),
     ),
 
+  reviewApplication: (reservationId, decision, reason = "") =>
+    withLifecycleNormalization(
+      authFetch(`/reservations/${reservationId}/application-review`, {
+        method: "POST",
+        body: JSON.stringify({ decision, reason }),
+      }),
+    ),
+
+  confirmMoveIn: (reservationId, data) =>
+    withLifecycleNormalization(
+      authFetch(`/reservations/${reservationId}/move-in`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    ),
+
   /**
    * Update reservation (tenant only)
    */

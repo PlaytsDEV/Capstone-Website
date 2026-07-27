@@ -77,6 +77,7 @@ const ReservationPaymentStep = ({
     reservationFeeDeductible: reservationFeeAmount,
     netAmountDue: Math.max(0, monthlyRent * 2 - reservationFeeAmount),
   };
+  const checkoutAmount = Number(moveInCashOut.netAmountDue || 0);
 
   const selectedBedPosition = toDisplayString(reservationData?.selectedBed?.position, "");
   const selectedBedId = toDisplayString(reservationData?.selectedBed?.id);
@@ -87,7 +88,7 @@ const ReservationPaymentStep = ({
   const canPay = agreedToFeePolicy && !isLoading && !payingOnline && paymentAvailable && !readOnly;
   const payButtonLabel = payingOnline
     ? "Redirecting to PayMongo..."
-    : `Pay ${formatCurrency(reservationFeeAmount)} Securely`;
+    : `Proceed to PayMongo — ${formatCurrency(checkoutAmount)}`;
 
   const handlePayClick = () => {
     if (!canPay) return;
@@ -103,7 +104,7 @@ const ReservationPaymentStep = ({
         </div>
         <h2 className="main-header-title">Reservation Fee Payment</h2>
         <p className="main-header-subtitle">
-          Pay the one-time reservation fee deposit to lock and secure your room.
+          Pay the approved remaining initial move-in amount securely through PayMongo.
         </p>
       </div>
 
@@ -114,7 +115,7 @@ const ReservationPaymentStep = ({
           <div>
             <div className="info-box-title">Payment Complete</div>
             <div className="info-text">
-              Your reservation fee of {formatCurrency(reservationFeeAmount)} has been paid and your room is reserved.
+              Your initial payment of {formatCurrency(checkoutAmount)} has been confirmed by PayMongo and your room is reserved.
             </div>
           </div>
         </div>
@@ -125,11 +126,11 @@ const ReservationPaymentStep = ({
           {/* Card 1: Payment Hero & Essential Room Summary */}
           <div className="rf-payment-summary-hero">
             <div className="rf-payment-amount-box">
-              <span className="rf-payment-amount-label">One-Time Reservation Deposit</span>
+              <span className="rf-payment-amount-label">Remaining Initial Amount Due</span>
               <div className="rf-payment-amount-value total-amount">
-                {formatCurrency(reservationFeeAmount)}
+                {formatCurrency(checkoutAmount)}
               </div>
-              <span className="rf-payment-amount-badge">Deductible Partial Payment</span>
+              <span className="rf-payment-amount-badge">Advance and Deposit Balance</span>
             </div>
 
             <div className="rf-payment-room-chips summary-section rf-payment-summary">
@@ -177,11 +178,11 @@ const ReservationPaymentStep = ({
                   <span>{formatCurrency(moveInCashOut.grossTotal)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#34d399', fontWeight: 600, marginBottom: '4px' }}>
-                  <span>Less: Reservation Deposit (Paying Now):</span>
+                  <span>Less: Reservation Fee Credit:</span>
                   <span>- {formatCurrency(reservationFeeAmount)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#f8fafc', fontWeight: 700, borderTop: '1px solid rgba(255, 255, 255, 0.15)', paddingTop: '6px', marginTop: '4px' }}>
-                  <span>Est. Remaining Due at Move-In:</span>
+                  <span>PayMongo Checkout Amount:</span>
                   <span>{formatCurrency(moveInCashOut.netAmountDue)}</span>
                 </div>
               </div>

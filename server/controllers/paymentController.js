@@ -36,6 +36,7 @@ import { notify } from "../utils/notificationService.js";
 import { sendSuccess, AppError } from "../middleware/errorHandler.js";
 import { normalizeReservationStatus } from "../utils/lifecycleNaming.js";
 import { isOwnerRole } from "../config/roles.js";
+import { createReservationCheckout } from "../services/paymongoReservationCheckoutService.js";
 
 const FRONTEND_URL =
   process.env.FRONTEND_URL?.split(",")[0]?.trim() || "http://localhost:5173";
@@ -304,80 +305,12 @@ export const createDepositCheckout = async (req, res, next) => {
       );
     }
 
-    if (reservation.paymentStatus === "paid") {
-      throw new AppError("Deposit is already paid", 400, "ALREADY_PAID");
-    }
-
-    if (!hasReservationStatus(reservation.status, "approved_for_payment", "payment_pending")) {
-      throw new AppError(
-        "Payment is still locked. It will only be available after your application and documents are approved.",
-        403,
-        "PAYMENT_LOCKED_PENDING_APPLICATION_REVIEW",
-      );
-    }
-
-    if (!isDepositCheckoutReady(reservation)) {
-      throw new AppError(
-        "Deposit checkout is available only after application submission.",
-        409,
-        "DEPOSIT_NOT_READY",
-        {
-          status: normalizeReservationStatus(reservation.status),
-          applicationSubmittedAt: reservation.applicationSubmittedAt || null,
-        },
-      );
-    }
-
-    if (reservation.paymongoSessionId) {
-      try {
-        const existing = await getCheckoutSession(reservation.paymongoSessionId);
-        const existingUrl = existing?.attributes?.checkout_url;
-        const existingPayments = existing?.attributes?.payments || [];
-        if (existingUrl && existingPayments.length === 0) {
-          if (!hasReservationStatus(reservation.status, "payment_pending")) {
-            reservation.status = "payment_pending";
-            reservation.paymentStatus = "pending";
-            await reservation.save();
-          }
-          return sendSuccess(res, {
-            checkoutUrl: existingUrl,
-            sessionId: reservation.paymongoSessionId,
-            reused: true,
-          });
-        }
-      } catch {
-        // Expired or invalid session: create a fresh one below.
-      }
-    }
-
-    const amount =
-      reservation.reservationFeeAmount || (await getReservationFeeAmount());
-    if (
-      !reservation.reservationFeeAmount ||
-      reservation.reservationFeeAmount !== amount
-    ) {
-      reservation.reservationFeeAmount = amount;
-    }
-
-    const roomName = reservation.roomId?.name || "Room";
-    const { checkoutUrl, sessionId } = await createCheckoutSession({
-      amount,
-      description: `Lilycrest Dormitory - Reservation Deposit (${roomName})`,
-      metadata: {
-        type: "deposit",
-        reservationId: String(reservation._id),
-        userId: String(dbUser._id),
-      },
-      successUrl: `${FRONTEND_URL}/applicant/reservation?payment=success&session_id={id}`,
-      cancelUrl: `${FRONTEND_URL}/applicant/reservation?payment=cancelled&session_id={id}`,
+    const checkout = await createReservationCheckout({
+      reservation,
+      applicantId: dbUser._id,
+      frontendUrl: FRONTEND_URL,
     });
-
-    reservation.paymongoSessionId = sessionId;
-    reservation.status = "payment_pending";
-    reservation.paymentStatus = "pending";
-    await reservation.save();
-
-    sendSuccess(res, { checkoutUrl, sessionId });
+    sendSuccess(res, checkout);
   } catch (error) {
     next(error);
   }
@@ -529,76 +462,7 @@ export const checkSessionStatus = async (req, res, next) => {
             "name branch",
           ));
 
-        if (reservation && reservation.paymentStatus !== "paid") {
-          logger.info(
-            { reservationId: metadata.reservationId },
-            "Marking deposit as paid",
-          );
-
-          const oldStatus = reservation.status;
-          const paymentReference = paidPayments[0]?.id || sessionId;
-          const canAutoReserve = canAutoReserveReservation(reservation.status);
-
-          if (!canAutoReserve) {
-            paidReservationSnapshot = await markDepositForManualReview(
-              reservation,
-              paymentReference,
-              rawPaymentType || "paymongo",
-            );
-          } else {
-            reservation.paymentStatus = "paid";
-            reservation.paymentDate = new Date();
-            reservation.paymentMethod = rawPaymentType || "paymongo";
-            reservation.paymongoPaymentId = paymentReference;
-            reservation.status = "reserved";
-            reservation.reservedAt = new Date();
-            reservation.approvedDate = reservation.approvedDate || new Date();
-            await reservation.save();
-            paidReservationSnapshot = {
-              _id: reservation._id,
-              reservationCode: reservation.reservationCode,
-              status: reservation.status,
-              paymentStatus: reservation.paymentStatus,
-              paymentMethod: reservation.paymentMethod,
-              paymentDate: reservation.paymentDate,
-              paymongoPaymentId: reservation.paymongoPaymentId,
-            };
-          }
-
-          if (canAutoReserve) {
-            await updateOccupancyOnReservationChange(reservation, {
-              status: oldStatus,
-            });
-            logger.info(
-              { reservationId: metadata.reservationId },
-              "Bed locked for reservation",
-            );
-          }
-
-          if (canAutoReserve) {
-            try {
-              const tenant = await User.findById(reservation.userId).lean();
-              if (tenant?.email) {
-                const tenantName =
-                  `${tenant.firstName || ""} ${tenant.lastName || ""}`.trim() ||
-                  "Tenant";
-                const roomName = reservation.roomId?.name || "Room";
-                await sendPaymentReceiptEmail({
-                  to: tenant.email,
-                  tenantName,
-                  amount:
-                    reservation.reservationFeeAmount || BUSINESS.DEPOSIT_AMOUNT,
-                  description: `Reservation Deposit - ${roomName}`,
-                  paymentMethod: paymentMethod || "Online Payment (PayMongo)",
-                  paymentDate: dayjs().format("MMMM D, YYYY"),
-                  referenceId: paymentReference,
-                });
-              }
-            } catch (emailErr) {
-              logger.warn({ err: emailErr }, "Deposit receipt email error");
-            }
-          }
-        } else if (reservation) {
+        if (reservation) {
           paidReservationSnapshot = {
             _id: reservation._id,
             reservationCode: reservation.reservationCode,
@@ -607,11 +471,13 @@ export const checkSessionStatus = async (req, res, next) => {
             paymentMethod: reservation.paymentMethod,
             paymentDate: reservation.paymentDate,
             paymongoPaymentId: reservation.paymongoPaymentId,
+            paymentVerificationSource: reservation.paymentVerificationSource,
           };
-          logger.info(
-            { reservationId: metadata.reservationId },
-            "Deposit already paid - skipping",
-          );
+          logger.info({
+            reservationId: metadata.reservationId,
+            providerReportsPaid: isPaid,
+            webhookConfirmed: reservation.paymentVerificationSource === "paymongo_webhook",
+          }, "Deposit session status checked without mutating Reservation");
         }
       }
     }
@@ -621,9 +487,16 @@ export const checkSessionStatus = async (req, res, next) => {
       "checkSessionStatus complete",
     );
 
+    const responseStatus = metadata.type === "deposit"
+      ? paidReservationSnapshot?.paymentStatus === "paid" &&
+          paidReservationSnapshot?.paymentVerificationSource === "paymongo_webhook"
+        ? "paid"
+        : isPaid ? "processing" : "pending"
+      : isPaid ? "paid" : "pending";
+
     sendSuccess(res, {
       sessionId,
-      status: isPaid ? "paid" : "pending",
+      status: responseStatus,
       paymentCount: paidPayments.length,
       paymentMethod,
       ...(paidReservationSnapshot && { reservation: paidReservationSnapshot }),

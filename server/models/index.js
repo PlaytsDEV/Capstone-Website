@@ -43,6 +43,8 @@ import ContractCounter from "./ContractCounter.js";
 
 // 3. Reservations & Visit Domain
 import Reservation from "./Reservation.js";
+import ReservationPaymentAttempt from "./ReservationPaymentAttempt.js";
+import PaymongoWebhookEvent from "./PaymongoWebhookEvent.js";
 import VisitAvailability from "./VisitAvailability.js";
 
 // 4. Billing & Utility Domain (Active Modular System)
@@ -98,6 +100,8 @@ export {
   User,
   Room,
   Reservation,
+  ReservationPaymentAttempt,
+  PaymongoWebhookEvent,
   Inquiry,
   AuditLog,
   Bill,
@@ -208,6 +212,8 @@ export default {
   User,
   Room,
   Reservation,
+  ReservationPaymentAttempt,
+  PaymongoWebhookEvent,
   Inquiry,
   AuditLog,
   Bill,

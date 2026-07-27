@@ -42,6 +42,8 @@ import {
   createReservation,
   updateVisitAvailabilityRules,
   updateReservation,
+  reviewReservationApplication,
+  confirmReservationMoveIn,
   updateReservationByUser,
   cancelReservationByUser,
   requestCancellationByUser,
@@ -273,6 +275,24 @@ router.post(
  * @returns {Object} Created reservation with success message
  */
 router.post("/", reservationLimiter, verifyToken, verifyApplicant, createReservation);
+
+router.post(
+  "/:reservationId/application-review",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageReservations"),
+  reviewReservationApplication,
+);
+
+router.post(
+  "/:reservationId/move-in",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageReservations"),
+  confirmReservationMoveIn,
+);
 
 /**
  * PUT /api/reservations/:reservationId

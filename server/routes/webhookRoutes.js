@@ -26,9 +26,13 @@ const paymongoRawBody = express.raw({ type: "*/*", limit: "1mb" });
 const acknowledgePaymongoBodyError = (err, req, res, next) => {
   logger.warn(
     { err },
-    "PayMongo webhook raw body parsing failed - acknowledging with 200",
+    "PayMongo webhook raw body parsing failed",
   );
-  return res.status(200).json({ received: true });
+  return res.status(400).json({
+    received: false,
+    result: "event_rejected",
+    code: "MALFORMED_PAYMONGO_EVENT",
+  });
 };
 
 // ============================================================================

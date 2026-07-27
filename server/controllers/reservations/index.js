@@ -66,6 +66,8 @@ export {
 // 6. Reservation Lifecycle Domain
 export {
   updateReservation,
+  reviewReservationApplication,
+  confirmReservationMoveIn,
   updateReservationByUser,
   extendReservation,
   releaseSlot,

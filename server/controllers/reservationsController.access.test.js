@@ -1853,6 +1853,7 @@ describe("reservationsController.updateReservation access hardening", () => {
       body: { status: "approved_for_payment" },
       branchFilter: "gil-puyat",
       adminId: "admin-1",
+      reservationCommand: "application_review",
     };
     const res = createResponse();
     const next = jest.fn();

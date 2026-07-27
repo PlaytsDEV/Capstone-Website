@@ -37,16 +37,19 @@ function getAuthHeader() {
  */
 export async function createCheckoutSession({
   amount,
+  currency = "PHP",
   description,
   metadata = {},
   successUrl,
   cancelUrl,
+  idempotencyKey,
 }) {
   const response = await fetch(`${PAYMONGO_API}/checkout_sessions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: getAuthHeader(),
+      ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
     },
     body: JSON.stringify({
       data: {
@@ -57,7 +60,7 @@ export async function createCheckoutSession({
           payment_method_types: ["gcash", "grab_pay", "paymaya", "card"],
           line_items: [
             {
-              currency: "PHP",
+              currency,
               amount: Math.round(amount * 100), // PayMongo uses centavos
               name: description,
               quantity: 1,

@@ -13,6 +13,7 @@ import {
   User,
   UtilityReading,
 } from "../../models/index.js";
+import dayjs from "dayjs";
 import logger from "../../middleware/logger.js";
 import auditLogger from "../../utils/auditLogger.js";
 import {
@@ -90,6 +91,70 @@ import {
   buildActorDisplayName,
 } from "./_helpers.js";
 import { cancelReservationByUser } from "./cancellationController.js";
+import { evaluateReservationMoveInReadiness } from "../../services/reservationMoveInReadinessService.js";
+
+const PAYMONGO_CONFIRMED_FIELDS = Object.freeze([
+  "paidAmount",
+  "paymentDate",
+  "paymentVerifiedAt",
+  "paymentVerificationSource",
+  "paymongoPaymentId",
+  "paymongoPaymentIntentId",
+  "paymongoReference",
+  "paymongoWebhookEventId",
+]);
+
+const APPLICATION_REVIEW_STATUSES = new Set([
+  "approved_for_payment",
+  "needs_revision",
+  "rejected",
+]);
+
+const MOVE_IN_BLOCKER_MESSAGES = Object.freeze({
+  PAYMONGO_PAYMENT_NOT_CONFIRMED: "Payment has not been confirmed through PayMongo.",
+  LEASE_TYPE_MISSING: "An approved lease type is required.",
+  LEASE_END_DATE_MISSING: "The lease end date is missing.",
+  BED_ASSIGNMENT_INVALID: "The selected bed is no longer available.",
+  BED_ASSIGNMENT_CONFLICT: "The selected bed is assigned to another tenant.",
+  PRICING_SNAPSHOT_MISSING: "The approved pricing snapshot is missing.",
+  APPLICATION_APPROVAL_MISSING: "The application has not been approved.",
+});
+
+const formatMoveInBlockers = (blockers = []) =>
+  blockers.map((code) => ({
+    code,
+    message:
+      MOVE_IN_BLOCKER_MESSAGES[code] ||
+      String(code).toLowerCase().replaceAll("_", " ").replace(/^./, (value) => value.toUpperCase()),
+  }));
+
+export const reviewReservationApplication = (req, res, next) => {
+  const decision = String(req.body?.decision || "").trim().toLowerCase();
+  const status = {
+    approve: "approved_for_payment",
+    request_revision: "needs_revision",
+    reject: "rejected",
+  }[decision];
+  if (!status) {
+    return res.status(400).json({
+      error: "Application review decision must be approve, request_revision, or reject.",
+      code: "INVALID_RESERVATION_UPDATE",
+    });
+  }
+  req.reservationCommand = "application_review";
+  req.body = {
+    status,
+    applicationReviewReason:
+      decision === "approve" ? null : String(req.body?.reason || "").trim(),
+  };
+  return updateReservation(req, res, next);
+};
+
+export const confirmReservationMoveIn = (req, res, next) => {
+  req.reservationCommand = "move_in";
+  req.body = { status: "moveIn", meterReading: req.body?.meterReading };
+  return updateReservation(req, res, next);
+};
 
 export const updateReservation = async (req, res, next) => {
   try {
@@ -113,6 +178,40 @@ export const updateReservation = async (req, res, next) => {
       existingReservation.roomId?.branch,
     );
     if (denied) return;
+
+    const attemptsAutomatedPaymentConfirmation =
+      req.body.paymentStatus === "paid" ||
+      req.body.status === "reserved" ||
+      PAYMONGO_CONFIRMED_FIELDS.some((field) =>
+        Object.prototype.hasOwnProperty.call(req.body, field));
+    if (attemptsAutomatedPaymentConfirmation) {
+      return res.status(409).json({
+        error: "Payment confirmation must come from a verified PayMongo webhook.",
+        code: "PAYMONGO_PAYMENT_CONFIRMATION_REQUIRED",
+      });
+    }
+
+    if (req.body.status === "moveIn" && req.reservationCommand !== "move_in") {
+      return res.status(409).json({
+        error: "Move-in must be confirmed through the dedicated move-in operation.",
+        code: "INVALID_LIFECYCLE_TRANSITION",
+      });
+    }
+    if (
+      APPLICATION_REVIEW_STATUSES.has(req.body.status) &&
+      req.reservationCommand !== "application_review"
+    ) {
+      return res.status(409).json({
+        error: "Application decisions must use the dedicated review operation.",
+        code: "INVALID_LIFECYCLE_TRANSITION",
+      });
+    }
+    if (req.body.status === "cancelled") {
+      return res.status(409).json({
+        error: "Cancellation must use the dedicated reservation release operation.",
+        code: "INVALID_LIFECYCLE_TRANSITION",
+      });
+    }
 
     const rawApplicationReviewReason =
       req.body.applicationReviewReason ??
@@ -204,18 +303,6 @@ export const updateReservation = async (req, res, next) => {
     }
 
     if (
-      req.body.status === "reserved" &&
-      !hasReservationStatus(existingReservation.status, "reserved")
-    ) {
-      req.body.paymentStatus = "paid";
-      req.body.approvedDate = new Date();
-      req.body.reservedAt = new Date();
-      if (!existingReservation.paymentDate) {
-        req.body.paymentDate = new Date();
-      }
-    }
-
-    if (
       req.body.status === "approved_for_payment" &&
       !hasReservationStatus(existingReservation.status, "approved_for_payment")
     ) {
@@ -273,13 +360,15 @@ export const updateReservation = async (req, res, next) => {
     }
 
     if (isMoveInTransition) {
-      const blockers = getMoveInBlockers(existingReservation);
-      if (blockers.length > 0) {
-        return res.status(400).json({
-          error:
-            "Move-in prerequisites not met. Please resolve the following before moving in the tenant.",
-          code: "MOVEIN_PREREQUISITES_NOT_MET",
-          missing: blockers,
+      const readiness = await evaluateReservationMoveInReadiness(existingReservation);
+      if (!readiness.ready) {
+        return res.status(409).json({
+          success: false,
+          error: "The Reservation is not ready for move-in.",
+          message: "The Reservation is not ready for move-in.",
+          code: "MOVE_IN_READINESS_FAILED",
+          missing: readiness.blockers,
+          blockers: formatMoveInBlockers(readiness.blockers),
         });
       }
 

@@ -432,6 +432,7 @@ export default function ReservationDetailsModal({
  const [meterReadingVal, setMeterReadingVal] = useState("");
  const [showMeterPrompt, setShowMeterPrompt] = useState(false);
  const cancellationPanelRef = useRef(null);
+ const actionSubmittingRef = useRef(false);
  const [confirmModal, setConfirmModal] = useState({
  open: false,
  title: "",
@@ -604,6 +605,8 @@ export default function ReservationDetailsModal({
  open: true,
  ...modalConfig,
  onConfirm: async () => {
+ if (actionSubmittingRef.current) return;
+ actionSubmittingRef.current = true;
  setConfirmModal((previous) => ({ ...previous, open: false }));
  setIsSubmitting(true);
 
@@ -653,12 +656,12 @@ export default function ReservationDetailsModal({
  onClose();
  return;
  }
- console.error(error);
  showNotification(
  getFriendlyError(error, "Action failed. Please try again."),
  "error",
  );
  } finally {
+ actionSubmittingRef.current = false;
  setIsSubmitting(false);
  }
  },
@@ -1515,10 +1518,7 @@ export default function ReservationDetailsModal({
  doAction(
  "approveForPayment",
  () =>
- reservationApi.update(reservation.id, {
- status: "approved_for_payment",
- applicationReviewReason: null,
- }),
+ reservationApi.reviewApplication(reservation.id, "approve"),
  "Application approved for payment",
  )
  }
@@ -1549,10 +1549,11 @@ export default function ReservationDetailsModal({
  doAction(
  "rejectApplication",
  () =>
- reservationApi.update(reservation.id, {
- status: "rejected",
- applicationReviewReason: adminNotes.trim(),
- }),
+ reservationApi.reviewApplication(
+ reservation.id,
+ "reject",
+ adminNotes.trim(),
+ ),
  "Application rejected",
  );
  }}
@@ -1599,8 +1600,8 @@ export default function ReservationDetailsModal({
  doAction(
  "cancel",
  () =>
- reservationApi.update(reservation.id, {
- status: "cancelled",
+ reservationApi.release(reservation.id, {
+ reason: "Cancelled by administrator",
  }),
  "Reservation cancelled",
  )
@@ -1705,15 +1706,15 @@ export default function ReservationDetailsModal({
  "moveIn",
  async () => {
  try {
- await reservationApi.update(reservation.id, {
- status: "moveIn",
+ await reservationApi.confirmMoveIn(reservation.id, {
  meterReading: reading,
  });
   // Invalidate utility caches so the billing timeline auto-updates.
   await queryClient.invalidateQueries({ queryKey: ["utilities"] });
  } catch (apiErr) {
  // Surface backend blocker reasons if available
- const blockers = apiErr?.response?.data?.missing || apiErr?.data?.missing;
+ const blockers =
+ apiErr?.response?.data?.missing || apiErr?.data?.missing;
  if (blockers && blockers.length > 0) {
  throw new Error(
  "Move-in prerequisites not met:\n• " + blockers.join("\n• "),
@@ -1801,6 +1802,7 @@ export default function ReservationDetailsModal({
  message={confirmModal.message}
  variant={confirmModal.variant}
  confirmText={confirmModal.confirmText || "Confirm"}
+ loading={isSubmitting}
  />
 
  {revisionModal.open && (
@@ -1811,10 +1813,11 @@ export default function ReservationDetailsModal({
  doAction(
  "requestRevision",
  () =>
- reservationApi.update(reservation.id, {
- status: "needs_revision",
- applicationReviewReason: reason,
- }),
+ reservationApi.reviewApplication(
+ reservation.id,
+ "request_revision",
+ reason,
+ ),
  "Revision request sent to applicant",
  );
  }}
