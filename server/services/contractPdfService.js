@@ -697,6 +697,8 @@ export const generatePreparedContractPdf = async ({
     contract.generatedBy = actorId;
     contract.generatedVersion = generatedVersion;
     contract.updatedBy = actorId;
+    contract.isCanonical = contract.duplicateOfContractId ? false : true;
+    contract.publicationStatus = "ready_for_resident";
     if (previousStatus === "ready_for_generation") {
       await transitionContract(contract, "generated", actorId, "Prepared Contract PDF generated");
     } else {

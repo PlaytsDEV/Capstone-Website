@@ -3,6 +3,7 @@ import fs from "fs";
 import fsPromises from "fs/promises";
 import { Contract, Reservation, User } from "../models/index.js";
 import auditLogger from "../utils/auditLogger.js";
+import logger from "../middleware/logger.js";
 import {
   createDraftContract, findCurrentContract,
   transitionContract, validateContractForGeneration,
@@ -42,6 +43,10 @@ import {
   publishFinalContract,
   resolvePublishedFinalDocument,
 } from "../services/contractPublicationService.js";
+import {
+  resolveTenantCanonicalContract,
+  resolveTenantContractHistory,
+} from "../services/tenantContractSelectionService.js";
 
 const fail = (res, error) => res.status(error.statusCode || 500).json({
   error: error.message || "Contract operation failed",
@@ -841,26 +846,57 @@ const findOwnedContract = async (req) => {
       statusCode: 404, code: "CONTRACT_NOT_FOUND",
     });
   }
-  const contract = await Contract.findOne({ _id: req.params.contractId, tenantId: user._id });
-  if (!contract) throw Object.assign(new Error("Contract not found."), {
+  const contract = await resolveTenantCanonicalContract(user._id);
+  if (!contract || String(contract._id) !== String(req.params.contractId)) {
+    throw Object.assign(new Error("Contract not found."), {
     statusCode: 404, code: "CONTRACT_NOT_FOUND",
   });
+  }
   return { user, contract };
 };
 
 export const getMyCurrentContract = async (req, res) => {
   try {
     const user = await tenantActor(req);
-    const contract = await Contract.findOne({ tenantId: user._id, isCurrent: true })
-      .sort({ createdAt: -1 });
-    let preparedDocument = null;
-    if (selectCurrentPreparedDocument(contract)) {
-      preparedDocument = await resolveCurrentPreparedDocument(contract)
-        .then((resolved) => resolved.document)
-        .catch(() => null);
+    const contract = await resolveTenantCanonicalContract(user._id);
+    if (!contract) {
+      return res.json({
+        contractAvailable: false,
+        state: "NO_PUBLISHED_CONTRACT",
+        contract: null,
+        documents: { prepared: { available: false, issue: "NO_PUBLISHED_CONTRACT" } },
+      });
     }
-    res.json({ contract: toTenantContractView(contract, new Date(), { preparedDocument }) });
+    let preparedDocument = null;
+    let preparedDocumentIssue = null;
+    if (selectCurrentPreparedDocument(contract)) {
+      try {
+        preparedDocument = (await resolveCurrentPreparedDocument(contract)).document;
+      } catch (error) {
+        preparedDocumentIssue = error.code || "PREPARED_DOCUMENT_UNAVAILABLE";
+      }
+    }
+    const view = toTenantContractView(contract, new Date(), {
+      preparedDocument,
+      preparedDocumentIssue,
+    });
+    res.json({
+      contractAvailable: true,
+      state: preparedDocument
+        ? "CONTRACT_AVAILABLE"
+        : contract.status === "generated"
+          ? "PREPARED_DOCUMENT_UNAVAILABLE"
+          : "CONTRACT_BEING_PREPARED",
+      contract: view,
+      documents: { prepared: view.preparedDocument },
+    });
   } catch (error) {
+    if (error.code === "MULTIPLE_CANONICAL_CONTRACTS") {
+      logger.error(
+        { requestId: req.id, tenantUid: req.user?.uid, candidateCount: error.candidateCount },
+        "Multiple resident-visible canonical Contracts detected",
+      );
+    }
     fail(res, error);
   }
 };
@@ -868,7 +904,7 @@ export const getMyCurrentContract = async (req, res) => {
 export const getMyContractHistory = async (req, res) => {
   try {
     const user = await tenantActor(req);
-    const contracts = await Contract.find({ tenantId: user._id }).sort({ createdAt: -1 });
+    const contracts = await resolveTenantContractHistory(user._id);
     res.json({ contracts: contracts.map((contract) => toTenantContractView(contract)) });
   } catch (error) {
     fail(res, error);
@@ -878,7 +914,13 @@ export const getMyContractHistory = async (req, res) => {
 export const getMyContractDetails = async (req, res) => {
   try {
     const { contract } = await findOwnedContract(req);
-    res.json({ contract: toTenantContractView(contract) });
+    let preparedDocument = null;
+    if (selectCurrentPreparedDocument(contract)) {
+      preparedDocument = await resolveCurrentPreparedDocument(contract)
+        .then((resolved) => resolved.document)
+        .catch(() => null);
+    }
+    res.json({ contract: toTenantContractView(contract, new Date(), { preparedDocument }) });
   } catch (error) {
     fail(res, error);
   }

@@ -40,7 +40,7 @@ const getFinalBlob = async (contractId, download = false) => {
 };
 
 export const tenantContractApi = {
-  getMyCurrentContract: () => authFetch("/contracts/my/current"),
+  getMyCurrentContract: () => authFetch("/contracts/my/current", { cache: "no-store" }),
   getMyContractHistory: () => authFetch("/contracts/my/history"),
   getMyContractDetails: (contractId) => authFetch(`/contracts/my/${contractId}`),
   getMyPreparedContractFile: getPreparedBlob,

@@ -143,6 +143,8 @@ export const publishFinalContract = async ({ contract, actorId, checklist = {}, 
   contract.publishedBy = actorId;
   contract.publicationNotes = clean(notes);
   contract.tenantVisible = true;
+  contract.isCanonical = contract.duplicateOfContractId ? false : true;
+  contract.publicationStatus = "published";
   contract.publicationChecklist = { ...checklist };
   contract.publicationChecklistConfirmedAt = now;
   contract.publicationChecklistConfirmedBy = actorId;

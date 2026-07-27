@@ -49,6 +49,25 @@ describe("tenant Contract safe view", () => {
     expect(view.preparedDocument.available).toBe(false);
   });
 
+  test("separates canonical Contract identity from missing PDF availability", () => {
+    const view = toTenantContractView(
+      { _id: "canonical", contractNumber: "TEST-CONTRACT-001", status: "generated" },
+      new Date(),
+      {
+        preparedDocument: null,
+        preparedDocumentIssue: "PREPARED_DOCUMENT_STORAGE_MISSING",
+      },
+    );
+    expect(view).toMatchObject({
+      contractNumber: "TEST-CONTRACT-001",
+      isCanonical: true,
+      preparedDocument: {
+        available: false,
+        issue: "PREPARED_DOCUMENT_STORAGE_MISSING",
+      },
+    });
+  });
+
   test("selects the newest non-superseded document even when generatedVersion is stale", () => {
     const view = toTenantContractView({
       _id: "contract-1", status: "generated", generatedVersion: 1,

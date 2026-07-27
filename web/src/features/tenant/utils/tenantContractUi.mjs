@@ -45,9 +45,16 @@ export const formatRoomBed = (roomNumber, bedLabel) => {
 
 export const getTenantContractMessage = (contract) => {
   if (!contract) return {
-    title: "Your Contract is still being prepared.",
-    message: "A dedicated Contract record is not yet available.",
+    title: "Contract Not Available Yet",
+    message: "Your lease Contract has not been published yet. The dormitory administrator will make it available after the required information is completed and verified.",
   };
+  if (contract.status === "generated" && contract.preparedDocument?.available !== true) {
+    return {
+      title: "Prepared Document Temporarily Unavailable",
+      message: "Your Contract record is available, but the prepared PDF cannot currently be opened. The dormitory administrator must regenerate the document.",
+      nextAction: "No action is required unless the dormitory administrator contacts you.",
+    };
+  }
   if (contract.status === "generated") return {
     title: "Prepared Contract Available",
     message: "Your prepared copy is available before physical signing and notarization.",
