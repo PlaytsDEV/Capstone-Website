@@ -386,6 +386,7 @@ export const updateReservation = async (req, res, next) => {
       "applicationReviewedAt",
       "applicationReviewedBy",
       "approvedForPaymentAt",
+      "paymentExpiresAt",
       "documentsApproved",
       "documentRejectionReason",
       "nbiApproved",
@@ -467,7 +468,12 @@ export const updateReservation = async (req, res, next) => {
     for (const key of ADMIN_ALLOWED) {
       if (req.body[key] !== undefined) reservation[key] = req.body[key];
     }
-    const updatedReservation = await reservation.save();
+    // Existing Reservations may contain legacy values on unrelated fields.
+    // Application review must validate the fields changed by this action without
+    // allowing stale, untouched data to turn a valid approval into an HTTP 500.
+    const updatedReservation = await reservation.save({
+      validateModifiedOnly: true,
+    });
 
     if (
       req.body.status === "moveIn" &&
@@ -689,8 +695,15 @@ export const updateReservation = async (req, res, next) => {
     }
   } catch (error) {
     logger.error({ err: error, requestId: req.id }, "Update reservation error");
-    await auditLogger.logError(req, error, "Failed to update reservation");
-    handleReservationError(res, error, "update");
+    try {
+      await auditLogger.logError(req, error, "Failed to update reservation");
+    } catch (auditError) {
+      logger.error(
+        { err: auditError, requestId: req.id },
+        "Failed to record Reservation update error audit",
+      );
+    }
+    return handleReservationError(res, error, "update");
   }
 };
 
