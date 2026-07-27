@@ -252,8 +252,7 @@ export default function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleColl
                     <span className="sidebar-nav-label">{item.label}</span>
                     {badge && (
                       <span className="sidebar-badge" aria-label={`${badge} unread notifications`}>
-                        <span className="sidebar-badge-dot" aria-hidden="true" />
-                        <span className="sidebar-badge-text">{badge > 99 ? "99+ New" : `${badge} New`}</span>
+                        <span className="sidebar-badge-text">{badge > 99 ? "99+" : badge}</span>
                       </span>
                     )}
                   </button>

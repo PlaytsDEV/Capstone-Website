@@ -559,30 +559,69 @@ export default function ReservationDetailsModal({
  { wide: true },
  ],
  ];
- const cancellationRequestDetails = [
- ["Requested", fmtDate(reservation.cancellationRequestedAt)],
- ["Reason", reservation.cancellationReason?.trim() || "No reason provided"],
- ];
- const activityTimeline = [
- {
- label: "Reservation Created",
- value: fmtDate(reservation.createdAt),
- },
- {
- label: "Target Move-in",
- value: fmtDate(moveInDate),
- },
- reservation.finalMoveInDate
- ? {
- label: "Final Move-in",
- value: fmtDate(reservation.finalMoveInDate),
- }
- : null,
- {
- label: "Current Status",
- value: appearance.label,
- },
- ].filter(Boolean);
+  const isRawId = (val) => typeof val === "string" && /^[0-9a-fA-F]{24}$/.test(val.trim());
+
+  const cancelledByPerson = (() => {
+    if (reservation.cancellationSource === "applicant" || reservation.cancellationSource === "user") {
+      return reservation.customer || "Applicant";
+    }
+    if (reservation.cancellationSource === "system") {
+      return "System Sweeper (24h Hold Expired)";
+    }
+    if (typeof reservation.cancelledBy === "object" && reservation.cancelledBy?.role) {
+      const role = reservation.cancelledBy.role;
+      if (role === "branch_admin") return "Branch Admin";
+      if (role === "owner") return "System Owner";
+      if (role === "applicant" || role === "tenant") return reservation.customer || "Applicant";
+      return role.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+    if (reservation.cancelledByName && !isRawId(reservation.cancelledByName)) {
+      return reservation.cancelledByName;
+    }
+    if (reservation.cancellationSource === "admin" || reservation.cancelledAt) {
+      return "Branch Admin";
+    }
+    return reservation.customer || "Applicant";
+  })();
+
+  const cancellationDetail = reservation.cancelledAt
+    ? `${fmtDate(reservation.cancelledAt)}${cancelledByPerson ? ` by ${cancelledByPerson}` : ""}`
+    : cancelledByPerson
+      ? `Cancelled by ${cancelledByPerson}`
+      : null;
+
+  const cancellationRequestDetails = [
+    ["Requested", fmtDate(reservation.cancellationRequestedAt)],
+    ["Requested By", cancelledByPerson || reservation.customer || "Applicant"],
+    ["Reason", reservation.cancellationReason?.trim() || "No reason provided"],
+  ];
+
+  const activityTimeline = [
+    {
+      label: "Reservation Created",
+      value: fmtDate(reservation.createdAt),
+    },
+    {
+      label: "Target Move-in",
+      value: fmtDate(moveInDate),
+    },
+    reservation.finalMoveInDate
+      ? {
+          label: "Final Move-in",
+          value: fmtDate(reservation.finalMoveInDate),
+        }
+      : null,
+    cancellationDetail
+      ? {
+          label: "Cancellation",
+          value: cancellationDetail,
+        }
+      : null,
+    {
+      label: "Current Status",
+      value: appearance.label,
+    },
+  ].filter(Boolean);
 
  const doAction = (key, apiCall, successMsg) => {
  const modalConfig =

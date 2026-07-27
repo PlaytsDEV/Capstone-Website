@@ -261,12 +261,20 @@ export const updateReservation = async (req, res, next) => {
           };
         });
 
-      if (blockedDocs.length > 0) {
+      const isPrecheckOverridden =
+        req.body.adminOverridePrecheck === true ||
+        req.body.overridePrecheck === true;
+
+      if (blockedDocs.length > 0 && !isPrecheckOverridden) {
         return res.status(422).json({
-          error: `Cannot approve: ${blockedDocs.length} document(s) must be re-uploaded before this application can be approved. Use "Request Revision" to notify the applicant.`,
+          error: `Cannot approve: ${blockedDocs.length} document(s) must be re-uploaded before this application can be approved. Use "Request Revision" to notify the applicant or pass adminOverridePrecheck to bypass.`,
           code: "DOCUMENT_PRECHECK_BLOCKS_APPROVAL",
           blockedDocuments: blockedDocs,
         });
+      }
+
+      if (existingReservation.isOutOfTown && !existingReservation.isOutOfTownApproved) {
+        req.body.isOutOfTownApproved = true;
       }
 
       req.body.applicationReviewedAt = new Date();

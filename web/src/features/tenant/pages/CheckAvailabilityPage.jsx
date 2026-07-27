@@ -63,7 +63,7 @@ function CheckAvailabilityPage() {
  const [selectedRoom, setSelectedRoom] = useState(null);
  const [selectedAppliances, setSelectedAppliances] = useState({});
  const [selectedBed, setSelectedBed] = useState(null);
- const [selectedLeaseDuration, setSelectedLeaseDuration] = useState("6");
+ const [selectedLeaseDuration, setSelectedLeaseDuration] = useState("");
  const [showLoginConfirmBeforeReserve, setShowLoginConfirmBeforeReserve] =
  useState(false);
  const [changeRoomLocked, setChangeRoomLocked] = useState(false);
@@ -291,10 +291,7 @@ function CheckAvailabilityPage() {
     setSelectedRoom(room);
     setSelectedAppliances({});
     setSelectedBed(null);
-    const initialDuration = selectedLeaseTermFilter === "shortTerm"
-      ? "3"
-      : String(room?.longTermLeaseMinMonths || 6);
-    setSelectedLeaseDuration(initialDuration);
+    setSelectedLeaseDuration("");
     setIsDetailsModalOpen(true);
   };
   const closeRoomDetails = () => {
@@ -302,7 +299,7 @@ function CheckAvailabilityPage() {
     setSelectedRoom(null);
     setSelectedAppliances({});
     setSelectedBed(null);
-    setSelectedLeaseDuration("6");
+    setSelectedLeaseDuration("");
   };
  const handleApplianceQuantityChange = (id, qty) => {
  setSelectedAppliances((prev) => ({
@@ -325,14 +322,31 @@ function CheckAvailabilityPage() {
  0,
  );
 
- // ── Reservation logic ──────────────────────────────────────
- const handleProceedToReservation = () => {
- if (!user) {
- setShowLoginConfirmBeforeReserve(true);
- return;
- }
- proceedWithReservation();
- };
+  // ── Reservation logic ──────────────────────────────────────
+  const handleProceedToReservation = () => {
+    const isPrivate = selectedRoom?.type && String(selectedRoom.type).toLowerCase().includes("private");
+    const requiresBed = selectedRoom?.beds && selectedRoom.beds.length > 1 && !isPrivate;
+    const hasLease = Boolean(selectedLeaseDuration && String(selectedLeaseDuration).trim() !== "");
+
+    if (!hasLease && requiresBed && !selectedBed) {
+      showNotification("Please select a preferred lease term and a bed before proceeding.", "warning");
+      return;
+    }
+    if (!hasLease) {
+      showNotification("Please select a preferred lease term before proceeding.", "warning");
+      return;
+    }
+    if (requiresBed && !selectedBed) {
+      showNotification("Please select a bed location before proceeding.", "warning");
+      return;
+    }
+
+    if (!user) {
+      setShowLoginConfirmBeforeReserve(true);
+      return;
+    }
+    proceedWithReservation();
+  };
 
  const proceedWithReservation = async () => {
  if (changeRoomLocked) {

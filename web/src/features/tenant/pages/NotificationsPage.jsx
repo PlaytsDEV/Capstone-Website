@@ -1,48 +1,60 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Bell, CheckCheck } from "lucide-react";
 import {
-  useNotifications,
-  useMarkAsRead,
-  useMarkAllAsRead,
-  useUnreadCount,
-} from "../../../shared/hooks/queries/useNotifications";
-import { useAuth } from "../../../shared/hooks/useAuth";
-import { ListSkeleton } from "../../../shared/components/LoadingSkeletons";
-import { getVisibleNotificationsForUser } from "../../../shared/utils/notificationVisibility";
+  Bell,
+  CheckCheck,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Slash,
+  Home,
+  CreditCard,
+  FileText,
+  AlertTriangle,
+  FileSpreadsheet,
+  Wrench,
+  Lock,
+  Unlock,
+  Megaphone,
+  Info,
+} from "lucide-react";
 
-const ALL_FILTER_TABS = [
-  { key: "all", label: "All", roles: ["applicant", "tenant"] },
-  { key: "reservation", label: "Reservations", roles: ["applicant"] },
-  { key: "application", label: "Applications", roles: ["applicant"] },
-  { key: "visit", label: "Visits", roles: ["applicant"] },
-  { key: "payment", label: "Payments", roles: ["applicant", "tenant"] },
-  { key: "billing", label: "Billing", roles: ["tenant"] },
-  { key: "maintenance", label: "Maintenance", roles: ["tenant"] },
-  { key: "announcement", label: "Announcements", roles: ["tenant"] },
-];
-
-const TYPE_ICONS = {
-  reservation_confirmed:  "✅",
-  reservation_cancelled:  "❌",
-  reservation_expired:    "⏰",
-  reservation_noshow:     "🚫",
-  visit_approved:         "🏠",
-  visit_rejected:         "🚫",
-  payment_approved:       "💳",
-  payment_rejected:       "💳",
-  bill_generated:         "📄",
-  bill_due_reminder:      "⏰",
-  penalty_applied:        "⚠️",
-  contract_expiring:      "📋",
-  grace_period_warning:   "⚠️",
-  move_in_reminder:       "🏠",
-  maintenance_update:     "🔧",
-  account_suspended:      "🔒",
-  account_reactivated:    "🔓",
-  announcement:           "📢",
-  general:                "ℹ️",
-};
+function NotificationIcon({ type }) {
+  const iconProps = { size: 18, strokeWidth: 2 };
+  switch (type) {
+    case "reservation_confirmed":
+      return <CheckCircle2 {...iconProps} style={{ color: "#10B981" }} />;
+    case "reservation_cancelled":
+      return <XCircle {...iconProps} style={{ color: "#EF4444" }} />;
+    case "reservation_expired":
+    case "bill_due_reminder":
+      return <Clock {...iconProps} style={{ color: "#F59E0B" }} />;
+    case "reservation_noshow":
+    case "visit_rejected":
+      return <Slash {...iconProps} style={{ color: "#EF4444" }} />;
+    case "visit_approved":
+    case "move_in_reminder":
+      return <Home {...iconProps} style={{ color: "#0284C7" }} />;
+    case "payment_approved":
+    case "payment_rejected":
+      return <CreditCard {...iconProps} style={{ color: "#4F46E5" }} />;
+    case "bill_generated":
+      return <FileText {...iconProps} style={{ color: "#2563EB" }} />;
+    case "penalty_applied":
+    case "grace_period_warning":
+      return <AlertTriangle {...iconProps} style={{ color: "#D97706" }} />;
+    case "contract_expiring":
+      return <FileSpreadsheet {...iconProps} style={{ color: "#9333EA" }} />;
+    case "maintenance_update":
+      return <Wrench {...iconProps} style={{ color: "#F97316" }} />;
+    case "account_suspended":
+      return <Lock {...iconProps} style={{ color: "#DC2626" }} />;
+    case "account_reactivated":
+      return <Unlock {...iconProps} style={{ color: "#059669" }} />;
+    case "announcement":
+      return <Megaphone {...iconProps} style={{ color: "#2563EB" }} />;
+    default:
+      return <Info {...iconProps} style={{ color: "#6B7280" }} />;
+  }
+}
 
 
 function matchesFilter(notification, filter) {
@@ -124,16 +136,6 @@ export default function NotificationsPage() {
           >
             <Bell size={20} color="#0A1628" />
             Notifications
-            {unreadCount > 0 && (
-              <span
-                style={{
-                  backgroundColor: "#D4AF37", color: "white",
-                  fontSize: 12, fontWeight: 700, borderRadius: 20, padding: "2px 8px",
-                }}
-              >
-                {unreadCount}
-              </span>
-            )}
           </h1>
           <p style={{ fontSize: 13, color: "#6B7280", margin: "4px 0 0" }}>
             {isApplicant
@@ -226,8 +228,8 @@ export default function NotificationsPage() {
                 transition: "background-color 0.15s",
               }}
             >
-              <span style={{ fontSize: 20, lineHeight: 1, marginTop: 2, flexShrink: 0 }}>
-                {TYPE_ICONS[n.type] || "🔔"}
+              <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", marginTop: 2, flexShrink: 0 }}>
+                <NotificationIcon type={n.type} />
               </span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ fontSize: 14, fontWeight: n.isRead ? 500 : 700, color: "#111827", margin: 0 }}>

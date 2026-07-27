@@ -67,9 +67,28 @@ export const ALLOWED_RESERVATION_STATUS_TRANSITIONS = Object.freeze({
     "cancelled",
     "archived",
   ],
-  approved_for_payment: ["payment_pending", "reserved", "cancelled", "archived"],
-  payment_pending: ["reserved", "cancelled", "archived"],
-  reserved: ["moveIn", "cancelled", "archived"],
+  approved_for_payment: [
+    "needs_revision",
+    "pending_application_review",
+    "payment_pending",
+    "reserved",
+    "cancelled",
+    "archived",
+  ],
+  payment_pending: [
+    "approved_for_payment",
+    "needs_revision",
+    "reserved",
+    "cancelled",
+    "archived",
+  ],
+  reserved: [
+    "payment_pending",
+    "approved_for_payment",
+    "moveIn",
+    "cancelled",
+    "archived",
+  ],
   moveIn: ["moveOut", "archived"],
   moveOut: ["archived"],
   rejected: ["archived"],
@@ -329,6 +348,34 @@ export const serializeReservation = (
       ? "Deleted account"
       : "Unknown";
 
+  const cancelledByRef = plain.cancelledBy;
+  const cancelledById = typeof cancelledByRef === "object" ? String(cancelledByRef._id || "") : String(cancelledByRef || "");
+  const userIdVal = typeof userRef === "object" ? String(userRef._id || "") : String(userRef || "");
+  const isOwnUser = (cancelledById && userIdVal && cancelledById === userIdVal) || plain.cancellationSource === "applicant";
+
+  let cancelledByName = null;
+  if (isOwnUser) {
+    cancelledByName = customerName;
+  } else if (typeof cancelledByRef === "object" && cancelledByRef?.role) {
+    const role = cancelledByRef.role;
+    cancelledByName =
+      role === "branch_admin"
+        ? "Branch Admin"
+        : role === "owner"
+          ? "System Owner"
+          : role.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  } else if (plain.cancellationSource === "admin") {
+    cancelledByName = "Branch Admin";
+  } else if (plain.cancellationSource === "system") {
+    cancelledByName = "System Sweeper (24h Hold Expired)";
+  } else if (plain.cancelledAt) {
+    cancelledByName = "Branch Admin";
+  }
+
+  const cancelledByRole = isOwnUser
+    ? "applicant"
+    : (typeof cancelledByRef === "object" && cancelledByRef?.role) || plain.cancellationSource || null;
+
   const serialized = {
     ...plain,
     visitStatus: plain.visitStatus ?? reservation.visitStatus,
@@ -347,6 +394,8 @@ export const serializeReservation = (
     email:
       plain.email ||
       (hasResolvedUser ? userRef.email || plain.billingEmail || null : plain.billingEmail || null),
+    cancelledByName,
+    cancelledByRole,
   };
 
   if (includeLegacyDates) {

@@ -301,8 +301,12 @@ const reservationSchema = new mongoose.Schema(
     visitStatus: {
       type: String,
       enum: [
+        "pending",
         "physical_visit_scheduled",
         "schedule_approved",
+        "approved",
+        "rejected",
+        "completed",
         "visit_completed",
         "no_show",
         "rescheduled",

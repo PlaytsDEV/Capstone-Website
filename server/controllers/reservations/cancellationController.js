@@ -139,6 +139,15 @@ export const cancelReservationByUser = async (req, res, next) => {
       .reservationCancelled(dbUser._id, notifCode, req.body.reason || "Cancelled by applicant")
       .catch((e) => logger.warn({ err: e }, "Cancel notification failed (non-fatal)"));
 
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservation._id,
+      previousStatus ? { status: previousStatus } : null,
+      updated.toObject(),
+      `Reservation cancelled by applicant (${dbUser.firstName || dbUser.email})`,
+    );
+
     return res.json({
       message: "Reservation cancelled. The reservation fee is non-refundable.",
       reservation: updated,

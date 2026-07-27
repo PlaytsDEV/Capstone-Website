@@ -49,17 +49,40 @@ export function isNewReservation(reservation, maxAgeHours = 48) {
   return diffHours >= 0 && diffHours <= maxAgeHours;
 }
 
+export function getCancelledByName(cancelledBy, cancellationSource, customerName, userId) {
+  const cancelledById = typeof cancelledBy === "object" ? String(cancelledBy?._id || cancelledBy?.id || "") : String(cancelledBy || "");
+  const userIdVal = typeof userId === "object" ? String(userId?._id || userId?.id || "") : String(userId || "");
+  const isOwnUser = (cancelledById && userIdVal && cancelledById === userIdVal) || cancellationSource === "applicant";
+
+  if (isOwnUser) {
+    return customerName || "Applicant";
+  }
+
+  if (typeof cancelledBy === "object" && cancelledBy?.role) {
+    const role = cancelledBy.role;
+    if (role === "branch_admin") return "Branch Admin";
+    if (role === "owner") return "System Owner";
+    return role.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  if (cancellationSource === "admin") return "Branch Admin";
+  if (cancellationSource === "system") return "System Sweeper (24h Hold Expired)";
+
+  return "Branch Admin";
+}
+
 export function mapReservationAdminRow(reservation) {
   const branchCode = reservation.roomId?.branch || "";
   const isViewedByAdmin = Boolean(reservation.isViewedByAdmin);
   const isNew = isNewReservation(reservation) && !isViewedByAdmin;
+  const customer =
+    `${reservation.userId?.firstName || ""} ${reservation.userId?.lastName || ""}`.trim() ||
+    "Unknown";
 
   return {
     id: reservation._id,
     reservationCode: reservation.reservationCode || "-",
-    customer:
-      `${reservation.userId?.firstName || ""} ${reservation.userId?.lastName || ""}`.trim() ||
-      "Unknown",
+    customer,
     email: reservation.userId?.email || "-",
     phone: reservation.mobileNumber || reservation.phone || "-",
     room: reservation.roomId?.name || reservation.roomId?.roomNumber || "-",
@@ -90,6 +113,10 @@ export function mapReservationAdminRow(reservation) {
     scheduleRejected: Boolean(reservation.scheduleRejected),
     scheduleRejectedAt: reservation.scheduleRejectedAt || null,
     scheduleRejectionReason: reservation.scheduleRejectionReason || "",
+    cancelledAt: reservation.cancelledAt || null,
+    cancelledBy: reservation.cancelledBy || null,
+    cancelledByName: reservation.cancelledByName || getCancelledByName(reservation.cancelledBy, reservation.cancellationSource, customer),
+    cancellationSource: reservation.cancellationSource || null,
     cancellationRequested: Boolean(reservation.cancellationRequested),
     cancellationStatus: reservation.cancellationStatus || null,
     cancellationReason: reservation.cancellationReason || null,

@@ -88,6 +88,9 @@ export const getReservations = async (req, res) => {
     if (isAdminListView) {
       reservationsQuery = reservationsQuery
         .populate("archivedBy", "firstName lastName email role")
+        .populate("cancelledBy", "firstName lastName email role")
+        .populate("cancellationRequestedBy", "firstName lastName email role")
+        .populate("cancellationReviewedBy", "firstName lastName email role")
         .select(ADMIN_LIST_FIELDS)
         .lean();
     } else {
@@ -117,7 +120,10 @@ export const getReservationById = async (req, res) => {
     const reservation = await Reservation.findById(reservationId)
       .populate(...POPULATE_USER)
       .populate(...POPULATE_ROOM)
-      .populate("archivedBy", "firstName lastName email role");
+      .populate("archivedBy", "firstName lastName email role")
+      .populate("cancelledBy", "firstName lastName email role")
+      .populate("cancellationRequestedBy", "firstName lastName email role")
+      .populate("cancellationReviewedBy", "firstName lastName email role");
     if (!reservation)
       return res.status(404).json({
         error: "Reservation not found",
