@@ -1,3 +1,16 @@
+import React, { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
+import {
+  useUnreadCount,
+  useNotifications,
+  useMarkAsRead,
+  useMarkAllAsRead,
+} from "../hooks/queries/useNotifications";
+import useNotificationStore from "../stores/notificationStore";
+import { useAuth } from "../hooks/useAuth";
+import { getVisibleNotificationsForUser } from "../utils/notificationVisibility";
+import "./NotificationBell.css";
 import {
   Bell,
   CheckCircle2,
