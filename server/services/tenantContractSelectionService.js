@@ -25,6 +25,7 @@ const sameId = (left, right) => Boolean(id(left)) && id(left) === id(right);
 
 export const isResidentContractEligible = (contract) => {
   if (!contract || !PRIMARY_VISIBLE_STATUSES.has(contract.status)) return false;
+  if (contract.archivedAt) return false;
   if (contract.isCurrent === false || contract.isCanonical === false) return false;
   if (contract.duplicateOfContractId || contract.supersededByContractId || contract.supersededBy) {
     return false;

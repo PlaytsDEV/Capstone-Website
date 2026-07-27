@@ -102,4 +102,11 @@ describe("resident canonical Contract selection", () => {
       publicationStatus: undefined,
     }))).toBe(false);
   });
+
+  test("archived metadata excludes a record even when its stale status is resident-visible", () => {
+    expect(selectCanonicalTenantContract({
+      contracts: [contract({ status: "generated", archivedAt: new Date() })],
+      activeStay,
+    })).toBeNull();
+  });
 });

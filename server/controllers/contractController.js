@@ -47,6 +47,12 @@ import {
   resolveTenantCanonicalContract,
   resolveTenantContractHistory,
 } from "../services/tenantContractSelectionService.js";
+import {
+  archiveContract as archiveContractRecord,
+  buildContractDeletionEligibility,
+  permanentlyDeleteTestContract,
+  restoreArchivedContract,
+} from "../services/contractArchiveService.js";
 
 const fail = (res, error) => res.status(error.statusCode || 500).json({
   error: error.message || "Contract operation failed",
@@ -91,6 +97,14 @@ export const createContract = async (req, res) => {
 export const listContracts = async (req, res) => {
   try {
     const query = req.branchFilter ? { branch: req.branchFilter } : {};
+    const archiveView = ["active", "archived", "all"].includes(req.query.archive)
+      ? req.query.archive : "active";
+    if (archiveView === "active") {
+      query.archivedAt = null;
+      query.status = { $nin: ["archived", "voided"] };
+    } else if (archiveView === "archived") {
+      query.archivedAt = { $ne: null };
+    }
     const statusGroups = {
       needs_attention: ["draft", "incomplete", "transfer_review_required"],
       ready_to_generate: ["ready_for_generation"],
@@ -104,12 +118,16 @@ export const listContracts = async (req, res) => {
       closed: ["expired", "terminated", "cancelled", "replaced", "archived", "renewed"],
     };
     if (req.query.status) {
-      query.status = statusGroups[req.query.status]
+      const selectedStatus = statusGroups[req.query.status]
         ? { $in: statusGroups[req.query.status] }
         : req.query.status;
+      query.$and = [...(query.$and || []), { status: selectedStatus }];
     }
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
-    const records = await Contract.find(query).sort({ createdAt: -1 }).limit(limit).lean();
+    const records = await Contract.find(query)
+      .populate("archivedBy", "firstName lastName email role")
+      .populate("duplicateOfContractId", "contractNumber")
+      .sort({ createdAt: -1 }).limit(limit).lean();
     const contracts = await Promise.all(records.map(async (contract) => {
       let preparedDocumentAvailable = false;
       if (selectCurrentPreparedDocument(contract)) {
@@ -126,6 +144,130 @@ export const listContracts = async (req, res) => {
       };
     }));
     res.json({ contracts });
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+export const archiveContract = async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: "Invalid contract id.", code: "INVALID_CONTRACT_ID" });
+    }
+    const admin = await actor(req);
+    const before = await Contract.findById(req.params.id).lean();
+    if (!before) return res.status(404).json({ error: "Contract not found.", code: "CONTRACT_NOT_FOUND" });
+    assertContractBranchAccess(req, before.branch);
+    const result = await archiveContractRecord({
+      contractId: req.params.id,
+      actorId: admin._id,
+      reason: req.body?.reason,
+      duplicateOfContractId: req.body?.duplicateOfContractId || null,
+      allowedBranch: req.branchFilter,
+    });
+    await auditLogger.logModification(
+      req, "contract", result.contract._id, before, result.contract.toObject(),
+      "Archived Contract",
+    );
+    res.json({ success: true, contract: result.contract });
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+export const restoreContract = async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: "Invalid contract id.", code: "INVALID_CONTRACT_ID" });
+    }
+    const admin = await actor(req);
+    const before = await Contract.findById(req.params.id).lean();
+    if (!before) return res.status(404).json({ error: "Contract not found.", code: "CONTRACT_NOT_FOUND" });
+    assertContractBranchAccess(req, before.branch);
+    const restored = await restoreArchivedContract({
+      contractId: req.params.id, actorId: admin._id, reason: req.body?.reason,
+    });
+    await auditLogger.logModification(
+      req, "contract", restored._id, before, restored.toObject(), "Restored archived Contract",
+    );
+    res.json({ success: true, contract: restored });
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+export const getContractDeletionEligibility = async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: "Invalid contract id.", code: "INVALID_CONTRACT_ID" });
+    }
+    await actor(req);
+    const contract = await Contract.findById(req.params.id);
+    if (!contract) return res.status(404).json({ error: "Contract not found.", code: "CONTRACT_NOT_FOUND" });
+    assertContractBranchAccess(req, contract.branch);
+    const eligibility = await buildContractDeletionEligibility(contract);
+    await auditLogger.log({
+      req,
+      type: "data_modification",
+      action: "Checked permanent Contract deletion eligibility",
+      severity: "high",
+      entityType: "contract",
+      entityId: String(contract._id),
+      details: eligibility.eligible ? "Eligible test Contract" : "Permanent deletion blocked",
+      metadata: {
+        contractNumber: contract.contractNumber,
+        eligible: eligibility.eligible,
+        dependencies: eligibility.dependencies,
+        blockingDependencies: eligibility.blockingDependencies,
+      },
+    });
+    res.json({
+      ...eligibility,
+      ...(!eligibility.eligible ? {
+        code: "CONTRACT_DELETE_BLOCKED",
+        message: "This Contract has related records and must be archived instead.",
+      } : {}),
+    });
+  } catch (error) {
+    fail(res, error);
+  }
+};
+
+export const permanentlyDeleteContract = async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ error: "Invalid contract id.", code: "INVALID_CONTRACT_ID" });
+    }
+    const admin = await actor(req);
+    const before = await Contract.findById(req.params.id).lean();
+    if (!before) return res.status(404).json({ error: "Contract not found.", code: "CONTRACT_NOT_FOUND" });
+    assertContractBranchAccess(req, before.branch);
+    const result = await permanentlyDeleteTestContract({
+      contractId: req.params.id,
+      actorId: admin._id,
+      confirmationContractNumber: req.body?.confirmationContractNumber,
+      reason: req.body?.reason,
+    });
+    await auditLogger.logDeletion(
+      req,
+      "test_contract",
+      result.deletedContract._id,
+      {
+        contractNumber: result.deletedContract.contractNumber,
+        isTestRecord: true,
+        branch: result.deletedContract.branch,
+        dependencySummary: result.dependencySummary,
+        cleanupFailures: result.cleanupFailures,
+      },
+      result.deletionReason,
+    );
+    res.json({
+      success: true,
+      deleted: true,
+      contractNumber: result.deletedContract.contractNumber,
+      storageCleanupComplete: result.cleanupFailures.length === 0,
+      orphanCleanupRequired: result.cleanupFailures.length > 0,
+    });
   } catch (error) {
     fail(res, error);
   }
@@ -150,6 +292,9 @@ export const getContract = async (req, res) => {
       { path: "notarizedDocuments.rejectedBy", select: "firstName lastName email role" },
       { path: "readyForPublicationBy", select: "firstName lastName email role" },
       { path: "publishedBy", select: "firstName lastName email role" },
+      { path: "archivedBy", select: "firstName lastName email role" },
+      { path: "restoredBy", select: "firstName lastName email role" },
+      { path: "duplicateOfContractId", select: "contractNumber status isCanonical" },
     ]);
     if (!contract) return res.status(404).json({ error: "Contract not found.", code: "CONTRACT_NOT_FOUND" });
     assertContractBranchAccess(req, contract.branch);

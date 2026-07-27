@@ -166,4 +166,21 @@ export const contractApi = {
     const payload = await authFetch(`/contracts/${contractId}`);
     return payload.contract?.preparedDocuments || [];
   },
+  archiveContract: (contractId, reason, duplicateOfContractId = "") =>
+    authFetch(`/contracts/${contractId}/archive`, {
+      method: "POST",
+      body: JSON.stringify({ reason, ...(duplicateOfContractId ? { duplicateOfContractId } : {}) }),
+    }),
+  restoreContract: (contractId, reason) =>
+    authFetch(`/contracts/${contractId}/restore`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+  getDeletionEligibility: (contractId) =>
+    authFetch(`/contracts/${contractId}/deletion-eligibility`, { cache: "no-store" }),
+  permanentlyDeleteTestContract: (contractId, confirmationContractNumber, reason) =>
+    authFetch(`/contracts/${contractId}/permanent`, {
+      method: "DELETE",
+      body: JSON.stringify({ confirmationContractNumber, reason }),
+    }),
 };
