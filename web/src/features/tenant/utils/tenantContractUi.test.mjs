@@ -15,14 +15,28 @@ test("formats tenant Contract statuses without raw enum values", () => {
 
 test("does not infer an active Contract when no dedicated record exists", () => {
   const message = getTenantContractMessage(null);
-  assert.equal(message.title, "Your Contract is still being prepared.");
+  assert.equal(message.title, "Contract Not Available Yet");
+  assert.match(message.message, /has not been published yet/i);
   assert.doesNotMatch(message.title, /active/i);
 });
 
 test("prepared copies are explicitly unsigned and unnotarized", () => {
-  const message = getTenantContractMessage({ status: "generated" });
+  const message = getTenantContractMessage({
+    status: "generated",
+    preparedDocument: { available: true },
+  });
   assert.equal(message.title, "Prepared Contract Available");
   assert.match(message.message, /prepared copy is available/i);
+});
+
+test("canonical Contract with missing PDF uses a separate unavailable state", () => {
+  const message = getTenantContractMessage({
+    status: "generated",
+    contractNumber: "TEST-CONTRACT-001",
+    preparedDocument: { available: false },
+  });
+  assert.equal(message.title, "Prepared Document Temporarily Unavailable");
+  assert.match(message.message, /Contract record is available/i);
 });
 
 test("notarized status remains publication-pending and exposes no file details", () => {

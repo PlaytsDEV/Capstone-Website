@@ -6,8 +6,11 @@ import {
   getTenantContractMessage,
 } from "./tenantContractUi.mjs";
 
-test("generated Contract is presented as an available prepared copy", () => {
-  assert.deepEqual(getTenantContractMessage({ status: "generated" }), {
+test("generated Contract with verified document is presented as an available prepared copy", () => {
+  assert.deepEqual(getTenantContractMessage({
+    status: "generated",
+    preparedDocument: { available: true },
+  }), {
     title: "Prepared Contract Available",
     message: "Your prepared copy is available before physical signing and notarization.",
     nextAction: "The administrator will coordinate physical signing and in-person notarization.",

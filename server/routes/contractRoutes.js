@@ -19,6 +19,8 @@ import {
   readyContractForPublication, publishContract, streamFinalContract,
   streamMyFinalContract,
   confirmLegacyReservationApproval,
+  archiveContract, restoreContract, getContractDeletionEligibility,
+  permanentlyDeleteContract,
 } from "../controllers/contractController.js";
 
 const router = express.Router();
@@ -36,6 +38,10 @@ router.use(verifyToken, verifyAdmin, filterByBranch, requirePermission("manageTe
 
 router.post("/", createContract);
 router.get("/", listContracts);
+router.post("/:id/archive", archiveContract);
+router.post("/:id/restore", verifyOwner, restoreContract);
+router.get("/:id/deletion-eligibility", verifyOwner, getContractDeletionEligibility);
+router.delete("/:id/permanent", verifyOwner, permanentlyDeleteContract);
 router.get("/tenant/:tenantId/current", getTenantCurrentContract);
 router.get("/:id/generation-preview", getGenerationPreview);
 router.post("/:id/generate", generatePreparedContract);

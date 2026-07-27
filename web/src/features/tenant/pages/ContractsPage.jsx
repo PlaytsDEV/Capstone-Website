@@ -133,7 +133,7 @@ export default function ContractsPage() {
           <div className="tenant-contract-document__icon"><FileText size={26} /></div>
           <div className="tenant-contract-document__content">
             <h3>{contract.preparedDocument.available ? "Prepared Copy — Not Yet Signed or Notarized" : "Prepared Document Temporarily Unavailable"}</h3>
-            <p>{contract.preparedDocument.available ? "The final wet-signed and notarized Contract is still being processed." : "The prepared document is temporarily unavailable. Please contact the administrator."}</p>
+            <p>{contract.preparedDocument.available ? "The final wet-signed and notarized Contract is still being processed." : "Your Contract record is available, but the prepared PDF cannot currently be opened. The dormitory administrator must regenerate the document."}</p>
             {contract.preparedDocument.available && <div className="tenant-contract-document__meta">
               <span>Version {contract.preparedDocument.currentVersion}</span>
               <span>Generated {date(contract.preparedDocument.generatedAt)}</span>

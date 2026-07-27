@@ -11,15 +11,21 @@ describe("mobile Contract route safety", () => {
     "utf8",
   );
 
-  test("uses the canonical Contract model and tenant ownership on every document lookup", () => {
-    expect(routes).toContain('import Contract from "../models/Contract.js"');
-    expect(routes).toMatch(/tenantId: req\.mobileTenant\._id/g);
+  test("uses the canonical tenant resolver on every document lookup", () => {
+    expect(routes).toContain(
+      'import { resolveTenantCanonicalContract } from "../services/tenantContractSelectionService.js"',
+    );
+    expect(routes).toContain(
+      "resolveTenantCanonicalContract(tenantId)",
+    );
+    expect(routes).toContain(
+      "String(contract._id) !== String(req.params.contractId)",
+    );
     expect(routes).not.toMatch(/moveIn|contractFileUrl/);
   });
 
   test("only publishes verified final files and never exposes signed-only files", () => {
-    expect(routes).toMatch(/status: \{ \$in: \["published", "active", "expiring_soon", "expired"\] \}/);
-    expect(routes).toMatch(/notarizationVerifiedAt: \{ \$ne: null \}/);
+    expect(routes).toContain("resolvePublishedFinalDocument(contract)");
     expect(routes).not.toMatch(/signedStorageKey|signedDocuments/);
   });
 

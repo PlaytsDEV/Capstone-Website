@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download, Eye, FileCheck2, Printer, RefreshCw, Upload } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { contractApi } from "../../../../shared/api/contractApi";
+import { useAuth } from "../../../../shared/hooks/useAuth";
 import { showNotification } from "../../../../shared/utils/notification";
 import DetailDrawer from "../shared/DetailDrawer";
 import PricingApprovalModal from "./PricingApprovalModal";
@@ -77,6 +78,8 @@ const publicationChecks = [
 
 export default function ContractDetailDrawer({ contractId, open, onClose, onChanged }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isOwner = user?.role === "owner";
   const [contract, setContract] = useState(null);
   const [validation, setValidation] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -88,6 +91,7 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
   const [pricingOpen, setPricingOpen] = useState(false);
   const [pricingError, setPricingError] = useState("");
   const [workflowDialog, setWorkflowDialog] = useState(null);
+  const [deletionEligibility, setDeletionEligibility] = useState(null);
   const signedInput = useRef(null);
   const notarizedInput = useRef(null);
   const showWorkflow = (config) => setWorkflowDialog(config);
@@ -104,6 +108,7 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
     try {
       const payload = await contractApi.getContract(contractId);
       setContract(payload.contract);
+      setDeletionEligibility(null);
       if (["draft", "incomplete", "ready_for_generation"].includes(payload.contract?.status)) {
         const checked = await contractApi.validateContract(contractId);
         setValidation(checked.validation);
@@ -115,6 +120,80 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
       setLoading(false);
     }
   }, [contractId]);
+
+  const refreshDeletionEligibility = async () => {
+    setBusy("deletion-eligibility");
+    setError("");
+    try {
+      const result = await contractApi.getDeletionEligibility(contractId);
+      setDeletionEligibility(result);
+      return result;
+    } catch (requestError) {
+      setError(getContractErrorMessage(requestError));
+      return null;
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const archiveCurrentContract = () => showWorkflow({
+    title: "Archive Contract",
+    message: "Archive is the recommended action. The Contract remains available to authorized administrators for audit and is removed from resident and active Contract views.",
+    fields: [
+      { key: "reason", label: "Archive reason", type: "textarea", required: true },
+      { key: "duplicateOfContractId", label: "Replacement canonical Contract ID (required when archiving a canonical Contract)" },
+    ],
+    checks: [{ key: "confirmed", label: "I confirmed this Contract is unnecessary and archiving will not remove the resident's only valid Contract." }],
+    submitLabel: "Archive Contract",
+    onSubmit: (values) => runAction(
+      "archive",
+      () => contractApi.archiveContract(contractId, values.reason.trim(), values.duplicateOfContractId?.trim()),
+      "Contract archived.",
+    ),
+  });
+
+  const restoreCurrentContract = () => showWorkflow({
+    title: "Restore Archived Contract",
+    message: "Restoration does not automatically make this Contract canonical or resident-visible.",
+    fields: [{ key: "reason", label: "Restore reason", type: "textarea", required: true }],
+    checks: [{ key: "confirmed", label: "I confirmed there is no conflicting canonical Contract." }],
+    submitLabel: "Restore Contract",
+    onSubmit: (values) => runAction(
+      "restore", () => contractApi.restoreContract(contractId, values.reason.trim()), "Contract restored.",
+    ),
+  });
+
+  const permanentlyDeleteCurrentContract = () => showWorkflow({
+    title: "Delete Test Contract Permanently",
+    message: "This is restricted to a proven unused test duplicate. The immutable administrative deletion audit remains.",
+    fields: [
+      { key: "confirmationContractNumber", label: `Type ${contract.contractNumber} exactly`, required: true },
+      { key: "reason", label: "Permanent deletion reason", type: "textarea", required: true },
+    ],
+    checks: [{ key: "confirmed", label: "I reviewed the dependency result and confirm this is an unused test record." }],
+    submitLabel: "Delete Test Contract Permanently",
+    onSubmit: async (values) => {
+      if (values.confirmationContractNumber !== contract.contractNumber) {
+        setError("The confirmation Contract number does not match exactly.");
+        return;
+      }
+      setBusy("permanent-delete");
+      try {
+        await contractApi.permanentlyDeleteTestContract(
+          contractId, values.confirmationContractNumber, values.reason.trim(),
+        );
+        showNotification("Test Contract permanently deleted.", "success");
+        onChanged?.();
+        onClose();
+      } catch (requestError) {
+        const message = getContractErrorMessage(requestError);
+        setError(message);
+        showNotification(message, "error");
+      } finally {
+        setBusy("");
+      }
+    },
+  });
 
   useEffect(() => {
     if (!open) return undefined;
@@ -218,8 +297,11 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
     () => [...(contract?.preparedDocuments || [])].sort((a, b) => b.version - a.version),
     [contract],
   );
-  const currentPrepared = versions.find((document) => document.superseded !== true) || null;
-  const currentVersion = Number(currentPrepared?.version) || 0;
+  const preparedAvailable = contract?.documents?.prepared?.available === true;
+  const currentPreparedMetadata =
+    versions.find((document) => document.superseded !== true) || null;
+  const currentPrepared = preparedAvailable ? currentPreparedMetadata : null;
+  const currentVersion = Number(currentPreparedMetadata?.version) || 0;
   const canGenerate = contract?.status === "ready_for_generation" && validation?.valid === true;
   const canRegenerate = contract?.status === "generated" &&
     !contract?.signedStorageKey && !contract?.notarizedStorageKey && !contract?.finalStorageKey;
@@ -417,7 +499,11 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
   return (
     <DetailDrawer open={open} onClose={onClose} width={1320} className="contract-detail-drawer"
       title={contract?.contractNumber || "Contract Details"}
-      subtitle={contract ? getContractStage(contract.status) : "Loading Contract"}>
+      subtitle={contract
+        ? contract.status === "generated" && contract.documents?.prepared?.available !== true
+          ? "Prepared PDF Unavailable"
+          : getContractStage(contract.status)
+        : "Loading Contract"}>
       {loading && <div className="contract-loading">Loading Contract…</div>}
       {error && <div className="contract-alert contract-alert--error">{error}</div>}
       {contract && <>
@@ -488,7 +574,7 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
             <h4>Prepared Contract</h4>
             <div className="contract-action-row">
               {currentPrepared && <button className="contract-button" disabled={busy} onClick={() => openFile(currentPrepared.version, "preview")}><Eye size={16}/>View Prepared Copy</button>}
-              <button className="contract-button contract-button--secondary" disabled={busy} onClick={() => {
+              <button className="contract-button contract-button--secondary" disabled={busy || !preparedAvailable} onClick={() => {
                 showWorkflow({
                   title: "Mark Prepared Contract as Printed",
                   message: "Confirm that the prepared Contract has been physically printed for wet signing and in-person notarization.",
@@ -566,6 +652,10 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
           {contract.status === "generated" && !currentPrepared && <div className="contract-alert contract-alert--error" data-error-code="CURRENT_PREPARED_DOCUMENT_UNAVAILABLE">
             <strong>Current prepared document unavailable.</strong>
             <p>The Contract is marked as generated, but no current prepared file is available.</p>
+            {canRegenerate && !preparedAvailable &&
+              <button className="contract-button" type="button" onClick={() => setConfirmGeneration(true)}>
+                Regenerate Prepared Copy
+              </button>}
             <button className="contract-link-button" type="button" disabled={busy} onClick={validate}>Refresh Checks</button>
           </div>}
         </section>}
@@ -594,7 +684,11 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
             <span><small>Lease term</small>{formatContractValue(contract.roomType)} · {formatContractValue(contract.leaseType)}</span>
             <span><small>Lease dates</small>{date(contract.leaseStartDate)} — {date(contract.leaseEndDate)}</span>
             <span><small>Approved monthly rate</small>{money(contract.approvedMonthlyRate)}</span>
-            <span><small>Current stage</small>{getContractStage(contract.status)}</span>
+            <span><small>Current stage</small>{
+              contract.status === "generated" && !preparedAvailable
+                ? "Prepared PDF Unavailable"
+                : getContractStage(contract.status)
+            }</span>
           </div>
         </section>
 
@@ -611,7 +705,11 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
         </section>
 
         <section className="contract-panel contract-documents">
-          {!currentPrepared ? <div className="contract-document-empty"><strong>Prepared document</strong><span>Not yet generated</span></div> :
+          {!currentPrepared ? <div className="contract-document-empty"><strong>Prepared document</strong><span>
+            {currentPreparedMetadata
+              ? "The prepared Contract file is missing from storage. Regeneration is required."
+              : "Not yet generated"}
+          </span></div> :
             <><h3>Current Document Status</h3>
               <div className="contract-current-document">
                 <dl><dt>Prepared Version</dt><dd>{currentPrepared.version}</dd>
@@ -636,6 +734,39 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
           {(contract.statusHistory || []).length > 3 && <details><summary>View full history</summary>
             <div className="contract-history">{(contract.statusHistory || []).slice().reverse().slice(3).map((entry, index) => <div key={`${entry.changedAt}-${index}`}><strong>{formatContractStatus(entry.status)}</strong><span>{date(entry.changedAt)}</span><p>{formatContractHistoryReason(entry.reason)}</p></div>)}</div>
           </details>}
+        </section>
+
+        <section className="contract-panel contract-record-controls">
+          <h3>Record Controls</h3>
+          <p>Archive is the standard removal action and preserves the legal and administrative audit record.</p>
+          {contract.archivedAt ? <dl>
+            <dt>Archived</dt><dd>{date(contract.archivedAt)}</dd>
+            <dt>Reason</dt><dd>{contract.archiveReason || "—"}</dd>
+            <dt>Original status</dt><dd>{formatContractStatus(contract.archivedPreviousStatus)}</dd>
+            <dt>Canonical reference</dt><dd>{contract.duplicateOfContractId?.contractNumber || contract.duplicateOfContractId || "—"}</dd>
+          </dl> : null}
+          <div className="contract-action-row">
+            {!contract.archivedAt &&
+              <button className="contract-button contract-button--secondary" type="button" disabled={busy} onClick={archiveCurrentContract}>
+                Archive Contract
+              </button>}
+            {contract.archivedAt && isOwner && !contract.duplicateOfContractId &&
+              <button className="contract-button contract-button--secondary" type="button" disabled={busy} onClick={restoreCurrentContract}>
+                Restore Archived Contract
+              </button>}
+            {isOwner && contract.isTestRecord === true &&
+              <button className="contract-button contract-button--secondary" type="button" disabled={busy} onClick={refreshDeletionEligibility}>
+                Check Permanent-Delete Eligibility
+              </button>}
+            {isOwner && deletionEligibility?.eligible === true &&
+              <button className="contract-button" type="button" disabled={busy} onClick={permanentlyDeleteCurrentContract}>
+                Delete Test Contract Permanently
+              </button>}
+          </div>
+          {deletionEligibility && <div className={`contract-alert ${deletionEligibility.eligible ? "" : "contract-alert--error"}`}>
+            <strong>{deletionEligibility.eligible ? "Eligible unused test Contract" : "Permanent deletion blocked—archive instead"}</strong>
+            {!deletionEligibility.eligible && <p>Dependencies: {(deletionEligibility.blockingDependencies || []).join(", ") || "retention policy"}</p>}
+          </div>}
         </section>
 
         <PricingApprovalModal open={pricingOpen} contract={contract}

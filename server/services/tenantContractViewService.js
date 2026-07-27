@@ -44,6 +44,7 @@ export const toTenantContractView = (source, now = new Date(), options = {}) => 
   const id = String(contract._id || contract.id);
   const preparedDocument = {
     available: Boolean(currentDocument),
+    issue: currentDocument ? null : options.preparedDocumentIssue || "PREPARED_DOCUMENT_UNAVAILABLE",
     currentVersion: currentDocument?.version || null,
     generatedAt: currentDocument?.generatedAt || null,
     fileName: currentDocument?.fileName || null,
@@ -57,6 +58,9 @@ export const toTenantContractView = (source, now = new Date(), options = {}) => 
     id,
     contractId: id,
     contractNumber: contract.contractNumber || "",
+    isCanonical: true,
+    publicationStatus: contract.publicationStatus ||
+      (contract.tenantVisible ? "published" : "ready_for_resident"),
     status: contract.status,
     displayStatus: getTenantContractDisplayStatus(contract.status),
     displayLifecycle,

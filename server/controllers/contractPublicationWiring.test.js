@@ -20,7 +20,10 @@ describe("final publication API security wiring", () => {
     const tenantRoutes = routes.slice(0, boundary);
     expect(tenantRoutes).toContain('documents/final');
     expect(tenantRoutes).not.toMatch(/post\([^)]*publish/);
-    expect(controller).toContain("_id: req.params.contractId, tenantId: user._id");
+    expect(controller).toContain("resolveTenantCanonicalContract(user._id)");
+    expect(controller).toContain(
+      "String(contract._id) !== String(req.params.contractId)",
+    );
   });
 
   test("final streams are private and never accept storage keys from clients", () => {

@@ -29,6 +29,7 @@ const ensureInsideRoot = (candidate) => {
 };
 
 export const buildPreparedContractStorage = ({
+  contractId,
   branch,
   year,
   contractNumber,
@@ -46,11 +47,13 @@ export const buildPreparedContractStorage = ({
   const safeContractDate = sanitizeContractFileSegment(contractDate, "Undated");
   const fileName =
     `Lease_${safeTenantName}_${safeRoomType}_${safeLeaseType}_${safeContractDate}_v${version}.pdf`;
-  const relativeDirectory = path.join(
-    safeBranch,
-    String(year),
-    safeContractNumber,
-  );
+  const relativeDirectory = contractId
+    ? path.join(
+      "contracts",
+      sanitizeContractFileSegment(contractId),
+      "prepared",
+    )
+    : path.join(safeBranch, String(year), safeContractNumber);
   const storageKey = path.join(relativeDirectory, fileName).replaceAll("\\", "/");
   const absolutePath = ensureInsideRoot(path.join(GENERATED_CONTRACT_ROOT, storageKey));
   return { fileName, storageKey, absolutePath, directory: path.dirname(absolutePath) };
