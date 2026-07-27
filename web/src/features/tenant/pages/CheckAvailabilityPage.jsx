@@ -71,7 +71,10 @@ function CheckAvailabilityPage() {
  const ROOMS_PER_PAGE = 6;
 
  // ── TanStack Query ─────────────────────────────────────────
- const { data: rawRooms = [], isLoading: roomsLoading, error: roomsQueryError } = useRooms();
+ const { data: rawRooms = [], isLoading: roomsLoading, error: roomsQueryError } = useRooms(
+   undefined,
+   { pollInterval: user ? false : 30_000 }
+ );
  const roomsError = roomsQueryError ? "Failed to load rooms. Please try again." : null;
 
  useEffect(() => {
@@ -164,10 +167,11 @@ function CheckAvailabilityPage() {
  String(bed.status || "").toLowerCase() === "occupied" ||
  (bed.status === undefined && bed.available === false),
  ).length;
- // Use server-tracked occupancy for tenant presence, then subtract explicit
- // bed blocks such as reserved/maintenance/temporary locks.
+ // Prefer bed-level count as ground truth when bed data is present.
+ // Falling back to currentOccupancy for legacy rooms with no beds array prevents
+ // stale counter drift from making a room appear "Full" when beds are free.
  const totalBeds = room.capacity || beds.length || 0;
- const occupied = Math.max(room.currentOccupancy || 0, occupiedFromBeds);
+ const occupied = beds.length > 0 ? occupiedFromBeds : (room.currentOccupancy || 0);
  const availableBeds = Math.max(0, totalBeds - occupied - reservedBeds - unavailableBeds);
  return {
  id: roomNumber,

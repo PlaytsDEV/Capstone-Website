@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { formatRoomType, formatBranch } from "../../utils/formatters";
 import { getBedDisplayLabel } from "../../../../shared/utils/bedIdentifier";
 import {
@@ -12,11 +13,13 @@ import {
   MoreVertical,
   Pencil,
   Plus,
+  ShieldAlert,
   Trash2,
   User,
   X,
 } from "lucide-react";
 import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
+import { roomApi } from "../../../../shared/api/roomApi";
 
 export const getMaxBedsForRoomType = (type) => {
   const normType = String(type || "").toLowerCase().trim();
@@ -40,9 +43,12 @@ export default function RoomConfigModal({
   onDelete,
 }) {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const [saving, setSaving] = useState(false);
   const [draftRoom, setDraftRoom] = useState(room);
   const [activeMenuBedId, setActiveMenuBedId] = useState(null);
+  const [repairing, setRepairing] = useState(false);
+  const [repairMsg, setRepairMsg] = useState(null); // { type: 'success'|'error', text: string }
   useEscapeClose(true, onClose);
 
   const roomType = draftRoom?.type || room?.type;
@@ -183,6 +189,45 @@ export default function RoomConfigModal({
       console.error("Failed to save room config:", err);
     } finally {
       setSaving(false);
+    }
+  };
+
+  /** Detect occupancy drift: counter > 0 but every bed is available */
+  const hasDrift =
+    !isPrivate &&
+    (draftRoom.currentOccupancy || 0) > 0 &&
+    (draftRoom.beds || []).every((b) => getBedStatus(b) === "available");
+
+  const handleRepairOccupancy = async () => {
+    setRepairing(true);
+    setRepairMsg(null);
+    try {
+      const res = await roomApi.repairOccupancy(draftRoom._id);
+      const corrected = res?.data?.corrected || res?.corrected;
+      const repairedRoom = res?.data?.room || res?.room;
+      if (repairedRoom) {
+        setDraftRoom((prev) => ({
+          ...prev,
+          currentOccupancy: repairedRoom.currentOccupancy,
+          available: repairedRoom.available,
+          beds: repairedRoom.beds || prev.beds,
+        }));
+      }
+      qc.invalidateQueries({ queryKey: ["rooms"] });
+      const from = corrected?.from?.currentOccupancy ?? "?";
+      const to = corrected?.to?.currentOccupancy ?? repairedRoom?.currentOccupancy ?? "?";
+      setRepairMsg({
+        type: "success",
+        text: `Occupancy corrected: ${from} → ${to}`,
+      });
+    } catch (err) {
+      console.error("Repair occupancy failed:", err);
+      setRepairMsg({
+        type: "error",
+        text: err?.message || "Repair failed. Please try again.",
+      });
+    } finally {
+      setRepairing(false);
     }
   };
 
@@ -511,6 +556,36 @@ export default function RoomConfigModal({
                 ? `${Math.min(1, draftRoom.currentOccupancy || 0)} of 1 room currently occupied`
                 : `${draftRoom.currentOccupancy || 0} of ${draftRoom.capacity || 1} beds currently occupied`}
             </p>
+
+            {/* Drift repair: only shown when counter > 0 but all beds are available */}
+            {hasDrift && (
+              <div className="occupancy-drift-alert">
+                <ShieldAlert size={14} />
+                <span>
+                  Counter mismatch detected &mdash; no active reservations but
+                  occupancy shows {draftRoom.currentOccupancy}.
+                </span>
+                <button
+                  type="button"
+                  className="btn-repair-occupancy"
+                  onClick={handleRepairOccupancy}
+                  disabled={repairing}
+                >
+                  {repairing ? "Repairing…" : "Repair Occupancy"}
+                </button>
+              </div>
+            )}
+
+            {/* Inline repair feedback */}
+            {repairMsg && (
+              <p
+                className={`occupancy-repair-msg occupancy-repair-msg--${
+                  repairMsg.type
+                }`}
+              >
+                {repairMsg.text}
+              </p>
+            )}
           </div>
         </div>
 

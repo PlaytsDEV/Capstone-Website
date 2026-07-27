@@ -977,3 +977,78 @@ body.modal-open {
   flex-shrink: 0;
   margin-top: 2px;
 }
+
+/* =============================================================================
+   OCCUPANCY DRIFT ALERT & REPAIR
+   ============================================================================= */
+
+.occupancy-drift-alert {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: var(--spacing-md);
+  padding: 10px 14px;
+  background: hsl(38 100% 95%);
+  border: 1px solid hsl(38 90% 65%);
+  border-radius: var(--radius-md);
+  color: hsl(32 80% 30%);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+}
+
+.occupancy-drift-alert svg {
+  flex-shrink: 0;
+  color: hsl(38 90% 45%);
+}
+
+.occupancy-drift-alert span {
+  flex: 1;
+  min-width: 160px;
+}
+
+.btn-repair-occupancy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  background: hsl(38 90% 48%);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out),
+    opacity var(--duration-fast) var(--ease-out);
+  white-space: nowrap;
+}
+
+.btn-repair-occupancy:hover:not(:disabled) {
+  background: hsl(38 90% 40%);
+}
+
+.btn-repair-occupancy:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.occupancy-repair-msg {
+  margin-top: 8px;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+}
+
+.occupancy-repair-msg--success {
+  background: hsl(142 60% 94%);
+  color: hsl(142 60% 28%);
+  border: 1px solid hsl(142 55% 78%);
+}
+
+.occupancy-repair-msg--error {
+  background: hsl(0 80% 95%);
+  color: hsl(0 70% 35%);
+  border: 1px solid hsl(0 70% 80%);
+}

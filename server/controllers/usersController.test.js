@@ -22,7 +22,10 @@ const userModel = {
   findByIdAndDelete: jest.fn(),
 };
 const roomModel = {
-  find: jest.fn(),
+  find: jest.fn(() => ({
+    exec: jest.fn().mockResolvedValue([]),
+    lean: jest.fn().mockResolvedValue([]),
+  })),
   countDocuments: jest.fn(),
 };
 const reservationModel = {

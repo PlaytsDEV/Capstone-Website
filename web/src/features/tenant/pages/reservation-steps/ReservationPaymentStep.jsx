@@ -158,34 +158,16 @@ const ReservationPaymentStep = ({
               )}
             </div>
 
-            {/* Move-In Cash-Out Deductible Breakdown (Section 4 Lease Rule) */}
-            {monthlyRent > 0 && (
-              <div className="rf-movein-breakdown" style={{ marginTop: '16px', padding: '14px', borderRadius: '10px', background: 'rgba(255, 255, 255, 0.04)', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
-                <div style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: '8px', color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Move-In Financial Breakdown
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '4px' }}>
-                  <span>1st Month Advance Rent:</span>
-                  <span>{formatCurrency(moveInCashOut.monthlyAdvance)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '4px' }}>
-                  <span>1 Month Security Deposit:</span>
-                  <span>{formatCurrency(moveInCashOut.securityDeposit)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#60a5fa', fontWeight: 600, borderTop: '1px dashed rgba(255, 255, 255, 0.1)', paddingTop: '4px', marginBottom: '4px' }}>
-                  <span>Gross Move-In Total:</span>
-                  <span>{formatCurrency(moveInCashOut.grossTotal)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: '#34d399', fontWeight: 600, marginBottom: '4px' }}>
-                  <span>Less: Reservation Deposit (Paying Now):</span>
-                  <span>- {formatCurrency(reservationFeeAmount)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#f8fafc', fontWeight: 700, borderTop: '1px solid rgba(255, 255, 255, 0.15)', paddingTop: '6px', marginTop: '4px' }}>
-                  <span>Est. Remaining Due at Move-In:</span>
-                  <span>{formatCurrency(moveInCashOut.netAmountDue)}</span>
-                </div>
+            {/* Reservation Fee Deposit Breakdown */}
+            <div className="rf-movein-breakdown" style={{ marginTop: '16px', padding: '14px', borderRadius: '10px', background: 'rgba(255, 255, 255, 0.04)', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: '8px', color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Payment Summary
               </div>
-            )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#34d399', fontWeight: 600 }}>
+                <span>Reservation Fee (Due Now):</span>
+                <span>{formatCurrency(reservationFeeAmount)}</span>
+              </div>
+            </div>
           </div>
 
           {/* Card 2: Checkout Action Section */}

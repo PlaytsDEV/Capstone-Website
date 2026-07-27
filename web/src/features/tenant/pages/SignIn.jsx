@@ -13,26 +13,26 @@
  */
 
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import {
- signInWithEmailAndPassword,
- signInWithPopup,
- GoogleAuthProvider,
- FacebookAuthProvider,
- sendEmailVerification,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  GoogleAuthProvider,
+  FacebookAuthProvider,
+  sendEmailVerification,
 } from "firebase/auth";
 import { auth } from "../../../firebase/config";
 import { showNotification } from "../../../shared/utils/notification";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { useAppNavigation } from "../../../shared/hooks/useAppNavigation";
 import {
- validateEmail,
- getFirebaseErrorMessage,
+  validateEmail,
+  getFirebaseErrorMessage,
 } from "../../../shared/utils/authValidation";
 import {
- AUTH_TOAST_DURATION,
- buildAuthSuccessMessage,
+  AUTH_TOAST_DURATION,
+  buildAuthSuccessMessage,
 } from "../../../shared/utils/authToasts";
 import { setOtpPending } from "../../../shared/api/authSession";
 import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
@@ -47,67 +47,86 @@ import hero3 from "../../../assets/images/hero3.jpg";
 const SIGNIN_IMAGE = hero3;
 
 function SignIn() {
- const navigate = useNavigate();
- const appNavigate = useAppNavigation();
- const { login, setGlobalLoading } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const appNavigate = useAppNavigation();
+  const { login, setGlobalLoading } = useAuth();
 
- const [formData, setFormData] = useState({ email: "", password: "" });
- const [showPassword, setShowPassword] = useState(false);
- const [submitting, setSubmitting] = useState(false);
- const [socialLoading, setSocialLoading] = useState(false);
- const [validationErrors, setValidationErrors] = useState({});
- const [touched, setTouched] = useState({});
- const [fieldValid, setFieldValid] = useState({});
- const [debounceTimer, setDebounceTimer] = useState(null);
- const [rememberMe, setRememberMe] = useState(false);
- const [failedAttempts, setFailedAttempts] = useState(0);
- const [lockoutUntil, setLockoutUntil] = useState(null);
- const [lockoutCountdown, setLockoutCountdown] = useState(0);
- const [unverifiedEmail, setUnverifiedEmail] = useState(null);
- const [resending, setResending] = useState(false);
- const [resendCooldownEnd, setResendCooldownEnd] = useState(null);
- const [resendCooldown, setResendCooldown] = useState(0);
- const [verifiedSuccess, setVerifiedSuccess] = useState(false);
+  const [formData, setFormData] = useState({ email: "", password: "" });
+  const [showPassword, setShowPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [socialLoading, setSocialLoading] = useState(false);
+  const [validationErrors, setValidationErrors] = useState({});
+  const [touched, setTouched] = useState({});
+  const [fieldValid, setFieldValid] = useState({});
+  const [debounceTimer, setDebounceTimer] = useState(null);
+  const [rememberMe, setRememberMe] = useState(false);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [lockoutUntil, setLockoutUntil] = useState(null);
+  const [lockoutCountdown, setLockoutCountdown] = useState(0);
+  const [unverifiedEmail, setUnverifiedEmail] = useState(null);
+  const [resending, setResending] = useState(false);
+  const [resendCooldownEnd, setResendCooldownEnd] = useState(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [verifiedSuccess, setVerifiedSuccess] = useState(false);
 
- // Show notification when redirected here due to session expiry
- useEffect(() => {
- if (sessionStorage.getItem("lc_session_expired")) {
- sessionStorage.removeItem("lc_session_expired");
- showNotification("Your session has expired. Please sign in again.", "info", 5000);
- }
- }, []);
+  // Show notification when redirected here due to session expiry
+  useEffect(() => {
+    if (sessionStorage.getItem("lc_session_expired")) {
+      sessionStorage.removeItem("lc_session_expired");
+      showNotification("Your session has expired. Please sign in again.", "info", 5000);
+    }
+  }, []);
 
- // Load remembered email on mount
- useEffect(() => {
- const savedEmail = localStorage.getItem("lilycrest_remember_email");
- if (savedEmail) {
- setFormData((prev) => ({ ...prev, email: savedEmail }));
- setRememberMe(true);
- setFieldValid((prev) => ({ ...prev, email: true }));
- setTouched((prev) => ({ ...prev, email: true }));
- }
+  // Load remembered or registered/verified email on mount
+  useEffect(() => {
+    const locationStateEmail = location.state?.email;
+    const verifiedEmail =
+      sessionStorage.getItem("lilycrest_verified_email") ||
+      localStorage.getItem("lilycrest_verified_email");
+    const pendingEmail =
+      sessionStorage.getItem("lilycrest_pending_email") ||
+      localStorage.getItem("lilycrest_pending_email");
+    const savedEmail = localStorage.getItem("lilycrest_remember_email");
 
- // Show success banner if redirected from email verification
- const params = new URLSearchParams(window.location.search);
- if (params.get("verified") === "true") {
- setUnverifiedEmail(null);
- setVerifiedSuccess(true);
- // Pre-fill email from registration
- const pendingEmail = localStorage.getItem("lilycrest_pending_email");
- if (pendingEmail) {
- setFormData((prev) => ({ ...prev, email: pendingEmail }));
- setFieldValid((prev) => ({ ...prev, email: true }));
- setTouched((prev) => ({ ...prev, email: true }));
- localStorage.removeItem("lilycrest_pending_email");
- // Auto-focus password field after render
- setTimeout(() => {
- const pw = document.getElementById("password");
- if (pw) pw.focus();
- }, 200);
- }
- window.history.replaceState({}, "", window.location.pathname);
- }
- }, []);
+    // Verified account or pending registration email takes precedence over remembered email
+    const activePrefill = verifiedEmail || locationStateEmail || pendingEmail;
+
+    if (activePrefill) {
+      setFormData((prev) => ({ ...prev, email: activePrefill }));
+      setRememberMe(false);
+      setFieldValid((prev) => ({ ...prev, email: true }));
+      setTouched((prev) => ({ ...prev, email: true }));
+
+      // Clean up temporary storage and history state immediately so refresh (F5) leaves form blank
+      sessionStorage.removeItem("lilycrest_verified_email");
+      localStorage.removeItem("lilycrest_verified_email");
+      sessionStorage.removeItem("lilycrest_pending_email");
+      localStorage.removeItem("lilycrest_pending_email");
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (savedEmail) {
+      setFormData((prev) => ({ ...prev, email: savedEmail }));
+      setRememberMe(true);
+      setFieldValid((prev) => ({ ...prev, email: true }));
+      setTouched((prev) => ({ ...prev, email: true }));
+    }
+
+    // Show success banner if redirected from email verification
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("verified") === "true") {
+      setUnverifiedEmail(null);
+      setVerifiedSuccess(true);
+      sessionStorage.removeItem("lilycrest_verified_email");
+      localStorage.removeItem("lilycrest_verified_email");
+      sessionStorage.removeItem("lilycrest_pending_email");
+      localStorage.removeItem("lilycrest_pending_email");
+      window.history.replaceState({}, document.title, window.location.pathname);
+      setTimeout(() => {
+        const pw = document.getElementById("password");
+        if (pw) pw.focus();
+      }, 200);
+    }
+  }, []);
 
  // ── Lockout countdown timer ────────────────────────────────
  useEffect(() => {
@@ -268,16 +287,22 @@ function SignIn() {
  setGlobalLoading(true);
 
  try {
- const userCredential = await signInWithEmailAndPassword(
- auth,
- formData.email,
- formData.password,
- );
- const firebaseUser = userCredential.user;
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        formData.email,
+        formData.password,
+      );
+      let firebaseUser = userCredential.user;
 
- // Branch admins and owners bypass email verification checks.
- const tokenResult = await firebaseUser.getIdTokenResult();
- const isAdmin = hasAdminClaims(tokenResult);
+      // Reload user profile from Firebase to refresh emailVerified status
+      try {
+        await firebaseUser.reload();
+        firebaseUser = auth.currentUser || firebaseUser;
+      } catch (_) {}
+
+      // Branch admins and owners bypass email verification checks.
+      const tokenResult = await firebaseUser.getIdTokenResult(true);
+      const isAdmin = hasAdminClaims(tokenResult);
 
  if (!firebaseUser.emailVerified && !isAdmin) {
  // Send a fresh verification email before signing out
@@ -308,6 +333,7 @@ function SignIn() {
  } else {
  localStorage.removeItem("lilycrest_remember_email");
  }
+ localStorage.removeItem("lilycrest_pending_email");
 
  try {
  const loginResponse = await login();
@@ -425,6 +451,20 @@ function SignIn() {
  }
  if (error.code === "auth/cancelled-popup-request") {
  setGlobalLoading(false);
+ return;
+ }
+ // Provider conflict: user registered with email/password, attempted Google sign-in.
+ // Do NOT delete — the existing account belongs to this user.
+ if (
+ error.code === "auth/account-exists-with-different-credential" ||
+ error.code === "auth/email-already-in-use"
+ ) {
+ try { await auth.signOut(); } catch (_) { /* ignore */ }
+ showNotification(
+ "This email is already registered with a password. Please sign in with your email and password instead.",
+ "warning",
+ 6000,
+ );
  return;
  }
  if (auth.currentUser) {

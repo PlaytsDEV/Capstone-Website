@@ -88,6 +88,7 @@ export const cancelReservationByUser = async (req, res, next) => {
     }
 
     const now = new Date();
+    const previousStatus = reservation.status;
     const visitHistoryUpdate = [];
     if (reservation.visitDate) {
       visitHistoryUpdate.push(...(reservation.visitHistory || []), {
@@ -116,7 +117,7 @@ export const cancelReservationByUser = async (req, res, next) => {
     await updated.populate("roomId", "name branch type");
 
     try {
-      await updateOccupancyOnReservationChange(updated, { status: reservation.status });
+      await updateOccupancyOnReservationChange(updated, { status: previousStatus });
     } catch (occupancyErr) {
       logger.warn({ err: occupancyErr, reservationId }, "Cancel: occupancy update failed (non-fatal)");
     }
@@ -124,7 +125,7 @@ export const cancelReservationByUser = async (req, res, next) => {
     try {
       await syncReservationUserLifecycle({
         status: "cancelled",
-        previousStatus: reservation.status,
+        previousStatus,
         userId: dbUser._id,
         roomId: reservation.roomId,
         reservationId: reservation._id,

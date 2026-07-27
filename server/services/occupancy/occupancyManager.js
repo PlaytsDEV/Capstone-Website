@@ -8,8 +8,7 @@
  */
 
 import mongoose from "mongoose";
-import Room from "../../models/Room.js";
-import Reservation from "../../models/Reservation.js";
+import { Room, Reservation } from "../../models/index.js";
 import logger from "../../middleware/logger.js";
 import { emitRoomUpdate } from "../../utils/socket.js";
 import {
@@ -398,8 +397,19 @@ export const recalculateRoomOccupancy = async (roomId) => {
 
     room.currentOccupancy = activeReservations.length;
 
+    const now = new Date();
     room.beds.forEach((bed) => {
       if (bed.status === "maintenance") return;
+
+      // Reset expired or dangling locks so they don't stay locked forever
+      if (
+        bed.status === "locked" &&
+        (!bed.lockExpiresAt || bed.lockExpiresAt < now)
+      ) {
+        bed.status = "available";
+        bed.lockedBy = null;
+        bed.lockExpiresAt = null;
+      }
 
       const occupier = activeReservations.find(
         (res) => res.selectedBed?.id === bed.id,
@@ -417,6 +427,8 @@ export const recalculateRoomOccupancy = async (roomId) => {
         };
       } else {
         bed.status = "available";
+        bed.lockedBy = null;
+        bed.lockExpiresAt = null;
         bed.occupiedBy = {
           userId: null,
           reservationId: null,
@@ -520,10 +532,112 @@ export const getBranchOccupancyStats = async (
   }
 };
 
+/**
+ * Release all bed slots that reference one or more deleted users or reservations.
+ *
+ * Call this BEFORE hard-deleting a User or Reservation so room beds referencing
+ * those IDs are reset to "available" rather than left in a dangling locked/reserved
+ * state with a dead ObjectId reference.
+ *
+ * @param {string[]} userIds        - MongoDB ObjectId strings of deleted users
+ * @param {string[]} reservationIds - MongoDB ObjectId strings of deleted reservations
+ * @returns {Promise<{roomsUpdated: number, bedsReleased: number}>}
+ */
+export const releaseOrphanedBeds = async (userIds = [], reservationIds = []) => {
+  if (!userIds.length && !reservationIds.length) return { roomsUpdated: 0, bedsReleased: 0 };
+
+  const userObjectIds = userIds
+    .map((id) => {
+      try { return new mongoose.Types.ObjectId(String(id)); } catch { return null; }
+    })
+    .filter(Boolean);
+
+  const reservationObjectIds = reservationIds
+    .map((id) => {
+      try { return new mongoose.Types.ObjectId(String(id)); } catch { return null; }
+    })
+    .filter(Boolean);
+
+  // Build a filter to find rooms that have any bed referencing these ids
+  const orClauses = [];
+  if (userObjectIds.length) {
+    orClauses.push({ "beds.lockedBy": { $in: userObjectIds } });
+    orClauses.push({ "beds.occupiedBy.userId": { $in: userObjectIds } });
+  }
+  if (reservationObjectIds.length) {
+    orClauses.push({ "beds.occupiedBy.reservationId": { $in: reservationObjectIds } });
+  }
+
+  let rooms = [];
+  try {
+    const query = Room?.find?.({ $or: orClauses });
+    if (query) {
+      rooms = (typeof query.exec === "function" ? await query.exec() : await query) || [];
+    }
+  } catch (findErr) {
+    logger.warn({ err: findErr }, "releaseOrphanedBeds room query error");
+  }
+  let roomsUpdated = 0;
+  let bedsReleased = 0;
+
+  for (const room of rooms) {
+    let changed = false;
+
+    for (const bed of room.beds) {
+      const isLockedByDeleted =
+        bed.lockedBy &&
+        userObjectIds.some((id) => String(id) === String(bed.lockedBy));
+
+      const isOccupiedByDeletedUser =
+        bed.occupiedBy?.userId &&
+        userObjectIds.some((id) => String(id) === String(bed.occupiedBy.userId));
+
+      const isOccupiedByDeletedReservation =
+        bed.occupiedBy?.reservationId &&
+        reservationObjectIds.some(
+          (id) => String(id) === String(bed.occupiedBy.reservationId),
+        );
+
+      if (
+        (bed.status === "locked" && isLockedByDeleted) ||
+        (bed.status === "reserved" && (isOccupiedByDeletedUser || isOccupiedByDeletedReservation)) ||
+        (bed.status === "occupied" && (isOccupiedByDeletedUser || isOccupiedByDeletedReservation))
+      ) {
+        bed.status = "available";
+        bed.lockedBy = null;
+        bed.lockExpiresAt = null;
+        bed.occupiedBy = { userId: null, reservationId: null, occupiedSince: null };
+        bedsReleased++;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      room.updateAvailability();
+      await room.save();
+      roomsUpdated++;
+
+      emitRoomUpdate(room._id, {
+        currentOccupancy: room.currentOccupancy,
+        available: room.available,
+        capacity: room.capacity,
+      });
+    }
+  }
+
+  logger.info(
+    { userIds, reservationIds, roomsUpdated, bedsReleased },
+    "releaseOrphanedBeds: cleaned up orphaned bed references",
+  );
+
+  return { roomsUpdated, bedsReleased };
+};
+
 export default {
   deriveRoomOccupancyState,
   updateOccupancyOnReservationChange,
   recalculateRoomOccupancy,
   getRoomOccupancyStatus,
   getBranchOccupancyStats,
+  releaseOrphanedBeds,
 };

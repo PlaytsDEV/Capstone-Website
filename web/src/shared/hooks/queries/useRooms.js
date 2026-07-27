@@ -3,12 +3,15 @@ import { roomApi } from "../../api/apiClient";
 import { queryKeys } from "../../lib/queryKeys";
 
 /** Fetch all rooms with optional filters */
-export function useRooms(filters) {
+export function useRooms(filters, options = {}) {
+  const { pollInterval = false, ...queryOptions } = options;
   return useQuery({
     queryKey: queryKeys.rooms.all(filters),
     queryFn: () => roomApi.getAll(filters),
     placeholderData: keepPreviousData,   // keep stale data visible during refetch
-    refetchOnWindowFocus: false,          // prevent tab-switch refetches
+    refetchOnWindowFocus: true,          // re-sync when user tabs back
+    refetchInterval: pollInterval,
+    ...queryOptions,
   });
 }
 

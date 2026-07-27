@@ -34,6 +34,7 @@ import {
   reorderBeds,
   deleteBed,
   updateBedStatus,
+  repairRoomOccupancy,
 } from "../controllers/roomsController.js";
 
 const router = express.Router();
@@ -180,6 +181,24 @@ router.patch(
   requirePermission("manageRooms"),
   filterByBranch,
   updateBedStatus,
+);
+
+/**
+ * POST /api/rooms/:roomId/repair-occupancy
+ *
+ * Force-recalculate a room's currentOccupancy counter and bed statuses
+ * from ground-truth active reservations. Resolves drift caused by
+ * reservations deleted outside the normal lifecycle state machine.
+ *
+ * Access: Admin only (manageRooms permission)
+ */
+router.post(
+  "/:roomId/repair-occupancy",
+  verifyToken,
+  verifyAdmin,
+  requirePermission("manageRooms"),
+  filterByBranch,
+  repairRoomOccupancy,
 );
 
 export default router;

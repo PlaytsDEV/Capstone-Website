@@ -14,6 +14,7 @@ const sendSuccess = jest.fn();
 const logModification = jest.fn();
 const logError = jest.fn();
 const deriveRoomOccupancyState = jest.fn();
+const recalculateRoomOccupancy = jest.fn();
 const getBusinessSettings = jest.fn();
 const getBranchSettings = jest.fn(() => ({}));
 
@@ -50,6 +51,7 @@ await jest.unstable_mockModule("../utils/businessSettings.js", () => ({
 }));
 await jest.unstable_mockModule("../utils/occupancyManager.js", () => ({
   deriveRoomOccupancyState,
+  recalculateRoomOccupancy,
 }));
 await jest.unstable_mockModule("../middleware/errorHandler.js", () => ({
   sendSuccess,

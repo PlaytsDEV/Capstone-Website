@@ -18,7 +18,11 @@ import {
   getBusinessSettings,
   getBranchSettings,
 } from "../utils/businessSettings.js";
-import { deriveRoomOccupancyState } from "../utils/occupancyManager.js";
+import { emitRoomUpdate } from "../utils/socket.js";
+import {
+  deriveRoomOccupancyState,
+  recalculateRoomOccupancy,
+} from "../utils/occupancyManager.js";
 import { sendSuccess, AppError } from "../middleware/errorHandler.js";
 import { OPEN_MAINTENANCE_STATUSES } from "../config/maintenance.js";
 import {
@@ -278,14 +282,25 @@ const syncRealtimeBedStatuses = async (rooms) => {
       .filter(Boolean)
       .sort((a, b) => new Date(a) - new Date(b));
 
+    // Ground-truth occupancy: count beds that are occupied, reserved, or have a tenant
+    // assigned after both the matched AND unmatched reservation loops have run.
+    // NOTE: do NOT use roomReservations.length here — that inflates the counter when
+    // reservations exist without a confirmed bed assignment (e.g. early-stage pending
+    // reservations), which causes the card to show "Full" while beds are still free.
     const occupiedBedsCount = updatedBeds.filter(
-      (b) => b.status === "occupied" || b.status === "reserved" || Boolean(b.occupiedBy?.userId)
+      (b) =>
+        b.status === "occupied" ||
+        b.status === "reserved" ||
+        Boolean(b.occupiedBy?.userId),
     ).length;
 
+    // Use the higher of the stored counter and the bed-level count, but never
+    // blindly adopt roomReservations.length which over-counts unassigned holds.
     const liveOccupancy = Math.max(
-      Number(room.currentOccupancy || 0),
-      roomReservations.length,
-      occupiedBedsCount
+      occupiedBedsCount,
+      // Only honour currentOccupancy if it doesn't exceed actual capacity —
+      // this prevents stale drift from perpetuating "Full" when beds are free.
+      Math.min(Number(room.currentOccupancy || 0), room.capacity || occupiedBedsCount),
     );
 
     if (room.currentOccupancy !== liveOccupancy) {
@@ -1290,6 +1305,12 @@ export const updateBedStatus = async (req, res, next) => {
       `Bed ${bedId} -> ${requestedStatus}`,
     );
 
+    emitRoomUpdate(room._id, {
+      currentOccupancy: room.currentOccupancy,
+      available: room.available,
+      capacity: room.capacity,
+    });
+
     sendSuccess(res, { message: `Bed ${bedId} set to ${requestedStatus}`, room });
   } catch (error) {
     next(error);
@@ -1330,6 +1351,12 @@ export const addBed = async (req, res, next) => {
       room.toObject(),
       `Added bed ${bed.id}`,
     );
+
+    emitRoomUpdate(room._id, {
+      currentOccupancy: room.currentOccupancy,
+      available: room.available,
+      capacity: room.capacity,
+    });
 
     sendSuccess(res, { message: "Bed added successfully", room, bed }, 201);
   } catch (error) {
@@ -1379,6 +1406,12 @@ export const updateBed = async (req, res, next) => {
       `Updated bed ${bedId}`,
     );
 
+    emitRoomUpdate(room._id, {
+      currentOccupancy: room.currentOccupancy,
+      available: room.available,
+      capacity: room.capacity,
+    });
+
     sendSuccess(res, { message: "Bed updated successfully", room });
   } catch (error) {
     next(error);
@@ -1402,6 +1435,12 @@ export const reorderBeds = async (req, res, next) => {
       room.toObject(),
       "Reordered beds",
     );
+
+    emitRoomUpdate(room._id, {
+      currentOccupancy: room.currentOccupancy,
+      available: room.available,
+      capacity: room.capacity,
+    });
 
     sendSuccess(res, { message: "Beds reordered successfully", room });
   } catch (error) {
@@ -1454,8 +1493,72 @@ export const deleteBed = async (req, res, next) => {
       `Removed bed ${bedId}`,
     );
 
+    emitRoomUpdate(room._id, {
+      currentOccupancy: room.currentOccupancy,
+      available: room.available,
+      capacity: room.capacity,
+    });
+
     sendSuccess(res, { message: "Bed removed successfully", room });
   } catch (error) {
     next(error);
   }
 };
+
+/**
+ * POST /api/rooms/:roomId/repair-occupancy
+ *
+ * Admin-only: Force-recalculates a room's `currentOccupancy` counter and bed
+ * statuses from the ground truth of active reservations. Fixes drift caused
+ * by reservations that were deleted or cancelled without going through the
+ * normal lifecycle state machine.
+ *
+ * Returns the corrected room along with a `corrected` diff { from, to }.
+ */
+export const repairRoomOccupancy = async (req, res, next) => {
+  try {
+    const { roomId } = req.params;
+
+    const roomBefore = await Room.findById(roomId).lean();
+    if (!roomBefore) {
+      throw new AppError("Room not found", 404, "ROOM_NOT_FOUND");
+    }
+
+    const occupancyBefore = roomBefore.currentOccupancy;
+    const availableBefore = roomBefore.available;
+
+    const repairedRoom = await recalculateRoomOccupancy(roomId);
+
+    await auditLogger.logModification(
+      req,
+      "room",
+      roomId,
+      { currentOccupancy: occupancyBefore, available: availableBefore },
+      { currentOccupancy: repairedRoom.currentOccupancy, available: repairedRoom.available },
+      `Admin repaired occupancy counter: ${occupancyBefore} → ${repairedRoom.currentOccupancy}`,
+    );
+
+    if (repairedRoom) {
+      emitRoomUpdate(repairedRoom._id, {
+        currentOccupancy: repairedRoom.currentOccupancy,
+        available: repairedRoom.available,
+        capacity: repairedRoom.capacity,
+      });
+    }
+
+    sendSuccess(res, {
+      message: `Room occupancy repaired successfully.`,
+      room: repairedRoom,
+      corrected: {
+        from: { currentOccupancy: occupancyBefore, available: availableBefore },
+        to: {
+          currentOccupancy: repairedRoom.currentOccupancy,
+          available: repairedRoom.available,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

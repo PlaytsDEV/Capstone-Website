@@ -370,11 +370,13 @@ function SignUp() {
             8000,
           );
         }
-        // Save email so sign-in page can pre-fill it after verification
-        localStorage.setItem("lilycrest_pending_email", formData.email);
+        // Save email temporarily in sessionStorage so sign-in page can pre-fill it once
+        sessionStorage.setItem("lilycrest_pending_email", formData.email);
+        localStorage.removeItem("lilycrest_pending_email");
         await auth.signOut();
         appNavigate("/signin", {
           replace: true,
+          state: { email: formData.email },
           flash: {
             type: "success",
             message:

@@ -144,7 +144,18 @@ export default function useSocketClient() {
         qc.invalidateQueries({ queryKey: ["dashboard"] });
       });
 
-      socket.on("room:updated", () => {
+      socket.on("room:updated", (data) => {
+        const { roomId, ...patch } = data || {};
+        if (roomId && Object.keys(patch).length > 0) {
+          qc.setQueriesData({ queryKey: ["rooms"] }, (old) => {
+            if (!Array.isArray(old)) return old;
+            return old.map((r) =>
+              String(r._id) === String(roomId) || String(r.id) === String(roomId)
+                ? { ...r, ...patch }
+                : r,
+            );
+          });
+        }
         qc.invalidateQueries({ queryKey: ["rooms"] });
       });
 

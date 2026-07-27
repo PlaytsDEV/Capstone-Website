@@ -278,6 +278,7 @@ export default function useReservationFlow() {
   const [scheduleRejectionReason, setScheduleRejectionReason] = useState("");
   const [applicationSubmitted, setApplicationSubmitted] = useState(false);
   const [editingApplication, setEditingApplication] = useState(false);
+  const [isSubmittingApplication, setIsSubmittingApplication] = useState(false);
   const [paymentApproved, setPaymentApproved] = useState(false);
   const [reservationId, setReservationId] = useState(null);
   const [_devBypassValidation, setDevBypassValidation] = useState(false);
@@ -2488,96 +2489,96 @@ export default function useReservationFlow() {
             return;
           }
         }
-        const selfiePhotoUrl = await uploadIfFile(selfiePhoto);
-        const validIDFrontUrl = await uploadIfFile(validIDFront);
-        const validIDBackUrl = await uploadIfFile(validIDBack);
-        const nbiClearanceUrl = await uploadIfFile(nbiClearance);
-        const companyIDUrl = await uploadIfFile(companyID);
-        const applicationPayload = {
-          firstName,
-          lastName,
-          middleName,
-          nickname,
-          mobileNumber,
-          birthday,
-          gender,
-          maritalStatus,
-          nationality,
-          educationLevel,
-          addressUnitHouseNo,
-          addressStreet,
-          addressRegion,
-          addressBarangay,
-          addressCity,
-          addressProvince,
-          emergencyContactName,
-          emergencyRelationship,
-          emergencyContactNumber,
-          healthConcerns,
-          employerSchool,
-          employerAddress,
-          employerContact,
-          startDate,
-          occupation,
-          previousEmployment,
-          roomType,
-          preferredRoomNumber,
-          referralSource,
-          referrerName,
-          estimatedMoveInTime,
-          workSchedule,
-          workScheduleOther,
-          targetMoveInDate,
-          leaseDuration,
-          agreedToPrivacy,
-          agreedToCertification,
-          selfiePhotoUrl,
-          validIDFrontUrl,
-          validIDBackUrl,
-          nbiClearanceUrl,
-          nbiReason,
-          personalNotes,
-          companyIDUrl,
-          companyIDReason,
-          validIDType,
-          idType: validIDType,
-        };
-        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
-        if (applicationDraftSaveClearTimerRef.current) {
-          clearTimeout(applicationDraftSaveClearTimerRef.current);
-        }
-        if (!applicationSubmitted) {
-          // First-time submission: dedicated endpoint with parallel OCR + optimistic lock
+        setIsSubmittingApplication(true);
+        try {
+          const selfiePhotoUrl = await uploadIfFile(selfiePhoto);
+          const validIDFrontUrl = await uploadIfFile(validIDFront);
+          const validIDBackUrl = await uploadIfFile(validIDBack);
+          const nbiClearanceUrl = await uploadIfFile(nbiClearance);
+          const companyIDUrl = await uploadIfFile(companyID);
+          const applicationPayload = {
+            firstName,
+            lastName,
+            middleName,
+            nickname,
+            mobileNumber,
+            birthday,
+            gender,
+            maritalStatus,
+            nationality,
+            educationLevel,
+            addressUnitHouseNo,
+            addressStreet,
+            addressRegion,
+            addressBarangay,
+            addressCity,
+            addressProvince,
+            emergencyContactName,
+            emergencyRelationship,
+            emergencyContactNumber,
+            healthConcerns,
+            employerSchool,
+            employerAddress,
+            employerContact,
+            startDate,
+            occupation,
+            previousEmployment,
+            roomType,
+            preferredRoomNumber,
+            referralSource,
+            referrerName,
+            estimatedMoveInTime,
+            workSchedule,
+            workScheduleOther,
+            targetMoveInDate,
+            leaseDuration,
+            agreedToPrivacy,
+            agreedToCertification,
+            selfiePhotoUrl,
+            validIDFrontUrl,
+            validIDBackUrl,
+            nbiClearanceUrl,
+            nbiReason,
+            personalNotes,
+            companyIDUrl,
+            companyIDReason,
+            validIDType,
+            idType: validIDType,
+          };
+          if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+          if (applicationDraftSaveClearTimerRef.current) {
+            clearTimeout(applicationDraftSaveClearTimerRef.current);
+          }
+          // First-time and re-submission both use the same dedicated endpoint
           await reservationApi.submitApplication(reservationId, applicationPayload);
-        } else {
-          // Re-submission (e.g. needs_revision): same dedicated endpoint handles idempotency
-          await reservationApi.submitApplication(reservationId, applicationPayload);
-        }
-        const draftKey = getApplicationDraftStorageKey(user?.firebaseUid, reservationId);
-        if (draftKey && typeof window !== "undefined" && window.localStorage) {
-          window.localStorage.removeItem(draftKey);
-        }
-        lastSavedApplicationDraftRef.current = "";
-        setHasUnsavedApplicationChanges(false);
-        setSaveStatus("");
-        setDraftRecoveryMessage("");
-        setApplicationSubmitted(true);
-        setEditingApplication(false);
-        await queryClient.invalidateQueries({ queryKey: ["reservations"] });
-        setSuccessOverlay({
-          show: true,
-          title: "Application Submitted!",
-          subtitle:
-            "Your application is pending review. Payment will be available once your application and documents are approved.",
-        });
-        appNavigate("/applicant/profile", {
-          flash: {
-            type: "success",
+          const draftKey = getApplicationDraftStorageKey(user?.firebaseUid, reservationId);
+          if (draftKey && typeof window !== "undefined" && window.localStorage) {
+            window.localStorage.removeItem(draftKey);
+          }
+          lastSavedApplicationDraftRef.current = "";
+          setHasUnsavedApplicationChanges(false);
+          setSaveStatus("");
+          setDraftRecoveryMessage("");
+          setApplicationSubmitted(true);
+          setEditingApplication(false);
+          await queryClient.invalidateQueries({ queryKey: ["reservations"] });
+          setSuccessOverlay({
+            show: true,
             title: "Application Submitted!",
-            message:
+            subtitle:
               "Your application is pending review. Payment will be available once your application and documents are approved.",
-          },
-        });
+          });
+          appNavigate("/applicant/profile", {
+            flash: {
+              type: "success",
+              title: "Application Submitted!",
+              message:
+                "Your application is pending review. Payment will be available once your application and documents are approved.",
+            },
+          });
+        } finally {
+          setIsSubmittingApplication(false);
+        }
       } else if (currentStage === 4) {
         // Stage 4 only uses PayMongo online checkout.
         // If user got here via the "Confirm" button, show overlay and go to profile.
@@ -2843,5 +2844,8 @@ export default function useReservationFlow() {
 
     // Query client (for external cache invalidation)
     queryClient,
+
+    // Submit loading state (stage 3 upload + API)
+    isSubmittingApplication,
   };
 }

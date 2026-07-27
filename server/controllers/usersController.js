@@ -27,6 +27,7 @@ import {
   reservationStatusesForQuery,
 } from "../utils/lifecycleNaming.js";
 import { DELETED_ACCOUNT_LABEL } from "../utils/userReference.js";
+import { releaseOrphanedBeds } from "../services/occupancy/occupancyManager.js";
 
 const VALID_BRANCHES = ROOM_BRANCHES;
 const VALID_TENANT_STATUSES = [
@@ -1038,10 +1039,25 @@ export const deleteUser = async (req, res, next) => {
     }
 
     if (!hasSignificantHistory && safeguards.reservations > 0) {
+      // Collect reservation IDs before deleting, so we can release their beds too
+      const reservationsToDelete = await Reservation.find({
+        userId: user._id,
+        isArchived: { $ne: true },
+      }).select("_id").lean();
+
+      const reservationIdsToDelete = reservationsToDelete.map((r) => r._id);
+
       await Reservation.deleteMany({
         userId: user._id,
         isArchived: { $ne: true },
       });
+
+      // Release any beds held by those reservations
+      if (reservationIdsToDelete.length > 0) {
+        await releaseOrphanedBeds([], reservationIdsToDelete).catch((err) =>
+          logger.warn({ err, userId }, "deleteUser: bed release for reservations failed (non-fatal)")
+        );
+      }
     }
 
     // Delete Firebase account
@@ -1062,6 +1078,11 @@ export const deleteUser = async (req, res, next) => {
         status: "draft",
       });
     }
+
+    // Release any beds this user is locking/occupying BEFORE deleting the user doc
+    await releaseOrphanedBeds([user._id], []).catch((err) =>
+      logger.warn({ err, userId }, "deleteUser: bed release for user failed (non-fatal)")
+    );
 
     // Hard delete from MongoDB
     await User.findByIdAndDelete(userId);
