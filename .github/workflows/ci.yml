@@ -39,6 +39,14 @@ jobs:
       - name: Lint check
         run: npx eslint . --ext .js || true
 
+      # Render runs on Linux, so exercise the real bundled Chromium runtime here.
+      - name: Contract PDF renderer tests
+        run: >-
+          npm test -- --runInBand
+          services/contractChromiumService.test.js
+          services/contractHtmlPdfService.test.js
+          services/contractPdfService.test.js
+
   # ============================
   # JOB 2: Check the Frontend
   # ============================
