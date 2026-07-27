@@ -365,6 +365,10 @@ describe("prepared Contract PDF overlay", () => {
   test("Upper and Lower bed labels are normalized for the legal PDF", () => {
     expect(normalizeContractBedDisplay("upper")).toBe("Upper");
     expect(normalizeContractBedDisplay("LOWER")).toBe("Lower");
+    expect(normalizeContractBedDisplay("GD-105-A-U")).toBe("Upper");
+    expect(normalizeContractBedDisplay("GD-105-A-L")).toBe("Lower");
+    expect(normalizeContractBedDisplay("  GD-105-A-U  ")).toBe("Upper");
+    expect(normalizeContractBedDisplay("Bed 1")).toBe("Bed 1");
   });
 
   test("production ignores the development debug overlay flag", async () => {

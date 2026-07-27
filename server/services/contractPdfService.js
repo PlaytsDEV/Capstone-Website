@@ -327,10 +327,12 @@ export const assertContractFieldsAvoidLegalText = (coordinates) => {
   return true;
 };
 
-export const normalizeContractBedDisplay = (value) =>
-  String(value || "")
-    .replace(/^upper$/i, "Upper")
-    .replace(/^lower$/i, "Lower");
+export const normalizeContractBedDisplay = (value) => {
+  const label = String(value || "").trim();
+  if (/^upper$/i.test(label) || /(?:^|[-_\s])u$/i.test(label)) return "Upper";
+  if (/^lower$/i.test(label) || /(?:^|[-_\s])l$/i.test(label)) return "Lower";
+  return label;
+};
 
 export const inspectMasterPdf = async (template, coordinates) => {
   let bytes;
