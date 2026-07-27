@@ -18,6 +18,7 @@ import {
   getContractErrorMessage,
   getContractStage,
 } from "../../utils/contractUi.mjs";
+import { resolveContractPaymentSummary } from "../../utils/contractPaymentSummary.mjs";
 
 const date = (value) => value ? new Date(value).toLocaleDateString("en-PH", {
   year: "numeric", month: "short", day: "numeric",
@@ -314,7 +315,7 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
   const currentNotarized = [...(contract?.notarizedDocuments || [])]
     .filter((item) => !item.superseded).sort((a, b) => b.version - a.version)[0];
   const blockers = getContractBlockers(validation);
-  const paymentSummary = contract?.initialPaymentSummary;
+  const paymentSummary = resolveContractPaymentSummary(contract);
   const pricingComplete = paymentSummary?.valid === true &&
     ["totalInitialCharges", "reservationFeeCreditApplied", "remainingInitialAmountDue"]
       .every((field) => Number.isFinite(Number(paymentSummary?.[field])));
@@ -525,7 +526,7 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
           <section className="contract-pricing-card"><h3>Pricing Review</h3>
             <span className={`contract-pricing-status ${pricingValid ? "contract-pricing-status--valid" : "contract-pricing-status--warning"}`}>{pricingValid ? "Pricing Valid" : "Pricing Needs Review"}</span>
             <h4>Monthly Rate</h4><dl><dt>Regular Rate</dt><dd>{money(contract.regularMonthlyRate)}</dd><dt>Discount</dt><dd>{contract.discountPercentage == null ? "—" : `${contract.discountPercentage}%`}</dd><dt>Approved Monthly Rate</dt><dd><strong>{money(contract.approvedMonthlyRate)}</strong></dd></dl>
-            <h4>Initial Payment</h4><dl><dt>Advance Rent</dt><dd>{money(contract.advanceRentAmount)}</dd><dt>Security Deposit</dt><dd>{money(contract.securityDepositAmount)}</dd><dt>Total Initial Charges</dt><dd><strong>{money(contract.initialPaymentSummary?.totalInitialCharges)}</strong></dd><dt title="The verified reservation fee is applied as partial payment toward the advance rent and security deposit.">Reservation Fee Credit ⓘ</dt><dd>-{money(contract.initialPaymentSummary?.reservationFeeCreditApplied)}</dd><dt>Remaining Initial Amount Due</dt><dd><strong>{money(contract.initialPaymentSummary?.remainingInitialAmountDue)}</strong></dd></dl>
+            <h4>Initial Payment</h4><dl><dt>Advance Rent</dt><dd>{money(contract.advanceRentAmount)}</dd><dt>Security Deposit</dt><dd>{money(contract.securityDepositAmount)}</dd><dt>Total Initial Charges</dt><dd><strong>{money(paymentSummary?.totalInitialCharges)}</strong></dd><dt title="The verified reservation fee is applied as partial payment toward the advance rent and security deposit.">Reservation Fee Credit ⓘ</dt><dd>-{money(paymentSummary?.reservationFeeCreditApplied)}</dd><dt>Remaining Initial Amount Due</dt><dd><strong>{money(paymentSummary?.remainingInitialAmountDue)}</strong></dd></dl>
             <details className="contract-pricing-sources"><summary>View Pricing Sources</summary>
               <div className="contract-source-list"><span>Regular rate and discount: Official template configuration</span><span>Approved monthly rate: Approved Reservation pricing</span><span>Advance and deposit: Approved Reservation pricing</span><span>Reservation fee payment: Verified payment record</span><span>Credit rule: Approved Contract pricing rule</span></div>
             </details>
