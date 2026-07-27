@@ -2010,8 +2010,16 @@ describe("reservationsController.updateReservation access hardening", () => {
     await updateReservation(req, res, next);
 
     expect(res.statusCode).not.toBe(422);
+    expect(res.statusCode).not.toBe(500);
     expect(res.body?.code).not.toBe("DOCUMENT_PRECHECK_BLOCKS_APPROVAL");
     expect(next).not.toHaveBeenCalled();
+    // Regression guard: this transition computes paymentExpiresAt via dayjs().
+    // A missing `dayjs` import throws a ReferenceError that the mocked
+    // handleReservationError swallows silently (statusCode stays default),
+    // so we assert the mutation and save actually completed.
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(reservation.status).toBe("approved_for_payment");
+    expect(reservation.paymentExpiresAt).toBeInstanceOf(Date);
   });
 
   test.each([null, "schedule_approved"])(

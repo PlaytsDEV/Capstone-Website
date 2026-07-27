@@ -7,6 +7,7 @@
  * visit management actions, and slot releasing.
  */
 
+import dayjs from "dayjs";
 import {
   Reservation,
   Room,
