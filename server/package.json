@@ -13,6 +13,7 @@
     "billing:backfill-anniversary-rent:write": "node scripts/backfill_anniversary_rent_bills.mjs --write",
     "reservation:backfill-codes": "node scripts/backfill_reservation_codes.mjs",
     "reservation:backfill-codes:write": "node scripts/backfill_reservation_codes.mjs --write",
+    "reservation:audit-payment-integrity": "node scripts/audit_reservation_payment_integrity.mjs",
     "utility:repair-bill-cycles": "node scripts/repair_utility_only_bill_cycles.mjs",
     "utility:repair-bill-cycles:write": "node scripts/repair_utility_only_bill_cycles.mjs --write",
     "utility:diagnose": "node scripts/diagnose_utility_sync.mjs",

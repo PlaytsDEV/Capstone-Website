@@ -97,6 +97,36 @@ export const updateReservation = async (req, res, next) => {
     const { reservationId } = req.params;
     if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
 
+    const dedicatedSettlementFields = [
+      "paymentStatus",
+      "paymentDate",
+      "paymongoPaymentId",
+      "paymongoSessionId",
+      "paymentAmount",
+      "paidAmount",
+      "paymentVerifiedAt",
+      "paymentVerifiedBy",
+      "paymentApprovedAt",
+      "paymentApprovedBy",
+      "proofOfPaymentUrl",
+    ];
+    const attemptedSettlementFields = dedicatedSettlementFields.filter(
+      (field) => req.body[field] !== undefined,
+    );
+    if (
+      attemptedSettlementFields.length > 0 ||
+      hasReservationStatus(req.body.status, "reserved")
+    ) {
+      return res.status(422).json({
+        code: "PAYMENT_SETTLEMENT_REQUIRES_DEDICATED_ENDPOINT",
+        message:
+          "Reservation payment confirmation must use the dedicated payment settlement workflow.",
+        error:
+          "Reservation payment confirmation must use the dedicated payment settlement workflow.",
+        details: { fields: attemptedSettlementFields },
+      });
+    }
+
     const existingReservation = await Reservation.findById(
       reservationId,
     ).populate("roomId", "branch");
@@ -200,18 +230,6 @@ export const updateReservation = async (req, res, next) => {
 
       if (req.body.visitDate) {
         req.body.visitDate = validation.date;
-      }
-    }
-
-    if (
-      req.body.status === "reserved" &&
-      !hasReservationStatus(existingReservation.status, "reserved")
-    ) {
-      req.body.paymentStatus = "paid";
-      req.body.approvedDate = new Date();
-      req.body.reservedAt = new Date();
-      if (!existingReservation.paymentDate) {
-        req.body.paymentDate = new Date();
       }
     }
 
@@ -357,9 +375,6 @@ export const updateReservation = async (req, res, next) => {
 
     const ADMIN_ALLOWED = [
       "status",
-      "paymentStatus",
-      "paymentDate",
-      "proofOfPaymentUrl",
       "notes",
       "moveInDate",
       "moveOutDate",
@@ -371,6 +386,7 @@ export const updateReservation = async (req, res, next) => {
       "applicationReviewedAt",
       "applicationReviewedBy",
       "approvedForPaymentAt",
+      "paymentExpiresAt",
       "documentsApproved",
       "documentRejectionReason",
       "nbiApproved",
@@ -452,7 +468,12 @@ export const updateReservation = async (req, res, next) => {
     for (const key of ADMIN_ALLOWED) {
       if (req.body[key] !== undefined) reservation[key] = req.body[key];
     }
-    const updatedReservation = await reservation.save();
+    // Existing Reservations may contain legacy values on unrelated fields.
+    // Application review must validate the fields changed by this action without
+    // allowing stale, untouched data to turn a valid approval into an HTTP 500.
+    const updatedReservation = await reservation.save({
+      validateModifiedOnly: true,
+    });
 
     if (
       req.body.status === "moveIn" &&
@@ -674,8 +695,15 @@ export const updateReservation = async (req, res, next) => {
     }
   } catch (error) {
     logger.error({ err: error, requestId: req.id }, "Update reservation error");
-    await auditLogger.logError(req, error, "Failed to update reservation");
-    handleReservationError(res, error, "update");
+    try {
+      await auditLogger.logError(req, error, "Failed to update reservation");
+    } catch (auditError) {
+      logger.error(
+        { err: auditError, requestId: req.id },
+        "Failed to record Reservation update error audit",
+      );
+    }
+    return handleReservationError(res, error, "update");
   }
 };
 

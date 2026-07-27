@@ -13,6 +13,9 @@ const updateOccupancyOnReservationChange = jest.fn();
 const paymentApproved = jest.fn();
 const notifyGeneral = jest.fn();
 const settlePaymongoBill = jest.fn();
+const settleReservationDeposit = jest.fn();
+const webhookEventFindOne = jest.fn();
+const webhookEventCreate = jest.fn();
 
 await jest.unstable_mockModule("../config/paymongo.js", () => ({
   verifyWebhookSignature,
@@ -26,6 +29,10 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   },
   Bill: { findById: billFindById, findOne: billFindOne },
   User: { findById: userFindById, find: userFind },
+  PaymongoWebhookEvent: {
+    findOne: webhookEventFindOne,
+    create: webhookEventCreate,
+  },
 }));
 
 await jest.unstable_mockModule("../config/email.js", () => ({
@@ -64,6 +71,13 @@ await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
   normalizeReservationStatus: (status) => status,
   hasReservationStatus: jest.fn((status, ...expected) => expected.includes(status)),
 }));
+await jest.unstable_mockModule(
+  "../services/reservationDepositSettlementService.js",
+  () => ({
+    ReservationDepositSettlementError: class ReservationDepositSettlementError extends Error {},
+    settleReservationDeposit,
+  }),
+);
 
 const {
   handlePaymongoWebhook,
@@ -124,6 +138,33 @@ describe("handlePaymongoWebhook", () => {
     paymentApproved.mockReset();
     notifyGeneral.mockReset();
     settlePaymongoBill.mockReset();
+    settleReservationDeposit.mockReset();
+    webhookEventFindOne.mockReset();
+    webhookEventCreate.mockReset();
+    const webhookRecord = {
+      processingStatus: "received",
+      attemptCount: 0,
+      save: jest.fn().mockResolvedValue(undefined),
+    };
+    webhookEventFindOne.mockResolvedValue(null);
+    webhookEventCreate.mockResolvedValue(webhookRecord);
+    settleReservationDeposit.mockImplementation(async ({ reservationId, externalPaymentId }) => {
+      const query = reservationFindById(reservationId);
+      const reservation = query?.populate ? await query.populate() : await query;
+      if (reservation.paymentStatus === "paid") {
+        return { reservation, idempotent: true, settled: true };
+      }
+      if (!["approved_for_payment", "payment_pending"].includes(reservation.status)) {
+        reservation.paymongoPaymentId = externalPaymentId;
+        await reservation.save();
+        return { reservation, reconciliationRequired: true };
+      }
+      reservation.paymentStatus = "paid";
+      reservation.status = "reserved";
+      reservation.paymongoPaymentId = externalPaymentId;
+      await reservation.save();
+      return { reservation, settled: true };
+    });
     userFind.mockReturnValue({
       select: jest.fn().mockReturnValue({
         lean: jest.fn().mockResolvedValue([]),
@@ -206,7 +247,7 @@ describe("handlePaymongoWebhook", () => {
     expect(reservation.status).toBe("reserved");
     expect(reservation.paymongoPaymentId).toBe("pay_new");
     expect(reservation.save).toHaveBeenCalledTimes(1);
-    expect(updateOccupancyOnReservationChange).toHaveBeenCalledTimes(1);
+    expect(updateOccupancyOnReservationChange).not.toHaveBeenCalled();
   });
 
   test("does not auto-reserve when deposit arrives before application approval", async () => {
@@ -357,7 +398,7 @@ describe("handlePaymongoWebhook", () => {
     expect(sendPaymentReceiptEmail).not.toHaveBeenCalled();
   });
 
-  test("always returns 200 when signature verification fails", async () => {
+  test("rejects an invalid checkout webhook signature", async () => {
     verifyWebhookSignature.mockImplementation(() => {
       throw new Error("invalid signature");
     });
@@ -367,11 +408,14 @@ describe("handlePaymongoWebhook", () => {
 
     await handlePaymongoWebhook(req, res);
 
-    expect(res.statusCode).toBe(200);
-    expect(res.body).toEqual({ received: true });
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toEqual({
+      received: false,
+      code: "INVALID_WEBHOOK_SIGNATURE",
+    });
   });
 
-  test("payment-level webhook also returns 200 when signature verification fails", async () => {
+  test("payment-level webhook also rejects an invalid signature", async () => {
     verifyWebhookSignature.mockImplementation(() => {
       throw new Error("invalid signature");
     });
@@ -381,7 +425,10 @@ describe("handlePaymongoWebhook", () => {
 
     await handlePaymongoSourceWebhook(req, res);
 
-    expect(res.statusCode).toBe(200);
-    expect(res.body).toEqual({ received: true });
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toEqual({
+      received: false,
+      code: "INVALID_WEBHOOK_SIGNATURE",
+    });
   });
 });

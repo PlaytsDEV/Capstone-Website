@@ -150,7 +150,7 @@ export const reservationApi = {
    */
   uploadPaymentProof: (reservationId, data) =>
     withLifecycleNormalization(
-      authFetch(`/reservations/${reservationId}/payment`, {
+      authFetch(`/reservations/${reservationId}/payment-proof`, {
         method: "POST",
         body: JSON.stringify(data),
       }),
@@ -400,4 +400,29 @@ export const reservationApi = {
       method: "PUT",
       body: JSON.stringify(data),
     }),
+
+  listPaymentProofReviews: (status = "") =>
+    authFetch(
+      `/reservations/payment-proofs/review${
+        status ? `?status=${encodeURIComponent(status)}` : ""
+      }`,
+    ),
+
+  submitPaymentProof: (reservationId, data) =>
+    authFetch(`/reservations/${reservationId}/payment-proof`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  approvePaymentProof: (reservationId, paymentId) =>
+    authFetch(
+      `/reservations/${reservationId}/payment-proof/${paymentId}/approve`,
+      { method: "POST", body: JSON.stringify({}) },
+    ),
+
+  rejectPaymentProof: (reservationId, paymentId, data) =>
+    authFetch(
+      `/reservations/${reservationId}/payment-proof/${paymentId}/reject`,
+      { method: "POST", body: JSON.stringify(data) },
+    ),
 };

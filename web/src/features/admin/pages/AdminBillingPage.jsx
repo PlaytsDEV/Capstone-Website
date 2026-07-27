@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Droplets, Zap, Home } from "lucide-react";
+import { CreditCard, Droplets, Zap, Home } from "lucide-react";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import UtilityBillingTab from "../components/billing/UtilityBillingTab";
 import RentBillingTab from "../components/billing/RentBillingTab";
+import ReservationPaymentReviewTab from "../components/billing/ReservationPaymentReviewTab";
 
 const UTILITY_BRANCHES = [
   { value: "gil-puyat", label: "Gil Puyat" },
@@ -13,6 +14,7 @@ const tabs = [
   { id: "electricity", label: "Electricity", icon: Zap },
   { id: "water",       label: "Water",       icon: Droplets },
   { id: "rent",        label: "Rent",        icon: Home },
+  { id: "reservation-payments", label: "Reservation Payments", icon: CreditCard },
 ];
 
 const AdminBillingPage = () => {
@@ -175,6 +177,15 @@ const AdminBillingPage = () => {
           className={activeTab === "rent" ? "block" : "hidden"}
         >
           <RentBillingTab isActive={activeTab === "rent"} />
+        </section>
+
+        <section
+          role="tabpanel"
+          id="billing-panel-reservation-payments"
+          aria-labelledby="billing-tab-reservation-payments"
+          className={activeTab === "reservation-payments" ? "block" : "hidden"}
+        >
+          <ReservationPaymentReviewTab isActive={activeTab === "reservation-payments"} />
         </section>
       </div>
     </div>
