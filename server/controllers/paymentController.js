@@ -11,6 +11,7 @@
  */
 
 import dayjs from "dayjs";
+import mongoose from "mongoose";
 import {
   createCheckoutSession,
   getCheckoutSession,
@@ -37,6 +38,10 @@ import { sendSuccess, AppError } from "../middleware/errorHandler.js";
 import { normalizeReservationStatus } from "../utils/lifecycleNaming.js";
 import { isOwnerRole } from "../config/roles.js";
 import { createReservationCheckout } from "../services/paymongoReservationCheckoutService.js";
+import { getReservationCheckoutBlockers } from "../services/reservationPaymentPolicy.js";
+import {
+  evaluateReservationPaymentReadiness,
+} from "../services/reservationPaymentReadinessService.js";
 
 const FRONTEND_URL =
   process.env.FRONTEND_URL?.split(",")[0]?.trim() || "http://localhost:5173";
@@ -311,6 +316,54 @@ export const createDepositCheckout = async (req, res, next) => {
       frontendUrl: FRONTEND_URL,
     });
     sendSuccess(res, checkout);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getDepositPaymentQuote = async (req, res, next) => {
+  try {
+    const { resId } = req.params;
+    if (!mongoose.isValidObjectId(resId)) {
+      throw new AppError("Invalid Reservation ID.", 400, "INVALID_RESERVATION_ID");
+    }
+    const dbUser = await getDbUser(req.user.uid);
+    if (!dbUser) throw new AppError("User not found", 404, "USER_NOT_FOUND");
+    const reservation = await Reservation.findById(resId).populate(
+      "roomId",
+      "name branch type available isArchived beds",
+    );
+    if (!reservation) {
+      throw new AppError("Reservation not found", 404, "RESERVATION_NOT_FOUND");
+    }
+    if (String(reservation.userId) !== String(dbUser._id)) {
+      throw new AppError(
+        "You can only view payment details for your own Reservation.",
+        403,
+        "FORBIDDEN",
+      );
+    }
+
+    const readiness = await evaluateReservationPaymentReadiness(reservation);
+    const { blockers, quote } = getReservationCheckoutBlockers(reservation);
+    const deadlineExpired = blockers.includes("PAYMENT_DEADLINE_EXPIRED");
+    sendSuccess(res, {
+      ...quote,
+      expiresAt: reservation.paymentExpiresAt,
+      ready: readiness.ready && blockers.length === 0,
+      expired: deadlineExpired,
+      missingFields: [...new Set([...readiness.missingFields, ...blockers])],
+      checkoutState:
+        reservation.paymentStatus === "paid"
+          ? "paid"
+          : deadlineExpired
+            ? "expired"
+            : reservation.paymongoSessionId
+              ? "reusable"
+              : readiness.ready && blockers.length === 0
+                ? "ready"
+                : "incomplete",
+    });
   } catch (error) {
     next(error);
   }

@@ -220,6 +220,11 @@ const reservationSchema = new mongoose.Schema(
     // Write intendedMoveInDate instead. Read via readMoveInDate().
     targetMoveInDate: Date,
     leaseDuration: Number,
+    leaseType: {
+      type: String,
+      enum: ["short_term", "long_term", null],
+      default: null,
+    },
     billingEmail: String,
     roomConfirmed: {
       type: Boolean,
@@ -606,6 +611,28 @@ const reservationSchema = new mongoose.Schema(
     reservationFeeApplicationReference: { type: String, default: null },
     checkoutExpiresAt: { type: Date, default: null },
     reservationHoldExpiresAt: { type: Date, default: null },
+    paymentReconciliationStatus: {
+      type: String,
+      enum: ["not_required", "pending", "processing", "completed", "failed"],
+      default: "not_required",
+      index: true,
+    },
+    occupancySyncStatus: {
+      type: String,
+      enum: ["not_required", "pending", "processing", "completed", "failed"],
+      default: "not_required",
+      index: true,
+    },
+    reconciliationAttempts: { type: Number, default: 0, min: 0 },
+    reconciliationError: { type: String, default: "" },
+    reconciliationStartedAt: { type: Date, default: null },
+    reconciliationCompletedAt: { type: Date, default: null },
+    paymentNotificationStatus: {
+      type: String,
+      enum: ["not_required", "pending", "completed", "failed"],
+      default: "not_required",
+    },
+    paymentNotificationError: { type: String, default: "" },
     // Timestamp of when the internal receipt email was successfully sent.
     // Prevents duplicate receipt emails on repeated webhook deliveries.
     receiptSentAt: {
@@ -645,6 +672,24 @@ const reservationSchema = new mongoose.Schema(
       type: Number,
       default: 2000,
       min: 0,
+    },
+    paymentPricingSnapshot: {
+      monthlyRent: { type: Number, default: null, min: 0 },
+      advanceRent: { type: Number, default: null, min: 0 },
+      securityDeposit: { type: Number, default: null, min: 0 },
+      reservationFeeCredit: { type: Number, default: null, min: 0 },
+      amountDue: { type: Number, default: null, min: 0 },
+      currency: { type: String, default: "PHP", uppercase: true },
+      pricingVersion: { type: Number, default: 1, min: 1 },
+      source: { type: String, default: "reservation_pricing_policy" },
+      capturedAt: { type: Date, default: null },
+      approvedAt: { type: Date, default: null },
+      approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+      quoteHash: { type: String, default: null },
+    },
+    approvedPaymentMethods: {
+      type: [String],
+      default: ["paymongo"],
     },
     reservationCreditConsumedAt: {
       type: Date,

@@ -63,7 +63,7 @@ export async function evaluateReservationMoveInReadiness(reservationOrId) {
   if (!leaseEndDate || Number.isNaN(leaseEndDate.getTime())) blockers.push("LEASE_END_DATE_MISSING");
 
   const pricing = resolveReservationInitialCharges(reservation);
-  if (!(pricing.approvedMonthlyRate > 0)) blockers.push("PRICING_SNAPSHOT_MISSING");
+  if (!(pricing.monthlyRent > 0)) blockers.push("PRICING_SNAPSHOT_MISSING");
   if (!(pricing.advanceRent > 0)) blockers.push("ADVANCE_RENT_MISSING");
   if (!(pricing.securityDeposit > 0)) blockers.push("SECURITY_DEPOSIT_MISSING");
   if (reservation.reservationFeeAmount == null) blockers.push("RESERVATION_FEE_MISSING");

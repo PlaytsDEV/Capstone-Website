@@ -40,6 +40,7 @@ router.post("/bill/:billId/checkout", verifyToken, paymentController.createBillC
  * Create a PayMongo checkout session for a reservation deposit
  */
 router.post("/deposit/:resId/checkout", verifyToken, paymentController.createDepositCheckout);
+router.get("/deposit/:resId/quote", verifyToken, paymentController.getDepositPaymentQuote);
 
 /**
  * GET /api/payments/session/:sessionId/status

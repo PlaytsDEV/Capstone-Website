@@ -18,6 +18,8 @@ const settlePaymongoBill = jest.fn();
 const sendSuccess = jest.fn();
 const notifyGeneral = jest.fn();
 const createReservationCheckout = jest.fn();
+const getReservationCheckoutBlockers = jest.fn();
+const evaluateReservationPaymentReadiness = jest.fn();
 const mockLean = (value) => ({ lean: jest.fn().mockResolvedValue(value) });
 
 await jest.unstable_mockModule("../config/paymongo.js", () => ({
@@ -91,6 +93,14 @@ await jest.unstable_mockModule(
   "../services/paymongoReservationCheckoutService.js",
   () => ({ createReservationCheckout }),
 );
+await jest.unstable_mockModule(
+  "../services/reservationPaymentPolicy.js",
+  () => ({ getReservationCheckoutBlockers }),
+);
+await jest.unstable_mockModule(
+  "../services/reservationPaymentReadinessService.js",
+  () => ({ evaluateReservationPaymentReadiness }),
+);
 const {
   createBillCheckout,
   createDepositCheckout,
@@ -118,6 +128,8 @@ describe("paymentController", () => {
     sendSuccess.mockReset();
     notifyGeneral.mockReset();
     createReservationCheckout.mockReset();
+    getReservationCheckoutBlockers.mockReset();
+    evaluateReservationPaymentReadiness.mockReset();
     userFind.mockReturnValue({
       select: jest.fn().mockReturnValue({
         lean: jest.fn().mockResolvedValue([]),

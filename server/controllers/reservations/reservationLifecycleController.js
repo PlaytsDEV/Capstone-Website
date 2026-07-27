@@ -92,6 +92,13 @@ import {
 } from "./_helpers.js";
 import { cancelReservationByUser } from "./cancellationController.js";
 import { evaluateReservationMoveInReadiness } from "../../services/reservationMoveInReadinessService.js";
+import { buildReservationPaymentPricingSnapshot } from "../../services/reservationPaymentPolicy.js";
+import {
+  evaluateReservationPaymentReadiness,
+} from "../../services/reservationPaymentReadinessService.js";
+import {
+  reconcileReservationPayment,
+} from "../../services/reservationPaymentReconciliationService.js";
 
 const PAYMONGO_CONFIRMED_FIELDS = Object.freeze([
   "paidAmount",
@@ -154,6 +161,54 @@ export const confirmReservationMoveIn = (req, res, next) => {
   req.reservationCommand = "move_in";
   req.body = { status: "moveIn", meterReading: req.body?.meterReading };
   return updateReservation(req, res, next);
+};
+
+export const reconcileConfirmedReservationPayment = async (req, res, next) => {
+  try {
+    const { reservationId } = req.params;
+    if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
+    const reservation = await Reservation.findById(reservationId)
+      .populate("roomId", "branch");
+    if (!reservation) {
+      return res.status(404).json({
+        error: "Reservation not found",
+        code: "RESERVATION_NOT_FOUND",
+      });
+    }
+    const denied = checkBranchAccess(
+      res,
+      req.branchFilter,
+      reservation.roomId?.branch,
+    );
+    if (denied) return;
+    if (reservation.paymentStatus !== "paid") {
+      return res.status(409).json({
+        error: "Only confirmed payments can be reconciled.",
+        code: "PAYMENT_NOT_CONFIRMED",
+      });
+    }
+    const oldData = reservation.toObject();
+    const reconciliation = await reconcileReservationPayment(reservation._id);
+    const updated = reconciliation.reservation ||
+      await Reservation.findById(reservation._id);
+    await auditLogger.logModification(
+      req,
+      "reservation",
+      reservation._id,
+      oldData,
+      updated?.toObject?.() || updated,
+      `Payment occupancy reconciliation ${reconciliation.status}`,
+    );
+    return res.status(reconciliation.status === "failed" ? 503 : 200).json({
+      success: reconciliation.status !== "failed",
+      code: reconciliation.status === "failed"
+        ? "PAYMENT_RECONCILIATION_PENDING"
+        : "PAYMENT_RECONCILIATION_COMPLETED",
+      reconciliationStatus: reconciliation.status,
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
 export const updateReservation = async (req, res, next) => {
@@ -256,7 +311,7 @@ export const updateReservation = async (req, res, next) => {
       req.body.status !== undefined &&
       !canTransitionReservationStatus(existingReservation.status, req.body.status)
     ) {
-      return res.status(400).json({
+      return res.status(409).json({
         error: `Invalid reservation status transition from "${normalizeReservationStatus(existingReservation.status)}" to "${normalizeReservationStatus(req.body.status)}".`,
         code: "INVALID_RESERVATION_STATUS_TRANSITION",
       });
@@ -304,6 +359,17 @@ export const updateReservation = async (req, res, next) => {
 
     if (
       req.body.status === "approved_for_payment" &&
+      hasReservationStatus(existingReservation.status, "approved_for_payment")
+    ) {
+      return res.status(409).json({
+        success: false,
+        error: "The application has already been approved for payment.",
+        code: "APPLICATION_ALREADY_REVIEWED",
+      });
+    }
+
+    if (
+      req.body.status === "approved_for_payment" &&
       !hasReservationStatus(existingReservation.status, "approved_for_payment")
     ) {
       const blockedDocs = Object.entries(DOCUMENT_PRECHECK_TYPES)
@@ -337,10 +403,28 @@ export const updateReservation = async (req, res, next) => {
         });
       }
 
+      const approvalDeadline = dayjs().add(24, "hour").toDate();
+      const readiness = await evaluateReservationPaymentReadiness(
+        existingReservation,
+        { proposedDeadline: approvalDeadline },
+      );
+      if (!readiness.ready) {
+        return res.status(422).json({
+          success: false,
+          error: "The Reservation is not ready for payment.",
+          message: "The Reservation is not ready for payment.",
+          code: readiness.legacy
+            ? "LEGACY_PAYMENT_DATA_INCOMPLETE"
+            : "PAYMENT_READINESS_INCOMPLETE",
+          missingFields: readiness.missingFields,
+        });
+      }
+
       req.body.applicationReviewedAt = new Date();
       req.body.applicationReviewedBy = req.adminId || null;
       req.body.approvedForPaymentAt = new Date();
-      req.body.paymentExpiresAt = dayjs().add(24, "hour").toDate();
+      req.body.paymentExpiresAt = approvalDeadline;
+      req.body.documentsApproved = true;
       req.body.applicationReviewReason = null;
     }
 
@@ -460,6 +544,7 @@ export const updateReservation = async (req, res, next) => {
       "applicationReviewedAt",
       "applicationReviewedBy",
       "approvedForPaymentAt",
+      "paymentExpiresAt",
       "documentsApproved",
       "documentRejectionReason",
       "nbiApproved",
@@ -540,6 +625,11 @@ export const updateReservation = async (req, res, next) => {
 
     for (const key of ADMIN_ALLOWED) {
       if (req.body[key] !== undefined) reservation[key] = req.body[key];
+    }
+    if (req.body.status === "approved_for_payment") {
+      reservation.paymentPricingSnapshot.approvedAt = req.body.approvedForPaymentAt;
+      reservation.paymentPricingSnapshot.approvedBy = req.adminId || null;
+      reservation.markModified("paymentPricingSnapshot");
     }
     const updatedReservation = await reservation.save();
 
@@ -944,6 +1034,13 @@ export const updateReservationByUser = async (req, res, next) => {
       updates.applianceFees = appliedPricing.applianceFees;
       updates.totalPrice = appliedPricing.totalPrice;
       updates.reservationFeeAmount = appliedPricing.reservationFeeAmount;
+      updates.leaseType =
+        Number(updates.leaseDuration ?? reservation.leaseDuration) >= 6
+          ? "long_term"
+          : "short_term";
+      updates.paymentPricingSnapshot =
+        buildReservationPaymentPricingSnapshot(appliedPricing);
+      updates.approvedPaymentMethods = ["paymongo"];
     }
 
     const rawViewingPreference = hasBodyField("viewingPreference")

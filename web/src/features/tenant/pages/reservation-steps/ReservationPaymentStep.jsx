@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { billingApi } from "../../../../shared/api/billingApi";
 import {
   formatBranch,
   fmtDate,
@@ -47,6 +48,7 @@ const toDisplayString = (value, fallback = "") => {
  */
 const ReservationPaymentStep = ({
   reservationData,
+  reservationId,
   leaseDuration,
   targetMoveInDate,
   isLoading,
@@ -58,26 +60,49 @@ const ReservationPaymentStep = ({
   agreedToFeePolicy = false,
   setAgreedToFeePolicy = () => {},
 }) => {
+  const [paymentQuote, setPaymentQuote] = useState(null);
+  const [quoteError, setQuoteError] = useState("");
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  useEffect(() => {
+    if (!reservationId || !paymentAvailable || readOnly) return undefined;
+    let active = true;
+    setQuoteLoading(true);
+    billingApi.getDepositPaymentQuote(reservationId)
+      .then((quote) => {
+        if (!active) return;
+        setPaymentQuote(quote);
+        setQuoteError("");
+      })
+      .catch((error) => {
+        if (!active) return;
+        setQuoteError(
+          error?.response?.data?.error?.message ||
+          error?.response?.data?.message ||
+          error?.message ||
+          "Payment details are temporarily unavailable.",
+        );
+      })
+      .finally(() => {
+        if (active) setQuoteLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [reservationId, paymentAvailable, readOnly]);
+
   const room = reservationData?.room || {};
   const roomName = toDisplayString(room.name || room.roomNumber || room.title || room.id, "N/A");
-  const reservationFeeAmount = Number.isFinite(Number(reservationData?.reservationFeeAmount))
-    ? Number(reservationData.reservationFeeAmount)
-    : 2000;
-  const monthlyRent = Number(
-    reservationData?.monthlyRent ??
-      reservationData?.moveInCashOut?.monthlyAdvance ??
-      room?.monthlyPrice ??
-      room?.price ??
-      0,
-  );
-  const moveInCashOut = reservationData?.moveInCashOut || {
-    monthlyAdvance: monthlyRent,
-    securityDeposit: monthlyRent,
-    grossTotal: monthlyRent * 2,
+  const reservationFeeAmount = Number(paymentQuote?.reservationFeeCredit || 0);
+  const moveInCashOut = {
+    monthlyAdvance: Number(paymentQuote?.advanceRent || 0),
+    securityDeposit: Number(paymentQuote?.securityDeposit || 0),
+    grossTotal:
+      Number(paymentQuote?.advanceRent || 0) +
+      Number(paymentQuote?.securityDeposit || 0),
     reservationFeeDeductible: reservationFeeAmount,
-    netAmountDue: Math.max(0, monthlyRent * 2 - reservationFeeAmount),
+    netAmountDue: Number(paymentQuote?.amountDue || 0),
   };
-  const checkoutAmount = Number(moveInCashOut.netAmountDue || 0);
+  const checkoutAmount = moveInCashOut.netAmountDue;
 
   const selectedBedPosition = toDisplayString(reservationData?.selectedBed?.position, "");
   const selectedBedId = toDisplayString(reservationData?.selectedBed?.id);
@@ -85,7 +110,15 @@ const ReservationPaymentStep = ({
     ? `${selectedBedPosition}${selectedBedId ? ` (${selectedBedId})` : ""}`
     : "";
 
-  const canPay = agreedToFeePolicy && !isLoading && !payingOnline && paymentAvailable && !readOnly;
+  const canPay =
+    agreedToFeePolicy &&
+    !isLoading &&
+    !quoteLoading &&
+    !payingOnline &&
+    paymentAvailable &&
+    paymentQuote?.ready === true &&
+    paymentQuote?.expired !== true &&
+    !readOnly;
   const payButtonLabel = payingOnline
     ? "Redirecting to PayMongo..."
     : `Proceed to PayMongo — ${formatCurrency(checkoutAmount)}`;
@@ -107,6 +140,36 @@ const ReservationPaymentStep = ({
           Pay the approved remaining initial move-in amount securely through PayMongo.
         </p>
       </div>
+
+      {(quoteLoading || quoteError || paymentQuote?.expired ||
+        paymentQuote?.missingFields?.length > 0) && !readOnly && (
+        <div className="info-box warning">
+          <AlertCircle size={20} aria-hidden="true" />
+          <div>
+            <div className="info-box-title">
+              {quoteLoading
+                ? "Loading approved payment details"
+                : paymentQuote?.expired
+                  ? "Payment deadline expired"
+                  : "Payment information needs attention"}
+            </div>
+            <div className="info-text">
+              {quoteError ||
+                (paymentQuote?.expired
+                  ? "Ask the administrator to review and renew the payment approval."
+                  : paymentQuote?.missingFields?.length
+                    ? `Missing: ${paymentQuote.missingFields.join(", ")}`
+                    : "Please wait while the approved quote is loaded.")}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {paymentQuote?.expiresAt && !readOnly && (
+        <div className="info-text">
+          Payment deadline: {fmtDate(paymentQuote.expiresAt)}
+        </div>
+      )}
 
       {/* Payment Complete Banner */}
       {readOnly && (
@@ -160,7 +223,7 @@ const ReservationPaymentStep = ({
             </div>
 
             {/* Move-In Cash-Out Deductible Breakdown (Section 4 Lease Rule) */}
-            {monthlyRent > 0 && (
+            {paymentQuote?.ready && (
               <div className="rf-movein-breakdown" style={{ marginTop: '16px', padding: '14px', borderRadius: '10px', background: 'rgba(255, 255, 255, 0.04)', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
                 <div style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: '8px', color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                   Move-In Financial Breakdown

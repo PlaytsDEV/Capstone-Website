@@ -23,6 +23,7 @@
     "maintenance:backfill-contract:write": "node scripts/backfill_maintenance_contract.mjs --write",
     "maintenance:branch-report": "node scripts/repair_maintenance_branches.mjs",
     "maintenance:branch-repair": "node scripts/repair_maintenance_branches.mjs --write",
+    "reservations:audit-payment-readiness": "node scripts/audit_legacy_reservation_payment_readiness.mjs",
     "seed:analytics-demo": "node scripts/seed_analytics_demo.mjs",
     "seed:service-providers": "node scripts/seed_service_providers.mjs",
     "seed:service-providers:write": "node scripts/seed_service_providers.mjs --write",

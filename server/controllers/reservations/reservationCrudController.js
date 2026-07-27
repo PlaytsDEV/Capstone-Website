@@ -19,6 +19,7 @@ import {
   syncReservationUserLifecycle,
 } from "../../utils/reservationHelpers.js";
 import { updateOccupancyOnReservationChange } from "../../utils/occupancyManager.js";
+import { buildReservationPaymentPricingSnapshot } from "../../services/reservationPaymentPolicy.js";
 import {
   CURRENT_RESIDENT_STATUS_QUERY,
   normalizeReservationPayload,
@@ -359,6 +360,9 @@ export const createReservation = async (req, res) => {
       proofOfPaymentUrl: null,
       reservationFeeAmount: pricing.reservationFeeAmount,
       monthlyRent: pricing.monthlyRent,
+      leaseType: Number(b.leaseDuration) >= 6 ? "long_term" : "short_term",
+      paymentPricingSnapshot: buildReservationPaymentPricingSnapshot(pricing),
+      approvedPaymentMethods: ["paymongo"],
       selectedAppliances: pricing.selectedAppliances,
       applianceFees: pricing.applianceFees,
       moveInDate: b.moveInDate,

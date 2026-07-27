@@ -44,6 +44,7 @@ import {
   updateReservation,
   reviewReservationApplication,
   confirmReservationMoveIn,
+  reconcileConfirmedReservationPayment,
   updateReservationByUser,
   cancelReservationByUser,
   requestCancellationByUser,
@@ -292,6 +293,15 @@ router.post(
   filterByBranch,
   requirePermission("manageReservations"),
   confirmReservationMoveIn,
+);
+
+router.post(
+  "/:reservationId/reconcile-payment",
+  verifyToken,
+  verifyAdmin,
+  filterByBranch,
+  requirePermission("manageReservations"),
+  reconcileConfirmedReservationPayment,
 );
 
 /**

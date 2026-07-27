@@ -182,6 +182,9 @@ export const billingApi = {
   createDepositCheckout: (reservationId) =>
     authFetch(`/payments/deposit/${reservationId}/checkout`, { method: "POST" }),
 
+  getDepositPaymentQuote: (reservationId) =>
+    authFetch(`/payments/deposit/${reservationId}/quote`, { cache: "no-store" }),
+
   // ── Payment History ──
 
   /**

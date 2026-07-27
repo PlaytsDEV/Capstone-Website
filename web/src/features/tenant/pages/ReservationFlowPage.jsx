@@ -189,6 +189,7 @@ function ReservationFlowPage() {
                 visitTime: flow.visitTime,
                 setVisitTime: flow.setVisitTime,
                 reservationData: flow.reservationData,
+                reservationId: flow.reservationId,
                 reservationCode: flow.reservationCode,
                 visitCode: flow.visitCode,
                 visitCompleted: flow.visitCompleted,

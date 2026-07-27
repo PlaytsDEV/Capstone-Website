@@ -68,6 +68,7 @@ export {
   updateReservation,
   reviewReservationApplication,
   confirmReservationMoveIn,
+  reconcileConfirmedReservationPayment,
   updateReservationByUser,
   extendReservation,
   releaseSlot,

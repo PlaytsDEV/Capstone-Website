@@ -23,6 +23,7 @@ import {
 } from "../../utils/lifecycleNaming.js";
 import { notify } from "../../utils/notificationService.js";
 import { emitToAdmins } from "../../utils/socket.js";
+import { buildReservationPaymentPricingSnapshot } from "../../services/reservationPaymentPolicy.js";
 import {
   runReservationDocumentPrecheck,
 } from "../../services/reservationDocumentPrecheckService.js";
@@ -396,6 +397,24 @@ export const submitApplication = async (req, res, next) => {
       }
       throw error;
     }
+
+    const authoritativePricing = await buildReservationPricing({
+      room,
+      leaseDuration: effectiveLeaseDuration,
+      selectedAppliances:
+        updates.selectedAppliances !== undefined
+          ? updates.selectedAppliances
+          : reservation.selectedAppliances,
+    });
+    updates.monthlyRent = authoritativePricing.monthlyRent;
+    updates.totalPrice = authoritativePricing.totalPrice;
+    updates.reservationFeeAmount = authoritativePricing.reservationFeeAmount;
+    updates.selectedAppliances = authoritativePricing.selectedAppliances;
+    updates.applianceFees = authoritativePricing.applianceFees;
+    updates.leaseType = Number(effectiveLeaseDuration) >= 6 ? "long_term" : "short_term";
+    updates.paymentPricingSnapshot =
+      buildReservationPaymentPricingSnapshot(authoritativePricing);
+    updates.approvedPaymentMethods = ["paymongo"];
 
     // Phase 4.7: Parallel document pre-checks with 8s timeout
     const requiredDocumentPrechecks = [

@@ -656,8 +656,13 @@ export default function ReservationDetailsModal({
  onClose();
  return;
  }
+ const readinessFields =
+ error?.response?.data?.missingFields ||
+ error?.response?.data?.error?.details?.missingFields;
  showNotification(
- getFriendlyError(error, "Action failed. Please try again."),
+ readinessFields?.length
+ ? `Reservation is not ready: ${readinessFields.join(", ")}`
+ : getFriendlyError(error, "Action failed. Please try again."),
  "error",
  );
  } finally {

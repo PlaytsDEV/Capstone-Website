@@ -118,23 +118,36 @@ async function handleDepositPayment(metadata, eventData, eventContext = {}) {
     currency: paymentAttributes.currency || metadata.currency,
     paymentMethod: paymentAttributes.source?.type || "paymongo",
     receivedAt: new Date(),
+    correlationId: eventContext.correlationId || "",
   });
-  if (confirmation.status !== "payment_confirmed") {
+  if (!["payment_confirmed", "already_processed"].includes(confirmation.status)) {
     logger.info({ reservationId, result: confirmation.status, reason: confirmation.reason }, "Webhook: Deposit event did not change Reservation");
     return confirmation;
   }
 
   const confirmedReservation = confirmation.reservation;
-  await updateOccupancyOnReservationChange(confirmedReservation, {
-    status: "payment_pending",
-  });
-  try {
+  if (confirmedReservation &&
+      confirmedReservation.paymentNotificationStatus !== "completed") try {
     await notify.paymentApproved(
       confirmedReservation.userId,
       `Your payment for ${confirmedReservation.roomId?.name || "your room"} has been verified. Your reservation is now secured!`,
     );
+    await Reservation.updateOne(
+      { _id: confirmedReservation._id },
+      { $set: { paymentNotificationStatus: "completed", paymentNotificationError: "" } },
+    );
   } catch (notifErr) {
     logger.error({ err: notifErr }, "Webhook: Failed to send notification");
+    await Reservation.updateOne(
+      { _id: confirmedReservation._id },
+      {
+        $set: {
+          paymentNotificationStatus: "failed",
+          paymentNotificationError: String(notifErr.message || "NOTIFICATION_FAILED")
+            .slice(0, 500),
+        },
+      },
+    ).catch(() => {});
   }
   return confirmation;
 
@@ -481,13 +494,18 @@ export const handlePaymongoWebhook = async (req, res) => {
       const processingResult = await handleDepositPayment(
         metadata,
         checkoutData,
-        { eventId, eventType, sessionId },
+        { eventId, eventType, sessionId, correlationId: req.id },
       );
       logger.info(
         { eventId, sessionId, reservationId: metadata.reservationId },
         "Webhook: Deposit processing complete",
       );
-      return res.status(200).json({ received: true, result: processingResult.status });
+      return res.status(200).json({
+        received: true,
+        result: processingResult.status,
+        reconciliationStatus: processingResult.reconciliationStatus || null,
+        ...(processingResult.warning ? { warning: processingResult.warning } : {}),
+      });
     } else if (metadata.type === "bill") {
       await handleBillPayment(metadata, checkoutData);
       logger.info(
@@ -513,7 +531,12 @@ export const handlePaymongoWebhook = async (req, res) => {
       },
       "Webhook: Processing error",
     );
-    return res.status(500).json({ received: false, result: "event_rejected" });
+    return res.status(500).json({
+      success: false,
+      code: "PAYMENT_WEBHOOK_PROCESSING_FAILED",
+      message: "The payment event could not be fully processed.",
+      correlationId: req.id,
+    });
   }
 };
 
@@ -614,7 +637,7 @@ export const handlePaymongoSourceWebhook = async (req, res) => {
         const processingResult = await handleDepositPayment(
           { ...metadata, type: "deposit", reservationId: found.reservationId },
           syntheticEventData,
-          { eventId, eventType, sessionId },
+          { eventId, eventType, sessionId, correlationId: req.id },
         );
         logger.info(
           { eventId, paymentId, reservationId: found.reservationId },
@@ -678,6 +701,7 @@ export const handlePaymongoSourceWebhook = async (req, res) => {
           eventId,
           eventType,
           sessionId: checkoutSessionId,
+          correlationId: req.id,
         });
         logger.info(
           { eventId, checkoutSessionId, reservationId: checkoutMeta.reservationId },
@@ -717,6 +741,11 @@ export const handlePaymongoSourceWebhook = async (req, res) => {
       { err: processingError, eventType, eventId, paymentId },
       "Webhook(payment): Processing error",
     );
-    return res.status(500).json({ received: false, result: "event_rejected" });
+    return res.status(500).json({
+      success: false,
+      code: "PAYMENT_WEBHOOK_PROCESSING_FAILED",
+      message: "The payment event could not be fully processed.",
+      correlationId: req.id,
+    });
   }
 };

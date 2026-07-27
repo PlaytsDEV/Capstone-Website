@@ -157,12 +157,16 @@ describe("handlePaymongoWebhook", () => {
     await handlePaymongoWebhook(req, res);
 
     expect(res.statusCode).toBe(200);
-    expect(res.body).toEqual({ received: true, result: "already_processed" });
+    expect(res.body).toEqual({
+      received: true,
+      result: "already_processed",
+      reconciliationStatus: null,
+    });
     expect(confirmReservationPaymentFromWebhook).toHaveBeenCalledTimes(1);
     expect(updateOccupancyOnReservationChange).not.toHaveBeenCalled();
   });
 
-  test("auto-reserves payment_pending deposit reservations and updates occupancy", async () => {
+  test("confirms payment and records notification without duplicating occupancy work", async () => {
     verifyWebhookSignature.mockReturnValue(
       buildCheckoutPaidEvent({
         metadata: { type: "deposit", reservationId: "res_2" },
@@ -207,7 +211,50 @@ describe("handlePaymongoWebhook", () => {
         paymentId: "pay_new",
       }),
     );
-    expect(updateOccupancyOnReservationChange).toHaveBeenCalledTimes(1);
+    expect(updateOccupancyOnReservationChange).not.toHaveBeenCalled();
+    expect(reservationUpdateOne).toHaveBeenCalledWith(
+      { _id: "res_2" },
+      expect.objectContaining({
+        $set: expect.objectContaining({ paymentNotificationStatus: "completed" }),
+      }),
+    );
+  });
+
+  test("keeps a confirmed payment successful when tenant notification fails", async () => {
+    verifyWebhookSignature.mockReturnValue(
+      buildCheckoutPaidEvent({
+        metadata: { type: "deposit", reservationId: "res_notification_failure" },
+        paymentId: "pay_notification_failure",
+      }),
+    );
+    const reservation = {
+      _id: "res_notification_failure",
+      userId: "user_notification_failure",
+      roomId: { name: "Room 4" },
+      paymentNotificationStatus: "pending",
+    };
+    confirmReservationPaymentFromWebhook.mockResolvedValue({
+      status: "payment_confirmed",
+      reservation,
+    });
+    paymentApproved.mockRejectedValue(new Error("notification transport unavailable"));
+
+    const req = { body: Buffer.from("{}"), headers: { "paymongo-signature": "sig" } };
+    const res = createResponse();
+
+    await handlePaymongoWebhook(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.result).toBe("payment_confirmed");
+    expect(reservationUpdateOne).toHaveBeenCalledWith(
+      { _id: "res_notification_failure" },
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          paymentNotificationStatus: "failed",
+          paymentNotificationError: "notification transport unavailable",
+        }),
+      }),
+    );
   });
 
   test("does not auto-reserve when deposit arrives before application approval", async () => {

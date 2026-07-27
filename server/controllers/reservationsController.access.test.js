@@ -85,6 +85,22 @@ await jest.unstable_mockModule("../utils/reservationHelpers.js", () => ({
   getMoveInBlockers: jest.fn(() => []),
 }));
 await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
+  CANONICAL_RESERVATION_STATUSES: [
+    "pending",
+    "viewing_preference_selected",
+    "visit_pending",
+    "visit_approved",
+    "pending_application_review",
+    "needs_revision",
+    "approved_for_payment",
+    "payment_pending",
+    "reserved",
+    "moveIn",
+    "moveOut",
+    "rejected",
+    "cancelled",
+    "archived",
+  ],
   ACTIVE_OCCUPANCY_STATUS_QUERY: ["reserved", "moveIn"],
   ACTIVE_STAY_STATUS_QUERY: ["reserved", "moveIn"],
   CURRENT_RESIDENT_STATUS_QUERY: ["moveIn"],
@@ -540,7 +556,7 @@ describe("reservationsController.updateReservation access hardening", () => {
 
     await updateReservation(req, res, next);
 
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(409);
     expect(res.body.code).toBe("INVALID_RESERVATION_STATUS_TRANSITION");
     expect(next).not.toHaveBeenCalled();
   });
