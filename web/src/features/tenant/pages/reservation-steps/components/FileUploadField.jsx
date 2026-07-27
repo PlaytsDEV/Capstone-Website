@@ -2,114 +2,70 @@ import React, { useRef, useState, useEffect } from "react";
 import { uploadToFirebaseStorage, validateFile } from "../../../../../shared/utils/firebaseStorageUpload";
 import { useAuth } from "../../../../../shared/hooks/useAuth";
 import { CheckCircle, AlertTriangle, Upload, Loader2, Trash2 } from "lucide-react";
-import {
- DOCUMENT_PRECHECK_MESSAGES,
- getApplicantDocumentPrecheckMessage,
- getPrecheckStatus,
-} from "../../../utils/documentPrecheckUtils";
 
 function formatFileSize(bytes) {
- if (!bytes) return "";
- if (bytes < 1024) return `${bytes} B`;
- if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
- return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function truncateName(name, max = 28) {
- if (!name || name.length <= max) return name;
- const ext = name.includes(".") ? name.slice(name.lastIndexOf(".")) : "";
- return name.slice(0, max - ext.length - 3) + "..." + ext;
-}
-
-function normalizePrecheckStatus(check, isChecking) {
- if (isChecking) return "checking";
- return getPrecheckStatus(check);
-}
-
-function getPrecheckDisplay(check, status) {
- if (status === "checking") {
- return {
- tone: "info",
- label: getApplicantDocumentPrecheckMessage(check, status),
- text: "",
- };
- }
- if (status === "ready_for_submission") {
- return {
- tone: "success",
- label: getApplicantDocumentPrecheckMessage(check, status),
- text: "",
- };
- }
- if (status === "manual_review_fallback" || status === "manual_review") {
- return {
- tone: "info",
- label: getApplicantDocumentPrecheckMessage(check, status),
- text: "",
- };
- }
- if (status === "needs_reupload") {
- return {
- tone: "warning",
- label: getApplicantDocumentPrecheckMessage(check, status),
- text: "",
- };
- }
- return null;
+  if (!name || name.length <= max) return name;
+  const ext = name.includes(".") ? name.slice(name.lastIndexOf(".")) : "";
+  return name.slice(0, max - ext.length - 3) + "..." + ext;
 }
 
 const FileUploadField = ({
- label, value, onChange,
- accept = "image/*,.pdf", hint,
- documentType = "document",
- onUploadComplete,
- aiCheck,
- isChecking = false,
- hasError, required,
+  label, value, onChange,
+  accept = "image/*,.pdf", hint,
+  documentType = "document",
+  onUploadComplete,
+  hasError, required,
 }) => {
- const { user } = useAuth();
- const inputRef = useRef(null);
- const [uploading, setUploading] = useState(false);
- const [uploadSuccess, setUploadSuccess] = useState(false);
- const [progress, setProgress] = useState(0);
- const [displayProgress, setDisplayProgress] = useState(0);
- const [error, setError] = useState(null);
- const [fileMeta, setFileMeta] = useState(null);
+  const { user } = useAuth();
+  const inputRef = useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [displayProgress, setDisplayProgress] = useState(0);
+  const [error, setError] = useState(null);
+  const [fileMeta, setFileMeta] = useState(null);
 
- // Smoothly interpolate displayProgress towards real target progress
- useEffect(() => {
-   if (!uploading) {
-     setDisplayProgress(0);
-     return;
-   }
+  // Smoothly interpolate displayProgress towards real target progress
+  useEffect(() => {
+    if (!uploading) {
+      setDisplayProgress(0);
+      return;
+    }
 
-   const intervalId = setInterval(() => {
-     setDisplayProgress((prev) => {
-       if (prev < progress) {
-         const diff = progress - prev;
-         const step = Math.max(1, Math.min(diff, Math.ceil(diff * 0.25)));
-         return prev + step;
-       } else if (prev < 90 && progress < 90) {
-         return prev + 1;
-       }
-       return prev;
-     });
-   }, 40);
+    const intervalId = setInterval(() => {
+      setDisplayProgress((prev) => {
+        if (prev < progress) {
+          const diff = progress - prev;
+          const step = Math.max(1, Math.min(diff, Math.ceil(diff * 0.25)));
+          return prev + step;
+        } else if (prev < 90 && progress < 90) {
+          return prev + 1;
+        }
+        return prev;
+      });
+    }, 40);
 
-   return () => clearInterval(intervalId);
- }, [progress, uploading]);
+    return () => clearInterval(intervalId);
+  }, [progress, uploading]);
 
- // An existing HTTPS URL (saved from a previous session) counts as uploaded.
- // uploadSuccess covers the just-uploaded case before the value prop updates.
- const isUploaded = uploadSuccess || (typeof value === "string" && value.startsWith("https://"));
- const isFile = value instanceof File;
- const showFieldError = Boolean(hasError);
+  // An existing HTTPS URL (saved from a previous session) counts as uploaded.
+  // uploadSuccess covers the just-uploaded case before the value prop updates.
+  const isUploaded = uploadSuccess || (typeof value === "string" && value.startsWith("https://"));
+  const isFile = value instanceof File;
+  const showFieldError = Boolean(hasError);
 
- const handleClick = () => {
- if (!uploading) inputRef.current?.click();
- };
+  const handleClick = () => {
+    if (!uploading) inputRef.current?.click();
+  };
 
- const handleClear = (event) => {
+  const handleClear = (event) => {
     event?.stopPropagation();
     setUploadSuccess(false);
     setFileMeta(null);
@@ -122,210 +78,187 @@ const FileUploadField = ({
     onChange("");
   };
 
- const processFile = async (file) => {
- if (!file) return;
- const check = validateFile(file);
- if (!check.valid) {
- const isUnsupportedFile = /only .*files are allowed|file type/i.test(
- check.error || "",
- );
- setError(
- isUnsupportedFile
- ? DOCUMENT_PRECHECK_MESSAGES.unsupportedFile
- : check.error,
- );
- return;
- }
+  const processFile = async (file) => {
+    if (!file) return;
+    const check = validateFile(file);
+    if (!check.valid) {
+      setError(check.error);
+      return;
+    }
 
- setFileMeta({ name: file.name, size: file.size });
- setError(null);
- setUploading(true);
- setUploadSuccess(false);
- setProgress(10);
- setDisplayProgress(5);
+    setFileMeta({ name: file.name, size: file.size });
+    setError(null);
+    setUploading(true);
+    setUploadSuccess(false);
+    setProgress(10);
+    setDisplayProgress(5);
 
- try {
- const result = await uploadToFirebaseStorage(
- file,
- { uid: user?.firebaseUid, documentType },
- (pct) => setProgress(Math.max(10, pct)),
- );
- setProgress(100);
- setDisplayProgress(100);
- // Brief pause at 100% so user sees completion before morphing to success
- await new Promise((resolve) => setTimeout(resolve, 350));
- setUploading(false);
- setUploadSuccess(true);
- onChange(result.downloadUrl);
- try {
- await onUploadComplete?.(result.downloadUrl, file);
- } catch {
- console.warn("Document check fell back to staff review after upload.");
- }
- } catch (err) {
- setUploading(false);
- setUploadSuccess(false);
- setProgress(0);
- setDisplayProgress(0);
- setError(err.message || "Upload failed. Please try again.");
- // Keep the File object in state so the user can retry without re-selecting
- onChange(file);
- }
- };
+    try {
+      const result = await uploadToFirebaseStorage(
+        file,
+        { uid: user?.firebaseUid, documentType },
+        (pct) => setProgress(Math.max(10, pct)),
+      );
+      setProgress(100);
+      setDisplayProgress(100);
+      // Brief pause at 100% so user sees completion before morphing to success
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      setUploading(false);
+      setUploadSuccess(true);
+      onChange(result.downloadUrl);
+      try {
+        await onUploadComplete?.(result.downloadUrl, file);
+      } catch {
+        // Safe upload callback fallback
+      }
+    } catch (err) {
+      setUploading(false);
+      setUploadSuccess(false);
+      setProgress(0);
+      setDisplayProgress(0);
+      setError(err.message || "Upload failed. Please try again.");
+      // Keep the File object in state so the user can retry without re-selecting
+      onChange(file);
+    }
+  };
 
- const handleChange = (event) => {
- const file = event.target.files?.[0] || null;
- processFile(file);
- event.target.value = "";
- };
+  const handleChange = (event) => {
+    const file = event.target.files?.[0] || null;
+    processFile(file);
+    event.target.value = "";
+  };
 
- const handleDrop = (event) => {
- event.preventDefault();
- const file = event.dataTransfer.files?.[0] || null;
- if (file) processFile(file);
- };
+  const handleDrop = (event) => {
+    event.preventDefault();
+    const file = event.dataTransfer.files?.[0] || null;
+    if (file) processFile(file);
+  };
 
- const handleDragOver = (event) => event.preventDefault();
+  const handleDragOver = (event) => event.preventDefault();
 
- const handleKeyDown = (event) => {
- if (event.key === "Enter" || event.key === " ") {
- event.preventDefault();
- handleClick();
- }
- };
+  const handleKeyDown = (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      handleClick();
+    }
+  };
 
-  const hasAttachedFile = isUploaded || isFile || Boolean(value);
-  const aiStatus = normalizePrecheckStatus(aiCheck, isChecking);
-  const precheckDisplay = getPrecheckDisplay(aiCheck, aiStatus);
-  const showAiFeedback = Boolean(precheckDisplay) && hasAttachedFile;
+  const zoneClass = [
+    "rf-upload-zone",
+    showFieldError ? "rf-upload-zone--error" : "",
+    error ? "rf-upload-zone--error" : "",
+    isUploaded ? "rf-upload-zone--success" : "",
+    uploading ? "rf-upload-zone--uploading" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
- const zoneClass = [
- "rf-upload-zone",
- showFieldError ? "rf-upload-zone--error" : "",
- error ? "rf-upload-zone--error" : "",
- isUploaded ? "rf-upload-zone--success" : "",
- uploading ? "rf-upload-zone--uploading" : "",
- ]
- .filter(Boolean)
- .join(" ");
+  return (
+    <div className="form-group">
+      <label className="form-label">
+        {label}
+        {required && <span className="rf-required"> *</span>}
+      </label>
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept}
+        onChange={handleChange}
+        className="rf-file-input-hidden"
+      />
+      <div
+        className={zoneClass}
+        onClick={handleClick}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onKeyDown={handleKeyDown}
+        role="button"
+        tabIndex={0}
+      >
+        {uploading ? (
+          <div className="rf-upload-loading">
+            <div className="rf-upload-status rf-upload-status--uploading">
+              <Loader2 size={16} className="rf-upload-spinner" />
+              <span>{displayProgress < 100 ? `Uploading... ${displayProgress}%` : "Finalizing upload..."}</span>
+            </div>
+            {fileMeta ? (
+              <div className="rf-upload-filename">{truncateName(fileMeta.name)}</div>
+            ) : null}
+            <div className="rf-upload-progress-track">
+              <div
+                className="rf-upload-progress-fill"
+                style={{ width: `${Math.max(displayProgress, 5)}%` }}
+              />
+            </div>
+          </div>
+        ) : isUploaded ? (
+          <div>
+            <div className="rf-upload-status rf-upload-status--success">
+              <CheckCircle size={15} /> Uploaded successfully
+            </div>
+            {fileMeta ? (
+              <div className="rf-upload-meta">
+                <span className="rf-upload-meta__name">{truncateName(fileMeta.name)}</span>
+                <span className="rf-upload-meta__dot">·</span>
+                <span>{formatFileSize(fileMeta.size)}</span>
+              </div>
+            ) : (
+              <div className="rf-upload-hint">File uploaded</div>
+            )}
+            <div className="rf-upload-actions-row">
+              <span className="rf-upload-replace-hint">Click to replace</span>
+              <span className="rf-upload-meta__dot">·</span>
+              <button
+                type="button"
+                className="rf-upload-clear-btn"
+                onClick={handleClear}
+                title="Remove attached file"
+              >
+                <Trash2 size={12} /> Remove
+              </button>
+            </div>
+          </div>
+        ) : isFile ? (
+          <div>
+            <div className="rf-upload-status rf-upload-status--success">
+              <CheckCircle size={14} /> {value.name}
+            </div>
+            <div className="rf-upload-actions-row">
+              <span className="rf-upload-replace-hint">Click to replace</span>
+              <span className="rf-upload-meta__dot">·</span>
+              <button
+                type="button"
+                className="rf-upload-clear-btn"
+                onClick={handleClear}
+                title="Remove attached file"
+              >
+                <Trash2 size={12} /> Remove
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="rf-upload-icon"><Upload size={20} /></div>
+            <div className="rf-upload-cta">Click to upload or drag and drop</div>
+          </>
+        )}
 
- const aiStatusTone = precheckDisplay?.tone || "warning";
+        {error && !uploading ? (
+          <div className="rf-upload-error">
+            <AlertTriangle size={12} /> {error}
+          </div>
+        ) : null}
 
- return (
- <div className="form-group">
- <label className="form-label">
- {label}
- {required && <span className="rf-required"> *</span>}
- </label>
- <input
- ref={inputRef}
- type="file"
- accept={accept}
- onChange={handleChange}
- className="rf-file-input-hidden"
- />
- <div
- className={zoneClass}
- onClick={handleClick}
- onDrop={handleDrop}
- onDragOver={handleDragOver}
- onKeyDown={handleKeyDown}
- role="button"
- tabIndex={0}
- >
- {uploading ? (
- <div className="rf-upload-loading">
- <div className="rf-upload-status rf-upload-status--uploading">
- <Loader2 size={16} className="rf-upload-spinner" />
- <span>{displayProgress < 100 ? `Uploading... ${displayProgress}%` : "Processing file..."}</span>
- </div>
- {fileMeta ? (
- <div className="rf-upload-filename">{truncateName(fileMeta.name)}</div>
- ) : null}
- <div className="rf-upload-progress-track">
- <div
- className="rf-upload-progress-fill"
- style={{ width: `${Math.max(displayProgress, 5)}%` }}
- />
- </div>
- </div>
- ) : isUploaded ? (
- <div>
- <div className="rf-upload-status rf-upload-status--success">
- <CheckCircle size={15} /> Uploaded successfully
- </div>
- {fileMeta ? (
- <div className="rf-upload-meta">
- <span className="rf-upload-meta__name">{truncateName(fileMeta.name)}</span>
- <span className="rf-upload-meta__dot">·</span>
- <span>{formatFileSize(fileMeta.size)}</span>
- </div>
- ) : (
- <div className="rf-upload-hint">File uploaded</div>
- )}
- <div className="rf-upload-actions-row">
- <span className="rf-upload-replace-hint">Click to replace</span>
- <span className="rf-upload-meta__dot">·</span>
- <button
- type="button"
- className="rf-upload-clear-btn"
- onClick={handleClear}
- title="Remove attached file"
- >
- <Trash2 size={12} /> Remove
- </button>
- </div>
- </div>
- ) : isFile ? (
- <div>
- <div className="rf-upload-status rf-upload-status--success">
- <CheckCircle size={14} /> {value.name}
- </div>
- <div className="rf-upload-actions-row">
- <span className="rf-upload-replace-hint">Click to replace</span>
- <span className="rf-upload-meta__dot">·</span>
- <button
- type="button"
- className="rf-upload-clear-btn"
- onClick={handleClear}
- title="Remove attached file"
- >
- <Trash2 size={12} /> Remove
- </button>
- </div>
- </div>
- ) : (
- <>
- <div className="rf-upload-icon"><Upload size={20} /></div>
- <div className="rf-upload-cta">Click to upload or drag and drop</div>
- </>
- )}
+        {hint && !error && !uploading && !isUploaded ? (
+          <div className="rf-upload-hint">{hint}</div>
+        ) : null}
 
- {error && !uploading ? (
- <div className="rf-upload-error">
- <AlertTriangle size={12} /> {error}
- </div>
- ) : null}
-
- {hint && !error && !uploading && !isUploaded ? (
- <div className="rf-upload-hint">{hint}</div>
- ) : null}
-
- {!isUploaded && !isFile && !uploading && !error ? (
- <div className="rf-upload-limit">Max 5MB · JPEG, PNG, or PDF</div>
- ) : null}
-
- {showAiFeedback && !error && !uploading ? (
- <div className={`rf-upload-ai-status rf-upload-ai-status--${aiStatusTone}`}>
- <>
- <strong>{precheckDisplay.label}</strong>
- {precheckDisplay.text ? <span>{precheckDisplay.text}</span> : null}
- </>
- </div>
- ) : null}
- </div>
- </div>
- );
+        {!isUploaded && !isFile && !uploading && !error ? (
+          <div className="rf-upload-limit">Max 5MB · JPEG, PNG, or PDF</div>
+        ) : null}
+      </div>
+    </div>
+  );
 };
 
 export default FileUploadField;

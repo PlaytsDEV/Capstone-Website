@@ -112,9 +112,63 @@ export default function useSocketClient() {
         qc.invalidateQueries({
           queryKey: notificationQueryKeys.scope(getNotificationQueryScope(user)),
         });
-        if (notification?.type === "announcement") {
+
+        // Real-time page data refetching for active UI screens
+        const entityType = String(notification?.entityType || "").toLowerCase();
+        const notificationType = String(notification?.type || "").toLowerCase();
+
+        if (
+          entityType === "reservation" ||
+          /^(reservation_|visit_|grace_period_|contract_|move_out)/i.test(notificationType)
+        ) {
+          qc.invalidateQueries({ queryKey: ["reservations"] });
+          qc.invalidateQueries({ queryKey: ["tenant-workspace"] });
+          qc.invalidateQueries({ queryKey: ["rooms"] });
+          qc.invalidateQueries({ queryKey: ["users"] });
+          qc.invalidateQueries({ queryKey: ["auth"] });
+        }
+
+        if (
+          entityType === "bill" ||
+          /^(payment_|bill_|penalty_|utility_)/i.test(notificationType)
+        ) {
+          qc.invalidateQueries({ queryKey: ["billing"] });
+          qc.invalidateQueries({ queryKey: ["financial"] });
+          qc.invalidateQueries({ queryKey: ["electricity"] });
+          qc.invalidateQueries({ queryKey: ["water"] });
+          qc.invalidateQueries({ queryKey: ["reservations"] });
+          qc.invalidateQueries({ queryKey: ["tenant-workspace"] });
+        }
+
+        if (
+          entityType === "maintenance" ||
+          /^(maintenance_|sla_)/i.test(notificationType)
+        ) {
+          qc.invalidateQueries({ queryKey: ["maintenance"] });
+        }
+
+        if (
+          entityType === "inquiry" ||
+          entityType === "chat" ||
+          /^(inquiry_|chat_)/i.test(notificationType)
+        ) {
+          qc.invalidateQueries({ queryKey: ["inquiries"] });
+        }
+
+        if (
+          entityType === "user" ||
+          /^(account_)/i.test(notificationType)
+        ) {
+          qc.invalidateQueries({ queryKey: ["users"] });
+          qc.invalidateQueries({ queryKey: ["auth"] });
+        }
+
+        if (notificationType === "announcement") {
           qc.invalidateQueries({ queryKey: ["announcements"] });
         }
+
+        // Always invalidate dashboard cache to keep summary cards & badges in sync
+        qc.invalidateQueries({ queryKey: ["dashboard"] });
       });
 
       socket.on("payment:updated", (data) => {

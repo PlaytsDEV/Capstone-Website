@@ -133,6 +133,7 @@ describe("handlePaymongoWebhook", () => {
     billFindOne.mockReset();
     userFindById.mockReset();
     userFind.mockReset();
+    userFind.mockReturnValue({ select: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue([]) }) });
     sendPaymentReceiptEmail.mockReset();
     updateOccupancyOnReservationChange.mockReset();
     paymentApproved.mockReset();
@@ -320,13 +321,14 @@ describe("handlePaymongoWebhook", () => {
       appliedAmount: 4500,
       bill,
     });
-    userFindById.mockReturnValue({
+    userFindById.mockImplementation(() => ({
+      select: jest.fn().mockReturnThis(),
       lean: jest.fn().mockResolvedValue({
         email: "tenant@example.com",
         firstName: "Bill",
         lastName: "Tenant",
       }),
-    });
+    }));
 
     const req = { body: Buffer.from("{}"), headers: { "paymongo-signature": "sig" } };
     const res = createResponse();

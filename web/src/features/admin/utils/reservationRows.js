@@ -74,7 +74,8 @@ export function getCancelledByName(cancelledBy, cancellationSource, customerName
 export function mapReservationAdminRow(reservation) {
   const branchCode = reservation.roomId?.branch || "";
   const isViewedByAdmin = Boolean(reservation.isViewedByAdmin);
-  const isNew = isNewReservation(reservation) && !isViewedByAdmin;
+  const isPendingCancellation = hasPendingCancellationRequest(reservation);
+  const isNew = (isNewReservation(reservation) && !isViewedByAdmin) || isPendingCancellation;
   const customer =
     `${reservation.userId?.firstName || ""} ${reservation.userId?.lastName || ""}`.trim() ||
     "Unknown";

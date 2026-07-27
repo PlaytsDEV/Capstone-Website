@@ -133,7 +133,11 @@ export const formatAdminPaymentMode = (...sources) => {
 
   const normalized = String(rawValue).trim().toLowerCase();
   if (normalized.includes("gcash")) return "GCash";
-  if (normalized.includes("grabpay")) return "GrabPay";
+  if (normalized.includes("maya") || normalized.includes("paymaya")) return "Maya";
+  if (normalized.includes("grabpay") || normalized.includes("grab_pay")) return "GrabPay";
+  if (normalized.includes("dob") || normalized.includes("online_banking")) return "Online Banking";
+  if (normalized.includes("qrph")) return "QR Ph";
+  if (normalized.includes("billease")) return "BillEase";
   if (
     normalized.includes("card") ||
     normalized.includes("visa") ||
@@ -141,7 +145,7 @@ export const formatAdminPaymentMode = (...sources) => {
     normalized.includes("credit") ||
     normalized.includes("debit")
   ) {
-    return "Card";
+    return "Credit / Debit Card";
   }
   if (
     normalized.includes("paymongo") ||
@@ -149,7 +153,7 @@ export const formatAdminPaymentMode = (...sources) => {
     normalized.includes("checkout") ||
     normalized.includes("online")
   ) {
-    return "Online Payment";
+    return "Online Payment (PayMongo)";
   }
 
   return String(rawValue)

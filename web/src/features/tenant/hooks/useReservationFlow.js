@@ -2450,44 +2450,6 @@ export default function useReservationFlow() {
             }
             return;
           }
-
-          const requiredDocumentChecks = [
-            { key: "validIDFront", hasUpload: Boolean(validIDFront) },
-            { key: "validIDBack", hasUpload: Boolean(validIDBack) },
-            { key: "nbiClearance", hasUpload: Boolean(nbiClearance) },
-            { key: "companyID", hasUpload: Boolean(companyID) },
-          ]
-            .filter((doc) => doc.hasUpload)
-            .map((doc) => ({
-              ...doc,
-              label: DOCUMENT_PRECHECK_LABELS[doc.key],
-              precheck: normalizeDocumentPrecheckEntry(documentPrechecks?.[doc.key]),
-            }));
-          const checkingDocument = requiredDocumentChecks.find(
-            (doc) => doc.precheck.precheckStatus === "checking",
-          );
-          const uncheckedDocument = requiredDocumentChecks.find(
-            (doc) => doc.precheck.precheckStatus === "not_checked",
-          );
-          const blockedDocument = requiredDocumentChecks.find((doc) =>
-            isBlockingDocumentPrecheck(doc.precheck),
-          );
-
-          if (checkingDocument || uncheckedDocument || blockedDocument) {
-            const problem = checkingDocument || uncheckedDocument || blockedDocument;
-            const message = checkingDocument
-              ? DOCUMENT_PRECHECK_MESSAGES.checkingSubmit
-              : uncheckedDocument
-                ? DOCUMENT_PRECHECK_MESSAGES.notChecked
-                : getDocumentPrecheckBlockMessage(problem.label, problem.precheck);
-
-            setShowValidationErrors(true);
-            setTimeout(() => {
-              focusFieldByDataKey(problem.key);
-            }, 100);
-            showNotification(message, "error", 5000);
-            return;
-          }
         }
         setIsSubmittingApplication(true);
         try {

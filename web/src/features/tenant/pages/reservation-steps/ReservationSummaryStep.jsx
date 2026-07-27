@@ -256,7 +256,6 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
             <div className="summary-row"><span className="summary-label">Floor</span><span className="summary-value">{floorLabel ? `Floor ${floorLabel}` : "To be confirmed"}</span></div>
             <div className="summary-row"><span className="summary-label">Selected Bed</span><span className="summary-value">{getSelectedBedLabel(selectedBed)}</span></div>
             <div className="summary-row"><span className="summary-label">Availability</span><span className={`rf-status-pill rf-status-pill-${availabilityTone}`}>{availabilityLabel}</span></div>
-            <div className="summary-row"><span className="summary-label">Available Slots</span><span className="summary-value">{availableSlots === null ? "To be confirmed" : `${availableSlots} of ${capacityLabel}`}</span></div>
           </div>
         </section>
 
@@ -323,7 +322,7 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
           </div>
 
           <div>
-            <button type="button" onClick={onNext} className="btn btn-primary">
+            <button type="button" onClick={onNext} className="btn btn-success">
               Confirm Room & Continue <ArrowRight size={16} style={{ marginLeft: 8 }} />
             </button>
           </div>

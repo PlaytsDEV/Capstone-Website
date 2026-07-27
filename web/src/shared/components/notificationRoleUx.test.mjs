@@ -35,3 +35,14 @@ test("notification cache, bell, and socket use role-aware visibility scope", () 
   assert.match(socketClient, /isNotificationVisibleForUser/);
   assert.match(socketClient, /notificationQueryKeys\.unread\(scope\)/);
 });
+
+test("socket client triggers real-time UI page re-fetches across domain query keys on notification:new", () => {
+  const socketClient = readSharedSource("hooks/useSocketClient.js");
+
+  assert.match(socketClient, /qc\.invalidateQueries\(\{\s*queryKey:\s*\["reservations"\]/);
+  assert.match(socketClient, /qc\.invalidateQueries\(\{\s*queryKey:\s*\["billing"\]/);
+  assert.match(socketClient, /qc\.invalidateQueries\(\{\s*queryKey:\s*\["maintenance"\]/);
+  assert.match(socketClient, /qc\.invalidateQueries\(\{\s*queryKey:\s*\["inquiries"\]/);
+  assert.match(socketClient, /qc\.invalidateQueries\(\{\s*queryKey:\s*\["dashboard"\]/);
+});
+

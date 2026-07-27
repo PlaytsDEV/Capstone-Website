@@ -123,20 +123,37 @@ const readPaidPayments = (session) => {
   });
 };
 
-const readPaymentMethod = (session, paidPayments) => {
-  if (paidPayments.length === 0) {
-    return { paymentMethod: null, rawPaymentType: null };
+const readPaymentMethod = (session, paidPayments = []) => {
+  if (!paidPayments || paidPayments.length === 0) {
+    const defaultType = session?.attributes?.payment_method_used;
+    return {
+      rawPaymentType: defaultType || "online",
+      paymentMethod: defaultType ? (PAYMENT_METHOD_LABELS[defaultType] || defaultType) : "Online Payment (PayMongo)",
+    };
   }
 
   const firstPayment = paidPayments[0];
   const payObj = firstPayment?.attributes || firstPayment;
   const rawPaymentType =
-    payObj?.source?.type || session.attributes?.payment_method_used || "online";
+    payObj?.source?.type ||
+    payObj?.attributes?.source?.type ||
+    payObj?.payment_method_type ||
+    payObj?.attributes?.payment_method_type ||
+    session?.attributes?.payment_method_used ||
+    "online";
+
+  const key = String(rawPaymentType).toLowerCase().trim().replace(/[_\s-]/g, "");
+
+  const mappedLabel =
+    PAYMENT_METHOD_LABELS[rawPaymentType] ||
+    PAYMENT_METHOD_LABELS[key] ||
+    (rawPaymentType && rawPaymentType !== "online"
+      ? String(rawPaymentType).replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+      : "Online Payment (PayMongo)");
 
   return {
     rawPaymentType,
-    paymentMethod:
-      PAYMENT_METHOD_LABELS[rawPaymentType] || `PayMongo - ${rawPaymentType}`,
+    paymentMethod: mappedLabel,
   };
 };
 

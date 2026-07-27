@@ -294,17 +294,17 @@
 }
 
 .rdm-action-primary {
-  background: #2563eb;
-  border: 1px solid #2563eb;
+  background: #059669;
+  border: 1px solid #059669;
   color: #ffffff;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.22);
+  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.22);
 }
 
 .rdm-action-primary:hover:not(:disabled) {
-  background: #1d4ed8;
-  border-color: #1d4ed8;
+  background: #047857;
+  border-color: #047857;
   color: #ffffff;
-  box-shadow: 0 4px 12px rgba(29, 78, 216, 0.32);
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.32);
 }
 
 .rdm-action-danger-outline {

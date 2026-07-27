@@ -55,10 +55,10 @@ export default function ConfirmModal({
  btnHover: "#B45309",
  },
  info: {
- icon: "#0A1628",
- iconBg: "rgba(10, 22, 40, 0.06)",
- btn: "#0A1628",
- btnHover: "#092d4f",
+ icon: "#059669",
+ iconBg: "rgba(5, 150, 105, 0.08)",
+ btn: "#059669",
+ btnHover: "#047857",
  },
  success: {
  icon: "#059669",

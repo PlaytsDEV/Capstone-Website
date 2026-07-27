@@ -1,7 +1,6 @@
 import React from "react";
 import FileUploadField from "./FileUploadField";
 import { validatePHPhoneOrLandline } from "../../../utils/reservationValidation";
-import { hasBlockingPrecheck } from "../../../utils/documentPrecheckUtils";
 
 const errBorder = (show, value) =>
  show && !value ? "1.5px solid #dc2626" : undefined;
@@ -195,28 +194,16 @@ const EmploymentSection = ({
  />
  </div>
 
- <div data-field="companyID">
- <FileUploadField
- label="Company ID"
- value={companyID}
- onChange={setCompanyID}
- documentType="company-id"
- onUploadComplete={(documentUrl) =>
- onRunDocumentPrecheck?.({
- documentType: "company_id",
- documentUrl,
- })
- }
- aiCheck={documentPrechecks?.companyID}
- isChecking={Boolean(runningDocumentChecks?.companyID)}
- hint="Company ID or employee badge"
- hasError={
- showValidationErrors &&
- ((!companyID && !companyIDReason) ||
- (Boolean(companyID) && hasBlockingPrecheck(documentPrechecks?.companyID)))
- }
- />
- </div>
+  <div data-field="companyID">
+    <FileUploadField
+      label="Company ID"
+      value={companyID}
+      onChange={setCompanyID}
+      documentType="company-id"
+      hint="Company ID or employee badge"
+      hasError={showValidationErrors && !companyID && !companyIDReason}
+    />
+  </div>
 
   <div className="form-group" data-field="companyIDReason">
     <label className="form-label">

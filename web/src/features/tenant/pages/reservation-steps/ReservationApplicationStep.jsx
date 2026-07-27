@@ -356,13 +356,13 @@ const ReservationApplicationStep = ({
 
       {readOnly && applicationSubmitted && !paymentApproved && (
         <div className="stage-buttons" style={{ justifyContent: "flex-end" }}>
-          <button onClick={onEditApplication} className="btn btn-primary">Edit Application</button>
+          <button onClick={onEditApplication} className="btn btn-success">Edit Application</button>
         </div>
       )}
 
       {!readOnly && (
         <div className="stage-buttons" style={{ justifyContent: "flex-end" }}>
-          <button onClick={onNext} className="btn btn-primary" disabled={submitDisabled}>
+          <button onClick={onNext} className="btn btn-success" disabled={submitDisabled}>
             {isSubmittingApplication ? (
               <>
                 <Loader2 size={15} className="auth-spinner" style={{ marginRight: 6 }} />

@@ -49,6 +49,7 @@ import {
   checkOverdueReservation,
   getBranchLabel,
   hasPendingCancellationRequest,
+  isNewReservation,
   mapReservationAdminRow,
   applyMoveInFilter,
   applyAppDateFilter,
@@ -193,9 +194,11 @@ function ReservationsPage() {
     () =>
       rawReservations.map((raw) => {
         const row = mapReservationAdminRow(raw);
+        const isPendingCancellation = hasPendingCancellationRequest(row);
+        const isRecentlyCreated = isNewReservation(raw) && !raw.isViewedByAdmin && !seenIds.has(row.id);
         return {
           ...row,
-          isNew: row.isNew && !raw.isViewedByAdmin && !seenIds.has(row.id),
+          isNew: isRecentlyCreated || isPendingCancellation,
         };
       }),
     [rawReservations, seenIds],
@@ -752,7 +755,11 @@ function ReservationsPage() {
                   {row.isNew && (
                     <span
                       className="res-badge-new"
-                      title="New reservation (created within 48 hours)"
+                      title={
+                        hasPendingCancellationRequest(row)
+                          ? "Cancellation requested (New action)"
+                          : "New reservation (created within 48 hours)"
+                      }
                     >
                       <span className="res-badge-new__dot" />
                       NEW
@@ -797,7 +804,7 @@ function ReservationsPage() {
       {
         key: "createdAt",
         label: isArchivedView ? "Archived By" : "Date",
-        sortable: true,
+        sortable: false,
         render: (row) => formatShortDate(row.createdAt),
       },
       {
@@ -960,6 +967,22 @@ function ReservationsPage() {
                 />
               </div>
               <div className="flex gap-2">
+                <select
+                  value={`${sortState.key}-${sortState.dir}`}
+                  onChange={(e) => {
+                    const [key, dir] = e.target.value.split("-");
+                    setSortState({ key, dir });
+                    setCurrentPage(1);
+                  }}
+                  style={{ backgroundColor: "var(--input-background)", borderColor: "var(--border-light)" }}
+                  className="px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring font-medium"
+                  title="Sort reservations"
+                >
+                  <option value="createdAt-desc">Recent Transaction</option>
+                  <option value="createdAt-asc">Oldest Transaction</option>
+                  <option value="customer-asc">Alphabetical (A - Z)</option>
+                  <option value="customer-desc">Alphabetical (Z - A)</option>
+                </select>
                 {isOwner && (
                   <select
                     value={branchFilter}

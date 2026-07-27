@@ -4,6 +4,10 @@ import {
   fmtDate,
 } from "../../../../shared/utils/formatDate";
 import {
+  getBedDisplayLabel,
+  getBedShortCode,
+} from "../../../../shared/utils/bedIdentifier";
+import {
   ShieldCheck,
   CreditCard,
   Lock,
@@ -78,11 +82,25 @@ const ReservationPaymentStep = ({
     netAmountDue: Math.max(0, monthlyRent * 2 - reservationFeeAmount),
   };
 
-  const selectedBedPosition = toDisplayString(reservationData?.selectedBed?.position, "");
-  const selectedBedId = toDisplayString(reservationData?.selectedBed?.id);
-  const bedDisplay = selectedBedPosition
-    ? `${selectedBedPosition}${selectedBedId ? ` (${selectedBedId})` : ""}`
-    : "";
+  const selectedBed = reservationData?.selectedBed;
+  const roomNumber = toDisplayString(room.roomNumber || room.name || room.title || room.id, "");
+  const bedCode =
+    typeof selectedBed === "object" && selectedBed
+      ? selectedBed.code || getBedShortCode(roomNumber, selectedBed)
+      : typeof selectedBed === "string"
+      ? selectedBed
+      : "";
+  const bedLabel =
+    typeof selectedBed === "object" && selectedBed
+      ? getBedDisplayLabel(selectedBed, 0, room?.roomType || room?.type)
+      : "";
+
+  let bedDisplay = "";
+  if (bedLabel && bedCode && !bedLabel.toLowerCase().includes(bedCode.toLowerCase())) {
+    bedDisplay = `${bedLabel} (${bedCode})`;
+  } else {
+    bedDisplay = bedCode || bedLabel || toDisplayString(selectedBed, "");
+  }
 
   const canPay = agreedToFeePolicy && !isLoading && !payingOnline && paymentAvailable && !readOnly;
   const payButtonLabel = payingOnline
@@ -159,11 +177,11 @@ const ReservationPaymentStep = ({
             </div>
 
             {/* Reservation Fee Deposit Breakdown */}
-            <div className="rf-movein-breakdown" style={{ marginTop: '16px', padding: '14px', borderRadius: '10px', background: 'rgba(255, 255, 255, 0.04)', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
-              <div style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: '8px', color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            <div className="rf-movein-breakdown rf-payment-breakdown-box">
+              <div className="rf-payment-breakdown-title">
                 Payment Summary
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: '#34d399', fontWeight: 600 }}>
+              <div className="rf-payment-breakdown-row">
                 <span>Reservation Fee (Due Now):</span>
                 <span>{formatCurrency(reservationFeeAmount)}</span>
               </div>
@@ -173,11 +191,11 @@ const ReservationPaymentStep = ({
           {/* Card 2: Checkout Action Section */}
           <div className="rf-payment-checkout-section">
             {!paymentAvailable && !readOnly ? (
-              <div className="rf-locked-banner rf-payment-locked-box" style={{ margin: 0, padding: '16px', borderRadius: '12px' }}>
-                <div className="info-box-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div className="rf-locked-banner rf-payment-locked-box">
+                <div className="info-box-title">
                   <Lock size={16} /> Payment Locked — Application Under Review
                 </div>
-                <div className="info-text" style={{ marginTop: '6px' }}>
+                <div className="info-text">
                   Your application is currently under admin review. Payment will automatically unlock once approved.
                   {applicationReviewReason ? ` Latest note: ${applicationReviewReason}` : ""}
                 </div>
@@ -229,7 +247,7 @@ const ReservationPaymentStep = ({
                   {/* Pay Button */}
                   <button
                     onClick={handlePayClick}
-                    className={`btn btn-primary btn-pay-online-reservation ${payingOnline ? "is-loading" : ""}`}
+                    className={`btn btn-success btn-pay-online-reservation ${payingOnline ? "is-loading" : ""}`}
                     disabled={!canPay}
                     aria-describedby="reservation-payment-help"
                   >

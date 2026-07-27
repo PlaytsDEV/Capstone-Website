@@ -177,13 +177,31 @@ async function handleDepositPayment(metadata, eventData, context = {}) {
       const reservationCode = reservation.reservationCode || String(reservation._id).slice(-8).toUpperCase();
       const tenantName = `${tenant.firstName || ""} ${tenant.lastName || ""}`.trim();
 
+      const rawSourceType =
+        eventData?.attributes?.data?.attributes?.source?.type ||
+        eventData?.attributes?.data?.attributes?.payment_method_type ||
+        reservation?.paymentMethod ||
+        "";
+      const normalizedChannel = String(rawSourceType).toLowerCase().trim().replace(/[_\s-]/g, "");
+      const channelMap = {
+        gcash: "GCash",
+        paymaya: "Maya",
+        maya: "Maya",
+        card: "Credit / Debit Card",
+        grabpay: "GrabPay",
+        dob: "Online Banking",
+        qrph: "QR Ph",
+        billease: "BillEase",
+      };
+      const formattedChannel = channelMap[normalizedChannel] || (rawSourceType ? String(rawSourceType).toUpperCase() : "Online Payment (PayMongo)");
+
       const emailResult = await sendPaymentReceiptEmail({
         to: tenant.email,
         tenantName,
         amount: actualPaidAmount,
         description: `Lilycrest Dormitory — Reservation Deposit (${reservationCode})`,
         billedTo: tenantName,
-        paymentMethod: "GCash / Online Payment",
+        paymentMethod: formattedChannel,
         paymentDate,
         referenceId: receiptPaymentId,
         reservationCode,
@@ -329,10 +347,25 @@ async function handleBillPayment(metadata, eventData) {
   try {
     const tenant = await User.findById(bill.userId).lean();
     if (tenant?.email) {
-      const paymentDate = new Date().toLocaleDateString("en-PH", {
-        month: "long", day: "numeric", year: "numeric",
-      });
-      const paymentId = extractPaymentId(eventData);
+      const rawBillSourceType =
+        eventData?.attributes?.data?.attributes?.source?.type ||
+        eventData?.attributes?.data?.attributes?.payment_method_type ||
+        bill?.paymentMethod ||
+        settlement?.appliedMethod ||
+        "";
+      const normalizedBillChannel = String(rawBillSourceType).toLowerCase().trim().replace(/[_\s-]/g, "");
+      const billChannelMap = {
+        gcash: "GCash",
+        paymaya: "Maya",
+        maya: "Maya",
+        card: "Credit / Debit Card",
+        grabpay: "GrabPay",
+        dob: "Online Banking",
+        qrph: "QR Ph",
+        billease: "BillEase",
+      };
+      const formattedBillChannel = billChannelMap[normalizedBillChannel] || (rawBillSourceType ? String(rawBillSourceType).toUpperCase() : "Online Payment (PayMongo)");
+      const paymentDate = dayjs().format("D MMMM YYYY");
 
       await sendPaymentReceiptEmail({
         to: tenant.email,
@@ -340,7 +373,7 @@ async function handleBillPayment(metadata, eventData) {
         amount: settlement.appliedAmount,
         description: `Lilycrest Dormitory — Monthly Bill (${monthStr})`,
         billedTo: `${tenant.firstName || ""} ${tenant.lastName || ""}`.trim(),
-        paymentMethod: "GCash / Online Payment",
+        paymentMethod: formattedBillChannel,
         paymentDate,
         referenceId: paymentId,
       });
