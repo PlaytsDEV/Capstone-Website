@@ -3,6 +3,7 @@
  * Extracted from routes for cleaner separation.
  */
 
+import mongoose from "mongoose";
 import dayjs from "dayjs";
 import { User, Reservation, Room, Bill, UtilityReading, MaintenanceRequest } from "../models/index.js";
 import { ROOM_BRANCHES } from "../config/branches.js";
@@ -20,6 +21,7 @@ import {
 } from "../middleware/permissions.js";
 import {
   ACTIVE_STAY_STATUS_QUERY,
+  ACTIVE_OCCUPANCY_STATUS_QUERY,
   PAST_STAY_STATUS_QUERY,
   hasReservationStatus,
   readMoveInDate,
@@ -1038,39 +1040,103 @@ export const deleteUser = async (req, res, next) => {
       });
     }
 
-    if (!hasSignificantHistory && safeguards.reservations > 0) {
-      // Collect reservation IDs before deleting, so we can release their beds too
-      const reservationsToDelete = await Reservation.find({
-        userId: user._id,
-        isArchived: { $ne: true },
-      }).select("_id").lean();
+    // ── Safety guard: block force-delete if user has an active occupancy reservation
+    // (status: reserved or moveIn). Admin must process move-out first.
+    // Exception: isForceDelete bypasses this — the transactional cleanup below will
+    // archive the reservations and release the beds atomically before user deletion.
+    const activeOccupancyReservations = await Reservation.find({
+      userId: user._id,
+      isArchived: { $ne: true },
+      status: { $in: ACTIVE_OCCUPANCY_STATUS_QUERY },
+    }).select("_id roomId").lean();
 
-      const reservationIdsToDelete = reservationsToDelete.map((r) => r._id);
+    const activeOccupancyCount = activeOccupancyReservations.length;
 
-      await Reservation.deleteMany({
-        userId: user._id,
-        isArchived: { $ne: true },
+    if (activeOccupancyCount > 0 && !isForceDelete) {
+      return res.status(409).json({
+        error:
+          `Cannot delete this account — the user has ${activeOccupancyCount} active reservation(s) currently holding a room or bed (status: reserved/moveIn). ` +
+          "Process a move-out or cancel those reservations before deleting this account.",
+        code: "ACTIVE_OCCUPANCY_BLOCK",
+        activeOccupancyCount,
+        safeguards,
       });
+    }
 
-      // Release any beds held by those reservations
-      if (reservationIdsToDelete.length > 0) {
-        await releaseOrphanedBeds([], reservationIdsToDelete).catch((err) =>
-          logger.warn({ err, userId }, "deleteUser: bed release for reservations failed (non-fatal)")
+    // ── Transactional cleanup: archive reservations → release beds → delete user ──
+    // Done inside a MongoDB session to ensure atomicity. If any step throws,
+    // the user document is NOT deleted and beds remain correctly assigned.
+    const session = await mongoose.startSession();
+    let archivedReservationIds = [];
+
+    try {
+      await session.withTransaction(async () => {
+        // 1. Archive all remaining non-archived reservations (preserve audit trail)
+        if (safeguards.reservations > 0) {
+          const reservationsToArchive = await Reservation.find({
+            userId: user._id,
+            isArchived: { $ne: true },
+          }).select("_id").lean().session(session);
+
+          archivedReservationIds = reservationsToArchive.map((r) => r._id);
+
+          if (archivedReservationIds.length > 0) {
+            await Reservation.updateMany(
+              { userId: user._id, isArchived: { $ne: true } },
+              { $set: { isArchived: true, status: "archived" } },
+              { session },
+            );
+          }
+        }
+
+        // 2. Hard delete the user document (beds released after transaction)
+        await User.findByIdAndDelete(userId).session(session);
+      });
+    } finally {
+      session.endSession();
+    }
+
+    // ── Post-transaction: release beds (outside transaction for Socket.IO emit) ──
+    // This is intentionally outside the transaction — bed release calls emitRoomUpdate
+    // which cannot run inside a MongoDB session. The user doc is already deleted at
+    // this point so any failure here is repaired by the nightly reconciliation job.
+    if (archivedReservationIds.length > 0) {
+      await releaseOrphanedBeds([], archivedReservationIds);
+    }
+    await releaseOrphanedBeds([user._id], []);
+
+    // ── Post-transaction: recompute occupancy for rooms affected by force-deleted
+    // active reservations (ensures immediate accuracy, not waiting for nightly job) ──
+    if (isForceDelete && activeOccupancyCount > 0) {
+      const affectedRoomIds = [
+        ...new Set(activeOccupancyReservations.map((r) => String(r.roomId)).filter(Boolean)),
+      ];
+      if (affectedRoomIds.length > 0) {
+        const { recalculateRoomOccupancy } = await import(
+          "../services/occupancy/occupancyManager.js"
         );
+        if (typeof recalculateRoomOccupancy === "function") {
+          await Promise.allSettled(affectedRoomIds.map((roomId) =>
+            recalculateRoomOccupancy(roomId).catch((err) =>
+              logger.warn({ err, roomId }, "force delete: room reconcile failed (non-fatal)")
+            )
+          ));
+        }
       }
     }
 
-    // Delete Firebase account
+    // ── Firebase account deletion ──────────────────────────────────────────────
     try {
       const auth = getAuth();
       if (auth && user.firebaseUid) await auth.deleteUser(user.firebaseUid);
     } catch (fbErr) {
       logger.warn(
         { err: fbErr, requestId: req.id },
-        "Firebase deletion failed",
+        "Firebase deletion failed (non-fatal — user already deleted from MongoDB)",
       );
     }
 
+    // ── Clean up draft bills ───────────────────────────────────────────────────
     if (safeguards.draftBills > 0) {
       await Bill.deleteMany({
         userId: user._id,
@@ -1079,15 +1145,7 @@ export const deleteUser = async (req, res, next) => {
       });
     }
 
-    // Release any beds this user is locking/occupying BEFORE deleting the user doc
-    await releaseOrphanedBeds([user._id], []).catch((err) =>
-      logger.warn({ err, userId }, "deleteUser: bed release for user failed (non-fatal)")
-    );
-
-    // Hard delete from MongoDB
-    await User.findByIdAndDelete(userId);
-
-    // Log user deletion
+    // ── Audit log ─────────────────────────────────────────────────────────────
     await auditLogger.logDeletion(
       req,
       "user",
@@ -1105,6 +1163,7 @@ export const deleteUser = async (req, res, next) => {
       forceDeleted: isForceDelete,
       deletedAccountLabel: DELETED_ACCOUNT_LABEL,
       cleanup: {
+        archivedReservations: archivedReservationIds.length,
         deletedDraftBills: safeguards.draftBills,
       },
       safeguards,

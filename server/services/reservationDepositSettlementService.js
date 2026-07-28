@@ -427,6 +427,20 @@ export async function settleReservationDeposit({
         status: { $in: ["reserved", "moveIn"] },
       }).session(mongoSession);
       room.currentOccupancy = occupiedCount;
+      // Phase 3: clear stale pointers to this reservation on OTHER beds before
+      // writing to the target bed — mirrors the Phase 2 sweep in occupancyManager.
+      const reservationIdStr = String(reservation._id);
+      const targetBedId = reservation.selectedBed?.id;
+      for (const otherBed of room.beds) {
+        if (targetBedId && otherBed.id === targetBedId) continue;
+        if (String(otherBed.occupiedBy?.reservationId) === reservationIdStr) {
+          otherBed.status = "available";
+          otherBed.lockedBy = null;
+          otherBed.lockExpiresAt = null;
+          otherBed.occupiedBy = { userId: null, reservationId: null, occupiedSince: null };
+        }
+      }
+
       if (bed) {
         bed.status = "reserved";
         bed.lockExpiresAt = null;

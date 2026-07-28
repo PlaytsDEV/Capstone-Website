@@ -349,14 +349,20 @@ export const serializeReservation = (
       : "Unknown";
 
   const cancelledByRef = plain.cancelledBy;
-  const cancelledById = typeof cancelledByRef === "object" ? String(cancelledByRef._id || "") : String(cancelledByRef || "");
-  const userIdVal = typeof userRef === "object" ? String(userRef._id || "") : String(userRef || "");
+  const cancelledById =
+    cancelledByRef && typeof cancelledByRef === "object"
+      ? String(cancelledByRef._id || "")
+      : String(cancelledByRef || "");
+  const userIdVal =
+    userRef && typeof userRef === "object"
+      ? String(userRef._id || "")
+      : String(userRef || "");
   const isOwnUser = (cancelledById && userIdVal && cancelledById === userIdVal) || plain.cancellationSource === "applicant";
 
   let cancelledByName = null;
   if (isOwnUser) {
     cancelledByName = customerName;
-  } else if (typeof cancelledByRef === "object" && cancelledByRef?.role) {
+  } else if (cancelledByRef && typeof cancelledByRef === "object" && cancelledByRef?.role) {
     const role = cancelledByRef.role;
     cancelledByName =
       role === "branch_admin"
@@ -374,7 +380,7 @@ export const serializeReservation = (
 
   const cancelledByRole = isOwnUser
     ? "applicant"
-    : (typeof cancelledByRef === "object" && cancelledByRef?.role) || plain.cancellationSource || null;
+    : (cancelledByRef && typeof cancelledByRef === "object" && cancelledByRef?.role) || plain.cancellationSource || null;
 
   const serialized = {
     ...plain,

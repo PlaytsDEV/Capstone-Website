@@ -289,6 +289,20 @@ export const updateOccupancyOnReservationChange = async (
         await increaseOccupancy();
 
         if (reservation.selectedBed?.id) {
+          // Phase 2: clear any stale pointer to this reservation on OTHER beds
+          // before writing to the target bed — prevents the dual-bed display bug.
+          const reservationIdStr = String(reservation._id);
+          for (const otherBed of room.beds) {
+            if (otherBed.id === reservation.selectedBed.id) continue;
+            if (String(otherBed.occupiedBy?.reservationId) === reservationIdStr) {
+              otherBed.status = "available";
+              otherBed.lockedBy = null;
+              otherBed.lockExpiresAt = null;
+              otherBed.occupiedBy = { userId: null, reservationId: null, occupiedSince: null };
+              roomChanged = true;
+            }
+          }
+
           const bed = room.beds.find((b) => b.id === reservation.selectedBed.id);
           if (bed) {
             bed.status = "reserved";
@@ -307,6 +321,18 @@ export const updateOccupancyOnReservationChange = async (
       if (newStatus === "moveIn" && previousStatus !== "moveIn") {
         if (previousStatus === "reserved") {
           if (reservation.selectedBed?.id) {
+            // Phase 2: clear any stale pointers on other beds before occupying target
+            const reservationIdStr = String(reservation._id);
+            for (const otherBed of room.beds) {
+              if (otherBed.id === reservation.selectedBed.id) continue;
+              if (String(otherBed.occupiedBy?.reservationId) === reservationIdStr) {
+                otherBed.status = "available";
+                otherBed.lockedBy = null;
+                otherBed.lockExpiresAt = null;
+                otherBed.occupiedBy = { userId: null, reservationId: null, occupiedSince: null };
+                roomChanged = true;
+              }
+            }
             const assigned = room.occupyBed(
               reservation.selectedBed.id,
               reservation.userId,
@@ -318,6 +344,18 @@ export const updateOccupancyOnReservationChange = async (
           await increaseOccupancy();
 
           if (reservation.selectedBed?.id) {
+            // Phase 2: clear any stale pointers on other beds before occupying target
+            const reservationIdStr = String(reservation._id);
+            for (const otherBed of room.beds) {
+              if (otherBed.id === reservation.selectedBed.id) continue;
+              if (String(otherBed.occupiedBy?.reservationId) === reservationIdStr) {
+                otherBed.status = "available";
+                otherBed.lockedBy = null;
+                otherBed.lockExpiresAt = null;
+                otherBed.occupiedBy = { userId: null, reservationId: null, occupiedSince: null };
+                roomChanged = true;
+              }
+            }
             const assigned = room.occupyBed(
               reservation.selectedBed.id,
               reservation.userId,
@@ -341,6 +379,19 @@ export const updateOccupancyOnReservationChange = async (
           const vacated = room.vacateBed(reservation.selectedBed.id);
           if (vacated) roomChanged = true;
         }
+
+        // Phase 4: fallback sweep — clear ALL beds that reference this reservation.
+        // Covers cases where selectedBed was null/missing or pointed to a different bed.
+        const reservationIdStr = String(reservation._id);
+        for (const bed of room.beds) {
+          if (String(bed.occupiedBy?.reservationId) === reservationIdStr) {
+            bed.status = "available";
+            bed.lockedBy = null;
+            bed.lockExpiresAt = null;
+            bed.occupiedBy = { userId: null, reservationId: null, occupiedSince: null };
+            roomChanged = true;
+          }
+        }
       }
 
       if (newStatus === "moveOut" && previousStatus !== "moveOut") {
@@ -350,6 +401,18 @@ export const updateOccupancyOnReservationChange = async (
           if (reservation.selectedBed?.id) {
             const vacated = room.vacateBed(reservation.selectedBed.id);
             if (vacated) roomChanged = true;
+          }
+
+          // Phase 4: fallback sweep — clear ALL beds referencing this reservation
+          const reservationIdStr = String(reservation._id);
+          for (const bed of room.beds) {
+            if (String(bed.occupiedBy?.reservationId) === reservationIdStr) {
+              bed.status = "available";
+              bed.lockedBy = null;
+              bed.lockExpiresAt = null;
+              bed.occupiedBy = { userId: null, reservationId: null, occupiedSince: null };
+              roomChanged = true;
+            }
           }
         }
       }

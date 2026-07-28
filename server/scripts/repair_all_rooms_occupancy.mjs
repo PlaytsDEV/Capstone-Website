@@ -28,31 +28,44 @@ for (const room of rooms) {
   let bedsModified = false;
   const occupiedCount = activeReservations.length;
 
-  // Build a set of active reservation IDs for fast lookup
+  // Build a set of active reservation IDs + a map of reservationId → claimedBedId
   const activeResIds = new Set(activeReservations.map(r => String(r._id)));
+  const resBedMap = new Map();
+  for (const res of activeReservations) {
+    if (res.selectedBed?.id) resBedMap.set(String(res._id), res.selectedBed.id);
+  }
 
-  // ── Step 1: Release beds whose reservationId no longer exists in active reservations ──
+  // ── Step 1: Release beds whose reservationId is gone OR points to the wrong bed ──
   for (const bed of room.beds) {
     if (bed.status === 'maintenance' || bed.status === 'locked') continue;
 
-    const hasDanglingRef =
-      (bed.status === 'occupied' || bed.status === 'reserved') &&
-      bed.occupiedBy?.reservationId &&
-      !activeResIds.has(String(bed.occupiedBy.reservationId));
+    if (bed.status === 'occupied' || bed.status === 'reserved') {
+      const resIdStr = bed.occupiedBy?.reservationId ? String(bed.occupiedBy.reservationId) : null;
 
-    const hasOrphanRef =
-      (bed.status === 'occupied' || bed.status === 'reserved') &&
-      !bed.occupiedBy?.reservationId;
+      // Pass A: dangling ref — reservation no longer active
+      const hasDanglingRef = resIdStr && !activeResIds.has(resIdStr);
 
-    if (hasDanglingRef || hasOrphanRef) {
-      const reason = hasDanglingRef ? `dangling reservationId ${bed.occupiedBy.reservationId}` : 'no reservationId';
-      console.log(`   ↳ [${room.roomNumber || room.name}] Clearing stale bed "${bed.id}" (was: ${bed.status}, reason: ${reason})`);
-      bed.status = 'available';
-      bed.lockedBy = null;
-      bed.lockExpiresAt = null;
-      bed.occupiedBy = { userId: null, reservationId: null, occupiedSince: null };
-      bedsModified = true;
-      bedsReleasedTotal++;
+      // Pass A: no reservationId at all
+      const hasOrphanRef = !resIdStr;
+
+      // Pass B (Phase 1): active reservation exists but claims a DIFFERENT bed
+      const claimedBedId = resIdStr ? resBedMap.get(resIdStr) : null;
+      const hasMismatchedBed = resIdStr && claimedBedId && claimedBedId !== bed.id;
+
+      if (hasDanglingRef || hasOrphanRef || hasMismatchedBed) {
+        const reason = hasMismatchedBed
+          ? `reservation ${resIdStr} claims bed ${claimedBedId} (not this bed)`
+          : hasDanglingRef
+            ? `dangling reservationId ${resIdStr}`
+            : 'no reservationId';
+        console.log(`   ↳ [${room.roomNumber || room.name}] Clearing stale bed "${bed.id}" (was: ${bed.status}, reason: ${reason})`);
+        bed.status = 'available';
+        bed.lockedBy = null;
+        bed.lockExpiresAt = null;
+        bed.occupiedBy = { userId: null, reservationId: null, occupiedSince: null };
+        bedsModified = true;
+        bedsReleasedTotal++;
+      }
     }
   }
 

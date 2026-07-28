@@ -438,9 +438,9 @@ export const handlePaymongoWebhook = async (req, res) => {
   } catch (sigError) {
     logger.warn(
       { err: sigError.message },
-      "Webhook: Signature verification failed — returning 200",
+      "Webhook: Signature verification failed — returning 200 to prevent PayMongo disabling",
     );
-    return res.status(401).json({
+    return res.status(200).json({
       received: false,
       code: "INVALID_WEBHOOK_SIGNATURE",
     });
@@ -486,8 +486,8 @@ export const handlePaymongoWebhook = async (req, res) => {
       return res.status(200).json({ received: true, duplicate: true });
     }
   } catch (persistenceError) {
-    logger.error({ err: persistenceError, eventId }, "Webhook event persistence failed");
-    return res.status(503).json({
+    logger.error({ err: persistenceError, eventId }, "Webhook event persistence failed — returning 200");
+    return res.status(200).json({
       received: false,
       code: "WEBHOOK_PERSISTENCE_FAILED",
     });
@@ -541,9 +541,9 @@ export const handlePaymongoWebhook = async (req, res) => {
         sessionId,
         metadataType: metadata.type,
       },
-      "Webhook: Processing error",
+      "Webhook: Processing error — returning 200",
     );
-    return res.status(isReconciliationOutcome ? 200 : 500).json({
+    return res.status(200).json({
       received: isReconciliationOutcome,
       code: processingError.code || "WEBHOOK_PROCESSING_FAILED",
     });
@@ -580,7 +580,7 @@ export const handlePaymongoSourceWebhook = async (req, res) => {
       { err: sigError.message },
       "Webhook(payment): Signature verification failed — returning 200",
     );
-    return res.status(401).json({
+    return res.status(200).json({
       received: false,
       code: "INVALID_WEBHOOK_SIGNATURE",
     });
@@ -629,7 +629,7 @@ export const handlePaymongoSourceWebhook = async (req, res) => {
     }
   } catch (persistenceError) {
     logger.error({ err: persistenceError, eventId }, "Webhook event persistence failed");
-    return res.status(503).json({
+    return res.status(200).json({
       received: false,
       code: "WEBHOOK_PERSISTENCE_FAILED",
     });

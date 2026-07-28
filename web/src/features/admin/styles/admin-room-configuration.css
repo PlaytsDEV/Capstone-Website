@@ -1051,4 +1051,16 @@ body.modal-open {
   background: hsl(0 80% 95%);
   color: hsl(0 70% 35%);
   border: 1px solid hsl(0 70% 80%);
-}
+}
+
+/* Stale pointer variant (GP-201 pattern) — distinct from counter-mismatch */
+.occupancy-drift-alert--warning {
+  background: hsl(25 100% 96%);
+  border-color: hsl(25 90% 65%);
+  color: hsl(20 80% 30%);
+}
+
+.occupancy-drift-alert--warning svg {
+  color: hsl(25 90% 45%);
+}
+

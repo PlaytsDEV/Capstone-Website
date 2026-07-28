@@ -120,6 +120,8 @@ await jest.unstable_mockModule("../controllers/roomsController.js", () => ({
   getRooms: noop,
   getRoomById: noop,
   getOccupancyConsistency: noop,
+  getOccupancyHealth: noop,
+  reconcileAllOccupancy: noop,
   createRoom: noop,
   updateRoom: noop,
   deleteRoom: noop,

@@ -502,3 +502,359 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Force Delete Modal
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.force-delete-modal__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.force-delete-modal {
+  background: #fff;
+  border: 1px solid hsl(0 75% 88%);
+  border-radius: 14px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Header ── */
+.force-delete-modal__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 18px;
+  background: hsl(0 80% 97%);
+  border-bottom: 1px solid hsl(0 70% 90%);
+}
+
+.force-delete-modal__header h3 {
+  flex: 1;
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: hsl(0 70% 28%);
+  letter-spacing: -0.01em;
+}
+
+.force-delete-modal__header-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: hsl(0 70% 28%);
+  color: #fff;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.force-delete-modal__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: hsl(0 60% 40%);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.force-delete-modal__close:hover:not(:disabled) {
+  background: hsl(0 70% 92%);
+}
+
+/* ── Step Indicators ── */
+.force-delete-modal__steps {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 12px 18px;
+  background: hsl(0 0% 98%);
+  border-bottom: 1px solid hsl(0 0% 93%);
+}
+
+.force-delete-modal__step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  position: relative;
+}
+
+.force-delete-modal__step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  right: -2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 1px;
+  background: hsl(0 0% 80%);
+}
+
+.force-delete-modal__step--done::after {
+  background: hsl(142 55% 45%) !important;
+}
+
+.force-delete-modal__step-num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: hsl(0 0% 88%);
+  color: hsl(0 0% 40%);
+  font-size: 0.7rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  transition: background 0.2s, color 0.2s;
+}
+
+.force-delete-modal__step--active .force-delete-modal__step-num {
+  background: hsl(0 70% 30%);
+  color: #fff;
+}
+
+.force-delete-modal__step--done .force-delete-modal__step-num {
+  background: hsl(142 55% 45%);
+  color: #fff;
+}
+
+.force-delete-modal__step-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: hsl(0 0% 55%);
+  white-space: nowrap;
+}
+
+.force-delete-modal__step--active .force-delete-modal__step-label {
+  color: hsl(0 70% 30%);
+}
+
+.force-delete-modal__step--done .force-delete-modal__step-label {
+  color: hsl(142 55% 35%);
+}
+
+/* ── Body ── */
+.force-delete-modal__body {
+  padding: 20px 18px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.force-delete-modal__section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.force-delete-modal__lead {
+  margin: 0;
+  font-size: 0.85rem;
+  color: hsl(0 0% 20%);
+  line-height: 1.55;
+}
+
+/* ── Impact grid ── */
+.force-delete-modal__impact-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid hsl(0 0% 90%);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.force-delete-modal__impact-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  color: hsl(0 0% 35%);
+  border-bottom: 1px solid hsl(0 0% 93%);
+}
+
+.force-delete-modal__impact-row:last-child {
+  border-bottom: none;
+}
+
+.force-delete-modal__impact-row strong {
+  font-weight: 700;
+  color: hsl(0 0% 15%);
+}
+
+.force-delete-modal__count--warn {
+  color: hsl(0 70% 38%) !important;
+}
+
+/* ── Callouts ── */
+.force-delete-modal__callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.force-delete-modal__callout--warn {
+  background: hsl(38 100% 95%);
+  border: 1px solid hsl(38 90% 65%);
+  color: hsl(30 80% 28%);
+}
+
+.force-delete-modal__callout--warn svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: hsl(38 90% 45%);
+}
+
+.force-delete-modal__callout--info {
+  background: hsl(210 100% 96%);
+  border: 1px solid hsl(210 80% 75%);
+  color: hsl(215 70% 30%);
+}
+
+/* ── Name / code confirmation ── */
+.force-delete-modal__name-target {
+  padding: 10px 14px;
+  background: hsl(0 0% 96%);
+  border: 1px solid hsl(0 0% 88%);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: hsl(0 0% 12%);
+  letter-spacing: 0.01em;
+  text-align: center;
+}
+
+.force-delete-modal__label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: hsl(0 0% 30%);
+}
+
+.force-delete-modal__input {
+  padding: 9px 12px;
+  border: 1.5px solid hsl(0 0% 80%);
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-family: inherit;
+  color: hsl(0 0% 10%);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.force-delete-modal__input:focus {
+  border-color: hsl(0 65% 45%);
+  box-shadow: 0 0 0 3px hsl(0 65% 92%);
+}
+
+.force-delete-modal__input--match {
+  border-color: hsl(142 55% 42%) !important;
+  box-shadow: 0 0 0 3px hsl(142 55% 90%) !important;
+}
+
+.force-delete-modal__mismatch {
+  margin: 0;
+  font-size: 0.75rem;
+  color: hsl(0 65% 40%);
+  font-weight: 500;
+}
+
+.force-delete-modal__code-hint {
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+  background: hsl(0 0% 95%);
+  border: 1px solid hsl(0 0% 85%);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 0.88em;
+  color: hsl(0 70% 30%);
+}
+
+/* ── Footer buttons ── */
+.force-delete-modal__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 18px;
+  border-top: 1px solid hsl(0 0% 92%);
+  background: hsl(0 0% 99%);
+}
+
+.force-delete-modal__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 0.83rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  transition: background 0.15s ease, opacity 0.15s ease, transform 0.1s ease;
+  white-space: nowrap;
+}
+
+.force-delete-modal__btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.force-delete-modal__btn--ghost {
+  background: hsl(0 0% 95%);
+  color: hsl(0 0% 35%);
+  border: 1px solid hsl(0 0% 86%);
+}
+
+.force-delete-modal__btn--ghost:hover:not(:disabled) {
+  background: hsl(0 0% 90%);
+}
+
+.force-delete-modal__btn--next {
+  background: hsl(0 0% 12%);
+  color: #fff;
+}
+
+.force-delete-modal__btn--next:hover:not(:disabled) {
+  background: hsl(0 0% 8%);
+}
+
+.force-delete-modal__btn--destroy {
+  background: hsl(0 70% 30%);
+  color: #fff;
+  letter-spacing: 0.01em;
+}
+
+.force-delete-modal__btn--destroy:hover:not(:disabled) {
+  background: hsl(0 70% 24%);
+}
+
+.force-delete-modal__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+

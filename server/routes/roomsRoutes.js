@@ -26,6 +26,8 @@ import {
   getRooms,
   getRoomById,
   getOccupancyConsistency,
+  getOccupancyHealth,
+  reconcileAllOccupancy,
   createRoom,
   updateRoom,
   deleteRoom,
@@ -62,6 +64,43 @@ router.get(
   filterByBranch,
   getOccupancyConsistency,
 );
+
+/**
+ * GET /api/rooms/occupancy-health
+ *
+ * Read-only scan: returns count and details of orphaned reservations
+ * (userId hard-deleted) and rooms with currentOccupancy drift.
+ * Safe to call at any time — no writes are performed.
+ *
+ * Access: Admin (manageRooms or viewReports)
+ */
+router.get(
+  "/occupancy-health",
+  verifyToken,
+  verifyAdmin,
+  requireAnyPermission(["manageRooms", "viewReports"]),
+  filterByBranch,
+  getOccupancyHealth,
+);
+
+/**
+ * POST /api/rooms/reconcile-occupancy
+ *
+ * On-demand occupancy reconciliation: archives orphaned reservations,
+ * releases their beds, and recomputes currentOccupancy for all rooms.
+ * Equivalent to running the nightly Job 15 immediately.
+ *
+ * Access: Owner only (isOwner checked in controller)
+ */
+router.post(
+  "/reconcile-occupancy",
+  verifyToken,
+  verifyAdmin,
+  requirePermission("manageRooms"),
+  filterByBranch,
+  reconcileAllOccupancy,
+);
+
 router.get("/:roomId", getRoomById);
 
 /**

@@ -39,11 +39,22 @@ export const userApi = {
     }),
 
   /**
-   * Delete user (owner only)
+  /**
+   * Delete user (owner only for hardDelete/force)
+   * @param {string} userId
+   * @param {{ hardDelete?: boolean, force?: boolean, confirmationText?: string }} options
    */
   delete: (userId, options = {}) => {
-    const query = options.hardDelete ? "?hardDelete=true" : "";
-    return authFetch(`/users/${userId}${query}`, { method: "DELETE" });
+    const params = new URLSearchParams();
+    if (options.hardDelete) params.set("hardDelete", "true");
+    if (options.force) params.set("force", "true");
+    const query = params.toString() ? `?${params}` : "";
+    return authFetch(`/users/${userId}${query}`, {
+      method: "DELETE",
+      ...(options.force
+        ? { body: JSON.stringify({ confirmationText: options.confirmationText || "DELETE" }) }
+        : {}),
+    });
   },
 
   /**

@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
 import { roomApi } from "../../../../shared/api/roomApi";
+import BedOccupantDetailModal from "./BedOccupantDetailModal";
 
 export const getMaxBedsForRoomType = (type) => {
   const normType = String(type || "").toLowerCase().trim();
@@ -47,6 +48,7 @@ export default function RoomConfigModal({
   const [saving, setSaving] = useState(false);
   const [draftRoom, setDraftRoom] = useState(room);
   const [activeMenuBedId, setActiveMenuBedId] = useState(null);
+  const [selectedOccupantBed, setSelectedOccupantBed] = useState(null);
   const [repairing, setRepairing] = useState(false);
   const [repairMsg, setRepairMsg] = useState(null); // { type: 'success'|'error', text: string }
   useEscapeClose(true, onClose);
@@ -151,33 +153,14 @@ export default function RoomConfigModal({
     setBeds((beds) => beds.filter((bed) => bed.id !== bedId));
   };
 
-  const handleNavigateToOccupant = (bed) => {
-    const occupant = bed.occupiedBy || {};
-    const name =
-      occupant.name ||
-      occupant.userName ||
-      bed.userName ||
-      bed.tenantName ||
-      (occupant.firstName || occupant.lastName
-        ? `${occupant.firstName || ""} ${occupant.lastName || ""}`.trim()
-        : "");
-    const email = occupant.email || occupant.userEmail || bed.userEmail || "";
-    const resId = occupant.reservationId || bed.reservationId;
+  const handleOpenOccupantDetails = (bed) => {
+    setSelectedOccupantBed(bed);
+  };
 
+  const handleNavigateToTenants = (navUrl) => {
+    setSelectedOccupantBed(null);
     if (onClose) onClose();
-
-    const searchStr = name || email;
-    if (resId) {
-      navigate(
-        `/admin/tenants?reservationId=${resId}${
-          searchStr ? `&search=${encodeURIComponent(searchStr)}` : ""
-        }`,
-      );
-    } else if (searchStr) {
-      navigate(`/admin/tenants?search=${encodeURIComponent(searchStr)}`);
-    } else {
-      navigate(`/admin/tenants`);
-    }
+    navigate(navUrl);
   };
 
   const handleSave = async () => {
@@ -197,6 +180,24 @@ export default function RoomConfigModal({
     !isPrivate &&
     (draftRoom.currentOccupancy || 0) > 0 &&
     (draftRoom.beds || []).every((b) => getBedStatus(b) === "available");
+
+  /**
+   * Detect the GP-201-type stale pointer: a bed is "reserved" or "occupied"
+   * but no other bed in the same room carries the same occupant
+   * (i.e., the same reservationId appears on two beds simultaneously).
+   * Surfacing this prompts the admin to run Repair Beds proactively.
+   */
+  const reservationIdCounts = {};
+  for (const bed of draftRoom.beds || []) {
+    const s = getBedStatus(bed);
+    const rid = bed.occupiedBy?.reservationId;
+    if ((s === "reserved" || s === "occupied") && rid) {
+      const key = String(rid);
+      reservationIdCounts[key] = (reservationIdCounts[key] || 0) + 1;
+    }
+  }
+  const hasDualBedPointer =
+    !isPrivate && Object.values(reservationIdCounts).some((count) => count > 1);
 
   const handleRepairOccupancy = async () => {
     setRepairing(true);
@@ -429,8 +430,8 @@ export default function RoomConfigModal({
                             <button
                               type="button"
                               className={`bed-occupant-badge bed-occupant-badge--${normStatus === "reserved" ? "reserved" : "occupied"}`}
-                              onClick={() => handleNavigateToOccupant(bed)}
-                              title={`Navigate to ${occupantName || "occupant"}'s tenancy details`}
+                              onClick={() => handleOpenOccupantDetails(bed)}
+                              title={`View summary for ${occupantName || "occupant"}`}
                             >
                               <User size={13} className="bed-occupant-icon" />
                               <span className="bed-occupant-name">
@@ -557,7 +558,7 @@ export default function RoomConfigModal({
                 : `${draftRoom.currentOccupancy || 0} of ${draftRoom.capacity || 1} beds currently occupied`}
             </p>
 
-            {/* Drift repair: only shown when counter > 0 but all beds are available */}
+            {/* Drift repair: counter > 0 but all beds available */}
             {hasDrift && (
               <div className="occupancy-drift-alert">
                 <ShieldAlert size={14} />
@@ -572,6 +573,25 @@ export default function RoomConfigModal({
                   disabled={repairing}
                 >
                   {repairing ? "Repairing…" : "Repair Occupancy"}
+                </button>
+              </div>
+            )}
+
+            {/* Stale pointer repair: same reservation on two beds (GP-201 pattern) */}
+            {!hasDrift && hasDualBedPointer && (
+              <div className="occupancy-drift-alert occupancy-drift-alert--warning">
+                <ShieldAlert size={14} />
+                <span>
+                  Stale bed pointer detected &mdash; the same reservation appears
+                  on multiple beds. Tap Repair Beds to fix.
+                </span>
+                <button
+                  type="button"
+                  className="btn-repair-occupancy"
+                  onClick={handleRepairOccupancy}
+                  disabled={repairing}
+                >
+                  {repairing ? "Repairing…" : "Repair Beds"}
                 </button>
               </div>
             )}
@@ -603,6 +623,14 @@ export default function RoomConfigModal({
           </button>
         </div>
       </div>
+      {selectedOccupantBed && (
+        <BedOccupantDetailModal
+          bed={selectedOccupantBed}
+          room={draftRoom}
+          onClose={() => setSelectedOccupantBed(null)}
+          onNavigateToTenants={handleNavigateToTenants}
+        />
+      )}
     </div>,
     document.body
   );

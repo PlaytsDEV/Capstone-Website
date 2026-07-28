@@ -1,3 +1,5 @@
+import { resolveSecurityDeposit } from "../utils/depositUtils.js";
+
 /**
  * Canonical applicant-to-tenant profile mapping.
  *
@@ -137,7 +139,7 @@ export function resolveTenantFinancialSummary({
   return {
     monthlyRate: Number.isFinite(approvedRate) ? approvedRate : null,
     advanceRent: Number.isFinite(approvedRate) ? approvedRate : null,
-    securityDeposit: Number.isFinite(approvedRate) ? approvedRate : null,
+    securityDeposit: resolveSecurityDeposit(reservation),
     reservationFee: Number.isFinite(reservationFee) ? reservationFee : null,
     paymentStatus: paymentStatus || reservation.paymentStatus || null,
     currentBalance: Number.isFinite(Number(currentBalance))
@@ -145,3 +147,4 @@ export function resolveTenantFinancialSummary({
       : null,
   };
 }
+

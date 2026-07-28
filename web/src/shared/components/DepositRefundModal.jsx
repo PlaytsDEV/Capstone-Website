@@ -3,6 +3,7 @@ import BaseModal from "./BaseModal";
 import { reservationApi } from "../api/apiClient";
 import { AlertCircle, CheckCircle, Clock, ShieldAlert, DollarSign, FileText } from "lucide-react";
 import dayjs from "dayjs";
+import { resolveSecurityDeposit } from "../utils/depositUtils";
 
 /**
  * ============================================================================
@@ -35,7 +36,7 @@ export default function DepositRefundModal({
   if (!reservation) return null;
 
   const isForfeited = reservation.depositForfeited || reservation.depositRefundStatus === "forfeited";
-  const securityDeposit = Number(reservation.monthlyRent || reservation.totalPrice || 0);
+  const securityDeposit = resolveSecurityDeposit(reservation);
   const refundAmount = Number(reservation.depositRefundAmount ?? (isForfeited ? 0 : securityDeposit));
   const deadline = reservation.depositRefundDeadline ? dayjs(reservation.depositRefundDeadline) : null;
   const isOverdue = deadline && deadline.isBefore(dayjs()) && reservation.depositRefundStatus !== "processed";

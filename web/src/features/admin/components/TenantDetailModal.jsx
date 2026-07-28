@@ -15,6 +15,8 @@ import {
   RefreshCw,
   ArrowRightLeft,
   LogOut,
+  Trash2,
+  Skull,
 } from "lucide-react";
 import { showNotification } from "../../../shared/utils/notification";
 import useEscapeClose from "../../../shared/hooks/useEscapeClose";
@@ -25,6 +27,9 @@ import {
 import { reservationApi } from "../../../shared/api/apiClient";
 import { contractApi } from "../../../shared/api/contractApi";
 import { formatContractStatus, getContractNextAction } from "../utils/contractUi.mjs";
+import ConfirmModal from "../../../shared/components/ConfirmModal";
+import { userApi } from "../../../shared/api/userApi";
+import ForceDeleteModal from "./ForceDeleteModal";
 import {
   RenewLeaseModal,
   TransferTenantModal,
@@ -207,6 +212,7 @@ export default function TenantDetailModal({ tenant, onClose }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [dialogState, setDialogState] = useState({ type: null, loading: false, error: null });
+  const [safeguardsData, setSafeguardsData] = useState(null);
   const [dedicatedContract, setDedicatedContract] = useState(null);
   const [contractLookupDone, setContractLookupDone] = useState(false);
 
@@ -595,6 +601,30 @@ export default function TenantDetailModal({ tenant, onClose }) {
     <ArrowRightLeft className="w-4 h-4" />
     Transfer Room
   </button>
+
+  <button
+    className="w-full flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 text-red-700 px-3 py-2 text-sm font-semibold hover:bg-red-100 transition-colors mt-1"
+    onClick={() => {
+      setDialogState({ type: "deleteTenant", loading: false, error: null });
+    }}
+  >
+    <Trash2 className="w-4 h-4" />
+    Delete Tenant Record
+  </button>
+
+  {/* Force Delete — owner-only, more severe */}
+  {tenant.isOwnerViewing && (
+    <button
+      className="w-full flex items-center gap-2 rounded-lg border border-red-700 bg-red-700 text-white px-3 py-2 text-sm font-semibold hover:bg-red-800 transition-colors"
+      onClick={() => {
+        setSafeguardsData(null);
+        setDialogState({ type: "forceDelete", loading: false, error: null });
+      }}
+    >
+      <Skull className="w-4 h-4" />
+      Force Delete Account
+    </button>
+  )}
   </div>
   </div>
   ) : null}
@@ -732,6 +762,86 @@ export default function TenantDetailModal({ tenant, onClose }) {
       }}
     />
   ) : null}
+
+  <ConfirmModal
+    isOpen={dialogState.type === "deleteTenant"}
+    onClose={closeDialog}
+    onConfirm={async () => {
+      const userId =
+        tenant?.tenantId?._id ||
+        tenant?.tenantId ||
+        tenant?.userId?._id ||
+        tenant?.userId;
+      if (!userId) {
+        showNotification("Cannot resolve tenant user ID.", "error");
+        return;
+      }
+      setDialogState((s) => ({ ...s, loading: true }));
+      try {
+        await userApi.delete(userId, { hardDelete: true });
+        await invalidateTenantQueries();
+        showNotification("Tenant record deleted successfully.", "success");
+        closeDialog();
+        onClose();
+      } catch (err) {
+        setDialogState((s) => ({ ...s, loading: false }));
+        // If blocked because force is needed, surface the force delete modal instead
+        if (err?.code === "HARD_DELETE_BLOCKED" && err?.requiresForceDelete) {
+          closeDialog();
+          setSafeguardsData(err?.safeguards ?? null);
+          setDialogState({ type: "forceDelete", loading: false, error: null });
+          showNotification("This account requires Force Delete (owner only). See Force Delete modal.", "warning");
+        } else {
+          showNotification(err.message || "Failed to delete tenant record.", "error");
+        }
+      }
+    }}
+    title="Delete Tenant Record"
+    message={`Permanently delete ${tenant?.name || "this tenant"}? This cannot be undone. All associated reservation and billing data will be purged.`}
+    confirmText="Delete Permanently"
+    cancelText="Cancel"
+    variant="danger"
+    loading={dialogState.loading}
+  />
+
+  {/* Force Delete Modal — owner-only, 3-step typed confirmation */}
+  <ForceDeleteModal
+    open={dialogState.type === "forceDelete"}
+    tenant={tenant}
+    safeguards={safeguardsData ?? tenant?.safeguards ?? {}}
+    loading={dialogState.loading}
+    onClose={closeDialog}
+    onConfirm={async () => {
+      const userId =
+        tenant?.tenantId?._id ||
+        tenant?.tenantId ||
+        tenant?.userId?._id ||
+        tenant?.userId;
+      if (!userId) {
+        showNotification("Cannot resolve tenant user ID.", "error");
+        return;
+      }
+      setDialogState((s) => ({ ...s, loading: true }));
+      try {
+        const result = await userApi.delete(userId, {
+          hardDelete: true,
+          force: true,
+          confirmationText: "DELETE",
+        });
+        await invalidateTenantQueries();
+        const archived = result?.cleanup?.archivedReservations ?? 0;
+        showNotification(
+          `Account permanently deleted. ${archived} reservation(s) archived, beds released.`,
+          "success",
+        );
+        closeDialog();
+        onClose();
+      } catch (err) {
+        setDialogState((s) => ({ ...s, loading: false }));
+        showNotification(err.message || "Force delete failed. Please try again.", "error");
+      }
+    }}
+  />
 </div>
  );
 }

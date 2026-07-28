@@ -582,6 +582,9 @@ export default function TenantsWorkspacePage() {
         extensionHistory,
         roomHistory,
         warnings,
+        tenantId: detail.tenantId || base.tenantId || "",
+        userId: detail.userId || base.userId || detail.tenantId || base.tenantId || "",
+        isOwnerViewing: isOwner,
         };
     }, [
         selectedReservationId,

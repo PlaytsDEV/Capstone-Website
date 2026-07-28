@@ -400,7 +400,7 @@ describe("handlePaymongoWebhook", () => {
     expect(sendPaymentReceiptEmail).not.toHaveBeenCalled();
   });
 
-  test("rejects an invalid checkout webhook signature", async () => {
+  test("rejects an invalid checkout webhook signature with 200 status code", async () => {
     verifyWebhookSignature.mockImplementation(() => {
       throw new Error("invalid signature");
     });
@@ -410,14 +410,14 @@ describe("handlePaymongoWebhook", () => {
 
     await handlePaymongoWebhook(req, res);
 
-    expect(res.statusCode).toBe(401);
+    expect(res.statusCode).toBe(200);
     expect(res.body).toEqual({
       received: false,
       code: "INVALID_WEBHOOK_SIGNATURE",
     });
   });
 
-  test("payment-level webhook also rejects an invalid signature", async () => {
+  test("payment-level webhook also rejects an invalid signature with 200 status code", async () => {
     verifyWebhookSignature.mockImplementation(() => {
       throw new Error("invalid signature");
     });
@@ -427,7 +427,7 @@ describe("handlePaymongoWebhook", () => {
 
     await handlePaymongoSourceWebhook(req, res);
 
-    expect(res.statusCode).toBe(401);
+    expect(res.statusCode).toBe(200);
     expect(res.body).toEqual({
       received: false,
       code: "INVALID_WEBHOOK_SIGNATURE",

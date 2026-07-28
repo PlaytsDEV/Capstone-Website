@@ -1,12 +1,18 @@
-import { BedDouble, Lock, Settings, Unlock, X } from "lucide-react";
+import { useState } from "react";
+import { BedDouble, Lock, Settings, Unlock, X, User } from "lucide-react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 import { formatRoomType } from "../../utils/formatters";
 import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
 import { DrawerSkeleton } from "../../../../shared/components/LoadingSkeletons";
 import { getBedDisplayLabel } from "../../../../shared/utils/bedIdentifier";
+import BedOccupantDetailModal from "../rooms/BedOccupantDetailModal";
 
 export default function OccupancyRoomModal({ room, loadingDetails, onClose }) {
  useEscapeClose(true, onClose);
+ const navigate = useNavigate();
+ const [selectedOccupantBed, setSelectedOccupantBed] = useState(null);
+
  const roomInfo = room.room || room;
  const beds = room.beds || [];
  const occupiedBeds =
@@ -91,6 +97,12 @@ export default function OccupancyRoomModal({ room, loadingDetails, onClose }) {
  const maintenanceTone = getBedTone("maintenance");
  const availableTone = getBedTone("available");
 
+ const handleNavigateToTenants = (navUrl) => {
+    setSelectedOccupantBed(null);
+    if (onClose) onClose();
+    navigate(navUrl);
+ };
+
  const modal = (
  <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-transparent backdrop-blur-sm" onClick={onClose}>
  <div className="w-full max-w-3xl bg-card border border-border rounded-xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
@@ -147,8 +159,18 @@ export default function OccupancyRoomModal({ room, loadingDetails, onClose }) {
  <div className={`${occupiedTone.icon} mt-0.5`}>
  <BedDouble size={22} />
  </div>
- <div className="flex-1">
+ <div className="flex-1 min-w-0">
+ <div className="flex items-center justify-between gap-2">
  <h4 className="text-sm font-semibold text-foreground mb-1">{formatBedLabel(bed)}</h4>
+ <button
+    type="button"
+    className="text-xs font-medium text-primary hover:underline inline-flex items-center gap-1"
+    onClick={() => setSelectedOccupantBed(bed)}
+ >
+    <User size={13} />
+    View Summary
+ </button>
+ </div>
  <p className="text-sm text-foreground">
  Resident: {formatOccupantName(bed)}
  </p>
@@ -194,8 +216,18 @@ export default function OccupancyRoomModal({ room, loadingDetails, onClose }) {
  <div className={`${reservedTone.icon} mt-0.5`}>
  <Lock size={22} />
  </div>
- <div className="flex-1">
+ <div className="flex-1 min-w-0">
+ <div className="flex items-center justify-between gap-2">
  <h4 className="text-sm font-semibold text-foreground mb-1">{formatBedLabel(bed)}</h4>
+ <button
+    type="button"
+    className="text-xs font-medium text-amber-700 dark:text-amber-400 hover:underline inline-flex items-center gap-1"
+    onClick={() => setSelectedOccupantBed({ ...bed, status: "reserved" })}
+ >
+    <User size={13} />
+    View Summary
+ </button>
+ </div>
  <p className="text-sm text-foreground">
  Reserved by: {bed.reservedBy?.userName || bed.occupant?.name || "Unknown"}
  </p>
@@ -285,6 +317,14 @@ export default function OccupancyRoomModal({ room, loadingDetails, onClose }) {
  </button>
  </div>
  </div>
+ {selectedOccupantBed && (
+    <BedOccupantDetailModal
+      bed={selectedOccupantBed}
+      room={roomInfo}
+      onClose={() => setSelectedOccupantBed(null)}
+      onNavigateToTenants={handleNavigateToTenants}
+    />
+ )}
  </div>
  );
 
