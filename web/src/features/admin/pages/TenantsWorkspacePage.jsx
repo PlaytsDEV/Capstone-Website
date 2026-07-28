@@ -8,11 +8,11 @@ import {
   RefreshCcw,
   UserRoundCheck,
   Users,
-  MoreHorizontal,
   LogOut,
   CreditCard,
   Filter,
   Clock3,
+  Eye,
 } from "lucide-react";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import {
@@ -126,156 +126,7 @@ function matchesDateRange(value, from, to) {
   return true;
 }
 
-const RowActionsMenu = ({ row, onSelect, onAction }) => {
-  const [open, setOpen] = useState(false);
-  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
-  const triggerRef = useRef(null);
-  const menuRef = useRef(null);
-  const hasActionMenu = hasEnabledTenantAction(
-    row,
-    TENANT_ACTION_ITEMS.map(({ key }) => key),
-  );
 
-  const notifyBlocked = (actionMeta) => {
-    showNotification(
-      actionMeta?.reason || "This action is not available for this tenant.",
-      "error",
-      3500,
-    );
-  };
-
-  const updateMenuPosition = () => {
-    const trigger = triggerRef.current;
-    if (!trigger || typeof window === "undefined") return;
-
-    const triggerRect = trigger.getBoundingClientRect();
-    const menuWidth = 190;
-    const menuHeight = 135;
-
-    let left = triggerRect.right - menuWidth;
-    if (left < 12) left = 12;
-
-    let top = triggerRect.bottom + 6;
-    if (top + menuHeight > window.innerHeight - 12) {
-      top = Math.max(12, triggerRect.top - menuHeight - 6);
-    }
-
-    setMenuPosition({ top, left });
-  };
-
-  useEffect(() => {
-    if (!open) return;
-    updateMenuPosition();
-
-    const handleScrollOrResize = () => updateMenuPosition();
-    window.addEventListener("scroll", handleScrollOrResize, true);
-    window.addEventListener("resize", handleScrollOrResize);
-
-    return () => {
-      window.removeEventListener("scroll", handleScrollOrResize, true);
-      window.removeEventListener("resize", handleScrollOrResize);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const handleClickOutside = (e) => {
-      const trigger = triggerRef.current;
-      const menu = menuRef.current;
-      if (
-        trigger &&
-        menu &&
-        !trigger.contains(e.target) &&
-        !menu.contains(e.target)
-      ) {
-        setOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [open]);
-
-  return (
-    <div className="tenant-row-menu" onClick={(e) => e.stopPropagation()}>
-      <button
-        ref={triggerRef}
-        type="button"
-        className="tenant-row-menu-btn"
-        title="More actions"
-        aria-label="More tenant options"
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen((prev) => !prev);
-        }}
-      >
-        <MoreHorizontal size={16} />
-      </button>
-
-      {open
-        ? createPortal(
-            <>
-              <div
-                className="tenant-dropdown-backdrop"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setOpen(false);
-                }}
-              />
-              <div
-                ref={menuRef}
-                className="tenant-dropdown-portal"
-                style={{
-                  position: "fixed",
-                  top: `${menuPosition.top}px`,
-                  left: `${menuPosition.left}px`,
-                  zIndex: 9999,
-                }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                {TENANT_ACTION_ITEMS.map(
-                  ({ key, type, label, icon: Icon, className }) => {
-                    const actionMeta = getTenantActionMeta(row, key);
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        className={`tenant-dropdown-item ${className} ${
-                          !actionMeta.enabled
-                            ? "tenant-dropdown-item--disabled"
-                            : ""
-                        }`}
-                        disabled={!actionMeta.enabled}
-                        aria-disabled={!actionMeta.enabled}
-                        title={actionMeta.reason || ""}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const opened = openTenantAction({
-                            tenant: row,
-                            actionKey: key,
-                            actionType: type,
-                            notifyBlocked,
-                            onAction,
-                          });
-                          if (opened) {
-                            setOpen(false);
-                          }
-                        }}
-                      >
-                        <Icon size={14} /> {label}
-                      </button>
-                    );
-                  },
-                )}
-              </div>
-            </>,
-            document.body,
-          )
-        : null}
-    </div>
-  );
-};
 
 export default function TenantsWorkspacePage() {
   const { user, loading: authLoading } = useAuth();
@@ -530,14 +381,17 @@ export default function TenantsWorkspacePage() {
         }));
 
         const warnings = (detail.systemWarnings || []).map((warning, index) => ({
-        id: warning.code || `${warning.message || "warning"}-${index}`,
-        type: warning.code || "warning",
-        message: warning.message || "Warning",
-        date: fmtDate(warning.createdAt),
-        severity:
+          id: warning.code || `${warning.message || "warning"}-${index}`,
+          type: warning.code || "warning",
+          message: warning.message || "Warning",
+          details: warning.details || null,
+          impact: warning.impact || null,
+          recommendation: warning.recommendation || null,
+          date: warning.createdAt ? fmtDate(warning.createdAt) : null,
+          severity:
             warning.severity === "error"
-            ? "high"
-            : warning.severity === "warning"
+              ? "high"
+              : warning.severity === "warning"
                 ? "medium"
                 : "low",
         }));
@@ -939,8 +793,7 @@ export default function TenantsWorkspacePage() {
                 {paginatedTenants.map((tenant) => (
                   <tr
                     key={tenant.reservationId || tenant.tenantName}
-                    className="border-b border-[var(--border-light)] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                    onClick={() => setSelectedReservationId(tenant.reservationId)}
+                    className="border-b border-[var(--border-light)] hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
                   >
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3">
@@ -1001,12 +854,19 @@ export default function TenantsWorkspacePage() {
                     <td className="py-3 px-4 text-sm text-muted-foreground">
                       {tenant.nextActionLabel}
                     </td>
-                    <td className="py-3 px-4">
-                      <RowActionsMenu
-                        row={tenant}
-                        onSelect={setSelectedReservationId}
-                        onAction={setActionState}
-                      />
+                    <td className="py-3 px-4 text-center">
+                      <button
+                        type="button"
+                        className="tenant-view-btn"
+                        title="View tenant details"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedReservationId(tenant.reservationId);
+                        }}
+                      >
+                        <Eye size={14} />
+                        <span>View</span>
+                      </button>
                     </td>
                   </tr>
                 ))}

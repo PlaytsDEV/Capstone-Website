@@ -235,6 +235,13 @@ export const TENANT_WORKSPACE_FIELDS = [
   "emergencyContact",
   "selectedBed",
   "notes",
+  "selfiePhotoUrl",
+  "validIDFrontUrl",
+  "validIDBackUrl",
+  "validIDType",
+  "idType",
+  "nbiClearanceUrl",
+  "companyIDUrl",
   "userId",
   "roomId",
 ].join(" ");

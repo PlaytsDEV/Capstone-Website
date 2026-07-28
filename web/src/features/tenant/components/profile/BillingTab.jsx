@@ -4,6 +4,7 @@ import { billingApi } from "../../../../shared/api/apiClient";
 import { formatPaymentMethod } from "../../../../shared/utils/formatPaymentMethod";
 import SkeletonPulse from "../../../../shared/components/SkeletonPulse";
 import StatusChip from "../../../../shared/components/StatusChip";
+import DeadlineBadge from "../../../../shared/components/DeadlineBadge";
 import {
  useMyUtilityBreakdownByBillId,
 } from "../../../../shared/hooks/queries/useUtility";
@@ -497,12 +498,14 @@ const MonthlyBillCard = ({ bill }) => {
  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-heading)" }}>
  {fmtMonth(bill.billingMonth)}
  </div>
- <div style={{ fontSize: 12, color: "#94a3b8" }}>
+ <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 4 }}>
  Cycle: {fmtCycle(bill) || "—"}
  </div>
- <div style={{ fontSize: 12, color: "#94a3b8" }}>
- Due: {bill.dueDate ? fmtDate(bill.dueDate) : "—"}
+ {bill.dueDate && (
+ <div style={{ marginTop: 4 }}>
+ <DeadlineBadge dueDate={bill.dueDate} status={bill.status} type="bill" />
  </div>
+ )}
  </div>
  <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
  <StatusChip status={bill.status || "pending"} variant="text" />
@@ -515,6 +518,17 @@ const MonthlyBillCard = ({ bill }) => {
 
  {open && (
  <div style={s.breakdown}>
+ {bill.dueDate && (
+ <div style={{ marginBottom: 16 }}>
+ <DeadlineBadge
+ dueDate={bill.dueDate}
+ status={bill.status}
+ type="bill"
+ showConsequenceNote={true}
+ penaltyRate={bill.penaltyDetails?.ratePerDay || 50}
+ />
+ </div>
+ )}
  <div style={{ ...elecS.segmentCard, marginBottom: 16 }}>
  <div style={elecS.segmentHeader}>
  <span>Statement Breakdown</span>
