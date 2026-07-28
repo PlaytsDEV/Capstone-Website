@@ -493,14 +493,18 @@ export const handlePaymongoWebhook = async (req, res) => {
     });
   }
 
+  // Flush HTTP 200 response to PayMongo immediately
+  res.status(200).json({ received: true });
+  logger.info({ eventType, eventId, sessionId }, "Webhook: Responded 200 to PayMongo");
+
   // ── 4. Ignore non-payment events ─────────────────────────────────────────
   if (eventType !== "checkout_session.payment.paid") {
     logger.info({ eventType, eventId }, "Webhook: Ignoring non-payment event");
     await finishWebhookEvent(eventRecord, "ignored");
-    return res.status(200).json({ received: true, ignored: true });
+    return;
   }
 
-  // ── 5. Process event (runs after 200 has been flushed to PayMongo) ────────
+  // ── 5. Process event asynchronously (runs after 200 has been flushed) ──────
   try {
     if (metadata.type === "deposit") {
       await handleDepositPayment(metadata, checkoutData, { eventId, sessionId });
@@ -521,7 +525,6 @@ export const handlePaymongoWebhook = async (req, res) => {
       );
     }
     await finishWebhookEvent(eventRecord, "processed");
-    return res.status(200).json({ received: true });
   } catch (processingError) {
     const isReconciliationOutcome =
       processingError instanceof ReservationDepositSettlementError &&
@@ -541,12 +544,8 @@ export const handlePaymongoWebhook = async (req, res) => {
         sessionId,
         metadataType: metadata.type,
       },
-      "Webhook: Processing error — returning 200",
+      "Webhook: Processing error after 200 response",
     );
-    return res.status(200).json({
-      received: isReconciliationOutcome,
-      code: processingError.code || "WEBHOOK_PROCESSING_FAILED",
-    });
   }
 };
 

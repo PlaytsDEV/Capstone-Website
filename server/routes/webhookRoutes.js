@@ -67,6 +67,17 @@ router.post(
   handlePaymongoSourceWebhook,
 );
 
+// Catch-all error handler for webhook routes to guarantee HTTP 200
+router.use((err, req, res, _next) => {
+  logger.warn(
+    { err: err?.message || err },
+    "PayMongo webhook route encountered an uncaught error - acknowledging with 200",
+  );
+  if (!res.headersSent) {
+    return res.status(200).json({ received: false, code: "WEBHOOK_ROUTE_ERROR" });
+  }
+});
+
 // ============================================================================
 // EXPORT
 // ============================================================================

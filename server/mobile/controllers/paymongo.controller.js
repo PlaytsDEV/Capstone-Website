@@ -551,6 +551,10 @@ async function handleWebhook(req, res) {
     console.warn('[PayMongo] Webhook signature mismatch - acknowledging without processing');
     return res.status(200).json({ received: true });
   }
+  
+  // Always respond 200 immediately to acknowledge the webhook before async work
+  res.status(200).json({ received: true });
+
   try {
     const event = req.body?.data;
     const eventType = event?.attributes?.type;
@@ -585,12 +589,8 @@ async function handleWebhook(req, res) {
         }
       }
     }
-
-    // Always respond 200 to acknowledge the webhook
-    res.status(200).json({ received: true });
   } catch (error) {
-    console.error('PayMongo webhook error:', error);
-    res.status(200).json({ received: true }); // Still 200 to prevent retries
+    console.error('PayMongo webhook processing error:', error);
   }
 }
 
