@@ -335,6 +335,13 @@ export const reservationApi = {
     ),
 
   /**
+   * Get the latest electricity meter reading for a room.
+   * Used by the Transfer modal to pre-fill baseline readings.
+   */
+  getRoomMeterBaseline: (roomId) =>
+    authFetch(`/reservations/room-meter-baseline/${roomId}`),
+
+  /**
    * Create lease renewal offer (admin only)
    */
   createRenewalOffer: (reservationId, data) =>

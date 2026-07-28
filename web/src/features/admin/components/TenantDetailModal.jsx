@@ -1470,6 +1470,7 @@ const navigate = useNavigate();
       tenant={normalizedTenant}
       detail={normalizedDetail}
       loading={dialogState.loading}
+      sourceRoomLatestReading={actionContext?.sourceRoomLatestReading ?? null}
       onClose={closeDialog}
       onSubmit={async (payload) => {
         setDialogState((s) => ({ ...s, loading: true, error: null }));

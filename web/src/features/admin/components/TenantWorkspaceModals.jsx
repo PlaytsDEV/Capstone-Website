@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useRooms } from "../../../shared/hooks/queries/useRooms";
 import useBodyScrollLock from "../../../shared/hooks/useBodyScrollLock";
 import { formatBranch } from "../utils/formatters";
 import { resolveDepositFromPaymentInfo } from "../../../shared/utils/depositUtils";
+import { formatBedPosition, getBedDisplayLabel, getBedShortCode } from "../../../shared/utils/bedIdentifier";
+import { reservationApi } from "../../../shared/api/reservationApi";
 
 const fmtDate = (value) =>
   value
@@ -280,7 +282,7 @@ export function RenewLeaseModal({
   );
 }
 
-export function TransferTenantModal({ open, tenant, detail, loading, onClose, onSubmit }) {
+export function TransferTenantModal({ open, tenant, detail, loading, onClose, onSubmit, sourceRoomLatestReading }) {
   const branch = detail?.basicInfo?.branch || tenant?.branch || "";
   const { data: roomsData = [], isLoading: roomsLoading } = useRooms(
     open && branch ? { branch } : {},
@@ -291,31 +293,62 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
   const [sourceRoomMeterReading, setSourceRoomMeterReading] = useState("");
   const [targetRoomMeterReading, setTargetRoomMeterReading] = useState("");
   const [reason, setReason] = useState("Room transfer");
+  const [targetRoomBaseline, setTargetRoomBaseline] = useState(null);
+  const [targetBaselineLoading, setTargetBaselineLoading] = useState(false);
 
+  // On modal open: reset fields and pre-fill source meter from history baseline.
   useEffect(() => {
     if (!open) return;
     setRoomId("");
     setBedId("");
-    setSourceRoomMeterReading("");
+    setTargetRoomBaseline(null);
     setTargetRoomMeterReading("");
     setReason("Room transfer");
-  }, [open]);
+    // Auto-fill source room meter from the latest recorded reading.
+    if (sourceRoomLatestReading?.reading != null) {
+      setSourceRoomMeterReading(String(sourceRoomLatestReading.reading));
+    } else {
+      setSourceRoomMeterReading("");
+    }
+  }, [open, sourceRoomLatestReading]);
 
-  const availableRooms = useMemo(
+  // Fetch target room meter baseline when admin selects a target room.
+  const fetchTargetBaseline = useCallback(async (selectedRoomId) => {
+    if (!selectedRoomId) {
+      setTargetRoomBaseline(null);
+      setTargetRoomMeterReading("");
+      return;
+    }
+    setTargetBaselineLoading(true);
+    try {
+      const result = await reservationApi.getRoomMeterBaseline(selectedRoomId);
+      const baseline = result?.data?.latestReading ?? result?.latestReading ?? null;
+      setTargetRoomBaseline(baseline);
+      if (baseline?.reading != null) {
+        setTargetRoomMeterReading(String(baseline.reading));
+      } else {
+        setTargetRoomMeterReading("");
+      }
+    } catch {
+      setTargetRoomBaseline(null);
+      setTargetRoomMeterReading("");
+    } finally {
+      setTargetBaselineLoading(false);
+    }
+  }, []);
+
+  const targetRooms = useMemo(
     () =>
       rooms.filter(
-        (room) =>
-          String(room._id || room.id) !== String(tenant?.roomId) &&
-          Array.isArray(room.beds) &&
-          room.beds.some((bed) => bed.status === "available"),
+        (room) => String(room._id || room.id) !== String(tenant?.roomId),
       ),
     [rooms, tenant?.roomId],
   );
 
-  const selectedRoom = availableRooms.find(
+  const selectedRoom = targetRooms.find(
     (room) => String(room._id || room.id) === String(roomId),
   );
-  const availableBeds = selectedRoom?.beds?.filter((bed) => bed.status === "available") || [];
+  const roomBeds = selectedRoom?.beds || [];
 
   const currentPrice = Number(detail?.basicInfo?.monthlyRent || tenant?.monthlyRent || 0);
   const newPrice = Number(selectedRoom?.monthlyPrice || selectedRoom?.price || 0);
@@ -363,7 +396,7 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
           <span>Current Assignment</span>
           <input
             type="text"
-            value={`${tenant?.room || "Unknown room"} • ${tenant?.bed || "No bed"}`}
+            value={`${tenant?.room || "Unknown room"} • ${formatBedPosition(tenant?.bed) || "No bed"}`}
             readOnly
           />
         </label>
@@ -379,17 +412,22 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
           <select
             value={roomId}
             onChange={(event) => {
-              setRoomId(event.target.value);
+              const newRoomId = event.target.value;
+              setRoomId(newRoomId);
               setBedId("");
+              fetchTargetBaseline(newRoomId);
             }}
             disabled={roomsLoading}
           >
             <option value="">Select a room</option>
-            {availableRooms.map((room) => (
-              <option key={room._id || room.id} value={room._id || room.id}>
-                {room.name || room.roomNumber} ({fmtMoney(room.monthlyPrice || room.price)})
-              </option>
-            ))}
+            {targetRooms.map((room) => {
+              const hasAvailable = Array.isArray(room.beds) && room.beds.some((b) => b.status === "available" || (b.status === undefined && b.available !== false));
+              return (
+                <option key={room._id || room.id} value={room._id || room.id}>
+                  {room.name || room.roomNumber} ({fmtMoney(room.monthlyPrice || room.price)}){!hasAvailable ? " — Full" : ""}
+                </option>
+              );
+            })}
           </select>
         </label>
 
@@ -401,11 +439,22 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
             disabled={!roomId}
           >
             <option value="">Select a bed</option>
-            {availableBeds.map((bed) => (
-              <option key={bed._id || bed.id} value={bed._id || bed.id}>
-                {(bed.position || bed.id || "Bed").replace("-", " ")}
-              </option>
-            ))}
+            {roomBeds.map((bed, index) => {
+              const isAvailable = bed.status ? bed.status === "available" : bed.available !== false;
+              const bedCode = getBedShortCode(selectedRoom?.roomNumber || selectedRoom?.name, bed, index);
+              const displayLabel = getBedDisplayLabel(bed, index, selectedRoom?.type || selectedRoom?.roomType);
+              const statusTag = isAvailable ? "" : ` — (${(bed.status || "unavailable").replace("_", " ")})`;
+              const label = `${bedCode ? `${bedCode} (${displayLabel})` : displayLabel}${statusTag}`;
+              return (
+                <option
+                  key={bed.id || bed._id || index}
+                  value={bed.id || bed._id}
+                  disabled={!isAvailable}
+                >
+                  {label}
+                </option>
+              );
+            })}
           </select>
         </label>
       </div>
@@ -423,10 +472,21 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
             type="number"
             min="0"
             step="0.01"
-            placeholder="Optional departing meter reading"
+            placeholder="Confirm or update departing reading"
             value={sourceRoomMeterReading}
             onChange={(e) => setSourceRoomMeterReading(e.target.value)}
           />
+          {sourceRoomLatestReading ? (
+            <span className="meter-baseline-hint">
+              Last recorded: {Number(sourceRoomLatestReading.reading).toLocaleString()} kWh
+              {" on "}{fmtDate(sourceRoomLatestReading.date)}
+              {" ("}{sourceRoomLatestReading.eventType}{")"}
+            </span>
+          ) : (
+            <span className="meter-baseline-hint meter-baseline-hint--none">
+              No prior reading found — enter manually
+            </span>
+          )}
         </label>
         <label className="tenant-modal-field">
           <span>New Room Opening Meter (kWh)</span>
@@ -434,10 +494,23 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
             type="number"
             min="0"
             step="0.01"
-            placeholder="Optional target meter reading"
+            placeholder="Confirm or update opening reading"
             value={targetRoomMeterReading}
             onChange={(e) => setTargetRoomMeterReading(e.target.value)}
           />
+          {targetBaselineLoading ? (
+            <span className="meter-baseline-hint">Fetching last reading...</span>
+          ) : roomId && targetRoomBaseline ? (
+            <span className="meter-baseline-hint">
+              Last recorded: {Number(targetRoomBaseline.reading).toLocaleString()} kWh
+              {" on "}{fmtDate(targetRoomBaseline.date)}
+              {" ("}{targetRoomBaseline.eventType}{")"}
+            </span>
+          ) : roomId ? (
+            <span className="meter-baseline-hint meter-baseline-hint--none">
+              No prior reading found — enter manually
+            </span>
+          ) : null}
         </label>
       </div>
 

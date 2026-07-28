@@ -1024,9 +1024,14 @@ function RoomAvailabilityPage() {
               <div className="space-y-8 mt-2">
                 {Object.keys(groupedByFloor).length > 0 ? (
                   Object.entries(groupedByFloor).map(([floor, floorRooms]) => {
-                    const availableInFloor = floorRooms.filter(
-                      (r) => getEffectiveOccupancy(r) === 0
-                    ).length;
+                    const availableInFloor = floorRooms.filter((r) => {
+                      const mBeds = (r.beds || []).filter(
+                        (b) => b.status === "maintenance",
+                      ).length;
+                      const isFullMaint = mBeds === r.capacity && r.capacity > 0;
+                      const effectiveCapacity = isFullMaint ? 0 : r.capacity - mBeds;
+                      return getEffectiveOccupancy(r) < effectiveCapacity && effectiveCapacity > 0;
+                    }).length;
                     return (
                       <div key={floor} className="space-y-3">
                         {/* High-Contrast Emphasized Floor Section Header */}
@@ -1043,7 +1048,13 @@ function RoomAvailabilityPage() {
                             </span>
                           </div>
                           <div className="flex items-center gap-2 text-xs">
-                            <span className="font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-900/50">
+                            <span
+                              className={`font-semibold px-2.5 py-0.5 rounded-full border ${
+                                availableInFloor > 0
+                                  ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-900/50"
+                                  : "text-muted-foreground bg-muted/60 border-border/60"
+                              }`}
+                            >
                               {availableInFloor} Available
                             </span>
                           </div>

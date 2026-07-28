@@ -976,6 +976,7 @@ export default function TenantsWorkspacePage() {
             tenant={actionState.tenant}
             detail={actionTenantDetail}
             loading={actionLoading === "transfer"}
+            sourceRoomLatestReading={actionContext?.sourceRoomLatestReading ?? null}
             onClose={() => setActionState({ type: null, tenant: null })}
             onSubmit={(payload) =>
               runAction("transfer", async () => {
@@ -996,6 +997,8 @@ export default function TenantsWorkspacePage() {
                       toDateInputValue(new Date()),
                     reason: payload.reason,
                     notes: payload.notes || "",
+                    sourceRoomMeterReading: payload.sourceRoomMeterReading,
+                    targetRoomMeterReading: payload.targetRoomMeterReading,
                     confirm: true,
                   },
                 );

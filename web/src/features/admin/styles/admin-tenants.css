@@ -513,6 +513,20 @@
   resize: vertical;
 }
 
+/* Meter reading history baseline hint */
+.meter-baseline-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  padding: 2px 0 0 2px;
+  letter-spacing: 0.01em;
+}
+
+.meter-baseline-hint--none {
+  color: var(--status-warning, #92400e);
+  font-style: italic;
+}
+
 .tenant-modal-callout {
   padding: 12px 14px;
   border-radius: 12px;

@@ -12,6 +12,7 @@ export {
   getTenantWorkspace,
   getTenantWorkspaceById,
   getTenantActionContext,
+  getRoomMeterBaseline,
 } from "./tenantWorkspaceController.js";
 
 // 2. Visit Management & AI Pre-checks Domain

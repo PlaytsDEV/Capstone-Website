@@ -34,6 +34,7 @@ import {
   getTenantWorkspace,
   getTenantWorkspaceById,
   getTenantActionContext,
+  getRoomMeterBaseline,
   getVisitAvailability,
   getVisitAvailabilityRules,
   getReservationById,
@@ -203,6 +204,22 @@ router.get(
   filterByBranch,
   requireAnyPermission(["manageReservations", "manageTenants"]),
   getTenantActionContext,
+);
+
+/**
+ * GET /api/reservations/room-meter-baseline/:roomId
+ *
+ * Returns the latest electricity meter reading for a given room.
+ * Used by the Transfer Tenant modal to pre-fill the target room baseline.
+ *
+ * Access: Admin only
+ */
+router.get(
+  "/room-meter-baseline/:roomId",
+  verifyToken,
+  verifyAdmin,
+  requireAnyPermission(["manageReservations", "manageTenants"]),
+  getRoomMeterBaseline,
 );
 
 // ============================================================================

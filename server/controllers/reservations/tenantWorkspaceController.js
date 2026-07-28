@@ -6,7 +6,7 @@
  * Controller for tenant workspace queries, active resident status, and action context.
  */
 
-import { Reservation, Room } from "../../models/index.js";
+import { Reservation, Room, UtilityReading } from "../../models/index.js";
 import { ROOM_BRANCHES } from "../../models/index.js";
 import logger from "../../middleware/logger.js";
 import { sendSuccess, sendError, AppError } from "../../middleware/errorHandler.js";
@@ -300,5 +300,43 @@ export const getTenantActionContext = async (req, res) => {
   } catch (error) {
     logger.error({ err: error, requestId: req.id }, "Fetch tenant action context error");
     return handleReservationError(res, error, "fetch");
+  }
+};
+
+/**
+ * GET /api/reservations/room-meter-baseline/:roomId
+ *
+ * Returns the latest electricity UtilityReading for a given room.
+ * Used by the Transfer Tenant modal to pre-fill the target room's
+ * opening meter baseline without requiring a full tenant action context.
+ *
+ * Access: Admin only (verifyToken + verifyAdmin enforced at route level)
+ */
+export const getRoomMeterBaseline = async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    if (!isValidObjectId(roomId)) return invalidIdResponse(res);
+
+    const latest = await UtilityReading.findOne({
+      roomId,
+      utilityType: "electricity",
+      isArchived: false,
+    })
+      .sort({ date: -1, createdAt: -1 })
+      .lean();
+
+    return sendSuccess(res, {
+      roomId,
+      latestReading: latest
+        ? {
+            reading: latest.reading,
+            date: latest.date,
+            eventType: latest.eventType,
+          }
+        : null,
+    });
+  } catch (error) {
+    logger.error({ err: error, requestId: req.id }, "Fetch room meter baseline error");
+    return res.status(500).json({ error: "Failed to fetch meter baseline", code: "FETCH_ERROR" });
   }
 };

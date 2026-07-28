@@ -186,17 +186,20 @@ export async function getTenantActionContext(reservationId) {
         status: hasReservationStatus(reservation.status, "moveOut") ? "completed" : "active",
       };
 
-  const [bills, renewalHistory, availableRooms, latestUtilityReading] = await Promise.all([
+  const sourceRoomId = reservation.roomId?._id || reservation.roomId;
+
+  const [bills, renewalHistory, availableRooms, sourceRoomLatestReading] = await Promise.all([
     Bill.find({
       reservationId,
       isArchived: { $ne: true },
     }).lean(),
     Stay.find({ reservationId }).sort({ leaseStartDate: -1 }).lean(),
     getAvailableRoomsForStay(stayLike, false),
+    // Fetch the latest meter reading for the source room (any tenant) — this is
+    // the true billing baseline the engine uses, not restricted to current tenant.
     UtilityReading.findOne({
-      roomId: reservation.roomId?._id || reservation.roomId,
-      tenantId: reservation.userId?._id || reservation.userId,
-      eventType: { $in: utilityEventTypesForQuery("moveIn", "moveOut") },
+      roomId: sourceRoomId,
+      utilityType: "electricity",
       isArchived: false,
     })
       .sort({ date: -1, createdAt: -1 })
@@ -229,11 +232,22 @@ export async function getTenantActionContext(reservationId) {
       bed: reservation.selectedBed?.position || reservation.selectedBed?.id || "",
     },
     billingSummary,
-    latestUtilityReading: latestUtilityReading
+    // Renamed from latestUtilityReading — now returns the room-level baseline
+    // (not tenant-filtered) so the Transfer modal can pre-fill the source meter.
+    sourceRoomLatestReading: sourceRoomLatestReading
       ? {
-          reading: latestUtilityReading.reading,
-          date: latestUtilityReading.date,
-          eventType: latestUtilityReading.eventType,
+          reading: sourceRoomLatestReading.reading,
+          date: sourceRoomLatestReading.date,
+          eventType: sourceRoomLatestReading.eventType,
+          roomId: String(sourceRoomId),
+        }
+      : null,
+    // Keep legacy alias so any existing consumers don't break.
+    latestUtilityReading: sourceRoomLatestReading
+      ? {
+          reading: sourceRoomLatestReading.reading,
+          date: sourceRoomLatestReading.date,
+          eventType: sourceRoomLatestReading.eventType,
         }
       : null,
     availableRooms,
@@ -404,7 +418,9 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         throw Object.assign(new Error("Transfers are limited to rooms within the same branch."), { statusCode: 400, code: "CROSS_BRANCH_TRANSFER_NOT_ALLOWED" });
       }
 
-      const targetBed = targetRoom.beds.find((bed) => String(bed.id || bed._id) === String(payload.targetBedId));
+      const targetBed = targetRoom.beds.find(
+        (bed) => String(bed.id) === String(payload.targetBedId) || String(bed._id) === String(payload.targetBedId),
+      );
       if (!targetBed || targetBed.status !== "available") {
         throw Object.assign(new Error("Selected target bed is not available."), { statusCode: 409, code: "BED_NOT_AVAILABLE" });
       }
@@ -430,7 +446,17 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       const sourceMeterReading = payload.sourceRoomMeterReading ?? payload.meterReading;
       const targetMeterReading = payload.targetRoomMeterReading ?? payload.newRoomMeterReading;
 
+      // -----------------------------------------------------------------------
+      // Billing Continuity Safety Net
+      // Always anchor a UtilityReading snapshot at the transfer date for BOTH
+      // rooms. If the admin supplied an explicit reading, use it. Otherwise fall
+      // back to the latest recorded reading from DB history so the billing
+      // engine never has a gap at the transfer boundary.
+      // -----------------------------------------------------------------------
+
+      // -- Source room: departing moveOut snapshot --
       if (sourceMeterReading != null && !Number.isNaN(Number(sourceMeterReading))) {
+        // Admin provided an explicit reading — use it.
         await UtilityReading.create(
           [
             {
@@ -446,9 +472,40 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
           ],
           { session },
         );
+      } else {
+        // Admin left blank — fallback: carry the last recorded reading forward
+        // so we always have a timestamped anchor on the transfer date.
+        const latestSourceReading = await UtilityReading.findOne({
+          roomId: currentRoom._id,
+          utilityType: "electricity",
+          isArchived: false,
+        })
+          .sort({ date: -1, createdAt: -1 })
+          .session(session)
+          .lean();
+        if (latestSourceReading) {
+          await UtilityReading.create(
+            [
+              {
+                utilityType: "electricity",
+                roomId: currentRoom._id,
+                branch: currentRoom.branch || "",
+                reading: latestSourceReading.reading,
+                date: effectiveTransferDate,
+                eventType: "moveOut",
+                tenantId: reservation.userId?._id || reservation.userId,
+                recordedBy: actorId,
+                readingStatus: "recorded",
+              },
+            ],
+            { session },
+          );
+        }
       }
 
+      // -- Target room: arriving moveIn snapshot --
       if (targetMeterReading != null && !Number.isNaN(Number(targetMeterReading))) {
+        // Admin provided an explicit reading — use it.
         await UtilityReading.create(
           [
             {
@@ -464,6 +521,35 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
           ],
           { session },
         );
+      } else {
+        // Admin left blank — fallback: carry the last recorded reading of the
+        // target room forward as the opening snapshot.
+        const latestTargetReading = await UtilityReading.findOne({
+          roomId: targetRoom._id,
+          utilityType: "electricity",
+          isArchived: false,
+        })
+          .sort({ date: -1, createdAt: -1 })
+          .session(session)
+          .lean();
+        if (latestTargetReading) {
+          await UtilityReading.create(
+            [
+              {
+                utilityType: "electricity",
+                roomId: targetRoom._id,
+                branch: targetRoom.branch || "",
+                reading: latestTargetReading.reading,
+                date: effectiveTransferDate,
+                eventType: "moveIn",
+                tenantId: reservation.userId?._id || reservation.userId,
+                recordedBy: actorId,
+                readingStatus: "recorded",
+              },
+            ],
+            { session },
+          );
+        }
       }
 
       const activeHistory = await BedHistory.findOne({

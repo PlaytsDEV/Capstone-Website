@@ -278,7 +278,7 @@ roomSchema.methods.restore = async function () {
  * @returns {boolean} - true if successful, false if bed not found
  */
 roomSchema.methods.occupyBed = function (bedId, userId, reservationId) {
-  const bed = this.beds.find((b) => b.id === bedId);
+  const bed = this.beds.find((b) => b.id === bedId || String(b._id) === String(bedId));
   if (!bed) return false;
 
   bed.status = "occupied";
@@ -296,7 +296,7 @@ roomSchema.methods.occupyBed = function (bedId, userId, reservationId) {
  * @returns {boolean} - true if successful, false if bed not found
  */
 roomSchema.methods.vacateBed = function (bedId) {
-  const bed = this.beds.find((b) => b.id === bedId);
+  const bed = this.beds.find((b) => b.id === bedId || String(b._id) === String(bedId));
   if (!bed) return false;
 
   bed.status = "available";
@@ -314,7 +314,7 @@ roomSchema.methods.vacateBed = function (bedId) {
  * @returns {boolean} - true if successful
  */
 roomSchema.methods.markBedForCleaning = function (bedId) {
-  const bed = this.beds.find((b) => b.id === bedId);
+  const bed = this.beds.find((b) => b.id === bedId || String(b._id) === String(bedId));
   if (!bed) return false;
 
   bed.status = "cleaning_in_progress";
@@ -332,7 +332,7 @@ roomSchema.methods.markBedForCleaning = function (bedId) {
  * @returns {boolean} - true if successful
  */
 roomSchema.methods.completeBedCleaning = function (bedId) {
-  const bed = this.beds.find((b) => b.id === bedId);
+  const bed = this.beds.find((b) => b.id === bedId || String(b._id) === String(bedId));
   if (!bed) return false;
 
   bed.status = "available";
@@ -345,7 +345,7 @@ roomSchema.methods.completeBedCleaning = function (bedId) {
  * @returns {boolean} - true if successful
  */
 roomSchema.methods.lockBedForMaintenance = function (bedId) {
-  const bed = this.beds.find((b) => b.id === bedId);
+  const bed = this.beds.find((b) => b.id === bedId || String(b._id) === String(bedId));
   if (!bed) return false;
   bed.status = "maintenance";
   bed.occupiedBy = { userId: null, reservationId: null, occupiedSince: null };
@@ -358,7 +358,7 @@ roomSchema.methods.lockBedForMaintenance = function (bedId) {
  * @returns {boolean} - true if successful
  */
 roomSchema.methods.unlockBed = function (bedId) {
-  const bed = this.beds.find((b) => b.id === bedId);
+  const bed = this.beds.find((b) => b.id === bedId || String(b._id) === String(bedId));
   if (!bed || bed.status !== "maintenance") return false;
   bed.status = "available";
   return true;
