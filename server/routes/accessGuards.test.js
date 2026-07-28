@@ -58,6 +58,7 @@ await jest.unstable_mockModule("../middleware/rateLimiter.js", () => ({
 await jest.unstable_mockModule("../config/firebase.js", () => ({
   default: { storage: jest.fn() },
   getAuth: jest.fn(),
+  getFirebaseStorage: jest.fn(() => ({ file: jest.fn() })),
 }));
 await jest.unstable_mockModule("../services/attachmentUploadService.js", () => ({
   ATTACHMENT_TYPE_ERROR_MESSAGE: "Unsupported attachment type",

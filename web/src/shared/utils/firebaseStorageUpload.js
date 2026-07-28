@@ -1,11 +1,14 @@
 /**
  * Firebase Storage Upload Utility
  *
- * Replaces ImageKit for applicant file uploads.
+ * Handles two upload contexts:
+ *
+ * 1. Applicant documents  →  applicant-documents/{firebaseUid}/{documentType}/{ts}-{file}
+ * 2. Room photos          →  room-photos/{roomId}/{ts}-{file}  (via backend, Admin SDK)
+ *
  * Maintenance attachments are routed through the backend attachment service so
  * the API can enforce branch ownership, visibility, and storage metadata.
  *
- * Storage path:  applicant-documents/{firebaseUid}/{documentType}/{timestamp}-{safeFilename}
  * Provider tag:  "firebase-storage"
  */
 
@@ -177,21 +180,10 @@ export function validateDownloadUrl(url) {
 /**
  * Upload a File to Firebase Storage.
  *
- * @param {File}   file                        File object from <input type="file">
+ * @param {File}   file
  * @param {{ uid?: string, documentType?: string }} [opts]
- *   uid          — Firebase UID of the uploading user (for folder structure)
- *   documentType — Folder name, e.g. "selfie-photo", "valid-id-front"
- * @param {(percent: number) => void} [onProgress]  0–100 callback
- *
- * @returns {Promise<{
- *   downloadUrl:   string,
- *   storagePath:   string,
- *   originalName:  string,
- *   mimeType:      string,
- *   size:          number,
- *   uploadedAt:    string,
- *   provider:      "firebase-storage"
- * }>}
+ * @param {(percent: number) => void} [onProgress]
+ * @returns {Promise<{ downloadUrl: string, storagePath: string, originalName: string, mimeType: string, size: number, uploadedAt: string, provider: string }>}
  */
 export async function uploadToFirebaseStorage(file, opts = {}, onProgress) {
   const validation = validateFile(file);
@@ -207,7 +199,6 @@ export async function uploadToFirebaseStorage(file, opts = {}, onProgress) {
 
   const { uid = auth.currentUser.uid, documentType = "document" } = opts;
 
-  // Sanitise the filename for storage path safety
   const safeFilename = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
   const timestamp = Date.now();
   const storagePath = `applicant-documents/${uid}/${documentType}/${timestamp}-${safeFilename}`;
@@ -244,7 +235,6 @@ export async function uploadToFirebaseStorage(file, opts = {}, onProgress) {
         try {
           const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
 
-          // Hard guard — never return a non-HTTPS URL to the caller
           if (!isValidDownloadUrl(downloadUrl)) {
             reject(
               new Error(
@@ -276,7 +266,8 @@ export async function uploadToFirebaseStorage(file, opts = {}, onProgress) {
 }
 
 export async function uploadMaintenanceAttachment(file, opts = {}, onProgress) {
-  const context = opts.context || getDefaultAttachmentContext(opts.documentType) || "maintenance_request";
+  const context =
+    opts.context || getDefaultAttachmentContext(opts.documentType) || "maintenance_request";
 
   return uploadToFirebaseStorage(
     file,
@@ -294,12 +285,10 @@ export async function uploadMaintenanceAttachment(file, opts = {}, onProgress) {
  * Upload a value if it is still a File object; otherwise validate and pass
  * through the existing URL unchanged.
  *
- * This is the safe replacement for the old ImageKit `uploadIfFile`.
- *
  * @param {File|string|null} value
  * @param {{ uid?: string, documentType?: string }} [opts]
- * @param {(percent: number) => void}               [onProgress]
- * @returns {Promise<string|null>}  Always resolves to an HTTPS URL or null.
+ * @param {(percent: number) => void} [onProgress]
+ * @returns {Promise<string|null>}
  */
 export async function uploadIfFile(value, opts = {}, onProgress) {
   if (value instanceof File) {
@@ -307,13 +296,88 @@ export async function uploadIfFile(value, opts = {}, onProgress) {
     return result.downloadUrl;
   }
 
-  // Pass-through: validate that the stored URL is safe before returning
   if (value) {
     const check = validateDownloadUrl(value);
     if (!check.valid) {
       throw new Error(
         `Stored file URL is not a valid HTTPS download link: ${value}`,
       );
+    }
+  }
+
+  return value || null;
+}
+
+// ── Room Photo Uploads (server-side via Admin SDK) ─────────────────────────
+//
+// Direct client-side uploads to room-photos/ are blocked by Firebase Storage
+// security rules (which only allow applicant-documents/ and maintenance paths).
+// Instead files are sent to the Express backend as multipart/form-data;
+// the server uses the Firebase Admin SDK to write to room-photos/{roomId}/.
+
+/**
+ * Upload one room photo File via the Express backend.
+ *
+ * POSTs to POST /api/rooms/{roomId}/photos (multipart/form-data).
+ * The server uses the Firebase Admin SDK (bypasses Storage rules) and
+ * returns the public download URL.
+ *
+ * @param {File}   file    Image file from <input type="file">
+ * @param {string} roomId  MongoDB _id of the room (or a temp id for new rooms)
+ * @returns {Promise<string>}
+ */
+async function uploadRoomPhotoViaServer(file, roomId) {
+  const { getFreshToken } = await import("../api/httpClient.js");
+  const { API_BASE_URL } = await import("../api/baseUrl.js");
+
+  const token = await getFreshToken();
+  if (!token) throw new Error("Not authenticated. Please sign in and try again.");
+
+  const formData = new FormData();
+  formData.append("photos", file, file.name);
+
+  const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/photos`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    let message = `Photo upload failed (HTTP ${response.status}).`;
+    try {
+      const json = await response.json();
+      message = json?.message || json?.error || message;
+    } catch {
+      // ignore parse errors
+    }
+    throw new Error(message);
+  }
+
+  const json = await response.json();
+  const url = json?.data?.urls?.[0];
+  if (!url) throw new Error("Upload succeeded but no URL was returned from the server.");
+  return url;
+}
+
+/**
+ * Upload a room photo if the value is a File; otherwise pass the existing URL
+ * through unchanged (validates it is a safe HTTPS URL).
+ *
+ * Routes through the backend so Firebase Storage client rules are bypassed.
+ *
+ * @param {File|string|null} value   File or existing URL string
+ * @param {string}           roomId  MongoDB _id (or temp id for new rooms)
+ * @returns {Promise<string|null>}
+ */
+export async function uploadRoomPhotoIfFile(value, roomId) {
+  if (value instanceof File) {
+    return uploadRoomPhotoViaServer(value, roomId);
+  }
+
+  if (value) {
+    const check = validateDownloadUrl(value);
+    if (!check.valid) {
+      throw new Error(`Stored room photo URL is not a valid HTTPS link: ${value}`);
     }
   }
 

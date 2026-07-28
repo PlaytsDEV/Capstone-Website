@@ -1,3 +1,4 @@
+import { Building } from "lucide-react";
 import { formatRoomType } from "../../utils/formatters";
 
 function getOccupancyColor(occupied, capacity) {
@@ -88,7 +89,9 @@ export default function OccupancyRoomTable({ rooms, onViewDetails }) {
  ) : (
  <tr>
  <td colSpan="8" style={{ padding: "60px 24px", textAlign: "center" }}>
- <div style={{ fontSize: "32px", marginBottom: "12px", opacity: 0.4 }}>🏢</div>
+          <div className="flex justify-center mb-3 text-muted-foreground opacity-40">
+            <Building className="w-8 h-8" />
+          </div>
  <div style={{ fontSize: "15px", fontWeight: "500", color: "#374151", marginBottom: "6px" }}>No rooms found</div>
  <div style={{ fontSize: "13px", color: "#9CA3AF" }}>Rooms will appear here once configured in Room Configuration.</div>
  </td>

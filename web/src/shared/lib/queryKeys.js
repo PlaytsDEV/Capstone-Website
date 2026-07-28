@@ -93,6 +93,8 @@ export const queryKeys = {
 
   analytics: {
     occupancyReport: (params) => ["analytics", "occupancy-report", params || {}],
+    occupancyRateHistory: (params) => ["analytics", "occupancy-rate-history", params || {}],
+    roomBedHistory: (roomId) => ["analytics", "room-bed-history", roomId],
     billingReport: (params) => ["analytics", "billing-report", params || {}],
     operationsReport: (params) => ["analytics", "operations-report", params || {}],
     demographicsReport: (params) => ["analytics", "demographics-report", params || {}],

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { ImagePlus, LoaderCircle, Trash2, X } from "lucide-react";
 import { BRANCH_OPTIONS } from "../../../../shared/utils/constants";
-import { uploadIfFile } from "../../../../shared/utils/firebaseStorageUpload";
+import { uploadRoomPhotoIfFile } from "../../../../shared/utils/firebaseStorageUpload";
 import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
 
 /**
@@ -127,8 +127,11 @@ export default function RoomFormModal({ room, onClose, onSave }) {
 
     setSaving(true);
     try {
+      // For new rooms the _id doesn't exist yet; use a temp bucket so uploads
+      // still land in room-photos/ with a stable path.
+      const storageRoomId = room?._id ? String(room._id) : `new-${Date.now()}`;
       const uploadedImages = await Promise.all(
-        (form.images || []).map((entry) => uploadIfFile(entry.value)),
+        (form.images || []).map((entry) => uploadRoomPhotoIfFile(entry.value, storageRoomId)),
       );
       const payload = {
         name: form.name.trim(),

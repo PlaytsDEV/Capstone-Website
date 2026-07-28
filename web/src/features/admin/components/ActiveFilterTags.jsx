@@ -18,11 +18,11 @@ const APP_DATE_LABELS = {
 };
 
 const CHIP_LABELS = {
-  overdue: "⚡ Overdue Move-In",
-  new: "🟢 New Applications",
-  cancellation: "⚠️ Cancellation Requested",
-  awaiting_payment: "💳 Awaiting Payment",
-  proof_uploaded: "📄 Proof Uploaded",
+  overdue: "Overdue Move-In",
+  new: "New Applications",
+  cancellation: "Cancellation Requested",
+  awaiting_payment: "Awaiting Payment",
+  proof_uploaded: "Proof Uploaded",
 };
 
 const PAYMENT_LABELS = {

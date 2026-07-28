@@ -32,7 +32,7 @@ const bedHistorySchema = new mongoose.Schema(
     tenantId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      default: null,
       index: true,
     },
     reservationId: {
@@ -77,13 +77,13 @@ const bedHistorySchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["active", "transferred", "completed"],
+      enum: ["active", "transferred", "completed", "maintenance"],
       default: "active",
       index: true,
     },
     closedByAction: {
       type: String,
-      enum: ["transfer", "move_out", "correction", ""],
+      enum: ["transfer", "move_out", "correction", "maintenance", "restored", ""],
       default: "",
     },
     reason: {
@@ -171,6 +171,46 @@ bedHistorySchema.statics.getBedHistory = function (bedId, roomId) {
   return this.find({ bedId, roomId })
     .populate("tenantId", "firstName lastName email")
     .sort({ moveInDate: -1 });
+};
+
+/**
+ * Record a maintenance start event
+ */
+bedHistorySchema.statics.recordMaintenanceStart = async function (data) {
+  const startDate = data.startDate || new Date();
+  return this.create({
+    bedId: data.bedId,
+    roomId: data.roomId,
+    tenantId: data.tenantId || null,
+    branch: data.branch || "",
+    moveInDate: startDate,
+    effectiveStartDate: startDate,
+    status: "maintenance",
+    reason: data.reason || "Maintenance Lock",
+    notes: data.notes || "Bed placed under maintenance",
+  });
+};
+
+/**
+ * Record a maintenance end (restoration) event
+ */
+bedHistorySchema.statics.recordMaintenanceEnd = async function (bedId, roomId) {
+  const record = await this.findOne({
+    bedId,
+    roomId,
+    status: "maintenance",
+    moveOutDate: null,
+  }).sort({ moveInDate: -1 });
+
+  if (record) {
+    const endDate = new Date();
+    record.moveOutDate = endDate;
+    record.effectiveEndDate = endDate;
+    record.status = "completed";
+    record.closedByAction = "restored";
+    await record.save();
+  }
+  return record;
 };
 
 bedHistorySchema.statics.recordCheckIn = bedHistorySchema.statics.recordMoveIn;

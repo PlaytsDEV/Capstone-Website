@@ -6,6 +6,7 @@ import {
   Room,
   Reservation,
   Stay,
+  BedHistory,
   BillingPeriod,
   UtilityPeriod,
   MaintenanceRequest,
@@ -340,6 +341,7 @@ const ROOM_CREATE_FIELDS = Object.freeze([
   "policies",
   "intendedTenant",
   "images",
+  "isPopular",
   "beds",
 ]);
 
@@ -1283,8 +1285,20 @@ export const updateBedStatus = async (req, res, next) => {
     if (requestedStatus === "maintenance") {
       assertAdminMutableBed(bed, "place into maintenance");
       success = room.lockBedForMaintenance(bedId);
+      if (success) {
+        await BedHistory.recordMaintenanceStart({
+          bedId,
+          roomId: room._id,
+          branch: room.branch,
+          reason: "Manual Maintenance Lock",
+          notes: `Bed ${bedId} placed under maintenance by staff`,
+        });
+      }
     } else {
       success = room.unlockBed(bedId);
+      if (success) {
+        await BedHistory.recordMaintenanceEnd(bedId, room._id);
+      }
     }
 
     if (!success) {

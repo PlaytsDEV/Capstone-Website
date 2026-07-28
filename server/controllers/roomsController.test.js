@@ -35,6 +35,10 @@ await jest.unstable_mockModule("../models/index.js", () => ({
     find: reservationFind,
   },
   Stay: { countDocuments: stayCountDocuments },
+  BedHistory: {
+    recordMaintenanceStart: jest.fn(),
+    recordMaintenanceEnd: jest.fn(),
+  },
   BillingPeriod: { countDocuments: billingPeriodCountDocuments },
   UtilityPeriod: { countDocuments: utilityPeriodCountDocuments },
   MaintenanceRequest: { countDocuments: maintenanceCountDocuments },

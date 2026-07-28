@@ -96,9 +96,55 @@ body.modal-open {
   to   { opacity: 1; transform: translateY(0)    scale(1);    }
 }
 
-/* Wide variant — RoomFormModal */
-.room-form-wide {
-  width: min(680px, 100%);
+/* Wide variant — RoomFormModal & RoomConfigModal */
+.room-form-wide,
+.room-config-modal-wide {
+  width: min(780px, 94vw);
+}
+
+/* Split two-column variant — Option 1 WYSIWYG Live Sync Modal */
+.room-config-modal-split {
+  width: min(1160px, 96vw) !important;
+  max-width: 1160px !important;
+  height: min(780px, 90vh) !important;
+}
+
+.room-config-split-body {
+  display: grid !important;
+  grid-template-columns: 58% 42%;
+  gap: 0;
+  padding: 0 !important;
+  overflow: hidden !important;
+  flex: 1;
+}
+
+.room-config-split-left {
+  padding: 1.25rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  max-height: 100%;
+}
+
+.room-config-split-right {
+  height: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+@media (max-width: 860px) {
+  .room-config-split-body {
+    grid-template-columns: 1fr !important;
+    overflow-y: auto !important;
+  }
+}
+
+/* Extra wide & fixed-height variant — Upcoming Vacancies & Move-Out Schedule Modal */
+.vacancy-modal-wide {
+  width: min(1150px, 94vw) !important;
+  max-width: 1150px !important;
+  height: min(720px, 85vh) !important;
+  min-height: 550px !important;
 }
 
 /* Narrow variant — DeleteRoomModal */
@@ -218,16 +264,15 @@ body.modal-open {
    * flex:1 1 0 — body expands to fill remaining card height after
    * header and footer claim their space, then scrolls when content
    * exceeds the available height.
-   * min-height:0 is required on flex children to allow shrinking
-   * below content size so overflow-y actually activates.
-   * min-height on the value side gives the body a floor so the card
-   * never looks collapsed on short content.
    */
   flex: 1 1 0;
   min-height: min(500px, 70vh);
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: clip;
   overscroll-behavior: contain;
+  /* GPU-composited layer prevents subpixel child repaints during scroll */
+  will-change: transform;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* =============================================================================
@@ -251,13 +296,54 @@ body.modal-open {
 }
 
 /* =============================================================================
-   SECTION HEADINGS
+   SECTION HEADINGS & MODAL HEADER
    ============================================================================= */
 
+.room-config-modal__header-title {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.room-config-modal__header-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.room-config-modal__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: var(--bg-inset, #f1f5f9);
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-radius: var(--radius-sm, 4px);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted, #64748b);
+}
+
+.room-config-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.room-config-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: var(--spacing-md);
+}
+
+.room-config-section-title h3,
 .room-info-section h3,
 .bed-config-section h3,
 .occupancy-info h3 {
-  margin: 0 0 var(--spacing-md) 0;
+  margin: 0;
   font-size: var(--font-size-sm);
   font-weight: 700;
   color: var(--text-muted);
@@ -266,35 +352,68 @@ body.modal-open {
 }
 
 /* =============================================================================
-   INFO GRID
+   INFO GRID & METRIC TILES
    ============================================================================= */
 
 .info-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
+  gap: 12px;
   font-size: var(--font-size-base);
 }
 
-.info-grid div {
-  background: var(--bg-inset);
-  padding: var(--spacing-md);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
+@media (min-width: 640px) {
+  .info-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
 }
 
-.info-grid strong {
+.info-grid div,
+.info-tile {
+  background: var(--bg-card, #ffffff);
+  padding: 14px 16px;
+  border: 1px solid var(--border-card, #e2e8f0);
+  border-radius: var(--radius-lg, 12px);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-shadow: var(--shadow-xs, 0 1px 2px rgba(0, 0, 0, 0.03));
+  transition: all var(--duration-fast) var(--ease-out);
+}
+
+.info-tile:hover {
+  border-color: var(--border-strong, #cbd5e1);
+  box-shadow: var(--shadow-sm, 0 2px 4px rgba(0, 0, 0, 0.05));
+}
+
+.info-grid strong,
+.info-tile__label {
   display: block;
-  color: var(--text-muted);
-  font-weight: 600;
-  margin-bottom: 3px;
-  font-size: var(--font-size-xs);
+  color: var(--text-muted, #64748b);
+  font-weight: 700;
+  font-size: 0.6875rem;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
+}
+
+.info-tile__value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+  line-height: 1.25;
+}
+
+.info-tile__value--price {
+  color: var(--text-primary, #0f172a);
+}
+
+.info-tile__value--price-highlight {
+  color: #d97706;
+  font-weight: 800;
 }
 
 /* =============================================================================
-   BED CONFIG SECTION HEADER
+   BED CONFIG SECTION HEADER & LIST
    ============================================================================= */
 
 .bed-config-section__header {
@@ -309,8 +428,78 @@ body.modal-open {
   margin: 0;
 }
 
+.bed-count-pill {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: var(--radius-full, 9999px);
+  background: color-mix(in srgb, var(--primary, #0A1628) 8%, transparent);
+  color: var(--primary, #0A1628);
+  border: 1px solid color-mix(in srgb, var(--primary, #0A1628) 18%, transparent);
+  margin-left: 8px;
+}
+
+.bed-count-pill--full {
+  background: color-mix(in srgb, #d97706 12%, transparent);
+  color: #b45309;
+  border-color: color-mix(in srgb, #d97706 28%, transparent);
+}
+
+.bed-limit-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #b45309;
+  background: color-mix(in srgb, #d97706 8%, transparent);
+  border: 1px solid color-mix(in srgb, #d97706 24%, transparent);
+  padding: 10px 14px;
+  border-radius: var(--radius-lg, 10px);
+  margin-bottom: var(--spacing-md);
+}
+
+.bed-label-tag {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  min-width: 100px;
+  flex-shrink: 0;
+}
+
+.bed-field-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.bed-field-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.room-config-empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px;
+  background: var(--bg-inset);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-lg);
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
 /* =============================================================================
-   BED LIST
+   BED LIST & ITEMS
    ============================================================================= */
 
 .bed-list {
@@ -320,6 +509,8 @@ body.modal-open {
 }
 
 .bed-item {
+  position: relative;
+  z-index: 1;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -330,6 +521,12 @@ body.modal-open {
   border: 1px solid var(--border-light);
   transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
   min-height: 54px;
+  white-space: nowrap;
+}
+
+.bed-item--menu-active,
+.bed-item:has(.bed-menu-dropdown) {
+  z-index: 30;
 }
 
 .bed-item:hover {
@@ -344,6 +541,7 @@ body.modal-open {
   flex: 1;
   min-width: 0;
   flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 .bed-actions {
@@ -472,7 +670,6 @@ body.modal-open {
 .bed-occupant-badge:hover {
   background: color-mix(in srgb, var(--primary, #3b82f6) 22%, transparent);
   border-color: color-mix(in srgb, var(--primary, #3b82f6) 40%, transparent);
-  transform: translateY(-1px);
 }
 
 .bed-occupant-badge--occupied {
@@ -648,8 +845,30 @@ body.modal-open {
 }
 
 /* =============================================================================
-   OCCUPANCY BAR
+   OCCUPANCY BAR & DIAGNOSTICS
    ============================================================================= */
+
+.occupancy-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-sm);
+}
+
+.occupancy-header h3 {
+  margin: 0 !important;
+}
+
+.occupancy-percentage-tag {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-full, 9999px);
+  background: color-mix(in srgb, var(--primary, #0A1628) 10%, transparent);
+  color: var(--primary, #0A1628);
+  border: 1px solid color-mix(in srgb, var(--primary, #0A1628) 20%, transparent);
+}
 
 .occupancy-bar {
   width: 100%;
@@ -657,7 +876,7 @@ body.modal-open {
   background: var(--bg-inset);
   border-radius: 4px;
   overflow: hidden;
-  margin: var(--spacing-md) 0;
+  margin: var(--spacing-sm) 0 var(--spacing-md) 0;
 }
 
 .occupancy-fill {
@@ -985,26 +1204,30 @@ body.modal-open {
 .occupancy-drift-alert {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 12px;
   margin-top: var(--spacing-md);
-  padding: 10px 14px;
-  background: hsl(38 100% 95%);
-  border: 1px solid hsl(38 90% 65%);
-  border-radius: var(--radius-md);
-  color: hsl(32 80% 30%);
+  padding: 12px 16px;
+  background: hsl(38 100% 96%);
+  border: 1px solid hsl(38 90% 75%);
+  border-radius: var(--radius-lg);
+  color: hsl(32 80% 28%);
   font-size: var(--font-size-sm);
   line-height: 1.4;
+}
+
+.occupancy-drift-alert__content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 200px;
 }
 
 .occupancy-drift-alert svg {
   flex-shrink: 0;
   color: hsl(38 90% 45%);
-}
-
-.occupancy-drift-alert span {
-  flex: 1;
-  min-width: 160px;
 }
 
 .btn-repair-occupancy {

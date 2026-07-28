@@ -38,6 +38,11 @@ import {
   updateBedStatus,
   repairRoomOccupancy,
 } from "../controllers/roomsController.js";
+import {
+  uploadRoomPhotos,
+  uploadPhotosMiddleware,
+} from "../controllers/roomPhotoController.js";
+
 
 const router = express.Router();
 
@@ -56,6 +61,23 @@ const router = express.Router();
  * @returns {Array} List of rooms matching the filters
  */
 router.get("/", getRooms);
+
+/**
+ * POST /api/rooms/:roomId/photos
+ *
+ * Upload one or more room photos to Firebase Storage (server-side).
+ * Files are stored under room-photos/{roomId}/ and returned as public URLs.
+ *
+ * Access: Admin (manageRooms)
+ */
+router.post(
+  "/:roomId/photos",
+  verifyToken,
+  verifyAdmin,
+  requirePermission("manageRooms"),
+  uploadPhotosMiddleware,
+  uploadRoomPhotos,
+);
 router.get(
   "/occupancy-consistency",
   verifyToken,

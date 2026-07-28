@@ -122,6 +122,10 @@ const roomSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    isPopular: {
+      type: Boolean,
+      default: false,
+    },
 
     // --- Bed Details ---
     beds: {

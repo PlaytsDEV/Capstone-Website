@@ -186,19 +186,37 @@ export default function OccupancyRoomModal({ room, loadingDetails, onClose }) {
  </p>
  )}
  {formatExpectedVacancy(bed) && (
- <p className="text-xs font-semibold text-primary mt-1">
- Expected Vacancy:{" "}
+ <div className="mt-1.5 flex items-center gap-2 flex-wrap text-xs">
+ <span className="font-semibold text-foreground">Expected Vacancy:</span>
+ <span className="font-medium text-muted-foreground">
  {new Date(formatExpectedVacancy(bed)).toLocaleDateString(undefined, {
  month: "short",
  day: "numeric",
  year: "numeric",
  })}
- {formatDaysRemaining(bed) != null && (
- <span className="ml-1 opacity-90 font-medium">
- ({formatDaysRemaining(bed) <= 0 ? "Overdue / Due today" : `${formatDaysRemaining(bed)} days left`})
  </span>
- )}
- </p>
+ {(() => {
+ const days = formatDaysRemaining(bed);
+ if (days == null) return null;
+ let badgeStyle = "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800";
+ let textLabel = `${days} days left`;
+ if (days < 0) {
+ badgeStyle = "bg-red-100 dark:bg-red-950/40 text-red-800 dark:text-red-300 border-red-300 dark:border-red-800";
+ textLabel = `Overdue (${Math.abs(days)}d)`;
+ } else if (days === 0) {
+ badgeStyle = "bg-amber-100 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 border-amber-300 dark:border-amber-800";
+ textLabel = "Due Today";
+ } else if (days <= 7) {
+ badgeStyle = "bg-amber-100 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 border-amber-300 dark:border-amber-800";
+ textLabel = `${days} days left`;
+ }
+ return (
+ <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${badgeStyle}`}>
+ {textLabel}
+ </span>
+ );
+ })()}
+ </div>
  )}
  </div>
  </div>
