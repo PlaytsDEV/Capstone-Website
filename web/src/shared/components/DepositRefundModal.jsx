@@ -3,6 +3,8 @@ import BaseModal from "./BaseModal";
 import { reservationApi } from "../api/apiClient";
 import { AlertCircle, CheckCircle, Clock, ShieldAlert, DollarSign, FileText } from "lucide-react";
 import dayjs from "dayjs";
+import { resolveSecurityDeposit } from "../utils/depositUtils";
+import DeadlineBadge from "./DeadlineBadge";
 
 /**
  * ============================================================================
@@ -35,7 +37,7 @@ export default function DepositRefundModal({
   if (!reservation) return null;
 
   const isForfeited = reservation.depositForfeited || reservation.depositRefundStatus === "forfeited";
-  const securityDeposit = Number(reservation.monthlyRent || reservation.totalPrice || 0);
+  const securityDeposit = resolveSecurityDeposit(reservation);
   const refundAmount = Number(reservation.depositRefundAmount ?? (isForfeited ? 0 : securityDeposit));
   const deadline = reservation.depositRefundDeadline ? dayjs(reservation.depositRefundDeadline) : null;
   const isOverdue = deadline && deadline.isBefore(dayjs()) && reservation.depositRefundStatus !== "processed";
@@ -106,15 +108,13 @@ export default function DepositRefundModal({
           </div>
 
           {deadline && (
-            <div className={`flex items-center justify-between text-xs p-2 rounded-lg border ${
-              isOverdue
-                ? "bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400"
-                : "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400"
-            }`}>
-              <span className="flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5" /> 30-Day SLA Deadline
-              </span>
-              <span className="font-semibold">{deadline.format("MMM DD, YYYY")} {isOverdue && "(OVERDUE)"}</span>
+            <div className="pt-1">
+              <DeadlineBadge
+                dueDate={reservation.depositRefundDeadline}
+                status={isOverdue ? "overdue" : "pending"}
+                type="reservation"
+                showConsequenceNote={true}
+              />
             </div>
           )}
         </div>

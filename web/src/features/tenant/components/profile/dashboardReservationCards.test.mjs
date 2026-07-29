@@ -35,6 +35,8 @@ test("reserved applicant dashboard renders cancellation navigation capability", 
 
   assert.equal(reservationDashboard.includes("onGoToReservation"), true);
   assert.equal(reservationDashboard.includes("Request Cancellation"), true);
+  assert.equal(reservationDashboard.includes("Cancel reservation process"), true);
+  assert.equal(reservationDashboard.includes("Cancel Reservation Process?"), true);
   assert.equal(reservationDashboard.includes("Go to Dashboard"), false);
 });
 

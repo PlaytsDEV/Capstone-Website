@@ -301,8 +301,12 @@ const reservationSchema = new mongoose.Schema(
     visitStatus: {
       type: String,
       enum: [
+        "pending",
         "physical_visit_scheduled",
         "schedule_approved",
+        "approved",
+        "rejected",
+        "completed",
         "visit_completed",
         "no_show",
         "rescheduled",
@@ -1253,6 +1257,54 @@ reservationSchema.statics.generateUniqueReservationCode = async function () {
   throw new Error("Failed to generate unique reservation code after 5 attempts");
 };
 
+
+// ============================================================================
+// PRE-SAVE GUARD — Active Occupancy / Deleted User Integrity (Layer 4)
+// ============================================================================
+//
+// Blocks any attempt to save a reservation into an active occupancy status
+// (reserved / moveIn) when the linked userId no longer exists in the database.
+//
+// This is a last-resort data-integrity fence. The primary prevention is in
+// the user deletion controller (atomic transaction) and the nightly
+// reconciliation job. This hook catches any edge-case writes that slip through.
+//
+// Applies only when status is being set for the first time or changed.
+// Skipped entirely for non-occupancy statuses and for isArchived=true saves
+// (archiving a reservation that already has a deleted user is fine).
+
+const ACTIVE_OCCUPANCY_STATUSES = Object.freeze(["reserved", "moveIn"]);
+
+reservationSchema.pre("save", async function (next) {
+  try {
+    // Skip if not modifying status, or if the reservation is being archived
+    const isStatusChange = this.isNew || this.isModified("status");
+    if (!isStatusChange) return next();
+    if (this.isArchived) return next();
+    if (!ACTIVE_OCCUPANCY_STATUSES.includes(this.status)) return next();
+    if (!this.userId) return next();
+
+    // Check whether the referenced user still exists
+    const User = mongoose.model("User");
+    const userExists = await User.exists({ _id: this.userId });
+
+    if (!userExists) {
+      return next(
+        new Error(
+          `[Reservation pre-save] Cannot set reservation ${this.reservationCode || this._id} ` +
+          `to status "${this.status}" — userId ${this.userId} does not exist in the User collection. ` +
+          `Archive this reservation instead.`,
+        ),
+      );
+    }
+
+    next();
+  } catch (err) {
+    // Log but don't crash — a guard failure should surface as an error, not
+    // silently allow a corrupted write. We pass the error to abort the save.
+    next(err);
+  }
+});
 
 // ============================================================================
 // EXPORT

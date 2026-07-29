@@ -93,10 +93,10 @@ export default function BaseModal({
       btnText: "#ffffff",
     },
     info: {
-      icon: <Info size={20} color="#0A1628" />,
-      iconBg: "rgba(10, 22, 40, 0.06)",
-      btnBg: "var(--color-navy, #0A1628)",
-      btnHoverBg: "#1e293b",
+      icon: <Info size={20} color="#059669" />,
+      iconBg: "rgba(5, 150, 105, 0.08)",
+      btnBg: "var(--color-success, #059669)",
+      btnHoverBg: "#047857",
       btnText: "#ffffff",
     },
   };

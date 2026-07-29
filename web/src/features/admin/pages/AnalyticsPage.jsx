@@ -1154,7 +1154,7 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
                   ↑ 8.1% from previous period
                 </div>
               </div>
-              <div className="analytics-hero-banner-icon">📅</div>
+              <div className="analytics-hero-banner-icon"><CalendarDays size={24} /></div>
             </div>
             <div className="analytics-charts-grid">
               <div className="analytics-chart-card">

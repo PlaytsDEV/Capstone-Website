@@ -235,6 +235,13 @@ export const TENANT_WORKSPACE_FIELDS = [
   "emergencyContact",
   "selectedBed",
   "notes",
+  "selfiePhotoUrl",
+  "validIDFrontUrl",
+  "validIDBackUrl",
+  "validIDType",
+  "idType",
+  "nbiClearanceUrl",
+  "companyIDUrl",
   "userId",
   "roomId",
 ].join(" ");
@@ -1532,7 +1539,10 @@ export const getTenantWorkspaceReservations = async ({ roomQuery }) => {
 export const buildWorkspaceEntries = async (reservations, now = new Date()) => {
   const visibleReservations = reservations.filter((reservation) => {
     const tenantUser = reservation?.userId;
-    return Boolean(tenantUser && tenantUser.role === "tenant");
+    // Guard: skip orphaned reservations whose User document no longer exists.
+    // `.populate()` returns null when the referenced document is missing.
+    if (!tenantUser || !tenantUser._id) return false;
+    return tenantUser.role === "tenant";
   });
 
   const reservationIds = visibleReservations.map((reservation) => reservation._id);

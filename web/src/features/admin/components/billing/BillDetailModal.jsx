@@ -2,6 +2,7 @@ import { useState } from "react";
 import { X, Check, XCircle, Eye, Clock, AlertTriangle } from "lucide-react";
 import { fmtCurrency, fmtDate, fmtMonth } from "../../utils/formatters";
 import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
+import DeadlineBadge from "../../../../shared/components/DeadlineBadge";
 
 export default function BillDetailModal({
  bill,
@@ -55,10 +56,22 @@ export default function BillDetailModal({
  <span className="detail-label">Billing Month</span>
  <span className="detail-value">{fmtMonth(bill.billingMonth)}</span>
  </div>
- <div className="detail-row">
- <span className="detail-label">Due Date</span>
- <span className="detail-value">{fmtDate(bill.dueDate)}</span>
- </div>
+        <div className="detail-row" style={{ flexDirection: "column", alignItems: "flex-start", gap: "6px" }}>
+          <span className="detail-label">Deadline & Due Date</span>
+          {bill.dueDate && (
+            <DeadlineBadge
+              dueDate={bill.dueDate}
+              status={bill.status}
+              type="bill"
+              showConsequenceNote={true}
+              penaltyRate={bill.penaltyDetails?.ratePerDay || 50}
+            />
+          )}
+        </div>
+        <div className="detail-row">
+          <span className="detail-label">Status</span>
+          <span className={`badge status-${bill.status}`}>{bill.status}</span>
+        </div>
  {bill.billingCycleStart && bill.billingCycleEnd && (
  <div className="detail-row">
  <span className="detail-label">Billing Cycle</span>
@@ -67,10 +80,6 @@ export default function BillDetailModal({
  </span>
  </div>
  )}
- <div className="detail-row">
- <span className="detail-label">Status</span>
- <span className={`badge status-${bill.status}`}>{bill.status}</span>
- </div>
  {bill.proRataDays && (
  <div className="detail-row">
  <span className="detail-label">Days in Room</span>

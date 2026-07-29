@@ -110,4 +110,42 @@ describe("tenantWorkspace utilities", () => {
       overduePayments: 1,
     });
   });
+
+  test("does not trigger room_history_incomplete for new tenants with valid initial room assignment", () => {
+    const entry = buildTenantWorkspaceEntry({
+      reservation: {
+        _id: "res-new-1",
+        status: "moveIn",
+        moveInDate: new Date("2026-01-01T00:00:00.000Z"),
+        selectedBed: { id: "bed-1", position: "lower" },
+        roomId: { _id: "room-1", name: "Room 101", branch: "gil-puyat" },
+      },
+      bedHistoryRecords: [],
+      now: new Date("2026-01-10T00:00:00.000Z"),
+    });
+
+    expect(
+      entry.warningFlags.some((warning) => warning.code === "room_history_incomplete"),
+    ).toBe(false);
+    expect(entry.roomHistory.length).toBe(1);
+    expect(entry.roomHistory[0].source).toBe("reservation_fallback");
+  });
+
+  test("triggers room_history_incomplete when both bedHistoryRecords and room assignment are missing", () => {
+    const entry = buildTenantWorkspaceEntry({
+      reservation: {
+        _id: "res-corrupted-1",
+        status: "moveIn",
+        // missing moveInDate and roomId
+      },
+      bedHistoryRecords: [],
+      now: new Date("2026-01-10T00:00:00.000Z"),
+    });
+
+    expect(
+      entry.warningFlags.some((warning) => warning.code === "room_history_incomplete"),
+    ).toBe(true);
+    expect(entry.roomHistory.length).toBe(0);
+  });
 });
+

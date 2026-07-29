@@ -1,10 +1,12 @@
+import { useState, useEffect, useMemo } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { roomApi } from '../../../shared/api/roomApi';
 import hero1 from "../../../assets/images/hero1.jpg";
 import hero2 from "../../../assets/images/hero2.jpg";
 import hero3 from "../../../assets/images/hero3.jpg";
 
-const roomListings = [
+const DEFAULT_ROOM_LISTINGS = [
   {
     id: 1,
     title: 'Private Room',
@@ -41,6 +43,58 @@ const roomListings = [
 ];
 
 export function RoomInventory() {
+  const [apiRooms, setApiRooms] = useState([]);
+
+  useEffect(() => {
+    roomApi.getAll()
+      .then((res) => {
+        const items = Array.isArray(res) ? res : res?.items ?? res?.data ?? [];
+        if (items.length > 0) {
+          setApiRooms(items);
+        }
+      })
+      .catch((err) => {
+        console.warn("Using fallback room listings (API offline):", err);
+      });
+  }, []);
+
+  const roomListings = useMemo(() => {
+    if (apiRooms.length === 0) return DEFAULT_ROOM_LISTINGS;
+
+    // Group rooms by type or list top featured rooms
+    const types = ["private", "double-sharing", "quadruple-sharing"];
+
+    const picked = types.map((type, idx) => {
+      const typeRooms = apiRooms.filter((r) => r.type === type);
+      const popularRoom = typeRooms.find((r) => r.isPopular) || typeRooms[0];
+
+      if (!popularRoom) return DEFAULT_ROOM_LISTINGS[idx];
+
+      const priceVal = popularRoom.monthlyPrice || popularRoom.price || 0;
+      const formattedPrice = `₱${Number(priceVal).toLocaleString()}`;
+      const defaultHero = idx === 0 ? hero1 : idx === 1 ? hero3 : hero2;
+      const displayImg = (popularRoom.images && popularRoom.images.length > 0)
+        ? popularRoom.images[0]
+        : defaultHero;
+
+      return {
+        id: popularRoom._id || idx + 1,
+        title: popularRoom.name || formatTypeTitle(type),
+        subtitle: popularRoom.branch === "guadalupe" ? "Guadalupe Branch" : "Gil Puyat Branch",
+        description: popularRoom.description || DEFAULT_ROOM_LISTINGS[idx].description,
+        price: formattedPrice,
+        priceNote: type === "private" ? "/room" : "/pax",
+        popular: Boolean(popularRoom.isPopular),
+        image: displayImg,
+        inclusions: popularRoom.amenities && popularRoom.amenities.length > 0
+          ? popularRoom.amenities
+          : DEFAULT_ROOM_LISTINGS[idx].inclusions,
+      };
+    });
+
+    return picked;
+  }, [apiRooms]);
+
   return (
     <section className="py-20 lg:py-28" style={{ backgroundColor: 'var(--lp-bg)' }} id="rooms">
       <div className="max-w-screen-2xl mx-auto px-8 lg:px-12">
@@ -214,3 +268,10 @@ export function RoomInventory() {
 }
 
 export default RoomInventory;
+
+function formatTypeTitle(type) {
+  if (type === "private") return "Private Room";
+  if (type === "double-sharing") return "Double Sharing";
+  if (type === "quadruple-sharing") return "Quadruple Sharing";
+  return type ? type.replace("-", " ") : "Standard Room";
+}

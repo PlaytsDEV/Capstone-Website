@@ -1,4 +1,5 @@
 import React from "react";
+import { Check, Lock, Wrench } from "lucide-react";
 import "../styles/bed-selector.css";
 import { getBedDisplayLabel, groupBedsByBunk } from "../../../shared/utils/bedIdentifier";
 
@@ -62,18 +63,26 @@ const BedSelector = ({ beds = [], selectedBed, onSelect, readOnly = false }) => 
               <div className="bs-id">{bed.code || bed.id}</div>
             </div>
           </div>
-          <div className="bs-badge">
-            {selected
-              ? "✓ Selected"
-              : status === "occupied"
-              ? "Occupied"
-              : status === "reserved"
-              ? "🔒 Reserved"
-              : status === "locked"
-              ? "🔧 Locked"
-              : status === "maintenance"
-              ? "Locked"
-              : "Available"}
+          <div className="bs-badge" style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+            {selected ? (
+              <>
+                <Check size={13} strokeWidth={2.5} /> Selected
+              </>
+            ) : status === "occupied" ? (
+              "Occupied"
+            ) : status === "reserved" ? (
+              <>
+                <Lock size={12} strokeWidth={2} /> Reserved
+              </>
+            ) : status === "locked" ? (
+              <>
+                <Wrench size={12} strokeWidth={2} /> Locked
+              </>
+            ) : status === "maintenance" ? (
+              "Locked"
+            ) : (
+              "Available"
+            )}
           </div>
         </div>
       </div>

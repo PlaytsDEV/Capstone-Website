@@ -49,10 +49,19 @@ import {
   checkOverdueReservation,
   getBranchLabel,
   hasPendingCancellationRequest,
+  isNewReservation,
   mapReservationAdminRow,
+  applyMoveInFilter,
+  applyAppDateFilter,
+  applyQuickChip,
 } from "../utils/reservationRows";
+import ReservationQuickChips from "../components/ReservationQuickChips";
+import ReservationFilterDrawer from "../components/ReservationFilterDrawer";
+import ActiveFilterTags from "../components/ActiveFilterTags";
+import { SlidersHorizontal } from "lucide-react";
 import "../styles/design-tokens.css";
 import "../styles/admin-reservations.css";
+
 
 const getAvatarColor = (initials = "") => {
   const colors = [
@@ -118,6 +127,20 @@ function ReservationsPage() {
   const [selectedReservation, setSelectedReservation] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortState, setSortState] = useState({ key: "createdAt", dir: "desc" });
+
+  const [quickChip, setQuickChip] = useState(null);
+  const [moreFiltersOpen, setMoreFiltersOpen] = useState(false);
+  const [advancedFilters, setAdvancedFilters] = useState({
+    moveIn: "any",
+    applicationDate: "any",
+    roomType: "any",
+    paymentStatus: "any",
+    moveInStart: "",
+    moveInEnd: "",
+    appDateStart: "",
+    appDateEnd: "",
+  });
+
   const [seenIds, setSeenIds] = useState(() => {
     try {
       const stored = localStorage.getItem("admin_seen_reservation_ids");
@@ -171,9 +194,11 @@ function ReservationsPage() {
     () =>
       rawReservations.map((raw) => {
         const row = mapReservationAdminRow(raw);
+        const isPendingCancellation = hasPendingCancellationRequest(row);
+        const isRecentlyCreated = isNewReservation(raw) && !raw.isViewedByAdmin && !seenIds.has(row.id);
         return {
           ...row,
-          isNew: row.isNew && !raw.isViewedByAdmin && !seenIds.has(row.id),
+          isNew: isRecentlyCreated || isPendingCancellation,
         };
       }),
     [rawReservations, seenIds],
@@ -244,9 +269,64 @@ function ReservationsPage() {
                 : hasReservationStatus(reservation.status, statusFilter);
       const matchBranch =
         branchFilter === "all" || reservation.branchCode === branchFilter;
-      return matchSearch && matchStatus && matchBranch;
+
+      const matchMoveIn = applyMoveInFilter(reservation, advancedFilters);
+      const matchAppDate = applyAppDateFilter(reservation, advancedFilters);
+      const matchRoomType =
+        advancedFilters.roomType === "any" ||
+        reservation.roomType === advancedFilters.roomType;
+      const matchPayment =
+        advancedFilters.paymentStatus === "any" ||
+        reservation.paymentStatus === advancedFilters.paymentStatus;
+      const matchChip = applyQuickChip(reservation, quickChip);
+
+      return (
+        matchSearch &&
+        matchStatus &&
+        matchBranch &&
+        matchMoveIn &&
+        matchAppDate &&
+        matchRoomType &&
+        matchPayment &&
+        matchChip
+      );
     });
-  }, [branchFilter, reservations, searchTerm, statusFilter]);
+  }, [
+    advancedFilters,
+    branchFilter,
+    quickChip,
+    reservations,
+    searchTerm,
+    statusFilter,
+  ]);
+
+  const activeAdvancedFilterCount = useMemo(() => {
+    let count = 0;
+    if (advancedFilters.moveIn !== "any") count++;
+    if (advancedFilters.applicationDate !== "any") count++;
+    if (advancedFilters.roomType !== "any") count++;
+    if (advancedFilters.paymentStatus !== "any") count++;
+    return count;
+  }, [advancedFilters]);
+
+  const handleResetAllFilters = useCallback(() => {
+    setSearchTerm("");
+    setStatusFilter("all");
+    setBranchFilter("all");
+    setQuickChip(null);
+    setAdvancedFilters({
+      moveIn: "any",
+      applicationDate: "any",
+      roomType: "any",
+      paymentStatus: "any",
+      moveInStart: "",
+      moveInEnd: "",
+      appDateStart: "",
+      appDateEnd: "",
+    });
+    setCurrentPage(1);
+  }, []);
+
 
   const sortedReservations = useMemo(() => {
     const { key, dir } = sortState;
@@ -396,14 +476,11 @@ function ReservationsPage() {
       {
         key: "status",
         options: [
-          { value: "all", label: "All Status" },
-          { value: "new", label: "New Reservations" },
-          { value: "pending_application_review", label: "Pending Review" },
-          { value: "approved_for_payment", label: "Approved for Payment" },
-          { value: "cancellation_requested", label: "Cancellation Requests" },
+          { value: "all", label: "All Statuses" },
+          { value: "in_progress", label: "In Progress" },
+          { value: "reserved", label: "Reserved" },
           { value: "moveIn", label: "Moved In" },
           { value: "cancelled", label: "Cancelled" },
-          { value: "archived", label: "Archived" },
         ],
         value: statusFilter,
         onChange: (value) => {
@@ -678,7 +755,11 @@ function ReservationsPage() {
                   {row.isNew && (
                     <span
                       className="res-badge-new"
-                      title="New reservation (created within 48 hours)"
+                      title={
+                        hasPendingCancellationRequest(row)
+                          ? "Cancellation requested (New action)"
+                          : "New reservation (created within 48 hours)"
+                      }
                     >
                       <span className="res-badge-new__dot" />
                       NEW
@@ -723,7 +804,7 @@ function ReservationsPage() {
       {
         key: "createdAt",
         label: isArchivedView ? "Archived By" : "Date",
-        sortable: true,
+        sortable: false,
         render: (row) => formatShortDate(row.createdAt),
       },
       {
@@ -855,13 +936,22 @@ function ReservationsPage() {
                 </div>
               );
             })}
-</div>
+          </div>
+
+          <ReservationQuickChips
+            reservations={reservations}
+            activeChip={quickChip}
+            onSelectChip={(chip) => {
+              setQuickChip(chip);
+              setCurrentPage(1);
+            }}
+          />
 
           <div
             style={{ backgroundColor: "var(--bg-card)", border: `1px solid var(--border-light)` }}
             className="border rounded-lg p-6 overflow-x-auto"
           >
-            <div className="flex flex-col md:flex-row gap-4 mb-6">
+            <div className="flex flex-col md:flex-row gap-4 mb-4">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input
@@ -877,6 +967,22 @@ function ReservationsPage() {
                 />
               </div>
               <div className="flex gap-2">
+                <select
+                  value={`${sortState.key}-${sortState.dir}`}
+                  onChange={(e) => {
+                    const [key, dir] = e.target.value.split("-");
+                    setSortState({ key, dir });
+                    setCurrentPage(1);
+                  }}
+                  style={{ backgroundColor: "var(--input-background)", borderColor: "var(--border-light)" }}
+                  className="px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring font-medium"
+                  title="Sort reservations"
+                >
+                  <option value="createdAt-desc">Recent Transaction</option>
+                  <option value="createdAt-asc">Oldest Transaction</option>
+                  <option value="customer-asc">Alphabetical (A - Z)</option>
+                  <option value="customer-desc">Alphabetical (Z - A)</option>
+                </select>
                 {isOwner && (
                   <select
                     value={branchFilter}
@@ -911,6 +1017,21 @@ function ReservationsPage() {
                       </option>
                     ))}
                 </select>
+
+                <button
+                  type="button"
+                  onClick={() => setMoreFiltersOpen(true)}
+                  className="px-4 py-2 border border-[var(--border-light)] rounded-md hover:bg-muted transition-colors flex items-center gap-2 text-sm font-medium"
+                >
+                  <SlidersHorizontal className="w-4 h-4 text-muted-foreground" />
+                  <span>More Filters</span>
+                  {activeAdvancedFilterCount > 0 && (
+                    <span className="res-chip__count bg-[color:var(--primary)] text-white">
+                      {activeAdvancedFilterCount}
+                    </span>
+                  )}
+                </button>
+
                 <button
                   onClick={handleExportReservations}
                   className="px-4 py-2 border border-[var(--border-light)]
@@ -921,6 +1042,47 @@ function ReservationsPage() {
                 </button>
               </div>
             </div>
+
+            <ActiveFilterTags
+              searchTerm={searchTerm}
+              onClearSearch={() => setSearchTerm("")}
+              statusFilter={statusFilter}
+              onClearStatus={() => setStatusFilter("all")}
+              branchFilter={branchFilter}
+              onClearBranch={() => setBranchFilter("all")}
+              quickChip={quickChip}
+              onClearChip={() => setQuickChip(null)}
+              advancedFilters={advancedFilters}
+              onClearAdvancedField={(field) =>
+                setAdvancedFilters((prev) => ({ ...prev, [field]: "any" }))
+              }
+              onClearAll={handleResetAllFilters}
+            />
+
+            <ReservationFilterDrawer
+              isOpen={moreFiltersOpen}
+              onClose={() => setMoreFiltersOpen(false)}
+              filters={advancedFilters}
+              onChange={(next) => {
+                setAdvancedFilters(next);
+                setCurrentPage(1);
+              }}
+              onReset={() => {
+                setAdvancedFilters({
+                  moveIn: "any",
+                  applicationDate: "any",
+                  roomType: "any",
+                  paymentStatus: "any",
+                  moveInStart: "",
+                  moveInEnd: "",
+                  appDateStart: "",
+                  appDateEnd: "",
+                });
+                setCurrentPage(1);
+              }}
+              reservations={reservations}
+            />
+
 
             {isArchivedView && (
               <div className="mb-4 rounded-md border border-[var(--border-light)] bg-muted/30 px-4 py-3 text-sm text-muted-foreground">

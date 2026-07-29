@@ -39,6 +39,23 @@ export function useOccupancyForecast(params) {
   });
 }
 
+export function useOccupancyRateHistory(params) {
+  return useQuery({
+    queryKey: queryKeys.analytics.occupancyRateHistory(params),
+    queryFn: () => analyticsApi.getOccupancyRateHistory(params),
+    ...DEFAULT_OPTIONS,
+  });
+}
+
+export function useRoomBedHistory(roomId) {
+  return useQuery({
+    queryKey: queryKeys.analytics.roomBedHistory(roomId),
+    queryFn: () => analyticsApi.getRoomBedHistory(roomId),
+    enabled: Boolean(roomId),
+    ...DEFAULT_OPTIONS,
+  });
+}
+
 export function useFinancialsAnalytics(params) {
   return useQuery({
     queryKey: queryKeys.analytics.financials(params),

@@ -8,7 +8,11 @@ export const CONTRACT_FIELD_VISUAL_STYLES = Object.freeze({
   roomNumber: { fontWeight: "bold", preferredSize: 9, minimumSize: 8.5 },
   bedOrSlotNumber: { fontWeight: "bold", preferredSize: 9, minimumSize: 8.5 },
   leaseDurationNumber: { fontWeight: "bold", preferredSize: 8.5, minimumSize: 8.5 },
-  leaseDurationWords: { fontWeight: "bold", preferredSize: 8.5, minimumSize: 8.5 },
+  // Unlike other fields, this holds a spelled-out number ("Twelve", "Twenty-four")
+  // whose rendered width varies far more than the 25-27pt template box allows for
+  // at 8.5pt. A real shrink range is required so common lease terms (e.g. 12
+  // months) don't fail PDF generation with CONTRACT_FIELD_OVERFLOW.
+  leaseDurationWords: { fontWeight: "bold", preferredSize: 8.5, minimumSize: 6 },
   leaseStartDate: { fontWeight: "bold", preferredSize: 8.5, minimumSize: 8.25 },
   leaseEndDate: { fontWeight: "bold", preferredSize: 8.5, minimumSize: 8.25 },
   advanceCoverageStart: { fontWeight: "bold", preferredSize: 8.5, minimumSize: 8.25 },
@@ -79,7 +83,7 @@ const lease = Object.freeze({
       horizontalAlignment: "right",
       verticalOffset: 2.2,
     }),
-    leaseDurationWords: field("leaseDurationWords", 471, 643, 25, {
+    leaseDurationWords: field("leaseDurationWords", 471, 643, 27, {
       horizontalAlignment: "left",
       verticalOffset: 2.2,
     }),
@@ -91,7 +95,7 @@ const lease = Object.freeze({
       horizontalAlignment: "right",
       verticalOffset: 2.2,
     }),
-    leaseDurationWords: field("leaseDurationWords", 403, 643, 25, {
+    leaseDurationWords: field("leaseDurationWords", 403, 643, 27, {
       horizontalAlignment: "left",
       verticalOffset: 2.2,
     }),

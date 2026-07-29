@@ -71,12 +71,32 @@ export function buildBillingSummary(bills = [], now = new Date()) {
   if (hasOverdue) paymentStatus = "overdue";
   else if (hasOutstanding) paymentStatus = "partial";
 
+  const overdueEntries = visibleBills.filter(
+    (entry) => entry.snapshot?.status === "overdue" && entry.bill?.dueDate,
+  );
+  const oldestOverdueDueDate = overdueEntries.length > 0
+    ? overdueEntries.reduce((oldest, cur) =>
+        new Date(cur.bill.dueDate) < new Date(oldest) ? cur.bill.dueDate : oldest,
+      overdueEntries[0].bill.dueDate)
+    : null;
+
+  const pendingEntries = visibleBills.filter(
+    (entry) => entry.snapshot?.status !== "paid" && entry.bill?.dueDate,
+  );
+  const nextDueDate = pendingEntries.length > 0
+    ? pendingEntries.reduce((earliest, cur) =>
+        new Date(cur.bill.dueDate) < new Date(earliest) ? cur.bill.dueDate : earliest,
+      pendingEntries[0].bill.dueDate)
+    : null;
+
   return {
     currentBalance,
     paymentStatus,
     hasOverdue,
     hasOutstanding,
     hasPendingVerification,
+    oldestOverdueDueDate,
+    nextDueDate,
     visibleBills,
   };
 }
@@ -124,13 +144,19 @@ export function buildWarningFlags({
     flags.push({
       code: "lease_expired",
       severity: WARNING_SEVERITY.error,
-      message: "Lease has expired.",
+      message: "The lease contract for this resident has expired.",
+      details: "This tenant's rental agreement end date has already passed.",
+      impact: "The tenant is still checked in, but their contract status is marked as expired.",
+      recommendation: "Renew the lease agreement or prepare to process the tenant's move-out.",
     });
   } else if (leaseStatus === "expiring_soon") {
     flags.push({
       code: "lease_expiring_soon",
       severity: WARNING_SEVERITY.warning,
-      message: "Lease is expiring soon.",
+      message: "The lease contract is ending soon.",
+      details: "This tenant's rental contract will end within the next 30 days.",
+      impact: "The tenant may need to decide whether to extend their stay or prepare to move out.",
+      recommendation: "Send a lease renewal notice or schedule a move-out check.",
     });
   }
 
@@ -138,13 +164,23 @@ export function buildWarningFlags({
     flags.push({
       code: "overdue_balance",
       severity: WARNING_SEVERITY.error,
-      message: "Tenant has overdue billing.",
+      message: "This tenant has an overdue bill.",
+      details: "One or more payment invoices have passed their due date without payment.",
+      impact: "A daily late payment penalty rate (₱50/day) is accruing on overdue balances until paid in full. Continued non-payment leads to automated notices, service restrictions, and administrative review.",
+      recommendation: "Review payment history, verify original due date, send an urgent payment notice, or record a received payment.",
+      createdAt: billingSummary.oldestOverdueDueDate || null,
+      dueDate: billingSummary.oldestOverdueDueDate || null,
     });
   } else if (billingSummary.hasOutstanding) {
     flags.push({
       code: "outstanding_balance",
       severity: WARNING_SEVERITY.warning,
-      message: "Tenant has an outstanding balance.",
+      message: "This tenant has an unpaid balance.",
+      details: "There is still an open balance on the tenant's current bill.",
+      impact: "The remaining balance needs to be settled on or before the due date to avoid accruing daily late penalties (₱50/day).",
+      recommendation: "Check payment deadlines, review billing breakdown, or assist tenant with payment completion.",
+      createdAt: billingSummary.nextDueDate || null,
+      dueDate: billingSummary.nextDueDate || null,
     });
   }
 
@@ -152,7 +188,10 @@ export function buildWarningFlags({
     flags.push({
       code: "pending_payment_verification",
       severity: WARNING_SEVERITY.warning,
-      message: "Legacy offline payment proof is pending verification.",
+      message: "Payment proof is waiting for admin review.",
+      details: "The tenant uploaded a payment receipt that needs your review.",
+      impact: "The account balance will update as soon as you verify the payment proof.",
+      recommendation: "Go to Billing & Payments to review and verify the submitted receipt.",
     });
   }
 
@@ -161,6 +200,9 @@ export function buildWarningFlags({
       code: "room_history_incomplete",
       severity: WARNING_SEVERITY.warning,
       message: "Room history is incomplete for this stay.",
+      details: "We don't have a complete record of room or bed transfers for this tenant's stay.",
+      impact: "Utility bill calculations will automatically use the current room assignment.",
+      recommendation: "Check the tenant's room history or log any room changes if they moved rooms.",
     });
   }
 
@@ -168,7 +210,10 @@ export function buildWarningFlags({
     flags.push({
       code: "billing_impact_warning",
       severity: WARNING_SEVERITY.info,
-      message: "Room history affects billing calculations for this stay.",
+      message: "Move-out date affects bill calculation for this stay.",
+      details: "A move-out date has been scheduled for this resident.",
+      impact: "Monthly rent and utility bills will be adjusted to cover only the exact days stayed.",
+      recommendation: "Make sure final meter readings and room inspection notes are recorded.",
     });
   }
 
@@ -288,7 +333,7 @@ export function buildTenantWorkspaceEntry({
   const warningFlags = buildWarningFlags({
     leaseStatus,
     billingSummary,
-    hasRoomHistory: bedHistoryRecords.length > 0,
+    hasRoomHistory: roomHistory.length > 0,
     moveOutDate: readMoveOutDate(reservation),
   });
   const nextAction = buildNextAction({

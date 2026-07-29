@@ -63,7 +63,7 @@ function CheckAvailabilityPage() {
  const [selectedRoom, setSelectedRoom] = useState(null);
  const [selectedAppliances, setSelectedAppliances] = useState({});
  const [selectedBed, setSelectedBed] = useState(null);
- const [selectedLeaseDuration, setSelectedLeaseDuration] = useState("6");
+ const [selectedLeaseDuration, setSelectedLeaseDuration] = useState("");
  const [showLoginConfirmBeforeReserve, setShowLoginConfirmBeforeReserve] =
  useState(false);
  const [changeRoomLocked, setChangeRoomLocked] = useState(false);
@@ -71,7 +71,10 @@ function CheckAvailabilityPage() {
  const ROOMS_PER_PAGE = 6;
 
  // ── TanStack Query ─────────────────────────────────────────
- const { data: rawRooms = [], isLoading: roomsLoading, error: roomsQueryError } = useRooms();
+ const { data: rawRooms = [], isLoading: roomsLoading, error: roomsQueryError } = useRooms(
+   undefined,
+   { pollInterval: user ? false : 30_000 }
+ );
  const roomsError = roomsQueryError ? "Failed to load rooms. Please try again." : null;
 
  useEffect(() => {
@@ -164,10 +167,11 @@ function CheckAvailabilityPage() {
  String(bed.status || "").toLowerCase() === "occupied" ||
  (bed.status === undefined && bed.available === false),
  ).length;
- // Use server-tracked occupancy for tenant presence, then subtract explicit
- // bed blocks such as reserved/maintenance/temporary locks.
+ // Prefer bed-level count as ground truth when bed data is present.
+ // Falling back to currentOccupancy for legacy rooms with no beds array prevents
+ // stale counter drift from making a room appear "Full" when beds are free.
  const totalBeds = room.capacity || beds.length || 0;
- const occupied = Math.max(room.currentOccupancy || 0, occupiedFromBeds);
+ const occupied = beds.length > 0 ? occupiedFromBeds : (room.currentOccupancy || 0);
  const availableBeds = Math.max(0, totalBeds - occupied - reservedBeds - unavailableBeds);
  return {
  id: roomNumber,
@@ -287,10 +291,7 @@ function CheckAvailabilityPage() {
     setSelectedRoom(room);
     setSelectedAppliances({});
     setSelectedBed(null);
-    const initialDuration = selectedLeaseTermFilter === "shortTerm"
-      ? "3"
-      : String(room?.longTermLeaseMinMonths || 6);
-    setSelectedLeaseDuration(initialDuration);
+    setSelectedLeaseDuration("");
     setIsDetailsModalOpen(true);
   };
   const closeRoomDetails = () => {
@@ -298,7 +299,7 @@ function CheckAvailabilityPage() {
     setSelectedRoom(null);
     setSelectedAppliances({});
     setSelectedBed(null);
-    setSelectedLeaseDuration("6");
+    setSelectedLeaseDuration("");
   };
  const handleApplianceQuantityChange = (id, qty) => {
  setSelectedAppliances((prev) => ({
@@ -321,14 +322,31 @@ function CheckAvailabilityPage() {
  0,
  );
 
- // ── Reservation logic ──────────────────────────────────────
- const handleProceedToReservation = () => {
- if (!user) {
- setShowLoginConfirmBeforeReserve(true);
- return;
- }
- proceedWithReservation();
- };
+  // ── Reservation logic ──────────────────────────────────────
+  const handleProceedToReservation = () => {
+    const isPrivate = selectedRoom?.type && String(selectedRoom.type).toLowerCase().includes("private");
+    const requiresBed = selectedRoom?.beds && selectedRoom.beds.length > 1 && !isPrivate;
+    const hasLease = Boolean(selectedLeaseDuration && String(selectedLeaseDuration).trim() !== "");
+
+    if (!hasLease && requiresBed && !selectedBed) {
+      showNotification("Please select a preferred lease term and a bed before proceeding.", "warning");
+      return;
+    }
+    if (!hasLease) {
+      showNotification("Please select a preferred lease term before proceeding.", "warning");
+      return;
+    }
+    if (requiresBed && !selectedBed) {
+      showNotification("Please select a bed location before proceeding.", "warning");
+      return;
+    }
+
+    if (!user) {
+      setShowLoginConfirmBeforeReserve(true);
+      return;
+    }
+    proceedWithReservation();
+  };
 
  const proceedWithReservation = async () => {
  if (changeRoomLocked) {

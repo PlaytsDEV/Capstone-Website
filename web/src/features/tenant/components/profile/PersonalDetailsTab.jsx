@@ -34,222 +34,223 @@ const validateField = (field, value) => {
  STYLES
 ───────────────────────────────────────────────────────────────────────────── */
 const s = {
- container: { width: "100%" },
+  container: { width: "100%" },
 
- /* page heading */
- heading: { marginBottom: 24 },
- title: { fontSize: 22, fontWeight: 700, color: "var(--text-heading, #0A1628)", margin: 0 },
- subtitle: { fontSize: 13, color: "var(--text-muted, #9CA3AF)", marginTop: 4 },
+  /* page heading */
+  heading: { marginBottom: 24 },
+  title: { fontSize: 22, fontWeight: 700, color: "var(--text-heading, #0A1628)", margin: 0 },
+  subtitle: { fontSize: 13, color: "var(--text-muted, #9CA3AF)", marginTop: 4 },
 
- /* ── Hero profile card ── */
- profileCard: {
- background: "var(--surface-card, #fff)",
- borderRadius: 16,
- border: "1px solid var(--border-card, #E8EBF0)",
- marginBottom: 16,
- overflow: "hidden",
- },
- heroBanner: {
- height: 80,
- background: "linear-gradient(135deg, #0A1628 0%, #1E3A5F 60%, #FF8C42 100%)",
- },
- heroBody: {
- padding: "0 24px 20px",
- display: "flex",
- alignItems: "flex-end",
- justifyContent: "space-between",
- gap: 16,
- flexWrap: "wrap",
- },
- avatarWrap: {
- position: "relative",
- marginTop: -36,
- flexShrink: 0,
- },
- avatar: {
- width: 72, height: 72, borderRadius: "50%",
- border: "3px solid var(--surface-card, #fff)",
- overflow: "hidden",
- boxShadow: "0 2px 12px rgba(0,0,0,0.12)",
- },
- avatarFallback: {
- width: 72, height: 72, borderRadius: "50%",
- border: "3px solid var(--surface-card, #fff)",
- display: "flex", alignItems: "center", justifyContent: "center",
- background: "linear-gradient(135deg, #D4AF37 0%, #B88A1A 100%)",
- color: "#0F172A", fontSize: 24, fontWeight: 700, letterSpacing: "1px",
- boxShadow: "0 2px 12px rgba(184,138,26,0.24)",
- },
- profileMeta: { paddingTop: 12, flex: 1, minWidth: 0 },
- profileName: {
- fontSize: 18, fontWeight: 700,
- color: "var(--text-heading, #0A1628)",
- margin: "0 0 2px", whiteSpace: "nowrap",
- overflow: "hidden", textOverflow: "ellipsis",
- },
- profileEmail: {
- fontSize: 13, color: "var(--text-secondary, #6B7280)", margin: 0,
- },
- profileChips: {
- display: "flex", alignItems: "center", gap: 8, marginTop: 6, flexWrap: "wrap",
- },
- completionWrap: {
- display: "flex", alignItems: "center", gap: 10, marginTop: 10, maxWidth: 360,
- },
- completionTrack: {
- height: 6, flex: 1, minWidth: 120,
- background: "var(--surface-muted, #F1F5F9)",
- borderRadius: 999, overflow: "hidden",
- },
- completionFill: {
- height: "100%",
- background: "linear-gradient(90deg, #0A2463, #FF8C42)",
- borderRadius: 999,
- transition: "width 0.2s ease",
- },
- completionText: {
- fontSize: 11, fontWeight: 600,
- color: "var(--text-secondary, #64748B)",
- whiteSpace: "nowrap",
- },
- chip: {
- display: "inline-flex", alignItems: "center", gap: 4,
- fontSize: 11, fontWeight: 500,
- color: "var(--text-muted, #94A3B8)",
- background: "var(--surface-muted, #F1F5F9)",
- borderRadius: 999, padding: "2px 8px",
- },
- actionWrap: {
- display: "flex", gap: 8, paddingTop: 12, alignSelf: "flex-end",
- },
- editBtn: {
- display: "flex", alignItems: "center", gap: 6,
- padding: "9px 18px",
- border: "1px solid var(--border-card, #E8EBF0)",
- borderRadius: 10, background: "var(--surface-card, #fff)",
- fontSize: 13, fontWeight: 600, color: "#FF8C42",
- cursor: "pointer", transition: "all 0.15s", whiteSpace: "nowrap",
- },
- saveBtn: {
- display: "flex", alignItems: "center", gap: 6,
- padding: "9px 20px", border: "none", borderRadius: 10,
- background: "#16A34A",
- fontSize: 13, fontWeight: 600, color: "#fff",
- cursor: "pointer", transition: "all 0.15s", whiteSpace: "nowrap",
- boxShadow: "0 2px 8px rgba(22,163,74,0.28)",
- },
- cancelBtn: {
- display: "flex", alignItems: "center", gap: 6,
- padding: "9px 16px",
- border: "1px solid #D0D5DD",
- borderRadius: 10, background: "var(--surface-card, #fff)",
- fontSize: 13, fontWeight: 500, color: "#344054",
- cursor: "pointer", transition: "all 0.15s", whiteSpace: "nowrap",
- },
+  /* ── Hero profile card ── */
+  profileCard: {
+    background: "var(--surface-card, #fff)",
+    borderRadius: 16,
+    border: "1px solid var(--border-card, #E8EBF0)",
+    marginBottom: 16,
+    overflow: "hidden",
+  },
+  heroBanner: {
+    height: 80,
+    background: "#0A2463",
+    borderBottom: "3px solid #D4AF37",
+  },
+  heroBody: {
+    padding: "0 24px 20px",
+    display: "flex",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    gap: 16,
+    flexWrap: "wrap",
+  },
+  avatarWrap: {
+    position: "relative",
+    marginTop: -36,
+    flexShrink: 0,
+  },
+  avatar: {
+    width: 72, height: 72, borderRadius: "50%",
+    border: "3px solid var(--surface-card, #fff)",
+    overflow: "hidden",
+    boxShadow: "0 2px 12px rgba(0,0,0,0.12)",
+  },
+  avatarFallback: {
+    width: 72, height: 72, borderRadius: "50%",
+    border: "3px solid var(--surface-card, #fff)",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    background: "#0A2463",
+    color: "#D4AF37", fontSize: 24, fontWeight: 700, letterSpacing: "1px",
+    boxShadow: "0 2px 12px rgba(10,36,99,0.2)",
+  },
+  profileMeta: { paddingTop: 12, flex: 1, minWidth: 0 },
+  profileName: {
+    fontSize: 18, fontWeight: 700,
+    color: "var(--text-heading, #0A1628)",
+    margin: "0 0 2px", whiteSpace: "nowrap",
+    overflow: "hidden", textOverflow: "ellipsis",
+  },
+  profileEmail: {
+    fontSize: 13, color: "var(--text-secondary, #6B7280)", margin: 0,
+  },
+  profileChips: {
+    display: "flex", alignItems: "center", gap: 8, marginTop: 6, flexWrap: "wrap",
+  },
+  completionWrap: {
+    display: "flex", alignItems: "center", gap: 10, marginTop: 10, maxWidth: 360,
+  },
+  completionTrack: {
+    height: 6, flex: 1, minWidth: 120,
+    background: "var(--surface-muted, #F1F5F9)",
+    borderRadius: 999, overflow: "hidden",
+  },
+  completionFill: {
+    height: "100%",
+    background: "#FF8C42",
+    borderRadius: 999,
+    transition: "width 0.2s ease",
+  },
+  completionText: {
+    fontSize: 11, fontWeight: 600,
+    color: "var(--text-secondary, #64748B)",
+    whiteSpace: "nowrap",
+  },
+  chip: {
+    display: "inline-flex", alignItems: "center", gap: 4,
+    fontSize: 11, fontWeight: 500,
+    color: "var(--text-muted, #94A3B8)",
+    background: "var(--surface-muted, #F1F5F9)",
+    borderRadius: 999, padding: "2px 8px",
+  },
+  actionWrap: {
+    display: "flex", gap: 8, paddingTop: 12, alignSelf: "flex-end",
+  },
+  editBtn: {
+    display: "flex", alignItems: "center", gap: 6,
+    padding: "9px 18px",
+    border: "1px solid var(--border-card, #E8EBF0)",
+    borderRadius: 10, background: "var(--surface-card, #fff)",
+    fontSize: 13, fontWeight: 600, color: "#FF8C42",
+    cursor: "pointer", transition: "all 0.15s", whiteSpace: "nowrap",
+  },
+  saveBtn: {
+    display: "flex", alignItems: "center", gap: 6,
+    padding: "9px 20px", border: "none", borderRadius: 10,
+    background: "#16A34A",
+    fontSize: 13, fontWeight: 600, color: "#fff",
+    cursor: "pointer", transition: "all 0.15s", whiteSpace: "nowrap",
+    boxShadow: "0 2px 8px rgba(22,163,74,0.28)",
+  },
+  cancelBtn: {
+    display: "flex", alignItems: "center", gap: 6,
+    padding: "9px 16px",
+    border: "1px solid #D0D5DD",
+    borderRadius: 10, background: "var(--surface-card, #fff)",
+    fontSize: 13, fontWeight: 500, color: "#344054",
+    cursor: "pointer", transition: "all 0.15s", whiteSpace: "nowrap",
+  },
 
- /* ── Identity info card ── */
- infoCard: {
- background: "var(--surface-card, #fff)",
- borderRadius: 16,
- border: "1px solid var(--border-card, #E8EBF0)",
- overflow: "hidden",
- },
- sectionHeader: {
- display: "flex", alignItems: "center", gap: 10,
- padding: "16px 22px",
- },
- sectionAccent: {
- width: 3, height: 18, borderRadius: 2, flexShrink: 0,
- },
- sectionIconWrap: {
- width: 30, height: 30, borderRadius: 8,
- display: "flex", alignItems: "center", justifyContent: "center",
- flexShrink: 0,
- },
- sectionTitle: {
- fontSize: 13, fontWeight: 700,
- color: "var(--text-heading, #0A1628)",
- margin: 0, flex: 1,
- },
- divider: { height: 1, background: "var(--border-subtle, #F1F5F9)", margin: "0 22px" },
- sectionBody: { padding: "20px 22px 22px" },
+  /* ── Identity info card ── */
+  infoCard: {
+    background: "var(--surface-card, #fff)",
+    borderRadius: 16,
+    border: "1px solid var(--border-card, #E8EBF0)",
+    overflow: "hidden",
+  },
+  sectionHeader: {
+    display: "flex", alignItems: "center", gap: 10,
+    padding: "16px 22px",
+  },
+  sectionAccent: {
+    width: 3, height: 18, borderRadius: 2, flexShrink: 0,
+  },
+  sectionIconWrap: {
+    width: 30, height: 30, borderRadius: 8,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    flexShrink: 0,
+  },
+  sectionTitle: {
+    fontSize: 13, fontWeight: 700,
+    color: "var(--text-heading, #0A1628)",
+    margin: 0, flex: 1,
+  },
+  divider: { height: 1, background: "var(--border-subtle, #F1F5F9)", margin: "0 22px" },
+  sectionBody: { padding: "20px 22px 22px" },
 
- /* ── Field grid ── */
- grid2: {
- display: "grid",
- gridTemplateColumns: "1fr 1fr",
- gap: "18px 28px",
- },
- grid4: {
- display: "grid",
- gridTemplateColumns: "1fr 1fr 1fr 1fr",
- gap: "18px 20px",
- },
- rowSep: {
- height: 1, background: "var(--border-subtle, #F1F5F9)", margin: "18px 0",
- },
+  /* ── Field grid ── */
+  grid2: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: "18px 28px",
+  },
+  grid4: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr 1fr 1fr",
+    gap: "18px 20px",
+  },
+  rowSep: {
+    height: 1, background: "var(--border-subtle, #F1F5F9)", margin: "18px 0",
+  },
 
- /* ── Field atoms ── */
- fieldLabel: {
- fontSize: 10, fontWeight: 700,
- color: "var(--text-muted, #94A3B8)",
- textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 5,
- },
- fieldValue: {
- fontSize: 14, fontWeight: 500,
- color: "var(--text-heading, #1F2937)",
- margin: 0, lineHeight: 1.4,
- },
- fieldEmpty: {
- fontSize: 14, color: "var(--text-muted, #CBD5E1)",
- fontStyle: "italic", margin: 0,
- },
- emptyLine: {
- display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
- },
- addNowBtn: {
- border: "none", background: "transparent", padding: 0,
- fontSize: 12, fontWeight: 700, color: "#FF8C42",
- cursor: "pointer",
- },
+  /* ── Field atoms ── */
+  fieldLabel: {
+    fontSize: 10, fontWeight: 700,
+    color: "var(--text-muted, #94A3B8)",
+    textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 5,
+  },
+  fieldValue: {
+    fontSize: 14, fontWeight: 500,
+    color: "var(--text-heading, #1F2937)",
+    margin: 0, lineHeight: 1.4,
+  },
+  fieldEmpty: {
+    fontSize: 14, color: "var(--text-muted, #CBD5E1)",
+    fontStyle: "italic", margin: 0,
+  },
+  emptyLine: {
+    display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+  },
+  addNowBtn: {
+    border: "none", background: "transparent", padding: 0,
+    fontSize: 12, fontWeight: 700, color: "#FF8C42",
+    cursor: "pointer",
+  },
 
- /* ── Inputs ── */
- input: {
- width: "100%", padding: "9px 12px", fontSize: 14,
- border: "1.5px solid var(--border-card, #E2E8F0)",
- borderRadius: 9, color: "var(--text-heading, #1F2937)",
- background: "var(--surface-card, #fff)",
- outline: "none", transition: "border-color 0.15s, box-shadow 0.15s",
- boxSizing: "border-box", lineHeight: 1.4,
- },
- inputFocus: {
- borderColor: "#FF8C42",
- boxShadow: "0 0 0 3px rgba(255,140,66,0.10)",
- },
- inputError: {
- borderColor: "#EF4444",
- boxShadow: "0 0 0 3px rgba(239,68,68,0.08)",
- },
- inputLocked: {
- background: "var(--surface-muted, #F8FAFC)",
- color: "var(--text-secondary, #94A3B8)",
- cursor: "not-allowed",
- border: "1.5px solid var(--border-subtle, #E2E8F0)",
- },
- errorText: { fontSize: 11, color: "#EF4444", marginTop: 3 },
+  /* ── Inputs ── */
+  input: {
+    width: "100%", padding: "9px 12px", fontSize: 14,
+    border: "1.5px solid var(--border-card, #E2E8F0)",
+    borderRadius: 9, color: "var(--text-heading, #1F2937)",
+    background: "var(--surface-card, #fff)",
+    outline: "none", transition: "border-color 0.15s, box-shadow 0.15s",
+    boxSizing: "border-box", lineHeight: 1.4,
+  },
+  inputFocus: {
+    borderColor: "#FF8C42",
+    boxShadow: "0 0 0 3px rgba(255,140,66,0.10)",
+  },
+  inputError: {
+    borderColor: "#EF4444",
+    boxShadow: "0 0 0 3px rgba(239,68,68,0.08)",
+  },
+  inputLocked: {
+    background: "var(--surface-muted, #F8FAFC)",
+    color: "var(--text-secondary, #94A3B8)",
+    cursor: "not-allowed",
+    border: "1.5px solid var(--border-subtle, #E2E8F0)",
+  },
+  errorText: { fontSize: 11, color: "#EF4444", marginTop: 3 },
 
- /* ── Note banner ── */
- noteBanner: {
- display: "flex", alignItems: "flex-start", gap: 10,
- background: "rgba(255,140,66,0.06)",
- border: "1px solid rgba(255,140,66,0.18)",
- borderRadius: 10, padding: "10px 14px",
- marginTop: 20,
- },
- noteText: {
- fontSize: 12, color: "var(--text-secondary, #6B7280)",
- lineHeight: 1.5, margin: 0,
- },
+  /* ── Note banner ── */
+  noteBanner: {
+    display: "flex", alignItems: "flex-start", gap: 10,
+    background: "rgba(255,140,66,0.06)",
+    border: "1px solid rgba(255,140,66,0.18)",
+    borderRadius: 10, padding: "10px 14px",
+    marginTop: 20,
+  },
+  noteText: {
+    fontSize: 12, color: "var(--text-secondary, #6B7280)",
+    lineHeight: 1.5, margin: 0,
+  },
 };
 
 /* ─────────────────────────────────────────────────────────────────────────────

@@ -81,3 +81,37 @@ export const groupBedsByBunk = (beds = []) => {
 
   return { bunks, singleBeds };
 };
+
+/**
+ * Formats a raw bed position string or bed object into a clean label (e.g. "Bunk Bed — Upper")
+ */
+export const formatBedPosition = (bedOrPos) => {
+  if (!bedOrPos) return "No Bed Assigned";
+  if (typeof bedOrPos === "object" && bedOrPos !== null) {
+    return getBedDisplayLabel(bedOrPos);
+  }
+  const pos = String(bedOrPos).toLowerCase();
+  if (pos === "upper") return "Bunk Bed — Upper";
+  if (pos === "lower") return "Bunk Bed — Lower";
+  if (pos === "single") return "Single Bed";
+  return String(bedOrPos);
+};
+
+/**
+ * Formats a complete coded room and bed identifier string for display across the system
+ * Example: "Gil Puyat — Room 305 (Bunk Bed — Upper)"
+ */
+export const formatCodedRoomAndBed = (roomNumberOrObj, bedOrPos, branchName = "") => {
+  const roomNum = typeof roomNumberOrObj === "object" ? (roomNumberOrObj?.roomNumber || roomNumberOrObj?.name || "") : (roomNumberOrObj || "");
+  const bedLabel = formatBedPosition(bedOrPos);
+
+  const roomStr = roomNum ? (roomNum.toString().toLowerCase().startsWith("room") ? roomNum : `Room ${roomNum}`) : "";
+  const bedStr = bedLabel && bedLabel !== "No Bed Assigned" ? `(${bedLabel})` : "";
+  
+  const parts = [];
+  if (branchName) parts.push(branchName);
+  if (roomStr) parts.push(roomStr);
+  if (bedStr) parts.push(bedStr);
+
+  return parts.length > 0 ? parts.join(" — ") : "Unassigned";
+};

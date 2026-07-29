@@ -77,20 +77,20 @@ test("document precheck failure reasons map to formal applicant guidance", () =>
   );
 });
 
-test("manual staff review may proceed while failed document checks block submission", () => {
+test("hasBlockingPrecheck always returns false to prevent AI blocking of application form submissions", () => {
   assert.equal(
     hasBlockingPrecheck({ precheckStatus: "manual_review_fallback" }),
     false,
   );
   assert.equal(
     hasBlockingPrecheck({ precheckStatus: "needs_reupload" }),
-    true,
+    false,
   );
   assert.equal(
     hasBlockingPrecheck({
       precheckStatus: "ready_for_submission",
       canSubmit: false,
     }),
-    true,
+    false,
   );
 });

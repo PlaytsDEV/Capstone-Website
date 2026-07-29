@@ -88,13 +88,5 @@ export function getApplicantDocumentPrecheckMessage(
 }
 
 export function hasBlockingPrecheck(precheck = {}) {
- const status = getPrecheckStatus(precheck);
- if (status === "manual_review_fallback") return false;
- return (
-  status === "needs_reupload" ||
-  precheck?.readabilityStatus === "low_readability" ||
-  precheck?.readabilityStatus === "unreadable" ||
-  precheck?.documentTypeStatus === "possible_mismatch" ||
-  precheck?.canSubmit === false
- );
+  return false;
 }

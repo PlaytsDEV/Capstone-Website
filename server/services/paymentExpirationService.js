@@ -33,10 +33,17 @@ export async function checkAndReleaseExpiredPaymentHolds() {
           const room = await Room.findById(reservation.roomId._id || reservation.roomId);
           if (room) {
             const bed = room.beds.find((b) => b.id === reservation.selectedBed.id);
-            if (bed && bed.status === "locked" && String(bed.lockedBy) === String(reservation.userId)) {
+            if (
+              bed &&
+              (bed.status === "locked" || bed.status === "reserved") &&
+              (String(bed.lockedBy) === String(reservation.userId) ||
+                String(bed.occupiedBy?.reservationId) === String(reservation._id) ||
+                String(bed.occupiedBy?.userId) === String(reservation.userId))
+            ) {
               bed.status = "available";
               bed.lockedBy = null;
               bed.lockExpiresAt = null;
+              bed.occupiedBy = null;
               await room.save();
             }
           }

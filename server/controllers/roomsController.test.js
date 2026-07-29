@@ -14,6 +14,7 @@ const sendSuccess = jest.fn();
 const logModification = jest.fn();
 const logError = jest.fn();
 const deriveRoomOccupancyState = jest.fn();
+const recalculateRoomOccupancy = jest.fn();
 const getBusinessSettings = jest.fn();
 const getBranchSettings = jest.fn(() => ({}));
 
@@ -34,6 +35,10 @@ await jest.unstable_mockModule("../models/index.js", () => ({
     find: reservationFind,
   },
   Stay: { countDocuments: stayCountDocuments },
+  BedHistory: {
+    recordMaintenanceStart: jest.fn(),
+    recordMaintenanceEnd: jest.fn(),
+  },
   BillingPeriod: { countDocuments: billingPeriodCountDocuments },
   UtilityPeriod: { countDocuments: utilityPeriodCountDocuments },
   MaintenanceRequest: { countDocuments: maintenanceCountDocuments },
@@ -50,6 +55,7 @@ await jest.unstable_mockModule("../utils/businessSettings.js", () => ({
 }));
 await jest.unstable_mockModule("../utils/occupancyManager.js", () => ({
   deriveRoomOccupancyState,
+  recalculateRoomOccupancy,
 }));
 await jest.unstable_mockModule("../middleware/errorHandler.js", () => ({
   sendSuccess,

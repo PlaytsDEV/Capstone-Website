@@ -29,64 +29,31 @@ test("personal info section receives document precheck props", () => {
   assert.match(personalInfoSource, /\bonRunDocumentPrecheck\b/);
 });
 
-test("valid ID front upload triggers and displays document checking", () => {
+test("valid ID front upload renders document field without AI precheck blockers", () => {
   const block = getUploadFieldBlock("Valid ID (Front)");
 
   assert.match(block, /documentType="valid-id-front"/);
-  assert.match(block, /documentType: "valid_id_front"/);
-  assert.match(block, /idType: validIDType/);
-  assert.match(block, /aiCheck=\{documentPrechecks\?\.validIDFront\}/);
-  assert.match(
-    block,
-    /isChecking=\{Boolean\(runningDocumentChecks\?\.validIDFront\)\}/,
-  );
-  assert.match(
-    block,
-    /hasBlockingPrecheck\(documentPrechecks\?\.validIDFront\)/,
-  );
+  assert.match(block, /value=\{validIDFront\}/);
 });
 
-test("valid ID back upload triggers and displays document checking", () => {
+test("valid ID back upload renders document field without AI precheck blockers", () => {
   const block = getUploadFieldBlock("Valid ID (Back)");
 
   assert.match(block, /documentType="valid-id-back"/);
-  assert.match(block, /documentType: "valid_id_back"/);
-  assert.match(block, /idType: validIDType/);
-  assert.match(block, /aiCheck=\{documentPrechecks\?\.validIDBack\}/);
-  assert.match(
-    block,
-    /isChecking=\{Boolean\(runningDocumentChecks\?\.validIDBack\)\}/,
-  );
-  assert.match(
-    block,
-    /hasBlockingPrecheck\(documentPrechecks\?\.validIDBack\)/,
-  );
+  assert.match(block, /value=\{validIDBack\}/);
 });
 
-test("NBI Clearance upload triggers and displays document checking", () => {
+test("NBI Clearance upload renders document field without AI precheck blockers", () => {
   const block = getUploadFieldBlock(
     "NBI Clearance (If unable, upload another valid ID)",
   );
 
   assert.match(block, /documentType="nbi-clearance"/);
-  assert.match(block, /documentType: "nbi_clearance"/);
-  assert.match(block, /aiCheck=\{documentPrechecks\?\.nbiClearance\}/);
-  assert.match(
-    block,
-    /isChecking=\{Boolean\(runningDocumentChecks\?\.nbiClearance\)\}/,
-  );
-  assert.match(
-    block,
-    /hasBlockingPrecheck\(documentPrechecks\?\.nbiClearance\)/,
-  );
+  assert.match(block, /value=\{nbiClearance\}/);
 });
 
-test("submit validation blocks checked, unchecked, and failed document states", () => {
+test("submit flow proceeds directly to upload without AI precheck blocks", () => {
   const flowSource = readTenantSource("hooks/useReservationFlow.js");
 
-  assert.match(flowSource, /precheck\.precheckStatus === "checking"/);
-  assert.match(flowSource, /precheck\.precheckStatus === "not_checked"/);
-  assert.match(flowSource, /DOCUMENT_PRECHECK_MESSAGES\.checkingSubmit/);
-  assert.match(flowSource, /DOCUMENT_PRECHECK_MESSAGES\.notChecked/);
-  assert.match(flowSource, /isBlockingDocumentPrecheck\(doc\.precheck\)/);
+  assert.match(flowSource, /setIsSubmittingApplication\(true\)/);
 });

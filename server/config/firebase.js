@@ -91,6 +91,7 @@ try {
   } else if (!admin.apps.length) {
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
+      storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
     });
     console.log("✅ Firebase Admin SDK initialized successfully");
   } else {
@@ -115,6 +116,19 @@ export const getAuth = () => {
   }
 
   return admin.auth();
+};
+
+/**
+ * Export Firebase Storage bucket (lazy)
+ *
+ * Returns the default Cloud Storage bucket using the Admin SDK.
+ * Uploads via this bypass client-side Storage security rules.
+ */
+export const getFirebaseStorage = () => {
+  if (!admin.apps.length) {
+    throw new Error("Firebase Admin SDK is not initialized.");
+  }
+  return admin.storage().bucket();
 };
 
 /**

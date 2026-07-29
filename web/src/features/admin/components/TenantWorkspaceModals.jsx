@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useRooms } from "../../../shared/hooks/queries/useRooms";
 import useBodyScrollLock from "../../../shared/hooks/useBodyScrollLock";
 import { formatBranch } from "../utils/formatters";
+import { resolveDepositFromPaymentInfo } from "../../../shared/utils/depositUtils";
 
 const fmtDate = (value) =>
   value
@@ -477,7 +478,11 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit 
     leaseEndDate && moveOutDate && new Date(moveOutDate) < new Date(leaseEndDate)
   );
 
-  const securityDeposit = Number(detail?.basicInfo?.monthlyRent || tenant?.monthlyRent || 0);
+  // Read the deposit locked at booking time; fall back to monthlyRent only for legacy records
+  const securityDeposit = resolveDepositFromPaymentInfo(
+    detail?.paymentInfo,
+    detail?.basicInfo?.monthlyRent ?? tenant?.monthlyRent ?? 0,
+  );
   const outstandingBal = Number(detail?.paymentInfo?.currentBalance ?? tenant?.currentBalance ?? 0);
   const damageFee = Number(damageDeductions || 0);
   const keyFee = keyReturned ? 0 : 500;

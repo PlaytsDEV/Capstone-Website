@@ -21,14 +21,14 @@ import { showNotification } from "../../../shared/utils/notification";
 import { getVisitManagementAvailability } from "../utils/visitStatusRules";
 import "../styles/reservation-details-modal.css";
 
-const ACTION_MSGS = {
- moveIn: {
- title: "Move In Tenant",
- message:
- "Mark this tenant as moved in? They'll be promoted to Tenant role with full system access.",
- confirmText: "Yes, Move In",
- variant: "info",
- },
+ const ACTION_MSGS = {
+  moveIn: {
+    title: "Move In Tenant",
+    message:
+      "Mark this tenant as moved in? They'll be promoted to Tenant role with full system access.",
+    confirmText: "Yes, Move In",
+    variant: "success",
+  },
   cancel: {
     title: "Cancel Reservation",
     message:
@@ -36,27 +36,27 @@ const ACTION_MSGS = {
     confirmText: "Cancel Reservation",
     variant: "danger",
   },
- approveCancellation: {
- title: "Approve Cancellation Request",
- message:
- "Approving will cancel the reservation and release the bed. The reservation fee is non-refundable.",
- confirmText: "Approve & Cancel",
- variant: "danger",
- },
- rejectCancellation: {
- title: "Reject Cancellation Request",
- message:
- "The cancellation request will be dismissed. The reservation stays active.",
- confirmText: "Reject Request",
- variant: "info",
- },
- approveForPayment: {
- title: "Approve for Payment",
- message:
- "This confirms the tenant's application and documents are approved. Payment will be unlocked for the applicant.",
- confirmText: "Approve for Payment",
- variant: "info",
- },
+  approveCancellation: {
+    title: "Approve Cancellation Request",
+    message:
+      "Approving will cancel the reservation and release the bed. The reservation fee is non-refundable.",
+    confirmText: "Approve & Cancel",
+    variant: "danger",
+  },
+  rejectCancellation: {
+    title: "Reject Cancellation Request",
+    message:
+      "The cancellation request will be dismissed. The reservation stays active.",
+    confirmText: "Reject Request",
+    variant: "info",
+  },
+  approveForPayment: {
+    title: "Approve for Payment",
+    message:
+      "This confirms the tenant's application and documents are approved. Payment will be unlocked for the applicant.",
+    confirmText: "Approve for Payment",
+    variant: "success",
+  },
  requestRevision: {
  title: "Request Revision",
  message:
@@ -559,30 +559,71 @@ export default function ReservationDetailsModal({
  { wide: true },
  ],
  ];
- const cancellationRequestDetails = [
- ["Requested", fmtDate(reservation.cancellationRequestedAt)],
- ["Reason", reservation.cancellationReason?.trim() || "No reason provided"],
- ];
- const activityTimeline = [
- {
- label: "Reservation Created",
- value: fmtDate(reservation.createdAt),
- },
- {
- label: "Target Move-in",
- value: fmtDate(moveInDate),
- },
- reservation.finalMoveInDate
- ? {
- label: "Final Move-in",
- value: fmtDate(reservation.finalMoveInDate),
- }
- : null,
- {
- label: "Current Status",
- value: appearance.label,
- },
- ].filter(Boolean);
+  const isRawId = (val) => typeof val === "string" && /^[0-9a-fA-F]{24}$/.test(val.trim());
+
+  const cancelledByPerson = (() => {
+    if (reservation.cancellationSource === "applicant" || reservation.cancellationSource === "user") {
+      return reservation.customer || "Applicant";
+    }
+    if (reservation.cancellationSource === "system") {
+      return "System Sweeper (24h Hold Expired)";
+    }
+    if (typeof reservation.cancelledBy === "object" && reservation.cancelledBy?.role) {
+      const role = reservation.cancelledBy.role;
+      if (role === "branch_admin") return "Branch Admin";
+      if (role === "owner") return "System Owner";
+      if (role === "applicant" || role === "tenant") return reservation.customer || "Applicant";
+      return role.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+    if (reservation.cancelledByName && !isRawId(reservation.cancelledByName)) {
+      return reservation.cancelledByName;
+    }
+    if (reservation.cancellationSource === "admin" || reservation.cancelledAt) {
+      return "Branch Admin";
+    }
+    return reservation.customer || "Applicant";
+  })();
+
+  const isCancelled = reservation.status === "cancelled" || Boolean(reservation.cancelledAt);
+  const cancellationDetail = isCancelled
+    ? reservation.cancelledAt
+      ? `${fmtDate(reservation.cancelledAt)}${cancelledByPerson ? ` by ${cancelledByPerson}` : ""}`
+      : `Cancelled by ${cancelledByPerson}`
+    : null;
+
+
+  const cancellationRequestDetails = [
+    ["Requested", fmtDate(reservation.cancellationRequestedAt)],
+    ["Requested By", cancelledByPerson || reservation.customer || "Applicant"],
+    ["Reason", reservation.cancellationReason?.trim() || "No reason provided"],
+  ];
+
+  const activityTimeline = [
+    {
+      label: "Reservation Created",
+      value: fmtDate(reservation.createdAt),
+    },
+    {
+      label: "Target Move-in",
+      value: fmtDate(moveInDate),
+    },
+    reservation.finalMoveInDate
+      ? {
+          label: "Final Move-in",
+          value: fmtDate(reservation.finalMoveInDate),
+        }
+      : null,
+    cancellationDetail
+      ? {
+          label: "Cancellation",
+          value: cancellationDetail,
+        }
+      : null,
+    {
+      label: "Current Status",
+      value: appearance.label,
+    },
+  ].filter(Boolean);
 
  const doAction = (key, apiCall, successMsg) => {
  const modalConfig =

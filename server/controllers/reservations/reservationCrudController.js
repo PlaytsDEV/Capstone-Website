@@ -45,6 +45,7 @@ import {
   isActiveUserReservationDuplicateError,
   validateSelectedBedForReservation,
 } from "./_helpers.js";
+import { releaseOrphanedBeds } from "../../services/occupancy/occupancyManager.js";
 
 export const getReservations = async (req, res) => {
   try {
@@ -87,6 +88,9 @@ export const getReservations = async (req, res) => {
     if (isAdminListView) {
       reservationsQuery = reservationsQuery
         .populate("archivedBy", "firstName lastName email role")
+        .populate("cancelledBy", "firstName lastName email role")
+        .populate("cancellationRequestedBy", "firstName lastName email role")
+        .populate("cancellationReviewedBy", "firstName lastName email role")
         .select(ADMIN_LIST_FIELDS)
         .lean();
     } else {
@@ -116,7 +120,10 @@ export const getReservationById = async (req, res) => {
     const reservation = await Reservation.findById(reservationId)
       .populate(...POPULATE_USER)
       .populate(...POPULATE_ROOM)
-      .populate("archivedBy", "firstName lastName email role");
+      .populate("archivedBy", "firstName lastName email role")
+      .populate("cancelledBy", "firstName lastName email role")
+      .populate("cancellationRequestedBy", "firstName lastName email role")
+      .populate("cancellationReviewedBy", "firstName lastName email role");
     if (!reservation)
       return res.status(404).json({
         error: "Reservation not found",
@@ -373,6 +380,15 @@ export const createReservation = async (req, res) => {
     await reservation.populate(...POPULATE_USER);
     await reservation.populate(...POPULATE_ROOM);
 
+    try {
+      await updateOccupancyOnReservationChange(reservation, null);
+    } catch (occupancyErr) {
+      logger.warn(
+        { err: occupancyErr, reservationId: reservation._id },
+        "Occupancy sync on reservation creation failed (non-fatal)",
+      );
+    }
+
     await auditLogger.logModification(
       req,
       "reservation",
@@ -457,6 +473,15 @@ export const deleteReservation = async (req, res) => {
           code: "OWNER_REQUIRED",
         });
       }
+
+      // Release the bed BEFORE deleting the reservation document so we still have
+      // the reservation ID to reference in Room.beds[].occupiedBy.reservationId
+      await releaseOrphanedBeds([], [reservationId]).catch((err) =>
+        logger.warn(
+          { err, reservationId },
+          "Hard-delete: bed release failed (non-fatal)",
+        )
+      );
 
       await Reservation.findByIdAndDelete(reservationId);
       await auditLogger.logModification(

@@ -2349,6 +2349,286 @@ export const getDemographicsReport = async (req, res, next) => {
   }
 };
 
+export const getOccupancyRateHistory = async (req, res, next) => {
+  try {
+    const scope = await resolveAnalyticsScope(req);
+    const rangeMonths = Math.max(
+      1,
+      Math.min(parseReportMonths(req.query.range || "12m"), 24),
+    );
+
+    const rooms = await fetchScopedRooms(scope.branchesIncluded);
+    const roomIds = rooms.map((r) => r._id);
+    const totalCapacity = rooms.reduce((sum, r) => sum + toNumber(r.capacity), 0);
+
+    const { default: BedHistory } = await import("../models/BedHistory.js");
+
+    const historyRecords = await BedHistory.find({
+      roomId: { $in: roomIds },
+      status: { $ne: "cancelled" },
+    })
+      .populate("tenantId", "firstName lastName occupation school gender")
+      .lean();
+
+    const monthKeys = buildMonthKeys(rangeMonths);
+
+    let peakMonth = { month: "", rate: -1 };
+    let offPeakMonth = { month: "", rate: 101 };
+
+    const monthlySeries = monthKeys.map((key) => {
+      const monthStart = dayjs(`${key}-01`).startOf("month");
+      const monthEnd = dayjs(`${key}-01`).endOf("month");
+      const daysInMonth = monthEnd.date();
+      const totalAvailableBedDays = Math.max(1, totalCapacity * daysInMonth);
+
+      let totalOccupiedBedDays = 0;
+
+      historyRecords.forEach((rec) => {
+        const moveIn = dayjs(rec.moveInDate || rec.checkInDate || rec.createdAt).startOf("day");
+        const moveOut = rec.moveOutDate || rec.checkOutDate
+          ? dayjs(rec.moveOutDate || rec.checkOutDate).endOf("day")
+          : (rec.status === "active" ? dayjs().endOf("day") : null);
+
+        if (!moveIn || moveIn.isAfter(monthEnd)) return;
+        if (moveOut && moveOut.isBefore(monthStart)) return;
+
+        const overlapStart = moveIn.isBefore(monthStart) ? monthStart : moveIn;
+        const overlapEnd = !moveOut || moveOut.isAfter(monthEnd) ? monthEnd : moveOut;
+
+        const occupiedDays = Math.max(0, overlapEnd.diff(overlapStart, "day") + 1);
+        totalOccupiedBedDays += occupiedDays;
+      });
+
+      const occupancyRate = totalCapacity > 0
+        ? Math.min(100, Math.round((totalOccupiedBedDays / totalAvailableBedDays) * 100))
+        : 0;
+
+      const label = formatMonthLabel(`${key}-01`);
+
+      if (occupancyRate > peakMonth.rate) {
+        peakMonth = { month: label, rate: occupancyRate };
+      }
+      if (occupancyRate < offPeakMonth.rate) {
+        offPeakMonth = { month: label, rate: occupancyRate };
+      }
+
+      return {
+        month: key,
+        label,
+        occupancyRate,
+        occupiedBedDays: totalOccupiedBedDays,
+        availableBedDays: totalAvailableBedDays,
+      };
+    });
+
+    const completedStays = historyRecords.filter(
+      (r) => (r.moveOutDate || r.checkOutDate) && (r.moveInDate || r.checkInDate),
+    );
+    const totalStayDays = completedStays.reduce((sum, r) => {
+      const start = dayjs(r.moveInDate || r.checkInDate);
+      const end = dayjs(r.moveOutDate || r.checkOutDate);
+      return sum + Math.max(0, end.diff(start, "day"));
+    }, 0);
+
+    const avgStayDays = completedStays.length > 0
+      ? Math.round(totalStayDays / completedStays.length)
+      : 0;
+    const avgStayMonths = Math.round((avgStayDays / 30) * 10) / 10;
+
+    const turnaroundGaps = [];
+    const recordsByBed = new Map();
+    historyRecords.forEach((r) => {
+      const bedKey = `${r.roomId}_${r.bedId}`;
+      if (!recordsByBed.has(bedKey)) recordsByBed.set(bedKey, []);
+      recordsByBed.get(bedKey).push(r);
+    });
+
+    recordsByBed.forEach((records) => {
+      const sorted = [...records].sort(
+        (a, b) => new Date(a.moveInDate || a.checkInDate) - new Date(b.moveInDate || b.checkInDate),
+      );
+      for (let i = 1; i < sorted.length; i++) {
+        const prevOut = sorted[i - 1].moveOutDate || sorted[i - 1].checkOutDate;
+        const currentIn = sorted[i].moveInDate || sorted[i].checkInDate;
+        if (prevOut && currentIn) {
+          const gap = dayjs(currentIn).diff(dayjs(prevOut), "day");
+          if (gap >= 0 && gap <= 180) {
+            turnaroundGaps.push(gap);
+          }
+        }
+      }
+    });
+
+    const avgTurnaroundDays = turnaroundGaps.length > 0
+      ? Math.round(turnaroundGaps.reduce((a, b) => a + b, 0) / turnaroundGaps.length)
+      : 0;
+
+    const typeCounts = { student: 0, working: 0, unspecified: 0 };
+    const genderCounts = { male: 0, female: 0, unspecified: 0 };
+
+    historyRecords.forEach((r) => {
+      const tenant = r.tenantId;
+      if (!tenant) {
+        typeCounts.unspecified++;
+        genderCounts.unspecified++;
+        return;
+      }
+
+      if (tenant.school || (tenant.occupation && /student|university|college|nursing|engineering|it/i.test(tenant.occupation))) {
+        typeCounts.student++;
+      } else if (tenant.occupation) {
+        typeCounts.working++;
+      } else {
+        typeCounts.unspecified++;
+      }
+
+      const g = (tenant.gender || "").toLowerCase();
+      if (g === "male") genderCounts.male++;
+      else if (g === "female") genderCounts.female++;
+      else genderCounts.unspecified++;
+    });
+
+    sendSuccess(res, {
+      scope: { branch: scope.branch, rangeMonths },
+      kpis: {
+        currentCapacity: totalCapacity,
+        averageStayMonths: avgStayMonths,
+        averageTurnaroundDays: avgTurnaroundDays,
+        peakMonth: peakMonth.rate >= 0 ? peakMonth : null,
+        offPeakMonth: offPeakMonth.rate <= 100 ? offPeakMonth : null,
+      },
+      series: monthlySeries,
+      cohorts: {
+        tenantTypes: [
+          { label: "Students", count: typeCounts.student },
+          { label: "Working Professionals", count: typeCounts.working },
+          { label: "Unspecified", count: typeCounts.unspecified },
+        ],
+        genders: [
+          { label: "Male", count: genderCounts.male },
+          { label: "Female", count: genderCounts.female },
+          { label: "Unspecified", count: genderCounts.unspecified },
+        ],
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getRoomBedHistory = async (req, res, next) => {
+  try {
+    const { roomId } = req.params;
+    if (!roomId.match(/^[0-9a-fA-F]{24}$/)) {
+      throw new AppError("Invalid room ID format", 400, "INVALID_ROOM_ID");
+    }
+
+    const { default: Room } = await import("../models/Room.js");
+    const { default: BedHistory } = await import("../models/BedHistory.js");
+
+    const room = await Room.findById(roomId).lean();
+    if (!room || room.isArchived) {
+      throw new AppError("Room not found", 404, "ROOM_NOT_FOUND");
+    }
+
+    const scope = await resolveAnalyticsScope(req);
+    if (!scope.isOwner && !scope.branchesIncluded.includes(room.branch)) {
+      throw new AppError("Access to this branch room is denied", 403, "FORBIDDEN");
+    }
+
+    const historyRecords = await BedHistory.find({ roomId: room._id })
+      .populate("tenantId", "firstName lastName email phone gender occupation school profileImage user_id")
+      .populate("stayId", "monthlyRent leaseStartDate leaseEndDate status")
+      .sort({ moveInDate: -1 })
+      .lean();
+
+    const bedsMap = new Map();
+
+    (room.beds || []).forEach((bed) => {
+      bedsMap.set(bed.id || bed.code, {
+        bedId: bed.id || bed.code,
+        position: bed.position || "upper",
+        bunkBlock: bed.bunkBlock || "A",
+        currentStatus: bed.status || "available",
+        occupiedBy: bed.occupiedBy || null,
+        history: [],
+      });
+    });
+
+    historyRecords.forEach((rec) => {
+      const bId = rec.bedId;
+      if (!bedsMap.has(bId)) {
+        bedsMap.set(bId, {
+          bedId: bId,
+          position: "unknown",
+          bunkBlock: "A",
+          currentStatus: "available",
+          occupiedBy: null,
+          history: [],
+        });
+      }
+
+      const moveIn = rec.moveInDate || rec.checkInDate || rec.createdAt;
+      const moveOut = rec.moveOutDate || rec.checkOutDate;
+      const stayDurationDays = moveIn && moveOut
+        ? Math.max(1, dayjs(moveOut).diff(dayjs(moveIn), "day"))
+        : moveIn
+        ? Math.max(1, dayjs().diff(dayjs(moveIn), "day"))
+        : null;
+
+      bedsMap.get(bId).history.push({
+        id: rec._id,
+        tenant: rec.tenantId
+          ? {
+              id: rec.tenantId._id,
+              name: `${rec.tenantId.firstName || ""} ${rec.tenantId.lastName || ""}`.trim(),
+              email: rec.tenantId.email,
+              phone: rec.tenantId.phone,
+              gender: rec.tenantId.gender,
+              occupation: rec.tenantId.occupation,
+              school: rec.tenantId.school,
+              profileImage: rec.tenantId.profileImage,
+              tenantType: rec.tenantId.school || (rec.tenantId.occupation && /student/i.test(rec.tenantId.occupation))
+                ? "Student"
+                : rec.tenantId.occupation
+                ? "Working Professional"
+                : "Resident",
+            }
+          : null,
+        moveInDate: moveIn,
+        moveOutDate: moveOut,
+        status: rec.status,
+        stayDurationDays,
+        reason: rec.reason || "",
+        notes: rec.notes || "",
+        monthlyRent: rec.stayId?.monthlyRent || null,
+      });
+    });
+
+    const bedList = Array.from(bedsMap.values());
+    const totalStays = historyRecords.length;
+
+    sendSuccess(res, {
+      room: {
+        id: room._id,
+        name: room.name,
+        roomNumber: room.roomNumber,
+        branch: room.branch,
+        type: room.type,
+        capacity: room.capacity,
+        currentOccupancy: room.currentOccupancy,
+      },
+      beds: bedList,
+      summary: {
+        totalStays,
+        activeStaysCount: historyRecords.filter((r) => r.status === "active").length,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export default {
   getDashboardAnalytics,
   getOccupancyReport,
@@ -2360,4 +2640,7 @@ export default {
   getAnalyticsInsights,
   getOccupancyForecast,
   getDemographicsReport,
+  getOccupancyRateHistory,
+  getRoomBedHistory,
 };
+
