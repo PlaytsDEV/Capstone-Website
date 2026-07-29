@@ -15,6 +15,11 @@
  *    - EMAIL_USER=your-gmail@gmail.com
  *    - EMAIL_PASSWORD=your-app-password (16 characters, no spaces)
  *
+ * All templates below share a single visual system (white & gold) via
+ * `renderEmailShell()` and the small set of content-box helpers beneath it.
+ * To change the brand look (colors, logo, footer), edit THEME once —
+ * every email in this file inherits it.
+ *
  * =============================================================================
  */
 
@@ -119,7 +124,7 @@ if (resendClient && OTP_FROM) {
 }
 
 // =============================================================================
-// EMAIL TEMPLATES
+// SHARED HELPERS
 // =============================================================================
 
 const escapeHtml = (value) =>
@@ -144,71 +149,96 @@ const formatVisitScheduleLabel = (visitDate, visitTime) => {
 };
 
 /**
- * Generate HTML email template for inquiry response
+ * Safe peso formatter — avoids toLocaleString("en-PH") which garbles output
+ * in Node.js environments without full ICU data (outputs Unicode separators
+ * that email clients render as garbage like "±& &2&,&0&0&0&.&0&0").
  */
-const generateInquiryResponseEmail = (
-  customerName,
-  inquirySubject,
-  response,
-  branchName,
-) => {
-  return `
+const fmtPeso = (n) => {
+  const fixed = Number(n || 0).toFixed(2);
+  const [int, dec] = fixed.split(".");
+  const withCommas = int.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${withCommas}.${dec}`;
+};
+
+// =============================================================================
+// BRAND THEME — WHITE & GOLD (single source of truth for every template)
+// =============================================================================
+
+const THEME = {
+  logo: "https://www.lilycrest.space/assets/LOGO-8Ay0b2-y.svg",
+  fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
+  pageBg: "#f5f5f5",
+  cardBg: "#ffffff",
+  gold: "#c9a227", // headline / emphasis gold
+  goldDeep: "#a9841f", // subheads, footer strong text
+  goldAccent: "#d4af37", // borders / rules
+  goldTint: "#faf6e8", // soft gold panel background
+  goldTintBorder: "#e8d9a8", // panel border
+  goldIconBg: "#fdf6e3", // icon circle background
+  textDark: "#1F2937",
+  textBody: "#555555",
+  textMuted: "#6B7280",
+  textFaint: "#9CA3AF",
+};
+
+/**
+ * Icon library — each icon is a small PNG rasterized from a gold line-art
+ * SVG and embedded as a base64 data URI <img>. Raw inline <svg> tags get
+ * stripped by Gmail and most mail clients as a security precaution, so a
+ * real <img> tag (even a base64 one) is what actually renders in the inbox.
+ */
+const renderEmailShell = ({
+  title,
+  branchName = "Lilycrest",
+  heading,
+  bodyHtml,
+  footerNote = "This is an automated notification. Please do not reply directly to this email.",
+}) => `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lilycrest Dormitory - Response to Your Inquiry</title>
+  <title>${escapeHtml(title || heading || "Lilycrest Dormitory")}</title>
 </head>
-<body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f5f5;">
-  <table role="presentation" style="width: 100%; border-collapse: collapse;">
+<body style="margin:0;padding:0;font-family:${THEME.fontFamily};background-color:${THEME.pageBg};">
+  <table role="presentation" style="width:100%;border-collapse:collapse;">
     <tr>
-      <td style="padding: 40px 20px;">
-        <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+      <td style="padding:40px 20px;">
+        <table role="presentation" style="max-width:600px;margin:0 auto;background-color:${THEME.cardBg};border-radius:12px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.1);">
+
           <!-- Header -->
           <tr>
-            <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px 40px; text-align: center;">
-              <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 600;">Lilycrest Dormitory</h1>
-              <p style="color: rgba(255, 255, 255, 0.9); margin: 10px 0 0; font-size: 14px;">${branchName} Branch</p>
+            <td style="background-color:${THEME.cardBg};padding:30px 40px;text-align:center;border-bottom:3px solid ${THEME.goldAccent};">
+              <img src="${THEME.logo}" alt="Lilycrest Dormitory Logo" width="160"
+                   style="display:block;margin:0 auto 16px;max-width:160px;height:auto;">
+              <h1 style="color:${THEME.gold};margin:0;font-size:28px;font-weight:600;">Lilycrest Dormitory</h1>
+              <p style="color:${THEME.goldDeep};margin:10px 0 0;font-size:14px;">${escapeHtml(branchName)} Branch</p>
             </td>
           </tr>
-          
-          <!-- Content -->
+          <!-- Heading -->
           <tr>
-            <td style="padding: 40px;">
-              <h2 style="color: #333333; margin: 0 0 20px; font-size: 22px;">Hello ${customerName}!</h2>
-              
-              <p style="color: #555555; font-size: 16px; line-height: 1.6; margin: 0 0 20px;">
-                Thank you for reaching out to us. We have reviewed your inquiry and here is our response:
-              </p>
-              
-              <!-- Original Inquiry -->
-              <div style="background-color: #f8f9fa; border-left: 4px solid #667eea; padding: 15px 20px; margin: 20px 0; border-radius: 0 8px 8px 0;">
-                <p style="color: #888888; font-size: 12px; margin: 0 0 5px; text-transform: uppercase; letter-spacing: 1px;">Your Inquiry</p>
-                <p style="color: #333333; font-size: 14px; margin: 0; font-style: italic;">${inquirySubject}</p>
-              </div>
-              
-              <!-- Response -->
-              <div style="background-color: #e8f5e9; border-left: 4px solid #4caf50; padding: 20px; margin: 20px 0; border-radius: 0 8px 8px 0;">
-                <p style="color: #888888; font-size: 12px; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 1px;">Our Response</p>
-                <p style="color: #333333; font-size: 15px; margin: 0; line-height: 1.7; white-space: pre-wrap;">${response}</p>
-              </div>
-              
-              <p style="color: #555555; font-size: 16px; line-height: 1.6; margin: 20px 0 0;">
-                If you have any further questions, feel free to reply to this email or submit another inquiry through our website.
-              </p>
+            <td style="padding:40px 40px 20px;">
+              ${heading ? `<h2 style="color:${THEME.textDark};margin:0;font-size:22px;font-weight:600;text-align:center;">${escapeHtml(heading)}</h2>` : ""}
             </td>
           </tr>
-          
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:0 40px 40px;">
+              ${bodyHtml}
+            </td>
+          </tr>
+
           <!-- Footer -->
           <tr>
-            <td style="background-color: #f8f9fa; padding: 25px 40px; text-align: center; border-top: 1px solid #eeeeee;">
-              <p style="color: #888888; font-size: 14px; margin: 0 0 10px;">
+            <td style="background-color:${THEME.goldTint};padding:25px 40px;text-align:center;border-top:1px solid ${THEME.goldTintBorder};">
+              <p style="color:#888888;font-size:14px;margin:0 0 10px;">
                 Best regards,<br>
-                <strong style="color: #667eea;">Lilycrest Dormitory Team</strong>
+                <strong style="color:#b8933f;">Lilycrest Dormitory Team</strong>
               </p>
-              <p style="color: #aaaaaa; font-size: 12px; margin: 15px 0 0;">
-                This is an automated response. Please do not reply directly to this email.
+              <p style="color:${THEME.textFaint};font-size:12px;margin:15px 0 0;">
+                ${escapeHtml(footerNote)}
               </p>
             </td>
           </tr>
@@ -218,24 +248,75 @@ const generateInquiryResponseEmail = (
   </table>
 </body>
 </html>
+`;
+
+/** Standard paragraph */
+const p = (text, opts = {}) =>
+  `<p style="color:${opts.color || THEME.textBody};font-size:${opts.size || "16px"};line-height:1.6;margin:${opts.margin || "0 0 16px"};">${text}</p>`;
+
+/** Gold-tinted callout / quote box (left gold border) */
+const goldCallout = ({ label, content }) => `
+  <div style="background-color:${THEME.goldTint};border:1px solid ${THEME.goldTintBorder};border-left:4px solid ${THEME.goldAccent};padding:18px 20px;margin:0 0 20px;border-radius:0 8px 8px 0;">
+    ${label ? `<p style="color:${THEME.goldDeep};font-size:12px;margin:0 0 8px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">${escapeHtml(label)}</p>` : ""}
+    <p style="color:${THEME.textDark};font-size:14px;margin:0;line-height:1.7;white-space:pre-wrap;">${content}</p>
+  </div>
+`;
+
+/** Gold key/value row inside a details panel */
+const goldRow = (label, value) => `
+  <tr>
+    <td style="padding:6px 0;color:${THEME.goldDeep};font-size:13px;">${escapeHtml(label)}</td>
+    <td style="padding:6px 0;color:${THEME.textDark};font-size:13px;font-weight:600;text-align:right;">${value}</td>
+  </tr>
+`;
+
+/** Panel that wraps a set of goldRow entries */
+const goldDetailsPanel = (rowsHtml) => `
+  <div style="background-color:${THEME.goldTint};border:1px solid ${THEME.goldTintBorder};border-radius:8px;padding:18px 20px;margin:0 0 20px;">
+    <table style="width:100%;border-collapse:collapse;">${rowsHtml}</table>
+  </div>
+`;
+
+/** Large centered amount / stat highlight (e.g. total due, amount paid) */
+const goldStat = ({ label, value, emphasis = false }) => `
+  <p style="color:${THEME.textMuted};font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 6px;">${escapeHtml(label)}</p>
+  <p style="color:${emphasis ? "#B8860B" : THEME.textDark};font-size:${emphasis ? "28px" : "16px"};font-weight:700;margin:0 0 16px;">${value}</p>
+`;
+
+/** Centered stat panel container */
+const goldStatPanel = (innerHtml) => `
+  <div style="background-color:${THEME.goldTint};border-radius:8px;padding:20px;margin:20px 0;text-align:center;">
+    ${innerHtml}
+  </div>
+`;
+
+/** Status badge used across notice-style emails */
+const goldBadge = (text) => `
+  <div style="background-color:${THEME.goldTint};border-left:4px solid ${THEME.goldAccent};padding:14px 18px;border-radius:8px;margin:0 0 20px;text-align:center;">
+    <p style="margin:0;font-size:14px;color:${THEME.goldDeep};font-weight:600;">${escapeHtml(text)}</p>
+  </div>
+`;
+
+// =============================================================================
+// INQUIRY RESPONSE EMAIL
+// =============================================================================
+
+const generateInquiryResponseEmail = (customerName, inquirySubject, response, branchName) => {
+  const bodyHtml = `
+    ${p(`Hello <strong>${escapeHtml(customerName)}</strong>, thank you for reaching out to us. We have reviewed your inquiry and here is our response:`)}
+    ${goldCallout({ label: "Your Inquiry", content: `<em>${escapeHtml(inquirySubject)}</em>` })}
+    ${goldCallout({ label: "Our Response", content: escapeHtml(response) })}
+    ${p("If you have any further questions, feel free to submit another inquiry through our website.", { margin: "20px 0 0" })}
   `;
+  return renderEmailShell({
+    title: "Lilycrest Dormitory - Response to Your Inquiry",
+    branchName,
+    heading: `Hello ${escapeHtml(customerName)}!`,
+    bodyHtml,
+    footerNote: "This is an automated response. Please do not reply directly to this email.",
+  });
 };
 
-// =============================================================================
-// EMAIL SENDING FUNCTIONS
-// =============================================================================
-
-/**
- * Send inquiry response email to customer
- *
- * @param {Object} options - Email options
- * @param {string} options.to - Customer's email address
- * @param {string} options.customerName - Customer's name
- * @param {string} options.inquirySubject - Original inquiry subject/message
- * @param {string} options.response - Admin's response message
- * @param {string} options.branchName - Branch name (Gil Puyat or Guadalupe)
- * @returns {Promise<Object>} - Email send result
- */
 export const sendInquiryResponseEmail = async ({
   to,
   customerName,
@@ -243,44 +324,17 @@ export const sendInquiryResponseEmail = async ({
   response,
   branchName = "Lilycrest",
 }) => {
-  // Check if email is configured
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
-    console.log(
-      "⚠️ Email not sent - EMAIL_USER and EMAIL_PASSWORD not configured",
-    );
+    console.log("⚠️ Email not sent - EMAIL_USER and EMAIL_PASSWORD not configured");
     return { success: false, message: "Email service not configured" };
   }
   const mailOptions = {
-    from: {
-      name: "Lilycrest Dormitory",
-      address: process.env.EMAIL_USER,
-    },
-    to: to,
+    from: { name: "Lilycrest Dormitory", address: process.env.EMAIL_USER },
+    to,
     subject: `Re: Your Inquiry - Lilycrest Dormitory ${branchName}`,
-    html: generateInquiryResponseEmail(
-      customerName,
-      inquirySubject,
-      response,
-      branchName,
-    ),
-    text: `
-Hello ${customerName}!
-
-Thank you for reaching out to us. We have reviewed your inquiry and here is our response:
-
-Your Inquiry:
-${inquirySubject}
-
-Our Response:
-${response}
-
-If you have any further questions, feel free to reply to this email or submit another inquiry through our website.
-
-Best regards,
-Lilycrest Dormitory Team
-    `,
+    html: generateInquiryResponseEmail(customerName, inquirySubject, response, branchName),
+    text: `Hello ${customerName}!\n\nThank you for reaching out to us. We have reviewed your inquiry and here is our response:\n\nYour Inquiry:\n${inquirySubject}\n\nOur Response:\n${response}\n\nIf you have any further questions, feel free to submit another inquiry through our website.\n\nBest regards,\nLilycrest Dormitory Team`,
   };
-
   try {
     const info = await transporter.sendMail(mailOptions);
     console.log(`✅ Email sent to ${to}: ${info.messageId}`);
@@ -295,66 +349,24 @@ Lilycrest Dormitory Team
 // RESERVATION CONFIRMED EMAIL
 // =============================================================================
 
-const generateReservationConfirmedEmail = (
-  tenantName,
-  reservationCode,
-  roomName,
-  branchName,
-  moveInDate,
-) => {
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Reservation Confirmed - Lilycrest Dormitory</title>
-</head>
-<body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f5f5;">
-  <table role="presentation" style="width: 100%; border-collapse: collapse;">
-    <tr>
-      <td style="padding: 40px 20px;">
-        <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-          <tr>
-            <td style="background: linear-gradient(135deg, #0C375F 0%, #1a4a7a 100%); padding: 30px 40px; text-align: center;">
-              <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 600;">Lilycrest Dormitory</h1>
-              <p style="color: rgba(255, 255, 255, 0.9); margin: 10px 0 0; font-size: 14px;">${branchName} Branch</p>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 40px;">
-              <div style="text-align: center; margin-bottom: 24px;">
-                <div style="width: 60px; height: 60px; background: #ECFDF5; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;">
-                  <span style="font-size: 28px;">✅</span>
-                </div>
-              </div>
-              <h2 style="color: #111827; margin: 0 0 20px; font-size: 22px; text-align: center;">Reservation Confirmed!</h2>
-              <p style="color: #555555; font-size: 16px; line-height: 1.6;">Hello <strong>${tenantName}</strong>,</p>
-              <p style="color: #555555; font-size: 16px; line-height: 1.6;">Your reservation has been confirmed. Here are your details:</p>
-              <div style="background-color: #f8f9fa; border-radius: 8px; padding: 20px; margin: 20px 0;">
-                <table style="width: 100%; font-size: 14px; color: #374151;">
-                  <tr><td style="padding: 6px 0; color: #6B7280;">Reservation Code</td><td style="padding: 6px 0; font-weight: 600;">${reservationCode}</td></tr>
-                  <tr><td style="padding: 6px 0; color: #6B7280;">Room</td><td style="padding: 6px 0; font-weight: 600;">${roomName}</td></tr>
-                  <tr><td style="padding: 6px 0; color: #6B7280;">Branch</td><td style="padding: 6px 0; font-weight: 600;">${branchName}</td></tr>
-                  <tr><td style="padding: 6px 0; color: #6B7280;">Move-in Date</td><td style="padding: 6px 0; font-weight: 600;">${moveInDate}</td></tr>
-                </table>
-              </div>
-              <p style="color: #555555; font-size: 14px; line-height: 1.6;">Please arrive on your move-in date with your valid ID. If you have questions, contact us through the dormitory portal.</p>
-            </td>
-          </tr>
-          <tr>
-            <td style="background-color: #f8f9fa; padding: 25px 40px; text-align: center; border-top: 1px solid #eeeeee;">
-              <p style="color: #888888; font-size: 14px; margin: 0 0 10px;">Best regards,<br><strong style="color: #0C375F;">Lilycrest Dormitory Team</strong></p>
-              <p style="color: #aaaaaa; font-size: 12px; margin: 15px 0 0;">This is an automated notification. Do not reply to this email.</p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>
+const generateReservationConfirmedEmail = (tenantName, reservationCode, roomName, branchName, moveInDate) => {
+  const bodyHtml = `
+    ${p(`Hello <strong>${escapeHtml(tenantName)}</strong>,`)}
+    ${p("Your reservation has been confirmed. Here are your details:")}
+    ${goldDetailsPanel(
+      goldRow("Reservation Code", escapeHtml(reservationCode)) +
+      goldRow("Room", escapeHtml(roomName)) +
+      goldRow("Branch", escapeHtml(branchName)) +
+      goldRow("Move-in Date", escapeHtml(moveInDate))
+    )}
+    ${p("Please arrive on your move-in date with your valid ID. If you have questions, contact us through the dormitory portal.", { size: "14px" })}
   `;
+  return renderEmailShell({
+    title: "Reservation Confirmed - Lilycrest Dormitory",
+    branchName,
+    heading: "Reservation Confirmed!",
+    bodyHtml,
+  });
 };
 
 export const sendReservationConfirmedEmail = async ({
@@ -375,13 +387,7 @@ export const sendReservationConfirmedEmail = async ({
     from: { name: "Lilycrest Dormitory", address: process.env.EMAIL_USER },
     to,
     subject: `Reservation Confirmed — ${reservationCode} | Lilycrest Dormitory`,
-    html: generateReservationConfirmedEmail(
-      tenantName,
-      reservationCode,
-      roomName,
-      branchName,
-      moveInDateLabel,
-    ),
+    html: generateReservationConfirmedEmail(tenantName, reservationCode, roomName, branchName, moveInDateLabel),
     text: `Hello ${tenantName}, your reservation (${reservationCode}) for ${roomName} at ${branchName} has been confirmed. Move-in: ${moveInDateLabel}. — Lilycrest Dormitory`,
   };
   try {
@@ -389,10 +395,7 @@ export const sendReservationConfirmedEmail = async ({
     console.log(`✅ Reservation confirmed email sent to ${to}`);
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error(
-      `❌ Failed to send reservation email to ${to}:`,
-      error.message,
-    );
+    console.error(`❌ Failed to send reservation email to ${to}:`, error.message);
     return { success: false, error: error.message };
   }
 };
@@ -401,37 +404,23 @@ export const sendReservationConfirmedEmail = async ({
 // VISIT APPROVED EMAIL
 // =============================================================================
 
-const generateVisitApprovedEmailHtml = (tenantName, branchName) => `
-  <div style="max-width:600px;margin:0 auto;font-family:'Segoe UI',sans-serif;color:#1F2937;">
-    <div style="background:#0C375F;padding:24px;text-align:center;border-radius:12px 12px 0 0;">
-      <h1 style="color:#fff;margin:0;font-size:22px;">Lilycrest Dormitory</h1>
-    </div>
-    <div style="padding:32px 24px;background:#fff;">
-      <p style="font-size:16px;margin:0 0 16px;">Hello <strong>${tenantName}</strong>,</p>
-      <p style="font-size:14px;line-height:1.6;margin:0 0 16px;">
-        Your physical visit schedule for <strong>${branchName}</strong> has been confirmed by our admin team.
-      </p>
-      <div style="background:#ECFDF5;border-left:4px solid #10B981;padding:16px 20px;border-radius:8px;margin:0 0 16px;">
-        <p style="margin:0;font-size:14px;color:#065F46;">
-          <strong>✓ Visit Schedule Confirmed</strong><br/>
-          Your visit schedule is confirmed for viewing coordination only.
-        </p>
-      </div>
-      <p style="font-size:14px;line-height:1.6;margin:0 0 24px;">
-        Please continue your tenant application and document upload in the portal. Payment will only become available after your application and documents are approved.
-      </p>
-    </div>
-    <div style="padding:16px 24px;background:#F9FAFB;border-top:1px solid #E5E7EB;text-align:center;border-radius:0 0 12px 12px;">
-      <p style="margin:0;font-size:11px;color:#9CA3AF;">Lilycrest Dormitory Management System</p>
-    </div>
-  </div>
-`;
+const generateVisitApprovedEmailHtml = (tenantName, branchName) => {
+  const bodyHtml = `
+    ${p(`Hello <strong>${escapeHtml(tenantName)}</strong>,`)}
+    ${p(`Your physical visit schedule for <strong>${escapeHtml(branchName)}</strong> has been confirmed by our admin team.`)}
+    ${goldBadge("Visit Schedule Confirmed — for viewing coordination only")}
+    ${p("Please continue your tenant application and document upload in the portal. Payment will only become available after your application and documents are approved.", { margin: "0 0 8px" })}
+  `;
+  return renderEmailShell({
+    title: "Visit Schedule Confirmed - Lilycrest Dormitory",
+    branchName,
+    heading: "Visit Schedule Confirmed",
+    bodyHtml,
+    footerNote: "Lilycrest Dormitory Management System",
+  });
+};
 
-export const sendVisitApprovedEmail = async ({
-  to,
-  tenantName,
-  branchName,
-}) => {
+export const sendVisitApprovedEmail = async ({ to, tenantName, branchName }) => {
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
     console.log("⚠️ Email not sent — not configured");
     return { success: false, message: "Email service not configured" };
@@ -448,12 +437,57 @@ export const sendVisitApprovedEmail = async ({
     console.log(`✅ Visit approved email sent to ${to}`);
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error(
-      `❌ Failed to send visit approved email to ${to}:`,
-      error.message,
-    );
+    console.error(`❌ Failed to send visit approved email to ${to}:`, error.message);
     return { success: false, error: error.message };
   }
+};
+
+// =============================================================================
+// PHYSICAL VISIT STATUS EMAIL (scheduled / rescheduled / completed / no-show / cancelled / allowed)
+// =============================================================================
+
+const VISIT_STATUS_MAP = {
+  scheduled: {
+    subject: "Physical Visit Scheduled",
+    badge: "Physical Visit Scheduled",
+    intro: "Your physical visit schedule has been recorded as a room-viewing appointment.",
+    nextStep:
+      "Please attend your scheduled room visit first. You may continue to the tenant application after admin confirms your visit or allows you to proceed.",
+  },
+  rescheduled: {
+    subject: "Physical Visit Rescheduled",
+    badge: "Physical Visit Rescheduled",
+    intro: "Your physical visit schedule has been updated by our admin team.",
+    nextStep:
+      "Your tenant application remains locked until your visit is completed or admin allows you to proceed without a completed visit.",
+  },
+  visit_completed: {
+    subject: "Physical Visit Completed",
+    badge: "Physical Visit Completed",
+    intro: "Your physical visit has been recorded as completed.",
+    nextStep:
+      "You may now continue to your tenant application. Payment will remain locked until your application and required documents are approved.",
+  },
+  no_show: {
+    subject: "Missed Physical Visit",
+    badge: "Missed Physical Visit",
+    intro: "Your scheduled physical visit was marked as a no-show.",
+    nextStep: "Please reschedule your visit or contact admin before continuing. Your tenant application remains locked.",
+  },
+  visit_cancelled: {
+    subject: "Physical Visit Cancelled",
+    badge: "Physical Visit Cancelled",
+    intro: "Only your physical visit schedule was cancelled. Your reservation itself remains active.",
+    nextStep:
+      "Please contact admin or select another allowed next step. Your tenant application remains locked unless admin separately allows you to proceed without a visit.",
+  },
+  allowed_without_visit: {
+    subject: "You May Continue Your Tenant Application",
+    badge: "Application Access Granted",
+    intro: "Admin has allowed you to continue without a completed physical visit.",
+    nextStep:
+      "You may now complete your tenant application. Payment will remain locked until your application and required documents are approved.",
+  },
 };
 
 const getPhysicalVisitEmailContent = ({
@@ -475,110 +509,34 @@ const getPhysicalVisitEmailContent = ({
   const safeRemarks = escapeHtml(remarks || "");
   const scheduleLabel = escapeHtml(formatVisitScheduleLabel(visitDate, visitTime));
   const previousScheduleLabel =
-    previousVisitDate || previousVisitTime
-      ? escapeHtml(formatVisitScheduleLabel(previousVisitDate, previousVisitTime))
-      : "";
+    previousVisitDate || previousVisitTime ? escapeHtml(formatVisitScheduleLabel(previousVisitDate, previousVisitTime)) : "";
 
-  const baseDetails = `
-    <div style="background:#F8FAFC;border:1px solid #E5E7EB;border-radius:10px;padding:16px 18px;margin:0 0 20px;">
-      <p style="margin:0 0 8px;font-size:13px;color:#475569;"><strong>Room:</strong> ${safeRoomName}</p>
-      <p style="margin:0 0 8px;font-size:13px;color:#475569;"><strong>Branch:</strong> ${safeBranchName}</p>
-      <p style="margin:0 0 8px;font-size:13px;color:#475569;"><strong>Visit Code:</strong> ${safeVisitCode}</p>
-      <p style="margin:0;font-size:13px;color:#475569;"><strong>Visit Schedule:</strong> ${scheduleLabel}</p>
-      ${
-        previousScheduleLabel
-          ? `<p style="margin:8px 0 0;font-size:13px;color:#475569;"><strong>Previous Schedule:</strong> ${previousScheduleLabel}</p>`
-          : ""
-      }
-      ${
-        safeRemarks
-          ? `<p style="margin:8px 0 0;font-size:13px;color:#475569;"><strong>Remarks:</strong> ${safeRemarks}</p>`
-          : ""
-      }
-    </div>
+  const content = VISIT_STATUS_MAP[status] || VISIT_STATUS_MAP.scheduled;
+
+  const detailsRows =
+    goldRow("Room", safeRoomName) +
+    goldRow("Branch", safeBranchName) +
+    goldRow("Visit Code", safeVisitCode) +
+    goldRow("Visit Schedule", scheduleLabel) +
+    (previousScheduleLabel ? goldRow("Previous Schedule", previousScheduleLabel) : "") +
+    (safeRemarks ? goldRow("Remarks", safeRemarks) : "");
+
+  const bodyHtml = `
+    ${p(`Hello <strong>${safeTenantName}</strong>,`)}
+    ${p(content.intro)}
+    ${goldBadge(content.badge)}
+    ${goldDetailsPanel(detailsRows)}
+    ${p(content.nextStep, { size: "14px" })}
+    ${p("Payment remains locked until your application and required documents are approved.", { size: "13px", color: THEME.textMuted, margin: "0" })}
   `;
 
-  const statusMap = {
-    scheduled: {
-      subject: "Physical Visit Scheduled",
-      badge: "Physical Visit Scheduled",
-      intro:
-        "Your physical visit schedule has been recorded as a room-viewing appointment.",
-      nextStep:
-        "Please attend your scheduled room visit first. You may continue to the tenant application after admin confirms your visit or allows you to proceed.",
-    },
-    rescheduled: {
-      subject: "Physical Visit Rescheduled",
-      badge: "Physical Visit Rescheduled",
-      intro:
-        "Your physical visit schedule has been updated by our admin team.",
-      nextStep:
-        "Your tenant application remains locked until your visit is completed or admin allows you to proceed without a completed visit.",
-    },
-    visit_completed: {
-      subject: "Physical Visit Completed",
-      badge: "Physical Visit Completed",
-      intro:
-        "Your physical visit has been recorded as completed.",
-      nextStep:
-        "You may now continue to your tenant application. Payment will remain locked until your application and required documents are approved.",
-    },
-    no_show: {
-      subject: "Missed Physical Visit",
-      badge: "Missed Physical Visit",
-      intro:
-        "Your scheduled physical visit was marked as a no-show.",
-      nextStep:
-        "Please reschedule your visit or contact admin before continuing. Your tenant application remains locked.",
-    },
-    visit_cancelled: {
-      subject: "Physical Visit Cancelled",
-      badge: "Physical Visit Cancelled",
-      intro:
-        "Only your physical visit schedule was cancelled. Your reservation itself remains active.",
-      nextStep:
-        "Please contact admin or select another allowed next step. Your tenant application remains locked unless admin separately allows you to proceed without a visit.",
-    },
-    allowed_without_visit: {
-      subject: "You May Continue Your Tenant Application",
-      badge: "Application Access Granted",
-      intro:
-        "Admin has allowed you to continue without a completed physical visit.",
-      nextStep:
-        "You may now complete your tenant application. Payment will remain locked until your application and required documents are approved.",
-    },
-  };
-
-  const content = statusMap[status] || statusMap.scheduled;
-
-  const html = `
-    <div style="max-width:600px;margin:0 auto;font-family:'Segoe UI',sans-serif;color:#1F2937;">
-      <div style="background:#0C375F;padding:24px;text-align:center;border-radius:12px 12px 0 0;">
-        <h1 style="color:#fff;margin:0;font-size:22px;">Lilycrest Dormitory</h1>
-      </div>
-      <div style="padding:32px 24px;background:#fff;">
-        <p style="font-size:16px;margin:0 0 16px;">Hello <strong>${safeTenantName}</strong>,</p>
-        <p style="font-size:14px;line-height:1.6;margin:0 0 16px;">
-          ${content.intro}
-        </p>
-        <div style="background:#EFF6FF;border-left:4px solid #2563EB;padding:16px 20px;border-radius:8px;margin:0 0 16px;">
-          <p style="margin:0;font-size:14px;color:#1D4ED8;">
-            <strong>${content.badge}</strong>
-          </p>
-        </div>
-        ${baseDetails}
-        <p style="font-size:14px;line-height:1.6;margin:0 0 18px;">
-          ${content.nextStep}
-        </p>
-        <p style="font-size:13px;line-height:1.6;margin:0;color:#64748B;">
-          Payment remains locked until your application and required documents are approved.
-        </p>
-      </div>
-      <div style="padding:16px 24px;background:#F9FAFB;border-top:1px solid #E5E7EB;text-align:center;border-radius:0 0 12px 12px;">
-        <p style="margin:0;font-size:11px;color:#9CA3AF;">Lilycrest Dormitory Management System</p>
-      </div>
-    </div>
-  `;
+  const html = renderEmailShell({
+    title: content.subject,
+    branchName,
+    heading: content.subject,
+    bodyHtml,
+    footerNote: "Lilycrest Dormitory Management System",
+  });
 
   const text = [
     `Hello ${tenantName || "Applicant"},`,
@@ -599,11 +557,7 @@ const getPhysicalVisitEmailContent = ({
     .filter(Boolean)
     .join("\n");
 
-  return {
-    subject: content.subject,
-    html,
-    text,
-  };
+  return { subject: content.subject, html, text };
 };
 
 export const sendPhysicalVisitStatusEmail = async ({
@@ -659,56 +613,31 @@ export const sendPhysicalVisitStatusEmail = async ({
 // DOCUMENTS REJECTED EMAIL
 // =============================================================================
 
-export const sendDocumentsRejectedEmail = async ({
-  to,
-  tenantName,
-  rejectionReason,
-  branchName = "Lilycrest",
-}) => {
+const generateDocumentsRejectedEmail = (tenantName, rejectionReason, branchName) => {
+  const bodyHtml = `
+    ${p(`Hello <strong>${escapeHtml(tenantName)}</strong>,`)}
+    ${p("We reviewed your submitted documents and found an issue:")}
+    ${goldCallout({ label: "Reason", content: escapeHtml(rejectionReason) })}
+    ${p("Please log in to the dormitory portal and re-upload your documents. Your reservation will remain active.", { size: "14px" })}
+  `;
+  return renderEmailShell({
+    title: "Documents Need Attention - Lilycrest Dormitory",
+    branchName,
+    heading: "Documents Need Attention",
+    bodyHtml,
+  });
+};
+
+export const sendDocumentsRejectedEmail = async ({ to, tenantName, rejectionReason, branchName = "Lilycrest" }) => {
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
     return { success: false, message: "Email service not configured" };
   }
-  const html = `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f5f5;">
-  <table role="presentation" style="width: 100%; border-collapse: collapse;">
-    <tr><td style="padding: 40px 20px;">
-      <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-        <tr><td style="background: linear-gradient(135deg, #0C375F 0%, #1a4a7a 100%); padding: 30px 40px; text-align: center;">
-          <h1 style="color: #fff; margin: 0; font-size: 28px;">Lilycrest Dormitory</h1>
-          <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0; font-size: 14px;">${branchName} Branch</p>
-        </td></tr>
-        <tr><td style="padding: 40px;">
-          <div style="text-align: center; margin-bottom: 24px;">
-            <div style="width: 60px; height: 60px; background: #FEF2F2; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;">
-              <span style="font-size: 28px;">📄</span>
-            </div>
-          </div>
-          <h2 style="color: #111827; margin: 0 0 20px; font-size: 22px; text-align: center;">Documents Need Attention</h2>
-          <p style="color: #555; font-size: 16px; line-height: 1.6;">Hello <strong>${tenantName}</strong>,</p>
-          <p style="color: #555; font-size: 16px; line-height: 1.6;">We reviewed your submitted documents and found an issue:</p>
-          <div style="background: #FEF2F2; border-left: 4px solid #EF4444; padding: 15px 20px; margin: 20px 0; border-radius: 0 8px 8px 0;">
-            <p style="color: #991B1B; font-size: 14px; margin: 0; font-weight: 500;">Reason: ${rejectionReason}</p>
-          </div>
-          <p style="color: #555; font-size: 14px; line-height: 1.6;">Please log in to the dormitory portal and re-upload your documents. Your reservation will remain active.</p>
-        </td></tr>
-        <tr><td style="background-color: #f8f9fa; padding: 25px 40px; text-align: center; border-top: 1px solid #eee;">
-          <p style="color: #888; font-size: 14px; margin: 0;">Best regards,<br><strong style="color: #0C375F;">Lilycrest Dormitory Team</strong></p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>
-  `;
   try {
     const info = await transporter.sendMail({
       from: { name: "Lilycrest Dormitory", address: process.env.EMAIL_USER },
       to,
-      subject:
-        "Action Required: Documents Need Attention — Lilycrest Dormitory",
-      html,
+      subject: "Action Required: Documents Need Attention — Lilycrest Dormitory",
+      html: generateDocumentsRejectedEmail(tenantName, rejectionReason, branchName),
       text: `Hello ${tenantName}, your documents need attention. Reason: ${rejectionReason}. Please log in and re-upload. — Lilycrest Dormitory`,
     });
     console.log(`✅ Documents rejected email sent to ${to}`);
@@ -722,6 +651,27 @@ export const sendDocumentsRejectedEmail = async ({
 // =============================================================================
 // BILL GENERATED EMAIL
 // =============================================================================
+
+const generateBillGeneratedEmail = ({ tenantName, billTypeLabel, roomName, billingMonth, totalAmount, dueDate, branchName }) => {
+  const bodyHtml = `
+    ${p(`Hello <strong>${escapeHtml(tenantName)}</strong>,`)}
+    ${p(`Your ${billTypeLabel.toLowerCase()} bill has been generated:`)}
+    ${goldStatPanel(
+      goldStat({ label: "Bill Type", value: escapeHtml(billTypeLabel) }) +
+      (roomName ? goldStat({ label: "Room / Bed", value: escapeHtml(roomName) }) : "") +
+      goldStat({ label: "Billing Month", value: escapeHtml(billingMonth) }) +
+      goldStat({ label: "Total Amount", value: `&#8369;${fmtPeso(totalAmount)}`, emphasis: true }) +
+      goldStat({ label: "Due Date", value: escapeHtml(dueDate) })
+    )}
+    ${p("Please log in to the dormitory portal to view the full breakdown and make your payment. If you use bank transfer, proof of payment may be required by branch staff before the payment is considered settled.", { size: "14px" })}
+  `;
+  return renderEmailShell({
+    title: "New Bill Generated - Lilycrest Dormitory",
+    branchName,
+    heading: "New Bill Generated",
+    bodyHtml,
+  });
+};
 
 export const sendBillGeneratedEmail = async ({
   to,
@@ -738,61 +688,13 @@ export const sendBillGeneratedEmail = async ({
   }
   const normalizedBillType = String(billType || "bill").trim().toLowerCase();
   const billTypeLabel =
-    normalizedBillType === "rent"
-      ? "Monthly Rent"
-      : normalizedBillType.charAt(0).toUpperCase() + normalizedBillType.slice(1);
-  const html = `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f5f5;">
-  <table role="presentation" style="width: 100%; border-collapse: collapse;">
-    <tr><td style="padding: 40px 20px;">
-      <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-        <tr><td style="background: linear-gradient(135deg, #0C375F 0%, #1a4a7a 100%); padding: 30px 40px; text-align: center;">
-          <h1 style="color: #fff; margin: 0; font-size: 28px;">Lilycrest Dormitory</h1>
-          <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0; font-size: 14px;">${branchName} Branch</p>
-        </td></tr>
-        <tr><td style="padding: 40px;">
-          <div style="text-align: center; margin-bottom: 24px;">
-            <div style="width: 60px; height: 60px; background: #EDF4FA; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;">
-              <span style="font-size: 28px;">💳</span>
-            </div>
-          </div>
-          <h2 style="color: #111827; margin: 0 0 20px; font-size: 22px; text-align: center;">New Bill Generated</h2>
-          <p style="color: #555; font-size: 16px; line-height: 1.6;">Hello <strong>${tenantName}</strong>,</p>
-          <p style="color: #555; font-size: 16px; line-height: 1.6;">Your ${billTypeLabel.toLowerCase()} bill has been generated:</p>
-          <div style="background: #f8f9fa; border-radius: 8px; padding: 20px; margin: 20px 0; text-align: center;">
-            <p style="color: #6B7280; font-size: 12px; text-transform: uppercase; margin: 0 0 6px;">Bill Type</p>
-            <p style="color: #111827; font-size: 18px; font-weight: 600; margin: 0 0 16px;">${billTypeLabel}</p>
-            ${
-              roomName
-                ? `<p style="color: #6B7280; font-size: 12px; text-transform: uppercase; margin: 0 0 6px;">Room / Bed</p><p style="color: #111827; font-size: 16px; font-weight: 600; margin: 0 0 16px;">${roomName}</p>`
-                : ""
-            }
-            <p style="color: #6B7280; font-size: 12px; text-transform: uppercase; margin: 0 0 6px;">Billing Month</p>
-            <p style="color: #111827; font-size: 18px; font-weight: 600; margin: 0 0 16px;">${billingMonth}</p>
-            <p style="color: #6B7280; font-size: 12px; text-transform: uppercase; margin: 0 0 6px;">Total Amount</p>
-            <p style="color: #E7710F; font-size: 28px; font-weight: 700; margin: 0 0 16px;">₱${Number(totalAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p>
-            <p style="color: #6B7280; font-size: 12px; text-transform: uppercase; margin: 0 0 6px;">Due Date</p>
-            <p style="color: #111827; font-size: 16px; font-weight: 600; margin: 0;">${dueDate}</p>
-          </div>
-          <p style="color: #555; font-size: 14px; line-height: 1.6;">Please log in to the dormitory portal to view the full breakdown and make your payment. If you use bank transfer, proof of payment may be required by branch staff before the payment is considered settled.</p>
-        </td></tr>
-        <tr><td style="background-color: #f8f9fa; padding: 25px 40px; text-align: center; border-top: 1px solid #eee;">
-          <p style="color: #888; font-size: 14px; margin: 0;">Best regards,<br><strong style="color: #0C375F;">Lilycrest Dormitory Team</strong></p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>
-  `;
+    normalizedBillType === "rent" ? "Monthly Rent" : normalizedBillType.charAt(0).toUpperCase() + normalizedBillType.slice(1);
   try {
     const info = await transporter.sendMail({
       from: { name: "Lilycrest Dormitory", address: process.env.EMAIL_USER },
       to,
       subject: `${billTypeLabel} bill for ${billingMonth} | Lilycrest Dormitory`,
-      html,
+      html: generateBillGeneratedEmail({ tenantName, billTypeLabel, roomName, billingMonth, totalAmount, dueDate, branchName }),
       text: `Hello ${tenantName}, your ${billTypeLabel} bill for ${billingMonth} is PHP ${totalAmount}. Due: ${dueDate}. Log in to view details and payment instructions. If you use bank transfer, proof of payment may be required. - Lilycrest Dormitory`,
     });
     console.log(`✅ Bill generated email sent to ${to}`);
@@ -801,6 +703,29 @@ export const sendBillGeneratedEmail = async ({
     console.error(`❌ Failed to send bill email:`, error.message);
     return { success: false, error: error.message };
   }
+};
+
+// =============================================================================
+// UTILITY CHARGE AVAILABLE EMAIL
+// =============================================================================
+
+const generateUtilityChargeEmail = ({ tenantName, utilityLabel, billingMonth, utilityAmount, totalAmount, dueDate, branchName }) => {
+  const bodyHtml = `
+    ${p(`Hello <strong>${escapeHtml(tenantName)}</strong>,`)}
+    ${p(`Your ${utilityLabel.toLowerCase()} charge for ${escapeHtml(billingMonth)} is now available in the tenant portal.`)}
+    ${goldStatPanel(
+      goldStat({ label: `${utilityLabel} Charge`, value: `&#8369;${fmtPeso(utilityAmount)}` }) +
+      goldStat({ label: "Current Bill Total", value: `&#8369;${fmtPeso(totalAmount)}`, emphasis: true }) +
+      goldStat({ label: "Due Date", value: escapeHtml(dueDate) })
+    )}
+    ${p("Please log in to the dormitory portal to review the updated breakdown and complete payment.", { size: "14px" })}
+  `;
+  return renderEmailShell({
+    title: `${utilityLabel} Charge Available - Lilycrest Dormitory`,
+    branchName,
+    heading: `${utilityLabel} Charge Available`,
+    bodyHtml,
+  });
 };
 
 export const sendUtilityChargeAvailableEmail = async ({
@@ -816,46 +741,13 @@ export const sendUtilityChargeAvailableEmail = async ({
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
     return { success: false, message: "Email service not configured" };
   }
-
   const utilityLabel = utilityType === "water" ? "Water" : "Electricity";
-  const html = `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f5f5;">
-  <table role="presentation" style="width: 100%; border-collapse: collapse;">
-    <tr><td style="padding: 40px 20px;">
-      <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-        <tr><td style="background: linear-gradient(135deg, #0C375F 0%, #1a4a7a 100%); padding: 30px 40px; text-align: center;">
-          <h1 style="color: #fff; margin: 0; font-size: 28px;">Lilycrest Dormitory</h1>
-          <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0; font-size: 14px;">${branchName} Branch</p>
-        </td></tr>
-        <tr><td style="padding: 40px;">
-          <h2 style="color: #111827; margin: 0 0 20px; font-size: 22px; text-align: center;">${utilityLabel} Charge Available</h2>
-          <p style="color: #555; font-size: 16px; line-height: 1.6;">Hello <strong>${tenantName}</strong>,</p>
-          <p style="color: #555; font-size: 16px; line-height: 1.6;">Your ${utilityLabel.toLowerCase()} charge for ${billingMonth} is now available in the tenant portal.</p>
-          <div style="background: #f8f9fa; border-radius: 8px; padding: 20px; margin: 20px 0; text-align: center;">
-            <p style="color: #6B7280; font-size: 12px; text-transform: uppercase; margin: 0 0 6px;">${utilityLabel} Charge</p>
-            <p style="color: #111827; font-size: 18px; font-weight: 600; margin: 0 0 16px;">₱${Number(utilityAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p>
-            <p style="color: #6B7280; font-size: 12px; text-transform: uppercase; margin: 0 0 6px;">Current Bill Total</p>
-            <p style="color: #E7710F; font-size: 28px; font-weight: 700; margin: 0 0 16px;">₱${Number(totalAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p>
-            <p style="color: #6B7280; font-size: 12px; text-transform: uppercase; margin: 0 0 6px;">Due Date</p>
-            <p style="color: #111827; font-size: 16px; font-weight: 600; margin: 0;">${dueDate}</p>
-          </div>
-          <p style="color: #555; font-size: 14px; line-height: 1.6;">Please log in to the dormitory portal to review the updated breakdown and complete payment.</p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>
-  `;
-
   try {
     const info = await transporter.sendMail({
       from: { name: "Lilycrest Dormitory", address: process.env.EMAIL_USER },
       to,
       subject: `${utilityLabel} charge for ${billingMonth} | Lilycrest Dormitory`,
-      html,
+      html: generateUtilityChargeEmail({ tenantName, utilityLabel, billingMonth, utilityAmount, totalAmount, dueDate, branchName }),
       text: `Hello ${tenantName}, your ${utilityLabel.toLowerCase()} charge for ${billingMonth} is now available. Current bill total: ₱${totalAmount}. Due: ${dueDate}.`,
     });
     console.log(`✅ Utility charge email sent to ${to}`);
@@ -870,6 +762,25 @@ export const sendUtilityChargeAvailableEmail = async ({
 // PAYMENT REMINDER EMAIL (sent 3 days before due date)
 // =============================================================================
 
+const generatePaymentReminderEmail = ({ tenantName, billTypeLabel, totalAmount, dueDate, branchName }) => {
+  const bodyHtml = `
+    ${p(`Hello <strong>${escapeHtml(tenantName)}</strong>,`)}
+    ${p(`This is a friendly reminder that your ${billTypeLabel.toLowerCase()} payment is due soon.`)}
+    ${goldStatPanel(
+      goldStat({ label: "Bill Type", value: escapeHtml(billTypeLabel) }) +
+      goldStat({ label: "Amount Due", value: `&#8369;${fmtPeso(totalAmount)}`, emphasis: true }) +
+      goldStat({ label: "Due Date", value: escapeHtml(dueDate) })
+    )}
+    ${p("Please complete payment through the billing portal's online checkout to avoid late penalties. If branch staff accepts an offline payment, they will record it after confirmation.", { size: "14px" })}
+  `;
+  return renderEmailShell({
+    title: "Payment Reminder - Lilycrest Dormitory",
+    branchName,
+    heading: "Payment Reminder",
+    bodyHtml,
+  });
+};
+
 export const sendPaymentReminderEmail = async ({
   to,
   tenantName,
@@ -879,49 +790,14 @@ export const sendPaymentReminderEmail = async ({
   billType = "Bill",
   branchName = "Lilycrest",
 }) => {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD)
-    return { success: false, message: "Email service not configured" };
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) return { success: false, message: "Email service not configured" };
   const billTypeLabel = String(billType || "Bill");
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:#f5f5f5;">
-  <table role="presentation" style="width:100%;border-collapse:collapse;"><tr><td style="padding:40px 20px;">
-    <table role="presentation" style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.1);">
-      <tr><td style="background:linear-gradient(135deg,#0C375F 0%,#1a4a7a 100%);padding:30px 40px;text-align:center;">
-        <h1 style="color:#fff;margin:0;font-size:28px;">Lilycrest Dormitory</h1>
-        <p style="color:rgba(255,255,255,0.9);margin:10px 0 0;font-size:14px;">${branchName} Branch</p>
-      </td></tr>
-      <tr><td style="padding:40px;">
-        <div style="text-align:center;margin-bottom:24px;">
-          <div style="width:60px;height:60px;background:#FEF3C7;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;">
-            <span style="font-size:28px;">⏰</span>
-          </div>
-        </div>
-        <h2 style="color:#111827;margin:0 0 20px;font-size:22px;text-align:center;">Payment Reminder</h2>
-        <p style="color:#555;font-size:16px;line-height:1.6;">Hello <strong>${tenantName}</strong>,</p>
-        <p style="color:#555;font-size:16px;line-height:1.6;">Bill type: <strong>${billTypeLabel}</strong></p>
-        <p style="color:#555;font-size:16px;line-height:1.6;">This is a friendly reminder that your ${billTypeLabel.toLowerCase()} payment is due soon.</p>
-        <div style="background:#f8f9fa;border-radius:8px;padding:20px;margin:20px 0;text-align:center;">
-          <p style="color:#6B7280;font-size:12px;text-transform:uppercase;margin:0 0 6px;">Bill Type</p>
-          <p style="color:#111827;font-size:16px;font-weight:600;margin:0 0 12px;">${billTypeLabel}</p>
-          <p style="color:#6B7280;font-size:12px;text-transform:uppercase;margin:0 0 6px;">Amount Due</p>
-          <p style="color:#E7710F;font-size:28px;font-weight:700;margin:0 0 12px;">₱${Number(totalAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p>
-          <p style="color:#6B7280;font-size:12px;text-transform:uppercase;margin:0 0 6px;">Due Date</p>
-          <p style="color:#111827;font-size:16px;font-weight:600;margin:0;">${dueDate}</p>
-        </div>
-        <p style="color:#555;font-size:14px;line-height:1.6;">Please complete payment through the billing portal's online checkout to avoid late penalties. If branch staff accepts an offline payment, they will record it after confirmation.</p>
-      </td></tr>
-      <tr><td style="background:#f8f9fa;padding:25px 40px;text-align:center;border-top:1px solid #eee;">
-        <p style="color:#888;font-size:14px;margin:0;">Best regards,<br><strong style="color:#0C375F;">Lilycrest Dormitory Team</strong></p>
-      </td></tr>
-    </table>
-  </td></tr></table>
-</body></html>`;
   try {
     const info = await transporter.sendMail({
       from: { name: "Lilycrest Dormitory", address: process.env.EMAIL_USER },
       to,
       subject: `${billTypeLabel} Reminder — Due ${dueDate} | Lilycrest Dormitory`,
-      html,
+      html: generatePaymentReminderEmail({ tenantName, billTypeLabel, totalAmount, dueDate, branchName }),
       text: `Hello ${tenantName}, reminder: your ${billTypeLabel.toLowerCase()} balance of ₱${totalAmount} is due on ${dueDate}. — Lilycrest Dormitory`,
     });
     return { success: true, messageId: info.messageId };
@@ -932,8 +808,46 @@ export const sendPaymentReminderEmail = async ({
 };
 
 // =============================================================================
-// OVERDUE NOTICE EMAIL
+// OVERDUE / PENALTY NOTICE EMAIL
 // =============================================================================
+
+const generateOverdueNoticeEmail = ({
+  tenantName,
+  billTypeLabel,
+  daysLate,
+  totalAmount,
+  penalty,
+  dueDate,
+  reason,
+  isPenaltyNotice,
+  branchName,
+}) => {
+  const headline = isPenaltyNotice ? "Penalty Notice" : "Payment Overdue";
+  const intro = isPenaltyNotice
+    ? `A late-payment penalty update is now attached to your <strong>${escapeHtml(billTypeLabel.toLowerCase())}</strong> bill.`
+    : `Your <strong>${escapeHtml(billTypeLabel.toLowerCase())}</strong> payment is <strong>${daysLate} day${daysLate !== 1 ? "s" : ""} overdue</strong>. Penalties are being applied.`;
+
+  const bodyHtml = `
+    ${p(`Hello <strong>${escapeHtml(tenantName)}</strong>,`)}
+    ${p(intro)}
+    ${goldStatPanel(
+      goldStat({ label: "Bill Type", value: escapeHtml(billTypeLabel) }) +
+      goldStat({ label: "Due Date", value: escapeHtml(dueDate) }) +
+      (daysLate > 0 ? goldStat({ label: "Days Overdue", value: `${daysLate} day${daysLate !== 1 ? "s" : ""}` }) : "") +
+      goldStat({ label: "Total Amount (incl. penalty)", value: `&#8369;${fmtPeso(totalAmount)}`, emphasis: true }) +
+      `<p style="color:${THEME.goldDeep};font-size:13px;margin:0;">Includes &#8369;${fmtPeso(penalty)} in late penalties</p>` +
+      (reason ? `<p style="color:${THEME.goldDeep};font-size:13px;margin:10px 0 0;">Reason: ${escapeHtml(reason)}</p>` : "")
+    )}
+    ${p("Please settle your payment immediately to avoid further charges.", { size: "14px" })}
+  `;
+
+  return renderEmailShell({
+    title: isPenaltyNotice ? "Penalty Notice - Lilycrest Dormitory" : "Payment Overdue - Lilycrest Dormitory",
+    branchName,
+    heading: headline,
+    bodyHtml,
+  });
+};
 
 export const sendOverdueNoticeEmail = async ({
   to,
@@ -948,52 +862,9 @@ export const sendOverdueNoticeEmail = async ({
   noticeVariant = "overdue",
   branchName = "Lilycrest",
 }) => {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD)
-    return { success: false, message: "Email service not configured" };
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) return { success: false, message: "Email service not configured" };
   const billTypeLabel = String(billType || "Bill");
   const isPenaltyNotice = noticeVariant === "penalty";
-  const headline = isPenaltyNotice ? "Penalty Notice" : "Payment Overdue";
-  const intro = isPenaltyNotice
-    ? `A late-payment penalty update is now attached to your <strong>${billTypeLabel.toLowerCase()}</strong> bill.`
-    : `Your <strong>${billTypeLabel.toLowerCase()}</strong> payment is <strong>${daysLate} day${daysLate !== 1 ? "s" : ""} overdue</strong>. Penalties are being applied.`;
-  const reasonBlock = reason
-    ? `<p style="color:#991B1B;font-size:14px;margin:12px 0 0;">Reason: ${reason}</p>`
-    : "";
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:#f5f5f5;">
-  <table role="presentation" style="width:100%;border-collapse:collapse;"><tr><td style="padding:40px 20px;">
-    <table role="presentation" style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.1);">
-      <tr><td style="background:linear-gradient(135deg,#991B1B 0%,#DC2626 100%);padding:30px 40px;text-align:center;">
-        <h1 style="color:#fff;margin:0;font-size:28px;">Lilycrest Dormitory</h1>
-        <p style="color:rgba(255,255,255,0.9);margin:10px 0 0;font-size:14px;">${branchName} Branch</p>
-      </td></tr>
-      <tr><td style="padding:40px;">
-        <div style="text-align:center;margin-bottom:24px;">
-          <div style="width:60px;height:60px;background:#FEF2F2;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;">
-            <span style="font-size:28px;">⚠️</span>
-          </div>
-        </div>
-        <h2 style="color:#991B1B;margin:0 0 20px;font-size:22px;text-align:center;">${headline}</h2>
-        <p style="color:#555;font-size:16px;line-height:1.6;">Hello <strong>${tenantName}</strong>,</p>
-        <p style="color:#555;font-size:16px;line-height:1.6;">Bill type: <strong>${billTypeLabel}</strong></p>
-        <p style="color:#555;font-size:16px;line-height:1.6;">${intro}</p>
-        <div style="background:#FEF2F2;border-radius:8px;padding:20px;margin:20px 0;text-align:center;">
-          <p style="color:#6B7280;font-size:12px;text-transform:uppercase;margin:0 0 6px;">Due Date</p>
-          <p style="color:#111827;font-size:16px;font-weight:600;margin:0 0 12px;">${dueDate}</p>
-          ${daysLate > 0 ? `<p style="color:#6B7280;font-size:12px;text-transform:uppercase;margin:0 0 6px;">Days Overdue</p><p style="color:#991B1B;font-size:16px;font-weight:600;margin:0 0 12px;">${daysLate} day${daysLate !== 1 ? "s" : ""}</p>` : ""}
-          <p style="color:#6B7280;font-size:12px;text-transform:uppercase;margin:0 0 6px;">Total Amount (incl. penalty)</p>
-          <p style="color:#DC2626;font-size:28px;font-weight:700;margin:0 0 12px;">₱${Number(totalAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p>
-          <p style="color:#991B1B;font-size:14px;margin:0;">Includes ₱${Number(penalty).toLocaleString("en-PH", { minimumFractionDigits: 2 })} in late penalties</p>
-          ${reasonBlock}
-        </div>
-        <p style="color:#555;font-size:14px;line-height:1.6;">Please settle your payment immediately to avoid further charges.</p>
-      </td></tr>
-      <tr><td style="background:#f8f9fa;padding:25px 40px;text-align:center;border-top:1px solid #eee;">
-        <p style="color:#888;font-size:14px;margin:0;">Best regards,<br><strong style="color:#0C375F;">Lilycrest Dormitory Team</strong></p>
-      </td></tr>
-    </table>
-  </td></tr></table>
-</body></html>`;
   try {
     const info = await transporter.sendMail({
       from: { name: "Lilycrest Dormitory", address: process.env.EMAIL_USER },
@@ -1001,7 +872,7 @@ export const sendOverdueNoticeEmail = async ({
       subject: isPenaltyNotice
         ? `Penalty Notice — ${billTypeLabel} | Lilycrest Dormitory`
         : `Overdue Notice — ${billTypeLabel} | Lilycrest Dormitory`,
-      html,
+      html: generateOverdueNoticeEmail({ tenantName, billTypeLabel, daysLate, totalAmount, penalty, dueDate, reason, isPenaltyNotice, branchName }),
       text: isPenaltyNotice
         ? `Hello ${tenantName}, a penalty update has been applied to your ${billTypeLabel.toLowerCase()} bill. Due date: ${dueDate}. Total due: ₱${totalAmount}. Penalty: ₱${penalty}.${reason ? ` Reason: ${reason}.` : ""} — Lilycrest Dormitory`
         : `Hello ${tenantName}, your ${billTypeLabel.toLowerCase()} bill is ${daysLate} days overdue. Due date: ${dueDate}. Total due: ₱${totalAmount} (includes ₱${penalty} penalty).${reason ? ` Reason: ${reason}.` : ""} — Lilycrest Dormitory`,
@@ -1017,46 +888,28 @@ export const sendOverdueNoticeEmail = async ({
 // PAYMENT APPROVED EMAIL
 // =============================================================================
 
-export const sendPaymentApprovedEmail = async ({
-  to,
-  tenantName,
-  billingMonth,
-  paidAmount,
-  branchName = "Lilycrest",
-}) => {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD)
-    return { success: false, message: "Email service not configured" };
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:#f5f5f5;">
-  <table role="presentation" style="width:100%;border-collapse:collapse;"><tr><td style="padding:40px 20px;">
-    <table role="presentation" style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.1);">
-      <tr><td style="background:linear-gradient(135deg,#065F46 0%,#059669 100%);padding:30px 40px;text-align:center;">
-        <h1 style="color:#fff;margin:0;font-size:28px;">Lilycrest Dormitory</h1>
-        <p style="color:rgba(255,255,255,0.9);margin:10px 0 0;font-size:14px;">${branchName} Branch</p>
-      </td></tr>
-      <tr><td style="padding:40px;">
-        <div style="text-align:center;margin-bottom:24px;">
-          <div style="width:60px;height:60px;background:#ECFDF5;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;">
-            <span style="font-size:28px;">✅</span>
-          </div>
-        </div>
-        <h2 style="color:#065F46;margin:0 0 20px;font-size:22px;text-align:center;">Payment Approved!</h2>
-        <p style="color:#555;font-size:16px;line-height:1.6;">Hello <strong>${tenantName}</strong>,</p>
-        <p style="color:#555;font-size:16px;line-height:1.6;">Your payment of <strong>₱${Number(paidAmount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</strong> for <strong>${billingMonth}</strong> has been verified and approved.</p>
-        <p style="color:#555;font-size:16px;line-height:1.6;">Thank you for your prompt payment!</p>
-      </td></tr>
-      <tr><td style="background:#f8f9fa;padding:25px 40px;text-align:center;border-top:1px solid #eee;">
-        <p style="color:#888;font-size:14px;margin:0;">Best regards,<br><strong style="color:#0C375F;">Lilycrest Dormitory Team</strong></p>
-      </td></tr>
-    </table>
-  </td></tr></table>
-</body></html>`;
+const generatePaymentApprovedEmail = ({ tenantName, paidAmount, billingMonth, branchName }) => {
+  const bodyHtml = `
+    ${p(`Hello <strong>${escapeHtml(tenantName)}</strong>,`)}
+    ${p(`Your payment of <strong>&#8369;${fmtPeso(paidAmount)}</strong> for <strong>${escapeHtml(billingMonth)}</strong> has been verified and approved.`)}
+    ${p("Thank you for your prompt payment!")}
+  `;
+  return renderEmailShell({
+    title: "Payment Approved - Lilycrest Dormitory",
+    branchName,
+    heading: "Payment Approved!",
+    bodyHtml,
+  });
+};
+
+export const sendPaymentApprovedEmail = async ({ to, tenantName, billingMonth, paidAmount, branchName = "Lilycrest" }) => {
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) return { success: false, message: "Email service not configured" };
   try {
     const info = await transporter.sendMail({
       from: { name: "Lilycrest Dormitory", address: process.env.EMAIL_USER },
       to,
       subject: `Payment Approved — ${billingMonth} | Lilycrest Dormitory`,
-      html,
+      html: generatePaymentApprovedEmail({ tenantName, paidAmount, billingMonth, branchName }),
       text: `Hello ${tenantName}, your payment of ₱${paidAmount} for ${billingMonth} has been approved. — Lilycrest Dormitory`,
     });
     return { success: true, messageId: info.messageId };
@@ -1070,49 +923,29 @@ export const sendPaymentApprovedEmail = async ({
 // PAYMENT REJECTED EMAIL
 // =============================================================================
 
-export const sendPaymentRejectedEmail = async ({
-  to,
-  tenantName,
-  billingMonth,
-  rejectionReason,
-  branchName = "Lilycrest",
-}) => {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD)
-    return { success: false, message: "Email service not configured" };
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:#f5f5f5;">
-  <table role="presentation" style="width:100%;border-collapse:collapse;"><tr><td style="padding:40px 20px;">
-    <table role="presentation" style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.1);">
-      <tr><td style="background:linear-gradient(135deg,#0C375F 0%,#1a4a7a 100%);padding:30px 40px;text-align:center;">
-        <h1 style="color:#fff;margin:0;font-size:28px;">Lilycrest Dormitory</h1>
-        <p style="color:rgba(255,255,255,0.9);margin:10px 0 0;font-size:14px;">${branchName} Branch</p>
-      </td></tr>
-      <tr><td style="padding:40px;">
-        <div style="text-align:center;margin-bottom:24px;">
-          <div style="width:60px;height:60px;background:#FEF2F2;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;">
-            <span style="font-size:28px;">❌</span>
-          </div>
-        </div>
-        <h2 style="color:#991B1B;margin:0 0 20px;font-size:22px;text-align:center;">Payment Proof Rejected</h2>
-        <p style="color:#555;font-size:16px;line-height:1.6;">Hello <strong>${tenantName}</strong>,</p>
-        <p style="color:#555;font-size:16px;line-height:1.6;">Your payment proof for <strong>${billingMonth}</strong> was reviewed and could not be accepted.</p>
-        <div style="background:#FEF2F2;border-left:4px solid #EF4444;padding:15px 20px;margin:20px 0;border-radius:0 8px 8px 0;">
-          <p style="color:#991B1B;font-size:14px;margin:0;font-weight:500;">Reason: ${rejectionReason}</p>
-        </div>
-        <p style="color:#555;font-size:14px;line-height:1.6;">Please complete payment using the billing portal's online checkout. If you need branch-assisted offline settlement, contact the branch staff directly.</p>
-      </td></tr>
-      <tr><td style="background:#f8f9fa;padding:25px 40px;text-align:center;border-top:1px solid #eee;">
-        <p style="color:#888;font-size:14px;margin:0;">Best regards,<br><strong style="color:#0C375F;">Lilycrest Dormitory Team</strong></p>
-      </td></tr>
-    </table>
-  </td></tr></table>
-</body></html>`;
+const generatePaymentRejectedEmail = ({ tenantName, billingMonth, rejectionReason, branchName }) => {
+  const bodyHtml = `
+    ${p(`Hello <strong>${escapeHtml(tenantName)}</strong>,`)}
+    ${p(`Your payment proof for <strong>${escapeHtml(billingMonth)}</strong> was reviewed and could not be accepted.`)}
+    ${goldCallout({ label: "Reason", content: escapeHtml(rejectionReason) })}
+    ${p("Please complete payment using the billing portal's online checkout. If you need branch-assisted offline settlement, contact the branch staff directly.", { size: "14px" })}
+  `;
+  return renderEmailShell({
+    title: "Payment Proof Rejected - Lilycrest Dormitory",
+    branchName,
+    heading: "Payment Proof Rejected",
+    bodyHtml,
+  });
+};
+
+export const sendPaymentRejectedEmail = async ({ to, tenantName, billingMonth, rejectionReason, branchName = "Lilycrest" }) => {
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) return { success: false, message: "Email service not configured" };
   try {
     const info = await transporter.sendMail({
       from: { name: "Lilycrest Dormitory", address: process.env.EMAIL_USER },
       to,
       subject: `Payment Proof Rejected — ${billingMonth} | Lilycrest Dormitory`,
-      html,
+      html: generatePaymentRejectedEmail({ tenantName, billingMonth, rejectionReason, branchName }),
       text: `Hello ${tenantName}, your payment proof for ${billingMonth} was rejected. Reason: ${rejectionReason}. Please use the billing portal's online checkout for monthly payment, or contact the branch for assisted offline settlement. — Lilycrest Dormitory`,
     });
     return { success: true, messageId: info.messageId };
@@ -1121,21 +954,10 @@ export const sendPaymentRejectedEmail = async ({
     return { success: false, error: error.message };
   }
 };
-// =============================================================================
-// PAYMENT RECEIPT EMAIL (PayMongo-style receipt with Lilycrest branding)
-// =============================================================================
 
-/**
- * Safe peso formatter — avoids toLocaleString("en-PH") which garbles output
- * in Node.js environments without full ICU data (outputs Unicode separators
- * that email clients render as garbage like "±& &2&,&0&0&0&.&0&0").
- */
-const fmtPeso = (n) => {
-  const fixed = Number(n || 0).toFixed(2);
-  const [int, dec] = fixed.split(".");
-  const withCommas = int.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return `${withCommas}.${dec}`;
-};
+// =============================================================================
+// PAYMENT RECEIPT EMAIL
+// =============================================================================
 
 const generatePaymentReceiptHtml = ({
   tenantName,
@@ -1148,89 +970,40 @@ const generatePaymentReceiptHtml = ({
   reservationCode,
   roomName,
   branch,
-}) => `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:#f5f5f5;">
-  <table role="presentation" style="width:100%;border-collapse:collapse;"><tr><td style="padding:40px 20px;">
-    <table role="presentation" style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.1);">
-      <!-- Dark Header -->
-      <tr><td style="background:#183153;padding:32px 40px;">
-        <p style="color:#D4982B;font-size:13px;margin:0 0 4px;font-weight:400;">Your receipt from</p>
-        <h1 style="color:#fff;margin:0;font-size:24px;font-weight:700;letter-spacing:0.5px;">LILYCREST DORMITORY</h1>
-      </td></tr>
-      <!-- Body -->
-      <tr><td style="padding:32px 40px;">
-        <p style="color:#374151;font-size:16px;margin:0 0 8px;">Hi <strong>${tenantName}</strong>,</p>
-        <p style="color:#6B7280;font-size:14px;margin:0 0 28px;line-height:1.5;">Thank you for your payment. Here's a copy of your receipt.</p>
-        <!-- Order details -->
-        <p style="color:#9CA3AF;font-size:11px;text-transform:uppercase;letter-spacing:1.5px;margin:0 0 12px;padding-bottom:8px;border-bottom:1px solid #E5E7EB;">Order details</p>
-        <table style="width:100%;border-collapse:collapse;margin:0 0 24px;">
-          <tr>
-            <td style="padding:8px 0;color:#9CA3AF;font-size:12px;text-transform:uppercase;">Amount paid</td>
-            <td style="padding:8px 0;text-align:right;"></td>
-          </tr>
-          <tr>
-            <td colspan="2" style="padding:0 0 16px;color:#111827;font-size:28px;font-weight:700;">&#8369; ${fmtPeso(amount)}</td>
-          </tr>
-          <tr>
-            <td style="padding:8px 0;color:#9CA3AF;font-size:12px;text-transform:uppercase;">Description</td>
-            <td style="padding:8px 0;text-align:right;"></td>
-          </tr>
-          <tr>
-            <td colspan="2" style="padding:0 0 16px;color:#374151;font-size:14px;">${description}</td>
-          </tr>
-          ${reservationCode ? `
-          <!-- Reservation details -->
-          <tr style="border-top:1px solid #F3F4F6;">
-            <td style="padding:12px 0 4px;color:#9CA3AF;font-size:12px;text-transform:uppercase;width:50%;">Reservation code</td>
-            <td style="padding:12px 0 4px;color:#9CA3AF;font-size:12px;text-transform:uppercase;width:50%;">${roomName ? "Room / Branch" : ""}</td>
-          </tr>
-          <tr>
-            <td style="padding:0 0 16px;color:#374151;font-size:14px;font-weight:600;">${reservationCode}</td>
-            <td style="padding:0 0 16px;color:#374151;font-size:14px;font-weight:500;">${roomName ? `${roomName}${branch ? ` · ${branch}` : ""}` : ""}</td>
-          </tr>` : ""}
-          <!-- Billed to -->
-          <tr style="border-top:1px solid #F3F4F6;">
-            <td colspan="2" style="padding:12px 0 4px;color:#9CA3AF;font-size:12px;text-transform:uppercase;">Billed to</td>
-          </tr>
-          <tr>
-            <td colspan="2" style="padding:0 0 16px;color:#374151;font-size:14px;font-weight:500;">${billedTo || tenantName}</td>
-          </tr>
-          <!-- Payment method + date -->
-          <tr style="border-top:1px solid #F3F4F6;">
-            <td style="padding:12px 0 4px;color:#9CA3AF;font-size:12px;text-transform:uppercase;width:50%;">Payment method</td>
-            <td style="padding:12px 0 4px;color:#9CA3AF;font-size:12px;text-transform:uppercase;width:50%;">Date paid</td>
-          </tr>
-          <tr>
-            <td style="padding:0 0 12px;color:#374151;font-size:14px;font-weight:500;">${paymentMethod}</td>
-            <td style="padding:0 0 12px;color:#374151;font-size:14px;font-weight:500;">${paymentDate}</td>
-          </tr>
-          <tr style="border-top:1px solid #F3F4F6;">
-            <td style="padding:12px 0 4px;color:#9CA3AF;font-size:12px;text-transform:uppercase;">Reference</td>
-            <td style="padding:12px 0 4px;"></td>
-          </tr>
-          <tr>
-            <td colspan="2" style="padding:0 0 8px;color:#6B7280;font-size:12px;font-family:monospace;">${referenceId}</td>
-          </tr>
-        </table>
-        ${reservationCode ? `
-        <!-- Next Steps -->
-        <div style="background:#F0F9FF;border-left:3px solid #0EA5E9;padding:14px 16px;margin:0 0 16px;border-radius:0 6px 6px 0;">
-          <p style="color:#0369A1;font-size:12px;font-weight:600;margin:0 0 6px;text-transform:uppercase;">What Happens Next</p>
-          <p style="color:#374151;font-size:13px;margin:0;line-height:1.6;">
-            Your room reservation is now <strong>secured</strong>. The admin team will review your application and contact you to arrange your move-in schedule. Please prepare your valid ID and other required documents on move-in day.
-          </p>
-        </div>` : ""}
-        <p style="color:#6B7280;font-size:13px;line-height:1.5;margin:0;">If you have any questions about this payment, contact Lilycrest Dormitory through the tenant portal.</p>
-      </td></tr>
-      <!-- Footer -->
-      <tr><td style="background:#183153;padding:20px 40px;text-align:center;">
-        <p style="color:rgba(255,255,255,0.7);font-size:11px;margin:0 0 8px;line-height:1.5;">You're receiving this e-mail because you made a payment at Lilycrest Dormitory.</p>
-        <p style="color:#D4982B;font-size:14px;font-weight:600;margin:0 0 4px;">Lilycrest Dormitory</p>
-        <p style="color:rgba(255,255,255,0.5);font-size:10px;margin:0;">Dormitory Management System</p>
-      </td></tr>
-    </table>
-  </td></tr></table>
-</body></html>`;
+}) => {
+  const detailsRows =
+    goldRow("Description", escapeHtml(description)) +
+    goldRow("Billed to", escapeHtml(billedTo || tenantName)) +
+    goldRow("Payment method", escapeHtml(paymentMethod)) +
+    goldRow("Date paid", escapeHtml(paymentDate)) +
+    goldRow("Reference", `<span style="font-family:monospace;font-weight:400;color:${THEME.textMuted};">${escapeHtml(referenceId)}</span>`) +
+    (reservationCode ? goldRow("Reservation code", escapeHtml(reservationCode)) : "") +
+    (reservationCode && roomName ? goldRow("Room / Branch", `${escapeHtml(roomName)}${branch ? ` · ${escapeHtml(branch)}` : ""}`) : "");
+
+  const bodyHtml = `
+    ${p(`Hi <strong>${escapeHtml(tenantName)}</strong>, thank you for your payment. Here's a copy of your receipt.`)}
+    ${goldStatPanel(goldStat({ label: "Amount Paid", value: `&#8369;${fmtPeso(amount)}`, emphasis: true }))}
+    ${goldDetailsPanel(detailsRows)}
+    ${
+      reservationCode
+        ? goldCallout({
+            label: "What Happens Next",
+            content:
+              "Your room reservation is now <strong>secured</strong>. The admin team will review your application and contact you to arrange your move-in schedule. Please prepare your valid ID and other required documents on move-in day.",
+          })
+        : ""
+    }
+    ${p("If you have any questions about this payment, contact Lilycrest Dormitory through the tenant portal.", { size: "13px", color: THEME.textMuted, margin: "0" })}
+  `;
+
+  return renderEmailShell({
+    title: "Payment Receipt - Lilycrest Dormitory",
+    branchName: branch || "Lilycrest",
+    heading: "Payment Receipt",
+    bodyHtml,
+    footerNote: "You're receiving this e-mail because you made a payment at Lilycrest Dormitory.",
+  });
+};
 
 export const sendPaymentReceiptEmail = async ({
   to,
@@ -1281,13 +1054,7 @@ export const sendPaymentReceiptEmail = async ({
   // Fallback: Resend (same service used for OTP)
   if (resendClient && OTP_FROM) {
     try {
-      const { data, error } = await resendClient.emails.send({
-        from: OTP_FROM,
-        to: [to],
-        subject,
-        html,
-        text,
-      });
+      const { data, error } = await resendClient.emails.send({ from: OTP_FROM, to: [to], subject, html, text });
       if (error) {
         console.error(`❌ Receipt email (Resend) failed for ${to}:`, error.message);
         return { success: false, error: error.message };
@@ -1304,6 +1071,25 @@ export const sendPaymentReceiptEmail = async ({
   return { success: false, message: "Email service not configured" };
 };
 
+// =============================================================================
+// LOGIN OTP EMAIL
+// =============================================================================
+
+const generateLoginOtpEmail = ({ displayName, otp, expiresInMinutes }) => {
+  const bodyHtml = `
+    ${p(`Hi <strong>${escapeHtml(displayName)}</strong>,`)}
+    ${p("Use this 6-digit code to finish signing in to your Lilycrest account.", { size: "14px" })}
+    <div style="letter-spacing:8px;font-size:32px;font-weight:700;color:${THEME.textDark};background:${THEME.goldTint};border:1px solid ${THEME.goldTintBorder};border-radius:10px;padding:18px;text-align:center;margin:0 0 20px;">${escapeHtml(otp)}</div>
+    ${p(`This code expires in ${expiresInMinutes} minutes. If you did not request it, you can ignore this email.`, { size: "13px", color: THEME.textMuted, margin: "0" })}
+  `;
+  return renderEmailShell({
+    title: "Your Lilycrest login OTP",
+    branchName: "Lilycrest",
+    heading: "Login Verification",
+    bodyHtml,
+  });
+};
+
 export const sendLoginOtpEmail = async ({ to, name, otp, expiresInMinutes = 10 }) => {
   if (!resendClient || !OTP_FROM) {
     console.error("[OTP EMAIL ERROR] Not sent — RESEND_API_KEY or RESEND_FROM_EMAIL is not configured");
@@ -1311,49 +1097,19 @@ export const sendLoginOtpEmail = async ({ to, name, otp, expiresInMinutes = 10 }
   }
 
   const displayName = name || "there";
-
   console.log("[OTP EMAIL] Sending via Resend", { to, from: OTP_FROM });
 
   const { data, error } = await resendClient.emails.send({
     from: OTP_FROM,
     to: [to],
     subject: "Your Lilycrest login OTP",
-    html: `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background:#f6f7fb;font-family:Arial,sans-serif;color:#111827;">
-  <table role="presentation" style="width:100%;border-collapse:collapse;">
-    <tr><td style="padding:32px 16px;">
-      <table role="presentation" style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:12px;border:1px solid #eef0f4;overflow:hidden;">
-        <tr><td style="background:#0A1628;padding:24px 28px;color:#ffffff;">
-          <div style="font-size:20px;font-weight:700;">Lilycrest Dormitory</div>
-          <div style="font-size:13px;color:#D4AF37;margin-top:4px;">Login verification</div>
-        </td></tr>
-        <tr><td style="padding:28px;">
-          <p style="margin:0 0 16px;font-size:15px;">Hi ${displayName},</p>
-          <p style="margin:0 0 20px;font-size:14px;line-height:1.5;color:#374151;">Use this 6-digit code to finish signing in to your Lilycrest account.</p>
-          <div style="letter-spacing:8px;font-size:32px;font-weight:700;color:#0A1628;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px;padding:18px;text-align:center;">${otp}</div>
-          <p style="margin:20px 0 0;font-size:13px;color:#6B7280;">This code expires in ${expiresInMinutes} minutes. If you did not request it, you can ignore this email.</p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`,
+    html: generateLoginOtpEmail({ displayName, otp, expiresInMinutes }),
     text: `Hi ${displayName}, your Lilycrest login OTP is ${otp}. It expires in ${expiresInMinutes} minutes.`,
   });
 
   if (error) {
-    console.error("[OTP EMAIL ERROR]", {
-      to,
-      name: error.name,
-      message: error.message,
-      statusCode: error.statusCode,
-    });
-    return {
-      success: false,
-      error: error.message,
-      code: error.name,
-      statusCode: error.statusCode,
-    };
+    console.error("[OTP EMAIL ERROR]", { to, name: error.name, message: error.message, statusCode: error.statusCode });
+    return { success: false, error: error.message, code: error.name, statusCode: error.statusCode };
   }
 
   console.log("[OTP EMAIL] Sent successfully", { to, messageId: data.id });
@@ -1361,3 +1117,138 @@ export const sendLoginOtpEmail = async ({ to, name, otp, expiresInMinutes = 10 }
 };
 
 export default transporter;
+
+// =============================================================================
+// QA TEST HARNESS — force-send any template from the command line
+// =============================================================================
+//
+// Only runs when this file is executed directly (`node email.js ...`), never
+// when it's imported by your app, so it's safe to leave in.
+//
+// Usage:
+//   node email.js <template> <to-email> [name]
+//
+// Run with no args to print the list of available templates.
+
+const QA_TEMPLATES = {
+  inquiry: (to, name) =>
+    sendInquiryResponseEmail({
+      to,
+      customerName: name,
+      inquirySubject: "Do you allow overnight visitors?",
+      response: "Yes, visitors are allowed until 10 PM with front desk registration.",
+      branchName: "Gil Puyat",
+    }),
+  reservation: (to, name) =>
+    sendReservationConfirmedEmail({
+      to,
+      tenantName: name,
+      reservationCode: "RSV-TEST-001",
+      roomName: "Room 204 - Bed A",
+      branchName: "Gil Puyat",
+      moveInDate: "August 15, 2026",
+    }),
+  "visit-approved": (to, name) =>
+    sendVisitApprovedEmail({ to, tenantName: name, branchName: "Gil Puyat" }),
+  "visit-scheduled": (to, name) =>
+    sendPhysicalVisitStatusEmail({
+      to, tenantName: name, roomName: "Room 204 - Bed A", branchName: "Gil Puyat",
+      visitCode: "VC-TEST-001", visitDate: "2026-08-05", visitTime: "2:00 PM", status: "scheduled",
+    }),
+  "visit-rescheduled": (to, name) =>
+    sendPhysicalVisitStatusEmail({
+      to, tenantName: name, roomName: "Room 204 - Bed A", branchName: "Gil Puyat",
+      visitCode: "VC-TEST-001", visitDate: "2026-08-07", visitTime: "3:30 PM",
+      previousVisitDate: "2026-08-05", previousVisitTime: "2:00 PM", status: "rescheduled",
+    }),
+  "visit-completed": (to, name) =>
+    sendPhysicalVisitStatusEmail({
+      to, tenantName: name, roomName: "Room 204 - Bed A", branchName: "Gil Puyat",
+      visitCode: "VC-TEST-001", visitDate: "2026-08-05", visitTime: "2:00 PM", status: "visit_completed",
+    }),
+  "visit-no-show": (to, name) =>
+    sendPhysicalVisitStatusEmail({
+      to, tenantName: name, roomName: "Room 204 - Bed A", branchName: "Gil Puyat",
+      visitCode: "VC-TEST-001", visitDate: "2026-08-05", visitTime: "2:00 PM", status: "no_show",
+    }),
+  "visit-cancelled": (to, name) =>
+    sendPhysicalVisitStatusEmail({
+      to, tenantName: name, roomName: "Room 204 - Bed A", branchName: "Gil Puyat",
+      visitCode: "VC-TEST-001", visitDate: "2026-08-05", visitTime: "2:00 PM", status: "visit_cancelled",
+    }),
+  "docs-rejected": (to, name) =>
+    sendDocumentsRejectedEmail({
+      to, tenantName: name, rejectionReason: "Uploaded ID photo is blurry, please re-upload.", branchName: "Gil Puyat",
+    }),
+  bill: (to, name) =>
+    sendBillGeneratedEmail({
+      to, tenantName: name, billingMonth: "August 2026", totalAmount: 4500, dueDate: "August 10, 2026",
+      branchName: "Gil Puyat", billType: "rent", roomName: "Room 204 - Bed A",
+    }),
+  electricity: (to, name) =>
+    sendUtilityChargeAvailableEmail({
+      to, tenantName: name, utilityType: "electricity", billingMonth: "August 2026",
+      utilityAmount: 350, totalAmount: 4850, dueDate: "August 10, 2026", branchName: "Gil Puyat",
+    }),
+  water: (to, name) =>
+    sendUtilityChargeAvailableEmail({
+      to, tenantName: name, utilityType: "water", billingMonth: "August 2026",
+      utilityAmount: 150, totalAmount: 4650, dueDate: "August 10, 2026", branchName: "Gil Puyat",
+    }),
+  reminder: (to, name) =>
+    sendPaymentReminderEmail({
+      to, tenantName: name, billingMonth: "August 2026", totalAmount: 4500,
+      dueDate: "August 10, 2026", billType: "Rent", branchName: "Gil Puyat",
+    }),
+  overdue: (to, name) =>
+    sendOverdueNoticeEmail({
+      to, tenantName: name, billingMonth: "August 2026", totalAmount: 4750, daysLate: 3,
+      penalty: 250, dueDate: "August 10, 2026", billType: "Rent", noticeVariant: "overdue", branchName: "Gil Puyat",
+    }),
+  penalty: (to, name) =>
+    sendOverdueNoticeEmail({
+      to, tenantName: name, billingMonth: "August 2026", totalAmount: 4750, daysLate: 3,
+      penalty: 250, dueDate: "August 10, 2026", billType: "Rent", reason: "Late payment penalty applied.",
+      noticeVariant: "penalty", branchName: "Gil Puyat",
+    }),
+  "payment-approved": (to, name) =>
+    sendPaymentApprovedEmail({ to, tenantName: name, billingMonth: "August 2026", paidAmount: 4500 }),
+  "payment-rejected": (to, name) =>
+    sendPaymentRejectedEmail({
+      to, tenantName: name, billingMonth: "August 2026",
+      rejectionReason: "Proof of payment does not match the billed amount.", branchName: "Gil Puyat",
+    }),
+  receipt: (to, name) =>
+    sendPaymentReceiptEmail({
+      to, tenantName: name, amount: 4500, description: "Monthly Rent - August 2026",
+      billedTo: name, paymentMethod: "GCash", paymentDate: "August 1, 2026",
+      referenceId: "REF-TEST-0001", reservationCode: "RSV-TEST-001", roomName: "Room 204 - Bed A", branch: "Gil Puyat",
+    }),
+  otp: (to, name) => sendLoginOtpEmail({ to, name, otp: "482913", expiresInMinutes: 10 }),
+};
+
+const isRunDirectly =
+  typeof process !== "undefined" &&
+  process.argv[1] &&
+  /email\.js$/.test(process.argv[1]);
+
+if (isRunDirectly) {
+  const [, , template, to, name = "Test Tenant"] = process.argv;
+
+  if (!template || !to || !QA_TEMPLATES[template]) {
+    console.log("\nUsage: node email.js <template> <to-email> [name]\n");
+    console.log("Available templates:\n  " + Object.keys(QA_TEMPLATES).join("\n  "));
+    process.exit(template && !QA_TEMPLATES[template] ? 1 : 0);
+  }
+
+  console.log(`\n[QA] Force-sending "${template}" to ${to} ...`);
+  QA_TEMPLATES[template](to, name)
+    .then((result) => {
+      console.log("[QA] Result:", result);
+      process.exit(result.success ? 0 : 1);
+    })
+    .catch((err) => {
+      console.error("[QA] Unhandled error:", err);
+      process.exit(1);
+    });
+}
