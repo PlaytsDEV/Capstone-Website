@@ -2,37 +2,65 @@ import React, { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import {
- useUnreadCount,
- useNotifications,
- useMarkAsRead,
- useMarkAllAsRead,
+  useUnreadCount,
+  useNotifications,
+  useMarkAsRead,
+  useMarkAllAsRead,
 } from "../hooks/queries/useNotifications";
 import useNotificationStore from "../stores/notificationStore";
 import { useAuth } from "../hooks/useAuth";
 import { getVisibleNotificationsForUser } from "../utils/notificationVisibility";
 import "./NotificationBell.css";
+import {
+  Bell,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  CreditCard,
+  Home,
+  Lock,
+  Unlock,
+  Megaphone,
+  Info,
+  FileText,
+  Slash,
+} from "lucide-react";
 
-const TYPE_ICONS = {
- reservation_created: "📋",
- reservation_approved: "✓",
- reservation_rejected: "✕",
- reservation_confirmed: "✓",
- reservation_cancelled: "✕",
- reservation_expired: "⏱",
- reservation_noshow: "—",
- payment_received: "₱",
- payment_verified: "✓",
- payment_approved: "₱",
- payment_rejected: "₱",
- visit_approved: "⌂",
- visit_rejected: "—",
- account_suspended: "!",
- account_reactivated: "↻",
- account_banned: "⊘",
- announcement: "▣",
- system: "i",
- general: "i",
-};
+function NotificationBellIcon({ type }) {
+  const iconProps = { size: 15, strokeWidth: 2 };
+  switch (type) {
+    case "reservation_created":
+    case "bill_generated":
+      return <FileText {...iconProps} style={{ color: "#2563EB" }} />;
+    case "reservation_approved":
+    case "reservation_confirmed":
+    case "payment_verified":
+    case "payment_approved":
+      return <CheckCircle2 {...iconProps} style={{ color: "#10B981" }} />;
+    case "reservation_rejected":
+    case "reservation_cancelled":
+    case "payment_rejected":
+    case "visit_rejected":
+      return <XCircle {...iconProps} style={{ color: "#EF4444" }} />;
+    case "reservation_expired":
+      return <Clock {...iconProps} style={{ color: "#F59E0B" }} />;
+    case "reservation_noshow":
+      return <Slash {...iconProps} style={{ color: "#EF4444" }} />;
+    case "payment_received":
+      return <CreditCard {...iconProps} style={{ color: "#4F46E5" }} />;
+    case "visit_approved":
+      return <Home {...iconProps} style={{ color: "#0284C7" }} />;
+    case "account_suspended":
+    case "account_banned":
+      return <Lock {...iconProps} style={{ color: "#DC2626" }} />;
+    case "account_reactivated":
+      return <Unlock {...iconProps} style={{ color: "#059669" }} />;
+    case "announcement":
+      return <Megaphone {...iconProps} style={{ color: "#2563EB" }} />;
+    default:
+      return <Info {...iconProps} style={{ color: "#6B7280" }} />;
+  }
+}
 
 const BellIcon = ({ hasUnread }) => (
  <svg
@@ -214,7 +242,7 @@ export default function NotificationBell() {
  </div>
  ) : mergedNotifications.length === 0 ? (
  <div className="nb-empty">
- <span className="nb-empty-icon">🔔</span>
+ <span className="nb-empty-icon" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Bell size={24} style={{ color: "#9CA3AF" }} /></span>
  <p>No notifications yet</p>
  </div>
  ) : (
@@ -232,8 +260,8 @@ export default function NotificationBell() {
  role="button"
  tabIndex={0}
  >
- <span className="nb-item-icon" aria-hidden="true">
- {TYPE_ICONS[notification.type] || "·"}
+ <span className="nb-item-icon" aria-hidden="true" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+ <NotificationBellIcon type={notification.type} />
  </span>
  <div className="nb-item-content">
  <p className="nb-item-title">{notification.title}</p>

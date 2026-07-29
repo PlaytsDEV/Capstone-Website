@@ -49,17 +49,41 @@ export function isNewReservation(reservation, maxAgeHours = 48) {
   return diffHours >= 0 && diffHours <= maxAgeHours;
 }
 
+export function getCancelledByName(cancelledBy, cancellationSource, customerName, userId) {
+  const cancelledById = typeof cancelledBy === "object" ? String(cancelledBy?._id || cancelledBy?.id || "") : String(cancelledBy || "");
+  const userIdVal = typeof userId === "object" ? String(userId?._id || userId?.id || "") : String(userId || "");
+  const isOwnUser = (cancelledById && userIdVal && cancelledById === userIdVal) || cancellationSource === "applicant";
+
+  if (isOwnUser) {
+    return customerName || "Applicant";
+  }
+
+  if (typeof cancelledBy === "object" && cancelledBy?.role) {
+    const role = cancelledBy.role;
+    if (role === "branch_admin") return "Branch Admin";
+    if (role === "owner") return "System Owner";
+    return role.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  if (cancellationSource === "admin") return "Branch Admin";
+  if (cancellationSource === "system") return "System Sweeper (24h Hold Expired)";
+
+  return "Branch Admin";
+}
+
 export function mapReservationAdminRow(reservation) {
   const branchCode = reservation.roomId?.branch || "";
   const isViewedByAdmin = Boolean(reservation.isViewedByAdmin);
-  const isNew = isNewReservation(reservation) && !isViewedByAdmin;
+  const isPendingCancellation = hasPendingCancellationRequest(reservation);
+  const isNew = (isNewReservation(reservation) && !isViewedByAdmin) || isPendingCancellation;
+  const customer =
+    `${reservation.userId?.firstName || ""} ${reservation.userId?.lastName || ""}`.trim() ||
+    "Unknown";
 
   return {
     id: reservation._id,
     reservationCode: reservation.reservationCode || "-",
-    customer:
-      `${reservation.userId?.firstName || ""} ${reservation.userId?.lastName || ""}`.trim() ||
-      "Unknown",
+    customer,
     email: reservation.userId?.email || "-",
     phone: reservation.mobileNumber || reservation.phone || "-",
     room: reservation.roomId?.name || reservation.roomId?.roomNumber || "-",
@@ -90,6 +114,10 @@ export function mapReservationAdminRow(reservation) {
     scheduleRejected: Boolean(reservation.scheduleRejected),
     scheduleRejectedAt: reservation.scheduleRejectedAt || null,
     scheduleRejectionReason: reservation.scheduleRejectionReason || "",
+    cancelledAt: reservation.cancelledAt || null,
+    cancelledBy: reservation.cancelledBy || null,
+    cancelledByName: reservation.cancelledByName || getCancelledByName(reservation.cancelledBy, reservation.cancellationSource, customer),
+    cancellationSource: reservation.cancellationSource || null,
     cancellationRequested: Boolean(reservation.cancellationRequested),
     cancellationStatus: reservation.cancellationStatus || null,
     cancellationReason: reservation.cancellationReason || null,
@@ -224,4 +252,101 @@ export function mapVisitScheduleRows(rawReservations = []) {
  );
 
  return rows;
+}
+
+export function applyMoveInFilter(row, filters = {}, now = new Date()) {
+  const moveInKey = filters.moveIn || "any";
+  if (moveInKey === "any") return true;
+
+  if (!row?.moveInDate) return false;
+  const moveIn = new Date(row.moveInDate);
+  if (Number.isNaN(moveIn.getTime())) return false;
+
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+  if (moveInKey === "today") {
+    return moveIn >= startOfToday && moveIn <= endOfToday;
+  }
+
+  if (moveInKey === "this_week") {
+    const dayOfWeek = startOfToday.getDay(); // 0 is Sun
+    const startOfWeek = new Date(startOfToday);
+    startOfWeek.setDate(startOfToday.getDate() - dayOfWeek);
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+    endOfWeek.setHours(23, 59, 59, 999);
+    return moveIn >= startOfWeek && moveIn <= endOfWeek;
+  }
+
+  if (moveInKey === "this_month") {
+    return moveIn.getFullYear() === now.getFullYear() && moveIn.getMonth() === now.getMonth();
+  }
+
+  if (moveInKey === "next_30_days") {
+    const start30 = startOfToday;
+    const end30 = new Date(startOfToday);
+    end30.setDate(startOfToday.getDate() + 30);
+    end30.setHours(23, 59, 59, 999);
+    return moveIn >= start30 && moveIn <= end30;
+  }
+
+  if (moveInKey === "custom") {
+    const start = filters.moveInStart ? new Date(filters.moveInStart) : null;
+    const end = filters.moveInEnd ? new Date(filters.moveInEnd) : null;
+    if (start && !Number.isNaN(start.getTime()) && moveIn < start) return false;
+    if (end && !Number.isNaN(end.getTime())) {
+      const endInclusive = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999);
+      if (moveIn > endInclusive) return false;
+    }
+    return true;
+  }
+
+  return true;
+}
+
+export function applyAppDateFilter(row, filters = {}, now = new Date()) {
+  const appDateKey = filters.applicationDate || "any";
+  if (appDateKey === "any") return true;
+
+  if (!row?.createdAt) return false;
+  const created = new Date(row.createdAt);
+  if (Number.isNaN(created.getTime())) return false;
+
+  const diffMs = now.getTime() - created.getTime();
+
+  if (appDateKey === "last_24h") {
+    return diffMs >= 0 && diffMs <= 24 * 60 * 60 * 1000;
+  }
+
+  if (appDateKey === "last_7d") {
+    return diffMs >= 0 && diffMs <= 7 * 24 * 60 * 60 * 1000;
+  }
+
+  if (appDateKey === "this_month") {
+    return created.getFullYear() === now.getFullYear() && created.getMonth() === now.getMonth();
+  }
+
+  if (appDateKey === "custom") {
+    const start = filters.appDateStart ? new Date(filters.appDateStart) : null;
+    const end = filters.appDateEnd ? new Date(filters.appDateEnd) : null;
+    if (start && !Number.isNaN(start.getTime()) && created < start) return false;
+    if (end && !Number.isNaN(end.getTime())) {
+      const endInclusive = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999);
+      if (created > endInclusive) return false;
+    }
+    return true;
+  }
+
+  return true;
+}
+
+export function applyQuickChip(row, chip) {
+  if (!chip) return true;
+  if (chip === "overdue") return checkOverdueReservation(row);
+  if (chip === "new") return Boolean(row?.isNew);
+  if (chip === "cancellation") return hasPendingCancellationRequest(row);
+  if (chip === "awaiting_payment") return row?.paymentStatus === "pending" && row?.status === "approved_for_payment";
+  if (chip === "proof_uploaded") return row?.paymentStatus === "proof_uploaded";
+  return true;
 }

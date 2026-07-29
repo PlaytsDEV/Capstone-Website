@@ -170,9 +170,6 @@ export default function AdminNotificationsPage() {
         <div className="admin-notif-page__title-group">
           <h1 className="admin-notif-page__title">
             Notifications
-            {unreadCount > 0 && (
-              <span className="admin-notif-page__unread-badge">{unreadCount}</span>
-            )}
           </h1>
           <p className="admin-notif-page__subtitle">
             System alerts, SLA breaches, billing events, and workflow updates.

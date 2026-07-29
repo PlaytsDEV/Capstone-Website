@@ -107,4 +107,12 @@ export const roomApi = {
     const query = params.toString();
     return authFetch(`/reservations/vacancy-forecast${query ? `?${query}` : ""}`);
   },
+
+  /**
+   * Force-recalculate a room's occupancy counter and bed statuses from
+   * ground-truth active reservations. Resolves stale counter drift.
+   * Admin only (manageRooms permission required).
+   */
+  repairOccupancy: (roomId) =>
+    authFetch(`/rooms/${roomId}/repair-occupancy`, { method: "POST" }),
 };

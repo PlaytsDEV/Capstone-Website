@@ -195,7 +195,20 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem("user", JSON.stringify(userData));
       return userData;
     } catch (error) {
-      console.error("Failed to refresh user:", error);
+      const statusCode = error.response?.status || error.status;
+      const errorCode = error.response?.data?.code;
+
+      if (
+        statusCode === 401 ||
+        errorCode === "OTP_SESSION_REQUIRED" ||
+        errorCode === "OTP_SESSION_INVALID"
+      ) {
+        clearSessionId();
+        setUser(null);
+        setIsAuthenticated(false);
+      } else {
+        console.warn("User refresh warning:", error.message || error);
+      }
       return null;
     }
   }, [getFreshIdToken, queryClient]);

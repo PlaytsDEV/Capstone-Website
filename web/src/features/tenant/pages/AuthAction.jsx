@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { applyActionCode } from "firebase/auth";
+import { applyActionCode, checkActionCode } from "firebase/auth";
 import { CheckCircle, Loader2, XCircle } from "lucide-react";
 import { auth } from "../../../firebase/config";
 import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
@@ -11,6 +11,7 @@ function AuthAction() {
   const navigate = useNavigate();
   const [status, setStatus] = useState("loading");
   const [message, setMessage] = useState("Confirming your request...");
+  const [verifiedEmail, setVerifiedEmail] = useState("");
 
   useEffect(() => {
     const mode = searchParams.get("mode");
@@ -36,22 +37,53 @@ function AuthAction() {
       return;
     }
 
-    applyActionCode(auth, oobCode)
-      .then(() => {
+    const processVerification = async () => {
+      let email = "";
+      try {
+        const info = await checkActionCode(auth, oobCode);
+        email = info?.data?.email || "";
+      } catch (_) {
+        /* proceed to apply action code */
+      }
+
+      try {
+        await applyActionCode(auth, oobCode);
+        if (email) {
+          setVerifiedEmail(email);
+          sessionStorage.setItem("lilycrest_verified_email", email);
+          localStorage.setItem("lilycrest_verified_email", email);
+        }
         setStatus("success");
         setMessage("Email verified successfully.");
         window.setTimeout(() => {
-          navigate("/signin?verified=true", { replace: true });
+          navigate("/signin?verified=true", {
+            replace: true,
+            state: email ? { email } : undefined,
+          });
         }, 3000);
-      })
-      .catch(() => {
+      } catch (error) {
         setStatus("error");
         setMessage("This verification link is invalid or has expired.");
-      });
+      }
+    };
+
+    processVerification();
   }, [navigate, searchParams]);
 
   const isSuccess = status === "success";
   const isError = status === "error";
+
+  const handleBackToSignIn = (e) => {
+    e?.preventDefault();
+    const storedEmail =
+      verifiedEmail ||
+      sessionStorage.getItem("lilycrest_verified_email") ||
+      localStorage.getItem("lilycrest_verified_email");
+    navigate("/signin?verified=true", {
+      replace: true,
+      state: storedEmail ? { email: storedEmail } : undefined,
+    });
+  };
 
   return (
     <div className="min-h-screen grid lg:grid-cols-2" style={{ backgroundColor: "#0A1628" }}>
@@ -117,13 +149,13 @@ function AuthAction() {
           )}
 
           {isSuccess && (
-            <Link
-              to="/signin?verified=true"
+            <button
+              onClick={handleBackToSignIn}
               className="block w-full py-4 rounded-xl text-white font-light hover:opacity-90 transition-opacity text-base"
               style={{ backgroundColor: "#D4AF37" }}
             >
               Back to sign in
-            </Link>
+            </button>
           )}
         </div>
       </div>

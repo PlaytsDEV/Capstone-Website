@@ -25,6 +25,7 @@ import { getPersistedPhysicalVisitState } from "../../utils/reservationVisitStat
 import { canAccessTenantApplication, getPhysicalVisitApplicantState } from "../../utils/physicalVisitFlow";
 import { canFreelyEditViewingPreference, getVisitScheduleSubmitLabel, getVisitSummaryUiState } from "../../utils/reservationVisitUiState";
 import { VIEWING_PREFERENCE_LOCKED_MESSAGE } from "../../utils/reservationViewingPreferenceLock";
+import { getBedDisplayLabel, getBedShortCode } from "../../../../shared/utils/bedIdentifier";
 
 const TIME_SLOTS = [
   { label: "08:00 AM", available: true, capacity: 5, remaining: 5 },
@@ -92,6 +93,20 @@ function toDisplayString(value, fallback = "") {
     );
   }
   return fallback;
+}
+
+function getChosenBedCode(selectedBed, roomNumber = "") {
+  if (!selectedBed) return "N/A";
+  if (typeof selectedBed === "string" && selectedBed.trim()) return selectedBed.trim();
+  if (typeof selectedBed === "object") {
+    if (selectedBed.code && String(selectedBed.code).trim()) return String(selectedBed.code).trim();
+    if (selectedBed.id && String(selectedBed.id).trim()) return String(selectedBed.id).trim();
+    const shortCode = getBedShortCode(roomNumber, selectedBed);
+    if (shortCode && shortCode.trim()) return shortCode.trim();
+    const displayLabel = getBedDisplayLabel(selectedBed);
+    if (displayLabel && displayLabel.trim()) return displayLabel.trim();
+  }
+  return "N/A";
 }
 
 function toISODate(date) {
@@ -310,17 +325,15 @@ const ReservationVisitStep = ({
   const room = reservationData?.room || {};
   const uploadedRoomImages = Array.isArray(room.images) ? room.images.filter((entry) => typeof entry === "string" && entry.trim()) : [];
   const roomImages = uploadedRoomImages.length > 0 ? uploadedRoomImages : getRemoteViewingImages(room.type, room.branchKey || room.branch || reservationData?.branch);
-  const roomCapacity = Number(room.capacity || 0);
-  const currentOccupancy = Number(room.currentOccupancy || 0);
-  const availableSlots = Number.isFinite(roomCapacity) ? Math.max(roomCapacity - currentOccupancy, 0) : null;
+  const chosenBedData = reservationData?.selectedBed || reservationData?.selectedBedCode || reservationData?.bedCode || reservationData?.bed;
+  const chosenBedCode = getChosenBedCode(chosenBedData, room.roomNumber || room.name);
 
   const roomDetails = [
     ["Branch", room.branch ? toTitleCase(toDisplayString(room.branch)) : "N/A"],
     ["Floor", toDisplayString(room.floor, "N/A")],
     ["Room Number", toDisplayString(room.roomNumber || room.name, "N/A")],
     ["Room Type", room.type ? toTitleCase(toDisplayString(room.type)) : "N/A"],
-    ["Capacity", room.capacity ? `${toDisplayString(room.capacity)} occupants` : "N/A"],
-    ["Available Slots", availableSlots == null ? "N/A" : String(availableSlots)],
+    ["Chosen Bed", chosenBedCode],
     ["Monthly Rate", room.price && Number.isFinite(Number(room.price)) ? `PHP ${Number(room.price).toLocaleString()}` : "N/A"],
     ["Notes / Reminders", toDisplayString(room.description, "None provided")],
   ];
@@ -488,7 +501,7 @@ const ReservationVisitStep = ({
             {visitSummaryUi.showChangeViewingPreference && (<button type="button" className="btn btn-secondary" onClick={() => setIsEditingPhysicalVisit(true)}>Change Viewing Preference</button>)}
             {visitSummaryUi.showReturnToDashboard && (<button type="button" className="btn btn-secondary" onClick={() => onReturnToDashboard?.()}>Return to Dashboard</button>)}
             {visitSummaryUi.showRequestReschedule && (<button type="button" className="btn btn-secondary" disabled>Request Reschedule</button>)}
-            {visitSummaryUi.canProceedToApplication ? (<button type="button" className="btn btn-primary" onClick={() => onNext?.()}>{visitSummaryUi.applicationCtaLabel}</button>) : (<button type="button" className="btn btn-primary" disabled title="Available after admin completes or waives the physical visit.">{visitSummaryUi.applicationCtaLabel}</button>)}
+            {visitSummaryUi.canProceedToApplication ? (<button type="button" className="btn btn-success" onClick={() => onNext?.()}>{visitSummaryUi.applicationCtaLabel}</button>) : (<button type="button" className="btn btn-success" disabled title="Available after admin completes or waives the physical visit.">{visitSummaryUi.applicationCtaLabel}</button>)}
           </div>
         )}
       </div>
@@ -526,12 +539,12 @@ const ReservationVisitStep = ({
           <div className="stage-buttons">
             {canStartChangeFlow ? (
               <>
-                <button type="button" className="btn btn-primary" onClick={handleChangePreferenceRequest}>Change Viewing Preference</button>
+                <button type="button" className="btn btn-success" onClick={handleChangePreferenceRequest}>Change Viewing Preference</button>
                 <button type="button" className="btn btn-secondary" onClick={goToDashboard}>Back to Dashboard</button>
               </>
             ) : (
               <>
-                <button type="button" className="btn btn-primary" onClick={goToReservationStatus}>{viewingPreferenceAccess.statusCtaLabel || "View Reservation Status"}</button>
+                <button type="button" className="btn btn-success" onClick={goToReservationStatus}>{viewingPreferenceAccess.statusCtaLabel || "View Reservation Status"}</button>
                 <button type="button" className="btn btn-secondary" onClick={goToDashboard}>Back to Dashboard</button>
               </>
             )}
@@ -574,7 +587,7 @@ const ReservationVisitStep = ({
                 </div>
               </div>
 
-              <div className="stage-buttons"><button type="button" className="btn btn-secondary" onClick={goToDashboard}>Back to Dashboard</button><button type="button" className="btn btn-primary" onClick={handleSelectionContinue} disabled={!draftViewingPreference}>Continue</button></div>
+              <div className="stage-buttons"><button type="button" className="btn btn-secondary" onClick={goToDashboard}>Back to Dashboard</button><button type="button" className="btn btn-success" onClick={handleSelectionContinue} disabled={!draftViewingPreference}>Continue</button></div>
             </>
           )}
 
@@ -583,7 +596,7 @@ const ReservationVisitStep = ({
               {selectedVisit === "physical_visit" && (
                 <>
                   <div className="rf-selection-confirm"><CheckCircle size={14} /><span>Current selection: <strong>Physical Visit</strong></span></div>
-                  <div className="content-card"><div className="card-section-title"><Home size={15} style={{ marginRight: 6, flexShrink: 0 }} />Selected Room Summary</div><div className="rf-room-details-grid">{roomDetails.map(([label, value]) => (<div key={label} className="rf-room-details-grid__item"><span className="rf-room-details-grid__label">{label}</span><strong className="rf-room-details-grid__value">{value}</strong></div>))}</div></div>
+                  <div className="content-card"><div className="card-section-title"><Home size={15} style={{ marginRight: 6, flexShrink: 0 }} />Selected Room Summary</div><div className="rf-room-details-grid">{roomDetails.map(([label, value]) => (<div key={label} className={`rf-room-details-grid__item${label === "Notes / Reminders" ? " rf-room-details-grid__item--notes" : ""}`}><span className="rf-room-details-grid__label">{label}</span><strong className="rf-room-details-grid__value">{value}</strong></div>))}</div></div>
                   <div className="content-card"><div className="card-section-title"><Calendar size={15} style={{ marginRight: 6, flexShrink: 0 }} />Schedule Your Visit</div><p className="rf-section-hint">Choose your preferred visit date and time. This schedule is for room viewing only and does not confirm occupancy or unlock payment.</p>
                     {availabilityError && (<div className="rf-availability-alert" role="alert">Unable to load live visit availability right now.<button type="button" className="btn btn-secondary" style={{ marginLeft: 12 }} onClick={() => refetchAvailability()}>Retry</button></div>)}
                     <div className="rf-calendar-grid" aria-label="Available visit dates">
@@ -719,7 +732,7 @@ const ReservationVisitStep = ({
                     </div>
                     <div className="rf-room-details-grid">
                       {roomDetails.map(([label, value]) => (
-                        <div key={label} className="rf-room-details-grid__item">
+                        <div key={label} className={`rf-room-details-grid__item${label === "Notes / Reminders" ? " rf-room-details-grid__item--notes" : ""}`}>
                           <span className="rf-room-details-grid__label">{label}</span>
                           <strong className="rf-room-details-grid__value">{value}</strong>
                         </div>
@@ -759,10 +772,10 @@ const ReservationVisitStep = ({
               )}
 
               {selectedVisit === "urgent_move_in_review" && (
-                <div className="content-card"><div className="rf-selection-confirm rf-selection-confirm--inline"><CheckCircle size={14} /><span>Current selection: <strong>Priority Viewing Review</strong></span></div><div className="rf-urgent-banner"><div className="rf-urgent-banner__icon"><Zap size={22} /></div><div className="rf-urgent-banner__body"><div className="rf-urgent-banner__title">Priority Viewing Review</div><div className="rf-urgent-banner__subtitle">Submit this request if you need admin to review your selected room and reservation sooner. Your tenant application and required documents must still be submitted and approved before payment becomes available.</div></div></div><div className="rf-urgent-steps"><div className="rf-urgent-steps__label">What happens next</div>{["Your priority viewing request is sent to the admin.","Admin reviews your selected room and reservation details sooner.","You still need to submit your tenant application and required documents.","Payment becomes available only after your application is approved."].map((step, idx) => (<div key={idx} className="rf-urgent-step-row"><div className="rf-urgent-step-num">{idx + 1}</div><div className="rf-urgent-step-text">{step}</div></div>))}</div><div className="card-section-title" style={{ paddingTop: 0, marginTop: 4, borderTop: "none" }}><Home size={15} style={{ marginRight: 6, flexShrink: 0 }} />Selected Room Summary</div><div className="rf-room-details-grid">{roomDetails.map(([label, value]) => (<div key={label} className="rf-room-details-grid__item"><span className="rf-room-details-grid__label">{label}</span><strong className="rf-room-details-grid__value">{value}</strong></div>))}</div></div>
+                <div className="content-card"><div className="rf-selection-confirm rf-selection-confirm--inline"><CheckCircle size={14} /><span>Current selection: <strong>Priority Viewing Review</strong></span></div><div className="rf-urgent-banner"><div className="rf-urgent-banner__icon"><Zap size={22} /></div><div className="rf-urgent-banner__body"><div className="rf-urgent-banner__title">Priority Viewing Review</div><div className="rf-urgent-banner__subtitle">Submit this request if you need admin to review your selected room and reservation sooner. Your tenant application and required documents must still be submitted and approved before payment becomes available.</div></div></div><div className="rf-urgent-steps"><div className="rf-urgent-steps__label">What happens next</div>{["Your priority viewing request is sent to the admin.","Admin reviews your selected room and reservation details sooner.","You still need to submit your tenant application and required documents.","Payment becomes available only after your application is approved."].map((step, idx) => (<div key={idx} className="rf-urgent-step-row"><div className="rf-urgent-step-num">{idx + 1}</div><div className="rf-urgent-step-text">{step}</div></div>))}</div><div className="card-section-title" style={{ paddingTop: 0, marginTop: 4, borderTop: "none" }}><Home size={15} style={{ marginRight: 6, flexShrink: 0 }} />Selected Room Summary</div><div className="rf-room-details-grid">{roomDetails.map(([label, value]) => (<div key={label} className={`rf-room-details-grid__item${label === "Notes / Reminders" ? " rf-room-details-grid__item--notes" : ""}`}><span className="rf-room-details-grid__label">{label}</span><strong className="rf-room-details-grid__value">{value}</strong></div>))}</div></div>
               )}
 
-              <div className="stage-buttons"><button type="button" className="btn btn-secondary" onClick={canResubmitSamePhysicalVisit ? goToDashboard : handleBackToSelection}>{canResubmitSamePhysicalVisit ? "Back to Dashboard" : "Back"}</button><button type="button" className="btn btn-primary" onClick={handleContinueValidation} disabled={isSaving || !canSubmitViewingPreference}>{isSaving ? "Saving..." : getVisitScheduleSubmitLabel(selectedVisit)}</button></div>
+              <div className="stage-buttons"><button type="button" className="btn btn-secondary" onClick={canResubmitSamePhysicalVisit ? goToDashboard : handleBackToSelection}>{canResubmitSamePhysicalVisit ? "Back to Dashboard" : "Back"}</button><button type="button" className="btn btn-success" onClick={handleContinueValidation} disabled={isSaving || !canSubmitViewingPreference}>{isSaving ? "Saving..." : getVisitScheduleSubmitLabel(selectedVisit)}</button></div>
             </>
           )}
         </>
@@ -774,7 +787,7 @@ const ReservationVisitStep = ({
           <div className="rf-modal-icon-wrap"><AlertTriangle size={24} color="#B45309" /></div>
           <h3 className="rf-modal-title">Change Viewing Preference?</h3>
           <p className="rf-modal-subtitle">Changing your viewing preference may reset your current viewing request. Do you want to continue?</p>
-          <div className="rf-modal-actions"><button type="button" className="btn btn-secondary" onClick={() => setShowChangeConfirm(false)}>Cancel</button><button type="button" className="btn btn-primary" onClick={handleConfirmPreferenceChange}>Continue</button></div>
+          <div className="rf-modal-actions"><button type="button" className="btn btn-secondary" onClick={() => setShowChangeConfirm(false)}>Cancel</button><button type="button" className="btn btn-success" onClick={handleConfirmPreferenceChange}>Continue</button></div>
         </div>
       </Modal>
 
@@ -800,7 +813,7 @@ const ReservationVisitStep = ({
       <Modal show={showConfirmSubmitModal} onBackdropClick={() => setShowConfirmSubmitModal(false)}>
         <div className="rf-modal-confirm" style={{ padding: 24, maxWidth: 420 }}>
           <button type="button" className="rf-modal-close-btn" onClick={() => setShowConfirmSubmitModal(false)} aria-label="Close"><X size={18} /></button>
-          <div className="rf-modal-icon-wrap"><Calendar size={24} color="#2563EB" /></div>
+          <div className="rf-modal-icon-wrap rf-modal-icon-wrap--emerald"><Calendar size={24} color="#059669" /></div>
           <h3 className="rf-modal-title">Confirm Submission</h3>
           <p className="rf-modal-subtitle">
             {selectedVisit === "physical_visit"
@@ -841,7 +854,7 @@ const ReservationVisitStep = ({
             <button type="button" className="btn btn-secondary" onClick={() => setShowConfirmSubmitModal(false)}>
               Cancel
             </button>
-            <button type="button" className="btn btn-primary" onClick={handleConfirmedSubmit} disabled={isSaving}>
+            <button type="button" className="btn btn-success" onClick={handleConfirmedSubmit} disabled={isSaving}>
               {isSaving ? "Submitting..." : "Confirm"}
             </button>
           </div>

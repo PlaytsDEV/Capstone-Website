@@ -19,6 +19,7 @@ import {
   readMoveInDate,
   utilityEventTypesForQuery,
 } from "./lifecycleNaming.js";
+import { resolveSecurityDeposit } from "./depositUtils.js";
 
 const normalizeDate = (value, endOfDay = false) => {
   if (!value) return null;
@@ -640,7 +641,7 @@ export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {
         : null;
       const isEarlyVacancy = leaseEndDate && moveOutAt < leaseEndDate;
 
-      const securityDepositAmount = Number(reservation.monthlyRent || reservation.totalPrice || 0);
+      const securityDepositAmount = resolveSecurityDeposit(reservation);
       const outstandingBal = Number(billingSummary.currentBalance || 0);
       const damageDeductions = Number(payload.damageDeductions || 0);
       const keyDeduction = payload.keyReturned === false ? 500 : 0;

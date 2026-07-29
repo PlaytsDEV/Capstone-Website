@@ -122,6 +122,10 @@ const roomSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    isPopular: {
+      type: Boolean,
+      default: false,
+    },
 
     // --- Bed Details ---
     beds: {
@@ -508,7 +512,14 @@ roomSchema.statics.atomicDecreaseOccupancy = async function (roomId, session) {
       {
         $set: {
           currentOccupancy: { $subtract: ["$currentOccupancy", 1] },
-          available: true,
+          // Derive available correctly: decremented occupancy must be < capacity
+          // (was hardcoded `true` which could prematurely flip availability on multi-tenant rooms)
+          available: {
+            $and: [
+              { $lt: [{ $subtract: ["$currentOccupancy", 1] }, "$capacity"] },
+              { $ne: ["$isArchived", true] },
+            ],
+          },
         },
       },
     ],
@@ -548,6 +559,36 @@ roomSchema.methods.updateAvailability = function () {
 
 roomSchema.index({ branch: 1, isArchived: 1, available: 1 });
 roomSchema.index({ branch: 1, type: 1, isArchived: 1 });
+
+// ============================================================================
+// DRIFT DETECTION — PRE-SAVE HOOK
+// ============================================================================
+
+/**
+ * Warn (non-blocking) when currentOccupancy is positive but no beds are
+ * occupied or reserved. This surfaces counter drift early in server logs
+ * without preventing the save or disrupting normal operations.
+ *
+ * Full reconciliation is handled by recalculateRoomOccupancy().
+ */
+roomSchema.pre("save", function (next) {
+  if (
+    (this.isModified("beds") || this.isModified("currentOccupancy")) &&
+    this.currentOccupancy > 0
+  ) {
+    const activeBedsCount = (this.beds || []).filter(
+      (b) => b.status === "occupied" || b.status === "reserved",
+    ).length;
+
+    if (activeBedsCount === 0 && this.currentOccupancy > 0) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[Room pre-save drift] Room "${this.name}" (${this._id}) has currentOccupancy=${this.currentOccupancy} but 0 occupied/reserved beds. Run recalculateRoomOccupancy to repair.`,
+      );
+    }
+  }
+  next();
+});
 
 // ============================================================================
 // STATICS

@@ -208,18 +208,18 @@ export function AdminRoutes() {
       />
       <Route
         path="room-configuration"
-        element={<Navigate to="/admin/room-availability?tab=rooms" replace />}
+        element={<Navigate to="/admin/room-availability" replace />}
       />
       <Route
         path="occupancy"
         element={
-          <Navigate to="/admin/room-availability?tab=occupancy" replace />
+          <Navigate to="/admin/room-availability" replace />
         }
       />
       <Route
         path="digital-twin"
         element={
-          <Navigate to="/admin/room-availability?tab=occupancy" replace />
+          <Navigate to="/admin/room-availability" replace />
         }
       />
       <Route

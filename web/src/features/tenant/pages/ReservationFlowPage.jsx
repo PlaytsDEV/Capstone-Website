@@ -418,6 +418,7 @@ function ReservationFlowPage() {
                   saveStatusMessage: flow.saveStatusMessage,
                   draftRecoveryMessage: flow.draftRecoveryMessage,
                   showValidationErrors: flow.showValidationErrors,
+                  isSubmittingApplication: flow.isSubmittingApplication,
                   applicationSubmitted: flow.applicationSubmitted,
                   paymentApproved: flow.paymentApproved,
                   visitPending:

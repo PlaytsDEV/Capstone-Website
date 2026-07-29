@@ -65,12 +65,6 @@ function OtpVerify() {
       appNavigate("/admin/dashboard");
       return;
     }
-    if (!user?.branch) {
-      appNavigate("/applicant/check-availability", {
-        flash: { type: "info", message: "Please select your branch to continue", duration: 5000 },
-      });
-      return;
-    }
     showNotification(name, "success", AUTH_TOAST_DURATION);
     appNavigate("/applicant/check-availability");
   };

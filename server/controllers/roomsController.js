@@ -6,6 +6,7 @@ import {
   Room,
   Reservation,
   Stay,
+  BedHistory,
   BillingPeriod,
   UtilityPeriod,
   MaintenanceRequest,
@@ -18,7 +19,11 @@ import {
   getBusinessSettings,
   getBranchSettings,
 } from "../utils/businessSettings.js";
-import { deriveRoomOccupancyState } from "../utils/occupancyManager.js";
+import { emitRoomUpdate } from "../utils/socket.js";
+import {
+  deriveRoomOccupancyState,
+  recalculateRoomOccupancy,
+} from "../utils/occupancyManager.js";
 import { sendSuccess, AppError } from "../middleware/errorHandler.js";
 import { OPEN_MAINTENANCE_STATUSES } from "../config/maintenance.js";
 import {
@@ -278,14 +283,25 @@ const syncRealtimeBedStatuses = async (rooms) => {
       .filter(Boolean)
       .sort((a, b) => new Date(a) - new Date(b));
 
+    // Ground-truth occupancy: count beds that are occupied, reserved, or have a tenant
+    // assigned after both the matched AND unmatched reservation loops have run.
+    // NOTE: do NOT use roomReservations.length here — that inflates the counter when
+    // reservations exist without a confirmed bed assignment (e.g. early-stage pending
+    // reservations), which causes the card to show "Full" while beds are still free.
     const occupiedBedsCount = updatedBeds.filter(
-      (b) => b.status === "occupied" || b.status === "reserved" || Boolean(b.occupiedBy?.userId)
+      (b) =>
+        b.status === "occupied" ||
+        b.status === "reserved" ||
+        Boolean(b.occupiedBy?.userId),
     ).length;
 
+    // Use the higher of the stored counter and the bed-level count, but never
+    // blindly adopt roomReservations.length which over-counts unassigned holds.
     const liveOccupancy = Math.max(
-      Number(room.currentOccupancy || 0),
-      roomReservations.length,
-      occupiedBedsCount
+      occupiedBedsCount,
+      // Only honour currentOccupancy if it doesn't exceed actual capacity —
+      // this prevents stale drift from perpetuating "Full" when beds are free.
+      Math.min(Number(room.currentOccupancy || 0), room.capacity || occupiedBedsCount),
     );
 
     if (room.currentOccupancy !== liveOccupancy) {
@@ -325,6 +341,7 @@ const ROOM_CREATE_FIELDS = Object.freeze([
   "policies",
   "intendedTenant",
   "images",
+  "isPopular",
   "beds",
 ]);
 
@@ -1268,8 +1285,20 @@ export const updateBedStatus = async (req, res, next) => {
     if (requestedStatus === "maintenance") {
       assertAdminMutableBed(bed, "place into maintenance");
       success = room.lockBedForMaintenance(bedId);
+      if (success) {
+        await BedHistory.recordMaintenanceStart({
+          bedId,
+          roomId: room._id,
+          branch: room.branch,
+          reason: "Manual Maintenance Lock",
+          notes: `Bed ${bedId} placed under maintenance by staff`,
+        });
+      }
     } else {
       success = room.unlockBed(bedId);
+      if (success) {
+        await BedHistory.recordMaintenanceEnd(bedId, room._id);
+      }
     }
 
     if (!success) {
@@ -1289,6 +1318,12 @@ export const updateBedStatus = async (req, res, next) => {
       null,
       `Bed ${bedId} -> ${requestedStatus}`,
     );
+
+    emitRoomUpdate(room._id, {
+      currentOccupancy: room.currentOccupancy,
+      available: room.available,
+      capacity: room.capacity,
+    });
 
     sendSuccess(res, { message: `Bed ${bedId} set to ${requestedStatus}`, room });
   } catch (error) {
@@ -1330,6 +1365,12 @@ export const addBed = async (req, res, next) => {
       room.toObject(),
       `Added bed ${bed.id}`,
     );
+
+    emitRoomUpdate(room._id, {
+      currentOccupancy: room.currentOccupancy,
+      available: room.available,
+      capacity: room.capacity,
+    });
 
     sendSuccess(res, { message: "Bed added successfully", room, bed }, 201);
   } catch (error) {
@@ -1379,6 +1420,12 @@ export const updateBed = async (req, res, next) => {
       `Updated bed ${bedId}`,
     );
 
+    emitRoomUpdate(room._id, {
+      currentOccupancy: room.currentOccupancy,
+      available: room.available,
+      capacity: room.capacity,
+    });
+
     sendSuccess(res, { message: "Bed updated successfully", room });
   } catch (error) {
     next(error);
@@ -1402,6 +1449,12 @@ export const reorderBeds = async (req, res, next) => {
       room.toObject(),
       "Reordered beds",
     );
+
+    emitRoomUpdate(room._id, {
+      currentOccupancy: room.currentOccupancy,
+      available: room.available,
+      capacity: room.capacity,
+    });
 
     sendSuccess(res, { message: "Beds reordered successfully", room });
   } catch (error) {
@@ -1454,7 +1507,306 @@ export const deleteBed = async (req, res, next) => {
       `Removed bed ${bedId}`,
     );
 
+    emitRoomUpdate(room._id, {
+      currentOccupancy: room.currentOccupancy,
+      available: room.available,
+      capacity: room.capacity,
+    });
+
     sendSuccess(res, { message: "Bed removed successfully", room });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/rooms/:roomId/repair-occupancy
+ *
+ * Admin-only: Force-recalculates a room's `currentOccupancy` counter and bed
+ * statuses from the ground truth of active reservations. Fixes drift caused
+ * by reservations that were deleted or cancelled without going through the
+ * normal lifecycle state machine.
+ *
+ * Returns the corrected room along with a `corrected` diff { from, to }.
+ */
+export const repairRoomOccupancy = async (req, res, next) => {
+  try {
+    const { roomId } = req.params;
+
+    const roomBefore = await Room.findById(roomId).lean();
+    if (!roomBefore) {
+      throw new AppError("Room not found", 404, "ROOM_NOT_FOUND");
+    }
+
+    const occupancyBefore = roomBefore.currentOccupancy;
+    const availableBefore = roomBefore.available;
+
+    const repairedRoom = await recalculateRoomOccupancy(roomId);
+
+    await auditLogger.logModification(
+      req,
+      "room",
+      roomId,
+      { currentOccupancy: occupancyBefore, available: availableBefore },
+      { currentOccupancy: repairedRoom.currentOccupancy, available: repairedRoom.available },
+      `Admin repaired occupancy counter: ${occupancyBefore} → ${repairedRoom.currentOccupancy}`,
+    );
+
+    if (repairedRoom) {
+      emitRoomUpdate(repairedRoom._id, {
+        currentOccupancy: repairedRoom.currentOccupancy,
+        available: repairedRoom.available,
+        capacity: repairedRoom.capacity,
+      });
+    }
+
+    sendSuccess(res, {
+      message: `Room occupancy repaired successfully.`,
+      room: repairedRoom,
+      corrected: {
+        from: { currentOccupancy: occupancyBefore, available: availableBefore },
+        to: {
+          currentOccupancy: repairedRoom.currentOccupancy,
+          available: repairedRoom.available,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ============================================================================
+// OCCUPANCY HEALTH CHECK — GET /api/rooms/occupancy-health
+// ============================================================================
+// Read-only scan: returns orphaned reservations and rooms with counter drift.
+// No writes performed. Access: Admin (manageRooms or viewReports).
+
+export const getOccupancyHealth = async (req, res, next) => {
+  try {
+    const existingUsers = await User.find({}).select("_id").lean();
+    const existingUserIdSet = new Set(existingUsers.map((u) => String(u._id)));
+
+    const activeReservations = await Reservation.find({
+      isArchived: { $ne: true },
+      status: { $in: ACTIVE_OCCUPANCY_STATUS_QUERY },
+    })
+      .select("_id reservationCode userId roomId status")
+      .populate("roomId", "roomNumber branch name")
+      .lean();
+
+    const orphaned = activeReservations.filter(
+      (r) => r.userId && !existingUserIdSet.has(String(r.userId)),
+    );
+
+    const branchFilter = req.branchFilter || {};
+    const rooms = await Room.find({ isArchived: { $ne: true }, ...branchFilter })
+      .select("_id roomNumber branch name currentOccupancy capacity")
+      .lean();
+
+    const driftRooms = [];
+    for (const room of rooms) {
+      const liveCount = await Reservation.countDocuments({
+        roomId: room._id,
+        isArchived: { $ne: true },
+        status: { $in: ACTIVE_OCCUPANCY_STATUS_QUERY },
+      });
+      if (liveCount !== room.currentOccupancy) {
+        driftRooms.push({
+          roomId: room._id,
+          roomNumber: room.roomNumber,
+          branch: room.branch,
+          name: room.name,
+          storedOccupancy: room.currentOccupancy,
+          liveOccupancy: liveCount,
+          capacity: room.capacity,
+          drift: room.currentOccupancy - liveCount,
+        });
+      }
+    }
+
+    sendSuccess(res, {
+      healthy: orphaned.length === 0 && driftRooms.length === 0,
+      summary: {
+        activeReservationsScanned: activeReservations.length,
+        orphanedReservations: orphaned.length,
+        roomsWithDrift: driftRooms.length,
+        roomsScanned: rooms.length,
+      },
+      orphanedReservations: orphaned.map((r) => ({
+        reservationId: r._id,
+        reservationCode: r.reservationCode,
+        status: r.status,
+        room: r.roomId ? `${r.roomId.roomNumber} (${r.roomId.branch})` : "unknown",
+      })),
+      driftRooms,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ============================================================================
+// ON-DEMAND RECONCILIATION — POST /api/rooms/reconcile-occupancy
+// ============================================================================
+// Owner-only: archives orphaned reservations, releases beds, recomputes all
+// room counters. Equivalent to running the nightly Job 15 on demand.
+
+export const reconcileAllOccupancy = async (req, res, next) => {
+  try {
+    const { releaseOrphanedBeds: releaseBeds } = await import(
+      "../services/occupancy/occupancyManager.js"
+    );
+
+    const existingUsers = await User.find({}).select("_id").lean();
+    const existingUserIdSet = new Set(existingUsers.map((u) => String(u._id)));
+
+    const activeReservations = await Reservation.find({
+      isArchived: { $ne: true },
+      status: { $in: ACTIVE_OCCUPANCY_STATUS_QUERY },
+    })
+      .select("_id reservationCode userId roomId status selectedBed")
+      .lean();
+
+    const orphaned = activeReservations.filter(
+      (r) => r.userId && !existingUserIdSet.has(String(r.userId)),
+    );
+
+    let orphanedArchived = 0;
+    let bedsReleased = 0;
+
+    if (orphaned.length > 0) {
+      await Reservation.updateMany(
+        { _id: { $in: orphaned.map((r) => r._id) } },
+        { $set: { isArchived: true, status: "archived" } },
+      );
+      orphanedArchived = orphaned.length;
+
+      const orphansByRoom = new Map();
+      for (const res of orphaned) {
+        const key = String(res.roomId);
+        if (!orphansByRoom.has(key)) orphansByRoom.set(key, []);
+        orphansByRoom.get(key).push(res._id);
+      }
+      for (const resIds of orphansByRoom.values()) {
+        await releaseBeds([], resIds).catch(() => {});
+      }
+    }
+
+    // Phase 5B: Archive non-active reservations for deleted users (cancelled, moveOut, etc.)
+    const allNonActiveNonArchived = await Reservation.find({
+      isArchived: { $ne: true },
+      status: { $nin: ACTIVE_OCCUPANCY_STATUS_QUERY },
+    }).select("_id userId").lean();
+
+    const nonActiveOrphans = allNonActiveNonArchived.filter(
+      (r) => r.userId && !existingUserIdSet.has(String(r.userId)),
+    );
+    if (nonActiveOrphans.length > 0) {
+      await Reservation.updateMany(
+        { _id: { $in: nonActiveOrphans.map((r) => r._id) } },
+        { $set: { isArchived: true } },
+      );
+    }
+    orphanedArchived += nonActiveOrphans.length;
+
+    const branchFilter = req.branchFilter || {};
+    const rooms = await Room.find({ isArchived: { $ne: true }, ...branchFilter });
+    const fixedRooms = [];
+
+    for (const room of rooms) {
+      const liveCount = await Reservation.countDocuments({
+        roomId: room._id,
+        isArchived: { $ne: true },
+        status: { $in: ACTIVE_OCCUPANCY_STATUS_QUERY },
+      });
+
+      const liveResIdDocs = await Reservation.find({
+        roomId: room._id,
+        isArchived: { $ne: true },
+        status: { $in: ACTIVE_OCCUPANCY_STATUS_QUERY },
+      }).select("_id selectedBed").lean();
+      const liveResIdSet = new Set(liveResIdDocs.map((r) => String(r._id)));
+
+      // Phase 1: build reservationId → claimedBedId map for cross-validation
+      const resBedMap = new Map();
+      for (const res of liveResIdDocs) {
+        if (res.selectedBed?.id) resBedMap.set(String(res._id), res.selectedBed.id);
+      }
+
+      let bedChanged = false;
+      for (const bed of room.beds) {
+        if (bed.status === "maintenance" || bed.status === "locked") continue;
+        if (
+          (bed.status === "occupied" || bed.status === "reserved") &&
+          bed.occupiedBy?.reservationId
+        ) {
+          const resIdStr = String(bed.occupiedBy.reservationId);
+
+          // Pass A: dead reference
+          if (!liveResIdSet.has(resIdStr)) {
+            bed.status = "available";
+            bed.lockedBy = null;
+            bed.lockExpiresAt = null;
+            bed.occupiedBy = { userId: null, reservationId: null, occupiedSince: null };
+            bedChanged = true;
+            bedsReleased++;
+            continue;
+          }
+
+          // Pass B (Phase 1): cross-validation — active reservation claims a different bed
+          const claimedBedId = resBedMap.get(resIdStr);
+          if (claimedBedId && claimedBedId !== bed.id) {
+            bed.status = "available";
+            bed.lockedBy = null;
+            bed.lockExpiresAt = null;
+            bed.occupiedBy = { userId: null, reservationId: null, occupiedSince: null };
+            bedChanged = true;
+            bedsReleased++;
+          }
+        }
+      }
+
+      const occupancyBefore = room.currentOccupancy;
+      if (occupancyBefore !== liveCount || bedChanged) {
+        room.currentOccupancy = liveCount;
+        room.updateAvailability();
+        await room.save();
+        fixedRooms.push({
+          roomId: room._id,
+          roomNumber: room.roomNumber,
+          branch: room.branch,
+          occupancyBefore,
+          occupancyAfter: liveCount,
+          bedsCorrected: bedChanged,
+        });
+        emitRoomUpdate(room._id, {
+          currentOccupancy: room.currentOccupancy,
+          available: room.available,
+          capacity: room.capacity,
+        });
+      }
+    }
+
+    await auditLogger.logModification(
+      req,
+      "system",
+      "occupancy-reconciliation",
+      null,
+      { orphanedArchived, roomsFixed: fixedRooms.length },
+      "Admin triggered on-demand occupancy reconciliation",
+    );
+
+    sendSuccess(res, {
+      message: "Occupancy reconciliation complete.",
+      report: {
+        orphanedReservationsArchived: orphanedArchived,
+        bedsReleased,
+        roomsScanned: rooms.length,
+        roomsFixed: fixedRooms.length,
+        fixedRooms,
+      },
+    });
   } catch (error) {
     next(error);
   }

@@ -17,6 +17,7 @@ export const REFUND_SLA_DAYS = 30;
 export function calculateOffboardingSettlement({
   leaseEndDate = null,
   moveOutDate = new Date(),
+  securityDeposit = null,
   monthlyRent = 0,
   totalPrice = 0,
   outstandingBalance = 0,
@@ -28,7 +29,8 @@ export function calculateOffboardingSettlement({
   const leaseEndAt = leaseEndDate ? new Date(leaseEndDate) : null;
 
   const isEarlyVacancy = Boolean(leaseEndAt && moveOutAt < leaseEndAt);
-  const securityDepositAmount = Number(monthlyRent || totalPrice || 0);
+  // Use stored deposit first; fall back to formula for legacy records
+  const securityDepositAmount = Number(securityDeposit || monthlyRent || totalPrice || 0);
   const outstandingBal = Math.max(0, Number(outstandingBalance || 0));
   const damageFees = Math.max(0, Number(damageDeductions || 0));
   const keyDeduction = keyReturned === false ? KEY_NON_RETURN_PENALTY : 0;

@@ -20,6 +20,7 @@ import {
 import SpotlightCard from "../components/SpotlightCard";
 import BedSelector from "../components/BedSelector";
 import useEscapeClose from "../../../shared/hooks/useEscapeClose";
+import { showNotification } from "../../../shared/utils/notification";
 
 function getAvailabilityLabel(room) {
  const beds = room.beds || [];
@@ -68,13 +69,13 @@ export default function RoomDetailsModal({
  calculateApplianceFees,
  availableAppliances,
  proceedButtonText = "Proceed to Reservation",
- selectedLeaseDuration = "6",
+ selectedLeaseDuration = "",
  onSelectLeaseDuration,
  targetMoveInDate,
  onTargetMoveInDateChange,
 }) {
  const [currentImageIndex, setCurrentImageIndex] = useState(0);
- const [internalLeaseDuration, setInternalLeaseDuration] = useState("6");
+ const [internalLeaseDuration, setInternalLeaseDuration] = useState("");
  const [internalMoveInDate, setInternalMoveInDate] = useState(() => {
    const d = new Date();
    d.setDate(d.getDate() + 30);
@@ -86,9 +87,13 @@ export default function RoomDetailsModal({
  if (!isOpen || !room) return null;
 
  const activeLeaseDuration =
-   onSelectLeaseDuration && selectedLeaseDuration
+   onSelectLeaseDuration && selectedLeaseDuration !== undefined
      ? selectedLeaseDuration
      : internalLeaseDuration;
+
+ const hasLeaseSelected = Boolean(
+   activeLeaseDuration && String(activeLeaseDuration).trim() !== ""
+ );
 
  const handleLeaseChange = (val) => {
    setInternalLeaseDuration(val);
@@ -190,7 +195,46 @@ export default function RoomDetailsModal({
  const requiresBedSelection =
  room.beds && room.beds.length > 1 && !isPrivateRoomType(room.type);
  const proceedDisabled =
- isOverbooked || (requiresBedSelection && !selectedBed);
+   isOverbooked || !hasLeaseSelected || (requiresBedSelection && !selectedBed);
+
+  const handleProceedClick = () => {
+    if (!hasLeaseSelected && requiresBedSelection && !selectedBed) {
+      showNotification(
+        "Please select a preferred lease term and a bed before proceeding.",
+        "warning"
+      );
+      return;
+    }
+
+    if (!hasLeaseSelected) {
+      showNotification(
+        "Please select a preferred lease term before proceeding.",
+        "warning"
+      );
+      return;
+    }
+
+    if (requiresBedSelection && !selectedBed) {
+      showNotification(
+        "Please select a bed location before proceeding.",
+        "warning"
+      );
+      return;
+    }
+
+    if (isOverbooked) {
+      showNotification(
+        "This room is currently fully booked.",
+        "warning"
+      );
+      return;
+    }
+
+    if (onProceed) {
+      onProceed();
+    }
+  };
+
  const totalBeds = room.capacity || room.beds?.length || 0;
  const availableBeds = room.availableBeds ?? (room.beds
  ? room.beds.filter((bed) => bed.status === "available" || (bed.status === undefined && bed.available)).length
@@ -565,7 +609,12 @@ export default function RoomDetailsModal({
         </div>
       </div>
 
-      {isLongTerm ? (
+      {!hasLeaseSelected ? (
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 shrink-0 whitespace-nowrap">
+          <AlertCircle className="w-3.5 h-3.5" />
+          Select Term
+        </span>
+      ) : isLongTerm ? (
         isDiscountEnabled && discountPercent > 0 ? (
           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shrink-0 whitespace-nowrap">
             <Sparkles className="w-3.5 h-3.5" />
@@ -631,134 +680,154 @@ export default function RoomDetailsModal({
     </div>
 
     {/* Breakdown Itemization Card */}
-    <div className="rounded-xl border border-border/80 bg-background/50 overflow-hidden divide-y divide-border/60">
-      <div className="p-3 flex items-center justify-between text-xs sm:text-sm">
-        <span className="text-muted-foreground flex items-center gap-1.5">
-          Regular Base Rate <span className="text-[11px] opacity-70">({isLongTerm ? "Long-Term" : "Short-Term"})</span>
-        </span>
-        <span className={`font-medium tabular-nums ${activeFlyerDiscount > 0 ? "line-through text-muted-foreground" : "text-foreground"}`}>
-          ₱{activeRegularRate.toLocaleString()} / mo
-        </span>
-      </div>
-
-      {activeFlyerDiscount > 0 && (
-        <div className="p-3 flex items-center justify-between text-xs sm:text-sm bg-emerald-500/5">
-          <span className="flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400">
-            <Tag className="w-3.5 h-3.5" />
-            Flyer Promo Discount
-            <span className="ml-1 px-1.5 py-0.5 rounded bg-emerald-500/15 text-[10px] font-bold">
-              -{discountPercent}% OFF
-            </span>
-          </span>
-          <span className="font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
-            - ₱{activeFlyerDiscount.toLocaleString()} / mo
-          </span>
-        </div>
-      )}
-
-      <div className="p-3 flex items-center justify-between text-xs sm:text-sm font-semibold bg-muted/30">
-        <span className="text-foreground">Effective Monthly Room Rent</span>
-        <span className="text-base font-bold text-amber-600 dark:text-amber-400 tabular-nums">
-          ₱{activeMonthlyRate.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">/ mo</span>
-        </span>
-      </div>
-
-      {applianceFeesAmount > 0 && (
-        <div className="p-3 flex items-center justify-between text-xs sm:text-sm text-amber-600 dark:text-amber-400">
-          <span>Appliance Add-ons</span>
-          <span className="font-medium tabular-nums">+ ₱{applianceFeesAmount.toLocaleString()} / mo</span>
-        </div>
-      )}
-
-      <div className="p-3 flex items-center justify-between text-xs sm:text-sm">
-        <span className="text-muted-foreground flex items-center gap-1.5">
-          <ShieldCheck className="w-4 h-4 text-emerald-500" />
-          Security Deposit
-          <span className="text-[11px] text-muted-foreground opacity-80">(1 mo rent · refundable)</span>
-        </span>
-        <span className="font-medium text-foreground tabular-nums">
-          ₱{securityDepositAmount.toLocaleString()}
-        </span>
-      </div>
-
-      <div className="p-4 bg-slate-900 text-white dark:bg-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+    {!hasLeaseSelected ? (
+      <div className="p-4 rounded-xl border border-amber-500/25 bg-amber-500/10 text-amber-900 dark:text-amber-200 text-xs flex items-center gap-3">
+        <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
         <div>
-          <p className="text-[11px] font-bold tracking-wider uppercase text-slate-300">
-            Estimated Upfront Move-in Total
-          </p>
-          <p className="text-[11px] text-slate-400 mt-0.5">
-            Includes 1st Month Rent + Refundable Deposit{applianceFeesAmount > 0 ? " + Appliances" : ""}
+          <p className="font-semibold text-amber-900 dark:text-amber-200">Lease Term Selection Required</p>
+          <p className="text-amber-800/90 dark:text-amber-300/80 mt-0.5">
+            Please choose a lease term option above (e.g. 1 mo, 6 mos, 1 yr) to view rate calculations and proceed.
           </p>
         </div>
-        <div className="sm:text-right">
-          <span className="text-2xl font-extrabold tracking-tight text-white tabular-nums">
-            ₱{calculatedUpfrontTotal.toLocaleString()}
+      </div>
+    ) : (
+      <>
+        <div className="rounded-xl border border-border/80 bg-background/50 overflow-hidden divide-y divide-border/60">
+          <div className="p-3 flex items-center justify-between text-xs sm:text-sm">
+            <span className="text-muted-foreground flex items-center gap-1.5">
+              Regular Base Rate <span className="text-[11px] opacity-70">({isLongTerm ? "Long-Term" : "Short-Term"})</span>
+            </span>
+            <span className={`font-medium tabular-nums ${activeFlyerDiscount > 0 ? "line-through text-muted-foreground" : "text-foreground"}`}>
+              ₱{activeRegularRate.toLocaleString()} / mo
+            </span>
+          </div>
+
+          {activeFlyerDiscount > 0 && (
+            <div className="p-3 flex items-center justify-between text-xs sm:text-sm bg-emerald-500/5">
+              <span className="flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400">
+                <Tag className="w-3.5 h-3.5" />
+                Flyer Promo Discount
+                <span className="ml-1 px-1.5 py-0.5 rounded bg-emerald-500/15 text-[10px] font-bold">
+                  -{discountPercent}% OFF
+                </span>
+              </span>
+              <span className="font-semibold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                - ₱{activeFlyerDiscount.toLocaleString()} / mo
+              </span>
+            </div>
+          )}
+
+          <div className="p-3 flex items-center justify-between text-xs sm:text-sm font-semibold bg-muted/30">
+            <span className="text-foreground">Effective Monthly Room Rent</span>
+            <span className="text-base font-bold text-amber-600 dark:text-amber-400 tabular-nums">
+              ₱{activeMonthlyRate.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">/ mo</span>
+            </span>
+          </div>
+
+          {applianceFeesAmount > 0 && (
+            <div className="p-3 flex items-center justify-between text-xs sm:text-sm text-amber-600 dark:text-amber-400">
+              <span>Appliance Add-ons</span>
+              <span className="font-medium tabular-nums">+ ₱{applianceFeesAmount.toLocaleString()} / mo</span>
+            </div>
+          )}
+
+          <div className="p-3 flex items-center justify-between text-xs sm:text-sm">
+            <span className="text-muted-foreground flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-emerald-500" />
+              Security Deposit
+              <span className="text-[11px] text-muted-foreground opacity-80">(1 mo rent · refundable)</span>
+            </span>
+            <span className="font-medium text-foreground tabular-nums">
+              ₱{securityDepositAmount.toLocaleString()}
+            </span>
+          </div>
+
+          <div className="p-4 bg-slate-900 text-white dark:bg-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div>
+              <p className="text-[11px] font-bold tracking-wider uppercase text-slate-300">
+                Estimated Upfront Move-in Total
+              </p>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Includes 1st Month Rent + Refundable Deposit{applianceFeesAmount > 0 ? " + Appliances" : ""}
+              </p>
+            </div>
+            <div className="sm:text-right">
+              <span className="text-2xl font-extrabold tracking-tight text-white tabular-nums">
+                ₱{calculatedUpfrontTotal.toLocaleString()}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Total Savings Banner */}
+        {totalSavingsAmount > 0 && (
+          <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-medium flex items-center gap-2.5">
+            <Sparkles className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+            <span>
+              <strong>Total Savings:</strong> You save ₱{totalSavingsAmount.toLocaleString()} over your {leaseMonths}-month contract commitment!
+            </span>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+          <span>Total contract commitment ({activeLeaseDuration} {leaseMonths === 1 ? "month" : "months"}):</span>
+          <span className="font-semibold text-foreground tabular-nums">
+            ₱{calculatedContractTotal.toLocaleString()}
           </span>
         </div>
-      </div>
-    </div>
-
-    {/* Total Savings Banner */}
-    {totalSavingsAmount > 0 && (
-      <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-medium flex items-center gap-2.5">
-        <Sparkles className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-        <span>
-          <strong>Total Savings:</strong> You save ₱{totalSavingsAmount.toLocaleString()} over your {leaseMonths}-month contract commitment!
-        </span>
-      </div>
+      </>
     )}
-
-    <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
-      <span>Total contract commitment ({activeLeaseDuration} {leaseMonths === 1 ? "month" : "months"}):</span>
-      <span className="font-semibold text-foreground tabular-nums">
-        ₱{calculatedContractTotal.toLocaleString()}
-      </span>
-    </div>
   </div>
 
- <div>
- <h3 className="font-semibold mb-3" style={{ color: "var(--text-heading, #0A1628)" }}>
- Policies & Important Notes
- </h3>
- <div className="space-y-2">
- {(room.policies || []).map((policy, index) => (
- <div key={index} className="flex items-start gap-2">
- <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: "var(--color-accent)" }} />
- <span className="text-sm text-card-foreground">{policy}</span>
- </div>
- ))}
- </div>
- </div>
- </div>
- </div>
- </div>
+  <div>
+  <h3 className="font-semibold mb-3" style={{ color: "var(--text-heading, #0A1628)" }}>
+  Policies & Important Notes
+  </h3>
+  <div className="space-y-2">
+  {(room.policies || []).map((policy, index) => (
+  <div key={index} className="flex items-start gap-2">
+  <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: "var(--color-accent)" }} />
+  <span className="text-sm text-card-foreground">{policy}</span>
+  </div>
+  ))}
+  </div>
+  </div>
+  </div>
+  </div>
+  </div>
 
- <div className="border-t border-border p-6">
- <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
- <div className="text-center sm:text-left">
- <p className="text-sm text-muted-foreground">
- Ready to reserve? Continue to complete your reservation.
- </p>
- <p className="text-xs text-muted-foreground mt-1">
- Bed selection may be required before proceeding.
- </p>
- </div>
- <button
- onClick={onProceed}
- className="px-8 py-4 rounded-xl font-medium hover:opacity-90 transition-opacity"
- style={{
- backgroundColor: "var(--color-accent)",
- color: "var(--color-primary)",
- }}
- disabled={proceedDisabled}
- >
- {requiresBedSelection && !selectedBed
- ? "Please Select a Bed"
- : proceedButtonText}
- </button>
- </div>
- </div>
- </div>
- </div>
+  <div className="border-t border-border p-6">
+  <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+  <div className="text-center sm:text-left">
+  <p className="text-sm text-muted-foreground">
+  Ready to reserve? Continue to complete your reservation.
+  </p>
+  <p className="text-xs text-muted-foreground mt-1">
+  Bed selection may be required before proceeding.
+  </p>
+  </div>
+        <button
+          type="button"
+          onClick={handleProceedClick}
+          className={`px-8 py-4 rounded-xl font-medium transition-all duration-200 cursor-pointer active:scale-[0.98] ${
+            proceedDisabled
+              ? "opacity-90 hover:opacity-100"
+              : "hover:opacity-90 shadow-md"
+          }`}
+          style={{
+            backgroundColor: "var(--color-accent)",
+            color: "var(--color-primary)",
+          }}
+        >
+          {!hasLeaseSelected
+            ? "Please Select Lease Term"
+            : requiresBedSelection && !selectedBed
+            ? "Please Select a Bed"
+            : proceedButtonText}
+        </button>
+  </div>
+  </div>
+  </div>
+  </div>
  );
 }

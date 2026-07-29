@@ -22,13 +22,17 @@ const userModel = {
   findByIdAndDelete: jest.fn(),
 };
 const roomModel = {
-  find: jest.fn(),
+  find: jest.fn(() => ({
+    exec: jest.fn().mockResolvedValue([]),
+    lean: jest.fn().mockResolvedValue([]),
+  })),
   countDocuments: jest.fn(),
 };
 const reservationModel = {
   find: jest.fn(),
   findOne: jest.fn(),
   countDocuments: jest.fn(),
+  updateMany: jest.fn().mockResolvedValue({ modifiedCount: 0 }),
   deleteMany: jest.fn(),
 };
 const billModel = {
@@ -46,6 +50,18 @@ const deleteUserFromAuth = jest.fn();
 const getAuth = jest.fn(() => ({
   setCustomUserClaims,
   deleteUser: deleteUserFromAuth,
+}));
+
+// Mock mongoose for transaction support (startSession used in deleteUser)
+const mockSession = {
+  withTransaction: jest.fn(async (fn) => fn()),
+  endSession: jest.fn(),
+};
+await jest.unstable_mockModule("mongoose", () => ({
+  default: {
+    startSession: jest.fn().mockResolvedValue(mockSession),
+  },
+  startSession: jest.fn().mockResolvedValue(mockSession),
 }));
 
 await jest.unstable_mockModule("../models/index.js", () => ({
@@ -723,6 +739,7 @@ describe("usersController", () => {
   });
 
   test("deleteUser allows owner force delete with significant history", async () => {
+    // Arrange: user exists with significant history
     userModel.findById.mockResolvedValue({
       _id: "507f1f77bcf86cd799439011",
       firebaseUid: "firebase-tenant-1",
@@ -740,15 +757,35 @@ describe("usersController", () => {
         lean: jest.fn().mockResolvedValue({ _id: "reservation-1" }),
       }),
     });
+
+    // countDocuments call order:
+    // 1. getDeleteSafeguardsForUser → reservations total
+    // 2. getDeleteSafeguardsForUser → activeReservations (ACTIVE_STAY_STATUS_QUERY)
+    // 3. activeOccupancyCount check (ACTIVE_OCCUPANCY_STATUS_QUERY) — must return 0 to allow deletion
     reservationModel.countDocuments
-      .mockResolvedValueOnce(2)
-      .mockResolvedValueOnce(1);
+      .mockResolvedValueOnce(2)  // safeguards.reservations
+      .mockResolvedValueOnce(1)  // safeguards.activeReservations
+      .mockResolvedValueOnce(0); // activeOccupancyCount — 0 = no active occupancy, proceed
+
     billModel.countDocuments
-      .mockResolvedValueOnce(1)
-      .mockResolvedValueOnce(1);
+      .mockResolvedValueOnce(1)  // safeguards.issuedBills
+      .mockResolvedValueOnce(1); // safeguards.draftBills
     utilityReadingModel.countDocuments.mockResolvedValue(3);
     maintenanceRequestModel.countDocuments.mockResolvedValue(1);
     roomModel.countDocuments.mockResolvedValue(1);
+
+    // reservations to archive in transaction
+    reservationModel.find.mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        lean: jest.fn().mockReturnValue({
+          session: jest.fn().mockResolvedValue([{ _id: "reservation-1" }]),
+        }),
+      }),
+    });
+    reservationModel.updateMany.mockResolvedValue({ modifiedCount: 1 });
+    userModel.findByIdAndDelete.mockReturnValue({
+      session: jest.fn().mockResolvedValue({ _id: "507f1f77bcf86cd799439011" }),
+    });
 
     const req = {
       params: { userId: "507f1f77bcf86cd799439011" },
@@ -770,9 +807,8 @@ describe("usersController", () => {
       isArchived: false,
       status: "draft",
     });
-    expect(userModel.findByIdAndDelete).toHaveBeenCalledWith(
-      "507f1f77bcf86cd799439011",
-    );
+    // User deleted inside transaction (findByIdAndDelete.session() called)
+    expect(userModel.findByIdAndDelete).toHaveBeenCalledWith("507f1f77bcf86cd799439011");
     expect(res.statusCode).toBe(200);
     expect(res.body).toEqual(
       expect.objectContaining({

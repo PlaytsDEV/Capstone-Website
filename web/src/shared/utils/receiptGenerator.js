@@ -529,22 +529,9 @@ async function buildBillingReceiptDoc(bill) {
   drawPageBackground(doc, pageWidth, pageHeight);
   const logoData = await loadImageAsDataURL(defaultLogo);
 
-  const METHOD_LABELS = {
-    gcash: "GCash",
-    paymaya: "Maya",
-    maya: "Maya",
-    card: "Credit/Debit Card",
-    grabpay: "GrabPay",
-    grab_pay: "GrabPay",
-    paymongo: "Online Payment",
-    cash: "Cash",
-    bank: "Bank Transfer",
-  };
-
   const amount = bill.paidAmount || bill.totalAmount || 0;
   const monthLabel = bill.billingMonth ? formatMonth(bill.billingMonth) : "Monthly Bill";
-  const rawMethod = safeString(bill.paymentMethod).toLowerCase().replace(/[_\s-]/g, "");
-  const paymentMethodLabel = METHOD_LABELS[rawMethod] || safeString(bill.paymentMethod, "Online Payment");
+  const paymentMethodLabel = formatPaymentMethod(bill.paymentMethod || "Online Payment");
   const refId = bill.paymongoPaymentId
     || bill.id?.slice(-8)?.toUpperCase()
     || bill._id?.slice(-8)?.toUpperCase()

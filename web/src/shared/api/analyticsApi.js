@@ -21,6 +21,12 @@ export const analyticsApi = {
     const query = new URLSearchParams(params).toString();
     return authFetch(`/analytics/forecast/occupancy${query ? `?${query}` : ""}`);
   },
+  getOccupancyRateHistory: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return authFetch(`/analytics/reports/occupancy-history${query ? `?${query}` : ""}`);
+  },
+  getRoomBedHistory: (roomId) =>
+    authFetch(`/analytics/rooms/${roomId}/bed-history`),
   getFinancials: (params = {}) => {
     const query = new URLSearchParams(params).toString();
     return authFetch(`/analytics/financials${query ? `?${query}` : ""}`);

@@ -1,28 +1,38 @@
-import { useState, useMemo, useEffect } from "react";
+/**
+ * RoomAvailabilityPage — Unified Room & Inventory Management Workspace
+ * Consolidated Live Occupancy & Vacancy Forecast View
+ */
+import React, { useState, useMemo, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
-  Activity,
-  Clock3,
-  FileDown,
   LayoutGrid,
-  Settings,
   Plus,
   Bed,
-  Calendar,
   Wrench,
   DoorOpen,
   Search,
-  TrendingUp,
+  RotateCcw,
+  X,
+  FilterX,
+  CheckCircle2,
+  AlertTriangle,
+  CircleDot,
+  Layers,
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
 } from "lucide-react";
 
 // Components
-import { SummaryBar, ActionBar } from "../components/shared";
 import RoomConfigModal from "../components/rooms/RoomConfigModal";
 import RoomFormModal from "../components/rooms/RoomFormModal";
 import DeleteRoomModal from "../components/rooms/DeleteRoomModal";
+import DoubleDeckRoomCard from "../components/rooms/DoubleDeckRoomCard";
+import RoomBedHistoryDrawer from "../components/rooms/RoomBedHistoryDrawer";
 
 // Hooks & API
-import { useRooms, useVacancyForecast } from "../../../shared/hooks/queries/useRooms";
+import { useRooms } from "../../../shared/hooks/queries/useRooms";
+import { useRoomStats } from "../../../shared/hooks/queries/useRoomStats";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { usePermissions } from "../../../shared/hooks/usePermissions";
 import { roomApi } from "../../../shared/api/apiClient";
@@ -35,28 +45,11 @@ import {
   syncBranchSearchParam,
 } from "../../../shared/utils/branchFilterQuery.mjs";
 import { formatRoomType, formatBranch } from "../utils/formatters";
-import OccupancyTrackingPage from "./OccupancyTrackingPage";
+import { getBedDisplayLabel } from "../../../shared/utils/bedIdentifier";
 
 // Styles
 import "../styles/admin-room-availability.css";
 import "../styles/admin-room-configuration.css";
-
-const TAB_KEYS = new Set(["rooms", "occupancy", "forecast"]);
-
-const getDotColor = (status) => {
-  switch (status) {
-    case "occupied":
-      return "var(--status-success)";
-    case "reserved":
-      return "var(--accent-blue)";
-    case "locked":
-      return "var(--accent-orange)";
-    case "maintenance":
-      return "var(--status-error)";
-    default:
-      return "var(--border-default)";
-  }
-};
 
 const getEffectiveOccupancy = (room) => {
   if (!room) return 0;
@@ -64,84 +57,6 @@ const getEffectiveOccupancy = (room) => {
     (b) => b.status === "occupied" || b.status === "reserved" || Boolean(b.occupiedBy?.userId)
   ).length;
   return Math.max(Number(room.currentOccupancy || 0), occupiedFromBeds);
-};
-
-const getDotLabel = (status) => {
-  switch (status) {
-    case "occupied":
-      return "Moved In";
-    case "reserved":
-      return "Reserved";
-    case "locked":
-      return "Locked";
-    case "maintenance":
-      return "Maintenance";
-    default:
-      return "Available";
-  }
-};
-
-const getSoonestVacancy = (forecastItem) => {
-  if (!forecastItem?.beds?.length) return null;
-  const datedBeds = forecastItem.beds.filter((bed) => bed.expectedVacancy);
-  if (datedBeds.length === 0) return null;
-  return datedBeds.sort(
-    (a, b) => new Date(a.expectedVacancy) - new Date(b.expectedVacancy),
-  )[0];
-};
-
-const getDaysUntilVacancy = (value) => {
-  if (!value) return null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const target = new Date(value);
-  target.setHours(0, 0, 0, 0);
-  return Math.round((target - today) / (1000 * 60 * 60 * 24));
-};
-
-const formatForecastDate = (value) => {
-  if (!value) return "No forecast";
-  return new Date(value).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-};
-
-const getForecastTone = (daysUntil) => {
-  if (daysUntil == null) {
-    return {
-      label: "No date",
-      className: "forecast-card--neutral",
-      accent: "var(--text-muted)",
-    };
-  }
-  if (daysUntil < 0) {
-    return {
-      label: "Overdue",
-      className: "forecast-card--overdue",
-      accent: "var(--status-error)",
-    };
-  }
-  if (daysUntil <= 7) {
-    return {
-      label: "This week",
-      className: "forecast-card--soon",
-      accent: "var(--accent-orange)",
-    };
-  }
-  if (daysUntil <= 30) {
-    return {
-      label: "This month",
-      className: "forecast-card--upcoming",
-      accent: "var(--status-success)",
-    };
-  }
-  return {
-    label: "Later",
-    className: "forecast-card--neutral",
-    accent: "var(--accent-blue)",
-  };
 };
 
 function RoomAvailabilityPage() {
@@ -160,19 +75,19 @@ function RoomAvailabilityPage() {
       allValue: "all",
     }),
   );
-  const [floorFilter, setFloorFilter] = useState("all");
-  const [roomTypeFilter, setRoomTypeFilter] = useState("all");
-  const [roomStatusFilter, setRoomStatusFilter] = useState("all");
-  const [forecastStatusFilter, setForecastStatusFilter] = useState("all");
+  const [floorFilter, setFloorFilter] = useState(() => searchParams.get("floor") || "all");
+  const [roomTypeFilter, setRoomTypeFilter] = useState(() => searchParams.get("type") || "all");
+  const [roomStatusFilter, setRoomStatusFilter] = useState(() => searchParams.get("status") || "all");
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingRoom, setEditingRoom] = useState(null);
   const [deletingRoom, setDeletingRoom] = useState(null);
+  const [historyRoomId, setHistoryRoomId] = useState(null);
+  const [showVacancyModal, setShowVacancyModal] = useState(false);
+  const [vacancySearch, setVacancySearch] = useState("");
+  const [vacancyUrgencyFilter, setVacancyUrgencyFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
-  const ROOMS_PER_PAGE = 10;
-
-  const requestedTab = searchParams.get("tab") || "rooms";
-  const activeTab = TAB_KEYS.has(requestedTab) ? requestedTab : "rooms";
+  const ROOMS_PER_PAGE = 12;
 
   // Use the Digital Twin snapshot as a read model so bed dots and occupancy stay reservation-aware.
   // Always fetch the full scope allowed for the user (defaultBranch) to avoid API-level occupancy calculation bugs,
@@ -183,12 +98,106 @@ function RoomAvailabilityPage() {
     defaultBranch === "all" ? {} : { branch: defaultBranch },
   );
   const rooms = Array.isArray(roomsData) ? roomsData : (roomsData?.items ?? []);
-  const forecastBranch = defaultBranch === "all" ? null : defaultBranch;
-  const { data: forecastResponse, isLoading: forecastLoading } =
-    useVacancyForecast({
-      branch: forecastBranch,
+
+  // Compute upcoming vacancies list for the quick-view modal/space
+  const upcomingVacancies = useMemo(() => {
+    const list = [];
+    rooms.forEach((room) => {
+      (room.beds || []).forEach((bed, bedIdx) => {
+        const hasDate = Boolean(bed.expectedVacancyDate);
+        const hasDays = bed.daysRemaining !== null && bed.daysRemaining !== undefined;
+        if (hasDate || hasDays) {
+          const formattedBedLabel = getBedDisplayLabel(bed, bedIdx, room.type);
+          list.push({
+            roomId: room._id,
+            roomName: room.name || `Room ${room.roomNumber}`,
+            roomNumber: room.roomNumber,
+            branch: room.branch,
+            floor: room.floor,
+            bedId: bed.id,
+            bedCode: bed.code || bed.id,
+            bedPosition: bed.position,
+            bedObj: bed,
+            bedLabel: formattedBedLabel,
+            occupantName:
+              bed.occupiedBy?.name ||
+              (bed.occupiedBy?.firstName || bed.occupiedBy?.lastName
+                ? `${bed.occupiedBy?.firstName || ""} ${bed.occupiedBy?.lastName || ""}`.trim()
+                : "Current Occupant"),
+            expectedVacancyDate: bed.expectedVacancyDate,
+            daysRemaining: bed.daysRemaining,
+            roomObj: room,
+          });
+        }
+      });
     });
-  const forecastItems = forecastResponse?.forecast ?? [];
+
+    return list.sort((a, b) => {
+      if (a.daysRemaining != null && b.daysRemaining != null) {
+        return a.daysRemaining - b.daysRemaining;
+      }
+      if (a.expectedVacancyDate && b.expectedVacancyDate) {
+        return new Date(a.expectedVacancyDate) - new Date(b.expectedVacancyDate);
+      }
+      return 0;
+    });
+  }, [rooms]);
+
+  const vacancyKPIs = useMemo(() => {
+    let urgent = 0;
+    let upcoming = 0;
+    let longTerm = 0;
+    upcomingVacancies.forEach((v) => {
+      const d = v.daysRemaining;
+      if (d != null) {
+        if (d <= 30) urgent++;
+        else if (d <= 90) upcoming++;
+        else longTerm++;
+      } else {
+        longTerm++;
+      }
+    });
+    return { urgent, upcoming, longTerm, total: upcomingVacancies.length };
+  }, [upcomingVacancies]);
+
+  const filteredUpcomingVacancies = useMemo(() => {
+    return upcomingVacancies.filter((item) => {
+      const term = vacancySearch.trim().toLowerCase();
+      const matchesSearch =
+        !term ||
+        item.roomName.toLowerCase().includes(term) ||
+        item.roomNumber.toLowerCase().includes(term) ||
+        item.bedCode.toLowerCase().includes(term) ||
+        (item.bedLabel && item.bedLabel.toLowerCase().includes(term)) ||
+        item.occupantName.toLowerCase().includes(term);
+
+      const days = item.daysRemaining;
+      let matchesUrgency = true;
+      if (vacancyUrgencyFilter === "urgent") {
+        matchesUrgency = days != null ? days <= 30 : false;
+      } else if (vacancyUrgencyFilter === "upcoming") {
+        matchesUrgency = days != null ? days > 30 && days <= 90 : false;
+      } else if (vacancyUrgencyFilter === "longterm") {
+        matchesUrgency = days != null ? days > 90 : true;
+      }
+
+      return matchesSearch && matchesUrgency;
+    });
+  }, [upcomingVacancies, vacancySearch, vacancyUrgencyFilter]);
+
+  const [vacancyPage, setVacancyPage] = useState(1);
+  const VACANCIES_PER_PAGE = 10;
+
+  useEffect(() => {
+    setVacancyPage(1);
+  }, [vacancySearch, vacancyUrgencyFilter]);
+
+  const totalVacancyPages = Math.ceil(filteredUpcomingVacancies.length / VACANCIES_PER_PAGE) || 1;
+
+  const paginatedUpcomingVacancies = useMemo(() => {
+    const start = (vacancyPage - 1) * VACANCIES_PER_PAGE;
+    return filteredUpcomingVacancies.slice(start, start + VACANCIES_PER_PAGE);
+  }, [filteredUpcomingVacancies, vacancyPage]);
 
   // Processing
   const filteredRooms = useMemo(() => {
@@ -205,27 +214,34 @@ function RoomAvailabilityPage() {
 
       const matchesStatus =
         roomStatusFilter === "all" ||
-        (() => {
-          const bedsInMaintenance = (room.beds || []).filter(
-            (b) => b.status === "maintenance",
-          ).length;
-          const roomLevelMaintenance =
-            bedsInMaintenance === room.capacity && room.capacity > 0;
-          const effectiveCapacity = roomLevelMaintenance
-            ? 0
-            : room.capacity - bedsInMaintenance;
+        (roomStatusFilter === "vacant_soon"
+          ? (room.beds || []).some(
+              (b) =>
+                (b.daysRemaining !== null && b.daysRemaining !== undefined && b.daysRemaining <= 30) ||
+                (b.expectedVacancyDate &&
+                  new Date(b.expectedVacancyDate) <= new Date(Date.now() + 30 * 24 * 60 * 60 * 1000))
+            )
+          : (() => {
+              const bedsInMaintenance = (room.beds || []).filter(
+                (b) => b.status === "maintenance",
+              ).length;
+              const roomLevelMaintenance =
+                bedsInMaintenance === room.capacity && room.capacity > 0;
+              const effectiveCapacity = roomLevelMaintenance
+                ? 0
+                : room.capacity - bedsInMaintenance;
 
-          const occupiedCount = getEffectiveOccupancy(room);
-          let displayStatus = "available";
-          if (roomLevelMaintenance) displayStatus = "maintenance";
-          else if (
-            occupiedCount >= effectiveCapacity &&
-            effectiveCapacity > 0
-          )
-            displayStatus = "full";
-          else if (occupiedCount > 0) displayStatus = "partial";
-          return displayStatus === roomStatusFilter;
-        })();
+              const occupiedCount = getEffectiveOccupancy(room);
+              let displayStatus = "available";
+              if (roomLevelMaintenance) displayStatus = "maintenance";
+              else if (
+                occupiedCount >= effectiveCapacity &&
+                effectiveCapacity > 0
+              )
+                displayStatus = "full";
+              else if (occupiedCount > 0) displayStatus = "partial";
+              return displayStatus === roomStatusFilter;
+            })());
 
       return (
         matchesSearch &&
@@ -244,52 +260,6 @@ function RoomAvailabilityPage() {
     roomStatusFilter,
   ]);
 
-  const filteredForecast = useMemo(() => {
-    return forecastItems.filter((item) => {
-      const daysUntil = getDaysUntilVacancy(item.nextExpectedVacancy);
-      const tone = getForecastTone(daysUntil);
-      const matchesSearch =
-        !searchTerm ||
-        item.roomName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.roomNumber?.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesBranch =
-        branchFilter === "all" || item.branch === branchFilter;
-      const matchesType =
-        roomTypeFilter === "all" || item.type === roomTypeFilter;
-      const matchesStatus =
-        forecastStatusFilter === "all" ||
-        (forecastStatusFilter === "overdue" && tone.label === "Overdue") ||
-        (forecastStatusFilter === "this-week" && tone.label === "This week") ||
-        (forecastStatusFilter === "this-month" &&
-          tone.label === "This month") ||
-        (forecastStatusFilter === "later" && tone.label === "Later") ||
-        (forecastStatusFilter === "no-date" && tone.label === "No date");
-      return matchesSearch && matchesBranch && matchesType && matchesStatus;
-    });
-  }, [
-    forecastItems,
-    searchTerm,
-    branchFilter,
-    roomTypeFilter,
-    forecastStatusFilter,
-  ]);
-
-  const featuredForecast =
-    filteredForecast
-      .filter((item) => item.nextExpectedVacancy)
-      .sort(
-        (a, b) =>
-          new Date(a.nextExpectedVacancy) - new Date(b.nextExpectedVacancy),
-      )[0] || null;
-  const forecastPageCount = Math.max(
-    1,
-    Math.ceil(filteredForecast.length / ROOMS_PER_PAGE),
-  );
-  const paginatedForecast = useMemo(() => {
-    const start = (currentPage - 1) * ROOMS_PER_PAGE;
-    return filteredForecast.slice(start, start + ROOMS_PER_PAGE);
-  }, [filteredForecast, currentPage]);
-
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
@@ -299,16 +269,7 @@ function RoomAvailabilityPage() {
     floorFilter,
     roomTypeFilter,
     roomStatusFilter,
-    forecastStatusFilter,
-    activeTab,
   ]);
-
-  useEffect(() => {
-    if (TAB_KEYS.has(requestedTab)) return;
-    const next = new URLSearchParams(searchParams);
-    next.set("tab", "rooms");
-    setSearchParams(next, { replace: true });
-  }, [requestedTab, searchParams, setSearchParams]);
 
   useEffect(() => {
     const nextBranch = normalizeBranchFilterValue({
@@ -334,56 +295,77 @@ function RoomAvailabilityPage() {
     setSearchParams(nextParams, { replace: true });
   }, [branchFilter, searchParams, setSearchParams, user?.role]);
 
-  // Stats
-  const stats = useMemo(() => {
-    const total = rooms.length;
-    const occupied = rooms.reduce(
-      (sum, r) => sum + getEffectiveOccupancy(r),
-      0,
+  // Dynamically compute valid floor numbers for the currently selected branch
+  const availableFloors = useMemo(() => {
+    const branchRooms =
+      branchFilter === "all"
+        ? rooms
+        : rooms.filter((r) => r.branch === branchFilter);
+    const set = new Set();
+    branchRooms.forEach((r) => {
+      if (r.floor !== undefined && r.floor !== null && r.floor !== "") {
+        set.add(String(r.floor));
+      }
+    });
+    return Array.from(set).sort(
+      (a, b) => (parseInt(a, 10) || 0) - (parseInt(b, 10) || 0),
     );
-    const capacity = rooms.reduce((sum, r) => sum + (r.capacity || 0), 0);
-    const full = rooms.filter((r) => getEffectiveOccupancy(r) >= r.capacity).length;
-    const partial = rooms.filter(
-      (r) => getEffectiveOccupancy(r) > 0 && getEffectiveOccupancy(r) < r.capacity,
-    ).length;
-    const available = rooms.filter((r) => getEffectiveOccupancy(r) === 0).length;
-    const maintenance = rooms.filter((r) => {
-      const mBeds = (r.beds || []).filter(
-        (b) => b.status === "maintenance",
-      ).length;
-      return mBeds > 0 && mBeds === r.capacity && r.capacity > 0;
-    }).length;
+  }, [rooms, branchFilter]);
 
-    return {
-      total,
-      full,
-      partial,
-      available,
-      maintenance,
-      rate: capacity > 0 ? ((occupied / capacity) * 100).toFixed(1) : "0.0",
-    };
-  }, [rooms]);
+  // Cascading sanity reset: if selected floor is not in availableFloors, reset to "all"
+  useEffect(() => {
+    if (floorFilter !== "all" && !availableFloors.includes(floorFilter)) {
+      setFloorFilter("all");
+    }
+  }, [availableFloors, floorFilter]);
 
-  const forecastSummary = useMemo(() => {
-    const withDate = filteredForecast.filter(
-      (item) => item.nextExpectedVacancy,
-    );
-    const expiringSoon = withDate.filter((item) => {
-      const soonest = getSoonestVacancy(item);
-      return soonest?.daysRemaining > 0 && soonest.daysRemaining <= 30;
-    }).length;
-    const overdue = withDate.filter((item) => {
-      const soonest = getSoonestVacancy(item);
-      return soonest?.isOverdue;
-    }).length;
+  // Sync status, floor, and room type filter states to URL search parameters
+  useEffect(() => {
+    const currentStatus = searchParams.get("status") || "all";
+    const currentFloor = searchParams.get("floor") || "all";
+    const currentType = searchParams.get("type") || "all";
 
-    return {
-      total: filteredForecast.length,
-      withDate: withDate.length,
-      expiringSoon,
-      overdue,
-    };
-  }, [filteredForecast]);
+    if (
+      currentStatus === roomStatusFilter &&
+      currentFloor === floorFilter &&
+      currentType === roomTypeFilter
+    ) {
+      return;
+    }
+
+    const nextParams = new URLSearchParams(searchParams);
+    if (roomStatusFilter !== "all") nextParams.set("status", roomStatusFilter);
+    else nextParams.delete("status");
+
+    if (floorFilter !== "all") nextParams.set("floor", floorFilter);
+    else nextParams.delete("floor");
+
+    if (roomTypeFilter !== "all") nextParams.set("type", roomTypeFilter);
+    else nextParams.delete("type");
+
+    setSearchParams(nextParams, { replace: true });
+  }, [roomStatusFilter, floorFilter, roomTypeFilter, searchParams, setSearchParams]);
+
+  // Stats — shared hook (bed-accurate)
+  const stats = useRoomStats(rooms);
+
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (searchTerm.trim() !== "") count++;
+    if (branchFilter !== "all") count++;
+    if (floorFilter !== "all") count++;
+    if (roomTypeFilter !== "all") count++;
+    if (roomStatusFilter !== "all") count++;
+    return count;
+  }, [searchTerm, branchFilter, floorFilter, roomTypeFilter, roomStatusFilter]);
+
+  const handleResetFilters = () => {
+    setSearchTerm("");
+    setBranchFilter("all");
+    setFloorFilter("all");
+    setRoomTypeFilter("all");
+    setRoomStatusFilter("all");
+  };
 
   // Handlers
   const handleConfigure = (room) => {
@@ -398,6 +380,24 @@ function RoomAvailabilityPage() {
 
   const handleSaveConfig = async (updatedRoom) => {
     try {
+      // 1. Update core room properties (images, amenities, policies, isPopular, pricing, etc.)
+      await roomApi.update(updatedRoom._id, {
+        name: updatedRoom.name,
+        roomNumber: updatedRoom.roomNumber,
+        description: updatedRoom.description,
+        floor: updatedRoom.floor,
+        branch: updatedRoom.branch,
+        type: updatedRoom.type,
+        capacity: updatedRoom.capacity,
+        price: updatedRoom.price,
+        monthlyPrice: updatedRoom.monthlyPrice,
+        amenities: updatedRoom.amenities,
+        policies: updatedRoom.policies,
+        intendedTenant: updatedRoom.intendedTenant,
+        images: updatedRoom.images,
+        isPopular: updatedRoom.isPopular,
+      });
+
       const originalRoom = rooms.find((room) => room._id === updatedRoom._id);
       const originalBeds = originalRoom?.beds || [];
       const updatedBeds = updatedRoom.beds || [];
@@ -523,39 +523,24 @@ function RoomAvailabilityPage() {
     );
   };
 
-  // Config — 2 tabs: Rooms (merged with Bed Config) + Occupancy
-  const tabs = [
-    { key: "rooms", label: "Rooms", icon: LayoutGrid },
-    { key: "occupancy", label: "Occupancy", icon: Activity },
-    { key: "forecast", label: "Vacancy Forecast", icon: Clock3 },
-  ];
-
-  const forecastSummaryItems = [
-    { label: "Forecast Rooms", value: forecastSummary.total, color: "blue" },
-    { label: "With Dates", value: forecastSummary.withDate, color: "green" },
-    {
-      label: "Expiring Soon",
-      value: forecastSummary.expiringSoon,
-      color: "orange",
-    },
-    { label: "Overdue", value: forecastSummary.overdue, color: "red" },
-  ];
-
   const roomFilters = [
     {
       key: "status",
+      label: "Status",
       options: [
         { value: "all", label: "All Status" },
         { value: "available", label: "Available" },
         { value: "partial", label: "Partial" },
         { value: "full", label: "Full" },
         { value: "maintenance", label: "Maintenance" },
+        { value: "vacant_soon", label: "Vacant Soon (Forecast)" },
       ],
       value: roomStatusFilter,
       onChange: setRoomStatusFilter,
     },
     {
       key: "branch",
+      label: "Branch",
       options: [
         { value: "all", label: "All Branches" },
         ...OWNER_BRANCH_FILTER_OPTIONS.filter((o) => o.value !== "all"),
@@ -565,18 +550,20 @@ function RoomAvailabilityPage() {
     },
     {
       key: "floor",
+      label: "Floor",
       options: [
         { value: "all", label: "All Floors" },
-        { value: "1", label: "Floor 1" },
-        { value: "2", label: "Floor 2" },
-        { value: "3", label: "Floor 3" },
-        { value: "4", label: "Floor 4" },
+        ...availableFloors.map((fl) => ({
+          value: fl,
+          label: `Floor ${fl}`,
+        })),
       ],
       value: floorFilter,
       onChange: setFloorFilter,
     },
     {
       key: "type",
+      label: "Type",
       options: [
         { value: "all", label: "All Types" },
         { value: "private", label: "Private" },
@@ -588,38 +575,22 @@ function RoomAvailabilityPage() {
     },
   ];
 
-  const forecastFilters = [
-    roomFilters[0],
-    roomFilters[2],
-    {
-      key: "forecast-status",
-      options: [
-        { value: "all", label: "All Timelines" },
-        { value: "overdue", label: "Overdue" },
-        { value: "this-week", label: "This Week" },
-        { value: "this-month", label: "This Month" },
-        { value: "later", label: "Later" },
-        { value: "no-date", label: "No Date" },
-      ],
-      value: forecastStatusFilter,
-      onChange: setForecastStatusFilter,
-    },
-  ];
 
   const roomStatusLegend = [
-    { key: "available", label: "Available", dot: "bg-green-500" },
+    { key: "available", label: "Available / Vacant", dot: "bg-emerald-500" },
     { key: "partial", label: "Partially Occupied", dot: "bg-amber-500" },
-    { key: "full", label: "Full", dot: "bg-red-500" },
-    { key: "maintenance", label: "Maintenance", dot: "bg-neutral-500" },
+    { key: "full", label: "Full / Occupied Bed", dot: "bg-red-500" },
+    { key: "reserved", label: "Reserved Bed", dot: "bg-amber-600" },
+    { key: "maintenance", label: "Maintenance", dot: "bg-slate-500" },
   ];
 
   const getRoomStatusConfig = (status) => {
     switch (status) {
       case "available":
         return {
-          dot: "bg-green-500",
+          dot: "bg-emerald-500",
           label: "Available",
-          color: "text-green-600",
+          color: "text-emerald-600",
         };
       case "partial":
         return {
@@ -631,9 +602,9 @@ function RoomAvailabilityPage() {
         return { dot: "bg-red-500", label: "Full", color: "text-red-600" };
       case "maintenance":
         return {
-          dot: "bg-neutral-500",
+          dot: "bg-slate-500",
           label: "Maintenance",
-          color: "text-neutral-600",
+          color: "text-slate-600",
         };
       case "reserved":
         return {
@@ -650,87 +621,54 @@ function RoomAvailabilityPage() {
     }
   };
 
-  const FLOORS_PER_PAGE = 6;
+  const totalPages = useMemo(() => {
+    return Math.max(1, Math.ceil(filteredRooms.length / ROOMS_PER_PAGE));
+  }, [filteredRooms]);
 
-  const allGroupedByFloor = useMemo(() => {
-    return filteredRooms.reduce((acc, room) => {
+  const paginatedRooms = useMemo(() => {
+    const start = (currentPage - 1) * ROOMS_PER_PAGE;
+    return filteredRooms.slice(start, start + ROOMS_PER_PAGE);
+  }, [filteredRooms, currentPage]);
+
+  const groupedByFloor = useMemo(() => {
+    const acc = {};
+    paginatedRooms.forEach((room) => {
       const key = `Floor ${room.floor}`;
       if (!acc[key]) acc[key] = [];
       acc[key].push(room);
-      return acc;
-    }, {});
-  }, [filteredRooms]);
-
-  const floorKeys = useMemo(() => {
-    return Object.keys(allGroupedByFloor).sort((a, b) => {
-      const numA = parseInt(a.replace("Floor ", "")) || 0;
-      const numB = parseInt(b.replace("Floor ", "")) || 0;
-      return numA - numB;
     });
-  }, [allGroupedByFloor]);
-
-  const groupedByFloor = useMemo(() => {
-    const start = (currentPage - 1) * FLOORS_PER_PAGE;
-    const paginatedKeys = floorKeys.slice(start, start + FLOORS_PER_PAGE);
-
-    const result = {};
-    paginatedKeys.forEach((key) => {
-      result[key] = allGroupedByFloor[key];
-    });
-    return result;
-  }, [allGroupedByFloor, floorKeys, currentPage]);
+    return acc;
+  }, [paginatedRooms]);
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-semibold text-foreground mb-1">
-          Room Management
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Track available capacity, assignments, and turnover across rooms
-          without leaving operations.
-        </p>
-      </div>
-
-      {/* Tabs */}
-      <div
-        style={{
-          borderBottom:
-            "1px solid color-mix(in srgb, var(--border) 60%, transparent)",
-        }}
-      >
-        <div className="flex gap-6">
-          {[
-            { id: "rooms", label: "Rooms" },
-            { id: "occupancy", label: "Occupancy" },
-            { id: "forecast", label: "Vacancy Forecast" },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => handleTabChange(tab.id)}
-              className={`pb-3 px-1 text-sm font-medium transition-colors relative ${
-                activeTab === tab.id
-                  ? ""
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-              style={activeTab === tab.id ? { color: "var(--primary)" } : {}}
-            >
-              {tab.label}
-              {activeTab === tab.id && (
-                <div
-                  className="absolute bottom-0 left-0 right-0 h-0.5"
-                  style={{ backgroundColor: "var(--primary)" }}
-                />
-              )}
-            </button>
-          ))}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-foreground mb-1">
+            Room Management
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Track available capacity, assignments, and turnover across rooms
+            without leaving operations.
+          </p>
         </div>
+
+        <button
+          type="button"
+          onClick={() => setShowVacancyModal(true)}
+          className="px-3.5 py-2 rounded-lg text-xs font-semibold border flex items-center gap-2 bg-card hover:bg-muted transition-colors text-foreground border-border shadow-sm self-start md:self-auto"
+          title="Check upcoming vacancy schedule for rooms and beds"
+        >
+          <Calendar className="w-4 h-4 text-amber-500" />
+          <span>Check Vacancy Schedule</span>
+          <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 font-bold">
+            {upcomingVacancies.length}
+          </span>
+        </button>
       </div>
 
-      {activeTab === "rooms" && (
-        <>
-          {/* Stats Cards */}
+      {/* Stats Cards */}
           <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
             <div
               className="rounded-lg p-3"
@@ -822,11 +760,11 @@ function RoomAvailabilityPage() {
               }}
             >
               <div className="flex items-center gap-2 mb-1">
-                <TrendingUp className="w-4 h-4 text-muted-foreground" />
-                <span className="text-xs text-muted-foreground">Occupancy</span>
+                <Bed className="w-4 h-4 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">Total Beds</span>
               </div>
               <div className="text-2xl font-semibold text-foreground">
-                {stats.rate}%
+                {rooms.reduce((sum, r) => sum + (r.capacity || 0), 0)}
               </div>
             </div>
           </div>
@@ -839,519 +777,367 @@ function RoomAvailabilityPage() {
               border: "1px solid var(--border)",
             }}
           >
-            <div className="flex flex-col lg:flex-row gap-3 mb-6">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" />
-                <input
-                  type="text"
-                  placeholder="Search by room number..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 bg-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground/70"
-                  style={{ border: "1px solid var(--border)" }}
-                />
-              </div>
+            {/* Optimized Toolbar with Preset Chips, Search, & Active Filter Controls */}
+            <div className="flex flex-col gap-4 mb-6">
+              {/* Quick Preset Filter Chips Bar */}
+              <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-border/60">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground mr-1">
+                    Presets:
+                  </span>
+                  {[
+                    { id: "all", label: "All Rooms", icon: LayoutGrid, count: rooms.length,
+                      active: "bg-slate-900 text-white border-slate-900 dark:bg-slate-100 dark:text-slate-950 dark:border-slate-100 shadow-sm",
+                      inactive: "bg-card text-foreground border-border hover:bg-accent/50",
+                      iconBgActive: "bg-white/20 text-white dark:bg-slate-900/20 dark:text-slate-950",
+                      iconBgInactive: "bg-muted text-muted-foreground",
+                      countActive: "bg-white/20 text-white dark:bg-slate-900/20 dark:text-slate-950",
+                      countInactive: "bg-muted text-muted-foreground"
+                    },
+                    { id: "available", label: "Available", icon: CheckCircle2, count: stats.available,
+                      active: "bg-emerald-600 text-white border-emerald-600 shadow-sm",
+                      inactive: "bg-emerald-50 text-emerald-800 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60 hover:bg-emerald-100/70",
+                      iconBgActive: "bg-emerald-700/60 text-white",
+                      iconBgInactive: "bg-emerald-200/70 dark:bg-emerald-900/80 text-emerald-700 dark:text-emerald-300",
+                      countActive: "bg-white/20 text-white",
+                      countInactive: "bg-emerald-200/60 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300"
+                    },
+                    { id: "partial", label: "Partial", icon: AlertTriangle, count: stats.partial,
+                      active: "bg-amber-600 text-white border-amber-600 shadow-sm",
+                      inactive: "bg-amber-50 text-amber-800 border-amber-200/80 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/60 hover:bg-amber-100/70",
+                      iconBgActive: "bg-amber-700/60 text-white",
+                      iconBgInactive: "bg-amber-200/70 dark:bg-amber-900/80 text-amber-700 dark:text-amber-300",
+                      countActive: "bg-white/20 text-white",
+                      countInactive: "bg-amber-200/60 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300"
+                    },
+                    { id: "full", label: "Full", icon: CircleDot, count: stats.full,
+                      active: "bg-red-600 text-white border-red-600 shadow-sm",
+                      inactive: "bg-red-50 text-red-800 border-red-200/80 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900/60 hover:bg-red-100/70",
+                      iconBgActive: "bg-red-700/60 text-white",
+                      iconBgInactive: "bg-red-200/70 dark:bg-red-900/80 text-red-700 dark:text-red-300",
+                      countActive: "bg-white/20 text-white",
+                      countInactive: "bg-red-200/60 dark:bg-red-900/60 text-red-800 dark:text-red-300"
+                    },
+                    { id: "maintenance", label: "Maintenance", icon: Wrench, count: stats.maintenance,
+                      active: "bg-slate-700 text-white border-slate-700 shadow-sm",
+                      inactive: "bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-900/60 dark:text-slate-300 dark:border-slate-700 hover:bg-slate-200/60",
+                      iconBgActive: "bg-slate-800/60 text-white",
+                      iconBgInactive: "bg-slate-300/80 dark:bg-slate-800 text-slate-700 dark:text-slate-300",
+                      countActive: "bg-white/20 text-white",
+                      countInactive: "bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-300"
+                    },
+                  ].map((preset) => {
+                    const isActive = roomStatusFilter === preset.id;
+                    const Icon = preset.icon;
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => setRoomStatusFilter(preset.id)}
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
+                          isActive ? preset.active : preset.inactive
+                        }`}
+                      >
+                        <span className={`p-1 rounded-full flex items-center justify-center ${
+                          isActive ? preset.iconBgActive : preset.iconBgInactive
+                        }`}>
+                          <Icon className="w-3 h-3" />
+                        </span>
+                        <span>{preset.label}</span>
+                        <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                          isActive ? preset.countActive : preset.countInactive
+                        }`}>
+                          {preset.count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
 
-              <div className="flex gap-2 flex-wrap">
-                <select
-                  value={roomStatusFilter}
-                  onChange={(e) => setRoomStatusFilter(e.target.value)}
-                  className="px-3 py-2 rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 appearance-none cursor-pointer pr-8
-    bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%231e293b%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')]
-    dark:bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23f8fafc%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')]
-    bg-[length:14px_14px] bg-[position:right_10px_center] bg-no-repeat"
-                  style={{
-                    backgroundColor: "var(--card)",
-                    border: "1px solid var(--border)",
-                  }}
-                >
-                  {roomFilters[0].options.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  value={branchFilter}
-                  onChange={(e) => setBranchFilter(e.target.value)}
-                  className="px-3 py-2 rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 appearance-none cursor-pointer pr-8
-    bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%231e293b%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')]
-    dark:bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23f8fafc%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')]
-    bg-[length:14px_14px] bg-[position:right_10px_center] bg-no-repeat"
-                  style={{
-                    backgroundColor: "var(--card)",
-                    border: "1px solid var(--border)",
-                  }}
-                >
-                  {roomFilters[1].options.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  value={floorFilter}
-                  onChange={(e) => setFloorFilter(e.target.value)}
-                  className="px-3 py-2 rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 appearance-none cursor-pointer pr-8
-    bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%231e293b%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')]
-    dark:bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23f8fafc%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E')]
-    bg-[length:14px_14px] bg-[position:right_10px_center] bg-no-repeat"
-                  style={{
-                    backgroundColor: "var(--card)",
-                    border: "1px solid var(--border)",
-                  }}
-                >
-                  {roomFilters[2].options.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-
-                {can("manageRooms") && (
+                {/* Clear All Filters Button */}
+                {activeFilterCount > 0 && (
                   <button
-                    onClick={() => setShowCreateModal(true)}
-                    className="px-4 py-2 text-foreground rounded-lg font-medium transition-colors flex items-center gap-2 text-sm"
-                    style={{ backgroundColor: "var(--primary)" }}
-                    onMouseEnter={(e) => (e.target.style.opacity = "0.9")}
-                    onMouseLeave={(e) => (e.target.style.opacity = "1")}
+                    type="button"
+                    onClick={handleResetFilters}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400 hover:underline cursor-pointer"
                   >
-                    <Plus className="w-4 h-4" />
-                    Add Room
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Clear Filters ({activeFilterCount})</span>
                   </button>
                 )}
               </div>
-            </div>
 
-            <div
-              className="mb-6 rounded-lg px-3 py-2.5"
-              style={{
-                border: "1px solid var(--border)",
-                backgroundColor:
-                  "color-mix(in srgb, var(--muted) 20%, transparent)",
-              }}
-            >
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
-                <span className="font-medium text-foreground/80">Legend</span>
-                {roomStatusLegend.map((item) => (
-                  <span
-                    key={item.key}
-                    className="inline-flex items-center gap-1.5"
-                  >
-                    <span className={`h-2.5 w-2.5 rounded-full ${item.dot}`} />
-                    <span>{item.label}</span>
-                  </span>
-                ))}
-                <span className="inline-flex items-center gap-1.5">
-                  <Wrench className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span>Room has beds in maintenance</span>
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-8 mt-2">
-              {Object.keys(groupedByFloor).length > 0 ? (
-                Object.entries(groupedByFloor).map(([floor, floorRooms]) => (
-                  <div key={floor}>
-                    <div className="flex items-center gap-3 mb-4 px-1">
-                      <h3 className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">
-                        {floor}
-                      </h3>
-                      <div
-                        className="flex-1 h-px"
-                        style={{
-                          backgroundColor: "var(--border)",
-                          opacity: "0.6",
-                        }}
-                      />
-                      <span className="text-[12px] text-muted-foreground/80">
-                        {floorRooms.length} rooms
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-3">
-                      {floorRooms.map((room) => {
-                        const bedsInMaintenance = (room.beds || []).filter(
-                          (b) => b.status === "maintenance",
-                        ).length;
-                        const roomLevelMaintenance =
-                          bedsInMaintenance === room.capacity &&
-                          room.capacity > 0;
-                        const effectiveCapacity = roomLevelMaintenance
-                          ? 0
-                          : room.capacity - bedsInMaintenance;
-
-                        const occupiedCount = getEffectiveOccupancy(room);
-                        let displayStatus = "available";
-                        if (roomLevelMaintenance) displayStatus = "maintenance";
-                        else if (
-                          occupiedCount >= effectiveCapacity &&
-                          effectiveCapacity > 0
-                        )
-                          displayStatus = "full";
-                        else if (occupiedCount > 0)
-                          displayStatus = "partial";
-
-                        const config = getRoomStatusConfig(displayStatus);
-
-                        const soonestBedVacancy =
-                          (room.beds || [])
-                            .map((b) => b.expectedVacancyDate)
-                            .filter(Boolean)
-                            .sort((a, b) => new Date(a) - new Date(b))[0] ||
-                          room.nextExpectedVacancy;
-                        const vacancyDays = getDaysUntilVacancy(soonestBedVacancy);
-                        const vacancyTooltip = soonestBedVacancy
-                          ? ` | Expected Vacancy: ${formatForecastDate(soonestBedVacancy)} (${vacancyDays != null ? (vacancyDays <= 0 ? "Overdue/Today" : `${vacancyDays}d left`) : ""})`
-                          : "";
-
-                        return (
-                          <button
-                            key={room._id || room.id}
-                            onClick={() => {
-                              if (can("manageRooms")) handleConfigure(room);
-                            }}
-                            className={`group relative rounded-xl p-3.5 hover:shadow-md transition-all duration-200 text-center flex flex-col items-center justify-center w-[124px] min-h-[120px] ${!can("manageRooms") ? "cursor-default" : "cursor-pointer"}`}
-                            style={{
-                              backgroundColor: "var(--card)",
-
-                              border: "1px solid var(--border)",
-                            }}
-                            title={`${room.name || room.roomNumber} - ${config.label}${bedsInMaintenance > 0 ? ` (${bedsInMaintenance} bed${bedsInMaintenance > 1 ? "s" : ""} in maintenance)` : ""}${vacancyTooltip}`}
-                          >
-                            <div
-                              className={`absolute top-3 right-3 w-2.5 h-2.5 rounded-full ${config.dot}`}
-                            />
-
-                            {bedsInMaintenance > 0 && !roomLevelMaintenance && (
-                              <div className="absolute top-3 left-3 text-muted-foreground">
-                                <Wrench className="w-3.5 h-3.5" />
-                              </div>
-                            )}
-
-                            <Bed className="w-5 h-5 text-muted-foreground/80 mb-1 group-hover:text-primary transition-colors" />
-                            <span className="text-[17px] font-bold text-foreground dark:text-foreground tracking-tight leading-none mb-1">
-                              {room.roomNumber}
-                            </span>
-
-                            {roomLevelMaintenance ? (
-                              <span className="text-xs text-muted-foreground font-medium">
-                                Maintenance
-                              </span>
-                            ) : (
-                              <>
-                                <span className="text-xs text-muted-foreground font-medium">
-                                  {String(room.type || "").toLowerCase().includes("private")
-                                    ? `${Math.min(1, occupiedCount)}/1`
-                                    : `${getEffectiveOccupancy(room)}/${effectiveCapacity}`}
-                                  {bedsInMaintenance > 0 && (
-                                    <span className="ml-[2px]">
-                                      ({bedsInMaintenance}M)
-                                    </span>
-                                  )}
-                                </span>
-                                {soonestBedVacancy && getEffectiveOccupancy(room) > 0 && (
-                                  <span
-                                    className="text-[10px] font-semibold mt-1 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full"
-                                    style={{
-                                      backgroundColor: vacancyDays <= 7 ? "var(--status-error-bg, rgba(239, 68, 68, 0.1))" : "var(--primary-bg, rgba(59, 130, 246, 0.1))",
-                                      color: vacancyDays <= 7 ? "var(--status-error, #ef4444)" : "var(--primary, #3b82f6)",
-                                    }}
-                                  >
-                                    <Calendar className="w-2.5 h-2.5" />
-                                    {vacancyDays <= 0 ? "Due" : `${vacancyDays}d`}
-                                  </span>
-                                )}
-                              </>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div
-                  className="text-center py-16 rounded-lg border-dashed"
-                  style={{
-                    backgroundColor: "var(--card)",
-
-                    border: "1px dashed",
-                  }}
-                >
-                  <DoorOpen className="w-12 h-12 text-muted-foreground/50 mx-auto mb-3" />
-                  <p className="text-sm font-medium text-foreground">
-                    No rooms found matching your filters
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Try adjusting your search or add a new room.
-                  </p>
-                </div>
-              )}
-
-              {floorKeys.length > FLOORS_PER_PAGE && (
-                <div className="flex items-center justify-between pt-4 mt-6 px-1">
-                  <span className="text-xs text-muted-foreground">
-                    Showing floors {(currentPage - 1) * FLOORS_PER_PAGE + 1} to{" "}
-                    {Math.min(currentPage * FLOORS_PER_PAGE, floorKeys.length)}{" "}
-                    of {floorKeys.length}
-                  </span>
-                  <div className="flex gap-1">
-                    <button
-                      disabled={currentPage === 1}
-                      onClick={() => setCurrentPage((p) => p - 1)}
-                      className="px-3 py-1 text-xs rounded disabled:opacity-50 disabled:cursor-not-allowed text-foreground"
-                      style={{
-                        border: "1px solid var(--border)",
-                      }}
-                      onMouseEnter={(e) =>
-                        (e.target.style.backgroundColor = "var(--muted)")
-                      }
-                      onMouseLeave={(e) =>
-                        (e.target.style.backgroundColor = "transparent")
-                      }
-                    >
-                      Previous
-                    </button>
-                    <button
-                      disabled={
-                        currentPage >=
-                        Math.ceil(floorKeys.length / FLOORS_PER_PAGE)
-                      }
-                      onClick={() => setCurrentPage((p) => p + 1)}
-                      className="px-3 py-1 text-xs rounded disabled:opacity-50 disabled:cursor-not-allowed text-foreground"
-                      style={{
-                        border: "1px solid var(--border)",
-                      }}
-                      onMouseEnter={(e) =>
-                        (e.target.style.backgroundColor = "var(--muted)")
-                      }
-                      onMouseLeave={(e) =>
-                        (e.target.style.backgroundColor = "transparent")
-                      }
-                    >
-                      Next
-                    </button>
+              {/* Search Bar & Dropdown Select Controls */}
+              <div className="flex flex-col lg:flex-row gap-3 items-end">
+                {/* Enhanced Search Input with Micro-Label */}
+                <div className="flex-1 flex flex-col gap-1 min-w-[240px]">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80 px-0.5">
+                    Search
+                  </label>
+                  <div className="relative w-full">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <input
+                      type="text"
+                      placeholder="Search by room number or type..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full h-9 pl-9 pr-10 bg-card rounded-lg text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-ring/20 placeholder:text-muted-foreground/70"
+                      style={{ border: "1px solid var(--border)" }}
+                    />
+                    {searchTerm && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchTerm("")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 text-muted-foreground hover:text-foreground rounded"
+                        title="Clear search"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
-              )}
-            </div>
-          </div>
-        </>
-      )}
 
-      {activeTab === "occupancy" && <OccupancyTrackingPage isEmbedded={true} />}
-
-      {activeTab === "forecast" && (
-        <div className="space-y-6">
-          <SummaryBar items={forecastSummaryItems} />
-          <ActionBar
-            search={{
-              value: searchTerm,
-              onChange: setSearchTerm,
-              placeholder: "Search forecast rooms...",
-            }}
-            filters={forecastFilters}
-          />
-          {forecastLoading ? (
-            <div
-              className="forecast-empty-state rounded-lg p-8"
-              style={{
-                backgroundColor: "var(--card)",
-
-                border: "1px solid var(--border)",
-              }}
-            >
-              <Clock3 size={28} />
-              <strong>Loading forecast data...</strong>
-            </div>
-          ) : filteredForecast.length === 0 ? (
-            <div
-              className="forecast-empty-state rounded-lg p-8"
-              style={{
-                backgroundColor: "var(--card)",
-
-                border: "1px solid var(--border)",
-              }}
-            >
-              <Clock3 size={28} />
-              <strong>No forecast data found</strong>
-              <span>
-                Forecasts will appear here for rooms with active bed timelines.
-              </span>
-            </div>
-          ) : (
-            <div className="forecast-panel">
-              {featuredForecast && (
-                <div className="forecast-highlight">
-                  <div>
-                    <span className="forecast-highlight__eyebrow">
-                      Soonest opening
-                    </span>
-                    <h3>
-                      {featuredForecast.roomName || featuredForecast.roomNumber}
-                    </h3>
-                    <p>
-                      {formatBranch(featuredForecast.branch)} ·{" "}
-                      {formatRoomType(featuredForecast.type)}
-                    </p>
-                  </div>
-                  <div className="forecast-highlight__meta">
-                    <span className="forecast-highlight__date">
-                      {formatForecastDate(featuredForecast.nextExpectedVacancy)}
-                    </span>
-                    <span className="forecast-highlight__count">
-                      {getDaysUntilVacancy(
-                        featuredForecast.nextExpectedVacancy,
-                      )}{" "}
-                      days away
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              <div className="forecast-grid">
-                {paginatedForecast.map((item) => {
-                  const daysUntil = getDaysUntilVacancy(
-                    item.nextExpectedVacancy,
-                  );
-                  const tone = getForecastTone(daysUntil);
-                  const isPrivateForecastItem = String(item.type || "").toLowerCase().includes("private");
-                  const effectiveForecastCapacity = isPrivateForecastItem ? 1 : (item.capacity || 1);
-                  const effectiveForecastOccupancy = isPrivateForecastItem ? Math.min(1, item.currentOccupancy || 0) : (item.currentOccupancy || 0);
-                  const occupancyPct = Math.min(
-                    100,
-                    Math.round(
-                      (effectiveForecastOccupancy / effectiveForecastCapacity) * 100,
-                    ),
-                  );
-
-                  return (
-                    <article
-                      key={item.roomId || item.roomNumber}
-                      className={`forecast-card ${tone.className}`}
-                    >
-                      <div className="forecast-card__header">
-                        <div>
-                          <span className="forecast-card__branch">
-                            {formatBranch(item.branch)}
-                          </span>
-                          <h3>{item.roomName || item.roomNumber}</h3>
-                        </div>
-                        <span
-                          className="forecast-card__status"
-                          style={{ color: tone.accent }}
+                {/* Filter Dropdowns & Add Room Button */}
+                <div className="flex gap-2.5 flex-wrap items-end">
+                  {roomFilters.map((filter) => {
+                    const isActive = filter.value !== "all";
+                    return (
+                      <div key={filter.key} className="flex flex-col gap-1">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80 px-0.5">
+                          {filter.label}
+                        </label>
+                        <select
+                          aria-label={`Filter rooms by ${filter.label}`}
+                          value={filter.value}
+                          onChange={(e) => filter.onChange(e.target.value)}
+                          className={`h-9 px-3 rounded-lg text-xs font-medium cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-ring/20 ${
+                            isActive
+                              ? "bg-primary-50/60 dark:bg-primary-950/30 text-foreground font-semibold shadow-sm"
+                              : "bg-card text-foreground hover:bg-accent/40"
+                          }`}
+                          style={{
+                            border: isActive
+                              ? "1px solid var(--primary)"
+                              : "1px solid var(--border)",
+                          }}
                         >
-                          {tone.label}
-                        </span>
+                          {filter.options.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
                       </div>
+                    );
+                  })}
 
-                      <div className="forecast-card__metrics">
-                        <div>
-                          <span className="forecast-card__label">
-                            Next vacancy
-                          </span>
-                          <strong>
-                            {formatForecastDate(item.nextExpectedVacancy)}
-                          </strong>
-                        </div>
-                        <div>
-                          <span className="forecast-card__label">
-                            Committed
-                          </span>
-                          <strong>
-                            {String(item.type || "").toLowerCase().includes("private")
-                              ? `${Math.min(1, item.currentOccupancy || 0)}/1`
-                              : `${item.currentOccupancy || 0}/${item.capacity || 0}`}
-                          </strong>
-                        </div>
-                        <div>
-                          <span className="forecast-card__label">
-                            Room type
-                          </span>
-                          <strong>{formatRoomType(item.type)}</strong>
-                        </div>
-                      </div>
-
-                      <div className="forecast-card__occupancy">
-                        <div className="forecast-card__occupancy-bar">
-                          <div
-                            className="forecast-card__occupancy-fill"
-                            style={{ width: `${occupancyPct}%` }}
-                          />
-                        </div>
-                        <span>{occupancyPct}% occupied</span>
-                      </div>
-
-                      <div className="forecast-card__beds">
-                        {(item.beds || []).map((bed) => {
-                          const bedDays = getDaysUntilVacancy(
-                            bed.expectedVacancy,
-                          );
-                          const bedTone = getForecastTone(bedDays);
-                          return (
-                            <div key={bed.bedId} className="forecast-bed-row">
-                              <div>
-                                <span className="forecast-bed-row__name">
-                                  {bed.position}
-                                </span>
-                                <span className="forecast-bed-row__date">
-                                  {formatForecastDate(bed.expectedVacancy)}
-                                </span>
-                              </div>
-                              <span
-                                className="forecast-bed-row__badge"
-                                style={{
-                                  color: bedTone.accent,
-                                  borderColor: `${bedTone.accent}33`,
-                                }}
-                              >
-                                {bedDays == null ? "Held" : `${bedDays}d`}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-
-              {forecastPageCount > 1 && (
-                <div className="forecast-pagination">
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() =>
-                      setCurrentPage((page) => Math.max(1, page - 1))
-                    }
-                    disabled={currentPage === 1}
-                  >
-                    Previous
-                  </button>
-                  <span>
-                    Page {currentPage} of {forecastPageCount}
-                  </span>
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() =>
-                      setCurrentPage((page) =>
-                        Math.min(forecastPageCount, page + 1),
-                      )
-                    }
-                    disabled={currentPage === forecastPageCount}
-                  >
-                    Next
-                  </button>
+                  {can("manageRooms") && (
+                    <button
+                      onClick={() => setShowCreateModal(true)}
+                      className="h-9 px-4 text-primary-foreground rounded-lg font-semibold transition-colors flex items-center justify-center gap-1.5 text-xs bg-primary hover:opacity-90 ml-auto lg:ml-0 self-end shadow-sm"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add Room
+                    </button>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
-          )}
-        </div>
-      )}
 
+            {/* Redesigned Multi-Category Status Legend Bar */}
+            <div className="mb-5 rounded-xl p-3.5 border border-border bg-card shadow-sm">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
+                
+                {/* Room Status Badges */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-bold uppercase tracking-wider text-muted-foreground mr-1 text-[11px]">
+                    Room Status:
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 font-semibold px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    Available
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 font-semibold px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                    Partial
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 font-semibold px-2.5 py-0.5 rounded-full bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                    Full
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 font-semibold px-2.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-700">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                    Maintenance
+                  </span>
+                </div>
+
+                {/* Bed Deck Pills */}
+                <div className="flex flex-wrap items-center gap-2 pt-2.5 lg:pt-0 border-t lg:border-t-0 lg:border-l border-border lg:pl-3.5">
+                  <span className="font-bold uppercase tracking-wider text-muted-foreground mr-1 text-[11px]">
+                    Bed Layout:
+                  </span>
+                  <span className="inline-flex items-center gap-1 font-medium px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/50">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    Vacant
+                  </span>
+                  <span className="inline-flex items-center gap-1 font-medium px-2 py-0.5 rounded bg-red-600 dark:bg-red-700 text-white">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-200" />
+                    Occupied
+                  </span>
+                  <span className="inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded bg-[#D4AF37] text-slate-950">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-800" />
+                    Reserved
+                  </span>
+                  <span className="inline-flex items-center gap-1 font-medium px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                    Maint
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-muted-foreground ml-1">
+                    <Wrench className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Beds in Maint</span>
+                  </span>
+                </div>
+
+              </div>
+            </div>
+
+            {/* Room List or Empty State */}
+            {filteredRooms.length === 0 ? (
+              <div className="p-12 text-center rounded-xl border border-dashed border-border bg-muted/20 my-6 flex flex-col items-center justify-center gap-3">
+                <div className="p-3 rounded-full bg-muted/60 text-muted-foreground">
+                  <FilterX className="w-8 h-8" />
+                </div>
+                <h4 className="text-base font-bold text-foreground">No matching rooms found</h4>
+                <p className="text-sm text-muted-foreground max-w-sm">
+                  We couldn't find any rooms matching your search term or active filter criteria.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold bg-primary text-primary-foreground shadow-sm hover:opacity-90"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Reset All Filters
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-8 mt-2">
+                {Object.keys(groupedByFloor).length > 0 ? (
+                  Object.entries(groupedByFloor).map(([floor, floorRooms]) => {
+                    const availableInFloor = floorRooms.filter(
+                      (r) => getEffectiveOccupancy(r) === 0
+                    ).length;
+                    return (
+                      <div key={floor} className="space-y-3">
+                        {/* High-Contrast Emphasized Floor Section Header */}
+                        <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl bg-card border border-border shadow-xs">
+                          <div className="flex items-center gap-2.5">
+                            <div className="p-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20">
+                              <Layers className="w-4 h-4" />
+                            </div>
+                            <h3 className="text-sm font-bold text-foreground tracking-wide">
+                              {floor}
+                            </h3>
+                            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-muted/60 text-muted-foreground border border-border/60">
+                              {floorRooms.length} {floorRooms.length === 1 ? "room" : "rooms"}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-900/50">
+                              {availableInFloor} Available
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 items-stretch">
+                          {floorRooms.map((room) => (
+                            <DoubleDeckRoomCard
+                              key={room._id || room.id}
+                              room={room}
+                              onConfigure={handleConfigure}
+                              onViewHistory={(id) => setHistoryRoomId(id)}
+                              canManageRooms={can("manageRooms")}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : null}
+              </div>
+            )}
+
+            {/* Bottom Summary & Fast Page Controls Footer */}
+            {filteredRooms.length > 0 && (
+              <div className="flex items-center justify-between flex-wrap gap-3 pt-4 mt-6 px-1 border-t border-border/60 text-xs">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <span>
+                    Showing <strong className="text-foreground">
+                      {Math.min((currentPage - 1) * ROOMS_PER_PAGE + 1, filteredRooms.length)}–
+                      {Math.min(currentPage * ROOMS_PER_PAGE, filteredRooms.length)}
+                    </strong> of <strong className="text-foreground">{filteredRooms.length}</strong> rooms
+                    {filteredRooms.length !== rooms.length && ` (filtered from ${rooms.length})`}
+                  </span>
+                  {activeFilterCount > 0 && (
+                    <span className="inline-flex items-center gap-1 font-medium text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded border border-amber-200 dark:border-amber-900/50 text-[11px]">
+                      {activeFilterCount} filter{activeFilterCount > 1 ? "s" : ""} active
+                    </span>
+                  )}
+                </div>
+
+                {totalPages > 1 && (
+                  <div className="flex items-center gap-3 ml-auto">
+                    <span className="text-muted-foreground font-medium hidden sm:inline">
+                      Page {currentPage} of {totalPages}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        disabled={currentPage === 1}
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg disabled:opacity-40 disabled:cursor-not-allowed text-foreground bg-card hover:bg-muted transition-colors border border-border shadow-xs cursor-pointer"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                        Previous
+                      </button>
+
+                      <div className="hidden md:flex items-center gap-1">
+                        {Array.from({ length: totalPages }, (_, i) => i + 1)
+                          .filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                          .map((p, i, arr) => {
+                            const prev = arr[i - 1];
+                            const showEllipsis = prev && p - prev > 1;
+                            return (
+                              <React.Fragment key={p}>
+                                {showEllipsis && <span className="px-1 text-muted-foreground">...</span>}
+                                <button
+                                  onClick={() => setCurrentPage(p)}
+                                  className={`w-7 h-7 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
+                                    currentPage === p
+                                      ? "bg-primary text-primary-foreground shadow-xs"
+                                      : "bg-card text-foreground hover:bg-muted border border-border"
+                                  }`}
+                                >
+                                  {p}
+                                </button>
+                              </React.Fragment>
+                            );
+                          })}
+                      </div>
+
+                      <button
+                        disabled={currentPage >= totalPages}
+                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg disabled:opacity-40 disabled:cursor-not-allowed text-foreground bg-card hover:bg-muted transition-colors border border-border shadow-xs cursor-pointer"
+                      >
+                        Next
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
       {/* Modals */}
       {selectedRoom && (
         <RoomConfigModal
@@ -1385,6 +1171,309 @@ function RoomAvailabilityPage() {
           room={deletingRoom}
           onClose={() => setDeletingRoom(null)}
           onDelete={handleDeleteRoom}
+        />
+      )}
+
+      {/* Upcoming Vacancies Modal */}
+      {showVacancyModal && (
+        <div className="admin-modal-overlay" onClick={() => setShowVacancyModal(false)}>
+          <div
+            className="admin-modal-content vacancy-modal-wide p-6 space-y-5 rounded-2xl shadow-xl border border-border bg-card max-h-[88vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-foreground tracking-tight">
+                    Upcoming Vacancies & Move-Out Schedule
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Overview of active tenant contracts, notice periods, and bed vacancy timeline forecasts.
+                  </p>
+                </div>
+              </div>
+              <button
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                onClick={() => setShowVacancyModal(false)}
+                aria-label="Close modal"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-4 overflow-y-auto pr-1 flex-1">
+              {/* Executive KPI Metric Cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-900 dark:text-amber-300">
+                  <div className="flex items-center justify-between text-xs font-semibold text-amber-700 dark:text-amber-400">
+                    <span>Urgent (&le;30 Days)</span>
+                    <AlertTriangle className="w-4 h-4 text-amber-500" />
+                  </div>
+                  <div className="text-2xl font-bold text-amber-900 dark:text-amber-200 mt-1">
+                    {vacancyKPIs.urgent}
+                  </div>
+                  <p className="text-[10px] text-amber-700/80 dark:text-amber-400/80 mt-0.5 font-medium">
+                    Immediate turnovers
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-900 dark:text-blue-300">
+                  <div className="flex items-center justify-between text-xs font-semibold text-blue-700 dark:text-blue-400">
+                    <span>31 &ndash; 90 Days</span>
+                    <Calendar className="w-4 h-4 text-blue-500" />
+                  </div>
+                  <div className="text-2xl font-bold text-blue-900 dark:text-blue-200 mt-1">
+                    {vacancyKPIs.upcoming}
+                  </div>
+                  <p className="text-[10px] text-blue-700/80 dark:text-blue-400/80 mt-0.5 font-medium">
+                    Next quarter move-outs
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-xl bg-muted/60 border border-border text-foreground">
+                  <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
+                    <span>90+ Days</span>
+                    <CheckCircle2 className="w-4 h-4 text-slate-400" />
+                  </div>
+                  <div className="text-2xl font-bold text-foreground mt-1">
+                    {vacancyKPIs.longTerm}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-0.5 font-medium">
+                    Distant contract ends
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-xl bg-muted/60 border border-border text-foreground">
+                  <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
+                    <span>Total Move-Outs</span>
+                    <Bed className="w-4 h-4 text-primary" />
+                  </div>
+                  <div className="text-2xl font-bold text-foreground mt-1">
+                    {vacancyKPIs.total}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-0.5 font-medium">
+                    Active scheduled list
+                  </p>
+                </div>
+              </div>
+
+              {/* Search & Filter Controls Bar */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="text"
+                    placeholder="Search room, bed code, or occupant name..."
+                    value={vacancySearch}
+                    onChange={(e) => setVacancySearch(e.target.value)}
+                    className="w-full pl-9 pr-8 py-2 text-xs rounded-xl border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all"
+                  />
+                  {vacancySearch && (
+                    <button
+                      type="button"
+                      onClick={() => setVacancySearch("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-xl border border-border text-xs">
+                  {[
+                    { id: "all", label: `All (${upcomingVacancies.length})` },
+                    { id: "urgent", label: `Urgent (${vacancyKPIs.urgent})` },
+                    { id: "upcoming", label: `31-90 Days (${vacancyKPIs.upcoming})` },
+                    { id: "longterm", label: `90+ Days (${vacancyKPIs.longTerm})` },
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setVacancyUrgencyFilter(tab.id)}
+                      className={`px-3 py-1.5 rounded-lg transition-all text-[11px] font-medium cursor-pointer ${
+                        vacancyUrgencyFilter === tab.id
+                          ? "bg-background text-foreground shadow-xs font-semibold"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Data Table */}
+              {filteredUpcomingVacancies.length === 0 ? (
+                <div className="flex-1 flex items-center justify-center p-8 text-center text-sm text-muted-foreground border border-dashed rounded-xl bg-muted/20 min-h-[280px]">
+                  {upcomingVacancies.length === 0
+                    ? "No upcoming vacancies scheduled at this time."
+                    : "No move-out records match your current search/filter."}
+                </div>
+              ) : (
+                <div className="overflow-x-auto border border-border rounded-xl shadow-xs bg-card min-h-[280px]">
+                  <table className="w-full text-xs text-left border-collapse">
+                    <thead className="bg-muted/60 border-b border-border text-muted-foreground font-semibold uppercase text-[10px] tracking-wider">
+                      <tr>
+                        <th className="p-3.5 pl-4">Room & Bed</th>
+                        <th className="p-3.5">Occupant</th>
+                        <th className="p-3.5">Expected Vacancy Date</th>
+                        <th className="p-3.5">Timeline Status</th>
+                        <th className="p-3.5 pr-4 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/70">
+                      {paginatedUpcomingVacancies.map((item, idx) => {
+                        const dateStr = item.expectedVacancyDate
+                          ? new Date(item.expectedVacancyDate).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            })
+                          : "Scheduled";
+
+                        const days = item.daysRemaining;
+                        let timelineBadge = {
+                          bg: "bg-secondary text-muted-foreground border border-border",
+                          label: "Scheduled",
+                        };
+                        if (days != null) {
+                          if (days <= 0) {
+                            timelineBadge = {
+                              bg: "bg-red-500/15 text-red-700 dark:text-red-300 border border-red-500/30 font-bold",
+                              label: "Vacant Today / Overdue",
+                            };
+                          } else if (days <= 30) {
+                            timelineBadge = {
+                              bg: "bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30 font-semibold",
+                              label: `${days} days left`,
+                            };
+                          } else if (days <= 90) {
+                            timelineBadge = {
+                              bg: "bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30 font-medium",
+                              label: `${days} days left`,
+                            };
+                          } else {
+                            timelineBadge = {
+                              bg: "bg-muted text-muted-foreground border border-border font-normal",
+                              label: `${days} days left`,
+                            };
+                          }
+                        }
+
+                        return (
+                          <tr key={idx} className="hover:bg-muted/30 transition-colors">
+                            <td className="p-3.5 pl-4 font-medium text-foreground">
+                              <span className="font-bold text-sm text-foreground block">
+                                {item.roomName}
+                              </span>
+                              <span className="inline-block mt-0.5 px-2 py-0.5 text-[10px] text-muted-foreground font-mono bg-muted/60 rounded border border-border/50">
+                                {item.bedLabel || getBedDisplayLabel(item.bedObj)}
+                              </span>
+                            </td>
+                            <td className="p-3.5 font-medium text-foreground">
+                              <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold">
+                                  {item.occupantName.charAt(0).toUpperCase()}
+                                </div>
+                                <span className="text-foreground font-medium">
+                                  {item.occupantName}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="p-3.5 font-semibold text-foreground">
+                              <div className="flex items-center gap-1.5">
+                                <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
+                                <span>{dateStr}</span>
+                              </div>
+                            </td>
+                            <td className="p-3.5">
+                              <span
+                                className={`whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] ${timelineBadge.bg}`}
+                              >
+                                {timelineBadge.label}
+                              </span>
+                            </td>
+                            <td className="p-3.5 pr-4 text-right">
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-lg border border-primary/30 text-primary bg-primary/5 hover:bg-primary hover:text-primary-foreground transition-all cursor-pointer shadow-xs ms-auto"
+                                onClick={() => {
+                                  setShowVacancyModal(false);
+                                  setSelectedRoom(item.roomObj);
+                                }}
+                              >
+                                Manage Room
+                                <ChevronRight className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Pagination Bar */}
+              {filteredUpcomingVacancies.length > 0 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-2 text-xs text-muted-foreground border-t border-border">
+                  <div>
+                    Showing{" "}
+                    <span className="font-semibold text-foreground">
+                      {(vacancyPage - 1) * VACANCIES_PER_PAGE + 1}
+                    </span>{" "}
+                    to{" "}
+                    <span className="font-semibold text-foreground">
+                      {Math.min(vacancyPage * VACANCIES_PER_PAGE, filteredUpcomingVacancies.length)}
+                    </span>{" "}
+                    of{" "}
+                    <span className="font-semibold text-foreground">
+                      {filteredUpcomingVacancies.length}
+                    </span>{" "}
+                    vacancies
+                  </div>
+
+                  {totalVacancyPages > 1 && (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setVacancyPage((prev) => Math.max(1, prev - 1))}
+                        disabled={vacancyPage === 1}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg disabled:opacity-40 disabled:cursor-not-allowed text-foreground bg-card hover:bg-muted transition-colors border border-border shadow-xs cursor-pointer"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                        Previous
+                      </button>
+                      <span className="px-2 py-1 text-xs font-medium text-foreground">
+                        Page {vacancyPage} of {totalVacancyPages}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setVacancyPage((prev) => Math.min(totalVacancyPages, prev + 1))}
+                        disabled={vacancyPage === totalVacancyPages}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg disabled:opacity-40 disabled:cursor-not-allowed text-foreground bg-card hover:bg-muted transition-colors border border-border shadow-xs cursor-pointer"
+                      >
+                        Next
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Room Bed History Drawer */}
+      {historyRoomId && (
+        <RoomBedHistoryDrawer
+          roomId={historyRoomId}
+          onClose={() => setHistoryRoomId(null)}
         />
       )}
     </div>

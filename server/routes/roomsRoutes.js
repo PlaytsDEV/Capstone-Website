@@ -26,6 +26,8 @@ import {
   getRooms,
   getRoomById,
   getOccupancyConsistency,
+  getOccupancyHealth,
+  reconcileAllOccupancy,
   createRoom,
   updateRoom,
   deleteRoom,
@@ -34,7 +36,13 @@ import {
   reorderBeds,
   deleteBed,
   updateBedStatus,
+  repairRoomOccupancy,
 } from "../controllers/roomsController.js";
+import {
+  uploadRoomPhotos,
+  uploadPhotosMiddleware,
+} from "../controllers/roomPhotoController.js";
+
 
 const router = express.Router();
 
@@ -53,6 +61,23 @@ const router = express.Router();
  * @returns {Array} List of rooms matching the filters
  */
 router.get("/", getRooms);
+
+/**
+ * POST /api/rooms/:roomId/photos
+ *
+ * Upload one or more room photos to Firebase Storage (server-side).
+ * Files are stored under room-photos/{roomId}/ and returned as public URLs.
+ *
+ * Access: Admin (manageRooms)
+ */
+router.post(
+  "/:roomId/photos",
+  verifyToken,
+  verifyAdmin,
+  requirePermission("manageRooms"),
+  uploadPhotosMiddleware,
+  uploadRoomPhotos,
+);
 router.get(
   "/occupancy-consistency",
   verifyToken,
@@ -61,6 +86,43 @@ router.get(
   filterByBranch,
   getOccupancyConsistency,
 );
+
+/**
+ * GET /api/rooms/occupancy-health
+ *
+ * Read-only scan: returns count and details of orphaned reservations
+ * (userId hard-deleted) and rooms with currentOccupancy drift.
+ * Safe to call at any time — no writes are performed.
+ *
+ * Access: Admin (manageRooms or viewReports)
+ */
+router.get(
+  "/occupancy-health",
+  verifyToken,
+  verifyAdmin,
+  requireAnyPermission(["manageRooms", "viewReports"]),
+  filterByBranch,
+  getOccupancyHealth,
+);
+
+/**
+ * POST /api/rooms/reconcile-occupancy
+ *
+ * On-demand occupancy reconciliation: archives orphaned reservations,
+ * releases their beds, and recomputes currentOccupancy for all rooms.
+ * Equivalent to running the nightly Job 15 immediately.
+ *
+ * Access: Owner only (isOwner checked in controller)
+ */
+router.post(
+  "/reconcile-occupancy",
+  verifyToken,
+  verifyAdmin,
+  requirePermission("manageRooms"),
+  filterByBranch,
+  reconcileAllOccupancy,
+);
+
 router.get("/:roomId", getRoomById);
 
 /**
@@ -180,6 +242,24 @@ router.patch(
   requirePermission("manageRooms"),
   filterByBranch,
   updateBedStatus,
+);
+
+/**
+ * POST /api/rooms/:roomId/repair-occupancy
+ *
+ * Force-recalculate a room's currentOccupancy counter and bed statuses
+ * from ground-truth active reservations. Resolves drift caused by
+ * reservations deleted outside the normal lifecycle state machine.
+ *
+ * Access: Admin only (manageRooms permission)
+ */
+router.post(
+  "/:roomId/repair-occupancy",
+  verifyToken,
+  verifyAdmin,
+  requirePermission("manageRooms"),
+  filterByBranch,
+  repairRoomOccupancy,
 );
 
 export default router;

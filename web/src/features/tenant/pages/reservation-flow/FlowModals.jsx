@@ -16,7 +16,7 @@ export const LoginConfirmModal = ({ show, onLogin, onDismiss }) => {
       onClose={onDismiss}
       title="Login Required"
       subtitle="Sign in to save and complete your reservation draft"
-      variant="info"
+      variant="success"
       size="sm"
       cancelText="Cancel"
       confirmText="Go to Login"
@@ -70,7 +70,7 @@ export const StageConfirmModal = ({
       isOpen={show}
       onClose={onCancel}
       title={title}
-      variant={isStage1 ? "primary" : "success"}
+      variant="success"
       size="sm"
       cancelText="Cancel"
       confirmText="Proceed"

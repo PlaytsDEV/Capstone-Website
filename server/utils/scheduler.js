@@ -35,9 +35,13 @@ import dayjs from "dayjs";
 import { Reservation, Room, Bill, User } from "../models/index.js";
 import { getAuth } from "../config/firebase.js";
 import notify from "./notificationService.js";
-import { updateOccupancyOnReservationChange } from "./occupancyManager.js";
+import {
+  updateOccupancyOnReservationChange,
+  releaseOrphanedBeds,
+} from "./occupancyManager.js";
 import logger from "../middleware/logger.js";
 import {
+  ACTIVE_OCCUPANCY_STATUS_QUERY,
   CURRENT_RESIDENT_STATUS_QUERY,
   readMoveInDate,
 } from "./lifecycleNaming.js";
@@ -379,17 +383,47 @@ async function cleanupOrphanedAccounts() {
           continue;
         }
 
+        // BUG FIX (Layer 1B): use ACTIVE_OCCUPANCY_STATUS_QUERY (reserved + moveIn)
+        // instead of CURRENT_RESIDENT_STATUS_QUERY (moveIn only) to catch reserved
+        // reservations that were left behind by previous orphan cleanups.
         const activeReservationCount = await Reservation.countDocuments({
           userId: mgUser._id,
-          status: { $in: CURRENT_RESIDENT_STATUS_QUERY },
+          status: { $in: ACTIVE_OCCUPANCY_STATUS_QUERY },
           isArchived: { $ne: true },
         });
         if (activeReservationCount > 0) {
-          logger.warn({ email: mgUser.email }, "Sync: skipping orphaned user with active reservation");
+          logger.warn(
+            { email: mgUser.email, activeReservationCount },
+            "Sync: skipping orphaned user — has active occupancy reservation(s) (reserved/moveIn)",
+          );
           continue;
         }
 
         try {
+          // Archive any remaining non-archived reservations before deleting
+          // the user document so no reservation ever has a dangling userId.
+          const remainingReservations = await Reservation.find({
+            userId: mgUser._id,
+            isArchived: { $ne: true },
+          }).select("_id").lean();
+
+          if (remainingReservations.length > 0) {
+            const resIds = remainingReservations.map((r) => r._id);
+            await Reservation.updateMany(
+              { userId: mgUser._id, isArchived: { $ne: true } },
+              { $set: { isArchived: true, status: "archived" } },
+            );
+            // Release beds held by those reservations
+            await releaseOrphanedBeds([], resIds).catch((err) =>
+              logger.warn({ err, email: mgUser.email }, "Sync: bed release for reservations failed")
+            );
+          }
+
+          // Release any beds locked/occupied directly by this user
+          await releaseOrphanedBeds([mgUser._id], []).catch((err) =>
+            logger.warn({ err, email: mgUser.email }, "Sync: bed release for user failed")
+          );
+
           await User.deleteOne({ firebaseUid: uid });
           deletedMongo++;
           logger.info({ email: mgUser.email }, "Sync: deleted orphaned MongoDB record");
@@ -686,6 +720,171 @@ async function dispatchScheduledAnnouncements() {
   }
 }
 
+// ─── Job 15: Nightly Occupancy Integrity Reconciliation (daily at 04:00) ────
+//
+// Safety-net: runs AFTER Job 7 (Firebase sync, 03:00) to catch any rooms whose
+// currentOccupancy counter drifted due to a deletion race, a failed bed-release,
+// or any other unexpected path. Idempotent — always safe to run multiple times.
+
+async function reconcileOccupancyIntegrity() {
+  try {
+    // 1. Build the full set of existing User _ids
+    const existingUsers = await User.find({}).select("_id").lean();
+    const existingUserIdSet = new Set(existingUsers.map((u) => String(u._id)));
+
+    // 2a. Find ACTIVE reservations (reserved/moveIn) for deleted users — archive + release beds
+    const orphanedReservations = await Reservation.find({
+      isArchived: { $ne: true },
+      status: { $in: ACTIVE_OCCUPANCY_STATUS_QUERY },
+    }).select("_id reservationCode userId roomId status selectedBed").lean();
+
+    const trueOrphans = orphanedReservations.filter(
+      (r) => r.userId && !existingUserIdSet.has(String(r.userId)),
+    );
+
+    if (trueOrphans.length > 0) {
+      logger.warn(
+        { count: trueOrphans.length },
+        "reconcileOccupancy: found orphaned active reservations — archiving",
+      );
+
+      // Group by room for efficient bed release
+      const orphansByRoom = new Map();
+      for (const res of trueOrphans) {
+        const key = String(res.roomId);
+        if (!orphansByRoom.has(key)) orphansByRoom.set(key, []);
+        orphansByRoom.get(key).push(res);
+      }
+
+      for (const [roomId, resArr] of orphansByRoom) {
+        const resIds = resArr.map((r) => r._id);
+
+        // Archive the orphaned reservations
+        await Reservation.updateMany(
+          { _id: { $in: resIds } },
+          { $set: { isArchived: true, status: "archived" } },
+        );
+
+        // Release their beds
+        await releaseOrphanedBeds([], resIds).catch((err) =>
+          logger.warn({ err, roomId }, "reconcileOccupancy: bed release failed (will retry next run)")
+        );
+      }
+    }
+
+    // 2b. Phase 5B: Archive NON-ACTIVE reservations for deleted users.
+    // The pass above only catches reserved/moveIn. Cancelled, moveOut,
+    // viewing_preference_selected etc. for deleted users accumulate indefinitely.
+    const allNonActiveNonArchived = await Reservation.find({
+      isArchived: { $ne: true },
+      status: { $nin: ACTIVE_OCCUPANCY_STATUS_QUERY },
+    }).select("_id userId").lean();
+
+    const nonActiveOrphans = allNonActiveNonArchived.filter(
+      (r) => r.userId && !existingUserIdSet.has(String(r.userId)),
+    );
+
+    if (nonActiveOrphans.length > 0) {
+      await Reservation.updateMany(
+        { _id: { $in: nonActiveOrphans.map((r) => r._id) } },
+        { $set: { isArchived: true } },
+      );
+      logger.info(
+        { count: nonActiveOrphans.length },
+        "reconcileOccupancy: archived non-active orphaned reservations for deleted users",
+      );
+    }
+
+    // 3. Recompute currentOccupancy for ALL active rooms from live reservations
+    const rooms = await Room.find({ isArchived: { $ne: true } });
+    let roomsFixed = 0;
+
+    for (const room of rooms) {
+      const liveCount = await Reservation.countDocuments({
+        roomId: room._id,
+        isArchived: { $ne: true },
+        status: { $in: ACTIVE_OCCUPANCY_STATUS_QUERY },
+      });
+
+      // Fetch live reservations with selectedBed for cross-validation (Phase 1)
+      const liveReservations = await Reservation.find({
+        roomId: room._id,
+        isArchived: { $ne: true },
+        status: { $in: ACTIVE_OCCUPANCY_STATUS_QUERY },
+      }).select("_id selectedBed").lean();
+
+      const liveResIdSet = new Set(liveReservations.map((r) => String(r._id)));
+
+      // Build: reservationId → claimedBedId (from selectedBed)
+      const resBedMap = new Map();
+      for (const res of liveReservations) {
+        if (res.selectedBed?.id) {
+          resBedMap.set(String(res._id), res.selectedBed.id);
+        }
+      }
+
+      let bedChanged = false;
+
+      for (const bed of room.beds) {
+        if (bed.status === "maintenance" || bed.status === "locked") continue;
+
+        if (
+          (bed.status === "occupied" || bed.status === "reserved") &&
+          bed.occupiedBy?.reservationId
+        ) {
+          const resIdStr = String(bed.occupiedBy.reservationId);
+
+          // Pass A: dead reference — reservation no longer active
+          if (!liveResIdSet.has(resIdStr)) {
+            bed.status = "available";
+            bed.lockedBy = null;
+            bed.lockExpiresAt = null;
+            bed.occupiedBy = { userId: null, reservationId: null, occupiedSince: null };
+            bedChanged = true;
+            continue;
+          }
+
+          // Pass B (Phase 1): cross-validation — reservation IS active but its
+          // selectedBed points to a DIFFERENT bed. This bed has a stale pointer.
+          const claimedBedId = resBedMap.get(resIdStr);
+          if (claimedBedId && claimedBedId !== bed.id) {
+            logger.warn(
+              { roomId: String(room._id), bedId: bed.id, reservationId: resIdStr, claimedBedId },
+              "reconcileOccupancy: stale bed pointer (reservation claims different bed) — clearing",
+            );
+            bed.status = "available";
+            bed.lockedBy = null;
+            bed.lockExpiresAt = null;
+            bed.occupiedBy = { userId: null, reservationId: null, occupiedSince: null };
+            bedChanged = true;
+          }
+        }
+      }
+
+      const storedCount = room.currentOccupancy;
+      if (storedCount !== liveCount || bedChanged) {
+        room.currentOccupancy = liveCount;
+        room.updateAvailability();
+        await room.save();
+        roomsFixed++;
+      }
+    }
+
+    if (trueOrphans.length > 0 || nonActiveOrphans.length > 0 || roomsFixed > 0) {
+      logger.info(
+        {
+          orphanedReservationsArchived: trueOrphans.length,
+          nonActiveOrphansArchived: nonActiveOrphans.length,
+          roomsFixed,
+        },
+        "reconcileOccupancy: integrity pass complete",
+      );
+    }
+  } catch (error) {
+    logger.error({ err: error }, "reconcileOccupancy: job failed");
+  }
+}
+
 // ─── Scheduler Startup ──────────────────────────────────────────────────
 
 const scheduledJobs = [];
@@ -964,6 +1163,18 @@ export function startScheduler(options = {}) {
     }),
   );
 
+  // Job 15: Nightly occupancy integrity reconciliation — daily at 04:00
+  // Safety-net that runs AFTER the Firebase sync job (03:00) to catch any
+  // drift caused by deletion races, failed bed releases, or scheduler bugs.
+  scheduledJobs.push(
+    cron.schedule("0 4 * * *", () =>
+      retryJobOperation(reconcileOccupancyIntegrity, { label: "Job 15: Occupancy reconciliation" }),
+    {
+      scheduled: true,
+      name: "occupancy-integrity-reconciliation",
+    }),
+  );
+
   return scheduledJobs.length;
 }
 
@@ -991,6 +1202,7 @@ export {
   detectSlaBreaches,
   detectConsecutiveOverdueMonths,
   runSurveySchedulerJob,
+  reconcileOccupancyIntegrity,
 };
 
 export default { startScheduler, stopScheduler };

@@ -12,6 +12,7 @@
  */
 
 import React from "react";
+import { AlertTriangle } from "lucide-react";
 
 class RouteErrorBoundary extends React.Component {
  constructor(props) {
@@ -67,7 +68,9 @@ class RouteErrorBoundary extends React.Component {
  border: "1px solid var(--border-card, #f0f0f0)",
  }}
  >
- <div style={{ fontSize: "48px", marginBottom: "16px" }}>⚠️</div>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: "16px" }}>
+              <AlertTriangle size={48} strokeWidth={1.5} style={{ color: "#D97706" }} />
+            </div>
  <h2
  style={{
  margin: "0 0 8px 0",

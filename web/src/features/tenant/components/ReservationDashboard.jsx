@@ -1000,15 +1000,11 @@ export default function ReservationDashboard({
             ) : (
               <button
                 onClick={() => {
-                  if (onGoToReservation) {
-                    onGoToReservation();
-                  } else {
-                    setShowCancelModal(true);
-                  }
+                  setShowCancelModal(true);
                 }}
                 style={styles.footerLinkDanger}
               >
-                Cancel reservation
+                Cancel reservation process
               </button>
             )}
           </div>
@@ -1020,12 +1016,12 @@ export default function ReservationDashboard({
         onClose={() => {
           if (!isCancelling) setShowCancelModal(false);
         }}
-        title="Cancel Reservation?"
+        title="Cancel Reservation Process?"
         subtitle={`Room: ${roomName}`}
         variant="warning"
         size="sm"
-        cancelText="Keep it"
-        confirmText={isCancelling ? "Cancelling..." : "Cancel Reservation"}
+        cancelText="Keep process"
+        confirmText={isCancelling ? "Cancelling Process..." : "Cancel Process"}
         loading={isCancelling}
         onConfirm={async () => {
           setIsCancelling(true);
@@ -1038,7 +1034,7 @@ export default function ReservationDashboard({
             });
             setShowCancelModal(false);
             showNotification(
-              "Reservation cancelled successfully.",
+              "Reservation process cancelled.",
               "success",
               3000,
             );
@@ -1050,7 +1046,7 @@ export default function ReservationDashboard({
             setIsCancelling(false);
             setShowCancelModal(false);
             showNotification(
-              "Failed to cancel reservation. Please try again.",
+              "Failed to cancel reservation process. Please try again.",
               "error",
               4000,
             );
@@ -1058,7 +1054,7 @@ export default function ReservationDashboard({
         }}
       >
         <p style={{ margin: 0, color: "var(--text-secondary, #475569)", lineHeight: 1.5 }}>
-          This will permanently remove your reservation for <strong>{roomName}</strong>. This action cannot be undone.
+          This will cancel your current room reservation process for <strong>{roomName}</strong> and release your selected room. You can select another room at any time.
         </p>
       </BaseModal>
 

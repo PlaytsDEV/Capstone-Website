@@ -9,7 +9,9 @@ import {
   getFinancialsReport,
   getOccupancyForecast,
   getOccupancyReport,
+  getOccupancyRateHistory,
   getOperationsReport,
+  getRoomBedHistory,
   getSystemPerformance,
 } from "../controllers/analyticsController.js";
 
@@ -19,6 +21,8 @@ router.use(verifyToken, verifyAdmin);
 
 router.get("/dashboard", getDashboardAnalytics);
 router.get("/reports/occupancy", getOccupancyReport);
+router.get("/reports/occupancy-history", getOccupancyRateHistory);
+router.get("/rooms/:roomId/bed-history", getRoomBedHistory);
 router.get("/reports/billing", getBillingReport);
 router.get("/reports/operations", getOperationsReport);
 router.get("/reports/demographics", getDemographicsReport);

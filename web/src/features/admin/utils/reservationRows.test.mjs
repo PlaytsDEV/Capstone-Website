@@ -103,3 +103,18 @@ test("isNewReservation correctly evaluates recency", () => {
   assert.equal(isNewReservation({ createdAt: oldDate }), false);
 });
 
+test("mapReservationAdminRow considers pending cancellation requests as isNew", () => {
+  const oldDate = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+  const row = mapReservationAdminRow({
+    _id: "res-cancellation-test",
+    status: "reserved",
+    createdAt: oldDate,
+    isViewedByAdmin: true,
+    cancellationRequested: true,
+    cancellationStatus: "pending",
+  });
+
+  assert.equal(row.isNew, true);
+});
+
+

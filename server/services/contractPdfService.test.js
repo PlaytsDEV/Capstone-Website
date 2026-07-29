@@ -207,12 +207,17 @@ describe("prepared Contract PDF overlay", () => {
   test("important assignment, duration, and date boxes use bold printable styles", () => {
     const fields = getContractTemplateCoordinates("double-sharing-short-term").fields;
     for (const fieldName of [
-      "roomNumber", "bedOrSlotNumber", "leaseDurationNumber", "leaseDurationWords",
+      "roomNumber", "bedOrSlotNumber", "leaseDurationNumber",
       "leaseStartDate", "leaseEndDate", "advanceCoverageStart", "advanceCoverageEnd",
     ]) {
       expect(fields[fieldName].fontWeight).toBe("bold");
       expect(fields[fieldName].minimumFontSize).toBeGreaterThanOrEqual(8.25);
     }
+    // leaseDurationWords holds a spelled-out number of unpredictable width
+    // ("Twelve", "Twenty-four") and is intentionally allowed to shrink further
+    // than other fields so common lease terms don't overflow the template box.
+    expect(fields.leaseDurationWords.fontWeight).toBe("bold");
+    expect(fields.leaseDurationWords.minimumFontSize).toBeGreaterThanOrEqual(6);
     expect(fields.leaseDurationNumber.horizontalAlignment).toBe("right");
     expect(fields.leaseDurationWords.horizontalAlignment).toBe("left");
     for (const fieldName of [
@@ -228,8 +233,9 @@ describe("prepared Contract PDF overlay", () => {
     expect(CONTRACT_FIELD_VISUAL_STYLES.tenantLegalName.fontWeight).toBe("bold");
     expect(CONTRACT_FIELD_VISUAL_STYLES.tenantResidentialAddress.fontWeight).toBe("regular");
     expect(Object.entries(CONTRACT_FIELD_VISUAL_STYLES)
-      .filter(([fieldName]) => fieldName !== "propertyAddress")
+      .filter(([fieldName]) => !["propertyAddress", "leaseDurationWords"].includes(fieldName))
       .every(([, style]) => style.minimumSize >= 8)).toBe(true);
+    expect(CONTRACT_FIELD_VISUAL_STYLES.leaseDurationWords.minimumSize).toBeGreaterThanOrEqual(6);
   });
 
   test("required pricing, duration, and date values use consistent safe typography", async () => {
@@ -286,6 +292,28 @@ describe("prepared Contract PDF overlay", () => {
     expect(metrics.securityDepositAmount.text).toBe("6,300.00.");
   });
 
+  test("regression: a 12-month lease ('Twelve') generates without a field-overflow error", async () => {
+    // Reported bug: LIL-GUAD-2026-00002 (quadruple-sharing, 12-month lease)
+    // failed PDF generation with CONTRACT_FIELD_OVERFLOW because "Twelve" at
+    // 8.5pt (25.25pt wide) didn't fit the then-25pt-wide, zero-shrink-range box.
+    const data = fixtureData(
+      OFFICIAL_CONTRACT_TEMPLATES.find(
+        (template) => template.templateId === "quadruple-sharing-short-term",
+      ),
+    );
+    data.fields = {
+      ...data.fields,
+      leaseDurationNumber: "12",
+      leaseDurationWords: "Twelve",
+    };
+    const output = await renderPreparedContractPdf(data);
+    const metrics = output.fieldMetrics;
+    expect(metrics.leaseDurationWords.text).toBe("Twelve");
+    expect(metrics.leaseDurationWords.fontSize).toBeGreaterThanOrEqual(6);
+    expect(metrics.leaseDurationWords.textWidth)
+      .toBeLessThanOrEqual(metrics.leaseDurationWords.fieldBox.width);
+  });
+
   test("3.0.3 preserves duration and adds safe spacing before the printed percent suffix", () => {
     const fields = getContractTemplateCoordinates(
       "quadruple-sharing-short-term",
@@ -295,7 +323,7 @@ describe("prepared Contract PDF overlay", () => {
       horizontalAlignment: "right",
     }));
     expect(fields.leaseDurationWords).toEqual(expect.objectContaining({
-      x: 403, y: 643, width: 25, verticalOffset: 2.2,
+      x: 403, y: 643, width: 27, verticalOffset: 2.2,
       horizontalAlignment: "left",
     }));
     expect(fields.regularMonthlyRate).toEqual(expect.objectContaining({

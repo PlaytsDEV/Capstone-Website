@@ -224,26 +224,6 @@ const NotificationsTab = () => {
 						}}
 					>
 						Notifications
-						{unreadCount > 0 && (
-							<span
-								style={{
-									display: "inline-flex",
-									alignItems: "center",
-									justifyContent: "center",
-									marginLeft: "8px",
-									backgroundColor: "#EF4444",
-									color: "#fff",
-									fontSize: "12px",
-									fontWeight: 700,
-									borderRadius: "999px",
-									padding: "2px 8px",
-									minWidth: "20px",
-									verticalAlign: "middle",
-								}}
-							>
-								{unreadCount}
-							</span>
-						)}
 					</h1>
 					<p style={{ fontSize: "14px", color: "var(--text-muted, #94A3B8)", margin: 0 }}>
 						{isApplicant

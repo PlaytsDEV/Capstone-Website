@@ -1,12 +1,18 @@
-import { BedDouble, Lock, Settings, Unlock, X } from "lucide-react";
+import { useState } from "react";
+import { BedDouble, Lock, Settings, Unlock, X, User } from "lucide-react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 import { formatRoomType } from "../../utils/formatters";
 import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
 import { DrawerSkeleton } from "../../../../shared/components/LoadingSkeletons";
 import { getBedDisplayLabel } from "../../../../shared/utils/bedIdentifier";
+import BedOccupantDetailModal from "../rooms/BedOccupantDetailModal";
 
 export default function OccupancyRoomModal({ room, loadingDetails, onClose }) {
  useEscapeClose(true, onClose);
+ const navigate = useNavigate();
+ const [selectedOccupantBed, setSelectedOccupantBed] = useState(null);
+
  const roomInfo = room.room || room;
  const beds = room.beds || [];
  const occupiedBeds =
@@ -91,6 +97,12 @@ export default function OccupancyRoomModal({ room, loadingDetails, onClose }) {
  const maintenanceTone = getBedTone("maintenance");
  const availableTone = getBedTone("available");
 
+ const handleNavigateToTenants = (navUrl) => {
+    setSelectedOccupantBed(null);
+    if (onClose) onClose();
+    navigate(navUrl);
+ };
+
  const modal = (
  <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-transparent backdrop-blur-sm" onClick={onClose}>
  <div className="w-full max-w-3xl bg-card border border-border rounded-xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
@@ -147,8 +159,18 @@ export default function OccupancyRoomModal({ room, loadingDetails, onClose }) {
  <div className={`${occupiedTone.icon} mt-0.5`}>
  <BedDouble size={22} />
  </div>
- <div className="flex-1">
+ <div className="flex-1 min-w-0">
+ <div className="flex items-center justify-between gap-2">
  <h4 className="text-sm font-semibold text-foreground mb-1">{formatBedLabel(bed)}</h4>
+ <button
+    type="button"
+    className="text-xs font-medium text-primary hover:underline inline-flex items-center gap-1"
+    onClick={() => setSelectedOccupantBed(bed)}
+ >
+    <User size={13} />
+    View Summary
+ </button>
+ </div>
  <p className="text-sm text-foreground">
  Resident: {formatOccupantName(bed)}
  </p>
@@ -164,19 +186,37 @@ export default function OccupancyRoomModal({ room, loadingDetails, onClose }) {
  </p>
  )}
  {formatExpectedVacancy(bed) && (
- <p className="text-xs font-semibold text-primary mt-1">
- Expected Vacancy:{" "}
+ <div className="mt-1.5 flex items-center gap-2 flex-wrap text-xs">
+ <span className="font-semibold text-foreground">Expected Vacancy:</span>
+ <span className="font-medium text-muted-foreground">
  {new Date(formatExpectedVacancy(bed)).toLocaleDateString(undefined, {
  month: "short",
  day: "numeric",
  year: "numeric",
  })}
- {formatDaysRemaining(bed) != null && (
- <span className="ml-1 opacity-90 font-medium">
- ({formatDaysRemaining(bed) <= 0 ? "Overdue / Due today" : `${formatDaysRemaining(bed)} days left`})
  </span>
- )}
- </p>
+ {(() => {
+ const days = formatDaysRemaining(bed);
+ if (days == null) return null;
+ let badgeStyle = "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800";
+ let textLabel = `${days} days left`;
+ if (days < 0) {
+ badgeStyle = "bg-red-100 dark:bg-red-950/40 text-red-800 dark:text-red-300 border-red-300 dark:border-red-800";
+ textLabel = `Overdue (${Math.abs(days)}d)`;
+ } else if (days === 0) {
+ badgeStyle = "bg-amber-100 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 border-amber-300 dark:border-amber-800";
+ textLabel = "Due Today";
+ } else if (days <= 7) {
+ badgeStyle = "bg-amber-100 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 border-amber-300 dark:border-amber-800";
+ textLabel = `${days} days left`;
+ }
+ return (
+ <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${badgeStyle}`}>
+ {textLabel}
+ </span>
+ );
+ })()}
+ </div>
  )}
  </div>
  </div>
@@ -194,8 +234,18 @@ export default function OccupancyRoomModal({ room, loadingDetails, onClose }) {
  <div className={`${reservedTone.icon} mt-0.5`}>
  <Lock size={22} />
  </div>
- <div className="flex-1">
+ <div className="flex-1 min-w-0">
+ <div className="flex items-center justify-between gap-2">
  <h4 className="text-sm font-semibold text-foreground mb-1">{formatBedLabel(bed)}</h4>
+ <button
+    type="button"
+    className="text-xs font-medium text-amber-700 dark:text-amber-400 hover:underline inline-flex items-center gap-1"
+    onClick={() => setSelectedOccupantBed({ ...bed, status: "reserved" })}
+ >
+    <User size={13} />
+    View Summary
+ </button>
+ </div>
  <p className="text-sm text-foreground">
  Reserved by: {bed.reservedBy?.userName || bed.occupant?.name || "Unknown"}
  </p>
@@ -285,6 +335,14 @@ export default function OccupancyRoomModal({ room, loadingDetails, onClose }) {
  </button>
  </div>
  </div>
+ {selectedOccupantBed && (
+    <BedOccupantDetailModal
+      bed={selectedOccupantBed}
+      room={roomInfo}
+      onClose={() => setSelectedOccupantBed(null)}
+      onNavigateToTenants={handleNavigateToTenants}
+    />
+ )}
  </div>
  );
 

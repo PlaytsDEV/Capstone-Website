@@ -22,7 +22,10 @@ const RoomCard = React.memo(({ room, onClick, selectedLeaseTermFilter = "All" })
   const occupiedFromBeds = room.beds
     ? room.beds.filter((b) => String(b.status || "").toLowerCase() === "occupied" || (b.status === undefined && b.available === false)).length
     : parseInt(room.occupancy?.split("/")[0]) || 0;
-  const occupied = Math.max(room.currentOccupancy ?? 0, occupiedFromBeds);
+  // Prefer bed-level count as ground truth when beds data is present.
+  // Using Math.max with currentOccupancy here re-introduces the same stale-counter
+  // drift that causes the "Full" label when beds are actually available.
+  const occupied = room.beds?.length > 0 ? occupiedFromBeds : Math.max(room.currentOccupancy ?? 0, occupiedFromBeds);
   const reservedBeds = room.reservedBeds ?? (
     room.beds
       ? room.beds.filter((b) => String(b.status || "").toLowerCase() === "reserved").length

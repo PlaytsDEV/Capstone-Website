@@ -67,6 +67,7 @@ await jest.unstable_mockModule("./notificationService.js", () => ({
 
 await jest.unstable_mockModule("./occupancyManager.js", () => ({
   updateOccupancyOnReservationChange,
+  releaseOrphanedBeds: jest.fn(),
 }));
 
 await jest.unstable_mockModule("../middleware/logger.js", () => ({
@@ -103,6 +104,7 @@ await jest.unstable_mockModule("./announcementDispatch.js", () => ({
 
 await jest.unstable_mockModule("./lifecycleNaming.js", () => ({
   CURRENT_RESIDENT_STATUS_QUERY: ["moveIn"],
+  ACTIVE_OCCUPANCY_STATUS_QUERY: ["reserved", "moveIn"],
   readMoveInDate: (reservation) => reservation.moveInDate || null,
 }));
 

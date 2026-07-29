@@ -1,4 +1,5 @@
 import React from "react";
+import { AlertTriangle, ShieldAlert } from "lucide-react";
 
 /**
  * AccountBlockedBanner — Shown at the top of the layout when a user's
@@ -8,7 +9,7 @@ import React from "react";
 
 const STATUS_CONFIG = {
  suspended: {
- icon: "⚠️",
+ Icon: AlertTriangle,
  title: "Account Suspended",
  message: "Your account has been temporarily suspended. You won't be able to access most features until your account is reactivated. Please contact support for assistance.",
  bgColor: "rgba(217, 119, 6, 0.08)",
@@ -16,7 +17,7 @@ const STATUS_CONFIG = {
  textColor: "#D97706",
  },
  banned: {
- icon: "🚫",
+ Icon: ShieldAlert,
  title: "Account Banned",
  message: "Your account has been permanently disabled due to policy violations. If you believe this is a mistake, please contact administration.",
  bgColor: "rgba(220, 38, 38, 0.06)",
@@ -28,6 +29,8 @@ const STATUS_CONFIG = {
 export default function AccountBlockedBanner({ accountStatus }) {
  const config = STATUS_CONFIG[accountStatus];
  if (!config) return null;
+
+ const IconComponent = config.Icon;
 
  return (
  <div
@@ -44,7 +47,9 @@ export default function AccountBlockedBanner({ accountStatus }) {
  lineHeight: 1.5,
  }}
  >
- <span style={{ fontSize: "20px", flexShrink: 0 }}>{config.icon}</span>
+ <span style={{ display: "inline-flex", alignItems: "center", flexShrink: 0 }}>
+ <IconComponent size={20} strokeWidth={2} />
+ </span>
  <div>
  <strong style={{ fontWeight: 700 }}>{config.title}</strong>
  <span style={{ marginLeft: "8px" }}>{config.message}</span>

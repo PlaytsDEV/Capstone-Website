@@ -58,6 +58,7 @@ await jest.unstable_mockModule("../middleware/rateLimiter.js", () => ({
 await jest.unstable_mockModule("../config/firebase.js", () => ({
   default: { storage: jest.fn() },
   getAuth: jest.fn(),
+  getFirebaseStorage: jest.fn(() => ({ file: jest.fn() })),
 }));
 await jest.unstable_mockModule("../services/attachmentUploadService.js", () => ({
   ATTACHMENT_TYPE_ERROR_MESSAGE: "Unsupported attachment type",
@@ -120,6 +121,8 @@ await jest.unstable_mockModule("../controllers/roomsController.js", () => ({
   getRooms: noop,
   getRoomById: noop,
   getOccupancyConsistency: noop,
+  getOccupancyHealth: noop,
+  reconcileAllOccupancy: noop,
   createRoom: noop,
   updateRoom: noop,
   deleteRoom: noop,
@@ -128,6 +131,7 @@ await jest.unstable_mockModule("../controllers/roomsController.js", () => ({
   reorderBeds: noop,
   deleteBed: noop,
   updateBedStatus: noop,
+  repairRoomOccupancy: noop,
 }));
 await jest.unstable_mockModule("../controllers/billingController.js", () => ({
   getCurrentBilling: noop,

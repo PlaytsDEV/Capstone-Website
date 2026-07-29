@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { generateDepositReceipt } from "../../../../shared/utils/receiptGenerator";
 import { useCurrentUser } from "../../../../shared/hooks/queries/useUsers";
+import DeadlineBadge from "../../../../shared/components/DeadlineBadge";
 import {
  canReservationAccessPayment,
  hasReservationStatus,
@@ -295,16 +296,17 @@ export default function ReservationSidePanel({ reservation, onClick }) {
  success
  />
  )}
-
- {reservation.reservationCode && (
- <DetailRow
- icon={<Shield size={15} color="var(--text-secondary, #94A3B8)" />}
- label="Reservation"
- value={reservation.reservationCode}
- mono
- />
- )}
- </div>
+          {(reservation.depositPaymentDeadline || reservation.paymentDueDate) && (
+            <div style={{ marginTop: 10, width: "100%" }}>
+              <DeadlineBadge
+                dueDate={reservation.depositPaymentDeadline || reservation.paymentDueDate}
+                status={reservation.status}
+                type="reservation"
+                showConsequenceNote={true}
+              />
+            </div>
+          )}
+        </div>
 
  {panelState === "scheduled" && (
  <div style={S.pendingBanner}>

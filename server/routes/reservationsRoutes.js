@@ -146,6 +146,7 @@ router.get(
   "/visit-availability/settings",
   verifyToken,
   verifyAdmin,
+  filterByBranch,
   requirePermission("manageReservations"),
   getVisitAvailabilityRules,
 );
@@ -172,6 +173,7 @@ router.get(
   "/current-residents",
   verifyToken,
   verifyAdmin,
+  filterByBranch,
   requireAnyPermission(["manageReservations", "manageTenants"]),
   getCurrentResidents,
 );
@@ -180,6 +182,7 @@ router.get(
   "/tenant-workspace",
   verifyToken,
   verifyAdmin,
+  filterByBranch,
   requireAnyPermission(["manageReservations", "manageTenants"]),
   getTenantWorkspace,
 );
@@ -188,6 +191,7 @@ router.get(
   "/tenant-workspace/:reservationId",
   verifyToken,
   verifyAdmin,
+  filterByBranch,
   requireAnyPermission(["manageReservations", "manageTenants"]),
   getTenantWorkspaceById,
 );

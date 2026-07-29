@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { ChevronDown, User } from "lucide-react";
+import { ChevronDown, Loader2, User } from "lucide-react";
 import ConfirmModal from "../../../../shared/components/ConfirmModal";
 import FormScrollArrows from "../../../../shared/components/FormScrollArrows";
 import {
@@ -192,6 +192,7 @@ const ReservationApplicationStep = ({
   saveStatusMessage,
   draftRecoveryMessage,
   showValidationErrors,
+  isSubmittingApplication,
   applicationSubmitted,
   paymentApproved,
   visitPending,
@@ -213,7 +214,7 @@ const ReservationApplicationStep = ({
 
   const sectionRefs = useRef({});
   const isCheckingDocuments = Object.values(runningDocumentChecks || {}).some(Boolean);
-  const submitDisabled = saveStatus === "saving" || isCheckingDocuments;
+  const submitDisabled = saveStatus === "saving" || isCheckingDocuments || isSubmittingApplication;
 
   useEffect(() => {
     if (!showValidationErrors) return;
@@ -355,13 +356,20 @@ const ReservationApplicationStep = ({
 
       {readOnly && applicationSubmitted && !paymentApproved && (
         <div className="stage-buttons" style={{ justifyContent: "flex-end" }}>
-          <button onClick={onEditApplication} className="btn btn-primary">Edit Application</button>
+          <button onClick={onEditApplication} className="btn btn-success">Edit Application</button>
         </div>
       )}
 
       {!readOnly && (
         <div className="stage-buttons" style={{ justifyContent: "flex-end" }}>
-          <button onClick={onNext} className="btn btn-primary" disabled={submitDisabled}>{applicationSubmitted ? "Save Changes" : visitPending ? "Save Progress" : "Submit Application"}</button>
+          <button onClick={onNext} className="btn btn-success" disabled={submitDisabled}>
+            {isSubmittingApplication ? (
+              <>
+                <Loader2 size={15} className="auth-spinner" style={{ marginRight: 6 }} />
+                Submitting…
+              </>
+            ) : applicationSubmitted ? "Save Changes" : visitPending ? "Save Progress" : "Submit Application"}
+          </button>
         </div>
       )}
 
