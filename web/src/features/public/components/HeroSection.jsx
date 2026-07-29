@@ -3,9 +3,9 @@ import { Link } from "react-router-dom";
 import { motion, useInView } from "framer-motion";
 import { useRef, useEffect, useState } from "react";
 import { useTheme } from "../context/ThemeContext";
-import hero1 from "../../../assets/images/hero1.jpg";
-import hero2 from "../../../assets/images/hero2.jpg";
-import hero3 from "../../../assets/images/hero3.jpg";
+import hero1 from "../../../assets/images/hero1.webp";
+import hero2 from "../../../assets/images/hero2.webp";
+import hero3 from "../../../assets/images/hero3.webp";
 
 
 const fadeUp = (delay = 0) => ({

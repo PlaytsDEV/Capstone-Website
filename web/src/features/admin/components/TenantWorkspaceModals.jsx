@@ -295,6 +295,12 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
   const [reason, setReason] = useState("Room transfer");
   const [targetRoomBaseline, setTargetRoomBaseline] = useState(null);
   const [targetBaselineLoading, setTargetBaselineLoading] = useState(false);
+  const [forceOverride, setForceOverride] = useState(false);
+  const [effectiveTransferDate, setEffectiveTransferDate] = useState("");
+
+  // Outstanding balance from tenant workspace billing context
+  const outstandingBalance = Number(detail?.billingInfo?.currentBalance || 0);
+  const hasOutstanding = outstandingBalance > 0;
 
   // On modal open: reset fields and pre-fill source meter from history baseline.
   useEffect(() => {
@@ -304,6 +310,8 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
     setTargetRoomBaseline(null);
     setTargetRoomMeterReading("");
     setReason("Room transfer");
+    setForceOverride(false);
+    setEffectiveTransferDate(new Date().toISOString().slice(0, 10));
     // Auto-fill source room meter from the latest recorded reading.
     if (sourceRoomLatestReading?.reading != null) {
       setSourceRoomMeterReading(String(sourceRoomLatestReading.reading));
@@ -354,6 +362,30 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
   const newPrice = Number(selectedRoom?.monthlyPrice || selectedRoom?.price || 0);
   const priceDiff = newPrice - currentPrice;
 
+  // ── Live Financial Preview (Phase 6) ──────────────────────────────────────
+  const cycleStart = detail?.billingInfo?.cycleStart || detail?.billingInfo?.billingCycleStart || null;
+  const transferDateObj = effectiveTransferDate ? new Date(effectiveTransferDate) : new Date();
+  const daysInMonth = transferDateObj.getDate() <= 28
+    ? new Date(transferDateObj.getFullYear(), transferDateObj.getMonth() + 1, 0).getDate()
+    : 30;
+
+  const daysSinceCycleStart = cycleStart
+    ? Math.max(1, Math.ceil((transferDateObj - new Date(cycleStart)) / 86400000))
+    : null;
+
+  const proRataPreview = daysSinceCycleStart != null && currentPrice > 0
+    ? Math.round((currentPrice / daysInMonth) * daysSinceCycleStart * 100) / 100
+    : null;
+
+  const kwhPreview =
+    sourceRoomMeterReading !== "" &&
+    sourceRoomLatestReading?.reading != null &&
+    Number(sourceRoomMeterReading) > Number(sourceRoomLatestReading.reading)
+      ? Math.round((Number(sourceRoomMeterReading) - Number(sourceRoomLatestReading.reading)) * 100) / 100
+      : null;
+
+  const showPreview = roomId && bedId && (proRataPreview != null || kwhPreview != null);
+
   return (
     <TenantModalShell
       open={open}
@@ -371,12 +403,14 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
           <button
             type="button"
             className="tenant-modal-btn tenant-modal-btn--primary"
-            disabled={loading || !roomId || !bedId}
+            disabled={loading || !roomId || !bedId || (hasOutstanding && !forceOverride)}
             onClick={() =>
               onSubmit({
                 roomId,
                 bedId,
                 reason,
+                forceOverride,
+                effectiveTransferDate: effectiveTransferDate || undefined,
                 sourceRoomMeterReading: sourceRoomMeterReading ? Number(sourceRoomMeterReading) : null,
                 targetRoomMeterReading: targetRoomMeterReading ? Number(targetRoomMeterReading) : null,
               })
@@ -390,6 +424,27 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
       <div className="tenant-modal-callout">
         Transfers are limited to the same branch. Old bed will automatically enter turnover status.
       </div>
+
+      {/* Outstanding Balance Warning */}
+      {hasOutstanding && (
+        <div
+          className="tenant-modal-callout"
+          style={{ borderLeftColor: "hsl(0 72% 51%)", background: "hsl(0 86% 97%)", color: "hsl(0 63% 31%)" }}
+        >
+          <strong>⚠ Outstanding Balance: ₱{outstandingBalance.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</strong>
+          <p style={{ marginTop: 4, marginBottom: 8, fontSize: 13 }}>
+            This tenant has unpaid bills. The transfer will be blocked unless you acknowledge and force-proceed.
+          </p>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={forceOverride}
+              onChange={(e) => setForceOverride(e.target.checked)}
+            />
+            I acknowledge the outstanding balance and confirm this transfer
+          </label>
+        </div>
+      )}
 
       <div className="tenant-modal-grid">
         <label className="tenant-modal-field">
@@ -515,6 +570,17 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
       </div>
 
       <label className="tenant-modal-field">
+        <span>Effective Transfer Date</span>
+        <input
+          type="date"
+          value={effectiveTransferDate}
+          max={new Date().toISOString().slice(0, 10)}
+          onChange={(e) => setEffectiveTransferDate(e.target.value)}
+        />
+        <span className="meter-baseline-hint">Used to compute pro-rata rent. Defaults to today.</span>
+      </label>
+
+      <label className="tenant-modal-field">
         <span>Reason</span>
         <textarea
           rows={3}
@@ -523,6 +589,63 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
           placeholder="Required transfer reason"
         />
       </label>
+
+      {/* Financial Preview Card */}
+      {showPreview && (
+        <div
+          style={{
+            border: "1px solid hsl(220 14% 88%)",
+            borderRadius: 8,
+            padding: "14px 16px",
+            background: "hsl(220 14% 97%)",
+            fontSize: 13,
+          }}
+        >
+          <p style={{ fontWeight: 700, marginBottom: 10, fontSize: 12, letterSpacing: "0.06em", color: "hsl(220 14% 40%)" }}>
+            ESTIMATED SETTLEMENT PREVIEW
+          </p>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <tbody>
+              {daysSinceCycleStart != null && (
+                <tr>
+                  <td style={{ padding: "3px 0", color: "hsl(220 14% 45%)" }}>Days in current cycle</td>
+                  <td style={{ textAlign: "right", fontWeight: 600 }}>{daysSinceCycleStart}d</td>
+                </tr>
+              )}
+              {proRataPreview != null && (
+                <tr>
+                  <td style={{ padding: "3px 0", color: "hsl(220 14% 45%)" }}>Pro-rated Rent</td>
+                  <td style={{ textAlign: "right", fontWeight: 600 }}>{fmtMoney(proRataPreview)}</td>
+                </tr>
+              )}
+              {kwhPreview != null && (
+                <tr>
+                  <td style={{ padding: "3px 0", color: "hsl(220 14% 45%)" }}>Estimated Electricity</td>
+                  <td style={{ textAlign: "right", fontWeight: 600 }}>{kwhPreview.toLocaleString()} kWh consumed</td>
+                </tr>
+              )}
+              {outstandingBalance > 0 && (
+                <tr>
+                  <td style={{ padding: "3px 0", color: "hsl(0 72% 51%)" }}>Outstanding Balance</td>
+                  <td style={{ textAlign: "right", fontWeight: 600, color: "hsl(0 72% 51%)" }}>{fmtMoney(outstandingBalance)}</td>
+                </tr>
+              )}
+              <tr>
+                <td colSpan={2}><hr style={{ border: 0, borderTop: "1px solid hsl(220 14% 88%)", margin: "6px 0" }} /></td>
+              </tr>
+              <tr>
+                <td style={{ fontWeight: 700 }}>Estimated Settlement Total</td>
+                <td style={{ textAlign: "right", fontWeight: 700 }}>
+                  {fmtMoney((proRataPreview || 0))}
+                  <span style={{ display: "block", fontSize: 11, fontWeight: 400, color: "hsl(220 14% 55%)" }}>
+                    Electricity rate applied at generation time
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
     </TenantModalShell>
   );
 }

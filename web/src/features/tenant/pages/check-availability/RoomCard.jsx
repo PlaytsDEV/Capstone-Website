@@ -112,8 +112,9 @@ const RoomCard = React.memo(({ room, onClick, selectedLeaseTermFilter = "All" })
       <div className="ca-card-image-wrap">
         <img
           src={images[currentImageIndex]}
-          alt={room.title}
+          alt={room.title || "Room photo"}
           loading="lazy"
+          decoding="async"
         />
 
         {/* Discount Badge */}

@@ -20,6 +20,8 @@ import {
   ClipboardX,
   LoaderCircle,
   RefreshCw,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useAuth } from "../../../../shared/hooks/useAuth";
 import ConfirmModal from "../../../../shared/components/ConfirmModal";
@@ -150,9 +152,11 @@ const EVENT_TYPE_LABELS = {
   periodStart: "Start Reading",
   periodEnd: "End Reading",
   manualAdjustment: "Adjustment",
+  roomTransfer: "Room Transfer",
 };
 const EVENT_TYPE_ORDER = {
   moveOut: 0,
+  roomTransfer: 0,
   regularBilling: 1,
   periodStart: 1,
   periodEnd: 1,
@@ -167,7 +171,8 @@ const getEventTypeOrder = (eventType) =>
   EVENT_TYPE_ORDER[normalizeUtilityEventType(eventType)] ?? 1;
 const isMoveLifecycleEvent = (eventType) =>
   isUtilityEventType(eventType, "moveIn") ||
-  isUtilityEventType(eventType, "moveOut");
+  isUtilityEventType(eventType, "moveOut") ||
+  eventType === "roomTransfer";
 const isSystemBoundaryEvent = (eventType) =>
   isUtilityEventType(eventType, "periodStart") ||
   isUtilityEventType(eventType, "periodEnd");
@@ -180,6 +185,7 @@ const getReadingStatusLabel = (reading) => {
 };
 const getTimelineRecordLabel = (row) => {
   if (!row) return EMPTY_VALUE;
+  if (row.source === "transfer") return "Transfer Event";
   if (row.source === "merged") return "Verified Event";
   if (row.source === "occupancy") return "Occupancy Event";
   if (row.source === "meter") return "Meter Reading";
@@ -187,6 +193,10 @@ const getTimelineRecordLabel = (row) => {
 };
 const getTimelineStatusLabel = (row) => {
   if (!row) return EMPTY_VALUE;
+  if (row.source === "transfer") {
+    const m = row.transferMeta;
+    return m?.billStatus ? m.billStatus.charAt(0).toUpperCase() + m.billStatus.slice(1) : "Settled";
+  }
   if (row.source === "occupancy") {
     if (isUtilityEventType(row.eventType, "moveIn")) {
       return row.isActive ? "Current" : "Past";
@@ -219,6 +229,7 @@ const getTimelineDotClasses = (eventType) => {
   if (normalized === "moveOut") return "bg-rose-500";
   if (normalized === "periodStart") return "bg-emerald-500";
   if (normalized === "periodEnd") return "bg-red-600";
+  if (eventType === "roomTransfer") return "bg-blue-500";
   return "bg-slate-300";
 };
 const toInputDate = (value) => {
@@ -404,19 +415,26 @@ const UtilityBillingTab = ({
   const isOwner = user?.role === "owner";
   const notify = useBillingNotifier();
 
-  /** Mask tenant name for privacy: "Leander Ponce" -> "Leander *****" */
-  const maskName = (name) => {
-    if (!name) return EMPTY_VALUE;
-    const parts = name.trim().split(/\s+/);
-    if (parts.length <= 1) return parts[0];
-    const first = parts[0];
-    const last = parts.slice(1).join(" ");
-    return `${first} ${"*".repeat(Math.max(last.length, 4))}`;
+  /** Mask tenant email for privacy: "kurochan.suson0838@gmail.com" -> "ku••••••••@gmail.com" */
+  const maskEmail = (email) => {
+    if (!email) return EMPTY_VALUE;
+    const str = String(email).trim();
+    const atIdx = str.indexOf("@");
+    if (atIdx <= 0) return `${str.slice(0, 2)}••••••••`;
+    const local = str.slice(0, atIdx);
+    const domain = str.slice(atIdx);
+    const prefix = local.length > 2 ? local.slice(0, 2) : local.slice(0, 1);
+    return `${prefix}••••••••${domain}`;
   };
 
   // Selection
   const [selectedRoomId, setSelectedRoomId] = useState(null);
   const [selectedPeriodId, setSelectedPeriodId] = useState(null);
+  const [unmaskedRows, setUnmaskedRows] = useState({});
+
+  const toggleUnmaskRow = (id) => {
+    setUnmaskedRows((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
   // For Owner: branchFilter is controlled by the parent page so both
   // electricity and water tabs always share the same branch selection.
@@ -688,21 +706,22 @@ const UtilityBillingTab = ({
         current.source === "occupancy" || next.source === "occupancy";
       const hasMeterSource =
         current.source === "meter" || next.source === "meter";
+      const hasTransferSource =
+        current.source === "transfer" || next.source === "transfer";
 
-      merged.source =
-        hasOccupancySource && hasMeterSource ? "merged" : next.source;
+      if (hasTransferSource) {
+        merged.source = "transfer";
+        merged.eventType = "roomTransfer";
+        merged.transferMeta = current.transferMeta || next.transferMeta || null;
+      } else {
+        merged.source =
+          hasOccupancySource && hasMeterSource ? "merged" : next.source;
+      }
       merged.hasMeterRecord = Boolean(
         current.hasMeterRecord || next.hasMeterRecord,
       );
       merged.rawReading = next.rawReading || current.rawReading || null;
-
-      if (
-        (merged.bedName === EMPTY_VALUE || merged.bedName == null) &&
-        current.bedName &&
-        current.bedName !== EMPTY_VALUE
-      ) {
-        merged.bedName = current.bedName;
-      }
+      merged.reading = next.reading ?? current.reading ?? null;
 
       if (
         (merged.tenantName === EMPTY_VALUE || merged.tenantName == null) &&
@@ -720,10 +739,6 @@ const UtilityBillingTab = ({
         merged.tenantEmail = current.tenantEmail;
       }
 
-      if (merged.reading == null && current.reading != null) {
-        merged.reading = current.reading;
-      }
-
       return merged;
     };
 
@@ -737,14 +752,78 @@ const UtilityBillingTab = ({
       timelineByKey.set(row.mergeKey, mergeRow(existing, row));
     };
 
+    // Helper: check if a transfer bill exists for a given tenant ID/email on a date key
+    const findTransferBill = (tenantId, tenantEmail, dateKey) =>
+      roomBills.find((b) => {
+        if (b.billType !== "transfer_settlement") return false;
+        const bTenantId = String(b.userId?._id || b.userId || "");
+        const bEmail = b.userId?.email || "";
+        const matchesTenant =
+          (tenantId && bTenantId === String(tenantId)) ||
+          (tenantEmail && bEmail === tenantEmail);
+        const bDateKey = getEventDayKey(
+          b.transferSnapshot?.effectiveTransferDate || b.billingCycleEnd || b.billingMonth,
+        );
+        return matchesTenant && bDateKey === dateKey;
+      });
+
+    // 1. Process transfer_settlement bills first so transfer rows are anchored
+    for (const bill of roomBills) {
+      if (bill.billType !== "transfer_settlement") continue;
+      const snap = bill.transferSnapshot || {};
+      const eventDate = snap.effectiveTransferDate || bill.billingCycleEnd || bill.billingMonth;
+      if (!eventDate) continue;
+
+      const fromName = snap.fromRoomName || "?";
+      const toName   = snap.toRoomName   || "?";
+      const tenantName =
+        bill.userId?.firstName && bill.userId?.lastName
+          ? `${bill.userId.firstName} ${bill.userId.lastName}`
+          : EMPTY_VALUE;
+      const tenantId = String(bill.userId?._id || bill.userId || "");
+      const tenantEmail = bill.userId?.email || null;
+      const dateKey = getEventDayKey(eventDate);
+
+      const transferKey = `transfer-${tenantId || tenantEmail || bill._id}-${dateKey}`;
+      upsertRow({
+        id: `transfer-${bill._id || bill.id}`,
+        mergeKey: transferKey,
+        source: "transfer",
+        date: eventDate,
+        eventType: "roomTransfer",
+        tenantName,
+        tenantEmail,
+        bedName: EMPTY_VALUE,
+        reading: null,
+        hasMeterRecord: Boolean(snap.estimatedElectricityKwh != null),
+        rawReading: null,
+        transferMeta: {
+          fromRoomName: fromName,
+          toRoomName:   toName,
+          proRataDays:  snap.proRataDays ?? null,
+          proRataRent:  snap.proRataRent ?? null,
+          electricityKwh:    snap.estimatedElectricityKwh ?? null,
+          electricityCharge: snap.estimatedElectricityCharge ?? null,
+          totalAmount:  bill.totalAmount ?? null,
+          billId:       bill._id || bill.id,
+          billStatus:   bill.status,
+        },
+      });
+    }
+
+    // 2. Process room history (occupancy moveIn / moveOut)
     for (const entry of roomHistory) {
-      // Use the reservation's moveInDate; fall back to the meter reading date
-      // if the reservation date wasn't stamped (edge case for admin-created entries).
       const moveInDate = entry.moveInDate || entry.moveInReading?.date || null;
       if (moveInDate) {
-        const moveInKey = `${entry.tenantId || entry.id || entry.tenantName}-moveIn-${getEventDayKey(moveInDate)}`;
+        const tenantId = entry.tenantId || entry.id;
+        const dateKey = getEventDayKey(moveInDate);
+        const tBill = findTransferBill(tenantId, entry.tenantEmail, dateKey);
+        const moveInKey = tBill
+          ? `transfer-${String(tBill.userId?._id || tBill.userId || entry.tenantEmail || tenantId)}-${dateKey}`
+          : `${tenantId || entry.tenantName}-moveIn-${dateKey}`;
+
         upsertRow({
-          id: `occ-in-${entry.id || entry.tenantId}-${moveInDate}`,
+          id: `occ-in-${entry.id || tenantId}-${moveInDate}`,
           mergeKey: moveInKey,
           source: "occupancy",
           date: moveInDate,
@@ -760,9 +839,15 @@ const UtilityBillingTab = ({
       }
 
       if (entry.moveOutDate) {
-        const moveOutKey = `${entry.tenantId || entry.id || entry.tenantName}-moveOut-${getEventDayKey(entry.moveOutDate)}`;
+        const tenantId = entry.tenantId || entry.id;
+        const dateKey = getEventDayKey(entry.moveOutDate);
+        const tBill = findTransferBill(tenantId, entry.tenantEmail, dateKey);
+        const moveOutKey = tBill
+          ? `transfer-${String(tBill.userId?._id || tBill.userId || entry.tenantEmail || tenantId)}-${dateKey}`
+          : `${tenantId || entry.tenantName}-moveOut-${dateKey}`;
+
         upsertRow({
-          id: `occ-out-${entry.id || entry.tenantId}-${entry.moveOutDate}`,
+          id: `occ-out-${entry.id || tenantId}-${entry.moveOutDate}`,
           mergeKey: moveOutKey,
           source: "occupancy",
           date: entry.moveOutDate,
@@ -777,17 +862,20 @@ const UtilityBillingTab = ({
       }
     }
 
+    // 3. Process meter timeline events
     for (const reading of meterTimelineEvents) {
       const eventType = normalizeUtilityEventType(reading.eventType);
-      if (eventType === "regularBilling") {
-        // User-facing timeline keeps lifecycle and boundary events only.
-        continue;
-      }
+      if (eventType === "regularBilling") continue;
 
-      const eventDayKey = getEventDayKey(reading.date);
+      const dateKey = getEventDayKey(reading.date);
+      const tenantId = reading.tenantId || reading.tenant;
+      const tBill = findTransferBill(tenantId, reading.tenantEmail, dateKey);
+
       const meterKey = isMoveLifecycleEvent(eventType)
-        ? `${reading.tenantId || reading.tenant || "unassigned"}-${eventType}-${eventDayKey}`
-        : `${eventType}-${eventDayKey}-${reading.reading}`;
+        ? (tBill
+            ? `transfer-${String(tBill.userId?._id || tBill.userId || reading.tenantEmail || tenantId)}-${dateKey}`
+            : `${tenantId || "unassigned"}-${eventType}-${dateKey}`)
+        : `${eventType}-${dateKey}-${reading.reading}`;
 
       upsertRow({
         id: `meter-${reading.id}`,
@@ -818,7 +906,7 @@ const UtilityBillingTab = ({
     });
 
     return combined;
-  }, [roomHistory, meterTimelineEvents]);
+  }, [roomHistory, meterTimelineEvents, roomBills]);
   const currentPeriod = periods[0] || null;
   const openPeriodForRoom = periods.find((p) => p.status === "open");
   const lastClosedPeriod = periods.find(
@@ -2774,9 +2862,25 @@ const UtilityBillingTab = ({
                         {getTimelineStatusLabel(row)}
                       </span>
                       <span className="text-muted-foreground">
-                        {!isMoveLifecycleEvent(row.eventType)
-                          ? "Room Level"
-                          : maskName(row.tenantName)}
+                        {!isMoveLifecycleEvent(row.eventType) ? (
+                          "Room Level"
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 font-mono text-[11px]">
+                            <button
+                              type="button"
+                              onClick={() => toggleUnmaskRow(row.id)}
+                              className="inline-flex shrink-0 items-center text-muted-foreground transition-colors hover:text-card-foreground"
+                              title={unmaskedRows[row.id] ? "Hide email (mask)" : "Unhide email (reveal)"}
+                            >
+                              {unmaskedRows[row.id] ? <EyeOff size={12} /> : <Eye size={12} />}
+                            </button>
+                            <span>
+                              {unmaskedRows[row.id]
+                                ? (row.tenantEmail || row.tenantName || EMPTY_VALUE)
+                                : maskEmail(row.tenantEmail || row.tenantName)}
+                            </span>
+                          </span>
+                        )}
                       </span>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">

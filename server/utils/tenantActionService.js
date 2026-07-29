@@ -1,12 +1,14 @@
 import mongoose from "mongoose";
 import dayjs from "dayjs";
 import {
+  AuditLog,
   BedHistory,
   Bill,
   Reservation,
   Room,
   Stay,
   User,
+  UtilityPeriod,
   UtilityReading,
 } from "../models/index.js";
 import {
@@ -20,6 +22,7 @@ import {
   utilityEventTypesForQuery,
 } from "./lifecycleNaming.js";
 import { resolveSecurityDeposit } from "./depositUtils.js";
+import { createNotification } from "../services/notifications/notificationService.js";
 
 const normalizeDate = (value, endOfDay = false) => {
   if (!value) return null;
@@ -394,6 +397,32 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         throw Object.assign(new Error("Transfer confirmation is required."), { statusCode: 400, code: "CONFIRM_REQUIRED" });
       }
 
+      // ── Outstanding Balance Guard ─────────────────────────────────────────
+      // Block the transfer if the tenant has unpaid bills unless the admin
+      // explicitly acknowledges and sets forceOverride: true.
+      const bills = await Bill.find({
+        reservationId: reservation._id,
+        isArchived: { $ne: true },
+      }).session(session).lean();
+      const billingSummary = buildBillingSummary(bills);
+      if (billingSummary.hasOutstanding && !payload.forceOverride) {
+        const formattedBalance = Number(billingSummary.currentBalance).toLocaleString("en-PH", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+        throw Object.assign(
+          new Error(
+            `Tenant has ₱${formattedBalance} in outstanding balance. Settle before transfer, or acknowledge and force-proceed.`,
+          ),
+          {
+            statusCode: 409,
+            code: "OUTSTANDING_BILLS_BLOCKING_TRANSFER",
+            outstandingBalance: billingSummary.currentBalance,
+            paymentStatus: billingSummary.paymentStatus,
+          },
+        );
+      }
+
       const activeStay = await ensureActiveStay(reservation, actorId, session);
       const effectiveTransferDate = normalizeDate(payload.effectiveTransferDate) || new Date();
       if (!activeStay || activeStay.status !== "active") {
@@ -552,6 +581,130 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         }
       }
 
+      // ── Pro-rata Rent Calculation ──────────────────────────────────────────
+      // Calculate partial-month rent for the source room from the last billing
+      // cycle start to the effective transfer date.
+      const cycleStart = reservation.billingCycleStart
+        ? new Date(reservation.billingCycleStart)
+        : null;
+      let proRataDays = 0;
+      let proRataRent = 0;
+      if (cycleStart && cycleStart < effectiveTransferDate) {
+        proRataDays = Math.max(
+          1,
+          Math.ceil((effectiveTransferDate - cycleStart) / (1000 * 60 * 60 * 24)),
+        );
+        const monthlyPrice =
+          Number(currentRoom.monthlyPrice || currentRoom.price || 0);
+        const daysInMonth = dayjs(effectiveTransferDate).daysInMonth();
+        proRataRent = daysInMonth > 0
+          ? Math.round((monthlyPrice / daysInMonth) * proRataDays * 100) / 100
+          : 0;
+      }
+
+      // ── Electricity Proration ─────────────────────────────────────────────
+      // Estimate electricity consumed in the source room since the last recorded
+      // reading. Requires: (a) admin-provided or DB-fallback baseline reading,
+      // and (b) an open UtilityPeriod with a known ratePerUnit.
+      let estimatedElectricityKwh = null;
+      let estimatedElectricityCharge = 0;
+
+      // Always resolve the baseline reading for proration (may be admin-supplied
+      // or the DB fallback we fetched during the UtilityReading snapshot block).
+      const baselineForProration = sourceMeterReading != null
+        ? null  // admin supplied explicit value; baseline is implicit from previous reading
+        : null; // will be resolved below
+
+      const latestReadingForProration = await UtilityReading.findOne({
+        roomId: currentRoom._id,
+        utilityType: "electricity",
+        isArchived: false,
+        // Exclude the moveOut snapshot we just created in this transaction
+        // by looking for readings strictly before the transfer date.
+        date: { $lt: effectiveTransferDate },
+      })
+        .sort({ date: -1, createdAt: -1 })
+        .session(session)
+        .lean();
+
+      if (
+        sourceMeterReading != null &&
+        !Number.isNaN(Number(sourceMeterReading)) &&
+        latestReadingForProration?.reading != null
+      ) {
+        const kwhDelta = Number(sourceMeterReading) - Number(latestReadingForProration.reading);
+        if (kwhDelta > 0) {
+          // Fetch the latest open UtilityPeriod for this room to get the rate.
+          const activePeriod = await UtilityPeriod.findOne({
+            roomId: currentRoom._id,
+            utilityType: "electricity",
+            status: "open",
+            isArchived: false,
+          })
+            .sort({ startDate: -1 })
+            .session(session)
+            .lean();
+
+          const ratePerUnit = Number(activePeriod?.ratePerUnit ?? 0);
+          if (ratePerUnit > 0) {
+            estimatedElectricityKwh = Math.round(kwhDelta * 100) / 100;
+            estimatedElectricityCharge = Math.round(kwhDelta * ratePerUnit * 100) / 100;
+          }
+        }
+      }
+
+      const transferSettlementTotal = Math.round((proRataRent + estimatedElectricityCharge) * 100) / 100;
+
+      // ── Transfer Settlement Bill ───────────────────────────────────────────
+      // Create a dedicated transfer_settlement bill inside the same transaction
+      // so the billing history reflects the pro-rated source room charges.
+      const [transferBill] = await Bill.create(
+        [
+          {
+            billType: "transfer_settlement",
+            reservationId: reservation._id,
+            userId: reservation.userId?._id || reservation.userId,
+            branch: currentRoom.branch,
+            roomId: currentRoom._id,
+            billingMonth: effectiveTransferDate,
+            billingCycleStart: cycleStart || effectiveTransferDate,
+            billingCycleEnd: effectiveTransferDate,
+            proRataDays: proRataDays || null,
+            charges: {
+              rent: proRataRent,
+              electricity: estimatedElectricityCharge,
+              water: 0,
+              applianceFees: 0,
+              corkageFees: 0,
+              penalty: 0,
+              discount: 0,
+            },
+            totalAmount: transferSettlementTotal,
+            grossAmount: transferSettlementTotal,
+            remainingAmount: transferSettlementTotal,
+            status: transferSettlementTotal > 0 ? "pending" : "paid",
+            notes: `Transfer settlement: ${currentRoom.name || currentRoom.roomNumber} → ${targetRoom.name || targetRoom.roomNumber} on ${effectiveTransferDate.toISOString().slice(0, 10)}`,
+            transferSnapshot: {
+              fromRoomId: currentRoom._id,
+              fromRoomName: currentRoom.name || currentRoom.roomNumber || "",
+              fromRoomType: currentRoom.type || "",
+              fromRoomPrice: currentRoom.monthlyPrice || currentRoom.price || 0,
+              toRoomId: targetRoom._id,
+              toRoomName: targetRoom.name || targetRoom.roomNumber || "",
+              toRoomType: targetRoom.type || "",
+              toRoomPrice: targetRoom.monthlyPrice || targetRoom.price || 0,
+              effectiveTransferDate,
+              outstandingBalanceAtTransfer: billingSummary.currentBalance,
+              proRataDays,
+              proRataRent,
+              estimatedElectricityKwh,
+              estimatedElectricityCharge: estimatedElectricityCharge > 0 ? estimatedElectricityCharge : null,
+            },
+          },
+        ],
+        { session },
+      );
+
       const activeHistory = await BedHistory.findOne({
         reservationId: reservation._id,
         tenantId: reservation.userId?._id || reservation.userId,
@@ -568,6 +721,28 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         activeHistory.notes = payload.notes || "";
         if (sourceMeterReading != null) activeHistory.transferSourceReading = Number(sourceMeterReading);
         if (targetMeterReading != null) activeHistory.transferTargetReading = Number(targetMeterReading);
+        // ── Store permanent room snapshot and billing state on BedHistory ──
+        activeHistory.proratedRentAdjustment = proRataRent;
+        activeHistory.fromRoomSnapshot = {
+          roomId: currentRoom._id,
+          name: currentRoom.name || "",
+          roomNumber: currentRoom.roomNumber || "",
+          type: currentRoom.type || "",
+          floor: currentRoom.floor || null,
+          branch: currentRoom.branch || "",
+          monthlyPrice: currentRoom.monthlyPrice || currentRoom.price || 0,
+        };
+        activeHistory.billingSnapshotAtTransfer = {
+          totalOutstanding: billingSummary.currentBalance,
+          totalBilled: billingSummary.visibleBills.reduce(
+            (sum, e) => sum + Number(e.bill?.totalAmount || 0), 0,
+          ),
+          totalPaid: billingSummary.visibleBills.reduce(
+            (sum, e) => sum + Number(e.bill?.paidAmount || 0), 0,
+          ),
+          proRataDays,
+          proRataRent,
+        };
         await activeHistory.save({ session });
       }
 
@@ -612,11 +787,82 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
         stay: activeStay.toObject(),
         fromRoomName: currentRoom.name || currentRoom.roomNumber || "Unknown room",
         toRoomName: targetRoom.name || targetRoom.roomNumber || "Unknown room",
+        // Full room snapshots at transfer time
+        fromRoomDetails: {
+          roomId: currentRoom._id,
+          name: currentRoom.name || "",
+          roomNumber: currentRoom.roomNumber || "",
+          type: currentRoom.type || "",
+          floor: currentRoom.floor || null,
+          branch: currentRoom.branch || "",
+          monthlyPrice: currentRoom.monthlyPrice || currentRoom.price || 0,
+          capacity: currentRoom.capacity || 0,
+          occupancyAfterTransfer: currentRoom.currentOccupancy,
+          vacatedBedId: activeStay.bedId,
+        },
+        toRoomDetails: {
+          roomId: targetRoom._id,
+          name: targetRoom.name || "",
+          roomNumber: targetRoom.roomNumber || "",
+          type: targetRoom.type || "",
+          floor: targetRoom.floor || null,
+          branch: targetRoom.branch || "",
+          monthlyPrice: targetRoom.monthlyPrice || targetRoom.price || 0,
+          capacity: targetRoom.capacity || 0,
+          occupancyAfterTransfer: targetRoom.currentOccupancy,
+          assignedBedId: targetBed.id || String(targetBed._id),
+          assignedBedPosition: targetBed.position || null,
+        },
+        billingSnapshot: {
+          outstandingBalanceAtTransfer: billingSummary.currentBalance,
+          proRataDays,
+          proRataRent,
+          transferBillId: transferBill?._id || null,
+        },
       };
     });
     return result;
   } finally {
     await session.endSession();
+  }
+
+  // ── Post-transaction: AuditLog + Tenant Notification ──────────────────────
+  // Both are fire-and-forget. Errors here must never fail the transfer response.
+  if (result) {
+    AuditLog.log({
+      type: "data_modification",
+      action: `Room transfer: ${result.fromRoomName} → ${result.toRoomName}`,
+      severity: "high",
+      user: { id: actorId },
+      details: {
+        reservationId,
+        fromRoomId: result.fromRoomDetails?.roomId,
+        fromRoomName: result.fromRoomDetails?.name,
+        toRoomId: result.toRoomDetails?.roomId,
+        toRoomName: result.toRoomDetails?.name,
+        transferBillId: result.billingSnapshot?.transferBillId,
+        proRataRent: result.billingSnapshot?.proRataRent,
+        sourceMeterReading: payload.sourceRoomMeterReading ?? null,
+        targetMeterReading: payload.targetRoomMeterReading ?? null,
+      },
+    }).catch(() => {});
+
+    const tenantId = result.reservation?.userId?._id || result.reservation?.userId;
+    if (tenantId) {
+      const fromName = result.fromRoomName || "previous room";
+      const toName = result.toRoomName || "new room";
+      createNotification(
+        tenantId,
+        "room_transfer",
+        "Room Transfer Confirmed",
+        `Your room has been transferred from ${fromName} to ${toName}. A settlement statement has been generated for your previous room.`,
+        {
+          entityType: "reservation",
+          entityId: reservationId,
+          emitRealtime: true,
+        },
+      ).catch(() => {});
+    }
   }
 }
 

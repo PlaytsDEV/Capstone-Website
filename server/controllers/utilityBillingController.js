@@ -1960,7 +1960,18 @@ export const getRoomHistory = async (req, res, next) => {
         ? readingMap[`${tenantId}_moveOut`]
         : null;
 
-      const moveIn = readMoveInDate(res) ? new Date(readMoveInDate(res)) : null;
+      // Only surface a move-in date on the billing timeline when the tenant has
+      // actually moved in (status = moveIn / moveOut) or an admin has explicitly
+      // confirmed the date via confirmedMoveInDate.
+      //
+      // For "reserved" reservations, res.moveInDate is the tenant's *intended*
+      // future date captured during booking — NOT a real occupancy event. Emitting
+      // it would create a spurious future "Move In" event in the billing timeline.
+      const hasActuallyMovedIn =
+        hasReservationStatus(res.status, "moveIn", "moveOut") ||
+        Boolean(res.confirmedMoveInDate);
+      const moveInDateRaw = hasActuallyMovedIn ? readMoveInDate(res) : null;
+      const moveIn = moveInDateRaw ? new Date(moveInDateRaw) : null;
       const moveOut = readMoveOutDate(res)
         ? new Date(readMoveOutDate(res))
         : null;

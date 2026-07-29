@@ -21,7 +21,7 @@ import {
 } from "../../config/email.js";
 import { applyBillPayment } from "../../utils/paymentLedger.js";
 import { ensureCurrentCycleRentBill } from "../../utils/rentGenerator.js";
-export {
+import {
   getBillRemainingAmount,
   getReservationRecurringFees,
   getVisibleBillCharges,
@@ -34,6 +34,19 @@ export {
   roundMoney,
   syncBillAmounts,
 } from "../../utils/billingPolicy.js";
+export {
+  getBillRemainingAmount,
+  getReservationRecurringFees,
+  getVisibleBillCharges,
+  getVisibleBillSnapshot,
+  isUtilityChargeVisible,
+  getReservationCreditAvailable,
+  buildRentBillingCycle,
+  resolveCurrentRentBillingCycle,
+  resolveBillStatus,
+  roundMoney,
+  syncBillAmounts,
+};
 import { computePenalty, fetchPenaltySettings } from "../../utils/penaltyCalculator.js";
 import notify from "../../utils/notificationService.js";
 import { sendDraftUtilityBills } from "../../utils/utilityBillFlow.js";
@@ -146,6 +159,7 @@ export const formatBill = (bill) => {
     "N/A";
   return {
     id: bill._id,
+    _id: bill._id,
     tenant: bill.userId
       ? {
           id: bill.userId._id,
@@ -153,7 +167,9 @@ export const formatBill = (bill) => {
           email: bill.userId.email,
         }
       : null,
-    roomId,
+    // Expose userId as a populated object for frontend consumers that use bill.userId directly
+    userId: bill.userId || null,
+    roomId: bill.roomId || null,
     room: roomName,
     roomName,
     branch: bill.branch,
@@ -175,7 +191,27 @@ export const formatBill = (bill) => {
     paidAmount: bill.paidAmount || 0,
     remainingAmount: visible.remainingAmount,
     isFirstCycleBill: !!bill.isFirstCycleBill,
-    billType: resolveRentBillType(bill),
+    // Preserve the original billType from MongoDB; only fall back to charge-based
+    // resolution when the stored field is missing (e.g. legacy documents).
+    billType: bill.billType || resolveRentBillType(bill),
+    proRataDays: bill.proRataDays ?? null,
+    // Transfer settlement snapshot — required for billing timeline events and PDF receipts.
+    transferSnapshot: bill.transferSnapshot
+      ? {
+          fromRoomName: bill.transferSnapshot.fromRoomName || null,
+          fromRoomType: bill.transferSnapshot.fromRoomType || null,
+          fromRoomPrice: bill.transferSnapshot.fromRoomPrice ?? null,
+          toRoomName: bill.transferSnapshot.toRoomName || null,
+          toRoomType: bill.transferSnapshot.toRoomType || null,
+          toRoomPrice: bill.transferSnapshot.toRoomPrice ?? null,
+          effectiveTransferDate: bill.transferSnapshot.effectiveTransferDate || null,
+          proRataRent: bill.transferSnapshot.proRataRent ?? null,
+          proRataDays: bill.transferSnapshot.proRataDays ?? null,
+          estimatedElectricityKwh: bill.transferSnapshot.estimatedElectricityKwh ?? null,
+          estimatedElectricityCharge: bill.transferSnapshot.estimatedElectricityCharge ?? null,
+          outstandingBalanceAtTransfer: bill.transferSnapshot.outstandingBalanceAtTransfer ?? null,
+        }
+      : null,
     status: visible.status,
     paymentMethod: bill.paymentMethod || null,
     paymentDate: bill.paymentDate || null,
@@ -488,13 +524,28 @@ export async function fetchBills(filter, query) {
   const { status, month, page = 1, limit = 20, search, roomId } = query;
   const skip = (parseInt(page) - 1) * parseInt(limit);
   if (status && status !== "all") filter.status = status;
-  if (roomId) filter.roomId = roomId;
   if (month) {
     const d = dayjs(month);
     filter.billingMonth = {
       $gte: d.startOf("month").toDate(),
       $lt: d.add(1, "month").startOf("month").toDate(),
     };
+  }
+
+  // When filtering by roomId, also pull in transfer_settlement bills whose
+  // reservation was attached to that room (they carry the OLD roomId).
+  if (roomId) {
+    const { Reservation } = await import("../../models/index.js");
+    const reservationIds = await Reservation
+      .find({ roomId, isArchived: { $ne: true } })
+      .select("_id")
+      .lean()
+      .then((docs) => docs.map((d) => d._id));
+
+    filter.$or = [
+      { roomId },
+      { reservationId: { $in: reservationIds }, billType: "transfer_settlement" },
+    ];
   }
 
   let userIds = null;

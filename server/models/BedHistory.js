@@ -106,6 +106,42 @@ const bedHistorySchema = new mongoose.Schema(
       type: Number,
       default: null,
     },
+
+    // --- Source Room Snapshot (transfer only) ---
+    // Permanently records what room/price the tenant left.
+    // Populated on the closed BedHistory record when closedByAction === "transfer".
+    fromRoomSnapshot: {
+      type: new mongoose.Schema(
+        {
+          roomId:       { type: mongoose.Schema.Types.ObjectId, ref: "Room", default: null },
+          name:         { type: String, default: "" },
+          roomNumber:   { type: String, default: "" },
+          type:         { type: String, default: "" },
+          floor:        { type: Number, default: null },
+          branch:       { type: String, default: "" },
+          monthlyPrice: { type: Number, default: 0 },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
+
+    // --- Billing State at Transfer ---
+    // Records the outstanding balance and pro-rata amounts at the exact
+    // moment of transfer. Used for audit trails and billing history display.
+    billingSnapshotAtTransfer: {
+      type: new mongoose.Schema(
+        {
+          totalOutstanding: { type: Number, default: 0 },
+          totalBilled:      { type: Number, default: 0 },
+          totalPaid:        { type: Number, default: 0 },
+          proRataDays:      { type: Number, default: 0 },
+          proRataRent:      { type: Number, default: 0 },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -118,6 +154,12 @@ const bedHistorySchema = new mongoose.Schema(
 
 bedHistorySchema.index({ roomId: 1, bedId: 1, moveInDate: -1 });
 bedHistorySchema.index({ tenantId: 1, moveInDate: -1 });
+// Compound index optimizing the transfer workflow's active-history lookup:
+// BedHistory.findOne({ reservationId, tenantId, status: "active" }).sort({ moveInDate: -1 })
+bedHistorySchema.index(
+  { reservationId: 1, tenantId: 1, status: 1, moveInDate: -1 },
+  { name: "transfer_active_history_lookup" },
+);
 
 // ============================================================================
 // STATICS

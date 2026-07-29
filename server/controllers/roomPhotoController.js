@@ -17,6 +17,7 @@
  *   POST /api/rooms/:roomId/photos  — upload one or more photos (multipart)
  */
 
+import sharp from "sharp";
 import multer from "multer";
 import path from "path";
 import { getFirebaseStorage } from "../config/firebase.js";
@@ -101,14 +102,30 @@ export const uploadRoomPhotos = async (req, res, next) => {
 
     const uploadedUrls = await Promise.all(
       files.map(async (file) => {
-        const safeFilename = sanitizeFilename(file.originalname);
-        const storagePath = `room-photos/${roomId}/${Date.now()}-${safeFilename}`;
+        const rawFilename = sanitizeFilename(path.parse(file.originalname || "photo").name);
+        const storagePath = `room-photos/${roomId}/${Date.now()}-${rawFilename}.webp`;
+
+        let uploadBuffer = file.buffer;
+        let contentType = "image/webp";
+
+        try {
+          // Convert image to optimized WebP format (1200px max width, 80% quality)
+          uploadBuffer = await sharp(file.buffer)
+            .resize({ width: 1200, height: 900, fit: "inside", withoutEnlargement: true })
+            .webp({ quality: 80 })
+            .toBuffer();
+        } catch (sharpError) {
+          // Fallback to original file buffer if Sharp processing fails
+          uploadBuffer = file.buffer;
+          contentType = file.mimetype || "image/jpeg";
+        }
 
         const fileRef = bucket.file(storagePath);
 
-        await fileRef.save(file.buffer, {
+        await fileRef.save(uploadBuffer, {
           metadata: {
-            contentType: file.mimetype,
+            contentType,
+            cacheControl: "public, max-age=31536000, immutable",
             metadata: { roomId },
           },
         });

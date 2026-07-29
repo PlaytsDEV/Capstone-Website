@@ -675,6 +675,7 @@ export const transferTenant = async (req, res, next) => {
         ...req.body,
         targetRoomId: req.body.targetRoomId || req.body.newRoomId,
         targetBedId: req.body.targetBedId || req.body.newBedId,
+        forceOverride: Boolean(req.body.forceOverride),
       },
       actorId: actor?._id || null,
     });
@@ -700,10 +701,21 @@ export const transferTenant = async (req, res, next) => {
       message: `Tenant transferred from ${result.fromRoomName} to ${result.toRoomName}`,
       reservation: serializeReservation(result.reservation),
       stay: result.stay,
+      fromRoomDetails: result.fromRoomDetails || null,
+      toRoomDetails: result.toRoomDetails || null,
+      billingSnapshot: result.billingSnapshot || null,
     });
   } catch (error) {
     logger.error({ err: error, requestId: req.id }, "Transfer error");
     await auditLogger.logError(req, error, "Failed to transfer tenant");
+    if (error?.code === "OUTSTANDING_BILLS_BLOCKING_TRANSFER") {
+      return res.status(409).json({
+        error: error.message,
+        code: error.code,
+        outstandingBalance: error.outstandingBalance,
+        paymentStatus: error.paymentStatus,
+      });
+    }
     if (error?.statusCode) {
       return res.status(error.statusCode).json({ error: error.message, code: error.code || "TRANSFER_FAILED" });
     }

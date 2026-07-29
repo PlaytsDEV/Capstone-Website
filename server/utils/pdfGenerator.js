@@ -528,3 +528,175 @@ export async function generateBillPdf({ bill, billingResult, period, room, tenan
   // Return the relative path (relative to server root) for storage in DB
   return path.relative(path.join(__dirname, ".."), filePath);
 }
+
+// ============================================================================
+// TRANSFER SETTLEMENT PDF EXPORT
+// ============================================================================
+
+/**
+ * Generate a PDF Transfer Room Settlement Receipt for a transfer_settlement bill.
+ *
+ * @param {object} params
+ * @param {object} params.bill    - Bill document (billType must be "transfer_settlement")
+ * @param {object} params.tenant  - User lean object (the bill owner)
+ *
+ * @returns {Promise<string>} Relative path to the generated PDF file
+ */
+export async function generateTransferSettlementPdf({ bill, tenant }) {
+  fs.mkdirSync(BILLS_DIR, { recursive: true });
+
+  const billId   = String(bill._id);
+  const filePath = path.join(BILLS_DIR, `transfer-${billId}.pdf`);
+
+  const snap = bill.transferSnapshot || {};
+  const ch   = bill.charges || {};
+
+  const tenantName = [tenant?.firstName, tenant?.lastName].filter(Boolean).join(" ").trim() || "Tenant";
+  const fromRoom   = snap.fromRoomName || "Previous Room";
+  const toRoom     = snap.toRoomName   || "New Room";
+  const transferDate = snap.effectiveTransferDate
+    ? new Date(snap.effectiveTransferDate).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })
+    : formatDate(bill.billingMonth);
+
+  const proRataRent       = Number(snap.proRataRent || ch.rent || 0);
+  const electricityCharge = Number(snap.estimatedElectricityCharge || ch.electricity || 0);
+  const totalAmount       = Number(bill.totalAmount || 0);
+  const outstandingBal    = Number(snap.outstandingBalanceAtTransfer || 0);
+  const proRataDays       = Number(snap.proRataDays || bill.proRataDays || 0);
+  const kwhDelta          = snap.estimatedElectricityKwh != null ? Number(snap.estimatedElectricityKwh) : null;
+
+  const doc = new PDFDocument({
+    size: "A4",
+    margins: { top: 50, bottom: 60, left: 50, right: 50 },
+    info: {
+      Title:   `Transfer Settlement — ${tenantName}`,
+      Author:  "Lilycrest DMS",
+      Subject: `Room Transfer: ${fromRoom} → ${toRoom} on ${transferDate}`,
+    },
+  });
+
+  const writePromise = new Promise((resolve, reject) => {
+    const stream = fs.createWriteStream(filePath);
+    doc.pipe(stream);
+    stream.on("finish", resolve);
+    stream.on("error", reject);
+  });
+
+  const L = doc.page.margins.left;
+  const R = doc.page.width - doc.page.margins.right;
+  const contentWidth = R - L;
+  const fmtMoney = (v) => `₱${Number(v || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  // ── HEADER ────────────────────────────────────────────────────────────────
+  doc.fontSize(20).font("Helvetica-Bold").fillColor("#1a1a2e").text("LILYCREST DORMITORY", L, 50, { align: "center", width: contentWidth });
+  doc.fontSize(10).font("Helvetica").fillColor("#6c757d").text("Management System", L, doc.y, { align: "center", width: contentWidth });
+
+  doc.moveDown(0.5);
+  doc.moveTo(L, doc.y).lineTo(R, doc.y).strokeColor("#e2e8f0").lineWidth(1).stroke();
+  doc.moveDown(0.5);
+
+  // ── DOCUMENT TITLE ────────────────────────────────────────────────────────
+  doc.fontSize(14).font("Helvetica-Bold").fillColor("#1a1a2e").text("TRANSFER ROOM SETTLEMENT RECEIPT", L, doc.y, { align: "center", width: contentWidth });
+  doc.moveDown(0.3);
+  doc.fontSize(10).font("Helvetica").fillColor("#4a5568")
+    .text(`${fromRoom}  →  ${toRoom}`, L, doc.y, { align: "center", width: contentWidth });
+  doc.moveDown(0.2);
+  doc.fontSize(9).fillColor("#6c757d").text(`Effective Transfer Date: ${transferDate}`, L, doc.y, { align: "center", width: contentWidth });
+
+  doc.moveDown(0.8);
+  doc.moveTo(L, doc.y).lineTo(R, doc.y).strokeColor("#e2e8f0").lineWidth(0.5).stroke();
+  doc.moveDown(0.5);
+
+  // ── TENANT INFO ───────────────────────────────────────────────────────────
+  doc.fontSize(9).font("Helvetica-Bold").fillColor("#374151").text("TENANT INFORMATION", L, doc.y);
+  doc.moveDown(0.25);
+  doc.fontSize(9).font("Helvetica").fillColor("#374151")
+    .text(`Name: ${tenantName}`, L, doc.y)
+    .text(`Previous Room: ${fromRoom}  (${snap.fromRoomType || ""}  •  ${fmtMoney(snap.fromRoomPrice)}/mo)`, L, doc.y)
+    .text(`New Room: ${toRoom}  (${snap.toRoomType || ""}  •  ${fmtMoney(snap.toRoomPrice)}/mo)`, L, doc.y);
+
+  doc.moveDown(0.8);
+
+  // ── CHARGES TABLE ─────────────────────────────────────────────────────────
+  doc.fontSize(9).font("Helvetica-Bold").fillColor("#374151").text("SETTLEMENT CHARGES", L, doc.y);
+  doc.moveDown(0.3);
+
+  const drawRow = (label, amount, note = "") => {
+    const y = doc.y;
+    doc.fontSize(9).font("Helvetica").fillColor("#374151").text(label, L + 10, y, { width: contentWidth * 0.6 });
+    if (note) {
+      doc.fontSize(8).fillColor("#6c757d").text(note, L + 10, doc.y - 2, { width: contentWidth * 0.6 });
+    }
+    doc.fontSize(9).font("Helvetica").fillColor("#374151")
+      .text(fmtMoney(amount), L + contentWidth * 0.6, y, { width: contentWidth * 0.4, align: "right" });
+    doc.moveDown(0.5);
+  };
+
+  drawRow(
+    "Pro-rata Rent",
+    proRataRent,
+    proRataDays > 0 ? `${proRataDays} day(s) at ${fmtMoney(snap.fromRoomPrice || 0)}/mo` : "",
+  );
+
+  if (electricityCharge > 0) {
+    drawRow(
+      "Estimated Electricity",
+      electricityCharge,
+      kwhDelta != null ? `${kwhDelta.toLocaleString()} kWh consumed since last reading` : "Based on meter delta",
+    );
+  }
+
+  doc.moveDown(0.2);
+  doc.moveTo(L, doc.y).lineTo(R, doc.y).strokeColor("#374151").lineWidth(0.5).stroke();
+  doc.moveDown(0.3);
+
+  // Total
+  const yTotal = doc.y;
+  doc.fontSize(10).font("Helvetica-Bold").fillColor("#1a1a2e")
+    .text("Settlement Total", L + 10, yTotal, { width: contentWidth * 0.6 })
+    .text(fmtMoney(totalAmount), L + contentWidth * 0.6, yTotal, { width: contentWidth * 0.4, align: "right" });
+  doc.moveDown(0.8);
+
+  // ── METER READINGS ────────────────────────────────────────────────────────
+  if (snap.fromRoomName) {
+    doc.fontSize(9).font("Helvetica-Bold").fillColor("#374151").text("METER READINGS AT TRANSFER", L, doc.y);
+    doc.moveDown(0.25);
+    if (bill.charges?.electricity != null || kwhDelta != null) {
+      doc.fontSize(9).font("Helvetica").fillColor("#374151")
+        .text(`Previous Room Final Meter (${fromRoom}): ${
+          bill.transferSnapshot?.estimatedElectricityKwh != null
+            ? `Δ ${kwhDelta?.toLocaleString()} kWh`
+            : "Not recorded"
+        }`, L + 10, doc.y)
+        .text(`New Room Opening Meter (${toRoom}): Recorded at transfer`, L + 10, doc.y);
+    } else {
+      doc.fontSize(9).font("Helvetica").fillColor("#6c757d").text("No meter readings were recorded for this transfer.", L + 10, doc.y);
+    }
+    doc.moveDown(0.8);
+  }
+
+  // ── OUTSTANDING BALANCE ───────────────────────────────────────────────────
+  if (outstandingBal > 0) {
+    doc.rect(L, doc.y, contentWidth, 30).fillColor("#FFF7ED").fill();
+    const warnY = doc.y + 8;
+    doc.fontSize(9).font("Helvetica-Bold").fillColor("#92400e")
+      .text(`Outstanding Balance at Transfer: ${fmtMoney(outstandingBal)}`, L + 10, warnY, { width: contentWidth - 20 });
+    doc.moveDown(1.2);
+    doc.fontSize(8).font("Helvetica").fillColor("#92400e")
+      .text("This balance was outstanding at the time of room transfer. Please settle at the branch.", L + 10, doc.y, { width: contentWidth - 20 });
+    doc.moveDown(0.8);
+  }
+
+  // ── FOOTER ────────────────────────────────────────────────────────────────
+  const footerYTs = doc.page.height - doc.page.margins.bottom - 24;
+  doc.fontSize(7.5).font("Helvetica").fillColor("#6c757d")
+    .text(
+      `Generated by Lilycrest DMS  •  ${new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}  •  System-generated document`,
+      L, footerYTs, { width: contentWidth, align: "center" },
+    );
+
+  doc.end();
+  await writePromise;
+
+  return path.relative(path.join(__dirname, ".."), filePath);
+}

@@ -84,6 +84,9 @@ utilityReadingSchema.index({ utilityType: 1, roomId: 1, date: 1 });
 utilityReadingSchema.index({ utilityType: 1, roomId: 1, utilityPeriodId: 1 });
 utilityReadingSchema.index({ branch: 1, date: -1 });
 utilityReadingSchema.index({ utilityType: 1, roomId: 1, readingStatus: 1 });
+// Compound index optimizing the transfer workflow's "latest reading for a room" fallback query:
+// findOne({ roomId, utilityType, isArchived: false }).sort({ date: -1, createdAt: -1 })
+utilityReadingSchema.index({ roomId: 1, utilityType: 1, isArchived: 1, date: -1 }, { name: "transfer_meter_lookup" });
 
 utilityReadingSchema.pre("validate", function (next) {
   if (this.eventType) {

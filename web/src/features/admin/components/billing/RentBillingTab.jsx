@@ -583,9 +583,20 @@ export default function RentBillingTab({ isActive }) {
                     <tr key={reservationId} className="group transition-colors hover:bg-muted/20">
                       <td className="px-6 py-4">
                         <p className="font-bold text-card-foreground">{row.tenantName}</p>
-                        <p className="mt-1 text-xs font-medium text-muted-foreground">
-                          {row.roomName} • <span className="uppercase tracking-wider opacity-75">{formatBranch(row.branch)}</span>
-                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                          <span className="inline-block rounded-md bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                            {row.roomName || "Unassigned"}
+                          </span>
+                          <span>•</span>
+                          <span className="uppercase tracking-wider opacity-75">{formatBranch(row.branch)}</span>
+                          {row.bill?.billType === "transfer_settlement" && row.bill?.transferSnapshot?.fromRoomName && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                              <span>TRANSFER: {row.bill.transferSnapshot.fromRoomName}</span>
+                              <span>→</span>
+                              <span>{row.bill.transferSnapshot.toRoomName || row.roomName}</span>
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col items-start gap-1.5">

@@ -351,6 +351,41 @@ const billSchema = new mongoose.Schema(
       ratePerDay: { type: Number, default: null },
       appliedAt: { type: Date, default: null },
     },
+
+    // --- Bill Type ---
+    // Distinguishes regular monthly rent bills from special lifecycle event bills.
+    billType: {
+      type: String,
+      enum: ["monthly", "transfer_settlement"],
+      default: "monthly",
+    },
+
+    // --- Transfer Snapshot (populated only for billType: "transfer_settlement") ---
+    // Permanently records the from/to room context and billing state at the
+    // moment of the room transfer. Used in billing history display.
+    transferSnapshot: {
+      type: new mongoose.Schema(
+        {
+          fromRoomId:   { type: mongoose.Schema.Types.ObjectId, ref: "Room", default: null },
+          fromRoomName: { type: String, default: "" },
+          fromRoomType: { type: String, default: "" },
+          fromRoomPrice: { type: Number, default: 0 },
+          toRoomId:   { type: mongoose.Schema.Types.ObjectId, ref: "Room", default: null },
+          toRoomName: { type: String, default: "" },
+          toRoomType: { type: String, default: "" },
+          toRoomPrice: { type: Number, default: 0 },
+          effectiveTransferDate: { type: Date, default: null },
+          outstandingBalanceAtTransfer: { type: Number, default: 0 },
+          proRataDays: { type: Number, default: 0 },
+          proRataRent: { type: Number, default: 0 },
+          // Utility proration fields — populated when source meter reading is known at transfer time
+          estimatedElectricityKwh: { type: Number, default: null },
+          estimatedElectricityCharge: { type: Number, default: null },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
   },
   { timestamps: true },
 );
@@ -397,6 +432,16 @@ billSchema.index(
 billSchema.index(
   { paymongoPaymentId: 1 },
   { sparse: true, partialFilterExpression: { paymongoPaymentId: { $type: "string" } } },
+);
+billSchema.index(
+  { billType: 1 },
+  { sparse: true, partialFilterExpression: { billType: { $type: "string" } } },
+);
+// Compound index for transfer settlement lookups and the outstanding-balance pre-check
+// that runs before every transfer: Bill.find({ reservationId, isArchived: { $ne: true } })
+billSchema.index(
+  { reservationId: 1, billType: 1, status: 1 },
+  { name: "transfer_settlement_lookup" },
 );
 
 // ============================================================================

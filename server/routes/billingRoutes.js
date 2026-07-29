@@ -368,6 +368,58 @@ router.get("/export", verifyAdmin, requirePermission("manageBilling"), filterByB
 });
 
 // ============================================================================
+// TRANSFER SETTLEMENT PDF
+// ============================================================================
+
+/**
+ * GET /api/billing/transfer-settlement/:billId/pdf
+ * Generate and stream a Transfer Room Settlement Receipt PDF for a transfer_settlement bill.
+ */
+router.get(
+  "/transfer-settlement/:billId/pdf",
+  verifyAdmin,
+  requirePermission("manageBilling"),
+  async (req, res, next) => {
+    try {
+      const { generateTransferSettlementPdf } = await import("../utils/pdfGenerator.js");
+      const { Bill, User } = await import("../models/index.js");
+
+      const bill = await Bill.findById(req.params.billId).lean();
+      if (!bill) {
+        return res.status(404).json({ success: false, message: "Bill not found." });
+      }
+      if (bill.billType !== "transfer_settlement") {
+        return res.status(400).json({ success: false, message: "Bill is not a transfer settlement." });
+      }
+
+      const tenant = await User.findById(bill.userId).select("firstName lastName email").lean();
+
+      const filePath = await generateTransferSettlementPdf({ bill, tenant });
+
+      // Resolve absolute path and stream to client
+      const path = await import("path");
+      const { fileURLToPath } = await import("url");
+      const __dirname = path.default.dirname(fileURLToPath(import.meta.url));
+      const absPath = path.default.resolve(__dirname, "..", filePath);
+
+      const tenantName = [tenant?.firstName, tenant?.lastName].filter(Boolean).join("_") || "tenant";
+      const snap = bill.transferSnapshot || {};
+      const safeFrom = (snap.fromRoomName || "prev").replace(/\s+/g, "-");
+      const safeTo   = (snap.toRoomName   || "new").replace(/\s+/g, "-");
+      const filename = `transfer-settlement_${tenantName}_${safeFrom}-to-${safeTo}.pdf`;
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+
+      const fs = await import("fs");
+      fs.default.createReadStream(absPath).pipe(res);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ============================================================================
 // EXPORT
 // ============================================================================
 

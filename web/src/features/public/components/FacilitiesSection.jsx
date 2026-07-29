@@ -11,14 +11,14 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
-import gfSeatingArea from "../../../assets/images/facilities/G_F seating area.jpg";
-import gfElevatorLobby from "../../../assets/images/facilities/G_F elevator lobby.jpg";
-import rdLoungeArea from "../../../assets/images/facilities/RD Lounge Area.jpg";
-import rdLoungeArea2 from "../../../assets/images/facilities/RD Lounge Area 2.jpg";
-import quadDoubleCommonCr2 from "../../../assets/images/facilities/Quad & double Common CR2.jpg";
-import quadDoubleCommonCr from "../../../assets/images/facilities/Quad & double Common CR.jpg";
-import loungeCommon from "../../../assets/images/facilities/Lounge common.jpg";
-import gfSecurityCounter from "../../../assets/images/facilities/G_F security counter.jpg";
+import gfSeatingArea from "../../../assets/images/facilities/G_F seating area.webp";
+import gfElevatorLobby from "../../../assets/images/facilities/G_F elevator lobby.webp";
+import rdLoungeArea from "../../../assets/images/facilities/RD Lounge Area.webp";
+import rdLoungeArea2 from "../../../assets/images/facilities/RD Lounge Area 2.webp";
+import quadDoubleCommonCr2 from "../../../assets/images/facilities/Quad & double Common CR2.webp";
+import quadDoubleCommonCr from "../../../assets/images/facilities/Quad & double Common CR.webp";
+import loungeCommon from "../../../assets/images/facilities/Lounge common.webp";
+import gfSecurityCounter from "../../../assets/images/facilities/G_F security counter.webp";
 
 const facilities = [
   {

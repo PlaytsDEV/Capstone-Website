@@ -19,6 +19,8 @@ import {
   Skull,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   Info,
   ClipboardList,
   Eye,
@@ -350,6 +352,12 @@ const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("overview");
   const [showMoreActions, setShowMoreActions] = useState(false);
   const [previewDoc, setPreviewDoc] = useState(null);
+  const [isHistoryFolded, setIsHistoryFolded] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
+
+  useEffect(() => {
+    setHistoryPage(1);
+  }, [tenant]);
 
   const toggleWarningDetails = (id) => {
     setExpandedWarnings((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -477,6 +485,14 @@ const navigate = useNavigate();
       queryClient.invalidateQueries({ queryKey: ["rooms"] }),
     ]);
 
+  const roomHistory = tenant?.roomHistory || [];
+  const HISTORY_PER_PAGE = 5;
+  const totalHistoryPages = Math.ceil(roomHistory.length / HISTORY_PER_PAGE) || 1;
+  const paginatedRoomHistory = useMemo(() => {
+    const start = (historyPage - 1) * HISTORY_PER_PAGE;
+    return roomHistory.slice(start, start + HISTORY_PER_PAGE);
+  }, [roomHistory, historyPage]);
+
   if (!tenant) return null;
 
   const contractStatus = dedicatedContract?.status || null;
@@ -484,7 +500,6 @@ const navigate = useNavigate();
   const occupancyStatus = tenant.occupancyStatus || "active";
   const nextAction = tenant.nextAction || "none";
   const paymentHistory = tenant.paymentHistory || [];
-  const roomHistory = tenant.roomHistory || [];
   const extensionHistory = tenant.extensionHistory || [];
   const warnings = tenant.warnings || [];
 
@@ -1129,33 +1144,89 @@ const navigate = useNavigate();
                           <span className="text-success font-medium">Current</span>
                         </div>
                         <div className="text-muted-foreground">
-                          Bed: <span className="text-foreground capitalize font-medium">{tenant.bed || "N/A"}</span> • Move-in Date: {tenant.moveInDate || "N/A"}
+                          Bed: <span className="text-foreground capitalize font-medium">{tenant.bed || "N/A"}</span> • Move-in Date: {tenant.moveInDate || tenant.moveIn || "N/A"}
                         </div>
                       </div>
                     </div>
 
                     {roomHistory.length > 0 && (
-                      <div className="bg-muted/30 border border-border/60 rounded-xl p-4 space-y-3">
-                        <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5 uppercase tracking-wide">
-                          <History className="w-3.5 h-3.5 text-primary" />
-                          Previous Room History ({roomHistory.length})
-                        </h4>
-                        <div className="space-y-2">
-                          {roomHistory.map((room) => (
-                            <div key={room.id} className="flex items-center justify-between p-2.5 bg-card border border-border rounded-lg text-xs">
-                              <div>
-                                <div className="font-semibold text-foreground">{room.branch} - {room.room}</div>
-                                <div className="text-muted-foreground capitalize">{room.bed} • Moved in: {room.moveInDate}</div>
-                              </div>
-                              <div className={`px-2 py-0.5 text-xs rounded font-medium ${
-                                room.status === "current"
-                                  ? "bg-success-light text-success-dark"
-                                  : "bg-muted text-muted-foreground"
-                              }`}>
-                                {room.status === "current" ? "Current" : "Past Stay"}
-                              </div>
+                      <div className="bg-muted/30 border border-border/60 rounded-xl p-4 transition-all duration-300">
+                        <div
+                          onClick={() => setIsHistoryFolded((prev) => !prev)}
+                          className="flex items-center justify-between cursor-pointer select-none group"
+                        >
+                          <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5 uppercase tracking-wide">
+                            <History className="w-3.5 h-3.5 text-primary" />
+                            Previous Room History ({roomHistory.length})
+                          </h4>
+                          <button
+                            type="button"
+                            className="text-xs text-muted-foreground group-hover:text-foreground flex items-center gap-1.5 transition-colors"
+                          >
+                            <span className="font-medium">{isHistoryFolded ? "Show" : "Hide"}</span>
+                            <ChevronDown
+                              className={`w-4 h-4 transition-transform duration-300 ease-in-out ${
+                                isHistoryFolded ? "rotate-0 text-muted-foreground" : "rotate-180 text-primary"
+                              }`}
+                            />
+                          </button>
+                        </div>
+
+                        <div
+                          className={`grid transition-[grid-template-rows,opacity,margin] duration-300 ease-in-out ${
+                            isHistoryFolded
+                              ? "grid-rows-[0fr] opacity-0 pointer-events-none"
+                              : "grid-rows-[1fr] opacity-100 mt-3"
+                          }`}
+                        >
+                          <div className="overflow-hidden space-y-3">
+                            <div className="space-y-2">
+                              {paginatedRoomHistory.map((room, idx) => (
+                                <div key={room.id || idx} className="flex items-center justify-between p-2.5 bg-card border border-border rounded-lg text-xs hover:border-primary/30 transition-colors">
+                                  <div>
+                                    <div className="font-semibold text-foreground">{room.branch} - {room.room}</div>
+                                    <div className="text-muted-foreground capitalize">{room.bed} • Moved in: {room.moveInDate}</div>
+                                  </div>
+                                  <div className={`px-2 py-0.5 text-xs rounded font-medium ${
+                                    room.status === "current"
+                                      ? "bg-success-light text-success-dark"
+                                      : "bg-muted text-muted-foreground"
+                                  }`}>
+                                    {room.status === "current" ? "Current" : "Past Stay"}
+                                  </div>
+                                </div>
+                              ))}
                             </div>
-                          ))}
+
+                            {totalHistoryPages > 1 && (
+                              <div className="flex items-center justify-between pt-2 text-xs text-muted-foreground border-t border-border/40">
+                                <span>
+                                  Showing {(historyPage - 1) * HISTORY_PER_PAGE + 1}–{Math.min(historyPage * HISTORY_PER_PAGE, roomHistory.length)} of {roomHistory.length}
+                                </span>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    disabled={historyPage === 1}
+                                    onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
+                                    className="px-2 py-1 border border-border rounded text-[11px] font-medium bg-card hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-0.5"
+                                  >
+                                    <ChevronLeft className="w-3.5 h-3.5" /> Prev
+                                  </button>
+                                  <span className="px-2 text-[11px]">
+                                    Page {historyPage} of {totalHistoryPages}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    disabled={historyPage === totalHistoryPages}
+                                    onClick={() => setHistoryPage((p) => Math.min(totalHistoryPages, p + 1))}
+                                    className="px-2 py-1 border border-border rounded text-[11px] font-medium bg-card hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-0.5"
+                                  >
+                                    Next <ChevronRight className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -1482,6 +1553,7 @@ const navigate = useNavigate();
             reason: payload.reason,
             sourceRoomMeterReading: payload.sourceRoomMeterReading,
             targetRoomMeterReading: payload.targetRoomMeterReading,
+            forceOverride: payload.forceOverride || false,
             confirm: true,
           });
           await invalidateTenantQueries();
@@ -1489,12 +1561,17 @@ const navigate = useNavigate();
           closeDialog();
           onClose();
         } catch (err) {
+          const isOutstandingBlock = err?.code === "OUTSTANDING_BILLS_BLOCKING_TRANSFER"
+            || err?.message?.includes("outstanding balance");
+          const errorMsg = isOutstandingBlock
+            ? `Transfer blocked: ₱${Number(err.outstandingBalance || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })} outstanding balance. Acknowledge in the form to force-proceed.`
+            : err.message || "Failed to transfer tenant";
           setDialogState((s) => ({
             ...s,
             loading: false,
-            error: err.message || "Failed to transfer tenant",
+            error: errorMsg,
           }));
-          showNotification(err.message || "Failed to transfer tenant", "error");
+          showNotification(errorMsg, "error");
         }
       }}
     />
