@@ -6,6 +6,7 @@ import { formatBranch } from "../utils/formatters";
 import { resolveDepositFromPaymentInfo } from "../../../shared/utils/depositUtils";
 import { formatBedPosition, getBedDisplayLabel, getBedShortCode } from "../../../shared/utils/bedIdentifier";
 import { reservationApi } from "../../../shared/api/reservationApi";
+import { Clock, History } from "lucide-react";
 
 const fmtDate = (value) =>
   value
@@ -85,6 +86,7 @@ export function RenewLeaseModal({
   onOfferSubmit,
 }) {
   const [mode, setMode] = useState("direct"); // "direct" or "offer"
+  const [selectedDuration, setSelectedDuration] = useState(6); // 1, 3, 6, 12, or "custom"
   const [newLeaseStartDate, setNewLeaseStartDate] = useState("");
   const [newLeaseEndDate, setNewLeaseEndDate] = useState("");
   const [offerMonths, setOfferMonths] = useState(6);
@@ -92,27 +94,58 @@ export function RenewLeaseModal({
   const [expiresAt, setExpiresAt] = useState("");
   const [notes, setNotes] = useState("");
 
+  const currentEndRaw =
+    context?.currentStay?.leaseEndDate ||
+    detail?.leaseInfo?.leaseEndDate ||
+    tenant?.leaseEndDate;
+
+  const calculateTargetEnd = (months) => {
+    const base = currentEndRaw ? new Date(currentEndRaw) : new Date();
+    const validBase = isNaN(base.getTime()) ? new Date() : base;
+    const target = new Date(validBase);
+    target.setMonth(target.getMonth() + Number(months));
+    return toDateInputValue(target);
+  };
+
   useEffect(() => {
     if (!open) return;
 
-    const currentEnd =
-      context?.currentStay?.leaseEndDate || detail?.leaseInfo?.leaseEndDate;
-    const nextStart = currentEnd ? new Date(currentEnd) : new Date();
+    const base = currentEndRaw ? new Date(currentEndRaw) : new Date();
+    const validBase = isNaN(base.getTime()) ? new Date() : base;
+    const nextStart = new Date(validBase);
     nextStart.setDate(nextStart.getDate() + 1);
-    const nextEnd = currentEnd ? new Date(currentEnd) : new Date();
-    nextEnd.setMonth(nextEnd.getMonth() + 12);
+
+    const initialEnd = calculateTargetEnd(6);
 
     const expiry = new Date();
     expiry.setDate(expiry.getDate() + 14);
 
     setNewLeaseStartDate(toDateInputValue(nextStart));
-    setNewLeaseEndDate(toDateInputValue(nextEnd));
+    setNewLeaseEndDate(initialEnd);
+    setSelectedDuration(6);
     setOfferMonths(6);
     setProposedRent(detail?.basicInfo?.monthlyRent || tenant?.monthlyRent || "");
     setExpiresAt(toDateInputValue(expiry));
     setNotes("");
     setMode("direct");
-  }, [open, detail, context, tenant]);
+  }, [open, detail, context, tenant, currentEndRaw]);
+
+  const handleSelectDuration = (months) => {
+    if (months === "custom") {
+      setSelectedDuration("custom");
+      return;
+    }
+    const durationNum = Number(months);
+    setSelectedDuration(durationNum);
+    const newEnd = calculateTargetEnd(durationNum);
+    setNewLeaseEndDate(newEnd);
+    setOfferMonths(durationNum);
+  };
+
+  const handleDateChange = (val) => {
+    setNewLeaseEndDate(val);
+    setSelectedDuration("custom");
+  };
 
   const extensionHistory =
     context?.renewalHistory || detail?.leaseInfo?.extensionHistory || [];
@@ -135,7 +168,7 @@ export function RenewLeaseModal({
   return (
     <TenantModalShell
       open={open}
-      title={`Renew Lease / Offer${tenant?.tenantName ? ` • ${tenant.tenantName}` : ""}`}
+      title={`Extend Reservation • ${tenant?.tenantName || detail?.basicInfo?.tenantName || "Tenant"}`}
       onClose={onClose}
       footer={
         <>
@@ -152,7 +185,7 @@ export function RenewLeaseModal({
             disabled={loading || (mode === "direct" && !newLeaseEndDate)}
             onClick={handleConfirm}
           >
-            {loading ? "Processing..." : mode === "offer" ? "Send Renewal Offer" : "Renew Lease"}
+            {loading ? "Processing..." : mode === "offer" ? "Send Extension Offer" : "Extend Reservation"}
           </button>
         </>
       }
@@ -162,7 +195,7 @@ export function RenewLeaseModal({
           type="button"
           style={{
             flex: 1,
-            padding: "8px 12px",
+            padding: "9px 14px",
             borderRadius: 8,
             border: mode === "direct" ? "2px solid #E8734A" : "1px solid #CBD5E1",
             background: mode === "direct" ? "#FFF7ED" : "#fff",
@@ -170,16 +203,17 @@ export function RenewLeaseModal({
             fontWeight: 600,
             fontSize: 13,
             cursor: "pointer",
+            transition: "all 0.15s ease",
           }}
           onClick={() => setMode("direct")}
         >
-          Direct Renewal
+          Direct Extension
         </button>
         <button
           type="button"
           style={{
             flex: 1,
-            padding: "8px 12px",
+            padding: "9px 14px",
             borderRadius: 8,
             border: mode === "offer" ? "2px solid #E8734A" : "1px solid #CBD5E1",
             background: mode === "offer" ? "#FFF7ED" : "#fff",
@@ -187,40 +221,115 @@ export function RenewLeaseModal({
             fontWeight: 600,
             fontSize: 13,
             cursor: "pointer",
+            transition: "all 0.15s ease",
           }}
           onClick={() => setMode("offer")}
         >
-          Send Official Offer
+          Send Extension Offer
         </button>
+      </div>
+
+      {/* Duration Preset Selector */}
+      <div style={{ marginBottom: 20 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 8 }}>
+          How long do they want to stay again?
+        </span>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
+          {[
+            { label: "+1 Month", value: 1 },
+            { label: "+3 Months", value: 3 },
+            { label: "+6 Months", value: 6 },
+            { label: "+1 Year", value: 12 },
+            { label: "Custom", value: "custom" },
+          ].map((opt) => {
+            const isSelected = selectedDuration === opt.value;
+            return (
+              <button
+                key={opt.label}
+                type="button"
+                style={{
+                  padding: "8px 4px",
+                  borderRadius: 6,
+                  border: isSelected ? "1.5px solid #E8734A" : "1px solid #E2E8F0",
+                  background: isSelected ? "#E8734A" : "#F8FAFC",
+                  color: isSelected ? "#FFFFFF" : "#334155",
+                  fontWeight: 600,
+                  fontSize: 12,
+                  cursor: "pointer",
+                  textAlign: "center",
+                  transition: "all 0.15s ease",
+                }}
+                onClick={() => handleSelectDuration(opt.value)}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Live Extension Preview Card */}
+      <div
+        style={{
+          background: "#F8FAFC",
+          border: "1px solid #E2E8F0",
+          borderRadius: 10,
+          padding: "12px 16px",
+          marginBottom: 20,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 11, color: "#64748B", fontWeight: 500 }}>Current End Date</div>
+          <div style={{ fontSize: 14, color: "#1E293B", fontWeight: 700 }}>
+            {fmtDate(currentEndRaw)}
+          </div>
+        </div>
+        <div style={{ color: "#E8734A", fontSize: 18, fontWeight: 700 }}>→</div>
+        <div>
+          <div style={{ fontSize: 11, color: "#64748B", fontWeight: 500 }}>New Extended End Date</div>
+          <div style={{ fontSize: 14, color: "#E8734A", fontWeight: 700 }}>
+            {mode === "offer" ? `+${offerMonths} Months from end` : fmtDate(newLeaseEndDate)}
+          </div>
+        </div>
       </div>
 
       {mode === "direct" ? (
         <div className="tenant-modal-grid">
           <label className="tenant-modal-field">
-            <span>Current Lease End</span>
+            <span>Current Reservation End</span>
             <input
               type="text"
-              value={fmtDate(detail?.leaseInfo?.leaseEndDate || tenant?.leaseEndDate)}
+              value={fmtDate(currentEndRaw)}
               readOnly
+              style={{ background: "#F1F5F9" }}
             />
           </label>
           <label className="tenant-modal-field">
-            <span>New Lease End Date</span>
+            <span>New Extended End Date</span>
             <input
               type="date"
               value={newLeaseEndDate}
-              onChange={(event) => setNewLeaseEndDate(event.target.value)}
+              onChange={(event) => handleDateChange(event.target.value)}
             />
           </label>
         </div>
       ) : (
         <div className="tenant-modal-grid">
           <label className="tenant-modal-field">
-            <span>Offer Duration (Months)</span>
+            <span>Offer Extension (Months)</span>
             <select
               value={offerMonths}
-              onChange={(e) => setOfferMonths(e.target.value)}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                setOfferMonths(val);
+                handleSelectDuration(val);
+              }}
             >
+              <option value={1}>1 Month</option>
               <option value={3}>3 Months</option>
               <option value={6}>6 Months</option>
               <option value={12}>12 Months (1 Year)</option>
@@ -253,28 +362,121 @@ export function RenewLeaseModal({
           rows={3}
           value={notes}
           onChange={(event) => setNotes(event.target.value)}
-          placeholder={mode === "offer" ? "Message for tenant in renewal notification..." : "Optional renewal notes"}
+          placeholder={mode === "offer" ? "Message for tenant in extension offer notification..." : "Optional stay extension notes..."}
         />
       </label>
 
-      <div className="tenant-modal-section">
-        <h4>Extension History</h4>
+      <div className="tenant-modal-section" style={{ marginTop: 20 }}>
+        <h4 style={{ fontSize: 12, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>
+          Extension History
+        </h4>
         {extensionHistory.length === 0 ? (
-          <p className="tenant-modal-empty">No previous extensions recorded.</p>
+          <div
+            style={{
+              background: "#F8FAFC",
+              border: "1px dashed #CBD5E1",
+              borderRadius: 8,
+              padding: "16px",
+              textAlign: "center",
+              color: "#64748B",
+              fontSize: 12,
+            }}
+          >
+            <Clock style={{ width: 18, height: 18, color: "#94A3B8", margin: "0 auto 4px", display: "block" }} />
+            No previous stay extensions recorded for this tenant.
+          </div>
         ) : (
-          <div className="tenant-history-list">
-            {extensionHistory.map((entry) => (
-              <div key={entry.id} className="tenant-history-item">
-                <strong>
-                  +{entry.addedMonths} month{entry.addedMonths === 1 ? "" : "s"}
-                </strong>
-                <span>
-                  {entry.previousDuration} → {entry.newDuration} months
-                </span>
-                <span>{fmtDate(entry.extendedAt)}</span>
-                {entry.notes ? <span>{entry.notes}</span> : null}
-              </div>
-            ))}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {extensionHistory.map((entry, idx) => {
+              const startDate = entry.leaseStartDate ? fmtDate(entry.leaseStartDate) : null;
+              const endDate = entry.leaseEndDate ? fmtDate(entry.leaseEndDate) : null;
+              
+              let durationText = null;
+              if (entry.addedMonths) {
+                durationText = `+${entry.addedMonths} Month${entry.addedMonths === 1 ? "" : "s"}`;
+              } else if (entry.leaseStartDate && entry.leaseEndDate) {
+                const start = new Date(entry.leaseStartDate);
+                const end = new Date(entry.leaseEndDate);
+                if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+                  const diffMonths = Math.max(1, Math.round((end - start) / (1000 * 60 * 60 * 24 * 30.4375)));
+                  durationText = `${diffMonths} Month${diffMonths === 1 ? "" : "s"} Stay`;
+                }
+              }
+
+              const dateRangeText = startDate && endDate
+                ? `${startDate} – ${endDate}`
+                : entry.extendedAt
+                ? fmtDate(entry.extendedAt)
+                : `Stay Term #${idx + 1}`;
+
+              const statusBadge = entry.status ? String(entry.status).toUpperCase() : "EXTENDED";
+
+              return (
+                <div
+                  key={entry.id || idx}
+                  style={{
+                    background: "#FFFFFF",
+                    border: "1px solid #E2E8F0",
+                    borderRadius: 8,
+                    padding: "10px 14px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 6,
+                        background: "#F1F5F9",
+                        color: "#475569",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <History style={{ width: 16, height: 16 }} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>
+                        {dateRangeText}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>
+                        {entry.notes ? entry.notes : `Term #${idx + 1} • ${statusBadge}`}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ textAlign: "right" }}>
+                    {durationText && (
+                      <span
+                        style={{
+                          display: "inline-block",
+                          padding: "2px 8px",
+                          borderRadius: 4,
+                          background: "#FFF7ED",
+                          border: "1px solid #FFEDD5",
+                          color: "#EA580C",
+                          fontSize: 11,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {durationText}
+                      </span>
+                    )}
+                    {entry.monthlyRent ? (
+                      <div style={{ fontSize: 11, color: "#64748B", marginTop: 2, fontWeight: 500 }}>
+                        {fmtMoney(entry.monthlyRent)}/mo
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -282,12 +484,44 @@ export function RenewLeaseModal({
   );
 }
 
-export function TransferTenantModal({ open, tenant, detail, loading, onClose, onSubmit, sourceRoomLatestReading }) {
+/* ─────────────────────────────────────────────────────────────────────────────
+   Shared helper: Wizard Step Indicator
+   ───────────────────────────────────────────────────────────────────────────── */
+function WizardStepper({ steps, currentStep }) {
+  return (
+    <div className="twm-stepper">
+      {steps.map((label, i) => {
+        const num = i + 1;
+        const state = num < currentStep ? "done" : num === currentStep ? "active" : "idle";
+        return (
+          <div key={num} className={`twm-step twm-step--${state}`}>
+            <div className="twm-step__num">{state === "done" ? "✓" : num}</div>
+            <span className="twm-step__label">{label}</span>
+            {i < steps.length - 1 && <div className="twm-step__line" />}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Transfer Tenant Modal — 3-Step Wizard
+   Step 1: Target Room & Date
+   Step 2: Meter Readings
+   Step 3: Review & Settlement Preview
+   ───────────────────────────────────────────────────────────────────────────── */
+export function TransferTenantModal({ open, tenant, detail, loading, onClose, onSubmit, sourceRoomLatestReading, electricityRatePerUnit }) {
   const branch = detail?.basicInfo?.branch || tenant?.branch || "";
   const { data: roomsData = [], isLoading: roomsLoading } = useRooms(
     open && branch ? { branch } : {},
   );
   const rooms = Array.isArray(roomsData) ? roomsData : roomsData.rooms || [];
+
+  // ── Wizard step state ─────────────────────────────────────────────────────
+  const [step, setStep] = useState(1);
+
+  // ── Form state ────────────────────────────────────────────────────────────
   const [roomId, setRoomId] = useState("");
   const [bedId, setBedId] = useState("");
   const [sourceRoomMeterReading, setSourceRoomMeterReading] = useState("");
@@ -298,13 +532,13 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
   const [forceOverride, setForceOverride] = useState(false);
   const [effectiveTransferDate, setEffectiveTransferDate] = useState("");
 
-  // Outstanding balance from tenant workspace billing context
   const outstandingBalance = Number(detail?.billingInfo?.currentBalance || 0);
   const hasOutstanding = outstandingBalance > 0;
 
-  // On modal open: reset fields and pre-fill source meter from history baseline.
+  // ── Reset on open ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!open) return;
+    setStep(1);
     setRoomId("");
     setBedId("");
     setTargetRoomBaseline(null);
@@ -312,15 +546,14 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
     setReason("Room transfer");
     setForceOverride(false);
     setEffectiveTransferDate(new Date().toISOString().slice(0, 10));
-    // Auto-fill source room meter from the latest recorded reading.
-    if (sourceRoomLatestReading?.reading != null) {
-      setSourceRoomMeterReading(String(sourceRoomLatestReading.reading));
-    } else {
-      setSourceRoomMeterReading("");
-    }
+    setSourceRoomMeterReading(
+      sourceRoomLatestReading?.reading != null
+        ? String(sourceRoomLatestReading.reading)
+        : "",
+    );
   }, [open, sourceRoomLatestReading]);
 
-  // Fetch target room meter baseline when admin selects a target room.
+  // ── Fetch target room baseline when room changes ───────────────────────────
   const fetchTargetBaseline = useCallback(async (selectedRoomId) => {
     if (!selectedRoomId) {
       setTargetRoomBaseline(null);
@@ -332,11 +565,9 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
       const result = await reservationApi.getRoomMeterBaseline(selectedRoomId);
       const baseline = result?.data?.latestReading ?? result?.latestReading ?? null;
       setTargetRoomBaseline(baseline);
-      if (baseline?.reading != null) {
-        setTargetRoomMeterReading(String(baseline.reading));
-      } else {
-        setTargetRoomMeterReading("");
-      }
+      setTargetRoomMeterReading(
+        baseline?.reading != null ? String(baseline.reading) : "",
+      );
     } catch {
       setTargetRoomBaseline(null);
       setTargetRoomMeterReading("");
@@ -345,312 +576,485 @@ export function TransferTenantModal({ open, tenant, detail, loading, onClose, on
     }
   }, []);
 
+  // ── Derived room / bed data ───────────────────────────────────────────────
   const targetRooms = useMemo(
-    () =>
-      rooms.filter(
-        (room) => String(room._id || room.id) !== String(tenant?.roomId),
-      ),
+    () => rooms.filter((r) => String(r._id || r.id) !== String(tenant?.roomId)),
     [rooms, tenant?.roomId],
   );
-
   const selectedRoom = targetRooms.find(
-    (room) => String(room._id || room.id) === String(roomId),
+    (r) => String(r._id || r.id) === String(roomId),
   );
   const roomBeds = selectedRoom?.beds || [];
-
   const currentPrice = Number(detail?.basicInfo?.monthlyRent || tenant?.monthlyRent || 0);
   const newPrice = Number(selectedRoom?.monthlyPrice || selectedRoom?.price || 0);
   const priceDiff = newPrice - currentPrice;
 
-  // ── Live Financial Preview (Phase 6) ──────────────────────────────────────
+  // ── Meter delta & anomaly guards ──────────────────────────────────────────
+  const sourceBaseline = sourceRoomLatestReading?.reading != null
+    ? Number(sourceRoomLatestReading.reading)
+    : null;
+  const sourceEntered = sourceRoomMeterReading !== "" ? Number(sourceRoomMeterReading) : null;
+  const sourceDelta = sourceBaseline !== null && sourceEntered !== null
+    ? sourceEntered - sourceBaseline
+    : null;
+  const sourceBelowBaseline = sourceDelta !== null && sourceDelta < 0;
+
+  const targetBaseline = targetRoomBaseline?.reading != null
+    ? Number(targetRoomBaseline.reading)
+    : null;
+  const targetEntered = targetRoomMeterReading !== "" ? Number(targetRoomMeterReading) : null;
+  const targetBelowBaseline = targetBaseline !== null && targetEntered !== null && targetEntered < targetBaseline;
+
+  // ── Live settlement preview math ──────────────────────────────────────────
   const cycleStart = detail?.billingInfo?.cycleStart || detail?.billingInfo?.billingCycleStart || null;
   const transferDateObj = effectiveTransferDate ? new Date(effectiveTransferDate) : new Date();
-  const daysInMonth = transferDateObj.getDate() <= 28
-    ? new Date(transferDateObj.getFullYear(), transferDateObj.getMonth() + 1, 0).getDate()
-    : 30;
-
+  const daysInMonth = new Date(
+    transferDateObj.getFullYear(),
+    transferDateObj.getMonth() + 1,
+    0,
+  ).getDate();
   const daysSinceCycleStart = cycleStart
     ? Math.max(1, Math.ceil((transferDateObj - new Date(cycleStart)) / 86400000))
     : null;
-
-  const proRataPreview = daysSinceCycleStart != null && currentPrice > 0
-    ? Math.round((currentPrice / daysInMonth) * daysSinceCycleStart * 100) / 100
-    : null;
-
-  const kwhPreview =
-    sourceRoomMeterReading !== "" &&
-    sourceRoomLatestReading?.reading != null &&
-    Number(sourceRoomMeterReading) > Number(sourceRoomLatestReading.reading)
-      ? Math.round((Number(sourceRoomMeterReading) - Number(sourceRoomLatestReading.reading)) * 100) / 100
+  const proRataPreview =
+    daysSinceCycleStart != null && currentPrice > 0
+      ? Math.round((currentPrice / daysInMonth) * daysSinceCycleStart * 100) / 100
       : null;
+  // ── Electricity cost estimate (live, using rate from active UtilityPeriod) ─
+  const kwhPreview =
+    sourceDelta !== null && sourceDelta > 0 ? Math.round(sourceDelta * 100) / 100 : null;
+  const rate = electricityRatePerUnit != null ? Number(electricityRatePerUnit) : null;
+  const estimatedElectricityCost =
+    kwhPreview !== null && rate !== null && rate > 0
+      ? Math.round(kwhPreview * rate * 100) / 100
+      : null;
+  const estimatedTotal =
+    (proRataPreview || 0) +
+    (estimatedElectricityCost || 0) +
+    (outstandingBalance || 0);
 
-  const showPreview = roomId && bedId && (proRataPreview != null || kwhPreview != null);
+  // ── Step gate validation ──────────────────────────────────────────────────
+  const step1Valid = !!roomId && !!bedId && (!hasOutstanding || forceOverride);
+  const step2Valid = !sourceBelowBaseline && !targetBelowBaseline && reason.trim().length > 0;
+
+  // ── Bed label helper ─────────────────────────────────────────────────────
+  const selectedBed = roomBeds.find((b) => String(b.id || b._id) === String(bedId));
+  const selectedBedLabel = selectedBed
+    ? getBedDisplayLabel(selectedBed, roomBeds.indexOf(selectedBed), selectedRoom?.type || selectedRoom?.roomType)
+    : bedId || "—";
+
+  // -- PDF download handler (lazy-import -- jsPDF only loaded on demand) ------
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const handleDownloadTransferPDF = async () => {
+    setPdfLoading(true);
+    try {
+      const { generateSettlementReceiptPDF } = await import("../../../shared/utils/receiptGenerator.js");
+      await generateSettlementReceiptPDF({
+        type: "transfer",
+        tenantName: tenant?.tenantName || "",
+        branch: detail?.basicInfo?.branch || tenant?.branch || "",
+        fromRoom: tenant?.room || "",
+        fromBed: formatBedPosition(tenant?.bed) || "",
+        toRoom: selectedRoom?.name || selectedRoom?.roomNumber || "",
+        toBed: selectedBedLabel,
+        effectiveDate: effectiveTransferDate,
+        daysSinceCycleStart,
+        daysInMonth,
+        currentRent: currentPrice,
+        newRent: newPrice,
+        proRataPreview,
+        kwhPreview,
+        electricityRate: rate,
+        estimatedElectricityCost,
+        outstandingBalance,
+        estimatedTotal,
+      });
+    } catch (err) {
+      console.error("Settlement PDF generation failed:", err);
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  // -- Footer renderer ------------------------------------------------------
+  const renderFooter = () => (
+    <div className="twm-footer">
+      <button type="button" className="tenant-modal-btn tenant-modal-btn--ghost" onClick={onClose}>
+        Cancel
+      </button>
+      <div className="twm-footer__spacer" />
+      {step > 1 && (
+        <button
+          type="button"
+          className="tenant-modal-btn tenant-modal-btn--ghost"
+          onClick={() => setStep((s) => s - 1)}
+        >
+          Back
+        </button>
+      )}
+      {step === 3 && (
+        <button
+          type="button"
+          className="tenant-modal-btn tenant-modal-btn--ghost"
+          disabled={pdfLoading}
+          onClick={handleDownloadTransferPDF}
+          title="Download printable settlement estimate"
+        >
+          {pdfLoading ? "Generating..." : "Download Estimate"}
+        </button>
+      )}
+      {step < 3 ? (
+        <button
+          type="button"
+          className="tenant-modal-btn tenant-modal-btn--primary"
+          disabled={step === 1 ? !step1Valid : !step2Valid}
+          onClick={() => setStep((s) => s + 1)}
+        >
+          Next
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="tenant-modal-btn tenant-modal-btn--primary"
+          disabled={loading || !step1Valid || !step2Valid}
+          onClick={() =>
+            onSubmit({
+              roomId,
+              bedId,
+              reason,
+              forceOverride,
+              effectiveTransferDate: effectiveTransferDate || undefined,
+              sourceRoomMeterReading: sourceRoomMeterReading ? Number(sourceRoomMeterReading) : null,
+              targetRoomMeterReading: targetRoomMeterReading ? Number(targetRoomMeterReading) : null,
+            })
+          }
+        >
+          {loading ? "Saving..." : "Confirm Transfer"}
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <TenantModalShell
       open={open}
       title={`Transfer Tenant${tenant?.tenantName ? ` • ${tenant.tenantName}` : ""}`}
       onClose={onClose}
-      footer={
-        <>
-          <button
-            type="button"
-            className="tenant-modal-btn tenant-modal-btn--ghost"
-            onClick={onClose}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="tenant-modal-btn tenant-modal-btn--primary"
-            disabled={loading || !roomId || !bedId || (hasOutstanding && !forceOverride)}
-            onClick={() =>
-              onSubmit({
-                roomId,
-                bedId,
-                reason,
-                forceOverride,
-                effectiveTransferDate: effectiveTransferDate || undefined,
-                sourceRoomMeterReading: sourceRoomMeterReading ? Number(sourceRoomMeterReading) : null,
-                targetRoomMeterReading: targetRoomMeterReading ? Number(targetRoomMeterReading) : null,
-              })
-            }
-          >
-            {loading ? "Saving..." : "Transfer Tenant"}
-          </button>
-        </>
-      }
+      footer={renderFooter()}
     >
-      <div className="tenant-modal-callout">
-        Transfers are limited to the same branch. Old bed will automatically enter turnover status.
-      </div>
+      <WizardStepper
+        steps={["Target Room", "Meter Readings", "Review"]}
+        currentStep={step}
+      />
 
-      {/* Outstanding Balance Warning */}
-      {hasOutstanding && (
-        <div
-          className="tenant-modal-callout"
-          style={{ borderLeftColor: "hsl(0 72% 51%)", background: "hsl(0 86% 97%)", color: "hsl(0 63% 31%)" }}
-        >
-          <strong>⚠ Outstanding Balance: ₱{outstandingBalance.toLocaleString("en-PH", { minimumFractionDigits: 2 })}</strong>
-          <p style={{ marginTop: 4, marginBottom: 8, fontSize: 13 }}>
-            This tenant has unpaid bills. The transfer will be blocked unless you acknowledge and force-proceed.
-          </p>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
-            <input
-              type="checkbox"
-              checked={forceOverride}
-              onChange={(e) => setForceOverride(e.target.checked)}
-            />
-            I acknowledge the outstanding balance and confirm this transfer
-          </label>
-        </div>
-      )}
+      {/* ── STEP 1: Target Room & Date ─────────────────────────────────── */}
+      {step === 1 && (
+        <>
+          <div className="twm-callout twm-callout--info">
+            Transfers are limited to the same branch. The current bed will automatically enter turnover status.
+          </div>
 
-      <div className="tenant-modal-grid">
-        <label className="tenant-modal-field">
-          <span>Current Assignment</span>
-          <input
-            type="text"
-            value={`${tenant?.room || "Unknown room"} • ${formatBedPosition(tenant?.bed) || "No bed"}`}
-            readOnly
-          />
-        </label>
-        <label className="tenant-modal-field">
-          <span>Branch</span>
-          <input type="text" value={formatBranch(branch) || "—"} readOnly />
-        </label>
-      </div>
-
-      <div className="tenant-modal-grid">
-        <label className="tenant-modal-field">
-          <span>New Room</span>
-          <select
-            value={roomId}
-            onChange={(event) => {
-              const newRoomId = event.target.value;
-              setRoomId(newRoomId);
-              setBedId("");
-              fetchTargetBaseline(newRoomId);
-            }}
-            disabled={roomsLoading}
-          >
-            <option value="">Select a room</option>
-            {targetRooms.map((room) => {
-              const hasAvailable = Array.isArray(room.beds) && room.beds.some((b) => b.status === "available" || (b.status === undefined && b.available !== false));
-              return (
-                <option key={room._id || room.id} value={room._id || room.id}>
-                  {room.name || room.roomNumber} ({fmtMoney(room.monthlyPrice || room.price)}){!hasAvailable ? " — Full" : ""}
-                </option>
-              );
-            })}
-          </select>
-        </label>
-
-        <label className="tenant-modal-field">
-          <span>New Bed</span>
-          <select
-            value={bedId}
-            onChange={(event) => setBedId(event.target.value)}
-            disabled={!roomId}
-          >
-            <option value="">Select a bed</option>
-            {roomBeds.map((bed, index) => {
-              const isAvailable = bed.status ? bed.status === "available" : bed.available !== false;
-              const bedCode = getBedShortCode(selectedRoom?.roomNumber || selectedRoom?.name, bed, index);
-              const displayLabel = getBedDisplayLabel(bed, index, selectedRoom?.type || selectedRoom?.roomType);
-              const statusTag = isAvailable ? "" : ` — (${(bed.status || "unavailable").replace("_", " ")})`;
-              const label = `${bedCode ? `${bedCode} (${displayLabel})` : displayLabel}${statusTag}`;
-              return (
-                <option
-                  key={bed.id || bed._id || index}
-                  value={bed.id || bed._id}
-                  disabled={!isAvailable}
-                >
-                  {label}
-                </option>
-              );
-            })}
-          </select>
-        </label>
-      </div>
-
-      {roomId && priceDiff !== 0 && (
-        <div className="tenant-modal-callout" style={{ background: "#EFF6FF", borderLeftColor: "#3B82F6", color: "#1E40AF" }}>
-          Monthly Rent Adjustment: {priceDiff > 0 ? `+${fmtMoney(priceDiff)}/mo` : `-${fmtMoney(Math.abs(priceDiff))}/mo`} (Old: {fmtMoney(currentPrice)} → New: {fmtMoney(newPrice)})
-        </div>
-      )}
-
-      <div className="tenant-modal-grid">
-        <label className="tenant-modal-field">
-          <span>Current Room Final Meter (kWh)</span>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            placeholder="Confirm or update departing reading"
-            value={sourceRoomMeterReading}
-            onChange={(e) => setSourceRoomMeterReading(e.target.value)}
-          />
-          {sourceRoomLatestReading ? (
-            <span className="meter-baseline-hint">
-              Last recorded: {Number(sourceRoomLatestReading.reading).toLocaleString()} kWh
-              {" on "}{fmtDate(sourceRoomLatestReading.date)}
-              {" ("}{sourceRoomLatestReading.eventType}{")"}
-            </span>
-          ) : (
-            <span className="meter-baseline-hint meter-baseline-hint--none">
-              No prior reading found — enter manually
-            </span>
+          {hasOutstanding && (
+            <div className="twm-callout twm-callout--danger">
+              <strong>⚠ Outstanding Balance: {fmtMoney(outstandingBalance)}</strong>
+              <p style={{ margin: "4px 0 8px", fontSize: 13 }}>
+                This tenant has unpaid bills. Settle them first, or acknowledge and force-proceed.
+              </p>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={forceOverride}
+                  onChange={(e) => setForceOverride(e.target.checked)}
+                />
+                I acknowledge the outstanding balance and confirm this transfer
+              </label>
+            </div>
           )}
-        </label>
-        <label className="tenant-modal-field">
-          <span>New Room Opening Meter (kWh)</span>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            placeholder="Confirm or update opening reading"
-            value={targetRoomMeterReading}
-            onChange={(e) => setTargetRoomMeterReading(e.target.value)}
-          />
-          {targetBaselineLoading ? (
-            <span className="meter-baseline-hint">Fetching last reading...</span>
-          ) : roomId && targetRoomBaseline ? (
-            <span className="meter-baseline-hint">
-              Last recorded: {Number(targetRoomBaseline.reading).toLocaleString()} kWh
-              {" on "}{fmtDate(targetRoomBaseline.date)}
-              {" ("}{targetRoomBaseline.eventType}{")"}
-            </span>
-          ) : roomId ? (
-            <span className="meter-baseline-hint meter-baseline-hint--none">
-              No prior reading found — enter manually
-            </span>
-          ) : null}
-        </label>
-      </div>
 
-      <label className="tenant-modal-field">
-        <span>Effective Transfer Date</span>
-        <input
-          type="date"
-          value={effectiveTransferDate}
-          max={new Date().toISOString().slice(0, 10)}
-          onChange={(e) => setEffectiveTransferDate(e.target.value)}
-        />
-        <span className="meter-baseline-hint">Used to compute pro-rata rent. Defaults to today.</span>
-      </label>
+          <div className="tenant-modal-grid">
+            <label className="tenant-modal-field">
+              <span>Current Assignment</span>
+              <input
+                type="text"
+                value={`${tenant?.room || "Unknown room"} • ${formatBedPosition(tenant?.bed) || "No bed"}`}
+                readOnly
+              />
+            </label>
+            <label className="tenant-modal-field">
+              <span>Branch</span>
+              <input type="text" value={formatBranch(branch) || "—"} readOnly />
+            </label>
+          </div>
 
-      <label className="tenant-modal-field">
-        <span>Reason</span>
-        <textarea
-          rows={3}
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          placeholder="Required transfer reason"
-        />
-      </label>
+          <div className="tenant-modal-grid">
+            <label className="tenant-modal-field">
+              <span>New Room</span>
+              <select
+                value={roomId}
+                onChange={(event) => {
+                  const newRoomId = event.target.value;
+                  setRoomId(newRoomId);
+                  setBedId("");
+                  fetchTargetBaseline(newRoomId);
+                }}
+                disabled={roomsLoading}
+              >
+                <option value="">Select a room</option>
+                {targetRooms.map((room) => {
+                  const hasAvail = Array.isArray(room.beds) &&
+                    room.beds.some((b) => b.status === "available" || (b.status === undefined && b.available !== false));
+                  return (
+                    <option key={room._id || room.id} value={room._id || room.id}>
+                      {room.name || room.roomNumber} ({fmtMoney(room.monthlyPrice || room.price)})
+                      {!hasAvail ? " — Full" : ""}
+                    </option>
+                  );
+                })}
+              </select>
+            </label>
 
-      {/* Financial Preview Card */}
-      {showPreview && (
-        <div
-          style={{
-            border: "1px solid hsl(220 14% 88%)",
-            borderRadius: 8,
-            padding: "14px 16px",
-            background: "hsl(220 14% 97%)",
-            fontSize: 13,
-          }}
-        >
-          <p style={{ fontWeight: 700, marginBottom: 10, fontSize: 12, letterSpacing: "0.06em", color: "hsl(220 14% 40%)" }}>
-            ESTIMATED SETTLEMENT PREVIEW
-          </p>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <tbody>
+            <label className="tenant-modal-field">
+              <span>New Bed</span>
+              <select
+                value={bedId}
+                onChange={(event) => setBedId(event.target.value)}
+                disabled={!roomId}
+              >
+                <option value="">Select a bed</option>
+                {roomBeds.map((bed, index) => {
+                  const isAvailable = bed.status ? bed.status === "available" : bed.available !== false;
+                  const bedCode = getBedShortCode(selectedRoom?.roomNumber || selectedRoom?.name, bed, index);
+                  const displayLabel = getBedDisplayLabel(bed, index, selectedRoom?.type || selectedRoom?.roomType);
+                  const statusTag = isAvailable ? "" : ` — (${(bed.status || "unavailable").replace("_", " ")})`;
+                  return (
+                    <option key={bed.id || bed._id || index} value={bed.id || bed._id} disabled={!isAvailable}>
+                      {bedCode ? `${bedCode} (${displayLabel})` : displayLabel}{statusTag}
+                    </option>
+                  );
+                })}
+              </select>
+            </label>
+          </div>
+
+          {roomId && priceDiff !== 0 && (
+            <div className="twm-callout twm-callout--price">
+              Monthly Rent Adjustment:{" "}
+              <strong>
+                {priceDiff > 0 ? `+${fmtMoney(priceDiff)}/mo` : `-${fmtMoney(Math.abs(priceDiff))}/mo`}
+              </strong>{" "}
+              (Old: {fmtMoney(currentPrice)} → New: {fmtMoney(newPrice)})
+            </div>
+          )}
+
+          <label className="tenant-modal-field">
+            <span>Effective Transfer Date</span>
+            <input
+              type="date"
+              value={effectiveTransferDate}
+              max={new Date().toISOString().slice(0, 10)}
+              onChange={(e) => setEffectiveTransferDate(e.target.value)}
+            />
+            <span className="twm-meter-hint">Used to compute pro-rata rent. Defaults to today.</span>
+          </label>
+        </>
+      )}
+
+      {/* ── STEP 2: Meter Readings ─────────────────────────────────────── */}
+      {step === 2 && (
+        <>
+          <div className="twm-callout twm-callout--info">
+            Record the final kWh reading for the current room and the opening reading for the new room. These anchor the billing segments.
+          </div>
+
+          <div className="tenant-modal-grid">
+            {/* Source Room Meter */}
+            <label className="tenant-modal-field">
+              <span>Current Room — Final Meter (kWh)</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="e.g. 1,455.00"
+                value={sourceRoomMeterReading}
+                onChange={(e) => setSourceRoomMeterReading(e.target.value)}
+              />
+              <div className="twm-meter-wrap">
+                {sourceBaseline !== null ? (
+                  <span className="twm-meter-hint">
+                    Last recorded: {sourceBaseline.toLocaleString()} kWh on {fmtDate(sourceRoomLatestReading.date)}
+                    {" "}({sourceRoomLatestReading.eventType})
+                  </span>
+                ) : (
+                  <span className="twm-meter-hint twm-meter-hint--none">No prior reading — enter manually</span>
+                )}
+                {sourceDelta !== null && !sourceBelowBaseline && (
+                  <span className="twm-meter-hint twm-meter-hint--delta">+{sourceDelta.toFixed(2)} kWh consumed</span>
+                )}
+                {sourceBelowBaseline && (
+                  <span className="twm-meter-hint twm-meter-hint--warn">
+                    ⚠ Reading ({sourceEntered?.toLocaleString()} kWh) is lower than the last recorded baseline ({sourceBaseline?.toLocaleString()} kWh). Please check the meter.
+                  </span>
+                )}
+              </div>
+            </label>
+
+            {/* Target Room Meter */}
+            <label className="tenant-modal-field">
+              <span>New Room — Opening Meter (kWh)</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="e.g. 890.00"
+                value={targetRoomMeterReading}
+                onChange={(e) => setTargetRoomMeterReading(e.target.value)}
+              />
+              <div className="twm-meter-wrap">
+                {targetBaselineLoading ? (
+                  <div className="twm-meter-skeleton" />
+                ) : targetBaseline !== null ? (
+                  <span className="twm-meter-hint">
+                    Last recorded: {targetBaseline.toLocaleString()} kWh on {fmtDate(targetRoomBaseline.date)}
+                    {" "}({targetRoomBaseline.eventType})
+                  </span>
+                ) : roomId ? (
+                  <span className="twm-meter-hint twm-meter-hint--none">No prior reading — enter manually</span>
+                ) : null}
+                {targetBelowBaseline && (
+                  <span className="twm-meter-hint twm-meter-hint--warn">
+                    ⚠ Opening reading ({targetEntered?.toLocaleString()} kWh) is lower than the last recorded baseline ({targetBaseline?.toLocaleString()} kWh).
+                  </span>
+                )}
+              </div>
+            </label>
+          </div>
+
+          <label className="tenant-modal-field">
+            <span>Reason for Transfer</span>
+            <textarea
+              rows={3}
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              placeholder="Required — describe the reason for this transfer"
+            />
+          </label>
+        </>
+      )}
+
+      {/* ── STEP 3: Review & Settlement Preview ───────────────────────── */}
+      {step === 3 && (
+        <>
+          <div className="twm-review-summary">
+            <div className="twm-review-field">
+              <span className="twm-review-field__label">From</span>
+              <span className="twm-review-field__value">{tenant?.room || "—"} • {formatBedPosition(tenant?.bed) || "—"}</span>
+            </div>
+            <div className="twm-review-field">
+              <span className="twm-review-field__label">To</span>
+              <span className="twm-review-field__value">{selectedRoom?.name || selectedRoom?.roomNumber || "—"} • {selectedBedLabel}</span>
+            </div>
+            <div className="twm-review-field">
+              <span className="twm-review-field__label">Effective Date</span>
+              <span className="twm-review-field__value">{fmtDate(effectiveTransferDate)}</span>
+            </div>
+            <div className="twm-review-field">
+              <span className="twm-review-field__label">New Rent</span>
+              <span className="twm-review-field__value">
+                {fmtMoney(newPrice)}/mo
+                {priceDiff !== 0 && (
+                  <span style={{ fontSize: 11, fontWeight: 400, color: priceDiff > 0 ? "var(--danger)" : "var(--success)" }}>
+                    {" "}({priceDiff > 0 ? `+${fmtMoney(priceDiff)}` : `-${fmtMoney(Math.abs(priceDiff))}`})
+                  </span>
+                )}
+              </span>
+            </div>
+            <div className="twm-review-field twm-review-field--wide">
+              <span className="twm-review-field__label">Reason</span>
+              <span className="twm-review-field__value">{reason}</span>
+            </div>
+          </div>
+
+          <div className="twm-settlement-card">
+            <div className="twm-settlement-card__header">
+              <p className="twm-settlement-card__title">Transfer Settlement Estimate</p>
+            </div>
+            <div className="twm-settlement-card__body">
               {daysSinceCycleStart != null && (
-                <tr>
-                  <td style={{ padding: "3px 0", color: "hsl(220 14% 45%)" }}>Days in current cycle</td>
-                  <td style={{ textAlign: "right", fontWeight: 600 }}>{daysSinceCycleStart}d</td>
-                </tr>
+                <div className="twm-settlement-row">
+                  <span className="twm-settlement-row__label">Days in old room this cycle</span>
+                  <span className="twm-settlement-row__value">{daysSinceCycleStart} day{daysSinceCycleStart !== 1 ? "s" : ""}</span>
+                </div>
               )}
               {proRataPreview != null && (
-                <tr>
-                  <td style={{ padding: "3px 0", color: "hsl(220 14% 45%)" }}>Pro-rated Rent</td>
-                  <td style={{ textAlign: "right", fontWeight: 600 }}>{fmtMoney(proRataPreview)}</td>
-                </tr>
+                <div className="twm-settlement-row">
+                  <span className="twm-settlement-row__label">
+                    Prorated Old Room Rent
+                    {daysSinceCycleStart != null && <span style={{ fontSize: 11, fontWeight: 400, display: "block", color: "var(--text-muted)" }}>
+                      {daysSinceCycleStart}d / {daysInMonth}d × {fmtMoney(currentPrice)}
+                    </span>}
+                  </span>
+                  <span className="twm-settlement-row__value">{fmtMoney(proRataPreview)}</span>
+                </div>
               )}
               {kwhPreview != null && (
-                <tr>
-                  <td style={{ padding: "3px 0", color: "hsl(220 14% 45%)" }}>Estimated Electricity</td>
-                  <td style={{ textAlign: "right", fontWeight: 600 }}>{kwhPreview.toLocaleString()} kWh consumed</td>
-                </tr>
+                <div className="twm-settlement-row">
+                  <span className="twm-settlement-row__label">
+                    Estimated Electricity Usage
+                    <span style={{ fontSize: 11, fontWeight: 400, display: "block", color: "var(--text-muted)" }}>
+                      {estimatedElectricityCost !== null
+                        ? `${kwhPreview.toLocaleString()} kWh × ₱${rate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/kWh`
+                        : `${kwhPreview.toLocaleString()} kWh — rate applied at generation`}
+                    </span>
+                  </span>
+                  <span className="twm-settlement-row__value">
+                    {estimatedElectricityCost !== null
+                      ? fmtMoney(estimatedElectricityCost)
+                      : `${kwhPreview.toLocaleString()} kWh`}
+                  </span>
+                </div>
               )}
               {outstandingBalance > 0 && (
-                <tr>
-                  <td style={{ padding: "3px 0", color: "hsl(0 72% 51%)" }}>Outstanding Balance</td>
-                  <td style={{ textAlign: "right", fontWeight: 600, color: "hsl(0 72% 51%)" }}>{fmtMoney(outstandingBalance)}</td>
-                </tr>
+                <div className="twm-settlement-row twm-settlement-row--danger">
+                  <span className="twm-settlement-row__label">Prior Outstanding Balance</span>
+                  <span className="twm-settlement-row__value">{fmtMoney(outstandingBalance)}</span>
+                </div>
               )}
-              <tr>
-                <td colSpan={2}><hr style={{ border: 0, borderTop: "1px solid hsl(220 14% 88%)", margin: "6px 0" }} /></td>
-              </tr>
-              <tr>
-                <td style={{ fontWeight: 700 }}>Estimated Settlement Total</td>
-                <td style={{ textAlign: "right", fontWeight: 700 }}>
-                  {fmtMoney((proRataPreview || 0))}
-                  <span style={{ display: "block", fontSize: 11, fontWeight: 400, color: "hsl(220 14% 55%)" }}>
-                    Electricity rate applied at generation time
-                  </span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+              {proRataPreview != null && (
+                <div className="twm-settlement-row twm-settlement-row--total">
+                  <span className="twm-settlement-row__label">Estimated Settlement Total</span>
+                  <span className="twm-settlement-row__value">{fmtMoney(estimatedTotal)}</span>
+                </div>
+              )}
+            </div>
+            <p className="twm-settlement-card__note">
+              {estimatedElectricityCost !== null
+                ? `Rate: ₱${rate?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/kWh (active billing period). Final amount confirmed at billing generation.`
+                : "Final electricity amount is calculated at billing generation time using the current room rate."}
+            </p>
+          </div>
+
+          {hasOutstanding && forceOverride && (
+            <div className="twm-callout twm-callout--warning">
+              ⚠ You have acknowledged the outstanding balance of {fmtMoney(outstandingBalance)} and are force-proceeding.
+            </div>
+          )}
+        </>
       )}
     </TenantModalShell>
   );
 }
 
-export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit }) {
+/* ─────────────────────────────────────────────────────────────────────────────
+   Move-Out Modal — 3-Step Wizard
+   Step 1: Date & Time
+   Step 2: Final Meter & Room Condition
+   Step 3: Review & Deposit Clearance
+   ───────────────────────────────────────────────────────────────────────────── */
+export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit, sourceRoomLatestReading, electricityRatePerUnit }) {
+  // ── Wizard step state ─────────────────────────────────────────────────────
+  const [step, setStep] = useState(1);
+
+  // ── Form state ────────────────────────────────────────────────────────────
   const [moveOutDate, setMoveOutDate] = useState("");
   const [moveOutTime, setMoveOutTime] = useState("10:00");
   const [meterReading, setMeterReading] = useState("");
@@ -658,8 +1062,10 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit 
   const [damageDeductions, setDamageDeductions] = useState("");
   const [notes, setNotes] = useState("");
 
+  // ── Reset on open ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!open) return;
+    setStep(1);
     setMoveOutDate(toDateInputValue(new Date()));
     setMoveOutTime("10:00");
     setMeterReading("");
@@ -668,13 +1074,12 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit 
     setNotes("");
   }, [open]);
 
+  // ── Derived values ────────────────────────────────────────────────────────
   const moveOutReason = tenant?.allowedActions?.moveOut?.reason || "";
   const leaseEndDate = detail?.leaseInfo?.leaseEndDate || tenant?.leaseEndDate;
   const isEarlyVacancy = Boolean(
-    leaseEndDate && moveOutDate && new Date(moveOutDate) < new Date(leaseEndDate)
+    leaseEndDate && moveOutDate && new Date(moveOutDate) < new Date(leaseEndDate),
   );
-
-  // Read the deposit locked at booking time; fall back to monthlyRent only for legacy records
   const securityDeposit = resolveDepositFromPaymentInfo(
     detail?.paymentInfo,
     detail?.basicInfo?.monthlyRent ?? tenant?.monthlyRent ?? 0,
@@ -682,174 +1087,355 @@ export function MoveOutModal({ open, tenant, detail, loading, onClose, onSubmit 
   const outstandingBal = Number(detail?.paymentInfo?.currentBalance ?? tenant?.currentBalance ?? 0);
   const damageFee = Number(damageDeductions || 0);
   const keyFee = keyReturned ? 0 : 500;
+  // ── Baseline & electricity estimates ───────────────────────────────────────
+  const moveOutBaseline = sourceRoomLatestReading?.reading != null
+    ? Number(sourceRoomLatestReading.reading)
+    : null;
+  const meterEntered = meterReading !== "" ? Number(meterReading) : null;
+  const moveOutDelta = moveOutBaseline !== null && meterEntered !== null
+    ? meterEntered - moveOutBaseline
+    : null;
+  const moveOutBelowBaseline = moveOutDelta !== null && moveOutDelta < 0;
+  const moveOutKwh = moveOutDelta !== null && moveOutDelta > 0
+    ? Math.round(moveOutDelta * 100) / 100
+    : null;
+  const moveOutRate = electricityRatePerUnit != null ? Number(electricityRatePerUnit) : null;
+  const estimatedElectricityCostMoveOut =
+    moveOutKwh !== null && moveOutRate !== null && moveOutRate > 0
+      ? Math.round(moveOutKwh * moveOutRate * 100) / 100
+      : null;
+
+  // ── Deposit clearance math ────────────────────────────────────────────────
+  const electricityDeduction = estimatedElectricityCostMoveOut ?? 0;
+  const totalDeductions = outstandingBal + damageFee + keyFee + electricityDeduction;
   const netSettlement = isEarlyVacancy
     ? 0
-    : Math.max(0, securityDeposit - outstandingBal - damageFee - keyFee);
+    : Math.max(0, securityDeposit - totalDeductions);
+  const hasDebt = !isEarlyVacancy && netSettlement === 0 &&
+    totalDeductions > securityDeposit;
+  const remainingDebt = hasDebt
+    ? Math.round((totalDeductions - securityDeposit) * 100) / 100
+    : 0;
+
+  // ── Step gate validation ──────────────────────────────────────────────────
+  const step1Valid = !!moveOutDate && !!moveOutTime;
+  const step2Valid = !!meterReading && !moveOutBelowBaseline;
+
+  // -- MoveOut PDF download handler (lazy-import) -----------------------
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const handleDownloadMoveOutPDF = async () => {
+    setPdfLoading(true);
+    try {
+      const { generateSettlementReceiptPDF } = await import("../../../shared/utils/receiptGenerator.js");
+      await generateSettlementReceiptPDF({
+        type: "moveOut",
+        tenantName: tenant?.tenantName || "",
+        branch: detail?.basicInfo?.branch || tenant?.branch || "",
+        fromRoom: tenant?.room || "",
+        fromBed: formatBedPosition(tenant?.bed) || "",
+        effectiveDate: moveOutDate,
+        moveOutTime,
+        finalMeterReading: meterReading,
+        securityDeposit,
+        outstandingBal,
+        keyFee,
+        damageFee,
+        electricityDeduction,
+        kwhPreview: moveOutKwh,
+        electricityRate: moveOutRate,
+        netSettlement,
+        remainingDebt,
+        isEarlyVacancy,
+      });
+    } catch (err) {
+      console.error("Settlement PDF generation failed:", err);
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+
+  // -- Footer renderer ------------------------------------------------------
+  const renderFooter = () => (
+    <div className="twm-footer">
+      <button type="button" className="tenant-modal-btn tenant-modal-btn--ghost" onClick={onClose}>
+        Cancel
+      </button>
+      <div className="twm-footer__spacer" />
+      {step > 1 && (
+        <button
+          type="button"
+          className="tenant-modal-btn tenant-modal-btn--ghost"
+          onClick={() => setStep((s) => s - 1)}
+        >
+          Back
+        </button>
+      )}
+      {step === 3 && (
+        <button
+          type="button"
+          className="tenant-modal-btn tenant-modal-btn--ghost"
+          disabled={pdfLoading}
+          onClick={handleDownloadMoveOutPDF}
+          title="Download printable settlement estimate"
+        >
+          {pdfLoading ? "Generating..." : "Download Estimate"}
+        </button>
+      )}
+      {step < 3 ? (
+        <button
+          type="button"
+          className="tenant-modal-btn tenant-modal-btn--primary"
+          disabled={step === 1 ? !step1Valid : !step2Valid}
+          onClick={() => setStep((s) => s + 1)}
+        >
+          Next
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="tenant-modal-btn tenant-modal-btn--danger"
+          disabled={loading || !step1Valid || !step2Valid}
+          onClick={() =>
+            onSubmit({
+              moveOutDate,
+              moveOutTime,
+              meterReading: Number(meterReading),
+              keyReturned,
+              damageDeductions: Number(damageDeductions || 0),
+              notes,
+            })
+          }
+        >
+          {loading ? "Saving..." : "Confirm Move-Out"}
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <TenantModalShell
       open={open}
       title={`Process Move-Out${tenant?.tenantName ? ` • ${tenant.tenantName}` : ""}`}
       onClose={onClose}
-      footer={
-        <>
-          <button
-            type="button"
-            className="tenant-modal-btn tenant-modal-btn--ghost"
-            onClick={onClose}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="tenant-modal-btn tenant-modal-btn--danger"
-            disabled={loading || !moveOutDate || !moveOutTime || !meterReading}
-            onClick={() =>
-              onSubmit({
-                moveOutDate,
-                moveOutTime,
-                meterReading: Number(meterReading),
-                keyReturned,
-                damageDeductions: Number(damageDeductions || 0),
-                notes,
-              })
-            }
-          >
-            {loading ? "Saving..." : "Confirm Move-Out"}
-          </button>
-        </>
-      }
+      footer={renderFooter()}
     >
-      <div className="tenant-modal-grid">
-        <label className="tenant-modal-field">
-          <span>Lease End</span>
-          <input
-            type="text"
-            value={fmtDate(leaseEndDate)}
-            readOnly
-          />
-        </label>
-        <label className="tenant-modal-field">
-          <span>Current Balance</span>
-          <input
-            type="text"
-            value={fmtMoney(outstandingBal)}
-            readOnly
-          />
-        </label>
-      </div>
+      <WizardStepper
+        steps={["Date & Time", "Meter & Condition", "Review"]}
+        currentStep={step}
+      />
 
-      {moveOutReason ? (
-        <div className="tenant-modal-callout tenant-modal-callout--danger">
-          {moveOutReason}
-        </div>
-      ) : null}
+      {/* ── STEP 1: Date & Time ───────────────────────────────────────── */}
+      {step === 1 && (
+        <>
+          <div className="tenant-modal-grid">
+            <label className="tenant-modal-field">
+              <span>Lease End Date</span>
+              <input type="text" value={fmtDate(leaseEndDate)} readOnly />
+            </label>
+            <label className="tenant-modal-field">
+              <span>Current Outstanding Balance</span>
+              <input type="text" value={fmtMoney(outstandingBal)} readOnly />
+            </label>
+          </div>
 
-      {isEarlyVacancy && (
-        <div className="tenant-modal-callout tenant-modal-callout--danger">
-          ⚠️ Early Vacancy Detected: Moving out before lease end date ({fmtDate(leaseEndDate)}) will result in automatic deposit forfeiture (Section 4).
-        </div>
+          {moveOutReason && (
+            <div className="twm-callout twm-callout--warning">{moveOutReason}</div>
+          )}
+
+          <div className="tenant-modal-grid">
+            <label className="tenant-modal-field">
+              <span>Move-Out Date</span>
+              <input
+                type="date"
+                value={moveOutDate}
+                onChange={(event) => setMoveOutDate(event.target.value)}
+              />
+            </label>
+            <label className="tenant-modal-field">
+              <span>Move-Out Time</span>
+              <input
+                type="time"
+                value={moveOutTime}
+                onChange={(event) => setMoveOutTime(event.target.value)}
+              />
+            </label>
+          </div>
+
+          {isEarlyVacancy && (
+            <div className="twm-callout twm-callout--danger">
+              ⚠ Early Vacancy Detected: Moving out before lease end ({fmtDate(leaseEndDate)}) will result in automatic deposit forfeiture per contract Section 4.
+            </div>
+          )}
+        </>
       )}
 
-      <div className="tenant-modal-grid">
-        <label className="tenant-modal-field">
-          <span>Move-Out Date</span>
-          <input
-            type="date"
-            value={moveOutDate}
-            onChange={(event) => setMoveOutDate(event.target.value)}
-          />
-        </label>
-        <label className="tenant-modal-field">
-          <span>Move-Out Time</span>
-          <input
-            type="time"
-            value={moveOutTime}
-            onChange={(event) => setMoveOutTime(event.target.value)}
-          />
-        </label>
-      </div>
-
-      <div className="tenant-modal-grid">
-        <label className="tenant-modal-field">
-          <span>Final Meter Reading (kWh)</span>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            placeholder="e.g. 1450.50"
-            value={meterReading}
-            onChange={(event) => setMeterReading(event.target.value)}
-          />
-        </label>
-        <label className="tenant-modal-field">
-          <span>Key / Access Card Returned</span>
-          <select
-            value={keyReturned ? "yes" : "no"}
-            onChange={(e) => setKeyReturned(e.target.value === "yes")}
-          >
-            <option value="yes">Yes (Key Handed Over)</option>
-            <option value="no">No (₱500 Replacement Deduction)</option>
-          </select>
-        </label>
-      </div>
-
-      <label className="tenant-modal-field">
-        <span>Damage / Cleaning Fee Deductions (₱)</span>
-        <input
-          type="number"
-          min="0"
-          step="0.01"
-          placeholder="0.00"
-          value={damageDeductions}
-          onChange={(e) => setDamageDeductions(e.target.value)}
-        />
-      </label>
-
-      {/* Live Financial Clearance Calculator */}
-      <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 10, padding: 14, marginTop: 10, marginBottom: 15 }}>
-        <h4 style={{ margin: "0 0 10px 0", fontSize: 13, color: "#334155", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-          Financial Settlement Calculator
-        </h4>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 12px", fontSize: 12, color: "#475569" }}>
-          <span>Security Deposit Held:</span>
-          <strong style={{ textAlign: "right" }}>{fmtMoney(securityDeposit)}</strong>
-          <span>Less: Unpaid Balance:</span>
-          <span style={{ textAlign: "right", color: outstandingBal > 0 ? "#DC2626" : "#64748B" }}>
-            -{fmtMoney(outstandingBal)}
-          </span>
-          {keyFee > 0 && (
-            <>
-              <span>Less: Key Fee:</span>
-              <span style={{ textAlign: "right", color: "#DC2626" }}>-{fmtMoney(keyFee)}</span>
-            </>
-          )}
-          {damageFee > 0 && (
-            <>
-              <span>Less: Damage Fee:</span>
-              <span style={{ textAlign: "right", color: "#DC2626" }}>-{fmtMoney(damageFee)}</span>
-            </>
-          )}
-          <div style={{ gridColumn: "span 2", borderTop: "1px solid #CBD5E1", paddingTop: 8, marginTop: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <strong style={{ fontSize: 13, color: "#0F172A" }}>
-              {isEarlyVacancy ? "Deposit Status:" : "Estimated Refundable Deposit:"}
-            </strong>
-            <strong style={{ fontSize: 14, color: isEarlyVacancy ? "#DC2626" : "#16A34A" }}>
-              {isEarlyVacancy ? "FORFEITED (Early Vacancy)" : fmtMoney(netSettlement)}
-            </strong>
+      {/* ── STEP 2: Final Meter & Room Condition ──────────────────────── */}
+      {step === 2 && (
+        <>
+          <div className="twm-callout twm-callout--info">
+            Record the final meter reading and note any deductions before proceeding to the financial summary.
           </div>
-        </div>
-      </div>
 
-      <label className="tenant-modal-field">
-        <span>Final Notes</span>
-        <textarea
-          rows={3}
-          value={notes}
-          onChange={(event) => setNotes(event.target.value)}
-          placeholder="Optional move-out clearance notes"
-        />
-      </label>
+          <div className="tenant-modal-grid">
+            <label className="tenant-modal-field">
+              <span>Final Meter Reading (kWh)</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="e.g. 1,450.50"
+                value={meterReading}
+                onChange={(event) => setMeterReading(event.target.value)}
+              />
+              {moveOutBaseline !== null ? (
+                <span className={`twm-meter-hint ${
+                  moveOutBelowBaseline ? "twm-meter-hint--warn" : moveOutDelta !== null ? "twm-meter-hint--delta" : "twm-meter-hint--none"
+                }`}>
+                  {moveOutBelowBaseline
+                    ? `⚠ Reading cannot be below last recorded baseline of ${moveOutBaseline.toLocaleString()} kWh`
+                    : moveOutDelta !== null
+                      ? `Last recorded: ${moveOutBaseline.toLocaleString()} kWh on ${fmtDate(sourceRoomLatestReading.date)} (${sourceRoomLatestReading.eventType}) — +${moveOutDelta.toLocaleString()} kWh since last reading`
+                      : `Last recorded: ${moveOutBaseline.toLocaleString()} kWh on ${fmtDate(sourceRoomLatestReading.date)}`}
+                </span>
+              ) : (
+                <span className="twm-meter-hint">Enter the current kWh reading from the room meter.</span>
+              )}
+            </label>
+            <label className="tenant-modal-field">
+              <span>Key / Access Card Returned</span>
+              <select
+                value={keyReturned ? "yes" : "no"}
+                onChange={(e) => setKeyReturned(e.target.value === "yes")}
+              >
+                <option value="yes">Yes — Key Handed Over</option>
+                <option value="no">No — ₱500 Replacement Deduction</option>
+              </select>
+            </label>
+          </div>
+
+          <label className="tenant-modal-field">
+            <span>Damage / Cleaning Fee Deductions (₱)</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="0.00"
+              value={damageDeductions}
+              onChange={(e) => setDamageDeductions(e.target.value)}
+            />
+            <span className="twm-meter-hint">Leave 0 if no damages. This amount will be deducted from the security deposit.</span>
+          </label>
+
+          <label className="tenant-modal-field">
+            <span>Final Move-Out Notes</span>
+            <textarea
+              rows={3}
+              value={notes}
+              onChange={(event) => setNotes(event.target.value)}
+              placeholder="Optional — include inspection notes, condition remarks, or handover details"
+            />
+          </label>
+        </>
+      )}
+
+      {/* ── STEP 3: Review & Deposit Clearance ────────────────────────── */}
+      {step === 3 && (
+        <>
+          <div className="twm-review-summary">
+            <div className="twm-review-field">
+              <span className="twm-review-field__label">Move-Out Date</span>
+              <span className="twm-review-field__value">{fmtDate(moveOutDate)}</span>
+            </div>
+            <div className="twm-review-field">
+              <span className="twm-review-field__label">Move-Out Time</span>
+              <span className="twm-review-field__value">{moveOutTime}</span>
+            </div>
+            <div className="twm-review-field">
+              <span className="twm-review-field__label">Final Meter Reading</span>
+              <span className="twm-review-field__value">{Number(meterReading).toLocaleString()} kWh</span>
+            </div>
+            <div className="twm-review-field">
+              <span className="twm-review-field__label">Key Returned</span>
+              <span className="twm-review-field__value">{keyReturned ? "Yes" : "No — ₱500 deducted"}</span>
+            </div>
+            {notes && (
+              <div className="twm-review-field twm-review-field--wide">
+                <span className="twm-review-field__label">Notes</span>
+                <span className="twm-review-field__value">{notes}</span>
+              </div>
+            )}
+          </div>
+
+          {isEarlyVacancy && (
+            <div className="twm-callout twm-callout--danger">
+              ⚠ Early Vacancy — The security deposit will be forfeited per the lease contract.
+            </div>
+          )}
+
+          <div className="twm-settlement-card">
+            <div className="twm-settlement-card__header">
+              <p className="twm-settlement-card__title">Deposit Clearance Summary</p>
+            </div>
+            <div className="twm-settlement-card__body">
+              <div className="twm-settlement-row">
+                <span className="twm-settlement-row__label">Security Deposit Held</span>
+                <span className="twm-settlement-row__value">{fmtMoney(securityDeposit)}</span>
+              </div>
+              {outstandingBal > 0 && (
+                <div className="twm-settlement-row twm-settlement-row--danger">
+                  <span className="twm-settlement-row__label">Less: Unpaid Balance</span>
+                  <span className="twm-settlement-row__value">({fmtMoney(outstandingBal)})</span>
+                </div>
+              )}
+              {keyFee > 0 && (
+                <div className="twm-settlement-row twm-settlement-row--danger">
+                  <span className="twm-settlement-row__label">Less: Key Replacement Fee</span>
+                  <span className="twm-settlement-row__value">({fmtMoney(keyFee)})</span>
+                </div>
+              )}
+              {damageFee > 0 && (
+                <div className="twm-settlement-row twm-settlement-row--danger">
+                  <span className="twm-settlement-row__label">Less: Damage / Cleaning Fee</span>
+                  <span className="twm-settlement-row__value">({fmtMoney(damageFee)})</span>
+                </div>
+              )}
+              {estimatedElectricityCostMoveOut !== null && estimatedElectricityCostMoveOut > 0 && (
+                <div className="twm-settlement-row twm-settlement-row--danger">
+                  <span className="twm-settlement-row__label">
+                    Less: Est. Electricity Charge
+                    <span style={{ fontSize: 11, fontWeight: 400, display: "block", color: "var(--text-muted)" }}>
+                      {moveOutKwh?.toLocaleString()} kWh × ₱{moveOutRate?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/kWh
+                    </span>
+                  </span>
+                  <span className="twm-settlement-row__value">({fmtMoney(estimatedElectricityCostMoveOut)})</span>
+                </div>
+              )}
+              {isEarlyVacancy ? (
+                <div className="twm-settlement-row twm-settlement-row--total twm-settlement-row--forfeited">
+                  <span className="twm-settlement-row__label">Deposit Status</span>
+                  <span className="twm-settlement-row__value">Forfeited — Early Vacancy</span>
+                </div>
+              ) : hasDebt ? (
+                <div className="twm-settlement-row twm-settlement-row--total twm-settlement-row--danger">
+                  <span className="twm-settlement-row__label">Remaining Balance Due</span>
+                  <span className="twm-settlement-row__value">{fmtMoney(remainingDebt)}</span>
+                </div>
+              ) : (
+                <div className="twm-settlement-row twm-settlement-row--total twm-settlement-row--success">
+                  <span className="twm-settlement-row__label">Estimated Refundable Deposit</span>
+                  <span className="twm-settlement-row__value">{fmtMoney(netSettlement)}</span>
+                </div>
+              )}
+            </div>
+            <p className="twm-settlement-card__note">
+              {estimatedElectricityCostMoveOut !== null
+                ? `Electricity estimate uses rate ₱${moveOutRate?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/kWh. Final charges confirmed at billing generation.`
+                : "Final utility charges are applied separately at billing generation time."}
+            </p>
+          </div>
+        </>
+      )}
     </TenantModalShell>
   );
 }

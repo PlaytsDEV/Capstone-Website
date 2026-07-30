@@ -353,11 +353,6 @@ const navigate = useNavigate();
   const [showMoreActions, setShowMoreActions] = useState(false);
   const [previewDoc, setPreviewDoc] = useState(null);
   const [isHistoryFolded, setIsHistoryFolded] = useState(false);
-  const [historyPage, setHistoryPage] = useState(1);
-
-  useEffect(() => {
-    setHistoryPage(1);
-  }, [tenant]);
 
   const toggleWarningDetails = (id) => {
     setExpandedWarnings((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -486,12 +481,6 @@ const navigate = useNavigate();
     ]);
 
   const roomHistory = tenant?.roomHistory || [];
-  const HISTORY_PER_PAGE = 5;
-  const totalHistoryPages = Math.ceil(roomHistory.length / HISTORY_PER_PAGE) || 1;
-  const paginatedRoomHistory = useMemo(() => {
-    const start = (historyPage - 1) * HISTORY_PER_PAGE;
-    return roomHistory.slice(start, start + HISTORY_PER_PAGE);
-  }, [roomHistory, historyPage]);
 
   if (!tenant) return null;
 
@@ -655,7 +644,7 @@ const navigate = useNavigate();
                       onClick={() => setDialogState({ type: "renew", loading: false, error: null })}
                     >
                       <RefreshCw className="w-3.5 h-3.5" />
-                      Renew Contract
+                      Extend Stay
                     </button>
                     <button
                       type="button"
@@ -1157,7 +1146,7 @@ const navigate = useNavigate();
                         >
                           <h4 className="text-xs font-semibold text-foreground flex items-center gap-1.5 uppercase tracking-wide">
                             <History className="w-3.5 h-3.5 text-primary" />
-                            Previous Room History ({roomHistory.length})
+                            Room Stay Timeline ({roomHistory.length})
                           </h4>
                           <button
                             type="button"
@@ -1179,53 +1168,52 @@ const navigate = useNavigate();
                               : "grid-rows-[1fr] opacity-100 mt-3"
                           }`}
                         >
-                          <div className="overflow-hidden space-y-3">
-                            <div className="space-y-2">
-                              {paginatedRoomHistory.map((room, idx) => (
-                                <div key={room.id || idx} className="flex items-center justify-between p-2.5 bg-card border border-border rounded-lg text-xs hover:border-primary/30 transition-colors">
-                                  <div>
-                                    <div className="font-semibold text-foreground">{room.branch} - {room.room}</div>
-                                    <div className="text-muted-foreground capitalize">{room.bed} • Moved in: {room.moveInDate}</div>
+                          <div className="overflow-hidden">
+                            <div className="stay-timeline">
+                              {roomHistory.map((room, idx) => {
+                                const isCurrent = room.status === "current";
+                                const isLast = idx === roomHistory.length - 1;
+                                const moveIn = (() => {
+                                  if (!room.moveInDate) return null;
+                                  try { return new Date(room.moveInDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }); }
+                                  catch { return room.moveInDate; }
+                                })();
+                                const moveOut = (() => {
+                                  if (!room.moveOutDate) return null;
+                                  try { return new Date(room.moveOutDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }); }
+                                  catch { return room.moveOutDate; }
+                                })();
+                                return (
+                                  <div key={room.id || room._id || idx} className="stay-timeline__entry">
+                                    <div className="stay-timeline__left">
+                                      <div className={`stay-timeline__dot ${isCurrent ? "stay-timeline__dot--current" : "stay-timeline__dot--past"}`} />
+                                      {!isLast && <div className="stay-timeline__connector" />}
+                                    </div>
+                                    <div className="stay-timeline__body">
+                                      <div className="stay-timeline__header">
+                                        <span className="stay-timeline__room">
+                                          {room.room || "Unknown Room"}
+                                          {room.bed ? ` \u2014 ${room.bed}` : ""}
+                                        </span>
+                                        <span className={`stay-timeline__badge ${isCurrent ? "stay-timeline__badge--current" : "stay-timeline__badge--past"}`}>
+                                          {isCurrent ? "Current" : "Past Stay"}
+                                        </span>
+                                      </div>
+                                      <div className="stay-timeline__meta">
+                                        {room.branch && <span>{room.branch}</span>}
+                                        {(moveIn || moveOut) && (
+                                          <span>
+                                            {room.branch ? " \u00b7 " : ""}
+                                            {moveIn ?? "?"}
+                                            {moveOut ? ` \u2013 ${moveOut}` : isCurrent ? " \u2013 Active" : ""}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
                                   </div>
-                                  <div className={`px-2 py-0.5 text-xs rounded font-medium ${
-                                    room.status === "current"
-                                      ? "bg-success-light text-success-dark"
-                                      : "bg-muted text-muted-foreground"
-                                  }`}>
-                                    {room.status === "current" ? "Current" : "Past Stay"}
-                                  </div>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
-
-                            {totalHistoryPages > 1 && (
-                              <div className="flex items-center justify-between pt-2 text-xs text-muted-foreground border-t border-border/40">
-                                <span>
-                                  Showing {(historyPage - 1) * HISTORY_PER_PAGE + 1}–{Math.min(historyPage * HISTORY_PER_PAGE, roomHistory.length)} of {roomHistory.length}
-                                </span>
-                                <div className="flex items-center gap-1">
-                                  <button
-                                    type="button"
-                                    disabled={historyPage === 1}
-                                    onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
-                                    className="px-2 py-1 border border-border rounded text-[11px] font-medium bg-card hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-0.5"
-                                  >
-                                    <ChevronLeft className="w-3.5 h-3.5" /> Prev
-                                  </button>
-                                  <span className="px-2 text-[11px]">
-                                    Page {historyPage} of {totalHistoryPages}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    disabled={historyPage === totalHistoryPages}
-                                    onClick={() => setHistoryPage((p) => Math.min(totalHistoryPages, p + 1))}
-                                    className="px-2 py-1 border border-border rounded text-[11px] font-medium bg-card hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center gap-0.5"
-                                  >
-                                    Next <ChevronRight className="w-3.5 h-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-                            )}
                           </div>
                         </div>
                       </div>
@@ -1476,7 +1464,7 @@ const navigate = useNavigate();
                 onClick={() => setDialogState({ type: "renew", loading: false, error: null })}
                 className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-xs font-semibold shadow-sm"
               >
-                Renew Contract
+                Extend Stay
               </button>
             </div>
           </div>

@@ -1,4 +1,4 @@
-import jsPDF from "jspdf";
+﻿import jsPDF from "jspdf";
 import defaultLogo from "../../assets/images/LOGO.png";
 import { formatPaymentMethod } from "./formatPaymentMethod.js";
 import { getBedDisplayLabel } from "./bedIdentifier.js";
@@ -622,3 +622,353 @@ export async function generateBillingReceiptPDF(bill) {
   doc.save(`Lilycrest_Statement_${monthSlug}.pdf`);
 }
 
+// ==========================================================================
+// SETTLEMENT RECEIPT PDF — Transfer & Move-Out wizard settlement estimate
+// Called from TenantWorkspaceModals.jsx via "↓ Download Estimate" button
+// ==========================================================================
+
+/**
+ * Builds the settlement estimate PDF for a Room Transfer or Move-Out action.
+ *
+ * @param {Object} data
+ * @param {"transfer"|"moveOut"} data.type
+ * @param {string} data.tenantName
+ * @param {string} data.branch
+ * @param {string} data.fromRoom
+ * @param {string} data.fromBed
+ * @param {string} [data.toRoom]            - Transfer only
+ * @param {string} [data.toBed]             - Transfer only
+ * @param {string} data.effectiveDate
+ * @param {number} [data.daysSinceCycleStart]
+ * @param {number} [data.daysInMonth]
+ * @param {number} [data.currentRent]
+ * @param {number} [data.newRent]           - Transfer only
+ * @param {number} [data.proRataPreview]
+ * @param {number} [data.kwhPreview]
+ * @param {number} [data.electricityRate]
+ * @param {number} [data.estimatedElectricityCost]
+ * @param {number} [data.outstandingBalance]
+ * @param {number} [data.estimatedTotal]    - Transfer total
+ * @param {number} [data.securityDeposit]   - MoveOut only
+ * @param {number} [data.outstandingBal]    - MoveOut only
+ * @param {number} [data.keyFee]            - MoveOut only
+ * @param {number} [data.damageFee]         - MoveOut only
+ * @param {number} [data.electricityDeduction] - MoveOut only
+ * @param {number} [data.netSettlement]     - MoveOut only
+ * @param {number} [data.remainingDebt]     - MoveOut only
+ * @param {boolean} [data.isEarlyVacancy]   - MoveOut only
+ * @param {string} [data.finalMeterReading] - MoveOut only
+ * @param {string} [data.moveOutTime]       - MoveOut only
+ */
+async function buildSettlementDoc(data) {
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = PAGE.margin;
+  const contentW = pageWidth - margin * 2;
+  const gap = PAGE.gap;
+  const leftW = (contentW - gap) / 2;
+  const rightX = margin + leftW + gap;
+  let y = margin;
+
+  drawPageBackground(doc, pageWidth, pageHeight);
+  const logoData = await loadImageAsDataURL(defaultLogo);
+
+  const isTransfer = data.type === "transfer";
+  const docTitle = isTransfer ? "Room Transfer Settlement Estimate" : "Move-Out Settlement Estimate";
+  const docSubtitle = isTransfer
+    ? "Preliminary financial estimate — final amounts confirmed at billing generation"
+    : "Deposit clearance and final settlement estimate";
+
+  const branchLabel =
+    data.branch === "gil-puyat" ? "Gil Puyat"
+    : data.branch === "guadalupe" ? "Guadalupe"
+    : data.branch || "Lilycrest";
+
+  // ── Header ───────────────────────────────────────────────────────────────
+  renderBrandHeader(doc, logoData, margin, y + 1, "Lilycrest Dormitory", docSubtitle);
+  drawPill(
+    doc,
+    pageWidth - margin - 34,
+    y + 2,
+    "ESTIMATE",
+    COLORS.accentSoft,
+    COLORS.accent,
+    COLORS.accentBorder,
+  );
+  y += 18;
+
+  // ── Summary hero card ─────────────────────────────────────────────────────
+  const totalAmt = isTransfer
+    ? (data.estimatedTotal || 0)
+    : data.isEarlyVacancy
+      ? 0
+      : (data.netSettlement || 0);
+
+  const totalLabel = isTransfer
+    ? "ESTIMATED SETTLEMENT TOTAL"
+    : data.isEarlyVacancy
+      ? "DEPOSIT FORFEITED"
+      : data.remainingDebt > 0
+        ? "REMAINING BALANCE DUE"
+        : "ESTIMATED REFUNDABLE DEPOSIT";
+
+  const totalAmtText = `PHP ${fmtAmt(totalAmt)}`;
+  const metaFields = isTransfer
+    ? [
+        { label: "Effective date", value: formatDate(data.effectiveDate) },
+        { label: "New room rent", value: data.newRent ? `PHP ${fmtAmt(data.newRent)}/mo` : "—" },
+        { label: "Branch", value: branchLabel },
+      ]
+    : [
+        { label: "Move-out date", value: formatDate(data.effectiveDate) },
+        { label: "Move-out time", value: safeString(data.moveOutTime) },
+        { label: "Branch", value: branchLabel },
+      ];
+
+  const summaryResult = renderSummaryCard(doc, margin, y, contentW, {
+    label: totalLabel,
+    amount: totalAmtText,
+    description: isTransfer
+      ? `${safeString(data.tenantName)} · Transfer from ${safeString(data.fromRoom)} to ${safeString(data.toRoom)}`
+      : `${safeString(data.tenantName)} · Final settlement from ${safeString(data.fromRoom)}`,
+    metaFields,
+  });
+  y += summaryResult.height + 6;
+
+  // ── Tenant & Room columns ─────────────────────────────────────────────────
+  const tenantFields = [
+    { label: "Tenant name", value: safeString(data.tenantName) },
+    { label: "Current room", value: safeString(data.fromRoom) },
+    { label: "Current bed", value: safeString(data.fromBed) },
+    { label: "Branch", value: branchLabel },
+  ];
+
+  const roomFields = isTransfer
+    ? [
+        { label: "Target room", value: safeString(data.toRoom) },
+        { label: "Target bed", value: safeString(data.toBed) },
+        { label: "Current rent", value: data.currentRent ? `PHP ${fmtAmt(data.currentRent)}/mo` : "—" },
+        { label: "New rent", value: data.newRent ? `PHP ${fmtAmt(data.newRent)}/mo` : "—" },
+      ]
+    : [
+        { label: "Final meter reading", value: data.finalMeterReading ? `${data.finalMeterReading} kWh` : "—" },
+        { label: "Move-out time", value: safeString(data.moveOutTime) },
+        { label: "Effective date", value: formatDate(data.effectiveDate) },
+        { label: "Stay type", value: data.isEarlyVacancy ? "Early Vacancy" : "Normal Move-Out" },
+      ];
+
+  const row1Left = renderTwoColumnCard(doc, margin, y, leftW, "Tenant information", tenantFields, {
+    fill: COLORS.card,
+    subtitle: "Account holder and current assignment",
+    minHeight: 46,
+  });
+  const row1Right = renderTwoColumnCard(doc, rightX, y, leftW, isTransfer ? "Transfer details" : "Move-out details", roomFields, {
+    fill: COLORS.card,
+    subtitle: isTransfer ? "Target room and rate change" : "Final readings and schedule",
+    minHeight: 46,
+  });
+  y += Math.max(row1Left.height, row1Right.height) + 6;
+
+  // ── Settlement charges breakdown ──────────────────────────────────────────
+  const chargeRows = [];
+
+  if (isTransfer) {
+    if (data.daysSinceCycleStart != null) {
+      chargeRows.push({ label: `Days in old room this cycle (${data.daysSinceCycleStart} of ${data.daysInMonth ?? "—"})`, value: `${data.daysSinceCycleStart} days` });
+    }
+    if (data.proRataPreview != null) {
+      const subLabel = data.daysSinceCycleStart && data.daysInMonth && data.currentRent
+        ? `${data.daysSinceCycleStart}d / ${data.daysInMonth}d × PHP ${fmtAmt(data.currentRent)}/mo`
+        : "";
+      chargeRows.push({ label: `Prorated old room rent${subLabel ? ` (${subLabel})` : ""}`, value: `PHP ${fmtAmt(data.proRataPreview)}` });
+    }
+    if (data.kwhPreview != null) {
+      const rateLabel = data.electricityRate ? ` × PHP ${fmtAmt(data.electricityRate)}/kWh` : "";
+      chargeRows.push({
+        label: `Electricity usage (${fmtAmt(data.kwhPreview)} kWh${rateLabel})`,
+        value: data.estimatedElectricityCost != null
+          ? `PHP ${fmtAmt(data.estimatedElectricityCost)}`
+          : `${fmtAmt(data.kwhPreview)} kWh — rate TBD`,
+      });
+    }
+    if (data.outstandingBalance > 0) {
+      chargeRows.push({ label: "Prior outstanding balance", value: `PHP ${fmtAmt(data.outstandingBalance)}` });
+    }
+    chargeRows.push({ label: "Estimated settlement total", value: `PHP ${fmtAmt(data.estimatedTotal || 0)}`, emphasis: true });
+  } else {
+    // MoveOut — deposit clearance
+    chargeRows.push({ label: "Security deposit held", value: `PHP ${fmtAmt(data.securityDeposit || 0)}` });
+    if (data.outstandingBal > 0) {
+      chargeRows.push({ label: "Less: Unpaid balance", value: `(PHP ${fmtAmt(data.outstandingBal)})` });
+    }
+    if (data.keyFee > 0) {
+      chargeRows.push({ label: "Less: Key replacement fee", value: `(PHP ${fmtAmt(data.keyFee)})` });
+    }
+    if (data.damageFee > 0) {
+      chargeRows.push({ label: "Less: Damage / cleaning fee", value: `(PHP ${fmtAmt(data.damageFee)})` });
+    }
+    if (data.electricityDeduction > 0) {
+      const rateLabel = data.electricityRate && data.kwhPreview
+        ? `${fmtAmt(data.kwhPreview)} kWh × PHP ${fmtAmt(data.electricityRate)}/kWh`
+        : "";
+      chargeRows.push({
+        label: `Less: Estimated electricity charge${rateLabel ? ` (${rateLabel})` : ""}`,
+        value: `(PHP ${fmtAmt(data.electricityDeduction)})`,
+      });
+    }
+    if (data.isEarlyVacancy) {
+      chargeRows.push({ label: "Deposit status — Early vacancy forfeiture", value: "FORFEITED", emphasis: true });
+    } else if (data.remainingDebt > 0) {
+      chargeRows.push({ label: "Remaining balance due (after deposit offset)", value: `PHP ${fmtAmt(data.remainingDebt)}`, emphasis: true });
+    } else {
+      chargeRows.push({ label: "Estimated refundable deposit", value: `PHP ${fmtAmt(data.netSettlement || 0)}`, emphasis: true });
+    }
+  }
+
+  const chargesResult = renderChargesCard(doc, margin, y, contentW, docTitle, chargeRows, {
+    fill: COLORS.card,
+    subtitle: "Itemized settlement breakdown",
+  });
+  y += chargesResult.height + 6;
+
+  // ── Disclaimer notice ─────────────────────────────────────────────────────
+  const noticeH = 16;
+  drawRoundedCard(doc, margin, y, contentW, noticeH, COLORS.accentSoft, COLORS.accentBorder);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.0);
+  doc.setTextColor(...COLORS.accent);
+  doc.text("⚠ PRELIMINARY ESTIMATE", margin + PAGE.pad, y + 6.5);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.8);
+  doc.setTextColor(...COLORS.body);
+  doc.text(
+    "All amounts shown are estimates only. Final charges are confirmed at billing generation time.",
+    margin + PAGE.pad,
+    y + 11.5,
+  );
+
+  renderFooter(doc, pageWidth, pageHeight, "Settlement estimate for Lilycrest Dormitory administrative use only.");
+
+  return doc;
+}
+
+/**
+ * Download a Room Transfer or Move-Out settlement estimate as PDF.
+ * Called from TenantWorkspaceModals.jsx via "↓ Download Estimate" button on Step 3.
+ *
+ * @param {Object} data  — see buildSettlementDoc JSDoc for full shape
+ */
+export async function generateSettlementReceiptPDF(data) {
+  const doc = await buildSettlementDoc(data);
+  const slug = data.tenantName
+    ? data.tenantName.replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "").slice(0, 20)
+    : "Tenant";
+  const dateSlug = data.effectiveDate
+    ? new Date(data.effectiveDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" }).replace(/\s/g, "-").replace(/,/g, "")
+    : "estimate";
+  const typeSlug = data.type === "transfer" ? "Transfer" : "MoveOut";
+  doc.save(`Lilycrest_${typeSlug}_Settlement_${slug}_${dateSlug}.pdf`);
+}
+
+
+/**
+ * Download a Room Utility Billing Statement as PDF.
+ * Called from UtilityBillingTab.jsx via "Export Statement PDF" button.
+ *
+ * @param {Object} data
+ */
+export async function generateUtilityStatementPDF(data) {
+  const logoDataUrl = await loadImageAsDataURL(defaultLogo);
+  const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = PAGE.margin;
+  const contentW = pageWidth - margin * 2;
+
+  drawPageBackground(doc, pageWidth, pageHeight);
+
+  // ── Header ─────────────────────────────────────────────────────────────────
+  let y = renderReceiptHeader(
+    doc,
+    margin,
+    margin,
+    contentW,
+    logoDataUrl,
+    "Lilycrest Dormitory Management System",
+    `${data.utilityType === "water" ? "Water" : "Electricity"} Utility Statement`,
+    "ESTIMATE STATEMENT",
+    COLORS.accentSoft,
+    COLORS.accentBorder,
+    COLORS.accent,
+  );
+
+  y += PAGE.gap;
+
+  // ── Summary Card ───────────────────────────────────────────────────────────
+  const summaryResult = renderSummaryCard(
+    doc,
+    margin,
+    y,
+    contentW,
+    "UTILITY CONSUMPTION & BILLING SUMMARY",
+    `PHP ${fmtAmt(data.totalCost || 0)}`,
+    `${data.roomName || "Room"} \u00b7 ${data.branch || "Lilycrest"}`,
+    [
+      { label: "Utility Type", value: data.utilityType === "water" ? "Water" : "Electricity" },
+      { label: "Billing Cycle", value: `${formatDate(data.startDate)} \u2013 ${formatDate(data.endDate)}` },
+    ],
+    { accentColor: COLORS.accent },
+  );
+  y += summaryResult.height + PAGE.gap;
+
+  // ── Two Column Meter Info Card ─────────────────────────────────────────────
+  const unit = data.utilityType === "water" ? "cu.m." : "kWh";
+  const rateUnit = data.utilityType === "water" ? "cu.m" : "kWh";
+
+  const meterLeft = [
+    { label: "Room / Branch", value: `${data.roomName || "—"} (${data.branch || "—"})` },
+    { label: "Initial Meter Reading", value: `${fmtAmt(data.startReading)} ${unit}` },
+    { label: "Final Meter Reading", value: `${fmtAmt(data.endReading)} ${unit}` },
+  ];
+
+  const meterRight = [
+    { label: "Rate per Unit", value: `PHP ${fmtAmt(data.ratePerUnit)} / ${rateUnit}` },
+    { label: "Total Usage", value: `${fmtAmt(data.kwhUsage)} ${unit}` },
+    { label: "Total Room Charge", value: `PHP ${fmtAmt(data.totalCost)}` },
+  ];
+
+  const twoColResult = renderTwoColInfoCard(
+    doc,
+    margin,
+    y,
+    contentW,
+    "METER READING & RATE BREAKDOWN",
+    meterLeft,
+    meterRight,
+  );
+  y += twoColResult.height + PAGE.gap;
+
+  // ── Tenant Pro-rata Allocation Card ───────────────────────────────────────
+  const splits = Array.isArray(data.tenantSplits) ? data.tenantSplits : [];
+  const chargeRows = splits.map((t) => ({
+    label: `${t.name || "Tenant"} (${t.bed || "Bed"})${t.isProRata ? ` [Pro-Rata: ${t.daysInCycle || 0} days]` : ""}`,
+    value: `PHP ${fmtAmt(t.shareAmount || 0)}`,
+  }));
+
+  if (chargeRows.length === 0) {
+    chargeRows.push({ label: "Occupancy status", value: "No active tenants recorded during period" });
+  }
+
+  const chargesResult = renderChargesCard(doc, margin, y, contentW, "TENANT PRO-RATA COST SPLIT", chargeRows, {
+    fill: COLORS.card,
+    subtitle: `${splits.length} tenant(s) sharing utility cost`,
+  });
+  y += chargesResult.height + 6;
+
+  renderFooter(doc, pageWidth, pageHeight, "Utility Billing Statement generated for Lilycrest administrative use.");
+
+  const slug = (data.roomName || "Room").replace(/\s+/g, "_").replace(/[^a-zA-Z0-9_]/g, "");
+  doc.save(`Lilycrest_Utility_Statement_${slug}_${data.utilityType || "utility"}.pdf`);
+}

@@ -1,0 +1,105 @@
+/* =========================================================
+   BillingDelta.css
+   Delta chip indicators for meter reading row comparisons.
+   Used by the DeltaChip helper inside UtilityBillingTab.
+   ========================================================= */
+
+.delta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.70rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  transition: opacity 0.15s ease;
+}
+
+.delta-chip--success {
+  background: var(--color-success-bg, hsl(142 72% 92%));
+  color: var(--color-success, hsl(142 65% 30%));
+}
+
+.delta-chip--error {
+  background: var(--error-light, hsl(0 72% 94%));
+  color: var(--error-dark, hsl(0 65% 38%));
+}
+
+.delta-chip--warning {
+  background: var(--color-warning-bg, hsl(38 92% 92%));
+  color: var(--color-warning, hsl(38 80% 35%));
+}
+
+.delta-chip--muted {
+  background: var(--surface-muted, hsl(0 0% 94%));
+  color: var(--text-muted, hsl(0 0% 50%));
+}
+
+/* Pro-rata tooltip anchor */
+.prorata-tooltip-anchor {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: help;
+  margin-left: 4px;
+  color: var(--text-muted, hsl(0 0% 55%));
+  font-size: 0.75rem;
+}
+
+.prorata-tooltip-anchor:hover .prorata-tooltip {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
+.prorata-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  background: var(--card, hsl(0 0% 100%));
+  border: 1px solid var(--border-card, hsl(0 0% 88%));
+  border-radius: 8px;
+  padding: 10px 12px;
+  min-width: 220px;
+  max-width: 280px;
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: var(--text-heading);
+  box-shadow: 0 4px 16px hsl(0 0% 0% / 0.08);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  z-index: 50;
+  white-space: normal;
+  text-align: left;
+}
+
+.prorata-tooltip__title {
+  font-weight: 700;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.prorata-tooltip__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--border-card);
+}
+
+.prorata-tooltip__row:last-child {
+  border-bottom: none;
+  font-weight: 700;
+  margin-top: 4px;
+  padding-top: 4px;
+}
+
+.prorata-tooltip__label { color: var(--text-secondary); }
+.prorata-tooltip__value { color: var(--text-heading); font-weight: 600; }

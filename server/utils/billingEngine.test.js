@@ -92,6 +92,56 @@ describe("computeBilling - strict segmented mode", () => {
     ).toThrow(/no active tenants/i);
   });
 
+  test("gracefully attributes vacant/gap segment consumption to active period occupants", () => {
+    const utilityPeriod = {
+      startDate: new Date("2026-06-15T00:00:00.000Z"),
+      endDate: new Date("2026-07-15T00:00:00.000Z"),
+      startReading: 1000,
+      endReading: 1350,
+      ratePerUnit: 16,
+    };
+
+    const readings = [
+      {
+        reading: 1000,
+        date: new Date("2026-06-15T00:00:00.000Z"),
+        eventType: "periodStart",
+      },
+      {
+        reading: 1050,
+        date: new Date("2026-06-20T00:00:00.000Z"),
+        eventType: "moveIn",
+      },
+      {
+        reading: 1350,
+        date: new Date("2026-07-15T00:00:00.000Z"),
+        eventType: "periodEnd",
+      },
+    ];
+
+    const tenantEvents = [
+      {
+        tenantId: "tenant-1",
+        tenantName: "Tenant One",
+        moveInReading: 1050,
+        moveOutReading: null,
+      },
+    ];
+
+    const result = computeBilling({
+      utilityPeriod,
+      readings,
+      reservations: [],
+      tenantEvents,
+      forceSegmented: true,
+    });
+
+    expect(result.strategy).toBe("segment-based-strict");
+    expect(result.tenantSummaries).toHaveLength(1);
+    expect(result.tenantSummaries[0].totalUsage).toBe(350);
+    expect(result.tenantSummaries[0].billAmount).toBe(5600);
+  });
+
   test("removes zero-consumption boundary segments and keeps consuming segments", () => {
     const utilityPeriod = {
       startDate: new Date("2026-03-15T00:00:00.000Z"),

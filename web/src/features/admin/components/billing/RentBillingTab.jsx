@@ -269,6 +269,7 @@ export default function RentBillingTab({ isActive }) {
   const [previewLoadingId, setPreviewLoadingId] = useState(null);
   const [generatingId, setGeneratingId] = useState(null);
   const [sendingId, setSendingId] = useState(null);
+  const [batchSending, setBatchSending] = useState(false);
   const [activeNoticeKey, setActiveNoticeKey] = useState(null);
   const [downloadingId, setDownloadingId] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -374,6 +375,21 @@ export default function RentBillingTab({ isActive }) {
     return { expected, collected, outstanding, exceptions, upcoming };
   }, [tableRows, amounts]);
 
+  const sendableRows = useMemo(
+    () => tableRows.filter(
+      (r) => r.bill && (r.computedStatus === 'generated' || r.computedStatus === 'ready') && !isBillSent(r.bill)
+    ),
+    [tableRows]
+  );
+
+  const sendableTotalAmount = useMemo(
+    () => sendableRows.reduce(
+      (sum, r) => sum + normalizeAmount(amounts[getId(r.reservationId)] ?? r.monthlyRent),
+      0
+    ),
+    [sendableRows, amounts]
+  );
+
   const handlePreview = async (tenant) => {
     const reservationId = getId(tenant.reservationId);
     setPreviewLoadingId(reservationId);
@@ -443,6 +459,33 @@ export default function RentBillingTab({ isActive }) {
       } catch (e) { showNotification(e.message, "error"); }
       finally { setDownloadingId(null); }
     }
+  };
+
+  const handleSendAllReady = async () => {
+    if (batchSending || sendableRows.length === 0) return;
+    const confirmed = await showConfirmation(
+      `Send ${sendableRows.length} bill${sendableRows.length !== 1 ? 's' : ''} now?`,
+      `This will dispatch rent billing statements to ${sendableRows.length} tenant${sendableRows.length !== 1 ? 's' : ''}. This cannot be undone.`,
+      { confirmLabel: 'Send All', confirmVariant: 'primary' }
+    );
+    if (!confirmed) return;
+    setBatchSending(true);
+    let successCount = 0;
+    let errorCount = 0;
+    for (const row of sendableRows) {
+      const billId = getId(row.bill?.id || row.bill?._id);
+      if (!billId) continue;
+      try {
+        await billingApi.sendRentBill(billId);
+        successCount++;
+      } catch {
+        errorCount++;
+      }
+    }
+    setBatchSending(false);
+    if (successCount > 0) showNotification(`${successCount} bill${successCount !== 1 ? 's' : ''} sent successfully.`, 'success');
+    if (errorCount > 0) showNotification(`${errorCount} bill${errorCount !== 1 ? 's' : ''} failed to send.`, 'error');
+    await loadData();
   };
 
   return (
@@ -693,6 +736,35 @@ export default function RentBillingTab({ isActive }) {
           </table>
         </div>
       </div>
+
+      {/* Sticky Batch Send Dock — only visible when 2+ sendable bills exist */}
+      {sendableRows.length >= 2 && (
+        <div
+          className="sticky bottom-0 z-20 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3"
+          style={{ boxShadow: "0 -2px 12px hsl(0 0% 0% / 0.06)" }}
+        >
+          <div className="flex items-center gap-2">
+            <CheckCircle size={16} className="shrink-0 text-success-dark" />
+            <p className="text-sm font-semibold text-card-foreground">
+              {sendableRows.length} bill{sendableRows.length !== 1 ? 's' : ''} ready to send
+            </p>
+            <span className="text-xs font-medium text-muted-foreground">
+              · Total: {new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(sendableTotalAmount)}
+            </span>
+          </div>
+          <button
+            type="button"
+            disabled={batchSending}
+            onClick={handleSendAllReady}
+            className="inline-flex items-center gap-2 rounded-lg border border-border bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {batchSending
+              ? <LoaderCircle size={13} className="animate-spin" />
+              : <Send size={13} />}
+            {batchSending ? 'Sending…' : 'Send All Ready'}
+          </button>
+        </div>
+      )}
 
       {/* Preview Modal */}
       <PreviewModal

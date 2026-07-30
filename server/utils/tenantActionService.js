@@ -191,7 +191,7 @@ export async function getTenantActionContext(reservationId) {
 
   const sourceRoomId = reservation.roomId?._id || reservation.roomId;
 
-  const [bills, renewalHistory, availableRooms, sourceRoomLatestReading] = await Promise.all([
+  const [bills, renewalHistory, availableRooms, sourceRoomLatestReading, activeUtilityPeriod] = await Promise.all([
     Bill.find({
       reservationId,
       isArchived: { $ne: true },
@@ -206,6 +206,16 @@ export async function getTenantActionContext(reservationId) {
       isArchived: false,
     })
       .sort({ date: -1, createdAt: -1 })
+      .lean(),
+    // Fetch the active electricity UtilityPeriod for this room to expose ratePerUnit
+    // to the frontend for live settlement cost estimation.
+    UtilityPeriod.findOne({
+      roomId: sourceRoomId,
+      utilityType: "electricity",
+      status: "open",
+    })
+      .sort({ startDate: -1 })
+      .select("ratePerUnit")
       .lean(),
   ]);
 
@@ -253,6 +263,9 @@ export async function getTenantActionContext(reservationId) {
           eventType: sourceRoomLatestReading.eventType,
         }
       : null,
+    // The active ₱/kWh electricity rate for this room — used by the frontend
+    // wizard to compute live settlement estimates without a full billing pass.
+    electricityRatePerUnit: Number(activeUtilityPeriod?.ratePerUnit ?? 0) || null,
     availableRooms,
     allowedActions,
     renewalHistory: renewalHistory.map((stay) => ({

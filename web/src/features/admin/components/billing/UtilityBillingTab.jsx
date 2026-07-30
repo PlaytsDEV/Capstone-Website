@@ -57,6 +57,7 @@ import {
 import { getRoomLabel } from "../../../../shared/utils/roomLabel.js";
 import { fmtDate } from "../../utils/formatters";
 import useBillingNotifier from "./shared/useBillingNotifier";
+import "./shared/BillingDelta.css";
 import BillingCycleDetailModal from "./BillingCycleDetailModal";
 import {
   buildPaymentLedgerByBillId as buildSharedPaymentLedgerByBillId,
@@ -404,6 +405,31 @@ const TENANT_SUMMARY_EXPORT_COLUMNS = [
   { key: "totalUsage", label: "Total Usage" },
   { key: "billAmount", label: "Bill Amount" },
 ];
+
+/**
+ * DeltaChip — shows the kWh / cu.m. difference between start and end readings.
+ * Variants: success (positive), error (rollback), warning (very high), muted (zero).
+ */
+const DeltaChip = ({ start, end, unit }) => {
+  if (start == null || end == null) return null;
+  const delta = Number(end) - Number(start);
+  if (Number.isNaN(delta)) return null;
+  if (delta < 0)
+    return (
+      <span className="delta-chip delta-chip--error" title="Meter rollback detected">
+        ⚠ Rollback
+      </span>
+    );
+  if (delta === 0)
+    return (
+      <span className="delta-chip delta-chip--muted">No change</span>
+    );
+  return (
+    <span className="delta-chip delta-chip--success">
+      +{delta.toLocaleString(undefined, { maximumFractionDigits: 1 })} {unit}
+    </span>
+  );
+};
 
 const UtilityBillingTab = ({
   utilityType,
@@ -1184,7 +1210,7 @@ const UtilityBillingTab = ({
     setEditReadingForm({
       reading: String(r.reading),
       date: r.date ? new Date(r.date).toISOString().slice(0, 10) : "",
-      eventType: normalizeUtilityEventType(r.eventType) || "moveIn",
+      eventType: normalizeUtilityEventType(r.eventType) || "regularBilling",
     });
     setEditReadingModal({ open: true, reading: r });
   };
@@ -1672,6 +1698,35 @@ const UtilityBillingTab = ({
     });
   };
 
+  const handleExportUtilityStatementPDF = async (period, currentResult) => {
+    try {
+      const { generateUtilityStatementPDF } = await import("../../../../shared/utils/receiptGenerator.js");
+      await generateUtilityStatementPDF({
+        utilityType,
+        branch: selectedRoom?.branch || branchFilter || user?.branch || "",
+        roomName: selectedRoom ? getRoomLabel(selectedRoom) : "Room",
+        startDate: period?.startDate,
+        endDate: period?.endDate,
+        startReading: period?.startReading ?? 0,
+        endReading: period?.endReading ?? 0,
+        kwhUsage: (period?.endReading ?? 0) - (period?.startReading ?? 0),
+        ratePerUnit: period?.ratePerUnit ?? 0,
+        totalCost: currentResult?.totalRoomCharge || currentResult?.computedTotalCost || 0,
+        tenantSplits: (currentResult?.tenantSummaries || []).map((t) => ({
+          name: t.tenantName,
+          bed: t.bedName || "Bed",
+          shareAmount: t.billAmount,
+          isProRata: Boolean(t.isProRata),
+          daysInCycle: t.daysInCycle,
+        })),
+      });
+      notify.success("Utility statement PDF exported.");
+    } catch (err) {
+      console.error("PDF Export failed:", err);
+      notify.error(err, "Failed to export PDF statement.");
+    }
+  };
+
   const effectiveBranch = isOwner ? branchFilter : (user?.branch || "");
   const isGuadaUtility =
     (utilityType === "electricity" || utilityType === "water") &&
@@ -1904,6 +1959,18 @@ const UtilityBillingTab = ({
             </div>
           ) : (
             <>
+              {selectedRoom?.branch === "guadalupe" && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+                  <div className="font-semibold flex items-center gap-1.5">
+                    <Info size={14} className="text-amber-600 shrink-0" />
+                    Fixed-Rate Utility Setup (Guadalupe)
+                  </div>
+                  <div className="mt-1 text-amber-700 dark:text-amber-400">
+                    Guadalupe uses a fixed-rate billing setup. Separate electricity and water utility billing are not used for this branch. Optional appliance/device fees are handled through reservation recurring fees when applicable.
+                  </div>
+                </div>
+              )}
+
               <div className="rounded-[14px] border border-border bg-card px-5 py-4 shadow-[0_1px_0_rgba(15,23,42,0.02)] min-h-[440px]">
                 <div className="flex items-center gap-3">
                   <span
@@ -2016,14 +2083,20 @@ const UtilityBillingTab = ({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
-              className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold"
+              className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
               style={{
                 background: "var(--primary)",
                 color: "var(--primary-foreground)",
               }}
               onClick={() => setIsNewPeriodModalOpen(true)}
+              disabled={selectedRoom?.branch === "guadalupe"}
+              title={
+                selectedRoom?.branch === "guadalupe"
+                  ? "Guadalupe uses fixed-rate billing. Separate sub-metered utility cycles are not used for this branch."
+                  : undefined
+              }
             >
-              <Plus size={12} /> New Billing Period
+              <Plus size={12} /> {selectedRoom?.branch === "guadalupe" ? "Fixed-Rate Branch" : "New Billing Period"}
             </button>
             <button
               type="button"
@@ -2196,8 +2269,15 @@ const UtilityBillingTab = ({
                     <p className="text-sm font-semibold text-card-foreground">
                       {getCycleLabel(p)}
                     </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
+                    <p className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
                       {getMeterRangeLabel(p, utilityType)}
+                      {utilityType !== "water" && (
+                        <DeltaChip
+                          start={p.startReading}
+                          end={p.endReading}
+                          unit={utilityType === "electricity" ? "kWh" : "cu.m."}
+                        />
+                      )}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -2372,7 +2452,40 @@ const UtilityBillingTab = ({
                       {fmtNumber(tenant.totalUsage, 4)}
                     </td>
                     <td className="py-3 pr-4 font-semibold text-card-foreground">
-                      {fmtCurrency(tenant.billAmount)}
+                      <span className="inline-flex items-center gap-1">
+                        {fmtCurrency(tenant.billAmount)}
+                        {(tenant.isProRata || tenant.daysInCycle != null) && (
+                          <span className="prorata-tooltip-anchor" aria-label="Pro-rata breakdown">
+                            ⓘ
+                            <span className="prorata-tooltip">
+                              <p className="prorata-tooltip__title">Pro-Rata Breakdown</p>
+                              <div className="prorata-tooltip__row">
+                                <span className="prorata-tooltip__label">Active Days</span>
+                                <span className="prorata-tooltip__value">
+                                  {tenant.daysInCycle ?? "–"} days
+                                </span>
+                              </div>
+                              {tenant.durationRange && (
+                                <div className="prorata-tooltip__row">
+                                  <span className="prorata-tooltip__label">Period</span>
+                                  <span className="prorata-tooltip__value">{tenant.durationRange}</span>
+                                </div>
+                              )}
+                              <div className="prorata-tooltip__row">
+                                <span className="prorata-tooltip__label">Usage Share</span>
+                                <span className="prorata-tooltip__value">
+                                  {fmtNumber(tenant.totalUsage, 2)}{" "}
+                                  {utilityType === "electricity" ? "kWh" : "cu.m."}
+                                </span>
+                              </div>
+                              <div className="prorata-tooltip__row">
+                                <span className="prorata-tooltip__label">Charge</span>
+                                <span className="prorata-tooltip__value">{fmtCurrency(tenant.billAmount)}</span>
+                              </div>
+                            </span>
+                          </span>
+                        )}
+                      </span>
                     </td>
                     <td className="py-3 pr-4 text-muted-foreground">
                       {fmtCurrency(tenant.remainingAmount)}
@@ -2448,162 +2561,163 @@ const UtilityBillingTab = ({
         )}
       </section>
       {/* Edit Reading Modal */}
-      {editReadingModal.open && (
-        <div
-          className="fixed inset-0 z-40 flex items-center justify-center p-4 backdrop-blur-sm"
-          style={{
-            background:
-              "color-mix(in srgb, var(--background) 60%, transparent)",
-          }}
-          onClick={() => setEditReadingModal({ open: false, reading: null })}
-        >
+      {editReadingModal.open && (() => {
+        const baselineReading = editReadingModal.reading?.previousReading ?? currentPeriod?.startReading ?? null;
+        const inputVal = Number(editReadingForm.reading);
+        const hasInput = editReadingForm.reading !== "" && !isNaN(inputVal);
+        const delta = baselineReading !== null && hasInput ? inputVal - baselineReading : null;
+        const isBelowBaseline = delta !== null && delta < 0;
+
+        return (
           <div
-            className="w-full max-w-xl rounded-2xl border border-border bg-card shadow-xl"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-40 flex items-center justify-center p-4 backdrop-blur-sm"
+            style={{
+              background:
+                "color-mix(in srgb, var(--background) 60%, transparent)",
+            }}
+            onClick={() => setEditReadingModal({ open: false, reading: null })}
           >
-            <div className="flex items-center justify-between border-b border-border px-5 py-4">
-              <span className="text-sm font-semibold text-foreground">
-                Manage Meter Reading
-              </span>
-              <button
-                className="rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-card-foreground"
-                onClick={() =>
-                  setEditReadingModal({ open: false, reading: null })
-                }
-              >
-                <X size={15} />
-              </button>
-            </div>
-            <div className="px-5 py-4">
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground">
-                    Reading ({utilityType === "electricity" ? "kWh" : "cu.m."})
-                  </label>
-                  <input
-                    type="number"
-                    className="w-full rounded-lg border border-border px-3 py-2 text-sm text-card-foreground focus:outline-none"
-                    style={{ outlineColor: "var(--ring)" }}
-                    onFocus={(e) => {
-                      e.currentTarget.style.borderColor = "var(--ring)";
-                      e.currentTarget.style.boxShadow =
-                        "0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent)";
+            <div
+              className="w-full max-w-xl rounded-2xl border border-border bg-card shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-border px-5 py-4">
+                <span className="text-sm font-semibold text-foreground">
+                  Manage Meter Reading
+                </span>
+                <button
+                  className="rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-card-foreground"
+                  onClick={() =>
+                    setEditReadingModal({ open: false, reading: null })
+                  }
+                >
+                  <X size={15} />
+                </button>
+              </div>
+              <div className="px-5 py-4">
+                {baselineReading !== null && (
+                  <div
+                    className="mb-3 rounded-lg border p-3 text-xs"
+                    style={{
+                      borderColor: isBelowBaseline ? "var(--danger-border, #fca5a5)" : "var(--border)",
+                      background: isBelowBaseline ? "color-mix(in srgb, var(--danger, #ef4444) 8%, var(--card))" : "var(--muted)",
                     }}
-                    onBlur={(e) => {
-                      e.currentTarget.style.borderColor = "";
-                      e.currentTarget.style.boxShadow = "";
-                    }}
-                    value={editReadingForm.reading}
-                    onChange={(e) =>
-                      setEditReadingForm({
-                        ...editReadingForm,
-                        reading: e.target.value,
-                      })
-                    }
-                    autoFocus
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground">
-                    Date
-                  </label>
-                  <input
-                    type="date"
-                    className="w-full rounded-lg border border-border px-3 py-2 text-sm text-card-foreground focus:outline-none"
-                    style={{ outlineColor: "var(--ring)" }}
-                    onFocus={(e) => {
-                      e.currentTarget.style.borderColor = "var(--ring)";
-                      e.currentTarget.style.boxShadow =
-                        "0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent)";
-                    }}
-                    onBlur={(e) => {
-                      e.currentTarget.style.borderColor = "";
-                      e.currentTarget.style.boxShadow = "";
-                    }}
-                    value={editReadingForm.date}
-                    onChange={(e) =>
-                      setEditReadingForm({
-                        ...editReadingForm,
-                        date: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground">
-                    Event
-                  </label>
-                  <select
-                    className="w-full rounded-lg border border-border px-3 py-2 text-sm text-card-foreground focus:outline-none"
-                    style={{ outlineColor: "var(--ring)" }}
-                    onFocus={(e) => {
-                      e.currentTarget.style.borderColor = "var(--ring)";
-                      e.currentTarget.style.boxShadow =
-                        "0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent)";
-                    }}
-                    onBlur={(e) => {
-                      e.currentTarget.style.borderColor = "";
-                      e.currentTarget.style.boxShadow = "";
-                    }}
-                    value={editReadingForm.eventType}
-                    onChange={(e) =>
-                      setEditReadingForm({
-                        ...editReadingForm,
-                        eventType: e.target.value,
-                      })
-                    }
                   >
-                    <option value="moveIn">Move-In</option>
-                    <option value="moveOut">Move-Out</option>
-                    <option value="manualAdjustment">Manual Adjustment</option>
-                  </select>
+                    <div className="flex items-center justify-between text-muted-foreground">
+                      <span>Baseline Reading: <strong className="text-foreground">{fmtNumber(baselineReading, 2)} {utilityType === "electricity" ? "kWh" : "cu.m."}</strong></span>
+                      {delta !== null && (
+                        <span className={`font-bold ${isBelowBaseline ? "text-danger-dark" : "text-success-dark"}`}>
+                          {isBelowBaseline ? `Invalid: ${delta.toFixed(2)}` : `Usage Delta: +${delta.toFixed(2)} ${utilityType === "electricity" ? "kWh" : "cu.m."}`}
+                        </span>
+                      )}
+                    </div>
+                    {isBelowBaseline && (
+                      <p className="mt-1 font-semibold text-danger-dark">
+                        ⚠ New reading cannot be lower than the baseline reading ({fmtNumber(baselineReading, 2)}).
+                      </p>
+                    )}
+                  </div>
+                )}
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      Reading ({utilityType === "electricity" ? "kWh" : "cu.m."})
+                    </label>
+                    <input
+                      type="number"
+                      className="w-full rounded-lg border border-border px-3 py-2 text-sm text-card-foreground focus:outline-none"
+                      style={{ outlineColor: "var(--ring)" }}
+                      value={editReadingForm.reading}
+                      onChange={(e) =>
+                        setEditReadingForm({
+                          ...editReadingForm,
+                          reading: e.target.value,
+                        })
+                      }
+                      autoFocus
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      Date
+                    </label>
+                    <input
+                      type="date"
+                      className="w-full rounded-lg border border-border px-3 py-2 text-sm text-card-foreground focus:outline-none"
+                      style={{ outlineColor: "var(--ring)" }}
+                      value={editReadingForm.date}
+                      onChange={(e) =>
+                        setEditReadingForm({
+                          ...editReadingForm,
+                          date: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      Event
+                    </label>
+                    <select
+                      className="w-full rounded-lg border border-border px-3 py-2 text-sm text-card-foreground focus:outline-none"
+                      style={{ outlineColor: "var(--ring)" }}
+                      value={editReadingForm.eventType}
+                      onChange={(e) =>
+                        setEditReadingForm({
+                          ...editReadingForm,
+                          eventType: e.target.value,
+                        })
+                      }
+                    >
+                      <option value="regularBilling">Regular Reading</option>
+                      <option value="moveIn">Move-In</option>
+                      <option value="moveOut">Move-Out</option>
+                      <option value="manualAdjustment">Manual Adjustment</option>
+                    </select>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border px-5 py-4">
-              <button
-                className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold"
-                style={{
-                  background: "var(--primary)",
-                  color: "var(--primary-foreground)",
-                }}
-                onClick={handleSaveEditReading}
-                disabled={updateReading.isPending}
-              >
-                <Check size={13} />{" "}
-                {updateReading.isPending ? "Saving..." : "Save Changes"}
-              </button>
-              <button
-                className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold"
-                style={{
-                  borderColor: "var(--danger)",
-                  color: "var(--danger-dark)",
-                }}
-                onMouseEnter={(e) =>
-                  (e.currentTarget.style.background = "var(--danger-light)")
-                }
-                onMouseLeave={(e) => (e.currentTarget.style.background = "")}
-                onClick={() => {
-                  if (!editReadingModal.reading?.id) return;
-                  setEditReadingModal({ open: false, reading: null });
-                  handleDeleteReading(editReadingModal.reading.id);
-                }}
-                disabled={updateReading.isPending}
-              >
-                <Trash2 size={13} /> Delete Reading
-              </button>
-              <button
-                className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-muted"
-                onClick={() =>
-                  setEditReadingModal({ open: false, reading: null })
-                }
-              >
-                Cancel
-              </button>
+              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border px-5 py-4">
+                <button
+                  className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold"
+                  style={{
+                    background: "var(--primary)",
+                    color: "var(--primary-foreground)",
+                  }}
+                  onClick={handleSaveEditReading}
+                  disabled={updateReading.isPending || isBelowBaseline}
+                >
+                  <Check size={13} />{" "}
+                  {updateReading.isPending ? "Saving..." : "Save Changes"}
+                </button>
+                <button
+                  className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold"
+                  style={{
+                    borderColor: "var(--danger)",
+                    color: "var(--danger-dark)",
+                  }}
+                  onClick={() => {
+                    if (!editReadingModal.reading?.id) return;
+                    setEditReadingModal({ open: false, reading: null });
+                    handleDeleteReading(editReadingModal.reading.id);
+                  }}
+                  disabled={updateReading.isPending}
+                >
+                  <Trash2 size={13} /> Delete Reading
+                </button>
+                <button
+                  className="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-muted"
+                  onClick={() =>
+                    setEditReadingModal({ open: false, reading: null })
+                  }
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {editPeriodModal.open && (
         <div
@@ -2959,6 +3073,11 @@ const UtilityBillingTab = ({
             ? () => handleExportTenantSummary(historyModalPeriod, resultWithBilling)
             : null
         }
+        onExportPDF={
+          historyModalPeriod && resultWithBilling
+            ? () => handleExportUtilityStatementPDF(historyModalPeriod, resultWithBilling)
+            : null
+        }
         onSendReminder={handleSendReminder}
         activeNoticeKey={activeNoticeKey}
       />
@@ -2974,6 +3093,7 @@ const UtilityBillingTab = ({
         lastClosedPeriod={lastClosedPeriod}
         latestReading={latestData?.reading}
         defaultRatePerUnit={defaultRatePerUnit}
+        roomBranch={selectedRoom?.branch}
         onSuccess={(newPeriodId) => {
           if (newPeriodId) {
             selectAndFocusPeriod(newPeriodId);

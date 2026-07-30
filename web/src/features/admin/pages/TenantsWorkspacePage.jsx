@@ -51,7 +51,7 @@ const TENANT_ACTION_ITEMS = [
   {
     key: "renew",
     type: "renew",
-    label: "Renew Lease",
+    label: "Extend Stay",
     icon: RefreshCcw,
     className: "",
   },
@@ -948,7 +948,7 @@ export default function TenantsWorkspacePage() {
                 defaultStart.setDate(defaultStart.getDate() + 1);
                 if (
                   !window.confirm(
-                    "Confirm lease renewal? This will preserve the current stay history and create a new lease term.",
+                    "Confirm extending this stay? This will preserve the current stay history and update the stay end date.",
                   )
                 ) {
                   return null;
@@ -977,16 +977,10 @@ export default function TenantsWorkspacePage() {
             detail={actionTenantDetail}
             loading={actionLoading === "transfer"}
             sourceRoomLatestReading={actionContext?.sourceRoomLatestReading ?? null}
+            electricityRatePerUnit={actionContext?.electricityRatePerUnit ?? null}
             onClose={() => setActionState({ type: null, tenant: null })}
             onSubmit={(payload) =>
               runAction("transfer", async () => {
-                if (
-                  !window.confirm(
-                    "Confirm room transfer? This will close the current room history and create a new room assignment.",
-                  )
-                ) {
-                  return null;
-                }
                 return reservationApi.transfer(
                   actionState.tenant.reservationId,
                   {
@@ -1013,16 +1007,11 @@ export default function TenantsWorkspacePage() {
             tenant={actionState.tenant}
             detail={actionTenantDetail}
             loading={actionLoading === "moveOut"}
+            sourceRoomLatestReading={actionContext?.sourceRoomLatestReading ?? null}
+            electricityRatePerUnit={actionContext?.electricityRatePerUnit ?? null}
             onClose={() => setActionState({ type: null, tenant: null })}
             onSubmit={(payload) =>
               runAction("moveOut", async () => {
-                if (
-                  !window.confirm(
-                    "Confirm move-out? This will end the active stay and release the assigned bed while preserving tenant history.",
-                  )
-                ) {
-                  return null;
-                }
                 const response = await reservationApi.moveOut(
                   actionState.tenant.reservationId,
                   {

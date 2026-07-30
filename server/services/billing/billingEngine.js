@@ -447,18 +447,44 @@ export function computeBilling({
       );
     }
 
+    const allPeriodTenantIds = tenantEvents.map((t) => t.tenantId);
+
     const computedSegments = rawSegments.map((seg) => {
+      let activeTenantIds = seg.activeTenantIds;
+      let activeTenantCount = seg.activeTenantCount;
+      let coveredTenantNames = seg.coveredTenantNames;
+
+      // Fallback for vacant/gap segments: if segment has consumption but 0 native active tenants,
+      // attribute consumption to the period's active occupants if available.
+      if (
+        seg.unitsConsumed > 0 &&
+        activeTenantCount === 0 &&
+        allPeriodTenantIds.length > 0
+      ) {
+        activeTenantIds = allPeriodTenantIds;
+        activeTenantCount = allPeriodTenantIds.length;
+        coveredTenantNames = tenantEvents.map((t) => t.tenantName);
+      }
+
       if (
         forceSegmented &&
         seg.unitsConsumed > 0 &&
-        seg.activeTenantCount === 0
+        activeTenantCount === 0
       ) {
         throw new Error(
           `Segment ${seg.segmentIndex + 1} has consumption but no active tenants. Check occupancy and lifecycle meter events.`,
         );
       }
-      const shares = computeSegmentShares(seg, ratePerUnit);
-      return { ...seg, ...shares, ratePerUnit };
+
+      const segmentWithTenants = {
+        ...seg,
+        activeTenantIds,
+        activeTenantCount,
+        coveredTenantNames,
+      };
+
+      const shares = computeSegmentShares(segmentWithTenants, ratePerUnit);
+      return { ...segmentWithTenants, ...shares, ratePerUnit };
     });
 
     const segments = computedSegments

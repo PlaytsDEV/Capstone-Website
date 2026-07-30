@@ -13,6 +13,7 @@ const BillingCycleDetailModal = ({
   formatters,
   eventTypeLabels,
   onExport,
+  onExportPDF,
   onSendReminder,
   activeNoticeKey,
 }) => {
@@ -505,13 +506,22 @@ const BillingCycleDetailModal = ({
           >
             Close
           </button>
+          {onExportPDF && (
+            <button
+              type="button"
+              className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-card-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+              onClick={onExportPDF}
+            >
+              <Download size={14} /> Export PDF
+            </button>
+          )}
           <button
             type="button"
             className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-card-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
             onClick={onExport}
             disabled={!onExport}
           >
-            <Download size={14} /> Export
+            <Download size={14} /> Export CSV
           </button>
         </div>
       </div>

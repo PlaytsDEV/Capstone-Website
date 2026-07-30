@@ -237,9 +237,9 @@ export function buildTenantEventsForPeriod({
         tenantId: tenantKey,
         reservationId: reservation._id,
         tenantName,
-        moveInReading:
-          moveInReading ??
-          (checkedInBeforeCycle ? Number(period?.startReading || 0) : null),
+        moveInReading: checkedInBeforeCycle
+          ? Number(period?.startReading || 0)
+          : (moveInReading ?? null),
         moveOutReading: moveOutReading ?? null,
       };
     })

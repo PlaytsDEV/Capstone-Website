@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, ExternalLink, RefreshCw, XCircle } from "lucide-react";
 import { reservationApi } from "../../../../shared/api/reservationApi";
 
@@ -76,6 +76,7 @@ export default function ReservationPaymentReviewTab({ isActive }) {
 
   return (
     <div className="space-y-4">
+      {/* Header bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
         <div>
           <h3 className="font-semibold text-foreground">Reservation Payment Review</h3>
@@ -99,118 +100,258 @@ export default function ReservationPaymentReviewTab({ isActive }) {
         </div>
       ) : null}
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-card">
-        <table className="w-full min-w-[1100px] text-left text-sm">
-          <thead className="border-b border-border bg-muted/60 text-xs uppercase text-muted-foreground">
-            <tr>
-              {["Applicant / Reservation", "Branch / Room", "Expected", "Submitted", "Method / Reference", "Evidence", "Status", "Actions"].map((label) => (
-                <th key={label} className="px-4 py-3 font-semibold">{label}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {payments.map((payment) => {
-              const reservation = payment.reservationId;
-              const tenant = payment.tenantId;
-              const difference = Number(payment.paidAmount ?? payment.amount) - Number(payment.expectedAmount || 0);
-              const isManualReview = payment.source === "manual_proof" && payment.status === "under_review";
-              return (
-                <tr key={payment._id} className="border-b border-border last:border-0 align-top">
-                  <td className="px-4 py-3">
-                    <strong>{[tenant?.firstName, tenant?.lastName].filter(Boolean).join(" ") || "Unknown applicant"}</strong>
-                    <div className="text-xs text-muted-foreground">{reservation?.reservationCode || reservation?._id || "Unavailable"}</div>
-                    <div className="text-xs text-muted-foreground">Stage: {reservation?.status || "unknown"}</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <strong>{payment.branch}</strong>
-                    <div className="text-xs text-muted-foreground">
-                      {reservation?.roomId?.name || reservation?.roomId?.roomNumber || "Room unavailable"}
-                      {reservation?.selectedBed?.label ? ` / ${reservation.selectedBed.label}` : ""}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 font-semibold">{money(payment.expectedAmount)}</td>
-                  <td className="px-4 py-3">
-                    <strong>{money(payment.paidAmount ?? payment.amount)}</strong>
-                    <div className={difference === 0 ? "text-xs text-emerald-700" : "text-xs text-red-700"}>
-                      Difference: {money(difference)}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <strong>{payment.method || "—"}</strong>
-                    <div className="text-xs text-muted-foreground">{payment.paymentReference || payment.referenceNumber || "No reference"}</div>
-                    <div className="text-xs text-muted-foreground">{payment.processedAt ? new Date(payment.processedAt).toLocaleDateString() : "Date unavailable"}</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    {payment.proofUrl || payment.proofImageUrl ? (
-                      <a href={payment.proofUrl || payment.proofImageUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-semibold text-primary underline">
-                        View proof <ExternalLink size={13} />
-                      </a>
-                    ) : "No manual proof"}
-                    <div className="text-xs text-muted-foreground">{payment.submittedAt ? new Date(payment.submittedAt).toLocaleString() : ""}</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="rounded-full bg-muted px-2 py-1 text-xs font-semibold">{payment.status}</span>
-                    {payment.source === "paymongo" && payment.status === "confirmed" ? (
-                      <div className="mt-2 text-xs text-emerald-700">Automatically confirmed by PayMongo</div>
-                    ) : null}
-                    {payment.status === "reconciliation_required" ? (
-                      <div className="mt-2 text-xs text-amber-700">Administrator reconciliation required</div>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-3">
-                    {isManualReview ? (
-                      <div className="flex gap-2">
-                        <button type="button" onClick={() => setDecision({ action: "approve", payment })} className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground">
-                          <CheckCircle2 size={14} /> Approve
-                        </button>
-                        <button type="button" onClick={() => setDecision({ action: "reject", payment })} className="inline-flex items-center gap-1 rounded-lg border border-red-300 px-3 py-2 text-xs font-semibold text-red-700">
-                          <XCircle size={14} /> Reject
-                        </button>
-                      </div>
-                    ) : <span className="text-xs text-muted-foreground">No manual approval available</span>}
-                  </td>
-                </tr>
-              );
-            })}
-            {!loading && payments.length === 0 ? (
-              <tr><td colSpan="8" className="px-4 py-12 text-center text-muted-foreground">No Reservation payment records require review.</td></tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
+      {/* Split-screen master / detail */}
+      <div className="flex min-h-[520px] overflow-hidden rounded-xl border border-border bg-card">
 
-      {decision ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4" role="dialog" aria-modal="true" aria-label={`${decision.action} payment proof`}>
-          <div className="w-full max-w-lg rounded-xl bg-card p-5 shadow-xl">
-            <h3 className="text-lg font-semibold">{decision.action === "approve" ? "Approve Reservation Payment" : "Reject Payment Proof"}</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {decision.action === "approve"
-                ? "This confirms a financial transaction and reserves occupancy."
-                : "The original evidence will be preserved and a replacement proof may be submitted."}
-            </p>
-            <dl className="mt-4 grid grid-cols-2 gap-3 rounded-lg bg-muted p-3 text-sm">
-              <div><dt className="text-muted-foreground">Expected</dt><dd className="font-semibold">{money(decision.payment.expectedAmount)}</dd></div>
-              <div><dt className="text-muted-foreground">Submitted</dt><dd className="font-semibold">{money(decision.payment.paidAmount ?? decision.payment.amount)}</dd></div>
-              <div><dt className="text-muted-foreground">Branch</dt><dd>{decision.payment.branch}</dd></div>
-              <div><dt className="text-muted-foreground">Reference</dt><dd>{decision.payment.paymentReference || decision.payment.referenceNumber}</dd></div>
-            </dl>
-            {decision.action === "reject" ? (
-              <div className="mt-4 space-y-3">
-                <select value={reasonCode} onChange={(event) => setReasonCode(event.target.value)} className="w-full rounded-lg border border-border bg-card p-2">
-                  {["UNREADABLE_PROOF", "AMOUNT_MISMATCH", "INVALID_REFERENCE", "DUPLICATE_PROOF", "WRONG_ACCOUNT", "PAYMENT_NOT_FOUND", "OTHER"].map((code) => <option key={code}>{code}</option>)}
-                </select>
-                <textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Explain the rejection or replacement needed" className="min-h-24 w-full rounded-lg border border-border bg-card p-3" />
-              </div>
-            ) : null}
-            <div className="mt-5 flex justify-end gap-2">
-              <button type="button" disabled={saving} onClick={() => setDecision(null)} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold">Cancel</button>
-              <button type="button" disabled={saving} onClick={submitDecision} className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60">
-                {saving ? "Saving…" : decision.action === "approve" ? "Confirm Payment" : "Reject and Request Replacement"}
-              </button>
+        {/* LEFT — Scrollable payment list (40%) */}
+        <div className="w-[40%] shrink-0 overflow-y-auto border-r border-border">
+          {!loading && payments.length === 0 ? (
+            <div className="flex h-full items-center justify-center p-8 text-center text-sm text-muted-foreground">
+              No reservation payment records require review.
             </div>
-          </div>
+          ) : (
+            payments.map((payment) => {
+              const tenant = payment.tenantId;
+              const reservation = payment.reservationId;
+              const isSelected = decision?.payment?._id === payment._id;
+              const isUnderReview = payment.source === "manual_proof" && payment.status === "under_review";
+              const statusColor =
+                payment.status === "confirmed" || payment.status === "approved"
+                  ? "bg-success-light text-success-dark"
+                  : payment.status === "rejected"
+                  ? "bg-error-light text-error-dark"
+                  : payment.status === "under_review"
+                  ? "bg-warning-light text-warning-dark"
+                  : "bg-muted text-muted-foreground";
+
+              return (
+                <button
+                  key={payment._id}
+                  type="button"
+                  onClick={() =>
+                    setDecision(
+                      isSelected
+                        ? null
+                        : { action: isUnderReview ? "approve" : null, payment }
+                    )
+                  }
+                  className={`w-full border-b border-border px-4 py-3 text-left transition-colors last:border-0 ${
+                    isSelected ? "bg-muted/70" : "hover:bg-muted/40"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        {[tenant?.firstName, tenant?.lastName].filter(Boolean).join(" ") || "Unknown applicant"}
+                      </p>
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {reservation?.reservationCode || reservation?._id || "No code"}
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {payment.branch} &middot; {reservation?.roomId?.name || reservation?.roomId?.roomNumber || "Room TBD"}
+                      </p>
+                    </div>
+                    <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${statusColor}`}>
+                      {payment.status?.replace(/_/g, " ")}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
+                    <span>Expected: <strong className="text-foreground">{money(payment.expectedAmount)}</strong></span>
+                    <span>Paid: <strong className="text-foreground">{money(payment.paidAmount ?? payment.amount)}</strong></span>
+                  </div>
+                </button>
+              );
+            })
+          )}
         </div>
-      ) : null}
+
+        {/* RIGHT — Detail panel (60%) */}
+        <div className="flex flex-1 flex-col overflow-y-auto">
+          {!decision ? (
+            <div className="flex h-full items-center justify-center p-8 text-center text-sm text-muted-foreground">
+              <div>
+                <p className="font-semibold">Select a payment to review</p>
+                <p className="mt-1 text-xs">Click any entry on the left to inspect its details and take action.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-1 flex-col gap-4 p-5">
+              {/* Identity header */}
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-base font-semibold text-foreground">
+                    {[decision.payment.tenantId?.firstName, decision.payment.tenantId?.lastName]
+                      .filter(Boolean)
+                      .join(" ") || "Unknown applicant"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {decision.payment.reservationId?.reservationCode || decision.payment.reservationId?._id}
+                    {" \u00B7 "}Stage: {decision.payment.reservationId?.status || "unknown"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDecision(null)}
+                  className="shrink-0 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+                  aria-label="Close detail panel"
+                >
+                  &times;
+                </button>
+              </div>
+
+              {/* Payment summary grid */}
+              <dl className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/40 p-3 text-sm">
+                <div>
+                  <dt className="text-xs text-muted-foreground">Expected</dt>
+                  <dd className="font-semibold">{money(decision.payment.expectedAmount)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Submitted</dt>
+                  <dd className="font-semibold">{money(decision.payment.paidAmount ?? decision.payment.amount)}</dd>
+                  <dd className={`text-xs ${
+                    Number(decision.payment.paidAmount ?? decision.payment.amount) >= Number(decision.payment.expectedAmount || 0)
+                      ? "text-success-dark" : "text-error-dark"
+                  }`}>
+                    {Number(decision.payment.paidAmount ?? decision.payment.amount) >= Number(decision.payment.expectedAmount || 0) ? "+" : ""}
+                    {money(Number(decision.payment.paidAmount ?? decision.payment.amount) - Number(decision.payment.expectedAmount || 0))} difference
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Branch</dt>
+                  <dd>{decision.payment.branch || "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Room / Bed</dt>
+                  <dd>
+                    {decision.payment.reservationId?.roomId?.name ||
+                     decision.payment.reservationId?.roomId?.roomNumber || "—"}
+                    {decision.payment.reservationId?.selectedBed?.label
+                      ? ` / ${decision.payment.reservationId.selectedBed.label}`
+                      : ""}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Method</dt>
+                  <dd>{decision.payment.method || "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Reference</dt>
+                  <dd>{decision.payment.paymentReference || decision.payment.referenceNumber || "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Submitted At</dt>
+                  <dd>{decision.payment.submittedAt ? new Date(decision.payment.submittedAt).toLocaleString() : "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Status</dt>
+                  <dd className="capitalize">{decision.payment.status?.replace(/_/g, " ")}</dd>
+                </div>
+              </dl>
+
+              {/* Proof link */}
+              {(decision.payment.proofUrl || decision.payment.proofImageUrl) ? (
+                <a
+                  href={decision.payment.proofUrl || decision.payment.proofImageUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2.5 text-sm font-semibold text-primary transition hover:bg-muted"
+                >
+                  <ExternalLink size={14} /> View Payment Proof
+                </a>
+              ) : (
+                <p className="text-xs italic text-muted-foreground">No proof image attached.</p>
+              )}
+
+              {/* Decision area — only for manual_proof under_review */}
+              {decision.payment.source === "manual_proof" && decision.payment.status === "under_review" ? (
+                <div className="rounded-lg border border-border bg-muted/30 p-4">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">Decision</p>
+
+                  <div className="mb-3 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDecision({ action: "approve", payment: decision.payment })}
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                        decision.action === "approve"
+                          ? "bg-primary text-primary-foreground"
+                          : "border border-border text-muted-foreground hover:bg-muted"
+                      }`}
+                    >
+                      <CheckCircle2 size={13} /> Approve
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDecision({ action: "reject", payment: decision.payment })}
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                        decision.action === "reject"
+                          ? "bg-red-600 text-white"
+                          : "border border-red-300 text-red-700 hover:bg-red-50"
+                      }`}
+                    >
+                      <XCircle size={13} /> Reject
+                    </button>
+                  </div>
+
+                  {decision.action === "approve" && (
+                    <p className="mb-3 text-xs text-muted-foreground">
+                      This confirms a financial transaction and reserves occupancy.
+                    </p>
+                  )}
+
+                  {decision.action === "reject" && (
+                    <div className="space-y-2">
+                      <select
+                        value={reasonCode}
+                        onChange={(e) => setReasonCode(e.target.value)}
+                        className="w-full rounded-lg border border-border bg-card p-2 text-sm"
+                      >
+                        {["UNREADABLE_PROOF", "AMOUNT_MISMATCH", "INVALID_REFERENCE", "DUPLICATE_PROOF", "WRONG_ACCOUNT", "PAYMENT_NOT_FOUND", "OTHER"].map(
+                          (code) => <option key={code}>{code}</option>
+                        )}
+                      </select>
+                      <textarea
+                        value={reason}
+                        onChange={(e) => setReason(e.target.value)}
+                        placeholder="Explain the rejection or replacement needed"
+                        className="min-h-20 w-full rounded-lg border border-border bg-card p-3 text-sm"
+                      />
+                    </div>
+                  )}
+
+                  {decision.action && (
+                    <div className="mt-3 flex justify-end gap-2">
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() => setDecision(null)}
+                        className="rounded-lg border border-border px-4 py-2 text-sm font-semibold"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={submitDecision}
+                        className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+                      >
+                        {saving ? "Saving..." : decision.action === "approve" ? "Confirm Payment" : "Reject & Request Replacement"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs italic text-muted-foreground">
+                  {decision.payment.source === "paymongo" && decision.payment.status === "confirmed"
+                    ? "Automatically confirmed by PayMongo — no manual action required."
+                    : decision.payment.status === "reconciliation_required"
+                    ? "Administrator reconciliation required for this record."
+                    : "No manual approval action available for this payment."}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
