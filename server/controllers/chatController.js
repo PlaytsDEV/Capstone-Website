@@ -302,18 +302,22 @@ function serializeMessage(message) {
 }
 
 async function getDbUser(req) {
-  const dbUser = await User.findOne({ firebaseUid: req.user.uid }).lean();
+  if (!req.authUser?._id) {
+    throw createHttpError("Authentication failed.", 401, "AUTHENTICATION_FAILED");
+  }
+
+  const dbUser = await User.findById(req.authUser._id).lean();
   if (!dbUser) {
-    throw createHttpError("User not found.", 404, "USER_NOT_FOUND");
+    throw createHttpError("Authentication failed.", 401, "AUTHENTICATION_FAILED");
   }
   return dbUser;
 }
 
 async function resolveTenantContext(req) {
   const dbUser = await getDbUser(req);
-  const role = String(dbUser.role || "").toLowerCase();
+  const role = String(req.authUser?.role || "").toLowerCase();
 
-  if (ADMIN_ROLES.has(role) || req.user.branch_admin || req.user.owner) {
+  if (ADMIN_ROLES.has(role)) {
     throw createHttpError("No active tenant.", 403, "NO_ACTIVE_TENANT");
   }
 
@@ -347,22 +351,10 @@ async function resolveTenantContext(req) {
 }
 
 async function resolveAdminContext(req) {
-  const dbUser = await User.findOne({ firebaseUid: req.user.uid })
-    .select("_id firstName lastName name fullName email role branch")
-    .lean();
-
-  const role =
-    dbUser?.role ||
-    req.user?.dbRole ||
-    (req.user?.owner ? "owner" : "") ||
-    (req.user?.branch_admin ? "branch_admin" : "");
-
-  const normalizedRole = String(role || "").toLowerCase();
-  const isOwnerLike =
-    isOwnerRole(normalizedRole) ||
-    Boolean(req.user.owner);
-  const isBranchAdmin =
-    normalizedRole === "branch_admin" || Boolean(req.user.branch_admin);
+  const dbUser = req.authUser;
+  const normalizedRole = String(dbUser?.role || "").toLowerCase();
+  const isOwnerLike = isOwnerRole(normalizedRole);
+  const isBranchAdmin = normalizedRole === "branch_admin";
 
   if (!isOwnerLike && !isBranchAdmin) {
     throw createHttpError(
@@ -372,7 +364,8 @@ async function resolveAdminContext(req) {
     );
   }
 
-  if (!isOwnerLike && !ROOM_BRANCHES.includes(dbUser?.branch)) {
+  const branch = isOwnerLike ? null : (req.branchFilter ?? dbUser?.branch);
+  if (!isOwnerLike && (!ROOM_BRANCHES.includes(branch) || branch !== dbUser?.branch)) {
     throw createHttpError(
       "Admin branch is not assigned.",
       403,
@@ -381,10 +374,10 @@ async function resolveAdminContext(req) {
   }
 
   return {
-    user: dbUser || null,
+    user: dbUser,
     role: normalizedRole,
     senderRole: isOwnerRole(normalizedRole) ? "owner" : "admin",
-    branch: dbUser?.branch || null,
+    branch,
     isOwnerLike,
     displayName: displayName(dbUser, "Admin"),
   };
@@ -414,11 +407,20 @@ function assertAdminConversationAccess(conversation, adminContext) {
 
   if (!adminContext.isOwnerLike && conversation.branch !== adminContext.branch) {
     throw createHttpError(
-      "You do not have access to this conversation.",
-      403,
-      "CONVERSATION_ACCESS_DENIED",
+      "Conversation not found.",
+      404,
+      "CONVERSATION_NOT_FOUND",
     );
   }
+}
+
+async function findConversationForAdmin(conversationId, adminContext) {
+  const filter = { _id: ensureObjectId(conversationId) };
+  if (!adminContext.isOwnerLike) filter.branch = adminContext.branch;
+
+  const conversation = await ChatConversation.findOne(filter);
+  assertAdminConversationAccess(conversation, adminContext);
+  return conversation;
 }
 
 async function createMessageAndUpdateConversation({
@@ -592,7 +594,7 @@ export async function broadcastTyping(req, res) {
       throw createHttpError("Conversation not found.", 404, "CONVERSATION_NOT_FOUND");
     }
 
-    const role = String(dbUser.role || "").toLowerCase();
+    const role = String(req.authUser?.role || "").toLowerCase();
     const isAdmin = ADMIN_ROLES.has(role);
     if (isAdmin) {
       const adminContext = await resolveAdminContext(req);
@@ -845,10 +847,10 @@ export async function getAdminConversations(req, res) {
 export async function getAdminConversationMessages(req, res) {
   try {
     const adminContext = await resolveAdminContext(req);
-    const conversation = await ChatConversation.findById(
-      ensureObjectId(req.params.conversationId),
+    const conversation = await findConversationForAdmin(
+      req.params.conversationId,
+      adminContext,
     );
-    assertAdminConversationAccess(conversation, adminContext);
 
     await markTenantMessagesRead(conversation._id);
 
@@ -865,10 +867,10 @@ export async function getAdminConversationMessages(req, res) {
 export async function sendAdminMessage(req, res) {
   try {
     const adminContext = await resolveAdminContext(req);
-    const conversation = await ChatConversation.findById(
-      ensureObjectId(req.params.conversationId),
+    const conversation = await findConversationForAdmin(
+      req.params.conversationId,
+      adminContext,
     );
-    assertAdminConversationAccess(conversation, adminContext);
 
     if (conversation.status === "closed") {
       throw createHttpError("This conversation is closed.", 400, "CONVERSATION_CLOSED");
@@ -907,10 +909,10 @@ export async function sendAdminMessage(req, res) {
 export async function markAdminConversationRead(req, res) {
   try {
     const adminContext = await resolveAdminContext(req);
-    const conversation = await ChatConversation.findById(
-      ensureObjectId(req.params.conversationId),
+    const conversation = await findConversationForAdmin(
+      req.params.conversationId,
+      adminContext,
     );
-    assertAdminConversationAccess(conversation, adminContext);
 
     await markTenantMessagesRead(conversation._id);
     const updated = await ChatConversation.findById(conversation._id);
@@ -924,10 +926,10 @@ export async function markAdminConversationRead(req, res) {
 export async function assignAdminConversation(req, res) {
   try {
     const adminContext = await resolveAdminContext(req);
-    const conversation = await ChatConversation.findById(
-      ensureObjectId(req.params.conversationId),
+    const conversation = await findConversationForAdmin(
+      req.params.conversationId,
+      adminContext,
     );
-    assertAdminConversationAccess(conversation, adminContext);
 
     let targetAdmin = adminContext.user;
     const requestedAdminId = req.body?.assignedAdminId;
@@ -978,10 +980,10 @@ export async function assignAdminConversation(req, res) {
 export async function updateAdminConversationStatus(req, res) {
   try {
     const adminContext = await resolveAdminContext(req);
-    const conversation = await ChatConversation.findById(
-      ensureObjectId(req.params.conversationId),
+    const conversation = await findConversationForAdmin(
+      req.params.conversationId,
+      adminContext,
     );
-    assertAdminConversationAccess(conversation, adminContext);
 
     const status = String(req.body?.status || "").trim().toLowerCase();
     if (!VALID_STATUSES.has(status)) {
@@ -1026,10 +1028,10 @@ export async function updateAdminConversationStatus(req, res) {
 export async function updateAdminConversationPriority(req, res) {
   try {
     const adminContext = await resolveAdminContext(req);
-    const conversation = await ChatConversation.findById(
-      ensureObjectId(req.params.conversationId),
+    const conversation = await findConversationForAdmin(
+      req.params.conversationId,
+      adminContext,
     );
-    assertAdminConversationAccess(conversation, adminContext);
 
     const priority = normalizePriority(req.body?.priority);
     conversation.priority = priority;
@@ -1050,10 +1052,10 @@ export async function updateAdminConversationPriority(req, res) {
 export async function closeAdminConversation(req, res) {
   try {
     const adminContext = await resolveAdminContext(req);
-    const conversation = await ChatConversation.findById(
-      ensureObjectId(req.params.conversationId),
+    const conversation = await findConversationForAdmin(
+      req.params.conversationId,
+      adminContext,
     );
-    assertAdminConversationAccess(conversation, adminContext);
     const closingNote = normalizeNote(
       req.body?.note,
       "Please enter a closing note.",

@@ -52,16 +52,15 @@ export const getUserBranchInfo = async (firebaseUid) => {
  */
 export const filterByBranch = async (req, res, next) => {
   try {
-    if (!req.user || !req.user.uid) {
+    if (!req.user?.uid || !req.authUser) {
       return res.status(401).json({
         error: "User not authenticated",
         code: "USER_NOT_AUTHENTICATED",
       });
     }
 
-    const { branch, role, isOwner } = await getUserBranchInfo(
-      req.user.uid,
-    );
+    const { branch, role } = req.authUser;
+    const isOwner = isOwnerRole(role);
 
     // Owners can access all branches
     if (isOwner) {

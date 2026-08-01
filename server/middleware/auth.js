@@ -141,7 +141,7 @@ export const verifyToken = async (req, res, next) => {
     // --- Account status check (cached — saves ~5-50ms per request) ---
     // Block suspended/banned users from accessing any protected endpoint
     let dbUser = await User.findOne({ firebaseUid: decodedToken.uid })
-      .select("_id firebaseUid accountStatus role permissions branch isActive is_active isArchived is_archived securityVersion authInvalidatedAt")
+      .select("_id user_id firebaseUid firstName lastName name fullName email accountStatus role permissions branch isActive is_active isArchived is_archived securityVersion authInvalidatedAt")
       .lean();
     if (!dbUser) {
       return sendError(res, "Authentication failed.", 401, "AUTHENTICATION_FAILED");

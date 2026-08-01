@@ -1,5 +1,7 @@
 import express from "express";
-import { verifyToken } from "../middleware/auth.js";
+import { verifyAdmin, verifyToken } from "../middleware/auth.js";
+import { requirePermission } from "../middleware/permissions.js";
+import { filterByBranch } from "../middleware/branchAccess.js";
 import * as chatController from "../controllers/chatController.js";
 
 const router = express.Router();
@@ -7,6 +9,13 @@ const router = express.Router();
 router.use(verifyToken);
 
 // Admin/web routes. Keep these before tenant :conversationId routes.
+// manageUsers is the existing Phase 0 permission for chat administration.
+router.use(
+  "/admin",
+  verifyAdmin,
+  requirePermission("manageUsers"),
+  filterByBranch,
+);
 router.get(
   "/admin/conversations",
   chatController.getAdminConversations,
