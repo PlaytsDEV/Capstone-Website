@@ -17,6 +17,8 @@ import { getAuth } from "../config/firebase.js";
 import { verifyToken, verifyOwner } from "../middleware/auth.js";
 import { publicLimiter, authLimiter } from "../middleware/rateLimiter.js";
 import auditLogger from "../utils/auditLogger.js";
+import { User, UserSession } from "../models/index.js";
+import { invalidateUserSessions } from "../services/sessionInvalidationService.js";
 import {
   validateRegisterInput,
   validateProfileUpdateInput,
@@ -171,6 +173,16 @@ router.post("/set-role", verifyToken, verifyOwner, validate(setRoleSchema), setR
  */
 router.post("/log-password-reset", publicLimiter, logPasswordReset);
 
+// Called only with a freshly authenticated Firebase token after the action-code
+// reset succeeds. The UID comes from the verified token, never from the body.
+router.post("/finalize-password-reset", authLimiter, verifyToken, async (req, res, next) => {
+  try {
+    const user = await User.findOne({ firebaseUid: req.user.uid });
+    const invalidation = user ? await invalidateUserSessions({ user, reason: "web_password_reset", req }) : null;
+    return res.json({ message: "Password reset finalized", sessionCleanupComplete: !invalidation?.failures?.length });
+  } catch (error) { return next(error); }
+});
+
 /**
  * POST /api/auth/revoke-sessions
  *
@@ -186,7 +198,8 @@ router.post("/revoke-sessions", verifyToken, async (req, res) => {
     if (!auth) {
       return res.status(503).json({ error: "Firebase Admin not available" });
     }
-    await auth.revokeRefreshTokens(req.user.uid);
+    const dbUser = await User.findOne({ firebaseUid: req.user.uid }).select("_id user_id").lean();
+    if (dbUser) await invalidateUserSessions({ user: { ...dbUser, firebaseUid: req.user.uid }, reason: "logout_all_devices", req });
     await auditLogger.log({
       req,
       type: "security",

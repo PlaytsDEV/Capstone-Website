@@ -36,6 +36,34 @@ const getSocketTransport = (socket) =>
   socket.handshake.query?.transport ||
   "unknown";
 
+export function createSocketAuthenticator({ getFirebaseAuth = getAuth, findUser } = {}) {
+  const loadUser = findUser || (async (uid) => User.findOne({ firebaseUid: uid })
+    .select("_id role branch accountStatus isActive isArchived")
+    .lean());
+  return async (socket, next) => {
+    const origin = getSocketOrigin(socket);
+    const transport = getSocketTransport(socket);
+    try {
+      const token = socket.handshake.auth?.token;
+      if (!token) return next(new Error("Authentication required"));
+      const auth = getFirebaseAuth();
+      if (!auth) return next(new Error("Authentication unavailable"));
+      const decoded = await auth.verifyIdToken(token, true);
+      const dbUser = await loadUser(decoded.uid);
+      if (!dbUser || dbUser.isArchived || dbUser.isActive === false || dbUser.accountStatus !== "active") {
+        logger.warn({ socketId: socket.id, origin, transport, firebaseUid: decoded.uid, userId: dbUser?._id ? String(dbUser._id) : null }, "Socket authentication rejected user");
+        return next(new Error("User not allowed"));
+      }
+      socket.data.user = dbUser;
+      socket.data.claims = decoded;
+      return next();
+    } catch (error) {
+      logger.warn({ err: error, socketId: socket.id, origin, transport }, "Socket authentication failed");
+      return next(new Error("Authentication failed"));
+    }
+  };
+}
+
 /**
  * Initialize Socket.IO on an existing HTTP server
  * @param {import("http").Server} httpServer
@@ -81,61 +109,7 @@ export function initSocket(httpServer, options = {}) {
     );
   });
 
-  io.use(async (socket, next) => {
-    const origin = getSocketOrigin(socket);
-    const transport = getSocketTransport(socket);
-
-    try {
-      const token = socket.handshake.auth?.token;
-      if (!token) {
-        logger.warn(
-          { socketId: socket.id, origin, transport },
-          "Socket authentication missing token",
-        );
-        return next(new Error("Authentication required"));
-      }
-
-      const auth = getAuth();
-      if (!auth) {
-        logger.warn(
-          { socketId: socket.id, origin, transport },
-          "Socket authentication unavailable",
-        );
-        return next(new Error("Authentication unavailable"));
-      }
-
-      const decoded = await auth.verifyIdToken(token);
-      const dbUser = await User.findOne({ firebaseUid: decoded.uid })
-        .select("_id role branch accountStatus isArchived")
-        .lean();
-
-      if (!dbUser || dbUser.isArchived || dbUser.accountStatus !== "active") {
-        logger.warn(
-          {
-            socketId: socket.id,
-            origin,
-            transport,
-            firebaseUid: decoded.uid,
-            userId: dbUser?._id ? String(dbUser._id) : null,
-            accountStatus: dbUser?.accountStatus,
-            isArchived: dbUser?.isArchived,
-          },
-          "Socket authentication rejected user",
-        );
-        return next(new Error("User not allowed"));
-      }
-
-      socket.data.user = dbUser;
-      socket.data.claims = decoded;
-      return next();
-    } catch (error) {
-      logger.warn(
-        { err: error, socketId: socket.id, origin, transport },
-        "Socket authentication failed",
-      );
-      return next(new Error("Authentication failed"));
-    }
-  });
+  io.use(createSocketAuthenticator());
 
   io.on("connection", (socket) => {
     const dbUser = socket.data.user;

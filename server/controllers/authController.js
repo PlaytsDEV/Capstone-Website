@@ -26,6 +26,7 @@ import {
   UserSession,
 } from "../models/index.js";
 import auditLogger from "../utils/auditLogger.js";
+import { invalidateUserSessions } from "../services/sessionInvalidationService.js";
 import {
   resolveTenantOccupancyDetails,
   resolveTenantPersonalDetails,
@@ -409,6 +410,7 @@ export const login = async (req, res, next) => {
         deviceId: getDeviceId(req) || null,
         durationMs: SESSION_DURATION_MS,
         otpVerified: isOAuthUser,
+        securityVersion: user.securityVersion,
       });
     } else {
       const deviceId = getDeviceId(req);
@@ -488,6 +490,7 @@ export const verifyLoginOtp = async (req, res, next) => {
         deviceId,
         durationMs: SESSION_DURATION_MS,
         otpVerified: false,
+        securityVersion: user.securityVersion,
       });
       return res.json({
         message: "Login successful",
@@ -537,6 +540,7 @@ export const verifyLoginOtp = async (req, res, next) => {
       deviceId,
       durationMs: SESSION_DURATION_MS,
       otpVerified: true,
+      securityVersion: user.securityVersion,
     });
 
     await auditLogger.logLogin(req, user, true);
@@ -927,6 +931,8 @@ export const updateBranch = async (req, res, next) => {
     }
 
     // Update applicant/tenant branch selection.
+    let invalidation = null;
+    if (existingUser.branch !== branch) invalidation = await invalidateUserSessions({ user: existingUser, reason: "branch_reassigned", req });
     existingUser.branch = branch;
     const user = await existingUser.save();
     if (!user) {
@@ -938,6 +944,7 @@ export const updateBranch = async (req, res, next) => {
 
     res.json({
       message: "Branch updated successfully",
+      sessionCleanupComplete: !invalidation?.failures?.length,
       user: {
         id: user._id,
         user_id: user.user_id,
@@ -1020,11 +1027,15 @@ export const setRole = async (req, res, next) => {
     // so the two stores stay in sync.
     const previousRole = user.role;
     const previousPermissions = [...(user.permissions || [])];
+    const nextPermissions = role === "branch_admin" || role === "owner"
+      ? getDefaultPermissionsForRole(role)
+      : [];
+    if (previousRole === role && JSON.stringify(previousPermissions) === JSON.stringify(nextPermissions)) {
+      return res.json({ message: "User role unchanged", user: { id: user._id, user_id: user.user_id, email: user.email, role: user.role }, sessionCleanupComplete: true });
+    }
+    const invalidation = await invalidateUserSessions({ user, reason: "role_changed", req });
     user.role = role;
-    user.permissions =
-      role === "branch_admin" || role === "owner"
-        ? getDefaultPermissionsForRole(role)
-        : [];
+    user.permissions = nextPermissions;
     await user.save();
 
     // Propagate to Firebase claims.  On failure, roll back MongoDB so the
@@ -1037,9 +1048,9 @@ export const setRole = async (req, res, next) => {
       await user.save();
       throw firebaseErr;
     }
-
     res.json({
       message: "User role updated successfully",
+      sessionCleanupComplete: !invalidation.failures.length,
       user: {
         id: user._id,
         user_id: user.user_id,

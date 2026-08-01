@@ -5,8 +5,8 @@
  *
  * Owner-only routes for database backup management.
  *
- * The download endpoint accepts the token as a query parameter (?token=...)
- * since browser-initiated downloads cannot set Authorization headers.
+ * Download authorization uses the Authorization header. Reusable Firebase
+ * credentials are never accepted from query strings.
  *
  * ============================================================================
  */
@@ -38,20 +38,8 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB max
 });
 
-/**
- * Middleware that promotes a `?token=` query parameter to the Authorization
- * header so that verifyToken can pick it up. This is required for direct
- * browser downloads (e.g. <a href="...">) which cannot set custom headers.
- */
-const tokenFromQuery = (req, _res, next) => {
-  if (!req.headers.authorization && req.query.token) {
-    req.headers.authorization = `Bearer ${req.query.token}`;
-  }
-  next();
-};
-
 // Download route — needs query-param token support (must be registered BEFORE the router.use guard)
-router.get("/:id/download", tokenFromQuery, verifyToken, verifyOwner, downloadBackup);
+router.get("/:id/download", verifyToken, verifyOwner, downloadBackup);
 
 // All other backup routes require owner privileges via header-based auth
 router.use(verifyToken, verifyOwner);

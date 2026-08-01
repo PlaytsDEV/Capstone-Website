@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { confirmPasswordReset, verifyPasswordResetCode } from "firebase/auth";
+import { confirmPasswordReset, signInWithEmailAndPassword, signOut, verifyPasswordResetCode } from "firebase/auth";
 import { CheckCircle, Eye, EyeOff, Loader2, XCircle } from "lucide-react";
 import { auth } from "../../../firebase/config";
+import { authApi } from "../../../shared/api/authApi";
 import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
 import Lounge from "../../../assets/images/facilities/RD Lounge Area.jpg";
 
@@ -68,6 +69,9 @@ function ResetPassword() {
     setErrorMessage("");
     try {
       await confirmPasswordReset(auth, oobCode, password);
+      await signInWithEmailAndPassword(auth, email, password);
+      try { await authApi.finalizePasswordReset(); }
+      finally { await signOut(auth); }
       setStatus("success");
     } catch {
       setStatus("error");

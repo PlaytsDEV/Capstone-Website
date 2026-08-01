@@ -1,9 +1,15 @@
 const axios = require('axios');
 const crypto = require('crypto');
-const { v4: uuidv4 } = require('uuid');
 const { getDb } = require('../config/database');
 const { verifyFirebaseIdToken, verifyTenantInFirebase, admin } = require('../config/firebase');
 const { sendPasswordResetEmail, sendPasswordChangedEmail } = require('../services/emailService');
+const { invalidateUserSessionsCore } = require('../../security/sessionInvalidationCore.cjs');
+const { createSession } = require('../security/mobileSession');
+const authTestDependencies = {
+  getDb,
+  sendLoginOtpEmail: (...args) => require('../services/emailService').sendLoginOtpEmail(...args),
+  createSession,
+};
 
 // ─── HELPERS ────────────────────────────────────────────────────────────────
 
@@ -24,11 +30,7 @@ function firebaseApiKey() {
 }
 
 function generateUserId() {
-  return `user_${uuidv4().replace(/-/g, '').substring(0, 12)}`;
-}
-
-function generateSessionToken() {
-  return `session_${uuidv4().replace(/-/g, '')}`;
+  return `user_${crypto.randomUUID().replace(/-/g, '').substring(0, 12)}`;
 }
 
 const PASSWORD_LOCK_THRESHOLD = 3;
@@ -46,28 +48,11 @@ function emailRegex(email) {
   return new RegExp(`^${escaped}$`, 'i');
 }
 
-/** Create a new session and return { session_token, expires_at } */
-async function createSession(db, userId) {
-  const token = generateSessionToken();
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-  // Remove old sessions for this user (single-session model)
-  await db.collection('user_sessions').deleteMany({ user_id: userId });
-  await db.collection('user_sessions').insertOne({
-    user_id: userId,
-    session_token: token,
-    expires_at: expiresAt,
-    created_at: new Date(),
-  });
-
-  return { session_token: token, expires_at: expiresAt };
-}
-
 /** Non-blocking audit log */
 async function logAttempt(db, email, success, reason, req) {
   try {
     await db.collection('login_attempts').insertOne({
-      email: (email || '').toLowerCase(),
+      email_hash: crypto.createHmac('sha256', otpSecret()).update(String(email || '').trim().toLowerCase()).digest('hex'),
       success,
       reason,
       ip: req.ip || req.headers['x-forwarded-for'] || 'unknown',
@@ -158,7 +143,45 @@ function firstNonEmptyString(...values) {
 }
 
 function generateOtpCode() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return crypto.randomInt(100000, 1000000).toString();
+}
+
+function authenticationFailed(res) {
+  return res.status(401).json({
+    detail: 'Authentication failed. If you believe this account should be available, contact the administrator.',
+    code: 'AUTHENTICATION_FAILED',
+  });
+}
+
+async function invalidateMobileIdentity(db, user, reason, req) {
+  return invalidateUserSessionsCore({
+    db, adminAuth: admin.auth(), userId: user?.user_id, mongoId: user?._id,
+    firebaseUid: user?.firebase_uid || user?.firebaseUid, reason, failClosed: true,
+    audit: async ({ failures }) => db.collection('login_attempts').insertOne({
+      user_id: user?.user_id || null, success: false, reason: `sessions_invalidated:${reason}`,
+      failed_stores: failures, ip: req.ip || 'unknown', timestamp: new Date(),
+    }).catch(() => {}),
+  });
+}
+
+const OTP_MAX_ATTEMPTS = 3;
+const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
+let otpIndexPromise;
+function ensureOtpIndexes(db) {
+  otpIndexPromise ||= db.collection('otp_store').createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 });
+  return otpIndexPromise;
+}
+function otpSecret() {
+  if (process.env.MOBILE_OTP_SECRET) return process.env.MOBILE_OTP_SECRET;
+  if (isProduction) throw new Error('MOBILE_OTP_SECRET is required in production');
+  return process.env.JWT_SECRET || 'development-only-mobile-otp-secret';
+}
+function hashOtp(code) {
+  return crypto.createHmac('sha256', otpSecret()).update(String(code)).digest('hex');
+}
+function otpMatches(storedHash, code) {
+  if (typeof storedHash !== 'string' || !/^[a-f0-9]{64}$/i.test(storedHash)) return false;
+  return crypto.timingSafeEqual(Buffer.from(storedHash, 'hex'), Buffer.from(hashOtp(code), 'hex'));
 }
 
 function normalizeOtpCode(value) {
@@ -281,46 +304,8 @@ async function login(req, res) {
     const msg = fbErr.response?.data?.error?.message || '';
 
     if (msg.includes('EMAIL_NOT_FOUND')) {
-      // Tenant might exist in MongoDB but not Firebase (admin-provisioned)
-      const mongoUser = tenantByEmail || await findTenantByEmail(db, emailRaw);
-      if (mongoUser) {
-        // Don't create Firebase accounts for inactive tenants
-        if (mongoUser.is_active === false) {
-          logAttempt(db, emailRaw, false, 'inactive', req);
-          return res.status(403).json({ detail: 'Access denied. Your tenant account is inactive. Please contact admin.' });
-        }
-        console.log(`[Login] Auto-creating Firebase account for tenant: ${mongoUser.user_id}`);
-        try {
-          const createResp = await axios.post(
-            `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${apiKey}`,
-            { email: emailRaw, password, returnSecureToken: true },
-          );
-          fbUid = createResp.data.localId;
-        } catch (createErr) {
-          const cMsg = createErr.response?.data?.error?.message || '';
-          if (cMsg === 'EMAIL_EXISTS') {
-            // Edge case: try sign-in again (casing difference)
-            try {
-              const retry = await axios.post(
-                `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
-                { email: emailRaw, password, returnSecureToken: true },
-              );
-              fbUid = retry.data.localId;
-            } catch {
-              logAttempt(db, emailRaw, false, 'firebase_retry_failed', req);
-              return res.status(401).json({ detail: 'Invalid email or password' });
-            }
-          } else {
-            logAttempt(db, emailRaw, false, 'firebase_create_failed', req);
-            return res.status(401).json({ detail: 'Invalid email or password' });
-          }
-        }
-      } else {
-        logAttempt(db, emailRaw, false, 'not_tenant', req);
-        return res.status(403).json({
-          detail: 'Access denied. Your account is not registered as a verified tenant. Please contact the admin office.',
-        });
-      }
+      await logAttempt(db, emailRaw, false, tenantByEmail ? 'firebase_identity_missing' : 'authentication_failed', req);
+      return authenticationFailed(res);
     } else if (msg.includes('INVALID_PASSWORD') || msg.includes('INVALID_LOGIN_CREDENTIALS')) {
       // Check MongoDB before responding — if the account is inactive or not a tenant,
       // return the correct 403 instead of a generic 401.
@@ -329,13 +314,11 @@ async function login(req, res) {
       if (!mongoUser) {
         // Has a Firebase account but is not in our system as a tenant
         logAttempt(db, emailRaw, false, 'not_tenant', req);
-        return res.status(403).json({
-          detail: 'Access denied. Your account is not registered as a verified tenant. Please contact the admin office.',
-        });
+        return authenticationFailed(res);
       }
       if (mongoUser.is_active === false) {
         logAttempt(db, emailRaw, false, 'inactive', req);
-        return res.status(403).json({ detail: 'Access denied. Your tenant account is inactive. Please contact admin.' });
+        return authenticationFailed(res);
       }
       // User is an active tenant but the password is genuinely wrong
       const lockState = await registerFailedPasswordAttempt(db, mongoUser);
@@ -344,16 +327,16 @@ async function login(req, res) {
         return res.status(429).json({ detail: buildPasswordLockMessage(lockState.lockUntil) });
       }
       logAttempt(db, emailRaw, false, 'invalid_password', req);
-      return res.status(401).json({ detail: 'Invalid email or password', attempts_remaining: lockState.remainingAttempts });
+      return authenticationFailed(res);
     } else if (msg.includes('USER_DISABLED')) {
       logAttempt(db, emailRaw, false, 'user_disabled', req);
-      return res.status(403).json({ detail: 'This account has been disabled' });
+      return authenticationFailed(res);
     } else if (msg.includes('TOO_MANY_ATTEMPTS')) {
       logAttempt(db, emailRaw, false, 'too_many_attempts', req);
       return res.status(429).json({ detail: 'Too many failed attempts. Please try again later.' });
     } else {
       logAttempt(db, emailRaw, false, 'firebase_error', req);
-      return res.status(401).json({ detail: 'Invalid email or password' });
+      return authenticationFailed(res);
     }
   }
 
@@ -364,49 +347,39 @@ async function login(req, res) {
   });
   if (!tenant) {
     logAttempt(db, emailRaw, false, 'not_tenant', req);
-    return res.status(403).json({
-      detail: 'Access denied. Your account is not registered as a verified tenant. Please contact the admin office.',
-    });
+    return authenticationFailed(res);
   }
 
   if (!tenant.user_id) {
-    console.error(`[Login] CRITICAL: Tenant document missing user_id! email=${tenant.email} _id=${tenant._id}`);
+    console.error(`[Login] CRITICAL: Tenant document missing user_id! _id=${tenant._id}`);
     return res.status(500).json({ detail: 'Account configuration error. Please contact the admin office.' });
   }
 
   if (tenant.is_active === false) {
     logAttempt(db, emailRaw, false, 'inactive', req);
-    return res.status(403).json({ detail: 'Access denied. Your tenant account is inactive. Please contact admin.' });
+    return authenticationFailed(res);
   }
 
-  console.log(`[Login] Tenant found: user_id=${tenant.user_id} email=${tenant.email} name=${tenant.name}`);
+  console.log(`[Login] Tenant found: user_id=${tenant.user_id}`);
 
   if (tenant.failed_login_attempts || tenant.login_lock_until) {
     await clearPasswordLock(db, tenant.user_id);
   }
 
-  // Step 3: Link Firebase UID and update last_login
-  // Clear stale firebase_uid from any OTHER user first (prevents E11000)
-  await db.collection('users').updateMany(
-    { firebase_uid: fbUid, user_id: { $ne: tenant.user_id } },
-    { $unset: { firebase_uid: '' } },
-  );
-  try {
-    await db.collection('users').updateOne(
-      { user_id: tenant.user_id },
-      { $set: { firebase_uid: fbUid, last_login: new Date() } },
-    );
-  } catch (updateErr) {
-    if (updateErr.code === 11000) {
-      console.warn('[Login] Duplicate key on firebase_uid, proceeding without update');
-      await db.collection('users').updateOne(
-        { user_id: tenant.user_id },
-        { $set: { last_login: new Date() } },
-      );
-    } else {
-      throw updateErr;
-    }
+  // Login authenticates an existing identity; it never repairs identity links.
+  const uidOwner = await db.collection('users').findOne({
+    $or: [{ firebase_uid: fbUid }, { firebaseUid: fbUid }],
+  });
+  const tenantUid = tenant.firebase_uid || tenant.firebaseUid;
+  if (!tenantUid || tenantUid !== fbUid || (uidOwner && uidOwner.user_id !== tenant.user_id)) {
+    await logAttempt(db, emailRaw, false, 'firebase_uid_conflict', req);
+    if (tenant) await invalidateMobileIdentity(db, tenant, 'identity_conflict', req);
+    return res.status(401).json({ detail: 'Authentication failed. Please contact the administrator if the problem continues.', code: 'AUTHENTICATION_FAILED' });
   }
+  await db.collection('users').updateOne(
+    { user_id: tenant.user_id },
+    { $set: { last_login: new Date() } },
+  );
 
   // Step 4: Biometric login bypasses OTP — biometric IS the second factor
   if (req.body.biometric_login === true) {
@@ -420,26 +393,32 @@ async function login(req, res) {
 
   // Step 5: Password login — generate OTP and send to email
   const otpCode = generateOtpCode();
-  const otpToken = uuidv4();
+  const otpToken = crypto.randomUUID();
   const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+  const securityVersion = Number(tenant.securityVersion ?? tenant.security_version ?? 0);
 
-  // Clear any existing OTP for this user
-  await db.collection('otp_store').deleteMany({ user_id: tenant.user_id });
-  await db.collection('otp_store').insertOne({
+  const challenge = {
     otp_token: otpToken,
-    otp_code: otpCode,
+    otp_hash: hashOtp(otpCode),
     user_id: tenant.user_id,
     email: emailRaw,
     attempts: 0,
     expires_at: otpExpiry,
     created_at: new Date(),
-  });
+    security_version: securityVersion,
+    last_sent_at: new Date(),
+    consumed_at: null,
+  };
+  await ensureOtpIndexes(db);
 
   const { sendLoginOtpEmail } = require('../services/emailService');
   const emailSent = await sendLoginOtpEmail(emailRaw, tenant.name || 'Tenant', otpCode);
-  if (!emailSent) {
-    console.warn(`[Login] OTP email failed for user_id=${tenant.user_id} — proceeding anyway`);
-  }
+  if (!emailSent) return res.status(503).json({
+    detail: 'Unable to send the verification code. Please try again.',
+    code: 'OTP_EMAIL_SEND_FAILED',
+  });
+  await db.collection('otp_store').deleteMany({ user_id: tenant.user_id });
+  await db.collection('otp_store').insertOne(challenge);
 
   logAttempt(db, emailRaw, true, 'otp_sent', req);
   console.log(`[Login] OTP sent for user_id=${tenant.user_id} email=${maskEmail(emailRaw)}`);
@@ -463,7 +442,7 @@ async function verifyOtp(req, res) {
     return res.status(400).json({ detail: 'Please enter the complete 6-digit code.' });
   }
 
-  const db = getDb();
+  const db = authTestDependencies.getDb();
   const record = await db.collection('otp_store').findOne({ otp_token: normalizedToken });
 
   if (!record) {
@@ -477,15 +456,14 @@ async function verifyOtp(req, res) {
   }
 
   const attempts = parseOtpAttempts(record.attempts);
-  if (attempts >= 3) {
+  if (attempts >= OTP_MAX_ATTEMPTS) {
     await db.collection('otp_store').deleteOne({ otp_token: normalizedToken });
     return res.status(400).json({ detail: 'Too many incorrect attempts. Please log in again.' });
   }
 
-  const storedCode = normalizeOtpCode(record.otp_code);
-  if (storedCode !== normalizedCode) {
+  if (!otpMatches(record.otp_hash, normalizedCode)) {
     await db.collection('otp_store').updateOne({ otp_token: normalizedToken }, { $inc: { attempts: 1 } });
-    const remaining = 3 - (attempts + 1);
+    const remaining = OTP_MAX_ATTEMPTS - (attempts + 1);
     const detail = remaining > 0
       ? `Incorrect code. ${remaining} attempt${remaining !== 1 ? 's' : ''} remaining.`
       : 'Too many incorrect attempts. Please log in again.';
@@ -494,9 +472,14 @@ async function verifyOtp(req, res) {
   }
 
   // Valid — delete OTP and create session
-  await db.collection('otp_store').deleteOne({ otp_token: normalizedToken });
+  const consumed = await db.collection('otp_store').findOneAndDelete({
+    otp_token: normalizedToken, otp_hash: record.otp_hash,
+    attempts: { $lt: OTP_MAX_ATTEMPTS }, expires_at: { $gt: new Date() }, consumed_at: null,
+  });
+  const consumedRecord = consumed?.value || consumed;
+  if (!consumedRecord) return res.status(400).json({ detail: 'Invalid or expired session. Please log in again.' });
 
-  const session = await createSession(db, record.user_id);
+  const session = await authTestDependencies.createSession(db, record.user_id);
   res.cookie('session_token', session.session_token, cookieOptions());
 
   const user = await getCleanUser(db, record.user_id);
@@ -514,27 +497,33 @@ async function resendOtp(req, res) {
     return res.status(400).json({ detail: 'OTP token is required.' });
   }
 
-  const db = getDb();
-  const record = await db.collection('otp_store').findOne({ otp_token: normalizedToken });
-
-  const expiry = parseDateSafe(record?.expires_at);
-  if (!record || !expiry || new Date() > expiry) {
-    return res.status(400).json({ detail: 'Session expired. Please log in again.' });
-  }
+  const db = authTestDependencies.getDb();
+  const reservationId = crypto.randomUUID();
+  const cutoff = new Date(Date.now() - OTP_RESEND_COOLDOWN_MS);
+  const reservedResult = await db.collection('otp_store').findOneAndUpdate(
+    { otp_token: normalizedToken, expires_at: { $gt: new Date() }, last_sent_at: { $lte: cutoff }, $or: [{ resend_reserved_at: { $exists: false } }, { resend_reserved_at: { $lte: cutoff } }] },
+    { $set: { resend_reserved_at: new Date(), resend_reservation_id: reservationId } },
+    { returnDocument: 'before' },
+  );
+  const record = reservedResult?.value || reservedResult;
+  if (!record) return res.status(429).json({ detail: 'Please wait before requesting another code.', code: 'OTP_RESEND_COOLDOWN' });
 
   const newCode = generateOtpCode();
   const newExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
-  await db.collection('otp_store').updateOne(
-    { otp_token: normalizedToken },
-    { $set: { otp_code: newCode, attempts: 0, expires_at: newExpiry } },
-  );
-
-  const { sendLoginOtpEmail } = require('../services/emailService');
-  const sent = await sendLoginOtpEmail(record.email, 'Tenant', newCode);
+  const sent = await authTestDependencies.sendLoginOtpEmail(record.email, 'Tenant', newCode);
   if (!sent) {
-    return res.status(500).json({ detail: 'Failed to send verification code. Please try again.' });
+    await db.collection('otp_store').updateOne(
+      { otp_token: normalizedToken, resend_reservation_id: reservationId },
+      { $unset: { resend_reserved_at: '', resend_reservation_id: '' } },
+    );
+    return res.status(503).json({ detail: 'Failed to send verification code. Please try again.' });
   }
+
+  await db.collection('otp_store').updateOne(
+    { otp_token: normalizedToken, resend_reservation_id: reservationId },
+    { $set: { otp_hash: hashOtp(newCode), attempts: 0, expires_at: newExpiry, last_sent_at: new Date() }, $unset: { otp_code: '', resend_reserved_at: '', resend_reservation_id: '' } },
+  );
 
   console.log(`[ResendOtp] New OTP sent for user_id=${record.user_id}`);
   res.json({ message: 'A new verification code has been sent to your email.' });
@@ -562,7 +551,7 @@ async function googleSignIn(req, res) {
     }
 
     const db = getDb();
-    console.log(`[GoogleSignIn] Login attempt: ${email}`);
+    console.log(`[GoogleSignIn] Login attempt: ${maskEmail(email)}`);
 
     // Lookup — ordered by precision to avoid cross-user contamination
     // 1. Exact email match (most reliable)
@@ -571,7 +560,7 @@ async function googleSignIn(req, res) {
       role: { $nin: ['admin', 'owner', 'branch_admin'] },
     });
     if (tenant) {
-      console.log(`[GoogleSignIn] Found by email: ${tenant.user_id} (${tenant.email})`);
+      console.log(`[GoogleSignIn] Found by email: ${tenant.user_id}`);
     }
 
     // 2. google_email match (secondary)
@@ -580,7 +569,7 @@ async function googleSignIn(req, res) {
         google_email: emailRegex(email),
         role: { $nin: ['admin', 'owner', 'branch_admin'] },
       });
-      if (tenant) console.log(`[GoogleSignIn] Found by google_email: ${tenant.user_id} (${tenant.email})`);
+      if (tenant) console.log(`[GoogleSignIn] Found by google_email: ${tenant.user_id}`);
     }
 
     // 3. firebase_uid match (last resort)
@@ -589,40 +578,37 @@ async function googleSignIn(req, res) {
         firebase_uid: fbUid,
         role: { $nin: ['admin', 'owner', 'branch_admin'] },
       });
-      if (tenant) console.log(`[GoogleSignIn] Found by firebase_uid: ${tenant.user_id} (${tenant.email})`);
+      if (tenant) console.log(`[GoogleSignIn] Found by firebase_uid: ${tenant.user_id}`);
     }
 
     // Not found → not a registered tenant
     if (!tenant) {
-      console.log(`[GoogleSignIn] Not found: ${email}`);
-      return res.status(403).json({
-        detail: 'Access denied. Your Google account is not registered as a verified tenant. Please contact the admin office.',
-      });
+      console.log(`[GoogleSignIn] Tenant lookup failed: ${maskEmail(email)}`);
+      return authenticationFailed(res);
     }
 
     if (tenant.is_active === false) {
-      return res.status(403).json({
-        detail: 'Access denied. Your tenant account is inactive. Please contact admin.',
-      });
+      return authenticationFailed(res);
     }
 
     if (!tenant.user_id) {
-      console.error(`[GoogleSignIn] CRITICAL: Tenant document missing user_id! email=${tenant.email} _id=${tenant._id}`);
+      console.error(`[GoogleSignIn] CRITICAL: Tenant document missing user_id! _id=${tenant._id}`);
       return res.status(500).json({ detail: 'Account configuration error. Please contact the admin office.' });
     }
 
-    // Clear stale firebase_uid from any OTHER user first (prevents E11000)
-    await db.collection('users').updateMany(
-      { firebase_uid: fbUid, user_id: { $ne: tenant.user_id } },
-      { $unset: { firebase_uid: '' } },
-    );
+    const uidOwner = await db.collection('users').findOne({ $or: [{ firebase_uid: fbUid }, { firebaseUid: fbUid }] });
+    const tenantUid = tenant.firebase_uid || tenant.firebaseUid;
+    if (!tenantUid || tenantUid !== fbUid || (uidOwner && uidOwner.user_id !== tenant.user_id)) {
+      await logAttempt(db, email, false, 'firebase_uid_conflict', req);
+      await invalidateMobileIdentity(db, tenant, 'identity_conflict', req);
+      return res.status(401).json({ detail: 'Authentication failed. Please contact the administrator if the problem continues.', code: 'AUTHENTICATION_FAILED' });
+    }
 
     // Build update — only set email if it won't conflict with another user
     const updateFields = {
       google_email: email,
       name: decoded.name || tenant.name || email.split('@')[0],
       picture: decoded.picture || tenant.picture || null,
-      firebase_uid: fbUid,
       last_login: new Date(),
     };
 
@@ -657,7 +643,7 @@ async function googleSignIn(req, res) {
     res.cookie('session_token', session.session_token, cookieOptions());
 
     const user = await getCleanUser(db, tenant.user_id);
-    console.log(`[GoogleSignIn] ✓ user_id=${tenant.user_id} email=${user?.email} name=${user?.name}`);
+    console.log(`[GoogleSignIn] Success user_id=${tenant.user_id}`);
     res.json({ user, session_token: session.session_token });
   } catch (error) {
     console.error('Google auth error:', error);
@@ -668,64 +654,10 @@ async function googleSignIn(req, res) {
 // ─── REGISTER ───────────────────────────────────────────────────────────────
 
 async function register(req, res) {
-  try {
-    const { email, password, name, phone } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ detail: 'Email and password are required' });
-    }
-    if (password.length < 8) {
-      return res.status(400).json({ detail: 'Password must be at least 8 characters' });
-    }
-
-    const apiKey = firebaseApiKey();
-    if (!apiKey) {
-      return res.status(500).json({ detail: 'Firebase API key not configured on backend' });
-    }
-
-    // Create Firebase account
-    let fbUid;
-    try {
-      const resp = await axios.post(
-        `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${apiKey}`,
-        { email, password, returnSecureToken: true },
-      );
-      fbUid = resp.data.localId;
-    } catch (fbErr) {
-      const msg = fbErr.response?.data?.error?.message;
-      if (msg === 'EMAIL_EXISTS') {
-        return res.status(400).json({ detail: 'Email already registered' });
-      }
-      console.error('Firebase registration error:', fbErr);
-      return res.status(500).json({ detail: 'Failed to create user account' });
-    }
-
-    // Create MongoDB user
-    const db = getDb();
-    const userId = generateUserId();
-
-    await db.collection('users').insertOne({
-      user_id: userId,
-      email,
-      name: name || email.split('@')[0],
-      phone: phone || null,
-      picture: null,
-      role: 'resident',
-      firebase_uid: fbUid,
-      username: email,
-      created_at: new Date(),
-      last_login: new Date(),
-    });
-
-    // Create session
-    const session = await createSession(db, userId);
-    res.cookie('session_token', session.session_token, cookieOptions());
-
-    const user = await getCleanUser(db, userId);
-    res.status(201).json({ user, session_token: session.session_token });
-  } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({ detail: 'Registration failed' });
-  }
+  return res.status(410).json({
+    detail: 'Mobile registration is temporarily unavailable. Please use the web applicant registration flow.',
+    code: 'MOBILE_REGISTRATION_DISABLED',
+  });
 }
 
 // ─── GET CURRENT USER ───────────────────────────────────────────────────────
@@ -848,18 +780,19 @@ async function changePassword(req, res) {
     if (!uid) {
       return res.status(400).json({ detail: 'No Firebase account linked. Cannot change password.' });
     }
+    const db = getDb();
+    await invalidateMobileIdentity(db, req.user, 'password_changed', req);
     await admin.auth().updateUser(uid, { password: new_password });
 
     console.log(`[ChangePassword] ✓ Password updated for user_id=${userId} email=${maskEmail(userEmail)}`);
 
-    const db = getDb();
     const changeTimestamp = new Date();
 
     // ── In-app audit announcement ─────────────────────────────────────────
     if (notify_app !== false) {
       try {
         await db.collection('announcements').insertOne({
-          announcement_id: `ann_${uuidv4().replace(/-/g, '').substring(0, 12)}`,
+          announcement_id: `ann_${crypto.randomUUID().replace(/-/g, '').substring(0, 12)}`,
           title: 'Password changed',
           content: `Your password was updated for ${maskEmail(userEmail)} on ${changeTimestamp.toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'long', timeStyle: 'short' })}. If this wasn't you, reset your password immediately or contact admin.`,
           category: 'Security',
@@ -892,15 +825,10 @@ async function changePassword(req, res) {
     } catch (_) { /* push service may not be available */ }
 
     // ── Invalidate all existing sessions (force re-login with new password) ──
-    try {
-      await db.collection('user_sessions').deleteMany({ user_id: userId });
-      console.log(`[ChangePassword] Sessions cleared for user_id=${userId}`);
-    } catch (err) { console.warn('[ChangePassword] Session cleanup warning:', err.message); }
-
     // ── Audit log entry ───────────────────────────────────────────────────
     try {
       await db.collection('login_attempts').insertOne({
-        email: userEmail.toLowerCase(),
+        email_hash: crypto.createHmac('sha256', otpSecret()).update(userEmail.toLowerCase()).digest('hex'),
         success: true,
         reason: 'password_changed',
         ip: requestIp,
@@ -963,7 +891,7 @@ async function forgotPassword(req, res) {
       // Audit log
       try {
         await db.collection('announcements').insertOne({
-          announcement_id: `ann_${uuidv4().replace(/-/g, '').substring(0, 12)}`,
+          announcement_id: `ann_${crypto.randomUUID().replace(/-/g, '').substring(0, 12)}`,
           title: 'Password reset requested',
           content: `A password reset link was sent to ${maskEmail(normalizedEmail)}.`,
           category: 'Account',
@@ -1182,13 +1110,10 @@ async function resetPassword(req, res) {
       { $set: { used: true, usedAt: new Date() } }
     );
 
-    // Update password in Firebase via Admin SDK
+    const identity = await db.collection('users').findOne({ user_id: record.user_id });
+    await invalidateMobileIdentity(db, identity || { user_id: record.user_id, firebase_uid: record.uid }, 'password_reset', req);
+    // Update password only after old authorization state is logically invalidated.
     await admin.auth().updateUser(record.uid, { password: newPassword });
-
-    // Invalidate all active sessions for this user
-    try {
-      await db.collection('user_sessions').deleteMany({ user_id: record.user_id });
-    } catch (err) { console.warn('[ResetPassword] Session cleanup warning:', err.message); }
 
     // Send confirmation email
     sendPasswordChangedEmail(record.email, 'Tenant', 'app').catch(() => {});
@@ -1214,4 +1139,12 @@ module.exports = {
   forgotPassword,
   getResetPasswordPage,
   resetPassword,
+  __test: {
+    hashOtp,
+    otpMatches,
+    verifyOtp,
+    resendOtp,
+    setDependencies(overrides) { Object.assign(authTestDependencies, overrides); },
+    createSession,
+  },
 };

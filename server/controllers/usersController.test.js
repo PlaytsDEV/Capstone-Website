@@ -51,6 +51,7 @@ const getAuth = jest.fn(() => ({
   setCustomUserClaims,
   deleteUser: deleteUserFromAuth,
 }));
+const invalidateUserSessions = jest.fn(async () => ({ failures: [] }));
 
 // Mock mongoose for transaction support (startSession used in deleteUser)
 const mockSession = {
@@ -77,6 +78,7 @@ await jest.unstable_mockModule("dayjs", () => ({ default: jest.fn() }));
 await jest.unstable_mockModule("../config/firebase.js", () => ({
   getAuth,
 }));
+await jest.unstable_mockModule("../services/sessionInvalidationService.js", () => ({ invalidateUserSessions }));
 await jest.unstable_mockModule("../middleware/logger.js", () => ({
   default: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
@@ -175,6 +177,7 @@ describe("usersController", () => {
     setCustomUserClaims.mockReset();
     deleteUserFromAuth.mockReset();
     getAuth.mockClear();
+    invalidateUserSessions.mockReset().mockResolvedValue({ failures: [] });
   });
 
   test("getUsers applies server search, lean projection, and pagination metadata", async () => {
@@ -605,6 +608,22 @@ describe("usersController", () => {
       }),
     );
     expect(next).not.toHaveBeenCalled();
+  });
+
+  test("permission elevation fails closed before mutation when logical invalidation fails", async () => {
+    const save = jest.fn(); const targetUser = { role: "branch_admin", permissions: [], save, toObject: () => ({ role: "branch_admin", permissions: [] }) };
+    userModel.findById.mockResolvedValue(targetUser); invalidateUserSessions.mockRejectedValueOnce(Object.assign(new Error("logical invalidation failed"), { code: "SESSION_INVALIDATION_FAILED" }));
+    const req = { params: { userId: "507f1f77bcf86cd799439011" }, body: { permissions: ["manageUsers"] } }; const res = createResponse(); const next = jest.fn();
+    await updatePermissions(req, res, next);
+    expect(save).not.toHaveBeenCalled(); expect(targetUser.permissions).toEqual([]); expect(next).toHaveBeenCalledWith(expect.objectContaining({ code: "SESSION_INVALIDATION_FAILED" }));
+  });
+
+  test("permission mutation invalidates exactly once before save and reports partial cleanup", async () => {
+    const order = []; const targetUser = { role: "branch_admin", permissions: [], save: jest.fn(async () => order.push("save")), toObject: () => ({ role: "branch_admin", permissions: targetUser.permissions }) };
+    userModel.findById.mockResolvedValue(targetUser); invalidateUserSessions.mockImplementationOnce(async ({ reason }) => { order.push(`invalidate:${reason}`); return { failures: [{ store: "mobile" }] }; });
+    const req = { params: { userId: "507f1f77bcf86cd799439011" }, body: { permissions: ["manageUsers"] } }; const res = createResponse();
+    await updatePermissions(req, res, jest.fn());
+    expect(order).toEqual(["invalidate:permissions_changed", "save"]); expect(invalidateUserSessions).toHaveBeenCalledTimes(1); expect(res.body.sessionCleanupComplete).toBe(false);
   });
 
   test("archiveUser archives accounts even when they have history", async () => {

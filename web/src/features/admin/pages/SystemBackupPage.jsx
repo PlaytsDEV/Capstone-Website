@@ -403,13 +403,15 @@ export default function SystemBackupPage() {
 
   const handleDownload = async (record) => {
     try {
-      const url = await backupApi.getDownloadUrl(record.id);
+      const blob = await backupApi.downloadBackup(record.id);
+      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       a.download = record.fileName || "backup.gz";
       document.body.appendChild(a);
       a.click();
       a.remove();
+      URL.revokeObjectURL(url);
     } catch (err) {
       console.error("Failed to download backup:", err);
     }

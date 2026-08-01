@@ -1,16 +1,16 @@
 const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/user.controller');
-const { authMiddleware } = require('../middleware/auth');
+const { authMiddleware, activeTenantMiddleware } = require('../middleware/auth');
 
-router.get('/me', authMiddleware, userController.getMe);
-router.put('/me', authMiddleware, userController.updateMe);
-router.post('/push-token', authMiddleware, userController.savePushToken);
+router.get('/me', authMiddleware, activeTenantMiddleware, userController.getMe);
+router.put('/me', authMiddleware, activeTenantMiddleware, userController.updateMe);
+router.post('/push-token', authMiddleware, activeTenantMiddleware, userController.savePushToken);
 
 // Document management
-router.post('/documents', authMiddleware, userController.uploadDocument);
-router.get('/documents', authMiddleware, userController.getUserDocuments);
-router.get('/documents/:docId', authMiddleware, userController.getDocumentFile);
-router.delete('/documents/:docId', authMiddleware, userController.deleteDocument);
+router.post('/documents', authMiddleware, activeTenantMiddleware, userController.uploadDocument);
+router.get('/documents', authMiddleware, activeTenantMiddleware, userController.getUserDocuments);
+router.get('/documents/:docId', authMiddleware, activeTenantMiddleware, userController.getDocumentFile);
+router.delete('/documents/:docId', authMiddleware, activeTenantMiddleware, userController.deleteDocument);
 
 module.exports = router;

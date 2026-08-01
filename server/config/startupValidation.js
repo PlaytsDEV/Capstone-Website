@@ -55,6 +55,10 @@ export function validateStartupConfig() {
     failures.push("resend: RESEND_API_KEY and RESEND_FROM_EMAIL required for OTP emails");
   }
 
+  if (!String(process.env.MOBILE_OTP_SECRET || "").trim()) {
+    failures.push("mobile OTP: MOBILE_OTP_SECRET");
+  }
+
   if (!hasCorsConfig) {
     failures.push("cors: CORS_ORIGINS or FRONTEND_URL");
   }

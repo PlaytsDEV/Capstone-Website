@@ -86,6 +86,7 @@ const OTP_SESSION_EXEMPT_PATHS = [
   "/api/auth/logout",
   "/api/auth/register",
   "/api/auth/log-password-reset",
+  "/api/auth/finalize-password-reset",
 ];
 
 const isOtpSessionExempt = (req) =>
@@ -133,12 +134,9 @@ export const verifyToken = async (req, res, next) => {
       return sendError(res, "No token provided", 401, "TOKEN_MISSING");
     }
 
-    // Try cache first — saves ~200ms per request
-    let decodedToken = getCachedToken(token);
-    if (!decodedToken) {
-      decodedToken = await auth.verifyIdToken(token);
-      setCachedToken(token, decodedToken);
-    }
+    // Revocation-sensitive verification is intentionally not cached. Cached
+    // acceptance could outlive password resets or logout-all operations.
+    const decodedToken = await auth.verifyIdToken(token, true);
 
     // Attach decoded user data to request object
     req.user = decodedToken;
@@ -146,7 +144,7 @@ export const verifyToken = async (req, res, next) => {
     // --- Account status check (cached — saves ~5-50ms per request) ---
     // Block suspended/banned users from accessing any protected endpoint
     let dbUser = await User.findOne({ firebaseUid: decodedToken.uid })
-      .select("_id accountStatus role")
+      .select("_id accountStatus role isActive is_active isArchived is_archived securityVersion authInvalidatedAt")
       .lean();
     let accountStatus = getCachedAccountStatus(decodedToken.uid);
     if (accountStatus === undefined) {
@@ -154,6 +152,9 @@ export const verifyToken = async (req, res, next) => {
       setCachedAccountStatus(decodedToken.uid, accountStatus);
     }
 
+    if (dbUser && (dbUser.isActive === false || dbUser.is_active === false || dbUser.isArchived === true || dbUser.is_archived === true)) {
+      return sendError(res, "Account access is restricted.", 403, "ACCOUNT_ACCESS_RESTRICTED");
+    }
     if (accountStatus && accountStatus !== "active") {
       const statusMap = {
         suspended: { message: "Your account has been suspended. Contact support.", code: "ACCOUNT_SUSPENDED" },
@@ -162,6 +163,9 @@ export const verifyToken = async (req, res, next) => {
       };
       const info = statusMap[accountStatus];
       if (info) return sendError(res, info.message, 403, info.code);
+    }
+    if (dbUser?.authInvalidatedAt && Number(decodedToken.auth_time || 0) * 1000 <= dbUser.authInvalidatedAt.getTime()) {
+      return sendError(res, "Your session was revoked. Please sign in again.", 401, "SESSION_REVOKED");
     }
 
     if (
@@ -200,6 +204,9 @@ export const verifyToken = async (req, res, next) => {
           401,
           "OTP_SESSION_INVALID",
         );
+      }
+      if (Number(session.securityVersion || 0) !== Number(dbUser.securityVersion || 0)) {
+        return sendError(res, "Your session was revoked. Please sign in again.", 401, "SESSION_REVOKED");
       }
 
       session.lastActivityAt = new Date();

@@ -60,9 +60,13 @@ export const backupApi = {
     return json.data || json;
   },
 
-  /** Get an authenticated download URL for a backup. */
-  getDownloadUrl: async (id) => {
+  /** Download without exposing the reusable Firebase bearer token in a URL. */
+  downloadBackup: async (id) => {
     const token = await getFreshToken();
-    return `${API_URL}/backups/${id}/download?token=${encodeURIComponent(token || "")}`;
+    const response = await fetch(`${API_URL}/backups/${id}/download`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) throw new Error("Backup download failed");
+    return response.blob();
   },
 };

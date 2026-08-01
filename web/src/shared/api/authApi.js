@@ -121,6 +121,7 @@ export const authApi = {
   },
 
   resendOtp: () => authRequest("/auth/resend-otp", { method: "POST" }),
+  finalizePasswordReset: () => authRequest("/auth/finalize-password-reset", { method: "POST" }),
 
   /**
    * Check if user exists in backend (doesn't create audit log)

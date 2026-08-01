@@ -87,6 +87,7 @@ async function createAnnouncement(req, res) {
       is_active: true,
       is_private: is_private || false,
       user_id: targetUserId || null,
+      branch: req.mobileBranchScope || req.body.branch || null,
       created_at: new Date(),
       updated_at: new Date(),
     };

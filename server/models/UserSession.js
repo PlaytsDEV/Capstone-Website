@@ -98,6 +98,7 @@ const userSessionSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    securityVersion: { type: Number, default: 0 },
 
     // --- Status ---
     isActive: {
@@ -156,6 +157,7 @@ userSessionSchema.statics.createSession = async function (userId, req, options =
     userAgent: req.headers["user-agent"],
     expiresAt: new Date(now.getTime() + durationMs),
     otpVerifiedAt: options.otpVerified ? now : null,
+    securityVersion: Number(options.securityVersion || 0),
   });
   return session.save();
 };

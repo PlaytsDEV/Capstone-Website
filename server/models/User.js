@@ -255,6 +255,8 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    securityVersion: { type: Number, default: 0, min: 0 },
+    authInvalidatedAt: { type: Date, default: null },
 
     // --- Soft Delete ---
     isArchived: {
