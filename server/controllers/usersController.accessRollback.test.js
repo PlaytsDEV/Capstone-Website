@@ -133,7 +133,7 @@ describe("generic updateUser access rollback", () => {
 
   test("fresh web database fallback does not grant administrative access", async () => {
     await invoke({ role: "branch_admin", branch: "branch-b" });
-    const req = { user: { uid: "target-firebase" } }; const res = response(); const next = jest.fn();
+    const req = { user: { uid: "target-firebase" }, authUser: state.user }; const res = response(); const next = jest.fn();
     await verifyAdmin(req, res, next);
     expect(res.statusCode).toBe(403); expect(next).not.toHaveBeenCalled(); expect(state.user.role).toBe("tenant");
   });

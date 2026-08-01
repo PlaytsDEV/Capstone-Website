@@ -52,6 +52,7 @@ const getAuth = jest.fn(() => ({
   deleteUser: deleteUserFromAuth,
 }));
 const invalidateUserSessions = jest.fn(async () => ({ failures: [] }));
+const auditLog = jest.fn();
 
 // Mock mongoose for transaction support (startSession used in deleteUser)
 const mockSession = {
@@ -83,7 +84,7 @@ await jest.unstable_mockModule("../middleware/logger.js", () => ({
   default: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 await jest.unstable_mockModule("../utils/auditLogger.js", () => ({
-  default: { logModification: jest.fn(), logDeletion: jest.fn(), logError: jest.fn() },
+  default: { log: auditLog, logModification: jest.fn(), logDeletion: jest.fn(), logError: jest.fn() },
 }));
 await jest.unstable_mockModule("../middleware/errorHandler.js", () => ({
   sendSuccess: jest.fn(),
@@ -178,6 +179,7 @@ describe("usersController", () => {
     deleteUserFromAuth.mockReset();
     getAuth.mockClear();
     invalidateUserSessions.mockReset().mockResolvedValue({ failures: [] });
+    auditLog.mockReset();
   });
 
   test("getUsers applies server search, lean projection, and pagination metadata", async () => {
@@ -821,6 +823,9 @@ describe("usersController", () => {
     await deleteUser(req, res, next);
 
     expect(deleteUserFromAuth).toHaveBeenCalledWith("firebase-tenant-1");
+    expect(deleteUserFromAuth.mock.invocationCallOrder[0]).toBeLessThan(
+      userModel.findByIdAndDelete.mock.invocationCallOrder[0],
+    );
     expect(billModel.deleteMany).toHaveBeenCalledWith({
       userId: "507f1f77bcf86cd799439011",
       isArchived: false,
@@ -836,6 +841,69 @@ describe("usersController", () => {
         deletedAccountLabel: "Deleted account",
       }),
     );
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["refresh-token revocation", "firebase_token_revocation", () => {
+      invalidateUserSessions.mockResolvedValue({
+        failures: [{ store: "firebase", error: Object.assign(new Error("provider failure"), { code: "auth/internal-error" }) }],
+      });
+    }],
+    ["Firebase user deletion", "firebase_user_deletion", () => {
+      deleteUserFromAuth.mockRejectedValue(Object.assign(new Error("provider failure"), { code: "auth/internal-error" }));
+    }],
+  ])("hard delete stops and restricts the account after %s failure", async (_label, stage, arrangeFailure) => {
+    const targetUser = {
+      _id: "507f1f77bcf86cd799439011",
+      user_id: "user-1",
+      firebaseUid: "firebase-tenant-1",
+      role: "tenant",
+      isArchived: false,
+      securityVersion: 4,
+      authInvalidatedAt: new Date(),
+      toObject: () => ({ _id: "507f1f77bcf86cd799439011" }),
+    };
+    userModel.findById.mockResolvedValue(targetUser);
+    userModel.findOne.mockReturnValue({
+      select: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue({ _id: "owner-1" }) }),
+    });
+    reservationModel.findOne.mockReturnValue({
+      select: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue(null) }),
+    });
+    reservationModel.countDocuments.mockResolvedValue(0);
+    billModel.countDocuments.mockResolvedValue(0);
+    utilityReadingModel.countDocuments.mockResolvedValue(0);
+    maintenanceRequestModel.countDocuments.mockResolvedValue(0);
+    roomModel.countDocuments.mockResolvedValue(0);
+    reservationModel.find.mockReturnValue({
+      select: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue([]) }),
+    });
+    userModel.findByIdAndUpdate.mockResolvedValue({ ...targetUser, isActive: false, accountStatus: "suspended" });
+    arrangeFailure();
+
+    const req = {
+      params: { userId: "507f1f77bcf86cd799439011" },
+      query: { hardDelete: "true" }, body: {}, user: { uid: "firebase-owner-1" },
+      branchFilter: null, isOwner: true, isAdmin: true,
+    };
+    const response = createResponse();
+    const next = jest.fn();
+    await deleteUser(req, response, next);
+
+    expect(response.statusCode).toBe(503);
+    expect(response.body).toEqual(expect.objectContaining({
+      code: "HARD_DELETE_RECONCILIATION_REQUIRED", restricted: true,
+      reconciliationRequired: true, cleanupStage: stage,
+    }));
+    expect(userModel.findByIdAndUpdate).toHaveBeenCalledWith(req.params.userId, {
+      $set: { isActive: false, accountStatus: "suspended" },
+    });
+    expect(userModel.findByIdAndDelete).not.toHaveBeenCalled();
+    expect(auditLog).toHaveBeenCalledWith(expect.objectContaining({
+      action: "hard_delete_reconciliation_required",
+      metadata: expect.objectContaining({ mongoDeletion: "skipped", reconciliationRequired: true }),
+    }));
     expect(next).not.toHaveBeenCalled();
   });
 });

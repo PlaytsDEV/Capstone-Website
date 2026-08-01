@@ -31,7 +31,6 @@
  * ============================================================================
  */
 
-import { User } from "../models/index.js";
 import {
   ALL_PERMISSIONS,
   DEFAULT_PERMISSIONS,
@@ -51,19 +50,16 @@ export const requirePermission = (permission) => {
   return async (req, res, next) => {
     try {
       // Owners bypass all permission checks
-      if (req.isOwner || req.user?.owner) {
+      if (req.isOwner && req.authUser?.role === "owner") {
         return next();
       }
 
-      // Get user from DB to check permissions
-      const dbUser = await User.findOne({ firebaseUid: req.user.uid })
-        .select("permissions role")
-        .lean();
+      const dbUser = req.authUser;
 
       if (!dbUser) {
-        return res.status(404).json({
-          error: "User not found",
-          code: "USER_NOT_FOUND",
+        return res.status(401).json({
+          error: "Authentication failed.",
+          code: "AUTHENTICATION_FAILED",
         });
       }
 
@@ -110,16 +106,14 @@ export const requirePermission = (permission) => {
 export const requireAnyPermission = (permissions) => {
   return async (req, res, next) => {
     try {
-      if (req.isOwner || req.user?.owner) return next();
+      if (req.isOwner && req.authUser?.role === "owner") return next();
 
-      const dbUser = await User.findOne({ firebaseUid: req.user.uid })
-        .select("permissions role")
-        .lean();
+      const dbUser = req.authUser;
 
       if (!dbUser) {
-        return res.status(404).json({
-          error: "User not found",
-          code: "USER_NOT_FOUND",
+        return res.status(401).json({
+          error: "Authentication failed.",
+          code: "AUTHENTICATION_FAILED",
         });
       }
 

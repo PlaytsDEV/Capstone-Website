@@ -3,6 +3,7 @@ import { describe, expect, jest, test } from "@jest/globals";
 const noop = (_req, _res, next) => next?.();
 
 const verifyToken = jest.fn(noop);
+const verifyOnboardingToken = jest.fn(noop);
 const verifyAdmin = jest.fn(noop);
 const verifyOwner = jest.fn(noop);
 const verifyApplicant = jest.fn(noop);
@@ -24,6 +25,7 @@ const requireAnyPermission = jest.fn((permissions) => {
 
 await jest.unstable_mockModule("../middleware/auth.js", () => ({
   verifyToken,
+  verifyOnboardingToken,
   verifyAdmin,
   verifyOwner,
   verifyApplicant,

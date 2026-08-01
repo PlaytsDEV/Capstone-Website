@@ -14,7 +14,7 @@
 
 import express from "express";
 import { getAuth } from "../config/firebase.js";
-import { verifyToken, verifyOwner } from "../middleware/auth.js";
+import { verifyToken, verifyOnboardingToken, verifyOwner } from "../middleware/auth.js";
 import { publicLimiter, authLimiter } from "../middleware/rateLimiter.js";
 import auditLogger from "../utils/auditLogger.js";
 import { User, UserSession } from "../models/index.js";
@@ -67,7 +67,7 @@ const router = express.Router();
 router.post(
   "/register",
   authLimiter,
-  verifyToken,
+  verifyOnboardingToken,
   createValidationMiddleware(validateRegisterInput),
   register,
 );

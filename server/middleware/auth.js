@@ -138,14 +138,17 @@ export const verifyToken = async (req, res, next) => {
     // acceptance could outlive password resets or logout-all operations.
     const decodedToken = await auth.verifyIdToken(token, true);
 
-    // Attach decoded user data to request object
-    req.user = decodedToken;
-
     // --- Account status check (cached — saves ~5-50ms per request) ---
     // Block suspended/banned users from accessing any protected endpoint
     let dbUser = await User.findOne({ firebaseUid: decodedToken.uid })
-      .select("_id accountStatus role isActive is_active isArchived is_archived securityVersion authInvalidatedAt")
+      .select("_id firebaseUid accountStatus role permissions branch isActive is_active isArchived is_archived securityVersion authInvalidatedAt")
       .lean();
+    if (!dbUser) {
+      return sendError(res, "Authentication failed.", 401, "AUTHENTICATION_FAILED");
+    }
+
+    req.user = decodedToken;
+    req.authUser = dbUser;
     let accountStatus = getCachedAccountStatus(decodedToken.uid);
     if (accountStatus === undefined) {
       accountStatus = dbUser?.accountStatus || null;
@@ -235,15 +238,31 @@ export const verifyToken = async (req, res, next) => {
   }
 };
 
+/** Firebase-only boundary for creating the initial MongoDB profile. */
+export const verifyOnboardingToken = async (req, res, next) => {
+  try {
+    const auth = getAuth();
+    if (!auth) {
+      return sendError(res, "Authentication is temporarily unavailable.", 503, "FIREBASE_ADMIN_NOT_INITIALIZED");
+    }
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : "";
+    if (!token) return sendError(res, "Authentication failed.", 401, "AUTHENTICATION_FAILED");
+    req.user = await auth.verifyIdToken(token, true);
+    req.onboardingIdentity = true;
+    next();
+  } catch (_error) {
+    sendError(res, "Authentication failed.", 401, "AUTHENTICATION_FAILED");
+  }
+};
+
 /**
  * Verify Admin Role
  *
  * Middleware to check if the authenticated user has admin privileges.
  * Must be used AFTER verifyToken middleware.
  *
- * Checks in order:
- * 1. Firebase custom claims (branch_admin: true or owner: true) — fast path
- * 2. Fallback: MongoDB user role (handles missing custom claims)
+ * Uses the authoritative MongoDB role attached by verifyToken.
  *
  * @middleware
  * @param {Object} req - Express request object (must have req.user from verifyToken)
@@ -255,7 +274,7 @@ export const verifyToken = async (req, res, next) => {
 export const verifyAdmin = async (req, res, next) => {
   try {
     // Ensure verifyToken was called first
-    if (!req.user || !req.user.uid) {
+    if (!req.user?.uid || !req.authUser) {
       return sendError(
         res,
         "User not authenticated. Apply verifyToken middleware first.",
@@ -264,15 +283,8 @@ export const verifyAdmin = async (req, res, next) => {
       );
     }
 
-    // Check custom claims from Firebase ID token (fast path)
-    if (req.user.branch_admin || req.user.owner) {
-      return next();
-    }
-
-    // Fallback: Check MongoDB role (handles missing Firebase custom claims)
-    const dbUser = await User.findOne({ firebaseUid: req.user.uid });
-
-    if (dbUser && isAdminRole(dbUser.role)) {
+    const dbUser = req.authUser;
+    if (isAdminRole(dbUser.role)) {
       // Attach role info to req.user for downstream middleware
       req.user.branch_admin = true;
       req.user.owner = isOwnerRole(dbUser.role);
@@ -299,7 +311,7 @@ export const verifyAdmin = async (req, res, next) => {
  * Middleware to check if the authenticated user has owner privileges.
  * Must be used AFTER verifyToken middleware.
  *
- * Checks for the 'owner' custom claim in the Firebase ID token.
+ * Checks the authoritative MongoDB role attached by verifyToken.
  *
  * SECURITY: This prevents unauthorized access to owner-only endpoints.
  *
@@ -313,7 +325,7 @@ export const verifyAdmin = async (req, res, next) => {
 export const verifyOwner = async (req, res, next) => {
   try {
     // Ensure verifyToken was called first
-    if (!req.user || !req.user.uid) {
+    if (!req.user?.uid || !req.authUser) {
       return sendError(
         res,
         "User not authenticated. Apply verifyToken middleware first.",
@@ -322,16 +334,8 @@ export const verifyOwner = async (req, res, next) => {
       );
     }
 
-    // Check custom claims from Firebase ID token (fast path)
-    if (req.user.owner) {
-      req.isOwner = true;
-      return next();
-    }
-
-    // Fallback: Check MongoDB role (handles missing Firebase custom claims)
-    const dbUser = await User.findOne({ firebaseUid: req.user.uid });
-
-    if (dbUser && isOwnerRole(dbUser.role)) {
+    const dbUser = req.authUser;
+    if (isOwnerRole(dbUser.role)) {
       req.user.owner = true;
       req.user.branch_admin = true;
       req.user.dbRole = dbUser.role;
@@ -375,7 +379,7 @@ export const verifyOwner = async (req, res, next) => {
 export const verifyApplicant = async (req, res, next) => {
   try {
     // Ensure verifyToken was called first
-    if (!req.user || !req.user.uid) {
+    if (!req.user?.uid || !req.authUser) {
       return sendError(
         res,
         "User not authenticated. Apply verifyToken middleware first.",
@@ -384,20 +388,7 @@ export const verifyApplicant = async (req, res, next) => {
       );
     }
 
-    // Check that user does NOT have admin privileges
-    // This prevents admins from accessing applicant-only endpoints
-    if (req.user.branch_admin || req.user.owner) {
-      return sendError(
-        res,
-        "Access denied. Applicant endpoint - admin access not allowed.",
-        403,
-        "APPLICANT_ENDPOINT_ADMIN_DENIED",
-      );
-    }
-
-    // Fallback: Check MongoDB role (handles missing/stale Firebase custom claims)
-    const dbUser = await User.findOne({ firebaseUid: req.user.uid });
-    if (dbUser && (dbUser.role === "branch_admin" || dbUser.role === "owner")) {
+    if (isAdminRole(req.authUser.role)) {
       return sendError(
         res,
         "Access denied. Applicant endpoint - admin access not allowed.",
@@ -421,11 +412,11 @@ export const verifyApplicant = async (req, res, next) => {
  */
 export const verifyResourceOwnership = (paramName = "tenantId") => {
   return (req, res, next) => {
-    if (req.user?.branch_admin || req.user?.owner) {
+    if (isAdminRole(req.authUser?.role)) {
       return next();
     }
     const requestedId = req.params[paramName] || req.query[paramName] || req.body[paramName];
-    const authenticatedId = req.user?._id?.toString() || req.user?.mongoId?.toString() || req.user?.uid;
+    const authenticatedId = req.authUser?._id?.toString() || req.authUser?.firebaseUid || req.user?.uid;
     if (requestedId && authenticatedId && requestedId.toString() !== authenticatedId.toString()) {
       return sendError(
         res,

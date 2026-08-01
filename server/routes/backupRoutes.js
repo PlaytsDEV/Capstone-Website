@@ -38,7 +38,7 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB max
 });
 
-// Download route — needs query-param token support (must be registered BEFORE the router.use guard)
+// Download route uses the same Authorization-header authentication as other protected routes.
 router.get("/:id/download", verifyToken, verifyOwner, downloadBackup);
 
 // All other backup routes require owner privileges via header-based auth

@@ -23,6 +23,12 @@ await jest.unstable_mockModule('../middleware/auth.js', () => ({
     try { req.user = await verifyIdToken(token, true); return next(); }
     catch { return res.status(401).json({ error: 'Authentication failed', code: 'AUTHENTICATION_FAILED' }); }
   },
+  verifyOnboardingToken: async (req, res, next) => {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!token) return res.status(401).json({ error: 'Authentication failed', code: 'AUTHENTICATION_FAILED' });
+    try { req.user = await verifyIdToken(token, true); return next(); }
+    catch { return res.status(401).json({ error: 'Authentication failed', code: 'AUTHENTICATION_FAILED' }); }
+  },
   verifyOwner: pass,
 }));
 await jest.unstable_mockModule('../middleware/rateLimiter.js', () => ({ publicLimiter: pass, authLimiter: pass }));

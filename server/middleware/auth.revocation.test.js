@@ -17,7 +17,7 @@ await jest.unstable_mockModule("../utils/accountStatusCache.js", () => ({
 }));
 await jest.unstable_mockModule("./errorHandler.js", () => ({ sendError }));
 
-const { verifyToken } = await import("./auth.js");
+const { verifyToken, verifyOnboardingToken, verifyAdmin, verifyOwner, verifyResourceOwnership } = await import("./auth.js");
 
 function res() { return { statusCode: 200, body: null, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } }; }
 
@@ -40,6 +40,59 @@ describe("Firebase revocation-aware middleware behavior", () => {
     verifyIdToken.mockRejectedValue(new Error("network unavailable")); const next = jest.fn(); const response = res();
     await verifyToken({ headers: { authorization: "Bearer x" }, originalUrl: "/api/private" }, response, next);
     expect(next).not.toHaveBeenCalled(); expect(response.statusCode).toBe(401);
+  });
+
+  test("valid privileged claims cannot authorize a missing database identity", async () => {
+    verifyIdToken.mockResolvedValue({ uid: "deleted", owner: true, branch_admin: true, permissions: ["manageUsers"] });
+    lean.mockResolvedValue(null);
+    const request = { headers: { authorization: "Bearer old-owner" }, originalUrl: "/api/users" };
+    const response = res();
+    const protectedController = jest.fn();
+
+    await verifyToken(request, response, protectedController);
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).toEqual({ error: "Authentication failed.", code: "AUTHENTICATION_FAILED" });
+    expect(request.user).toBeUndefined();
+    expect(request.authUser).toBeUndefined();
+    expect(protectedController).not.toHaveBeenCalled();
+
+    const adminNext = jest.fn();
+    const ownerNext = jest.fn();
+    await verifyAdmin(request, res(), adminNext);
+    await verifyOwner(request, res(), ownerNext);
+    expect(adminNext).not.toHaveBeenCalled();
+    expect(ownerNext).not.toHaveBeenCalled();
+  });
+
+  test("Firebase-only identity is isolated to onboarding middleware", async () => {
+    verifyIdToken.mockResolvedValue({ uid: "new-user", email: "new@example.test" });
+    lean.mockResolvedValue(null);
+    const onboardingRequest = { headers: { authorization: "Bearer new" } };
+    const onboardingNext = jest.fn();
+    await verifyOnboardingToken(onboardingRequest, res(), onboardingNext);
+    expect(onboardingNext).toHaveBeenCalledTimes(1);
+    expect(onboardingRequest.onboardingIdentity).toBe(true);
+    expect(onboardingRequest.authUser).toBeUndefined();
+
+    const protectedNext = jest.fn();
+    const response = res();
+    await verifyToken({ headers: { authorization: "Bearer new" }, originalUrl: "/api/private" }, response, protectedNext);
+    expect(response.statusCode).toBe(401);
+    expect(protectedNext).not.toHaveBeenCalled();
+  });
+
+  test("stale privileged claims do not bypass resource ownership", () => {
+    const response = res();
+    const next = jest.fn();
+    verifyResourceOwnership("tenantId")({
+      user: { uid: "f1", owner: true, branch_admin: true },
+      authUser: { _id: "u1", firebaseUid: "f1", role: "tenant" },
+      params: { tenantId: "u2" }, query: {}, body: {},
+    }, response, next);
+    expect(response.statusCode).toBe(403);
+    expect(response.body.code).toBe("IDOR_ACCESS_DENIED");
+    expect(next).not.toHaveBeenCalled();
   });
 
   test("token authenticated before session invalidation is rejected", async () => {

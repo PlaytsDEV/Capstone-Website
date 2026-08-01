@@ -1097,6 +1097,38 @@ export const deleteUser = async (req, res, next) => {
       .select("_id")
       .lean();
 
+    const stopUnsafeHardDelete = async (cleanupStage, firebaseCategory) => {
+      await User.findByIdAndUpdate(userId, {
+        $set: { isActive: false, accountStatus: "suspended" },
+      });
+      await auditLogger.log({
+        req,
+        type: "security",
+        action: "hard_delete_reconciliation_required",
+        severity: "critical",
+        entityType: "user",
+        entityId: userId,
+        details: "Hard deletion stopped because authentication cleanup was incomplete",
+        metadata: {
+          targetUserId: userId,
+          actorId: actor?._id ? String(actor._id) : null,
+          cleanupStage,
+          firebaseCategory,
+          mongoDeletion: "skipped",
+          reconciliationRequired: true,
+          timestamp: new Date().toISOString(),
+        },
+      });
+      return res.status(503).json({
+        error: "Authentication cleanup is incomplete. The account was restricted and requires reconciliation.",
+        code: "HARD_DELETE_RECONCILIATION_REQUIRED",
+        hardDelete: false,
+        restricted: true,
+        reconciliationRequired: true,
+        cleanupStage,
+      });
+    };
+
     if (!isHardDelete) {
       const oldData = user.toObject();
       if (hasSignificantHistory) {
@@ -1190,7 +1222,39 @@ export const deleteUser = async (req, res, next) => {
     // ── Transactional cleanup: archive reservations → release beds → delete user ──
     // Done inside a MongoDB session to ensure atomicity. If any step throws,
     // the user document is NOT deleted and beds remain correctly assigned.
-    await invalidateUserSessions({ user, reason: "account_deleted", req, failClosed: false });
+    let invalidation;
+    try {
+      invalidation = await invalidateUserSessions({
+        user,
+        reason: "account_deleted",
+        req,
+        failClosed: true,
+      });
+    } catch (_error) {
+      return stopUnsafeHardDelete("logical_revocation", "session_invalidation_failed");
+    }
+
+    const unsafeFirebaseFailure = invalidation.failures?.find(
+      (failure) =>
+        failure.store === "firebase" && failure.error?.code !== "auth/user-not-found",
+    );
+    if (unsafeFirebaseFailure) {
+      return stopUnsafeHardDelete("firebase_token_revocation", "refresh_token_revocation_failed");
+    }
+
+    if (user.firebaseUid) {
+      const auth = getAuth();
+      if (!auth) {
+        return stopUnsafeHardDelete("firebase_user_deletion", "firebase_admin_unavailable");
+      }
+      try {
+        await auth.deleteUser(user.firebaseUid);
+      } catch (error) {
+        if (error?.code !== "auth/user-not-found") {
+          return stopUnsafeHardDelete("firebase_user_deletion", "firebase_user_delete_failed");
+        }
+      }
+    }
 
     const session = await mongoose.startSession();
     let archivedReservationIds = [];
@@ -1249,17 +1313,6 @@ export const deleteUser = async (req, res, next) => {
           ));
         }
       }
-    }
-
-    // ── Firebase account deletion ──────────────────────────────────────────────
-    try {
-      const auth = getAuth();
-      if (auth && user.firebaseUid) await auth.deleteUser(user.firebaseUid);
-    } catch (fbErr) {
-      logger.warn(
-        { err: fbErr, requestId: req.id },
-        "Firebase deletion failed (non-fatal — user already deleted from MongoDB)",
-      );
     }
 
     // ── Clean up draft bills ───────────────────────────────────────────────────
