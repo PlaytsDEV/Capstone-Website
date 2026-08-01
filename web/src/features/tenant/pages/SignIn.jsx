@@ -14,7 +14,7 @@
 
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { Eye, EyeOff } from "lucide-react";
+import PasswordVisibilityButton from "../../../shared/components/PasswordVisibilityButton";
 import {
   signInWithEmailAndPassword,
   signInWithPopup,
@@ -662,17 +662,10 @@ function SignIn() {
  error={touched.password ? validationErrors.password : null}
  valid={touched.password && fieldValid.password}
  endAdornment={
- <button
- type="button"
- onClick={() => setShowPassword(!showPassword)}
- tabIndex={-1}
- >
- {showPassword ? (
- <EyeOff className="w-5 h-5" />
- ) : (
- <Eye className="w-5 h-5" />
- )}
- </button>
+ <PasswordVisibilityButton
+ visible={showPassword}
+ onToggle={() => setShowPassword((current) => !current)}
+ />
  }
  />
 

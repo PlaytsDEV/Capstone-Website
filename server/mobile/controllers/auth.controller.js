@@ -956,11 +956,12 @@ h1{color:#1E3A5F;font-size:20px;margin-bottom:8px}p{color:#6B7280;font-size:14px
     .form-label{display:block;font-size:12px;font-weight:600;color:#1E3A5F;
                 letter-spacing:.5px;text-align:left;margin-bottom:6px}
     .input-wrap{position:relative;margin-bottom:16px}
-    .input-wrap input{width:100%;padding:13px 44px 13px 14px;font-size:15px;color:#1F2937;
+    .input-wrap input{width:100%;padding:13px 56px 13px 14px;font-size:15px;color:#1F2937;
                       border:1.5px solid #E5E7EB;border-radius:12px;background:#F8FAFC;outline:none}
     .input-wrap input:focus{border-color:#1E3A5F}
-    .eye{position:absolute;right:12px;top:50%;transform:translateY(-50%);
+    .eye{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:44px;height:44px;
          background:none;border:none;cursor:pointer;font-size:18px;line-height:1}
+    .eye svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
     .err{background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;
          padding:10px 14px;font-size:13px;color:#B91C1C;margin-bottom:14px;text-align:left}
     .ok{background:#F0FDF4;border:1px solid #BBF7D0;border-radius:10px;
@@ -1000,12 +1001,12 @@ h1{color:#1E3A5F;font-size:20px;margin-bottom:8px}p{color:#6B7280;font-size:14px
     <label class="form-label" for="pw">NEW PASSWORD</label>
     <div class="input-wrap">
       <input id="pw" type="password" placeholder="At least 8 characters" autocomplete="new-password">
-      <button class="eye" type="button" onclick="toggleEye('pw','eye1')" id="eye1">👁</button>
+      <button class="eye" type="button" onclick="toggleEye('pw','eye1')" id="eye1" aria-label="Show password" title="Show password" aria-pressed="false"><svg class="eye-open" aria-hidden="true" hidden viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-closed" aria-hidden="true" viewBox="0 0 24 24"><path d="m2 2 20 20"/><path d="M6.7 6.7C3.9 8.5 2 12 2 12s3.5 7 10 7c1.6 0 3-.4 4.2-1.1"/><path d="M10.7 5.1C11.1 5 11.5 5 12 5c6.5 0 10 7 10 7s-.8 1.6-2.3 3.3"/></svg></button>
     </div>
     <label class="form-label" for="pw2">CONFIRM PASSWORD</label>
     <div class="input-wrap">
       <input id="pw2" type="password" placeholder="Repeat your password" autocomplete="new-password">
-      <button class="eye" type="button" onclick="toggleEye('pw2','eye2')" id="eye2">👁</button>
+      <button class="eye" type="button" onclick="toggleEye('pw2','eye2')" id="eye2" aria-label="Show password" title="Show password" aria-pressed="false"><svg class="eye-open" aria-hidden="true" hidden viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-closed" aria-hidden="true" viewBox="0 0 24 24"><path d="m2 2 20 20"/><path d="M6.7 6.7C3.9 8.5 2 12 2 12s3.5 7 10 7c1.6 0 3-.4 4.2-1.1"/><path d="M10.7 5.1C11.1 5 11.5 5 12 5c6.5 0 10 7 10 7s-.8 1.6-2.3 3.3"/></svg></button>
     </div>
     <button class="btn btn-submit" id="submitBtn" onclick="doReset()">Reset Password</button>
   </div>
@@ -1030,8 +1031,13 @@ h1{color:#1E3A5F;font-size:20px;margin-bottom:8px}p{color:#6B7280;font-size:14px
   function toggleEye(inputId, btnId) {
     var inp = document.getElementById(inputId);
     var btn = document.getElementById(btnId);
-    if (inp.type === 'password') { inp.type = 'text'; btn.textContent = '🙈'; }
-    else { inp.type = 'password'; btn.textContent = '👁'; }
+    var visible = inp.type === 'password';
+    inp.type = visible ? 'text' : 'password';
+    btn.querySelector('.eye-open').hidden = !visible;
+    btn.querySelector('.eye-closed').hidden = visible;
+    btn.setAttribute('aria-label', visible ? 'Hide password' : 'Show password');
+    btn.setAttribute('title', visible ? 'Hide password' : 'Show password');
+    btn.setAttribute('aria-pressed', visible ? 'true' : 'false');
   }
 
   async function doReset() {

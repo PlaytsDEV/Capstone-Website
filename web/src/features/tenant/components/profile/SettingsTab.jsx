@@ -11,8 +11,6 @@
 import React, { useState } from "react";
 import {
  Shield,
- Eye,
- EyeOff,
  Lock,
  Info,
  CheckCircle,
@@ -22,6 +20,7 @@ import {
  Sun,
  Moon,
 } from "lucide-react";
+import PasswordVisibilityButton from "../../../../shared/components/PasswordVisibilityButton";
 import { useTheme } from "../../../../features/public/context/ThemeContext";
 import {
  EmailAuthProvider,
@@ -222,7 +221,7 @@ const SettingsTab = () => {
 
  const inputStyle = {
  width: "100%",
- padding: "10px 40px 10px 14px",
+ padding: "10px 56px 10px 14px",
  border: "1px solid var(--border-card)",
  borderRadius: "10px",
  fontSize: "14px",
@@ -234,7 +233,7 @@ const SettingsTab = () => {
 
  const toggleBtnStyle = {
  position: "absolute",
- right: "10px",
+ right: "0",
  top: "50%",
  transform: "translateY(-50%)",
  background: "none",
@@ -515,18 +514,11 @@ const SettingsTab = () => {
  e.target.style.boxShadow = "none";
  }}
  />
- <button
- type="button"
+ <PasswordVisibilityButton
+ visible={showCurrentPw}
  style={toggleBtnStyle}
- onClick={() => setShowCurrentPw((p) => !p)}
- tabIndex={-1}
- >
- {showCurrentPw ? (
- <EyeOff style={{ width: "16px", height: "16px" }} />
- ) : (
- <Eye style={{ width: "16px", height: "16px" }} />
- )}
- </button>
+ onToggle={() => setShowCurrentPw((p) => !p)}
+ />
  </div>
  </div>
 
@@ -557,18 +549,11 @@ const SettingsTab = () => {
  e.target.style.boxShadow = "none";
  }}
  />
- <button
- type="button"
+ <PasswordVisibilityButton
+ visible={showNewPw}
  style={toggleBtnStyle}
- onClick={() => setShowNewPw((p) => !p)}
- tabIndex={-1}
- >
- {showNewPw ? (
- <EyeOff style={{ width: "16px", height: "16px" }} />
- ) : (
- <Eye style={{ width: "16px", height: "16px" }} />
- )}
- </button>
+ onToggle={() => setShowNewPw((p) => !p)}
+ />
  </div>
  <p
  style={{
@@ -608,18 +593,11 @@ const SettingsTab = () => {
  e.target.style.boxShadow = "none";
  }}
  />
- <button
- type="button"
+ <PasswordVisibilityButton
+ visible={showConfirmPw}
  style={toggleBtnStyle}
- onClick={() => setShowConfirmPw((p) => !p)}
- tabIndex={-1}
- >
- {showConfirmPw ? (
- <EyeOff style={{ width: "16px", height: "16px" }} />
- ) : (
- <Eye style={{ width: "16px", height: "16px" }} />
- )}
- </button>
+ onToggle={() => setShowConfirmPw((p) => !p)}
+ />
  </div>
  </div>
 

@@ -14,7 +14,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Eye, EyeOff } from "lucide-react";
+import PasswordVisibilityButton from "../../../shared/components/PasswordVisibilityButton";
 import {
   createUserWithEmailAndPassword,
   signInWithPopup,
@@ -657,17 +657,10 @@ function SignUp() {
                   error={touched.password ? validationErrors.password : null}
                   valid={touched.password && fieldValid.password}
                   endAdornment={
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      tabIndex={-1}
-                    >
-                      {showPassword ? (
-                        <EyeOff className="w-5 h-5" />
-                      ) : (
-                        <Eye className="w-5 h-5" />
-                      )}
-                    </button>
+                    <PasswordVisibilityButton
+                      visible={showPassword}
+                      onToggle={() => setShowPassword((current) => !current)}
+                    />
                   }
                 />
 
@@ -763,17 +756,10 @@ function SignUp() {
                 }
                 valid={touched.confirmPassword && fieldValid.confirmPassword}
                 endAdornment={
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    tabIndex={-1}
-                  >
-                    {showConfirmPassword ? (
-                      <EyeOff className="w-5 h-5" />
-                    ) : (
-                      <Eye className="w-5 h-5" />
-                    )}
-                  </button>
+                  <PasswordVisibilityButton
+                    visible={showConfirmPassword}
+                    onToggle={() => setShowConfirmPassword((current) => !current)}
+                  />
                 }
               />
 

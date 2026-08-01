@@ -121,7 +121,7 @@
 /* ── End Adornment (eye toggle, etc.) ── */
 .floating-field__adornment {
   position: absolute;
-  right: 14px;
+  right: 4px;
   top: 50%;
   transform: translateY(-50%);
   display: flex;
@@ -204,7 +204,7 @@
 
 /* ── Password input needs right padding for adornment ── */
 .floating-field__wrapper:has(.floating-field__adornment) .floating-field__input {
-  padding-right: 48px;
+  padding-right: 56px;
 }
 
 /* ============================================

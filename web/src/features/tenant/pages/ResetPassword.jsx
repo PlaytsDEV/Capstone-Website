@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { confirmPasswordReset, signInWithEmailAndPassword, signOut, verifyPasswordResetCode } from "firebase/auth";
-import { CheckCircle, Eye, EyeOff, Loader2, XCircle } from "lucide-react";
+import { CheckCircle, Loader2, XCircle } from "lucide-react";
+import PasswordVisibilityButton from "../../../shared/components/PasswordVisibilityButton";
 import { auth } from "../../../firebase/config";
 import { authApi } from "../../../shared/api/authApi";
 import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
@@ -106,14 +107,11 @@ function ResetPassword() {
           className="w-full px-4 py-4 pr-12 rounded-xl bg-gray-50 border border-gray-200 focus:border-gray-300 focus:outline-none text-gray-900 font-light placeholder:text-gray-400 transition-colors"
           disabled={submitting}
         />
-        <button
-          type="button"
-          onClick={() => setVisible((current) => !current)}
+        <PasswordVisibilityButton
+          visible={visible}
+          onToggle={() => setVisible((current) => !current)}
           className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
-          aria-label={visible ? "Hide password" : "Show password"}
-        >
-          {visible ? <EyeOff size={18} /> : <Eye size={18} />}
-        </button>
+        />
       </div>
     </div>
   );
