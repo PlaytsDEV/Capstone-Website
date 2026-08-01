@@ -19,16 +19,15 @@ import { Server } from "socket.io";
 import logger from "../middleware/logger.js";
 import { getAuth } from "../config/firebase.js";
 import { User } from "../models/index.js";
-import { ROOM_BRANCHES } from "../config/branches.js";
-import { ADMIN_ROLE_VALUES, isOwnerRole } from "../config/roles.js";
+import { ROOM_BRANCHES, isValidRoomBranch } from "../config/branches.js";
+import { isOwnerRole } from "../config/roles.js";
+import { normalizePermissions } from "../config/accessControl.js";
 
 let io = null;
 
-const ADMIN_ROLES = new Set(ADMIN_ROLE_VALUES);
+const CHAT_ADMIN_PERMISSION = "manageUsers";
 
 const adminBranchRoom = (branch) => `admins:branch:${branch}`;
-const isOwnerLike = (role, claims = {}) =>
-  isOwnerRole(role) || Boolean(claims.owner);
 
 const getSocketOrigin = (socket) => socket.handshake.headers?.origin || "";
 const getSocketTransport = (socket) =>
@@ -38,7 +37,7 @@ const getSocketTransport = (socket) =>
 
 export function createSocketAuthenticator({ getFirebaseAuth = getAuth, findUser } = {}) {
   const loadUser = findUser || (async (uid) => User.findOne({ firebaseUid: uid })
-    .select("_id role branch accountStatus isActive isArchived")
+    .select("_id role permissions branch accountStatus isActive isArchived")
     .lean());
   return async (socket, next) => {
     const origin = getSocketOrigin(socket);
@@ -54,14 +53,49 @@ export function createSocketAuthenticator({ getFirebaseAuth = getAuth, findUser 
         logger.warn({ socketId: socket.id, origin, transport, firebaseUid: decoded.uid, userId: dbUser?._id ? String(dbUser._id) : null }, "Socket authentication rejected user");
         return next(new Error("User not allowed"));
       }
-      socket.data.user = dbUser;
-      socket.data.claims = decoded;
+      socket.data.authUser = {
+        userId: dbUser._id ? String(dbUser._id) : "",
+        role: String(dbUser.role || "").toLowerCase(),
+        permissions: normalizePermissions(dbUser.permissions),
+        branch: isValidRoomBranch(dbUser.branch) ? dbUser.branch : null,
+        accountStatus: dbUser.accountStatus,
+      };
       return next();
     } catch (error) {
       logger.warn({ err: error, socketId: socket.id, origin, transport }, "Socket authentication failed");
       return next(new Error("Authentication failed"));
     }
   };
+}
+
+export function joinAuthorizedSocketRooms(socket) {
+  const authUser = socket.data.authUser;
+  const userId = authUser?.userId || "";
+  const role = authUser?.role || "";
+
+  if (userId) socket.join(`user:${userId}`);
+
+  if (isOwnerRole(role)) {
+    socket.join("admins");
+    socket.join("admins:all");
+    return;
+  }
+
+  const canManageChat =
+    role === "branch_admin" &&
+    authUser.permissions.includes(CHAT_ADMIN_PERMISSION);
+  if (!canManageChat) return;
+
+  if (!isValidRoomBranch(authUser.branch)) {
+    logger.warn(
+      { socketId: socket.id, userId, role },
+      "Socket admin room access rejected invalid database branch",
+    );
+    return;
+  }
+
+  socket.join("admins");
+  socket.join(adminBranchRoom(authUser.branch));
 }
 
 /**
@@ -112,32 +146,19 @@ export function initSocket(httpServer, options = {}) {
   io.use(createSocketAuthenticator());
 
   io.on("connection", (socket) => {
-    const dbUser = socket.data.user;
-    const claims = socket.data.claims || {};
-    const userId = dbUser?._id ? String(dbUser._id) : "";
-    const role = String(dbUser?.role || "").toLowerCase();
+    const authUser = socket.data.authUser;
+    const userId = authUser?.userId || "";
+    const role = authUser?.role || "";
     const origin = getSocketOrigin(socket);
 
-    if (userId) {
-      socket.join(`user:${userId}`);
-    }
-
-    if (ADMIN_ROLES.has(role) || claims.branch_admin || claims.owner) {
-      socket.join("admins");
-
-      if (isOwnerLike(role, claims)) {
-        socket.join("admins:all");
-      } else if (ROOM_BRANCHES.includes(dbUser.branch)) {
-        socket.join(adminBranchRoom(dbUser.branch));
-      }
-    }
+    joinAuthorizedSocketRooms(socket);
 
     logger.info(
       {
         socketId: socket.id,
         userId,
         role,
-        branch: dbUser?.branch || null,
+        branch: authUser?.branch || null,
         origin,
         transport: getSocketTransport(socket),
       },
@@ -218,14 +239,18 @@ export function emitToAdmins(event, payload) {
   }
 }
 
+export function emitToChatAdminRooms(ioServer, branch, event, payload) {
+  if (ioServer && ROOM_BRANCHES.includes(branch)) {
+    ioServer.to(adminBranchRoom(branch)).to("admins:all").emit(event, payload);
+  }
+}
+
 /**
  * Emit a sensitive admin event to only the conversation branch plus owners.
  * Branch admins receive only their assigned branch; owner-like users receive all.
  */
 export function emitToChatAdmins(branch, event, payload) {
-  if (io && ROOM_BRANCHES.includes(branch)) {
-    io.to(adminBranchRoom(branch)).to("admins:all").emit(event, payload);
-  }
+  emitToChatAdminRooms(io, branch, event, payload);
 }
 
 /**
