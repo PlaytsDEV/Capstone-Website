@@ -56,6 +56,38 @@ const createOtp = () => crypto.randomInt(100000, 1000000).toString();
 const hashOtp = (otp) =>
   crypto.createHash("sha256").update(`${process.env.JWT_SECRET || "lilycrest"}:${otp}`).digest("hex");
 
+const fingerprintUid = (uid) =>
+  crypto.createHash("sha256").update(String(uid || "")).digest("hex").slice(0, 12);
+
+const sendIdentityConflict = async (req, res, user) => {
+  const event = {
+    requestId: req.id,
+    attemptedUidFingerprint: fingerprintUid(req.user?.uid),
+    userRecordId: String(user._id),
+    eventType: "AUTH_IDENTITY_CONFLICT",
+    timestamp: new Date().toISOString(),
+  };
+  logger.warn(event, "Authentication identity conflict blocked");
+  await auditLogger.log({
+    req,
+    type: "error",
+    action: "Authentication identity conflict blocked",
+    severity: "critical",
+    entityType: "user",
+    entityId: user._id,
+    details: "A verified Firebase identity matched an email owned by a different UID; no account data was changed.",
+    metadata: event,
+  });
+  return res.status(409).json({
+    success: false,
+    error: {
+      code: "IDENTITY_CONFLICT",
+      message: "This account requires identity verification before it can be linked.",
+    },
+    meta: { requestId: req.id, timestamp: new Date().toISOString() },
+  });
+};
+
 const buildUserPayload = (user) => ({
   id: user._id,
   user_id: user.user_id,
@@ -73,7 +105,22 @@ const buildUserPayload = (user) => ({
   accountStatus: user.accountStatus,
 });
 
-const storeOtpChallenge = async (user, req, deviceId) => {
+export const buildRegistrationUserPayload = (user) => ({
+  id: user._id,
+  user_id: user.user_id,
+  email: user.email,
+  username: user.username,
+  firstName: user.firstName,
+  lastName: user.lastName,
+  phone: user.phone,
+  branch: user.branch,
+  role: user.role,
+  permissions: user.permissions || [],
+  isEmailVerified: Boolean(user.isEmailVerified),
+  onboardingStatus: user.onboardingStatus || "profile_complete",
+});
+
+export const storeOtpChallenge = async (user, req, deviceId) => {
   const otp = createOtp();
   const now = new Date();
   logger.info(
@@ -116,8 +163,6 @@ const storeOtpChallenge = async (user, req, deviceId) => {
   );
 
   const name = `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.username;
-  console.log("[OTP EMAIL] Sending", { to: user.email });
-
   let emailResult = { success: false };
   if (process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL) {
     emailResult = await sendLoginOtpEmail({
@@ -129,12 +174,14 @@ const storeOtpChallenge = async (user, req, deviceId) => {
   }
 
   if (!emailResult?.success) {
-    console.error("[OTP EMAIL WARNING]", {
+    logger.error({
+      requestId: req.id,
       userId: String(user._id),
-      email: user.email,
-      emailError: emailResult?.error,
-      emailCode: emailResult?.code,
-    });
+      provider: "resend",
+      category: emailResult?.category || "configuration",
+      providerCode: emailResult?.code || "EMAIL_PROVIDER_NOT_CONFIGURED",
+      providerStatus: emailResult?.statusCode || null,
+    }, "Login OTP delivery failed");
 
     if (process.env.NODE_ENV !== "production") {
       console.log(`\n==================================================`);
@@ -143,10 +190,7 @@ const storeOtpChallenge = async (user, req, deviceId) => {
       return pending;
     }
 
-    pending.otpHash = null;
-    pending.otpExpiresAt = null;
-    pending.otpAttempts = 0;
-    await pending.save();
+    await UserSession.deleteOne({ _id: pending._id, isActive: false });
 
     throw new AppError(
       "Failed to send OTP email",
@@ -155,11 +199,10 @@ const storeOtpChallenge = async (user, req, deviceId) => {
     );
   }
 
-  console.log("[OTP EMAIL] Sent successfully", { to: user.email, messageId: emailResult.messageId });
   logger.info(
     {
+      requestId: req.id,
       userId: String(user._id),
-      email: user.email,
       messageId: emailResult.messageId,
     },
     "Login OTP email sent",
@@ -217,20 +260,16 @@ export const register = async (req, res, next) => {
         false,
         `Duplicate registration attempt - User ${existingUser.email} already exists`,
       );
-      return res.status(400).json({
-        error: "User already registered",
-        code: "USER_ALREADY_EXISTS",
-        user: {
-          id: existingUser._id,
-          email: existingUser.email,
-          username: existingUser.username,
-          firstName: existingUser.firstName,
-          lastName: existingUser.lastName,
-          branch: existingUser.branch,
-          role: existingUser.role,
-        },
+      return res.status(200).json({
+        message: "User onboarding already exists",
+        code: "ONBOARDING_RESUMED",
+        user: buildRegistrationUserPayload(existingUser),
       });
     }
+
+    const normalizedEmail = String(req.user.email || "").toLowerCase().trim();
+    const emailOwner = normalizedEmail ? await User.findOne({ email: normalizedEmail }) : null;
+    if (emailOwner) return sendIdentityConflict(req, res, emailOwner);
 
     // Check if username is already taken
     const usernameExists = await User.findOne({ username });
@@ -262,6 +301,7 @@ export const register = async (req, res, next) => {
       role: "applicant",
       isEmailVerified: req.user.email_verified || false, // Synced from Firebase
       tenantStatus: "applicant",
+      onboardingStatus: req.user.email_verified ? "profile_complete" : "verification_pending",
     });
 
     await user.save();
@@ -276,23 +316,31 @@ export const register = async (req, res, next) => {
 
     res.status(201).json({
       message: "User registered successfully. Please verify your email.",
-      userId: req.user.uid,
-      user: {
-        id: user._id,
-        user_id: user.user_id,
-        firebaseUid: user.firebaseUid,
-        email: user.email,
-        username: user.username,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        phone: user.phone,
-        branch: user.branch,
-        role: user.role,
-        permissions: user.permissions,
-        isEmailVerified: user.isEmailVerified,
-      },
+      user: buildRegistrationUserPayload(user),
     });
   } catch (error) {
+    if (error?.code === 11000) {
+      const existingByUid = await User.findOne({ firebaseUid: req.user.uid });
+      if (existingByUid) {
+        return res.status(200).json({
+          message: "User onboarding already exists",
+          code: "ONBOARDING_RESUMED",
+          user: buildRegistrationUserPayload(existingByUid),
+        });
+      }
+      const existingByEmail = req.user.email
+        ? await User.findOne({ email: req.user.email.toLowerCase().trim() })
+        : null;
+      if (existingByEmail) return sendIdentityConflict(req, res, existingByEmail);
+      return res.status(409).json({
+        success: false,
+        error: {
+          code: "REGISTRATION_CONFLICT",
+          message: "Registration could not be completed because the profile already exists.",
+        },
+        meta: { requestId: req.id, timestamp: new Date().toISOString() },
+      });
+    }
     await auditLogger.logError(req, error, "Registration error");
     next(error);
   }
@@ -307,31 +355,18 @@ export const login = async (req, res, next) => {
     let user = await User.findOne({ firebaseUid: req.user.uid });
 
     if (!user && req.user.email) {
-      // UID not found — fall back to email lookup.
-      // Handles: Google sign-in to an account originally created with
-      // email/password (Firebase may issue a different UID for the OAuth
-      // credential), or admin-provisioned records with no UID yet.
-      const provider = req.user.firebase?.sign_in_provider || "unknown";
+      // Email equality is not proof that two Firebase identities belong to the
+      // same person. Provider linking is disabled at this boundary. A future
+      // linking service must require recent reauthentication and preserve UID.
       const byEmail = await User.findOne({
         email: req.user.email.toLowerCase().trim(),
       });
 
       if (byEmail) {
-        logger.info(
-          {
-            email: req.user.email,
-            provider,
-            previousUid: byEmail.firebaseUid || "(none)",
-            newUid: req.user.uid,
-          },
-          "Login: user found by email — linking Firebase UID to existing account",
-        );
-        byEmail.firebaseUid = req.user.uid;
-        await byEmail.save();
-        user = byEmail;
+        return sendIdentityConflict(req, res, byEmail);
       } else {
         logger.info(
-          { uid: req.user.uid, email: req.user.email, provider },
+          { uidFingerprint: fingerprintUid(req.user.uid) },
           "Login: user not found by UID or email",
         );
       }

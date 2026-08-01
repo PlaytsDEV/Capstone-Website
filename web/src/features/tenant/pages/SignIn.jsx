@@ -26,6 +26,7 @@ import { auth } from "../../../firebase/config";
 import { showNotification } from "../../../shared/utils/notification";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { useAppNavigation } from "../../../shared/hooks/useAppNavigation";
+import { recoverFromAuthFailure } from "../../../shared/utils/identitySafety";
 import {
   validateEmail,
   getFirebaseErrorMessage,
@@ -404,19 +405,9 @@ function SignIn() {
  const loginResponse = await login();
  handlePostAuthFlow(loginResponse, firebaseUser.displayName || firebaseUser.email || "there");
  } catch (loginError) {
- // Delete the auto-created Firebase account to keep Firebase ↔ MongoDB in sync
- // signInWithPopup auto-creates a Firebase account; if backend rejects, we must remove it
- try {
- const u = auth.currentUser;
- if (u) await u.delete();
- } catch (delErr) {
- // delete() can fail if account existed before (e.g. email/password user)
- try {
- await auth.signOut();
- } catch (_) {
- /* ignore */
- }
- }
+ // Preserve the Firebase identity. Backend failures are recoverable and must
+ // never be treated as authorization to delete an authentication account.
+ await recoverFromAuthFailure(auth, loginError);
 
  const status = loginError.response?.status;
  const errMsg = loginError.message || "";
@@ -442,6 +433,12 @@ function SignIn() {
  "error",
  );
  }
+ } else if (status === 409 && loginError.response?.data?.code === "IDENTITY_CONFLICT") {
+ showNotification(
+ "This account requires identity verification before it can be linked. Please use your original sign-in method or contact support.",
+ "warning",
+ 7000,
+ );
  } else {
  showNotification(
  "Login failed. Please try again or contact support.",
@@ -473,17 +470,7 @@ function SignIn() {
  );
  return;
  }
- if (auth.currentUser) {
- try {
- await auth.currentUser.delete();
- } catch (delErr) {
- try {
- await auth.signOut();
- } catch (_) {
- /* ignore */
- }
- }
- }
+ await recoverFromAuthFailure(auth, error);
  showNotification(getFirebaseErrorMessage(error, "login"), "error");
  } finally {
  sessionStorage.removeItem("socialAuthInProgress");

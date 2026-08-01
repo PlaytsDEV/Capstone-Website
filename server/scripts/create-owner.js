@@ -6,6 +6,7 @@
 import admin from "firebase-admin";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
+import { resolveProvisioningIdentity, uidFingerprint } from "./provisioningIdentitySafety.js";
 
 dotenv.config();
 
@@ -27,8 +28,8 @@ admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 const auth = admin.auth();
 
 // ── Superadmin Credentials ─────────────────────────────────────────────────
-const EMAIL    = "superadmin@lilycrest.com";
-const PASSWORD = "Lilycrest2026!";
+const EMAIL = "superadmin@lilycrest.com";
+const PASSWORD = String(process.env.PROVISIONING_ADMIN_PASSWORD || "");
 
 // ── MongoDB User Schema (minimal inline) ──────────────────────────────────
 const userSchema = new mongoose.Schema({
@@ -50,50 +51,31 @@ const User = mongoose.models.User || mongoose.model("User", userSchema);
 
 // ── Main ───────────────────────────────────────────────────────────────────
 async function run() {
-  // 1. Connect to MongoDB
-  console.log("🔌 Connecting to MongoDB...");
+  if (!PASSWORD) throw new Error("PROVISIONING_ADMIN_PASSWORD is required");
   await mongoose.connect(process.env.MONGODB_URI);
-  console.log("✅ MongoDB connected");
-
-  // 2. Check if Firebase account already exists
-  let firebaseUid;
-  try {
-    const existing = await auth.getUserByEmail(EMAIL);
-    firebaseUid = existing.uid;
-    console.log(`ℹ️  Firebase account already exists (uid: ${firebaseUid})`);
-
-    // Reset the password to make sure it's correct
+  const identity = await resolveProvisioningIdentity({
+    email: EMAIL,
+    auth,
+    findMongoUser: (email) => User.findOne({ email }),
+  });
+  let firebaseUid = identity.firebaseUser?.uid;
+  if (firebaseUid) {
+    console.log(`Firebase identity verified (non-reversible UID fingerprint: ${uidFingerprint(firebaseUid)})`);
     await auth.updateUser(firebaseUid, { password: PASSWORD, emailVerified: true });
-    console.log("✅ Firebase password reset");
-  } catch (err) {
-    if (err.code === "auth/user-not-found") {
-      // Create new Firebase account
-      const fbUser = await auth.createUser({
-        email: EMAIL,
-        password: PASSWORD,
-        displayName: "Owner",
-        emailVerified: true,
-      });
-      firebaseUid = fbUser.uid;
-      console.log(`✅ Firebase account created (uid: ${firebaseUid})`);
-    } else {
-      throw err;
-    }
+  } else {
+    const created = await auth.createUser({ email: EMAIL, password: PASSWORD, displayName: "Owner", emailVerified: true });
+    firebaseUid = created.uid;
+    console.log(`Firebase identity created (non-reversible UID fingerprint: ${uidFingerprint(firebaseUid)})`);
   }
 
-  // 3. Check if MongoDB record already exists
-  const existingMongo = await User.findOne({ email: EMAIL });
+  const existingMongo = identity.mongoUser;
   if (existingMongo) {
-    // Update role and firebaseUid just in case they drifted
     existingMongo.role = "owner";
-    existingMongo.firebaseUid = firebaseUid;
     existingMongo.accountStatus = "active";
     existingMongo.isActive = true;
     existingMongo.isArchived = false;
     await existingMongo.save();
-    console.log("✅ MongoDB owner record updated");
   } else {
-    // Create fresh MongoDB record
     await User.create({
       firebaseUid,
       email:     EMAIL,
@@ -108,13 +90,7 @@ async function run() {
       isArchived: false,
       permissions: [],
     });
-    console.log("✅ MongoDB owner record created");
   }
-
-  console.log("\n🎉 Done! You can now log in with:");
-  console.log(`   Email:    ${EMAIL}`);
-  console.log(`   Password: ${PASSWORD}`);
-
   await mongoose.disconnect();
   process.exit(0);
 }

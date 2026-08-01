@@ -1075,7 +1075,7 @@ export const sendPaymentReceiptEmail = async ({
 // LOGIN OTP EMAIL
 // =============================================================================
 
-const generateLoginOtpEmail = ({ displayName, otp, expiresInMinutes }) => {
+export const generateLoginOtpEmail = ({ displayName, otp, expiresInMinutes }) => {
   const bodyHtml = `
     ${p(`Hi <strong>${escapeHtml(displayName)}</strong>,`)}
     ${p("Use this 6-digit code to finish signing in to your Lilycrest account.", { size: "14px" })}
@@ -1092,28 +1092,42 @@ const generateLoginOtpEmail = ({ displayName, otp, expiresInMinutes }) => {
 
 export const sendLoginOtpEmail = async ({ to, name, otp, expiresInMinutes = 10 }) => {
   if (!resendClient || !OTP_FROM) {
-    console.error("[OTP EMAIL ERROR] Not sent — RESEND_API_KEY or RESEND_FROM_EMAIL is not configured");
-    return { success: false, message: "Email service not configured" };
+    return { success: false, category: "configuration", code: "EMAIL_PROVIDER_NOT_CONFIGURED" };
   }
 
-  const displayName = name || "there";
-  console.log("[OTP EMAIL] Sending via Resend", { to, from: OTP_FROM });
+  try {
+    const { data, error } = await resendClient.emails.send(
+      buildLoginOtpMessage({ to, name, otp, expiresInMinutes }),
+    );
 
-  const { data, error } = await resendClient.emails.send({
+    if (error) return { success: false, ...classifyOtpEmailError(error) };
+    return { success: true, messageId: data?.id || null };
+  } catch (error) {
+    return { success: false, ...classifyOtpEmailError(error) };
+  }
+};
+
+export const buildLoginOtpMessage = ({ to, name, otp, expiresInMinutes = 10 }) => {
+  const displayName = name || "there";
+  return {
     from: OTP_FROM,
     to: [to],
     subject: "Your Lilycrest login OTP",
     html: generateLoginOtpEmail({ displayName, otp, expiresInMinutes }),
-    text: `Hi ${displayName}, your Lilycrest login OTP is ${otp}. It expires in ${expiresInMinutes} minutes.`,
-  });
+    text: `Hi ${String(displayName).replace(/[\r\n]+/g, " ")}, your Lilycrest login OTP is ${otp}. It expires in ${expiresInMinutes} minutes.`,
+  };
+};
 
-  if (error) {
-    console.error("[OTP EMAIL ERROR]", { to, name: error.name, message: error.message, statusCode: error.statusCode });
-    return { success: false, error: error.message, code: error.name, statusCode: error.statusCode };
-  }
-
-  console.log("[OTP EMAIL] Sent successfully", { to, messageId: data.id });
-  return { success: true, messageId: data.id };
+export const classifyOtpEmailError = (error = {}) => {
+  const statusCode = Number(error.statusCode || error.status || error.cause?.statusCode || 0) || null;
+  const code = String(error.name || error.code || error.cause?.code || "EMAIL_PROVIDER_ERROR");
+  const text = `${code} ${error.message || ""}`.toLowerCase();
+  let category = "provider_rejection";
+  if (statusCode === 401 || statusCode === 403 || /api key|unauthor|authenticat/.test(text)) category = "authentication";
+  else if (statusCode === 429 || /rate.?limit|too many/.test(text)) category = "rate_limit";
+  else if (/timeout|timed out|abort|econnreset|etimedout/.test(text)) category = "timeout";
+  else if (/domain|sender|from|verify/.test(text)) category = "sender_rejection";
+  return { category, code, statusCode };
 };
 
 export default transporter;
