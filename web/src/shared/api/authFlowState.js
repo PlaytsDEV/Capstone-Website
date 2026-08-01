@@ -17,4 +17,3 @@ export const shouldDeferProfileRequest = ({
   loginInProgress,
   otpPending,
 }) => !firebaseUser || loginInProgress || Boolean(otpPending);
-
