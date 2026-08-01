@@ -54,6 +54,7 @@ const authRequest = async (url, options = {}, _isRetry = false) => {
   const token = await getFreshToken();
   const response = await fetch(`${API_BASE_URL}${url}`, {
     ...options,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(token && { Authorization: `Bearer ${token}` }),
@@ -86,9 +87,14 @@ const authRequest = async (url, options = {}, _isRetry = false) => {
     // Create error with .response property so callers can check status codes
     // (e.g., Google sign-up flow checks error.response?.status === 404)
     const error = new Error(errorMessage);
+    error.code = errorCode;
     error.response = {
       status: response.status,
-      data: errorData,
+      data: {
+        ...errorData,
+        code: errorCode,
+        message: errorMessage,
+      },
     };
     throw error;
   }

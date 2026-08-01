@@ -34,11 +34,17 @@ import React, {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { authApi } from "../api/authApi";
+import {
+  getAuthErrorCode,
+  shouldDeferProfileRequest,
+} from "../api/authFlowState";
 import { reservationApi } from "../api/reservationApi";
 import {
   clearSessionId,
+  getSessionId,
   getOtpPending,
   isLoginInProgress,
+  setOtpPending,
 } from "../api/authSession";
 import { auth } from "../../firebase/config";
 import { useFirebaseAuth } from "./FirebaseAuthContext";
@@ -96,9 +102,35 @@ export const AuthProvider = ({ children }) => {
   const logoutExecutedRef = useRef(false);
   // Ref to prevent redirect from executing multiple times
   const redirectExecutedRef = useRef(false);
+  const profileRequestRef = useRef(null);
+  const sessionInitializationRef = useRef(null);
   const { user: firebaseUser, loading: firebaseLoading, getFreshIdToken } =
     useFirebaseAuth();
   const queryClient = useQueryClient();
+
+  const initializeBackendSession = useCallback(async () => {
+    if (sessionInitializationRef.current) return sessionInitializationRef.current;
+    const request = authApi.login();
+    sessionInitializationRef.current = request;
+    try {
+      return await request;
+    } finally {
+      if (sessionInitializationRef.current === request) {
+        sessionInitializationRef.current = null;
+      }
+    }
+  }, []);
+
+  const fetchProfileOnce = useCallback(async () => {
+    if (profileRequestRef.current) return profileRequestRef.current;
+    const request = authApi.getCurrentUser();
+    profileRequestRef.current = request;
+    try {
+      return await request;
+    } finally {
+      if (profileRequestRef.current === request) profileRequestRef.current = null;
+    }
+  }, []);
 
   /**
    * Check if user is authenticated by fetching profile from backend
@@ -119,7 +151,19 @@ export const AuthProvider = ({ children }) => {
     }
 
     try {
-      const userData = await authApi.getCurrentUser();
+      if (!getSessionId()) {
+        const loginResult = await initializeBackendSession();
+        if (loginResult?.requiresOtp) {
+          setOtpPending({ email: auth.currentUser?.email || "" });
+          setUser(null);
+          setIsAuthenticated(false);
+          if (window.location.pathname !== "/verify-otp") {
+            window.location.replace("/verify-otp");
+          }
+          return;
+        }
+      }
+      const userData = await fetchProfileOnce();
 
       // Guard: If Firebase user was signed out while this API call was in-flight
       // (e.g. during social signup duplicate detection), don't set authenticated state
@@ -163,23 +207,38 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       // User not authenticated in backend - clear state
       if (
-        error.response?.data?.code === "OTP_SESSION_REQUIRED" ||
-        error.response?.data?.code === "OTP_SESSION_INVALID"
+        getAuthErrorCode(error) === "OTP_SESSION_REQUIRED" ||
+        getAuthErrorCode(error) === "OTP_SESSION_INVALID"
       ) {
         clearSessionId();
+        try {
+          const loginResult = await initializeBackendSession();
+          if (loginResult?.requiresOtp) {
+            setOtpPending({ email: auth.currentUser?.email || "" });
+            if (window.location.pathname !== "/verify-otp") {
+              window.location.replace("/verify-otp");
+            }
+          }
+        } catch (_) {
+          // Preserve the original authentication failure state.
+        }
       }
       setUser(null);
       setIsAuthenticated(false);
     } finally {
       setLoading(false);
     }
-  }, [queryClient]);
+  }, [fetchProfileOnce, initializeBackendSession, queryClient]);
 
   const refreshUser = useCallback(async () => {
-    if (!auth.currentUser) return null;
+    if (shouldDeferProfileRequest({
+      firebaseUser: auth.currentUser,
+      loginInProgress: isLoginInProgress(),
+      otpPending: getOtpPending(),
+    })) return null;
 
     try {
-      const userData = await authApi.getCurrentUser();
+      const userData = await fetchProfileOnce();
       queryClient.setQueryData(["users", "currentUser"], userData);
       setUser((prev) => {
         if (
@@ -196,7 +255,7 @@ export const AuthProvider = ({ children }) => {
       return userData;
     } catch (error) {
       const statusCode = error.response?.status || error.status;
-      const errorCode = error.response?.data?.code;
+      const errorCode = getAuthErrorCode(error);
 
       if (
         statusCode === 401 ||
@@ -211,7 +270,7 @@ export const AuthProvider = ({ children }) => {
       }
       return null;
     }
-  }, [getFreshIdToken, queryClient]);
+  }, [fetchProfileOnce, getFreshIdToken, queryClient]);
 
   // Sync with Firebase auth state
   // CRITICAL: This effect syncs React state with Firebase auth state
@@ -357,6 +416,7 @@ export const AuthProvider = ({ children }) => {
     if (firebaseLoading || !firebaseUser) return undefined;
 
     const syncAuthProfile = () => {
+      if (isLoginInProgress() || getOtpPending()) return;
       refreshUser().catch(() => {});
     };
 

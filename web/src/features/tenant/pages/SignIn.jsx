@@ -34,7 +34,11 @@ import {
   AUTH_TOAST_DURATION,
   buildAuthSuccessMessage,
 } from "../../../shared/utils/authToasts";
-import { setOtpPending } from "../../../shared/api/authSession";
+import {
+  clearLoginInProgress,
+  setLoginInProgress,
+  setOtpPending,
+} from "../../../shared/api/authSession";
 import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
 import SocialAuthButtons from "../../../shared/components/SocialAuthButtons";
 import FloatingInput from "../../../shared/components/FloatingInput";
@@ -283,8 +287,9 @@ function SignIn() {
  );
  return;
  }
- setSubmitting(true);
- setGlobalLoading(true);
+  setSubmitting(true);
+  setGlobalLoading(true);
+  setLoginInProgress();
 
  try {
       const userCredential = await signInWithEmailAndPassword(
@@ -367,8 +372,9 @@ function SignIn() {
  } catch (error) {
  recordFailedAttempt();
  showNotification(getFirebaseErrorMessage(error, "login"), "error");
- } finally {
- setSubmitting(false);
+  } finally {
+  clearLoginInProgress();
+  setSubmitting(false);
  setGlobalLoading(false);
  }
  };
