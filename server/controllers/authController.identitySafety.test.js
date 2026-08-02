@@ -4,7 +4,7 @@ const findOne = jest.fn();
 const saveNewUser = jest.fn();
 const audit = { log: jest.fn(), logLogin: jest.fn(), logRegistration: jest.fn(), logError: jest.fn() };
 const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
-const session = { createSession: jest.fn(), findValidOtpSession: jest.fn() };
+const session = { createSession: jest.fn(), findValidSession: jest.fn() };
 class UserModel {
   constructor(data) { Object.assign(this, data); this._id = "new-mongo-user"; }
   save() { return saveNewUser(this); }

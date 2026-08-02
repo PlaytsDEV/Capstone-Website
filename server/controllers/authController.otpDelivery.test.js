@@ -245,6 +245,14 @@ describe("web login OTP verification", () => {
       "private-session-id",
       expect.objectContaining({ httpOnly: true }),
     );
+    expect(createSession).toHaveBeenCalledWith(
+      user._id,
+      expect.any(Object),
+      expect.objectContaining({
+        otpVerified: true,
+        assuranceMethod: "login_otp",
+      }),
+    );
   });
 
   test("incorrect and former master OTP values fail without creating a session", async () => {

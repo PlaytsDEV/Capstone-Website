@@ -22,6 +22,7 @@ import { getAuth } from "../config/firebase.js";
 import * as Models from "../models/index.js";
 import { ROOM_BRANCHES, isValidRoomBranch } from "../config/branches.js";
 import { isAdminRole, isOwnerRole } from "../config/roles.js";
+import { isSessionAuthorizedForRole } from "../config/sessionAssurance.js";
 import { normalizePermissions } from "../config/accessControl.js";
 import { getWebSessionId } from "./webSessionCookie.js";
 
@@ -40,7 +41,6 @@ const getSocketTransport = (socket) =>
 export function createSocketAuthenticator({
   getFirebaseAuth = getAuth,
   findUser,
-  findOtpSession = (...args) => Models.UserSession.findValidOtpSession(...args),
   findSession = (...args) => Models.UserSession.findValidSession(...args),
 } = {}) {
   const loadUser = findUser || (async (uid) => Models.User.findOne({ firebaseUid: uid })
@@ -64,11 +64,10 @@ export function createSocketAuthenticator({
         socket.handshake.auth?.deviceId || socket.handshake.headers?.["x-device-id"] || "",
       ).trim();
       const sessionId = getWebSessionId(socket);
-      const session = isAdminRole(dbUser.role)
-        ? await findSession(dbUser._id, deviceId, sessionId)
-        : await findOtpSession(dbUser._id, deviceId, sessionId);
+      const session = await findSession(dbUser._id, deviceId, sessionId);
       if (
         !session ||
+        (!isAdminRole(dbUser.role) && !isSessionAuthorizedForRole(session, dbUser.role)) ||
         Number(session.securityVersion || 0) !== Number(dbUser.securityVersion || 0)
       ) {
         logger.warn({ socketId: socket.id, origin, transport, uidFingerprint: fingerprint(decoded.uid) }, "Socket session rejected");

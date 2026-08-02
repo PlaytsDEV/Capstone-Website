@@ -62,6 +62,25 @@ test("email login initiates OTP and OTP completion fetches profile exactly after
   assert.doesNotMatch(otp, /await login\(\)/);
 });
 
+test("normal applicant success clears stale OTP state and cannot be client-forced into exemption", () => {
+  const signIn = read("src/features/tenant/pages/SignIn.jsx");
+  const api = read("src/shared/api/authApi.js");
+  assert.match(
+    signIn,
+    /const loginResponse = await login\(\)[\s\S]*isOtpDeliveryAccepted\(loginResponse\)[\s\S]*clearOtpPending\(\);[\s\S]*navigateAfterAuth\(loginResponse\.user/,
+  );
+  assert.doesNotMatch(signIn, /firstLogin|first_verified_login|exemption/i);
+  assert.doesNotMatch(api, /firstLogin|first_verified_login|exemption/i);
+});
+
+test("OTP_REQUIRED remains role-agnostic for later applicants and tenants", () => {
+  const signIn = read("src/features/tenant/pages/SignIn.jsx");
+  assert.match(
+    signIn,
+    /isOtpDeliveryAccepted\(loginResponse\)[\s\S]*setOtpPending\(\)[\s\S]*navigate\("\/verify-otp"\)/,
+  );
+});
+
 test("auth initialization deduplicates refreshes and recovers missing OTP sessions", () => {
   const authHook = read("src/shared/hooks/useAuth.js");
   assert.match(authHook, /profileRequestRef\.current/);

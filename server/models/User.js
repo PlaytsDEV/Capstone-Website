@@ -54,6 +54,19 @@ const userSchema = new mongoose.Schema(
       default: "profile_complete",
       index: true,
     },
+    // Set only by the public password-registration controller. Historical,
+    // admin-created, OAuth-created, and role-converted applicants remain null
+    // and therefore never receive an unintended first-login OTP exemption.
+    initialEmailVerifiedLoginEligibleAt: {
+      type: Date,
+      default: null,
+      select: false,
+    },
+    initialEmailVerifiedLoginCompletedAt: {
+      type: Date,
+      default: null,
+      select: false,
+    },
 
     // --- Credentials ---
     email: {
@@ -311,10 +324,34 @@ userSchema.pre("save", function (next) {
     this.permissions = [];
   }
 
+  if (this.isModified("role") && this.role !== "applicant") {
+    this.initialEmailVerifiedLoginEligibleAt = null;
+  }
+
   if (this.isModified("accountStatus")) {
     this.isActive = this.accountStatus === "active";
     // Flag so the post-save hook can act — isModified() resets after save().
     this._accountStatusChanged = true;
+  }
+  next();
+});
+
+// Query-based role transitions bypass document save middleware. Clear the
+// registration-only eligibility whenever an account leaves the applicant role;
+// changing an older tenant/admin back to applicant never creates eligibility.
+userSchema.pre(["findOneAndUpdate", "updateOne", "updateMany"], function (next) {
+  const update = this.getUpdate() || {};
+  const nextRole = update.role ?? update.$set?.role;
+  if (nextRole && nextRole !== "applicant") {
+    if (Object.keys(update).some((key) => key.startsWith("$"))) {
+      update.$set = {
+        ...(update.$set || {}),
+        initialEmailVerifiedLoginEligibleAt: null,
+      };
+    } else {
+      update.initialEmailVerifiedLoginEligibleAt = null;
+    }
+    this.setUpdate(update);
   }
   next();
 });

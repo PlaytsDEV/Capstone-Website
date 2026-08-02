@@ -280,6 +280,7 @@ function SignIn() {
  fallbackName = "there",
  options = {},
  ) => {
+ clearOtpPending();
  navigateAfterAuth(loginResponse.user, fallbackName, options);
  };
 
@@ -353,6 +354,7 @@ function SignIn() {
   navigate("/verify-otp");
   return;
  }
+ clearOtpPending();
  navigateAfterAuth(loginResponse.user, firebaseUser.displayName || "there");
  } catch (backendError) {
  clearOtpPending();

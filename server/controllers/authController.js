@@ -7,6 +7,10 @@ import crypto from "crypto";
 import { getDefaultPermissionsForRole } from "../config/accessControl.js";
 import { ROOM_BRANCHES } from "../config/branches.js";
 import { isAdminRole, isOwnerRole, OWNER_ROLE_VALUES } from "../config/roles.js";
+import {
+  SESSION_ASSURANCE_METHODS,
+  isSessionAuthorizedForRole,
+} from "../config/sessionAssurance.js";
 import { sendLoginOtpEmail } from "../config/email.js";
 import { getAuth } from "../config/firebase.js";
 import {
@@ -27,6 +31,10 @@ import {
 } from "../models/index.js";
 import auditLogger from "../utils/auditLogger.js";
 import { invalidateUserSessions } from "../services/sessionInvalidationService.js";
+import {
+  claimFirstVerifiedLoginSession,
+  rollbackFirstVerifiedLoginSession,
+} from "../services/firstVerifiedLoginService.js";
 import {
   resolveTenantOccupancyDetails,
   resolveTenantPersonalDetails,
@@ -344,6 +352,8 @@ export const register = async (req, res, next) => {
       isEmailVerified: req.user.email_verified || false, // Synced from Firebase
       tenantStatus: "applicant",
       onboardingStatus: req.user.email_verified ? "profile_complete" : "verification_pending",
+      initialEmailVerifiedLoginEligibleAt:
+        req.user.firebase?.sign_in_provider === "password" ? new Date() : null,
     });
 
     await user.save();
@@ -436,6 +446,12 @@ export const login = async (req, res, next) => {
       });
     }
 
+    const firebaseEmail = String(req.user.email || "").toLowerCase().trim();
+    const mongoEmail = String(user.email || "").toLowerCase().trim();
+    if (!firebaseEmail || firebaseEmail !== mongoEmail) {
+      return sendIdentityConflict(req, res, user);
+    }
+
     // Check if account is active
     if (!user.isActive) {
       // Log failed login attempt
@@ -455,8 +471,14 @@ export const login = async (req, res, next) => {
     // Sync email verification status from Firebase
     // Firebase is the source of truth - we just mirror the status in our DB
     const firebaseEmailVerified = req.user.email_verified || false;
-    if (user.isEmailVerified !== firebaseEmailVerified) {
+    if (
+      user.isEmailVerified !== firebaseEmailVerified ||
+      (firebaseEmailVerified && user.onboardingStatus === "verification_pending")
+    ) {
       user.isEmailVerified = firebaseEmailVerified;
+      if (firebaseEmailVerified && user.onboardingStatus === "verification_pending") {
+        user.onboardingStatus = "profile_complete";
+      }
       // Note: tenantStatus is only set to meaningful values (active/inactive/etc)
       // when the user becomes a tenant via move-in. No sync needed here.
       await user.save();
@@ -485,14 +507,18 @@ export const login = async (req, res, next) => {
 
     let session = null;
     if (adminUser || isOAuthUser) {
-      // Admins and OAuth users (Google, Facebook, etc.) skip OTP.
-      // OAuth providers already verify identity; no second factor needed.
-      // isOAuthUser sessions must have otpVerifiedAt set so verifyToken
-      // middleware's findValidOtpSession check passes for protected routes.
+      // Admins and OAuth users (Google, Facebook, etc.) skip OTP. Their
+      // sessions record the truthful assurance method instead of fabricating
+      // an OTP verification timestamp.
       session = await UserSession.createSession(user._id, req, {
         deviceId: getDeviceId(req) || null,
         durationMs: SESSION_DURATION_MS,
-        otpVerified: isOAuthUser,
+        otpVerified: false,
+        assuranceMethod: adminUser
+          ? (isOAuthUser
+              ? SESSION_ASSURANCE_METHODS.OAUTH
+              : SESSION_ASSURANCE_METHODS.ADMIN_PASSWORD)
+          : SESSION_ASSURANCE_METHODS.OAUTH,
         securityVersion: user.securityVersion,
       });
     } else {
@@ -504,13 +530,53 @@ export const login = async (req, res, next) => {
         });
       }
 
-      const existingSession = await UserSession.findValidOtpSession(
+      const existingSession = await UserSession.findValidSession(
         user._id,
         deviceId,
         getSessionId(req),
       );
 
-      if (!existingSession) {
+      if (isSessionAuthorizedForRole(existingSession, user.role)) {
+        existingSession.lastActivityAt = new Date();
+        await existingSession.save();
+        session = existingSession;
+      } else {
+        if (user.role === "applicant") {
+          const exemption = await claimFirstVerifiedLoginSession({
+            user,
+            firebaseUid: req.user.uid,
+            email: firebaseEmail,
+            req,
+            deviceId,
+            durationMs: SESSION_DURATION_MS,
+          });
+
+          if (exemption.claimed) {
+            try {
+              if (!setWebSessionCookie(res, exemption.session.sessionId)) {
+                throw new Error("Application session cookie could not be created");
+              }
+            } catch (cookieError) {
+              clearWebSessionCookie(res);
+              await rollbackFirstVerifiedLoginSession({
+                userId: user._id,
+                firebaseUid: req.user.uid,
+                completedAt: exemption.completedAt,
+                sessionId: exemption.session.sessionId,
+              });
+              throw cookieError;
+            }
+
+            user = exemption.user;
+            await auditLogger.logLogin(req, user, true);
+            LoginLog.logEvent({ userId: user._id, email: user.email, action: "login", success: true, req });
+            return res.json({
+              message: "Login successful",
+              user: buildUserPayload(user),
+            });
+          }
+        }
+
         clearWebSessionCookie(res);
         await storeOtpChallenge(user, req, deviceId);
         return res.status(200).json({
@@ -519,10 +585,6 @@ export const login = async (req, res, next) => {
           message: "OTP verification required",
         });
       }
-
-      existingSession.lastActivityAt = new Date();
-      await existingSession.save();
-      session = existingSession;
     }
 
     // Log successful login (not for checkOnly)
@@ -646,6 +708,7 @@ export const verifyLoginOtp = async (req, res, next) => {
       deviceId,
       durationMs: SESSION_DURATION_MS,
       otpVerified: true,
+      assuranceMethod: SESSION_ASSURANCE_METHODS.LOGIN_OTP,
       securityVersion: user.securityVersion,
     });
 

@@ -50,7 +50,7 @@ const noStay = () => { const chain = { select: () => chain, lean: async () => nu
 
 await jest.unstable_mockModule("../models/index.js", () => ({
   User,
-  UserSession: { findValidOtpSession: jest.fn() },
+  UserSession: { findValidSession: jest.fn() },
   Reservation: { findOne: jest.fn(noStay) },
   Room: { find: jest.fn() },
   Bill: {}, UtilityReading: {}, MaintenanceRequest: {},

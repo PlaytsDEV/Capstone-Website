@@ -21,7 +21,8 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   INQUIRY_BRANCHES: ["gil-puyat", "guadalupe", "general"],
   User: { findOne: userFindOne },
   UserSession: {
-    findValidOtpSession: jest.fn(async () => ({
+    findValidSession: jest.fn(async () => ({
+      otpVerifiedAt: new Date(),
       securityVersion: authoritativeUser?.securityVersion || 0,
       save: jest.fn(async () => {}),
     })),
