@@ -4,13 +4,13 @@ const verifyIdToken = jest.fn();
 const lean = jest.fn();
 const select = jest.fn(() => ({ lean }));
 const findOne = jest.fn(() => ({ select }));
-const findValidOtpSession = jest.fn();
+const findValidSession = jest.fn();
 const sendError = jest.fn((res, message, status, code) => res.status(status).json({ error: message, code }));
 
 await jest.unstable_mockModule("../config/firebase.js", () => ({ getAuth: () => ({ verifyIdToken }) }));
 await jest.unstable_mockModule("../models/index.js", () => ({
   User: { findOne },
-  UserSession: { findValidOtpSession },
+  UserSession: { findValidSession },
 }));
 await jest.unstable_mockModule("../config/constants.js", () => ({ CACHE: { TOKEN_TTL_MS: 1000, MAX_TOKEN_ENTRIES: 10 } }));
 await jest.unstable_mockModule("../utils/accountStatusCache.js", () => ({
@@ -22,12 +22,32 @@ const { verifyToken, verifyOnboardingToken, verifyAdmin, verifyOwner, verifyReso
 
 function res() { return { statusCode: 200, body: null, status(code) { this.statusCode = code; return this; }, json(body) { this.body = body; return this; } }; }
 
+const protectedRequest = (token = "valid", overrides = {}) => ({
+  headers: {
+    authorization: `Bearer ${token}`,
+    "x-device-id": "test-device",
+    cookie: "lilycrest_web_session=test-session",
+    ...(overrides.headers || {}),
+  },
+  originalUrl: "/api/private",
+  ...overrides,
+});
+
 describe("Firebase revocation-aware middleware behavior", () => {
-  beforeEach(() => { jest.clearAllMocks(); lean.mockResolvedValue({ _id: "u1", accountStatus: "active", role: "owner", securityVersion: 0 }); });
+  beforeEach(() => {
+    jest.clearAllMocks();
+    lean.mockResolvedValue({ _id: "u1", accountStatus: "active", role: "owner", securityVersion: 0 });
+    findValidSession.mockResolvedValue({
+      assuranceMethod: "admin_password",
+      otpVerifiedAt: null,
+      securityVersion: 0,
+      save: jest.fn(),
+    });
+  });
 
   test("valid token is verified with checkRevoked=true and continues", async () => {
     verifyIdToken.mockResolvedValue({ uid: "f1" }); const response = res(); const next = jest.fn();
-    await verifyToken({ headers: { authorization: "Bearer valid" }, originalUrl: "/api/private" }, response, next);
+    await verifyToken(protectedRequest(), response, next);
     expect(verifyIdToken).toHaveBeenCalledWith("valid", true); expect(next).toHaveBeenCalledTimes(1);
   });
 
@@ -46,7 +66,7 @@ describe("Firebase revocation-aware middleware behavior", () => {
   test("non-admin HTTP authentication accepts the protected cookie and matching device", async () => {
     verifyIdToken.mockResolvedValue({ uid: "f1" });
     lean.mockResolvedValue({ _id: "u1", accountStatus: "active", role: "tenant", securityVersion: 0 });
-    findValidOtpSession.mockResolvedValue({ securityVersion: 0, save: jest.fn() });
+    findValidSession.mockResolvedValue({ assuranceMethod: null, otpVerifiedAt: new Date(), securityVersion: 0, save: jest.fn() });
     const response = res(); const next = jest.fn();
     await verifyToken({
       headers: {
@@ -56,8 +76,105 @@ describe("Firebase revocation-aware middleware behavior", () => {
       },
       originalUrl: "/api/private",
     }, response, next);
-    expect(findValidOtpSession).toHaveBeenCalledWith("u1", "test-device", "test-session");
+    expect(findValidSession).toHaveBeenCalledWith("u1", "test-device", "test-session");
     expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  test("applicant first-verified-login assurance is accepted without a fake OTP timestamp", async () => {
+    verifyIdToken.mockResolvedValue({ uid: "f1" });
+    lean.mockResolvedValue({ _id: "u1", accountStatus: "active", role: "applicant", securityVersion: 0 });
+    findValidSession.mockResolvedValue({
+      assuranceMethod: "first_verified_login",
+      otpVerifiedAt: null,
+      securityVersion: 0,
+      save: jest.fn(),
+    });
+    const response = res(); const next = jest.fn();
+    await verifyToken({
+      headers: {
+        authorization: "Bearer valid",
+        "x-device-id": "test-device",
+        cookie: "lilycrest_web_session=test-session",
+      },
+      originalUrl: "/api/private",
+    }, response, next);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  test("tenant non-OTP session remains insufficient", async () => {
+    verifyIdToken.mockResolvedValue({ uid: "f1" });
+    lean.mockResolvedValue({ _id: "u1", accountStatus: "active", role: "tenant", securityVersion: 0 });
+    findValidSession.mockResolvedValue({
+      assuranceMethod: "first_verified_login",
+      otpVerifiedAt: null,
+      securityVersion: 0,
+      save: jest.fn(),
+    });
+    const response = res(); const next = jest.fn();
+    await verifyToken({
+      headers: {
+        authorization: "Bearer valid",
+        "x-device-id": "test-device",
+        cookie: "lilycrest_web_session=test-session",
+      },
+      originalUrl: "/api/private",
+    }, response, next);
+    expect(response.statusCode).toBe(401);
+    expect(response.body.code).toBe("OTP_SESSION_INVALID");
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test.each(["branch_admin", "owner"])("%s HTTP access requires the same valid privileged session policy as sockets", async (role) => {
+    verifyIdToken.mockResolvedValue({ uid: "f1" });
+    lean.mockResolvedValue({ _id: "u1", accountStatus: "active", role, securityVersion: 4 });
+    findValidSession.mockResolvedValue({
+      assuranceMethod: "admin_password",
+      otpVerifiedAt: null,
+      securityVersion: 4,
+      save: jest.fn(),
+    });
+    const response = res();
+    const next = jest.fn();
+
+    await verifyToken(protectedRequest(), response, next);
+
+    expect(findValidSession).toHaveBeenCalledWith("u1", "test-device", "test-session");
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  test.each(["branch_admin", "owner"])("%s HTTP access rejects missing, revoked, and wrong-assurance sessions", async (role) => {
+    verifyIdToken.mockResolvedValue({ uid: "f1" });
+    lean.mockResolvedValue({ _id: "u1", accountStatus: "active", role, securityVersion: 4 });
+
+    for (const applicationSession of [
+      null,
+      { assuranceMethod: "admin_password", securityVersion: 3, save: jest.fn() },
+      { assuranceMethod: "first_verified_login", securityVersion: 4, save: jest.fn() },
+    ]) {
+      findValidSession.mockResolvedValueOnce(applicationSession);
+      const response = res();
+      const next = jest.fn();
+      await verifyToken(protectedRequest(), response, next);
+      expect(response.statusCode).toBe(401);
+      expect(next).not.toHaveBeenCalled();
+    }
+  });
+
+  test.each(["branch_admin", "owner"])("%s HTTP access rejects a missing cookie or device", async (role) => {
+    verifyIdToken.mockResolvedValue({ uid: "f1" });
+    lean.mockResolvedValue({ _id: "u1", accountStatus: "active", role, securityVersion: 0 });
+
+    for (const headers of [
+      { authorization: "Bearer valid", "x-device-id": "test-device" },
+      { authorization: "Bearer valid", cookie: "lilycrest_web_session=test-session" },
+    ]) {
+      const response = res();
+      const next = jest.fn();
+      await verifyToken({ headers, originalUrl: "/api/private" }, response, next);
+      expect(response.statusCode).toBe(401);
+      expect(response.body.code).toBe("OTP_SESSION_REQUIRED");
+      expect(next).not.toHaveBeenCalled();
+    }
   });
 
   test("valid privileged claims cannot authorize a missing database identity", async () => {

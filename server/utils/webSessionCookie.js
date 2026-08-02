@@ -32,7 +32,9 @@ export const getWebSessionCookieOptions = () => {
 export const setWebSessionCookie = (res, sessionId) => {
   if (sessionId && typeof res.cookie === "function") {
     res.cookie(WEB_SESSION_COOKIE, sessionId, getWebSessionCookieOptions());
+    return true;
   }
+  return false;
 };
 
 export const clearWebSessionCookie = (res) => {

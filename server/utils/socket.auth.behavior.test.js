@@ -27,15 +27,21 @@ function socket(token = 'safe-token', handshake = {}) {
   };
 }
 
-async function authenticate({ token = 'safe-token', verify, user, otpSession = { securityVersion: 0 }, adminSession = { securityVersion: 0 }, handshake }) {
+async function authenticate({ token = 'safe-token', verify, user, applicationSession, handshake }) {
   const verifyIdToken = jest.fn(verify || (async () => ({ uid: 'f1', role: 'tenant' })));
   const findUser = jest.fn(async () => user);
-  const findOtpSession = jest.fn(async () => otpSession);
-  const findSession = jest.fn(async () => adminSession);
-  const middleware = createSocketAuthenticator({ getFirebaseAuth: () => ({ verifyIdToken }), findUser, findOtpSession, findSession });
+  const resolvedSession = applicationSession === undefined
+    ? {
+        securityVersion: Number(user?.securityVersion || 0),
+        assuranceMethod: ['branch_admin', 'owner'].includes(user?.role) ? 'admin_password' : 'login_otp',
+        otpVerifiedAt: ['branch_admin', 'owner'].includes(user?.role) ? null : new Date(),
+      }
+    : applicationSession;
+  const findSession = jest.fn(async () => resolvedSession);
+  const middleware = createSocketAuthenticator({ getFirebaseAuth: () => ({ verifyIdToken }), findUser, findSession });
   const client = socket(token, handshake); let error;
   await middleware(client, (value) => { error = value; });
-  return { client, error, verifyIdToken, findUser, findOtpSession, findSession };
+  return { client, error, verifyIdToken, findUser, findSession };
 }
 
 describe('Socket.IO authentication behavior', () => {
@@ -44,7 +50,7 @@ describe('Socket.IO authentication behavior', () => {
     const result = await authenticate({ user });
     expect(result.error).toBeUndefined(); expect(result.verifyIdToken).toHaveBeenCalledWith('safe-token', true);
     expect(result.findUser).toHaveBeenCalledWith('f1');
-    expect(result.findOtpSession).toHaveBeenCalledWith('u1', 'test-device', 'test-session');
+    expect(result.findSession).toHaveBeenCalledWith('u1', 'test-device', 'test-session');
     expect(result.client.data.authUser).toEqual({ userId: 'u1', role: 'tenant', permissions: [], branch: null, accountStatus: 'active' });
   });
 
@@ -81,33 +87,55 @@ describe('Socket.IO authentication behavior', () => {
     expect(result.client.join).not.toHaveBeenCalled();
   });
 
-  test.each(['applicant', 'tenant'])('%s without an OTP-backed application session is rejected', async (role) => {
+  test.each(['applicant', 'tenant'])('%s without an authorized application session is rejected', async (role) => {
     const result = await authenticate({
       user: { _id: 'u1', role, accountStatus: 'active', isActive: true, isArchived: false },
-      otpSession: null,
+      applicationSession: null,
     });
     expect(result.error?.message).toBe('Authentication failed');
     expect(result.client.data.authUser).toBeUndefined();
   });
 
   test('expired, revoked, and device/session-mismatched application sessions are rejected', async () => {
-    for (const otpSession of [null, { securityVersion: 1 }]) {
+    for (const applicationSession of [null, { securityVersion: 1, otpVerifiedAt: new Date() }]) {
       const result = await authenticate({
         user: { _id: 'u1', role: 'tenant', securityVersion: 2, accountStatus: 'active', isActive: true, isArchived: false },
-        otpSession,
+        applicationSession: applicationSession && { ...applicationSession, assuranceMethod: 'login_otp' },
       });
       expect(result.error?.message).toBe('Authentication failed');
     }
   });
 
-  test('admins require an active application session while preserving their OTP bypass', async () => {
-    const user = { _id: 'admin-1', role: 'owner', securityVersion: 0, accountStatus: 'active', isActive: true, isArchived: false };
+  test('applicant first-verified-login session can connect without an OTP timestamp', async () => {
+    const result = await authenticate({
+      user: { _id: 'u1', role: 'applicant', securityVersion: 0, accountStatus: 'active', isActive: true, isArchived: false },
+      applicationSession: { securityVersion: 0, assuranceMethod: 'first_verified_login', otpVerifiedAt: null },
+    });
+    expect(result.error).toBeUndefined();
+  });
+
+  test.each(['branch_admin', 'owner'])('%s requires admin_password assurance while preserving the OTP bypass', async (role) => {
+    const user = { _id: 'admin-1', role, securityVersion: 0, accountStatus: 'active', isActive: true, isArchived: false };
     const allowed = await authenticate({ user });
     expect(allowed.error).toBeUndefined();
     expect(allowed.findSession).toHaveBeenCalled();
-    expect(allowed.findOtpSession).not.toHaveBeenCalled();
-    const rejected = await authenticate({ user, adminSession: null });
-    expect(rejected.error?.message).toBe('Authentication failed');
+
+    for (const applicationSession of [
+      null,
+      { securityVersion: 0, assuranceMethod: 'first_verified_login', otpVerifiedAt: null },
+      { securityVersion: 0, assuranceMethod: 'login_otp', otpVerifiedAt: new Date() },
+    ]) {
+      const rejected = await authenticate({ user, applicationSession });
+      expect(rejected.error?.message).toBe('Authentication failed');
+    }
+  });
+
+  test('role transition invalidates an assurance that was valid for the prior role', async () => {
+    const transitioned = await authenticate({
+      user: { _id: 'u1', role: 'tenant', securityVersion: 0, accountStatus: 'active', isActive: true, isArchived: false },
+      applicationSession: { securityVersion: 0, assuranceMethod: 'first_verified_login', otpVerifiedAt: null },
+    });
+    expect(transitioned.error?.message).toBe('Authentication failed');
   });
 });
 

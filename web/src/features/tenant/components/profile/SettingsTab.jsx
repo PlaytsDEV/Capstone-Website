@@ -155,19 +155,13 @@ const SettingsTab = () => {
  const handleSignOutAll = async () => {
  try {
  setSigningOutAll(true);
- const token = await auth.currentUser?.getIdToken(true);
- if (token) {
  try {
- const response = await fetch("/api/auth/revoke-sessions", {
+ const { protectedFetch } = await import("../../../../shared/api/httpClient.js");
+ const response = await protectedFetch("/auth/revoke-sessions", {
  method: "POST",
- headers: {
- "Content-Type": "application/json",
- Authorization: `Bearer ${token}`,
- },
  });
  if (!response.ok) throw new Error("Server revocation failed");
  } catch {
- }
  }
  await auth.signOut();
  appNavigate("/signin", {

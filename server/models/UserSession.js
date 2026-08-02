@@ -18,6 +18,7 @@
 
 import mongoose from "mongoose";
 import { v4 as uuidv4 } from "uuid";
+import { SESSION_ASSURANCE_VALUES } from "../config/sessionAssurance.js";
 
 // ============================================================================
 // SCHEMA DEFINITION
@@ -109,6 +110,12 @@ const userSessionSchema = new mongoose.Schema(
       select: false,
     },
     securityVersion: { type: Number, default: 0 },
+    assuranceMethod: {
+      type: String,
+      enum: SESSION_ASSURANCE_VALUES,
+      default: null,
+      index: true,
+    },
 
     // --- Status ---
     isActive: {
@@ -171,15 +178,17 @@ userSessionSchema.statics.createSession = async function (userId, req, options =
   const durationMs = options.durationMs || 24 * 60 * 60 * 1000;
   const session = new this({
     userId,
+    loginTime: options.loginTime || now,
     deviceId: options.deviceId || req.headers["x-device-id"] || null,
     device: req.headers["x-device-name"] || parseDevice(req.headers["user-agent"]),
     ipAddress: req.ip || req.headers["x-forwarded-for"] || req.connection?.remoteAddress,
     userAgent: req.headers["user-agent"],
     expiresAt: new Date(now.getTime() + durationMs),
     otpVerifiedAt: options.otpVerified ? now : null,
+    assuranceMethod: options.assuranceMethod || null,
     securityVersion: Number(options.securityVersion || 0),
   });
-  return session.save();
+  return session.save(options.mongoSession ? { session: options.mongoSession } : undefined);
 };
 
 /**

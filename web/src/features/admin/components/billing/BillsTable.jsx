@@ -2,13 +2,10 @@ import { useState } from "react";
 import { Eye, FileText, ArrowRight, Download, Loader } from "lucide-react";
 import { fmtCurrency, fmtDate, fmtMonth } from "../../utils/formatters";
 import { TableSkeleton } from "../../../../../shared/components/LoadingSkeletons";
-
-const API_BASE = import.meta.env.VITE_API_URL || "";
+import { protectedFetch } from "../../../../../shared/api/httpClient";
 
 async function downloadTransferSettlementPdf(billId) {
-  const res = await fetch(`${API_BASE}/api/billing/transfer-settlement/${billId}/pdf`, {
-    credentials: "include",
-  });
+  const res = await protectedFetch(`/billing/transfer-settlement/${billId}/pdf`);
   if (!res.ok) throw new Error("PDF generation failed");
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);

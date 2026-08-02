@@ -22,6 +22,7 @@ import {
   getSessionHeaders,
   markApplicationSession,
 } from "./authSession";
+import { withProtectedRequestPolicy } from "./requestPolicy";
 
 /**
  * Get fresh Firebase ID token for API requests.
@@ -52,16 +53,12 @@ const getFreshToken = async (forceRefresh = false) => {
  */
 const authRequest = async (url, options = {}, _isRetry = false) => {
   const token = await getFreshToken();
-  const response = await fetch(`${API_BASE_URL}${url}`, {
-    ...options,
-    credentials: "include",
-    headers: {
+  const response = await fetch(`${API_BASE_URL}${url}`, withProtectedRequestPolicy(options, {
       "Content-Type": "application/json",
       ...(token && { Authorization: `Bearer ${token}` }),
       ...getSessionHeaders(),
       ...options.headers,
-    },
-  });
+    }));
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));

@@ -1,5 +1,4 @@
-import { authFetch, getFreshToken, API_URL } from "./httpClient.js";
-import { getSessionHeaders } from "./authSession.js";
+import { authFetch, protectedFetch } from "./httpClient.js";
 
 const queryString = (params = {}) => {
   const query = new URLSearchParams(
@@ -10,16 +9,10 @@ const queryString = (params = {}) => {
 };
 
 const fetchPreparedBlob = async (contractId, version) => {
-  const token = await getFreshToken();
-  if (!token) throw new Error("You must be signed in to access this document.");
   const suffix = version ? `/${version}` : "";
-  const response = await fetch(
-    `${API_URL}/contracts/${contractId}/documents/prepared${suffix}`,
+  const response = await protectedFetch(
+    `/contracts/${contractId}/documents/prepared${suffix}`,
     {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        ...getSessionHeaders(),
-      },
       cache: "no-store",
     },
   );
@@ -33,12 +26,10 @@ const fetchPreparedBlob = async (contractId, version) => {
 };
 
 const fetchSignedBlob = async (contractId, version, download = false) => {
-  const token = await getFreshToken();
-  if (!token) throw new Error("You must be signed in to access this document.");
   const suffix = version ? `/${version}` : "";
-  const response = await fetch(
-    `${API_URL}/contracts/${contractId}/documents/signed${suffix}${download ? "?download=true" : ""}`,
-    { headers: { Authorization: `Bearer ${token}`, ...getSessionHeaders() }, cache: "no-store" },
+  const response = await protectedFetch(
+    `/contracts/${contractId}/documents/signed${suffix}${download ? "?download=true" : ""}`,
+    { cache: "no-store" },
   );
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
@@ -50,10 +41,7 @@ const fetchSignedBlob = async (contractId, version, download = false) => {
 };
 
 const fetchPrivateContractBlob = async (path) => {
-  const token = await getFreshToken();
-  if (!token) throw new Error("You must be signed in to access this document.");
-  const response = await fetch(`${API_URL}${path}`, {
-    headers: { Authorization: `Bearer ${token}`, ...getSessionHeaders() },
+  const response = await protectedFetch(path, {
     cache: "no-store",
   });
   if (!response.ok) {

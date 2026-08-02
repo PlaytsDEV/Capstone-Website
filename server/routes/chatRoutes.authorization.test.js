@@ -21,7 +21,13 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   INQUIRY_BRANCHES: ["gil-puyat", "guadalupe", "general"],
   User: { findOne: userFindOne },
   UserSession: {
-    findValidOtpSession: jest.fn(async () => ({
+    findValidSession: jest.fn(async () => ({
+      assuranceMethod: ["branch_admin", "owner"].includes(authoritativeUser?.role)
+        ? "admin_password"
+        : "login_otp",
+      otpVerifiedAt: ["branch_admin", "owner"].includes(authoritativeUser?.role)
+        ? null
+        : new Date(),
       securityVersion: authoritativeUser?.securityVersion || 0,
       save: jest.fn(async () => {}),
     })),

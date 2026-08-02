@@ -30,6 +30,7 @@ import { User, UserSession } from "../models/index.js";
 
 import { CACHE } from "../config/constants.js";
 import { isAdminRole, isOwnerRole } from "../config/roles.js";
+import { isSessionAuthorizedForRole } from "../config/sessionAssurance.js";
 import {
   getCachedAccountStatus as _getCachedAccountStatus,
   setCachedAccountStatus as _setCachedAccountStatus,
@@ -177,11 +178,7 @@ export const verifyToken = async (req, res, next) => {
       return sendError(res, "Your session was revoked. Please sign in again.", 401, "SESSION_REVOKED");
     }
 
-    if (
-      dbUser &&
-      !isAdminRole(dbUser.role) &&
-      !isOtpSessionExempt(req)
-    ) {
+    if (dbUser && !isOtpSessionExempt(req)) {
       const deviceId =
         typeof req.headers["x-device-id"] === "string"
           ? req.headers["x-device-id"].trim()
@@ -197,13 +194,13 @@ export const verifyToken = async (req, res, next) => {
         );
       }
 
-      const session = await UserSession.findValidOtpSession(
+      const session = await UserSession.findValidSession(
         dbUser._id,
         deviceId,
         sessionId,
       );
 
-      if (!session) {
+      if (!isSessionAuthorizedForRole(session, dbUser.role)) {
         return sendError(
           res,
           "Your session expired. Please verify again.",

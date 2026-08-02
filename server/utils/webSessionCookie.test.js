@@ -12,12 +12,16 @@ describe("web application session cookie", () => {
   test("production sessions are HttpOnly, Secure, cross-site compatible, and absent from JSON", () => {
     process.env.NODE_ENV = "production";
     const res = { cookie: jest.fn() };
-    setWebSessionCookie(res, "opaque-session");
+    expect(setWebSessionCookie(res, "opaque-session")).toBe(true);
     expect(res.cookie).toHaveBeenCalledWith(
       "lilycrest_web_session",
       "opaque-session",
       expect.objectContaining({ httpOnly: true, secure: true, sameSite: "none" }),
     );
+  });
+
+  test("cookie creation reports failure when the response cannot set cookies", () => {
+    expect(setWebSessionCookie({}, "opaque-session")).toBe(false);
   });
 
   test("server reads cookie sessions while preserving explicit non-browser header compatibility", () => {
