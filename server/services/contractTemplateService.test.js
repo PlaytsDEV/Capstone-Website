@@ -178,7 +178,7 @@ describe("official pricing validation", () => {
     ["regularMonthlyRate", 1, "APPROVED_PRICING_CONFLICT"],
     ["advanceRentAmount", 1, "PRICING_VALID"],
     ["securityDepositAmount", 1, "PRICING_VALID"],
-    ["reservationFeeAmount", 1, "RESERVATION_FEE_LEGAL_TEXT_CONFLICT"],
+    ["reservationFeeAmount", 1, "PRICING_VALID"],
   ])("validates approved %s independently of template defaults", (field, value, code) => {
     expect(validateOfficialPricing(template, { ...exact, [field]: value }).code).toBe(code);
   });
@@ -189,5 +189,14 @@ describe("official pricing validation", () => {
         valid: false,
         code: "APPROVED_PRICING_CONFLICT",
       }));
+  });
+
+  test("zero percent discount is valid when the approved rate is unchanged", () => {
+    expect(validateOfficialPricing(template, {
+      ...exact,
+      discountPercentage: 0,
+      discountAmount: 0,
+      approvedMonthlyRate: 16000,
+    })).toEqual(expect.objectContaining({ valid: true, code: "PRICING_VALID" }));
   });
 });

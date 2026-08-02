@@ -35,7 +35,7 @@ const formatMethod = (m) => {
  const map = {
  gcash: "GCash", maya: "Maya", paymaya: "PayMaya", grab_pay: "GrabPay",
  card: "Credit/Debit Card", bank: "Bank Transfer", paymongo: "PayMongo",
- cash: "Cash", online: "Online Payment",
+ cash: "Legacy payment method", online: "Online Payment (PayMongo)",
  };
  return map[m] || m || "Online";
 };

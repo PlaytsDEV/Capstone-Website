@@ -383,10 +383,11 @@ export default function BillDetailModal({
 
  {/* Mark as paid (manual — when no proof submitted) */}
  {bill.status !== "paid" &&
+ !bill.structuredWorkflowVersion &&
  (!bill.paymentProof ||
  bill.paymentProof.verificationStatus === "none") && (
  <div className="mark-paid-section">
- <h3>Record Assisted Offline Payment</h3>
+ <h3>Record Legacy Assisted Payment</h3>
  <p
  style={{
  margin: "0 0 0.75rem",
@@ -412,7 +413,7 @@ export default function BillDetailModal({
  <label>Note (optional)</label>
  <input
  type="text"
- placeholder="Cash, GCash, bank transfer..."
+ placeholder="Legacy reference or bank transfer note..."
  value={payNote}
  onChange={(e) => onPayNoteChange(e.target.value)}
  />

@@ -176,18 +176,34 @@ export const createDraftContract = async ({
     (leaseStartDate && leaseDurationMonths
       ? new Date(new Date(leaseStartDate).setMonth(new Date(leaseStartDate).getMonth() + leaseDurationMonths))
       : null);
-  const approvedRate = Number.isFinite(Number(reservation.monthlyRent))
-    ? Number(reservation.monthlyRent)
+  const structuredSnapshot =
+    reservation.financialWorkflowVersion === "structured-initial-payment-v1"
+      ? reservation.pricingSnapshot
+      : null;
+  const approvedRate = Number.isFinite(
+    Number(structuredSnapshot?.finalMonthlyRate ?? reservation.monthlyRent),
+  )
+    ? Number(structuredSnapshot?.finalMonthlyRate ?? reservation.monthlyRent)
     : null;
   const financial = resolveTenantFinancialSummary({ reservation });
   const settings = await getBusinessSettings();
-  const pricing = resolveContractLeasePricing({
-    room,
-    roomType: canonicalRoomType,
-    leaseDurationMonths,
-    approvedMonthlyRate: approvedRate,
-    longTermLeaseMinMonths: settings.longTermLeaseMinMonths,
-  });
+  const pricing = structuredSnapshot
+    ? {
+        isLongTerm: structuredSnapshot.leaseType === "long",
+        leaseType:
+          structuredSnapshot.leaseType === "long" ? "long_term" : "short_term",
+        regularMonthlyRate: structuredSnapshot.regularMonthlyRate,
+        discountPercentage: structuredSnapshot.discountPercentage,
+        discountAmount: structuredSnapshot.discountAmount,
+        approvedMonthlyRate: structuredSnapshot.finalMonthlyRate,
+      }
+    : resolveContractLeasePricing({
+        room,
+        roomType: canonicalRoomType,
+        leaseDurationMonths,
+        approvedMonthlyRate: approvedRate,
+        longTermLeaseMinMonths: settings.longTermLeaseMinMonths,
+      });
   let resolvedTemplate = null;
   try {
     resolvedTemplate = resolveContractTemplate({
@@ -242,17 +258,28 @@ export const createDraftContract = async ({
       discountType: pricing.discountPercentage === 0 ? "none" : "percentage",
       discountAmount: pricing.discountAmount,
       approvedMonthlyRate: pricing.approvedMonthlyRate,
-      advanceRentAmount: financial.advanceRent,
-      securityDepositAmount: financial.securityDeposit,
-      reservationFeeAmount: reservation.reservationFeeAmount ?? null,
-      reservationFeeCreditAmount: reservation.reservationFeeAmount ?? null,
+      advanceRentAmount:
+        structuredSnapshot?.advanceRentAmount ?? financial.advanceRent,
+      securityDepositAmount:
+        structuredSnapshot?.securityDepositAmount ?? financial.securityDeposit,
+      reservationFeeAmount:
+        structuredSnapshot?.reservationFeeAmount ?? reservation.reservationFeeAmount ?? null,
+      reservationFeeCreditAmount:
+        structuredSnapshot && reservation.reservationFeePaymentStatus === "verified"
+          ? structuredSnapshot.reservationFeeAmount
+          : reservation.reservationFeeAmount ?? null,
       pricingApprovalId: reservation._id,
-      pricingApprovedBy: reservation.applicationReviewedBy || null,
-      pricingApprovedAt: reservation.approvedForPaymentAt || reservation.approvedDate || null,
-      advanceCoverageStart: leaseStartDate,
-      advanceCoverageEnd: leaseStartDate
-        ? dayjs(leaseStartDate).add(1, "month").toDate()
-        : null,
+      pricingApprovedBy:
+        structuredSnapshot?.approvedBy || reservation.applicationReviewedBy || null,
+      pricingApprovedAt:
+        structuredSnapshot?.approvedAt || reservation.approvedForPaymentAt || reservation.approvedDate || null,
+      advanceCoverageStart:
+        reservation.advanceCoverageStart || leaseStartDate,
+      advanceCoverageEnd:
+        reservation.advanceCoverageEnd ||
+        (leaseStartDate
+          ? dayjs(leaseStartDate).add(1, "month").subtract(1, "day").toDate()
+          : null),
       status: "draft",
       statusHistory: [{ status: "draft", changedBy: actorId, reason: "Contract draft created" }],
       createdBy: actorId,
@@ -441,22 +468,8 @@ export const approveContractPricing = async ({ contract, actorId, pricing, notes
   ) {
     throw serviceError("Approved pricing values are inconsistent.", "APPROVED_PRICING_CONFLICT", 422);
   }
-  if (values.discountPercentage === 0) {
-    throw serviceError(
-      "The official discount clause requires legal review when no discount applies.",
-      "NO_DISCOUNT_LEGAL_WORDING_REVIEW_REQUIRED",
-      422,
-    );
-  }
-  if (values.reservationFeeAmount !== 2000) {
-    throw serviceError(
-      "The approved reservation fee conflicts with the fixed official legal clause.",
-      "RESERVATION_FEE_LEGAL_TEXT_CONFLICT",
-      422,
-    );
-  }
   Object.assign(contract, values, {
-    discountType: "percentage",
+    discountType: values.discountPercentage === 0 ? "none" : "percentage",
     reservationFeeCreditAmount: values.reservationFeeAmount,
     pricingApprovalId: contract.reservationId,
     pricingApprovedBy: actorId,

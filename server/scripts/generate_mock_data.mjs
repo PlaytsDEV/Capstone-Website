@@ -28,7 +28,6 @@ const PAYMENT_METHODS = [
   "gcash",
   "card",
   "check",
-  "cash",
   "paymongo",
   "paymaya",
   "grab_pay",

@@ -698,14 +698,18 @@ export const sendBillGeneratedEmail = async ({
   }
   const normalizedBillType = String(billType || "bill").trim().toLowerCase();
   const billTypeLabel =
-    normalizedBillType === "rent" ? "Monthly Rent" : normalizedBillType.charAt(0).toUpperCase() + normalizedBillType.slice(1);
+    normalizedBillType === "rent"
+      ? "Monthly Rent"
+      : normalizedBillType === "initial_payment"
+        ? "Initial Payment"
+        : normalizedBillType.charAt(0).toUpperCase() + normalizedBillType.slice(1);
   try {
     const info = await transporter.sendMail({
       from: { name: "Lilycrest Dormitory", address: process.env.EMAIL_USER },
       to,
       subject: `${billTypeLabel} bill for ${billingMonth} | Lilycrest Dormitory`,
       html: generateBillGeneratedEmail({ tenantName, billTypeLabel, roomName, billingMonth, totalAmount, dueDate, branchName }),
-      text: `Hello ${tenantName}, your ${billTypeLabel} bill for ${billingMonth} is PHP ${totalAmount}. Due: ${dueDate}. Log in to view details and payment instructions. If you use bank transfer, proof of payment may be required. - Lilycrest Dormitory`,
+      text: `Hello ${tenantName}, your ${billTypeLabel} bill for ${billingMonth} is PHP ${totalAmount}. Due: ${dueDate}. Log in and continue to PayMongo to complete payment. - Lilycrest Dormitory`,
     });
     console.log("✅ Bill email accepted", { emailFingerprint: emailFingerprint(to), success: true });
     return { success: true, messageId: info.messageId };

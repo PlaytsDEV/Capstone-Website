@@ -41,12 +41,14 @@ export async function createCheckoutSession({
   metadata = {},
   successUrl,
   cancelUrl,
+  idempotencyKey = null,
 }) {
   const response = await fetch(`${PAYMONGO_API}/checkout_sessions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: getAuthHeader(),
+      ...(idempotencyKey ? { "Idempotency-Key": String(idempotencyKey) } : {}),
     },
     body: JSON.stringify({
       data: {

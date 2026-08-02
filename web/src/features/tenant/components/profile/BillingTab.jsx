@@ -130,7 +130,10 @@ const sortBillsOldestFirst = (left, right) =>
 
 const getBillChargeSummary = (bill = {}) => {
  const charges = bill?.charges || {};
- const rentAndFeesTotal = roundMoney(
+ const isInitialPayment = bill?.billType === "initial_payment";
+ const rentAndFeesTotal = isInitialPayment
+ ? roundMoney(Number(bill?.totalAmount || 0))
+ : roundMoney(
  Math.max(
  Number(charges.rent || 0) +
  Number(charges.applianceFees || 0) +
@@ -337,7 +340,7 @@ const SplitDashboard = ({
  </div>
  <div style={dash.helperText}>
  Opens the oldest unpaid statement that includes rent or fees. Monthly
- bills are paid through online checkout.
+ bills are paid through PayMongo checkout.
  </div>
  {unpaidRent > 0 && (
  <button
@@ -351,7 +354,7 @@ const SplitDashboard = ({
  }}
  >
  <CreditCard size={18} />
- {payingOnline === "rent" ? "Processing..." : "Pay Oldest Rent Statement"}
+ {payingOnline === "rent" ? "Processing..." : "Continue to PayMongo"}
  </button>
  )}
  </div>
@@ -475,12 +478,16 @@ const MonthlyBillCard = ({ bill }) => {
  const [open, setOpen] = useState((bill.remainingAmount ?? bill.totalAmount) > 0);
  const charges = bill.charges || {};
  const summary = getBillChargeSummary(bill);
+ const isInitialPayment = bill.billType === "initial_payment";
+ const initial = bill.initialPaymentBreakdown || {};
 
  // Compute the strictly Rent-focused total for this separated tab
  const rentBase =
  (charges.rent || 0) + (charges.applianceFees || 0) + (charges.corkageFees || 0);
- let rentOnlyTotal = rentBase + (charges.penalty || 0) - (charges.discount || 0);
- if (bill.grossAmount > 0) {
+ let rentOnlyTotal = isInitialPayment
+ ? Number(bill.totalAmount || 0)
+ : rentBase + (charges.penalty || 0) - (charges.discount || 0);
+ if (!isInitialPayment && bill.grossAmount > 0) {
  rentOnlyTotal -= (bill.reservationCreditApplied || 0);
  }
  // Floor it at 0 just in case
@@ -496,10 +503,12 @@ const MonthlyBillCard = ({ bill }) => {
  <Package size={16} color="#64748b" />
  <div style={{ flex: 1, marginLeft: 10, textAlign: "left" }}>
  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-heading)" }}>
- {fmtMonth(bill.billingMonth)}
+ {isInitialPayment ? "Initial Payment" : fmtMonth(bill.billingMonth)}
  </div>
  <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 4 }}>
- Cycle: {fmtCycle(bill) || "—"}
+ {isInitialPayment
+ ? "Advance rent, security deposit, and approved initial charges"
+ : `Cycle: ${fmtCycle(bill) || "—"}`}
  </div>
  {bill.dueDate && (
  <div style={{ marginTop: 4 }}>
@@ -539,12 +548,38 @@ const MonthlyBillCard = ({ bill }) => {
  <span style={{ ...elecS.tableHeaderCell, gridColumn: "span 2" }}>charge type</span>
  <span style={{ ...elecS.tableHeaderCell, textAlign: "right" }}>amount</span>
  </div>
+ {isInitialPayment ? (
+ <>
+ {[
+ ["Advance Rent", initial.advanceRent],
+ ["Security Deposit", initial.securityDeposit],
+ ["Approved Initial Charges", initial.approvedInitialCharges],
+ ].map(([label, amount]) => (
+ <div style={elecS.tableRow2} key={label}>
+ <span style={elecS.tableCell2}>{label}</span>
+ <span style={{ ...elecS.tableCell2, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{fmt(amount)}</span>
+ </div>
+ ))}
+ <div style={elecS.tableRow2}>
+ <span style={{ ...elecS.tableCell2, color: "#059669" }}>Less: Reservation Fee Credit</span>
+ <span style={{ ...elecS.tableCell2, color: "#059669", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>-{fmt(initial.reservationFeeCredit)}</span>
+ </div>
+ <div style={elecS.tableRow2}>
+ <span style={elecS.tableCell2}>Amount Paid</span>
+ <span style={{ ...elecS.tableCell2, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{fmt(bill.paidAmount || 0)}</span>
+ </div>
+ <div style={{ padding: "10px 0", color: "#475569", fontSize: 12, lineHeight: 1.5 }}>
+ Your one-month advance rent already pays for your first rental month. You will not be charged rent again for that same period. Regular billing begins when your second rental month starts.
+ </div>
+ </>
+ ) : (
  <div style={elecS.tableRow2}>
  <span style={elecS.tableCell2}>Rent & Fees</span>
  <span style={{ ...elecS.tableCell2, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
  {fmt(rentBase)}
  </span>
  </div>
+ )}
  
  {charges.penalty > 0 && (() => {
  const daysLate = Number(bill.penaltyDetails?.daysLate || 0);
@@ -598,8 +633,8 @@ const MonthlyBillCard = ({ bill }) => {
  </div>
  )}
  <div style={elecS.segmentFooter}>
- <span>Monthly Rent Due</span>
- <span style={{ fontSize: 14, fontWeight: 700 }}>{fmt(rentOnlyTotal)}</span>
+ <span>{isInitialPayment ? "Remaining Initial Balance" : "Monthly Rent Due"}</span>
+ <span style={{ fontSize: 14, fontWeight: 700 }}>{fmt(isInitialPayment ? summary.remaining : rentOnlyTotal)}</span>
  </div>
  </div>
  </div>

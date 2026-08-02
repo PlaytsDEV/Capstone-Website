@@ -79,6 +79,20 @@ async function finalizeBillPayment({
       branch: bill.branch,
       amount: appliedAmount,
       method,
+      purpose:
+        bill.billType === "initial_payment"
+          ? "initial_payment"
+          : Number(bill?.charges?.rent || 0) > 0
+            ? "regular_rent"
+            : "other",
+      provider: String(source || "").startsWith("paymongo") ? "paymongo" : null,
+      providerPaymentId: String(source || "").startsWith("paymongo")
+        ? externalPaymentId
+        : null,
+      externalSessionId: metadata?.sessionId || null,
+      webhookEventReference: metadata?.eventId || null,
+      settlementTimestamp: String(source || "").startsWith("paymongo") ? now : null,
+      currency: String(metadata?.currency || "PHP").toUpperCase(),
       referenceNumber,
       status: "paid",
       verifiedBy: actorId,

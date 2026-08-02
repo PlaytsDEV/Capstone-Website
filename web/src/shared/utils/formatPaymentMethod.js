@@ -5,8 +5,11 @@
 export const formatPaymentMethod = (method) => {
   if (!method) return "Online Payment";
   const key = String(method).toLowerCase().trim().replace(/[_\s-]/g, "");
+  if (key === "gcash") return "GCash";
+  if (key.includes("cash") || key === "counterpayment") {
+    return "Legacy payment method";
+  }
   const methods = {
-    gcash: "GCash",
     paymaya: "Maya",
     maya: "Maya",
     card: "Credit / Debit Card",
@@ -23,7 +26,6 @@ export const formatPaymentMethod = (method) => {
     bank: "Bank Transfer",
     banktransfer: "Bank Transfer",
     check: "Check",
-    cash: "Cash",
     online: "Online Payment (PayMongo)",
     paymongo: "Online Payment (PayMongo)",
   };

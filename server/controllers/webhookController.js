@@ -77,7 +77,7 @@ async function notifyAdminsOfDepositReview(reservation, paymentReference) {
         notify.general(
           admin._id,
           "Reservation Payment Needs Review",
-          `A reservation deposit was paid before the reservation reached payment stage. Reference: ${paymentReference}.`,
+          `A Reservation Fee was paid before the Reservation reached payment stage. Reference: ${paymentReference}.`,
           {
             entityType: "reservation",
             entityId: reservation?._id ? String(reservation._id) : null,
@@ -152,7 +152,7 @@ async function handleDepositPayment(metadata, eventData, context = {}) {
   try {
     await notify.paymentApproved(
       reservation.userId,
-      `Your deposit for ${roomName} has been verified. Your reservation is now secured!`,
+      `Your Reservation Fee for ${roomName} has been verified. Your Reservation is now secured!`,
     );
   } catch (notifErr) {
     logger.error({ err: notifErr }, "Webhook: Failed to send notification");
@@ -199,7 +199,7 @@ async function handleDepositPayment(metadata, eventData, context = {}) {
         to: tenant.email,
         tenantName,
         amount: actualPaidAmount,
-        description: `Lilycrest Dormitory — Reservation Deposit (${reservationCode})`,
+        description: `Lilycrest Dormitory — Reservation Fee (${reservationCode})`,
         billedTo: tenantName,
         paymentMethod: formattedChannel,
         paymentDate,
@@ -273,7 +273,7 @@ async function finishWebhookEvent(record, processingStatus, error = null) {
  *   3. Mark as paid + update payment details
  *   4. Notify tenant + send confirmation email
  */
-async function handleBillPayment(metadata, eventData) {
+async function handleBillPayment(metadata, eventData, context = {}) {
   const { billId } = metadata;
 
   const bill = await Bill.findById(billId);
@@ -291,6 +291,10 @@ async function handleBillPayment(metadata, eventData) {
     metadata: {
       eventType: "checkout_session.payment.paid",
       provider: "paymongo",
+      eventId: context.eventId || null,
+      sessionId: context.sessionId || null,
+      currency:
+        eventData?.attributes?.payments?.[0]?.attributes?.currency || "PHP",
     },
   });
 
@@ -513,7 +517,7 @@ export const handlePaymongoWebhook = async (req, res) => {
         "Webhook: Deposit processing complete",
       );
     } else if (metadata.type === "bill") {
-      await handleBillPayment(metadata, checkoutData);
+      await handleBillPayment(metadata, checkoutData, { eventId, sessionId });
       logger.info(
         { eventId, sessionId, billId: metadata.billId },
         "Webhook: Bill processing complete",
@@ -678,6 +682,7 @@ export const handlePaymongoSourceWebhook = async (req, res) => {
         await handleBillPayment(
           { type: "bill", billId: found.billId },
           syntheticEventData,
+          { eventId, sessionId },
         );
         logger.info(
           { eventId, paymentId, billId: found.billId },
@@ -732,7 +737,10 @@ export const handlePaymongoSourceWebhook = async (req, res) => {
           "Webhook(payment): checkout_session deposit processing complete",
         );
       } else if (checkoutMeta.type === "bill") {
-        await handleBillPayment(checkoutMeta, paymentData);
+        await handleBillPayment(checkoutMeta, paymentData, {
+          eventId,
+          sessionId: checkoutSessionId,
+        });
         logger.info(
           { eventId, checkoutSessionId, billId: checkoutMeta.billId },
           "Webhook(payment): checkout_session bill processing complete",

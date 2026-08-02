@@ -143,7 +143,7 @@ const ReservationPaymentStep = ({
           {/* Card 1: Payment Hero & Essential Room Summary */}
           <div className="rf-payment-summary-hero">
             <div className="rf-payment-amount-box">
-              <span className="rf-payment-amount-label">One-Time Reservation Deposit</span>
+              <span className="rf-payment-amount-label">One-Time Reservation Fee</span>
               <div className="rf-payment-amount-value total-amount">
                 {formatCurrency(reservationFeeAmount)}
               </div>

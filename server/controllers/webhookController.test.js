@@ -344,6 +344,9 @@ describe("handlePaymongoWebhook", () => {
       metadata: {
         eventType: "checkout_session.payment.paid",
         provider: "paymongo",
+        eventId: "evt_1",
+        sessionId: "cs_1",
+        currency: "PHP",
       },
     });
     expect(paymentApproved).toHaveBeenCalledTimes(1);
@@ -393,6 +396,9 @@ describe("handlePaymongoWebhook", () => {
       metadata: {
         eventType: "checkout_session.payment.paid",
         provider: "paymongo",
+        eventId: "evt_1",
+        sessionId: "cs_1",
+        currency: "PHP",
       },
     });
     expect(userFindById).not.toHaveBeenCalled();

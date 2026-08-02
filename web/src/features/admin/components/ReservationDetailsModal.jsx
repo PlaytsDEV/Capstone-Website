@@ -430,6 +430,10 @@ export default function ReservationDetailsModal({
  const [extendDays, setExtendDays] = useState(3);
  const [showExtendPrompt, setShowExtendPrompt] = useState(false);
  const [meterReadingVal, setMeterReadingVal] = useState("");
+ const [actualMoveInDate, setActualMoveInDate] = useState(
+ new Date().toISOString().slice(0, 10),
+ );
+ const [houseRulesPrepared, setHouseRulesPrepared] = useState(false);
  const [showMeterPrompt, setShowMeterPrompt] = useState(false);
  const cancellationPanelRef = useRef(null);
  const [confirmModal, setConfirmModal] = useState({
@@ -1686,10 +1690,28 @@ export default function ReservationDetailsModal({
  <div className="rdm-extend-dialog-body">
  <h3 className="rdm-extend-dialog-title">Move-In Details</h3>
  <p className="rdm-extend-dialog-copy">
-  Enter the starting kWh meter reading to confirm this tenant&apos;s
-  occupancy baseline. Move-in date and time will be recorded
-  automatically as today.
+  Confirm the actual move-in date, house-rules preparation, and starting
+  kWh meter reading before recording occupancy.
  </p>
+
+ <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 600, marginBottom: 4 }}>
+ Actual Move-In Date <span style={{ color: "var(--danger, #ef4444)" }}>*</span>
+ </label>
+ <input
+ type="date"
+ value={actualMoveInDate}
+ onChange={(event) => setActualMoveInDate(event.target.value)}
+ className="rdm-extend-dialog-input rdm-extend-dialog-input--wide"
+ style={{ width: "100%", marginBottom: 12 }}
+ />
+ <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: "0.8rem", marginBottom: 12 }}>
+ <input
+ type="checkbox"
+ checked={houseRulesPrepared}
+ onChange={(event) => setHouseRulesPrepared(event.target.checked)}
+ />
+ House rules are prepared for tenant acknowledgment
+ </label>
 
  {/* Meter reading */}
  <label
@@ -1740,6 +1762,14 @@ export default function ReservationDetailsModal({
  );
  return;
  }
+ if (!actualMoveInDate) {
+ showNotification("The actual move-in date is required.", "error", 4000);
+ return;
+ }
+ if (!houseRulesPrepared) {
+ showNotification("Confirm that house rules are prepared before move-in.", "error", 4000);
+ return;
+ }
 
  setShowMeterPrompt(false);
  doAction(
@@ -1749,6 +1779,8 @@ export default function ReservationDetailsModal({
  await reservationApi.update(reservation.id, {
  status: "moveIn",
  meterReading: reading,
+ actualMoveInDate,
+ houseRulesPrepared: true,
  });
   // Invalidate utility caches so the billing timeline auto-updates.
   await queryClient.invalidateQueries({ queryKey: ["utilities"] });

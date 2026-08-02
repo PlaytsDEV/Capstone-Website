@@ -159,20 +159,6 @@ export const validateOfficialPricing = (template, pricing = {}) => {
         Math.abs(regular - discount - finalRate) > 0.01) {
       errors.push({ code: "APPROVED_PRICING_CONFLICT", field: "approvedMonthlyRate" });
     }
-    if (percentage === 0) {
-      warnings.push({
-        code: "NO_DISCOUNT_LEGAL_WORDING_REVIEW_REQUIRED",
-        field: "discountPercentage",
-      });
-    }
-    if (Number(pricing.reservationFeeAmount) !== 2000) {
-      errors.push({
-        code: "RESERVATION_FEE_LEGAL_TEXT_CONFLICT",
-        field: "reservationFeeAmount",
-        expected: 2000,
-        actual: Number(pricing.reservationFeeAmount),
-      });
-    }
   }
   return {
     valid: errors.length === 0 && warnings.length === 0,

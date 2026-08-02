@@ -159,7 +159,7 @@ export default function DeadlineBadge({
               </span>
             ) : (
               <span>
-                This reservation deposit payment is past due. Failure to settle the balance within the grace period will result in automatic reservation cancellation and forfeiture of your allocated bed slot.
+                This Reservation Fee payment is past due. Failure to settle the balance within the grace period will result in automatic reservation cancellation and release of your allocated bed slot.
               </span>
             )
           ) : (
@@ -169,7 +169,7 @@ export default function DeadlineBadge({
               </span>
             ) : (
               <span>
-                Please complete deposit payment on or before <strong>{formattedDate}</strong> to lock in your reservation slot.
+                Please complete the Reservation Fee payment on or before <strong>{formattedDate}</strong> to lock in your reservation slot.
               </span>
             )
           )}

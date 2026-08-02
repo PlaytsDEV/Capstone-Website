@@ -51,7 +51,16 @@ const paymentSchema = new mongoose.Schema(
     },
     purpose: {
       type: String,
-      enum: ["reservation_deposit", "rent", "utility", "penalty", "other"],
+      enum: [
+        "reservation_deposit",
+        "reservation_fee",
+        "initial_payment",
+        "rent",
+        "regular_rent",
+        "utility",
+        "penalty",
+        "other",
+      ],
       default: "other",
       index: true,
     },
@@ -86,6 +95,16 @@ const paymentSchema = new mongoose.Schema(
     expectedAmount: { type: Number, default: null, min: 0 },
     paidAmount: { type: Number, default: null, min: 0 },
     currency: { type: String, default: "PHP", uppercase: true, trim: true },
+    provider: {
+      type: String,
+      enum: ["paymongo", "legacy", null],
+      default: null,
+      index: true,
+    },
+    providerPaymentId: { type: String, default: null, index: true },
+    paymentIntentId: { type: String, default: null, index: true },
+    webhookEventReference: { type: String, default: null, index: true },
+    settlementTimestamp: { type: Date, default: null },
     externalSessionId: { type: String, default: null, index: true },
     paymentReference: { type: String, default: null, trim: true },
     idempotencyKey: { type: String, default: null },
@@ -191,6 +210,16 @@ paymentSchema.index(
   {
     unique: true,
     partialFilterExpression: { externalPaymentId: { $type: "string" } },
+  },
+);
+paymentSchema.index(
+  { provider: 1, providerPaymentId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      provider: "paymongo",
+      providerPaymentId: { $type: "string" },
+    },
   },
 );
 

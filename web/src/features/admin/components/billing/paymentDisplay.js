@@ -133,6 +133,9 @@ export const formatAdminPaymentMode = (...sources) => {
 
   const normalized = String(rawValue).trim().toLowerCase();
   if (normalized.includes("gcash")) return "GCash";
+  if (normalized.includes("cash") || normalized === "counter_payment") {
+    return "Legacy payment method";
+  }
   if (normalized.includes("maya") || normalized.includes("paymaya")) return "Maya";
   if (normalized.includes("grabpay") || normalized.includes("grab_pay")) return "GrabPay";
   if (normalized.includes("dob") || normalized.includes("online_banking")) return "Online Banking";

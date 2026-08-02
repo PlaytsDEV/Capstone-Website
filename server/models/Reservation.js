@@ -623,6 +623,87 @@ const reservationSchema = new mongoose.Schema(
       default: 2000,
       min: 0,
     },
+    financialWorkflowVersion: {
+      type: String,
+      enum: ["structured-initial-payment-v1", null],
+      default: null,
+      index: true,
+    },
+    pricingSnapshot: {
+      regularMonthlyRate: { type: Number, default: null, min: 0 },
+      discountPercentage: { type: Number, default: null, min: 0, max: 100 },
+      discountAmount: { type: Number, default: null, min: 0 },
+      finalMonthlyRate: { type: Number, default: null, min: 0 },
+      reservationFeeAmount: { type: Number, default: null, min: 0 },
+      advanceRentAmount: { type: Number, default: null, min: 0 },
+      securityDepositAmount: { type: Number, default: null, min: 0 },
+      approvedInitialCharges: { type: Number, default: 0, min: 0 },
+      roomType: { type: String, default: "" },
+      leaseType: { type: String, enum: ["short", "long", ""], default: "" },
+      leaseDurationMonths: { type: Number, default: null, min: 1, max: 12 },
+      branchId: { type: String, default: "" },
+      roomId: { type: mongoose.Schema.Types.ObjectId, ref: "Room", default: null },
+      selectedBed: {
+        id: { type: String, default: "" },
+        position: { type: String, default: "" },
+        bunkBlock: { type: String, default: "" },
+        code: { type: String, default: "" },
+      },
+      rateEffectiveDate: { type: Date, default: null },
+      promotionName: { type: String, default: null },
+      customRateReason: { type: String, default: null },
+      approvedAt: { type: Date, default: null },
+      approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+      snapshotVersion: { type: Number, default: null },
+    },
+    reservationFeePaymentStatus: {
+      type: String,
+      enum: ["pending", "verified", "failed", "reconciliation_required"],
+      default: "pending",
+    },
+    reservationFeePaymentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Payment",
+      default: null,
+    },
+    initialPaymentBillId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Bill",
+      default: null,
+    },
+    initialPaymentStatus: {
+      type: String,
+      enum: ["not_created", "pending", "partial", "paid", "reconciliation_required"],
+      default: "not_created",
+    },
+    advanceCoverageStart: { type: Date, default: null },
+    advanceCoverageEnd: { type: Date, default: null },
+    advanceCoverageEndExclusive: { type: Date, default: null },
+    nextRegularBillingDate: { type: Date, default: null },
+    pricingApprovedAt: { type: Date, default: null },
+    pricingApprovedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    pricingSnapshotVersion: { type: Number, default: null },
+    houseRulesPreparedAt: { type: Date, default: null },
+    houseRulesPreparedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    moveInException: {
+      active: { type: Boolean, default: false },
+      reason: { type: String, default: "", maxlength: 1000 },
+      expiresAt: { type: Date, default: null },
+      approvedAt: { type: Date, default: null },
+      approvedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+    },
     reservationCreditConsumedAt: {
       type: Date,
       default: null,
@@ -830,7 +911,7 @@ const reservationSchema = new mongoose.Schema(
     },
     refundDisbursementMethod: {
       type: String,
-      enum: ["gcash", "bank_transfer", "cash", "other", null],
+      enum: ["gcash", "bank_transfer", "other", null],
       default: null,
     },
     refundAccountName: {
@@ -1020,6 +1101,9 @@ reservationSchema.pre("save", async function (next) {
 // compare "from → to" transitions.
 reservationSchema.post("init", function () {
   this._original_status = this.status;
+  this._original_pricing_snapshot = this.pricingSnapshot?.toObject
+    ? this.pricingSnapshot.toObject()
+    : this.pricingSnapshot;
 });
 
 // Prevent unbounded array growth that would bloat documents and slow reads.
@@ -1030,6 +1114,13 @@ const ARRAY_CAPS = {
 };
 
 reservationSchema.pre("save", function (next) {
+  if (
+    !this.isNew &&
+    this.isModified("pricingSnapshot") &&
+    this._original_pricing_snapshot?.approvedAt
+  ) {
+    return next(new Error("Approved Reservation pricing snapshots are immutable."));
+  }
   for (const [field, cap] of Object.entries(ARRAY_CAPS)) {
     if (Array.isArray(this[field]) && this[field].length > cap) {
       // Keep the most recent entries

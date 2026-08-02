@@ -418,7 +418,7 @@ export function getNextAction(activeReservation, reservationProgress) {
  title: "Submit Your Payment",
  description:
  `Your application has been submitted. Pay PHP ${reservationFeeAmount.toLocaleString("en-PH")} online to confirm your reservation.`,
- buttonText: "Pay Now",
+ buttonText: "Pay Reservation Fee",
  buttonLink: "/applicant/reservation",
  reservationId: activeReservation._id,
  step: 4,
