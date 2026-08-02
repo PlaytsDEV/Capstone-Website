@@ -41,8 +41,8 @@ import {
 } from "../api/authFlowState";
 import { reservationApi } from "../api/reservationApi";
 import {
-  clearSessionId,
-  getSessionId,
+  clearApplicationSession,
+  hasApplicationSession,
   getOtpPending,
   isLoginInProgress,
   setOtpPending,
@@ -59,6 +59,11 @@ const AuthContext =
     : createContext(null);
 
 const TENANT_WARM_ROUTES = ["/applicant/profile", "/applicant/reservation"];
+
+const attachManagedFirebaseIdentity = (userData) =>
+  userData && auth.currentUser?.uid
+    ? { ...userData, firebaseUid: auth.currentUser.uid }
+    : userData;
 
 const warmTenantRouteData = (queryClient, userData) => {
   const isTenantPortalUser =
@@ -152,10 +157,10 @@ export const AuthProvider = ({ children }) => {
     }
 
     try {
-      if (!getSessionId()) {
+      if (!hasApplicationSession()) {
         const loginResult = await initializeBackendSession();
         if (isOtpDeliveryAccepted(loginResult)) {
-          setOtpPending({ email: auth.currentUser?.email || "" });
+          setOtpPending();
           setUser(null);
           setIsAuthenticated(false);
           if (window.location.pathname !== "/verify-otp") {
@@ -186,11 +191,11 @@ export const AuthProvider = ({ children }) => {
         return;
       }
 
-      setUser(userData);
+      const resolvedUser = attachManagedFirebaseIdentity(userData);
+      setUser(resolvedUser);
       setIsAuthenticated(true);
-      localStorage.setItem("user", JSON.stringify(userData));
-      queryClient.setQueryData(["users", "currentUser"], userData);
-      warmTenantRouteData(queryClient, userData);
+      queryClient.setQueryData(["users", "currentUser"], resolvedUser);
+      warmTenantRouteData(queryClient, resolvedUser);
 
     } catch (error) {
       // User not authenticated in backend - clear state
@@ -198,11 +203,11 @@ export const AuthProvider = ({ children }) => {
         getAuthErrorCode(error) === "OTP_SESSION_REQUIRED" ||
         getAuthErrorCode(error) === "OTP_SESSION_INVALID"
       ) {
-        clearSessionId();
+        clearApplicationSession();
         try {
           const loginResult = await initializeBackendSession();
           if (isOtpDeliveryAccepted(loginResult)) {
-            setOtpPending({ email: auth.currentUser?.email || "" });
+            setOtpPending();
             if (window.location.pathname !== "/verify-otp") {
               window.location.replace("/verify-otp");
             }
@@ -227,7 +232,8 @@ export const AuthProvider = ({ children }) => {
 
     try {
       const userData = await fetchProfileOnce();
-      queryClient.setQueryData(["users", "currentUser"], userData);
+      const resolvedUser = attachManagedFirebaseIdentity(userData);
+      queryClient.setQueryData(["users", "currentUser"], resolvedUser);
       setUser((prev) => {
         if (
           prev?.role &&
@@ -236,11 +242,10 @@ export const AuthProvider = ({ children }) => {
         ) {
           getFreshIdToken().catch(() => {});
         }
-        return userData;
+        return resolvedUser;
       });
       setIsAuthenticated(true);
-      localStorage.setItem("user", JSON.stringify(userData));
-      return userData;
+      return resolvedUser;
     } catch (error) {
       const statusCode = error.response?.status || error.status;
       const errorCode = getAuthErrorCode(error);
@@ -250,7 +255,7 @@ export const AuthProvider = ({ children }) => {
         errorCode === "OTP_SESSION_REQUIRED" ||
         errorCode === "OTP_SESSION_INVALID"
       ) {
-        clearSessionId();
+        clearApplicationSession();
         setUser(null);
         setIsAuthenticated(false);
       } else {
@@ -276,6 +281,7 @@ export const AuthProvider = ({ children }) => {
       checkAuth();
     } else {
       // No Firebase user, clear state
+      clearApplicationSession();
       setUser(null);
       setIsAuthenticated(false);
       setLoading(false);
@@ -310,7 +316,7 @@ export const AuthProvider = ({ children }) => {
         error.code = "OTP_DELIVERY_UNCONFIRMED";
         throw error;
       }
-      const resolvedUser = userData.user || userData;
+      const resolvedUser = attachManagedFirebaseIdentity(userData.user || userData);
       setUser(resolvedUser);
       setIsAuthenticated(true);
       queryClient.setQueryData(["users", "currentUser"], resolvedUser);
@@ -425,7 +431,7 @@ export const AuthProvider = ({ children }) => {
         return;
       }
 
-      const nextUser = event.query.state.data;
+      const nextUser = attachManagedFirebaseIdentity(event.query.state.data);
       if (!nextUser || !auth.currentUser) return;
 
       setUser((prev) => {
@@ -439,7 +445,6 @@ export const AuthProvider = ({ children }) => {
         return nextUser;
       });
       setIsAuthenticated(true);
-      localStorage.setItem("user", JSON.stringify(nextUser));
     });
 
     return unsubscribe;
@@ -450,10 +455,9 @@ export const AuthProvider = ({ children }) => {
    * @param {Object} userData - Updated user data
    */
   const updateUser = (userData) => {
-    setUser(userData);
+    const resolvedUser = attachManagedFirebaseIdentity(userData);
+    setUser(resolvedUser);
     setIsAuthenticated(Boolean(userData));
-    // Also update localStorage for persistence
-    localStorage.setItem("user", JSON.stringify(userData));
   };
 
   /**

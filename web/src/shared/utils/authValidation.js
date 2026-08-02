@@ -88,13 +88,19 @@ export const validatePassword = (password) => {
 /** Sanitize name fields — allow only letters, spaces, hyphens, apostrophes */
 export const sanitizeName = (value) => value.replace(/[^a-zA-Z\s'-]/g, "");
 
-/** Generate a safe username from email */
-export const generateUsername = (email) => {
-  const base = email
+/** Generate a backend-compatible 3-30 character username from an email. */
+export const generateUsername = (email, attempt = 0) => {
+  const normalizedBase = String(email || "")
     .split("@")[0]
     .toLowerCase()
     .replace(/[^a-z0-9_-]/g, "");
-  return `${base}${Math.floor(Math.random() * 10000)}`;
+  const base = (normalizedBase || "user").slice(0, 21).padEnd(3, "0");
+  const randomPart =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID().replace(/-/g, "").slice(0, 6)
+      : Math.random().toString(36).slice(2, 8).padEnd(6, "0");
+  const suffix = `${Number(attempt).toString(36)}${randomPart}`.slice(0, 7);
+  return `${base}-${suffix}`.slice(0, 30);
 };
 
 /** Map Firebase auth error codes to user-friendly messages */

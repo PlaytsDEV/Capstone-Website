@@ -18,9 +18,9 @@
 import { auth } from "../../firebase/config";
 import { API_BASE_URL } from "./baseUrl";
 import {
-  clearSessionId,
+  clearApplicationSession,
   getSessionHeaders,
-  setSessionId,
+  markApplicationSession,
 } from "./authSession";
 
 /**
@@ -113,7 +113,7 @@ export const authApi = {
    */
   login: async () => {
     const response = await authRequest("/auth/login", { method: "POST" });
-    if (response.sessionId) setSessionId(response.sessionId);
+    if (!response?.requiresOtp) markApplicationSession();
     return response;
   },
 
@@ -122,7 +122,7 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify({ otp }),
     });
-    if (response.sessionId) setSessionId(response.sessionId);
+    markApplicationSession();
     return response;
   },
 
@@ -163,7 +163,7 @@ export const authApi = {
       );
     }
     // Always sign out from Firebase even if backend fails
-    clearSessionId();
+    clearApplicationSession();
     await auth.signOut();
     return { message: "Logged out successfully" };
   },

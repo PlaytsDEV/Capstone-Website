@@ -16,12 +16,14 @@
  */
 
 import { Server } from "socket.io";
+import crypto from "crypto";
 import logger from "../middleware/logger.js";
 import { getAuth } from "../config/firebase.js";
-import { User } from "../models/index.js";
+import * as Models from "../models/index.js";
 import { ROOM_BRANCHES, isValidRoomBranch } from "../config/branches.js";
-import { isOwnerRole } from "../config/roles.js";
+import { isAdminRole, isOwnerRole } from "../config/roles.js";
 import { normalizePermissions } from "../config/accessControl.js";
+import { getWebSessionId } from "./webSessionCookie.js";
 
 let io = null;
 
@@ -35,9 +37,14 @@ const getSocketTransport = (socket) =>
   socket.handshake.query?.transport ||
   "unknown";
 
-export function createSocketAuthenticator({ getFirebaseAuth = getAuth, findUser } = {}) {
-  const loadUser = findUser || (async (uid) => User.findOne({ firebaseUid: uid })
-    .select("_id role permissions branch accountStatus isActive isArchived")
+export function createSocketAuthenticator({
+  getFirebaseAuth = getAuth,
+  findUser,
+  findOtpSession = (...args) => Models.UserSession.findValidOtpSession(...args),
+  findSession = (...args) => Models.UserSession.findValidSession(...args),
+} = {}) {
+  const loadUser = findUser || (async (uid) => Models.User.findOne({ firebaseUid: uid })
+    .select("_id role permissions branch accountStatus isActive isArchived securityVersion")
     .lean());
   return async (socket, next) => {
     const origin = getSocketOrigin(socket);
@@ -50,8 +57,22 @@ export function createSocketAuthenticator({ getFirebaseAuth = getAuth, findUser 
       const decoded = await auth.verifyIdToken(token, true);
       const dbUser = await loadUser(decoded.uid);
       if (!dbUser || dbUser.isArchived || dbUser.isActive === false || dbUser.accountStatus !== "active") {
-        logger.warn({ socketId: socket.id, origin, transport, firebaseUid: decoded.uid, userId: dbUser?._id ? String(dbUser._id) : null }, "Socket authentication rejected user");
-        return next(new Error("User not allowed"));
+        logger.warn({ socketId: socket.id, origin, transport, uidFingerprint: fingerprint(decoded.uid) }, "Socket authentication rejected");
+        return next(new Error("Authentication failed"));
+      }
+      const deviceId = String(
+        socket.handshake.auth?.deviceId || socket.handshake.headers?.["x-device-id"] || "",
+      ).trim();
+      const sessionId = getWebSessionId(socket);
+      const session = isAdminRole(dbUser.role)
+        ? await findSession(dbUser._id, deviceId, sessionId)
+        : await findOtpSession(dbUser._id, deviceId, sessionId);
+      if (
+        !session ||
+        Number(session.securityVersion || 0) !== Number(dbUser.securityVersion || 0)
+      ) {
+        logger.warn({ socketId: socket.id, origin, transport, uidFingerprint: fingerprint(decoded.uid) }, "Socket session rejected");
+        return next(new Error("Authentication failed"));
       }
       socket.data.authUser = {
         userId: dbUser._id ? String(dbUser._id) : "",
@@ -67,6 +88,9 @@ export function createSocketAuthenticator({ getFirebaseAuth = getAuth, findUser 
     }
   };
 }
+
+const fingerprint = (value) =>
+  crypto.createHash("sha256").update(String(value || "")).digest("hex").slice(0, 12);
 
 export function joinAuthorizedSocketRooms(socket) {
   const authUser = socket.data.authUser;

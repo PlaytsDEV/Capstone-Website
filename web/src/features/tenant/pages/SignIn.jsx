@@ -349,7 +349,7 @@ function SignIn() {
  try {
  const loginResponse = await login();
  if (isOtpDeliveryAccepted(loginResponse)) {
-  setOtpPending({ email: formData.email });
+  setOtpPending();
   navigate("/verify-otp");
   return;
  }

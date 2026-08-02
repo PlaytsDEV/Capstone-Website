@@ -81,6 +81,8 @@ const response = () => {
       res.body = body;
       return res;
     }),
+    cookie: jest.fn(),
+    clearCookie: jest.fn(),
   };
   return res;
 };
@@ -237,7 +239,12 @@ describe("web login OTP verification", () => {
     expect(findOneAndUpdate.mock.invocationCallOrder[0]).toBeLessThan(
       createSession.mock.invocationCallOrder[0],
     );
-    expect(res.body.sessionId).toBe("private-session-id");
+    expect(res.body).not.toHaveProperty("sessionId");
+    expect(res.cookie).toHaveBeenCalledWith(
+      "lilycrest_web_session",
+      "private-session-id",
+      expect.objectContaining({ httpOnly: true }),
+    );
   });
 
   test("incorrect and former master OTP values fail without creating a session", async () => {
