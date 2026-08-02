@@ -58,6 +58,7 @@ router.post(
   "/milestone-arrangement",
   verifyAdmin,
   requirePermission("manageBilling"),
+  filterByBranch,
   billingController.createMilestoneArrangementAction,
 );
 

@@ -31,6 +31,18 @@ export const invalidIdResponse = (res) =>
 
 /** Standardised error response handler */
 export const handleReservationError = (res, error, action = "process") => {
+  if (
+    Number.isInteger(error?.statusCode) &&
+    error.statusCode >= 400 &&
+    error.statusCode < 500 &&
+    typeof error?.code === "string"
+  ) {
+    return res.status(error.statusCode).json({
+      success: false,
+      error: error.message || "The requested action could not be completed.",
+      code: error.code,
+    });
+  }
   if (error.name === "ValidationError") {
     const validationErrors = {};
     Object.keys(error.errors).forEach((f) => {

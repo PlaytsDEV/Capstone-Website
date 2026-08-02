@@ -306,6 +306,31 @@ describe("route access guards", () => {
     ).toBe(true);
   });
 
+  test.each([
+    [reservationsRoutes, "/:reservationId/cancel-request/approve", "post", "manageReservations"],
+    [reservationsRoutes, "/:reservationId/cancel-request/reject", "post", "manageReservations"],
+    [reservationsRoutes, "/:reservationId/modification-request/approve", "post", "manageReservations"],
+    [reservationsRoutes, "/:reservationId/modification-request/reject", "post", "manageReservations"],
+    [reservationsRoutes, "/:reservationId/cancel-transfer", "post", ["manageReservations", "manageTenants"]],
+    [reservationsRoutes, "/:reservationId/cancel-moveout", "post", ["manageReservations", "manageTenants"]],
+    [reservationsRoutes, "/:reservationId/early-termination", "post", ["manageReservations", "manageTenants"]],
+    [reservationsRoutes, "/room-swap", "post", ["manageReservations", "manageTenants"]],
+    [reservationsRoutes, "/:reservationId/abandonment", "post", ["manageReservations", "manageTenants"]],
+    [billingRoutes, "/milestone-arrangement", "post", "manageBilling"],
+  ])("secured Phase 2 route %s %s applies permission before branch scope", (router, path, method, permission) => {
+    const handlers = getRouteHandlers(router, path, method);
+    const permissionIndex = handlers.findIndex((handler) =>
+      Array.isArray(permission)
+        ? permission.every((value) => handler.requiredPermissions?.includes(value))
+        : handler.requiredPermission === permission,
+    );
+    const branchIndex = handlers.indexOf(filterByBranch);
+    expect(handlers).toContain(verifyAdmin);
+    expect(permissionIndex).toBeGreaterThan(handlers.indexOf(verifyAdmin));
+    expect(branchIndex).toBeGreaterThan(permissionIndex);
+    expect(branchIndex).toBeLessThan(handlers.length - 1);
+  });
+
   test("reservation static utility routes are registered before dynamic id route", () => {
     const detailIndex = getRouteIndex(reservationsRoutes, "/:reservationId", "get");
 

@@ -1082,16 +1082,57 @@ export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {
  * SCENARIO 1 - Case 1: Post-Approval Transfer Cancellation
  * Releases Room B lock and retains tenant active in Room A.
  */
-export async function cancelTransferStayWorkflow(reservationId, actorId = null) {
+const assertAuthorizedWorkflowRoom = (room, expectedBranch) => {
+  if (!expectedBranch) return;
+  if (!room || room.isArchived || room.branch !== expectedBranch) {
+    const error = new Error("The tenancy assignment changed after branch authorization.");
+    error.code = "BRANCH_RELATIONSHIP_INCONSISTENT";
+    error.statusCode = 409;
+    throw error;
+  }
+};
+
+const assertAuthorizedWorkflowBed = (room, bedId, expectedBranch) => {
+  if (!expectedBranch) return;
+  const valid = room?.beds?.some(
+    (bed) => String(bed.id ?? bed._id) === String(bedId),
+  );
+  if (!valid) {
+    const error = new Error("The selected Bed no longer belongs to the authorized Room.");
+    error.code = "TARGET_BED_MISMATCH";
+    error.statusCode = 422;
+    throw error;
+  }
+};
+
+export async function cancelTransferStayWorkflow(
+  reservationId,
+  actorId = null,
+  { expectedBranch = null } = {},
+) {
   const reservation = await Reservation.findById(reservationId).populate("roomId");
   if (!reservation) {
     throw new Error("Reservation not found");
   }
+  assertAuthorizedWorkflowRoom(reservation.roomId, expectedBranch);
 
   if (reservation.pendingTransferRoomId) {
     const targetRoom = await Room.findById(reservation.pendingTransferRoomId);
+    if (!targetRoom && expectedBranch) {
+      const error = new Error("The pending transfer Room no longer exists.");
+      error.code = "TARGET_BRANCH_UNRESOLVED";
+      error.statusCode = 422;
+      throw error;
+    }
     if (targetRoom) {
+      assertAuthorizedWorkflowRoom(targetRoom, expectedBranch);
       const bed = targetRoom.beds?.find(b => String(b.id) === String(reservation.pendingTransferBedId) || String(b._id) === String(reservation.pendingTransferBedId));
+      if (!bed && expectedBranch) {
+        const error = new Error("The pending transfer Bed no longer belongs to the authorized Room.");
+        error.code = "TARGET_BED_MISMATCH";
+        error.statusCode = 422;
+        throw error;
+      }
       if (bed) {
         bed.status = "available";
         bed.lockType = null;
@@ -1116,11 +1157,16 @@ export async function cancelTransferStayWorkflow(reservationId, actorId = null) 
 /**
  * SCENARIO 1 - Case 2: Post-Approval Move-Out Cancellation with Re-booking Conflict Check
  */
-export async function cancelMoveOutStayWorkflow(reservationId, actorId = null) {
+export async function cancelMoveOutStayWorkflow(
+  reservationId,
+  actorId = null,
+  { expectedBranch = null } = {},
+) {
   const reservation = await Reservation.findById(reservationId).populate("roomId");
   if (!reservation) {
     throw new Error("Reservation not found");
   }
+  assertAuthorizedWorkflowRoom(reservation.roomId, expectedBranch);
 
   // Check if room/bed was already pre-booked by an incoming applicant
   const conflictQuery = {
@@ -1158,12 +1204,21 @@ export async function cancelMoveOutStayWorkflow(reservationId, actorId = null) {
 /**
  * SCENARIO 1 - Case 3: Early Contract Termination
  */
-export async function executeEarlyTerminationWorkflow(reservationId, payload = {}, actorId = null) {
+export async function executeEarlyTerminationWorkflow(
+  reservationId,
+  payload = {},
+  actorId = null,
+  { expectedBranch = null } = {},
+) {
   const { penaltyFee = 0, forfeitureReason = "early_termination" } = payload;
   const reservation = await Reservation.findById(reservationId).populate("roomId");
   if (!reservation) {
     throw new Error("Reservation not found");
   }
+  assertAuthorizedWorkflowRoom(reservation.roomId, expectedBranch);
+  const room = await Room.findById(reservation.roomId._id || reservation.roomId);
+  assertAuthorizedWorkflowRoom(room, expectedBranch);
+  assertAuthorizedWorkflowBed(room, reservation.selectedBed?.id, expectedBranch);
 
   reservation.status = "moveOut";
   reservation.moveOutDate = new Date();
@@ -1174,7 +1229,6 @@ export async function executeEarlyTerminationWorkflow(reservationId, payload = {
   await reservation.save();
 
   // Free room inventory
-  const room = await Room.findById(reservation.roomId._id || reservation.roomId);
   if (room && reservation.selectedBed?.id) {
     const bed = room.beds.find(b => String(b.id) === String(reservation.selectedBed.id));
     if (bed) {
@@ -1193,7 +1247,12 @@ export async function executeEarlyTerminationWorkflow(reservationId, payload = {
 /**
  * SCENARIO 1 - Case 4: Direct Tenant Room Swap
  */
-export async function executeDirectRoomSwapWorkflow(reservationAId, reservationBId, actorId = null) {
+export async function executeDirectRoomSwapWorkflow(
+  reservationAId,
+  reservationBId,
+  actorId = null,
+  { expectedBranch = null } = {},
+) {
   const session = await mongoose.startSession();
   let result = null;
 
@@ -1204,6 +1263,21 @@ export async function executeDirectRoomSwapWorkflow(reservationAId, reservationB
 
       if (!resA || !resB) {
         throw new Error("One or both reservations not found for room swap");
+      }
+
+      if (expectedBranch) {
+        const roomA = await Room.findById(resA.roomId).session(session);
+        const roomB = await Room.findById(resB.roomId).session(session);
+        assertAuthorizedWorkflowRoom(roomA, expectedBranch);
+        assertAuthorizedWorkflowRoom(roomB, expectedBranch);
+        const bedAValid = roomA.beds?.some((bed) => String(bed.id ?? bed._id) === String(resA.selectedBed?.id));
+        const bedBValid = roomB.beds?.some((bed) => String(bed.id ?? bed._id) === String(resB.selectedBed?.id));
+        if (!bedAValid || !bedBValid) {
+          const error = new Error("A selected bed no longer belongs to its authorized Room.");
+          error.code = "TARGET_BED_MISMATCH";
+          error.statusCode = 422;
+          throw error;
+        }
       }
 
       // Swap room and bed assignments
@@ -1238,11 +1312,20 @@ export async function executeDirectRoomSwapWorkflow(reservationAId, reservationB
 /**
  * SCENARIO 1 - Case 5: Unannounced Abandonment ("Ghost Tenant") Protocol
  */
-export async function executeAbandonmentProtocolWorkflow(reservationId, payload = {}, actorId = null) {
+export async function executeAbandonmentProtocolWorkflow(
+  reservationId,
+  payload = {},
+  actorId = null,
+  { expectedBranch = null } = {},
+) {
   const reservation = await Reservation.findById(reservationId).populate("roomId");
   if (!reservation) {
     throw new Error("Reservation not found");
   }
+  assertAuthorizedWorkflowRoom(reservation.roomId, expectedBranch);
+  const room = await Room.findById(reservation.roomId._id || reservation.roomId);
+  assertAuthorizedWorkflowRoom(room, expectedBranch);
+  assertAuthorizedWorkflowBed(room, reservation.selectedBed?.id, expectedBranch);
 
   reservation.status = "abandoned";
   reservation.depositForfeited = true;
@@ -1253,7 +1336,6 @@ export async function executeAbandonmentProtocolWorkflow(reservationId, payload 
   await reservation.save();
 
   // Free bed inventory immediately
-  const room = await Room.findById(reservation.roomId._id || reservation.roomId);
   if (room && reservation.selectedBed?.id) {
     const bed = room.beds.find(b => String(b.id) === String(reservation.selectedBed.id));
     if (bed) {

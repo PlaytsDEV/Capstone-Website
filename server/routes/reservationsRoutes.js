@@ -457,8 +457,8 @@ router.post(
   "/:reservationId/cancel-request/approve",
   verifyToken,
   verifyAdmin,
-  filterByBranch,
   requirePermission("manageReservations"),
+  filterByBranch,
   approveCancellationRequest,
 );
 
@@ -471,8 +471,8 @@ router.post(
   "/:reservationId/cancel-request/reject",
   verifyToken,
   verifyAdmin,
-  filterByBranch,
   requirePermission("manageReservations"),
+  filterByBranch,
   rejectCancellationRequest,
 );
 
@@ -495,8 +495,8 @@ router.post(
   "/:reservationId/modification-request/approve",
   verifyToken,
   verifyAdmin,
-  filterByBranch,
   requirePermission("manageReservations"),
+  filterByBranch,
   approvePreMoveInModification,
 );
 
@@ -508,8 +508,8 @@ router.post(
   "/:reservationId/modification-request/reject",
   verifyToken,
   verifyAdmin,
-  filterByBranch,
   requirePermission("manageReservations"),
+  filterByBranch,
   rejectPreMoveInModification,
 );
 
@@ -685,8 +685,8 @@ router.post(
   "/:reservationId/cancel-transfer",
   verifyToken,
   verifyAdmin,
-  filterByBranch,
   requireAnyPermission(["manageReservations", "manageTenants"]),
+  filterByBranch,
   cancelTransferAction,
 );
 
@@ -694,8 +694,8 @@ router.post(
   "/:reservationId/cancel-moveout",
   verifyToken,
   verifyAdmin,
-  filterByBranch,
   requireAnyPermission(["manageReservations", "manageTenants"]),
+  filterByBranch,
   cancelMoveOutAction,
 );
 
@@ -703,8 +703,8 @@ router.post(
   "/:reservationId/early-termination",
   verifyToken,
   verifyAdmin,
-  filterByBranch,
   requireAnyPermission(["manageReservations", "manageTenants"]),
+  filterByBranch,
   earlyTerminationAction,
 );
 
@@ -713,6 +713,7 @@ router.post(
   verifyToken,
   verifyAdmin,
   requireAnyPermission(["manageReservations", "manageTenants"]),
+  filterByBranch,
   swapRoomsAction,
 );
 
@@ -720,8 +721,8 @@ router.post(
   "/:reservationId/abandonment",
   verifyToken,
   verifyAdmin,
-  filterByBranch,
   requireAnyPermission(["manageReservations", "manageTenants"]),
+  filterByBranch,
   triggerAbandonmentAction,
 );
 

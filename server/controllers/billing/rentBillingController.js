@@ -1,5 +1,6 @@
 import dayjs from "dayjs";
-import { Bill, Reservation, Room } from "../../models/index.js";
+import mongoose from "mongoose";
+import { Bill, Reservation, Room, Stay, User } from "../../models/index.js";
 import logger from "../../middleware/logger.js";
 import {
   getAdminInfo,
@@ -31,6 +32,11 @@ import { sendDraftUtilityBills } from "../../utils/utilityBillFlow.js";
 import { createMilestoneSubInvoices } from "../../services/milestoneInvoiceService.js";
 import { executeLatePenaltyCron } from "../../services/penaltyEngineService.js";
 import { getTenantBillsInPriorityOrder } from "../../services/billingPriorityService.js";
+import {
+  denyBranchAction,
+  enforceAuthoritativeBranch,
+  logBranchScopedSuccess,
+} from "../../services/branchAuthorizationService.js";
 
 export const getRentBills = async (req, res, next) => {
   try {
@@ -672,7 +678,97 @@ export const publishRoomBills = async (req, res, next) => {
 export const createMilestoneArrangementAction = async (req, res, next) => {
   try {
     const { parentBillId, milestones } = req.body;
-    const subInvoices = await createMilestoneSubInvoices(parentBillId, milestones, req.user.uid);
+    if (!mongoose.isValidObjectId(parentBillId)) {
+      return res.status(400).json({ success: false, error: "Invalid Bill ID.", code: "INVALID_BILL_ID" });
+    }
+    const parentBill = await Bill.findById(parentBillId);
+    if (!parentBill) {
+      return res.status(404).json({ success: false, error: "Master invoice not found.", code: "BILL_NOT_FOUND" });
+    }
+    const reservation = parentBill.reservationId
+      ? await Reservation.findById(parentBill.reservationId).populate("roomId", "branch isArchived")
+      : null;
+    const authoritativeRoomId = parentBill.roomId || reservation?.roomId?._id || reservation?.roomId;
+    const room = authoritativeRoomId
+      ? await Room.findById(authoritativeRoomId).select("branch isArchived")
+      : null;
+    const stay = reservation
+      ? await Stay.findOne({ reservationId: reservation._id, status: { $in: ["active", "ending_soon"] } }).populate("roomId", "branch isArchived")
+      : null;
+    const tenant = parentBill.userId ? await User.findById(parentBill.userId).select("branch") : null;
+
+    const identifiersAgree = Boolean(
+      reservation && room && stay && tenant &&
+      String(parentBill.reservationId) === String(reservation._id) &&
+      String(parentBill.userId) === String(tenant._id) &&
+      String(stay.reservationId) === String(reservation._id) &&
+      String(stay.tenantId) === String(parentBill.userId) &&
+      String(stay.roomId?._id || stay.roomId) === String(room._id) &&
+      String(reservation.roomId?._id || reservation.roomId) === String(room._id) &&
+      (!parentBill.roomId || String(parentBill.roomId) === String(room._id))
+    );
+    if (!identifiersAgree) {
+      await denyBranchAction(
+        req,
+        res,
+        { action: "billing.milestone_arrangement.create", entityType: "bill", entityId: parentBill._id },
+        "BILL_BRANCH_MISMATCH",
+      );
+      return;
+    }
+
+    const branchContext = await enforceAuthoritativeBranch({
+      req,
+      res,
+      action: "billing.milestone_arrangement.create",
+      entityType: "bill",
+      entityId: parentBill._id,
+      sources: [
+        { source: "bill", value: parentBill.isArchived ? null : parentBill.branch },
+        { source: "bill.room", value: room.isArchived ? null : room.branch },
+        { source: "reservation.room", value: reservation.roomId?.isArchived ? null : reservation.roomId?.branch },
+        { source: "reservation.pricingSnapshot", value: reservation.pricingSnapshot?.branchId, required: false },
+        { source: "stay", value: stay.branch },
+        { source: "stay.room", value: stay.roomId?.isArchived ? null : stay.roomId?.branch },
+        { source: "tenant", value: tenant.branch },
+      ],
+    });
+    if (!branchContext) return;
+
+    const previousState = parentBill.toObject ? parentBill.toObject() : { ...parentBill };
+    const subInvoices = await createMilestoneSubInvoices(
+      parentBillId,
+      milestones,
+      req.authUser?._id || req.user.uid,
+      { expectedBranch: branchContext.branchId },
+    );
+    await logBranchScopedSuccess({
+      req,
+      action: "billing.milestone_arrangement.created",
+      entityType: "bill",
+      entityId: parentBill._id,
+      branchContext,
+      previousState,
+      newState: {
+        parentStatus: "voided",
+        milestoneIds: subInvoices.map((invoice) => String(invoice._id)),
+      },
+      reason: req.body.reason || "Approved milestone payment arrangement",
+      linkedRecords: {
+        reservationId: String(reservation._id),
+        stayId: String(stay._id),
+        roomId: String(room._id),
+        tenantId: String(tenant._id),
+        billId: String(parentBill._id),
+      },
+      financial: {
+        originalBillAmount: Number(parentBill.totalAmount || 0),
+        remainingAmountBeforeAction: Number(parentBill.remainingAmount || 0),
+        arrangementAmount: milestones.reduce((sum, item) => sum + Number(item.amount || 0), 0),
+        resultingSchedule: milestones.map((item, index) => ({ index: index + 1, amount: Number(item.amount), dueDate: item.dueDate })),
+        approver: String(req.authUser?._id || req.user.uid),
+      },
+    });
     res.json({
       success: true,
       message: `Created ${subInvoices.length} milestone sub-invoices. Master bill voided.`,

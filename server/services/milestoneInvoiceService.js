@@ -17,14 +17,28 @@ import Bill from "../models/Bill.js";
  * @param {string} adminUserId - ID of the admin approving the arrangement.
  * @returns {Promise<Array<Object>>} Created milestone sub-invoices.
  */
-export async function createMilestoneSubInvoices(parentBillId, milestones, adminUserId) {
+export async function createMilestoneSubInvoices(
+  parentBillId,
+  milestones,
+  adminUserId,
+  { expectedBranch = null } = {},
+) {
   if (!parentBillId || !Array.isArray(milestones) || milestones.length < 2) {
     throw new Error("Payment arrangement requires a valid bill ID and at least 2 milestone entries.");
   }
 
-  const parentBill = await Bill.findById(parentBillId);
+  const parentBill = expectedBranch
+    ? await Bill.findOne({
+        _id: parentBillId,
+        branch: expectedBranch,
+        isArchived: { $ne: true },
+      })
+    : await Bill.findById(parentBillId);
   if (!parentBill) {
-    throw new Error("Master invoice not found.");
+    const error = new Error("Master invoice was not found in the authorized branch.");
+    error.code = expectedBranch ? "BILL_BRANCH_MISMATCH" : "BILL_NOT_FOUND";
+    error.statusCode = expectedBranch ? 409 : 404;
+    throw error;
   }
 
   if (parentBill.status === "paid" || parentBill.status === "voided") {

@@ -23,6 +23,30 @@ import {
   findDbUser,
   notifyAdminsOfCancellationRequest,
 } from "./_helpers.js";
+import {
+  enforceAuthoritativeBranch,
+  logBranchScopedSuccess,
+} from "../../services/branchAuthorizationService.js";
+
+const authorizeCancellationReservation = (req, res, reservation, action) =>
+  enforceAuthoritativeBranch({
+    req,
+    res,
+    action,
+    entityType: "reservation",
+    entityId: reservation._id,
+    sources: [
+      {
+        source: "reservation.room",
+        value: reservation.roomId?.isArchived ? null : reservation.roomId?.branch,
+      },
+      {
+        source: "reservation.pricingSnapshot",
+        value: reservation.pricingSnapshot?.branchId,
+        required: false,
+      },
+    ],
+  });
 
 const APPLICANT_CANCELLABLE_STATUSES = new Set([
   "pending",
@@ -247,6 +271,14 @@ export const approveCancellationRequest = async (req, res, next) => {
     if (!reservation)
       return res.status(404).json({ error: "Reservation not found.", code: "NOT_FOUND" });
 
+    const branchContext = await authorizeCancellationReservation(
+      req,
+      res,
+      reservation,
+      "reservation.cancellation.approve",
+    );
+    if (!branchContext) return;
+
     if (!reservation.cancellationRequested || reservation.cancellationStatus !== "pending") {
       return res.status(409).json({
         error: "No pending cancellation request found for this reservation.",
@@ -309,14 +341,17 @@ export const approveCancellationRequest = async (req, res, next) => {
       reservationId: reservation._id,
     }).catch((err) => logger.warn({ err }, "[ApproveCancellation] User lifecycle sync failed (non-fatal)"));
 
-    await auditLogger.logModification(
+    await logBranchScopedSuccess({
       req,
-      "reservation",
-      reservation._id,
-      oldData,
-      reservation.toObject(),
-      "Cancellation request approved",
-    );
+      action: "reservation.cancellation.approved",
+      entityType: "reservation",
+      entityId: reservation._id,
+      branchContext,
+      previousState: oldData,
+      newState: reservation.toObject(),
+      reason: adminNote || "Cancellation request approved",
+      linkedRecords: { roomId: String(reservation.roomId?._id || reservation.roomId) },
+    });
 
     await notify.cancellationApproved(reservation.userId, reservation.reservationCode).catch((notifyErr) => {
       logger.warn({ err: notifyErr }, "[ApproveCancellation] Tenant notification failed (non-fatal)");
@@ -338,9 +373,17 @@ export const rejectCancellationRequest = async (req, res, next) => {
     if (!dbUser)
       return res.status(404).json({ error: "User not found.", code: "USER_NOT_FOUND" });
 
-    const reservation = await Reservation.findById(reservationId);
+    const reservation = await Reservation.findById(reservationId).populate("roomId", "branch isArchived");
     if (!reservation)
       return res.status(404).json({ error: "Reservation not found.", code: "NOT_FOUND" });
+
+    const branchContext = await authorizeCancellationReservation(
+      req,
+      res,
+      reservation,
+      "reservation.cancellation.reject",
+    );
+    if (!branchContext) return;
 
     if (!reservation.cancellationRequested || reservation.cancellationStatus !== "pending") {
       return res.status(409).json({
@@ -360,14 +403,17 @@ export const rejectCancellationRequest = async (req, res, next) => {
     reservation.cancellationRequested = false;
     await reservation.save();
 
-    await auditLogger.logModification(
+    await logBranchScopedSuccess({
       req,
-      "reservation",
-      reservation._id,
-      oldData,
-      reservation.toObject(),
-      "Cancellation request rejected",
-    );
+      action: "reservation.cancellation.rejected",
+      entityType: "reservation",
+      entityId: reservation._id,
+      branchContext,
+      previousState: oldData,
+      newState: reservation.toObject(),
+      reason: adminNote || "Cancellation request rejected",
+      linkedRecords: { roomId: String(reservation.roomId?._id || reservation.roomId) },
+    });
 
     await notify.cancellationRejected(reservation.userId, reservation.reservationCode, adminNote).catch((notifyErr) => {
       logger.warn({ err: notifyErr }, "[RejectCancellation] Tenant notification failed (non-fatal)");
@@ -432,8 +478,16 @@ export const approvePreMoveInModification = async (req, res, next) => {
     const dbUser = await findDbUser(req.user.uid);
     if (!dbUser) return res.status(404).json({ error: "User not found.", code: "USER_NOT_FOUND" });
 
-    const reservation = await Reservation.findById(reservationId);
+    const reservation = await Reservation.findById(reservationId).populate("roomId", "branch isArchived");
     if (!reservation) return res.status(404).json({ error: "Reservation not found.", code: "NOT_FOUND" });
+
+    const branchContext = await authorizeCancellationReservation(
+      req,
+      res,
+      reservation,
+      "reservation.pre_move_in_modification.approve",
+    );
+    if (!branchContext) return;
 
     if (!reservation.modificationRequested || reservation.modificationStatus !== "pending") {
       return res.status(409).json({
@@ -444,6 +498,7 @@ export const approvePreMoveInModification = async (req, res, next) => {
 
     const now = new Date();
     const details = reservation.modificationDetails || {};
+    const oldData = reservation.toObject();
     if (details.requestedMoveInDate) {
       reservation.intendedMoveInDate = details.requestedMoveInDate;
       reservation.targetMoveInDate = details.requestedMoveInDate;
@@ -460,6 +515,18 @@ export const approvePreMoveInModification = async (req, res, next) => {
     };
     await reservation.save();
 
+    await logBranchScopedSuccess({
+      req,
+      action: "reservation.pre_move_in_modification.approved",
+      entityType: "reservation",
+      entityId: reservation._id,
+      branchContext,
+      previousState: oldData,
+      newState: reservation.toObject(),
+      reason: req.body.note || "Pre-move-in modification approved",
+      linkedRecords: { roomId: String(reservation.roomId?._id || reservation.roomId) },
+    });
+
     res.json({ message: "Modification request approved successfully.", reservation });
   } catch (error) {
     logger.error({ err: error, requestId: req.id }, "approvePreMoveInModification error");
@@ -475,8 +542,16 @@ export const rejectPreMoveInModification = async (req, res, next) => {
     const dbUser = await findDbUser(req.user.uid);
     if (!dbUser) return res.status(404).json({ error: "User not found.", code: "USER_NOT_FOUND" });
 
-    const reservation = await Reservation.findById(reservationId);
+    const reservation = await Reservation.findById(reservationId).populate("roomId", "branch isArchived");
     if (!reservation) return res.status(404).json({ error: "Reservation not found.", code: "NOT_FOUND" });
+
+    const branchContext = await authorizeCancellationReservation(
+      req,
+      res,
+      reservation,
+      "reservation.pre_move_in_modification.reject",
+    );
+    if (!branchContext) return;
 
     if (!reservation.modificationRequested || reservation.modificationStatus !== "pending") {
       return res.status(409).json({
@@ -487,6 +562,7 @@ export const rejectPreMoveInModification = async (req, res, next) => {
 
     const now = new Date();
     const details = reservation.modificationDetails || {};
+    const oldData = reservation.toObject();
 
     reservation.modificationStatus = "rejected";
     reservation.modificationRequested = false;
@@ -497,6 +573,18 @@ export const rejectPreMoveInModification = async (req, res, next) => {
       reviewedBy: dbUser._id,
     };
     await reservation.save();
+
+    await logBranchScopedSuccess({
+      req,
+      action: "reservation.pre_move_in_modification.rejected",
+      entityType: "reservation",
+      entityId: reservation._id,
+      branchContext,
+      previousState: oldData,
+      newState: reservation.toObject(),
+      reason: req.body.note || "Pre-move-in modification rejected",
+      linkedRecords: { roomId: String(reservation.roomId?._id || reservation.roomId) },
+    });
 
     res.json({ message: "Modification request rejected.", reservation });
   } catch (error) {

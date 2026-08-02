@@ -8,7 +8,7 @@
  */
 
 import dayjs from "dayjs";
-import { Reservation } from "../../models/index.js";
+import { Reservation, Room, Stay } from "../../models/index.js";
 import logger from "../../middleware/logger.js";
 import auditLogger from "../../utils/auditLogger.js";
 import {
@@ -41,6 +41,70 @@ import {
   findDbUser,
   serializeReservation,
 } from "./_helpers.js";
+import {
+  denyBranchAction,
+  enforceAuthoritativeBranch,
+  logBranchScopedSuccess,
+  roomContainsBed,
+} from "../../services/branchAuthorizationService.js";
+
+const loadTenancyBranchRecords = async (reservationId) => {
+  const reservation = await Reservation.findById(reservationId).populate(
+    "roomId",
+    "branch beds isArchived",
+  );
+  if (!reservation) return null;
+  const stay = await Stay.findOne({
+    reservationId: reservation._id,
+    status: { $in: ["active", "ending_soon"] },
+  }).populate("roomId", "branch isArchived");
+  return { reservation, stay };
+};
+
+const authorizeTenancyRecords = async (
+  req,
+  res,
+  records,
+  action,
+  additionalSources = [],
+) => {
+  const room = records.reservation.roomId;
+  if (!roomContainsBed(room, records.reservation.selectedBed?.id)) {
+    await denyBranchAction(
+      req,
+      res,
+      { action, entityType: "reservation", entityId: records.reservation._id },
+      "TARGET_BED_MISMATCH",
+    );
+    return null;
+  }
+  if (
+    records.stay &&
+    String(records.stay.roomId?._id || records.stay.roomId) !== String(room?._id || room)
+  ) {
+    await denyBranchAction(
+      req,
+      res,
+      { action, entityType: "reservation", entityId: records.reservation._id },
+      "TARGET_ROOM_BRANCH_MISMATCH",
+    );
+    return null;
+  }
+  return enforceAuthoritativeBranch({
+    req,
+    res,
+    action,
+    entityType: "reservation",
+    entityId: records.reservation._id,
+    sources: [
+      { source: "reservation.room", value: room?.isArchived ? null : room?.branch },
+      { source: "stay", value: records.stay?.branch },
+      { source: "stay.room", value: records.stay?.roomId?.isArchived ? null : records.stay?.roomId?.branch },
+      { source: "reservation.pricingSnapshot", value: records.reservation.pricingSnapshot?.branchId, required: false },
+      ...additionalSources,
+    ],
+  });
+};
 
 export const archiveReservation = async (req, res, next) => {
   try {
@@ -777,17 +841,43 @@ export const cancelTransferAction = async (req, res, next) => {
     const { reservationId } = req.params;
     if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
 
-    const actor = await findDbUser(req.user.uid);
-    const result = await cancelTransferStayWorkflow(reservationId, actor?._id);
-
-    await auditLogger.logModification(
+    const records = await loadTenancyBranchRecords(reservationId);
+    if (!records) return res.status(404).json({ error: "Reservation not found", code: "RESERVATION_NOT_FOUND" });
+    const targetRoom = records.reservation.pendingTransferRoomId
+      ? await Room.findById(records.reservation.pendingTransferRoomId).select("branch beds isArchived")
+      : null;
+    if (records.reservation.pendingTransferRoomId && !targetRoom) {
+      await denyBranchAction(req, res, { action: "tenancy.transfer.cancel", entityType: "reservation", entityId: reservationId }, "TARGET_BRANCH_UNRESOLVED");
+      return;
+    }
+    if (
+      targetRoom &&
+      records.reservation.pendingTransferBedId &&
+      !roomContainsBed(targetRoom, records.reservation.pendingTransferBedId)
+    ) {
+      await denyBranchAction(req, res, { action: "tenancy.transfer.cancel", entityType: "reservation", entityId: reservationId }, "TARGET_BED_MISMATCH");
+      return;
+    }
+    if (
+      targetRoom &&
+      targetRoom.branch !== records.reservation.roomId?.branch
+    ) {
+      await denyBranchAction(req, res, { action: "tenancy.transfer.cancel", entityType: "reservation", entityId: reservationId }, "CROSS_BRANCH_ACTION_NOT_ALLOWED");
+      return;
+    }
+    const branchContext = await authorizeTenancyRecords(
       req,
-      "reservation",
-      reservationId,
-      {},
-      result.reservation.toObject(),
-      "Cancelled approved room transfer and released target room lock"
+      res,
+      records,
+      "tenancy.transfer.cancel",
+      targetRoom ? [{ source: "pendingTransfer.room", value: targetRoom.isArchived ? null : targetRoom.branch }] : [],
     );
+    if (!branchContext) return;
+    const actor = await findDbUser(req.user.uid);
+    const previousState = records.reservation.toObject();
+    const result = await cancelTransferStayWorkflow(reservationId, actor?._id, { expectedBranch: branchContext.branchId });
+
+    await logBranchScopedSuccess({ req, action: "tenancy.transfer.cancelled", entityType: "reservation", entityId: reservationId, branchContext, previousState, newState: result.reservation.toObject(), reason: "Cancelled approved room transfer and released target room lock", linkedRecords: { stayId: String(records.stay._id), sourceRoomId: String(records.reservation.roomId?._id || records.reservation.roomId), targetRoomId: targetRoom ? String(targetRoom._id) : null } });
 
     res.json({ success: true, ...result });
   } catch (error) {
@@ -804,21 +894,19 @@ export const cancelMoveOutAction = async (req, res, next) => {
     const { reservationId } = req.params;
     if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
 
+    const records = await loadTenancyBranchRecords(reservationId);
+    if (!records) return res.status(404).json({ error: "Reservation not found", code: "RESERVATION_NOT_FOUND" });
+    const branchContext = await authorizeTenancyRecords(req, res, records, "tenancy.move_out.cancel");
+    if (!branchContext) return;
     const actor = await findDbUser(req.user.uid);
-    const result = await cancelMoveOutStayWorkflow(reservationId, actor?._id);
+    const previousState = records.reservation.toObject();
+    const result = await cancelMoveOutStayWorkflow(reservationId, actor?._id, { expectedBranch: branchContext.branchId });
 
     if (result.conflict) {
       return res.status(409).json(result);
     }
 
-    await auditLogger.logModification(
-      req,
-      "reservation",
-      reservationId,
-      {},
-      result.reservation.toObject(),
-      "Cancelled move-out request and restored active stay status"
-    );
+    await logBranchScopedSuccess({ req, action: "tenancy.move_out.cancelled", entityType: "reservation", entityId: reservationId, branchContext, previousState, newState: result.reservation.toObject(), reason: "Cancelled move-out request and restored active stay status", linkedRecords: { stayId: String(records.stay._id), roomId: String(records.reservation.roomId?._id || records.reservation.roomId) } });
 
     res.json({ success: true, ...result });
   } catch (error) {
@@ -836,17 +924,15 @@ export const earlyTerminationAction = async (req, res, next) => {
     const { penaltyFee = 0, forfeitureReason = "early_termination" } = req.body;
     if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
 
+    const records = await loadTenancyBranchRecords(reservationId);
+    if (!records) return res.status(404).json({ error: "Reservation not found", code: "RESERVATION_NOT_FOUND" });
+    const branchContext = await authorizeTenancyRecords(req, res, records, "tenancy.early_termination.execute");
+    if (!branchContext) return;
     const actor = await findDbUser(req.user.uid);
-    const result = await executeEarlyTerminationWorkflow(reservationId, { penaltyFee, forfeitureReason }, actor?._id);
+    const previousState = records.reservation.toObject();
+    const result = await executeEarlyTerminationWorkflow(reservationId, { penaltyFee, forfeitureReason }, actor?._id, { expectedBranch: branchContext.branchId });
 
-    await auditLogger.logModification(
-      req,
-      "reservation",
-      reservationId,
-      {},
-      result.reservation.toObject(),
-      `Executed early contract termination with penalty fee PHP ${penaltyFee}`
-    );
+    await logBranchScopedSuccess({ req, action: "tenancy.early_termination.executed", entityType: "reservation", entityId: reservationId, branchContext, previousState, newState: result.reservation.toObject(), reason: forfeitureReason, linkedRecords: { stayId: String(records.stay._id), roomId: String(records.reservation.roomId?._id || records.reservation.roomId) }, financial: { penaltyFee: Number(penaltyFee) } });
 
     res.json({ success: true, ...result });
   } catch (error) {
@@ -865,17 +951,35 @@ export const swapRoomsAction = async (req, res, next) => {
       return res.status(400).json({ error: "Invalid reservation IDs provided for room swap", code: "INVALID_INPUT" });
     }
 
+    const recordsA = await loadTenancyBranchRecords(reservationAId);
+    const recordsB = await loadTenancyBranchRecords(reservationBId);
+    if (!recordsA || !recordsB) return res.status(404).json({ error: "One or both reservations not found", code: "RESERVATION_NOT_FOUND" });
+    if (
+      String(recordsB.stay?.roomId?._id || recordsB.stay?.roomId) !==
+      String(recordsB.reservation.roomId?._id || recordsB.reservation.roomId)
+    ) {
+      await denyBranchAction(req, res, { action: "tenancy.room_swap.execute", entityType: "reservation", entityId: reservationAId }, "TARGET_ROOM_BRANCH_MISMATCH");
+      return;
+    }
+    if (!roomContainsBed(recordsA.reservation.roomId, recordsA.reservation.selectedBed?.id) || !roomContainsBed(recordsB.reservation.roomId, recordsB.reservation.selectedBed?.id)) {
+      await denyBranchAction(req, res, { action: "tenancy.room_swap.execute", entityType: "reservation", entityId: reservationAId }, "TARGET_BED_MISMATCH");
+      return;
+    }
+    if (recordsA.reservation.roomId.branch !== recordsB.reservation.roomId.branch) {
+      await denyBranchAction(req, res, { action: "tenancy.room_swap.execute", entityType: "reservation", entityId: reservationAId }, "CROSS_BRANCH_ACTION_NOT_ALLOWED");
+      return;
+    }
+    const branchContext = await authorizeTenancyRecords(req, res, recordsA, "tenancy.room_swap.execute", [
+      { source: "target.reservation.room", value: recordsB.reservation.roomId?.isArchived ? null : recordsB.reservation.roomId?.branch },
+      { source: "target.stay", value: recordsB.stay?.branch },
+      { source: "target.stay.room", value: recordsB.stay?.roomId?.isArchived ? null : recordsB.stay?.roomId?.branch },
+    ]);
+    if (!branchContext) return;
     const actor = await findDbUser(req.user.uid);
-    const result = await executeDirectRoomSwapWorkflow(reservationAId, reservationBId, actor?._id);
+    const previousState = { tenantA: recordsA.reservation.toObject(), tenantB: recordsB.reservation.toObject() };
+    const result = await executeDirectRoomSwapWorkflow(reservationAId, reservationBId, actor?._id, { expectedBranch: branchContext.branchId });
 
-    await auditLogger.logModification(
-      req,
-      "reservation",
-      reservationAId,
-      {},
-      result,
-      `Executed direct room swap between reservation ${reservationAId} and ${reservationBId}`
-    );
+    await logBranchScopedSuccess({ req, action: "tenancy.room_swap.executed", entityType: "reservation", entityId: reservationAId, branchContext, previousState, newState: result, reason: "Executed authorized same-branch direct room swap", linkedRecords: { reservationAId, reservationBId, stayAId: String(recordsA.stay._id), stayBId: String(recordsB.stay._id), roomAId: String(recordsA.reservation.roomId?._id || recordsA.reservation.roomId), roomBId: String(recordsB.reservation.roomId?._id || recordsB.reservation.roomId) } });
 
     res.json({ success: true, ...result });
   } catch (error) {
@@ -892,17 +996,15 @@ export const triggerAbandonmentAction = async (req, res, next) => {
     const { reservationId } = req.params;
     if (!isValidObjectId(reservationId)) return invalidIdResponse(res);
 
+    const records = await loadTenancyBranchRecords(reservationId);
+    if (!records) return res.status(404).json({ error: "Reservation not found", code: "RESERVATION_NOT_FOUND" });
+    const branchContext = await authorizeTenancyRecords(req, res, records, "tenancy.abandonment.execute");
+    if (!branchContext) return;
     const actor = await findDbUser(req.user.uid);
-    const result = await executeAbandonmentProtocolWorkflow(reservationId, req.body, actor?._id);
+    const previousState = records.reservation.toObject();
+    const result = await executeAbandonmentProtocolWorkflow(reservationId, req.body, actor?._id, { expectedBranch: branchContext.branchId });
 
-    await auditLogger.logModification(
-      req,
-      "reservation",
-      reservationId,
-      {},
-      result.reservation.toObject(),
-      "Triggered unannounced tenant abandonment protocol"
-    );
+    await logBranchScopedSuccess({ req, action: "tenancy.abandonment.executed", entityType: "reservation", entityId: reservationId, branchContext, previousState, newState: result.reservation.toObject(), reason: req.body.reason || "Triggered unannounced tenant abandonment protocol", linkedRecords: { stayId: String(records.stay._id), roomId: String(records.reservation.roomId?._id || records.reservation.roomId) } });
 
     res.json({ success: true, ...result });
   } catch (error) {

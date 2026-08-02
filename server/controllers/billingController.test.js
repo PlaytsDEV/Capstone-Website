@@ -58,6 +58,7 @@ await jest.unstable_mockModule("../models/index.js", () => ({
     findById: reservationFindById,
   },
   Room: {},
+  Stay: {},
   User: {
     findOne: userFindOne,
     findById: userFindById,
@@ -164,7 +165,12 @@ await jest.unstable_mockModule("../utils/utilityFlowRules.js", () => ({
 
 await jest.unstable_mockModule("../utils/lifecycleNaming.js", () => ({
   CURRENT_RESIDENT_STATUS_QUERY: ["moveIn"],
+  hasReservationStatus: (status, ...expectedStatuses) =>
+    expectedStatuses.includes(status),
+  normalizeReservationStatus: (status) => status,
   readMoveInDate: (reservation) => reservation.moveInDate || reservation.checkInDate || null,
+  readMoveOutDate: (reservation) => reservation.moveOutDate || reservation.checkOutDate || null,
+  reservationStatusesForQuery: (...statuses) => statuses,
 }));
 
 await jest.unstable_mockModule("../utils/adminAccess.js", () => ({
