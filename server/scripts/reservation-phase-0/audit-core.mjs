@@ -219,8 +219,14 @@ export function analyzeAuditDataset(dataset = {}, { now = new Date() } = {}) {
   const stays = keyById(data.stays); const bills = keyById(data.bills); const contracts = keyById(data.contracts);
   const paymentsByReservation = groupBy(data.payments, (p) => id(p.reservationId));
   const paymentsByBill = groupBy(data.payments, (p) => id(p.billId));
+  const billsByReservation = groupBy(data.bills, (bill) => id(bill.reservationId));
   const contractsByReservation = groupBy(data.contracts, (c) => id(c.reservationId));
   const staysByReservation = groupBy(data.stays, (s) => id(s.reservationId));
+  const paymentsForReservation = (reservationId) => {
+    const direct = paymentsByReservation.get(id(reservationId)) || [];
+    const throughBills = (billsByReservation.get(id(reservationId)) || []).flatMap((bill) => paymentsByBill.get(id(bill._id)) || []);
+    return [...new Map([...direct, ...throughBills].map((payment) => [id(payment._id), payment])).values()];
+  };
   const latestSettings = [...data.settings].sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0))[0] || null;
 
   const nonCanonicalStatuses = data.reservations.filter((r) => !CANONICAL_RESERVATION_STATUSES.includes(r.status)).map((r) => ({
@@ -233,7 +239,7 @@ export function analyzeAuditDataset(dataset = {}, { now = new Date() } = {}) {
   const expiredPaymentHolds = data.reservations.filter((r) => {
     if (!["approved_for_payment", "payment_pending"].includes(r.status)) return false;
     const expires = dateValue(r.paymentExpiresAt);
-    const successful = (paymentsByReservation.get(id(r._id)) || []).some(paymentSuccessful);
+    const successful = paymentsForReservation(r._id).some(paymentSuccessful);
     return expires && expires < now && r.paymentStatus !== "paid" && !successful && !isArchived(r);
   }).map((r) => {
     const room = rooms.get(id(r.roomId));
@@ -258,24 +264,23 @@ export function analyzeAuditDataset(dataset = {}, { now = new Date() } = {}) {
     return { ...hold, roomState: room?.available === false ? "unavailable" : "available", bedState: bed?.status || "missing", roomCapacityAffected: Boolean(bed && ["reserved", "occupied", "locked"].includes(bed.status)), paidReservationInvolved: false, competingActiveReservations: competingReservations.length, activeStays: linkedStays.length, uniqueIndexPresent, uniqueIndexSatisfied: competingReservations.length === 0, releaseWouldCreateInconsistency: linkedStays.length > 0 || competingReservations.length > 0, classification: "expired_payment_window_inventory_review" };
   });
 
-  const moveInContractAudit = data.reservations.filter((r) => r.status === "moveIn" && !isArchived(r)).flatMap((r) => {
-    const linked = contractsByReservation.get(id(r._id)) || [];
-    if (!linked.length) return [{ reservationId: id(r._id), branch: branchOfReservation(r, rooms), moveInDate: r.confirmedMoveInDate || r.moveInDate || null, contractId: null, contractNumber: null, contractStatus: null, policyState: "No Contract", preparedDraftExists: false, signed: false, notarized: false, published: false, currentMoveInBlockersChecksContract: false, classification: "missing_expected_prepared_draft" }];
-    return linked.map((c) => {
-      const policyState = contractPolicyState(c, r); const preparedDraftExists = Boolean((c.preparedDocuments || []).some((document) => !document.superseded) || c.generatedAt || c.generatedVersion > 0);
-      return { reservationId: id(r._id), branch: branchOfReservation(r, rooms), moveInDate: r.confirmedMoveInDate || r.moveInDate || null, contractId: id(c._id), contractNumber: c.contractNumber || null, contractStatus: c.status || null, policyState, preparedDraftExists, signed: Boolean(c.signedUploadedAt || c.signedDocuments?.length), notarized: Boolean(c.notarizedUploadedAt || c.notarizedDocuments?.length), published: Boolean(c.publishedAt), currentMoveInBlockersChecksContract: false, multipleContracts: linked.length > 1, classification: !preparedDraftExists ? "missing_expected_prepared_draft" : linked.length > 1 ? "duplicate_contract_review" : "policy_timing_review", signedBeforeMoveInRequired: false };
-    });
-  });
-
   const contractPricingReconciliation = data.contracts.map((c) => {
     const reservation = reservations.get(id(c.reservationId)); const room = rooms.get(id(c.roomId));
     const issues = analyzePricing(c, reservation, room, latestSettings);
-    return { contractId: id(c._id), reservationId: id(c.reservationId), branch: c.branch || null, roomId: id(c.roomId), bedId: c.bedId || reservation?.selectedBed?.id || null, leaseType: c.leaseType || null, leaseDurationMonths: c.leaseDurationMonths || null, regularMonthlyRate: c.regularMonthlyRate ?? null, approvedMonthlyRate: c.approvedMonthlyRate ?? null, reservationMonthlyRent: reservation?.monthlyRent ?? reservation?.totalPrice ?? null, discountPercentage: c.discountPercentage ?? null, discountAmount: c.discountAmount ?? null, reservationFeeAmount: c.reservationFeeAmount ?? null, advanceRentAmount: c.advanceRentAmount ?? null, securityDepositAmount: c.securityDepositAmount ?? null, applianceFees: reservation?.applianceFees ?? null, issues, mismatch: issues.some((value) => !["security_deposit_based_on_discounted_rent", "security_deposit_based_on_regular_rent", "business_settings_changed_after_approval"].includes(value)) };
-  }).filter((row) => row.issues.length);
+    const materialIssues = issues.filter((value) => !["security_deposit_based_on_discounted_rent", "security_deposit_based_on_regular_rent", "business_settings_changed_after_approval"].includes(value));
+    let classification = "exact_match";
+    if (materialIssues.some((value) => value.includes("missing"))) classification = "missing_data";
+    else if (materialIssues.some((value) => value.includes("possible_drift"))) classification = "live_room_pricing_drift";
+    else if (materialIssues.some((value) => value.includes("discount") || value.includes("approved_rate_does_not_reconcile"))) classification = "discount_mismatch";
+    else if (materialIssues.some((value) => value.includes("fee"))) classification = "fee_mismatch";
+    else if (materialIssues.length) classification = "unexplained_inconsistency";
+    else if (issues.includes("business_settings_changed_after_approval")) classification = "valid_approved_snapshot_or_override";
+    return { contractId: id(c._id), reservationId: id(c.reservationId), branch: c.branch || null, roomId: id(c.roomId), bedId: c.bedId || reservation?.selectedBed?.id || null, leaseType: c.leaseType || null, leaseDurationMonths: c.leaseDurationMonths || null, regularMonthlyRate: c.regularMonthlyRate ?? null, approvedMonthlyRate: c.approvedMonthlyRate ?? null, reservationMonthlyRent: reservation?.monthlyRent ?? reservation?.totalPrice ?? null, discountPercentage: c.discountPercentage ?? null, discountAmount: c.discountAmount ?? null, reservationFeeAmount: c.reservationFeeAmount ?? null, advanceRentAmount: c.advanceRentAmount ?? null, securityDepositAmount: c.securityDepositAmount ?? null, applianceFees: reservation?.applianceFees ?? null, issues, classification, mismatch: materialIssues.length > 0 };
+  });
 
   const confirmedReservationStatuses = new Set(["reserved", "moveIn", "moveOut"]);
   const reservationPaymentAudit = data.reservations.filter((r) => confirmedReservationStatuses.has(r.status) && !isArchived(r)).map((r) => {
-    const linked = paymentsByReservation.get(id(r._id)) || []; const verified = verifiedReservationFee(r, linked); const fee = finite(r.reservationFeeAmount) ?? 2000;
+    const linked = paymentsForReservation(r._id); const verified = verifiedReservationFee(r, linked); const fee = finite(r.reservationFeeAmount) ?? 2000;
     const depositPayments = linked.filter((payment) => payment.purpose === "reservation_deposit"); const issues = [];
     if (!verified) issues.push("confirmed_reservation_without_verified_fee");
     if (depositPayments.some((payment) => paymentSuccessful(payment) && !moneyEqual(payment.amount, fee))) issues.push("reservation_fee_amount_mismatch");
@@ -286,7 +291,7 @@ export function analyzeAuditDataset(dataset = {}, { now = new Date() } = {}) {
   }).filter((row) => row.issues.length);
 
   const initialPaymentAudit = data.reservations.filter((r) => ["reserved", "moveIn", "moveOut"].includes(r.status) && !isArchived(r)).map((r) => {
-    const linkedBills = data.bills.filter((bill) => id(bill.reservationId) === id(r._id)); const linkedPayments = paymentsByReservation.get(id(r._id)) || [];
+    const linkedBills = billsByReservation.get(id(r._id)) || []; const linkedPayments = paymentsForReservation(r._id);
     const linkedContracts = contractsByReservation.get(id(r._id)) || []; const textRows = [...linkedBills, ...linkedPayments];
     const advanceBill = linkedBills.some((row) => evidenceKind(row).includes("advance rent"));
     const depositBill = linkedBills.some((row) => evidenceKind(row).includes("security deposit"));
@@ -324,10 +329,11 @@ export function analyzeAuditDataset(dataset = {}, { now = new Date() } = {}) {
   });
 
   const securityDepositAudit = data.contracts.map((contract) => {
-    const reservation = reservations.get(id(contract.reservationId)); const linkedPayments = paymentsByReservation.get(id(contract.reservationId)) || [];
+    const reservation = reservations.get(id(contract.reservationId)); const linkedPayments = paymentsForReservation(contract.reservationId);
     const depositPayments = linkedPayments.filter((payment) => paymentSuccessful(payment) && evidenceKind(payment).includes("security deposit")); const issues = [];
     if (finite(contract.securityDepositAmount) === null || finite(contract.approvedMonthlyRate) === null) issues.push("missing_deposit_or_approved_rate");
     else if (!moneyEqual(contract.securityDepositAmount, contract.approvedMonthlyRate)) issues.push("deposit_not_equal_to_approved_final_monthly_rate");
+    if ((finite(contract.securityDepositAmount) || 0) > 0 && !depositPayments.length) issues.push("deposit_collection_evidence_missing");
     if ((reservation?.depositRefundProcessedAt || reservation?.depositRefundStatus === "processed") && !depositPayments.length) issues.push("refund_without_traceable_original_collection");
     if (reservation?.depositForfeited && !reservation.depositForfeitureReason) issues.push("forfeiture_missing_reason");
     if (reservation?.depositForfeited && !reservation.depositRefundProcessedBy) issues.push("forfeiture_missing_approver");
@@ -343,7 +349,7 @@ export function analyzeAuditDataset(dataset = {}, { now = new Date() } = {}) {
   const moveInReadinessAudit = [...readinessReservationIds].map((reservationId) => {
     const r = reservations.get(reservationId); const stay = (staysByReservation.get(reservationId) || []).find((row) => ["active", "ending_soon"].includes(row.status));
     if (!r) return { reservationId, issues: ["active_stay_missing_reservation"], classification: "critical_reference_gap" };
-    const linkedPayments = paymentsByReservation.get(reservationId) || []; const initial = initialPaymentAudit.find((row) => row.reservationId === reservationId);
+    const linkedPayments = paymentsForReservation(reservationId); const initial = initialPaymentAudit.find((row) => row.reservationId === reservationId);
     const linkedBills = data.bills.filter((bill) => id(bill.reservationId) === reservationId); const arrangement = linkedBills.some((bill) => bill.isMilestoneSubInvoice && bill.parentInvoiceId);
     const room = rooms.get(id(r.roomId)); const user = users.get(id(r.userId)); const issues = [];
     if (!confirmedReservationStatuses.has(r.status)) issues.push("reservation_not_confirmed");
@@ -364,7 +370,7 @@ export function analyzeAuditDataset(dataset = {}, { now = new Date() } = {}) {
 
   const contractTimingAudit = data.reservations.filter((r) => confirmedReservationStatuses.has(r.status) && !isArchived(r)).flatMap((r) => {
     const linked = contractsByReservation.get(id(r._id)) || [];
-    if (!linked.length) return [{ reservationId: id(r._id), contractId: null, policyState: "No Contract", issues: ["prepared_draft_missing_after_reservation_confirmation"] }];
+    if (!linked.length) return [{ reservationId: id(r._id), contractId: null, branch: branchOfReservation(r, rooms), policyState: "No Contract", preparedDraftExists: false, actualMoveInDate: r.confirmedMoveInDate || (staysByReservation.get(id(r._id)) || [])[0]?.leaseStartDate || null, contractStartDate: null, signedBeforeMoveInRequired: false, issues: ["prepared_draft_missing_after_reservation_confirmation"], classification: "missing_expected_prepared_draft" }];
     return linked.map((contract) => {
       const issues = []; const actualMoveIn = r.confirmedMoveInDate || (staysByReservation.get(id(r._id)) || [])[0]?.leaseStartDate || null;
       const prepared = Boolean((contract.preparedDocuments || []).some((document) => !document.superseded) || contract.generatedAt || contract.generatedVersion > 0);
@@ -378,7 +384,7 @@ export function analyzeAuditDataset(dataset = {}, { now = new Date() } = {}) {
       if (!moneyEqual(contract.reservationFeeCreditAmount, r.reservationFeeAmount ?? 2000)) issues.push("reservation_fee_credit_missing_or_inconsistent");
       if (expectedLeaseType(contract.leaseDurationMonths) !== contract.leaseType) issues.push("lease_type_duration_mismatch");
       if (linked.filter((row) => row.isCurrent !== false && !isArchived(row)).length > 1) issues.push("multiple_active_contracts");
-      return { reservationId: id(r._id), contractId: id(contract._id), branch: contract.branch || branchOfReservation(r, rooms), policyState: contractPolicyState(contract, r), preparedDraftExists: prepared, actualMoveInDate: actualMoveIn, contractStartDate: contract.leaseStartDate || null, issues };
+      return { reservationId: id(r._id), contractId: id(contract._id), branch: contract.branch || branchOfReservation(r, rooms), policyState: contractPolicyState(contract, r), preparedDraftExists: prepared, actualMoveInDate: actualMoveIn, contractStartDate: contract.leaseStartDate || null, signedBeforeMoveInRequired: false, issues, classification: issues.includes("multiple_active_contracts") ? "duplicate_contract_review" : issues.length ? "contract_timing_or_readiness_review" : "contract_timing_consistent" };
     });
   });
 
@@ -406,6 +412,13 @@ export function analyzeAuditDataset(dataset = {}, { now = new Date() } = {}) {
   for (const payment of data.payments) if (isCashMethod(payment.method)) prohibitedCashPayments.push({ recordType: "payment", recordId: id(payment._id), targetId: id(payment.billId || payment.reservationId), branch: payment.branch || null, method: payment.method, classification: "prohibited_cash_payment" });
   for (const bill of data.bills) if (isCashMethod(bill.paymentMethod)) prohibitedCashPayments.push({ recordType: "bill", recordId: id(bill._id), targetId: id(bill.reservationId), branch: bill.branch || null, method: bill.paymentMethod, classification: "bill_paid_or_marked_through_cash" });
   for (const reservation of data.reservations) if (isCashMethod(reservation.paymentMethod)) prohibitedCashPayments.push({ recordType: "reservation", recordId: id(reservation._id), targetId: id(reservation._id), branch: branchOfReservation(reservation, rooms), method: reservation.paymentMethod, classification: "reservation_cash_method" });
+  for (const payment of data.payments.filter((row) => paymentSuccessful(row) && ["admin-manual", "manual_admin", "manual_proof", "tenant-proof"].includes(row.source) && !isCashMethod(row.method))) {
+    const issues = [];
+    if (!hasSuccessfulReference(payment)) issues.push("external_reference_missing");
+    if (!payment.safeEvidence?.receivingAccountPresent) issues.push("receiving_account_evidence_missing");
+    if (!payment.proofPresent) issues.push("successful_proof_missing");
+    if (issues.length) prohibitedCashPayments.push({ recordType: "payment", recordId: id(payment._id), targetId: id(payment.billId || payment.reservationId), branch: payment.branch || null, method: payment.method || null, source: payment.source, issues, classification: "untraceable_manual_payment" });
+  }
 
   const paymentProofAudit = data.payments.flatMap((payment) => {
     const issues = []; const providerStatus = String(payment.safeEvidence?.providerStatus || "").toLowerCase().replaceAll(" ", "_");
@@ -421,13 +434,15 @@ export function analyzeAuditDataset(dataset = {}, { now = new Date() } = {}) {
     return issues.length ? [{ paymentId: id(payment._id), targetId: id(payment.billId || payment.reservationId), branch: payment.branch || null, externalReferenceFingerprint: fingerprint(payment.externalPaymentId || payment.referenceNumber || payment.paymentReference), proofPresent: Boolean(payment.proofPresent), status: payment.status || null, providerStatus: payment.safeEvidence?.providerStatus || null, issues, classification: "payment_proof_review" }] : [];
   });
   for (const bill of data.bills) if (bill.paymentProof?.verificationStatus === "approved" && (!bill.paymentProof.verifierPresent || !bill.paymentProof.verifiedAt)) paymentProofAudit.push({ paymentId: null, targetId: id(bill._id), branch: bill.branch || null, externalReferenceFingerprint: null, proofPresent: Boolean(bill.paymentProof.imagePresent), status: bill.status || null, providerStatus: bill.paymentProof.verificationStatus, issues: [!bill.paymentProof.verifierPresent ? "verifier_missing" : null, !bill.paymentProof.verifiedAt ? "verification_timestamp_missing" : null].filter(Boolean), classification: "approved_bill_proof_missing_audit_evidence" });
-  for (const reservation of data.reservations) if (reservation.proofOfPaymentPresent && reservation.paymentStatus === "paid" && !verifiedReservationFee(reservation, paymentsByReservation.get(id(reservation._id)) || [])) paymentProofAudit.push({ paymentId: null, targetId: id(reservation._id), branch: branchOfReservation(reservation, rooms), externalReferenceFingerprint: null, proofPresent: true, status: reservation.paymentStatus, providerStatus: null, issues: ["proof_upload_may_have_directly_marked_reservation_paid"], classification: "settlement_evidence_missing" });
+  for (const reservation of data.reservations) if (reservation.proofOfPaymentPresent && reservation.paymentStatus === "paid" && !verifiedReservationFee(reservation, paymentsForReservation(reservation._id))) paymentProofAudit.push({ paymentId: null, targetId: id(reservation._id), branch: branchOfReservation(reservation, rooms), externalReferenceFingerprint: null, proofPresent: true, status: reservation.paymentStatus, providerStatus: null, issues: ["proof_upload_may_have_directly_marked_reservation_paid"], classification: "settlement_evidence_missing" });
 
   const paymentAllocationAudit = data.payments.flatMap((payment) => {
     const allocations = payment.safeEvidence?.allocations || []; const issues = [];
     if (allocations.length) {
       const allocated = roundMoney(allocations.reduce((sum, allocation) => sum + (finite(allocation.amount) || 0), 0)); const unallocated = finite(payment.safeEvidence.unallocatedAmount) || 0;
       if (!moneyEqual(allocated + unallocated, payment.amount)) issues.push("allocated_plus_unallocated_does_not_equal_payment");
+      if (allocated > (finite(payment.amount) || 0) + MONEY_TOLERANCE) issues.push("allocations_exceed_payment_amount");
+      if (unallocated < -MONEY_TOLERANCE) issues.push("negative_unallocated_balance");
       for (const allocation of allocations) { const target = bills.get(id(allocation.targetId)); if (!target) issues.push("allocation_target_missing"); else { if ((finite(allocation.amount) || 0) > (finite(target.totalAmount) || 0) + MONEY_TOLERANCE) issues.push("allocation_exceeds_bill_amount"); if (target.branch && payment.branch && target.branch !== payment.branch) issues.push("cross_branch_allocation"); if (id(target.userId) !== id(payment.tenantId)) issues.push("cross_tenant_allocation"); } }
     }
     return issues.length ? [{ paymentId: id(payment._id), targetId: id(payment.billId || payment.reservationId), branch: payment.branch || null, amount: payment.amount ?? null, allocationCount: allocations.length, issues, classification: "allocation_reconciliation_required" }] : [];
@@ -435,13 +450,15 @@ export function analyzeAuditDataset(dataset = {}, { now = new Date() } = {}) {
   for (const bill of data.bills) {
     const remaining = finite(bill.remainingAmount); if (bill.status === "paid" && remaining !== null && remaining > MONEY_TOLERANCE) paymentAllocationAudit.push({ paymentId: null, targetId: id(bill._id), branch: bill.branch || null, amount: bill.paidAmount ?? null, allocationCount: null, issues: ["paid_bill_has_remaining_balance"], classification: "bill_balance_mismatch" });
     if (["pending", "overdue"].includes(bill.status) && remaining !== null && Math.abs(remaining) <= MONEY_TOLERANCE) paymentAllocationAudit.push({ paymentId: null, targetId: id(bill._id), branch: bill.branch || null, amount: bill.paidAmount ?? null, allocationCount: null, issues: ["unpaid_bill_has_zero_remaining_balance"], classification: "bill_balance_mismatch" });
+    if (bill.status === "partially-paid" && remaining !== null && (remaining <= MONEY_TOLERANCE || remaining >= (finite(bill.totalAmount) || 0) - MONEY_TOLERANCE)) paymentAllocationAudit.push({ paymentId: null, targetId: id(bill._id), branch: bill.branch || null, amount: bill.paidAmount ?? null, allocationCount: null, issues: ["partial_bill_balance_inconsistent_with_status"], classification: "bill_balance_mismatch" });
+    if (remaining !== null && remaining < -MONEY_TOLERANCE) paymentAllocationAudit.push({ paymentId: null, targetId: id(bill._id), branch: bill.branch || null, amount: bill.paidAmount ?? null, allocationCount: null, issues: ["overpayment_not_represented_as_visible_unallocated_balance"], classification: "overpayment_traceability_review" });
   }
 
   const temporaryLockAudit = [];
   for (const room of data.rooms) for (const bed of room.beds || []) {
     const lockedReservation = reservations.get(id(bed.occupiedBy?.reservationId)); const activeStayReferencesBed = data.stays.some((stay) => id(stay.roomId) === id(room._id) && String(stay.bedId) === String(bed.id) && ["active", "ending_soon"].includes(stay.status));
     if (bed.status === "locked" && bed.lockExpiresAt && new Date(bed.lockExpiresAt) < now) temporaryLockAudit.push({ roomId: id(room._id), bedId: bed.id || null, branch: room.branch || null, reservationId: id(bed.occupiedBy?.reservationId), bedState: bed.status, roomCapacityAffected: true, paidReservationInvolved: lockedReservation?.paymentStatus === "paid", activeStayReferencesBed, classification: "abandoned_temporary_lock", automaticReleaseUnsafe: Boolean(bed.occupiedBy?.reservationId || activeStayReferencesBed) });
-    if (bed.status === "locked" && lockedReservation?.paymongoSessionId && (paymentsByReservation.get(id(lockedReservation._id)) || []).some((payment) => ["failed", "cancelled", "expired"].includes(payment.status))) temporaryLockAudit.push({ roomId: id(room._id), bedId: bed.id || null, branch: room.branch || null, reservationId: id(lockedReservation._id), bedState: bed.status, roomCapacityAffected: true, paidReservationInvolved: false, activeStayReferencesBed, classification: "failed_checkout_lock", automaticReleaseUnsafe: activeStayReferencesBed });
+    if (bed.status === "locked" && lockedReservation?.paymongoSessionId && paymentsForReservation(lockedReservation._id).some((payment) => ["failed", "cancelled", "expired"].includes(payment.status))) temporaryLockAudit.push({ roomId: id(room._id), bedId: bed.id || null, branch: room.branch || null, reservationId: id(lockedReservation._id), bedState: bed.status, roomCapacityAffected: true, paidReservationInvolved: false, activeStayReferencesBed, classification: "failed_checkout_lock", automaticReleaseUnsafe: activeStayReferencesBed });
     const heldReservation = reservations.get(id(bed.occupiedBy?.reservationId));
     if (["cancelled", "archived", "rejected", "expired", "moveOut"].includes(heldReservation?.status) && ["reserved", "occupied", "locked"].includes(bed.status)) temporaryLockAudit.push({ roomId: id(room._id), bedId: bed.id || null, branch: room.branch || null, reservationId: id(heldReservation._id), bedState: bed.status, roomCapacityAffected: true, paidReservationInvolved: heldReservation.paymentStatus === "paid", activeStayReferencesBed, classification: "inactive_reservation_still_holding_inventory", automaticReleaseUnsafe: activeStayReferencesBed });
   }
@@ -534,11 +551,12 @@ export function analyzeAuditDataset(dataset = {}, { now = new Date() } = {}) {
 
   const duplicateRiskIndicators = [];
   const addDuplicates = (category, groups) => { for (const [key, rows] of groups) if (rows.length > 1) duplicateRiskIndicators.push({ category, keyFingerprint: fingerprint(key), count: rows.length, recordIds: rows.map((row) => id(row._id)).sort() }); };
-  addDuplicates("multiple_active_reservations_per_user", groupBy(data.reservations.filter((r) => ACTIVE_RESERVATION_STATUSES.has(r.status) && !isArchived(r)), (r) => id(r.userId)));
+  addDuplicates("multiple_active_reservations_per_user", groupBy(data.reservations.filter((r) => r.userId && ACTIVE_RESERVATION_STATUSES.has(r.status) && !isArchived(r)), (r) => id(r.userId)));
   addDuplicates("multiple_active_reservations_per_bed", groupBy(data.reservations.filter((r) => ACTIVE_RESERVATION_STATUSES.has(r.status) && !isArchived(r) && r.selectedBed?.id), (r) => `${id(r.roomId)}:${r.selectedBed.id}`));
   addDuplicates("multiple_active_contracts_per_reservation", groupBy(data.contracts.filter((c) => c.isCurrent !== false && !isArchived(c)), (c) => id(c.reservationId)));
   addDuplicates("multiple_active_contracts_per_stay", groupBy(data.contracts.filter((c) => c.isCurrent !== false && !isArchived(c) && c.stayId), (c) => id(c.stayId)));
-  addDuplicates("duplicate_successful_reservation_fee_payments", groupBy(data.payments.filter((p) => paymentSuccessful(p) && p.purpose === "reservation_deposit"), (p) => id(p.reservationId)));
+  addDuplicates("duplicate_successful_reservation_fee_payments", groupBy(data.payments.filter((p) => p.reservationId && paymentSuccessful(p) && p.purpose === "reservation_deposit"), (p) => id(p.reservationId)));
+  addDuplicates("multiple_successful_settlements_per_target", groupBy(data.payments.filter((p) => paymentSuccessful(p) && (p.billId || p.reservationId)), (p) => `${p.billId ? "bill" : "reservation"}:${id(p.billId || p.reservationId)}`));
   addDuplicates("duplicate_external_payment_references", groupBy(data.payments.filter((p) => p.externalPaymentId), (p) => p.externalPaymentId));
   addDuplicates("duplicate_billing_period", groupBy(data.bills.filter((b) => !isArchived(b)), (b) => `${id(b.reservationId || b.userId)}:${String(b.billingCycleStart || b.billingMonth || "")}:${b.billType || ""}`));
   addDuplicates("reservation_credit_applied_multiple_times", groupBy(data.bills.filter((b) => (finite(b.reservationCreditApplied) || 0) > 0), (b) => id(b.reservationId)));
@@ -563,12 +581,25 @@ export function analyzeAuditDataset(dataset = {}, { now = new Date() } = {}) {
   }
   for (const c of data.contracts) if ((finite(c.advanceRentAmount) || 0) > 0 || (finite(c.securityDepositAmount) || 0) > 0) financialEvidence.push({ evidenceType: "contract_amounts", recordId: id(c._id), branch: c.branch || null, hasAdvanceRent: (finite(c.advanceRentAmount) || 0) > 0, hasSecurityDeposit: (finite(c.securityDepositAmount) || 0) > 0 });
   for (const r of data.reservations) if (r.depositRefundProcessedAt || r.depositRefundStatus === "processed") {
-    const original = financialEvidence.some((e) => e.evidenceType === "payment_security_deposit" && (paymentsByReservation.get(id(r._id)) || []).some((p) => id(p._id) === e.recordId));
+    const original = financialEvidence.some((e) => e.evidenceType === "payment_security_deposit" && paymentsForReservation(r._id).some((p) => id(p._id) === e.recordId));
     if (!original) financialEvidence.push({ evidenceType: "deposit_refund_without_traceable_original_payment", recordId: id(r._id), branch: branchOfReservation(r, rooms) });
   }
-  const systemCollection = financialEvidence.some((e) => e.evidenceType.startsWith("payment_") && !["admin-manual", "manual_admin", "manual_proof", "tenant-proof"].includes(e.source));
-  const manualCollection = financialEvidence.some((e) => e.evidenceType.startsWith("payment_"));
-  const advanceDepositConclusion = systemCollection ? "Confirmed system collection path exists" : manualCollection ? "Partial or manual collection evidence exists" : financialEvidence.some((e) => e.evidenceType === "contract_amounts") ? "No system collection evidence found; Contract-only amounts exist" : "No system collection evidence found";
+  const requiredFinancialCollectionUnavailable = data.collectionWarnings.some((warning) => /bills|payments|contracts/i.test(warning));
+  const advanceDepositConclusion = requiredFinancialCollectionUnavailable ? "Inconclusive due to insufficient records" : initialPaymentAudit.some((row) => row.classification === "complete_system_collection_path") ? "Confirmed system collection path exists" : initialPaymentAudit.some((row) => row.classification === "partial_or_manual_path") ? "Partial or manual collection evidence exists" : "No system collection evidence found";
+  const initialPaymentEvidenceCounts = {
+    advanceRentBills: initialPaymentAudit.filter((row) => row.advanceBill).length,
+    securityDepositBills: initialPaymentAudit.filter((row) => row.securityDepositBill).length,
+    initialPaymentBills: initialPaymentAudit.filter((row) => row.initialBill).length,
+    advanceRentPayments: initialPaymentAudit.filter((row) => row.advancePayment).length,
+    securityDepositPayments: initialPaymentAudit.filter((row) => row.securityDepositPayment).length,
+    reservationFeeCreditsApplied: initialPaymentAudit.filter((row) => (finite(row.reservationCreditApplied) || 0) > 0).length,
+    approvedInitialCharges: initialPaymentAudit.filter((row) => row.approvedInitialChargesEvidence).length,
+    manualVerifiedPayments: initialPaymentAudit.filter((row) => row.verifiedManualBank).length,
+    providerPayments: initialPaymentAudit.filter((row) => row.providerPayment).length,
+    paymentAllocations: data.payments.filter((row) => (row.safeEvidence?.allocations || []).length > 0).length,
+    approvedPaymentArrangements: new Set(data.bills.filter((row) => row.isMilestoneSubInvoice && row.parentInvoiceId).map((row) => id(row.reservationId))).size,
+    contractOnlyAmounts: initialPaymentAudit.filter((row) => row.classification === "contract_only_values").length,
+  };
 
   const categories = {
     nonCanonicalStatuses,
@@ -579,7 +610,7 @@ export function analyzeAuditDataset(dataset = {}, { now = new Date() } = {}) {
     advanceRentCoverageAudit,
     securityDepositAudit,
     moveInReadinessAudit,
-    moveInContractAudit: [...moveInContractAudit, ...contractTimingAudit],
+    moveInContractAudit: contractTimingAudit,
     contractPricingReconciliation,
     leaseTypeAudit,
     zeroDiscountAudit,
@@ -600,11 +631,11 @@ export function analyzeAuditDataset(dataset = {}, { now = new Date() } = {}) {
     collectionWarnings: [...data.collectionWarnings].sort(), counts: {
       ...Object.fromEntries(Object.entries(categories).map(([name, rows]) => [name, rows.length])),
       expiredHoldsStillHoldingInventory: inventoryHoldAudit.filter((row) => row.inventoryStillHeld).length,
-      moveInsWithoutReadyContracts: moveInContractAudit.filter((row) => !row.preparedDraftExists).length,
+      moveInsWithoutReadyContracts: contractTimingAudit.filter((row) => !row.preparedDraftExists).length,
       contractPricingMismatches: contractPricingReconciliation.filter((row) => row.mismatch).length,
       reconciliationRequiredPayments: paymentReconciliation.length,
       branchMismatches: branchConsistency.length,
     },
-    advanceDepositConclusion, ...categories,
+    advanceDepositConclusion, initialPaymentEvidenceCounts, ...categories,
   };
 }

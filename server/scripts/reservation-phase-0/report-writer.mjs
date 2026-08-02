@@ -236,6 +236,7 @@ export async function writeReports({ outputDirectory, safety, result, repository
     environment: { environmentName: safety.environmentName, databaseCategory: safety.category, databaseName: safety.databaseName, hostCategory: safety.hostCategory, hostFingerprint: safety.hostFingerprint, privilegeAssessment: safety.privilegeAssessment, readOnlySafetyEstablished: safety.safe, recordLevelQueriesExecuted: recordQueriesExecuted },
     counts: result?.counts || Object.fromEntries(Object.keys(CSV_FILES).map((key) => [key, null])),
     advanceDepositConclusion: result?.advanceDepositConclusion || "Inconclusive due to inaccessible records",
+    initialPaymentEvidenceCounts: result?.initialPaymentEvidenceCounts || null,
     moneyTolerance: result?.moneyTolerance ?? 0.01,
     codeFindings: CODE_FINDINGS,
     statusDefinitions,

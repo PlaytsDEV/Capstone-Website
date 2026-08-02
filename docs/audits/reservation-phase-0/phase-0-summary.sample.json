@@ -36,7 +36,21 @@
     "duplicateRiskIndicators": 0,
     "financialEvidence": 1
   },
-  "advanceDepositConclusion": "No system collection evidence found; Contract-only amounts exist",
+  "advanceDepositConclusion": "Partial or manual collection evidence exists",
+  "initialPaymentEvidenceCounts": {
+    "advanceRentBills": 0,
+    "securityDepositBills": 0,
+    "initialPaymentBills": 0,
+    "advanceRentPayments": 0,
+    "securityDepositPayments": 0,
+    "reservationFeeCreditsApplied": 0,
+    "approvedInitialCharges": 0,
+    "manualVerifiedPayments": 1,
+    "providerPayments": 1,
+    "paymentAllocations": 0,
+    "approvedPaymentArrangements": 0,
+    "contractOnlyAmounts": 1
+  },
   "moneyTolerance": 0.01,
   "sampleDataOnly": true
 }
