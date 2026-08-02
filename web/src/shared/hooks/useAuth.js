@@ -36,6 +36,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { authApi } from "../api/authApi";
 import {
   getAuthErrorCode,
+  isOtpDeliveryAccepted,
   shouldDeferProfileRequest,
 } from "../api/authFlowState";
 import { reservationApi } from "../api/reservationApi";
@@ -153,7 +154,7 @@ export const AuthProvider = ({ children }) => {
     try {
       if (!getSessionId()) {
         const loginResult = await initializeBackendSession();
-        if (loginResult?.requiresOtp) {
+        if (isOtpDeliveryAccepted(loginResult)) {
           setOtpPending({ email: auth.currentUser?.email || "" });
           setUser(null);
           setIsAuthenticated(false);
@@ -191,19 +192,6 @@ export const AuthProvider = ({ children }) => {
       queryClient.setQueryData(["users", "currentUser"], userData);
       warmTenantRouteData(queryClient, userData);
 
-      // Log current user info to console
-      const displayName =
-        `${userData.firstName || ""} ${userData.lastName || ""}`.trim() ||
-        userData.username ||
-        "Unknown";
-      if (import.meta.env.DEV) {
-        console.table({
-          Name: displayName,
-          Email: userData.email || "N/A",
-          Role: userData.role || "N/A",
-          Username: userData.username || "N/A",
-        });
-      }
     } catch (error) {
       // User not authenticated in backend - clear state
       if (
@@ -213,7 +201,7 @@ export const AuthProvider = ({ children }) => {
         clearSessionId();
         try {
           const loginResult = await initializeBackendSession();
-          if (loginResult?.requiresOtp) {
+          if (isOtpDeliveryAccepted(loginResult)) {
             setOtpPending({ email: auth.currentUser?.email || "" });
             if (window.location.pathname !== "/verify-otp") {
               window.location.replace("/verify-otp");
@@ -266,7 +254,7 @@ export const AuthProvider = ({ children }) => {
         setUser(null);
         setIsAuthenticated(false);
       } else {
-        console.warn("User refresh warning:", error.message || error);
+        console.warn("User refresh failed.");
       }
       return null;
     }
@@ -312,28 +300,21 @@ export const AuthProvider = ({ children }) => {
     setGlobalLoading(true);
     try {
       const userData = await authApi.login();
-      if (userData?.requiresOtp) {
+      if (isOtpDeliveryAccepted(userData)) {
         setUser(null);
         setIsAuthenticated(false);
         return userData;
+      }
+      if (userData?.requiresOtp) {
+        const error = new Error("OTP delivery was not confirmed.");
+        error.code = "OTP_DELIVERY_UNCONFIRMED";
+        throw error;
       }
       const resolvedUser = userData.user || userData;
       setUser(resolvedUser);
       setIsAuthenticated(true);
       queryClient.setQueryData(["users", "currentUser"], resolvedUser);
       warmTenantRouteData(queryClient, resolvedUser);
-
-      // Log login info to console
-      const displayName =
-        `${resolvedUser.firstName || ""} ${resolvedUser.lastName || ""}`.trim() ||
-        resolvedUser.username ||
-        "Unknown";
-      console.table({
-        Name: displayName,
-        Email: resolvedUser.email || "N/A",
-        Role: resolvedUser.role || "N/A",
-        Username: resolvedUser.username || "N/A",
-      });
 
       return userData;
     } finally {
@@ -399,7 +380,7 @@ export const AuthProvider = ({ children }) => {
       // This keeps the loading overlay visible during navigation for smooth UX.
       return { success: true, branch: branchHome };
     } catch (error) {
-      console.error("Logout error:", error);
+      console.error("Logout failed.");
       // Reset ref on error so user can retry
       logoutExecutedRef.current = false;
       logoutIntentRef.current = null;

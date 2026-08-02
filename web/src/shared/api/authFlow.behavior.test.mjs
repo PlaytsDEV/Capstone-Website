@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   AUTH_FLOW_STATE,
   getAuthErrorCode,
+  isOtpDeliveryAccepted,
   shouldDeferProfileRequest,
 } from "./authFlowState.js";
 
@@ -37,6 +38,13 @@ test("standardized OTP errors are not transformed into invalid credentials", () 
   assert.notEqual(getAuthErrorCode(required), "auth/invalid-credential");
 });
 
+test("OTP navigation requires an explicit accepted-delivery contract", () => {
+  assert.equal(isOtpDeliveryAccepted({ requiresOtp: true, code: "OTP_REQUIRED" }), true);
+  assert.equal(isOtpDeliveryAccepted({ requiresOtp: true }), false);
+  assert.equal(isOtpDeliveryAccepted({ code: "OTP_REQUIRED" }), false);
+  assert.equal(isOtpDeliveryAccepted({ requiresOtp: false, code: "OTP_REQUIRED" }), false);
+});
+
 test("profile requests are deferred through Firebase login and OTP verification", () => {
   assert.equal(shouldDeferProfileRequest({ firebaseUser: null }), true);
   assert.equal(shouldDeferProfileRequest({ firebaseUser: {}, loginInProgress: true }), true);
@@ -48,7 +56,8 @@ test("email login initiates OTP and OTP completion fetches profile exactly after
   const signIn = read("src/features/tenant/pages/SignIn.jsx");
   const otp = read("src/features/tenant/pages/OtpVerify.jsx");
   assert.match(signIn, /setLoginInProgress\(\)[\s\S]*signInWithEmailAndPassword/);
-  assert.match(signIn, /const loginResponse = await login\(\)[\s\S]*loginResponse\?\.requiresOtp[\s\S]*setOtpPending[\s\S]*navigate\("\/verify-otp"\)/);
+  assert.match(signIn, /const loginResponse = await login\(\)[\s\S]*isOtpDeliveryAccepted\(loginResponse\)[\s\S]*setOtpPending[\s\S]*navigate\("\/verify-otp"\)/);
+  assert.match(signIn, /OTP_EMAIL_SEND_FAILED[\s\S]*We could not send the verification code/);
   assert.match(otp, /await authApi\.verifyOtp\(code\)[\s\S]*clearOtpPending\(\)[\s\S]*await refreshUser\(\)/);
   assert.doesNotMatch(otp, /await login\(\)/);
 });
@@ -59,7 +68,16 @@ test("auth initialization deduplicates refreshes and recovers missing OTP sessio
   assert.match(authHook, /if \(profileRequestRef\.current\) return profileRequestRef\.current/);
   assert.match(authHook, /if \(sessionInitializationRef\.current\) return sessionInitializationRef\.current/);
   assert.match(authHook, /getAuthErrorCode\(error\) === "OTP_SESSION_REQUIRED"[\s\S]*initializeBackendSession\(\)/);
-  assert.match(authHook, /setOtpPending[\s\S]*window\.location\.replace\("\/verify-otp"\)/);
+  assert.match(authHook, /isOtpDeliveryAccepted\(loginResult\)[\s\S]*setOtpPending[\s\S]*window\.location\.replace\("\/verify-otp"\)/);
+});
+
+test("failed resend stays on verification and does not start a success cooldown", () => {
+  const otp = read("src/features/tenant/pages/OtpVerify.jsx");
+  assert.match(otp, /await authApi\.resendOtp\(\)[\s\S]*setResendCooldownEnd/);
+  assert.match(otp, /OTP_EMAIL_SEND_FAILED[\s\S]*We could not send the verification code/);
+  const failureBranch = otp.slice(otp.indexOf('errCode === "OTP_EMAIL_SEND_FAILED"'));
+  assert.doesNotMatch(failureBranch.split("} else {")[0], /setResendCooldownEnd/);
+  assert.doesNotMatch(failureBranch.split("} else {")[0], /navigate\(/);
 });
 
 test("transport includes browser credentials without changing header-session security", () => {

@@ -160,6 +160,12 @@ function OtpVerify() {
         const seconds = error.response?.data?.retryAfterSeconds || 60;
         setResendCooldownEnd(Date.now() + seconds * 1000);
         showNotification(`Please wait ${seconds}s before requesting another code.`, "warning");
+      } else if (errCode === "OTP_EMAIL_SEND_FAILED") {
+        showNotification(
+          "We could not send the verification code. Please try again later.",
+          "error",
+          6000,
+        );
       } else {
         showNotification("Failed to resend code. Please try again.", "error");
       }

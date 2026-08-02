@@ -56,14 +56,22 @@ const createOtp = () => crypto.randomInt(100000, 1000000).toString();
 const hashOtp = (otp) =>
   crypto.createHash("sha256").update(`${process.env.JWT_SECRET || "lilycrest"}:${otp}`).digest("hex");
 
-const fingerprintUid = (uid) =>
-  crypto.createHash("sha256").update(String(uid || "")).digest("hex").slice(0, 12);
+const otpMatches = (storedHash, submittedHash) =>
+  typeof storedHash === "string" &&
+  /^[a-f0-9]{64}$/i.test(storedHash) &&
+  crypto.timingSafeEqual(Buffer.from(storedHash, "hex"), Buffer.from(submittedHash, "hex"));
+
+const fingerprint = (value) =>
+  crypto.createHash("sha256").update(String(value || "")).digest("hex").slice(0, 12);
+
+const OTP_EMAIL_FAILURE_MESSAGE =
+  "We could not send the verification code. Please try again later.";
 
 const sendIdentityConflict = async (req, res, user) => {
   const event = {
     requestId: req.id,
-    attemptedUidFingerprint: fingerprintUid(req.user?.uid),
-    userRecordId: String(user._id),
+    attemptedUidFingerprint: fingerprint(req.user?.uid),
+    userRecordFingerprint: fingerprint(user._id),
     eventType: "AUTH_IDENTITY_CONFLICT",
     timestamp: new Date().toISOString(),
   };
@@ -123,11 +131,51 @@ export const buildRegistrationUserPayload = (user) => ({
 export const storeOtpChallenge = async (user, req, deviceId) => {
   const otp = createOtp();
   const now = new Date();
-  logger.info(
-    { userId: String(user._id), email: user.email, deviceId },
-    "Login OTP generated",
-  );
+  const logContext = {
+    event: "login_otp_delivery",
+    environment: process.env.NODE_ENV || "development",
+    operation: "login_otp",
+    requestId: req.id,
+    userFingerprint: fingerprint(user._id),
+    emailFingerprint: fingerprint(String(user.email || "").trim().toLowerCase()),
+    deviceFingerprint: fingerprint(deviceId),
+  };
 
+  const name = `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.username;
+  let emailResult;
+  try {
+    emailResult = await sendLoginOtpEmail({
+      to: user.email,
+      name,
+      otp,
+      expiresInMinutes: OTP_EXPIRES_MINUTES,
+    });
+  } catch (_) {
+    emailResult = {
+      success: false,
+      category: "unknown",
+      statusCode: null,
+    };
+  }
+
+  if (!emailResult?.success) {
+    logger.error({
+      ...logContext,
+      provider: "resend",
+      classification: emailResult?.category || "unknown",
+      httpStatus: emailResult?.statusCode || null,
+      success: false,
+    }, "Login OTP delivery failed");
+
+    throw new AppError(
+      OTP_EMAIL_FAILURE_MESSAGE,
+      503,
+      "OTP_EMAIL_SEND_FAILED",
+    );
+  }
+
+  // The provider must accept the message before the code becomes verifiable.
+  // This preserves an existing valid challenge when a resend attempt fails.
   const pending = await UserSession.findOneAndUpdate(
     {
       userId: user._id,
@@ -152,60 +200,32 @@ export const storeOtpChallenge = async (user, req, deviceId) => {
     { new: true, upsert: true, setDefaultsOnInsert: true },
   );
 
-  logger.info(
+  // Defensive cleanup for legacy duplicates or concurrent first-time upserts.
+  // Verification only ever sees the accepted challenge retained above.
+  await UserSession.updateMany(
     {
-      userId: String(user._id),
-      email: user.email,
+      _id: { $ne: pending._id },
+      userId: user._id,
       deviceId,
-      otpExpiresAt: pending.otpExpiresAt,
+      isActive: false,
+      otpHash: { $ne: null },
+      otpLastSentAt: { $lte: now },
     },
-    "Login OTP stored",
+    {
+      $set: {
+        otpHash: null,
+        otpExpiresAt: null,
+        otpAttempts: 0,
+      },
+    },
   );
 
-  const name = `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.username;
-  let emailResult = { success: false };
-  if (process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL) {
-    emailResult = await sendLoginOtpEmail({
-      to: user.email,
-      name,
-      otp,
-      expiresInMinutes: OTP_EXPIRES_MINUTES,
-    });
-  }
-
-  if (!emailResult?.success) {
-    logger.error({
-      requestId: req.id,
-      userId: String(user._id),
-      provider: "resend",
-      category: emailResult?.category || "configuration",
-      providerCode: emailResult?.code || "EMAIL_PROVIDER_NOT_CONFIGURED",
-      providerStatus: emailResult?.statusCode || null,
-    }, "Login OTP delivery failed");
-
-    if (process.env.NODE_ENV !== "production") {
-      console.log(`\n==================================================`);
-      console.log(`🔑 [DEV MODE LOGIN OTP] Code for ${user.email} is: ${otp} (Or enter Master Dev OTP: 123456)`);
-      console.log(`==================================================\n`);
-      return pending;
-    }
-
-    await UserSession.deleteOne({ _id: pending._id, isActive: false });
-
-    throw new AppError(
-      "Failed to send OTP email",
-      503,
-      "OTP_EMAIL_SEND_FAILED",
-    );
-  }
-
   logger.info(
     {
-      requestId: req.id,
-      userId: String(user._id),
-      messageId: emailResult.messageId,
+      ...logContext,
+      success: true,
     },
-    "Login OTP email sent",
+    "Login OTP delivery accepted and challenge stored",
   );
 
   return pending;
@@ -521,16 +541,9 @@ export const verifyLoginOtp = async (req, res, next) => {
     }
 
     if (isAdminRole(user.role)) {
-      const session = await UserSession.createSession(user._id, req, {
-        deviceId,
-        durationMs: SESSION_DURATION_MS,
-        otpVerified: false,
-        securityVersion: user.securityVersion,
-      });
-      return res.json({
-        message: "Login successful",
-        sessionId: session.sessionId,
-        user: buildUserPayload(user),
+      return res.status(400).json({
+        error: "OTP verification is not required for this account.",
+        code: "OTP_NOT_REQUIRED",
       });
     }
 
@@ -549,15 +562,49 @@ export const verifyLoginOtp = async (req, res, next) => {
       });
     }
 
-    const isDevMasterOtp =
-      process.env.NODE_ENV !== "production" && String(otp) === "123456";
-
-    if (!isDevMasterOtp && pending.otpHash !== hashOtp(String(otp))) {
-      pending.otpAttempts += 1;
-      await pending.save();
+    const submittedOtpHash = hashOtp(String(otp));
+    if (!otpMatches(pending.otpHash, submittedOtpHash)) {
+      await UserSession.updateOne(
+        {
+          _id: pending._id,
+          isActive: false,
+          otpHash: { $ne: null },
+          otpExpiresAt: { $gt: new Date() },
+          otpAttempts: { $lt: OTP_MAX_ATTEMPTS },
+        },
+        { $inc: { otpAttempts: 1 } },
+      );
       return res.status(400).json({
         error: "Invalid OTP code.",
         code: "OTP_INVALID",
+      });
+    }
+
+    const consumed = await UserSession.findOneAndUpdate(
+      {
+        _id: pending._id,
+        userId: user._id,
+        deviceId,
+        isActive: false,
+        otpHash: submittedOtpHash,
+        otpExpiresAt: { $gt: new Date() },
+        otpAttempts: { $lt: OTP_MAX_ATTEMPTS },
+      },
+      {
+        $set: {
+          otpHash: null,
+          otpExpiresAt: null,
+          otpAttempts: 0,
+          otpVerifiedAt: new Date(),
+        },
+      },
+      { new: true },
+    );
+
+    if (!consumed) {
+      return res.status(400).json({
+        error: "OTP expired or already used. Please request a new code.",
+        code: "OTP_EXPIRED",
       });
     }
 
@@ -565,11 +612,6 @@ export const verifyLoginOtp = async (req, res, next) => {
       { userId: user._id, deviceId, isActive: true },
       { $set: { isActive: false, logoutTime: new Date() } },
     );
-
-    pending.otpHash = null;
-    pending.otpExpiresAt = null;
-    pending.otpAttempts = 0;
-    await pending.save();
 
     const session = await UserSession.createSession(user._id, req, {
       deviceId,

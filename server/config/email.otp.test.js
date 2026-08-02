@@ -1,14 +1,21 @@
 import { describe, expect, jest, test } from "@jest/globals";
-import { buildLoginOtpMessage, classifyOtpEmailError } from "./email.js";
+import {
+  buildLoginOtpMessage,
+  classifyOtpEmailError,
+  normalizeOtpEmailResponse,
+} from "./email.js";
 
 describe("login OTP email failure classification", () => {
   test.each([
-    [{ statusCode: 401, name: "validation_error", message: "API key is invalid" }, "authentication"],
-    [{ statusCode: 403, message: "sender domain is not verified" }, "authentication"],
+    [{ statusCode: 400, name: "validation_error", message: "API key is invalid" }, "invalid_api_key"],
+    [{ statusCode: 401, name: "validation_error", message: "request rejected" }, "invalid_api_key"],
+    [{ statusCode: 403, message: "sender domain is not verified" }, "sender_rejection"],
     [{ statusCode: 422, message: "from address domain is not verified" }, "sender_rejection"],
     [{ statusCode: 429, message: "rate limit exceeded" }, "rate_limit"],
     [{ code: "ETIMEDOUT", message: "request timed out" }, "timeout"],
-    [{ statusCode: 400, message: "request rejected" }, "provider_rejection"],
+    [{ statusCode: 400, message: "request rejected" }, "provider_rejected"],
+    [{ code: "ECONNREFUSED", message: "network unavailable" }, "network"],
+    [{ message: "unexpected transport failure" }, "unknown"],
   ])("classifies sanitized provider failures", (error, category) => {
     const result = classifyOtpEmailError(error);
     expect(result.category).toBe(category);
@@ -22,6 +29,31 @@ describe("login OTP email failure classification", () => {
       message: "API key is invalid: secret-value",
     });
     expect(JSON.stringify(result)).not.toContain("secret-value");
+  });
+});
+
+describe("login OTP provider result normalization", () => {
+  test("only a positive provider message identifier is accepted", () => {
+    expect(normalizeOtpEmailResponse({ data: { id: "message-1" } })).toEqual({
+      success: true,
+      category: "accepted",
+      messageId: "message-1",
+    });
+    expect(normalizeOtpEmailResponse({ data: {} })).toMatchObject({
+      success: false,
+      category: "unexpected_response",
+    });
+    expect(normalizeOtpEmailResponse()).toMatchObject({
+      success: false,
+      category: "unexpected_response",
+    });
+  });
+
+  test("a returned provider error is rejected even when data is also present", () => {
+    expect(normalizeOtpEmailResponse({
+      data: { id: "must-not-be-accepted" },
+      error: { statusCode: 400, message: "API key invalid" },
+    })).toMatchObject({ success: false, category: "invalid_api_key" });
   });
 });
 

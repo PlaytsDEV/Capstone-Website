@@ -32,8 +32,8 @@ export const getFreshToken = async (forceRefresh = false) => {
 
   try {
     return await user.getIdToken(forceRefresh);
-  } catch (error) {
-    console.error("Failed to get fresh token:", error);
+  } catch (_) {
+    console.error("Failed to refresh the authentication token.");
     return null;
   }
 };

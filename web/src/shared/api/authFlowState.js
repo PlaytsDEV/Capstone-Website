@@ -12,6 +12,9 @@ export const getAuthErrorCode = (error) =>
   error?.response?.data?.error?.code ||
   null;
 
+export const isOtpDeliveryAccepted = (response) =>
+  response?.requiresOtp === true && response?.code === "OTP_REQUIRED";
+
 export const shouldDeferProfileRequest = ({
   firebaseUser,
   loginInProgress,

@@ -35,8 +35,8 @@ const getFreshToken = async (forceRefresh = false) => {
   if (!user) return null;
   try {
     return await user.getIdToken(forceRefresh);
-  } catch (error) {
-    console.error("Failed to get token:", error);
+  } catch (_) {
+    console.error("Failed to refresh the authentication token.");
     return null;
   }
 };
@@ -155,11 +155,11 @@ export const authApi = {
   logout: async () => {
     try {
       // Call backend logout endpoint first to log the logout
-      const response = await authRequest("/auth/logout", { method: "POST" });
+      await authRequest("/auth/logout", { method: "POST" });
     } catch (error) {
       console.error(
         "❌ [Logout] Backend logout error:",
-        error.message || error,
+        "Request failed",
       );
     }
     // Always sign out from Firebase even if backend fails

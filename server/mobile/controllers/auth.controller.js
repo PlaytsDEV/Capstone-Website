@@ -42,6 +42,10 @@ function maskEmail(email = '') {
   return user.length <= 2 ? `${user[0]}***@${domain}` : `${user.slice(0, 2)}***@${domain}`;
 }
 
+function shortFingerprint(value) {
+  return crypto.createHash('sha256').update(String(value || '')).digest('hex').slice(0, 12);
+}
+
 /** Case-insensitive regex for exact email match */
 function emailRegex(email) {
   const escaped = email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -351,7 +355,9 @@ async function login(req, res) {
   }
 
   if (!tenant.user_id) {
-    console.error(`[Login] CRITICAL: Tenant document missing user_id! _id=${tenant._id}`);
+    console.error('[Login] Tenant document missing user_id', {
+      record_fingerprint: shortFingerprint(tenant._id),
+    });
     return res.status(500).json({ detail: 'Account configuration error. Please contact the admin office.' });
   }
 
@@ -360,7 +366,7 @@ async function login(req, res) {
     return authenticationFailed(res);
   }
 
-  console.log(`[Login] Tenant found: user_id=${tenant.user_id}`);
+  console.log('[Login] Tenant found', { user_fingerprint: shortFingerprint(tenant.user_id) });
 
   if (tenant.failed_login_attempts || tenant.login_lock_until) {
     await clearPasswordLock(db, tenant.user_id);
@@ -387,7 +393,10 @@ async function login(req, res) {
     res.cookie('session_token', session.session_token, cookieOptions());
     const userData = await getCleanUser(db, tenant.user_id);
     logAttempt(db, emailRaw, true, 'biometric_success', req);
-    console.log(`[Login] ✓ Biometric login (OTP skipped) for user_id=${tenant.user_id}`);
+    console.log('[Login] Biometric login accepted', {
+      user_fingerprint: shortFingerprint(tenant.user_id),
+      success: true,
+    });
     return res.json({ user: userData, session_token: session.session_token });
   }
 
@@ -414,14 +423,18 @@ async function login(req, res) {
   const { sendLoginOtpEmail } = require('../services/emailService');
   const emailSent = await sendLoginOtpEmail(emailRaw, tenant.name || 'Tenant', otpCode);
   if (!emailSent) return res.status(503).json({
-    detail: 'Unable to send the verification code. Please try again.',
+    detail: 'We could not send the verification code. Please try again later.',
     code: 'OTP_EMAIL_SEND_FAILED',
   });
   await db.collection('otp_store').deleteMany({ user_id: tenant.user_id });
   await db.collection('otp_store').insertOne(challenge);
 
   logAttempt(db, emailRaw, true, 'otp_sent', req);
-  console.log(`[Login] OTP sent for user_id=${tenant.user_id} email=${maskEmail(emailRaw)}`);
+  console.log('[Login] OTP delivery accepted', {
+    user_fingerprint: shortFingerprint(tenant.user_id),
+    email_fingerprint: shortFingerprint(emailRaw.trim().toLowerCase()),
+    success: true,
+  });
   res.json({
     otp_required: true,
     otp_token: otpToken,
@@ -484,7 +497,10 @@ async function verifyOtp(req, res) {
 
   const user = await getCleanUser(db, record.user_id);
   logAttempt(db, record.email, true, 'success', req);
-  console.log(`[VerifyOtp] ✓ user_id=${record.user_id}`);
+  console.log('[VerifyOtp] OTP consumed', {
+    user_fingerprint: shortFingerprint(record.user_id),
+    success: true,
+  });
   res.json({ user, session_token: session.session_token });
 }
 
@@ -517,7 +533,10 @@ async function resendOtp(req, res) {
       { otp_token: normalizedToken, resend_reservation_id: reservationId },
       { $unset: { resend_reserved_at: '', resend_reservation_id: '' } },
     );
-    return res.status(503).json({ detail: 'Failed to send verification code. Please try again.' });
+    return res.status(503).json({
+      detail: 'We could not send the verification code. Please try again later.',
+      code: 'OTP_EMAIL_SEND_FAILED',
+    });
   }
 
   await db.collection('otp_store').updateOne(
@@ -525,7 +544,10 @@ async function resendOtp(req, res) {
     { $set: { otp_hash: hashOtp(newCode), attempts: 0, expires_at: newExpiry, last_sent_at: new Date() }, $unset: { otp_code: '', resend_reserved_at: '', resend_reservation_id: '' } },
   );
 
-  console.log(`[ResendOtp] New OTP sent for user_id=${record.user_id}`);
+  console.log('[ResendOtp] OTP delivery accepted', {
+    user_fingerprint: shortFingerprint(record.user_id),
+    success: true,
+  });
   res.json({ message: 'A new verification code has been sent to your email.' });
 }
 
@@ -551,7 +573,7 @@ async function googleSignIn(req, res) {
     }
 
     const db = getDb();
-    console.log(`[GoogleSignIn] Login attempt: ${maskEmail(email)}`);
+    console.log('[GoogleSignIn] Login attempt', { email_fingerprint: shortFingerprint(email) });
 
     // Lookup — ordered by precision to avoid cross-user contamination
     // 1. Exact email match (most reliable)
@@ -560,7 +582,7 @@ async function googleSignIn(req, res) {
       role: { $nin: ['admin', 'owner', 'branch_admin'] },
     });
     if (tenant) {
-      console.log(`[GoogleSignIn] Found by email: ${tenant.user_id}`);
+      console.log('[GoogleSignIn] Found by email', { user_fingerprint: shortFingerprint(tenant.user_id) });
     }
 
     // 2. google_email match (secondary)
@@ -569,7 +591,7 @@ async function googleSignIn(req, res) {
         google_email: emailRegex(email),
         role: { $nin: ['admin', 'owner', 'branch_admin'] },
       });
-      if (tenant) console.log(`[GoogleSignIn] Found by google_email: ${tenant.user_id}`);
+      if (tenant) console.log('[GoogleSignIn] Found by linked email', { user_fingerprint: shortFingerprint(tenant.user_id) });
     }
 
     // 3. firebase_uid match (last resort)
@@ -578,12 +600,12 @@ async function googleSignIn(req, res) {
         firebase_uid: fbUid,
         role: { $nin: ['admin', 'owner', 'branch_admin'] },
       });
-      if (tenant) console.log(`[GoogleSignIn] Found by firebase_uid: ${tenant.user_id}`);
+      if (tenant) console.log('[GoogleSignIn] Found by Firebase identity', { user_fingerprint: shortFingerprint(tenant.user_id) });
     }
 
     // Not found → not a registered tenant
     if (!tenant) {
-      console.log(`[GoogleSignIn] Tenant lookup failed: ${maskEmail(email)}`);
+      console.log('[GoogleSignIn] Tenant lookup failed', { email_fingerprint: shortFingerprint(email) });
       return authenticationFailed(res);
     }
 
@@ -592,7 +614,9 @@ async function googleSignIn(req, res) {
     }
 
     if (!tenant.user_id) {
-      console.error(`[GoogleSignIn] CRITICAL: Tenant document missing user_id! _id=${tenant._id}`);
+      console.error('[GoogleSignIn] Tenant document missing user_id', {
+        record_fingerprint: shortFingerprint(tenant._id),
+      });
       return res.status(500).json({ detail: 'Account configuration error. Please contact the admin office.' });
     }
 
@@ -643,7 +667,10 @@ async function googleSignIn(req, res) {
     res.cookie('session_token', session.session_token, cookieOptions());
 
     const user = await getCleanUser(db, tenant.user_id);
-    console.log(`[GoogleSignIn] Success user_id=${tenant.user_id}`);
+    console.log('[GoogleSignIn] Success', {
+      user_fingerprint: shortFingerprint(tenant.user_id),
+      success: true,
+    });
     res.json({ user, session_token: session.session_token });
   } catch (error) {
     console.error('Google auth error:', error);
@@ -784,7 +811,11 @@ async function changePassword(req, res) {
     await invalidateMobileIdentity(db, req.user, 'password_changed', req);
     await admin.auth().updateUser(uid, { password: new_password });
 
-    console.log(`[ChangePassword] ✓ Password updated for user_id=${userId} email=${maskEmail(userEmail)}`);
+    console.log('[ChangePassword] Password updated', {
+      user_fingerprint: shortFingerprint(userId),
+      email_fingerprint: shortFingerprint(userEmail),
+      success: true,
+    });
 
     const changeTimestamp = new Date();
 

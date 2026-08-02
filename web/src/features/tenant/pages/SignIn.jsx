@@ -37,9 +37,14 @@ import {
 } from "../../../shared/utils/authToasts";
 import {
   clearLoginInProgress,
+  clearOtpPending,
   setLoginInProgress,
   setOtpPending,
 } from "../../../shared/api/authSession";
+import {
+  getAuthErrorCode,
+  isOtpDeliveryAccepted,
+} from "../../../shared/api/authFlowState";
 import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
 import SocialAuthButtons from "../../../shared/components/SocialAuthButtons";
 import FloatingInput from "../../../shared/components/FloatingInput";
@@ -319,7 +324,7 @@ function SignIn() {
  url: `${window.location.origin}/verify-email`,
  });
  } catch (e) {
- console.warn("Could not auto-send verification email:", e.message);
+ console.warn("Could not auto-send verification email.");
  }
  setUnverifiedEmail(formData.email);
  await auth.signOut();
@@ -343,18 +348,26 @@ function SignIn() {
 
  try {
  const loginResponse = await login();
- if (loginResponse?.requiresOtp) {
+ if (isOtpDeliveryAccepted(loginResponse)) {
   setOtpPending({ email: formData.email });
   navigate("/verify-otp");
   return;
  }
  navigateAfterAuth(loginResponse.user, firebaseUser.displayName || "there");
  } catch (backendError) {
+ clearOtpPending();
  await auth.signOut();
+ const backendErrorCode = getAuthErrorCode(backendError);
  const isNotRegistered =
  backendError.response?.status === 404 ||
  /not found|not registered|register first/i.test(backendError.message);
- if (isNotRegistered)
+ if (backendErrorCode === "OTP_EMAIL_SEND_FAILED")
+ showNotification(
+ "We could not send the verification code. Please try again later.",
+ "error",
+ 6000,
+ );
+ else if (isNotRegistered)
  showNotification(
  "User is not registered. Please sign up first.",
  "warning",

@@ -247,6 +247,6 @@ describe('OTP behavior', () => {
     const { db, state } = otpDb({ otp_token: 'c1', otp_hash: priorHash, user_id: 'u1', email: 'masked', attempts: 0, expires_at: new Date(Date.now() + 600000), last_sent_at: new Date(Date.now() - 120000) });
     authController.__test.setDependencies({ getDb: () => db, sendLoginOtpEmail: async () => false }); const res = response();
     await authController.__test.resendOtp({ body: { otp_token: 'c1' } }, res);
-    expect(res.statusCode).toBe(503); expect(state.record.otp_hash).toBe(priorHash); expect(state.record.resend_reserved_at).toBeUndefined();
+    expect(res.statusCode).toBe(503); expect(res.body.code).toBe('OTP_EMAIL_SEND_FAILED'); expect(state.record.otp_hash).toBe(priorHash); expect(state.record.resend_reserved_at).toBeUndefined();
   });
 });

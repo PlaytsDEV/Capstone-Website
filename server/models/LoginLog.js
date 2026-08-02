@@ -17,6 +17,7 @@
  */
 
 import mongoose from "mongoose";
+import crypto from "crypto";
 
 // ============================================================================
 // SCHEMA DEFINITION
@@ -34,6 +35,11 @@ const loginLogSchema = new mongoose.Schema(
     email: {
       type: String,
       default: null,
+    },
+    emailFingerprint: {
+      type: String,
+      default: null,
+      index: true,
     },
 
     // --- Event Details ---
@@ -105,7 +111,10 @@ loginLogSchema.statics.logEvent = async function ({
   try {
     await this.create({
       userId,
-      email,
+      email: null,
+      emailFingerprint: email
+        ? crypto.createHash("sha256").update(String(email).trim().toLowerCase()).digest("hex").slice(0, 12)
+        : null,
       action,
       success,
       failureReason,

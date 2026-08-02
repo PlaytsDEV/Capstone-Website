@@ -20,6 +20,24 @@ const isDev = process.env.NODE_ENV !== "production";
 
 const logger = pino({
   level: process.env.LOG_LEVEL || (isDev ? "debug" : "info"),
+  redact: {
+    paths: [
+      "otp",
+      "otpHash",
+      "email",
+      "deviceId",
+      "firebaseUid",
+      "sessionId",
+      "token",
+      "authToken",
+      "authorization",
+      "headers.authorization",
+      "req.headers.authorization",
+      "err.config.headers.Authorization",
+      "err.config.headers.authorization",
+    ],
+    censor: "[REDACTED]",
+  },
   transport: isDev
     ? {
         target: "pino-pretty",

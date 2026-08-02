@@ -10,10 +10,15 @@
  */
 
 const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 
 // ─── TRANSPORTER (lazily created) ───────────────────────────────────────────
 
 let _transporter = null;
+
+function emailFingerprint(value) {
+  return crypto.createHash('sha256').update(String(value || '').trim().toLowerCase()).digest('hex').slice(0, 12);
+}
 
 function getTransporter() {
   if (_transporter) return _transporter;
@@ -175,10 +180,16 @@ async function sendPasswordChangedEmail(toEmail, userName = 'Tenant', ip = 'Unkn
       subject: '🔒 LilyCrest Security Alert — Your Password Was Changed',
       html,
     });
-    console.log(`[Email] Password-changed confirmation sent to ${maskedEmail}`);
+    console.log('[Email] Password-changed email accepted', {
+      email_fingerprint: emailFingerprint(toEmail),
+      success: true,
+    });
     return true;
-  } catch (err) {
-    console.warn(`[Email] Failed to send password-changed email to ${maskedEmail}:`, err?.message);
+  } catch (_) {
+    console.warn('[Email] Password-changed email failed', {
+      email_fingerprint: emailFingerprint(toEmail),
+      success: false,
+    });
     return false;
   }
 }
@@ -249,16 +260,29 @@ async function sendLoginOtpEmail(toEmail, userName = 'Tenant', otpCode) {
   });
 
   try {
-    await transporter.sendMail({
+    const result = await transporter.sendMail({
       from: senderAddress(),
       to: toEmail,
       subject: `${otpCode} is your LilyCrest log-in code`,
       html,
     });
-    console.log(`[Email] Login OTP sent to ${maskedEmail}`);
+    if (!result?.messageId || !Array.isArray(result.accepted) || result.accepted.length === 0) {
+      console.warn('[Email] Login OTP request was not accepted', {
+        email_fingerprint: emailFingerprint(toEmail),
+        success: false,
+      });
+      return false;
+    }
+    console.log('[Email] Login OTP accepted', {
+      email_fingerprint: emailFingerprint(toEmail),
+      success: true,
+    });
     return true;
-  } catch (err) {
-    console.warn(`[Email] Failed to send OTP email to ${maskedEmail}:`, err?.message);
+  } catch (_) {
+    console.warn('[Email] Login OTP failed', {
+      email_fingerprint: emailFingerprint(toEmail),
+      success: false,
+    });
     return false;
   }
 }
@@ -427,10 +451,16 @@ async function sendPasswordResetEmail(toEmail, userName = 'Tenant', resetLink) {
       subject: 'Reset your LilyCrest password',
       html,
     });
-    console.log(`[Email] Password reset link sent to ${maskedEmail}`);
+    console.log('[Email] Password reset email accepted', {
+      email_fingerprint: emailFingerprint(toEmail),
+      success: true,
+    });
     return true;
-  } catch (err) {
-    console.warn(`[Email] Failed to send password reset email to ${maskedEmail}:`, err?.message);
+  } catch (_) {
+    console.warn('[Email] Password reset email failed', {
+      email_fingerprint: emailFingerprint(toEmail),
+      success: false,
+    });
     return false;
   }
 }

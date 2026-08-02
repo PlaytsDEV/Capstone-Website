@@ -72,3 +72,9 @@ Environment keys governing email dispatch:
 - `SMTP_USER`
 - `SMTP_PASS`
 - `SMTP_FROM_EMAIL`
+
+### Web Login OTP Delivery (Resend)
+
+Web login OTP messages use `RESEND_API_KEY` and `RESEND_FROM_EMAIL` from the backend environment (normally `server/.env` for local development). The API fails closed when either value is missing or when Resend rejects or does not positively accept the request; no newly generated challenge is stored in that case.
+
+Use a restricted Resend key and a sender address on a verified sender/domain. After changing either value, restart the backend because the Resend client and sender configuration are initialized when the email module is imported. Configuration presence alone does not prove that the credential or sender is valid; confirmation requires an authorized provider-accepted delivery test with a disposable test account.
