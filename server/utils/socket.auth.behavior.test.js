@@ -2,7 +2,7 @@ import { jest } from '@jest/globals';
 
 const warn = jest.fn();
 await jest.unstable_mockModule('../middleware/logger.js', () => ({ default: { warn, info: jest.fn() } }));
-await jest.unstable_mockModule('../models/index.js', () => ({ User: {} }));
+await jest.unstable_mockModule('../models/index.js', () => ({ User: {}, UserSession: {} }));
 await jest.unstable_mockModule('../config/firebase.js', () => ({ getAuth: jest.fn() }));
 const {
   createSocketAuthenticator,
@@ -14,7 +14,12 @@ function socket(token = 'safe-token', handshake = {}) {
   const rooms = new Set();
   return {
     id: 's1',
-    handshake: { auth: token ? { token } : {}, headers: {}, query: {}, ...handshake },
+    handshake: {
+      auth: token ? { token, deviceId: 'test-device' } : {},
+      headers: { cookie: 'lilycrest_web_session=test-session' },
+      query: {},
+      ...handshake,
+    },
     conn: { transport: { name: 'websocket' } },
     data: {},
     rooms,
@@ -22,13 +27,15 @@ function socket(token = 'safe-token', handshake = {}) {
   };
 }
 
-async function authenticate({ token = 'safe-token', verify, user }) {
+async function authenticate({ token = 'safe-token', verify, user, otpSession = { securityVersion: 0 }, adminSession = { securityVersion: 0 }, handshake }) {
   const verifyIdToken = jest.fn(verify || (async () => ({ uid: 'f1', role: 'tenant' })));
   const findUser = jest.fn(async () => user);
-  const middleware = createSocketAuthenticator({ getFirebaseAuth: () => ({ verifyIdToken }), findUser });
-  const client = socket(token); let error;
+  const findOtpSession = jest.fn(async () => otpSession);
+  const findSession = jest.fn(async () => adminSession);
+  const middleware = createSocketAuthenticator({ getFirebaseAuth: () => ({ verifyIdToken }), findUser, findOtpSession, findSession });
+  const client = socket(token, handshake); let error;
   await middleware(client, (value) => { error = value; });
-  return { client, error, verifyIdToken, findUser };
+  return { client, error, verifyIdToken, findUser, findOtpSession, findSession };
 }
 
 describe('Socket.IO authentication behavior', () => {
@@ -37,6 +44,7 @@ describe('Socket.IO authentication behavior', () => {
     const result = await authenticate({ user });
     expect(result.error).toBeUndefined(); expect(result.verifyIdToken).toHaveBeenCalledWith('safe-token', true);
     expect(result.findUser).toHaveBeenCalledWith('f1');
+    expect(result.findOtpSession).toHaveBeenCalledWith('u1', 'test-device', 'test-session');
     expect(result.client.data.authUser).toEqual({ userId: 'u1', role: 'tenant', permissions: [], branch: null, accountStatus: 'active' });
   });
 
@@ -55,7 +63,7 @@ describe('Socket.IO authentication behavior', () => {
     ['unknown', null],
   ])('%s identity is rejected before private rooms can be joined', async (_label, user) => {
     const result = await authenticate({ user: user && { _id: 'u1', role: 'tenant', branch: 'x', isActive: true, isArchived: false, ...user } });
-    expect(result.error?.message).toBe('User not allowed'); expect(result.client.data.authUser).toBeUndefined(); expect(result.client.join).not.toHaveBeenCalled();
+    expect(result.error?.message).toBe('Authentication failed'); expect(result.client.data.authUser).toBeUndefined(); expect(result.client.join).not.toHaveBeenCalled();
   });
 
   test('missing token rejects before Firebase or database access', async () => {
@@ -68,9 +76,38 @@ describe('Socket.IO authentication behavior', () => {
       verify: async () => ({ uid: 'deleted-owner', role: 'owner', owner: true, permissions: ['manageUsers'] }),
       user: null,
     });
-    expect(result.error?.message).toBe('User not allowed');
+    expect(result.error?.message).toBe('Authentication failed');
     expect(result.client.data.authUser).toBeUndefined();
     expect(result.client.join).not.toHaveBeenCalled();
+  });
+
+  test.each(['applicant', 'tenant'])('%s without an OTP-backed application session is rejected', async (role) => {
+    const result = await authenticate({
+      user: { _id: 'u1', role, accountStatus: 'active', isActive: true, isArchived: false },
+      otpSession: null,
+    });
+    expect(result.error?.message).toBe('Authentication failed');
+    expect(result.client.data.authUser).toBeUndefined();
+  });
+
+  test('expired, revoked, and device/session-mismatched application sessions are rejected', async () => {
+    for (const otpSession of [null, { securityVersion: 1 }]) {
+      const result = await authenticate({
+        user: { _id: 'u1', role: 'tenant', securityVersion: 2, accountStatus: 'active', isActive: true, isArchived: false },
+        otpSession,
+      });
+      expect(result.error?.message).toBe('Authentication failed');
+    }
+  });
+
+  test('admins require an active application session while preserving their OTP bypass', async () => {
+    const user = { _id: 'admin-1', role: 'owner', securityVersion: 0, accountStatus: 'active', isActive: true, isArchived: false };
+    const allowed = await authenticate({ user });
+    expect(allowed.error).toBeUndefined();
+    expect(allowed.findSession).toHaveBeenCalled();
+    expect(allowed.findOtpSession).not.toHaveBeenCalled();
+    const rejected = await authenticate({ user, adminSession: null });
+    expect(rejected.error?.message).toBe('Authentication failed');
   });
 });
 

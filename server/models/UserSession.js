@@ -98,6 +98,16 @@ const userSessionSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    otpPurpose: {
+      type: String,
+      enum: ["login"],
+      default: null,
+    },
+    challengeKey: {
+      type: String,
+      default: null,
+      select: false,
+    },
     securityVersion: { type: Number, default: 0 },
 
     // --- Status ---
@@ -119,6 +129,16 @@ const userSessionSchema = new mongoose.Schema(
 userSessionSchema.index({ userId: 1, isActive: 1 });
 userSessionSchema.index({ userId: 1, loginTime: -1 });
 userSessionSchema.index({ userId: 1, deviceId: 1, isActive: 1 });
+// New challenges receive a deterministic, hashed scope key. The sparse unique
+// index is migration-safe for legacy rows where challengeKey is absent/null.
+userSessionSchema.index(
+  { challengeKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { challengeKey: { $type: "string" } },
+    name: "unique_pending_otp_challenge_scope",
+  },
+);
 
 // TTL: auto-delete inactive sessions after 30 days
 userSessionSchema.index(
@@ -177,10 +197,21 @@ userSessionSchema.statics.findValidOtpSession = function (userId, deviceId, sess
   });
 };
 
+userSessionSchema.statics.findValidSession = function (userId, deviceId, sessionId) {
+  if (!deviceId || !sessionId) return null;
+  return this.findOne({
+    userId,
+    deviceId,
+    sessionId,
+    isActive: true,
+    expiresAt: { $gt: new Date() },
+  });
+};
+
 /**
  * Find the newest pending OTP challenge for this user/device.
  */
-userSessionSchema.statics.findPendingOtp = function (userId, deviceId) {
+userSessionSchema.statics.findPendingOtp = function (userId, deviceId, purpose = "login") {
   if (!deviceId) return null;
   return this.findOne({
     userId,
@@ -188,6 +219,7 @@ userSessionSchema.statics.findPendingOtp = function (userId, deviceId) {
     isActive: false,
     otpHash: { $ne: null },
     otpExpiresAt: { $gt: new Date() },
+    otpPurpose: { $in: [purpose, null] },
   })
     .select("+otpHash")
     .sort({ otpLastSentAt: -1 });

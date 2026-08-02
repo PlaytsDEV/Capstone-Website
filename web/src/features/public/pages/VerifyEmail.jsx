@@ -82,7 +82,6 @@ function VerifyEmail() {
         await applyActionCode(auth, oobCode);
         setStatus("success");
       } catch (error) {
-        console.error("Email verification error:", error);
         setStatus("error");
         if (error.code === "auth/expired-action-code") {
           setErrorMessage(

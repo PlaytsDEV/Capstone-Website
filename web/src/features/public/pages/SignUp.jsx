@@ -17,6 +17,7 @@ import { Link, useNavigate } from "react-router-dom";
 import PasswordVisibilityButton from "../../../shared/components/PasswordVisibilityButton";
 import {
   createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
   signInWithPopup,
   GoogleAuthProvider,
   FacebookAuthProvider,
@@ -93,6 +94,7 @@ function SignUp() {
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [resumeAvailable, setResumeAvailable] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [fieldValid, setFieldValid] = useState({});
@@ -316,26 +318,72 @@ function SignUp() {
     firstName,
     lastName,
   ) => {
-    try {
-      const token = await firebaseUser.getIdToken();
-      const username = generateUsername(firebaseUser.email);
-      const response = await authApi.register(
-        {
+    let lastCollision = null;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        return await authApi.register({
           email: firebaseUser.email,
-          username,
+          username: generateUsername(firebaseUser.email, attempt),
           firstName: sanitizeName(firstName).trim(),
           lastName: sanitizeName(lastName).trim(),
           phone,
-        },
-        token,
-      );
-      localStorage.setItem("authToken", token);
-      localStorage.setItem("user", JSON.stringify(response.user));
-      return response.user;
-    } catch (error) {
-      console.error("❌ Backend registration error:", error);
-      throw error;
+        });
+      } catch (error) {
+        const code = error?.code || error?.response?.data?.code;
+        if (code !== "USERNAME_TAKEN") throw error;
+        lastCollision = error;
+      }
     }
+    throw lastCollision || new Error("Unable to allocate a registration username.");
+  };
+
+  const completePasswordOnboarding = async (firebaseUser) => {
+    const response = await registerUserInBackend(
+      firebaseUser,
+      formData.phone,
+      formData.firstName,
+      formData.lastName,
+    );
+
+    let verificationEmailSent = Boolean(firebaseUser.emailVerified);
+    if (!firebaseUser.emailVerified) {
+      try {
+        await sendEmailVerification(firebaseUser, {
+          url: `${getWebBaseUrl()}/auth-action`,
+          handleCodeInApp: true,
+        });
+        verificationEmailSent = true;
+      } catch {
+        verificationEmailSent = false;
+      }
+    }
+
+    sessionStorage.removeItem("lilycrest_pending_email");
+    localStorage.removeItem("lilycrest_pending_email");
+    await auth.signOut();
+
+    const alreadyVerified = Boolean(firebaseUser.emailVerified);
+    appNavigate("/signin", {
+      replace: true,
+      state: { email: formData.email },
+      flash: alreadyVerified
+        ? {
+            type: "info",
+            message: "Registration is already complete. Please sign in.",
+          }
+        : verificationEmailSent
+          ? {
+              type: "success",
+              message:
+                "Account created and verification email sent. Please check your inbox and spam folder.",
+            }
+          : {
+              type: "warning",
+              message:
+                "Account created, but the verification email could not be sent. Sign in to request a new verification email.",
+            },
+    });
+    return response;
   };
 
   const handleSignUp = async (e) => {
@@ -351,44 +399,39 @@ function SignUp() {
       );
       firebaseUser = userCredential.user;
       try {
-        await registerUserInBackend(
-          firebaseUser,
-          formData.phone,
-          formData.firstName,
-          formData.lastName,
-        );
-        try {
-          const continueUrl = `${getWebBaseUrl()}/auth-action`;
-          const actionCodeSettings = {
-            url: continueUrl,
-            handleCodeInApp: true,
-          };
-          await sendEmailVerification(firebaseUser, actionCodeSettings);
-        } catch (emailError) {
-          showNotification(
-            "Account created, but we couldn't send the verification email. Please try signing in — you can request a new verification email from there.",
-            "warning",
-            8000,
-          );
-        }
-        // Save email temporarily in sessionStorage so sign-in page can pre-fill it once
-        sessionStorage.setItem("lilycrest_pending_email", formData.email);
-        localStorage.removeItem("lilycrest_pending_email");
-        await auth.signOut();
-        appNavigate("/signin", {
-          replace: true,
-          state: { email: formData.email },
-          flash: {
-            type: "success",
-            message:
-              "Account created! Please check your inbox (and spam folder) for the verification email.",
-          },
-        });
+        await completePasswordOnboarding(firebaseUser);
       } catch (backendError) {
         await recoverFromAuthFailure(auth, backendError);
         throw backendError;
       }
     } catch (error) {
+      if (error?.code === "auth/email-already-in-use") {
+        setResumeAvailable(true);
+        showNotification(
+          "This Firebase account already exists. Enter its password and choose Resume registration to safely continue onboarding.",
+          "info",
+          7000,
+        );
+        return;
+      }
+      showNotification(getFirebaseErrorMessage(error, "signup"), "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResumeRegistration = async () => {
+    if (!validateForm()) return;
+    setLoading(true);
+    try {
+      const credential = await signInWithEmailAndPassword(
+        auth,
+        formData.email,
+        formData.password,
+      );
+      await completePasswordOnboarding(credential.user);
+    } catch (error) {
+      await recoverFromAuthFailure(auth, error);
       showNotification(getFirebaseErrorMessage(error, "signup"), "error");
     } finally {
       setLoading(false);
@@ -412,9 +455,8 @@ function SignUp() {
         setLoading(false);
         return;
       }
-      const token = await firebaseUser.getIdToken();
       try {
-        await authApi.checkUser(token);
+        await authApi.checkUser();
         // User already exists — sign out and redirect to sign-in
         await auth.signOut();
         socialAuthRef.current = false;
@@ -437,22 +479,14 @@ function SignUp() {
             const parts = rawName.split(" ");
             const firstName = parts[0] || "User";
             const lastName = parts.slice(1).join(" ") || "Guest";
-            const username = generateUsername(firebaseUser.email);
-            await authApi.register(
-              {
-                email: firebaseUser.email,
-                username,
-                firstName,
-                lastName,
-                phone: "",
-              },
-              token,
+            const registration = await registerUserInBackend(
+              firebaseUser,
+              "",
+              firstName,
+              lastName,
             );
-            try {
-              await loginBackend();
-            } catch (e) {
-              /* proceed anyway */
-            }
+            const username = registration?.user?.username;
+            await loginBackend();
             showNotification(
               buildAuthWelcomeMessage(
                 {
@@ -783,6 +817,17 @@ function SignUp() {
               >
                 {loading ? "Creating Account..." : "Create account"}
               </button>
+
+              {resumeAvailable && (
+                <button
+                  type="button"
+                  className="auth-btn-secondary"
+                  disabled={loading}
+                  onClick={handleResumeRegistration}
+                >
+                  {loading ? "Resuming Registration..." : "Resume registration"}
+                </button>
+              )}
 
               <SocialAuthButtons
                 onGoogle={handleGoogleSignup}

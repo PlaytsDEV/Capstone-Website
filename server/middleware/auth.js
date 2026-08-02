@@ -35,6 +35,7 @@ import {
   setCachedAccountStatus as _setCachedAccountStatus,
   invalidateAccountStatusCache,
 } from "../utils/accountStatusCache.js";
+import { getWebSessionId } from "../utils/webSessionCookie.js";
 import { sendError } from "./errorHandler.js";
 
 export { invalidateAccountStatusCache };
@@ -180,10 +181,7 @@ export const verifyToken = async (req, res, next) => {
         typeof req.headers["x-device-id"] === "string"
           ? req.headers["x-device-id"].trim()
           : "";
-      const sessionId =
-        typeof req.headers["x-session-id"] === "string"
-          ? req.headers["x-session-id"].trim()
-          : "";
+      const sessionId = getWebSessionId(req);
 
       if (!deviceId || !sessionId) {
         return sendError(

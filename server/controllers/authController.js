@@ -31,6 +31,11 @@ import {
   resolveTenantOccupancyDetails,
   resolveTenantPersonalDetails,
 } from "../services/tenantProfileService.js";
+import {
+  clearWebSessionCookie,
+  getWebSessionId,
+  setWebSessionCookie,
+} from "../utils/webSessionCookie.js";
 
 
 const VALID_BRANCHES = ROOM_BRANCHES;
@@ -46,10 +51,7 @@ const getDeviceId = (req) =>
     ? req.headers["x-device-id"].trim()
     : "";
 
-const getSessionId = (req) =>
-  typeof req.headers["x-session-id"] === "string"
-    ? req.headers["x-session-id"].trim()
-    : "";
+const getSessionId = (req) => getWebSessionId(req);
 
 const createOtp = () => crypto.randomInt(100000, 1000000).toString();
 
@@ -99,7 +101,6 @@ const sendIdentityConflict = async (req, res, user) => {
 const buildUserPayload = (user) => ({
   id: user._id,
   user_id: user.user_id,
-  firebaseUid: user.firebaseUid,
   email: user.email,
   username: user.username,
   firstName: user.firstName,
@@ -131,6 +132,11 @@ export const buildRegistrationUserPayload = (user) => ({
 export const storeOtpChallenge = async (user, req, deviceId) => {
   const otp = createOtp();
   const now = new Date();
+  const otpPurpose = "login";
+  const challengeKey = crypto
+    .createHash("sha256")
+    .update(`${String(user._id)}:${deviceId}:${otpPurpose}`)
+    .digest("hex");
   const logContext = {
     event: "login_otp_delivery",
     environment: process.env.NODE_ENV || "development",
@@ -176,29 +182,44 @@ export const storeOtpChallenge = async (user, req, deviceId) => {
 
   // The provider must accept the message before the code becomes verifiable.
   // This preserves an existing valid challenge when a resend attempt fails.
-  const pending = await UserSession.findOneAndUpdate(
-    {
+  const challengeUpdate = {
+    $set: {
       userId: user._id,
       deviceId,
+      device: req.headers["x-device-name"] || "Unknown",
+      ipAddress: req.ip || req.headers["x-forwarded-for"] || req.connection?.remoteAddress,
+      userAgent: req.headers["user-agent"],
+      otpHash: hashOtp(otp),
+      otpExpiresAt: new Date(now.getTime() + OTP_EXPIRES_MS),
+      otpLastSentAt: now,
+      otpAttempts: 0,
+      otpVerifiedAt: null,
+      otpPurpose,
+      challengeKey,
       isActive: false,
+      expiresAt: null,
+      logoutTime: now,
     },
-    {
-      $set: {
-        deviceId,
-        device: req.headers["x-device-name"] || "Unknown",
-        ipAddress: req.ip || req.headers["x-forwarded-for"] || req.connection?.remoteAddress,
-        userAgent: req.headers["user-agent"],
-        otpHash: hashOtp(otp),
-        otpExpiresAt: new Date(now.getTime() + OTP_EXPIRES_MS),
-        otpLastSentAt: now,
-        otpAttempts: 0,
-        otpVerifiedAt: null,
-        expiresAt: null,
-        logoutTime: now,
-      },
-    },
-    { new: true, upsert: true, setDefaultsOnInsert: true },
-  );
+  };
+
+  let pending;
+  try {
+    pending = await UserSession.findOneAndUpdate(
+      { challengeKey },
+      challengeUpdate,
+      { new: true, upsert: true, setDefaultsOnInsert: true },
+    );
+  } catch (error) {
+    // Concurrent first sends can race on the unique scope key. Once the winner
+    // inserts, the other request safely supersedes that same single row.
+    if (error?.code !== 11000) throw error;
+    pending = await UserSession.findOneAndUpdate(
+      { challengeKey },
+      challengeUpdate,
+      { new: true },
+    );
+    if (!pending) throw error;
+  }
 
   // Defensive cleanup for legacy duplicates or concurrent first-time upserts.
   // Verification only ever sees the accepted challenge retained above.
@@ -209,6 +230,7 @@ export const storeOtpChallenge = async (user, req, deviceId) => {
       deviceId,
       isActive: false,
       otpHash: { $ne: null },
+      otpPurpose: { $in: [otpPurpose, null] },
       otpLastSentAt: { $lte: now },
     },
     {
@@ -352,6 +374,12 @@ export const register = async (req, res, next) => {
         ? await User.findOne({ email: req.user.email.toLowerCase().trim() })
         : null;
       if (existingByEmail) return sendIdentityConflict(req, res, existingByEmail);
+      if (error?.keyPattern?.username || error?.keyValue?.username) {
+        return res.status(400).json({
+          error: "A generated username collision occurred. Please retry registration.",
+          code: "USERNAME_TAKEN",
+        });
+      }
       return res.status(409).json({
         success: false,
         error: {
@@ -386,7 +414,7 @@ export const login = async (req, res, next) => {
         return sendIdentityConflict(req, res, byEmail);
       } else {
         logger.info(
-          { uidFingerprint: fingerprintUid(req.user.uid) },
+          { uidFingerprint: fingerprint(req.user.uid) },
           "Login: user not found by UID or email",
         );
       }
@@ -483,6 +511,7 @@ export const login = async (req, res, next) => {
       );
 
       if (!existingSession) {
+        clearWebSessionCookie(res);
         await storeOtpChallenge(user, req, deviceId);
         return res.status(200).json({
           requiresOtp: true,
@@ -502,9 +531,9 @@ export const login = async (req, res, next) => {
       LoginLog.logEvent({ userId: user._id, email: user.email, action: "login", success: true, req });
     }
 
+    setWebSessionCookie(res, session?.sessionId);
     res.json({
       message: "Login successful",
-      sessionId: session?.sessionId || null,
       user: buildUserPayload(user),
     });
   } catch (error) {
@@ -547,7 +576,7 @@ export const verifyLoginOtp = async (req, res, next) => {
       });
     }
 
-    const pending = await UserSession.findPendingOtp(user._id, deviceId);
+    const pending = await UserSession.findPendingOtp(user._id, deviceId, "login");
     if (!pending) {
       return res.status(400).json({
         error: "OTP expired. Please request a new code.",
@@ -623,9 +652,9 @@ export const verifyLoginOtp = async (req, res, next) => {
     await auditLogger.logLogin(req, user, true);
     LoginLog.logEvent({ userId: user._id, email: user.email, action: "login", success: true, req });
 
+    setWebSessionCookie(res, session.sessionId);
     return res.json({
       message: "OTP verified",
-      sessionId: session.sessionId,
       user: buildUserPayload(user),
     });
   } catch (error) {
@@ -661,6 +690,7 @@ export const resendLoginOtp = async (req, res, next) => {
       deviceId,
       isActive: false,
       otpHash: { $ne: null },
+      otpPurpose: { $in: ["login", null] },
     }).select("+otpHash");
 
     if (pending?.otpLastSentAt) {
@@ -688,6 +718,7 @@ export const resendLoginOtp = async (req, res, next) => {
 
 export const logout = async (req, res, next) => {
   try {
+    clearWebSessionCookie(res);
     // Get user info for audit logging
     const user = await User.findOne({ firebaseUid: req.user.uid });
 
@@ -764,7 +795,6 @@ export const getProfile = async (req, res, next) => {
     res.json({
       id: user._id,
       user_id: user.user_id,
-      firebaseUid: user.firebaseUid,
       email: user.email,
       username: user.username,
       firstName: user.firstName,
@@ -1025,7 +1055,6 @@ export const updateBranch = async (req, res, next) => {
       user: {
         id: user._id,
         user_id: user.user_id,
-        firebaseUid: user.firebaseUid,
         email: user.email,
         username: user.username,
         firstName: user.firstName,

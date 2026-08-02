@@ -26,6 +26,7 @@ import {
   describeSocketTarget,
 } from "../api/socketConfig";
 import { getFreshToken } from "../api/httpClient";
+import { getDeviceId } from "../api/authSession";
 
 export default function useChatSocket({
   onMessageNew = null,
@@ -58,7 +59,7 @@ export default function useChatSocket({
       if (cancelled || !token) return;
 
       const socket = io(SOCKET_BASE_URL, {
-        auth: { token },
+        auth: { token, deviceId: getDeviceId() },
         ...SOCKET_CLIENT_OPTIONS,
       });
 

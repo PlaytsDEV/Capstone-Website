@@ -33,6 +33,7 @@ export const SOCKET_TRANSPORTS =
     : getDefaultSocketTransports();
 
 export const SOCKET_CLIENT_OPTIONS = {
+  withCredentials: true,
   path: SOCKET_PATH,
   transports: SOCKET_TRANSPORTS,
   reconnectionAttempts: 3,

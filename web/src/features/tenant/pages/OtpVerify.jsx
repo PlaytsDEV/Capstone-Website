@@ -18,6 +18,7 @@ import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
 import "../../../shared/styles/auth-forms.css";
 import "../../../shared/styles/notification.css";
 import hero3 from "../../../assets/images/hero3.jpg";
+import { auth } from "../../../firebase/config";
 
 const OTP_LENGTH = 6;
 
@@ -176,7 +177,7 @@ function OtpVerify() {
 
   if (!pendingData) return null;
 
-  const email = pendingData.email || "";
+  const email = auth.currentUser?.email || "";
   const maskedEmail = email
     ? email.replace(/^(.{2})(.+)(@.+)$/, (_, a, b, c) => a + "*".repeat(b.length) + c)
     : "";
