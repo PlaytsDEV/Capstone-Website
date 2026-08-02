@@ -1,71 +1,49 @@
 # Reservation Phase 0 Owner-Decision Worksheet
 
-No question is answered by the audit. Record the approved policy, approver, and decision date for every item.
+This worksheet separates policy confirmed in the Lilycrest Gil Puyat Developer Workflow Manual v1.0 (August 2026) from interpretations and unresolved owner decisions. The audit must not answer open questions on Lilycrest's behalf.
 
-## A. Pre-move-in charges
+## Confirmed policy
 
-1. Should the system collect only the reservation fee before move-in?
-2. Should it also collect one-month advance rent?
-3. Should it also collect one-month security deposit?
-4. Should these appear in one pre-move-in Bill as separate line items?
-5. Can partial payments be accepted?
-6. Can payments be recorded offline?
-7. What exactly must be paid before contract drafting?
-8. What exactly must be paid before move-in?
+- Fee: PHP 2,000 for every room, credited to initial payment, normally non-refundable on applicant cancellation; confirmation requires review, verified payment, availability recheck, and confirmation.
+- Initial payment: one month advance plus one month security deposit plus approved initial charges, less the fee credit. Partial and combined payments are allowed.
+- Advance rent covers the first month and must not be double-billed.
+- Security deposit equals one month of the approved final rate; refund, deduction, and forfeiture require authorization and are never automatic.
+- Approved pricing is an immutable snapshot. A 0% discount is valid. Lease types are short (1–5 months) and long (6–12 months); historical rates differing from January 2026 references are not automatically invalid.
+- Move-in requires confirmation, initial balance or approved arrangement, documents or exception, room and bed, actual date, approved rate, emergency contact, and house-rules evidence. The fee alone is insufficient.
+- Prepare a draft after confirmation and finalize after actual move-in details. Signing and notarization are not pre-move-in requirements absent further confirmation.
+- Regular rent begins after advance coverage. Core penalty timing is due day = PHP 0, day +1 = PHP 0, day +2 = PHP 50, day +3 = PHP 100.
+- Cash is prohibited. Each payment needs a traceable external reference. Proof alone cannot settle; successful status, date, reference, receiving account, exact amount, and verifier are required.
+- Allocations must reconcile exactly, with overpayment and unallocated amounts visible.
 
-## B. Reservation fee
+## Strong interpretation
 
-1. Is PHP 2,000 legally fixed?
-2. Is it editable through Business Settings?
-3. Is it non-refundable?
-4. Is it credited toward first-month rent?
-5. What happens when Lilycrest cancels the application?
-6. What happens when the applicant cancels?
-7. What wording should appear consistently in the UI and Contract?
+- Treat January 2026 rates as references, not automatic historical correction rules.
+- Never auto-release inventory, forfeit deposits, waive penalties, or correct financial state from an audit finding.
+- Missing evidence means unknown or review required, not compliant.
 
-## C. Security deposit
+## Still unresolved
 
-1. Is it one month of discounted rent?
-2. Is it one month of regular undiscounted rent?
-3. Is it refundable in full by default?
-4. What deductions are allowed?
-5. Must the original payment be traceable before a refund can be processed?
+1. Does the one-day grace rule apply to all currently active Contracts?
+2. What happens to the daily late fee after a partial payment?
+3. Does lateness use transaction date or proof-upload date?
+4. How many days separate Notice 1, Notice 2, and Notice 3?
+5. Must every short-term tenant receive a full Contract?
+6. Exactly how many move-in-date changes are allowed?
+7. What fallback method applies when an intermediate meter reading is unavailable?
+8. Can an expired tenant continue month-to-month, and under what terms?
+9. Can electricity rate vary per billing cycle?
+10. What is the security-deposit refund processing period?
+11. Which roles may approve penalty waivers, custom discounts, custom rates, payment arrangements, and Reservation-validity extensions?
+12. What are the final utility rules for private and double rooms?
+13. Is the existing 24-hour application payment deadline approved?
+14. Is the recommended 30-minute temporary payment lock approved?
+15. Does the default 30-day confirmed-Reservation validity apply to every case?
+16. What happens to the reservation fee if Lilycrest cancels the Reservation?
+17. Can the reservation fee be refunded for approved exceptional cases?
+18. What exact approval is required for a longer Reservation validity?
+19. What maximum penalty cap, if any, should apply?
+20. Are weekends and holidays counted in penalty days?
 
-## D. Discount and room pricing
+## Written confirmation and implementation impact
 
-1. Is identical base pricing across both branches intentional?
-2. Can discounts validly be disabled?
-3. Is 0% discount a valid contract state?
-4. Are discounts global or branch-specific?
-5. Are room-specific short-term prices supposed to work?
-6. Are regularLongRate and regularShortRate still required?
-7. Should pricing become immutable at application approval or payment approval?
-
-## E. Contract readiness
-
-1. Can a Contract be drafted before payment?
-2. Must the reservation fee be paid first?
-3. Must all pre-move-in charges be paid first?
-4. What Contract state is required for move-in: draft, pricing approved, generated, signed, notarized, or published?
-5. Can an authorized admin override the Contract requirement?
-6. If yes, what reason, permission, and audit evidence are required?
-
-## F. Penalty policy
-
-1. Confirm the rent due-date rule.
-2. Confirm whether there is exactly one grace day.
-3. Confirm that PHP 50 per day begins after the grace day.
-4. Confirm whether weekends and holidays count.
-5. Confirm the timezone used.
-6. Confirm whether penalties have a maximum cap.
-7. Confirm whether penalties continue after partial payment.
-8. Confirm whether admins may waive penalties.
-9. Confirm what audit reason is required for a waiver.
-
-## G. Legacy records
-
-1. Should existing move-ins without Contracts be grandfathered?
-2. Should they require Contract completion?
-3. Should expired unpaid holds be automatically cancelled after review?
-4. Who approves record correction?
-5. Is a backup/export required before corrective migration?
+For each unresolved item, record the answer, approver, effective date, affected Contracts, permitted role, and audit-reason requirement. These answers control schedulers, penalties, notices, permissions, utilities, refunds, extensions, and legacy-record handling. Until approved, keep the behavior configurable, manual-review-only, or unchanged.

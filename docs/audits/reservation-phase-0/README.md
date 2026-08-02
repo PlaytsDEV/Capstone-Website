@@ -1,6 +1,6 @@
 # Reservation Workflow Phase 0 Audit
 
-This package provides a read-only, report-only audit of Reservation lifecycle, payment-hold, inventory, Contract, billing, payment-reconciliation, branch, duplicate, and orphan-reference integrity.
+This package provides a read-only, report-only audit of Reservation lifecycle, payment windows and temporary locks, inventory, fee verification, initial payment, advance coverage, security deposits, move-in readiness, Contract timing and pricing, lease type, penalties, prohibited cash, payment proof and allocation, branch, duplicate, and orphan-reference integrity.
 
 ## Safety contract
 
@@ -26,6 +26,6 @@ The metadata command is the safe first run. It connects only to obtain database 
 
 ## Output
 
-The output directory contains the JSON summary, environment-safety report, status-definition comparison, code-finding verification, owner-decision worksheet, Phase 1 readiness verdict, executive report, and category CSVs. Empty CSVs remain valid and contain an explicit zero issue count.
+The output directory contains the JSON summary, environment-safety report, status-definition comparison, 25 code-finding verifications, owner-decision worksheet, Phase 1 readiness verdict, executive report, and category CSVs. An executed category with no findings contains an explicit zero. A blocked category contains an explicit `not_executed` row with a blank/null issue count and the safety reason; it never claims zero findings.
 
 Do not commit generated operational reports. The sample file in this directory is synthetic and contains no operational identifiers.

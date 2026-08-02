@@ -81,7 +81,77 @@ describe("reservation Phase 0 audit checks", () => {
   test("detects contractless move-in records", () => {
     const movedIn = { ...fixture().reservations[0], status: "moveIn", paymentStatus: "paid" };
     const result = analyzeAuditDataset(fixture({ reservations: [movedIn] }), { now });
-    expect(result.moveInContractAudit).toEqual([expect.objectContaining({ readiness: "no_contract", classification: "critical_admin_review" })]);
+    expect(result.moveInContractAudit).toEqual(expect.arrayContaining([expect.objectContaining({ policyState: "No Contract", preparedDraftExists: false, classification: "missing_expected_prepared_draft" })]));
+  });
+
+  test("flags a confirmed reservation without a verified PHP 2,000 fee", () => {
+    const reservation = { ...fixture().reservations[0], status: "reserved", paymentStatus: "paid" };
+    expect(analyzeAuditDataset(fixture({ reservations: [reservation] }), { now }).reservationPaymentAudit[0].issues).toContain("confirmed_reservation_without_verified_fee");
+  });
+
+  test("accepts a verified fee only with an exact amount and external reference", () => {
+    const reservation = { ...fixture().reservations[0], status: "reserved", paymentStatus: "paid" };
+    const payment = { _id: oid(5), reservationId: oid(3), purpose: "reservation_deposit", amount: 2000, status: "confirmed", source: "paymongo", externalPaymentId: "external-1", branch: "gil-puyat" };
+    expect(analyzeAuditDataset(fixture({ reservations: [reservation], payments: [payment] }), { now }).reservationPaymentAudit).toHaveLength(0);
+  });
+
+  test("classifies incomplete initial-payment collection evidence", () => {
+    const reservation = { ...fixture().reservations[0], status: "reserved", paymentStatus: "paid" };
+    const result = analyzeAuditDataset(fixture({ reservations: [reservation] }), { now });
+    expect(result.initialPaymentAudit[0].classification).toBe("no_evidence");
+  });
+
+  test("detects regular rent overlapping advance-rent coverage", () => {
+    const reservation = { ...fixture().reservations[0], status: "moveIn", paymentStatus: "paid", confirmedMoveInDate: "2026-07-15T00:00:00.000Z" };
+    const contract = { _id: oid(6), reservationId: oid(3), tenantId: oid(1), roomId: oid(2), branch: "gil-puyat", advanceCoverageStart: "2026-07-15T00:00:00.000Z", advanceCoverageEnd: "2026-08-15T00:00:00.000Z" };
+    const bill = { _id: oid(7), reservationId: oid(3), userId: oid(1), roomId: oid(2), branch: "gil-puyat", charges: { rent: 9000 }, billingCycleStart: "2026-07-15T00:00:00.000Z", billingCycleEnd: "2026-08-14T00:00:00.000Z", status: "paid" };
+    const advance = { _id: oid(8), reservationId: oid(3), purpose: "advance_rent", amount: 9000, status: "confirmed", source: "paymongo", externalPaymentId: "advance-1" };
+    expect(analyzeAuditDataset(fixture({ reservations: [reservation], contracts: [contract], bills: [bill], payments: [advance] }), { now }).advanceRentCoverageAudit[0].classification).toBe("confirmed_duplicate_billing");
+  });
+
+  test("flags a security deposit that differs from the approved final rate", () => {
+    const contract = { _id: oid(6), reservationId: oid(3), tenantId: oid(1), roomId: oid(2), branch: "gil-puyat", approvedMonthlyRate: 9000, securityDepositAmount: 10000 };
+    expect(analyzeAuditDataset(fixture({ contracts: [contract] }), { now }).securityDepositAudit[0].issues).toContain("deposit_not_equal_to_approved_final_monthly_rate");
+  });
+
+  test("reports move-in readiness gaps independently of signature and notarization", () => {
+    const reservation = { ...fixture().reservations[0], status: "moveIn", paymentStatus: "paid" };
+    const result = analyzeAuditDataset(fixture({ reservations: [reservation] }), { now });
+    expect(result.moveInReadinessAudit[0].issues).toEqual(expect.arrayContaining(["reservation_fee_not_verified", "actual_move_in_date_missing", "rate_snapshot_not_approved"]));
+    expect(result.moveInReadinessAudit[0].issues.join(" ")).not.toMatch(/signed|notarized/);
+  });
+
+  test("detects a lease type inconsistent with a 1–5 month duration", () => {
+    const contract = { _id: oid(6), reservationId: oid(3), tenantId: oid(1), roomId: oid(2), branch: "gil-puyat", leaseDurationMonths: 5, leaseType: "long_term" };
+    expect(analyzeAuditDataset(fixture({ contracts: [contract] }), { now }).leaseTypeAudit[0].expectedLeaseType).toBe("short_term");
+  });
+
+  test("treats a mathematically consistent zero percent discount as valid", () => {
+    const contract = { _id: oid(6), reservationId: oid(3), tenantId: oid(1), roomId: oid(2), branch: "gil-puyat", discountPercentage: 0, discountAmount: 0, regularMonthlyRate: 9000, approvedMonthlyRate: 9000 };
+    expect(analyzeAuditDataset(fixture({ contracts: [contract] }), { now }).zeroDiscountAudit[0]).toEqual(expect.objectContaining({ mathematicallyValid: true }));
+  });
+
+  test("calculates PHP 50 beginning on day two after the due date", () => {
+    const bill = { _id: oid(7), userId: oid(1), roomId: oid(2), branch: "gil-puyat", dueDate: "2026-07-30T00:00:00.000Z", remainingAmount: 1000, charges: { penalty: 100 } };
+    const result = analyzeAuditDataset(fixture({ bills: [bill] }), { now });
+    expect(result.penaltyPolicyAudit).toHaveLength(0);
+  });
+
+  test("flags prohibited cash payment records", () => {
+    const payment = { _id: oid(5), tenantId: oid(1), reservationId: oid(3), method: "cash", amount: 1000, status: "confirmed" };
+    expect(analyzeAuditDataset(fixture({ payments: [payment] }), { now }).prohibitedCashPayments[0].classification).toBe("prohibited_cash_payment");
+  });
+
+  test("flags successful manual proof without required evidence or reference", () => {
+    const payment = { _id: oid(5), tenantId: oid(1), reservationId: oid(3), method: "bank", amount: 1000, status: "confirmed", source: "manual_proof", verifiedAt: now, verifiedBy: oid(1), safeEvidence: { providerStatus: "failed" } };
+    const issues = analyzeAuditDataset(fixture({ payments: [payment] }), { now }).paymentProofAudit[0].issues;
+    expect(issues).toEqual(expect.arrayContaining(["invalid_proof_status_accepted", "transaction_date_missing", "external_reference_missing", "receiving_account_evidence_missing"]));
+  });
+
+  test("detects payment allocations that do not reconcile to the payment", () => {
+    const payment = { _id: oid(5), tenantId: oid(1), reservationId: oid(3), amount: 1000, status: "confirmed", safeEvidence: { allocations: [{ targetId: oid(7), amount: 600 }], unallocatedAmount: 0 } };
+    const bill = { _id: oid(7), reservationId: oid(3), userId: oid(1), roomId: oid(2), branch: "gil-puyat", totalAmount: 1000 };
+    expect(analyzeAuditDataset(fixture({ payments: [payment], bills: [bill] }), { now }).paymentAllocationAudit[0].issues).toContain("allocated_plus_unallocated_does_not_equal_payment");
   });
 
   test("pricing reconciliation catches changed regular and approved rates", () => {
@@ -101,6 +171,12 @@ describe("reservation Phase 0 audit checks", () => {
     const broken = { ...fixture().reservations[0], userId: oid(9), roomId: oid(8) };
     const result = analyzeAuditDataset(fixture({ reservations: [broken] }), { now });
     expect(result.orphanedRecords.map((row) => row.relation)).toEqual(expect.arrayContaining(["reservation.user", "reservation.room"]));
+  });
+
+  test("detects branch mismatches across linked records", () => {
+    const reservation = { ...fixture().reservations[0], branch: "guadalupe" };
+    const result = analyzeAuditDataset(fixture({ reservations: [reservation] }), { now });
+    expect(result.branchConsistency[0]).toEqual(expect.objectContaining({ sourceType: "reservation", sourceBranch: "guadalupe", targetBranch: "gil-puyat" }));
   });
 
   test("redacts identifiers and PII deterministically", () => {

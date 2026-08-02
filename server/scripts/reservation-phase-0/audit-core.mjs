@@ -74,6 +74,35 @@ export const moneyEqual = (left, right, tolerance = MONEY_TOLERANCE) => {
   return Math.abs(roundMoney(left) - roundMoney(right)) <= tolerance + 1e-9;
 };
 
+export const CASH_METHOD_PATTERN = /(^|[_\s-])(cash|petty[_\s-]?cash|counter[_\s-]?payment|walk[_\s-]?in[_\s-]?cash|cash[_\s-]?(payment|on[_\s-]?hand|at[_\s-]?branch|on[_\s-]?move[_\s-]?in))($|[_\s-])/i;
+export const INVALID_PROOF_STATUSES = new Set(["pending", "processing", "being_processed", "scheduled", "queued", "failed", "cancelled"]);
+
+export const isCashMethod = (value) => CASH_METHOD_PATTERN.test(String(value || "").trim().replaceAll("-", "_"));
+
+export function expectedCorePenalty(dueDateInput, evaluationDate = new Date(), ratePerDay = 50) {
+  const dueDate = dateValue(dueDateInput); const evaluated = dateValue(evaluationDate);
+  if (!dueDate || !evaluated) return { penaltyStartDate: null, penaltyDays: null, expectedPenalty: null };
+  const dueDay = Date.UTC(dueDate.getUTCFullYear(), dueDate.getUTCMonth(), dueDate.getUTCDate());
+  const evaluationDay = Date.UTC(evaluated.getUTCFullYear(), evaluated.getUTCMonth(), evaluated.getUTCDate());
+  const penaltyStart = dueDay + 2 * 86_400_000;
+  const penaltyDays = evaluationDay < penaltyStart ? 0 : Math.floor((evaluationDay - penaltyStart) / 86_400_000) + 1;
+  return { penaltyStartDate: new Date(penaltyStart).toISOString(), penaltyDays, expectedPenalty: roundMoney(penaltyDays * ratePerDay) };
+}
+
+export function periodsOverlap(startA, endA, startB, endB) {
+  const values = [startA, endA, startB, endB].map(dateValue);
+  if (values.some((value) => !value || Number.isNaN(value.getTime()))) return null;
+  return values[0] < values[3] && values[2] < values[1];
+}
+
+export function expectedLeaseType(duration) {
+  const months = finite(duration);
+  if (months === null) return "missing";
+  if (months >= 1 && months <= 5) return "short_term";
+  if (months >= 6 && months <= 12) return "long_term";
+  return "unsupported";
+}
+
 export function classifyEnvironment({ environmentName, hostCategory, databaseName, privilegeAssessment, explicitlyAuthorized = false }) {
   const env = String(environmentName || "").toLowerCase();
   const database = String(databaseName || "").toLowerCase();
@@ -103,16 +132,36 @@ function paymentSuccessful(payment) {
   return SUCCESSFUL_PAYMENT_STATUSES.has(String(payment?.status || "").toLowerCase());
 }
 
-function contractReadiness(contract) {
-  if (!contract) return "no_contract";
-  if (contract.status === "draft" || contract.status === "incomplete") return "draft";
-  if (!contract.pricingApprovedAt) return "pricing_not_approved";
-  if (!["signed", "awaiting_notarization", "notarized", "ready_for_publication", "published", "active"].includes(contract.status)) return "prepared_not_signed";
-  if (!contract.signedUploadedAt && !(contract.signedDocuments || []).length) return "prepared_not_signed";
-  if (!["notarized", "ready_for_publication", "published", "active"].includes(contract.status)) return "signed_not_notarized";
-  if (!contract.notarizedUploadedAt && !(contract.notarizedDocuments || []).length) return "signed_not_notarized";
-  if (!["published", "active"].includes(contract.status) || !contract.publishedAt) return "notarized_not_published";
-  return "fully_ready";
+function contractPolicyState(contract, reservation) {
+  if (!contract) return "No Contract";
+  if (contract.archivedAt || contract.status === "archived") return "Archived";
+  if (["terminated", "cancelled", "voided", "rejected"].includes(contract.status)) return contract.status === "terminated" ? "Terminated" : "Pre-Terminated";
+  if (["expired", "renewed"].includes(contract.status)) return "Completed";
+  if (contract.status === "active") return "Active";
+  if (contract.publishedAt || contract.status === "published") return "Verified";
+  if (contract.notarizationVerifiedAt) return "Verified";
+  if (contract.notarizedUploadedAt || contract.notarizedDocuments?.length || contract.status === "notarized") return "Notarized";
+  if (["awaiting_notarization", "ready_for_publication"].includes(contract.status)) return "Pending Notarization";
+  if (contract.signedUploadedAt || contract.signedDocuments?.length || ["signed", "partially_signed"].includes(contract.status)) return "Signed";
+  if (contract.printedAt) return "Printed";
+  if (contract.generatedAt || contract.generatedVersion > 0 || ["generated", "awaiting_signatures"].includes(contract.status)) return "Ready for Printing";
+  if (contract.lastValidatedAt && reservation?.status === "moveIn") return "Ready for Printing";
+  if ((contract.preparedDocuments || []).some((document) => !document.superseded)) return reservation?.status === "moveIn" ? "Ready for Validation" : "Waiting for Move-In";
+  if (["ready_for_generation"].includes(contract.status)) return "Prepared";
+  if (["draft", "incomplete"].includes(contract.status)) return "Draft";
+  return "Unknown current repository state";
+}
+
+const hasSuccessfulReference = (payment) => Boolean(payment?.externalPaymentId || payment?.externalSessionId || payment?.paymentReference || payment?.referenceNumber);
+const isVerifiedPayment = (payment) => paymentSuccessful(payment) && (Boolean(payment.verifiedAt && payment.verifiedBy) || ["paymongo", "paymongo-polling", "paymongo-webhook"].includes(payment.source));
+
+function verifiedReservationFee(reservation, payments) {
+  const expected = finite(reservation.reservationFeeAmount) ?? 2000;
+  return payments.find((payment) => payment.purpose === "reservation_deposit" && isVerifiedPayment(payment) && moneyEqual(payment.amount, expected) && hasSuccessfulReference(payment)) || null;
+}
+
+function evidenceKind(row) {
+  return JSON.stringify(row || {}).toLowerCase().replaceAll("_", " ").replaceAll("-", " ");
 }
 
 function analyzePricing(contract, reservation, room, settings) {
@@ -206,13 +255,16 @@ export function analyzeAuditDataset(dataset = {}, { now = new Date() } = {}) {
     const linkedStays = data.stays.filter((s) => id(s.roomId) === hold.roomId && String(s.bedId) === String(hold.bedId) && ["active", "ending_soon"].includes(s.status));
     const reservationIndexes = data.indexes.reservations || [];
     const uniqueIndexPresent = reservationIndexes.some((index) => index.unique && index.key?.roomId === 1 && index.key?.["selectedBed.id"] === 1);
-    return { ...hold, roomState: room?.available === false ? "unavailable" : "available", bedState: bed?.status || "missing", competingActiveReservations: competingReservations.length, activeStays: linkedStays.length, uniqueIndexPresent, uniqueIndexSatisfied: competingReservations.length === 0, releaseWouldCreateInconsistency: linkedStays.length > 0 || competingReservations.length > 0 };
+    return { ...hold, roomState: room?.available === false ? "unavailable" : "available", bedState: bed?.status || "missing", roomCapacityAffected: Boolean(bed && ["reserved", "occupied", "locked"].includes(bed.status)), paidReservationInvolved: false, competingActiveReservations: competingReservations.length, activeStays: linkedStays.length, uniqueIndexPresent, uniqueIndexSatisfied: competingReservations.length === 0, releaseWouldCreateInconsistency: linkedStays.length > 0 || competingReservations.length > 0, classification: "expired_payment_window_inventory_review" };
   });
 
   const moveInContractAudit = data.reservations.filter((r) => r.status === "moveIn" && !isArchived(r)).flatMap((r) => {
     const linked = contractsByReservation.get(id(r._id)) || [];
-    if (!linked.length) return [{ reservationId: id(r._id), branch: branchOfReservation(r, rooms), moveInDate: r.confirmedMoveInDate || r.moveInDate || null, contractId: null, contractNumber: null, contractStatus: null, readiness: "no_contract", signed: false, notarized: false, published: false, currentMoveInBlockersChecksContract: false, classification: "critical_admin_review" }];
-    return linked.map((c) => ({ reservationId: id(r._id), branch: branchOfReservation(r, rooms), moveInDate: r.confirmedMoveInDate || r.moveInDate || null, contractId: id(c._id), contractNumber: c.contractNumber || null, contractStatus: c.status || null, readiness: contractReadiness(c), signed: Boolean(c.signedUploadedAt || c.signedDocuments?.length), notarized: Boolean(c.notarizedUploadedAt || c.notarizedDocuments?.length), published: Boolean(c.publishedAt), currentMoveInBlockersChecksContract: false, multipleContracts: linked.length > 1, classification: contractReadiness(c) === "fully_ready" && linked.length === 1 ? "ready" : "admin_review" }));
+    if (!linked.length) return [{ reservationId: id(r._id), branch: branchOfReservation(r, rooms), moveInDate: r.confirmedMoveInDate || r.moveInDate || null, contractId: null, contractNumber: null, contractStatus: null, policyState: "No Contract", preparedDraftExists: false, signed: false, notarized: false, published: false, currentMoveInBlockersChecksContract: false, classification: "missing_expected_prepared_draft" }];
+    return linked.map((c) => {
+      const policyState = contractPolicyState(c, r); const preparedDraftExists = Boolean((c.preparedDocuments || []).some((document) => !document.superseded) || c.generatedAt || c.generatedVersion > 0);
+      return { reservationId: id(r._id), branch: branchOfReservation(r, rooms), moveInDate: r.confirmedMoveInDate || r.moveInDate || null, contractId: id(c._id), contractNumber: c.contractNumber || null, contractStatus: c.status || null, policyState, preparedDraftExists, signed: Boolean(c.signedUploadedAt || c.signedDocuments?.length), notarized: Boolean(c.notarizedUploadedAt || c.notarizedDocuments?.length), published: Boolean(c.publishedAt), currentMoveInBlockersChecksContract: false, multipleContracts: linked.length > 1, classification: !preparedDraftExists ? "missing_expected_prepared_draft" : linked.length > 1 ? "duplicate_contract_review" : "policy_timing_review", signedBeforeMoveInRequired: false };
+    });
   });
 
   const contractPricingReconciliation = data.contracts.map((c) => {
@@ -220,6 +272,179 @@ export function analyzeAuditDataset(dataset = {}, { now = new Date() } = {}) {
     const issues = analyzePricing(c, reservation, room, latestSettings);
     return { contractId: id(c._id), reservationId: id(c.reservationId), branch: c.branch || null, roomId: id(c.roomId), bedId: c.bedId || reservation?.selectedBed?.id || null, leaseType: c.leaseType || null, leaseDurationMonths: c.leaseDurationMonths || null, regularMonthlyRate: c.regularMonthlyRate ?? null, approvedMonthlyRate: c.approvedMonthlyRate ?? null, reservationMonthlyRent: reservation?.monthlyRent ?? reservation?.totalPrice ?? null, discountPercentage: c.discountPercentage ?? null, discountAmount: c.discountAmount ?? null, reservationFeeAmount: c.reservationFeeAmount ?? null, advanceRentAmount: c.advanceRentAmount ?? null, securityDepositAmount: c.securityDepositAmount ?? null, applianceFees: reservation?.applianceFees ?? null, issues, mismatch: issues.some((value) => !["security_deposit_based_on_discounted_rent", "security_deposit_based_on_regular_rent", "business_settings_changed_after_approval"].includes(value)) };
   }).filter((row) => row.issues.length);
+
+  const confirmedReservationStatuses = new Set(["reserved", "moveIn", "moveOut"]);
+  const reservationPaymentAudit = data.reservations.filter((r) => confirmedReservationStatuses.has(r.status) && !isArchived(r)).map((r) => {
+    const linked = paymentsByReservation.get(id(r._id)) || []; const verified = verifiedReservationFee(r, linked); const fee = finite(r.reservationFeeAmount) ?? 2000;
+    const depositPayments = linked.filter((payment) => payment.purpose === "reservation_deposit"); const issues = [];
+    if (!verified) issues.push("confirmed_reservation_without_verified_fee");
+    if (depositPayments.some((payment) => paymentSuccessful(payment) && !moneyEqual(payment.amount, fee))) issues.push("reservation_fee_amount_mismatch");
+    if (depositPayments.some((payment) => paymentSuccessful(payment) && !hasSuccessfulReference(payment))) issues.push("verified_fee_missing_external_reference");
+    if (r.proofOfPaymentPresent && depositPayments.every((payment) => !isVerifiedPayment(payment))) issues.push("proof_present_but_not_verified");
+    if (r.paymentStatus !== "paid") issues.push("reservation_payment_status_not_paid");
+    return { reservationId: id(r._id), userFingerprint: fingerprint(r.userId), branch: branchOfReservation(r, rooms), status: r.status, reservationFeeSnapshot: fee, verifiedPaymentId: verified ? id(verified._id) : null, proofPresent: Boolean(r.proofOfPaymentPresent), paymentStatus: r.paymentStatus || null, issues, classification: issues.length ? "admin_payment_review" : "verified_fee_evidence_present" };
+  }).filter((row) => row.issues.length);
+
+  const initialPaymentAudit = data.reservations.filter((r) => ["reserved", "moveIn", "moveOut"].includes(r.status) && !isArchived(r)).map((r) => {
+    const linkedBills = data.bills.filter((bill) => id(bill.reservationId) === id(r._id)); const linkedPayments = paymentsByReservation.get(id(r._id)) || [];
+    const linkedContracts = contractsByReservation.get(id(r._id)) || []; const textRows = [...linkedBills, ...linkedPayments];
+    const advanceBill = linkedBills.some((row) => evidenceKind(row).includes("advance rent"));
+    const depositBill = linkedBills.some((row) => evidenceKind(row).includes("security deposit"));
+    const initialBill = linkedBills.some((row) => evidenceKind(row).includes("initial payment"));
+    const advancePayment = linkedPayments.some((row) => paymentSuccessful(row) && evidenceKind(row).includes("advance rent"));
+    const depositPayment = linkedPayments.some((row) => paymentSuccessful(row) && evidenceKind(row).includes("security deposit"));
+    const verifiedManualBank = linkedPayments.some((row) => isVerifiedPayment(row) && ["admin-manual", "manual_admin", "manual_proof", "tenant-proof"].includes(row.source) && !isCashMethod(row.method) && hasSuccessfulReference(row));
+    const providerPayment = linkedPayments.some((row) => isVerifiedPayment(row) && ["paymongo", "paymongo-polling", "paymongo-webhook"].includes(row.source));
+    const reservationCredit = linkedBills.reduce((sum, bill) => sum + (finite(bill.reservationCreditApplied) || 0), 0);
+    const contractOnlyAmounts = linkedContracts.some((contract) => (finite(contract.advanceRentAmount) || 0) > 0 || (finite(contract.securityDepositAmount) || 0) > 0);
+    let classification = "no_evidence";
+    if ((advanceBill || advancePayment) && (depositBill || depositPayment) && (verifiedManualBank || providerPayment)) classification = "complete_system_collection_path";
+    else if (advanceBill || depositBill || initialBill || advancePayment || depositPayment || verifiedManualBank || providerPayment) classification = "partial_or_manual_path";
+    else if (contractOnlyAmounts) classification = "contract_only_values";
+    const expectedCredit = verifiedReservationFee(r, linkedPayments) ? (finite(r.reservationFeeAmount) ?? 2000) : 0;
+    const issues = [];
+    if (expectedCredit > 0 && !moneyEqual(reservationCredit, expectedCredit) && !linkedContracts.some((contract) => moneyEqual(contract.reservationFeeCreditAmount, expectedCredit))) issues.push("reservation_fee_credit_not_reflected");
+    if (classification !== "complete_system_collection_path") issues.push(classification);
+    return { reservationId: id(r._id), branch: branchOfReservation(r, rooms), advanceBill, securityDepositBill: depositBill, initialBill, advancePayment, securityDepositPayment: depositPayment, verifiedManualBank, providerPayment, reservationCreditApplied: roundMoney(reservationCredit), expectedReservationFeeCredit: expectedCredit, approvedInitialChargesEvidence: textRows.some((row) => evidenceKind(row).includes("initial charge")), classification, issues };
+  });
+
+  const advanceRentCoverageAudit = data.reservations.filter((r) => r.status === "moveIn" && !isArchived(r)).map((r) => {
+    const linkedContracts = contractsByReservation.get(id(r._id)) || []; const contract = linkedContracts.find((row) => row.isCurrent !== false) || linkedContracts[0];
+    const actualMoveIn = r.confirmedMoveInDate || staysByReservation.get(id(r._id))?.find((stay) => ["active", "ending_soon"].includes(stay.status))?.leaseStartDate || null;
+    const start = contract?.advanceCoverageStart || actualMoveIn; const end = contract?.advanceCoverageEnd || (start ? new Date(new Date(start).setUTCMonth(new Date(start).getUTCMonth() + 1)) : null);
+    const billsForReservation = data.bills.filter((bill) => id(bill.reservationId) === id(r._id) && (bill.charges?.rent || 0) > 0 && !isArchived(bill));
+    const overlaps = billsForReservation.filter((bill) => periodsOverlap(bill.billingCycleStart, bill.billingCycleEnd, start, end) === true);
+    const initialEvidence = initialPaymentAudit.find((row) => row.reservationId === id(r._id));
+    let classification = "valid_next_cycle_billing";
+    if (!actualMoveIn || !start || !end) classification = "missing_advance_coverage_data";
+    else if (!initialEvidence?.advancePayment && !initialEvidence?.advanceBill) classification = "no_advance_payment_evidence";
+    else if (overlaps.length > 1 || overlaps.some((bill) => bill.status === "paid")) classification = "confirmed_duplicate_billing";
+    else if (overlaps.length === 1) classification = "possible_duplicate_billing";
+    return { reservationId: id(r._id), branch: branchOfReservation(r, rooms), actualMoveInDate: actualMoveIn, advanceCoverageStart: start, advanceCoverageEnd: end, overlappingBillIds: overlaps.map((bill) => id(bill._id)).sort(), firstRegularBillId: billsForReservation.sort((a, b) => new Date(a.billingCycleStart || 0) - new Date(b.billingCycleStart || 0))[0]?._id?.toString() || null, reservationCreditApplied: initialEvidence?.reservationCreditApplied ?? null, classification };
+  });
+
+  const securityDepositAudit = data.contracts.map((contract) => {
+    const reservation = reservations.get(id(contract.reservationId)); const linkedPayments = paymentsByReservation.get(id(contract.reservationId)) || [];
+    const depositPayments = linkedPayments.filter((payment) => paymentSuccessful(payment) && evidenceKind(payment).includes("security deposit")); const issues = [];
+    if (finite(contract.securityDepositAmount) === null || finite(contract.approvedMonthlyRate) === null) issues.push("missing_deposit_or_approved_rate");
+    else if (!moneyEqual(contract.securityDepositAmount, contract.approvedMonthlyRate)) issues.push("deposit_not_equal_to_approved_final_monthly_rate");
+    if ((reservation?.depositRefundProcessedAt || reservation?.depositRefundStatus === "processed") && !depositPayments.length) issues.push("refund_without_traceable_original_collection");
+    if (reservation?.depositForfeited && !reservation.depositForfeitureReason) issues.push("forfeiture_missing_reason");
+    if (reservation?.depositForfeited && !reservation.depositRefundProcessedBy) issues.push("forfeiture_missing_approver");
+    if (reservation?.depositForfeited && reservation.depositForfeitureReason === "early_vacancy") issues.push("automatic_forfeiture_indicator");
+    const room = rooms.get(id(contract.roomId)); if (room && moneyEqual(contract.securityDepositAmount, room.monthlyPrice ?? room.price) && !moneyEqual(contract.securityDepositAmount, contract.approvedMonthlyRate)) issues.push("deposit_based_on_live_room_price");
+    return { contractId: id(contract._id), reservationId: id(contract.reservationId), branch: contract.branch || null, securityDepositAmount: contract.securityDepositAmount ?? null, approvedFinalMonthlyRate: contract.approvedMonthlyRate ?? null, originalDepositPaymentIds: depositPayments.map((payment) => id(payment._id)).sort(), refundStatus: reservation?.depositRefundStatus || null, approverPresent: Boolean(reservation?.depositRefundProcessedBy), reasonPresent: Boolean(reservation?.depositForfeitureReason), issues, classification: issues.length ? "manual_deposit_review" : "traceable_and_reconciled" };
+  }).filter((row) => row.issues.length);
+
+  const readinessReservationIds = new Set([
+    ...data.reservations.filter((r) => r.status === "moveIn" && !isArchived(r)).map((r) => id(r._id)),
+    ...data.stays.filter((stay) => ["active", "ending_soon"].includes(stay.status)).map((stay) => id(stay.reservationId)),
+  ]);
+  const moveInReadinessAudit = [...readinessReservationIds].map((reservationId) => {
+    const r = reservations.get(reservationId); const stay = (staysByReservation.get(reservationId) || []).find((row) => ["active", "ending_soon"].includes(row.status));
+    if (!r) return { reservationId, issues: ["active_stay_missing_reservation"], classification: "critical_reference_gap" };
+    const linkedPayments = paymentsByReservation.get(reservationId) || []; const initial = initialPaymentAudit.find((row) => row.reservationId === reservationId);
+    const linkedBills = data.bills.filter((bill) => id(bill.reservationId) === reservationId); const arrangement = linkedBills.some((bill) => bill.isMilestoneSubInvoice && bill.parentInvoiceId);
+    const room = rooms.get(id(r.roomId)); const user = users.get(id(r.userId)); const issues = [];
+    if (!confirmedReservationStatuses.has(r.status)) issues.push("reservation_not_confirmed");
+    if (!verifiedReservationFee(r, linkedPayments)) issues.push("reservation_fee_not_verified");
+    if (initial?.classification !== "complete_system_collection_path" && !arrangement) issues.push("initial_balance_not_proven_and_no_arrangement");
+    if (arrangement) { issues.push("payment_arrangement_approver_or_reason_not_structured"); }
+    const docs = r.documentEvidence || {}; if (!(docs.selfiePresent && docs.validIdFrontPresent && docs.validIdBackPresent)) issues.push("required_document_evidence_incomplete");
+    if (!r.roomId || !room) issues.push("room_not_assigned");
+    if (!r.selectedBed?.id || !room?.beds?.some((bed) => String(bed.id) === String(r.selectedBed.id))) issues.push("bed_not_assigned_or_unresolved");
+    if (!(r.confirmedMoveInDate || stay?.leaseStartDate)) issues.push("actual_move_in_date_missing");
+    const contract = (contractsByReservation.get(reservationId) || [])[0]; if (!contract?.pricingApprovedAt || !contract?.pricingApprovedBy) issues.push("rate_snapshot_not_approved");
+    if (!(r.emergencyContact?.present || (user?.emergencyContact && user?.emergencyPhone))) issues.push("emergency_contact_missing");
+    if (!r.agreedToCertification) issues.push("house_rules_readiness_not_evidenced");
+    if (!stay || !["active", "ending_soon"].includes(stay.status)) issues.push("stay_not_active");
+    if (stay && room?.branch && stay.branch !== room.branch) issues.push("branch_inconsistent");
+    return { reservationId, stayId: id(stay?._id), branch: branchOfReservation(r, rooms), reservationConfirmed: confirmedReservationStatuses.has(r.status), reservationFeeVerified: Boolean(verifiedReservationFee(r, linkedPayments)), initialBalanceEvidence: initial?.classification || "no_evidence", approvedPaymentArrangement: arrangement, roomAssigned: Boolean(room), bedAssigned: Boolean(r.selectedBed?.id), actualMoveInDate: r.confirmedMoveInDate || stay?.leaseStartDate || null, rateSnapshotApproved: Boolean(contract?.pricingApprovedAt && contract?.pricingApprovedBy), emergencyContactPresent: Boolean(r.emergencyContact?.present || (user?.emergencyContact && user?.emergencyPhone)), houseRulesEvidence: Boolean(r.agreedToCertification), stayActive: Boolean(stay), issues, classification: issues.length ? "readiness_gap" : "ready_evidence_complete" };
+  });
+
+  const contractTimingAudit = data.reservations.filter((r) => confirmedReservationStatuses.has(r.status) && !isArchived(r)).flatMap((r) => {
+    const linked = contractsByReservation.get(id(r._id)) || [];
+    if (!linked.length) return [{ reservationId: id(r._id), contractId: null, policyState: "No Contract", issues: ["prepared_draft_missing_after_reservation_confirmation"] }];
+    return linked.map((contract) => {
+      const issues = []; const actualMoveIn = r.confirmedMoveInDate || (staysByReservation.get(id(r._id)) || [])[0]?.leaseStartDate || null;
+      const prepared = Boolean((contract.preparedDocuments || []).some((document) => !document.superseded) || contract.generatedAt || contract.generatedVersion > 0);
+      if (!prepared) issues.push("prepared_draft_missing_after_reservation_confirmation");
+      if (contract.generatedAt && !actualMoveIn) issues.push("final_generation_before_actual_move_in_details");
+      if (actualMoveIn && contract.leaseStartDate && new Date(actualMoveIn).toISOString().slice(0, 10) !== new Date(contract.leaseStartDate).toISOString().slice(0, 10)) issues.push("contract_start_date_differs_from_actual_move_in");
+      if (id(contract.roomId) !== id(r.roomId)) issues.push("contract_room_differs_from_active_assignment");
+      if (contract.bedId && r.selectedBed?.id && String(contract.bedId) !== String(r.selectedBed.id)) issues.push("contract_bed_differs_from_active_assignment");
+      if (finite(contract.advanceRentAmount) === null) issues.push("advance_rent_missing");
+      if (finite(contract.securityDepositAmount) === null) issues.push("security_deposit_missing");
+      if (!moneyEqual(contract.reservationFeeCreditAmount, r.reservationFeeAmount ?? 2000)) issues.push("reservation_fee_credit_missing_or_inconsistent");
+      if (expectedLeaseType(contract.leaseDurationMonths) !== contract.leaseType) issues.push("lease_type_duration_mismatch");
+      if (linked.filter((row) => row.isCurrent !== false && !isArchived(row)).length > 1) issues.push("multiple_active_contracts");
+      return { reservationId: id(r._id), contractId: id(contract._id), branch: contract.branch || branchOfReservation(r, rooms), policyState: contractPolicyState(contract, r), preparedDraftExists: prepared, actualMoveInDate: actualMoveIn, contractStartDate: contract.leaseStartDate || null, issues };
+    });
+  });
+
+  const leaseTypeAudit = data.contracts.map((contract) => {
+    const reservation = reservations.get(id(contract.reservationId)); const expected = expectedLeaseType(contract.leaseDurationMonths); const reservationExpected = expectedLeaseType(reservation?.leaseDuration); const issues = [];
+    if (expected === "missing") issues.push("missing_duration"); else if (expected === "unsupported") issues.push("unsupported_duration"); else if (contract.leaseType !== expected) issues.push("contract_lease_type_inconsistent_with_duration");
+    if (!["missing", "unsupported"].includes(reservationExpected) && contract.leaseType !== reservationExpected) issues.push("contract_lease_type_differs_from_reservation_duration");
+    return { contractId: id(contract._id), reservationId: id(contract.reservationId), durationMonths: contract.leaseDurationMonths ?? null, leaseType: contract.leaseType || null, expectedLeaseType: expected, reservationDuration: reservation?.leaseDuration ?? null, issues, classification: issues.length ? "lease_policy_mismatch" : "lease_type_valid" };
+  }).filter((row) => row.issues.length);
+
+  const zeroDiscountAudit = data.contracts.filter((contract) => finite(contract.discountPercentage) === 0).map((contract) => {
+    const mathematicallyValid = moneyEqual(contract.discountAmount, 0) && moneyEqual(contract.approvedMonthlyRate, contract.regularMonthlyRate);
+    return { contractId: id(contract._id), reservationId: id(contract.reservationId), discountPercentage: 0, discountAmount: contract.discountAmount ?? null, regularMonthlyRate: contract.regularMonthlyRate ?? null, approvedMonthlyRate: contract.approvedMonthlyRate ?? null, mathematicallyValid, blockedByCurrentApprovalCode: true, issues: mathematicallyValid ? ["valid_zero_discount_blocked_by_current_code"] : ["zero_discount_math_inconsistent"] };
+  });
+
+  const penaltyPolicyAudit = data.bills.filter((bill) => bill.dueDate && new Date(bill.dueDate) < now && (finite(bill.remainingAmount) || 0) > 0).map((bill) => {
+    const core = expectedCorePenalty(bill.dueDate, now, 50); const stored = finite(bill.charges?.penalty); const zeroGraceDays = Math.max(0, Math.floor((Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - Date.UTC(new Date(bill.dueDate).getUTCFullYear(), new Date(bill.dueDate).getUTCMonth(), new Date(bill.dueDate).getUTCDate())) / 86_400_000));
+    let classification = "another_inconsistent_result";
+    if (stored === null) classification = "missing_data"; else if (moneyEqual(stored, core.expectedPenalty)) classification = "matches_one_day_grace_php50_per_day"; else if (moneyEqual(stored, zeroGraceDays * 50)) classification = "matches_zero_grace_php50_per_day"; else if (zeroGraceDays > 3 && moneyEqual(stored, 500)) classification = "matches_three_day_grace_php500_flat";
+    if (bill.status === "partially-paid") classification = `unresolved_due_to_partial_payment:${classification}`;
+    return { billId: id(bill._id), branch: bill.branch || null, dueDate: bill.dueDate, penaltyStartDate: core.penaltyStartDate, expectedPenaltyDays: core.penaltyDays, expectedPenalty: core.expectedPenalty, storedPenalty: stored, storedDaysLate: bill.penaltyDetails?.daysLate ?? null, storedRatePerDay: bill.penaltyDetails?.ratePerDay ?? null, classification };
+  }).filter((row) => !row.classification.includes("matches_one_day_grace_php50_per_day") || row.classification.startsWith("unresolved"));
+
+  const prohibitedCashPayments = [];
+  for (const payment of data.payments) if (isCashMethod(payment.method)) prohibitedCashPayments.push({ recordType: "payment", recordId: id(payment._id), targetId: id(payment.billId || payment.reservationId), branch: payment.branch || null, method: payment.method, classification: "prohibited_cash_payment" });
+  for (const bill of data.bills) if (isCashMethod(bill.paymentMethod)) prohibitedCashPayments.push({ recordType: "bill", recordId: id(bill._id), targetId: id(bill.reservationId), branch: bill.branch || null, method: bill.paymentMethod, classification: "bill_paid_or_marked_through_cash" });
+  for (const reservation of data.reservations) if (isCashMethod(reservation.paymentMethod)) prohibitedCashPayments.push({ recordType: "reservation", recordId: id(reservation._id), targetId: id(reservation._id), branch: branchOfReservation(reservation, rooms), method: reservation.paymentMethod, classification: "reservation_cash_method" });
+
+  const paymentProofAudit = data.payments.flatMap((payment) => {
+    const issues = []; const providerStatus = String(payment.safeEvidence?.providerStatus || "").toLowerCase().replaceAll(" ", "_");
+    if (INVALID_PROOF_STATUSES.has(providerStatus) && paymentSuccessful(payment)) issues.push("invalid_proof_status_accepted");
+    if (paymentSuccessful(payment) && !payment.safeEvidence?.transactionDatePresent) issues.push("transaction_date_missing");
+    if (paymentSuccessful(payment) && !hasSuccessfulReference(payment)) issues.push("external_reference_missing");
+    if (paymentSuccessful(payment) && !payment.safeEvidence?.receivingAccountPresent && !["paymongo", "paymongo-webhook", "paymongo-polling"].includes(payment.source)) issues.push("receiving_account_evidence_missing");
+    if (paymentSuccessful(payment) && !payment.proofPresent && !payment.externalPaymentId) issues.push("successful_proof_or_provider_evidence_missing");
+    if (paymentSuccessful(payment) && !payment.verifiedBy && !["paymongo", "paymongo-webhook", "paymongo-polling"].includes(payment.source)) issues.push("verifier_missing");
+    if (paymentSuccessful(payment) && !payment.verifiedAt && !["paymongo", "paymongo-webhook", "paymongo-polling"].includes(payment.source)) issues.push("verification_timestamp_missing");
+    if (finite(payment.expectedAmount) !== null && !moneyEqual(payment.amount, payment.expectedAmount)) issues.push("amount_mismatch");
+    if (payment.safeEvidence?.accountMatch === false) issues.push("receiving_account_mismatch");
+    return issues.length ? [{ paymentId: id(payment._id), targetId: id(payment.billId || payment.reservationId), branch: payment.branch || null, externalReferenceFingerprint: fingerprint(payment.externalPaymentId || payment.referenceNumber || payment.paymentReference), proofPresent: Boolean(payment.proofPresent), status: payment.status || null, providerStatus: payment.safeEvidence?.providerStatus || null, issues, classification: "payment_proof_review" }] : [];
+  });
+  for (const bill of data.bills) if (bill.paymentProof?.verificationStatus === "approved" && (!bill.paymentProof.verifierPresent || !bill.paymentProof.verifiedAt)) paymentProofAudit.push({ paymentId: null, targetId: id(bill._id), branch: bill.branch || null, externalReferenceFingerprint: null, proofPresent: Boolean(bill.paymentProof.imagePresent), status: bill.status || null, providerStatus: bill.paymentProof.verificationStatus, issues: [!bill.paymentProof.verifierPresent ? "verifier_missing" : null, !bill.paymentProof.verifiedAt ? "verification_timestamp_missing" : null].filter(Boolean), classification: "approved_bill_proof_missing_audit_evidence" });
+  for (const reservation of data.reservations) if (reservation.proofOfPaymentPresent && reservation.paymentStatus === "paid" && !verifiedReservationFee(reservation, paymentsByReservation.get(id(reservation._id)) || [])) paymentProofAudit.push({ paymentId: null, targetId: id(reservation._id), branch: branchOfReservation(reservation, rooms), externalReferenceFingerprint: null, proofPresent: true, status: reservation.paymentStatus, providerStatus: null, issues: ["proof_upload_may_have_directly_marked_reservation_paid"], classification: "settlement_evidence_missing" });
+
+  const paymentAllocationAudit = data.payments.flatMap((payment) => {
+    const allocations = payment.safeEvidence?.allocations || []; const issues = [];
+    if (allocations.length) {
+      const allocated = roundMoney(allocations.reduce((sum, allocation) => sum + (finite(allocation.amount) || 0), 0)); const unallocated = finite(payment.safeEvidence.unallocatedAmount) || 0;
+      if (!moneyEqual(allocated + unallocated, payment.amount)) issues.push("allocated_plus_unallocated_does_not_equal_payment");
+      for (const allocation of allocations) { const target = bills.get(id(allocation.targetId)); if (!target) issues.push("allocation_target_missing"); else { if ((finite(allocation.amount) || 0) > (finite(target.totalAmount) || 0) + MONEY_TOLERANCE) issues.push("allocation_exceeds_bill_amount"); if (target.branch && payment.branch && target.branch !== payment.branch) issues.push("cross_branch_allocation"); if (id(target.userId) !== id(payment.tenantId)) issues.push("cross_tenant_allocation"); } }
+    }
+    return issues.length ? [{ paymentId: id(payment._id), targetId: id(payment.billId || payment.reservationId), branch: payment.branch || null, amount: payment.amount ?? null, allocationCount: allocations.length, issues, classification: "allocation_reconciliation_required" }] : [];
+  });
+  for (const bill of data.bills) {
+    const remaining = finite(bill.remainingAmount); if (bill.status === "paid" && remaining !== null && remaining > MONEY_TOLERANCE) paymentAllocationAudit.push({ paymentId: null, targetId: id(bill._id), branch: bill.branch || null, amount: bill.paidAmount ?? null, allocationCount: null, issues: ["paid_bill_has_remaining_balance"], classification: "bill_balance_mismatch" });
+    if (["pending", "overdue"].includes(bill.status) && remaining !== null && Math.abs(remaining) <= MONEY_TOLERANCE) paymentAllocationAudit.push({ paymentId: null, targetId: id(bill._id), branch: bill.branch || null, amount: bill.paidAmount ?? null, allocationCount: null, issues: ["unpaid_bill_has_zero_remaining_balance"], classification: "bill_balance_mismatch" });
+  }
+
+  const temporaryLockAudit = [];
+  for (const room of data.rooms) for (const bed of room.beds || []) {
+    const lockedReservation = reservations.get(id(bed.occupiedBy?.reservationId)); const activeStayReferencesBed = data.stays.some((stay) => id(stay.roomId) === id(room._id) && String(stay.bedId) === String(bed.id) && ["active", "ending_soon"].includes(stay.status));
+    if (bed.status === "locked" && bed.lockExpiresAt && new Date(bed.lockExpiresAt) < now) temporaryLockAudit.push({ roomId: id(room._id), bedId: bed.id || null, branch: room.branch || null, reservationId: id(bed.occupiedBy?.reservationId), bedState: bed.status, roomCapacityAffected: true, paidReservationInvolved: lockedReservation?.paymentStatus === "paid", activeStayReferencesBed, classification: "abandoned_temporary_lock", automaticReleaseUnsafe: Boolean(bed.occupiedBy?.reservationId || activeStayReferencesBed) });
+    if (bed.status === "locked" && lockedReservation?.paymongoSessionId && (paymentsByReservation.get(id(lockedReservation._id)) || []).some((payment) => ["failed", "cancelled", "expired"].includes(payment.status))) temporaryLockAudit.push({ roomId: id(room._id), bedId: bed.id || null, branch: room.branch || null, reservationId: id(lockedReservation._id), bedState: bed.status, roomCapacityAffected: true, paidReservationInvolved: false, activeStayReferencesBed, classification: "failed_checkout_lock", automaticReleaseUnsafe: activeStayReferencesBed });
+    const heldReservation = reservations.get(id(bed.occupiedBy?.reservationId));
+    if (["cancelled", "archived", "rejected", "expired", "moveOut"].includes(heldReservation?.status) && ["reserved", "occupied", "locked"].includes(bed.status)) temporaryLockAudit.push({ roomId: id(room._id), bedId: bed.id || null, branch: room.branch || null, reservationId: id(heldReservation._id), bedState: bed.status, roomCapacityAffected: true, paidReservationInvolved: heldReservation.paymentStatus === "paid", activeStayReferencesBed, classification: "inactive_reservation_still_holding_inventory", automaticReleaseUnsafe: activeStayReferencesBed });
+  }
 
   const orphanedRecords = [];
   for (const r of data.reservations) {
@@ -332,7 +557,7 @@ export function analyzeAuditDataset(dataset = {}, { now = new Date() } = {}) {
     if (serialized.includes("security deposit")) financialEvidence.push({ evidenceType: "bill_security_deposit", recordId: id(b._id), branch: b.branch || null });
   }
   for (const p of data.payments) {
-    const serialized = JSON.stringify({ purpose: p.purpose, metadata: p.metadata, notes: p.notes }).toLowerCase();
+    const serialized = JSON.stringify({ purpose: p.purpose, safeEvidenceCategory: p.safeEvidence?.category, notes: p.notes }).toLowerCase();
     if (serialized.includes("advance rent")) financialEvidence.push({ evidenceType: "payment_advance_rent", recordId: id(p._id), branch: p.branch || null, source: p.source || null });
     if (serialized.includes("security deposit")) financialEvidence.push({ evidenceType: "payment_security_deposit", recordId: id(p._id), branch: p.branch || null, source: p.source || null });
   }
@@ -345,14 +570,37 @@ export function analyzeAuditDataset(dataset = {}, { now = new Date() } = {}) {
   const manualCollection = financialEvidence.some((e) => e.evidenceType.startsWith("payment_"));
   const advanceDepositConclusion = systemCollection ? "Confirmed system collection path exists" : manualCollection ? "Partial or manual collection evidence exists" : financialEvidence.some((e) => e.evidenceType === "contract_amounts") ? "No system collection evidence found; Contract-only amounts exist" : "No system collection evidence found";
 
-  const categories = { nonCanonicalStatuses, expiredPaymentHolds, inventoryHoldAudit, moveInContractAudit, contractPricingReconciliation, orphanedRecords, paymentReconciliation, billingOrphans, branchConsistency, duplicateRiskIndicators, financialEvidence };
+  const categories = {
+    nonCanonicalStatuses,
+    expiredPaymentHolds,
+    inventoryHoldAudit: [...inventoryHoldAudit, ...temporaryLockAudit],
+    reservationPaymentAudit,
+    initialPaymentAudit,
+    advanceRentCoverageAudit,
+    securityDepositAudit,
+    moveInReadinessAudit,
+    moveInContractAudit: [...moveInContractAudit, ...contractTimingAudit],
+    contractPricingReconciliation,
+    leaseTypeAudit,
+    zeroDiscountAudit,
+    penaltyPolicyAudit,
+    prohibitedCashPayments,
+    paymentProofAudit,
+    paymentAllocationAudit,
+    orphanedRecords,
+    paymentReconciliation,
+    billingOrphans,
+    branchConsistency,
+    duplicateRiskIndicators,
+    financialEvidence,
+  };
   for (const value of Object.values(categories)) value.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
   return {
     generatedAt: new Date(now).toISOString(), canonicalReservationStatuses: [...CANONICAL_RESERVATION_STATUSES], moneyTolerance: MONEY_TOLERANCE,
     collectionWarnings: [...data.collectionWarnings].sort(), counts: {
       ...Object.fromEntries(Object.entries(categories).map(([name, rows]) => [name, rows.length])),
       expiredHoldsStillHoldingInventory: inventoryHoldAudit.filter((row) => row.inventoryStillHeld).length,
-      moveInsWithoutReadyContracts: moveInContractAudit.filter((row) => row.readiness !== "fully_ready").length,
+      moveInsWithoutReadyContracts: moveInContractAudit.filter((row) => !row.preparedDraftExists).length,
       contractPricingMismatches: contractPricingReconciliation.filter((row) => row.mismatch).length,
       reconciliationRequiredPayments: paymentReconciliation.length,
       branchMismatches: branchConsistency.length,
