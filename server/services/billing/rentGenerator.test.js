@@ -30,6 +30,7 @@ await jest.unstable_mockModule("../../models/index.js", () => {
 
   return {
     Bill,
+    AuditLog: { create: jest.fn().mockResolvedValue({}) },
     Reservation: {
       find: reservationFind,
     },
@@ -152,5 +153,70 @@ describe("services/billing/rentGenerator", () => {
     expect(localYmd(billInstances[0].billingCycleEnd)).toBe("2026-4-5");
     expect(localYmd(billInstances[0].dueDate)).toBe("2026-4-7");
     expect(notify.billGenerated).toHaveBeenCalledTimes(1);
+  });
+
+  test("does not bill the advance-covered first month for a structured Reservation", async () => {
+    const reservation = createReservation({
+      financialWorkflowVersion: "structured-initial-payment-v1",
+      moveInDate: new Date("2026-03-23T00:00:00.000Z"),
+      advanceCoverageStart: new Date("2026-03-23T00:00:00.000Z"),
+      advanceCoverageEndExclusive: new Date("2026-04-23T00:00:00.000Z"),
+      nextRegularBillingDate: new Date("2026-04-23T00:00:00.000Z"),
+      pricingSnapshot: { finalMonthlyRate: 6300 },
+      pricingSnapshotVersion: 1,
+    });
+
+    const result = await ensureCurrentCycleRentBill({
+      reservation,
+      referenceDate: new Date("2026-03-23T00:00:00.000Z"),
+    });
+
+    expect(result).toMatchObject({ status: "skipped", reason: "advance_period_covered" });
+    expect(billInstances).toHaveLength(0);
+  });
+
+  test("creates the full-rate first regular Bill for the second rental month", async () => {
+    const reservation = createReservation({
+      financialWorkflowVersion: "structured-initial-payment-v1",
+      moveInDate: new Date("2026-03-23T00:00:00.000Z"),
+      advanceCoverageStart: new Date("2026-03-23T00:00:00.000Z"),
+      advanceCoverageEndExclusive: new Date("2026-04-23T00:00:00.000Z"),
+      nextRegularBillingDate: new Date("2026-04-23T00:00:00.000Z"),
+      pricingSnapshot: { finalMonthlyRate: 6300 },
+      pricingSnapshotVersion: 1,
+      reservationCreditConsumedAt: null,
+    });
+    billFindOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+
+    const result = await ensureCurrentCycleRentBill({
+      reservation,
+      referenceDate: new Date("2026-04-18T00:00:00.000Z"),
+      notifyTenant: false,
+      requireGenerationDateMatch: true,
+    });
+
+    expect(result.status).toBe("created");
+    expect(billInstances).toHaveLength(1);
+    expect(localYmd(billInstances[0].billingCycleStart)).toBe("2026-4-23");
+    expect(localYmd(billInstances[0].billingCycleEnd)).toBe("2026-5-23");
+    expect(localYmd(billInstances[0].dueDate)).toBe("2026-4-23");
+    expect(billInstances[0].charges.rent).toBe(6300);
+    expect(billInstances[0].totalAmount).toBe(6300);
+    expect(billInstances[0].reservationCreditApplied).toBe(0);
+    expect(billInstances[0].structuredWorkflowVersion).toBe(
+      "structured-initial-payment-v1",
+    );
+  });
+
+  test("blocks structured rent generation when coverage was not finalized", async () => {
+    const reservation = createReservation({
+      financialWorkflowVersion: "structured-initial-payment-v1",
+      pricingSnapshot: { finalMonthlyRate: 6300 },
+    });
+    await expect(ensureCurrentCycleRentBill({ reservation })).resolves.toEqual({
+      status: "blocked",
+      reason: "structured_advance_coverage_missing",
+    });
+    expect(billInstances).toHaveLength(0);
   });
 });

@@ -24,7 +24,7 @@ export async function checkAndReleaseExpiredPaymentHolds() {
       reservation.status = "cancelled";
       reservation.cancelledAt = now;
       reservation.cancellationSource = "system";
-      reservation.cancellationReason = "Deposit payment window expired (24 hours)";
+      reservation.cancellationReason = "Reservation Fee payment window expired (24 hours)";
       await reservation.save();
 
       // Release bed lock if held
@@ -58,7 +58,7 @@ export async function checkAndReleaseExpiredPaymentHolds() {
           await notify.general(
             reservation.userId._id || reservation.userId,
             "Reservation Hold Expired",
-            "Your 24-hour deposit payment window has expired and your temporary room hold has been released.",
+            "Your 24-hour Reservation Fee payment window has expired and your temporary room hold has been released.",
             { entityType: "reservation", entityId: String(reservation._id) }
           );
         } catch (notifyErr) {

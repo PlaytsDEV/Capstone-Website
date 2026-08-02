@@ -18,6 +18,7 @@ const settlePaymongoBill = jest.fn();
 const sendSuccess = jest.fn();
 const notifyGeneral = jest.fn();
 const settleReservationDeposit = jest.fn();
+const auditLog = jest.fn();
 const mockLean = (value) => ({ lean: jest.fn().mockResolvedValue(value) });
 
 await jest.unstable_mockModule("../config/paymongo.js", () => ({
@@ -87,6 +88,9 @@ await jest.unstable_mockModule("../middleware/errorHandler.js", () => ({
 await jest.unstable_mockModule("../utils/notificationService.js", () => ({
   notify: { general: notifyGeneral },
 }));
+await jest.unstable_mockModule("../utils/auditLogger.js", () => ({
+  default: { log: auditLog },
+}));
 await jest.unstable_mockModule(
   "../services/reservationDepositSettlementService.js",
   () => ({ settleReservationDeposit }),
@@ -118,6 +122,8 @@ describe("paymentController", () => {
     sendSuccess.mockReset();
     notifyGeneral.mockReset();
     settleReservationDeposit.mockReset();
+    auditLog.mockReset();
+    auditLog.mockResolvedValue(undefined);
     settleReservationDeposit.mockImplementation(async ({ reservationId, externalPaymentId }) => {
       const query = reservationFindById(reservationId);
       const reservation = query?.populate ? await query.populate() : await query;
@@ -584,6 +590,7 @@ describe("paymentController", () => {
       metadata: {
         sessionId: "cs_bill_2",
         sessionType: "bill",
+        currency: "PHP",
       },
     });
     expect(sendPaymentApprovedEmail).toHaveBeenCalledWith(
@@ -653,6 +660,7 @@ describe("paymentController", () => {
       metadata: {
         sessionId: "cs_bill_3",
         sessionType: "bill",
+        currency: "PHP",
       },
     });
     expect(sendPaymentApprovedEmail).toHaveBeenCalledWith(
@@ -716,6 +724,7 @@ describe("paymentController", () => {
       metadata: {
         sessionId: "cs_bill",
         sessionType: "bill",
+        currency: "PHP",
       },
     });
     expect(bill.save).not.toHaveBeenCalled();

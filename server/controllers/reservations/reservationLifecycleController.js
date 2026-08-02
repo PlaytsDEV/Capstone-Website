@@ -91,6 +91,16 @@ import {
   buildActorDisplayName,
 } from "./_helpers.js";
 import { cancelReservationByUser } from "./cancellationController.js";
+import {
+  isStructuredInitialPaymentEnabled,
+  STRUCTURED_INITIAL_PAYMENT_WORKFLOW,
+} from "../../config/structuredInitialPayment.js";
+import {
+  buildStructuredPricingSnapshot,
+  finalizeStructuredAdvanceCoverage,
+  getStructuredMoveInBlockers,
+} from "../../services/structuredInitialPaymentService.js";
+import { usesStructuredInitialPayment } from "../../config/structuredInitialPayment.js";
 
 export const updateReservation = async (req, res, next) => {
   try {
@@ -130,7 +140,7 @@ export const updateReservation = async (req, res, next) => {
 
     const existingReservation = await Reservation.findById(
       reservationId,
-    ).populate("roomId", "branch");
+    ).populate("roomId", "branch name type price monthlyPrice");
     if (!existingReservation)
       return res.status(404).json({
         error: "Reservation not found",
@@ -234,6 +244,7 @@ export const updateReservation = async (req, res, next) => {
       }
     }
 
+    let prospectiveWorkflowAssignment = null;
     if (
       req.body.status === "approved_for_payment" &&
       !hasReservationStatus(existingReservation.status, "approved_for_payment")
@@ -282,6 +293,36 @@ export const updateReservation = async (req, res, next) => {
       req.body.approvedForPaymentAt = new Date();
       req.body.paymentExpiresAt = dayjs().add(24, "hour").toDate();
       req.body.applicationReviewReason = null;
+
+      if (
+        !existingReservation.financialWorkflowVersion &&
+        isStructuredInitialPaymentEnabled()
+      ) {
+        const approvedAt = new Date();
+        let pricingSnapshot;
+        try {
+          pricingSnapshot = buildStructuredPricingSnapshot({
+            reservation: existingReservation,
+            room: existingReservation.roomId,
+            approvedBy: req.adminId || null,
+            approvedAt,
+          });
+        } catch (pricingError) {
+          return res.status(422).json({
+            error: pricingError.message,
+            code: pricingError.code || "PRICING_SNAPSHOT_INCOMPLETE",
+          });
+        }
+        prospectiveWorkflowAssignment = {
+          financialWorkflowVersion: STRUCTURED_INITIAL_PAYMENT_WORKFLOW,
+          pricingSnapshot,
+          pricingApprovedAt: approvedAt,
+          pricingApprovedBy: req.adminId || null,
+          pricingSnapshotVersion: 1,
+          reservationFeePaymentStatus: "pending",
+          initialPaymentStatus: "not_created",
+        };
+      }
     }
 
     if (
@@ -300,8 +341,60 @@ export const updateReservation = async (req, res, next) => {
     }
 
     if (isMoveInTransition) {
-      const blockers = getMoveInBlockers(existingReservation);
+      const structuredBlockers = await getStructuredMoveInBlockers(
+        existingReservation,
+        {
+          houseRulesPrepared: req.body.houseRulesPrepared === true,
+          moveInException:
+            req.body.moveInException?.active === true
+              ? {
+                  ...req.body.moveInException,
+                  approvedBy: req.adminId || null,
+                }
+              : null,
+        },
+      );
+      const blockers = [
+        ...getMoveInBlockers(existingReservation),
+        ...structuredBlockers,
+      ];
       if (blockers.length > 0) {
+        if (usesStructuredInitialPayment(existingReservation)) {
+          await auditLogger.log?.({
+            req,
+            type: "security",
+            action: "reservation.move_in_readiness_incomplete",
+            severity: "warning",
+            entityType: "reservation",
+            entityId: existingReservation._id,
+            details: "Structured move-in readiness check did not pass.",
+            metadata: {
+              reservationId: String(existingReservation._id),
+              branch: existingReservation.pricingSnapshot?.branchId || null,
+              workflowVersion: existingReservation.financialWorkflowVersion,
+              blockerCount: blockers.length,
+              result: "blocked",
+            },
+          });
+          try {
+            const { notify } = await import("../../utils/notificationService.js");
+            await notify.general(
+              existingReservation.userId?._id || existingReservation.userId,
+              "Move-In Readiness Incomplete",
+              `Move-in is waiting on ${blockers.length} prerequisite${blockers.length === 1 ? "" : "s"}. Please review your Reservation status for details.`,
+              {
+                entityType: "reservation",
+                entityId: String(existingReservation._id),
+                actionUrl: "/applicant/reservation",
+              },
+            );
+          } catch (notifyErr) {
+            logger.warn(
+              { err: notifyErr, requestId: req.id },
+              "Failed to send structured move-in readiness notification",
+            );
+          }
+        }
         return res.status(400).json({
           error:
             "Move-in prerequisites not met. Please resolve the following before moving in the tenant.",
@@ -340,6 +433,19 @@ export const updateReservation = async (req, res, next) => {
         });
       }
 
+      if (
+        usesStructuredInitialPayment(existingReservation) &&
+        !(
+          req.body.actualMoveInDate ||
+          req.body.confirmedMoveInDate ||
+          req.body.moveInDate
+        )
+      ) {
+        return res.status(422).json({
+          error: "Actual move-in date is required for structured Reservations.",
+          code: "ACTUAL_MOVEIN_DATE_REQUIRED",
+        });
+      }
       const moveInDate = combineLifecycleDateTime({
         dateInput: req.body.actualMoveInDate || req.body.confirmedMoveInDate || req.body.moveInDate || null,
         timeInput: req.body.moveInTime || null,
@@ -386,6 +492,7 @@ export const updateReservation = async (req, res, next) => {
       "status",
       "notes",
       "moveInDate",
+      "confirmedMoveInDate",
       "moveOutDate",
       "approvedDate",
       "reservedAt",
@@ -405,7 +512,24 @@ export const updateReservation = async (req, res, next) => {
       "scheduleRejected",
       "scheduleRejectionReason",
       "visitStatus",
+      "houseRulesPreparedAt",
+      "houseRulesPreparedBy",
+      "moveInException",
     ];
+
+    if (req.body.houseRulesPrepared === true && !req.body.houseRulesPreparedAt) {
+      req.body.houseRulesPreparedAt = new Date();
+      req.body.houseRulesPreparedBy = req.adminId || null;
+    }
+    if (req.body.moveInException?.active === true) {
+      req.body.moveInException = {
+        active: true,
+        reason: String(req.body.moveInException.reason || "").trim(),
+        expiresAt: req.body.moveInException.expiresAt || null,
+        approvedAt: new Date(),
+        approvedBy: req.adminId || null,
+      };
+    }
 
     if (req.body.removeVisitHistoryIndex !== undefined) {
       const idx = Number(req.body.removeVisitHistoryIndex);
@@ -477,12 +601,82 @@ export const updateReservation = async (req, res, next) => {
     for (const key of ADMIN_ALLOWED) {
       if (req.body[key] !== undefined) reservation[key] = req.body[key];
     }
+    if (prospectiveWorkflowAssignment) {
+      Object.assign(reservation, prospectiveWorkflowAssignment);
+    }
+    if (isMoveInTransition && usesStructuredInitialPayment(reservation)) {
+      await finalizeStructuredAdvanceCoverage({
+        reservation,
+        actualMoveInDate: req.body.confirmedMoveInDate,
+      });
+    }
     // Existing Reservations may contain legacy values on unrelated fields.
     // Application review must validate the fields changed by this action without
     // allowing stale, untouched data to turn a valid approval into an HTTP 500.
     const updatedReservation = await reservation.save({
       validateModifiedOnly: true,
     });
+
+    if (prospectiveWorkflowAssignment) {
+      await auditLogger.log?.({
+        req,
+        type: "data_modification",
+        action: "reservation.structured_workflow_assigned",
+        severity: "high",
+        entityType: "reservation",
+        entityId: updatedReservation._id,
+        details: "Assigned the prospective structured initial-payment workflow and approved pricing snapshot.",
+        metadata: {
+          reservationId: String(updatedReservation._id),
+          branch: updatedReservation.pricingSnapshot?.branchId || null,
+          previousWorkflowVersion: oldData.financialWorkflowVersion || null,
+          newWorkflowVersion: updatedReservation.financialWorkflowVersion,
+          pricingSnapshotVersion: updatedReservation.pricingSnapshotVersion,
+        },
+      });
+    }
+
+    if (isMoveInTransition && usesStructuredInitialPayment(updatedReservation)) {
+      await auditLogger.log?.({
+        req,
+        type: "data_modification",
+        action: "reservation.move_in_readiness_complete",
+        severity: "high",
+        entityType: "reservation",
+        entityId: updatedReservation._id,
+        details: "Structured move-in readiness passed and advance coverage was finalized.",
+        metadata: {
+          reservationId: String(updatedReservation._id),
+          branch: updatedReservation.pricingSnapshot?.branchId || null,
+          workflowVersion: updatedReservation.financialWorkflowVersion,
+          result: "ready",
+          advanceCoverageStart: updatedReservation.advanceCoverageStart,
+          advanceCoverageEndExclusive: updatedReservation.advanceCoverageEndExclusive,
+          nextRegularBillingDate: updatedReservation.nextRegularBillingDate,
+        },
+      });
+      try {
+        const { notify } = await import("../../utils/notificationService.js");
+        const start = dayjs(updatedReservation.advanceCoverageStart).format("MMM D, YYYY");
+        const end = dayjs(updatedReservation.advanceCoverageEnd).format("MMM D, YYYY");
+        const next = dayjs(updatedReservation.nextRegularBillingDate).format("MMM D, YYYY");
+        await notify.general(
+          updatedReservation.userId?._id || updatedReservation.userId,
+          "Move-In Complete",
+          `Your advance-rent coverage is finalized for ${start} through ${end}. Regular rent billing begins ${next}.`,
+          {
+            entityType: "reservation",
+            entityId: String(updatedReservation._id),
+            actionUrl: "/applicant/billing",
+          },
+        );
+      } catch (notifyErr) {
+        logger.warn(
+          { err: notifyErr, requestId: req.id },
+          "Failed to send structured advance-coverage notification",
+        );
+      }
+    }
 
     if (
       req.body.status === "moveIn" &&

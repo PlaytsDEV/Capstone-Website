@@ -716,7 +716,7 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  </>
  ) : (
  <p style={{ color: "#94A3B8", fontSize: 13, lineHeight: 1.6 }}>
- Your receipt will appear here once your deposit is confirmed.
+ Your receipt will appear here once your Reservation Fee is confirmed.
  </p>
  )}
  </div>

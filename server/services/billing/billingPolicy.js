@@ -159,6 +159,35 @@ export function getVisibleBillDueDate(billLike = {}) {
 
 export function getVisibleBillSnapshot(billLike = {}, now = new Date()) {
   const charges = getVisibleBillCharges(billLike);
+  if (billLike?.billType === "initial_payment") {
+    const grossAmount = roundMoney(
+      billLike?.initialPaymentBreakdown?.grossInitialAmount ??
+        billLike?.grossAmount ??
+        billLike?.totalAmount ??
+        0,
+    );
+    const totalAmount = roundMoney(
+      billLike?.initialPaymentBreakdown?.initialPaymentTotal ??
+        billLike?.totalAmount ??
+        0,
+    );
+    const paidAmount = roundMoney(billLike?.paidAmount || 0);
+    const remainingAmount = roundMoney(Math.max(totalAmount - paidAmount, 0));
+    const status = resolveBillStatus(
+      { ...billLike, totalAmount, paidAmount, remainingAmount },
+      now,
+    );
+    return {
+      charges,
+      grossAmount,
+      totalAmount,
+      paidAmount,
+      remainingAmount,
+      dueDate: billLike?.dueDate || null,
+      issuedAt: billLike?.issuedAt || billLike?.createdAt || null,
+      status,
+    };
+  }
   const grossAmount = sumBillCharges(charges);
   const totalAmount = roundMoney(
     Math.max(grossAmount - (billLike?.reservationCreditApplied || 0), 0),
@@ -476,6 +505,10 @@ export function getUtilityDueDate(issueDate) {
 
 export function getReservationCreditAvailable(reservation) {
   if (!reservation) return 0;
+  if (
+    reservation.financialWorkflowVersion ===
+    "structured-initial-payment-v1"
+  ) return 0;
   if (reservation.paymentStatus !== "paid") return 0;
   if (reservation.reservationCreditConsumedAt || reservation.reservationCreditAppliedBillId) return 0;
   return roundMoney(reservation.reservationFeeAmount || 0);

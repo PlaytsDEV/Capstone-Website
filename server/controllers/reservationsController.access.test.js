@@ -40,6 +40,8 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   Room: { find: roomFind, findById: roomFindById },
   VisitAvailability: { findOne: visitAvailabilityFindOne, create: visitAvailabilityCreate },
   Bill: { countDocuments: jest.fn(), deleteMany: jest.fn() },
+  Payment: {},
+  AuditLog: { create: jest.fn() },
   UtilityReading: { findOne: utilityReadingFindOne },
   BedHistory: {},
   Stay: {},

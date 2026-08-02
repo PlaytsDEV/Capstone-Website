@@ -148,7 +148,14 @@ export const submitReservationPaymentProof = async (req, res) => {
         422,
       );
     }
-    if (!["bank_transfer", "bank", "cash", "gcash"].includes(paymentMethod)) {
+    if (reservation.financialWorkflowVersion === "structured-initial-payment-v1") {
+      throw new ReservationDepositSettlementError(
+        "Structured Reservations must pay through PayMongo checkout.",
+        "PAYMONGO_SETTLEMENT_REQUIRED",
+        409,
+      );
+    }
+    if (!["bank_transfer", "bank", "gcash"].includes(paymentMethod)) {
       throw new ReservationDepositSettlementError(
         "Unsupported manual payment method.",
         "PAYMENT_METHOD_INVALID",

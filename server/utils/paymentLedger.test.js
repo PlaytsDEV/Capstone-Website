@@ -36,7 +36,7 @@ describe("applyBillPayment", () => {
     const result = await applyBillPayment({
       bill,
       amount: 500,
-      method: "cash",
+      method: "bank",
       source: "admin-manual",
       actorId: "admin-1",
       paymentModel,
@@ -62,7 +62,7 @@ describe("applyBillPayment", () => {
     const result = await applyBillPayment({
       bill,
       amount: 2000,
-      method: "cash",
+      method: "bank",
       source: "admin-manual",
       actorId: "admin-1",
       paymentModel,
@@ -89,7 +89,7 @@ describe("applyBillPayment", () => {
       applyBillPayment({
         bill,
         amount: 100,
-        method: "cash",
+        method: "bank",
         source: "admin-manual",
         actorId: "admin-1",
         paymentModel,
@@ -111,7 +111,7 @@ describe("applyBillPayment", () => {
       applyBillPayment({
         bill,
         amount: 0,
-        method: "cash",
+        method: "bank",
         source: "admin-manual",
         actorId: "admin-1",
         paymentModel,
@@ -138,7 +138,7 @@ describe("applyBillPayment", () => {
       applyBillPayment({
         bill,
         amount: 500,
-        method: "cash",
+        method: "bank",
         source: "admin-manual",
         actorId: "admin-1",
         paymentModel,
@@ -195,7 +195,7 @@ describe("applyBillPayment", () => {
     const result = await applyBillPayment({
       bill,
       amount: 500,
-      method: "cash",
+      method: "bank",
       source: "admin-manual",
       actorId: "admin-1",
       paymentModel,

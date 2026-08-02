@@ -36,6 +36,7 @@ import { sendSuccess, AppError } from "../middleware/errorHandler.js";
 import { normalizeReservationStatus } from "../utils/lifecycleNaming.js";
 import { isOwnerRole } from "../config/roles.js";
 import { settleReservationDeposit } from "../services/reservationDepositSettlementService.js";
+import auditLogger from "../utils/auditLogger.js";
 
 const FRONTEND_URL =
   process.env.FRONTEND_URL?.split(",")[0]?.trim() || "http://localhost:5173";
@@ -207,22 +208,45 @@ export const createBillCheckout = async (req, res, next) => {
       throw new AppError("No visible balance is currently due", 400, "NO_BALANCE_DUE");
     }
 
+    const isInitialPayment = bill.billType === "initial_payment";
     const monthLabel = dayjs(bill.billingMonth).format("MMMM YYYY");
+    const checkoutIdempotencyKey = `bill:${bill._id}:balance:${Math.round(amountDue * 100)}`;
     const { checkoutUrl, sessionId } = await createCheckoutSession({
       amount: amountDue,
-      description: `Lilycrest Dormitory - ${monthLabel} Bill`,
+      description: isInitialPayment
+        ? "Lilycrest Dormitory - Remaining Initial Balance"
+        : `Lilycrest Dormitory - ${monthLabel} Bill`,
       metadata: {
         type: "bill",
+        purpose: isInitialPayment ? "initial_payment" : "regular_bill",
         billId: String(bill._id),
         userId: String(dbUser._id),
         amountDue: String(amountDue),
       },
       successUrl: `${FRONTEND_URL}${TENANT_BILLING_PATH}?payment=success&session_id={id}`,
       cancelUrl: `${FRONTEND_URL}${TENANT_BILLING_PATH}?payment=cancelled`,
+      idempotencyKey: checkoutIdempotencyKey,
     });
 
     bill.paymongoSessionId = sessionId;
+    bill.paymongoCheckoutIdempotencyKey = checkoutIdempotencyKey;
     await bill.save();
+    await auditLogger.log({
+      req,
+      type: "data_modification",
+      action: "payment.paymongo_checkout_created",
+      severity: "info",
+      entityType: "bill",
+      entityId: bill._id,
+      details: "Created or refreshed a PayMongo Bill checkout.",
+      metadata: {
+        billId: String(bill._id),
+        reservationId: bill.reservationId ? String(bill.reservationId) : null,
+        workflowVersion: bill.structuredWorkflowVersion || null,
+        amount: amountDue,
+        currency: "PHP",
+      },
+    });
 
     sendSuccess(res, { checkoutUrl, sessionId });
   } catch (error) {
@@ -270,7 +294,7 @@ export const createDepositCheckout = async (req, res, next) => {
 
     if (!isDepositCheckoutReady(reservation)) {
       throw new AppError(
-        "Deposit checkout is available only after application submission.",
+        "Reservation Fee checkout is available only after application submission.",
         409,
         "DEPOSIT_NOT_READY",
         {
@@ -314,7 +338,7 @@ export const createDepositCheckout = async (req, res, next) => {
     const roomName = reservation.roomId?.name || "Room";
     const { checkoutUrl, sessionId } = await createCheckoutSession({
       amount,
-      description: `Lilycrest Dormitory - Reservation Deposit (${roomName})`,
+      description: `Lilycrest Dormitory - Reservation Fee (${roomName})`,
       metadata: {
         type: "deposit",
         reservationId: String(reservation._id),
@@ -322,12 +346,28 @@ export const createDepositCheckout = async (req, res, next) => {
       },
       successUrl: `${FRONTEND_URL}/applicant/reservation?payment=success&session_id={id}`,
       cancelUrl: `${FRONTEND_URL}/applicant/reservation?payment=cancelled&session_id={id}`,
+      idempotencyKey: `reservation-fee:${reservation._id}:${Math.round(amount * 100)}`,
     });
 
     reservation.paymongoSessionId = sessionId;
     reservation.status = "payment_pending";
     reservation.paymentStatus = "pending";
     await reservation.save();
+    await auditLogger.log({
+      req,
+      type: "data_modification",
+      action: "reservation.reservation_fee_checkout_created",
+      severity: "info",
+      entityType: "reservation",
+      entityId: reservation._id,
+      details: "Created or refreshed a PayMongo Reservation Fee checkout.",
+      metadata: {
+        reservationId: String(reservation._id),
+        workflowVersion: reservation.financialWorkflowVersion || null,
+        amount,
+        currency: "PHP",
+      },
+    });
 
     sendSuccess(res, { checkoutUrl, sessionId });
   } catch (error) {
@@ -392,6 +432,9 @@ export const checkSessionStatus = async (req, res, next) => {
             metadata: {
               sessionId,
               sessionType: metadata.type || "bill",
+              currency: String(
+                paidPayments[0]?.attributes?.currency || "PHP",
+              ).toUpperCase(),
             },
           });
 
@@ -532,7 +575,7 @@ export const checkSessionStatus = async (req, res, next) => {
                   amount:
                     settledReservation.reservationFeeAmount ??
                     BUSINESS.DEPOSIT_AMOUNT,
-                  description: `Reservation Deposit - ${roomName}`,
+                  description: `Reservation Fee - ${roomName}`,
                   paymentMethod: paymentMethod || "Online Payment (PayMongo)",
                   paymentDate: dayjs().format("MMMM D, YYYY"),
                   referenceId: paymentReference,

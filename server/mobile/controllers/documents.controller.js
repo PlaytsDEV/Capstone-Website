@@ -106,10 +106,6 @@ function getDocumentPayload(docId, user) {
       sections: [
         { heading: 'Due Dates', lines: ['5th of each month; grace period through the 7th.', 'Late fee: PHP 50/day after grace; maximum PHP 1,500/month.'] },
         { heading: 'Accepted Payment Methods', lines: [
-          '- Bank Transfer: BDO 1234-5678-9012 / BPI 9876-5432-1098',
-          '- Account Name: LilyCrest Properties Inc.',
-          '- E-Wallet: GCash/Maya 0912 345 6789',
-          '- Cash: Admin office Mon-Sat 8 AM - 5 PM',
           '- Online: PayMongo (GCash, Maya, Card) via the app',
         ]},
         { heading: 'Important Notes', lines: [

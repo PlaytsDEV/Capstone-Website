@@ -68,7 +68,7 @@ const DEFAULT_FORM = {
 const BILLING_FIELDS = [
   {
     key: "reservationFeeAmount",
-    label: "Reservation Deposit",
+    label: "Reservation Fee",
     description: "Deposit required to confirm a reservation before move-in.",
     icon: Settings2,
     step: "100",
@@ -419,7 +419,7 @@ export default function SystemSettingsPage() {
  <div>
  <h2 className="sa2-card-title">Billing Defaults</h2>
  <p className="sa-settings-section-copy">
- These values drive reservation deposits, late penalties, and default utility rates.
+ These values drive Reservation Fees, late penalties, and default utility rates.
  </p>
  </div>
  <span className="sa-settings-section-pill">Backend Source of Truth</span>

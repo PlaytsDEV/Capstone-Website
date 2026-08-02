@@ -257,7 +257,7 @@ function getNextAction(reservation, currentStage) {
     return {
       title: "Pay Reservation Fee",
       description: `Pay PHP ${reservationFeeAmount.toLocaleString("en-PH")} online to secure your reservation.`,
-      buttonLabel: "Pay Now ->",
+      buttonLabel: "Pay Reservation Fee ->",
       route: "/applicant/reservation?step=4",
       isWaiting: false,
     };
@@ -353,7 +353,7 @@ function getNextAction(reservation, currentStage) {
       return {
         title: "Pay Reservation Fee",
         description: `Pay PHP ${reservationFeeAmount.toLocaleString("en-PH")} online via GCash, Maya, or Card to secure your reservation`,
-        buttonLabel: "Pay Now ->",
+        buttonLabel: "Pay Reservation Fee ->",
         route: `/applicant/reservation?step=4`,
         isWaiting: false,
       };

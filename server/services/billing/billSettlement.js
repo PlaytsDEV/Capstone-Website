@@ -8,6 +8,11 @@
 
 import { getVisibleBillSnapshot, roundMoney } from "./billingPolicy.js";
 import { applyBillPayment } from "./paymentLedger.js";
+import {
+  syncStructuredReservationAfterBillSettlement,
+  quarantineStructuredSettlementMismatch,
+} from "../structuredInitialPaymentService.js";
+import { STRUCTURED_INITIAL_PAYMENT_WORKFLOW } from "../../config/structuredInitialPayment.js";
 
 export async function settlePaymongoBill({
   bill,
@@ -24,6 +29,9 @@ export async function settlePaymongoBill({
     bill?.paymongoPaymentId === paymentReference ||
     visible.status === "paid"
   ) {
+    // A retry must also heal Reservation state when the Bill write succeeded
+    // but the post-settlement projection update was interrupted.
+    await syncStructuredReservationAfterBillSettlement(bill);
     return {
       applied: false,
       reason: "already_applied",
@@ -33,6 +41,49 @@ export async function settlePaymongoBill({
   }
 
   const normalizedSettledAmount = roundMoney(settledAmount);
+  const isStructuredInitialPayment =
+    bill?.billType === "initial_payment" &&
+    bill?.structuredWorkflowVersion === STRUCTURED_INITIAL_PAYMENT_WORKFLOW;
+  const currency = String(metadata?.currency || "PHP").toUpperCase();
+  if (isStructuredInitialPayment && currency !== "PHP") {
+    await quarantineStructuredSettlementMismatch({
+      bill,
+      paymentReference,
+      settledAmount: normalizedSettledAmount,
+      currency,
+      source,
+      metadata,
+      reason: "currency_mismatch",
+      now,
+    });
+    return {
+      applied: false,
+      reason: "currency_mismatch_reconciliation_required",
+      bill,
+      appliedAmount: 0,
+    };
+  }
+  if (
+    isStructuredInitialPayment &&
+    normalizedSettledAmount !== visible.remainingAmount
+  ) {
+    await quarantineStructuredSettlementMismatch({
+      bill,
+      paymentReference,
+      settledAmount: normalizedSettledAmount,
+      currency,
+      source,
+      metadata,
+      reason: "amount_mismatch",
+      now,
+    });
+    return {
+      applied: false,
+      reason: "amount_mismatch_reconciliation_required",
+      bill,
+      appliedAmount: 0,
+    };
+  }
   const appliedAmount =
     normalizedSettledAmount > 0
       ? roundMoney(Math.min(visible.remainingAmount, normalizedSettledAmount))
@@ -77,6 +128,7 @@ export async function settlePaymongoBill({
     submittedAmount: paymentResult.appliedAmount,
   };
   await bill.save();
+  await syncStructuredReservationAfterBillSettlement(bill);
 
   return {
     applied: true,

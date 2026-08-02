@@ -190,6 +190,32 @@ const billSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    structuredWorkflowVersion: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    pricingSnapshotVersion: {
+      type: Number,
+      default: null,
+    },
+    reservationFeePaymentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Payment",
+      default: null,
+    },
+    paymongoCheckoutIdempotencyKey: {
+      type: String,
+      default: null,
+    },
+    initialPaymentBreakdown: {
+      advanceRent: { type: Number, default: 0, min: 0 },
+      securityDeposit: { type: Number, default: 0, min: 0 },
+      approvedInitialCharges: { type: Number, default: 0, min: 0 },
+      reservationFeeCredit: { type: Number, default: 0, min: 0 },
+      grossInitialAmount: { type: Number, default: 0, min: 0 },
+      initialPaymentTotal: { type: Number, default: 0, min: 0 },
+    },
     remainingAmount: {
       type: Number,
       default: 0,
@@ -356,7 +382,7 @@ const billSchema = new mongoose.Schema(
     // Distinguishes regular monthly rent bills from special lifecycle event bills.
     billType: {
       type: String,
-      enum: ["monthly", "transfer_settlement"],
+      enum: ["monthly", "initial_payment", "transfer_settlement"],
       default: "monthly",
     },
 
@@ -442,6 +468,19 @@ billSchema.index(
 billSchema.index(
   { reservationId: 1, billType: 1, status: 1 },
   { name: "transfer_settlement_lookup" },
+);
+billSchema.index(
+  { reservationId: 1, billType: 1, structuredWorkflowVersion: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      reservationId: { $type: "objectId" },
+      billType: "initial_payment",
+      structuredWorkflowVersion: "structured-initial-payment-v1",
+      isArchived: false,
+    },
+    name: "unique_structured_initial_payment_bill",
+  },
 );
 
 // ============================================================================

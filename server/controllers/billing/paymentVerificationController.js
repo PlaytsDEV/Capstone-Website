@@ -24,6 +24,12 @@ export const markBillAsPaid = async (req, res, next) => {
     if (!bill) return res.status(404).json({ error: "Bill not found" });
     if (!admin.isOwner && bill.branch !== admin.branch)
       return res.status(403).json({ error: "Bill not found" });
+    if (bill.structuredWorkflowVersion) {
+      return res.status(409).json({
+        error: "Structured workflow Bills must be settled through PayMongo.",
+        code: "PAYMONGO_SETTLEMENT_REQUIRED",
+      });
+    }
     const appliedAmount = Number(
       amount ?? bill.remainingAmount ?? bill.totalAmount,
     );
@@ -65,6 +71,12 @@ export const submitPaymentProof = async (req, res, next) => {
       return res
         .status(403)
         .json({ error: "You can only submit proof for your own bills" });
+    if (bill.structuredWorkflowVersion) {
+      return res.status(409).json({
+        error: "Structured workflow Bills must be paid through PayMongo.",
+        code: "PAYMONGO_SETTLEMENT_REQUIRED",
+      });
+    }
     const visible = getVisibleBillSnapshot(bill);
     if (visible.status === "paid")
       return res.status(400).json({ error: "Bill is already paid" });

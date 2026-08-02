@@ -93,7 +93,7 @@ const findExistingSettlement = async ({
 
   const exact = await Payment.findOne({
     reservationId,
-    purpose: "reservation_deposit",
+    purpose: { $in: ["reservation_deposit", "reservation_fee"] },
     status: { $in: ["confirmed", "paid"] },
     $or: alternatives,
   }).session(session);
@@ -101,7 +101,7 @@ const findExistingSettlement = async ({
 
   return Payment.findOne({
     reservationId,
-    purpose: "reservation_deposit",
+    purpose: { $in: ["reservation_deposit", "reservation_fee"] },
     status: { $in: ["confirmed", "paid"] },
   }).session(session);
 };
@@ -301,12 +301,18 @@ export async function settleReservationDeposit({
         reservationId: reservation._id,
         billId: null,
         branch: room.branch,
-        purpose: "reservation_deposit",
+        purpose:
+          reservation.financialWorkflowVersion === "structured-initial-payment-v1"
+            ? "reservation_fee"
+            : "reservation_deposit",
         amount: Number(paidAmount),
         expectedAmount,
         paidAmount: Number(paidAmount),
         currency: String(evidence.currency || "PHP").toUpperCase(),
         method: normalizePaymentMethod(source, evidence),
+        provider: source === "paymongo" ? "paymongo" : null,
+        providerPaymentId: source === "paymongo" ? externalPaymentId : null,
+        settlementTimestamp: source === "paymongo" ? new Date(paidAt) : null,
         source: buildPaymentSource(source),
         externalPaymentId,
         externalSessionId,
@@ -504,6 +510,20 @@ export async function settleReservationDeposit({
   if (deferredError) {
     deferredError.payment = result?.payment || null;
     throw deferredError;
+  }
+  if (
+    result?.settled &&
+    result?.reservation?.financialWorkflowVersion ===
+      "structured-initial-payment-v1"
+  ) {
+    const { createStructuredInitialPaymentBill } = await import(
+      "./structuredInitialPaymentService.js"
+    );
+    result.initialPaymentBill = await createStructuredInitialPaymentBill({
+      reservation: result.reservation,
+      reservationFeePayment: result.payment,
+      now: new Date(paidAt),
+    });
   }
   return result;
 }

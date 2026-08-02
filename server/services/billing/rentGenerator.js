@@ -22,6 +22,39 @@ import {
   CURRENT_RESIDENT_STATUS_QUERY,
   readMoveInDate,
 } from "../../utils/lifecycleNaming.js";
+import {
+  resolveVisibleStructuredRentPeriod,
+} from "../structuredInitialPaymentPolicy.js";
+import { usesStructuredInitialPayment } from "../../config/structuredInitialPayment.js";
+
+async function recordStructuredBillingDecision(reservation, action, metadata, dryRun) {
+  if (dryRun) return;
+  try {
+    const [{ AuditLog }, { randomUUID }] = await Promise.all([
+      import("../../models/index.js"),
+      import("crypto"),
+    ]);
+    await AuditLog.create({
+      logId: `LOG-${randomUUID()}`,
+      type: "data_modification",
+      action,
+      severity: "high",
+      user: "system",
+      userRole: "system",
+      branch: reservation.pricingSnapshot?.branchId || reservation.branch || null,
+      entityType: "reservation",
+      entityId: String(reservation._id),
+      details: "Recorded a structured recurring-billing decision.",
+      metadata: {
+        reservationId: String(reservation._id),
+        workflowVersion: reservation.financialWorkflowVersion,
+        ...metadata,
+      },
+    });
+  } catch (error) {
+    logger.warn({ err: error, reservationId: reservation?._id }, "Failed to record structured billing audit decision");
+  }
+}
 
 /**
  * Resolve the recurring monthly rent amount for the reservation on a given date.
@@ -30,6 +63,12 @@ export function resolveReservationRentAmount(
   reservation,
   referenceDate = new Date(),
 ) {
+  if (
+    usesStructuredInitialPayment(reservation) &&
+    Number.isFinite(Number(reservation?.pricingSnapshot?.finalMonthlyRate))
+  ) {
+    return roundMoney(reservation.pricingSnapshot.finalMonthlyRate);
+  }
   const moveInDate = readMoveInDate(reservation);
   const referenceDay = dayjs(referenceDate).startOf("day");
   const isLongTerm =
@@ -59,9 +98,46 @@ export async function ensureCurrentCycleRentBill({
     return { status: "skipped", reason: "missing_context" };
   }
 
-  const billingCycle = resolveVisibleRentBillingCycle(moveInDate, referenceDate);
+  const structured = usesStructuredInitialPayment(reservation);
+  if (
+    structured &&
+    (!reservation.advanceCoverageStart ||
+      !reservation.advanceCoverageEndExclusive ||
+      !reservation.nextRegularBillingDate)
+  ) {
+    await recordStructuredBillingDecision(
+      reservation,
+      "reservation.regular_bill_blocked_missing_advance_coverage",
+      { reason: "structured_advance_coverage_missing" },
+      dryRun,
+    );
+    return { status: "blocked", reason: "structured_advance_coverage_missing" };
+  }
+  const billingCycle = structured
+    ? resolveVisibleStructuredRentPeriod(moveInDate, referenceDate)
+    : resolveVisibleRentBillingCycle(moveInDate, referenceDate);
   if (!billingCycle) {
-    return { status: "skipped", reason: "outside_generation_window" };
+    const reason =
+      structured &&
+      dayjs(referenceDate).isBefore(dayjs(reservation.advanceCoverageEndExclusive))
+        ? "advance_period_covered"
+        : "outside_generation_window";
+    if (reason === "advance_period_covered") {
+      await recordStructuredBillingDecision(
+        reservation,
+        "reservation.regular_bill_skipped_advance_covered",
+        {
+          reason,
+          coverageStart: reservation.advanceCoverageStart,
+          coverageEndExclusive: reservation.advanceCoverageEndExclusive,
+        },
+        dryRun,
+      );
+    }
+    return {
+      status: "skipped",
+      reason,
+    };
   }
 
   const generationDay = dayjs(billingCycle.generationDate).startOf("day");
@@ -73,8 +149,12 @@ export async function ensureCurrentCycleRentBill({
     };
   }
 
-  const billingMonthStartDate = dayjs(billingCycle.billingCycleStart).toDate();
-  const billingCycleEndDate = dayjs(billingCycle.billingCycleEnd).toDate();
+  const billingMonthStartDate = dayjs(
+    billingCycle.billingCycleStart || billingCycle.coverageStart,
+  ).toDate();
+  const billingCycleEndDate = dayjs(
+    billingCycle.billingCycleEnd || billingCycle.coverageEndExclusive,
+  ).toDate();
   const dueDateValue = dayjs(billingCycle.dueDate).toDate();
   const userId = reservation.userId?._id || reservation.userId;
   const roomId = reservation.roomId?._id || reservation.roomId;
@@ -107,7 +187,7 @@ export async function ensureCurrentCycleRentBill({
   }));
   const isFirstCycleBill = !hasPriorRentBill;
   const creditAvailable = getReservationCreditAvailable(reservation);
-  const reservationCreditApplied = isFirstCycleBill
+  const reservationCreditApplied = !structured && isFirstCycleBill
     ? Math.min(grossAmount, creditAvailable)
     : 0;
 
@@ -140,6 +220,13 @@ export async function ensureCurrentCycleRentBill({
     totalAmount: grossAmount,
     remainingAmount: grossAmount,
     status: "pending",
+    billType: "monthly",
+    structuredWorkflowVersion: structured
+      ? reservation.financialWorkflowVersion
+      : null,
+    pricingSnapshotVersion: structured
+      ? reservation.pricingSnapshotVersion
+      : null,
   });
 
   syncBillAmounts(bill);
@@ -153,6 +240,35 @@ export async function ensureCurrentCycleRentBill({
   }
 
   await bill.save();
+
+  if (structured) {
+    const { AuditLog } = await import("../../models/index.js");
+    const { randomUUID } = await import("crypto");
+    await AuditLog.create({
+      logId: `LOG-${randomUUID()}`,
+      type: "data_modification",
+      action: isFirstCycleBill
+        ? "reservation.first_regular_bill_created"
+        : "reservation.regular_bill_created",
+      severity: "high",
+      user: "system",
+      userRole: "system",
+      branch: bill.branch,
+      entityType: "bill",
+      entityId: String(bill._id),
+      details: "Created a non-overlapping structured regular-rent Bill.",
+      metadata: {
+        reservationId: String(reservation._id),
+        billId: String(bill._id),
+        workflowVersion: reservation.financialWorkflowVersion,
+        amount: bill.totalAmount,
+        coverageStart: bill.billingCycleStart,
+        coverageEndExclusive: bill.billingCycleEnd,
+        dueDate: bill.dueDate,
+        reservationFeeCreditApplied: bill.reservationCreditApplied,
+      },
+    });
+  }
 
   if (reservationCreditApplied > 0 && typeof reservation.save === "function") {
     reservation.reservationCreditConsumedAt = currentDay.toDate();

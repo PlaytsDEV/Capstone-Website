@@ -61,6 +61,11 @@ import {
 export { CURRENT_RESIDENT_STATUS_QUERY, readMoveInDate };
 import { resolveAdminAccessContext } from "../../utils/adminAccess.js";
 import { isOwnerRole, isAdminRole } from "../../config/roles.js";
+import { usesStructuredInitialPayment } from "../../config/structuredInitialPayment.js";
+import {
+  buildRollingRentalPeriod,
+  resolveVisibleStructuredRentPeriod,
+} from "../../services/structuredInitialPaymentPolicy.js";
 
 export const getAdminInfo = resolveAdminAccessContext;
 const __filename = fileURLToPath(import.meta.url);
@@ -80,13 +85,13 @@ export function resolveManualPaymentMethod(note = "") {
   }
   if (normalized.includes("check") || normalized.includes("cheque")) return "check";
 
-  return "cash";
+  return "paymongo";
 }
 
 export function resolveProofPaymentMethod(bill) {
   const existingMethod = String(bill?.paymentMethod || "").trim().toLowerCase();
   if (
-    ["bank", "gcash", "card", "check", "cash", "paymongo", "paymaya", "grab_pay", "maya", "online"].includes(
+    ["bank", "gcash", "card", "check", "paymongo", "paymaya", "grab_pay", "maya", "online"].includes(
       existingMethod,
     )
   ) {
@@ -109,7 +114,7 @@ export function buildBillPaymentFlow(bill, visibleSnapshot = null) {
 
   let tenantMessage = "Use online checkout from the Billing page to pay this statement.";
   let adminMessage =
-    "Use manual settlement only for branch-assisted offline payments such as cash or bank transfer.";
+    "Prospective payments must be completed through PayMongo.";
 
   if (proofStatus === "pending-verification") {
     tenantMessage =
@@ -120,7 +125,7 @@ export function buildBillPaymentFlow(bill, visibleSnapshot = null) {
     tenantMessage =
       "Offline payment proof uploads are no longer used for monthly bills. Use online checkout for future payments.";
     adminMessage =
-      "This proof record is legacy billing history. New monthly payments should go through online checkout or an assisted offline settlement.";
+      "This proof record is legacy billing history. New monthly payments must go through PayMongo checkout.";
   }
 
   return {
@@ -187,6 +192,9 @@ export const formatBill = (bill) => {
     charges: visible.charges,
     grossAmount: visible.grossAmount,
     reservationCreditApplied: bill.reservationCreditApplied || 0,
+    structuredWorkflowVersion: bill.structuredWorkflowVersion || null,
+    pricingSnapshotVersion: bill.pricingSnapshotVersion || null,
+    initialPaymentBreakdown: bill.initialPaymentBreakdown || null,
     totalAmount: visible.totalAmount,
     paidAmount: bill.paidAmount || 0,
     remainingAmount: visible.remainingAmount,
@@ -246,8 +254,26 @@ export async function getReservationBillingContext(
     ...(currentBillId ? { _id: { $ne: currentBillId } } : {}),
   });
 
-  const cycle = resolveCurrentRentBillingCycle(moveInDate, referenceDate);
-  const creditAvailable = getReservationCreditAvailable(reservation);
+  const structured = usesStructuredInitialPayment(reservation);
+  const structuredPeriod = structured
+    ? resolveVisibleStructuredRentPeriod(moveInDate, referenceDate)
+    : null;
+  const cycle = structuredPeriod
+    ? {
+        billingMonth: structuredPeriod.coverageStart,
+        billingCycleStart: structuredPeriod.coverageStart,
+        billingCycleEnd: structuredPeriod.coverageEndExclusive,
+        dueDate: structuredPeriod.dueDate,
+        generationDate: structuredPeriod.generationDate,
+        cycleIndex: structuredPeriod.cycleIndex,
+        structured: true,
+      }
+    : structured
+      ? null
+      : resolveCurrentRentBillingCycle(moveInDate, referenceDate);
+  const creditAvailable = structured
+    ? 0
+    : getReservationCreditAvailable(reservation);
 
   return {
     reservation,
@@ -647,7 +673,8 @@ export function formatBillReference(bill = {}) {
   const month = bill?.billingMonth && dayjs(bill.billingMonth).isValid()
     ? dayjs(bill.billingMonth).format("YYYYMM")
     : dayjs().format("YYYYMM");
-  return `LC-RB-${month}-${id || "DRAFT"}`;
+  const prefix = bill?.billType === "initial_payment" ? "LC-IP" : "LC-RB";
+  return `${prefix}-${month}-${id || "DRAFT"}`;
 }
 
 export function resolveRentCycleForBillingMonth(reservation, billingMonth) {
@@ -659,6 +686,38 @@ export function resolveRentCycleForBillingMonth(reservation, billingMonth) {
   const selectedMonth = parseRequiredDate(billingMonth, "Billing month").startOf("month");
   const monthEnd = selectedMonth.endOf("month");
   const anchor = dayjs(moveInDate).startOf("day");
+
+  if (usesStructuredInitialPayment(reservation)) {
+    if (
+      !reservation.advanceCoverageStart ||
+      !reservation.advanceCoverageEndExclusive ||
+      !reservation.nextRegularBillingDate
+    ) {
+      throw createBillingError(
+        "Advance-rent coverage is not finalized.",
+        409,
+        "STRUCTURED_ADVANCE_COVERAGE_MISSING",
+      );
+    }
+    let cycleIndex = Math.max(1, selectedMonth.diff(anchor, "month"));
+    let period = buildRollingRentalPeriod(anchor.toDate(), cycleIndex);
+    while (dayjs(period.coverageStart).isBefore(selectedMonth, "day")) {
+      cycleIndex += 1;
+      period = buildRollingRentalPeriod(anchor.toDate(), cycleIndex);
+    }
+    if (dayjs(period.coverageStart).isAfter(monthEnd, "day")) {
+      throw createBillingError("No active tenant", 400, "NO_ACTIVE_TENANT");
+    }
+    return {
+      billingMonth: period.coverageStart,
+      billingCycleStart: period.coverageStart,
+      billingCycleEnd: period.coverageEndExclusive,
+      dueDate: period.coverageStart,
+      generationDate: dayjs(period.coverageStart).subtract(5, "day").toDate(),
+      cycleIndex,
+      structured: true,
+    };
+  }
 
   if (anchor.isAfter(monthEnd)) {
     throw createBillingError("No active tenant", 400, "NO_ACTIVE_TENANT");
@@ -680,6 +739,17 @@ export function resolveRentCycleForBillingMonth(reservation, billingMonth) {
 }
 
 export function resolveRentDueDate(cycle, dueDate) {
+  if (cycle.structured) {
+    const requiredDueDate = dayjs(cycle.billingCycleStart).startOf("day");
+    if (dueDate && !parseRequiredDate(dueDate, "Due date").isSame(requiredDueDate, "day")) {
+      throw createBillingError(
+        "Structured rent is due when its rolling rental period begins.",
+        400,
+        "INVALID_STRUCTURED_DUE_DATE",
+      );
+    }
+    return requiredDueDate.toDate();
+  }
   const resolved = dueDate
     ? parseRequiredDate(dueDate, "Due date")
     : dayjs(cycle.dueDate).startOf("day");
@@ -696,6 +766,13 @@ export function resolveRentDueDate(cycle, dueDate) {
 }
 
 export function resolveRentAmountForBilling(reservation, room, cycle, rentAmount) {
+  if (usesStructuredInitialPayment(reservation)) {
+    const frozenRate = Number(reservation?.pricingSnapshot?.finalMonthlyRate);
+    if (!Number.isFinite(frozenRate) || frozenRate <= 0) {
+      throw createBillingError("Approved pricing snapshot is missing.", 409, "PRICING_SNAPSHOT_MISSING");
+    }
+    return roundMoney(frozenRate);
+  }
   const explicitRent =
     rentAmount === undefined || rentAmount === null || rentAmount === ""
       ? null
@@ -836,7 +913,7 @@ export async function buildRentBillDraft({
     buildRentDuplicateFilter(reservation._id, cycle, billingMonth),
   ).populate("userId", "firstName lastName email");
 
-  if (duplicate && !allowDuplicate) {
+  if (duplicate && (!allowDuplicate || usesStructuredInitialPayment(reservation))) {
     const error = createBillingError("Duplicate bill exists", 409, "DUPLICATE_RENT_BILL");
     error.bill = duplicate;
     throw error;
@@ -854,7 +931,8 @@ export async function buildRentBillDraft({
   }).select("_id");
   const isFirstCycleBill = !priorRentBill;
   const creditAvailable = getReservationCreditAvailable(reservation);
-  const reservationCreditApplied = isFirstCycleBill
+  const structured = usesStructuredInitialPayment(reservation);
+  const reservationCreditApplied = !structured && isFirstCycleBill
     ? Math.min(grossAmount, creditAvailable)
     : 0;
 
@@ -890,6 +968,12 @@ export async function buildRentBillDraft({
     remainingAmount: grossAmount,
     status: "pending",
     notes,
+    structuredWorkflowVersion: structured
+      ? reservation.financialWorkflowVersion
+      : null,
+    pricingSnapshotVersion: structured
+      ? reservation.pricingSnapshotVersion
+      : null,
   });
 
   syncBillAmounts(bill);
@@ -1058,6 +1142,7 @@ export function summarizeRentTenantRows(tenants = []) {
 }
 
 export function resolveRentBillType(bill = {}) {
+  if (bill.billType === "initial_payment") return "initial_payment";
   const charges = bill.charges || {};
   if (Number(charges.rent || 0) > 0) return "rent";
   if (Number(charges.water || 0) > 0 && Number(charges.electricity || 0) > 0) {
@@ -1070,6 +1155,7 @@ export function resolveRentBillType(bill = {}) {
 
 export function formatBillTypeLabel(bill = {}) {
   const billType = resolveRentBillType(bill);
+  if (billType === "initial_payment") return "Initial Payment";
   if (billType === "rent") return "Rent";
   if (billType === "water") return "Water";
   if (billType === "electricity") return "Electricity";
