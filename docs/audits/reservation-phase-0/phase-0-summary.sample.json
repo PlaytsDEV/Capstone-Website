@@ -1,0 +1,31 @@
+{
+  "phase": 0,
+  "verdict": "COMPLETE_READY_FOR_OWNER_DECISIONS",
+  "generatedAt": "2026-01-01T00:00:00.000Z",
+  "environment": {
+    "environmentName": "test",
+    "databaseCategory": "non-production",
+    "databaseName": "lilycrest-test",
+    "hostCategory": "managed-remote",
+    "hostFingerprint": "example000000",
+    "privilegeAssessment": "read-only",
+    "readOnlySafetyEstablished": true,
+    "recordLevelQueriesExecuted": true
+  },
+  "counts": {
+    "nonCanonicalStatuses": 0,
+    "expiredPaymentHolds": 1,
+    "inventoryHoldAudit": 1,
+    "moveInContractAudit": 1,
+    "contractPricingReconciliation": 1,
+    "orphanedRecords": 0,
+    "paymentReconciliation": 0,
+    "billingOrphans": 0,
+    "branchConsistency": 0,
+    "duplicateRiskIndicators": 0,
+    "financialEvidence": 1
+  },
+  "advanceDepositConclusion": "No system collection evidence found; Contract-only amounts exist",
+  "moneyTolerance": 0.01,
+  "sampleDataOnly": true
+}

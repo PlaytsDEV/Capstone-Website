@@ -34,6 +34,9 @@ server/private/**
 !server/private/contract-templates/**
 server/scripts/render_contract_mask_debug.mjs
 
+# Phase 0 reservation audit exports may contain operational internal IDs.
+server/audit-output/reservation-phase-0/
+
 # Editor / tool state
 .claude/
 .vscode/

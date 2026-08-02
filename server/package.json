@@ -14,6 +14,8 @@
     "reservation:backfill-codes": "node scripts/backfill_reservation_codes.mjs",
     "reservation:backfill-codes:write": "node scripts/backfill_reservation_codes.mjs --write",
     "reservation:audit-payment-integrity": "node scripts/audit_reservation_payment_integrity.mjs",
+    "reservation:audit-phase-0": "node scripts/audit-reservation-workflow.mjs --report-only",
+    "reservation:audit-phase-0:metadata": "node scripts/audit-reservation-workflow.mjs --report-only --metadata-only",
     "utility:repair-bill-cycles": "node scripts/repair_utility_only_bill_cycles.mjs",
     "utility:repair-bill-cycles:write": "node scripts/repair_utility_only_bill_cycles.mjs --write",
     "utility:diagnose": "node scripts/diagnose_utility_sync.mjs",
