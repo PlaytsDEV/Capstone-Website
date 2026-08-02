@@ -116,6 +116,7 @@ export const authFetch = async (url, options = {}, _isRetry = false) => {
     const response = await fetch(`${API_URL}${url}`, {
       ...fetchOptions,
       headers,
+      credentials: "include",
     });
 
     if (!response.ok) {
