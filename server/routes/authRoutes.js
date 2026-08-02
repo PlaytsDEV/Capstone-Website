@@ -39,8 +39,10 @@ import {
   logPasswordReset,
 } from "../controllers/authController.js";
 import {
+  exchangeEmailVerificationToken,
   finalizeEmailVerification,
   getEmailVerificationStatus,
+  reconcileAuthenticatedEmailVerification,
   resendEmailVerification,
   sendAuthenticatedEmailVerification,
 } from "../controllers/emailVerificationController.js";
@@ -99,17 +101,24 @@ router.post("/verify-otp", authLimiter, verifyToken, verifyLoginOtp);
 router.post("/resend-otp", authLimiter, verifyToken, resendLoginOtp);
 
 // Email verification is intentionally isolated from password-reset and login
-// OTP routes. Public operations require a signed, registration-bound context;
-// the initial send accepts only the current Firebase identity.
+// OTP routes. Public operations require a short-lived HttpOnly browser
+// capability; reconciliation derives identity from a validated Firebase token.
 router.post(
   "/email-verification/send",
   authLimiter,
   verifyOnboardingToken,
   sendAuthenticatedEmailVerification,
 );
+router.post("/email-verification/exchange", publicLimiter, exchangeEmailVerificationToken);
 router.post("/email-verification/status", publicLimiter, getEmailVerificationStatus);
 router.post("/email-verification/finalize", publicLimiter, finalizeEmailVerification);
 router.post("/email-verification/resend", authLimiter, resendEmailVerification);
+router.post(
+  "/email-verification/reconcile",
+  authLimiter,
+  verifyOnboardingToken,
+  reconcileAuthenticatedEmailVerification,
+);
 
 /**
  * POST /api/auth/logout

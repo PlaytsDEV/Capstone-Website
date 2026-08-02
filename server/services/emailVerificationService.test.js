@@ -4,10 +4,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildCustomEmailVerificationLink,
-  createVerificationContext,
+  createOpaqueExchangeToken,
+  getExchangeExpiry,
+  hashExchangeToken,
   maskEmail,
   normalizeVerificationContinuation,
-  verifyVerificationContext,
 } from "./emailVerificationService.js";
 
 const env = {
@@ -19,31 +20,39 @@ const env = {
   EMAIL_VERIFICATION_SECRET: "test-only-secret-with-enough-entropy",
 };
 
-describe("signed email verification context", () => {
-  test("round-trips Firebase identity and trusted reservation continuation", () => {
-    const token = createVerificationContext({ uid: "firebase-uid", email: "leigh@example.com", continuePath: "/applicant/reservation?step=1" }, env);
-    expect(verifyVerificationContext(token, env)).toMatchObject({ uid: "firebase-uid", continuePath: "/applicant/reservation?step=1" });
+describe("opaque email verification exchange", () => {
+  test("creates random opaque tokens and stores a non-reversible keyed hash", () => {
+    const token = createOpaqueExchangeToken();
+    expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(hashExchangeToken(token, env)).toMatch(/^[a-f0-9]{64}$/);
+    expect(hashExchangeToken(token, env)).not.toContain(token);
+    expect(() => hashExchangeToken(`${token}x`, env)).toThrow("INVALID_EXCHANGE_TOKEN");
     expect(maskEmail("leigh@example.com")).toBe("l****@example.com");
   });
 
-  test("rejects tampering and external continuation", () => {
-    const token = createVerificationContext({ uid: "firebase-uid", email: "leigh@example.com", continuePath: "https://evil.example/steal" }, env);
-    expect(verifyVerificationContext(token, env).continuePath).toBe("/signin");
-    expect(() => verifyVerificationContext(`${token}x`, env)).toThrow("INVALID_CONTEXT");
-    expect(normalizeVerificationContinuation("//evil.example/steal", env)).toBe("/signin");
+  test("uses a one-hour default action exchange lifetime", () => {
+    const now = Date.UTC(2026, 0, 1);
+    expect(getExchangeExpiry(env, now).getTime()).toBe(now + 60 * 60 * 1000);
   });
 
-  test("rewrites Firebase links to the configured action handler without losing action parameters", () => {
-    const token = createVerificationContext({ uid: "firebase-uid", email: "leigh@example.com" }, env);
+  test("rejects external reservation continuation", () => {
+    expect(normalizeVerificationContinuation("//evil.example/steal", env)).toBe("/signin");
+    expect(normalizeVerificationContinuation("/applicant/reservation?step=1", env)).toBe("/applicant/reservation?step=1");
+  });
+
+  test("rewrites Firebase links with only a short-lived opaque exchange identifier", () => {
+    const exchangeToken = createOpaqueExchangeToken();
     const link = buildCustomEmailVerificationLink({
       firebaseLink: "https://project.firebaseapp.com/__/auth/action?mode=verifyEmail&oobCode=one-time-code&apiKey=public-key",
-      verificationContext: token,
+      exchangeToken,
     }, env);
     const parsed = new URL(link);
     expect(`${parsed.origin}${parsed.pathname}`).toBe(env.EMAIL_ACTION_URL);
     expect(parsed.searchParams.get("mode")).toBe("verifyEmail");
     expect(parsed.searchParams.get("oobCode")).toBe("one-time-code");
-    expect(parsed.searchParams.get("continueUrl")).not.toContain("evil.example");
+    expect(parsed.searchParams.get("exchange")).toBe(exchangeToken);
+    expect(parsed.searchParams.has("context")).toBe(false);
+    expect(parsed.searchParams.has("continueUrl")).toBe(false);
   });
 
   test("runtime verification code contains no Vercel host or sensitive-link logging", () => {
@@ -55,6 +64,7 @@ describe("signed email verification context", () => {
     ];
     const source = files.map((file) => fs.readFileSync(file, "utf8")).join("\n");
     expect(source).not.toMatch(/vercel\.app/i);
-    expect(source).not.toMatch(/console\.(?:log|info|warn|error)\([^\n]*(?:oobCode|verificationContext|verificationLink)/);
+    expect(source).not.toMatch(/console\.(?:log|info|warn|error)\([^\n]*(?:oobCode|exchangeToken|verificationLink)/);
+    expect(source).not.toMatch(/logger\.(?:info|warn|error)\([^\n]*(?:exchangeToken|verificationLink)/);
   });
 });

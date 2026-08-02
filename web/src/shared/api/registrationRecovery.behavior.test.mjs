@@ -38,8 +38,8 @@ test("registration retries generated username collisions without exposing owners
 
 test("verification delivery success and failure use truthful distinct messages", () => {
   assert.match(signUp, /authApi\.sendEmailVerification/);
-  assert.match(signUp, /state: "sent"/);
-  assert.match(signUp, /state: "send-failed"/);
+  assert.match(signUp, /auth-action\?state=sent/);
+  assert.match(signUp, /auth-action\?state=send-failed/);
   assert.doesNotMatch(signUp, /Account created![\s\S]{0,120}check your inbox/);
 });
 

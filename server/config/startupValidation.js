@@ -77,6 +77,16 @@ export function validateStartupConfig() {
     if (!String(process.env.ALLOWED_FRONTEND_ORIGINS || process.env.CORS_ORIGINS || "").trim()) {
       failures.push("cors: ALLOWED_FRONTEND_ORIGINS or CORS_ORIGINS");
     }
+    for (const name of [
+      "EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS",
+      "EMAIL_VERIFICATION_CONTEXT_TTL_SECONDS",
+      "EMAIL_VERIFICATION_SESSION_TTL_SECONDS",
+    ]) {
+      const value = String(process.env[name] || "").trim();
+      if (value && (!Number.isFinite(Number(value)) || Number(value) <= 0)) {
+        failures.push(`email verification: ${name} must be a positive number`);
+      }
+    }
   }
 
   if (failures.length === 0) {

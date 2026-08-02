@@ -1,11 +1,4 @@
-const normalizeOrigin = (origin = "") =>
-  String(origin || "").trim().replace(/\/+$/, "");
-
-const escapeRegex = (value = "") =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-const wildcardToRegex = (pattern = "") =>
-  new RegExp(`^${escapeRegex(pattern).replace(/\\\*/g, ".*")}$`, "i");
+const normalizeOrigin = (origin = "") => String(origin || "").trim().replace(/\/+$/, "");
 
 export const DEVELOPMENT_ALLOWED_ORIGINS = Object.freeze([
   "http://localhost:3000",
@@ -13,39 +6,67 @@ export const DEVELOPMENT_ALLOWED_ORIGINS = Object.freeze([
   "http://localhost:5173",
 ]);
 
-const configuredOrigins = (value = "") =>
+const parseConfiguredOrigins = (value = "", { production = false } = {}) =>
   String(value || "")
     .split(",")
     .map(normalizeOrigin)
-    // Credentialed CORS must never become an allow-all policy. A scoped
-    // wildcard such as https://*.example.test remains supported.
-    .filter((origin) => origin && origin !== "*");
+    .filter(Boolean)
+    .map((origin) => {
+      if (origin.includes("*")) {
+        if (production) throw new Error("Production CORS origins must not contain wildcards");
+        throw new Error("CORS origins must be exact origins");
+      }
+      let parsed;
+      try {
+        parsed = new URL(origin);
+      } catch {
+        throw new Error("CORS origins must be valid absolute URLs");
+      }
+      if (
+        parsed.username ||
+        parsed.password ||
+        parsed.pathname !== "/" ||
+        parsed.search ||
+        parsed.hash ||
+        !["http:", "https:"].includes(parsed.protocol)
+      ) {
+        throw new Error("CORS origins must contain only scheme, host, and optional port");
+      }
+      if (production) {
+        if (parsed.protocol !== "https:") throw new Error("Production CORS origins must use HTTPS");
+        if (["localhost", "127.0.0.1", "::1"].includes(parsed.hostname)) {
+          throw new Error("Production CORS origins must not use localhost");
+        }
+        if (parsed.hostname === "vercel.app" || parsed.hostname.endsWith(".vercel.app")) {
+          throw new Error("Production CORS origins must not use Vercel preview hosts");
+        }
+      }
+      return parsed.origin;
+    });
 
 export const createCorsOriginPolicy = (environment = process.env) => {
-  const developmentOrigins = environment.NODE_ENV === "production"
-    ? []
-    : DEVELOPMENT_ALLOWED_ORIGINS;
+  const production = environment.NODE_ENV === "production";
+  const configured = [
+    ...parseConfiguredOrigins(environment.ALLOWED_FRONTEND_ORIGINS, { production }),
+    ...parseConfiguredOrigins(environment.CORS_ORIGINS, { production }),
+    ...parseConfiguredOrigins(environment.FRONTEND_URL, { production }),
+  ];
   const allowedOriginRules = [
-    ...configuredOrigins(environment.ALLOWED_FRONTEND_ORIGINS),
-    ...configuredOrigins(environment.CORS_ORIGINS),
-    ...configuredOrigins(environment.FRONTEND_URL),
-    ...developmentOrigins,
+    ...configured,
+    ...(production ? [] : DEVELOPMENT_ALLOWED_ORIGINS),
   ].filter((origin, index, origins) => origins.indexOf(origin) === index);
-
-  const allowedOriginMatchers = allowedOriginRules.map((rule) =>
-    rule.includes("*") ? wildcardToRegex(rule) : rule,
-  );
 
   return {
     allowedOriginRules,
     isOriginAllowed(origin) {
       if (!origin) return true;
-      const normalized = normalizeOrigin(origin);
-      return allowedOriginMatchers.some((matcher) =>
-        matcher instanceof RegExp
-          ? matcher.test(normalized)
-          : matcher === normalized,
-      );
+      let normalized;
+      try {
+        normalized = new URL(normalizeOrigin(origin)).origin;
+      } catch {
+        return false;
+      }
+      return allowedOriginRules.includes(normalized) && normalizeOrigin(origin) === normalized;
     },
   };
 };

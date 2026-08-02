@@ -11,6 +11,7 @@ process.env.EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS = "60";
 const firebaseAuth = {
   getUser: jest.fn(),
   generateEmailVerificationLink: jest.fn(),
+  verifyIdToken: jest.fn(),
 };
 const sendEmailVerificationLinkEmail = jest.fn();
 const User = {
@@ -19,24 +20,41 @@ const User = {
   findById: jest.fn(),
   updateOne: jest.fn(),
 };
+const EmailVerificationExchange = {
+  create: jest.fn(),
+  findOne: jest.fn(),
+  findOneAndUpdate: jest.fn(),
+  updateOne: jest.fn(),
+};
+const logger = { error: jest.fn() };
 
 await jest.unstable_mockModule("../config/firebase.js", () => ({ getAuth: () => firebaseAuth }));
 await jest.unstable_mockModule("../config/email.js", () => ({ sendEmailVerificationLinkEmail }));
-await jest.unstable_mockModule("../models/index.js", () => ({ User }));
+await jest.unstable_mockModule("../models/User.js", () => ({ default: User }));
+await jest.unstable_mockModule("../models/EmailVerificationExchange.js", () => ({ default: EmailVerificationExchange }));
+await jest.unstable_mockModule("../middleware/logger.js", () => ({ default: logger }));
 
 const {
+  exchangeEmailVerificationToken,
   finalizeEmailVerification,
   getEmailVerificationStatus,
+  reconcileAuthenticatedEmailVerification,
   resendEmailVerification,
   sendAuthenticatedEmailVerification,
 } = await import("./emailVerificationController.js");
-const { createVerificationContext, EMAIL_VERIFICATION_STATES: S } = await import("../services/emailVerificationService.js");
+const {
+  createOpaqueExchangeToken,
+  emailFingerprint,
+  EMAIL_VERIFICATION_STATES: S,
+} = await import("../services/emailVerificationService.js");
 
 const response = () => ({
   statusCode: 200,
   body: null,
+  cookies: [],
   status(code) { this.statusCode = code; return this; },
   json(body) { this.body = body; return this; },
+  cookie(name, value, options) { this.cookies.push({ name, value, options }); return this; },
 });
 
 const makeUser = (overrides = {}) => ({
@@ -47,6 +65,8 @@ const makeUser = (overrides = {}) => ({
   isEmailVerified: false,
   onboardingStatus: "verification_pending",
   emailVerificationLastSentAt: null,
+  emailVerificationDeliveredAt: null,
+  emailVerificationSendReservedAt: null,
   save: jest.fn(async function save() { return this; }),
   ...overrides,
 });
@@ -58,8 +78,22 @@ const firebaseUser = (overrides = {}) => ({
   ...overrides,
 });
 
-const context = (continuePath = "/applicant/reservation") =>
-  createVerificationContext({ uid: "firebase-uid", email: "leigh@example.com", continuePath });
+const exchangeRecord = (overrides = {}) => ({
+  kind: "session",
+  firebaseUid: "firebase-uid",
+  emailHash: emailFingerprint("leigh@example.com"),
+  continuePath: "/applicant/reservation",
+  expiresAt: new Date(Date.now() + 60_000),
+  consumedAt: null,
+  ...overrides,
+});
+
+const selectable = (value) => ({ select: jest.fn().mockResolvedValue(value) });
+const sessionRequest = (extras = {}) => ({
+  headers: { cookie: `lilycrest_email_verification=${createOpaqueExchangeToken()}` },
+  body: {},
+  ...extras,
+});
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -67,97 +101,172 @@ beforeEach(() => {
   firebaseAuth.generateEmailVerificationLink.mockResolvedValue(
     "https://project.firebaseapp.com/__/auth/action?mode=verifyEmail&oobCode=one-time-code&apiKey=public-key",
   );
+  firebaseAuth.verifyIdToken.mockResolvedValue({ uid: "firebase-uid" });
   User.findOne.mockResolvedValue(makeUser());
   User.findOneAndUpdate.mockResolvedValue(makeUser());
-  User.findById.mockResolvedValue(makeUser());
+  User.findById.mockReturnValue(selectable(makeUser()));
   User.updateOne.mockResolvedValue({ modifiedCount: 1 });
+  EmailVerificationExchange.create.mockResolvedValue({});
+  EmailVerificationExchange.findOne.mockReturnValue(selectable(exchangeRecord()));
+  EmailVerificationExchange.findOneAndUpdate.mockReturnValue(selectable(exchangeRecord({ kind: "action" })));
+  EmailVerificationExchange.updateOne.mockResolvedValue({ modifiedCount: 1 });
   sendEmailVerificationLinkEmail.mockResolvedValue({ success: true });
 });
 
 describe("email verification controller", () => {
-  test("initial authenticated send accepts no caller-supplied identity", async () => {
+  test("authenticated send sets an HttpOnly capability and exposes no context", async () => {
     const req = { user: { uid: "firebase-uid" }, body: { continuePath: "/applicant/reservation" } };
     const res = response();
     await sendAuthenticatedEmailVerification(req, res, jest.fn());
-    expect(res.statusCode).toBe(200);
-    expect(res.body.state).toBe(S.VERIFICATION_EMAIL_RESENT);
-    expect(res.body.maskedEmail).toBe("l****@example.com");
-    expect(sendEmailVerificationLinkEmail).toHaveBeenCalledTimes(1);
-    const sent = sendEmailVerificationLinkEmail.mock.calls[0][0];
-    expect(sent.verificationLink).toContain("https://www.lilycrest.space/auth-action");
-    expect(JSON.stringify(req.body)).not.toContain("leigh@example.com");
+    expect(res.body).toMatchObject({ state: S.VERIFICATION_EMAIL_RESENT, maskedEmail: "l****@example.com" });
+    expect(res.body).not.toHaveProperty("verificationContext");
+    expect(res.cookies[0].options).toMatchObject({ httpOnly: true, path: "/api/auth/email-verification" });
+    const link = new URL(sendEmailVerificationLinkEmail.mock.calls[0][0].verificationLink);
+    expect(link.searchParams.get("exchange")).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(link.searchParams.has("context")).toBe(false);
+    expect(link.searchParams.has("continueUrl")).toBe(false);
   });
 
-  test("resend success returns a refreshable context and cooldown", async () => {
+  test("exchange token is atomically consumed and rotated into a browser session", async () => {
     const res = response();
-    await resendEmailVerification({ body: { verificationContext: context() } }, res, jest.fn());
-    expect(res.body).toMatchObject({ state: S.VERIFICATION_EMAIL_RESENT, retryAfterSeconds: 60 });
-    expect(res.body.verificationContext).toEqual(expect.any(String));
+    await exchangeEmailVerificationToken({
+      body: { exchangeToken: createOpaqueExchangeToken() },
+      headers: { authorization: "Bearer current-token" },
+    }, res, jest.fn());
+    expect(EmailVerificationExchange.findOneAndUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "action", consumedAt: null, expiresAt: expect.any(Object) }),
+      { $set: { consumedAt: expect.any(Date) } },
+      { new: true },
+    );
+    expect(res.body.identityMatch).toBe("match");
+    expect(res.cookies).toHaveLength(1);
+  });
+
+  test("expired, tampered, or consumed exchange token is rejected without replay", async () => {
+    EmailVerificationExchange.findOneAndUpdate.mockReturnValue(selectable(null));
+    const res = response();
+    await exchangeEmailVerificationToken({ body: { exchangeToken: createOpaqueExchangeToken() }, headers: {} }, res, jest.fn());
+    expect(res.statusCode).toBe(400);
+    expect(res.body.state).toBe(S.INVALID_OR_TAMPERED_LINK);
+    expect(EmailVerificationExchange.create).not.toHaveBeenCalled();
+  });
+
+  test("provider success finalizes delivered cooldown state", async () => {
+    const res = response();
+    await resendEmailVerification(sessionRequest(), res, jest.fn());
+    expect(res.body.state).toBe(S.VERIFICATION_EMAIL_RESENT);
     expect(User.updateOne).toHaveBeenCalledWith(
       expect.objectContaining({ emailVerificationReservationId: expect.any(String) }),
-      expect.objectContaining({ $set: { emailVerificationLastSentAt: expect.any(Date) } }),
+      expect.objectContaining({
+        $set: { emailVerificationLastSentAt: expect.any(Date), emailVerificationDeliveredAt: expect.any(Date) },
+      }),
     );
   });
 
-  test("delivery failure is honest and releases the send reservation", async () => {
+  test("provider failure releases its reservation and reports no delivery", async () => {
     sendEmailVerificationLinkEmail.mockResolvedValue({ success: false });
     const res = response();
-    await resendEmailVerification({ body: { verificationContext: context() } }, res, jest.fn());
+    await resendEmailVerification(sessionRequest(), res, jest.fn());
     expect(res.statusCode).toBe(503);
     expect(res.body.state).toBe(S.VERIFICATION_EMAIL_SEND_FAILED);
-    expect(res.body.message).toMatch(/could not send/i);
     expect(User.updateOne).toHaveBeenCalledWith(
       expect.any(Object),
       { $unset: { emailVerificationSendReservedAt: 1, emailVerificationReservationId: 1 } },
     );
   });
 
-  test("cooldown prevents provider contact", async () => {
-    User.findOneAndUpdate.mockResolvedValue(null);
-    User.findById.mockResolvedValue(makeUser({ emailVerificationLastSentAt: new Date() }));
-    const res = response();
-    await resendEmailVerification({ body: { verificationContext: context() } }, res, jest.fn());
-    expect(res.statusCode).toBe(429);
-    expect(res.body.state).toBe(S.RATE_LIMITED_OR_COOLDOWN_ACTIVE);
-    expect(sendEmailVerificationLinkEmail).not.toHaveBeenCalled();
+  test("provider success plus cooldown finalization failure remains fail closed", async () => {
+    User.updateOne.mockRejectedValueOnce(new Error("database unavailable"));
+    const first = response();
+    await resendEmailVerification(sessionRequest(), first, jest.fn());
+    expect(first.statusCode).toBe(200);
+    expect(first.body.state).toBe(S.VERIFICATION_EMAIL_RESENT);
+    expect(logger.error).toHaveBeenCalledWith(expect.any(Object), expect.stringMatching(/failed closed/));
+
+    User.findOneAndUpdate.mockResolvedValueOnce(null);
+    User.findById.mockReturnValueOnce(selectable(makeUser({ emailVerificationSendReservedAt: new Date() })));
+    const retry = response();
+    await resendEmailVerification(sessionRequest(), retry, jest.fn());
+    expect(retry.statusCode).toBe(429);
+    expect(sendEmailVerificationLinkEmail).toHaveBeenCalledTimes(1);
   });
 
-  test("already verified account cannot resend and stale Mongo state is synchronized", async () => {
+  test("parallel resends make at most one provider call", async () => {
+    User.findOneAndUpdate.mockResolvedValueOnce(makeUser()).mockResolvedValueOnce(null);
+    const [one, two] = [response(), response()];
+    await Promise.all([
+      resendEmailVerification(sessionRequest(), one, jest.fn()),
+      resendEmailVerification(sessionRequest(), two, jest.fn()),
+    ]);
+    expect(sendEmailVerificationLinkEmail).toHaveBeenCalledTimes(1);
+    expect([one.statusCode, two.statusCode].sort()).toEqual([200, 429]);
+  });
+
+  test("atomic reservation permits stale cooldown fields", async () => {
+    await resendEmailVerification(sessionRequest(), response(), jest.fn());
+    const query = User.findOneAndUpdate.mock.calls[0][0];
+    expect(query.$and).toHaveLength(3);
+    expect(query.$and[2].$or[1].emailVerificationSendReservedAt.$lte).toBeInstanceOf(Date);
+  });
+
+  test("verified account cannot resend and stale Mongo state is synchronized", async () => {
     firebaseAuth.getUser.mockResolvedValue(firebaseUser({ emailVerified: true }));
     const stale = makeUser();
     User.findOne.mockResolvedValue(stale);
     const res = response();
-    await resendEmailVerification({ body: { verificationContext: context() } }, res, jest.fn());
+    await resendEmailVerification(sessionRequest(), res, jest.fn());
     expect(res.body.state).toBe(S.ALREADY_VERIFIED_ACCOUNT);
     expect(sendEmailVerificationLinkEmail).not.toHaveBeenCalled();
-    expect(stale.isEmailVerified).toBe(true);
-    expect(stale.onboardingStatus).toBe("profile_complete");
     expect(stale.save).toHaveBeenCalled();
   });
 
-  test("finalize confirms Firebase then updates the application user", async () => {
+  test("cookie-backed finalization confirms Firebase then reconciles Mongo", async () => {
     firebaseAuth.getUser.mockResolvedValue(firebaseUser({ emailVerified: true }));
     const stale = makeUser();
     User.findOne.mockResolvedValue(stale);
     const res = response();
-    await finalizeEmailVerification({ body: { verificationContext: context() } }, res, jest.fn());
-    expect(res.body).toMatchObject({ state: S.VALID_UNUSED_LINK, verified: true, continuePath: "/applicant/reservation" });
-    expect(stale.isEmailVerified).toBe(true);
+    await finalizeEmailVerification(sessionRequest(), res, jest.fn());
+    expect(res.body).toMatchObject({ state: S.VALID_UNUSED_LINK, verified: true, reconciled: true });
     expect(stale.save).toHaveBeenCalled();
   });
 
-  test("status distinguishes unverified, verified, tampered, and missing users", async () => {
-    const pending = response();
-    await getEmailVerificationStatus({ body: { verificationContext: context() } }, pending, jest.fn());
-    expect(pending.body.state).toBe(S.VALID_UNUSED_LINK);
+  test("authenticated reconciliation supports legacy links and is idempotent", async () => {
+    firebaseAuth.getUser.mockResolvedValue(firebaseUser({ emailVerified: true }));
+    const already = makeUser({ isEmailVerified: true, onboardingStatus: "profile_complete" });
+    User.findOne.mockResolvedValue(already);
+    const res = response();
+    await reconcileAuthenticatedEmailVerification({ user: { uid: "firebase-uid" } }, res, jest.fn());
+    expect(res.body).toMatchObject({ verified: true, reconciled: true });
+    expect(already.save).not.toHaveBeenCalled();
+  });
 
-    const tampered = response();
-    await getEmailVerificationStatus({ body: { verificationContext: `${context()}x` } }, tampered, jest.fn());
-    expect(tampered.body.state).toBe(S.INVALID_OR_TAMPERED_LINK);
+  test("Firebase identity mismatch is rejected", async () => {
+    firebaseAuth.getUser.mockResolvedValue(firebaseUser({ email: "other@example.com", emailVerified: true }));
+    const res = response();
+    await finalizeEmailVerification(sessionRequest(), res, jest.fn());
+    expect(res.statusCode).toBe(409);
+    expect(res.body.state).toBe(S.ACCOUNT_MISMATCH);
+  });
 
-    firebaseAuth.getUser.mockRejectedValue({ code: "auth/user-not-found" });
-    const missing = response();
-    await getEmailVerificationStatus({ body: { verificationContext: context() } }, missing, jest.fn());
-    expect(missing.body.state).toBe(S.USER_NOT_FOUND);
+  test("Mongo email owned by another Firebase UID is never attached", async () => {
+    firebaseAuth.getUser.mockResolvedValue(firebaseUser({ emailVerified: true }));
+    User.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(makeUser({ firebaseUid: "another-uid" }));
+    const res = response();
+    await reconcileAuthenticatedEmailVerification({ user: { uid: "firebase-uid" } }, res, jest.fn());
+    expect(res.statusCode).toBe(409);
+    expect(res.body.state).toBe(S.ACCOUNT_MISMATCH);
+    expect(User.updateOne).not.toHaveBeenCalled();
+  });
+
+  test("status reports signed-in cross-account mismatch without exposing identity", async () => {
+    firebaseAuth.verifyIdToken.mockResolvedValue({ uid: "wrong-uid" });
+    const res = response();
+    await getEmailVerificationStatus(sessionRequest({ headers: {
+      cookie: `lilycrest_email_verification=${createOpaqueExchangeToken()}`,
+      authorization: "Bearer wrong-account",
+    } }), res, jest.fn());
+    expect(res.body.identityMatch).toBe("mismatch");
+    expect(JSON.stringify(res.body)).not.toContain("firebase-uid");
+    expect(JSON.stringify(res.body)).not.toContain("leigh@example.com");
   });
 });

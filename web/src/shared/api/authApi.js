@@ -23,6 +23,7 @@ import {
   markApplicationSession,
 } from "./authSession";
 import { withProtectedRequestPolicy } from "./requestPolicy";
+import { getApiErrorCode } from "./apiError";
 
 /**
  * Get fresh Firebase ID token for API requests.
@@ -100,16 +101,21 @@ const authRequest = async (url, options = {}, _isRetry = false) => {
 };
 
 const verificationRequest = async (path, body) => {
+  const token = await getFreshToken();
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token && { Authorization: `Bearer ${token}` }),
+    },
     credentials: "include",
     body: JSON.stringify(body || {}),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(data.message || "Email verification request failed");
-    error.code = data.state || data.code;
+    const errorMessage = data.message || data.error?.message || "Email verification request failed";
+    const error = new Error(errorMessage);
+    error.code = getApiErrorCode(data);
     error.response = { status: response.status, data };
     throw error;
   }
@@ -146,12 +152,16 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify({ continuePath }),
     }),
-  getEmailVerificationStatus: (verificationContext) =>
-    verificationRequest("/auth/email-verification/status", { verificationContext }),
-  finalizeEmailVerification: (verificationContext) =>
-    verificationRequest("/auth/email-verification/finalize", { verificationContext }),
-  resendEmailVerification: (verificationContext) =>
-    verificationRequest("/auth/email-verification/resend", { verificationContext }),
+  exchangeEmailVerificationToken: (exchangeToken) =>
+    verificationRequest("/auth/email-verification/exchange", { exchangeToken }),
+  getEmailVerificationStatus: () =>
+    verificationRequest("/auth/email-verification/status"),
+  finalizeEmailVerification: () =>
+    verificationRequest("/auth/email-verification/finalize"),
+  reconcileEmailVerification: () =>
+    authRequest("/auth/email-verification/reconcile", { method: "POST" }),
+  resendEmailVerification: () =>
+    verificationRequest("/auth/email-verification/resend"),
   finalizePasswordReset: () => authRequest("/auth/finalize-password-reset", { method: "POST" }),
 
   /**

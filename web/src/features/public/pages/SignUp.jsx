@@ -355,17 +355,11 @@ function SignUp() {
     const requestedContinuation = new URLSearchParams(window.location.search).get("continue");
     const continuePath = normalizeInternalContinuation(requestedContinuation);
     try {
-      const delivery = await authApi.sendEmailVerification(continuePath);
-      const params = new URLSearchParams({
-        state: "sent",
-        context: delivery.verificationContext,
-      });
-      navigate(`/auth-action?${params.toString()}`, { replace: true });
+      await authApi.sendEmailVerification(continuePath);
+      navigate("/auth-action?state=sent", { replace: true });
     } catch (deliveryError) {
-      const context = deliveryError.response?.data?.verificationContext;
-      if (context) {
-        const params = new URLSearchParams({ state: "send-failed", context });
-        navigate(`/auth-action?${params.toString()}`, { replace: true });
+      if (deliveryError.response?.data?.state === "VERIFICATION_EMAIL_SEND_FAILED") {
+        navigate("/auth-action?state=send-failed", { replace: true });
       } else {
         await auth.signOut();
         appNavigate("/signin", {

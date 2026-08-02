@@ -8,6 +8,8 @@ export const EMAIL_VERIFICATION_STATES = Object.freeze({
   VERIFICATION_EMAIL_SEND_FAILED: "VERIFICATION_EMAIL_SEND_FAILED",
   ALREADY_VERIFIED_ACCOUNT: "ALREADY_VERIFIED_ACCOUNT",
   RATE_LIMITED_OR_COOLDOWN_ACTIVE: "RATE_LIMITED_OR_COOLDOWN_ACTIVE",
+  RECONCILIATION_REQUIRED: "RECONCILIATION_REQUIRED",
+  ACCOUNT_MISMATCH: "ACCOUNT_MISMATCH",
 });
 
 const TRUSTED_CONTINUATIONS = new Set([
@@ -30,18 +32,17 @@ export const normalizeInternalContinuation = (value) => {
   return `${parsed.pathname}${parsed.search}`;
 };
 
-export const getVerificationContext = (searchParams) => {
-  const direct = searchParams.get("context");
-  if (direct) return direct;
-  const continueUrl = searchParams.get("continueUrl");
-  if (!continueUrl) return "";
-  try {
-    const parsed = new URL(continueUrl);
-    if (parsed.origin !== window.location.origin || parsed.pathname !== "/auth-action") return "";
-    return parsed.searchParams.get("context") || "";
-  } catch {
-    return "";
-  }
+export const cleanAuthActionUrl = () => {
+  window.history.replaceState({}, document.title, "/auth-action");
+};
+
+export const classifyVerificationSession = ({ currentEmail, targetEmail, identityMatch = "none" }) => {
+  if (identityMatch === "mismatch") return "mismatch";
+  if (!currentEmail) return "none";
+  if (!targetEmail) return identityMatch === "match" ? "match" : "none";
+  return currentEmail.trim().toLowerCase() === targetEmail.trim().toLowerCase()
+    ? "match"
+    : "mismatch";
 };
 
 export const classifyFailedVerification = ({ firebaseErrorCode, accountState }) => {

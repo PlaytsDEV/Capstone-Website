@@ -1,44 +1,53 @@
 import { describe, expect, test } from "@jest/globals";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createCorsOriginPolicy } from "./corsPolicy.js";
 
 describe("credentialed CORS origin policy", () => {
-  test("accepts explicitly configured production origins", () => {
+  test("accepts exact official production origins when explicitly configured", () => {
     const policy = createCorsOriginPolicy({
       NODE_ENV: "production",
-      ALLOWED_FRONTEND_ORIGINS: "https://app.example.test,https://lilycrest.space",
-      FRONTEND_URL: "https://portal.example.test/",
+      ALLOWED_FRONTEND_ORIGINS: "https://www.lilycrest.space,https://lilycrest.space",
     });
-    expect(policy.isOriginAllowed("https://app.example.test")).toBe(true);
-    expect(policy.isOriginAllowed("https://portal.example.test")).toBe(true);
+    expect(policy.isOriginAllowed("https://www.lilycrest.space")).toBe(true);
     expect(policy.isOriginAllowed("https://lilycrest.space")).toBe(true);
     expect(policy.isOriginAllowed(undefined)).toBe(true);
   });
 
-  test("rejects unapproved browser origins", () => {
-    const policy = createCorsOriginPolicy({
-      NODE_ENV: "production",
-      CORS_ORIGINS: "https://app.example.test",
-    });
+  test("rejects unapproved and substring-matched origins", () => {
+    const policy = createCorsOriginPolicy({ NODE_ENV: "production", CORS_ORIGINS: "https://www.lilycrest.space" });
     expect(policy.isOriginAllowed("https://attacker.example.test")).toBe(false);
+    expect(policy.isOriginAllowed("https://www.lilycrest.space.attacker.invalid")).toBe(false);
   });
 
-  test("never treats a standalone wildcard as approval with credentials", () => {
-    const policy = createCorsOriginPolicy({ NODE_ENV: "production", CORS_ORIGINS: "*" });
+  test.each(["*", "https://*.example.test"])("rejects production wildcard configuration %s", (rule) => {
+    expect(() => createCorsOriginPolicy({ NODE_ENV: "production", CORS_ORIGINS: rule })).toThrow(/wildcard/i);
+  });
+
+  test.each(["https://preview-59.vercel.app", "http://localhost:3000"])("rejects unsafe production origin %s", (rule) => {
+    expect(() => createCorsOriginPolicy({ NODE_ENV: "production", CORS_ORIGINS: rule })).toThrow();
+  });
+
+  test("allows exact localhost origins only outside production", () => {
+    const policy = createCorsOriginPolicy({ NODE_ENV: "development", CORS_ORIGINS: "http://localhost:8080" });
+    expect(policy.isOriginAllowed("http://localhost:8080")).toBe(true);
+    expect(policy.isOriginAllowed("http://localhost:8081")).toBe(false);
+    expect(policy.isOriginAllowed("http://localhost:3000")).toBe(true);
+  });
+
+  test("never returns a wildcard rule for credentialed HTTP or Socket.IO consumers", () => {
+    const policy = createCorsOriginPolicy({ NODE_ENV: "production", CORS_ORIGINS: "https://www.lilycrest.space" });
+    expect(policy.allowedOriginRules).toEqual(["https://www.lilycrest.space"]);
     expect(policy.allowedOriginRules).not.toContain("*");
-    expect(policy.isOriginAllowed("https://attacker.example.test")).toBe(false);
   });
 
-  test("supports explicitly scoped wildcard deployments", () => {
-    const policy = createCorsOriginPolicy({
-      NODE_ENV: "production",
-      CORS_ORIGINS: "https://*.preview.example.test",
-    });
-    expect(policy.isOriginAllowed("https://pr-58.preview.example.test")).toBe(true);
-    expect(policy.isOriginAllowed("https://preview.example.test.attacker.invalid")).toBe(false);
-  });
-
-  test("allows localhost defaults only outside production", () => {
-    expect(createCorsOriginPolicy({ NODE_ENV: "development" }).isOriginAllowed("http://localhost:3000")).toBe(true);
-    expect(createCorsOriginPolicy({ NODE_ENV: "production" }).isOriginAllowed("http://localhost:3000")).toBe(false);
+  test("HTTP and Socket.IO receive the same exact production policy", () => {
+    const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+    const serverSource = fs.readFileSync(path.join(serverRoot, "server.js"), "utf8");
+    const socketSource = fs.readFileSync(path.join(serverRoot, "utils/socket.js"), "utf8");
+    expect(serverSource).toMatch(/createCorsOriginPolicy\(\)[\s\S]*cors\(\{[\s\S]*isOriginAllowed/);
+    expect(serverSource).toMatch(/initSocket\(server, \{[\s\S]*allowedOriginRules,[\s\S]*isOriginAllowed/);
+    expect(socketSource).toMatch(/cors:\s*\{[\s\S]*isOriginAllowed\(origin\)[\s\S]*credentials:\s*true/);
   });
 });

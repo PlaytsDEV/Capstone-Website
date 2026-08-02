@@ -11,6 +11,8 @@ export const EMAIL_VERIFICATION_STATES = Object.freeze({
   VERIFICATION_EMAIL_SEND_FAILED: "VERIFICATION_EMAIL_SEND_FAILED",
   ALREADY_VERIFIED_ACCOUNT: "ALREADY_VERIFIED_ACCOUNT",
   RATE_LIMITED_OR_COOLDOWN_ACTIVE: "RATE_LIMITED_OR_COOLDOWN_ACTIVE",
+  RECONCILIATION_REQUIRED: "RECONCILIATION_REQUIRED",
+  ACCOUNT_MISMATCH: "ACCOUNT_MISMATCH",
 });
 
 export const EMAIL_VERIFICATION_COOLDOWN_SECONDS = Math.max(
@@ -18,10 +20,16 @@ export const EMAIL_VERIFICATION_COOLDOWN_SECONDS = Math.max(
   Number(process.env.EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS || 60),
 );
 
-const CONTEXT_TTL_SECONDS = Math.max(
-  3600,
-  Number(process.env.EMAIL_VERIFICATION_CONTEXT_TTL_SECONDS || 7 * 24 * 60 * 60),
-);
+const boundedTtl = (value, fallback) => {
+  const parsed = Number(value || fallback);
+  return Number.isFinite(parsed) ? Math.max(300, Math.floor(parsed)) : fallback;
+};
+
+export const getExchangeTtlSeconds = (environment = process.env) =>
+  boundedTtl(environment.EMAIL_VERIFICATION_CONTEXT_TTL_SECONDS, 60 * 60);
+
+export const getSessionTtlSeconds = (environment = process.env) =>
+  boundedTtl(environment.EMAIL_VERIFICATION_SESSION_TTL_SECONDS, 15 * 60);
 
 const getSigningSecret = (environment = process.env) => {
   const dedicated = String(environment.EMAIL_VERIFICATION_SECRET || "").trim();
@@ -32,12 +40,23 @@ const getSigningSecret = (environment = process.env) => {
   return "lilycrest-development-email-verification-secret";
 };
 
-const encode = (value) => Buffer.from(value).toString("base64url");
-const sign = (encodedPayload, secret) =>
-  crypto.createHmac("sha256", secret).update(encodedPayload).digest("base64url");
-
 export const emailFingerprint = (email) =>
   crypto.createHash("sha256").update(String(email || "").trim().toLowerCase()).digest("hex");
+
+export const createOpaqueExchangeToken = () => crypto.randomBytes(32).toString("base64url");
+
+export const hashExchangeToken = (token, environment = process.env) => {
+  if (typeof token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(token)) {
+    throw new Error("INVALID_EXCHANGE_TOKEN");
+  }
+  return crypto.createHmac("sha256", getSigningSecret(environment)).update(token).digest("hex");
+};
+
+export const getExchangeExpiry = (environment = process.env, now = Date.now()) =>
+  new Date(now + getExchangeTtlSeconds(environment) * 1000);
+
+export const getSessionExpiry = (environment = process.env, now = Date.now()) =>
+  new Date(now + getSessionTtlSeconds(environment) * 1000);
 
 export const maskEmail = (email) => {
   const [local = "", domain = ""] = String(email || "").split("@");
@@ -70,45 +89,7 @@ export const normalizeVerificationContinuation = (value, environment = process.e
   return `${parsed.pathname}${parsed.search}`;
 };
 
-export const createVerificationContext = ({ uid, email, continuePath }, environment = process.env) => {
-  if (!uid || !email) throw new Error("A Firebase identity is required");
-  const issuedAt = Math.floor(Date.now() / 1000);
-  const payload = {
-    v: 1,
-    u: String(uid),
-    h: emailFingerprint(email),
-    c: normalizeVerificationContinuation(continuePath, environment),
-    iat: issuedAt,
-    exp: issuedAt + CONTEXT_TTL_SECONDS,
-  };
-  const encodedPayload = encode(JSON.stringify(payload));
-  return `${encodedPayload}.${sign(encodedPayload, getSigningSecret(environment))}`;
-};
-
-export const verifyVerificationContext = (token, environment = process.env) => {
-  if (typeof token !== "string" || token.length > 4096) throw new Error("INVALID_CONTEXT");
-  const [encodedPayload, signature, extra] = token.split(".");
-  if (!encodedPayload || !signature || extra) throw new Error("INVALID_CONTEXT");
-  const expected = sign(encodedPayload, getSigningSecret(environment));
-  const actualBuffer = Buffer.from(signature);
-  const expectedBuffer = Buffer.from(expected);
-  if (actualBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(actualBuffer, expectedBuffer)) {
-    throw new Error("INVALID_CONTEXT");
-  }
-
-  let payload;
-  try {
-    payload = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8"));
-  } catch {
-    throw new Error("INVALID_CONTEXT");
-  }
-  if (payload.v !== 1 || !payload.u || !payload.h || !payload.exp || payload.exp < Math.floor(Date.now() / 1000)) {
-    throw new Error("INVALID_CONTEXT");
-  }
-  return { uid: payload.u, emailHash: payload.h, continuePath: normalizeVerificationContinuation(payload.c, environment) };
-};
-
-export const buildCustomEmailVerificationLink = ({ firebaseLink, verificationContext }, environment = process.env) => {
+export const buildCustomEmailVerificationLink = ({ firebaseLink, exchangeToken }, environment = process.env) => {
   const { emailActionUrl } = getPublicUrlConfig(environment);
   const generated = new URL(firebaseLink);
   const handler = new URL(emailActionUrl);
@@ -116,8 +97,6 @@ export const buildCustomEmailVerificationLink = ({ firebaseLink, verificationCon
     const value = generated.searchParams.get(name);
     if (value) handler.searchParams.set(name, value);
   }
-  const continuation = new URL(emailActionUrl);
-  continuation.searchParams.set("context", verificationContext);
-  handler.searchParams.set("continueUrl", continuation.toString());
+  handler.searchParams.set("exchange", exchangeToken);
   return handler.toString();
 };

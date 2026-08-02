@@ -45,6 +45,7 @@ import {
   isOtpDeliveryAccepted,
 } from "../../../shared/api/authFlowState";
 import { getAuthenticatedUserDestination } from "../../../shared/api/loginRouting";
+import { normalizeVerificationErrorCode } from "../../../shared/api/apiError";
 import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
 import SocialAuthButtons from "../../../shared/components/SocialAuthButtons";
 import FloatingInput from "../../../shared/components/FloatingInput";
@@ -328,9 +329,8 @@ function SignIn() {
  setUnverifiedEmail(formData.email);
  await auth.signOut();
  sessionStorage.removeItem("resendInProgress");
- if (delivery?.verificationContext) {
- const params = new URLSearchParams({ state: "sent", context: delivery.verificationContext });
- navigate(`/auth-action?${params.toString()}`, { replace: true });
+ if (delivery) {
+ navigate("/auth-action?state=sent", { replace: true });
  } else {
  showNotification(
  "Your email is not verified, and we could not send a new link right now. Please try again.",
@@ -605,11 +605,10 @@ function SignIn() {
  const delivery = await authApi.sendEmailVerification(postAuthContinuation);
  await auth.signOut();
  sessionStorage.removeItem("resendInProgress");
- const params = new URLSearchParams({ state: "sent", context: delivery.verificationContext });
- navigate(`/auth-action?${params.toString()}`, { replace: true });
+ navigate("/auth-action?state=sent", { replace: true });
  return;
  } catch (err) {
- const code = err.response?.data?.state || err.code;
+ const code = normalizeVerificationErrorCode(err, "UNKNOWN");
  const retryAfter = err.response?.data?.retryAfterSeconds;
  if (retryAfter) setResendCooldownEnd(Date.now() + retryAfter * 1000);
  showNotification(

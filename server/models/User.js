@@ -279,6 +279,11 @@ const userSchema = new mongoose.Schema(
       default: null,
       select: false,
     },
+    emailVerificationDeliveredAt: {
+      type: Date,
+      default: null,
+      select: false,
+    },
     emailVerificationSendReservedAt: {
       type: Date,
       default: null,
