@@ -144,7 +144,12 @@ export const verifyToken = async (req, res, next) => {
     let dbUser = await User.findOne({ firebaseUid: decodedToken.uid })
       .select("_id user_id firebaseUid firstName lastName name fullName email accountStatus role permissions branch isActive is_active isArchived is_archived securityVersion authInvalidatedAt")
       .lean();
-    if (!dbUser) {
+    // /auth/login is also the "does this Firebase identity have an account yet"
+    // discovery endpoint (used by checkOnly=true and first-time Google sign-in).
+    // Its controller already handles the no-account case (email-conflict lookup,
+    // 404 USER_NOT_FOUND). Every other route still fails closed here.
+    const isLoginDiscoveryRoute = req.originalUrl?.startsWith("/api/auth/login");
+    if (!dbUser && !isLoginDiscoveryRoute) {
       return sendError(res, "Authentication failed.", 401, "AUTHENTICATION_FAILED");
     }
 
