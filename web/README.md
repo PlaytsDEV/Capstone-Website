@@ -360,12 +360,6 @@ npm run build
 firebase deploy --only hosting
 ```
 
-### Vercel
-
-```bash
-vercel --prod
-```
-
 ### Netlify
 
 ```bash

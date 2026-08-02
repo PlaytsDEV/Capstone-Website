@@ -13,7 +13,6 @@ import {
   SignUp,
   ForgotPassword,
   OtpVerify,
-  VerifyEmail,
   AuthAction,
   ResetPassword,
 } from "../lazyPages";
@@ -112,8 +111,8 @@ export function PublicRoutes() {
         <Route
           path="/verify-email"
           element={
-            <RouteShell name="VerifyEmail" fallback={<PublicPageSkeleton />}>
-              <VerifyEmail />
+            <RouteShell name="AuthActionLegacyAlias" fallback={<PublicPageSkeleton />}>
+              <AuthAction />
             </RouteShell>
           }
         />

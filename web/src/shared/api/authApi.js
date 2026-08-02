@@ -99,6 +99,23 @@ const authRequest = async (url, options = {}, _isRetry = false) => {
   return response.json();
 };
 
+const verificationRequest = async (path, body) => {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(body || {}),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.message || "Email verification request failed");
+    error.code = data.state || data.code;
+    error.response = { status: response.status, data };
+    throw error;
+  }
+  return data;
+};
+
 /**
  * Auth API methods for the useAuth hook.
  * @deprecated Use apiClient.js authApi for new implementations
@@ -124,6 +141,17 @@ export const authApi = {
   },
 
   resendOtp: () => authRequest("/auth/resend-otp", { method: "POST" }),
+  sendEmailVerification: (continuePath) =>
+    authRequest("/auth/email-verification/send", {
+      method: "POST",
+      body: JSON.stringify({ continuePath }),
+    }),
+  getEmailVerificationStatus: (verificationContext) =>
+    verificationRequest("/auth/email-verification/status", { verificationContext }),
+  finalizeEmailVerification: (verificationContext) =>
+    verificationRequest("/auth/email-verification/finalize", { verificationContext }),
+  resendEmailVerification: (verificationContext) =>
+    verificationRequest("/auth/email-verification/resend", { verificationContext }),
   finalizePasswordReset: () => authRequest("/auth/finalize-password-reset", { method: "POST" }),
 
   /**

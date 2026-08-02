@@ -136,7 +136,12 @@ EMAIL_USER=your-gmail@gmail.com
 EMAIL_PASSWORD=your-app-specific-password
 
 # CORS
-FRONTEND_URL=http://localhost:5173
+PUBLIC_FRONTEND_URL=http://localhost:3000
+FRONTEND_URL=http://localhost:3000
+ALLOWED_FRONTEND_ORIGINS=http://localhost:3000
+EMAIL_ACTION_URL=http://localhost:3000/auth-action
+RESERVATION_CONTINUATION_URL=http://localhost:3000/applicant/check-availability
+EMAIL_VERIFICATION_SECRET=use-a-long-random-development-secret
 
 # PayMongo
 PAYMONGO_SECRET_KEY=your-paymongo-secret-key
@@ -419,7 +424,8 @@ curl -X POST http://localhost:5000/api/auth/register \
 ### Environment Variables
 
 - Update `MONGODB_URI` to production database
-- Update `FRONTEND_URL` to production domain
+- Set `PUBLIC_FRONTEND_URL`, `PUBLIC_API_URL`, `EMAIL_ACTION_URL`, and `RESERVATION_CONTINUATION_URL` to official production domains
+- Set `ALLOWED_FRONTEND_ORIGINS` and a distinct `EMAIL_VERIFICATION_SECRET`
 - Use production Firebase credentials
 - Set production PayMongo keys and webhook secret
 - Configure Firebase Storage attachment credentials or persistent local storage

@@ -27,6 +27,7 @@ import nodemailer from "nodemailer";
 import { Resend } from "resend";
 import dotenv from "dotenv";
 import crypto from "crypto";
+import { getPublicUrlConfig } from "./publicUrls.js";
 
 dotenv.config();
 
@@ -175,7 +176,7 @@ const fmtPeso = (n) => {
 // =============================================================================
 
 const THEME = {
-  logo: "https://www.lilycrest.space/assets/LOGO-8Ay0b2-y.svg",
+  logo: `${getPublicUrlConfig().publicFrontendUrl}/assets/LOGO-8Ay0b2-y.svg`,
   fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
   pageBg: "#f5f5f5",
   cardBg: "#ffffff",
@@ -1083,6 +1084,83 @@ export const sendPaymentReceiptEmail = async ({
 
   console.log("⚠️ Receipt email not sent — neither SMTP nor Resend is configured");
   return { success: false, message: "Email service not configured" };
+};
+
+// =============================================================================
+// EMAIL VERIFICATION LINK
+// =============================================================================
+
+export const generateEmailVerificationEmail = ({ displayName, verificationLink }) => {
+  const safeName = displayName || "there";
+  const bodyHtml = `
+    ${p(`Hi <strong>${escapeHtml(safeName)}</strong>,`)}
+    ${p("Confirm your email address to finish setting up your Lilycrest account.", { size: "14px" })}
+    <div style="text-align:center;margin:28px 0;">
+      <a href="${escapeHtml(verificationLink)}" style="display:inline-block;background:${THEME.gold};color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:600;">Verify email address</a>
+    </div>
+    ${p("This link can be used only once. If you did not create this account, you can ignore this email.", { size: "13px", color: THEME.textMuted, margin: "0" })}
+  `;
+  return renderEmailShell({
+    title: "Verify your Lilycrest email",
+    branchName: "Lilycrest",
+    heading: "Verify Your Email",
+    bodyHtml,
+  });
+};
+
+export const sendEmailVerificationLinkEmail = async ({ to, name, verificationLink }) => {
+  const subject = "Verify your Lilycrest email";
+  const html = generateEmailVerificationEmail({ displayName: name, verificationLink });
+  const text = `Hi ${String(name || "there").replace(/[\r\n]+/g, " ")}, verify your Lilycrest email using this link: ${verificationLink}`;
+
+  if (isEmailConfigured) {
+    try {
+      const info = await transporter.sendMail({
+        from: { name: "Lilycrest Dormitory", address: emailConfig.user },
+        to,
+        subject,
+        html,
+        text,
+      });
+      return { success: Boolean(info?.messageId), provider: "smtp" };
+    } catch (error) {
+      console.error("Email verification delivery failed", {
+        emailFingerprint: emailFingerprint(to),
+        provider: "smtp",
+        ...safeEmailFailure(error),
+      });
+    }
+  }
+
+  if (resendClient && OTP_FROM) {
+    try {
+      const { data, error } = await resendClient.emails.send({
+        from: OTP_FROM,
+        to: [to],
+        subject,
+        html,
+        text,
+      });
+      if (error || !data?.id) {
+        console.error("Email verification delivery failed", {
+          emailFingerprint: emailFingerprint(to),
+          provider: "resend",
+          ...safeEmailFailure(error),
+        });
+        return { success: false, code: "EMAIL_PROVIDER_REJECTED" };
+      }
+      return { success: true, provider: "resend" };
+    } catch (error) {
+      console.error("Email verification delivery failed", {
+        emailFingerprint: emailFingerprint(to),
+        provider: "resend",
+        ...safeEmailFailure(error),
+      });
+      return { success: false, code: "EMAIL_PROVIDER_ERROR" };
+    }
+  }
+
+  return { success: false, code: "EMAIL_PROVIDER_NOT_CONFIGURED" };
 };
 
 // =============================================================================

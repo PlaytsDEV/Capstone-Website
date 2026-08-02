@@ -38,6 +38,12 @@ import {
   setRole,
   logPasswordReset,
 } from "../controllers/authController.js";
+import {
+  finalizeEmailVerification,
+  getEmailVerificationStatus,
+  resendEmailVerification,
+  sendAuthenticatedEmailVerification,
+} from "../controllers/emailVerificationController.js";
 
 const router = express.Router();
 
@@ -91,6 +97,19 @@ router.post("/login", authLimiter, verifyToken, login);
 router.post("/verify-otp", authLimiter, verifyToken, verifyLoginOtp);
 
 router.post("/resend-otp", authLimiter, verifyToken, resendLoginOtp);
+
+// Email verification is intentionally isolated from password-reset and login
+// OTP routes. Public operations require a signed, registration-bound context;
+// the initial send accepts only the current Firebase identity.
+router.post(
+  "/email-verification/send",
+  authLimiter,
+  verifyOnboardingToken,
+  sendAuthenticatedEmailVerification,
+);
+router.post("/email-verification/status", publicLimiter, getEmailVerificationStatus);
+router.post("/email-verification/finalize", publicLimiter, finalizeEmailVerification);
+router.post("/email-verification/resend", authLimiter, resendEmailVerification);
 
 /**
  * POST /api/auth/logout

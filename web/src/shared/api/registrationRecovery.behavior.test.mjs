@@ -9,7 +9,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(here, "../../..");
 const read = (relative) => fs.readFileSync(path.join(webRoot, relative), "utf8");
 const signUp = read("src/features/public/pages/SignUp.jsx");
-const verifyEmail = read("src/features/public/pages/VerifyEmail.jsx");
+const authAction = read("src/features/tenant/pages/AuthAction.jsx");
 
 test("generated registration usernames always match the backend contract", () => {
   for (const email of [
@@ -37,8 +37,9 @@ test("registration retries generated username collisions without exposing owners
 });
 
 test("verification delivery success and failure use truthful distinct messages", () => {
-  assert.match(signUp, /Account created and verification email sent/);
-  assert.match(signUp, /verification email could not be sent/);
+  assert.match(signUp, /authApi\.sendEmailVerification/);
+  assert.match(signUp, /state: "sent"/);
+  assert.match(signUp, /state: "send-failed"/);
   assert.doesNotMatch(signUp, /Account created![\s\S]{0,120}check your inbox/);
 });
 
@@ -46,7 +47,7 @@ test("signup stores no Firebase token and prints no sensitive error object", () 
   assert.doesNotMatch(signUp, /localStorage\.setItem\(["']authToken/);
   assert.doesNotMatch(signUp, /sessionStorage\.setItem\(["']lilycrest_pending_email/);
   assert.doesNotMatch(signUp, /console\.error/);
-  assert.doesNotMatch(verifyEmail, /console\.error/);
+  assert.doesNotMatch(authAction, /console\.error/);
 });
 
 test("social completion requires backend login before navigation", () => {

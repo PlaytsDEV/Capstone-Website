@@ -15,9 +15,6 @@ export const NotFoundPage = React.lazy(
 export const SignUp = React.lazy(
   () => import("../features/public/pages/SignUp.jsx"),
 );
-export const VerifyEmail = React.lazy(
-  () => import("../features/public/pages/VerifyEmail.jsx"),
-);
 export const AuthAction = React.lazy(
   () => import("../features/tenant/pages/AuthAction.jsx"),
 );

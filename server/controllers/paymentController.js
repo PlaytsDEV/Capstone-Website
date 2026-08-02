@@ -37,9 +37,9 @@ import { normalizeReservationStatus } from "../utils/lifecycleNaming.js";
 import { isOwnerRole } from "../config/roles.js";
 import { settleReservationDeposit } from "../services/reservationDepositSettlementService.js";
 import auditLogger from "../utils/auditLogger.js";
+import { getPublicUrlConfig } from "../config/publicUrls.js";
 
-const FRONTEND_URL =
-  process.env.FRONTEND_URL?.split(",")[0]?.trim() || "http://localhost:5173";
+const FRONTEND_URL = getPublicUrlConfig().publicFrontendUrl;
 const TENANT_BILLING_PATH = "/applicant/billing";
 
 const PAYMENT_METHOD_LABELS = Object.freeze({
