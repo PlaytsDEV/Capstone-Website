@@ -2,8 +2,7 @@
  * Billing API - Domain-specific billing operations
  */
 
-import { getSessionHeaders } from "./authSession";
-import { API_URL, authFetch, getFreshToken } from "./httpClient.js";
+import { authFetch, protectedFetch } from "./httpClient.js";
 
 const getDownloadFilename = (response, fallback) => {
   const disposition = response.headers.get("content-disposition") || "";
@@ -134,15 +133,8 @@ export const billingApi = {
     }),
 
   downloadBillPdf: async (billId, fallbackFilename = "billing-statement.pdf") => {
-    const token = await getFreshToken();
-    if (!token) throw new Error("No authorization header provided - user not authenticated");
-
-    const response = await fetch(`${API_URL}/billing/${billId}/pdf`, {
+    const response = await protectedFetch(`/billing/${billId}/pdf`, {
       method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        ...getSessionHeaders(),
-      },
     });
 
     if (!response.ok) {

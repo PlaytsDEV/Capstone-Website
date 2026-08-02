@@ -26,6 +26,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 import connectDB from "./config/database.js";
+import { createCorsOriginPolicy } from "./config/corsPolicy.js";
 import validateStartupConfig from "./config/startupValidation.js";
 import { logDocumentPrecheckStartupStatus } from "./services/reservationDocumentPrecheckService.js";
 import { logContractPdfRendererStartupStatus } from "./services/contractChromiumService.js";
@@ -91,48 +92,7 @@ const resolveTrustProxy = () => {
 app.set("trust proxy", resolveTrustProxy());
 app.use(requestId);
 
-const normalizeOrigin = (origin = "") => String(origin || "").trim().replace(/\/+$/, "");
-
-const escapeRegex = (value = "") => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-const wildcardToRegex = (pattern = "") =>
-  new RegExp(`^${escapeRegex(pattern).replace(/\\\*/g, ".*")}$`, "i");
-
-const DEFAULT_ALLOWED_ORIGINS = [
-  "http://localhost:3000",
-  "http://localhost:3001",
-  "http://localhost:5173",
-  "https://www.lilycrest.space",
-  "https://lilycrest.space",
-];
-
-const allowedOriginRules = [
-  ...(process.env.CORS_ORIGINS || "")
-    .split(",")
-    .map((origin) => normalizeOrigin(origin)),
-  ...(process.env.FRONTEND_URL || "")
-    .split(",")
-    .map((origin) => normalizeOrigin(origin)),
-  ...DEFAULT_ALLOWED_ORIGINS,
-]
-  .filter(Boolean)
-  .filter((origin, index, origins) => origins.indexOf(origin) === index);
-
-const allowedOriginMatchers = allowedOriginRules.map((rule) =>
-  rule.includes("*") ? wildcardToRegex(rule) : rule,
-);
-
-const isOriginAllowed = (origin) => {
-  if (!origin) return true;
-
-  const normalizedOrigin = normalizeOrigin(origin);
-  return allowedOriginMatchers.some((matcher) => {
-    if (matcher instanceof RegExp) {
-      return matcher.test(normalizedOrigin);
-    }
-    return matcher === normalizedOrigin;
-  });
-};
+const { allowedOriginRules, isOriginAllowed } = createCorsOriginPolicy();
 
 const isTruthyEnv = (value, fallback = false) => {
   if (value === undefined || value === null || String(value).trim() === "") {

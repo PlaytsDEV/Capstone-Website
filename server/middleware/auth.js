@@ -178,11 +178,7 @@ export const verifyToken = async (req, res, next) => {
       return sendError(res, "Your session was revoked. Please sign in again.", 401, "SESSION_REVOKED");
     }
 
-    if (
-      dbUser &&
-      !isAdminRole(dbUser.role) &&
-      !isOtpSessionExempt(req)
-    ) {
+    if (dbUser && !isOtpSessionExempt(req)) {
       const deviceId =
         typeof req.headers["x-device-id"] === "string"
           ? req.headers["x-device-id"].trim()

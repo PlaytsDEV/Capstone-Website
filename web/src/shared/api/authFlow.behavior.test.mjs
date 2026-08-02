@@ -9,6 +9,11 @@ import {
   isOtpDeliveryAccepted,
   shouldDeferProfileRequest,
 } from "./authFlowState.js";
+import { getAuthenticatedUserDestination } from "./loginRouting.js";
+import {
+  withProtectedRequestPolicy,
+  withPublicRequestPolicy,
+} from "./requestPolicy.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(here, "../../..");
@@ -99,9 +104,52 @@ test("failed resend stays on verification and does not start a success cooldown"
   assert.doesNotMatch(failureBranch.split("} else {")[0], /navigate\(/);
 });
 
-test("transport includes browser credentials without changing header-session security", () => {
+test("protected transport functionally forces browser credentials with Firebase and session headers", () => {
   const api = read("src/shared/api/authApi.js");
-  assert.match(api, /credentials: "include"/);
+  const client = read("src/shared/api/httpClient.js");
+  const protectedOptions = withProtectedRequestPolicy(
+    { method: "GET", credentials: "omit" },
+    {
+      Authorization: "Bearer firebase-token",
+      "X-Device-Id": "device-1",
+    },
+  );
+  assert.equal(protectedOptions.credentials, "include");
+  assert.equal(protectedOptions.headers.Authorization, "Bearer firebase-token");
+  assert.equal(protectedOptions.headers["X-Device-Id"], "device-1");
+  assert.match(api, /withProtectedRequestPolicy\(options/);
+  assert.match(client, /withProtectedRequestPolicy\(fetchOptions, headers\)/);
   assert.match(api, /\.\.\.getSessionHeaders\(\)/);
   assert.match(api, /Authorization: `Bearer \$\{token\}`/);
+});
+
+test("public request policy remains caller-controlled and does not force cookies", () => {
+  const omitted = withPublicRequestPolicy({ method: "GET" }, {});
+  assert.equal(omitted.credentials, undefined);
+  const explicitlyIncluded = withPublicRequestPolicy({ credentials: "include" }, {});
+  assert.equal(explicitlyIncluded.credentials, "include");
+});
+
+test("specialized protected uploads and downloads use the central credentialed transport", () => {
+  for (const file of [
+    "src/shared/api/contractApi.js",
+    "src/shared/api/billingApi.js",
+    "src/shared/api/backupApi.js",
+    "src/features/tenant/api/tenantContractApi.js",
+    "src/features/admin/components/billing/BillsTable.jsx",
+  ]) {
+    const source = read(file);
+    assert.match(source, /protectedFetch/);
+    assert.doesNotMatch(source, /await fetch\(/);
+  }
+  const upload = read("src/shared/utils/firebaseStorageUpload.js");
+  assert.match(upload, /protectedFetch\(`\/rooms\/\$\{roomId\}\/photos`/);
+});
+
+test("functional role routing preserves applicant, tenant, admin, and owner destinations", () => {
+  assert.equal(getAuthenticatedUserDestination({ role: "applicant" }), "/applicant/check-availability");
+  assert.equal(getAuthenticatedUserDestination({ role: "tenant" }), "/applicant/check-availability");
+  assert.equal(getAuthenticatedUserDestination({ role: "branch_admin" }), "/admin/dashboard");
+  assert.equal(getAuthenticatedUserDestination({ role: "owner" }), "/admin/dashboard");
+  assert.equal(isOtpDeliveryAccepted({ requiresOtp: true, code: "OTP_REQUIRED" }), true);
 });

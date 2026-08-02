@@ -10,7 +10,7 @@ const updateOne = jest.fn();
 const updateMany = jest.fn();
 const sendLoginOtpEmail = jest.fn();
 const claimFirstVerifiedLoginSession = jest.fn();
-const rollbackFirstVerifiedLoginSession = jest.fn();
+const cleanupFailedFirstVerifiedLoginSession = jest.fn();
 const logEvent = jest.fn();
 
 class UserModel {
@@ -34,7 +34,7 @@ await jest.unstable_mockModule("../models/index.js", () => ({
 }));
 await jest.unstable_mockModule("../services/firstVerifiedLoginService.js", () => ({
   claimFirstVerifiedLoginSession,
-  rollbackFirstVerifiedLoginSession,
+  cleanupFailedFirstVerifiedLoginSession,
 }));
 await jest.unstable_mockModule("../config/email.js", () => ({ sendLoginOtpEmail }));
 await jest.unstable_mockModule("../config/firebase.js", () => ({ getAuth: jest.fn() }));
@@ -112,6 +112,7 @@ describe("one-time first verified applicant login controller policy", () => {
     updateMany.mockResolvedValue({ modifiedCount: 0 });
     createSession.mockResolvedValue({ sessionId: "normal-session" });
     claimFirstVerifiedLoginSession.mockResolvedValue({ claimed: false });
+    cleanupFailedFirstVerifiedLoginSession.mockResolvedValue({ cleaned: true });
   });
 
   test("new password registration creates eligibility without consuming it", async () => {
@@ -169,6 +170,7 @@ describe("one-time first verified applicant login controller policy", () => {
     const exemptSession = {
       sessionId: "first-login-session",
       deviceId: "device-1",
+      loginTime: new Date(),
       assuranceMethod: SESSION_ASSURANCE_METHODS.FIRST_VERIFIED_LOGIN,
       otpVerifiedAt: null,
     };
@@ -226,19 +228,118 @@ describe("one-time first verified applicant login controller policy", () => {
     expect(createSession).not.toHaveBeenCalled();
   });
 
-  test.each([
-    "after consumption",
-    "after logout",
-    "after session expiry",
-    "from a new device",
-    "after clearing cookies",
-  ])("applicant %s follows normal OTP policy", async () => {
+  test("applicant after consumption follows normal OTP policy", async () => {
     const user = applicant({ initialEmailVerifiedLoginCompletedAt: new Date() });
     userFindOne.mockResolvedValue(user);
     const res = response();
     await login(loginRequest(user), res, jest.fn());
     expect(res.body).toMatchObject({ requiresOtp: true, code: "OTP_REQUIRED" });
     expect(sendLoginOtpEmail).toHaveBeenCalledTimes(1);
+  });
+
+  test("explicitly logged-out applicant session requires OTP on the next login", async () => {
+    const user = applicant({ initialEmailVerifiedLoginCompletedAt: new Date() });
+    userFindOne.mockResolvedValue(user);
+    findValidSession.mockResolvedValue(null);
+    const res = response();
+    await login(loginRequest(user, { headers: {
+      "x-device-id": "device-1",
+      "x-session-id": "logged-out-session",
+      "user-agent": "test-agent",
+    } }), res, jest.fn());
+    expect(findValidSession).toHaveBeenCalledWith(user._id, "device-1", "logged-out-session");
+    expect(res.body).toMatchObject({ requiresOtp: true, code: "OTP_REQUIRED" });
+  });
+
+  test("expired applicant session requires OTP on the next login", async () => {
+    const user = applicant({ initialEmailVerifiedLoginCompletedAt: new Date() });
+    userFindOne.mockResolvedValue(user);
+    findValidSession.mockResolvedValue(null);
+    const res = response();
+    await login(loginRequest(user, { headers: {
+      "x-device-id": "device-1",
+      "x-session-id": "expired-session",
+      "user-agent": "test-agent",
+    } }), res, jest.fn());
+    expect(findValidSession).toHaveBeenCalledWith(user._id, "device-1", "expired-session");
+    expect(res.body).toMatchObject({ requiresOtp: true, code: "OTP_REQUIRED" });
+  });
+
+  test("deleted cookie requires OTP on the next applicant login", async () => {
+    const user = applicant({ initialEmailVerifiedLoginCompletedAt: new Date() });
+    userFindOne.mockResolvedValue(user);
+    const res = response();
+    await login(loginRequest(user), res, jest.fn());
+    expect(findValidSession).toHaveBeenCalledWith(user._id, "device-1", "");
+    expect(res.body).toMatchObject({ requiresOtp: true, code: "OTP_REQUIRED" });
+  });
+
+  test("a new device requires OTP after the exemption was consumed", async () => {
+    const user = applicant({ initialEmailVerifiedLoginCompletedAt: new Date() });
+    userFindOne.mockResolvedValue(user);
+    const res = response();
+    await login(loginRequest(user, { headers: {
+      "x-device-id": "new-device",
+      "x-session-id": "old-device-session",
+      "user-agent": "test-agent",
+    } }), res, jest.fn());
+    expect(findValidSession).toHaveBeenCalledWith(user._id, "new-device", "old-device-session");
+    expect(res.body).toMatchObject({ requiresOtp: true, code: "OTP_REQUIRED" });
+  });
+
+  test("revoked session requires OTP on the next applicant login", async () => {
+    const user = applicant({ initialEmailVerifiedLoginCompletedAt: new Date() });
+    userFindOne.mockResolvedValue(user);
+    findValidSession.mockResolvedValue(null);
+    const res = response();
+    await login(loginRequest(user, { headers: {
+      "x-device-id": "device-1",
+      "x-session-id": "revoked-session",
+      "user-agent": "test-agent",
+    } }), res, jest.fn());
+    expect(res.body).toMatchObject({ requiresOtp: true, code: "OTP_REQUIRED" });
+  });
+
+  test("security-version increment rejects an otherwise active session and requires OTP", async () => {
+    const user = applicant({
+      initialEmailVerifiedLoginCompletedAt: new Date(),
+      securityVersion: 2,
+    });
+    userFindOne.mockResolvedValue(user);
+    findValidSession.mockResolvedValue({
+      sessionId: "stale-security-session",
+      assuranceMethod: SESSION_ASSURANCE_METHODS.LOGIN_OTP,
+      otpVerifiedAt: new Date(),
+      securityVersion: 1,
+      save: jest.fn(),
+    });
+    const res = response();
+    await login(loginRequest(user, { headers: {
+      "x-device-id": "device-1",
+      "x-session-id": "stale-security-session",
+      "user-agent": "test-agent",
+    } }), res, jest.fn());
+    expect(res.body).toMatchObject({ requiresOtp: true, code: "OTP_REQUIRED" });
+  });
+
+  test("applicant-to-tenant transition rejects first-login assurance and requires OTP", async () => {
+    const user = applicant({ role: "tenant", initialEmailVerifiedLoginCompletedAt: new Date() });
+    userFindOne.mockResolvedValue(user);
+    findValidSession.mockResolvedValue({
+      sessionId: "former-applicant-session",
+      assuranceMethod: SESSION_ASSURANCE_METHODS.FIRST_VERIFIED_LOGIN,
+      otpVerifiedAt: null,
+      securityVersion: 0,
+      save: jest.fn(),
+    });
+    const res = response();
+    await login(loginRequest(user, { headers: {
+      "x-device-id": "device-1",
+      "x-session-id": "former-applicant-session",
+      "user-agent": "test-agent",
+    } }), res, jest.fn());
+    expect(claimFirstVerifiedLoginSession).not.toHaveBeenCalled();
+    expect(res.body).toMatchObject({ requiresOtp: true, code: "OTP_REQUIRED" });
   });
 
   test.each(["tenant", "branch_admin", "owner"])("%s cannot use applicant exemption", async (role) => {
@@ -257,6 +358,17 @@ describe("one-time first verified applicant login controller policy", () => {
         expect.objectContaining({ assuranceMethod: SESSION_ASSURANCE_METHODS.ADMIN_PASSWORD, otpVerified: false }),
       );
     }
+  });
+
+  test.each(["branch_admin", "owner"])("%s password login requires device binding and never generates OTP", async (role) => {
+    const user = applicant({ role });
+    userFindOne.mockResolvedValue(user);
+    const res = response();
+    await login(loginRequest(user, { headers: { "user-agent": "test-agent" } }), res, jest.fn());
+    expect(res.statusCode).toBe(400);
+    expect(res.body.code).toBe("DEVICE_ID_REQUIRED");
+    expect(createSession).not.toHaveBeenCalled();
+    expect(sendLoginOtpEmail).not.toHaveBeenCalled();
   });
 
   test("blocked applicant cannot consume exemption", async () => {
@@ -307,6 +419,25 @@ describe("one-time first verified applicant login controller policy", () => {
     expect(res.body).toMatchObject({ code: "LOGOUT_SUCCESS" });
   });
 
+  test.each(["branch_admin", "owner"])("%s logout revokes the same application session used by HTTP and sockets", async (role) => {
+    const user = applicant({ role });
+    userFindOne.mockResolvedValue(user);
+    const req = loginRequest(user, {
+      headers: {
+        "x-device-id": "admin-device",
+        "x-session-id": "admin-session",
+      },
+    });
+    const res = response();
+    await logout(req, res, jest.fn());
+
+    expect(updateOne).toHaveBeenCalledWith(
+      { userId: user._id, sessionId: "admin-session", isActive: true },
+      { $set: { isActive: false, logoutTime: expect.any(Date) } },
+    );
+    expect(res.body).toMatchObject({ code: "LOGOUT_SUCCESS" });
+  });
+
   test("session creation failure does not fall through to OTP", async () => {
     const user = applicant();
     userFindOne.mockResolvedValue(user);
@@ -317,24 +448,52 @@ describe("one-time first verified applicant login controller policy", () => {
     expect(sendLoginOtpEmail).not.toHaveBeenCalled();
   });
 
-  test("cookie failure rolls the exemption back", async () => {
+  test("cookie failure cleans only Session A without restoring eligibility", async () => {
     const user = applicant();
-    const completedAt = new Date();
+    const loginTime = new Date();
     userFindOne.mockResolvedValue(user);
     claimFirstVerifiedLoginSession.mockResolvedValue({
       claimed: true,
       user,
-      session: { sessionId: "first-login-session" },
-      completedAt,
+      session: {
+        sessionId: "first-login-session",
+        deviceId: "device-1",
+        loginTime,
+      },
     });
     const next = jest.fn();
     await login(loginRequest(user), response({ cookie: false }), next);
-    expect(rollbackFirstVerifiedLoginSession).toHaveBeenCalledWith({
+    expect(cleanupFailedFirstVerifiedLoginSession).toHaveBeenCalledWith({
       userId: user._id,
-      firebaseUid: user.firebaseUid,
-      completedAt,
       sessionId: "first-login-session",
+      deviceId: "device-1",
+      loginTime,
     });
     expect(next).toHaveBeenCalled();
+  });
+
+  test("cookie cleanup failure returns a safe error and never falls through to OTP", async () => {
+    const user = applicant();
+    userFindOne.mockResolvedValue(user);
+    claimFirstVerifiedLoginSession.mockResolvedValue({
+      claimed: true,
+      user,
+      session: {
+        sessionId: "first-login-session",
+        deviceId: "device-1",
+        loginTime: new Date(),
+      },
+    });
+    cleanupFailedFirstVerifiedLoginSession.mockRejectedValue(
+      new Error("cleanup unavailable"),
+    );
+    const next = jest.fn();
+
+    await login(loginRequest(user), response({ cookie: false }), next);
+
+    expect(next).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "cleanup unavailable" }),
+    );
+    expect(sendLoginOtpEmail).not.toHaveBeenCalled();
   });
 });

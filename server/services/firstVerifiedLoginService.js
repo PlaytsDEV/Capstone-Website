@@ -2,10 +2,16 @@ import mongoose from "mongoose";
 import { SESSION_ASSURANCE_METHODS } from "../config/sessionAssurance.js";
 import { User, UserSession } from "../models/index.js";
 
-const activeApplicantClaim = ({ userId, firebaseUid, email }) => ({
+const activeApplicantClaim = ({
+  userId,
+  firebaseUid,
+  email,
+  expectedSecurityVersion,
+}) => ({
   _id: userId,
   firebaseUid,
   email,
+  securityVersion: expectedSecurityVersion,
   role: "applicant",
   isEmailVerified: true,
   isActive: { $ne: false },
@@ -16,14 +22,22 @@ const activeApplicantClaim = ({ userId, firebaseUid, email }) => ({
 });
 
 export const claimFirstVerifiedLoginSession = async ({
-  user,
+  userId,
   firebaseUid,
   email,
+  expectedSecurityVersion,
   req,
   deviceId,
   durationMs,
 }) => {
-  if (!user?._id || !firebaseUid || !email || !deviceId) {
+  if (
+    !userId ||
+    !firebaseUid ||
+    !email ||
+    !deviceId ||
+    !Number.isSafeInteger(expectedSecurityVersion) ||
+    expectedSecurityVersion < 0
+  ) {
     return { claimed: false, user: null, session: null, completedAt: null };
   }
 
@@ -39,7 +53,12 @@ export const claimFirstVerifiedLoginSession = async ({
       claimedUser = null;
       applicationSession = null;
       claimedUser = await User.findOneAndUpdate(
-        activeApplicantClaim({ userId: user._id, firebaseUid, email }),
+        activeApplicantClaim({
+          userId,
+          firebaseUid,
+          email,
+          expectedSecurityVersion,
+        }),
         {
           $set: {
             initialEmailVerifiedLoginCompletedAt: completedAt,
@@ -55,7 +74,7 @@ export const claimFirstVerifiedLoginSession = async ({
       // one-time exempt session and later create a conflicting login session.
       await UserSession.updateMany(
         {
-          userId: user._id,
+          userId: claimedUser._id,
           isActive: false,
           otpHash: { $ne: null },
           otpPurpose: { $in: ["login", null] },
@@ -70,12 +89,13 @@ export const claimFirstVerifiedLoginSession = async ({
         { session: mongoSession },
       );
 
-      applicationSession = await UserSession.createSession(user._id, req, {
+      applicationSession = await UserSession.createSession(claimedUser._id, req, {
         deviceId,
         durationMs,
         otpVerified: false,
         assuranceMethod: SESSION_ASSURANCE_METHODS.FIRST_VERIFIED_LOGIN,
-        securityVersion: user.securityVersion,
+        securityVersion: claimedUser.securityVersion,
+        loginTime: completedAt,
         mongoSession,
       });
     });
@@ -91,47 +111,28 @@ export const claimFirstVerifiedLoginSession = async ({
   }
 };
 
-export const rollbackFirstVerifiedLoginSession = async ({
+export const cleanupFailedFirstVerifiedLoginSession = async ({
   userId,
-  firebaseUid,
-  completedAt,
   sessionId,
+  deviceId,
+  loginTime,
 }) => {
-  if (!userId || !firebaseUid || !completedAt || !sessionId) return;
-
-  const mongoSession = await mongoose.startSession();
-  try {
-    await mongoSession.withTransaction(async () => {
-      const removed = await UserSession.deleteOne(
-        {
-          userId,
-          sessionId,
-          assuranceMethod: SESSION_ASSURANCE_METHODS.FIRST_VERIFIED_LOGIN,
-        },
-        { session: mongoSession },
-      );
-
-      if (removed.deletedCount !== 1) {
-        throw new Error("First verified login session rollback could not remove the session");
-      }
-
-      const restored = await User.updateOne(
-        {
-          _id: userId,
-          firebaseUid,
-          initialEmailVerifiedLoginCompletedAt: completedAt,
-        },
-        {
-          $set: { initialEmailVerifiedLoginCompletedAt: null },
-        },
-        { session: mongoSession },
-      );
-
-      if (restored.modifiedCount !== 1) {
-        throw new Error("First verified login eligibility rollback failed");
-      }
-    });
-  } finally {
-    await mongoSession.endSession();
+  if (!userId || !sessionId || !deviceId || !loginTime) {
+    return { cleaned: false };
   }
+
+  // Consumption is permanent once the claim transaction commits. If cookie
+  // serialization fails, remove only the exact active session created by that
+  // request. A missing/already-cleaned session is an intentional safe no-op.
+  const removed = await UserSession.deleteOne({
+    userId,
+    sessionId,
+    deviceId,
+    assuranceMethod: SESSION_ASSURANCE_METHODS.FIRST_VERIFIED_LOGIN,
+    loginTime,
+    isActive: true,
+    logoutTime: null,
+  });
+
+  return { cleaned: removed.deletedCount === 1 };
 };

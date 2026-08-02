@@ -12,6 +12,10 @@
 import { auth } from "../../firebase/config";
 import { API_BASE_URL } from "./baseUrl";
 import { getSessionHeaders } from "./authSession";
+import {
+  withProtectedRequestPolicy,
+  withPublicRequestPolicy,
+} from "./requestPolicy";
 
 export const API_URL = API_BASE_URL;
 
@@ -79,6 +83,35 @@ const getFirstApiValidationMessage = (errorPayload) => {
 // =============================================================================
 
 /**
+ * Execute a protected request and return the raw Fetch response. Binary
+ * downloads and multipart uploads use this path so they receive the same
+ * Firebase, device-session, and cookie policy as JSON API requests.
+ */
+export const protectedFetch = async (url, options = {}) => {
+  const { headers: optionHeaders, ...fetchOptions } = options;
+  const token = await getFreshToken();
+  if (!token) {
+    throw new Error(
+      "No authorization header provided - user not authenticated",
+    );
+  }
+
+  const isFormDataBody =
+    typeof FormData !== "undefined" && fetchOptions.body instanceof FormData;
+  const headers = {
+    ...(isFormDataBody ? {} : { "Content-Type": "application/json" }),
+    Authorization: `Bearer ${token}`,
+    ...getSessionHeaders(),
+    ...optionHeaders,
+  };
+
+  return fetch(
+    `${API_URL}${url}`,
+    withProtectedRequestPolicy(fetchOptions, headers),
+  );
+};
+
+/**
  * Make authenticated HTTP request with always-fresh Firebase ID token.
  * This function should be used for all protected API endpoints.
  *
@@ -95,27 +128,9 @@ export const authFetch = async (url, options = {}, _isRetry = false) => {
       ...fetchOptions
     } = options;
 
-    const token = await getFreshToken();
-
-    if (!token) {
-      throw new Error(
-        "No authorization header provided - user not authenticated",
-      );
-    }
-
-    const isFormDataBody =
-      typeof FormData !== "undefined" && fetchOptions.body instanceof FormData;
-
-    const headers = {
-      ...(isFormDataBody ? {} : { "Content-Type": "application/json" }),
-      ...(token && { Authorization: `Bearer ${token}` }),
-      ...getSessionHeaders(),
-      ...optionHeaders,
-    };
-
-    const response = await fetch(`${API_URL}${url}`, {
+    const response = await protectedFetch(url, {
       ...fetchOptions,
-      headers,
+      headers: optionHeaders,
     });
 
     if (!response.ok) {
@@ -195,10 +210,10 @@ export const publicFetch = async (url, options = {}) => {
       ...optionHeaders,
     };
 
-    const response = await fetch(`${API_URL}${url}`, {
-      ...fetchOptions,
-      headers,
-    });
+    const response = await fetch(
+      `${API_URL}${url}`,
+      withPublicRequestPolicy(fetchOptions, headers),
+    );
 
     if (!response.ok) {
       const error = await response

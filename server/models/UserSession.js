@@ -178,6 +178,7 @@ userSessionSchema.statics.createSession = async function (userId, req, options =
   const durationMs = options.durationMs || 24 * 60 * 60 * 1000;
   const session = new this({
     userId,
+    loginTime: options.loginTime || now,
     deviceId: options.deviceId || req.headers["x-device-id"] || null,
     device: req.headers["x-device-name"] || parseDevice(req.headers["user-agent"]),
     ipAddress: req.ip || req.headers["x-forwarded-for"] || req.connection?.remoteAddress,

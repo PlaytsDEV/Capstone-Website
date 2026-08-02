@@ -327,18 +327,13 @@ export async function uploadIfFile(value, opts = {}, onProgress) {
  * @returns {Promise<string>}
  */
 async function uploadRoomPhotoViaServer(file, roomId) {
-  const { getFreshToken } = await import("../api/httpClient.js");
-  const { API_BASE_URL } = await import("../api/baseUrl.js");
-
-  const token = await getFreshToken();
-  if (!token) throw new Error("Not authenticated. Please sign in and try again.");
+  const { protectedFetch } = await import("../api/httpClient.js");
 
   const formData = new FormData();
   formData.append("photos", file, file.name);
 
-  const response = await fetch(`${API_BASE_URL}/rooms/${roomId}/photos`, {
+  const response = await protectedFetch(`/rooms/${roomId}/photos`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
     body: formData,
   });
 

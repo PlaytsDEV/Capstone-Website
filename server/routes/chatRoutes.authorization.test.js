@@ -22,7 +22,12 @@ await jest.unstable_mockModule("../models/index.js", () => ({
   User: { findOne: userFindOne },
   UserSession: {
     findValidSession: jest.fn(async () => ({
-      otpVerifiedAt: new Date(),
+      assuranceMethod: ["branch_admin", "owner"].includes(authoritativeUser?.role)
+        ? "admin_password"
+        : "login_otp",
+      otpVerifiedAt: ["branch_admin", "owner"].includes(authoritativeUser?.role)
+        ? null
+        : new Date(),
       securityVersion: authoritativeUser?.securityVersion || 0,
       save: jest.fn(async () => {}),
     })),

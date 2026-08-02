@@ -33,7 +33,7 @@ import auditLogger from "../utils/auditLogger.js";
 import { invalidateUserSessions } from "../services/sessionInvalidationService.js";
 import {
   claimFirstVerifiedLoginSession,
-  rollbackFirstVerifiedLoginSession,
+  cleanupFailedFirstVerifiedLoginSession,
 } from "../services/firstVerifiedLoginService.js";
 import {
   resolveTenantOccupancyDetails,
@@ -505,13 +505,21 @@ export const login = async (req, res, next) => {
     const signInProvider = req.user.firebase?.sign_in_provider;
     const isOAuthUser = Boolean(signInProvider && signInProvider !== "password");
 
+    const deviceId = getDeviceId(req);
+    if (!deviceId) {
+      return res.status(400).json({
+        error: "Device verification is required. Please try signing in again.",
+        code: "DEVICE_ID_REQUIRED",
+      });
+    }
+
     let session = null;
     if (adminUser || isOAuthUser) {
       // Admins and OAuth users (Google, Facebook, etc.) skip OTP. Their
       // sessions record the truthful assurance method instead of fabricating
       // an OTP verification timestamp.
       session = await UserSession.createSession(user._id, req, {
-        deviceId: getDeviceId(req) || null,
+        deviceId,
         durationMs: SESSION_DURATION_MS,
         otpVerified: false,
         assuranceMethod: adminUser
@@ -522,30 +530,27 @@ export const login = async (req, res, next) => {
         securityVersion: user.securityVersion,
       });
     } else {
-      const deviceId = getDeviceId(req);
-      if (!deviceId) {
-        return res.status(400).json({
-          error: "Device verification is required. Please try signing in again.",
-          code: "DEVICE_ID_REQUIRED",
-        });
-      }
-
       const existingSession = await UserSession.findValidSession(
         user._id,
         deviceId,
         getSessionId(req),
       );
 
-      if (isSessionAuthorizedForRole(existingSession, user.role)) {
+      if (
+        isSessionAuthorizedForRole(existingSession, user.role) &&
+        Number(existingSession.securityVersion || 0) ===
+          Number(user.securityVersion || 0)
+      ) {
         existingSession.lastActivityAt = new Date();
         await existingSession.save();
         session = existingSession;
       } else {
         if (user.role === "applicant") {
           const exemption = await claimFirstVerifiedLoginSession({
-            user,
+            userId: user._id,
             firebaseUid: req.user.uid,
             email: firebaseEmail,
+            expectedSecurityVersion: Number(user.securityVersion || 0),
             req,
             deviceId,
             durationMs: SESSION_DURATION_MS,
@@ -558,11 +563,11 @@ export const login = async (req, res, next) => {
               }
             } catch (cookieError) {
               clearWebSessionCookie(res);
-              await rollbackFirstVerifiedLoginSession({
+              await cleanupFailedFirstVerifiedLoginSession({
                 userId: user._id,
-                firebaseUid: req.user.uid,
-                completedAt: exemption.completedAt,
                 sessionId: exemption.session.sessionId,
+                deviceId: exemption.session.deviceId,
+                loginTime: exemption.session.loginTime,
               });
               throw cookieError;
             }

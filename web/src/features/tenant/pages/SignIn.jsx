@@ -45,6 +45,7 @@ import {
   getAuthErrorCode,
   isOtpDeliveryAccepted,
 } from "../../../shared/api/authFlowState";
+import { getAuthenticatedUserDestination } from "../../../shared/api/loginRouting";
 import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
 import SocialAuthButtons from "../../../shared/components/SocialAuthButtons";
 import FloatingInput from "../../../shared/components/FloatingInput";
@@ -216,18 +217,10 @@ function SignIn() {
  const { suppressSuccessToast = false } = options;
  const successMessage = buildAuthSuccessMessage(user, fallbackName);
 
- if (user.role === "branch_admin" || user.role === "owner") {
  if (!suppressSuccessToast) {
  showNotification(successMessage, "success", AUTH_TOAST_DURATION);
  }
- appNavigate("/admin/dashboard");
- return;
- }
-
- if (!suppressSuccessToast) {
- showNotification(successMessage, "success", AUTH_TOAST_DURATION);
- }
- appNavigate("/applicant/check-availability");
+ appNavigate(getAuthenticatedUserDestination(user));
  };
 
  const validateForm = () => {

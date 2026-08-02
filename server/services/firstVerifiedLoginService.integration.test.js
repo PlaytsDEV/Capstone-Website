@@ -5,7 +5,7 @@ import { SESSION_ASSURANCE_METHODS } from "../config/sessionAssurance.js";
 import { User, UserSession } from "../models/index.js";
 import {
   claimFirstVerifiedLoginSession,
-  rollbackFirstVerifiedLoginSession,
+  cleanupFailedFirstVerifiedLoginSession,
 } from "./firstVerifiedLoginService.js";
 
 const requestFor = (deviceId = "first-login-device") => ({
@@ -27,6 +27,17 @@ const createApplicant = (overrides = {}) =>
     initialEmailVerifiedLoginEligibleAt: new Date(),
     ...overrides,
   });
+
+const claimInputFor = (user, overrides = {}) => ({
+  userId: user._id,
+  firebaseUid: user.firebaseUid,
+  email: user.email,
+  expectedSecurityVersion: Number(user.securityVersion || 0),
+  req: requestFor(),
+  deviceId: "first-login-device",
+  durationMs: 60_000,
+  ...overrides,
+});
 
 describe("first verified applicant login transaction", () => {
   let mongo;
@@ -59,14 +70,7 @@ describe("first verified applicant login transaction", () => {
       logoutTime: new Date(),
     });
 
-    const result = await claimFirstVerifiedLoginSession({
-      user,
-      firebaseUid: user.firebaseUid,
-      email: user.email,
-      req: requestFor(),
-      deviceId: "first-login-device",
-      durationMs: 60_000,
-    });
+    const result = await claimFirstVerifiedLoginSession(claimInputFor(user));
 
     expect(result.claimed).toBe(true);
     expect(result.session).toMatchObject({
@@ -84,14 +88,7 @@ describe("first verified applicant login transaction", () => {
 
   test("two simultaneous claims create exactly one exempt session", async () => {
     const user = await createApplicant();
-    const input = {
-      user,
-      firebaseUid: user.firebaseUid,
-      email: user.email,
-      req: requestFor(),
-      deviceId: "first-login-device",
-      durationMs: 60_000,
-    };
+    const input = claimInputFor(user);
 
     const results = await Promise.all([
       claimFirstVerifiedLoginSession(input),
@@ -115,14 +112,7 @@ describe("first verified applicant login transaction", () => {
     ["already consumed", { initialEmailVerifiedLoginCompletedAt: new Date() }],
   ])("%s account cannot claim the exemption", async (_label, overrides) => {
     const user = await createApplicant(overrides);
-    const result = await claimFirstVerifiedLoginSession({
-      user,
-      firebaseUid: user.firebaseUid,
-      email: user.email,
-      req: requestFor(),
-      deviceId: "first-login-device",
-      durationMs: 60_000,
-    });
+    const result = await claimFirstVerifiedLoginSession(claimInputFor(user));
     expect(result.claimed).toBe(false);
     expect(await UserSession.countDocuments({ userId: user._id, isActive: true })).toBe(0);
   });
@@ -131,14 +121,9 @@ describe("first verified applicant login transaction", () => {
     const user = await createApplicant();
     const spy = jest.spyOn(UserSession, "createSession").mockRejectedValueOnce(new Error("session unavailable"));
 
-    await expect(claimFirstVerifiedLoginSession({
-      user,
-      firebaseUid: user.firebaseUid,
-      email: user.email,
-      req: requestFor(),
-      deviceId: "first-login-device",
-      durationMs: 60_000,
-    })).rejects.toThrow("session unavailable");
+    await expect(
+      claimFirstVerifiedLoginSession(claimInputFor(user)),
+    ).rejects.toThrow("session unavailable");
 
     spy.mockRestore();
     const storedUser = await User.findById(user._id).select("+initialEmailVerifiedLoginCompletedAt");
@@ -146,27 +131,183 @@ describe("first verified applicant login transaction", () => {
     expect(await UserSession.countDocuments({ userId: user._id })).toBe(0);
   });
 
-  test("cookie-completion rollback removes the session and restores eligibility", async () => {
+  test("cookie failure removes only Session A and permanently preserves consumption", async () => {
     const user = await createApplicant();
-    const result = await claimFirstVerifiedLoginSession({
-      user,
-      firebaseUid: user.firebaseUid,
-      email: user.email,
-      req: requestFor(),
-      deviceId: "first-login-device",
-      durationMs: 60_000,
-    });
+    const result = await claimFirstVerifiedLoginSession(claimInputFor(user));
 
-    await rollbackFirstVerifiedLoginSession({
+    const cleanup = await cleanupFailedFirstVerifiedLoginSession({
       userId: user._id,
-      firebaseUid: user.firebaseUid,
-      completedAt: result.completedAt,
       sessionId: result.session.sessionId,
+      deviceId: result.session.deviceId,
+      loginTime: result.session.loginTime,
     });
 
     const storedUser = await User.findById(user._id).select("+initialEmailVerifiedLoginCompletedAt");
-    expect(storedUser.initialEmailVerifiedLoginCompletedAt).toBeNull();
+    expect(cleanup).toEqual({ cleaned: true });
+    expect(storedUser.initialEmailVerifiedLoginCompletedAt).toBeInstanceOf(Date);
     expect(await UserSession.countDocuments({ userId: user._id })).toBe(0);
+    expect((await claimFirstVerifiedLoginSession(claimInputFor(storedUser))).claimed).toBe(false);
+  });
+
+  test("Session B survives delayed Session A cookie cleanup and cleanup is idempotent", async () => {
+    const user = await createApplicant();
+    await UserSession.create({
+      userId: user._id,
+      deviceId: "stale-device",
+      isActive: false,
+      otpHash: "b".repeat(64),
+      otpPurpose: "login",
+      otpExpiresAt: new Date(Date.now() + 60_000),
+      otpLastSentAt: new Date(),
+      logoutTime: new Date(),
+    });
+
+    const requestA = await claimFirstVerifiedLoginSession(claimInputFor(user));
+    const sessionB = await UserSession.createSession(user._id, requestFor("otp-device"), {
+      deviceId: "otp-device",
+      durationMs: 60_000,
+      otpVerified: true,
+      assuranceMethod: SESSION_ASSURANCE_METHODS.LOGIN_OTP,
+      securityVersion: requestA.user.securityVersion,
+    });
+
+    const cleanupInput = {
+      userId: user._id,
+      sessionId: requestA.session.sessionId,
+      deviceId: requestA.session.deviceId,
+      loginTime: requestA.session.loginTime,
+    };
+    expect(await cleanupFailedFirstVerifiedLoginSession(cleanupInput)).toEqual({ cleaned: true });
+    expect(await cleanupFailedFirstVerifiedLoginSession(cleanupInput)).toEqual({ cleaned: false });
+
+    expect(await UserSession.findOne({ sessionId: requestA.session.sessionId })).toBeNull();
+    expect(await UserSession.findOne({ sessionId: sessionB.sessionId, isActive: true })).not.toBeNull();
+    const storedUser = await User.findById(user._id).select("+initialEmailVerifiedLoginCompletedAt");
+    expect(storedUser.initialEmailVerifiedLoginCompletedAt).toBeInstanceOf(Date);
+    expect((await claimFirstVerifiedLoginSession(claimInputFor(storedUser))).claimed).toBe(false);
+    const staleChallenge = await UserSession.findOne({
+      userId: user._id,
+      deviceId: "stale-device",
+    }).select("+otpHash");
+    expect(staleChallenge.otpHash).toBeNull();
+  });
+
+  test("cleanup is a no-op after Session A was already removed", async () => {
+    const user = await createApplicant();
+    const result = await claimFirstVerifiedLoginSession(claimInputFor(user));
+    await UserSession.deleteOne({ _id: result.session._id });
+
+    await expect(cleanupFailedFirstVerifiedLoginSession({
+      userId: user._id,
+      sessionId: result.session.sessionId,
+      deviceId: result.session.deviceId,
+      loginTime: result.session.loginTime,
+    })).resolves.toEqual({ cleaned: false });
+
+    const storedUser = await User.findById(user._id).select("+initialEmailVerifiedLoginCompletedAt");
+    expect(storedUser.initialEmailVerifiedLoginCompletedAt).toBeInstanceOf(Date);
+  });
+
+  test("cleanup database failure never restores eligibility", async () => {
+    const user = await createApplicant();
+    const result = await claimFirstVerifiedLoginSession(claimInputFor(user));
+    const deleteSpy = jest
+      .spyOn(UserSession, "deleteOne")
+      .mockRejectedValueOnce(new Error("cleanup unavailable"));
+
+    await expect(cleanupFailedFirstVerifiedLoginSession({
+      userId: user._id,
+      sessionId: result.session.sessionId,
+      deviceId: result.session.deviceId,
+      loginTime: result.session.loginTime,
+    })).rejects.toThrow("cleanup unavailable");
+    deleteSpy.mockRestore();
+
+    const storedUser = await User.findById(user._id).select("+initialEmailVerifiedLoginCompletedAt");
+    expect(storedUser.initialEmailVerifiedLoginCompletedAt).toBeInstanceOf(Date);
+    expect((await claimFirstVerifiedLoginSession(claimInputFor(storedUser))).claimed).toBe(false);
+  });
+
+  test("transaction uses the authoritative security version at claim time", async () => {
+    const staleControllerUser = await createApplicant();
+    await User.updateOne(
+      { _id: staleControllerUser._id },
+      { $set: { securityVersion: 3 } },
+    );
+
+    const staleClaim = await claimFirstVerifiedLoginSession(
+      claimInputFor(staleControllerUser),
+    );
+    expect(staleClaim.claimed).toBe(false);
+    let storedUser = await User.findById(staleControllerUser._id)
+      .select("+initialEmailVerifiedLoginCompletedAt");
+    expect(storedUser.initialEmailVerifiedLoginCompletedAt).toBeNull();
+
+    const currentClaim = await claimFirstVerifiedLoginSession(
+      claimInputFor(storedUser),
+    );
+    expect(currentClaim.claimed).toBe(true);
+    expect(currentClaim.session.securityVersion).toBe(3);
+    storedUser = await User.findById(staleControllerUser._id);
+    expect(currentClaim.session.securityVersion).toBe(storedUser.securityVersion);
+  });
+
+  test("security revocation winning between controller read and claim fails closed", async () => {
+    const staleControllerUser = await createApplicant();
+    const originalFindOneAndUpdate = User.findOneAndUpdate.bind(User);
+    let releaseClaim;
+    let signalClaimStarted;
+    const claimStarted = new Promise((resolve) => { signalClaimStarted = resolve; });
+    const claimReleased = new Promise((resolve) => { releaseClaim = resolve; });
+    const updateSpy = jest
+      .spyOn(User, "findOneAndUpdate")
+      .mockImplementationOnce(async (...args) => {
+        signalClaimStarted();
+        await claimReleased;
+        return originalFindOneAndUpdate(...args);
+      });
+
+    const claimPromise = claimFirstVerifiedLoginSession(
+      claimInputFor(staleControllerUser),
+    );
+    await claimStarted;
+    await User.updateOne(
+      { _id: staleControllerUser._id },
+      { $inc: { securityVersion: 1 } },
+    );
+    releaseClaim();
+    const result = await claimPromise;
+    updateSpy.mockRestore();
+
+    expect(result.claimed).toBe(false);
+    const storedUser = await User.findById(staleControllerUser._id)
+      .select("+initialEmailVerifiedLoginCompletedAt");
+    expect(storedUser.securityVersion).toBe(1);
+    expect(storedUser.initialEmailVerifiedLoginCompletedAt).toBeNull();
+    expect(await UserSession.countDocuments({ userId: staleControllerUser._id })).toBe(0);
+  });
+
+  test("production session lookup enforces active state, expiry, device, and session ID", async () => {
+    const user = await createApplicant({ initialEmailVerifiedLoginEligibleAt: null });
+    const session = await UserSession.createSession(user._id, requestFor("bound-device"), {
+      deviceId: "bound-device",
+      durationMs: 60_000,
+      otpVerified: true,
+      assuranceMethod: SESSION_ASSURANCE_METHODS.LOGIN_OTP,
+      securityVersion: user.securityVersion,
+    });
+
+    expect(await UserSession.findValidSession(user._id, "bound-device", session.sessionId)).not.toBeNull();
+    expect(await UserSession.findValidSession(user._id, "other-device", session.sessionId)).toBeNull();
+    expect(await UserSession.findValidSession(user._id, "bound-device", "other-session")).toBeNull();
+
+    await UserSession.updateOne({ _id: session._id }, { $set: { expiresAt: new Date(Date.now() - 1) } });
+    expect(await UserSession.findValidSession(user._id, "bound-device", session.sessionId)).toBeNull();
+
+    await UserSession.updateOne({ _id: session._id }, {
+      $set: { expiresAt: new Date(Date.now() + 60_000), isActive: false, logoutTime: new Date() },
+    });
+    expect(await UserSession.findValidSession(user._id, "bound-device", session.sessionId)).toBeNull();
   });
 
   test("leaving applicant role permanently clears registration eligibility", async () => {

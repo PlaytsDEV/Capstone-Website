@@ -67,7 +67,7 @@ export function createSocketAuthenticator({
       const session = await findSession(dbUser._id, deviceId, sessionId);
       if (
         !session ||
-        (!isAdminRole(dbUser.role) && !isSessionAuthorizedForRole(session, dbUser.role)) ||
+        !isSessionAuthorizedForRole(session, dbUser.role) ||
         Number(session.securityVersion || 0) !== Number(dbUser.securityVersion || 0)
       ) {
         logger.warn({ socketId: socket.id, origin, transport, uidFingerprint: fingerprint(decoded.uid) }, "Socket session rejected");
