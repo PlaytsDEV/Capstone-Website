@@ -36,7 +36,7 @@ describe("permissions middleware", () => {
 
   test("owner bypasses permission checks", async () => {
     const middleware = requirePermission("manageBilling");
-    const req = { isOwner: true, user: { uid: "owner-1", owner: true } };
+    const req = { isOwner: true, user: { uid: "owner-1", owner: true }, authUser: { role: "owner" } };
     const res = createRes();
     const next = jest.fn();
 
@@ -47,27 +47,22 @@ describe("permissions middleware", () => {
   });
 
   test("branch admin without explicit permissions is denied", async () => {
-    lean.mockResolvedValue({ role: "branch_admin", permissions: undefined });
     const middleware = requirePermission("viewReports");
-    const req = { user: { uid: "admin-1" } };
+    const req = { user: { uid: "admin-1" }, authUser: { role: "branch_admin", permissions: undefined } };
     const res = createRes();
     const next = jest.fn();
 
     await middleware(req, res, next);
 
-    expect(findOne).toHaveBeenCalledWith({ firebaseUid: "admin-1" });
+    expect(findOne).not.toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();
     expect(res.statusCode).toBe(403);
     expect(res.body.code).toBe("PERMISSIONS_NOT_CONFIGURED");
   });
 
   test("branch admin without required explicit permission is denied", async () => {
-    lean.mockResolvedValue({
-      role: "branch_admin",
-      permissions: ["manageReservations"],
-    });
     const middleware = requirePermission("manageBilling");
-    const req = { user: { uid: "admin-2" } };
+    const req = { user: { uid: "admin-2" }, authUser: { role: "branch_admin", permissions: ["manageReservations"] } };
     const res = createRes();
     const next = jest.fn();
 
@@ -79,12 +74,8 @@ describe("permissions middleware", () => {
   });
 
   test("requireAnyPermission passes when at least one permission matches", async () => {
-    lean.mockResolvedValue({
-      role: "branch_admin",
-      permissions: ["manageUsers"],
-    });
     const middleware = requireAnyPermission(["viewReports", "manageUsers"]);
-    const req = { user: { uid: "admin-3" } };
+    const req = { user: { uid: "admin-3" }, authUser: { role: "branch_admin", permissions: ["manageUsers"] } };
     const res = createRes();
     const next = jest.fn();
 

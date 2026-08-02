@@ -30,6 +30,7 @@ import {
 } from "../utils/lifecycleNaming.js";
 import { DELETED_ACCOUNT_LABEL } from "../utils/userReference.js";
 import { releaseOrphanedBeds } from "../services/occupancy/occupancyManager.js";
+import { invalidateUserSessions } from "../services/sessionInvalidationService.js";
 
 const VALID_BRANCHES = ROOM_BRANCHES;
 const VALID_TENANT_STATUSES = [
@@ -86,6 +87,43 @@ const buildFirebaseClaimsForRole = (role) => {
     return { branch_admin: true };
   }
   return {};
+};
+
+const ACCESS_STATE_FIELDS = [
+  "role",
+  "permissions",
+  "branch",
+  "tenantStatus",
+  "accountStatus",
+  "isActive",
+  "isArchived",
+];
+
+const copyAccessState = (source = {}) =>
+  Object.fromEntries(
+    ACCESS_STATE_FIELDS.map((field) => [
+      field,
+      Array.isArray(source[field])
+        ? [...source[field]]
+        : source[field] && typeof source[field] === "object"
+          ? structuredClone(source[field])
+          : source[field],
+    ]),
+  );
+
+const accessStateMatches = (actual, expected, fields) =>
+  fields.every(
+    (field) => JSON.stringify(actual?.[field]) === JSON.stringify(expected[field]),
+  );
+
+const buildAccessStateRestoreUpdate = (original, fields) => {
+  const $set = {};
+  const $unset = {};
+  for (const field of fields) {
+    if (original[field] === undefined) $unset[field] = 1;
+    else $set[field] = original[field];
+  }
+  return { $set, $unset };
 };
 
 const canTransitionTenantStatus = (fromStatus, toStatus) => {
@@ -865,6 +903,17 @@ export const updateUser = async (req, res, next) => {
       }
     }
 
+    const originalAccessState = copyAccessState(oldUserData);
+    const accessFields = ["role", "branch", "permissions", "isActive", "tenantStatus"];
+    const changedAccessFields = accessFields.filter((field) => updateData[field] !== undefined && JSON.stringify(updateData[field]) !== JSON.stringify(oldUserData[field]));
+    let invalidation = null;
+    if (changedAccessFields.length > 0) {
+      const reason = changedAccessFields.includes("role") ? "role_changed"
+        : changedAccessFields.includes("branch") ? "branch_reassigned"
+          : changedAccessFields.includes("permissions") ? "permissions_changed" : "account_access_scope_changed";
+      invalidation = await invalidateUserSessions({ user: existingUser, reason, req });
+    }
+
     const user = await User.findByIdAndUpdate(userId, updateData, {
       new: true,
       runValidators: true,
@@ -877,16 +926,88 @@ export const updateUser = async (req, res, next) => {
       });
     }
 
-    if (existingUser.firebaseUid) {
+    if (changedAccessFields.length > 0) {
       const auth = getAuth();
-      if (auth) {
+      try {
+        if (!auth || !existingUser.firebaseUid) {
+          throw new Error("Firebase claims synchronization is unavailable");
+        }
+        // Claims are derived only from the authoritative, persisted user.
         await auth.setCustomUserClaims(
           existingUser.firebaseUid,
           buildFirebaseClaimsForRole(user.role),
         );
+      } catch (_firebaseError) {
+          let rollbackSucceeded = false;
+          let accountRestricted = false;
+          try {
+            await User.findByIdAndUpdate(
+              userId,
+              buildAccessStateRestoreUpdate(originalAccessState, changedAccessFields),
+              { new: true, runValidators: false },
+            );
+            const reloaded = await User.findById(userId)
+              .select(ACCESS_STATE_FIELDS.join(" "))
+              .lean();
+            rollbackSucceeded = accessStateMatches(reloaded, originalAccessState, changedAccessFields);
+          } catch (_rollbackError) {
+            rollbackSucceeded = false;
+          }
+
+          if (!rollbackSucceeded) {
+            try {
+              const restricted = await User.findByIdAndUpdate(
+                userId,
+                { $set: { isActive: false, accountStatus: "suspended" } },
+                { new: true, runValidators: false },
+              );
+              accountRestricted = restricted?.isActive === false && restricted?.accountStatus === "suspended";
+            } catch (_restrictionError) {
+              accountRestricted = false;
+            }
+          }
+
+          await auditLogger.log({
+            req,
+            type: "security",
+            action: rollbackSucceeded
+              ? "firebase_claims_sync_failed_rolled_back"
+              : "firebase_claims_sync_failed_rollback_failed",
+            severity: rollbackSucceeded ? "high" : "critical",
+            entityType: "user",
+            entityId: userId,
+            details: rollbackSucceeded
+              ? "Firebase access claims synchronization failed; MongoDB access state was restored."
+              : "Firebase access claims synchronization and MongoDB rollback failed; manual reconciliation is required.",
+            metadata: {
+              attemptedAccessChange: changedAccessFields,
+              rollbackSucceeded,
+              accountRestricted,
+              firebaseErrorCategory: "firebase_claims_sync_error",
+              sessionInvalidation: {
+                logicalInvalidationSucceeded: true,
+                failedStores: (invalidation?.failures || []).map((failure) => failure.store),
+              },
+              timestamp: new Date().toISOString(),
+            },
+          });
+
+          if (!rollbackSucceeded) {
+            return sendError(
+              res,
+              "The access update could not be reconciled. The account requires administrative review.",
+              503,
+              "ACCESS_UPDATE_RECONCILIATION_REQUIRED",
+            );
+          }
+          return sendError(
+            res,
+            "The access update could not be completed. No access changes were retained.",
+            503,
+            "FIREBASE_CLAIMS_SYNC_FAILED",
+          );
       }
     }
-
     // Log user modification
     await auditLogger.logModification(
       req,
@@ -899,6 +1020,7 @@ export const updateUser = async (req, res, next) => {
     res.json({
       message: "User updated successfully",
       user,
+      sessionCleanupComplete: !invalidation?.failures?.length,
     });
   } catch (error) {
     await auditLogger.logError(req, error, "Failed to update user");
@@ -975,6 +1097,38 @@ export const deleteUser = async (req, res, next) => {
       .select("_id")
       .lean();
 
+    const stopUnsafeHardDelete = async (cleanupStage, firebaseCategory) => {
+      await User.findByIdAndUpdate(userId, {
+        $set: { isActive: false, accountStatus: "suspended" },
+      });
+      await auditLogger.log({
+        req,
+        type: "security",
+        action: "hard_delete_reconciliation_required",
+        severity: "critical",
+        entityType: "user",
+        entityId: userId,
+        details: "Hard deletion stopped because authentication cleanup was incomplete",
+        metadata: {
+          targetUserId: userId,
+          actorId: actor?._id ? String(actor._id) : null,
+          cleanupStage,
+          firebaseCategory,
+          mongoDeletion: "skipped",
+          reconciliationRequired: true,
+          timestamp: new Date().toISOString(),
+        },
+      });
+      return res.status(503).json({
+        error: "Authentication cleanup is incomplete. The account was restricted and requires reconciliation.",
+        code: "HARD_DELETE_RECONCILIATION_REQUIRED",
+        hardDelete: false,
+        restricted: true,
+        reconciliationRequired: true,
+        cleanupStage,
+      });
+    };
+
     if (!isHardDelete) {
       const oldData = user.toObject();
       if (hasSignificantHistory) {
@@ -982,6 +1136,7 @@ export const deleteUser = async (req, res, next) => {
           actor?._id || null,
           "Blocked via delete endpoint because the account has significant history",
         );
+        await invalidateUserSessions({ user, reason: "account_blocked", req });
 
         await auditLogger.logModification(
           req,
@@ -1007,6 +1162,7 @@ export const deleteUser = async (req, res, next) => {
       const wasArchived = !!user.isArchived;
       if (!wasArchived) {
         await user.archive(actor?._id || null);
+        await invalidateUserSessions({ user, reason: "account_archived", req });
       }
 
       await auditLogger.logModification(
@@ -1066,6 +1222,40 @@ export const deleteUser = async (req, res, next) => {
     // ── Transactional cleanup: archive reservations → release beds → delete user ──
     // Done inside a MongoDB session to ensure atomicity. If any step throws,
     // the user document is NOT deleted and beds remain correctly assigned.
+    let invalidation;
+    try {
+      invalidation = await invalidateUserSessions({
+        user,
+        reason: "account_deleted",
+        req,
+        failClosed: true,
+      });
+    } catch (_error) {
+      return stopUnsafeHardDelete("logical_revocation", "session_invalidation_failed");
+    }
+
+    const unsafeFirebaseFailure = invalidation.failures?.find(
+      (failure) =>
+        failure.store === "firebase" && failure.error?.code !== "auth/user-not-found",
+    );
+    if (unsafeFirebaseFailure) {
+      return stopUnsafeHardDelete("firebase_token_revocation", "refresh_token_revocation_failed");
+    }
+
+    if (user.firebaseUid) {
+      const auth = getAuth();
+      if (!auth) {
+        return stopUnsafeHardDelete("firebase_user_deletion", "firebase_admin_unavailable");
+      }
+      try {
+        await auth.deleteUser(user.firebaseUid);
+      } catch (error) {
+        if (error?.code !== "auth/user-not-found") {
+          return stopUnsafeHardDelete("firebase_user_deletion", "firebase_user_delete_failed");
+        }
+      }
+    }
+
     const session = await mongoose.startSession();
     let archivedReservationIds = [];
 
@@ -1123,17 +1313,6 @@ export const deleteUser = async (req, res, next) => {
           ));
         }
       }
-    }
-
-    // ── Firebase account deletion ──────────────────────────────────────────────
-    try {
-      const auth = getAuth();
-      if (auth && user.firebaseUid) await auth.deleteUser(user.firebaseUid);
-    } catch (fbErr) {
-      logger.warn(
-        { err: fbErr, requestId: req.id },
-        "Firebase deletion failed (non-fatal — user already deleted from MongoDB)",
-      );
     }
 
     // ── Clean up draft bills ───────────────────────────────────────────────────
@@ -1226,6 +1405,7 @@ export const suspendUser = async (req, res, next) => {
     const oldData = targetUser.toObject();
 
     await targetUser.suspend(adminUser?._id, reason || "Suspended by admin");
+    await invalidateUserSessions({ user: targetUser, reason: "account_suspended", req });
 
     await auditLogger.logModification(
       req,
@@ -1291,6 +1471,7 @@ export const reactivateUser = async (req, res, next) => {
     const adminUser = await User.findOne({ firebaseUid: req.user.uid });
     const oldData = targetUser.toObject();
 
+    const invalidation = await invalidateUserSessions({ user: targetUser, reason: "account_reactivated", req });
     await targetUser.reactivate(adminUser?._id);
 
     await auditLogger.logModification(
@@ -1302,7 +1483,7 @@ export const reactivateUser = async (req, res, next) => {
       `Account reactivated from ${oldData.accountStatus}`,
     );
 
-    res.json({ message: "User reactivated successfully", user: targetUser });
+    res.json({ message: "User reactivated successfully", user: targetUser, sessionCleanupComplete: !invalidation.failures.length });
   } catch (error) {
     await auditLogger.logError(req, error, "Failed to reactivate user");
     next(error);
@@ -1362,6 +1543,7 @@ export const restoreUser = async (req, res, next) => {
       .lean();
     const oldData = targetUser.toObject();
 
+    const invalidation = await invalidateUserSessions({ user: targetUser, reason: "account_restored", req });
     await targetUser.restore(adminUser?._id || null);
 
     await auditLogger.logModification(
@@ -1373,7 +1555,7 @@ export const restoreUser = async (req, res, next) => {
       "User restored from archive",
     );
 
-    res.json({ message: "User restored successfully", user: targetUser });
+    res.json({ message: "User restored successfully", user: targetUser, sessionCleanupComplete: !invalidation.failures.length });
   } catch (error) {
     await auditLogger.logError(req, error, "Failed to restore user");
     next(error);
@@ -1418,6 +1600,7 @@ export const archiveUser = async (req, res, next) => {
     const oldData = targetUser.toObject();
 
     await targetUser.archive(actor?._id || null);
+    await invalidateUserSessions({ user: targetUser, reason: "account_archived", req });
 
     await auditLogger.logModification(
       req,
@@ -1466,6 +1649,7 @@ export const banUser = async (req, res, next) => {
     const oldData = targetUser.toObject();
 
     await targetUser.ban(adminUser?._id, reason || "Banned by admin");
+    await invalidateUserSessions({ user: targetUser, reason: "account_banned", req });
 
     await auditLogger.logModification(
       req,
@@ -1615,9 +1799,14 @@ export const updatePermissions = async (req, res, next) => {
       });
 
     const oldData = targetUser.toObject();
-    targetUser.permissions = ALL_PERMISSIONS.filter((p) =>
+    const nextPermissions = ALL_PERMISSIONS.filter((p) =>
       normalizedPermissions.includes(p),
     );
+    if (JSON.stringify(nextPermissions) === JSON.stringify(targetUser.permissions || [])) {
+      return res.json({ message: "Permissions unchanged", user: targetUser, sessionCleanupComplete: true });
+    }
+    const invalidation = await invalidateUserSessions({ user: targetUser, reason: "permissions_changed", req });
+    targetUser.permissions = nextPermissions;
     await targetUser.save();
 
     await auditLogger.logModification(
@@ -1629,7 +1818,7 @@ export const updatePermissions = async (req, res, next) => {
       `Permissions updated: ${targetUser.permissions.join(", ") || "(none)"}`,
     );
 
-    res.json({ message: "Permissions updated successfully", user: targetUser });
+    res.json({ message: "Permissions updated successfully", user: targetUser, sessionCleanupComplete: !invalidation.failures.length });
   } catch (error) {
     await auditLogger.logError(req, error, "Failed to update user permissions");
     next(error);

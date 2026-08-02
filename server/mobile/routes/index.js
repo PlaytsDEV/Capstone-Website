@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const seedController = require('../controllers/seed.controller');
-const { authMiddleware, adminMiddleware } = require('../middleware/auth');
+const seedRoutes = require('./seed.routes');
 
 // Auth routes
 const authRoutes = require('./auth.routes');
@@ -56,7 +55,7 @@ const paymongoRoutes = require('./paymongo.routes');
 router.use('/paymongo', paymongoRoutes);
 
 // Seed route (auth only — for demo/presentation use)
-router.post('/seed', authMiddleware, seedController.seedData);
+router.use('/seed', seedRoutes);
 
 // Health check
 router.get('/health', (req, res) => {

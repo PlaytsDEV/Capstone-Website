@@ -14,7 +14,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Eye, EyeOff } from "lucide-react";
+import PasswordVisibilityButton from "../../../shared/components/PasswordVisibilityButton";
 import {
   createUserWithEmailAndPassword,
   signInWithPopup,
@@ -27,6 +27,7 @@ import { showNotification } from "../../../shared/utils/notification";
 import { authApi } from "../../../shared/api/apiClient";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { useAppNavigation } from "../../../shared/hooks/useAppNavigation";
+import { recoverFromAuthFailure } from "../../../shared/utils/identitySafety";
 import {
   validateEmail,
   validatePassword,
@@ -384,7 +385,7 @@ function SignUp() {
           },
         });
       } catch (backendError) {
-        if (firebaseUser) await firebaseUser.delete();
+        await recoverFromAuthFailure(auth, backendError);
         throw backendError;
       }
     } catch (error) {
@@ -402,15 +403,7 @@ function SignUp() {
       const result = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
       if (!firebaseUser.email) {
-        try {
-          await firebaseUser.delete();
-        } catch (_) {
-          try {
-            await auth.signOut();
-          } catch (_2) {
-            /* ignore */
-          }
-        }
+        await recoverFromAuthFailure(auth);
         socialAuthRef.current = false;
         showNotification(
           "Unable to get email from your Google account.",
@@ -475,8 +468,18 @@ function SignUp() {
             appNavigate("/applicant/check-availability");
           } catch (regError) {
             const errMsg =
-              regError.response?.data?.error || regError.message || "";
+              regError.response?.data?.message || regError.message || "";
             const errCode = regError.response?.data?.code || "";
+
+            if (errCode === "IDENTITY_CONFLICT") {
+              await recoverFromAuthFailure(auth, regError);
+              showNotification(
+                "This account requires identity verification before it can be linked. Please use your original sign-in method or contact support.",
+                "warning",
+                7000,
+              );
+              return;
+            }
 
             // If the error is about duplicate email/username, redirect to sign-in
             if (
@@ -499,17 +502,8 @@ function SignUp() {
               return;
             }
 
-            // Other registration errors — clean up and show message
-            try {
-              const u = auth.currentUser;
-              if (u) await u.delete();
-            } catch (e) {
-              try {
-                await auth.signOut();
-              } catch (e2) {
-                /* ignore */
-              }
-            }
+            // Preserve the Firebase identity; onboarding can be retried safely.
+            await recoverFromAuthFailure(auth, regError);
             showNotification(
               errMsg || "An unexpected error occurred.",
               "error",
@@ -517,16 +511,14 @@ function SignUp() {
             setLoading(false);
           }
         } else {
-          // Non-404 error — delete the auto-created Firebase account to stay in sync
-          try {
-            const u = auth.currentUser;
-            if (u) await u.delete();
-          } catch (delErr) {
-            try {
-              await auth.signOut();
-            } catch (_) {
-              /* ignore */
-            }
+          await recoverFromAuthFailure(auth, loginError);
+          if (loginError.response?.data?.code === "IDENTITY_CONFLICT") {
+            showNotification(
+              "This account requires identity verification before it can be linked. Please use your original sign-in method or contact support.",
+              "warning",
+              7000,
+            );
+            return;
           }
           showNotification(
             "An error occurred while checking your account. Please try again.",
@@ -536,17 +528,7 @@ function SignUp() {
         }
       }
     } catch (error) {
-      if (auth.currentUser) {
-        try {
-          await auth.currentUser.delete();
-        } catch (delErr) {
-          try {
-            await auth.signOut();
-          } catch (_) {
-            /* ignore */
-          }
-        }
-      }
+      await recoverFromAuthFailure(auth, error);
       if (error.code !== "auth/cancelled-popup-request")
         showNotification(
           getFirebaseErrorMessage(error, "signup"),
@@ -657,17 +639,10 @@ function SignUp() {
                   error={touched.password ? validationErrors.password : null}
                   valid={touched.password && fieldValid.password}
                   endAdornment={
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      tabIndex={-1}
-                    >
-                      {showPassword ? (
-                        <EyeOff className="w-5 h-5" />
-                      ) : (
-                        <Eye className="w-5 h-5" />
-                      )}
-                    </button>
+                    <PasswordVisibilityButton
+                      visible={showPassword}
+                      onToggle={() => setShowPassword((current) => !current)}
+                    />
                   }
                 />
 
@@ -763,17 +738,10 @@ function SignUp() {
                 }
                 valid={touched.confirmPassword && fieldValid.confirmPassword}
                 endAdornment={
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    tabIndex={-1}
-                  >
-                    {showConfirmPassword ? (
-                      <EyeOff className="w-5 h-5" />
-                    ) : (
-                      <Eye className="w-5 h-5" />
-                    )}
-                  </button>
+                  <PasswordVisibilityButton
+                    visible={showConfirmPassword}
+                    onToggle={() => setShowConfirmPassword((current) => !current)}
+                  />
                 }
               />
 

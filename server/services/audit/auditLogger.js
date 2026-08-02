@@ -8,6 +8,7 @@
  */
 
 import AuditLog from "../../models/AuditLog.js";
+import crypto from "crypto";
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -56,6 +57,11 @@ const getUserInfo = (req) => {
   };
 };
 
+const fingerprintIdentity = (value) =>
+  value && value !== "anonymous" && value !== "unknown"
+    ? `sha256:${crypto.createHash("sha256").update(String(value).trim().toLowerCase()).digest("hex").slice(0, 12)}`
+    : value || "unknown";
+
 // ============================================================================
 // AUDIT LOGGER CLASS
 // ============================================================================
@@ -86,7 +92,7 @@ class AuditLogger {
           action ||
           (success ? "User login successful" : "Failed login attempt"),
         severity: success ? "info" : "warning",
-        user: email,
+        user: fingerprintIdentity(email),
         userId: typeof user === "object" ? user?._id : null,
         userRole,
         ip: getClientIP(req),
@@ -94,8 +100,8 @@ class AuditLogger {
         branch,
         details,
       });
-    } catch (error) {
-      console.error("Failed to log login event:", error);
+    } catch (_) {
+      console.error("Failed to log login event.");
     }
   }
 
@@ -115,7 +121,7 @@ class AuditLogger {
         type: "login",
         action: "User logout",
         severity: "info",
-        user: email,
+        user: fingerprintIdentity(email),
         userId: typeof user === "object" ? user?._id : userInfo.userId,
         userRole,
         ip: getClientIP(req),
@@ -138,7 +144,7 @@ class AuditLogger {
         typeof user === "object" ? resolveAuditRole(user) : "applicant";
       const branch = typeof user === "object" ? user?.branch : null;
       const userId = typeof user === "object" ? user?._id : null;
-      const username = typeof user === "object" ? user?.username : null;
+      const emailFingerprint = fingerprintIdentity(email);
 
       await AuditLog.log({
         type: "registration",
@@ -146,7 +152,7 @@ class AuditLogger {
           ? "User Registration Successful"
           : "Registration Failed",
         severity: success ? "info" : "warning",
-        user: email,
+        user: emailFingerprint,
         userId,
         userRole,
         ip: getClientIP(req),
@@ -157,11 +163,11 @@ class AuditLogger {
         details:
           details ||
           (success
-            ? `New user registered: ${email}${username ? ` (${username})` : ""}`
-            : `Registration attempt failed for ${email}`),
+            ? `New user registered: ${emailFingerprint}`
+            : `Registration attempt failed for ${emailFingerprint}`),
       });
-    } catch (error) {
-      console.error("Failed to log registration event:", error);
+    } catch (_) {
+      console.error("Failed to log registration event.");
     }
   }
 
@@ -197,7 +203,7 @@ class AuditLogger {
           entityType === "user" && changedFields.includes("role")
             ? "high"
             : "info",
-        user: userInfo.email,
+        user: fingerprintIdentity(userInfo.email),
         userId: userInfo.userId,
         userRole: userInfo.role,
         ip: getClientIP(req),
@@ -215,8 +221,8 @@ class AuditLogger {
           after: newData ? this.sanitizeData(newData) : null,
         },
       });
-    } catch (error) {
-      console.error("Failed to log modification event:", error);
+    } catch (_) {
+      console.error("Failed to log modification event.");
     }
   }
 
@@ -237,7 +243,7 @@ class AuditLogger {
         type: "data_deletion",
         action: `Deleted ${entityType}`,
         severity: "critical",
-        user: userInfo.email,
+        user: fingerprintIdentity(userInfo.email),
         userId: userInfo.userId,
         userRole: userInfo.role,
         ip: getClientIP(req),
@@ -251,8 +257,8 @@ class AuditLogger {
           reason,
         },
       });
-    } catch (error) {
-      console.error("Failed to log deletion event:", error);
+    } catch (_) {
+      console.error("Failed to log deletion event.");
     }
   }
 
@@ -267,7 +273,7 @@ class AuditLogger {
         type: "error",
         action: context || "Application error",
         severity: "critical",
-        user: userInfo.email,
+        user: fingerprintIdentity(userInfo.email),
         userId: userInfo.userId,
         userRole: userInfo.role,
         ip: getClientIP(req),
@@ -283,8 +289,8 @@ class AuditLogger {
           body: req?.body ? this.sanitizeData(req.body) : null,
         },
       });
-    } catch (logError) {
-      console.error("Failed to log error event:", logError);
+    } catch (_) {
+      console.error("Failed to log error event.");
     }
   }
 
@@ -310,7 +316,7 @@ class AuditLogger {
         type,
         action,
         severity,
-        user: userInfo.email,
+        user: fingerprintIdentity(userInfo.email),
         userId: userInfo.userId,
         userRole: userInfo.role,
         ip: getClientIP(req),
@@ -321,8 +327,8 @@ class AuditLogger {
         details,
         metadata,
       });
-    } catch (error) {
-      console.error("Failed to log custom event:", error);
+    } catch (_) {
+      console.error("Failed to log custom event.");
     }
   }
 
@@ -332,30 +338,22 @@ class AuditLogger {
   sanitizeData(data) {
     if (!data) return null;
 
-    const sensitiveFields = [
-      "password",
-      "token",
-      "secret",
-      "firebaseUid",
-      "idToken",
-    ];
-    const sanitized = { ...data };
+    if (data instanceof Date) return data;
+    if (Array.isArray(data)) return data.map((value) => this.sanitizeData(value));
+    if (typeof data !== "object") return data;
+    if (typeof data.toObject === "function") return this.sanitizeData(data.toObject());
 
-    if (sanitized.toObject) {
-      return this.sanitizeData(sanitized.toObject());
-    }
-
-    sensitiveFields.forEach((field) => {
-      if (sanitized[field]) {
-        sanitized[field] = "[REDACTED]";
-      }
-    });
-
-    if (sanitized._id) {
-      sanitized._id = String(sanitized._id);
-    }
-
-    return sanitized;
+    const sensitiveKey = /(password|otp|token|secret|authorization|sessionid|deviceid|firebaseuid|apikey)/i;
+    return Object.fromEntries(
+      Object.entries(data).map(([key, value]) => [
+        key,
+        sensitiveKey.test(key.replace(/[^a-z0-9]/gi, ""))
+          ? "[REDACTED]"
+          : key === "_id"
+            ? String(value)
+            : this.sanitizeData(value),
+      ]),
+    );
   }
 }
 

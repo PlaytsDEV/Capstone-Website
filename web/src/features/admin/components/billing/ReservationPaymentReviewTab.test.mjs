@@ -22,7 +22,7 @@ test("manual Reservation proof review is mounted in the active Billing workspace
   assert.match(component, /Reservation Payment Review/);
   assert.match(component, /Expected/);
   assert.match(component, /Submitted/);
-  assert.match(component, /View proof/);
+  assert.match(component, /View Payment Proof/);
 });
 
 test("manual approval is gated and confirmed PayMongo entries are informational", () => {
@@ -31,7 +31,7 @@ test("manual approval is gated and confirmed PayMongo entries are informational"
     /payment\.source === "manual_proof" && payment\.status === "under_review"/,
   );
   assert.match(component, /Automatically confirmed by PayMongo/);
-  assert.match(component, /No manual approval available/);
+  assert.match(component, /No manual approval action available for this payment/);
 });
 
 test("decision modal preserves backend errors and prevents duplicate clicks", () => {

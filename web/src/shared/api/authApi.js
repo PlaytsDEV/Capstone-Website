@@ -35,8 +35,8 @@ const getFreshToken = async (forceRefresh = false) => {
   if (!user) return null;
   try {
     return await user.getIdToken(forceRefresh);
-  } catch (error) {
-    console.error("Failed to get token:", error);
+  } catch (_) {
+    console.error("Failed to refresh the authentication token.");
     return null;
   }
 };
@@ -54,6 +54,7 @@ const authRequest = async (url, options = {}, _isRetry = false) => {
   const token = await getFreshToken();
   const response = await fetch(`${API_BASE_URL}${url}`, {
     ...options,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(token && { Authorization: `Bearer ${token}` }),
@@ -86,9 +87,14 @@ const authRequest = async (url, options = {}, _isRetry = false) => {
     // Create error with .response property so callers can check status codes
     // (e.g., Google sign-up flow checks error.response?.status === 404)
     const error = new Error(errorMessage);
+    error.code = errorCode;
     error.response = {
       status: response.status,
-      data: errorData,
+      data: {
+        ...errorData,
+        code: errorCode,
+        message: errorMessage,
+      },
     };
     throw error;
   }
@@ -121,6 +127,7 @@ export const authApi = {
   },
 
   resendOtp: () => authRequest("/auth/resend-otp", { method: "POST" }),
+  finalizePasswordReset: () => authRequest("/auth/finalize-password-reset", { method: "POST" }),
 
   /**
    * Check if user exists in backend (doesn't create audit log)
@@ -148,11 +155,11 @@ export const authApi = {
   logout: async () => {
     try {
       // Call backend logout endpoint first to log the logout
-      const response = await authRequest("/auth/logout", { method: "POST" });
+      await authRequest("/auth/logout", { method: "POST" });
     } catch (error) {
       console.error(
         "❌ [Logout] Backend logout error:",
-        error.message || error,
+        "Request failed",
       );
     }
     // Always sign out from Firebase even if backend fails

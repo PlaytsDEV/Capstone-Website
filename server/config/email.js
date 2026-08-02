@@ -26,6 +26,7 @@
 import nodemailer from "nodemailer";
 import { Resend } from "resend";
 import dotenv from "dotenv";
+import crypto from "crypto";
 
 dotenv.config();
 
@@ -82,7 +83,6 @@ console.log("[EMAIL CONFIG]", {
   host: emailConfig.host || "gmail (service)",
   port: emailConfig.port,
   secure: emailConfig.secure,
-  sender: emailConfig.user || "(none)",
 });
 
 if (!isEmailConfigured || process.env.NODE_ENV === "test") {
@@ -92,17 +92,11 @@ if (!isEmailConfigured || process.env.NODE_ENV === "test") {
 // Verify connection on startup
 transporter.verify((error) => {
   if (error) {
-    console.log("[EMAIL CONFIG] SMTP verification failed:", {
-      message: error.message,
-      code: error.code,
-      command: error.command,
-      response: error.response,
-    });
+    console.log("[EMAIL CONFIG] SMTP verification failed", safeEmailFailure(error));
     console.log("[EMAIL CONFIG] Set EMAIL_USER/EMAIL_PASSWORD or SMTP_USER/SMTP_PASS to enable emails.");
   } else {
     console.log("[EMAIL CONFIG] SMTP connection verified and ready.", {
       host: emailConfig.host || "gmail",
-      sender: emailConfig.user,
     });
   }
 });
@@ -117,7 +111,7 @@ const OTP_FROM = String(process.env.RESEND_FROM_EMAIL || "").trim();
 const resendClient = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
 if (resendClient && OTP_FROM) {
-  console.log("[EMAIL CONFIG] Resend configured.", { from: OTP_FROM });
+  console.log("[EMAIL CONFIG] Resend OTP transport configured.");
 } else {
   if (!RESEND_API_KEY) console.log("[EMAIL CONFIG] RESEND_API_KEY not set — OTP email will fail.");
   if (!OTP_FROM) console.log("[EMAIL CONFIG] RESEND_FROM_EMAIL not set — OTP email will fail.");
@@ -134,6 +128,22 @@ const escapeHtml = (value) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+
+const emailFingerprint = (value) =>
+  crypto
+    .createHash("sha256")
+    .update(String(value || "").trim().toLowerCase())
+    .digest("hex")
+    .slice(0, 12);
+
+function safeEmailFailure(error) {
+  return {
+    category: /timeout|timed out|etimedout/i.test(String(error?.code || error?.name || ""))
+      ? "timeout"
+      : "unknown",
+    statusCode: Number(error?.statusCode || error?.status || 0) || null,
+  };
+}
 
 const formatVisitScheduleLabel = (visitDate, visitTime) => {
   const hasDate = Boolean(visitDate);
@@ -337,10 +347,10 @@ export const sendInquiryResponseEmail = async ({
   };
   try {
     const info = await transporter.sendMail(mailOptions);
-    console.log(`✅ Email sent to ${to}: ${info.messageId}`);
+    console.log("✅ Email accepted", { emailFingerprint: emailFingerprint(to), success: true });
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error(`❌ Failed to send email to ${to}:`, error.message);
+    console.error("❌ Email send failed", { emailFingerprint: emailFingerprint(to), ...safeEmailFailure(error) });
     return { success: false, error: error.message };
   }
 };
@@ -392,10 +402,10 @@ export const sendReservationConfirmedEmail = async ({
   };
   try {
     const info = await transporter.sendMail(mailOptions);
-    console.log(`✅ Reservation confirmed email sent to ${to}`);
+    console.log("✅ Reservation email accepted", { emailFingerprint: emailFingerprint(to), success: true });
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error(`❌ Failed to send reservation email to ${to}:`, error.message);
+    console.error("❌ Reservation email failed", { emailFingerprint: emailFingerprint(to), ...safeEmailFailure(error) });
     return { success: false, error: error.message };
   }
 };
@@ -434,10 +444,10 @@ export const sendVisitApprovedEmail = async ({ to, tenantName, branchName }) => 
   };
   try {
     const info = await transporter.sendMail(mailOptions);
-    console.log(`✅ Visit approved email sent to ${to}`);
+    console.log("✅ Visit approval email accepted", { emailFingerprint: emailFingerprint(to), success: true });
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error(`❌ Failed to send visit approved email to ${to}:`, error.message);
+    console.error("❌ Visit approval email failed", { emailFingerprint: emailFingerprint(to), ...safeEmailFailure(error) });
     return { success: false, error: error.message };
   }
 };
@@ -601,10 +611,10 @@ export const sendPhysicalVisitStatusEmail = async ({
 
   try {
     const info = await transporter.sendMail(mailOptions);
-    console.log(`Visit status email sent to ${to}`);
+    console.log("Visit status email accepted", { emailFingerprint: emailFingerprint(to), success: true });
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error(`Failed to send visit status email to ${to}:`, error.message);
+    console.error("Visit status email failed", { emailFingerprint: emailFingerprint(to), ...safeEmailFailure(error) });
     return { success: false, error: error.message };
   }
 };
@@ -640,10 +650,10 @@ export const sendDocumentsRejectedEmail = async ({ to, tenantName, rejectionReas
       html: generateDocumentsRejectedEmail(tenantName, rejectionReason, branchName),
       text: `Hello ${tenantName}, your documents need attention. Reason: ${rejectionReason}. Please log in and re-upload. — Lilycrest Dormitory`,
     });
-    console.log(`✅ Documents rejected email sent to ${to}`);
+    console.log("✅ Document rejection email accepted", { emailFingerprint: emailFingerprint(to), success: true });
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error(`❌ Failed to send document rejection email:`, error.message);
+    console.error("❌ Document rejection email failed", { emailFingerprint: emailFingerprint(to), ...safeEmailFailure(error) });
     return { success: false, error: error.message };
   }
 };
@@ -697,10 +707,10 @@ export const sendBillGeneratedEmail = async ({
       html: generateBillGeneratedEmail({ tenantName, billTypeLabel, roomName, billingMonth, totalAmount, dueDate, branchName }),
       text: `Hello ${tenantName}, your ${billTypeLabel} bill for ${billingMonth} is PHP ${totalAmount}. Due: ${dueDate}. Log in to view details and payment instructions. If you use bank transfer, proof of payment may be required. - Lilycrest Dormitory`,
     });
-    console.log(`✅ Bill generated email sent to ${to}`);
+    console.log("✅ Bill email accepted", { emailFingerprint: emailFingerprint(to), success: true });
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error(`❌ Failed to send bill email:`, error.message);
+    console.error("❌ Bill email failed", { emailFingerprint: emailFingerprint(to), ...safeEmailFailure(error) });
     return { success: false, error: error.message };
   }
 };
@@ -750,10 +760,10 @@ export const sendUtilityChargeAvailableEmail = async ({
       html: generateUtilityChargeEmail({ tenantName, utilityLabel, billingMonth, utilityAmount, totalAmount, dueDate, branchName }),
       text: `Hello ${tenantName}, your ${utilityLabel.toLowerCase()} charge for ${billingMonth} is now available. Current bill total: ₱${totalAmount}. Due: ${dueDate}.`,
     });
-    console.log(`✅ Utility charge email sent to ${to}`);
+    console.log("✅ Utility email accepted", { emailFingerprint: emailFingerprint(to), success: true });
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error("❌ Failed to send utility charge email:", error.message);
+    console.error("❌ Utility email failed", { emailFingerprint: emailFingerprint(to), ...safeEmailFailure(error) });
     return { success: false, error: error.message };
   }
 };
@@ -802,7 +812,7 @@ export const sendPaymentReminderEmail = async ({
     });
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error(`❌ Payment reminder email failed:`, error.message);
+    console.error("❌ Payment reminder email failed", { emailFingerprint: emailFingerprint(to), ...safeEmailFailure(error) });
     return { success: false, error: error.message };
   }
 };
@@ -879,7 +889,7 @@ export const sendOverdueNoticeEmail = async ({
     });
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error(`❌ Overdue notice email failed:`, error.message);
+    console.error("❌ Overdue notice email failed", { emailFingerprint: emailFingerprint(to), ...safeEmailFailure(error) });
     return { success: false, error: error.message };
   }
 };
@@ -914,7 +924,7 @@ export const sendPaymentApprovedEmail = async ({ to, tenantName, billingMonth, p
     });
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error(`❌ Payment approved email failed:`, error.message);
+    console.error("❌ Payment approved email failed", { emailFingerprint: emailFingerprint(to), ...safeEmailFailure(error) });
     return { success: false, error: error.message };
   }
 };
@@ -950,7 +960,7 @@ export const sendPaymentRejectedEmail = async ({ to, tenantName, billingMonth, r
     });
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error(`❌ Payment rejected email failed:`, error.message);
+    console.error("❌ Payment rejected email failed", { emailFingerprint: emailFingerprint(to), ...safeEmailFailure(error) });
     return { success: false, error: error.message };
   }
 };
@@ -1043,10 +1053,10 @@ export const sendPaymentReceiptEmail = async ({
         html,
         text,
       });
-      console.log(`✅ Receipt email sent to ${to} — ${info.messageId}`);
+      console.log("✅ Receipt email accepted", { emailFingerprint: emailFingerprint(to), success: true });
       return { success: true, messageId: info.messageId };
     } catch (error) {
-      console.error(`❌ Receipt email (SMTP) failed for ${to}:`, error.message);
+      console.error("❌ Receipt email (SMTP) failed", { emailFingerprint: emailFingerprint(to), ...safeEmailFailure(error) });
       return { success: false, error: error.message };
     }
   }
@@ -1056,13 +1066,13 @@ export const sendPaymentReceiptEmail = async ({
     try {
       const { data, error } = await resendClient.emails.send({ from: OTP_FROM, to: [to], subject, html, text });
       if (error) {
-        console.error(`❌ Receipt email (Resend) failed for ${to}:`, error.message);
+        console.error("❌ Receipt email (Resend) failed", { emailFingerprint: emailFingerprint(to), ...safeEmailFailure(error) });
         return { success: false, error: error.message };
       }
-      console.log(`✅ Receipt email (Resend) sent to ${to} — ${data.id}`);
+      console.log("✅ Receipt email (Resend) accepted", { emailFingerprint: emailFingerprint(to), success: true });
       return { success: true, messageId: data.id };
     } catch (error) {
-      console.error(`❌ Receipt email (Resend) error for ${to}:`, error.message);
+      console.error("❌ Receipt email (Resend) error", { emailFingerprint: emailFingerprint(to), ...safeEmailFailure(error) });
       return { success: false, error: error.message };
     }
   }
@@ -1075,7 +1085,7 @@ export const sendPaymentReceiptEmail = async ({
 // LOGIN OTP EMAIL
 // =============================================================================
 
-const generateLoginOtpEmail = ({ displayName, otp, expiresInMinutes }) => {
+export const generateLoginOtpEmail = ({ displayName, otp, expiresInMinutes }) => {
   const bodyHtml = `
     ${p(`Hi <strong>${escapeHtml(displayName)}</strong>,`)}
     ${p("Use this 6-digit code to finish signing in to your Lilycrest account.", { size: "14px" })}
@@ -1092,28 +1102,75 @@ const generateLoginOtpEmail = ({ displayName, otp, expiresInMinutes }) => {
 
 export const sendLoginOtpEmail = async ({ to, name, otp, expiresInMinutes = 10 }) => {
   if (!resendClient || !OTP_FROM) {
-    console.error("[OTP EMAIL ERROR] Not sent — RESEND_API_KEY or RESEND_FROM_EMAIL is not configured");
-    return { success: false, message: "Email service not configured" };
+    return {
+      success: false,
+      category: "configuration",
+      code: "EMAIL_PROVIDER_NOT_CONFIGURED",
+      statusCode: null,
+    };
   }
 
-  const displayName = name || "there";
-  console.log("[OTP EMAIL] Sending via Resend", { to, from: OTP_FROM });
+  try {
+    const result = await resendClient.emails.send(
+      buildLoginOtpMessage({ to, name, otp, expiresInMinutes }),
+    );
+    return normalizeOtpEmailResponse(result);
+  } catch (error) {
+    return { success: false, ...classifyOtpEmailError(error) };
+  }
+};
 
-  const { data, error } = await resendClient.emails.send({
+export const normalizeOtpEmailResponse = ({ data, error } = {}) => {
+  if (error) return { success: false, ...classifyOtpEmailError(error) };
+  if (typeof data?.id !== "string" || !data.id.trim()) {
+    return {
+      success: false,
+      category: "unexpected_response",
+      code: "EMAIL_PROVIDER_UNEXPECTED_RESPONSE",
+      statusCode: null,
+    };
+  }
+  return { success: true, category: "accepted", messageId: data.id };
+};
+
+export const buildLoginOtpMessage = ({ to, name, otp, expiresInMinutes = 10 }) => {
+  const displayName = name || "there";
+  return {
     from: OTP_FROM,
     to: [to],
     subject: "Your Lilycrest login OTP",
     html: generateLoginOtpEmail({ displayName, otp, expiresInMinutes }),
-    text: `Hi ${displayName}, your Lilycrest login OTP is ${otp}. It expires in ${expiresInMinutes} minutes.`,
-  });
+    text: `Hi ${String(displayName).replace(/[\r\n]+/g, " ")}, your Lilycrest login OTP is ${otp}. It expires in ${expiresInMinutes} minutes.`,
+  };
+};
 
-  if (error) {
-    console.error("[OTP EMAIL ERROR]", { to, name: error.name, message: error.message, statusCode: error.statusCode });
-    return { success: false, error: error.message, code: error.name, statusCode: error.statusCode };
+export const classifyOtpEmailError = (error = {}) => {
+  const statusCode = Number(error.statusCode || error.status || error.cause?.statusCode || 0) || null;
+  const rawCode = String(error.name || error.code || error.cause?.code || "");
+  const text = `${rawCode} ${error.message || ""}`.toLowerCase();
+
+  if (/api key|invalid[_ -]?api[_ -]?key|unauthor|authenticat/.test(text)) {
+    return { category: "invalid_api_key", code: "EMAIL_PROVIDER_AUTH_REJECTED", statusCode };
   }
-
-  console.log("[OTP EMAIL] Sent successfully", { to, messageId: data.id });
-  return { success: true, messageId: data.id };
+  if (statusCode === 429 || /rate.?limit|too many/.test(text)) {
+    return { category: "rate_limit", code: "EMAIL_PROVIDER_RATE_LIMITED", statusCode };
+  }
+  if (/timeout|timed out|abort|econnreset|etimedout/.test(text)) {
+    return { category: "timeout", code: "EMAIL_PROVIDER_TIMEOUT", statusCode };
+  }
+  if (/econnrefused|enotfound|eai_again|network|socket/.test(text)) {
+    return { category: "network", code: "EMAIL_PROVIDER_NETWORK_ERROR", statusCode };
+  }
+  if (/domain|sender|from address|verify/.test(text)) {
+    return { category: "sender_rejection", code: "EMAIL_PROVIDER_SENDER_REJECTED", statusCode };
+  }
+  if ([401, 403].includes(statusCode)) {
+    return { category: "invalid_api_key", code: "EMAIL_PROVIDER_AUTH_REJECTED", statusCode };
+  }
+  if (statusCode && statusCode >= 400) {
+    return { category: "provider_rejected", code: "EMAIL_PROVIDER_REJECTED", statusCode };
+  }
+  return { category: "unknown", code: "EMAIL_PROVIDER_ERROR", statusCode };
 };
 
 export default transporter;
@@ -1241,14 +1298,18 @@ if (isRunDirectly) {
     process.exit(template && !QA_TEMPLATES[template] ? 1 : 0);
   }
 
-  console.log(`\n[QA] Force-sending "${template}" to ${to} ...`);
+  console.log(`\n[QA] Force-sending "${template}"`, { emailFingerprint: emailFingerprint(to) });
   QA_TEMPLATES[template](to, name)
     .then((result) => {
-      console.log("[QA] Result:", result);
+      console.log("[QA] Result:", {
+        success: Boolean(result?.success),
+        category: result?.category || null,
+        statusCode: result?.statusCode || null,
+      });
       process.exit(result.success ? 0 : 1);
     })
     .catch((err) => {
-      console.error("[QA] Unhandled error:", err);
+      console.error("[QA] Unhandled error", safeEmailFailure(err));
       process.exit(1);
     });
 }

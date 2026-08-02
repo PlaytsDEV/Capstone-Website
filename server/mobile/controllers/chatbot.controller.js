@@ -559,7 +559,7 @@ async function requestAdmin(req, res) {
     const liveChatRequest = {
       session_id: sessionId, user_id: userId, user_name: user?.name || 'Tenant', user_email: user?.email,
       reason: normalizedReason || 'Requested admin assistance', chat_history: chatHistory, messages: [],
-      status: 'waiting', admin_id: null, admin_name: null, position: liveChatQueue.size + 1, created_at: new Date()
+      status: 'waiting', admin_id: null, admin_name: null, branch: user?.branch || null, position: liveChatQueue.size + 1, created_at: new Date()
     };
 
     liveChatQueue.set(sessionId, liveChatRequest);
@@ -599,7 +599,7 @@ async function getLiveChats(req, res) {
   try {
     const pendingChats = [];
     liveChatQueue.forEach((chat, sessionId) => {
-      if (chat.status === 'waiting' || chat.status === 'active') {
+      if ((chat.status === 'waiting' || chat.status === 'active') && (!req.mobileBranchScope || chat.branch === req.mobileBranchScope)) {
         pendingChats.push({ session_id: sessionId, user_name: chat.user_name, reason: chat.reason, status: chat.status, created_at: chat.created_at });
       }
     });
@@ -641,6 +641,7 @@ async function acceptLiveChat(req, res) {
     const adminUser = await db.collection('users').findOne({ user_id: req.user.user_id });
     const liveChat = liveChatQueue.get(session_id);
     if (!liveChat) return res.status(404).json({ error: 'Chat session not found' });
+    if (req.mobileBranchScope && liveChat.branch !== req.mobileBranchScope) return res.status(404).json({ error: 'Chat session not found' });
     if (liveChat.status === 'active') return res.status(400).json({ error: 'Chat already being handled', admin_name: liveChat.admin_name });
 
     liveChat.status = 'active';
@@ -671,6 +672,7 @@ async function sendAdminMessage(req, res) {
 
     const liveChat = liveChatQueue.get(normalizedSession.value);
     if (!liveChat || liveChat.status !== 'active') return res.status(404).json({ error: 'Active chat session not found' });
+    if (req.mobileBranchScope && liveChat.branch !== req.mobileBranchScope) return res.status(404).json({ error: 'Active chat session not found' });
 
     liveChat.messages.push({ sender: 'admin', admin_name: adminUser?.name || 'Admin', content: normalizedMessage.value, timestamp: new Date() });
     notifyChatbotReply(liveChat.user_id, {

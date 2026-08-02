@@ -1,5 +1,6 @@
 import { useState } from "react";
 import BaseModal from "../../../../shared/components/BaseModal";
+import PasswordVisibilityButton from "../../../../shared/components/PasswordVisibilityButton";
 
 export default function AddUserModal({
   addForm,
@@ -96,7 +97,7 @@ export default function AddUserModal({
           </div>
           <div className={`form-group ${addFormErrors.password ? "has-error" : ""}`}>
             <label>Password *</label>
-            <div className="password-field-wrapper">
+            <div className="password-field-wrapper" style={{ position: "relative" }}>
               <input
                 type={showPassword ? "text" : "password"}
                 value={addForm.password}
@@ -104,14 +105,23 @@ export default function AddUserModal({
                 required
                 placeholder="Enter a password"
                 minLength={6}
+                autoComplete="new-password"
+                style={{ width: "100%", paddingRight: "56px" }}
               />
-              <button
-                type="button"
+              <PasswordVisibilityButton
+                visible={showPassword}
                 className="password-toggle-btn"
-                onClick={() => setShowPassword((prev) => !prev)}
-              >
-                {showPassword ? "Hide" : "Show"}
-              </button>
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                }}
+                onToggle={() => setShowPassword((prev) => !prev)}
+              />
             </div>
             {addFormErrors.password && (
               <span className="field-error">{addFormErrors.password}</span>

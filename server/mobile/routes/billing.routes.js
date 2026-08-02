@@ -1,13 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const billingController = require('../controllers/billing.controller');
-const { authMiddleware } = require('../middleware/auth');
+const { authMiddleware, activeTenantMiddleware } = require('../middleware/auth');
 
-router.get('/me', authMiddleware, billingController.getMyBilling);
-router.get('/me/latest', authMiddleware, billingController.getLatestBilling);
-router.get('/history', authMiddleware, billingController.getPaymentHistory);
-router.get('/:billingId/pdf', authMiddleware, billingController.downloadBillPdf);
-router.post('/', authMiddleware, billingController.createBilling);
-router.put('/:billingId', authMiddleware, billingController.updateBilling);
+router.get('/me', authMiddleware, activeTenantMiddleware, billingController.getMyBilling);
+router.get('/me/latest', authMiddleware, activeTenantMiddleware, billingController.getLatestBilling);
+router.get('/history', authMiddleware, activeTenantMiddleware, billingController.getPaymentHistory);
+router.get('/:billingId/pdf', authMiddleware, activeTenantMiddleware, billingController.downloadBillPdf);
+router.post('/', authMiddleware, activeTenantMiddleware, billingController.createBilling);
+router.put('/:billingId', authMiddleware, activeTenantMiddleware, billingController.updateBilling);
 
 module.exports = router;

@@ -4,6 +4,7 @@ import { Loader2 } from "lucide-react";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { useAppNavigation } from "../../../shared/hooks/useAppNavigation";
 import { authApi } from "../../../shared/api/authApi";
+import { getAuthErrorCode } from "../../../shared/api/authFlowState";
 import {
   getOtpPending,
   clearOtpPending,
@@ -23,7 +24,7 @@ const OTP_LENGTH = 6;
 function OtpVerify() {
   const navigate = useNavigate();
   const appNavigate = useAppNavigation();
-  const { login, setGlobalLoading } = useAuth();
+  const { refreshUser, setGlobalLoading } = useAuth();
 
   const [digits, setDigits] = useState(Array(OTP_LENGTH).fill(""));
   const [submitting, setSubmitting] = useState(false);
@@ -118,10 +119,13 @@ function OtpVerify() {
     try {
       await authApi.verifyOtp(code);
       clearOtpPending();
-      const loginResponse = await login();
-      navigateAfterAuth(loginResponse?.user || loginResponse);
+      const user = await refreshUser();
+      if (!user) {
+        throw new Error("Unable to load the authenticated profile.");
+      }
+      navigateAfterAuth(user);
     } catch (error) {
-      const errorCode = error.response?.data?.code;
+      const errorCode = getAuthErrorCode(error);
       if (errorCode === "OTP_INVALID") {
         showNotification("Incorrect code. Please try again.", "error");
         setDigits(Array(OTP_LENGTH).fill(""));
@@ -151,11 +155,17 @@ function OtpVerify() {
       setResendCooldownEnd(Date.now() + cooldown * 1000);
       showNotification("A new code has been sent to your email.", "success", 5000);
     } catch (error) {
-      const errCode = error.response?.data?.code;
+      const errCode = getAuthErrorCode(error);
       if (errCode === "OTP_RESEND_COOLDOWN") {
         const seconds = error.response?.data?.retryAfterSeconds || 60;
         setResendCooldownEnd(Date.now() + seconds * 1000);
         showNotification(`Please wait ${seconds}s before requesting another code.`, "warning");
+      } else if (errCode === "OTP_EMAIL_SEND_FAILED") {
+        showNotification(
+          "We could not send the verification code. Please try again later.",
+          "error",
+          6000,
+        );
       } else {
         showNotification("Failed to resend code. Please try again.", "error");
       }

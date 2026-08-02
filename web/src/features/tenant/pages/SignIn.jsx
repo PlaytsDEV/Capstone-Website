@@ -14,7 +14,7 @@
 
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { Eye, EyeOff } from "lucide-react";
+import PasswordVisibilityButton from "../../../shared/components/PasswordVisibilityButton";
 import {
   signInWithEmailAndPassword,
   signInWithPopup,
@@ -26,6 +26,7 @@ import { auth } from "../../../firebase/config";
 import { showNotification } from "../../../shared/utils/notification";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { useAppNavigation } from "../../../shared/hooks/useAppNavigation";
+import { recoverFromAuthFailure } from "../../../shared/utils/identitySafety";
 import {
   validateEmail,
   getFirebaseErrorMessage,
@@ -34,7 +35,16 @@ import {
   AUTH_TOAST_DURATION,
   buildAuthSuccessMessage,
 } from "../../../shared/utils/authToasts";
-import { setOtpPending } from "../../../shared/api/authSession";
+import {
+  clearLoginInProgress,
+  clearOtpPending,
+  setLoginInProgress,
+  setOtpPending,
+} from "../../../shared/api/authSession";
+import {
+  getAuthErrorCode,
+  isOtpDeliveryAccepted,
+} from "../../../shared/api/authFlowState";
 import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
 import SocialAuthButtons from "../../../shared/components/SocialAuthButtons";
 import FloatingInput from "../../../shared/components/FloatingInput";
@@ -283,8 +293,9 @@ function SignIn() {
  );
  return;
  }
- setSubmitting(true);
- setGlobalLoading(true);
+  setSubmitting(true);
+  setGlobalLoading(true);
+  setLoginInProgress();
 
  try {
       const userCredential = await signInWithEmailAndPassword(
@@ -313,7 +324,7 @@ function SignIn() {
  url: `${window.location.origin}/verify-email`,
  });
  } catch (e) {
- console.warn("Could not auto-send verification email:", e.message);
+ console.warn("Could not auto-send verification email.");
  }
  setUnverifiedEmail(formData.email);
  await auth.signOut();
@@ -337,18 +348,26 @@ function SignIn() {
 
  try {
  const loginResponse = await login();
- if (loginResponse?.requiresOtp) {
+ if (isOtpDeliveryAccepted(loginResponse)) {
   setOtpPending({ email: formData.email });
   navigate("/verify-otp");
   return;
  }
  navigateAfterAuth(loginResponse.user, firebaseUser.displayName || "there");
  } catch (backendError) {
+ clearOtpPending();
  await auth.signOut();
+ const backendErrorCode = getAuthErrorCode(backendError);
  const isNotRegistered =
  backendError.response?.status === 404 ||
  /not found|not registered|register first/i.test(backendError.message);
- if (isNotRegistered)
+ if (backendErrorCode === "OTP_EMAIL_SEND_FAILED")
+ showNotification(
+ "We could not send the verification code. Please try again later.",
+ "error",
+ 6000,
+ );
+ else if (isNotRegistered)
  showNotification(
  "User is not registered. Please sign up first.",
  "warning",
@@ -367,8 +386,9 @@ function SignIn() {
  } catch (error) {
  recordFailedAttempt();
  showNotification(getFirebaseErrorMessage(error, "login"), "error");
- } finally {
- setSubmitting(false);
+  } finally {
+  clearLoginInProgress();
+  setSubmitting(false);
  setGlobalLoading(false);
  }
  };
@@ -398,19 +418,9 @@ function SignIn() {
  const loginResponse = await login();
  handlePostAuthFlow(loginResponse, firebaseUser.displayName || firebaseUser.email || "there");
  } catch (loginError) {
- // Delete the auto-created Firebase account to keep Firebase ↔ MongoDB in sync
- // signInWithPopup auto-creates a Firebase account; if backend rejects, we must remove it
- try {
- const u = auth.currentUser;
- if (u) await u.delete();
- } catch (delErr) {
- // delete() can fail if account existed before (e.g. email/password user)
- try {
- await auth.signOut();
- } catch (_) {
- /* ignore */
- }
- }
+ // Preserve the Firebase identity. Backend failures are recoverable and must
+ // never be treated as authorization to delete an authentication account.
+ await recoverFromAuthFailure(auth, loginError);
 
  const status = loginError.response?.status;
  const errMsg = loginError.message || "";
@@ -436,6 +446,12 @@ function SignIn() {
  "error",
  );
  }
+ } else if (status === 409 && loginError.response?.data?.code === "IDENTITY_CONFLICT") {
+ showNotification(
+ "This account requires identity verification before it can be linked. Please use your original sign-in method or contact support.",
+ "warning",
+ 7000,
+ );
  } else {
  showNotification(
  "Login failed. Please try again or contact support.",
@@ -467,17 +483,7 @@ function SignIn() {
  );
  return;
  }
- if (auth.currentUser) {
- try {
- await auth.currentUser.delete();
- } catch (delErr) {
- try {
- await auth.signOut();
- } catch (_) {
- /* ignore */
- }
- }
- }
+ await recoverFromAuthFailure(auth, error);
  showNotification(getFirebaseErrorMessage(error, "login"), "error");
  } finally {
  sessionStorage.removeItem("socialAuthInProgress");
@@ -662,17 +668,10 @@ function SignIn() {
  error={touched.password ? validationErrors.password : null}
  valid={touched.password && fieldValid.password}
  endAdornment={
- <button
- type="button"
- onClick={() => setShowPassword(!showPassword)}
- tabIndex={-1}
- >
- {showPassword ? (
- <EyeOff className="w-5 h-5" />
- ) : (
- <Eye className="w-5 h-5" />
- )}
- </button>
+ <PasswordVisibilityButton
+ visible={showPassword}
+ onToggle={() => setShowPassword((current) => !current)}
+ />
  }
  />
 

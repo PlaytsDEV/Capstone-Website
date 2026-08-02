@@ -48,6 +48,12 @@ const userSchema = new mongoose.Schema(
       unique: true,
       index: true,
     },
+    onboardingStatus: {
+      type: String,
+      enum: ["pending_profile", "profile_complete", "verification_pending", "active", "onboarding_failed"],
+      default: "profile_complete",
+      index: true,
+    },
 
     // --- Credentials ---
     email: {
@@ -255,6 +261,8 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    securityVersion: { type: Number, default: 0, min: 0 },
+    authInvalidatedAt: { type: Date, default: null },
 
     // --- Soft Delete ---
     isArchived: {
