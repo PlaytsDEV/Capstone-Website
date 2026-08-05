@@ -23,6 +23,7 @@ import {
   markApplicationSession,
 } from "./authSession";
 import { withProtectedRequestPolicy } from "./requestPolicy";
+import { getApiErrorCode } from "./apiError";
 
 /**
  * Get fresh Firebase ID token for API requests.
@@ -99,6 +100,29 @@ const authRequest = async (url, options = {}, _isRetry = false) => {
   return response.json();
 };
 
+const verificationRequest = async (path, body) => {
+  const token = await getFreshToken();
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Email-Verification-CSRF": "1",
+      ...(token && { Authorization: `Bearer ${token}` }),
+    },
+    credentials: "include",
+    body: JSON.stringify(body || {}),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const errorMessage = data.message || data.error?.message || "Email verification request failed";
+    const error = new Error(errorMessage);
+    error.code = getApiErrorCode(data);
+    error.response = { status: response.status, data };
+    throw error;
+  }
+  return data;
+};
+
 /**
  * Auth API methods for the useAuth hook.
  * @deprecated Use apiClient.js authApi for new implementations
@@ -124,6 +148,23 @@ export const authApi = {
   },
 
   resendOtp: () => authRequest("/auth/resend-otp", { method: "POST" }),
+  sendEmailVerification: (continuePath) =>
+    authRequest("/auth/email-verification/send", {
+      method: "POST",
+      body: JSON.stringify({ continuePath }),
+    }),
+  exchangeEmailVerificationToken: (exchangeToken) =>
+    verificationRequest("/auth/email-verification/exchange", { exchangeToken }),
+  getEmailVerificationStatus: () =>
+    verificationRequest("/auth/email-verification/status"),
+  finalizeEmailVerification: () =>
+    verificationRequest("/auth/email-verification/finalize"),
+  reconcileEmailVerification: () =>
+    authRequest("/auth/email-verification/reconcile", { method: "POST" }),
+  resendEmailVerification: () =>
+    verificationRequest("/auth/email-verification/resend"),
+  clearEmailVerificationCapability: () =>
+    verificationRequest("/auth/email-verification/clear"),
   finalizePasswordReset: () => authRequest("/auth/finalize-password-reset", { method: "POST" }),
 
   /**

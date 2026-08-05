@@ -38,6 +38,16 @@ import {
   setRole,
   logPasswordReset,
 } from "../controllers/authController.js";
+import {
+  clearEmailVerificationCapability,
+  exchangeEmailVerificationToken,
+  finalizeEmailVerification,
+  getEmailVerificationStatus,
+  reconcileAuthenticatedEmailVerification,
+  resendEmailVerification,
+  sendAuthenticatedEmailVerification,
+} from "../controllers/emailVerificationController.js";
+import { requireEmailVerificationCsrf } from "../utils/emailVerificationCookie.js";
 
 const router = express.Router();
 
@@ -91,6 +101,27 @@ router.post("/login", authLimiter, verifyToken, login);
 router.post("/verify-otp", authLimiter, verifyToken, verifyLoginOtp);
 
 router.post("/resend-otp", authLimiter, verifyToken, resendLoginOtp);
+
+// Email verification is intentionally isolated from password-reset and login
+// OTP routes. Public operations require a short-lived HttpOnly browser
+// capability; reconciliation derives identity from a validated Firebase token.
+router.post(
+  "/email-verification/send",
+  authLimiter,
+  verifyOnboardingToken,
+  sendAuthenticatedEmailVerification,
+);
+router.post("/email-verification/exchange", publicLimiter, exchangeEmailVerificationToken);
+router.post("/email-verification/status", publicLimiter, requireEmailVerificationCsrf, getEmailVerificationStatus);
+router.post("/email-verification/finalize", publicLimiter, requireEmailVerificationCsrf, finalizeEmailVerification);
+router.post("/email-verification/resend", authLimiter, requireEmailVerificationCsrf, resendEmailVerification);
+router.post("/email-verification/clear", publicLimiter, requireEmailVerificationCsrf, clearEmailVerificationCapability);
+router.post(
+  "/email-verification/reconcile",
+  authLimiter,
+  verifyOnboardingToken,
+  reconcileAuthenticatedEmailVerification,
+);
 
 /**
  * POST /api/auth/logout

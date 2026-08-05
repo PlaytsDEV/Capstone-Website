@@ -542,7 +542,7 @@ function CheckAvailabilityPage() {
  <p className="ca-signin-prompt">
  <button onClick={() => navigate("/signin")}>Sign in</button>{" "}
  or{" "}
- <button onClick={() => navigate("/signup")}>create an account</button>{" "}
+ <button onClick={() => navigate("/signup?continue=%2Fapplicant%2Fcheck-availability")}>create an account</button>{" "}
  to reserve a room
  </p>
  )}

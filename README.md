@@ -94,6 +94,12 @@ FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY----
 EMAIL_USER=your-email@gmail.com
 EMAIL_PASSWORD=your-app-specific-password
 FRONTEND_URL=http://localhost:3000
+PUBLIC_FRONTEND_URL=http://localhost:3000
+PUBLIC_API_URL=http://localhost:5000
+ALLOWED_FRONTEND_ORIGINS=http://localhost:3000
+EMAIL_ACTION_URL=http://localhost:3000/auth-action
+RESERVATION_CONTINUATION_URL=http://localhost:3000/applicant/check-availability
+EMAIL_VERIFICATION_SECRET=use-a-long-random-development-secret
 PAYMONGO_SECRET_KEY=your-paymongo-secret-key
 PAYMONGO_WEBHOOK_SECRET=your-webhook-signing-key
 ATTACHMENT_STORAGE_DRIVER=firebase
@@ -256,7 +262,7 @@ The application implements multiple layers of security:
 cd web && npm run build
 ```
 
-Deploy the `build/` directory to **Vercel**, **Netlify**, or **Firebase Hosting**.
+Deploy the `build/` directory to the official Lilycrest frontend host.
 
 ### Backend
 
@@ -265,7 +271,9 @@ Deploy to **Railway**, **Render**, or any Node.js-compatible platform. Ensure al
 ### Production Checklist
 
 - [ ] Set `NODE_ENV=production`
-- [ ] Update `FRONTEND_URL` and `VITE_API_URL` to production domains
+- [ ] Set `PUBLIC_FRONTEND_URL=https://www.lilycrest.space` and the production `VITE_API_URL`
+- [ ] Set `PUBLIC_API_URL`, `EMAIL_ACTION_URL`, `RESERVATION_CONTINUATION_URL`, and allowed frontend origins explicitly
+- [ ] Set a distinct `EMAIL_VERIFICATION_SECRET`
 - [ ] Use production MongoDB Atlas URI with IP whitelist
 - [ ] Use production Firebase credentials
 - [ ] Set production PayMongo keys and webhook secret

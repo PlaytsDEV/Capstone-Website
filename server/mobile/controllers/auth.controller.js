@@ -29,6 +29,26 @@ function firebaseApiKey() {
   return process.env.FIREBASE_API_KEY || process.env.FIREBASE_WEB_API_KEY || null;
 }
 
+function passwordResetBaseUrl() {
+  const configured = String(process.env.PUBLIC_API_URL || process.env.BACKEND_URL || '').trim().replace(/\/+$/, '');
+  if (!isProduction) return configured || 'http://localhost:8001';
+  let parsed;
+  try {
+    parsed = new URL(configured);
+  } catch (_) {
+    throw new Error('PUBLIC_API_URL must be configured for production password reset links');
+  }
+  if (
+    parsed.protocol !== 'https:' ||
+    parsed.origin !== 'https://api.lilycrest.space' ||
+    parsed.pathname !== '/' ||
+    parsed.username || parsed.password || parsed.search || parsed.hash
+  ) {
+    throw new Error('PUBLIC_API_URL must be https://api.lilycrest.space in production');
+  }
+  return parsed.origin;
+}
+
 function generateUserId() {
   return `user_${crypto.randomUUID().replace(/-/g, '').substring(0, 12)}`;
 }
@@ -913,7 +933,7 @@ async function forgotPassword(req, res) {
         createdAt: new Date(),
       });
 
-      const backendUrl = (process.env.BACKEND_URL || 'http://localhost:8001').replace(/\/+$/, '');
+      const backendUrl = passwordResetBaseUrl();
       const resetLink = `${backendUrl}/api/auth/reset-password?token=${rawToken}`;
       const userName = tenantData.name || 'Tenant';
 

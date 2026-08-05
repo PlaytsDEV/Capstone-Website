@@ -6,11 +6,7 @@ export const AUTH_FLOW_STATE = Object.freeze({
   AUTHENTICATED: "authenticated",
 });
 
-export const getAuthErrorCode = (error) =>
-  error?.code ||
-  error?.response?.data?.code ||
-  error?.response?.data?.error?.code ||
-  null;
+export const getAuthErrorCode = getApiErrorCode;
 
 export const isOtpDeliveryAccepted = (response) =>
   response?.requiresOtp === true && response?.code === "OTP_REQUIRED";
@@ -20,3 +16,4 @@ export const shouldDeferProfileRequest = ({
   loginInProgress,
   otpPending,
 }) => !firebaseUser || loginInProgress || Boolean(otpPending);
+import { getApiErrorCode } from "./apiError.js";

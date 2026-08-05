@@ -274,6 +274,26 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    emailVerificationLastSentAt: {
+      type: Date,
+      default: null,
+      select: false,
+    },
+    emailVerificationDeliveredAt: {
+      type: Date,
+      default: null,
+      select: false,
+    },
+    emailVerificationSendReservedAt: {
+      type: Date,
+      default: null,
+      select: false,
+    },
+    emailVerificationReservationId: {
+      type: String,
+      default: null,
+      select: false,
+    },
     securityVersion: { type: Number, default: 0, min: 0 },
     authInvalidatedAt: { type: Date, default: null },
 

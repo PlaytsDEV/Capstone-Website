@@ -1,4 +1,11 @@
 import logger from "../middleware/logger.js";
+import { createCorsOriginPolicy } from "./corsPolicy.js";
+import { getPublicUrlConfig } from "./publicUrls.js";
+import {
+  getExchangeTtlSeconds,
+  getResendCooldownSeconds,
+  getSessionTtlSeconds,
+} from "../services/emailVerificationService.js";
 
 const ENV_GROUPS = Object.freeze({
   mongodb: ["MONGODB_URI"],
@@ -27,6 +34,7 @@ export function validateStartupConfig() {
   );
 
   const hasCorsConfig = Boolean(
+    String(process.env.ALLOWED_FRONTEND_ORIGINS || "").trim() ||
     String(process.env.CORS_ORIGINS || "").trim() ||
     String(process.env.FRONTEND_URL || "").trim(),
   );
@@ -61,6 +69,38 @@ export function validateStartupConfig() {
 
   if (!hasCorsConfig) {
     failures.push("cors: CORS_ORIGINS or FRONTEND_URL");
+  }
+
+  if (isProduction) {
+    for (const name of [
+      "PUBLIC_FRONTEND_URL",
+      "PUBLIC_API_URL",
+      "EMAIL_ACTION_URL",
+      "RESERVATION_CONTINUATION_URL",
+      "EMAIL_VERIFICATION_SECRET",
+    ]) {
+      if (!String(process.env[name] || "").trim()) failures.push(`email verification: ${name}`);
+    }
+    if (!String(process.env.ALLOWED_FRONTEND_ORIGINS || process.env.CORS_ORIGINS || "").trim()) {
+      failures.push("cors: ALLOWED_FRONTEND_ORIGINS or CORS_ORIGINS");
+    }
+    for (const validate of [getResendCooldownSeconds, getExchangeTtlSeconds, getSessionTtlSeconds]) {
+      try {
+        validate(process.env);
+      } catch (error) {
+        failures.push(`email verification: ${error.message}`);
+      }
+    }
+    try {
+      getPublicUrlConfig(process.env);
+    } catch (error) {
+      failures.push(`public URLs: ${error.message}`);
+    }
+    try {
+      createCorsOriginPolicy(process.env);
+    } catch (error) {
+      failures.push(`cors: ${error.message}`);
+    }
   }
 
   if (failures.length === 0) {

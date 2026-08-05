@@ -20,7 +20,6 @@ import {
   signInWithPopup,
   GoogleAuthProvider,
   FacebookAuthProvider,
-  sendEmailVerification,
 } from "firebase/auth";
 import { auth } from "../../../firebase/config";
 import { showNotification } from "../../../shared/utils/notification";
@@ -46,6 +45,7 @@ import {
   isOtpDeliveryAccepted,
 } from "../../../shared/api/authFlowState";
 import { getAuthenticatedUserDestination } from "../../../shared/api/loginRouting";
+import { normalizeVerificationErrorCode } from "../../../shared/api/apiError";
 import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
 import SocialAuthButtons from "../../../shared/components/SocialAuthButtons";
 import FloatingInput from "../../../shared/components/FloatingInput";
@@ -54,6 +54,7 @@ import "../../../shared/styles/auth-forms.css";
 import "../../public/styles/tenant-signin.css";
 import "../../../shared/styles/notification.css";
 import hero3 from "../../../assets/images/hero3.jpg";
+import { normalizeInternalContinuation } from "../../../shared/utils/emailVerificationFlow";
 
 const SIGNIN_IMAGE = hero3;
 
@@ -62,6 +63,9 @@ function SignIn() {
   const location = useLocation();
   const appNavigate = useAppNavigation();
   const { login, setGlobalLoading } = useAuth();
+  const [postAuthContinuation] = useState(() =>
+    normalizeInternalContinuation(new URLSearchParams(window.location.search).get("continue")),
+  );
 
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [showPassword, setShowPassword] = useState(false);
@@ -89,19 +93,15 @@ function SignIn() {
     }
   }, []);
 
-  // Load remembered or registered/verified email on mount
+  // Load remembered or pending registration email on mount.
   useEffect(() => {
     const locationStateEmail = location.state?.email;
-    const verifiedEmail =
-      sessionStorage.getItem("lilycrest_verified_email") ||
-      localStorage.getItem("lilycrest_verified_email");
     const pendingEmail =
       sessionStorage.getItem("lilycrest_pending_email") ||
       localStorage.getItem("lilycrest_pending_email");
     const savedEmail = localStorage.getItem("lilycrest_remember_email");
 
-    // Verified account or pending registration email takes precedence over remembered email
-    const activePrefill = verifiedEmail || locationStateEmail || pendingEmail;
+    const activePrefill = locationStateEmail || pendingEmail;
 
     if (activePrefill) {
       setFormData((prev) => ({ ...prev, email: activePrefill }));
@@ -110,8 +110,6 @@ function SignIn() {
       setTouched((prev) => ({ ...prev, email: true }));
 
       // Clean up temporary storage and history state immediately so refresh (F5) leaves form blank
-      sessionStorage.removeItem("lilycrest_verified_email");
-      localStorage.removeItem("lilycrest_verified_email");
       sessionStorage.removeItem("lilycrest_pending_email");
       localStorage.removeItem("lilycrest_pending_email");
       window.history.replaceState({}, document.title, window.location.pathname);
@@ -127,8 +125,6 @@ function SignIn() {
     if (params.get("verified") === "true") {
       setUnverifiedEmail(null);
       setVerifiedSuccess(true);
-      sessionStorage.removeItem("lilycrest_verified_email");
-      localStorage.removeItem("lilycrest_verified_email");
       sessionStorage.removeItem("lilycrest_pending_email");
       localStorage.removeItem("lilycrest_pending_email");
       window.history.replaceState({}, document.title, window.location.pathname);
@@ -220,7 +216,11 @@ function SignIn() {
  if (!suppressSuccessToast) {
  showNotification(successMessage, "success", AUTH_TOAST_DURATION);
  }
- appNavigate(getAuthenticatedUserDestination(user));
+ appNavigate(
+ postAuthContinuation !== "/signin"
+ ? postAuthContinuation
+ : getAuthenticatedUserDestination(user),
+ );
  };
 
  const validateForm = () => {
@@ -310,24 +310,26 @@ function SignIn() {
       const isAdmin = hasAdminClaims(tokenResult);
 
  if (!firebaseUser.emailVerified && !isAdmin) {
- // Send a fresh verification email before signing out
- // Guard: prevent RequireNonAdmin from redirecting during brief sign-in
+ // Request a server-generated verification email before signing out.
  sessionStorage.setItem("resendInProgress", "1");
+ let delivery = null;
  try {
- await sendEmailVerification(firebaseUser, {
- url: `${window.location.origin}/verify-email`,
- });
- } catch (e) {
- console.warn("Could not auto-send verification email.");
+ delivery = await authApi.sendEmailVerification(postAuthContinuation);
+ } catch (_) {
+ delivery = null;
  }
  setUnverifiedEmail(formData.email);
  await auth.signOut();
  sessionStorage.removeItem("resendInProgress");
+ if (delivery) {
+ navigate("/auth-action?state=sent", { replace: true });
+ } else {
  showNotification(
- "Please verify your email before logging in. A verification email has been sent.",
- "warning",
+ "Your email is not verified, and we could not send a new link right now. Please try again.",
+ "error",
  6000,
  );
+ }
  setGlobalLoading(false);
  return;
  }
@@ -592,23 +594,22 @@ function SignIn() {
  unverifiedEmail,
  formData.password,
  );
- await sendEmailVerification(cred.user, {
- url: `${window.location.origin}/verify-email`,
- });
- setResendCooldownEnd(Date.now() + 60_000);
- showNotification(
- "Verification email sent! Check your inbox.",
- "success",
- 5000,
- );
+ const delivery = await authApi.sendEmailVerification(postAuthContinuation);
+ await auth.signOut();
+ sessionStorage.removeItem("resendInProgress");
+ navigate("/auth-action?state=sent", { replace: true });
+ return;
  } catch (err) {
+ const code = normalizeVerificationErrorCode(err, "UNKNOWN");
+ const retryAfter = err.response?.data?.retryAfterSeconds;
+ if (retryAfter) setResendCooldownEnd(Date.now() + retryAfter * 1000);
  showNotification(
- err.code === "auth/too-many-requests"
+ code === "RATE_LIMITED_OR_COOLDOWN_ACTIVE" || err.code === "auth/too-many-requests"
  ? "Too many requests. Please wait a few minutes."
  : err.code === "auth/wrong-password" ||
  err.code === "auth/invalid-credential"
  ? "Incorrect password. Please re-enter your password."
- : "Could not resend. Please try signing in again.",
+ : "We could not send a new verification link right now. Please try again.",
  "error",
  );
  } finally {

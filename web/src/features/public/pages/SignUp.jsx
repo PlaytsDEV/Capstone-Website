@@ -21,7 +21,6 @@ import {
   signInWithPopup,
   GoogleAuthProvider,
   FacebookAuthProvider,
-  sendEmailVerification,
 } from "firebase/auth";
 import { auth } from "../../../firebase/config";
 import { showNotification } from "../../../shared/utils/notification";
@@ -53,6 +52,7 @@ import "../../../shared/styles/auth-forms.css";
 import "../styles/tenant-signup.css";
 import "../../../shared/styles/notification.css";
 import hero1 from "../../../assets/images/hero1.jpg";
+import { normalizeInternalContinuation } from "../../../shared/utils/emailVerificationFlow";
 
 const SIGNUP_IMAGE = hero1;
 const FIELD_LIMITS = {
@@ -61,12 +61,6 @@ const FIELD_LIMITS = {
   email: 254,
   password: 64,
   confirmPassword: 64,
-};
-
-const getWebBaseUrl = () => {
-  const configured = import.meta.env.VITE_WEB_BASE_URL;
-  if (configured && configured.trim()) return configured.trim().replace(/\/$/, "");
-  return window.location.origin;
 };
 
 function SignUp() {
@@ -345,44 +339,39 @@ function SignUp() {
       formData.lastName,
     );
 
-    let verificationEmailSent = Boolean(firebaseUser.emailVerified);
-    if (!firebaseUser.emailVerified) {
-      try {
-        await sendEmailVerification(firebaseUser, {
-          url: `${getWebBaseUrl()}/auth-action`,
-          handleCodeInApp: true,
-        });
-        verificationEmailSent = true;
-      } catch {
-        verificationEmailSent = false;
-      }
-    }
-
     sessionStorage.removeItem("lilycrest_pending_email");
     localStorage.removeItem("lilycrest_pending_email");
-    await auth.signOut();
 
-    const alreadyVerified = Boolean(firebaseUser.emailVerified);
-    appNavigate("/signin", {
-      replace: true,
-      state: { email: formData.email },
-      flash: alreadyVerified
-        ? {
-            type: "info",
-            message: "Registration is already complete. Please sign in.",
-          }
-        : verificationEmailSent
-          ? {
-              type: "success",
-              message:
-                "Account created and verification email sent. Please check your inbox and spam folder.",
-            }
-          : {
-              type: "warning",
-              message:
-                "Account created, but the verification email could not be sent. Sign in to request a new verification email.",
-            },
-    });
+    if (firebaseUser.emailVerified || response?.user?.isEmailVerified) {
+      await auth.signOut();
+      appNavigate("/signin", {
+        replace: true,
+        state: { email: formData.email },
+        flash: { type: "info", message: "Registration is already complete. Please sign in." },
+      });
+      return response;
+    }
+
+    const requestedContinuation = new URLSearchParams(window.location.search).get("continue");
+    const continuePath = normalizeInternalContinuation(requestedContinuation);
+    try {
+      await authApi.sendEmailVerification(continuePath);
+      navigate("/auth-action?state=sent", { replace: true });
+    } catch (deliveryError) {
+      if (deliveryError.response?.data?.state === "VERIFICATION_EMAIL_SEND_FAILED") {
+        navigate("/auth-action?state=send-failed", { replace: true });
+      } else {
+        await auth.signOut();
+        appNavigate("/signin", {
+          replace: true,
+          state: { email: formData.email },
+          flash: {
+            type: "warning",
+            message: "Account created, but the verification email could not be sent. Please sign in to try again.",
+          },
+        });
+      }
+    }
     return response;
   };
 
