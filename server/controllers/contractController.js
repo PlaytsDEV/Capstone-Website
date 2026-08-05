@@ -306,7 +306,8 @@ export const getContract = async (req, res) => {
     if (!contract) return res.status(404).json({ error: "Contract not found.", code: "CONTRACT_NOT_FOUND" });
     assertContractBranchAccess(req, contract.branch);
     const reservation = await Reservation.findById(contract.reservationId)
-      .select("reservationFeeAmount paymentStatus").lean();
+      .select("reservationFeeAmount paymentStatus financialWorkflowVersion reservationFeePaymentStatus")
+      .lean();
     const contractObject = contract.toObject();
     let preparedAvailability = {
       available: false,
@@ -369,6 +370,8 @@ export const getContract = async (req, res) => {
       reservationFeeAmount: reservation?.reservationFeeAmount ?? contract.reservationFeeAmount,
       approvedReservationFeeCreditAmount: contract.reservationFeeCreditAmount,
       reservationPaymentStatus: reservation?.paymentStatus,
+      financialWorkflowVersion: reservation?.financialWorkflowVersion,
+      reservationFeePaymentStatus: reservation?.reservationFeePaymentStatus,
     });
     res.json({ contract: contractObject });
   } catch (error) {

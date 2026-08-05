@@ -172,6 +172,8 @@ export const buildContractGenerationData = async (
     reservationFeeAmount: reservation.reservationFeeAmount,
     approvedReservationFeeCreditAmount: pricing.reservationFeeCreditAmount,
     reservationPaymentStatus: reservation.paymentStatus,
+    financialWorkflowVersion: reservation.financialWorkflowVersion,
+    reservationFeePaymentStatus: reservation.reservationFeePaymentStatus,
   });
   pricingValidation.errors.push(...initialPaymentSummary.errors);
   pricingValidation.valid = pricingValidation.valid && initialPaymentSummary.valid;

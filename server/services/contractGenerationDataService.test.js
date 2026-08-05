@@ -223,4 +223,29 @@ describe("Contract generation-data mapping", () => {
       legacyCompatibilityApplied: true,
     });
   });
+
+  describe("structured-workflow reservation-fee verification", () => {
+    beforeEach(() => {
+      // A structured reservation never writes the legacy paymentStatus field —
+      // left at its unrelated default to prove it no longer gates generation.
+      records.reservation.financialWorkflowVersion = "structured-initial-payment-v1";
+      records.reservation.reservationFeePaymentStatus = "verified";
+      records.reservation.paymentStatus = "pending";
+    });
+
+    test("a verified structured reservation fee does not block pricing validation", async () => {
+      const data = await buildContractGenerationData(contract(), { verifyTemplate: false });
+      expect(data.pricingValidation.errors).not.toContainEqual(
+        expect.objectContaining({ code: "RESERVATION_FEE_PAYMENT_NOT_VERIFIED" }),
+      );
+    });
+
+    test("a pending structured reservation fee still blocks pricing validation", async () => {
+      records.reservation.reservationFeePaymentStatus = "pending";
+      const data = await buildContractGenerationData(contract(), { verifyTemplate: false });
+      expect(data.pricingValidation.errors).toContainEqual(
+        expect.objectContaining({ code: "RESERVATION_FEE_PAYMENT_NOT_VERIFIED" }),
+      );
+    });
+  });
 });
