@@ -2,12 +2,28 @@ const amount = (value) => {
   const number = Number(value);
   return Number.isFinite(number) && number >= 0 ? Math.round(number * 100) / 100 : null;
 };
+// Structured reservations (financialWorkflowVersion === "structured-initial-payment-v1")
+// never write the legacy Reservation.paymentStatus field — their reservation-fee
+// settlement is tracked authoritatively in reservationFeePaymentStatus instead.
+// Using the legacy field for a structured reservation would permanently read as
+// unverified even after a real PayMongo settlement, since nothing ever sets it.
+const isReservationFeePaymentVerified = ({
+  financialWorkflowVersion,
+  reservationFeePaymentStatus,
+  reservationPaymentStatus,
+}) =>
+  financialWorkflowVersion === "structured-initial-payment-v1"
+    ? reservationFeePaymentStatus === "verified"
+    : ["partial", "paid"].includes(reservationPaymentStatus);
+
 export const buildInitialPaymentSummary = ({
   advanceRentAmount,
   securityDepositAmount,
   reservationFeeAmount,
   approvedReservationFeeCreditAmount,
   reservationPaymentStatus,
+  financialWorkflowVersion = null,
+  reservationFeePaymentStatus = null,
 }) => {
   const advance = amount(advanceRentAmount);
   const deposit = amount(securityDepositAmount);
@@ -20,7 +36,11 @@ export const buildInitialPaymentSummary = ({
       errors: [{ code: "INITIAL_PAYMENT_CALCULATION_INVALID" }],
     };
   }
-  const paymentVerified = ["partial", "paid"].includes(reservationPaymentStatus);
+  const paymentVerified = isReservationFeePaymentVerified({
+    financialWorkflowVersion,
+    reservationFeePaymentStatus,
+    reservationPaymentStatus,
+  });
   const verifiedReservationFeePaid = paymentVerified ? fee : 0;
   const totalInitialCharges = Math.round((advance + deposit) * 100) / 100;
   const errors = [];

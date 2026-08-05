@@ -14,4 +14,16 @@ describe("secure prepared Contract responses", () => {
     expect(source).toMatch(/resolveCurrentPreparedDocument\(contract\)/);
     expect(source).toMatch(/PREPARED_DOCUMENT_UNAVAILABLE/);
   });
+
+  test("contract detail response uses the same workflow-aware verification as generation", () => {
+    // The reservation lookup must fetch the fields needed to distinguish a
+    // structured reservation from a legacy one — not just the legacy
+    // paymentStatus field — otherwise the displayed summary can disagree
+    // with the generation gate in contractGenerationDataService.js.
+    expect(source).toMatch(
+      /\.select\("reservationFeeAmount paymentStatus financialWorkflowVersion reservationFeePaymentStatus"\)/,
+    );
+    expect(source).toMatch(/financialWorkflowVersion:\s*reservation\?\.financialWorkflowVersion/);
+    expect(source).toMatch(/reservationFeePaymentStatus:\s*reservation\?\.reservationFeePaymentStatus/);
+  });
 });
