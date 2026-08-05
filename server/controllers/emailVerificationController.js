@@ -20,6 +20,7 @@ import {
 } from "../services/emailVerificationService.js";
 import { getPublicUrlConfig } from "../config/publicUrls.js";
 import {
+  clearEmailVerificationCookie,
   getEmailVerificationToken,
   setEmailVerificationCookie,
 } from "../utils/emailVerificationCookie.js";
@@ -28,6 +29,11 @@ const invalidExchangeResponse = (res) => res.status(400).json({
   state: EMAIL_VERIFICATION_STATES.INVALID_OR_TAMPERED_LINK,
   message: "This verification link is invalid, expired, or has already been used.",
 });
+
+const invalidBrowserSessionResponse = (res) => {
+  clearEmailVerificationCookie(res);
+  return invalidExchangeResponse(res);
+};
 
 const firebaseUnavailable = (res) => res.status(503).json({
   state: EMAIL_VERIFICATION_STATES.VERIFICATION_EMAIL_SEND_FAILED,
@@ -137,10 +143,32 @@ const currentIdentityMatch = async (req, firebaseAuth, targetUid) => {
   if (!authorization.startsWith("Bearer ")) return "none";
   try {
     const decoded = await firebaseAuth.verifyIdToken(authorization.slice(7), true);
+    const role = String(decoded.role || "").toLowerCase();
+    if (decoded.owner || decoded.branch_admin || decoded.admin || ["owner", "branch_admin", "admin"].includes(role)) {
+      return "admin";
+    }
     return decoded.uid === targetUid ? "match" : "mismatch";
   } catch {
-    return "none";
+    return "expired";
   }
+};
+
+const authenticationStateResponse = (res, identityMatch) => {
+  if (["mismatch", "admin"].includes(identityMatch)) {
+    return res.status(409).json({
+      state: EMAIL_VERIFICATION_STATES.ACCOUNT_MISMATCH,
+      identityMatch,
+      message: "This verification link belongs to a different account.",
+    });
+  }
+  if (identityMatch === "expired") {
+    return res.status(401).json({
+      state: EMAIL_VERIFICATION_STATES.AUTHENTICATION_EXPIRED,
+      identityMatch,
+      message: "Your sign-in session has expired. Please sign in again.",
+    });
+  }
+  return null;
 };
 
 const cooldownFor = (user, now = Date.now()) => {
@@ -319,10 +347,12 @@ export const exchangeEmailVerificationToken = async (req, res, next) => {
 export const getEmailVerificationStatus = async (req, res, next) => {
   try {
     const resolved = await resolveBrowserIdentity(req);
-    if (resolved.invalid) return invalidExchangeResponse(res);
+    if (resolved.invalid) return invalidBrowserSessionResponse(res);
     if (resolved.unavailable) return firebaseUnavailable(res);
     if (resolved.failure) return identityFailureResponse(res, resolved.failure);
     const identityMatch = await currentIdentityMatch(req, resolved.firebaseAuth, resolved.firebaseUser.uid);
+    const blocked = authenticationStateResponse(res, identityMatch);
+    if (blocked) return blocked;
     if (resolved.firebaseUser.emailVerified) {
       const reconciliation = await reconcileVerifiedIdentity(resolved.firebaseUser);
       if (reconciliation.failure) return identityFailureResponse(res, reconciliation.failure);
@@ -352,9 +382,12 @@ export const getEmailVerificationStatus = async (req, res, next) => {
 export const finalizeEmailVerification = async (req, res, next) => {
   try {
     const resolved = await resolveBrowserIdentity(req);
-    if (resolved.invalid) return invalidExchangeResponse(res);
+    if (resolved.invalid) return invalidBrowserSessionResponse(res);
     if (resolved.unavailable) return firebaseUnavailable(res);
     if (resolved.failure) return identityFailureResponse(res, resolved.failure);
+    const identityMatch = await currentIdentityMatch(req, resolved.firebaseAuth, resolved.firebaseUser.uid);
+    const blocked = authenticationStateResponse(res, identityMatch);
+    if (blocked) return blocked;
     const reconciliation = await reconcileVerifiedIdentity(resolved.firebaseUser);
     if (reconciliation.failure === "unverified") return res.status(409).json({
       state: EMAIL_VERIFICATION_STATES.RECONCILIATION_REQUIRED,
@@ -368,7 +401,7 @@ export const finalizeEmailVerification = async (req, res, next) => {
       message: "Your email has been verified successfully.",
       maskedEmail: maskEmail(resolved.firebaseUser.email),
       continuePath: resolved.record.continuePath,
-      identityMatch: await currentIdentityMatch(req, resolved.firebaseAuth, resolved.firebaseUser.uid),
+      identityMatch,
     });
   } catch (error) {
     return next(error);
@@ -401,11 +434,33 @@ export const reconcileAuthenticatedEmailVerification = async (req, res, next) =>
 export const resendEmailVerification = async (req, res, next) => {
   try {
     const resolved = await resolveBrowserIdentity(req);
-    if (resolved.invalid) return invalidExchangeResponse(res);
+    if (resolved.invalid) return invalidBrowserSessionResponse(res);
     if (resolved.unavailable) return firebaseUnavailable(res);
     if (resolved.failure) return identityFailureResponse(res, resolved.failure);
+    const identityMatch = await currentIdentityMatch(req, resolved.firebaseAuth, resolved.firebaseUser.uid);
+    const blocked = authenticationStateResponse(res, identityMatch);
+    if (blocked) return blocked;
     const result = await sendForIdentity({ ...resolved, continuePath: resolved.record.continuePath });
     return res.status(result.status).json(result.body);
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const clearEmailVerificationCapability = async (req, res, next) => {
+  try {
+    const rawToken = getEmailVerificationToken(req);
+    try {
+      const tokenHash = hashExchangeToken(rawToken);
+      await EmailVerificationExchange.updateOne(
+        { tokenHash, kind: "session", consumedAt: null },
+        { $set: { consumedAt: new Date() } },
+      );
+    } catch {
+      // Cleanup is intentionally idempotent for missing or malformed cookies.
+    }
+    clearEmailVerificationCookie(res);
+    return res.json({ cleared: true });
   } catch (error) {
     return next(error);
   }

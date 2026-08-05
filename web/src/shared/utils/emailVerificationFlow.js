@@ -10,6 +10,7 @@ export const EMAIL_VERIFICATION_STATES = Object.freeze({
   RATE_LIMITED_OR_COOLDOWN_ACTIVE: "RATE_LIMITED_OR_COOLDOWN_ACTIVE",
   RECONCILIATION_REQUIRED: "RECONCILIATION_REQUIRED",
   ACCOUNT_MISMATCH: "ACCOUNT_MISMATCH",
+  AUTHENTICATION_EXPIRED: "AUTHENTICATION_EXPIRED",
 });
 
 const TRUSTED_CONTINUATIONS = new Set([
@@ -37,7 +38,8 @@ export const cleanAuthActionUrl = () => {
 };
 
 export const classifyVerificationSession = ({ currentEmail, targetEmail, identityMatch = "none" }) => {
-  if (identityMatch === "mismatch") return "mismatch";
+  if (["mismatch", "admin"].includes(identityMatch)) return "mismatch";
+  if (identityMatch === "expired") return "expired";
   if (!currentEmail) return "none";
   if (!targetEmail) return identityMatch === "match" ? "match" : "none";
   return currentEmail.trim().toLowerCase() === targetEmail.trim().toLowerCase()

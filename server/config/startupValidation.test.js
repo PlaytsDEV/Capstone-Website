@@ -45,6 +45,6 @@ describe("production startup validation", () => {
 
   test("rejects invalid optional verification TTL configuration", () => {
     process.env.EMAIL_VERIFICATION_CONTEXT_TTL_SECONDS = "not-a-number";
-    expect(() => validateStartupConfig()).toThrow(/EMAIL_VERIFICATION_CONTEXT_TTL_SECONDS must be a positive number/);
+    expect(() => validateStartupConfig()).toThrow(/EMAIL_VERIFICATION_CONTEXT_TTL_SECONDS must be an integer between 300 and 86400/);
   });
 });

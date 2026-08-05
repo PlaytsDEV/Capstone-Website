@@ -50,7 +50,24 @@ function isLocalhostUrl(value) {
 }
 
 function resolveRedirectBaseUrl(req) {
-  const configured = normalizeBaseUrl(process.env.BACKEND_URL);
+  const configured = normalizeBaseUrl(process.env.PUBLIC_API_URL || process.env.BACKEND_URL);
+  if (process.env.NODE_ENV === 'production') {
+    let parsed;
+    try {
+      parsed = new URL(configured);
+    } catch (_) {
+      throw new Error('PUBLIC_API_URL must be configured for production payment redirects');
+    }
+    if (
+      parsed.protocol !== 'https:' ||
+      parsed.origin !== 'https://api.lilycrest.space' ||
+      parsed.pathname !== '/' ||
+      parsed.username || parsed.password || parsed.search || parsed.hash
+    ) {
+      throw new Error('PUBLIC_API_URL must be https://api.lilycrest.space in production');
+    }
+    return parsed.origin;
+  }
   if (configured && !isLocalhostUrl(configured)) {
     return configured;
   }

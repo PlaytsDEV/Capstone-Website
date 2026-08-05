@@ -25,9 +25,10 @@ const action = read("src/features/tenant/pages/AuthAction.jsx");
 const routes = read("src/app/routes/publicRoutes.jsx");
 
 test("verification states are distinct and include recovery and account mismatch", () => {
-  assert.equal(new Set(Object.values(S)).size, 11);
+  assert.equal(new Set(Object.values(S)).size, 12);
   assert.equal(S.RECONCILIATION_REQUIRED, "RECONCILIATION_REQUIRED");
   assert.equal(S.ACCOUNT_MISMATCH, "ACCOUNT_MISMATCH");
+  assert.equal(S.AUTHENTICATION_EXPIRED, "AUTHENTICATION_EXPIRED");
 });
 
 test("failed Firebase actions use authoritative account state", () => {

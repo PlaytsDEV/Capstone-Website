@@ -39,6 +39,7 @@ import {
   logPasswordReset,
 } from "../controllers/authController.js";
 import {
+  clearEmailVerificationCapability,
   exchangeEmailVerificationToken,
   finalizeEmailVerification,
   getEmailVerificationStatus,
@@ -46,6 +47,7 @@ import {
   resendEmailVerification,
   sendAuthenticatedEmailVerification,
 } from "../controllers/emailVerificationController.js";
+import { requireEmailVerificationCsrf } from "../utils/emailVerificationCookie.js";
 
 const router = express.Router();
 
@@ -110,9 +112,10 @@ router.post(
   sendAuthenticatedEmailVerification,
 );
 router.post("/email-verification/exchange", publicLimiter, exchangeEmailVerificationToken);
-router.post("/email-verification/status", publicLimiter, getEmailVerificationStatus);
-router.post("/email-verification/finalize", publicLimiter, finalizeEmailVerification);
-router.post("/email-verification/resend", authLimiter, resendEmailVerification);
+router.post("/email-verification/status", publicLimiter, requireEmailVerificationCsrf, getEmailVerificationStatus);
+router.post("/email-verification/finalize", publicLimiter, requireEmailVerificationCsrf, finalizeEmailVerification);
+router.post("/email-verification/resend", authLimiter, requireEmailVerificationCsrf, resendEmailVerification);
+router.post("/email-verification/clear", publicLimiter, requireEmailVerificationCsrf, clearEmailVerificationCapability);
 router.post(
   "/email-verification/reconcile",
   authLimiter,

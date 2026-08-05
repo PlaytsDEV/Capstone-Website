@@ -13,23 +13,44 @@ export const EMAIL_VERIFICATION_STATES = Object.freeze({
   RATE_LIMITED_OR_COOLDOWN_ACTIVE: "RATE_LIMITED_OR_COOLDOWN_ACTIVE",
   RECONCILIATION_REQUIRED: "RECONCILIATION_REQUIRED",
   ACCOUNT_MISMATCH: "ACCOUNT_MISMATCH",
+  AUTHENTICATION_EXPIRED: "AUTHENTICATION_EXPIRED",
 });
 
-export const EMAIL_VERIFICATION_COOLDOWN_SECONDS = Math.max(
-  30,
-  Number(process.env.EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS || 60),
-);
-
-const boundedTtl = (value, fallback) => {
-  const parsed = Number(value || fallback);
-  return Number.isFinite(parsed) ? Math.max(300, Math.floor(parsed)) : fallback;
+const boundedInteger = (name, value, { fallback, min, max }) => {
+  const configured = String(value ?? "").trim();
+  if (!configured) return fallback;
+  if (!/^\d+$/.test(configured)) {
+    throw new Error(`${name} must be an integer between ${min} and ${max}`);
+  }
+  const parsed = Number(configured);
+  if (!Number.isSafeInteger(parsed) || parsed < min || parsed > max) {
+    throw new Error(`${name} must be an integer between ${min} and ${max}`);
+  }
+  return parsed;
 };
 
 export const getExchangeTtlSeconds = (environment = process.env) =>
-  boundedTtl(environment.EMAIL_VERIFICATION_CONTEXT_TTL_SECONDS, 60 * 60);
+  boundedInteger("EMAIL_VERIFICATION_CONTEXT_TTL_SECONDS", environment.EMAIL_VERIFICATION_CONTEXT_TTL_SECONDS, {
+    fallback: 60 * 60,
+    min: 5 * 60,
+    max: 24 * 60 * 60,
+  });
 
 export const getSessionTtlSeconds = (environment = process.env) =>
-  boundedTtl(environment.EMAIL_VERIFICATION_SESSION_TTL_SECONDS, 15 * 60);
+  boundedInteger("EMAIL_VERIFICATION_SESSION_TTL_SECONDS", environment.EMAIL_VERIFICATION_SESSION_TTL_SECONDS, {
+    fallback: 15 * 60,
+    min: 5 * 60,
+    max: 60 * 60,
+  });
+
+export const getResendCooldownSeconds = (environment = process.env) =>
+  boundedInteger("EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS", environment.EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS, {
+    fallback: 60,
+    min: 30,
+    max: 60 * 60,
+  });
+
+export const EMAIL_VERIFICATION_COOLDOWN_SECONDS = getResendCooldownSeconds();
 
 const getSigningSecret = (environment = process.env) => {
   const dedicated = String(environment.EMAIL_VERIFICATION_SECRET || "").trim();

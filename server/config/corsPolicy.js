@@ -6,6 +6,11 @@ export const DEVELOPMENT_ALLOWED_ORIGINS = Object.freeze([
   "http://localhost:5173",
 ]);
 
+export const PRODUCTION_ALLOWED_ORIGINS = Object.freeze([
+  "https://www.lilycrest.space",
+  "https://lilycrest.space",
+]);
+
 const parseConfiguredOrigins = (value = "", { production = false } = {}) =>
   String(value || "")
     .split(",")
@@ -40,17 +45,19 @@ const parseConfiguredOrigins = (value = "", { production = false } = {}) =>
         if (parsed.hostname === "vercel.app" || parsed.hostname.endsWith(".vercel.app")) {
           throw new Error("Production CORS origins must not use Vercel preview hosts");
         }
+        if (!PRODUCTION_ALLOWED_ORIGINS.includes(parsed.origin)) {
+          throw new Error("Production CORS origins must use an approved Lilycrest origin");
+        }
       }
       return parsed.origin;
     });
 
 export const createCorsOriginPolicy = (environment = process.env) => {
   const production = environment.NODE_ENV === "production";
-  const configured = [
-    ...parseConfiguredOrigins(environment.ALLOWED_FRONTEND_ORIGINS, { production }),
-    ...parseConfiguredOrigins(environment.CORS_ORIGINS, { production }),
-    ...parseConfiguredOrigins(environment.FRONTEND_URL, { production }),
-  ];
+  const configuredValue = environment.ALLOWED_FRONTEND_ORIGINS
+    || environment.CORS_ORIGINS
+    || environment.FRONTEND_URL;
+  const configured = parseConfiguredOrigins(configuredValue, { production });
   const allowedOriginRules = [
     ...configured,
     ...(production ? [] : DEVELOPMENT_ALLOWED_ORIGINS),

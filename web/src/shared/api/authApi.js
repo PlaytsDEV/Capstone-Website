@@ -106,6 +106,7 @@ const verificationRequest = async (path, body) => {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "X-Email-Verification-CSRF": "1",
       ...(token && { Authorization: `Bearer ${token}` }),
     },
     credentials: "include",
@@ -162,6 +163,8 @@ export const authApi = {
     authRequest("/auth/email-verification/reconcile", { method: "POST" }),
   resendEmailVerification: () =>
     verificationRequest("/auth/email-verification/resend"),
+  clearEmailVerificationCapability: () =>
+    verificationRequest("/auth/email-verification/clear"),
   finalizePasswordReset: () => authRequest("/auth/finalize-password-reset", { method: "POST" }),
 
   /**

@@ -196,7 +196,7 @@ app.options("*", (req, res) => {
     );
     res.setHeader(
       "Access-Control-Allow-Headers",
-      "Content-Type,Authorization,X-Request-Id,X-Device-Id,X-Session-Id",
+      "Content-Type,Authorization,X-Request-Id,X-Device-Id,X-Session-Id,X-Email-Verification-CSRF",
     );
     res.setHeader("Access-Control-Allow-Credentials", "true");
   }

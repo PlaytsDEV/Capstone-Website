@@ -250,17 +250,47 @@ export const AuthProvider = ({ children }) => {
       const statusCode = error.response?.status || error.status;
       const errorCode = getAuthErrorCode(error);
 
-      if (
-        statusCode === 401 ||
-        errorCode === "OTP_SESSION_REQUIRED" ||
-        errorCode === "OTP_SESSION_INVALID"
-      ) {
+      // OTP_SESSION_REQUIRED/INVALID are explicit, authoritative signals from
+      // the backend that the session is gone - clear immediately.
+      if (errorCode === "OTP_SESSION_REQUIRED" || errorCode === "OTP_SESSION_INVALID") {
         clearApplicationSession();
         setUser(null);
         setIsAuthenticated(false);
-      } else {
-        console.warn("User refresh failed.");
+        return null;
       }
+
+      // A bare 401 is ambiguous - it can mean the session is genuinely gone,
+      // or it can be a transient backend hiccup (e.g. a cold start) returning
+      // 401 instead of a 5xx. Retry once before treating it as a real logout,
+      // so a passing blip doesn't silently sign the user out mid-session.
+      if (statusCode === 401) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        try {
+          const userData = await fetchProfileOnce();
+          const resolvedUser = attachManagedFirebaseIdentity(userData);
+          queryClient.setQueryData(["users", "currentUser"], resolvedUser);
+          setUser(resolvedUser);
+          setIsAuthenticated(true);
+          return resolvedUser;
+        } catch (retryError) {
+          const retryStatus = retryError.response?.status || retryError.status;
+          const retryCode = getAuthErrorCode(retryError);
+          if (
+            retryStatus === 401 ||
+            retryCode === "OTP_SESSION_REQUIRED" ||
+            retryCode === "OTP_SESSION_INVALID"
+          ) {
+            clearApplicationSession();
+            setUser(null);
+            setIsAuthenticated(false);
+          } else {
+            console.warn("User refresh failed.");
+          }
+          return null;
+        }
+      }
+
+      console.warn("User refresh failed.");
       return null;
     }
   }, [fetchProfileOnce, getFreshIdToken, queryClient]);

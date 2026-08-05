@@ -22,3 +22,9 @@ export const normalizeVerificationErrorCode = (value, fallback) => {
   }
   return code || fallback;
 };
+
+export const normalizeRetryAfterSeconds = (value, maximum = 3600) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  return Math.min(Math.ceil(parsed), maximum);
+};

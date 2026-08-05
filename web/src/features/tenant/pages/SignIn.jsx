@@ -93,19 +93,15 @@ function SignIn() {
     }
   }, []);
 
-  // Load remembered or registered/verified email on mount
+  // Load remembered or pending registration email on mount.
   useEffect(() => {
     const locationStateEmail = location.state?.email;
-    const verifiedEmail =
-      sessionStorage.getItem("lilycrest_verified_email") ||
-      localStorage.getItem("lilycrest_verified_email");
     const pendingEmail =
       sessionStorage.getItem("lilycrest_pending_email") ||
       localStorage.getItem("lilycrest_pending_email");
     const savedEmail = localStorage.getItem("lilycrest_remember_email");
 
-    // Verified account or pending registration email takes precedence over remembered email
-    const activePrefill = verifiedEmail || locationStateEmail || pendingEmail;
+    const activePrefill = locationStateEmail || pendingEmail;
 
     if (activePrefill) {
       setFormData((prev) => ({ ...prev, email: activePrefill }));
@@ -114,8 +110,6 @@ function SignIn() {
       setTouched((prev) => ({ ...prev, email: true }));
 
       // Clean up temporary storage and history state immediately so refresh (F5) leaves form blank
-      sessionStorage.removeItem("lilycrest_verified_email");
-      localStorage.removeItem("lilycrest_verified_email");
       sessionStorage.removeItem("lilycrest_pending_email");
       localStorage.removeItem("lilycrest_pending_email");
       window.history.replaceState({}, document.title, window.location.pathname);
@@ -131,8 +125,6 @@ function SignIn() {
     if (params.get("verified") === "true") {
       setUnverifiedEmail(null);
       setVerifiedSuccess(true);
-      sessionStorage.removeItem("lilycrest_verified_email");
-      localStorage.removeItem("lilycrest_verified_email");
       sessionStorage.removeItem("lilycrest_pending_email");
       localStorage.removeItem("lilycrest_pending_email");
       window.history.replaceState({}, document.title, window.location.pathname);
