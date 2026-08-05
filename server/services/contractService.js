@@ -159,8 +159,13 @@ export const createDraftContract = async ({
       { initialStayKey: `stay:${effectiveStayId}` },
     );
   }
+  // Only a still-current contract (isCurrent: true) counts as a real
+  // duplicate-in-progress. A cancelled/superseded contract for this
+  // reservation must not permanently block regeneration — see the matching
+  // isCurrent-scoped unique indexes on initialContractKey/initialStayKey.
   const existingContract = await Contract.findOne({
     contractPurpose: { $in: ["initial", null] },
+    isCurrent: true,
     $or: duplicateConditions,
   }).select(
     "_id contractNumber status tenantLegalName branch roomNumber bedLabel bedId updatedAt",
@@ -168,6 +173,16 @@ export const createDraftContract = async ({
   if (existingContract) {
     throw duplicateContractError(existingContract);
   }
+
+  // A cancelled predecessor (isCurrent: false) is allowed to be superseded by
+  // a new draft. Track lineage and bump the version instead of silently
+  // starting back at v1, so this reads as a controlled regeneration rather
+  // than an unrelated duplicate.
+  const previousContract = await Contract.findOne({
+    contractPurpose: { $in: ["initial", null] },
+    isCurrent: false,
+    $or: duplicateConditions,
+  }).sort({ version: -1, createdAt: -1 }).select("_id version").lean();
 
   const leaseStartDate = stay?.leaseStartDate || reservation.confirmedMoveInDate ||
     reservation.moveInDate || reservation.intendedMoveInDate || null;
@@ -223,7 +238,7 @@ export const createDraftContract = async ({
   const number = await generateContractNumber(branch);
 
   try {
-    return await Contract.create({
+    const created = await Contract.create({
       ...number,
       contractPurpose: "initial",
       initialContractKey: `reservation:${reservation._id}`,
@@ -234,7 +249,8 @@ export const createDraftContract = async ({
       stayId: effectiveStayId,
       roomId: room._id,
       branch,
-      version: 1,
+      version: previousContract ? previousContract.version + 1 : 1,
+      previousContractId: previousContract?._id || null,
       templateType: resolvedTemplate?.templateId ||
         `${canonicalRoomType.replaceAll("-", "_")}_${pricing.leaseType}`,
       roomType: canonicalRoomType,
@@ -285,12 +301,22 @@ export const createDraftContract = async ({
       createdBy: actorId,
       updatedBy: actorId,
     });
+
+    if (previousContract) {
+      await Contract.updateOne(
+        { _id: previousContract._id },
+        { $set: { supersededByContractId: created._id, supersededBy: created._id } },
+      );
+    }
+
+    return created;
   } catch (error) {
     if (
       error?.code === 11000 &&
       (error?.keyPattern?.initialContractKey || error?.keyPattern?.initialStayKey)
     ) {
       const winner = await Contract.findOne({
+        isCurrent: true,
         $or: [
           { initialContractKey: `reservation:${reservation._id}` },
           ...(effectiveStayId ? [{ initialStayKey: `stay:${effectiveStayId}` }] : []),

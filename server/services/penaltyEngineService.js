@@ -8,15 +8,16 @@
 
 import dayjs from "dayjs";
 import Bill from "../models/Bill.js";
-import { BUSINESS } from "../config/constants.js";
 import logger from "../middleware/logger.js";
-
-const DEFAULT_GRACE_PERIOD_DAYS = 3;
-const DEFAULT_LATE_PENALTY_AMOUNT = 500; // PHP 500 late fee
+import { computePenalty, fetchPenaltySettings } from "./billing/penaltyCalculator.js";
+import { syncBillAmounts, resolveBillStatus } from "./billing/billingPolicy.js";
 
 /**
- * Evaluates whether a bill is within the grace period or past due.
- * 
+ * Evaluates whether a bill is within the grace period or past due, using the
+ * same 1-day-grace policy as the canonical penalty calculator
+ * (server/services/billing/penaltyCalculator.js). Kept for callers that only
+ * need the boolean/day-count without a full penalty computation.
+ *
  * @param {Object|Date|string} dueDateInput - Bill due date
  * @param {Date} [evaluationDate] - Reference date (defaults to now)
  * @returns {{ isPastDue: boolean, isWithinGracePeriod: boolean, daysOverdue: number }}
@@ -32,8 +33,8 @@ export function evaluateGracePeriod(dueDateInput, evaluationDate = new Date()) {
   }
 
   const daysOverdue = now.diff(dueDate, "day");
-  const isWithinGracePeriod = daysOverdue <= DEFAULT_GRACE_PERIOD_DAYS;
-  const isPastDue = daysOverdue > DEFAULT_GRACE_PERIOD_DAYS;
+  const isWithinGracePeriod = daysOverdue <= 1;
+  const isPastDue = daysOverdue > 1;
 
   return {
     isPastDue,
@@ -43,49 +44,55 @@ export function evaluateGracePeriod(dueDateInput, evaluationDate = new Date()) {
 }
 
 /**
- * Runs the automated late penalty engine over overdue pending bills.
- * Voids outdated base rent invoice, increments `invoiceVersion`, and re-issues
- * updated invoice total (`Exact Base Rent + Exact Penalty Fee`).
- * 
+ * Runs the late penalty engine over overdue bills, using the same canonical
+ * computePenalty() formula as the scheduled daily job (server/utils/scheduler.js
+ * computeOverduePenalties), so a manual trigger of this endpoint can never
+ * write a conflicting penalty value to the same bill. Also increments
+ * `invoiceVersion` so in-flight checkout sessions detect the stale total.
+ *
  * @returns {Promise<{ processedCount: number, updatedBills: Array<Object> }>}
  */
 export async function executeLatePenaltyCron(evaluationDate = new Date()) {
-  const pendingBills = await Bill.find({
-    status: "pending",
+  const now = dayjs(evaluationDate);
+  const settings = await fetchPenaltySettings();
+
+  const overdueBills = await Bill.find({
+    status: { $in: ["pending", "overdue"] },
     isArchived: { $ne: true },
   });
 
   const updatedBills = [];
 
-  for (const bill of pendingBills) {
-    const { isPastDue, daysOverdue } = evaluateGracePeriod(bill.dueDate, evaluationDate);
+  for (const bill of overdueBills) {
+    if (!bill?.dueDate) continue;
 
-    // If past 3-day grace period (day 4+) and penalty not yet applied
-    if (isPastDue && (!bill.charges?.penalty || bill.charges.penalty === 0)) {
-      const penaltyAmount = Number(BUSINESS.LATE_FEE_AMOUNT || DEFAULT_LATE_PENALTY_AMOUNT);
-      const newGrossAmount = Number(bill.grossAmount || bill.totalAmount) + penaltyAmount;
-      const newInvoiceVersion = (bill.invoiceVersion || 1) + 1;
+    const { penalty: newPenalty, daysLate, ratePerDay } = await computePenalty(bill, settings, now);
+    if (daysLate <= 0) continue;
 
-      // 1. Void previous bill status note
-      bill.notes = `${bill.notes ? bill.notes + " | " : ""}Late penalty applied on day ${daysOverdue} past due (v${bill.invoiceVersion || 1} -> v${newInvoiceVersion})`;
+    const oldPenalty = bill.charges?.penalty || 0;
+    if (newPenalty === oldPenalty) continue;
 
-      // 2. Apply penalty and increment invoice version
-      bill.charges = {
-        ...bill.charges,
-        penalty: penaltyAmount,
-      };
-      bill.totalAmount = newGrossAmount;
-      bill.grossAmount = newGrossAmount;
-      bill.remainingAmount = newGrossAmount;
-      bill.invoiceVersion = newInvoiceVersion;
-      bill.penaltyAppliedAt = evaluationDate;
-      
-      await bill.save();
-      updatedBills.push(bill);
-    }
+    const newInvoiceVersion = (bill.invoiceVersion || 1) + 1;
+    bill.notes = `${bill.notes ? bill.notes + " | " : ""}Late penalty recomputed on day ${daysLate} past due (v${bill.invoiceVersion || 1} -> v${newInvoiceVersion})`;
+
+    bill.charges = { ...bill.charges, penalty: newPenalty };
+    bill.penaltyDetails = {
+      ...bill.penaltyDetails,
+      daysLate,
+      ratePerDay,
+      appliedAt: now.toDate(),
+    };
+    bill.invoiceVersion = newInvoiceVersion;
+    bill.penaltyAppliedAt = now.toDate();
+
+    syncBillAmounts(bill);
+    bill.status = resolveBillStatus(bill, now.toDate());
+
+    await bill.save();
+    updatedBills.push(bill);
   }
 
-  logger.info({ count: updatedBills.length }, "Automated late penalty cron executed successfully.");
+  logger.info({ count: updatedBills.length }, "Late penalty engine executed successfully.");
 
   return {
     processedCount: updatedBills.length,

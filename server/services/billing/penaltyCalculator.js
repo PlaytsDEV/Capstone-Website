@@ -34,10 +34,13 @@ export async function computePenalty(bill, settings = null, now = dayjs()) {
     configuredRate,
   );
 
-  const rawPenalty = daysLate * ratePerDay;
+  // First day overdue is a grace day (no penalty). Penalty accrues starting
+  // the second day late, at ratePerDay per billable day.
+  const billableDays = Math.max(0, daysLate - 1);
+  const rawPenalty = billableDays * ratePerDay;
   const rentBase = bill.charges?.rent || 0;
   const cap = rentBase > 0 ? (rentBase * maxCapPercent) / 100 : Infinity;
-  const penalty = Math.min(rawPenalty, cap);
+  const penalty = billableDays > 0 ? Math.min(rawPenalty, cap) : 0;
 
   return {
     penalty,

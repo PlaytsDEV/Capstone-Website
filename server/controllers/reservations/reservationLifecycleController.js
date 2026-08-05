@@ -758,33 +758,70 @@ export const updateReservation = async (req, res, next) => {
         roomId: updatedReservation.roomId,
         reservationId: updatedReservation._id,
       });
+    }
 
-      if (req.body.status === "moveIn") {
-        try {
-          const tenantId =
-            updatedReservation.userId?._id || updatedReservation.userId;
-          const rentBillResult = await ensureCurrentCycleRentBill({
-            reservation: updatedReservation,
-            tenantId,
-            actorId: req.adminId || null,
+    // Retry-safety: the reservation's own status transition (saved above) is
+    // the authoritative signal that this is a moveIn, not "did status change
+    // in this particular request." A prior request can have already flipped
+    // reservation.status to "moveIn" and then failed before converting the
+    // user to a tenant or creating the first rent bill (e.g. a crash between
+    // the two steps below). On retry, req.body.status === oldData.status
+    // would otherwise skip both steps forever. So drive tenant-conversion and
+    // rent-bill creation off actual current state, and let their own
+    // idempotency guards (syncReservationUserLifecycle's status-unchanged
+    // no-op, ensureCurrentCycleRentBill's existing-bill lookup) prevent
+    // duplicate work when nothing is actually missing.
+    if (hasReservationStatus(updatedReservation.status, "moveIn")) {
+      try {
+        const tenantUser = await User.findById(
+          updatedReservation.userId?._id || updatedReservation.userId,
+        )
+          .select("role tenantStatus")
+          .lean();
+        const tenantConversionMissing =
+          tenantUser && (tenantUser.role !== "tenant" || tenantUser.tenantStatus !== "active");
+
+        if (tenantConversionMissing) {
+          await syncReservationUserLifecycle({
+            status: "moveIn",
+            previousStatus: null,
+            userId: updatedReservation.userId,
+            roomId: updatedReservation.roomId,
+            reservationId: updatedReservation._id,
+            force: true,
           });
+        }
+      } catch (lifecycleErr) {
+        logger.error(
+          { err: lifecycleErr, requestId: req.id },
+          "Failed to reconcile tenant conversion during moveIn status update",
+        );
+      }
 
-          if (rentBillResult?.bill) {
-            logger.info(
-              {
-                billId: rentBillResult.bill._id,
-                created: rentBillResult.created,
-                reservationId: updatedReservation._id,
-              },
-              "Ensured current cycle rent bill during moveIn status update",
-            );
-          }
-        } catch (rentErr) {
-          logger.error(
-            { err: rentErr, requestId: req.id },
-            "Failed to ensure rent bill during moveIn (non-fatal)",
+      try {
+        const tenantId =
+          updatedReservation.userId?._id || updatedReservation.userId;
+        const rentBillResult = await ensureCurrentCycleRentBill({
+          reservation: updatedReservation,
+          tenantId,
+          actorId: req.adminId || null,
+        });
+
+        if (rentBillResult?.bill) {
+          logger.info(
+            {
+              billId: rentBillResult.bill._id,
+              created: rentBillResult.created,
+              reservationId: updatedReservation._id,
+            },
+            "Ensured current cycle rent bill during moveIn status update",
           );
         }
+      } catch (rentErr) {
+        logger.error(
+          { err: rentErr, requestId: req.id },
+          "Failed to ensure rent bill during moveIn (non-fatal)",
+        );
       }
     }
 
