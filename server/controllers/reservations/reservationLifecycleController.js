@@ -16,6 +16,7 @@ import {
 } from "../../models/index.js";
 import logger from "../../middleware/logger.js";
 import auditLogger from "../../utils/auditLogger.js";
+import { getBusinessSettings } from "../../utils/businessSettings.js";
 import {
   isValidObjectId,
   invalidIdResponse,
@@ -301,16 +302,21 @@ export const updateReservation = async (req, res, next) => {
         const approvedAt = new Date();
         let pricingSnapshot;
         try {
+          const businessSettings = await getBusinessSettings();
           pricingSnapshot = buildStructuredPricingSnapshot({
             reservation: existingReservation,
             room: existingReservation.roomId,
             approvedBy: req.adminId || null,
             approvedAt,
+            businessSettings,
           });
         } catch (pricingError) {
+          // Server-resolved pricing is authoritative — reject rather than
+          // fall back to a client-submitted or stale flat rate. No Bill is
+          // created on this path since financialWorkflowVersion is not set.
           return res.status(422).json({
             error: pricingError.message,
-            code: pricingError.code || "PRICING_SNAPSHOT_INCOMPLETE",
+            code: pricingError.code || "PRICING_CONFIGURATION_INCOMPLETE",
           });
         }
         prospectiveWorkflowAssignment = {

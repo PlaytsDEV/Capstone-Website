@@ -73,34 +73,21 @@ function getAmenityIcon(amenity) {
  return ShieldCheck;
 }
 
+// The final monthly rate is authoritative only from the server: either the
+// immutable approved pricingSnapshot (post-approval) or the server-computed
+// lease-duration-aware preview (pre-approval), both surfaced as
+// reservation.pricingDisplay (see contractPricingResolver.js#buildPricingDisplay
+// on the backend). This function intentionally no longer reinvents the
+// discount formula client-side — returns null when no resolved rate exists.
 function getEffectiveMonthlyRent(reservation) {
-  if (!reservation) return 0;
-  const room = reservation.roomId || {};
-  const leaseDuration = Number(reservation.leaseDuration || 12);
-  const normType = String(room.type || "").toLowerCase();
-
-  let baseLongRate = room.regularLongRate ?? 6000;
-  let discountPercent = room.quadrupleDiscountPercent ?? 10;
-
-  if (normType.includes("double")) {
-    baseLongRate = room.regularLongRate ?? 9000;
-    discountPercent = room.doubleDiscountPercent ?? 20;
-  } else if (normType.includes("private")) {
-    baseLongRate = room.regularLongRate ?? 15000;
-    discountPercent = room.privateDiscountPercent ?? 10;
+  const display = reservation?.pricingDisplay;
+  if (
+    (display?.status === "preview" || display?.status === "snapshotted") &&
+    Number.isFinite(Number(display?.finalMonthlyRate))
+  ) {
+    return Number(display.finalMonthlyRate);
   }
-
-  const isLongTerm = leaseDuration >= 6;
-  const computedRent = isLongTerm
-    ? Math.round(baseLongRate * (1 - discountPercent / 100))
-    : (room.regularShortRate ?? 7000);
-
-  const rawRent = reservation.monthlyRent;
-  if (!rawRent || rawRent === 5670 || (isLongTerm && rawRent > baseLongRate)) {
-    return computedRent;
-  }
-
-  return rawRent;
+  return null;
 }
 
 /* ── Main Component ────────────────────────────────── */
@@ -615,7 +602,7 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  { label: "Lease Duration", value: `${reservation.leaseDuration || 12} months` },
  {
  label: "Monthly Rent",
- value: `₱${monthlyRent.toLocaleString()}`,
+ value: monthlyRent === null ? "Pricing will be confirmed during review" : `₱${monthlyRent.toLocaleString()}`,
  highlight: true,
  },
  {

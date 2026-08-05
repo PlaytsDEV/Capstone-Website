@@ -87,4 +87,18 @@ describe("structured move-in readiness", () => {
   test("legacy occupants are not retroactively evaluated", async () => {
     await expect(getStructuredMoveInBlockers({ status: "moveIn" })).resolves.toEqual([]);
   });
+
+  // Step 10 / CRITICAL check: a reservation where only the PHP 2,000
+  // reservation fee has been verified (the GP-201 scenario from the QA
+  // investigation) must NOT be treated as move-in ready — the structured
+  // initial-payment Bill has not even been created yet.
+  test("reservation-fee-only settlement (no initial-payment Bill yet) blocks move-in", async () => {
+    mockAssignments();
+    const feeOnlyReservation = readyReservation({
+      initialPaymentBillId: null,
+      initialPaymentStatus: "not_created",
+    });
+    const blockers = await getStructuredMoveInBlockers(feeOnlyReservation);
+    expect(blockers).toContain("Structured initial-payment Bill is missing.");
+  });
 });

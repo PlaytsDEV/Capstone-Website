@@ -244,29 +244,47 @@ const ProfilePage = () => {
 
  const reservations = useMemo(() => reservationsData || [], [reservationsData]);
 
- const activeReservation = useMemo(() => {
- const activeOnes = reservations.filter((reservation) => {
- const status = reservation.reservationStatus || reservation.status;
-  return !hasReservationStatus(status, "moveOut", "cancelled", "rejected");
- });
-
- return activeOnes[0] || null;
- }, [reservations]);
-
+ // Deterministic rule: the "current" reservation is the most-recently-updated
+ // (falling back to most-recently-created) non-archived, non-terminal
+ // reservation. reservations is already sorted createdAt desc by the API, so
+ // [0] is the most recent by creation; we still prefer updatedAt when present
+ // so an older reservation that was just re-activated/touched wins.
  const activeReservations = useMemo(
  () =>
- reservations.filter((reservation) => {
+ reservations
+ .filter((reservation) => {
  const status = reservation.reservationStatus || reservation.status;
   return !hasReservationStatus(status, "moveOut", "cancelled", "rejected");
+ })
+ .slice()
+ .sort((a, b) => {
+ const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
+ const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
+ return bTime - aTime;
  }),
  [reservations],
  );
 
+ // Re-resolve whenever the reservations list changes rather than caching a
+ // stale selectedReservationId indefinitely — prevents the Dashboard and
+ // Profile tabs from silently diverging onto different records (e.g. after a
+ // new reservation is created, or the previously-selected one is archived).
  useEffect(() => {
- if (activeReservation && !selectedReservationId) {
- setSelectedReservationId(activeReservation._id);
+ if (activeReservations.length === 0) {
+ if (selectedReservationId) setSelectedReservationId(null);
+ return;
  }
- }, [activeReservation, selectedReservationId]);
+ const stillValid = activeReservations.some(
+ (reservation) => reservation._id === selectedReservationId,
+ );
+ if (!stillValid) {
+ setSelectedReservationId(activeReservations[0]._id);
+ }
+ }, [activeReservations, selectedReservationId]);
+
+ // Single source of truth: both the Dashboard and Profile tabs derive from
+ // this same value, so they can never point at different records.
+ const activeReservation = activeReservations[0] || null;
 
  const visits = useMemo(
  () =>

@@ -18,6 +18,7 @@ import {
 import {
   canReservationAccessPayment,
   hasReservationStatus,
+  readMoveInDate,
 } from "../../../shared/utils/lifecycleNaming";
 import {
   getPhysicalVisitApplicantState,
@@ -369,6 +370,54 @@ function getNextAction(reservation, currentStage) {
   }
 }
 
+// Mirrors the read-only conditions the backend's structured move-in gate
+// (getStructuredMoveInBlockers in server/services/structuredInitialPaymentService.js)
+// enforces — using fields already present on the serialized reservation, so
+// this never has to invent new business rules, only reflect the ones the
+// backend already computes/enforces at approval and move-in time.
+function isStructuredWorkflow(reservation) {
+  return reservation?.financialWorkflowVersion === "structured-initial-payment-v1";
+}
+
+function getReservationFeeStatusLabel(reservation) {
+  if (!isStructuredWorkflow(reservation)) {
+    // Legacy (pre-structured) workflow — unchanged wording.
+    return "Payment verified";
+  }
+  return reservation.reservationFeePaymentStatus === "verified"
+    ? "Reservation fee verified"
+    : "Reservation fee pending";
+}
+
+function getStructuredMoveInReadiness(reservation) {
+  if (!isStructuredWorkflow(reservation)) {
+    return { ready: null, reasons: [] };
+  }
+  const reasons = [];
+  if (reservation.reservationFeePaymentStatus !== "verified") {
+    reasons.push("Reservation fee not yet verified");
+  }
+  if (!reservation.pricingSnapshot?.approvedAt) {
+    reasons.push("Pricing has not been approved yet");
+  }
+  if (reservation.initialPaymentStatus !== "paid") {
+    reasons.push("Structured initial-payment Bill is not fully paid");
+  }
+  const documentsComplete = Boolean(
+    reservation.selfiePhotoUrl &&
+      reservation.validIDFrontUrl &&
+      reservation.validIDBackUrl &&
+      reservation.agreedToPrivacy &&
+      reservation.agreedToCertification,
+  );
+  if (!documentsComplete) reasons.push("Required documents are incomplete");
+  if (!reservation.emergencyContact?.name || !reservation.emergencyContact?.contactNumber) {
+    reasons.push("Emergency contact is incomplete");
+  }
+  if (!reservation.houseRulesPreparedAt) reasons.push("House rules acknowledgment pending");
+  return { ready: reasons.length === 0, reasons };
+}
+
 function formatDate(dateStr) {
   if (!dateStr) return "—";
   try {
@@ -453,11 +502,17 @@ function getStepDesc(step, status, reservation) {
         return "Ready for payment";
       }
       if (status === "complete") {
-        return "Payment verified";
+        return getReservationFeeStatusLabel(reservation);
       }
       return step.desc;
     case 5:
       if (status === "complete") {
+        const readiness = getStructuredMoveInReadiness(reservation);
+        if (readiness.ready === false) {
+          // Reservation is secured, but structured billing/documents/house
+          // rules are not all cleared yet — do not claim move-in readiness.
+          return "Reservation secured — move-in requirements pending";
+        }
         return "Move-in ready!";
       }
       return step.desc;
@@ -560,14 +615,36 @@ export default function ReservationDashboard({
               {branch}
             </span>
 
-            {reservation.targetMoveInDate && (
-              <>
-                <span style={styles.metaDot}>·</span>
-                <span style={styles.metaItem}>
-                  Move-in: {formatDate(reservation.targetMoveInDate)}
-                </span>
-              </>
-            )}
+            {(() => {
+              // readMoveInDate (and the server's serialized reservation.moveInDate)
+              // prioritizes confirmedMoveInDate over the tenant's originally
+              // requested targetMoveInDate — show the confirmed date as the
+              // primary value, and only surface the originally requested date
+              // as a clearly-labeled secondary value when it differs.
+              const confirmedDate = readMoveInDate(reservation);
+              const requestedDate = reservation.targetMoveInDate;
+              const isConfirmedDifferent =
+                confirmedDate &&
+                requestedDate &&
+                formatDate(confirmedDate) !== formatDate(requestedDate);
+              if (!confirmedDate && !requestedDate) return null;
+              return (
+                <>
+                  <span style={styles.metaDot}>·</span>
+                  <span style={styles.metaItem}>
+                    Move-in: {formatDate(confirmedDate || requestedDate)}
+                  </span>
+                  {isConfirmedDifferent && (
+                    <>
+                      <span style={styles.metaDot}>·</span>
+                      <span style={styles.metaItem}>
+                        Originally requested: {formatDate(requestedDate)}
+                      </span>
+                    </>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </div>
       </div>
@@ -903,7 +980,10 @@ export default function ReservationDashboard({
       {/* ── Post-Confirmation Dashboard ─────────────────────────────────── */}
       {isConfirmed &&
         (() => {
-          const moveIn = reservation.targetMoveInDate;
+          // Use the confirmed move-in date (readMoveInDate) as the active
+          // date; fall back to the originally requested date only when no
+          // confirmed date has been reconciled yet.
+          const moveIn = readMoveInDate(reservation) || reservation.targetMoveInDate;
           const daysLeft = moveIn
             ? Math.ceil(
                 (new Date(moveIn) - new Date()) / (1000 * 60 * 60 * 24),

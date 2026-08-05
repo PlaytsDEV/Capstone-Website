@@ -137,8 +137,16 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
 
   const selectedBed = reservationData?.selectedBed;
   const applianceFees = toFiniteNumber(reservationData?.applianceFees, 0);
-  const monthlyRent = toFiniteNumber(room.monthlyPrice || room.price, 0);
-  const estimatedMonthlyTotal = monthlyRent + applianceFees;
+  // The final monthly rate depends on lease duration (short vs. long-term
+  // discount), which isn't known yet at this step. Only show a number when
+  // the server has already resolved it (pricingDisplay, from GET
+  // /reservations/:id) — never guess with a flat room.price/monthlyPrice.
+  const pricingDisplay = reservationData?.pricingDisplay;
+  const hasResolvedMonthlyRate =
+    (pricingDisplay?.status === "preview" || pricingDisplay?.status === "snapshotted") &&
+    Number.isFinite(Number(pricingDisplay?.finalMonthlyRate));
+  const monthlyRent = hasResolvedMonthlyRate ? toFiniteNumber(pricingDisplay.finalMonthlyRate, 0) : null;
+  const estimatedMonthlyTotal = hasResolvedMonthlyRate ? monthlyRent + applianceFees : null;
   const reservationFeeAmount = toFiniteNumber(reservationData?.reservationFeeAmount, 2000);
   const availableSlots = getAvailableSlots(room);
   const availabilityLabel = getAvailabilityLabel(room, selectedBed);
@@ -263,7 +271,7 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
           <div className="card-section-title"><div className="icon"><Wallet size={15} /></div>Payment Preview</div>
 
           <div className="summary-section">
-            <div className="summary-row"><span className="summary-label">Monthly Rent</span><span className="summary-value">{formatCurrency(monthlyRent)}/month</span></div>
+            <div className="summary-row"><span className="summary-label">Monthly Rent</span><span className="summary-value">{hasResolvedMonthlyRate ? `${formatCurrency(monthlyRent)}/month` : "Pricing will be confirmed during review"}</span></div>
             {selectedAppliances.length > 0 && (
               <div className="summary-row"><span className="summary-label">Selected Appliances</span><span className="summary-value">{selectedAppliances.map(formatSelectedAppliance).join(", ")}</span></div>
             )}
@@ -271,7 +279,7 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
               <div className="summary-row"><span className="summary-label">Appliance Fees</span><span className="summary-value">{formatCurrency(applianceFees)}/month</span></div>
             )}
             <div className="summary-row"><span className="summary-label">Reservation Fee</span><span className="summary-value">{formatCurrency(reservationFeeAmount)} due later</span></div>
-            <div className="total-section"><span>Estimated Monthly Total</span><span className="total-amount">{formatCurrency(estimatedMonthlyTotal)}</span></div>
+            <div className="total-section"><span>Estimated Monthly Total</span><span className="total-amount">{hasResolvedMonthlyRate ? formatCurrency(estimatedMonthlyTotal) : "To be confirmed"}</span></div>
           </div>
         </section>
       </div>

@@ -133,7 +133,10 @@ function ReservationFlowPage() {
           paymentSubmitted={flow.paymentSubmitted}
           paymentApproved={flow.paymentApproved}
         />
-        <RoomInfoBanner room={flow.reservationData?.room} />
+        <RoomInfoBanner
+          room={flow.reservationData?.room}
+          pricingDisplay={flow.reservationData?.pricingDisplay}
+        />
 
         <main className="reservation-main">
           {flow.currentStage === 1 && (

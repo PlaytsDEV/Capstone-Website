@@ -1,4 +1,5 @@
 import dayjs from "dayjs";
+import { resolveAuthoritativeLeasePricing } from "./contractPricingResolver.js";
 
 const money = (value) => Math.round((Number(value) || 0) * 100) / 100;
 const cents = (value) => Math.round(money(value) * 100);
@@ -33,36 +34,60 @@ export function resolveVerifiedReservationFeeCredit(payment, maximumCredit) {
   return money(Math.min(Number(payment.paidAmount ?? payment.amount ?? 0), Number(maximumCredit || 0)));
 }
 
-export function buildStructuredPricingSnapshot({ reservation, room, approvedBy = null, approvedAt = new Date() } = {}) {
-  const regularMonthlyRate = money(room?.monthlyPrice ?? room?.price ?? reservation?.monthlyRent);
-  const finalMonthlyRate = money(reservation?.monthlyRent ?? regularMonthlyRate);
+export function buildStructuredPricingSnapshot({
+  reservation,
+  room,
+  approvedBy = null,
+  approvedAt = new Date(),
+  businessSettings = {},
+} = {}) {
   const leaseDurationMonths = Number(reservation?.leaseDuration || 0);
-  if (
-    regularMonthlyRate <= 0 ||
-    finalMonthlyRate <= 0 ||
-    leaseDurationMonths < 1 ||
-    leaseDurationMonths > 12 ||
-    !room?._id ||
-    !room?.branch
-  ) {
+
+  if (!room?._id || !room?.branch) {
     const error = new Error("Approved monthly pricing is incomplete.");
     error.code = "PRICING_SNAPSHOT_INCOMPLETE";
     throw error;
   }
-  const discountAmount = money(Math.max(regularMonthlyRate - finalMonthlyRate, 0));
-  const discountPercentage = regularMonthlyRate > 0 ? money((discountAmount / regularMonthlyRate) * 100) : 0;
+
+  // The server — not the stored flat reservation.monthlyRent, and never a
+  // client-submitted rate — is authoritative for the final monthly rate.
+  // This mirrors the same admin-configured BusinessSettings discount table
+  // used to display room rates, so the approved snapshot cannot diverge from
+  // what the applicant was shown / what the room listing advertises.
+  let pricing;
+  try {
+    pricing = resolveAuthoritativeLeasePricing({
+      room,
+      roomType: room?.type || reservation?.preferredRoomType,
+      branch: room?.branch,
+      leaseDurationMonths,
+      settings: businessSettings,
+    });
+  } catch (resolverError) {
+    const error = new Error(
+      resolverError.message || "Approved monthly pricing is incomplete.",
+    );
+    // Preserve the resolver's specific reason (e.g. LEASE_DURATION_INVALID,
+    // ROOM_TYPE_UNSUPPORTED) when available; otherwise use the generic code
+    // so the approval endpoint can still return a structured, non-500 error.
+    error.code = resolverError.code || "PRICING_CONFIGURATION_INCOMPLETE";
+    error.cause = resolverError;
+    throw error;
+  }
+
+  const { regularMonthlyRate, discountPercentage, discountAmount, finalMonthlyRate } = pricing;
   const reservationFeeAmount = money(reservation?.reservationFeeAmount || 0);
   return {
-    regularMonthlyRate,
+    regularMonthlyRate: money(regularMonthlyRate),
     discountPercentage,
     discountAmount,
-    finalMonthlyRate,
+    finalMonthlyRate: money(finalMonthlyRate),
     reservationFeeAmount,
-    advanceRentAmount: finalMonthlyRate,
-    securityDepositAmount: finalMonthlyRate,
+    advanceRentAmount: money(finalMonthlyRate),
+    securityDepositAmount: money(finalMonthlyRate),
     approvedInitialCharges: 0,
-    roomType: room?.type || reservation?.preferredRoomType || "",
-    leaseType: leaseDurationMonths >= 6 ? "long" : "short",
+    roomType: pricing.roomType || room?.type || reservation?.preferredRoomType || "",
+    leaseType: pricing.isLongTerm ? "long" : "short",
     leaseDurationMonths,
     branchId: room?.branch || "",
     roomId: room?._id || reservation?.roomId || null,

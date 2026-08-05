@@ -5,7 +5,7 @@ import { formatBranch, formatRoomType } from "../../../../shared/utils/formatDat
 /**
  * Compact room info banner showing room name, branch, type, and price.
  */
-const RoomInfoBanner = ({ room }) => {
+const RoomInfoBanner = ({ room, pricingDisplay }) => {
   if (!room) return null;
 
   const toDisplayString = (value, fallback = "") => {
@@ -39,9 +39,16 @@ const RoomInfoBanner = ({ room }) => {
     room.title || room.name || room.roomNumber || room.id,
     "Room",
   );
-  const basePrice = toFiniteNumber(room.monthlyPrice || room.price || room.monthlyRent, 0);
+  // Lease-duration-aware final rate isn't knowable from the flat room object
+  // alone (short-term vs. long-term discount) — only trust the server-derived
+  // pricingDisplay preview/snapshot from GET /reservations/:id.
+  const hasResolvedMonthlyRate =
+    (pricingDisplay?.status === "preview" || pricingDisplay?.status === "snapshotted") &&
+    Number.isFinite(Number(pricingDisplay?.finalMonthlyRate));
   const applianceFees = toFiniteNumber(room.applianceFees, 0);
-  const roomPrice = toFiniteNumber(room.totalPrice, basePrice + applianceFees);
+  const roomPrice = hasResolvedMonthlyRate
+    ? toFiniteNumber(pricingDisplay.finalMonthlyRate, 0) + applianceFees
+    : null;
 
   return (
     <div className="rf-room-banner">
@@ -60,8 +67,14 @@ const RoomInfoBanner = ({ room }) => {
         </div>
       </div>
       <div className="rf-room-banner-price">
-        {"\u20b1"}{roomPrice.toLocaleString()}
-        <small> /mo</small>
+        {hasResolvedMonthlyRate ? (
+          <>
+            {"\u20b1"}{roomPrice.toLocaleString()}
+            <small> /mo</small>
+          </>
+        ) : (
+          <small>Pricing confirmed during review</small>
+        )}
       </div>
     </div>
   );

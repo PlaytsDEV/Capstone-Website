@@ -46,6 +46,18 @@ import {
   validateSelectedBedForReservation,
 } from "./_helpers.js";
 import { releaseOrphanedBeds } from "../../services/occupancy/occupancyManager.js";
+import { buildPricingDisplay } from "../../services/contractPricingResolver.js";
+import { getBusinessSettings } from "../../utils/businessSettings.js";
+
+const attachPricingDisplay = (serializedReservation, rawReservation, settings) => {
+  if (!serializedReservation) return serializedReservation;
+  serializedReservation.pricingDisplay = buildPricingDisplay({
+    reservation: rawReservation,
+    room: rawReservation?.roomId,
+    settings,
+  });
+  return serializedReservation;
+};
 
 export const getReservations = async (req, res) => {
   try {
@@ -98,8 +110,16 @@ export const getReservations = async (req, res) => {
     }
 
     const reservations = await reservationsQuery;
+    const serialized = serializeReservations(reservations);
 
-    res.json(serializeReservations(reservations));
+    if (!isAdminListView) {
+      const settings = await getBusinessSettings();
+      serialized.forEach((entry, index) =>
+        attachPricingDisplay(entry, reservations[index], settings),
+      );
+    }
+
+    res.json(serialized);
   } catch (error) {
     logger.error({ err: error, requestId: req.id }, "Fetch reservations error");
     handleReservationError(res, error, "fetch");
@@ -159,7 +179,8 @@ export const getReservationById = async (req, res) => {
       });
     }
 
-    res.json(serializeReservation(reservation));
+    const settings = await getBusinessSettings();
+    res.json(attachPricingDisplay(serializeReservation(reservation), reservation, settings));
   } catch (error) {
     logger.error({ err: error, requestId: req.id }, "Fetch reservation error");
     handleReservationError(res, error, "fetch");
