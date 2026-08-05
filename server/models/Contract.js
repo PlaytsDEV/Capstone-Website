@@ -278,11 +278,15 @@ const contractSchema = new mongoose.Schema(
 );
 
 contractSchema.index({ branch: 1, contractYear: 1, contractSequence: 1 }, { unique: true });
+// Scoped to isCurrent:true (matching the stayId index below) so that once a
+// contract is cancelled/superseded (isCurrent set to false), its immutable
+// initialContractKey/initialStayKey no longer blocks creating a replacement
+// draft contract for the same reservation/stay.
 contractSchema.index(
   { initialContractKey: 1 },
   {
     unique: true,
-    partialFilterExpression: { initialContractKey: { $type: "string" } },
+    partialFilterExpression: { initialContractKey: { $type: "string" }, isCurrent: true },
     name: "unique_initial_contract_reservation",
   },
 );
@@ -290,7 +294,7 @@ contractSchema.index(
   { initialStayKey: 1 },
   {
     unique: true,
-    partialFilterExpression: { initialStayKey: { $type: "string" } },
+    partialFilterExpression: { initialStayKey: { $type: "string" }, isCurrent: true },
     name: "unique_initial_contract_stay",
   },
 );

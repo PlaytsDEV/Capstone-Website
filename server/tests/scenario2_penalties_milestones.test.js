@@ -4,10 +4,10 @@
  * ============================================================================
  * Tests all 5 edge-cases under General Scenario 2:
  * 1. Partial Payment Arrangement Request (creates milestone sub-invoices)
- * 2. Automated Late Penalty Addition (past 3-day grace period, bumps invoice version)
+ * 2. Automated Late Penalty Addition (past 1-day grace period, bumps invoice version)
  * 3. Checkout Deadline Shift / Midnight Boundary (detects stale invoice version)
  * 4. Multi-Bill Priority Selection (oldest overdue utilities first)
- * 5. Grace Period Boundary Validator (3-day grace buffer)
+ * 5. Grace Period Boundary Validator (1-day grace buffer)
  */
 
 import { describe, it, expect } from "@jest/globals";
@@ -17,9 +17,9 @@ import dayjs from "dayjs";
 
 describe("Scenario 2: Payment Schedule Shifts, Penalties & Milestone Arrangements", () => {
 
-  it("should evaluate grace period boundaries correctly (3-day buffer)", () => {
+  it("should evaluate grace period boundaries correctly (1-day buffer)", () => {
     const today = new Date("2026-07-10T12:00:00Z");
-    const dueDateWithinGrace = new Date("2026-07-08T00:00:00Z"); // 2 days ago -> within 3-day grace
+    const dueDateWithinGrace = new Date("2026-07-09T00:00:00Z"); // 1 day ago -> within 1-day grace
     const dueDatePastGrace = new Date("2026-07-05T00:00:00Z");   // 5 days ago -> past grace
 
     const evalWithin = evaluateGracePeriod(dueDateWithinGrace, today);
