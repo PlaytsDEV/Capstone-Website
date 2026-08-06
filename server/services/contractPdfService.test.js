@@ -455,6 +455,13 @@ describe("tenant identity block — name/address variety across every template",
   // paragraph box the name is actually drawn into — causing realistic long
   // names to spuriously fail generation. These cases exercise every
   // supported template with a variety of real-world legal-name shapes.
+  //
+  // NOTE: "quadruple-sharing-short-term" is included in this loop, but under
+  // NODE_ENV=test renderPreparedContractPdf routes it through the pdf-lib
+  // overlay path, not the real Chromium/HTML pipeline it uses in production
+  // (see the NODE_ENV=test note in contractPdfService.js). The real HTML
+  // pipeline's equivalent behavior is covered separately by
+  // contractHtmlPdfService.test.js.
   const nameCases = [
     ["normal short name", "JOSE CRUZ"],
     ["long first and last name", "MARIA FERNANDA ESPERANZA CASTELLANOS-VILLAREAL"],

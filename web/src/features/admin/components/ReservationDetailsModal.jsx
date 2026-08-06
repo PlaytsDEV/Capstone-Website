@@ -21,6 +21,7 @@ import { showNotification } from "../../../shared/utils/notification";
 import { getVisitManagementAvailability } from "../utils/visitStatusRules";
 import { resolveReservationApprovalPricingGate } from "../utils/reservationPricingGate";
 import { resolveApplicantPhotoUrl } from "../utils/applicantPhotoResolution";
+import { formatSubmittedAddress } from "../utils/reservationAddressFormat";
 import ProfileAvatar from "../../../shared/components/ProfileAvatar";
 import "../styles/reservation-details-modal.css";
 
@@ -333,16 +334,6 @@ const getPrecheckAppearance = (precheck) => {
  return { label: "Manual Review Required", color: "#7C3AED", bg: "#EDE9FE" };
  }
  return null;
-};
-
-// Mirrors the server's joinAddress (tenantProfileService.js) ordering so the
-// admin-facing display matches what would end up on a generated contract.
-const formatSubmittedAddress = (address) => {
- if (!address || typeof address !== "object") return "";
- return [address.unitHouseNo, address.street, address.barangay, address.city, address.province]
- .map((part) => String(part || "").trim())
- .filter(Boolean)
- .join(", ");
 };
 
 const PERSONAL_FIELDS = (reservation) => [

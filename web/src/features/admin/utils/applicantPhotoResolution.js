@@ -1,6 +1,6 @@
 /**
  * Resolves which photo to show as the applicant's avatar in Application
- * Review, and which reservation the applicant belongs to.
+ * Review.
  *
  * Authoritative source order (see PR notes / task spec):
  *  1. The applicant's CURRENT live profile photo (User.profileImage) —
@@ -11,6 +11,15 @@
  *     only when no live profile photo exists yet.
  *  3. null — caller must render a safe initials/fallback avatar, never a
  *     broken-image icon.
+ *
+ * Cross-account safety: this reads only `reservation.userId.profileImage`
+ * and `reservation.selfiePhotoUrl` — both scoped to the single reservation
+ * object the caller already fetched. Identity matching for that reservation
+ * is enforced upstream by the server (getReservationById only ever returns
+ * a reservation the requester is authorized to view, populated with its
+ * true owner's userId), always by ObjectId reference, never by comparing
+ * display names/emails as strings — so this function cannot be handed a
+ * mismatched applicant's photo by construction.
  */
 const isUsableUrl = (value) => typeof value === "string" && value.trim().length > 0;
 
@@ -20,16 +29,4 @@ export const resolveApplicantPhotoUrl = (reservation) => {
   const submittedPhoto = reservation?.selfiePhotoUrl;
   if (isUsableUrl(submittedPhoto)) return submittedPhoto.trim();
   return null;
-};
-
-/**
- * True identity match is always by the reservation's userId ObjectId
- * reference — never by comparing display names/emails as strings. This
- * guards against ever accidentally showing one applicant's photo/profile
- * on another applicant's reservation record due to a name collision.
- */
-export const isReservationOwnedByUser = (reservation, userId) => {
-  if (!reservation || !userId) return false;
-  const ownerId = reservation.userId?._id || reservation.userId;
-  return String(ownerId || "") === String(userId);
 };
