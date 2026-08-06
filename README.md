@@ -273,6 +273,7 @@ Deploy to **Railway**, **Render**, or any Node.js-compatible platform. Ensure al
 - [ ] Set `NODE_ENV=production`
 - [ ] Set `PUBLIC_FRONTEND_URL=https://www.lilycrest.space` and the production `VITE_API_URL`
 - [ ] Set `PUBLIC_API_URL`, `EMAIL_ACTION_URL`, `RESERVATION_CONTINUATION_URL`, and allowed frontend origins explicitly
+- [ ] Set `VITE_APP_URL=https://www.lilycrest.space` in Vercel for **both** the Production and Preview environments (Firebase password-reset/auth-action links are built from this — without it, or with it scoped to Production only, links can point at the wrong host)
 - [ ] Set a distinct `EMAIL_VERIFICATION_SECRET`
 - [ ] Use production MongoDB Atlas URI with IP whitelist
 - [ ] Use production Firebase credentials

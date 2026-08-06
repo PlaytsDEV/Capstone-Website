@@ -13,6 +13,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { sendPasswordResetEmail } from "firebase/auth";
 import { Mail, ArrowLeft, CheckCircle, Loader2 } from "lucide-react";
 import { auth } from "../../../firebase/config";
+import { EMAIL_ACTION_URL, isAppUrlConfigured } from "../../../shared/api/publicUrls";
 import { showNotification } from "../../../shared/utils/notification";
 import { validateEmail } from "../../../shared/utils/authValidation";
 import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
@@ -55,8 +56,23 @@ function ForgotPassword() {
  // Shared by the initial submit and the "Resend email" action so both paths
  // apply the same enumeration-safe success/error handling and audit logging.
  const requestPasswordReset = async (targetEmail) => {
+ // Without an explicit, code-controlled action URL, Firebase falls back to
+ // whichever domain happens to be configured as the project's default in
+ // the Firebase Console — that's how reset links ended up pointing at a
+ // Vercel preview/default domain instead of the canonical production one.
+ // Fail closed here rather than silently sending a link to the wrong host.
+ if (!isAppUrlConfigured) {
+ showNotification(
+ "Password reset is temporarily unavailable. Please try again later.",
+ "error",
+ );
+ return false;
+ }
  try {
- await sendPasswordResetEmail(auth, targetEmail);
+ await sendPasswordResetEmail(auth, targetEmail, {
+ url: EMAIL_ACTION_URL,
+ handleCodeInApp: false,
+ });
  setEmailSent(true);
  showNotification("Password reset email sent!", "success");
  setResendCooldown(30);

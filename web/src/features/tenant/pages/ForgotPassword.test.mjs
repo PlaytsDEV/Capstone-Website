@@ -49,3 +49,26 @@ test("cooldown only starts after a confirmed send (success branch), not before t
 test("a distinct action exists to restart with a different email, separate from resend", () => {
   assert.match(source, /Use a different email/);
 });
+
+test("the reset link is built from the validated canonical app URL, not Firebase's implicit default", () => {
+  // Without an explicit actionCodeSettings.url, Firebase falls back to
+  // whatever's configured as the project's default action URL in the
+  // Firebase Console — which is how reset links ended up pointing at a
+  // Vercel deployment domain instead of the canonical production one.
+  assert.match(
+    source,
+    /sendPasswordResetEmail\(auth, targetEmail, \{\s*url: EMAIL_ACTION_URL,\s*handleCodeInApp: false,\s*\}\)/,
+  );
+  assert.match(source, /import \{ EMAIL_ACTION_URL, isAppUrlConfigured \} from "\.\.\/\.\.\/\.\.\/shared\/api\/publicUrls";/);
+});
+
+test("the reset URL is never built from window/document/request state", () => {
+  assert.doesNotMatch(source, /window\.location|document\.referrer|req\.headers|req\.get\(/);
+});
+
+test("an unconfigured canonical app URL blocks sending instead of silently using the wrong domain", () => {
+  assert.match(
+    source,
+    /if \(!isAppUrlConfigured\) \{[\s\S]{0,200}return false;\s*\}/,
+  );
+});
