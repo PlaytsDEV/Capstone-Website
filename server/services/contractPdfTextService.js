@@ -148,3 +148,109 @@ export const drawTextInsideFieldBox = ({
 };
 
 export const drawFittedField = drawTextInsideFieldBox;
+
+/**
+ * Shared "flowing paragraph" fitter+drawer: mixed bold/regular segments
+ * (each optionally tagged with a logical `field` name, e.g. "tenantLegalName"
+ * vs "tenantResidentialAddress") are word-wrapped and justified across up to
+ * `config.maximumLines` lines inside a single width, shrinking the WHOLE
+ * paragraph's font size as one unit from `preferredFontSize` down to
+ * `minimumFontSize` before giving up. This is the one shared implementation
+ * used for every multi-segment legal clause that embeds a dynamic value
+ * (tenant identity block, Section 4 deposits) instead of each call site
+ * reimplementing its own wrap/measure loop.
+ *
+ * Overflow attribution: if a single word from a specific tagged `field`
+ * still doesn't fit the box width even at the minimum font size, the error
+ * code is resolved via `config.fieldOverflowCodes[field]` when provided
+ * (falls back to `config.overflowCode`) so callers get a specific,
+ * actionable code (e.g. TENANT_NAME_TOO_LONG_FOR_TEMPLATE vs
+ * TENANT_ADDRESS_TOO_LONG_FOR_TEMPLATE) instead of one generic failure for
+ * the whole clause.
+ */
+const wrapWordsAtSize = (words, size, width) => {
+  const lines = [];
+  let line = [];
+  let lineWidth = 0;
+  let overflowWord = null;
+  for (const word of words) {
+    const wordWidth = word.font.widthOfTextAtSize(word.text, size);
+    if (wordWidth > width) {
+      overflowWord = word;
+      break;
+    }
+    const spaceWidth = word.font.widthOfTextAtSize(" ", size);
+    const candidateWidth = lineWidth + (line.length ? spaceWidth : 0) + wordWidth;
+    if (line.length && candidateWidth > width) {
+      lines.push({ words: line, width: lineWidth });
+      line = [word];
+      lineWidth = wordWidth;
+    } else {
+      line.push(word);
+      lineWidth = candidateWidth;
+    }
+  }
+  if (line.length) lines.push({ words: line, width: lineWidth });
+  return { lines, overflowWord };
+};
+
+export const fitParagraphFlow = ({ fonts, segments, config, fieldName }) => {
+  const preferredFontSize = config.preferredFontSize ?? config.fontSize;
+  const minimumFontSize = config.minimumFontSize ?? preferredFontSize;
+  const words = segments.flatMap((segment) =>
+    String(segment.text || "").trim().split(/\s+/).filter(Boolean).map((text) => ({
+      text,
+      bold: segment.bold === true,
+      field: segment.field || fieldName,
+      font: segment.bold ? fonts.bold : fonts.regular,
+    })));
+  let lastAttempt = null;
+  for (
+    let size = preferredFontSize;
+    size >= minimumFontSize;
+    size = Math.round((size - 0.25) * 100) / 100
+  ) {
+    const attempt = wrapWordsAtSize(words, size, config.width);
+    lastAttempt = attempt;
+    if (!attempt.overflowWord && attempt.lines.length <= (config.maximumLines || 1)) {
+      return { lines: attempt.lines, fontSize: size };
+    }
+  }
+  const offendingField = lastAttempt?.overflowWord?.field || fieldName;
+  const overflowCode = (config.fieldOverflowCodes || {})[offendingField] || config.overflowCode;
+  throw overflowError(offendingField, words.map((word) => word.text).join(" "), {
+    ...config,
+    overflowCode,
+  });
+};
+
+export const drawParagraphFlow = ({
+  page,
+  fonts,
+  x,
+  firstBaselineY,
+  lineHeight,
+  segments,
+  config,
+  fieldName,
+}) => {
+  const fitted = fitParagraphFlow({ fonts, segments, config, fieldName });
+  const { lines, fontSize } = fitted;
+  const positions = [];
+  lines.forEach((entry, lineIndex) => {
+    const justify = lineIndex < lines.length - 1 && entry.words.length > 1;
+    const extraSpace = justify
+      ? Math.min(1.5, Math.max(0, (config.width - entry.width) / (entry.words.length - 1)))
+      : 0;
+    let cursor = x;
+    const y = firstBaselineY - lineIndex * lineHeight;
+    entry.words.forEach((word, wordIndex) => {
+      const wordWidth = word.font.widthOfTextAtSize(word.text, fontSize);
+      page.drawText(word.text, { x: cursor, y, size: fontSize, font: word.font, color: rgb(0, 0, 0) });
+      positions.push({ text: word.text, bold: word.bold, field: word.field, x: cursor, y, width: wordWidth, lineIndex });
+      cursor += wordWidth;
+      if (wordIndex < entry.words.length - 1) cursor += word.font.widthOfTextAtSize(" ", fontSize) + extraSpace;
+    });
+  });
+  return { lines, positions, fontSize };
+};

@@ -20,6 +20,8 @@ import {
 import { showNotification } from "../../../shared/utils/notification";
 import { getVisitManagementAvailability } from "../utils/visitStatusRules";
 import { resolveReservationApprovalPricingGate } from "../utils/reservationPricingGate";
+import { resolveApplicantPhotoUrl } from "../utils/applicantPhotoResolution";
+import ProfileAvatar from "../../../shared/components/ProfileAvatar";
 import "../styles/reservation-details-modal.css";
 
  const ACTION_MSGS = {
@@ -333,6 +335,16 @@ const getPrecheckAppearance = (precheck) => {
  return null;
 };
 
+// Mirrors the server's joinAddress (tenantProfileService.js) ordering so the
+// admin-facing display matches what would end up on a generated contract.
+const formatSubmittedAddress = (address) => {
+ if (!address || typeof address !== "object") return "";
+ return [address.unitHouseNo, address.street, address.barangay, address.city, address.province]
+ .map((part) => String(part || "").trim())
+ .filter(Boolean)
+ .join(", ");
+};
+
 const PERSONAL_FIELDS = (reservation) => [
  ["First Name", fmt(reservation.firstName || reservation.userId?.firstName)],
  ["Last Name", fmt(reservation.lastName || reservation.userId?.lastName)],
@@ -342,6 +354,7 @@ const PERSONAL_FIELDS = (reservation) => [
  ["Marital Status", fmt(reservation.maritalStatus)],
  ["Nationality", fmt(reservation.nationality)],
  ["Education", fmt(reservation.educationLevel)],
+ ["Address", fmt(formatSubmittedAddress(reservation.address))],
  ["Phone", fmt(reservation.phone || reservation.mobileNumber)],
 ];
 
@@ -490,6 +503,11 @@ export default function ReservationDetailsModal({
  const docs = reservation ? buildDocs(reservation) : [];
  const guestName = reservation?.customer ?? "Unknown";
  const guestInitials = getInitials(guestName);
+ // Prefers the applicant's current live profile photo over the
+ // application-time submitted selfie; falls back to a safe initials avatar
+ // (never a broken-image icon — see ProfileAvatar.jsx) when neither exists
+ // or the URL fails to load.
+ const guestPhotoUrl = resolveApplicantPhotoUrl(reservation);
  const stageGuide = STAGE_GUIDANCE[status];
  const availabilityParams = useMemo(
  () => ({
@@ -853,9 +871,13 @@ export default function ReservationDetailsModal({
  <div className="rdm-top-card">
  <div className="rdm-top-header rdm-top-header--gradient">
  <div className="rdm-guest-block">
- <div className="rdm-avatar" aria-hidden="true">
- {guestInitials}
- </div>
+ <ProfileAvatar
+ className="rdm-avatar"
+ src={guestPhotoUrl}
+ initials={guestInitials}
+ alt={`${guestName} profile photo`}
+ size={36}
+ />
  <div className="rdm-guest-copy">
  <h2 className="rdm-title">{guestName}</h2>
  <div className="rdm-header-meta">

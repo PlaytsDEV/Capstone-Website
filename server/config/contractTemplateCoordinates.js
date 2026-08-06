@@ -242,6 +242,12 @@ const buildCoordinates = (roomType, leaseType) => Object.freeze({
     continuationBaselineY: 781.5,
     clauseBaselineY: 772.25,
     fontSize: 8.5,
+    // Real shrink range for the whole tenant-identity clause (name + fixed
+    // legal wording + address), so an unusually long legal name or address
+    // can shrink before generation fails instead of throwing a false
+    // TENANT_NAME_TOO_LONG_FOR_TEMPLATE for text that would otherwise fit.
+    // 7pt is the floor kept for print legibility on an 8.5x13in page.
+    minimumFontSize: 7,
     nameFontSize: 9.5,
     lineHeight: 9.25,
   }),
@@ -259,6 +265,7 @@ const buildCoordinates = (roomType, leaseType) => Object.freeze({
     reservationBaselineY:
       roomType === "private" && leaseType === "short-term" ? 470 : 479,
     fontSize: 8.5,
+    minimumFontSize: 7.5,
   }),
   protectedRegions: Object.freeze({
     signature: { x: 35, y: 95, width: 542, height: 230 },

@@ -13,6 +13,14 @@ const hasValue = (value) =>
 
 const firstValue = (...values) => values.find(hasValue) ?? null;
 
+// Collapses accidental runs of whitespace (e.g. an applicant typing "Juan  Dela
+// Cruz" with a double space) into a single space and trims the ends. This is
+// the ONLY normalization applied to identity text: it never removes letters,
+// hyphens, suffixes, or accented characters, and never reorders/reconstructs
+// name parts — see resolveTenantPersonalDetails below for how firstName /
+// middleName / lastName are joined (unchanged, one space between parts).
+const collapseWhitespace = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
+
 const joinAddress = (address = {}) =>
   [
     address.unitHouseNo,
@@ -22,7 +30,7 @@ const joinAddress = (address = {}) =>
     address.province,
   ]
     .filter(hasValue)
-    .map((value) => String(value).trim())
+    .map((value) => collapseWhitespace(value))
     .join(", ");
 
 export function resolveTenantPersonalDetails({ user = {}, reservation = {} } = {}) {
@@ -38,9 +46,9 @@ export function resolveTenantPersonalDetails({ user = {}, reservation = {} } = {
     approvedApplication
       ? firstValue(applicationValue, profileValue)
       : firstValue(profileValue, applicationValue);
-  const firstName = preferred(reservation.firstName, user.firstName);
-  const middleName = firstValue(reservation.middleName);
-  const lastName = preferred(reservation.lastName, user.lastName);
+  const firstName = collapseWhitespace(preferred(reservation.firstName, user.firstName)) || null;
+  const middleName = collapseWhitespace(firstValue(reservation.middleName)) || null;
+  const lastName = collapseWhitespace(preferred(reservation.lastName, user.lastName)) || null;
   const fullName = [firstName, middleName, lastName].filter(hasValue).join(" ");
 
   return {
@@ -55,7 +63,7 @@ export function resolveTenantPersonalDetails({ user = {}, reservation = {} } = {
     civilStatus: preferred(reservation.maritalStatus, user.civilStatus),
     nationality: preferred(reservation.nationality, user.nationality),
     occupation: preferred(employment.occupation, user.occupation),
-    currentAddress: preferred(joinAddress(reservationAddress), user.address),
+    currentAddress: collapseWhitespace(preferred(joinAddress(reservationAddress), user.address)) || null,
     city: preferred(reservationAddress.city, user.city),
     province: preferred(reservationAddress.province, user.province),
     profileImage: firstValue(user.profileImage, reservation.selfiePhotoUrl),
