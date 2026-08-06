@@ -1,5 +1,46 @@
 import { BUSINESS } from "../config/constants.js";
 
+/**
+ * ============================================================================
+ * FALLBACK AUDIT (hardening pass — every `??`/`||` default in this file)
+ * ============================================================================
+ * 1. `DEFAULT_REGULAR_RATES[normType] || DEFAULT_REGULAR_RATES["quadruple-sharing"]`
+ *    (resolveRoomDiscountPricing) — UNSAFE IN ISOLATION, but unreachable on the
+ *    money-moving path: resolveAuthoritativeLeasePricing() (the only entry
+ *    point buildStructuredPricingSnapshot/buildPricingDisplay ever call)
+ *    validates roomType against SUPPORTED_ROOM_TYPES and throws
+ *    ROOM_TYPE_UNSUPPORTED *before* resolveRoomDiscountPricing ever runs.
+ *    roomsController.js does call resolveRoomDiscountPricing directly for
+ *    room-listing display, but Room.type is a strict mongoose enum
+ *    (["private","double-sharing","quadruple-sharing"]), so this fallback
+ *    cannot trigger for a real, schema-valid Room document — it only guards
+ *    against a theoretical caller bug. Left in place, not a Bill/payment risk.
+ * 2. `settings?.doubleDiscountPercent ?? 20`, `settings?.privateDiscountPercent ?? 10`,
+ *    `settings?.quadrupleDiscountPercent ?? settings?.defaultLongTermDiscountPercent ?? 10`,
+ *    `settings?.longTermLeaseMinMonths ?? BUSINESS.LONG_TERM_LEASE_MIN_MONTHS` —
+ *    APPROVED SYSTEM DEFAULT, not a guess: these numbers are byte-for-byte the
+ *    same defaults declared on the BusinessSettings mongoose schema
+ *    (server/models/BusinessSettings.js) and in DEFAULT_BUSINESS_SETTINGS
+ *    (server/utils/businessSettings.js). getBusinessSettings() self-heals any
+ *    existing settings document that is missing one of these keys (sets it to
+ *    the same default and persists the save) before ever returning it to a
+ *    caller — so by the time `settings` reaches this resolver from either real
+ *    call site (reservationCrudController.js, reservationLifecycleController.js,
+ *    roomsController.js — all call getBusinessSettings() first), these fields
+ *    are already guaranteed non-null and reflect the actual persisted document
+ *    (an admin's live customization, if any). The `??` here is redundant
+ *    defense against a caller passing a bare `{}` (e.g. a future direct-call
+ *    bug), not a substitute for reading real config.
+ * 3. `room?.isDiscountEnabled !== false` / room.regularLongRate / room.regularShortRate
+ *    overrides — explicit per-room opt-in overrides, not fallbacks; absence
+ *    simply means "use the room-type default", which is the documented,
+ *    intended behavior for rooms without a custom rate.
+ * No REQUIRED field (roomType, leaseDurationMonths) has a silent fallback —
+ * both are validated and throw a structured error (ROOM_TYPE_UNSUPPORTED /
+ * LEASE_DURATION_INVALID) when missing/invalid; see resolveAuthoritativeLeasePricing.
+ * ============================================================================
+ */
+
 const DEFAULT_REGULAR_RATES = Object.freeze({
   private: Object.freeze({ shortTerm: 16000, longTerm: 15000 }),
   "double-sharing": Object.freeze({ shortTerm: 10000, longTerm: 9000 }),
@@ -168,9 +209,18 @@ export const buildPricingDisplay = ({ reservation, room, settings = {} } = {}) =
     reservation?.pricingSnapshot?.approvedAt;
 
   if (hasSnapshot) {
+    // Immutable, already-approved values — read directly off the snapshot
+    // that was persisted at approval time. Never recomputed here.
     const snapshot = reservation.pricingSnapshot;
+    const advanceRentAmount = roundMoney(Number(snapshot.advanceRentAmount) || 0);
+    const securityDepositAmount = roundMoney(Number(snapshot.securityDepositAmount) || 0);
+    const reservationFeeAmount = roundMoney(Number(snapshot.reservationFeeAmount) || 0);
+    const estimatedInitialPaymentTotal = roundMoney(
+      Math.max(0, advanceRentAmount + securityDepositAmount - reservationFeeAmount),
+    );
     return {
       status: "snapshotted",
+      source: "approved_pricing_snapshot",
       regularMonthlyRate: snapshot.regularMonthlyRate,
       discountPercentage: snapshot.discountPercentage,
       discountAmount: snapshot.discountAmount,
@@ -178,6 +228,10 @@ export const buildPricingDisplay = ({ reservation, room, settings = {} } = {}) =
       leaseType: snapshot.leaseType === "long" ? "long_term" : "short_term",
       leaseDurationMonths: snapshot.leaseDurationMonths,
       roomType: snapshot.roomType,
+      advanceRentAmount,
+      securityDepositAmount,
+      reservationFeeAmount,
+      estimatedInitialPaymentTotal,
     };
   }
 
@@ -189,8 +243,20 @@ export const buildPricingDisplay = ({ reservation, room, settings = {} } = {}) =
       leaseDurationMonths: reservation?.leaseDuration,
       settings,
     });
+    // Pre-approval estimate only — advance rent and security deposit mirror
+    // the same one-month-of-rent rule buildStructuredPricingSnapshot applies
+    // at approval time; the reservation fee is treated as a full credit here
+    // for display purposes only (actual credit is capped/verified against a
+    // confirmed PayMongo payment at approval, see resolveVerifiedReservationFeeCredit).
+    const advanceRentAmount = roundMoney(preview.finalMonthlyRate);
+    const securityDepositAmount = roundMoney(preview.finalMonthlyRate);
+    const reservationFeeAmount = roundMoney(Number(reservation?.reservationFeeAmount) || 2000);
+    const estimatedInitialPaymentTotal = roundMoney(
+      Math.max(0, advanceRentAmount + securityDepositAmount - reservationFeeAmount),
+    );
     return {
       status: "preview",
+      source: "server_policy_preview",
       regularMonthlyRate: preview.regularMonthlyRate,
       discountPercentage: preview.discountPercentage,
       discountAmount: preview.discountAmount,
@@ -198,10 +264,15 @@ export const buildPricingDisplay = ({ reservation, room, settings = {} } = {}) =
       leaseType: preview.leaseType,
       leaseDurationMonths: preview.leaseDurationMonths,
       roomType: preview.roomType,
+      advanceRentAmount,
+      securityDepositAmount,
+      reservationFeeAmount,
+      estimatedInitialPaymentTotal,
     };
   } catch (error) {
     return {
       status: "unavailable",
+      source: "server_policy_preview",
       reason: error.code || "PRICING_UNAVAILABLE",
       message: error.message,
     };

@@ -14,6 +14,7 @@ import { useReservations } from "../../../shared/hooks/queries/useReservations";
 import { billingApi } from "../../../shared/api/billingApi";
 import { hasReservationStatus } from "../../../shared/utils/lifecycleNaming";
 import { getReservationProgress, getNextAction } from "../utils/reservationProgress";
+import { resolveCurrentReservation, sortByRecency } from "../utils/reservationSelection";
 import TenantMaintenanceWorkspace from "../components/maintenance/TenantMaintenanceWorkspace";
 import {
  ReceiptModal,
@@ -246,22 +247,18 @@ const ProfilePage = () => {
 
  // Deterministic rule: the "current" reservation is the most-recently-updated
  // (falling back to most-recently-created) non-archived, non-terminal
- // reservation. reservations is already sorted createdAt desc by the API, so
- // [0] is the most recent by creation; we still prefer updatedAt when present
- // so an older reservation that was just re-activated/touched wins.
+ // reservation — see reservationSelection.js (sortByRecency /
+ // resolveCurrentReservation), shared with useReservationFlow.js so both the
+ // flow's active-reservation resume logic and this profile view apply the
+ // exact same tie-break rule.
  const activeReservations = useMemo(
  () =>
- reservations
- .filter((reservation) => {
+ sortByRecency(
+ reservations.filter((reservation) => {
  const status = reservation.reservationStatus || reservation.status;
   return !hasReservationStatus(status, "moveOut", "cancelled", "rejected");
- })
- .slice()
- .sort((a, b) => {
- const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
- const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
- return bTime - aTime;
  }),
+ ),
  [reservations],
  );
 
@@ -270,15 +267,9 @@ const ProfilePage = () => {
  // Profile tabs from silently diverging onto different records (e.g. after a
  // new reservation is created, or the previously-selected one is archived).
  useEffect(() => {
- if (activeReservations.length === 0) {
- if (selectedReservationId) setSelectedReservationId(null);
- return;
- }
- const stillValid = activeReservations.some(
- (reservation) => reservation._id === selectedReservationId,
- );
- if (!stillValid) {
- setSelectedReservationId(activeReservations[0]._id);
+ const { nextSelectedId } = resolveCurrentReservation(activeReservations, selectedReservationId);
+ if (nextSelectedId !== selectedReservationId) {
+ setSelectedReservationId(nextSelectedId);
  }
  }, [activeReservations, selectedReservationId]);
 

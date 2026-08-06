@@ -23,6 +23,7 @@ import {
 import { formatBranch, formatRoomType } from "../../../../shared/utils/formatDate";
 import { getRoomImages as getFallbackRoomImages } from "../check-availability/checkAvailabilityConstants";
 import { getBedDisplayLabel } from "../../../../shared/utils/bedIdentifier";
+import { getResolvedMonthlyRate, isPricingDisplayUsable } from "../../utils/pricingDisplayHelpers";
 
 const toDisplayString = (value, fallback = "") => {
   if (value === null || value === undefined) return fallback;
@@ -142,10 +143,8 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
   // the server has already resolved it (pricingDisplay, from GET
   // /reservations/:id) — never guess with a flat room.price/monthlyPrice.
   const pricingDisplay = reservationData?.pricingDisplay;
-  const hasResolvedMonthlyRate =
-    (pricingDisplay?.status === "preview" || pricingDisplay?.status === "snapshotted") &&
-    Number.isFinite(Number(pricingDisplay?.finalMonthlyRate));
-  const monthlyRent = hasResolvedMonthlyRate ? toFiniteNumber(pricingDisplay.finalMonthlyRate, 0) : null;
+  const hasResolvedMonthlyRate = isPricingDisplayUsable(pricingDisplay);
+  const monthlyRent = getResolvedMonthlyRate(pricingDisplay);
   const estimatedMonthlyTotal = hasResolvedMonthlyRate ? monthlyRent + applianceFees : null;
   const reservationFeeAmount = toFiniteNumber(reservationData?.reservationFeeAmount, 2000);
   const availableSlots = getAvailableSlots(room);

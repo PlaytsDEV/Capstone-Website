@@ -21,6 +21,11 @@ import {
   readMoveInDate,
 } from "../../../shared/utils/lifecycleNaming";
 import {
+  getReservationFeeStatusLabel,
+  getStructuredMoveInReadiness,
+  resolveDisplayMoveInDate,
+} from "../utils/reservationReadiness";
+import {
   getPhysicalVisitApplicantState,
   getReservationVisitStatus,
   getReservationViewingPreference,
@@ -370,54 +375,6 @@ function getNextAction(reservation, currentStage) {
   }
 }
 
-// Mirrors the read-only conditions the backend's structured move-in gate
-// (getStructuredMoveInBlockers in server/services/structuredInitialPaymentService.js)
-// enforces — using fields already present on the serialized reservation, so
-// this never has to invent new business rules, only reflect the ones the
-// backend already computes/enforces at approval and move-in time.
-function isStructuredWorkflow(reservation) {
-  return reservation?.financialWorkflowVersion === "structured-initial-payment-v1";
-}
-
-function getReservationFeeStatusLabel(reservation) {
-  if (!isStructuredWorkflow(reservation)) {
-    // Legacy (pre-structured) workflow — unchanged wording.
-    return "Payment verified";
-  }
-  return reservation.reservationFeePaymentStatus === "verified"
-    ? "Reservation fee verified"
-    : "Reservation fee pending";
-}
-
-function getStructuredMoveInReadiness(reservation) {
-  if (!isStructuredWorkflow(reservation)) {
-    return { ready: null, reasons: [] };
-  }
-  const reasons = [];
-  if (reservation.reservationFeePaymentStatus !== "verified") {
-    reasons.push("Reservation fee not yet verified");
-  }
-  if (!reservation.pricingSnapshot?.approvedAt) {
-    reasons.push("Pricing has not been approved yet");
-  }
-  if (reservation.initialPaymentStatus !== "paid") {
-    reasons.push("Structured initial-payment Bill is not fully paid");
-  }
-  const documentsComplete = Boolean(
-    reservation.selfiePhotoUrl &&
-      reservation.validIDFrontUrl &&
-      reservation.validIDBackUrl &&
-      reservation.agreedToPrivacy &&
-      reservation.agreedToCertification,
-  );
-  if (!documentsComplete) reasons.push("Required documents are incomplete");
-  if (!reservation.emergencyContact?.name || !reservation.emergencyContact?.contactNumber) {
-    reasons.push("Emergency contact is incomplete");
-  }
-  if (!reservation.houseRulesPreparedAt) reasons.push("House rules acknowledgment pending");
-  return { ready: reasons.length === 0, reasons };
-}
-
 function formatDate(dateStr) {
   if (!dateStr) return "—";
   try {
@@ -616,25 +573,17 @@ export default function ReservationDashboard({
             </span>
 
             {(() => {
-              // readMoveInDate (and the server's serialized reservation.moveInDate)
-              // prioritizes confirmedMoveInDate over the tenant's originally
-              // requested targetMoveInDate — show the confirmed date as the
-              // primary value, and only surface the originally requested date
-              // as a clearly-labeled secondary value when it differs.
-              const confirmedDate = readMoveInDate(reservation);
-              const requestedDate = reservation.targetMoveInDate;
-              const isConfirmedDifferent =
-                confirmedDate &&
-                requestedDate &&
-                formatDate(confirmedDate) !== formatDate(requestedDate);
-              if (!confirmedDate && !requestedDate) return null;
+              const { primaryDate, showRequested, requestedDate } = resolveDisplayMoveInDate(
+                reservation,
+                readMoveInDate,
+                formatDate,
+              );
+              if (!primaryDate) return null;
               return (
                 <>
                   <span style={styles.metaDot}>·</span>
-                  <span style={styles.metaItem}>
-                    Move-in: {formatDate(confirmedDate || requestedDate)}
-                  </span>
-                  {isConfirmedDifferent && (
+                  <span style={styles.metaItem}>Move-in: {formatDate(primaryDate)}</span>
+                  {showRequested && (
                     <>
                       <span style={styles.metaDot}>·</span>
                       <span style={styles.metaItem}>

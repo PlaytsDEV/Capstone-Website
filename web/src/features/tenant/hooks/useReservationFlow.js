@@ -27,6 +27,7 @@ import {
   normalizeReservationStatus,
 } from "../../../shared/utils/lifecycleNaming";
 import { usePaymentRedirect } from "./usePaymentRedirect";
+import { classifyActiveReservations } from "../utils/reservationSelection";
 import { uploadIfFile } from "../../../shared/utils/firebaseStorageUpload";
 import {
   validateBirthday,
@@ -1087,20 +1088,14 @@ export default function useReservationFlow() {
       const list = Array.isArray(all)
         ? all
         : all?.reservations || all?.data || [];
-      const activeOnes = list.filter(
-        (r) =>
-          r.status !== "cancelled" &&
-          r.status !== "archived" &&
-          r.status !== "rejected" &&
-          !r.isArchived,
-      );
-      if (activeOnes.length === 0) {
+      const classification = classifyActiveReservations(list);
+      if (classification.kind === "none") {
         appNavigate("/applicant/check-availability", {
           flash: { type: "warning", message: "No active reservation found." },
         });
         return;
       }
-      if (activeOnes.length > 1) {
+      if (classification.kind === "multiple") {
         // Do not silently resume an arbitrary one — this is a recovery
         // scenario, not a normal single-reservation resume.
         appNavigate("/applicant/profile", {
@@ -1112,7 +1107,7 @@ export default function useReservationFlow() {
         });
         return;
       }
-      const found = activeOnes[0];
+      const found = classification.reservation;
       if (verifyPaymentReturn) {
         await loadExistingReservation(found._id, true);
         return;

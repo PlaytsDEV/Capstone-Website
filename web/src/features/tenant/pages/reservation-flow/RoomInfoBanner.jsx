@@ -1,6 +1,7 @@
 import React from "react";
 import { Home, MapPin, Tag } from "lucide-react";
 import { formatBranch, formatRoomType } from "../../../../shared/utils/formatDate";
+import { getResolvedMonthlyRate, isPricingDisplayUsable } from "../../utils/pricingDisplayHelpers";
 
 /**
  * Compact room info banner showing room name, branch, type, and price.
@@ -42,12 +43,10 @@ const RoomInfoBanner = ({ room, pricingDisplay }) => {
   // Lease-duration-aware final rate isn't knowable from the flat room object
   // alone (short-term vs. long-term discount) — only trust the server-derived
   // pricingDisplay preview/snapshot from GET /reservations/:id.
-  const hasResolvedMonthlyRate =
-    (pricingDisplay?.status === "preview" || pricingDisplay?.status === "snapshotted") &&
-    Number.isFinite(Number(pricingDisplay?.finalMonthlyRate));
+  const hasResolvedMonthlyRate = isPricingDisplayUsable(pricingDisplay);
   const applianceFees = toFiniteNumber(room.applianceFees, 0);
   const roomPrice = hasResolvedMonthlyRate
-    ? toFiniteNumber(pricingDisplay.finalMonthlyRate, 0) + applianceFees
+    ? getResolvedMonthlyRate(pricingDisplay) + applianceFees
     : null;
 
   return (

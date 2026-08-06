@@ -39,6 +39,7 @@ import {
   getReservationCancellationUiState,
 } from "./reservationCancellationUi";
 import { getRoomImages } from "../../pages/check-availability/checkAvailabilityConstants";
+import { getResolvedMonthlyRate } from "../../utils/pricingDisplayHelpers";
 
 /* ── Ordinal suffix helper ────────────────────────── */
 function ordinal(n) {
@@ -80,14 +81,7 @@ function getAmenityIcon(amenity) {
 // on the backend). This function intentionally no longer reinvents the
 // discount formula client-side — returns null when no resolved rate exists.
 function getEffectiveMonthlyRent(reservation) {
-  const display = reservation?.pricingDisplay;
-  if (
-    (display?.status === "preview" || display?.status === "snapshotted") &&
-    Number.isFinite(Number(display?.finalMonthlyRate))
-  ) {
-    return Number(display.finalMonthlyRate);
-  }
-  return null;
+  return getResolvedMonthlyRate(reservation?.pricingDisplay);
 }
 
 /* ── Main Component ────────────────────────────────── */
