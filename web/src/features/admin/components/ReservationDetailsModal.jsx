@@ -584,7 +584,7 @@ export default function ReservationDetailsModal({
       return "System Sweeper (24h Hold Expired)";
     }
     if (typeof reservation.cancelledBy === "object" && reservation.cancelledBy?.role) {
-      const role = reservation.cancelledBy.role;
+      const { role } = reservation.cancelledBy;
       if (role === "branch_admin") return "Branch Admin";
       if (role === "owner") return "System Owner";
       if (role === "applicant" || role === "tenant") return reservation.customer || "Applicant";
