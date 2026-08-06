@@ -8,7 +8,7 @@
  * Two states: email form → success confirmation.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { sendPasswordResetEmail } from "firebase/auth";
 import { Mail, ArrowLeft, CheckCircle, Loader2 } from "lucide-react";
@@ -30,6 +30,10 @@ function ForgotPassword() {
  const [fieldValid, setFieldValid] = useState(false);
  const [resending, setResending] = useState(false);
  const [resendCooldown, setResendCooldown] = useState(0);
+ // A ref, not state, because state updates aren't visible to a second click
+ // that lands before React commits the re-render — that's how a fast
+ // double-click sneaks past a state-only guard and fires two sends.
+ const resendInFlightRef = useRef(false);
 
  useEffect(() => {
  if (resendCooldown <= 0) return undefined;
@@ -129,11 +133,13 @@ function ForgotPassword() {
  };
 
  const handleResend = async () => {
- if (resending || resendCooldown > 0 || !email) return;
+ if (resendInFlightRef.current || resendCooldown > 0 || !email) return;
+ resendInFlightRef.current = true;
  setResending(true);
  try {
  await requestPasswordReset(email);
  } finally {
+ resendInFlightRef.current = false;
  setResending(false);
  }
  };
@@ -325,6 +331,7 @@ function ForgotPassword() {
  </button>
  <button
  type="button"
+ disabled={resending}
  onClick={() => {
  setEmailSent(false);
  setEmail("");
@@ -333,6 +340,7 @@ function ForgotPassword() {
  setResendCooldown(0);
  }}
  className="w-full py-2 text-xs font-light text-muted-foreground hover:text-foreground transition-colors underline"
+ style={{ opacity: resending ? 0.5 : 1, cursor: resending ? "not-allowed" : "pointer" }}
  >
  Use a different email
  </button>

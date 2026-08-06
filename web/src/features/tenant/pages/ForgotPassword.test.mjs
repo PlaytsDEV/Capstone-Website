@@ -21,7 +21,21 @@ test("resend reuses the enumeration-safe Firebase reset call, not an OTP endpoin
 
 test("resend is disabled while in flight or during cooldown, and preserves the email", () => {
   assert.match(source, /disabled=\{resending \|\| resendCooldown > 0\}/);
-  assert.match(source, /if \(resending \|\| resendCooldown > 0 \|\| !email\) return;/);
+  assert.match(source, /if \(resendInFlightRef\.current \|\| resendCooldown > 0 \|\| !email\) return;/);
+});
+
+test("resend uses a ref guard, not state alone, so a double-click before re-render cannot fire twice", () => {
+  // A second click that lands before React commits the `resending` state
+  // update still sees the previous render's stale `resending = false` in its
+  // closure. Only a synchronously-mutated ref reliably blocks that second
+  // call from ever starting a second sendPasswordResetEmail request.
+  assert.match(source, /const resendInFlightRef = useRef\(false\);/);
+  assert.match(source, /resendInFlightRef\.current = true;\s*setResending\(true\);/);
+  assert.match(source, /resendInFlightRef\.current = false;\s*setResending\(false\);/);
+});
+
+test("switching to a different email is blocked while a resend is in flight", () => {
+  assert.match(source, /disabled=\{resending\}[\s\S]{0,200}setEmailSent\(false\);/);
 });
 
 test("cooldown only starts after a confirmed send (success branch), not before the request", () => {
