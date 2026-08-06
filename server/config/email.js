@@ -1090,6 +1090,53 @@ export const sendPaymentReceiptEmail = async ({
 // EMAIL VERIFICATION LINK
 // =============================================================================
 
+/**
+ * Races a provider call against a bounded timeout so a hung SMTP/Resend
+ * connection can never block a resend request indefinitely.
+ */
+const withProviderTimeout = (promise, ms, timeoutMessage) =>
+  new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(timeoutMessage)), ms);
+    Promise.resolve(promise).then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+
+const RECIPIENT_REJECTION_PATTERN =
+  /mailbox unavailable|mailbox not found|user unknown|no such user|recipient rejected|invalid recipient|address (?:not found|rejected)|does not exist|unknown user|550|551|553|5\.1\.1|5\.1\.10/i;
+
+/**
+ * Classifies a provider error (SMTP or Resend) into one of the internal,
+ * non-enumerable delivery-failure categories used to pick a safe, stable
+ * user-facing message. Never returns raw provider text.
+ */
+export const classifyVerificationDeliveryError = (error) => {
+  const statusCode =
+    Number(error?.statusCode || error?.status || error?.responseCode || error?.cause?.statusCode || 0) || null;
+  const rawCode = String(error?.name || error?.code || error?.cause?.code || "");
+  const text = `${rawCode} ${error?.message || ""} ${error?.response || ""}`.toLowerCase();
+
+  if (RECIPIENT_REJECTION_PATTERN.test(text) || [550, 551, 553].includes(statusCode)) {
+    return { category: "recipient_rejected", code: "EMAIL_RECIPIENT_REJECTED" };
+  }
+
+  const base = classifyOtpEmailError(error);
+  const CODE_MAP = {
+    EMAIL_PROVIDER_AUTH_REJECTED: "EMAIL_PROVIDER_AUTH_FAILED",
+    EMAIL_PROVIDER_RATE_LIMITED: "EMAIL_PROVIDER_RATE_LIMITED",
+    EMAIL_PROVIDER_TIMEOUT: "EMAIL_PROVIDER_TEMPORARILY_UNAVAILABLE",
+    EMAIL_PROVIDER_NETWORK_ERROR: "EMAIL_PROVIDER_TEMPORARILY_UNAVAILABLE",
+  };
+  return { category: base.category, code: CODE_MAP[base.code] || "EMAIL_DELIVERY_FAILED" };
+};
+
 export const generateEmailVerificationEmail = ({ displayName, verificationLink }) => {
   const safeName = displayName || "there";
   const bodyHtml = `
@@ -1108,59 +1155,76 @@ export const generateEmailVerificationEmail = ({ displayName, verificationLink }
   });
 };
 
+const EMAIL_PROVIDER_TIMEOUT_MS = 20000;
+
 export const sendEmailVerificationLinkEmail = async ({ to, name, verificationLink }) => {
   const subject = "Verify your Lilycrest email";
   const html = generateEmailVerificationEmail({ displayName: name, verificationLink });
   const text = `Hi ${String(name || "there").replace(/[\r\n]+/g, " ")}, verify your Lilycrest email using this link: ${verificationLink}`;
 
+  // Records the safe (no secrets, no raw provider text) attempt chain so a
+  // second provider's failure never erases the first provider's diagnosis.
+  const attempts = [];
+  const recordFailure = (provider, classification) => {
+    attempts.push({ provider, ...classification });
+    console.error("Email verification delivery failed", {
+      emailFingerprint: emailFingerprint(to),
+      provider,
+      category: classification.category,
+      code: classification.code,
+    });
+  };
+
   if (isEmailConfigured) {
     try {
-      const info = await transporter.sendMail({
-        from: { name: "Lilycrest Dormitory", address: emailConfig.user },
-        to,
-        subject,
-        html,
-        text,
-      });
-      return { success: Boolean(info?.messageId), provider: "smtp" };
+      const info = await withProviderTimeout(
+        transporter.sendMail({
+          from: { name: "Lilycrest Dormitory", address: emailConfig.user },
+          to,
+          subject,
+          html,
+          text,
+        }),
+        EMAIL_PROVIDER_TIMEOUT_MS,
+        "EMAIL_PROVIDER_TIMEOUT",
+      );
+      if (info?.messageId) {
+        return { success: true, provider: "smtp", attempts };
+      }
+      recordFailure("smtp", { category: "unexpected_response", code: "EMAIL_DELIVERY_FAILED" });
     } catch (error) {
-      console.error("Email verification delivery failed", {
-        emailFingerprint: emailFingerprint(to),
-        provider: "smtp",
-        ...safeEmailFailure(error),
-      });
+      recordFailure("smtp", classifyVerificationDeliveryError(error));
     }
+  } else {
+    attempts.push({ provider: "smtp", category: "configuration", code: "EMAIL_PROVIDER_NOT_CONFIGURED" });
   }
 
   if (resendClient && OTP_FROM) {
     try {
-      const { data, error } = await resendClient.emails.send({
-        from: OTP_FROM,
-        to: [to],
-        subject,
-        html,
-        text,
-      });
-      if (error || !data?.id) {
-        console.error("Email verification delivery failed", {
-          emailFingerprint: emailFingerprint(to),
-          provider: "resend",
-          ...safeEmailFailure(error),
-        });
-        return { success: false, code: "EMAIL_PROVIDER_REJECTED" };
+      const { data, error } = await withProviderTimeout(
+        resendClient.emails.send({ from: OTP_FROM, to: [to], subject, html, text }),
+        EMAIL_PROVIDER_TIMEOUT_MS,
+        "EMAIL_PROVIDER_TIMEOUT",
+      );
+      if (error) {
+        recordFailure("resend", classifyVerificationDeliveryError(error));
+      } else if (typeof data?.id !== "string" || !data.id.trim()) {
+        recordFailure("resend", { category: "unexpected_response", code: "EMAIL_DELIVERY_FAILED" });
+      } else {
+        return { success: true, provider: "resend", attempts };
       }
-      return { success: true, provider: "resend" };
     } catch (error) {
-      console.error("Email verification delivery failed", {
-        emailFingerprint: emailFingerprint(to),
-        provider: "resend",
-        ...safeEmailFailure(error),
-      });
-      return { success: false, code: "EMAIL_PROVIDER_ERROR" };
+      recordFailure("resend", classifyVerificationDeliveryError(error));
     }
+  } else {
+    attempts.push({ provider: "resend", category: "configuration", code: "EMAIL_PROVIDER_NOT_CONFIGURED" });
   }
 
-  return { success: false, code: "EMAIL_PROVIDER_NOT_CONFIGURED" };
+  // Prefer the most specific (non-"not configured") failure so a
+  // misconfigured fallback provider doesn't mask a real delivery rejection.
+  const specific = attempts.find((attempt) => attempt.code !== "EMAIL_PROVIDER_NOT_CONFIGURED");
+  const final = specific || attempts[attempts.length - 1] || { category: "unknown", code: "EMAIL_DELIVERY_FAILED" };
+  return { success: false, attempts, category: final.category, code: final.code };
 };
 
 // =============================================================================
