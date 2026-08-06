@@ -628,6 +628,12 @@
     padding-left: 12px;
     padding-right: 12px;
   }
+
+  /* Give the phone number field its full width back on very narrow
+     screens instead of squeezing it against the digit counter. */
+  .pi-counter {
+    display: none;
+  }
 }
 
 /* ============================================

@@ -82,6 +82,7 @@ function SignUp() {
     confirmPassword: "",
   });
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [termsTouched, setTermsTouched] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
@@ -250,10 +251,14 @@ function SignUp() {
     }
 
     if (!agreedToTerms) {
-      showNotification(
-        "Please agree to the Terms and Conditions and Privacy Policy to continue.",
-        "error",
-      );
+      setTermsTouched(true);
+      setTimeout(() => {
+        const el = document.getElementById("agreedToTerms");
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.focus();
+        }
+      }, 100);
       return false;
     }
     return true;
@@ -706,10 +711,18 @@ function SignUp() {
 
               <label className="auth-terms">
                 <input
+                  id="agreedToTerms"
                   type="checkbox"
                   checked={agreedToTerms}
-                  onChange={(e) => setAgreedToTerms(e.target.checked)}
+                  onChange={(e) => {
+                    setAgreedToTerms(e.target.checked);
+                    if (e.target.checked) setTermsTouched(false);
+                  }}
                   disabled={loading}
+                  aria-invalid={termsTouched && !agreedToTerms}
+                  aria-describedby={
+                    termsTouched && !agreedToTerms ? "terms-error" : undefined
+                  }
                 />
                 <span>
                   I agree to the{" "}
@@ -734,6 +747,15 @@ function SignUp() {
                   </button>
                 </span>
               </label>
+              {termsTouched && !agreedToTerms && (
+                <span
+                  id="terms-error"
+                  className="floating-field__error"
+                  role="alert"
+                >
+                  Please agree to the Terms and Conditions and Privacy Policy to continue.
+                </span>
+              )}
 
               <button
                 type="submit"

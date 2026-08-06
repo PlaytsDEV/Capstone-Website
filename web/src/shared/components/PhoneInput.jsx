@@ -357,9 +357,10 @@ const PhoneInput = ({
  }}
  />
 
- {/* Real-time counter (hidden in full-int mode) */}
+ {/* Real-time counter (hidden in full-int mode, and on very narrow
+ screens where it would crowd the number field) */}
  {selectedCountry && !localNumber.startsWith("+") && (
- <span style={{
+ <span className="pi-counter" style={{
  fontSize: 11, fontWeight: 500, color: counterColor,
  paddingRight: 12, flexShrink: 0,
  transition: "color 0.2s", minWidth: 34, textAlign: "right",
