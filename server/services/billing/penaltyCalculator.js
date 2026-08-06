@@ -23,7 +23,12 @@ export async function computePenalty(bill, settings = null, now = dayjs()) {
     ? [settings.penaltyRatePerDay, settings.maxCapPercent]
     : await Promise.all([getPenaltyRatePerDay(), getMaxPenaltyCapPercent()]);
 
-  const daysLate = nowDayjs.diff(dayjs(bill.dueDate), "day");
+  // Compare calendar dates only (Asia/Manila billing day boundaries) —
+  // without normalizing both sides to startOf("day"), the day-late count
+  // depends on time-of-day and can be off by one near the due-date boundary.
+  const daysLate = nowDayjs
+    .startOf("day")
+    .diff(dayjs(bill.dueDate).startOf("day"), "day");
 
   if (!Number.isFinite(daysLate) || daysLate <= 0) {
     return { penalty: 0, daysLate: 0, ratePerDay: configuredRate, capped: false };

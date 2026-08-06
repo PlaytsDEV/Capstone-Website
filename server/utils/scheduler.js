@@ -1034,10 +1034,11 @@ export function startScheduler(options = {}) {
     });
   }
 
-  // Job 0: Automated Rent Bills — daily at midnight
+  // Job 0: Automated Rent Bills — daily at midnight (Asia/Manila)
   scheduledJobs.push(
     cron.schedule('0 0 * * *', generateAutomatedRentBills, {
       scheduled: true,
+      timezone: process.env.APP_TIMEZONE || "Asia/Manila",
       name: 'automated-rent-generation',
     }),
   );
@@ -1058,26 +1059,29 @@ export function startScheduler(options = {}) {
     }),
   );
 
-  // Job 3: Overdue bill marking — daily at 01:00 (1 hour after midnight rent generation)
+  // Job 3: Overdue bill marking — daily at 01:00 (1 hour after midnight rent generation, Asia/Manila)
   scheduledJobs.push(
     cron.schedule("0 1 * * *", markOverdueBills, {
       scheduled: true,
+      timezone: process.env.APP_TIMEZONE || "Asia/Manila",
       name: "overdue-bill-marking",
     }),
   );
 
-  // Job 4: Auto-compute penalties — daily at 01:10 (after overdue marking)
+  // Job 4: Auto-compute penalties — daily at 01:10 (after overdue marking, Asia/Manila)
   scheduledJobs.push(
     cron.schedule("10 1 * * *", computeOverduePenalties, {
       scheduled: true,
+      timezone: process.env.APP_TIMEZONE || "Asia/Manila",
       name: "overdue-penalty-computation",
     }),
   );
 
-  // Job 4b: Consecutive overdue detection — daily at 01:20 (after penalties)
+  // Job 4b: Consecutive overdue detection — daily at 01:20 (after penalties, Asia/Manila)
   scheduledJobs.push(
     cron.schedule("20 1 * * *", detectConsecutiveOverdueMonths, {
       scheduled: true,
+      timezone: process.env.APP_TIMEZONE || "Asia/Manila",
       name: "consecutive-overdue-detection",
     }),
   );

@@ -141,7 +141,7 @@ describe("services/billing/rentGenerator", () => {
 
     const result = await ensureCurrentCycleRentBill({
       reservation,
-      referenceDate: new Date("2026-04-02T00:00:00.000Z"),
+      referenceDate: new Date("2026-02-28T00:00:00.000Z"),
       dryRun: false,
       notifyTenant: true,
       requireGenerationDateMatch: true,
@@ -151,7 +151,7 @@ describe("services/billing/rentGenerator", () => {
     expect(billInstances).toHaveLength(1);
     expect(localYmd(billInstances[0].billingCycleStart)).toBe("2026-3-5");
     expect(localYmd(billInstances[0].billingCycleEnd)).toBe("2026-4-5");
-    expect(localYmd(billInstances[0].dueDate)).toBe("2026-4-7");
+    expect(localYmd(billInstances[0].dueDate)).toBe("2026-3-5");
     expect(notify.billGenerated).toHaveBeenCalledTimes(1);
   });
 
