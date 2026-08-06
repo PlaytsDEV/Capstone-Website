@@ -24,6 +24,8 @@
  */
 
 import nodemailer from "nodemailer";
+import SMTPConnection from "nodemailer/lib/smtp-connection/index.js";
+import MailComposer from "nodemailer/lib/mail-composer/index.js";
 import { Resend } from "resend";
 import dotenv from "dotenv";
 import crypto from "crypto";
@@ -35,14 +37,22 @@ dotenv.config();
 // TRANSPORTER CONFIGURATION
 // =============================================================================
 
+// Gmail's well-known SMTP endpoint, used only as the fallback when no
+// explicit SMTP_HOST is configured. Resolving it here (instead of letting
+// nodemailer's `service: "gmail"` shorthand resolve it internally) gives the
+// hard-timeout SMTP path below the same host/port/secure values as the
+// regular pooled transporter, without duplicating the lookup.
+const GMAIL_SMTP_DEFAULTS = { host: "smtp.gmail.com", port: 465, secure: true };
+
 const resolveEmailConfig = () => {
   const user = String(process.env.EMAIL_USER || process.env.SMTP_USER || "").trim();
   const pass = String(process.env.EMAIL_PASSWORD || process.env.SMTP_PASS || "").trim();
-  const host = String(process.env.SMTP_HOST || "").trim();
-  const port = Number(process.env.SMTP_PORT || 587);
-  const secure =
-    String(process.env.SMTP_SECURE || "").trim().toLowerCase() === "true" ||
-    port === 465;
+  const explicitHost = String(process.env.SMTP_HOST || "").trim();
+  const host = explicitHost || GMAIL_SMTP_DEFAULTS.host;
+  const port = explicitHost ? Number(process.env.SMTP_PORT || 587) : GMAIL_SMTP_DEFAULTS.port;
+  const secure = explicitHost
+    ? String(process.env.SMTP_SECURE || "").trim().toLowerCase() === "true" || port === 465
+    : GMAIL_SMTP_DEFAULTS.secure;
 
   if (!process.env.EMAIL_USER && user) process.env.EMAIL_USER = user;
   if (!process.env.EMAIL_PASSWORD && pass) process.env.EMAIL_PASSWORD = pass;
@@ -51,29 +61,18 @@ const resolveEmailConfig = () => {
 };
 
 const emailConfig = resolveEmailConfig();
-const transporterOptions = emailConfig.host
-  ? {
-      host: emailConfig.host,
-      port: emailConfig.port,
-      secure: emailConfig.secure,
-      auth: {
-        user: emailConfig.user,
-        pass: emailConfig.pass,
-      },
-      connectionTimeout: 15000,
-      greetingTimeout: 15000,
-      socketTimeout: 20000,
-    }
-  : {
-      service: "gmail",
-      auth: {
-        user: emailConfig.user,
-        pass: emailConfig.pass,
-      },
-      connectionTimeout: 15000,
-      greetingTimeout: 15000,
-      socketTimeout: 20000,
-    };
+const transporterOptions = {
+  host: emailConfig.host,
+  port: emailConfig.port,
+  secure: emailConfig.secure,
+  auth: {
+    user: emailConfig.user,
+    pass: emailConfig.pass,
+  },
+  connectionTimeout: 15000,
+  greetingTimeout: 15000,
+  socketTimeout: 20000,
+};
 
 const transporter = nodemailer.createTransport(transporterOptions);
 
@@ -1093,24 +1092,111 @@ export const sendPaymentReceiptEmail = async ({
 /**
  * Races a provider call against a bounded timeout so a hung SMTP/Resend
  * connection can never block a resend request indefinitely.
+ *
+ * Timing out here only stops *this function* from waiting — it does not by
+ * itself stop the underlying network operation. `onTimeout`, when provided,
+ * is the caller's chance to actually cancel that operation (abort the HTTP
+ * request, close the socket) so a provider that would otherwise still
+ * complete in the background can't silently deliver the message after we've
+ * already moved on to a fallback provider.
  */
-const withProviderTimeout = (promise, ms, timeoutMessage) =>
+const withProviderTimeout = (promise, ms, timeoutMessage, onTimeout) =>
   new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(timeoutMessage)), ms);
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try {
+        onTimeout?.();
+      } catch {
+        // Cancellation is best-effort; the timeout itself still applies.
+      }
+      reject(new Error(timeoutMessage));
+    }, ms);
     Promise.resolve(promise).then(
       (value) => {
+        if (settled) return;
+        settled = true;
         clearTimeout(timer);
         resolve(value);
       },
       (error) => {
+        if (settled) return;
+        settled = true;
         clearTimeout(timer);
         reject(error);
       },
     );
   });
 
+// Dedicated connection options for the cancellable single-message SMTP send
+// below — mirrors `transporterOptions` minus `auth` (login happens as an
+// explicit, abortable step) so a timeout can close *this* connection alone
+// without touching the shared pooled `transporter` used elsewhere.
+const smtpConnectionOptions = {
+  host: emailConfig.host,
+  port: emailConfig.port,
+  secure: emailConfig.secure,
+  connectionTimeout: 15000,
+  greetingTimeout: 15000,
+};
+
+/**
+ * Sends one message over a dedicated, single-use SMTP connection and, on
+ * timeout, forcibly closes that connection instead of merely abandoning a
+ * promise. `transporter.sendMail()` gives no handle to the in-flight
+ * connection, so a `Promise.race`-style timeout around it can only stop
+ * *waiting* — the SMTP session keeps running and can still complete (and
+ * deliver the email) after the caller has already given up and tried a
+ * fallback provider. Driving the connection directly lets a timeout actually
+ * end the session: any not-yet-flushed part of the send is aborted, and any
+ * later callback from the closed connection is a guarded no-op.
+ */
+const sendMailWithHardTimeout = (mailOptions, timeoutMs) =>
+  new Promise((resolve, reject) => {
+    let settled = false;
+    const message = new MailComposer(mailOptions).compile();
+    const connection = new SMTPConnection(smtpConnectionOptions);
+
+    const finish = (err, info) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      connection.close();
+      if (err) reject(err);
+      else resolve({ ...info, messageId: message.messageId() });
+    };
+
+    const timer = setTimeout(() => {
+      const err = new Error("EMAIL_PROVIDER_TIMEOUT");
+      err.code = "EMAIL_PROVIDER_TIMEOUT";
+      finish(err);
+    }, timeoutMs);
+
+    connection.once("error", (err) => finish(err));
+
+    connection.connect(() => {
+      if (settled) return;
+      connection.login({ user: emailConfig.user, pass: emailConfig.pass }, (loginErr) => {
+        if (settled) return;
+        if (loginErr) return finish(loginErr);
+        connection.send(message.getEnvelope(), message.createReadStream(), (sendErr, info) => finish(sendErr, info));
+      });
+    });
+  });
+
 const RECIPIENT_REJECTION_PATTERN =
   /mailbox unavailable|mailbox not found|user unknown|no such user|recipient rejected|invalid recipient|address (?:not found|rejected)|does not exist|unknown user|550|551|553|5\.1\.1|5\.1\.10/i;
+
+/**
+ * Derives a deterministic Resend idempotency key so that if this function's
+ * own retry/fallback logic ever calls Resend twice for the same recipient
+ * and the same (single-use) verification link, Resend dedupes the second
+ * call instead of sending a second email. Hashed rather than raw so the key
+ * itself never carries the recipient's address or the live link.
+ */
+const verificationEmailIdempotencyKey = (to, verificationLink) =>
+  crypto.createHash("sha256").update(`email-verification:${to}:${verificationLink}`).digest("hex");
 
 /**
  * Classifies a provider error (SMTP or Resend) into one of the internal,
@@ -1118,6 +1204,13 @@ const RECIPIENT_REJECTION_PATTERN =
  * user-facing message. Never returns raw provider text.
  */
 export const classifyVerificationDeliveryError = (error) => {
+  // A raw SMTPConnection.send() rejection carries the authoritative
+  // `rejected` recipient list directly on the error — prefer that over
+  // pattern-matching the message text when it's available.
+  if (Array.isArray(error?.rejected) && error.rejected.length > 0) {
+    return { category: "recipient_rejected", code: "EMAIL_RECIPIENT_REJECTED" };
+  }
+
   const statusCode =
     Number(error?.statusCode || error?.status || error?.responseCode || error?.cause?.statusCode || 0) || null;
   const rawCode = String(error?.name || error?.code || error?.cause?.code || "");
@@ -1177,21 +1270,26 @@ export const sendEmailVerificationLinkEmail = async ({ to, name, verificationLin
 
   if (isEmailConfigured) {
     try {
-      const info = await withProviderTimeout(
-        transporter.sendMail({
+      const info = await sendMailWithHardTimeout(
+        {
           from: { name: "Lilycrest Dormitory", address: emailConfig.user },
           to,
           subject,
           html,
           text,
-        }),
+        },
         EMAIL_PROVIDER_TIMEOUT_MS,
-        "EMAIL_PROVIDER_TIMEOUT",
       );
-      if (info?.messageId) {
+      const accepted = Array.isArray(info?.accepted) && info.accepted.length > 0;
+      const rejected = Array.isArray(info?.rejected) && info.rejected.length > 0;
+      if (info?.messageId && accepted && !rejected) {
         return { success: true, provider: "smtp", attempts };
       }
-      recordFailure("smtp", { category: "unexpected_response", code: "EMAIL_DELIVERY_FAILED" });
+      if (rejected) {
+        recordFailure("smtp", { category: "recipient_rejected", code: "EMAIL_RECIPIENT_REJECTED" });
+      } else {
+        recordFailure("smtp", { category: "unexpected_response", code: "EMAIL_DELIVERY_FAILED" });
+      }
     } catch (error) {
       recordFailure("smtp", classifyVerificationDeliveryError(error));
     }
@@ -1200,11 +1298,25 @@ export const sendEmailVerificationLinkEmail = async ({ to, name, verificationLin
   }
 
   if (resendClient && OTP_FROM) {
+    // A real AbortController — unlike the discarded promise from a bare
+    // `Promise.race` timeout — actually tears down the in-flight fetch when
+    // the timeout fires, so Resend can't complete the request in the
+    // background after this function has moved on. The idempotency key
+    // additionally makes a second call with the same recipient/link a safe
+    // no-op on Resend's side if this function is ever invoked twice for it.
+    const resendAbortController = new AbortController();
     try {
       const { data, error } = await withProviderTimeout(
-        resendClient.emails.send({ from: OTP_FROM, to: [to], subject, html, text }),
+        resendClient.emails.send(
+          { from: OTP_FROM, to: [to], subject, html, text },
+          {
+            signal: resendAbortController.signal,
+            idempotencyKey: verificationEmailIdempotencyKey(to, verificationLink),
+          },
+        ),
         EMAIL_PROVIDER_TIMEOUT_MS,
         "EMAIL_PROVIDER_TIMEOUT",
+        () => resendAbortController.abort(),
       );
       if (error) {
         recordFailure("resend", classifyVerificationDeliveryError(error));
