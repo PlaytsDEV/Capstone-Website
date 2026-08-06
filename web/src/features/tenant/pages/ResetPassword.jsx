@@ -70,9 +70,19 @@ function ResetPassword() {
     setErrorMessage("");
     try {
       await confirmPasswordReset(auth, oobCode, password);
-      await signInWithEmailAndPassword(auth, email, password);
-      try { await authApi.finalizePasswordReset(); }
-      finally { await signOut(auth); }
+      // Signing in here is transient - only to obtain a fresh ID token for
+      // finalizePasswordReset(). Guard it the same way SignIn.jsx guards its
+      // resend-verification sign-in, or useAuth's onAuthStateChanged listener
+      // will treat it as a real login and RequireNonAdmin will navigate the
+      // user away before finalizePasswordReset()/signOut() complete.
+      sessionStorage.setItem("resendInProgress", "1");
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+        try { await authApi.finalizePasswordReset(); }
+        finally { await signOut(auth); }
+      } finally {
+        sessionStorage.removeItem("resendInProgress");
+      }
       setStatus("success");
     } catch {
       setStatus("error");

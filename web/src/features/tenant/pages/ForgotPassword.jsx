@@ -66,10 +66,26 @@ function ForgotPassword() {
  /* non-critical */
  }
  } catch (error) {
+ // Do not reveal whether an email is registered: show the same
+ // "check your email" success state as a real send, not an error.
+ if (error.code === "auth/user-not-found") {
+ setEmailSent(true);
+ showNotification("Password reset email sent!", "success");
+ try {
+ await fetch("/api/auth/log-password-reset", {
+ method: "POST",
+ headers: { "Content-Type": "application/json" },
+ body: JSON.stringify({ email, success: false }),
+ });
+ } catch (_) {
+ /* non-critical */
+ }
+ setLoading(false);
+ return;
+ }
+
  let msg = "Failed to send reset email. ";
- if (error.code === "auth/user-not-found")
- msg = "No account found with this email address.";
- else if (error.code === "auth/invalid-email")
+ if (error.code === "auth/invalid-email")
  msg = "Invalid email address format.";
  else if (error.code === "auth/too-many-requests")
  msg = "Too many requests. Please try again later.";
