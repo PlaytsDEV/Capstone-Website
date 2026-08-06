@@ -17,6 +17,7 @@ import { Link, useNavigate } from "react-router-dom";
 import PasswordVisibilityButton from "../../../shared/components/PasswordVisibilityButton";
 import {
   createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
   signInWithPopup,
   GoogleAuthProvider,
   FacebookAuthProvider,
@@ -334,6 +335,79 @@ function SignUp() {
     return response;
   };
 
+  const redirectExistingAccountToSignIn = async () => {
+    await auth.signOut().catch(() => {});
+    appNavigate("/signin", {
+      replace: true,
+      state: { email: formData.email },
+      flash: {
+        type: "info",
+        message:
+          "An account already exists with this email address. Please sign in instead.",
+      },
+    });
+  };
+
+  // Firebase already has an account for this email. Using only the password
+  // the person just typed on this form (never stored, never a separate
+  // step), work out whether it's theirs:
+  //  - wrong password           -> someone else's account; go to sign in
+  //  - right password + profile -> their account is complete; go to sign in
+  //  - right password, no profile -> their own signup was interrupted
+  //    before it finished (e.g. the tab closed after the Firebase account
+  //    was created but before registration completed); finish it now,
+  //    the same way a normal signup finishes. No dedicated recovery
+  //    button or extra screen is ever shown — from the user's side this
+  //    just looks like clicking "Create account" worked.
+  const reconcileExistingFirebaseIdentity = async () => {
+    let credential;
+    try {
+      credential = await signInWithEmailAndPassword(
+        auth,
+        formData.email,
+        formData.password,
+      );
+    } catch (signInError) {
+      if (
+        signInError?.code === "auth/wrong-password" ||
+        signInError?.code === "auth/invalid-credential"
+      ) {
+        await redirectExistingAccountToSignIn();
+        return;
+      }
+      showNotification(getRegistrationErrorMessage(signInError, "signup"), "error");
+      return;
+    }
+
+    try {
+      await authApi.checkUser();
+      // A backend profile already exists for this identity — it's a
+      // genuinely complete, existing account.
+      await redirectExistingAccountToSignIn();
+    } catch (checkError) {
+      const code = checkError.response?.data?.code;
+      if (code === "USER_NOT_FOUND") {
+        try {
+          await completePasswordOnboarding(credential.user);
+        } catch (backendError) {
+          await recoverFromAuthFailure(auth, backendError);
+          showNotification(getRegistrationErrorMessage(backendError, "signup"), "error");
+        }
+        return;
+      }
+      await recoverFromAuthFailure(auth, checkError);
+      if (code === "IDENTITY_CONFLICT") {
+        showNotification(
+          "This account requires identity verification before it can be linked. Please use your original sign-in method or contact support.",
+          "warning",
+          7000,
+        );
+        return;
+      }
+      showNotification(getRegistrationErrorMessage(checkError, "signup"), "error");
+    }
+  };
+
   const handleSignUp = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
@@ -354,15 +428,7 @@ function SignUp() {
       }
     } catch (error) {
       if (error?.code === "auth/email-already-in-use") {
-        appNavigate("/signin", {
-          replace: true,
-          state: { email: formData.email },
-          flash: {
-            type: "info",
-            message:
-              "An account already exists with this email address. Please sign in instead.",
-          },
-        });
+        await reconcileExistingFirebaseIdentity();
         return;
       }
       showNotification(getRegistrationErrorMessage(error, "signup"), "error");
