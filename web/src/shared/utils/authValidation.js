@@ -4,32 +4,34 @@
  */
 
 /** Advanced email validation — checks format, domain structure, consecutive dots, valid characters */
+const EMAIL_FORMAT_MESSAGE = "Enter a valid email address, such as name@example.com.";
+
 export const validateEmail = (email) => {
-  if (!email || !email.trim()) return "Email is required";
+  if (!email || !email.trim()) return "Email address is required";
   const basicRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!basicRegex.test(email)) return "Invalid email format";
+  if (!basicRegex.test(email)) return EMAIL_FORMAT_MESSAGE;
 
   const parts = email.split("@");
-  if (parts.length !== 2) return "Invalid email format";
+  if (parts.length !== 2) return EMAIL_FORMAT_MESSAGE;
   const [localPart, domain] = parts;
 
   if (localPart.length === 0 || localPart.length > 64)
-    return "Invalid email format";
-  if (domain.length === 0 || domain.length > 255) return "Invalid email domain";
+    return EMAIL_FORMAT_MESSAGE;
+  if (domain.length === 0 || domain.length > 255) return EMAIL_FORMAT_MESSAGE;
 
   const domainParts = domain.split(".");
-  if (domainParts.length < 2) return "Invalid email domain";
+  if (domainParts.length < 2) return EMAIL_FORMAT_MESSAGE;
 
   for (let part of domainParts) {
     if (part.length === 0 || !/^[a-zA-Z0-9-]+$/.test(part))
-      return "Invalid email domain";
+      return EMAIL_FORMAT_MESSAGE;
     if (part.startsWith("-") || part.endsWith("-"))
-      return "Invalid email domain";
+      return EMAIL_FORMAT_MESSAGE;
   }
 
   const tld = domainParts[domainParts.length - 1];
-  if (tld.length < 2 || !/^[a-zA-Z]+$/.test(tld)) return "Invalid email domain";
-  if (email.includes("..")) return "Invalid email format";
+  if (tld.length < 2 || !/^[a-zA-Z]+$/.test(tld)) return EMAIL_FORMAT_MESSAGE;
+  if (email.includes("..")) return EMAIL_FORMAT_MESSAGE;
 
   return null; // Valid
 };
@@ -70,17 +72,18 @@ export const calculatePasswordStrength = (password) => {
  */
 export const validatePassword = (password) => {
   if (!password) return "Password is required";
-  if (password.length < 8) return "Password must be at least 8 characters";
+  if (password.length < 8)
+    return "Your password must be at least 8 characters long.";
 
   const { requirements } = calculatePasswordStrength(password);
   const missing = [];
-  if (!requirements.uppercase) missing.push("uppercase letter");
-  if (!requirements.lowercase) missing.push("lowercase letter");
-  if (!requirements.number) missing.push("number");
-  if (!requirements.special) missing.push("special character");
+  if (!requirements.uppercase) missing.push("an uppercase letter");
+  if (!requirements.lowercase) missing.push("a lowercase letter");
+  if (!requirements.number) missing.push("a number");
+  if (!requirements.special) missing.push("a special character");
 
   if (missing.length > 2) {
-    return `Password needs at least: ${missing.join(", ")}`;
+    return `Your password needs at least ${missing.join(", ")}.`;
   }
   return null; // Valid
 };
@@ -108,32 +111,35 @@ export const getFirebaseErrorMessage = (error, context = "login") => {
   const code = error?.code;
   const map = {
     "auth/email-already-in-use":
-      "This email is already registered. Please login instead.",
-    "auth/invalid-email": "Invalid email address.",
+      "An account already exists with this email address. Please sign in instead.",
+    "auth/invalid-email": "Enter a valid email address, such as name@example.com.",
     "auth/weak-password":
-      "Password is too weak. Please use a stronger password.",
+      "Your password must contain at least 8 characters, including a number and a letter.",
     "auth/invalid-credential":
-      "Invalid email or password. Please check your credentials.",
+      "Your email or password is incorrect. Please check your details and try again.",
     "auth/wrong-password":
-      "Invalid email or password. Please check your credentials.",
+      "Your email or password is incorrect. Please check your details and try again.",
     "auth/user-not-found":
-      "No account found with this email. Please register first.",
+      "We could not find an account with this email. Please sign up first.",
     "auth/too-many-requests":
       "Too many attempts. Please wait a moment and try again.",
     "auth/network-request-failed":
-      "Network error. Please check your internet connection.",
+      "We could not connect to the server. Check your internet connection and try again.",
     "auth/user-disabled":
       "This account has been disabled. Please contact support.",
     "auth/popup-closed-by-user":
-      context === "signup" ? "Sign-up cancelled" : "Sign-in cancelled",
+      context === "signup" ? "Sign-up was cancelled." : "Sign-in was cancelled.",
     "auth/popup-blocked":
-      "Popup blocked by browser. Please allow popups for this site.",
+      "Your browser blocked the sign-in popup. Please allow popups for this site and try again.",
     "auth/account-exists-with-different-credential":
       "An account already exists with this email using a different sign-in method.",
   };
-  return (
-    map[code] ||
-    error?.response?.data?.error ||
-    `${context === "signup" ? "Registration" : "Login"} failed. Please try again.`
-  );
+  if (map[code]) return map[code];
+  // Never surface raw Firebase codes or backend text to the user — log for debugging instead.
+  if (code && typeof console !== "undefined" && console.warn) {
+    console.warn("[auth] Unmapped Firebase error code:", code);
+  }
+  return context === "signup"
+    ? "We could not complete your registration. Please check your information and try again."
+    : "We could not sign you in. Please check your details and try again.";
 };

@@ -264,6 +264,8 @@ const PhoneInput = ({
  /* ──────────────────────────────────────────────────────────────
  AUTH STYLE — matches .floating-field__wrapper exactly
  ────────────────────────────────────────────────────────────── */
+ const phoneErrorId = "phone-error";
+
  if (authStyle) {
  const borderColor = showError
  ? "var(--fi-error, #ef4444)"
@@ -336,6 +338,7 @@ const PhoneInput = ({
 
  {/* Number input */}
  <input
+ id="phone"
  ref={numberRef}
  type="tel" inputMode="numeric"
  value={localNumber}
@@ -343,8 +346,10 @@ const PhoneInput = ({
  onBlur={onBlur}
  maxLength={localNumber.startsWith("+") ? 16 : expectedLength}
  placeholder={getPlaceholder()}
+ aria-invalid={showError}
+ aria-describedby={error ? phoneErrorId : undefined}
  style={{
- flex: 1, border: "none", outline: "none",
+ flex: 1, minWidth: 0, border: "none", outline: "none",
  padding: "0 8px 0 14px",
  fontSize: 15, fontWeight: 450,
  color: "var(--fi-text, #1e293b)",
@@ -366,7 +371,14 @@ const PhoneInput = ({
  </div>
 
  {error && (
- <span style={{ fontSize: 12, color: "var(--fi-error, #ef4444)", marginTop: 4, display: "block" }}>
+ <span
+ id={phoneErrorId}
+ role="alert"
+ style={{
+ fontSize: 12, color: "var(--fi-error, #ef4444)", marginTop: 4,
+ display: "block", overflowWrap: "anywhere",
+ }}
+ >
  {error}
  </span>
  )}
@@ -471,7 +483,7 @@ const CountryDropdown = ({
  border: "1px solid var(--fi-border, #E5E7EB)",
  borderRadius: 10,
  boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
- width: 280, maxHeight: 320,
+ width: "min(280px, calc(100vw - 32px))", maxWidth: "calc(100vw - 32px)", maxHeight: 320,
  display: "flex", flexDirection: "column", overflow: "hidden",
  }}>
  <div className="pi-dropdown-search" style={{

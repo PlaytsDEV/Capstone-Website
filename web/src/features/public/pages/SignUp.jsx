@@ -17,7 +17,6 @@ import { Link, useNavigate } from "react-router-dom";
 import PasswordVisibilityButton from "../../../shared/components/PasswordVisibilityButton";
 import {
   createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
   signInWithPopup,
   GoogleAuthProvider,
   FacebookAuthProvider,
@@ -34,8 +33,8 @@ import {
   calculatePasswordStrength,
   sanitizeName,
   generateUsername,
-  getFirebaseErrorMessage,
 } from "../../../shared/utils/authValidation";
+import { getRegistrationErrorMessage } from "../../../shared/utils/registrationErrors";
 import {
   AUTH_TOAST_DURATION,
   buildAuthWelcomeMessage,
@@ -88,7 +87,6 @@ function SignUp() {
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [resumeAvailable, setResumeAvailable] = useState(false);
   const [validationErrors, setValidationErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [fieldValid, setFieldValid] = useState({});
@@ -141,61 +139,58 @@ function SignUp() {
     setTouched((prev) => ({ ...prev, phone: true }));
     // Use libphonenumber-js for accurate per-country validation
     const isValid = e164 && e164.startsWith("+") && isValidPhoneNumber(e164);
-    const error = isValid ? null : "Enter a valid phone number";
+    const error = isValid
+      ? null
+      : "Enter a valid phone number, including the country code.";
     setValidationErrors((prev) => ({ ...prev, phone: error }));
     setFieldValid((prev) => ({ ...prev, phone: isValid }));
   };
 
-  const validateField = (fieldName, value) => {
-    let error = null;
+  // Pure per-field validator shared by real-time and submit-time validation
+  // so both paths always agree on the same message.
+  const getFieldError = (fieldName, value) => {
     switch (fieldName) {
       case "firstName":
-        if (!value.trim()) error = "First name is required";
-        else if (value.length > FIELD_LIMITS.firstName)
-          error = `First name must be ${FIELD_LIMITS.firstName} characters or less`;
-        break;
+        if (!value.trim()) return "Please enter your first name.";
+        if (value.length > FIELD_LIMITS.firstName)
+          return `First name must be ${FIELD_LIMITS.firstName} characters or fewer.`;
+        return null;
       case "lastName":
-        if (!value.trim()) error = "Last name is required";
-        else if (value.length > FIELD_LIMITS.lastName)
-          error = `Last name must be ${FIELD_LIMITS.lastName} characters or less`;
-        break;
+        if (!value.trim()) return "Please enter your last name.";
+        if (value.length > FIELD_LIMITS.lastName)
+          return `Last name must be ${FIELD_LIMITS.lastName} characters or fewer.`;
+        return null;
       case "email":
         if (value.length > FIELD_LIMITS.email)
-          error = `Email must be ${FIELD_LIMITS.email} characters or less`;
-        else error = validateEmail(value);
-        break;
+          return `Email address must be ${FIELD_LIMITS.email} characters or fewer.`;
+        return validateEmail(value);
       case "phone":
-        if (!value || !value.trim()) {
-          error = "Phone number is required";
-        } else if (
-          !value.startsWith("+") ||
-          !isValidPhoneNumber(value.trim())
-        ) {
-          error = "Enter a valid phone number";
-        }
-        break;
+        if (!value || !value.trim()) return "Please enter your phone number.";
+        if (!value.startsWith("+") || !isValidPhoneNumber(value.trim()))
+          return "Enter a valid phone number, including the country code.";
+        return null;
       case "password":
-        if (value.length > FIELD_LIMITS.password) {
-          error = `Password must be ${FIELD_LIMITS.password} characters or less`;
-        } else if (/\s/.test(value)) {
-          error = "Password cannot contain spaces";
-        } else {
-          error = validatePassword(value);
-        }
-        if (formData.confirmPassword)
-          validateField("confirmPassword", formData.confirmPassword);
-        break;
+        if (value.length > FIELD_LIMITS.password)
+          return `Password must be ${FIELD_LIMITS.password} characters or fewer.`;
+        if (/\s/.test(value)) return "Your password can't contain spaces.";
+        return validatePassword(value);
       case "confirmPassword":
-        if (!value) error = "Please confirm your password";
-        else if (value.length > FIELD_LIMITS.confirmPassword)
-          error = `Confirm password must be ${FIELD_LIMITS.confirmPassword} characters or less`;
-        else if (value !== formData.password) error = "Passwords do not match";
-        break;
+        if (!value) return "Please confirm your password.";
+        if (value.length > FIELD_LIMITS.confirmPassword)
+          return `Confirm password must be ${FIELD_LIMITS.confirmPassword} characters or fewer.`;
+        if (value !== formData.password) return "The passwords you entered do not match.";
+        return null;
       default:
-        break;
+        return null;
     }
+  };
+
+  const validateField = (fieldName, value) => {
+    const error = getFieldError(fieldName, value);
     setValidationErrors((prev) => ({ ...prev, [fieldName]: error }));
     setFieldValid((prev) => ({ ...prev, [fieldName]: !error }));
+    if (fieldName === "password" && formData.confirmPassword)
+      validateField("confirmPassword", formData.confirmPassword);
   };
 
   const isFormValid = () =>
@@ -208,6 +203,17 @@ function SignUp() {
       "confirmPassword",
     ].every((f) => fieldValid[f]) && agreedToTerms;
 
+  const FORM_FIELD_ORDER = [
+    "firstName",
+    "lastName",
+    "email",
+    "phone",
+    "password",
+    "confirmPassword",
+  ];
+
+  // Validates every field at once, shows each error next to its own field
+  // (never as a duplicate toast), and focuses the first invalid field.
   const validateForm = () => {
     setTouched({
       firstName: true,
@@ -217,89 +223,37 @@ function SignUp() {
       password: true,
       confirmPassword: true,
     });
-    [
-      "firstName",
-      "lastName",
-      "email",
-      "phone",
-      "password",
-      "confirmPassword",
-    ].forEach((f) => validateField(f, formData[f]));
 
-    // Find the first field with an error and scroll to it
-    const scrollToField = (fieldName, message) => {
-      showNotification(message, "error");
+    const errors = {};
+    FORM_FIELD_ORDER.forEach((field) => {
+      errors[field] = getFieldError(field, formData[field]);
+    });
+    setValidationErrors((prev) => ({ ...prev, ...errors }));
+    setFieldValid((prev) => {
+      const next = { ...prev };
+      FORM_FIELD_ORDER.forEach((field) => {
+        next[field] = !errors[field];
+      });
+      return next;
+    });
+
+    const firstInvalidField = FORM_FIELD_ORDER.find((field) => errors[field]);
+    if (firstInvalidField) {
       setTimeout(() => {
-        const el = document.getElementById(fieldName);
+        const el = document.getElementById(firstInvalidField);
         if (el) {
           el.scrollIntoView({ behavior: "smooth", block: "center" });
           el.focus();
         }
       }, 100);
       return false;
-    };
+    }
 
-    if (!formData.firstName.trim()) {
-      return scrollToField("firstName", "First name is required");
-    }
-    if (formData.firstName.length > FIELD_LIMITS.firstName) {
-      return scrollToField(
-        "firstName",
-        `First name must be ${FIELD_LIMITS.firstName} characters or less`,
-      );
-    }
-    if (!formData.lastName.trim()) {
-      return scrollToField("lastName", "Last name is required");
-    }
-    if (formData.lastName.length > FIELD_LIMITS.lastName) {
-      return scrollToField(
-        "lastName",
-        `Last name must be ${FIELD_LIMITS.lastName} characters or less`,
-      );
-    }
-    if (formData.email.length > FIELD_LIMITS.email) {
-      return scrollToField(
-        "email",
-        `Email must be ${FIELD_LIMITS.email} characters or less`,
-      );
-    }
-    const emailError = validateEmail(formData.email);
-    if (emailError) {
-      return scrollToField("email", emailError);
-    }
-    if (!formData.phone || !formData.phone.trim()) {
-      return scrollToField("phone", "Phone number is required");
-    }
-    if (!/^\+\d{7,15}$/.test(formData.phone.trim())) {
-      return scrollToField(
-        "phone",
-        "Enter a valid phone number with country code",
-      );
-    }
-    if (/\s/.test(formData.password)) {
-      return scrollToField("password", "Password cannot contain spaces");
-    }
-    if (formData.password.length > FIELD_LIMITS.password) {
-      return scrollToField(
-        "password",
-        `Password must be ${FIELD_LIMITS.password} characters or less`,
-      );
-    }
-    const passwordError = validatePassword(formData.password);
-    if (passwordError) {
-      return scrollToField("password", passwordError);
-    }
-    if (formData.password !== formData.confirmPassword) {
-      return scrollToField("confirmPassword", "Passwords do not match");
-    }
-    if (formData.confirmPassword.length > FIELD_LIMITS.confirmPassword) {
-      return scrollToField(
-        "confirmPassword",
-        `Confirm password must be ${FIELD_LIMITS.confirmPassword} characters or less`,
-      );
-    }
     if (!agreedToTerms) {
-      showNotification("Please agree to Terms and Conditions", "error");
+      showNotification(
+        "Please agree to the Terms and Conditions and Privacy Policy to continue.",
+        "error",
+      );
       return false;
     }
     return true;
@@ -395,33 +349,18 @@ function SignUp() {
       }
     } catch (error) {
       if (error?.code === "auth/email-already-in-use") {
-        setResumeAvailable(true);
-        showNotification(
-          "This Firebase account already exists. Enter its password and choose Resume registration to safely continue onboarding.",
-          "info",
-          7000,
-        );
+        appNavigate("/signin", {
+          replace: true,
+          state: { email: formData.email },
+          flash: {
+            type: "info",
+            message:
+              "An account already exists with this email address. Please sign in instead.",
+          },
+        });
         return;
       }
-      showNotification(getFirebaseErrorMessage(error, "signup"), "error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleResumeRegistration = async () => {
-    if (!validateForm()) return;
-    setLoading(true);
-    try {
-      const credential = await signInWithEmailAndPassword(
-        auth,
-        formData.email,
-        formData.password,
-      );
-      await completePasswordOnboarding(credential.user);
-    } catch (error) {
-      await recoverFromAuthFailure(auth, error);
-      showNotification(getFirebaseErrorMessage(error, "signup"), "error");
+      showNotification(getRegistrationErrorMessage(error, "signup"), "error");
     } finally {
       setLoading(false);
     }
@@ -438,7 +377,7 @@ function SignUp() {
         await recoverFromAuthFailure(auth);
         socialAuthRef.current = false;
         showNotification(
-          "Unable to get email from your Google account.",
+          "We could not get your email address from Google. Please try again or use a different sign-in method.",
           "error",
         );
         setLoading(false);
@@ -452,7 +391,7 @@ function SignUp() {
         appNavigate("/signin", {
           flash: {
             type: "info",
-            message: "This email is already registered. Please sign in instead.",
+            message: "An account already exists with this email address. Please sign in instead.",
           },
           replace: true,
         });
@@ -492,7 +431,7 @@ function SignUp() {
           } catch (regError) {
             const errMsg =
               regError.response?.data?.message || regError.message || "";
-            const errCode = regError.response?.data?.code || "";
+            const errCode = regError.response?.data?.code || regError.code || "";
 
             if (errCode === "IDENTITY_CONFLICT") {
               await recoverFromAuthFailure(auth, regError);
@@ -517,7 +456,7 @@ function SignUp() {
                 flash: {
                   type: "info",
                   message:
-                    "This email is already registered. Please sign in instead.",
+                    "An account already exists with this email address. Please sign in instead.",
                 },
                 replace: true,
               });
@@ -527,10 +466,7 @@ function SignUp() {
 
             // Preserve the Firebase identity; onboarding can be retried safely.
             await recoverFromAuthFailure(auth, regError);
-            showNotification(
-              errMsg || "An unexpected error occurred.",
-              "error",
-            );
+            showNotification(getRegistrationErrorMessage(regError, "signup"), "error");
             setLoading(false);
           }
         } else {
@@ -554,7 +490,7 @@ function SignUp() {
       await recoverFromAuthFailure(auth, error);
       if (error.code !== "auth/cancelled-popup-request")
         showNotification(
-          getFirebaseErrorMessage(error, "signup"),
+          getRegistrationErrorMessage(error, "signup"),
           error.code === "auth/popup-closed-by-user" ? "info" : "error",
         );
     } finally {
@@ -806,17 +742,6 @@ function SignUp() {
               >
                 {loading ? "Creating Account..." : "Create account"}
               </button>
-
-              {resumeAvailable && (
-                <button
-                  type="button"
-                  className="auth-btn-secondary"
-                  disabled={loading}
-                  onClick={handleResumeRegistration}
-                >
-                  {loading ? "Resuming Registration..." : "Resume registration"}
-                </button>
-              )}
 
               <SocialAuthButtons
                 onGoogle={handleGoogleSignup}

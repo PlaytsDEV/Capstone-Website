@@ -25,10 +25,16 @@ test("generated registration usernames always match the backend contract", () =>
   }
 });
 
-test("Firebase-only password identities have an authenticated resume path", () => {
-  assert.match(signUp, /auth\/email-already-in-use[\s\S]*setResumeAvailable\(true\)/);
-  assert.match(signUp, /handleResumeRegistration[\s\S]*signInWithEmailAndPassword[\s\S]*completePasswordOnboarding/);
-  assert.match(signUp, /Resume registration/);
+test("Resume Registration has been fully removed from the sign-up page", () => {
+  assert.doesNotMatch(signUp, /Resume registration/i);
+  assert.doesNotMatch(signUp, /resumeAvailable/);
+  assert.doesNotMatch(signUp, /handleResumeRegistration/);
+  assert.doesNotMatch(signUp, /signInWithEmailAndPassword/);
+});
+
+test("a Firebase-only duplicate identity is sent to sign in, not offered a resume option", () => {
+  assert.match(signUp, /auth\/email-already-in-use[\s\S]*appNavigate\("\/signin"/);
+  assert.match(signUp, /An account already exists with this email address\. Please sign in instead\./);
 });
 
 test("registration retries generated username collisions without exposing owners", () => {
