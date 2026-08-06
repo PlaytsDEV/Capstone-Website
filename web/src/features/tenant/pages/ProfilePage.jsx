@@ -10,10 +10,12 @@ import { authFetch } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "../../../shared/hooks/queries/useUsers";
-import { useReservations } from "../../../shared/hooks/queries/useReservations";
+import { useReservations, useReservation } from "../../../shared/hooks/queries/useReservations";
 import { billingApi } from "../../../shared/api/billingApi";
 import { hasReservationStatus } from "../../../shared/utils/lifecycleNaming";
 import { getReservationProgress, getNextAction } from "../utils/reservationProgress";
+import { resolveCurrentReservation, sortByRecency } from "../utils/reservationSelection";
+import { isStructuredWorkflow } from "../utils/reservationReadiness";
 import TenantMaintenanceWorkspace from "../components/maintenance/TenantMaintenanceWorkspace";
 import {
  ReceiptModal,
@@ -244,29 +246,37 @@ const ProfilePage = () => {
 
  const reservations = useMemo(() => reservationsData || [], [reservationsData]);
 
- const activeReservation = useMemo(() => {
- const activeOnes = reservations.filter((reservation) => {
- const status = reservation.reservationStatus || reservation.status;
-  return !hasReservationStatus(status, "moveOut", "cancelled", "rejected");
- });
-
- return activeOnes[0] || null;
- }, [reservations]);
-
+ // Deterministic rule: the "current" reservation is the most-recently-updated
+ // (falling back to most-recently-created) non-archived, non-terminal
+ // reservation — see reservationSelection.js (sortByRecency /
+ // resolveCurrentReservation), shared with useReservationFlow.js so both the
+ // flow's active-reservation resume logic and this profile view apply the
+ // exact same tie-break rule.
  const activeReservations = useMemo(
  () =>
+ sortByRecency(
  reservations.filter((reservation) => {
  const status = reservation.reservationStatus || reservation.status;
   return !hasReservationStatus(status, "moveOut", "cancelled", "rejected");
  }),
+ ),
  [reservations],
  );
 
+ // Re-resolve whenever the reservations list changes rather than caching a
+ // stale selectedReservationId indefinitely — prevents the Dashboard and
+ // Profile tabs from silently diverging onto different records (e.g. after a
+ // new reservation is created, or the previously-selected one is archived).
  useEffect(() => {
- if (activeReservation && !selectedReservationId) {
- setSelectedReservationId(activeReservation._id);
+ const { nextSelectedId } = resolveCurrentReservation(activeReservations, selectedReservationId);
+ if (nextSelectedId !== selectedReservationId) {
+ setSelectedReservationId(nextSelectedId);
  }
- }, [activeReservation, selectedReservationId]);
+ }, [activeReservations, selectedReservationId]);
+
+ // Single source of truth: both the Dashboard and Profile tabs derive from
+ // this same value, so they can never point at different records.
+ const activeReservation = activeReservations[0] || null;
 
  const visits = useMemo(
  () =>
@@ -380,6 +390,26 @@ const ProfilePage = () => {
  activeReservations[0]
  : activeReservations[0];
 
+ // The reservations LIST endpoint never attaches authoritative
+ // moveInReadiness (it would fan out into Bill/Room/Stay/Reservation
+ // queries per row — see attachMoveInReadiness in
+ // reservationCrudController.js). Only the single-reservation DETAIL
+ // endpoint carries it, so fetch it here — scoped to just the selected
+ // reservation, and only when it's on the structured workflow — so the
+ // dashboard's "Move-in ready!" label can make an authoritative claim
+ // instead of falling back to non-final wording indefinitely.
+ const authoritativeReadinessQuery = useReservation(selectedReservation?._id, {
+ enabled: Boolean(selectedReservation?._id) && isStructuredWorkflow(selectedReservation),
+ });
+ const dashboardReservation = useMemo(() => {
+ if (!selectedReservation) return selectedReservation;
+ const detail = authoritativeReadinessQuery.data;
+ if (detail?._id === selectedReservation._id && detail?.moveInReadiness) {
+ return { ...selectedReservation, moveInReadiness: detail.moveInReadiness };
+ }
+ return selectedReservation;
+ }, [selectedReservation, authoritativeReadinessQuery.data]);
+
  const reservationProgress = getReservationProgress(selectedReservation);
  const nextAction = getNextAction(selectedReservation, reservationProgress);
  const isReservationConfirmed =
@@ -418,7 +448,7 @@ const ProfilePage = () => {
  <DashboardTab
  profileData={profileData}
  activeReservation={activeReservation}
- selectedReservation={selectedReservation}
+ selectedReservation={dashboardReservation}
  visits={visits}
  nextAction={nextAction}
  onGoToPersonal={() => handleTabChange("personal")}

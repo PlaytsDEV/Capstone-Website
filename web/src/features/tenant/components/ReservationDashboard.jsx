@@ -18,7 +18,13 @@ import {
 import {
   canReservationAccessPayment,
   hasReservationStatus,
+  readMoveInDate,
 } from "../../../shared/utils/lifecycleNaming";
+import {
+  getReservationFeeStatusLabel,
+  getMoveInReadinessLabel,
+  resolveDisplayMoveInDate,
+} from "../utils/reservationReadiness";
 import {
   getPhysicalVisitApplicantState,
   getReservationVisitStatus,
@@ -453,12 +459,17 @@ function getStepDesc(step, status, reservation) {
         return "Ready for payment";
       }
       if (status === "complete") {
-        return "Payment verified";
+        return getReservationFeeStatusLabel(reservation);
       }
       return step.desc;
     case 5:
       if (status === "complete") {
-        return "Move-in ready!";
+        // getMoveInReadinessLabel only claims "Move-in ready!" once the
+        // server's authoritative reservation.moveInReadiness confirms every
+        // backend blocker (Bill, documents, room/bed assignment, occupancy
+        // conflicts) is clear — applicant-side completeness alone is not
+        // enough. See reservationReadiness.js for the full contract.
+        return getMoveInReadinessLabel(reservation);
       }
       return step.desc;
     default:
@@ -560,14 +571,28 @@ export default function ReservationDashboard({
               {branch}
             </span>
 
-            {reservation.targetMoveInDate && (
-              <>
-                <span style={styles.metaDot}>·</span>
-                <span style={styles.metaItem}>
-                  Move-in: {formatDate(reservation.targetMoveInDate)}
-                </span>
-              </>
-            )}
+            {(() => {
+              const { primaryDate, showRequested, requestedDate } = resolveDisplayMoveInDate(
+                reservation,
+                readMoveInDate,
+                formatDate,
+              );
+              if (!primaryDate) return null;
+              return (
+                <>
+                  <span style={styles.metaDot}>·</span>
+                  <span style={styles.metaItem}>Move-in: {formatDate(primaryDate)}</span>
+                  {showRequested && (
+                    <>
+                      <span style={styles.metaDot}>·</span>
+                      <span style={styles.metaItem}>
+                        Originally requested: {formatDate(requestedDate)}
+                      </span>
+                    </>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </div>
       </div>
@@ -903,7 +928,10 @@ export default function ReservationDashboard({
       {/* ── Post-Confirmation Dashboard ─────────────────────────────────── */}
       {isConfirmed &&
         (() => {
-          const moveIn = reservation.targetMoveInDate;
+          // Use the confirmed move-in date (readMoveInDate) as the active
+          // date; fall back to the originally requested date only when no
+          // confirmed date has been reconciled yet.
+          const moveIn = readMoveInDate(reservation) || reservation.targetMoveInDate;
           const daysLeft = moveIn
             ? Math.ceil(
                 (new Date(moveIn) - new Date()) / (1000 * 60 * 60 * 24),

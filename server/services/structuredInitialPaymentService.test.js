@@ -127,19 +127,23 @@ describe("prospective boundary and frozen pricing", () => {
   });
 
   test("accepts a valid zero percent discount snapshot", () => {
+    // Server-resolved pricing is authoritative: reservation.monthlyRent /
+    // room.monthlyPrice are no longer trusted directly. Disabling discounts
+    // and locking a custom regular rate on the room reproduces a 0%-discount
+    // snapshot using the real resolver (see contractPricingResolver.js).
     const snapshot = buildStructuredPricingSnapshot({
       reservation: {
-        monthlyRent: 6300,
         reservationFeeAmount: 2000,
         leaseDuration: 6,
         selectedBed: { id: "A" },
       },
       room: {
         _id: "507f1f77bcf86cd799439011",
-        monthlyPrice: 6300,
         branch: "gil-puyat",
         type: "private",
+        regularLongRate: 6300,
       },
+      businessSettings: { isDiscountEnabled: false, longTermLeaseMinMonths: 6 },
     });
     expect(snapshot).toMatchObject({
       regularMonthlyRate: 6300,
@@ -149,5 +153,77 @@ describe("prospective boundary and frozen pricing", () => {
       advanceRentAmount: 6300,
       securityDepositAmount: 6300,
     });
+  });
+
+  test("resolves the GP Quadruple reference rates lease-duration-aware (12mo -> 5400, 5mo -> 6300)", () => {
+    const gpQuadrupleRoom = {
+      _id: "507f1f77bcf86cd799439099",
+      branch: "gil-puyat",
+      type: "quadruple-sharing",
+      price: 6300,
+      monthlyPrice: 5400,
+    };
+    const settings = { longTermLeaseMinMonths: 6, quadrupleDiscountPercent: 10, isDiscountEnabled: true };
+
+    const longTerm = buildStructuredPricingSnapshot({
+      reservation: { leaseDuration: 12, reservationFeeAmount: 2000 },
+      room: gpQuadrupleRoom,
+      businessSettings: settings,
+    });
+    expect(longTerm).toMatchObject({
+      regularMonthlyRate: 6000,
+      discountPercentage: 10,
+      finalMonthlyRate: 5400,
+      advanceRentAmount: 5400,
+      securityDepositAmount: 5400,
+      leaseType: "long",
+    });
+
+    const shortTerm = buildStructuredPricingSnapshot({
+      reservation: { leaseDuration: 5, reservationFeeAmount: 2000 },
+      room: gpQuadrupleRoom,
+      businessSettings: settings,
+    });
+    expect(shortTerm).toMatchObject({
+      regularMonthlyRate: 7000,
+      discountPercentage: 10,
+      finalMonthlyRate: 6300,
+      advanceRentAmount: 6300,
+      securityDepositAmount: 6300,
+      leaseType: "short",
+    });
+  });
+
+  test("ignores a client-tampered reservation.monthlyRent and never trusts it", () => {
+    const snapshot = buildStructuredPricingSnapshot({
+      reservation: { leaseDuration: 12, reservationFeeAmount: 2000, monthlyRent: 1 },
+      room: {
+        _id: "507f1f77bcf86cd799439099",
+        branch: "gil-puyat",
+        type: "quadruple-sharing",
+      },
+      businessSettings: { longTermLeaseMinMonths: 6, quadrupleDiscountPercent: 10 },
+    });
+    expect(snapshot.finalMonthlyRate).toBe(5400);
+  });
+
+  test("rejects when lease duration is missing or invalid, without falling back", () => {
+    expect(() =>
+      buildStructuredPricingSnapshot({
+        reservation: { reservationFeeAmount: 2000 },
+        room: { _id: "507f1f77bcf86cd799439099", branch: "gil-puyat", type: "quadruple-sharing" },
+        businessSettings: {},
+      }),
+    ).toThrow(expect.objectContaining({ code: "LEASE_DURATION_INVALID" }));
+  });
+
+  test("rejects an unsupported room type rather than defaulting to another type's rate", () => {
+    expect(() =>
+      buildStructuredPricingSnapshot({
+        reservation: { leaseDuration: 12, reservationFeeAmount: 2000 },
+        room: { _id: "507f1f77bcf86cd799439099", branch: "gil-puyat", type: "penthouse-suite" },
+        businessSettings: {},
+      }),
+    ).toThrow(expect.objectContaining({ code: "ROOM_TYPE_UNSUPPORTED" }));
   });
 });

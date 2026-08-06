@@ -27,6 +27,7 @@ import {
   normalizeReservationStatus,
 } from "../../../shared/utils/lifecycleNaming";
 import { usePaymentRedirect } from "./usePaymentRedirect";
+import { classifyActiveReservations } from "../utils/reservationSelection";
 import { uploadIfFile } from "../../../shared/utils/firebaseStorageUpload";
 import {
   validateBirthday,
@@ -1078,24 +1079,35 @@ export default function useReservationFlow() {
   }, [user, location.key]);
 
   const loadActiveReservation = async (verifyPaymentReturn = false) => {
+    // Keep the flow in a loading state until this decision resolves —
+    // required lease/date fields were already cleared by the caller and must
+    // not be read (or rendered) by step components until repopulated below.
+    setIsLoading(true);
     try {
       const all = await reservationApi.getAll();
       const list = Array.isArray(all)
         ? all
         : all?.reservations || all?.data || [];
-      const found = list.find(
-        (r) =>
-          r.status !== "cancelled" &&
-          r.status !== "archived" &&
-          r.status !== "rejected" &&
-          !r.isArchived,
-      );
-      if (!found) {
+      const classification = classifyActiveReservations(list);
+      if (classification.kind === "none") {
         appNavigate("/applicant/check-availability", {
           flash: { type: "warning", message: "No active reservation found." },
         });
         return;
       }
+      if (classification.kind === "multiple") {
+        // Do not silently resume an arbitrary one — this is a recovery
+        // scenario, not a normal single-reservation resume.
+        appNavigate("/applicant/profile", {
+          flash: {
+            type: "warning",
+            message:
+              "You have multiple active reservations. Please contact support to resolve this before continuing.",
+          },
+        });
+        return;
+      }
+      const found = classification.reservation;
       if (verifyPaymentReturn) {
         await loadExistingReservation(found._id, true);
         return;
@@ -1194,6 +1206,8 @@ export default function useReservationFlow() {
       appNavigate("/applicant/check-availability", {
         flash: { type: "warning", message: "No room selected. Redirecting..." },
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 

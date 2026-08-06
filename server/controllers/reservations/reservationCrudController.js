@@ -46,6 +46,32 @@ import {
   validateSelectedBedForReservation,
 } from "./_helpers.js";
 import { releaseOrphanedBeds } from "../../services/occupancy/occupancyManager.js";
+import { buildPricingDisplay } from "../../services/contractPricingResolver.js";
+import { getBusinessSettings } from "../../utils/businessSettings.js";
+import { getStructuredMoveInReadinessSummary } from "../../services/structuredInitialPaymentService.js";
+
+const attachPricingDisplay = (serializedReservation, rawReservation, settings) => {
+  if (!serializedReservation) return serializedReservation;
+  serializedReservation.pricingDisplay = buildPricingDisplay({
+    reservation: rawReservation,
+    room: rawReservation?.roomId,
+    settings,
+  });
+  return serializedReservation;
+};
+
+// Only wired into the single-reservation detail endpoint (getReservationById),
+// never the list endpoint: getStructuredMoveInReadinessSummary issues several
+// extra Bill/Room/Stay/Reservation queries per call, and the list endpoint's
+// non-admin-list branch is also used for unbounded org-wide fetches (e.g.
+// admin PaymentRequestsTab, useAuth's background refresh) where that fan-out
+// would be a real query-storm risk. The detail endpoint is always scoped to
+// exactly one reservation, so it's safe there.
+const attachMoveInReadiness = async (serializedReservation, rawReservation) => {
+  if (!serializedReservation) return serializedReservation;
+  serializedReservation.moveInReadiness = await getStructuredMoveInReadinessSummary(rawReservation);
+  return serializedReservation;
+};
 
 export const getReservations = async (req, res) => {
   try {
@@ -98,8 +124,16 @@ export const getReservations = async (req, res) => {
     }
 
     const reservations = await reservationsQuery;
+    const serialized = serializeReservations(reservations);
 
-    res.json(serializeReservations(reservations));
+    if (!isAdminListView) {
+      const settings = await getBusinessSettings();
+      serialized.forEach((entry, index) =>
+        attachPricingDisplay(entry, reservations[index], settings),
+      );
+    }
+
+    res.json(serialized);
   } catch (error) {
     logger.error({ err: error, requestId: req.id }, "Fetch reservations error");
     handleReservationError(res, error, "fetch");
@@ -159,7 +193,10 @@ export const getReservationById = async (req, res) => {
       });
     }
 
-    res.json(serializeReservation(reservation));
+    const settings = await getBusinessSettings();
+    const payload = attachPricingDisplay(serializeReservation(reservation), reservation, settings);
+    await attachMoveInReadiness(payload, reservation);
+    res.json(payload);
   } catch (error) {
     logger.error({ err: error, requestId: req.id }, "Fetch reservation error");
     handleReservationError(res, error, "fetch");

@@ -79,11 +79,12 @@ export function useTenantActionContext(reservationId, options = {}) {
 }
 
 /** Fetch a single reservation by ID */
-export function useReservation(reservationId) {
+export function useReservation(reservationId, options = {}) {
   return useQuery({
     queryKey: queryKeys.reservations.detail(reservationId),
     queryFn: () => reservationApi.getById(reservationId),
-    enabled: !!reservationId,
+    ...options,
+    enabled: Boolean(reservationId) && options.enabled !== false,
   });
 }
 

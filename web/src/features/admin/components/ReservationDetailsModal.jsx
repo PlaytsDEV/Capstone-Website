@@ -19,6 +19,7 @@ import {
 } from "../../../shared/utils/dateFormat";
 import { showNotification } from "../../../shared/utils/notification";
 import { getVisitManagementAvailability } from "../utils/visitStatusRules";
+import { resolveReservationApprovalPricingGate } from "../utils/reservationPricingGate";
 import "../styles/reservation-details-modal.css";
 
  const ACTION_MSGS = {
@@ -629,6 +630,24 @@ export default function ReservationDetailsModal({
     },
   ].filter(Boolean);
 
+ // Admin-facing pricing preview, sourced exclusively from the server's
+ // reservation.pricingDisplay (buildPricingDisplay in
+ // server/services/contractPricingResolver.js) — no client-side
+ // recomputation of rates/discounts here.
+ const pricingDisplay = reservation?.pricingDisplay || null;
+ const { pricingIsUsable, pricingIsMissing, pricingBlocksApproval } =
+ resolveReservationApprovalPricingGate(pricingDisplay);
+ const formatPhp = (value) =>
+ Number.isFinite(Number(value))
+ ? `PHP ${Number(value).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+ : "—";
+ const leaseCategoryLabel =
+ pricingDisplay?.leaseType === "long_term"
+ ? "Long-term"
+ : pricingDisplay?.leaseType === "short_term"
+ ? "Short-term"
+ : "—";
+
  const doAction = (key, apiCall, successMsg) => {
  const modalConfig =
  key === "extend"
@@ -901,6 +920,68 @@ export default function ReservationDetailsModal({
  </div>
  ))}
  </div>
+ </div>
+
+ <div className="rdm-section rdm-surface-card">
+ <h3 className="rdm-top-section-label">Pricing &amp; Initial Payment</h3>
+ {pricingIsUsable ? (
+ <>
+ <div className="rdm-info-grid rdm-info-grid-dark">
+ <div className="rdm-info-item">
+ <span className="rdm-info-label">Lease Category</span>
+ <span className="rdm-info-value">{leaseCategoryLabel}</span>
+ </div>
+ <div className="rdm-info-item">
+ <span className="rdm-info-label">Regular Monthly Rate</span>
+ <span className="rdm-info-value">{formatPhp(pricingDisplay.regularMonthlyRate)}</span>
+ </div>
+ <div className="rdm-info-item">
+ <span className="rdm-info-label">Discount</span>
+ <span className="rdm-info-value">
+ {Number.isFinite(Number(pricingDisplay.discountPercentage))
+ ? `${pricingDisplay.discountPercentage}% (${formatPhp(pricingDisplay.discountAmount)})`
+ : "—"}
+ </span>
+ </div>
+ <div className="rdm-info-item">
+ <span className="rdm-info-label">Final Monthly Rate</span>
+ <span className="rdm-info-value">{formatPhp(pricingDisplay.finalMonthlyRate)}</span>
+ </div>
+ <div className="rdm-info-item">
+ <span className="rdm-info-label">Advance Rent</span>
+ <span className="rdm-info-value">{formatPhp(pricingDisplay.advanceRentAmount)}</span>
+ </div>
+ <div className="rdm-info-item">
+ <span className="rdm-info-label">Security Deposit</span>
+ <span className="rdm-info-value">{formatPhp(pricingDisplay.securityDepositAmount)}</span>
+ </div>
+ <div className="rdm-info-item">
+ <span className="rdm-info-label">Reservation-Fee Credit</span>
+ <span className="rdm-info-value">{formatPhp(pricingDisplay.reservationFeeAmount)}</span>
+ </div>
+ <div className="rdm-info-item">
+ <span className="rdm-info-label">
+ {pricingDisplay.status === "snapshotted" ? "Initial Payment Total" : "Estimated Initial Payment Total"}
+ </span>
+ <span className="rdm-info-value">{formatPhp(pricingDisplay.estimatedInitialPaymentTotal)}</span>
+ </div>
+ </div>
+ <p style={{ fontSize: "0.75rem", color: "#94A3B8", marginTop: 8 }}>
+ {pricingDisplay.status === "snapshotted"
+ ? "Approved pricing snapshot — immutable, source: server policy."
+ : "Pre-approval preview — will be locked in as an immutable snapshot at approval. Source: server policy."}
+ </p>
+ </>
+ ) : (
+ <p style={{ fontSize: "0.85rem", color: "#B91C1C", fontWeight: 600 }}>
+ {pricingIsMissing
+ ? "Pricing information unavailable. Refresh and try again."
+ : <>
+ Pricing configuration is unavailable. This reservation cannot be approved yet.
+ {pricingDisplay?.message ? ` (${pricingDisplay.message})` : ""}
+ </>}
+ </p>
+ )}
  </div>
 
  {cancellationPending && (
@@ -1556,7 +1637,16 @@ export default function ReservationDetailsModal({
  {allowedActions.includes("approve_for_payment") && (
  <button
  className="rdm-action rdm-action-primary"
- onClick={() =>
+ onClick={() => {
+ if (pricingBlocksApproval) {
+ showNotification(
+ pricingIsMissing
+ ? "Pricing information unavailable. Refresh and try again."
+ : "Pricing configuration is unavailable. This reservation cannot be approved yet.",
+ "error",
+ );
+ return;
+ }
  doAction(
  "approveForPayment",
  () =>
@@ -1565,9 +1655,16 @@ export default function ReservationDetailsModal({
  applicationReviewReason: null,
  }),
  "Application approved for payment",
- )
+ );
+ }}
+ disabled={isSubmitting || pricingBlocksApproval}
+ title={
+ pricingBlocksApproval
+ ? (pricingIsMissing
+ ? "Pricing information unavailable. Refresh and try again."
+ : "Pricing configuration is unavailable. This reservation cannot be approved yet.")
+ : undefined
  }
- disabled={isSubmitting}
  >
  Approve for Payment
  </button>

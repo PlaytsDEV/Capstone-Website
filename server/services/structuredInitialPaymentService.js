@@ -247,6 +247,27 @@ export async function getStructuredMoveInBlockers(
   return blockers;
 }
 
+/**
+ * Read-only, display-oriented wrapper around getStructuredMoveInBlockers for
+ * API responses (see attachMoveInReadiness in reservationCrudController.js).
+ * This is the SAME backend query set the real move-in mutation enforces —
+ * unlike the frontend's reservationReadiness.js mirror, it is authoritative
+ * because it actually queries Bill/Room/Stay/Reservation instead of guessing
+ * from fields already present on the serialized reservation. The frontend
+ * must treat this as the only source that can claim final "ready" and must
+ * not recompute room/bed/occupancy conflict checks itself.
+ */
+export async function getStructuredMoveInReadinessSummary(reservation) {
+  if (!usesStructuredInitialPayment(reservation)) {
+    return { status: "not_applicable", blockers: [] };
+  }
+  const blockers = await getStructuredMoveInBlockers(reservation);
+  return {
+    status: blockers.length === 0 ? "ready" : "blocked",
+    blockers,
+  };
+}
+
 export async function syncStructuredReservationAfterBillSettlement(bill) {
   if (
     bill?.billType !== "initial_payment" ||
