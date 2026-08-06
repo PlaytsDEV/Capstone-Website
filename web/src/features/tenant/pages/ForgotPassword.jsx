@@ -8,7 +8,7 @@
  * Two states: email form → success confirmation.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { sendPasswordResetEmail } from "firebase/auth";
 import { Mail, ArrowLeft, CheckCircle, Loader2 } from "lucide-react";
@@ -28,6 +28,16 @@ function ForgotPassword() {
  const [touched, setTouched] = useState(false);
  const [validationError, setValidationError] = useState(null);
  const [fieldValid, setFieldValid] = useState(false);
+ const [resending, setResending] = useState(false);
+ const [resendCooldown, setResendCooldown] = useState(0);
+
+ useEffect(() => {
+ if (resendCooldown <= 0) return undefined;
+ const interval = setInterval(() => {
+ setResendCooldown((current) => (current <= 1 ? 0 : current - 1));
+ }, 1000);
+ return () => clearInterval(interval);
+ }, [resendCooldown]);
 
  const handleChange = (e) => {
  const value = e.target.value;
@@ -38,50 +48,41 @@ function ForgotPassword() {
  setFieldValid(!error);
  };
 
- const handleResetPassword = async (e) => {
- e.preventDefault();
-
- if (!email.trim()) {
- showNotification("Please enter your email address", "error");
- return;
- }
- if (validationError) {
- showNotification("Please enter a valid email address", "error");
- return;
- }
-
- setLoading(true);
+ // Shared by the initial submit and the "Resend email" action so both paths
+ // apply the same enumeration-safe success/error handling and audit logging.
+ const requestPasswordReset = async (targetEmail) => {
  try {
- await sendPasswordResetEmail(auth, email);
+ await sendPasswordResetEmail(auth, targetEmail);
  setEmailSent(true);
  showNotification("Password reset email sent!", "success");
- // Log successful password reset attempt for security auditing
+ setResendCooldown(30);
  try {
  await fetch("/api/auth/log-password-reset", {
  method: "POST",
  headers: { "Content-Type": "application/json" },
- body: JSON.stringify({ email, success: true }),
+ body: JSON.stringify({ email: targetEmail, success: true }),
  });
  } catch (_) {
  /* non-critical */
  }
+ return true;
  } catch (error) {
  // Do not reveal whether an email is registered: show the same
  // "check your email" success state as a real send, not an error.
  if (error.code === "auth/user-not-found") {
  setEmailSent(true);
  showNotification("Password reset email sent!", "success");
+ setResendCooldown(30);
  try {
  await fetch("/api/auth/log-password-reset", {
  method: "POST",
  headers: { "Content-Type": "application/json" },
- body: JSON.stringify({ email, success: false }),
+ body: JSON.stringify({ email: targetEmail, success: false }),
  });
  } catch (_) {
  /* non-critical */
  }
- setLoading(false);
- return;
+ return true;
  }
 
  let msg = "Failed to send reset email. ";
@@ -98,13 +99,42 @@ function ForgotPassword() {
  await fetch("/api/auth/log-password-reset", {
  method: "POST",
  headers: { "Content-Type": "application/json" },
- body: JSON.stringify({ email, success: false }),
+ body: JSON.stringify({ email: targetEmail, success: false }),
  });
  } catch (_) {
  /* non-critical */
  }
+ return false;
+ }
+ };
+
+ const handleResetPassword = async (e) => {
+ e.preventDefault();
+
+ if (!email.trim()) {
+ showNotification("Please enter your email address", "error");
+ return;
+ }
+ if (validationError) {
+ showNotification("Please enter a valid email address", "error");
+ return;
+ }
+
+ setLoading(true);
+ try {
+ await requestPasswordReset(email);
  } finally {
  setLoading(false);
+ }
+ };
+
+ const handleResend = async () => {
+ if (resending || resendCooldown > 0 || !email) return;
+ setResending(true);
+ try {
+ await requestPasswordReset(email);
+ } finally {
+ setResending(false);
  }
  };
 
@@ -278,16 +308,33 @@ function ForgotPassword() {
  </button>
 
  <button
+ onClick={handleResend}
+ disabled={resending || resendCooldown > 0}
+ className="w-full py-3 rounded-xl text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
+ style={{
+ backgroundColor: "#F3F4F6",
+ cursor: resending || resendCooldown > 0 ? "not-allowed" : "pointer",
+ opacity: resending || resendCooldown > 0 ? 0.7 : 1,
+ }}
+ >
+ {resending
+ ? "Resending…"
+ : resendCooldown > 0
+ ? `Resend email in ${resendCooldown}s`
+ : "Didn't receive it? Resend email"}
+ </button>
+ <button
+ type="button"
  onClick={() => {
  setEmailSent(false);
  setEmail("");
  setTouched(false);
  setFieldValid(false);
+ setResendCooldown(0);
  }}
- className="w-full py-3 rounded-xl text-sm font-light text-muted-foreground hover:text-foreground transition-colors"
- style={{ backgroundColor: "#F3F4F6" }}
+ className="w-full py-2 text-xs font-light text-muted-foreground hover:text-foreground transition-colors underline"
  >
- Didn't receive it? Resend email
+ Use a different email
  </button>
  </div>
  </div>
