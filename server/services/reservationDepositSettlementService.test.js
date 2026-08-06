@@ -2,6 +2,7 @@ import { describe, expect, test } from "@jest/globals";
 import {
   RESERVATION_DEPOSIT_SOURCES,
   amountsMatch,
+  normalizePaymentMethod,
   resolveReservationFee,
   toCentavos,
 } from "./reservationDepositSettlementService.js";
@@ -34,5 +35,32 @@ describe("reservationDepositSettlementService money and source rules", () => {
       "legacy_reconciliation",
     ]);
     expect(RESERVATION_DEPOSIT_SOURCES).not.toContain("client");
+  });
+});
+
+describe("normalizePaymentMethod", () => {
+  test("preserves the actual PayMongo channel instead of collapsing it to the provider name", () => {
+    expect(normalizePaymentMethod("paymongo", { paymentMethod: "gcash" })).toBe("gcash");
+    expect(normalizePaymentMethod("paymongo", { paymentMethod: "card" })).toBe("card");
+  });
+
+  test("normalizes channel casing, spacing, and separators", () => {
+    expect(normalizePaymentMethod("paymongo", { paymentMethod: "GCash" })).toBe("gcash");
+    expect(normalizePaymentMethod("paymongo", { paymentMethod: "bank_transfer" })).toBe("bank");
+  });
+
+  test("falls back to a generic online payment for a real but unmapped channel", () => {
+    expect(normalizePaymentMethod("paymongo", { paymentMethod: "dob" })).toBe("online");
+    expect(normalizePaymentMethod("paymongo", { paymentMethod: "qrph" })).toBe("online");
+  });
+
+  test("falls back to the provider name only when no channel evidence is available", () => {
+    expect(normalizePaymentMethod("paymongo", {})).toBe("paymongo");
+    expect(normalizePaymentMethod("paymongo", { currency: "PHP" })).toBe("paymongo");
+  });
+
+  test("keeps manual-proof settlement behavior unchanged", () => {
+    expect(normalizePaymentMethod("manual_proof", { paymentMethod: "bank" })).toBe("bank");
+    expect(normalizePaymentMethod("manual_proof", {})).toBe("bank");
   });
 });
