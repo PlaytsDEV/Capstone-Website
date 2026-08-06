@@ -152,6 +152,8 @@
   color: var(--fi-error);
   margin-top: 6px;
   padding-left: 4px;
+  overflow-wrap: anywhere;
+  max-width: 100%;
 }
 
 /* ── Character Counter ── */
@@ -246,8 +248,12 @@
 
 .auth-form .form-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 14px;
+}
+
+.auth-form .form-row > * {
+  min-width: 0;
 }
 
 /* ── Auth Header ── */
@@ -269,6 +275,7 @@
   color: #64748b;
   margin: 0;
   font-weight: 400;
+  overflow-wrap: anywhere;
 }
 
 .auth-header__subtitle a,
@@ -563,7 +570,7 @@
 
 .password-strength__checks {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 4px 12px;
   margin-top: 8px;
 }
@@ -573,6 +580,8 @@
   align-items: center;
   gap: 6px;
   font-size: 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
   transition: color 0.2s ease;
 }
 
@@ -601,11 +610,29 @@
 /* ── Responsive ── */
 @media (max-width: 640px) {
   .auth-form .form-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .auth-header__title {
     font-size: 26px;
+  }
+}
+
+@media (max-width: 360px) {
+  .password-strength__checks {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .auth-btn-primary,
+  .auth-btn-google {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  /* Give the phone number field its full width back on very narrow
+     screens instead of squeezing it against the digit counter. */
+  .pi-counter {
+    display: none;
   }
 }
 

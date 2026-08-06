@@ -25,10 +25,28 @@ test("generated registration usernames always match the backend contract", () =>
   }
 });
 
-test("Firebase-only password identities have an authenticated resume path", () => {
-  assert.match(signUp, /auth\/email-already-in-use[\s\S]*setResumeAvailable\(true\)/);
-  assert.match(signUp, /handleResumeRegistration[\s\S]*signInWithEmailAndPassword[\s\S]*completePasswordOnboarding/);
-  assert.match(signUp, /Resume registration/);
+test("Resume Registration has no user-facing button, route, or discoverable state", () => {
+  assert.doesNotMatch(signUp, /Resume registration/i);
+  assert.doesNotMatch(signUp, /resumeAvailable/);
+  assert.doesNotMatch(signUp, /handleResumeRegistration/);
+  // signInWithEmailAndPassword is still used internally to reconcile an
+  // interrupted signup, but must never be wired to a discoverable button.
+  assert.doesNotMatch(signUp, /auth-btn-secondary/);
+});
+
+test("a duplicate Firebase identity is reconciled automatically, never through a resume button", () => {
+  // auth/email-already-in-use routes straight into automatic reconciliation
+  assert.match(signUp, /auth\/email-already-in-use[\s\S]*reconcileExistingFirebaseIdentity/);
+  // reconciliation re-authenticates with the password already on the form
+  assert.match(signUp, /reconcileExistingFirebaseIdentity[\s\S]*signInWithEmailAndPassword/);
+  // only a backend-confirmed missing profile (an interrupted signup) is
+  // auto-completed; any other outcome sends the user to sign in
+  assert.match(signUp, /USER_NOT_FOUND[\s\S]*completePasswordOnboarding/);
+  assert.match(signUp, /An account already exists with this email address\. Please sign in instead\./);
+});
+
+test("identity conflicts are never silently auto-completed during reconciliation", () => {
+  assert.match(signUp, /IDENTITY_CONFLICT[\s\S]{0,400}identity verification/);
 });
 
 test("registration retries generated username collisions without exposing owners", () => {

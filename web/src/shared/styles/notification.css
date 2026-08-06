@@ -3,10 +3,19 @@
   position: fixed;
   top: 20px;
   right: 20px;
+  left: 20px;
   display: grid;
+  justify-items: end;
   gap: 12px;
   z-index: 100000;
   pointer-events: none;
+}
+
+@media (max-width: 420px) {
+  .notification {
+    min-width: 0;
+    width: 100%;
+  }
 }
 
 .notification {
@@ -14,7 +23,7 @@
   top: auto;
   right: auto;
   min-width: 300px;
-  max-width: 500px;
+  max-width: min(500px, calc(100vw - 40px));
   padding: 16px 20px;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
@@ -53,8 +62,10 @@
 
 .notification-message {
   flex: 1;
+  min-width: 0;
   font-size: 14px;
   font-weight: 500;
+  overflow-wrap: anywhere;
 }
 
 .notification-close {

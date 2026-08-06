@@ -53,6 +53,8 @@ const FloatingInput = ({
  externalBlur?.();
  }, [externalBlur]);
 
+ const errorId = `${name}-error`;
+
  return (
  <div className="floating-field">
  <div className={wrapperClass}>
@@ -71,6 +73,8 @@ const FloatingInput = ({
  maxLength={maxLength}
  className="floating-field__input"
  placeholder=" "
+ aria-invalid={!!error}
+ aria-describedby={error ? errorId : undefined}
  />
  <label htmlFor={name} className="floating-field__label">
  {label}
@@ -79,7 +83,11 @@ const FloatingInput = ({
  <div className="floating-field__adornment">{endAdornment}</div>
  )}
  </div>
- {error && <span className="floating-field__error">{error}</span>}
+ {error && (
+ <span id={errorId} className="floating-field__error" role="alert">
+ {error}
+ </span>
+ )}
  </div>
  );
 };
