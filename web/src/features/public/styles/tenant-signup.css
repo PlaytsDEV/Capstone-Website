@@ -605,6 +605,7 @@
   color: #374151;
   cursor: pointer;
   margin-top: 4px;
+  -webkit-user-select: none;
   user-select: none;
 }
 

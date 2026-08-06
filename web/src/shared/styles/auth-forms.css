@@ -416,8 +416,8 @@
   height: 16px;
   border-radius: 4px;
   cursor: pointer;
-  appearance: none;
   -webkit-appearance: none;
+  appearance: none;
   border: 2px solid #D4AF37;
   background: transparent;
   position: relative;
@@ -478,8 +478,8 @@
   cursor: pointer;
   margin-top: 2px;
   flex-shrink: 0;
-  appearance: none;
   -webkit-appearance: none;
+  appearance: none;
   border: 2px solid #D4AF37;
   background: transparent;
   position: relative;
