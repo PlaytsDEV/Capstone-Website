@@ -412,6 +412,17 @@ export const renderPreparedContractPdf = async (generationData) => {
   const coordinates = getContractTemplateCoordinates(generationData.template.templateId);
   assertContractFieldsAvoidLegalText(coordinates);
   const master = await inspectMasterPdf(generationData.template, coordinates);
+  // NOTE ON TEST COVERAGE: under NODE_ENV=test this branch is skipped, so
+  // "quadruple-sharing-short-term" falls through to the pdf-lib overlay path
+  // below instead of the real Chromium/HTML pipeline it uses in production
+  // (avoids requiring a browser install for every test run). This means
+  // per-template test loops elsewhere in this file (and in
+  // contractPdfService.test.js) that iterate OFFICIAL_CONTRACT_TEMPLATES do
+  // NOT exercise the real HTML pipeline for this template — that pipeline's
+  // own behavior (required-field checks, MAX_UNBROKEN_TOKEN_LENGTH guard,
+  // escaping) is covered separately and directly by
+  // contractHtmlPdfService.test.js, which calls buildContractHtml/
+  // renderContractHtmlPdf without this bypass.
   if (
     generationData.template.templateId === "quadruple-sharing-short-term"
     && process.env.NODE_ENV !== "test"
