@@ -11,26 +11,11 @@ import dayjs from "dayjs";
 export const roundMoney = (value) => Math.round((Number(value) || 0) * 100) / 100;
 export const UTILITY_CYCLE_DAY = 15;
 export const UTILITY_CHARGE_FIELDS = ["electricity", "water"];
-const RENT_DUE_BUSINESS_DAYS = 2;
 const RENT_GENERATION_LEAD_DAYS = 5;
 
 function normalizeBillingDate(dateLike) {
   const normalized = dayjs(dateLike).startOf("day");
   return normalized.isValid() ? normalized : null;
-}
-
-function addBusinessDays(dateLike, businessDays = 0) {
-  let cursor = dayjs(dateLike).startOf("day");
-  let remaining = Math.max(0, Number(businessDays) || 0);
-
-  while (remaining > 0) {
-    cursor = cursor.add(1, "day");
-    if (cursor.day() !== 0 && cursor.day() !== 6) {
-      remaining -= 1;
-    }
-  }
-
-  return cursor.toDate();
 }
 
 export function sumBillCharges(charges = {}) {
@@ -285,7 +270,9 @@ export function buildBillingCycle(checkInDate, cycleIndex = 0) {
 export function buildRentBillingCycle(moveInDate, cycleIndex = 0) {
   const start = dayjs(moveInDate).startOf("day").add(cycleIndex, "month");
   const end = start.add(1, "month");
-  const dueDate = addBusinessDays(end.toDate(), RENT_DUE_BUSINESS_DAYS);
+  // Recurring due date follows the tenant's move-in day, not a fixed
+  // business-day offset from the cycle end.
+  const dueDate = start.toDate();
   const generationDate = dayjs(dueDate)
     .startOf("day")
     .subtract(RENT_GENERATION_LEAD_DAYS, "day")
@@ -340,7 +327,10 @@ export function resolveCurrentRentBillingCycle(moveInDate, referenceDate = new D
     nextCycleStart = cycleStart.add(1, "month");
   }
 
-  return buildRentBillingCycle(anchor.toDate(), cycleIndex);
+  // Cycle index 0 is the first rental period, already covered by advance
+  // rent collected at move-in — the first *regular* rent bill must start
+  // at the second period.
+  return buildRentBillingCycle(anchor.toDate(), Math.max(1, cycleIndex));
 }
 
 export function resolveVisibleRentBillingCycle(moveInDate, referenceDate = new Date()) {
@@ -348,7 +338,9 @@ export function resolveVisibleRentBillingCycle(moveInDate, referenceDate = new D
   const reference = normalizeBillingDate(referenceDate);
   if (!anchor || !reference) return null;
 
-  let cycleIndex = 0;
+  // Cycle index 0 (the first rental period) is covered by advance rent
+  // collected at move-in; the first regular bill is for cycle index 1.
+  let cycleIndex = 1;
   let cycle = buildRentBillingCycle(anchor.toDate(), cycleIndex);
 
   if (reference.isBefore(dayjs(cycle.generationDate).startOf("day"))) {

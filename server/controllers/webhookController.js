@@ -44,6 +44,7 @@ import {
   ReservationDepositSettlementError,
   settleReservationDeposit,
 } from "../services/reservationDepositSettlementService.js";
+import { readPaidPayments, readPaymentMethod } from "../utils/paymongoPaymentMethod.js";
 
 /* ─── helpers ───────────────────────────────────── */
 
@@ -114,6 +115,11 @@ async function handleDepositPayment(metadata, eventData, context = {}) {
     eventData?.attributes?.payments?.[0]?.attributes?.currency ||
     eventData?.attributes?.currency ||
     "PHP";
+  // Extract the actual customer-facing channel (gcash/card/etc.) the same
+  // way the polling path does, so it survives into the Payment/Reservation
+  // record instead of being discarded as just "paymongo".
+  const paidPayments = readPaidPayments(eventData);
+  const { rawPaymentType } = readPaymentMethod(eventData, paidPayments);
   const result = await settleReservationDeposit({
     reservationId,
     source: "paymongo",
@@ -122,12 +128,12 @@ async function handleDepositPayment(metadata, eventData, context = {}) {
     externalSessionId: context.sessionId || null,
     paymentReference: paymentId,
     idempotencyKey: `paymongo:${context.eventId || paymentId}`,
-    evidence: { currency },
+    evidence: { currency, paymentMethod: rawPaymentType },
     actor: { role: "paymongo_webhook" },
     paidAt: new Date(),
     fallbackFeeResolver: getReservationFeeAmount,
   });
-  const reservation = result.reservation;
+  const { reservation } = result;
   if (result.reconciliationRequired) {
     await notifyAdminsOfDepositReview(reservation, paymentId);
     return result;
@@ -177,23 +183,11 @@ async function handleDepositPayment(metadata, eventData, context = {}) {
       const reservationCode = reservation.reservationCode || String(reservation._id).slice(-8).toUpperCase();
       const tenantName = `${tenant.firstName || ""} ${tenant.lastName || ""}`.trim();
 
-      const rawSourceType =
-        eventData?.attributes?.data?.attributes?.source?.type ||
-        eventData?.attributes?.data?.attributes?.payment_method_type ||
-        reservation?.paymentMethod ||
-        "";
-      const normalizedChannel = String(rawSourceType).toLowerCase().trim().replace(/[_\s-]/g, "");
-      const channelMap = {
-        gcash: "GCash",
-        paymaya: "Maya",
-        maya: "Maya",
-        card: "Credit / Debit Card",
-        grabpay: "GrabPay",
-        dob: "Online Banking",
-        qrph: "QR Ph",
-        billease: "BillEase",
-      };
-      const formattedChannel = channelMap[normalizedChannel] || (rawSourceType ? String(rawSourceType).toUpperCase() : "Online Payment (PayMongo)");
+      // reservation.paymentMethod was just persisted by settleReservationDeposit
+      // above using the same extraction as the polling path — reuse it here
+      // instead of re-deriving from a payload shape that doesn't apply to
+      // checkout_session.payment.paid events.
+      const { paymentMethod: formattedChannel } = readPaymentMethod(eventData, paidPayments);
 
       const emailResult = await sendPaymentReceiptEmail({
         to: tenant.email,

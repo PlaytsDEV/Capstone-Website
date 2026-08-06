@@ -23,6 +23,7 @@ import { resolveReservationApprovalPricingGate } from "../utils/reservationPrici
 import { resolveApplicantPhotoUrl } from "../utils/applicantPhotoResolution";
 import { formatSubmittedAddress } from "../utils/reservationAddressFormat";
 import ProfileAvatar from "../../../shared/components/ProfileAvatar";
+import { formatPaymentMethod } from "../../../shared/utils/formatPaymentMethod";
 import "../styles/reservation-details-modal.css";
 
  const ACTION_MSGS = {
@@ -583,7 +584,7 @@ export default function ReservationDetailsModal({
       return "System Sweeper (24h Hold Expired)";
     }
     if (typeof reservation.cancelledBy === "object" && reservation.cancelledBy?.role) {
-      const role = reservation.cancelledBy.role;
+      const { role } = reservation.cancelledBy;
       if (role === "branch_admin") return "Branch Admin";
       if (role === "owner") return "System Owner";
       if (role === "applicant" || role === "tenant") return reservation.customer || "Applicant";
@@ -1605,7 +1606,7 @@ export default function ReservationDetailsModal({
  </div>
  <div className="rdm-side-summary-item">
  <span>Payment Method</span>
- <strong>{fmt(reservation.paymentMethod)}</strong>
+ <strong>{formatPaymentMethod(reservation.paymentMethod)}</strong>
  </div>
  </div>
  </div>

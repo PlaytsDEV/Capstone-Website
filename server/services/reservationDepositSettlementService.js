@@ -2,6 +2,9 @@ import mongoose from "mongoose";
 import { randomUUID } from "node:crypto";
 import { AuditLog, Payment, Reservation, Room, Stay } from "../models/index.js";
 import { hasReservationStatus } from "../utils/lifecycleNaming.js";
+import { PAYMENT_METHODS } from "../config/paymentMethods.js";
+
+const KNOWN_PAYMENT_METHODS = new Set(PAYMENT_METHODS);
 
 export const RESERVATION_DEPOSIT_SOURCES = Object.freeze([
   "paymongo",
@@ -71,10 +74,24 @@ export const resolveReservationFee = async (
   return Number(value);
 };
 
-const normalizePaymentMethod = (source, evidence = {}) => {
-  if (source === "paymongo") return "paymongo";
-  const method = String(evidence.paymentMethod || "bank").toLowerCase();
-  return method === "bank_transfer" ? "bank" : method;
+// "source" identifies the settlement provider/channel (paymongo, manual_proof,
+// legacy_reconciliation) — it is NOT the customer-facing payment method and
+// must never be persisted into a paymentMethod field. The actual method
+// (gcash, card, ...) always comes from evidence.paymentMethod when present.
+export const normalizePaymentMethod = (source, evidence = {}) => {
+  const raw = evidence.paymentMethod;
+  if (raw) {
+    const key = String(raw).toLowerCase().trim().replace(/[\s-]/g, "_");
+    if (key === "bank_transfer") return "bank";
+    if (KNOWN_PAYMENT_METHODS.has(key)) return key;
+    // A real PayMongo channel without a dedicated enum value (e.g. dob,
+    // qrph, billease) — keep it as a generic online payment rather than
+    // silently discarding the fact that a real channel was used.
+    return "online";
+  }
+  // No channel evidence available: fall back to the provider name for
+  // paymongo settlements, "bank" for legacy/manual reconciliation.
+  return source === "paymongo" ? "paymongo" : "bank";
 };
 
 const buildPaymentSource = (source) =>

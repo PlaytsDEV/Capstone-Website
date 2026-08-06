@@ -9,7 +9,6 @@
 import dayjs from "dayjs";
 import { Bill, Reservation } from "../../models/index.js";
 import {
-  getReservationCreditAvailable,
   getReservationRecurringFees,
   roundMoney,
   resolveVisibleRentBillingCycle,
@@ -186,10 +185,11 @@ export async function ensureCurrentCycleRentBill({
     "charges.rent": { $gt: 0 },
   }));
   const isFirstCycleBill = !hasPriorRentBill;
-  const creditAvailable = getReservationCreditAvailable(reservation);
-  const reservationCreditApplied = !structured && isFirstCycleBill
-    ? Math.min(grossAmount, creditAvailable)
-    : 0;
+  // The reservation-fee credit belongs against the initial payment (advance
+  // rent + deposit + charges), not a recurring rent bill — the first regular
+  // bill already starts at the second rental period (see
+  // resolveVisibleRentBillingCycle), so it must never be credited here.
+  const reservationCreditApplied = 0;
 
   const bill = new Bill({
     reservationId: reservation._id,
@@ -268,12 +268,6 @@ export async function ensureCurrentCycleRentBill({
         reservationFeeCreditApplied: bill.reservationCreditApplied,
       },
     });
-  }
-
-  if (reservationCreditApplied > 0 && typeof reservation.save === "function") {
-    reservation.reservationCreditConsumedAt = currentDay.toDate();
-    reservation.reservationCreditAppliedBillId = bill._id;
-    await reservation.save();
   }
 
   if (notifyTenant) {

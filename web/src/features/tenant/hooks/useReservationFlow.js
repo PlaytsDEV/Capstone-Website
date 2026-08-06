@@ -1131,6 +1131,7 @@ export default function useReservationFlow() {
           receiptSentAt: active.receiptSentAt || null,
           reservedAt: active.reservedAt || null,
           reservationFeeAmount: active.reservationFeeAmount || 2000,
+          pricingDisplay: active.pricingDisplay,
           room: {
             id: room._id || room.id,
             roomId: room._id || room.id,
@@ -1276,6 +1277,7 @@ export default function useReservationFlow() {
         receiptSentAt: reservation.receiptSentAt || null,
         reservedAt: reservation.reservedAt || null,
         reservationFeeAmount: reservation.reservationFeeAmount || 2000,
+        pricingDisplay: reservation.pricingDisplay,
         room: reservation.roomId,
         viewingPreference:
           reservation.viewingPreference || reservation.viewingType || "",
@@ -1508,12 +1510,12 @@ export default function useReservationFlow() {
           setCurrentStage(targetStage);
           return; // ΓåÉ prevent double-toast: skip the generic notification below
         }
+      } else if (applicationStageBlocked) {
+        setCurrentStage(targetStage || 2);
+      } else if (stepOverride && stepOverride <= highest) {
+        setCurrentStage(stepOverride);
       } else {
-        if (applicationStageBlocked)
-          setCurrentStage(targetStage || 2);
-        else if (stepOverride && stepOverride <= highest)
-          setCurrentStage(stepOverride);
-        else setCurrentStage(targetStage);
+        setCurrentStage(targetStage);
       }
       showNotification(
         applicationStageBlocked
@@ -1849,9 +1851,9 @@ export default function useReservationFlow() {
       const selectedIdType = idType || validIDType;
 
       if (!targetReservationId || !documentUrl || !selectedIdType) {
-        const message = !selectedIdType
-          ? "ID type is required."
-          : "Valid ID front image is required.";
+        const message = selectedIdType
+          ? "Valid ID front image is required."
+          : "ID type is required.";
         setIdValidationResult({
           validationStatus: "failed",
           message,

@@ -672,6 +672,12 @@ export const publishRoomBills = async (req, res, next) => {
 export const createMilestoneArrangementAction = async (req, res, next) => {
   try {
     const { parentBillId, milestones } = req.body;
+    const admin = await getAdminInfo(req);
+    const parentBill = await Bill.findById(parentBillId).select("branch");
+    if (!parentBill) return res.status(404).json({ error: "Bill not found" });
+    if (!admin.isOwner && parentBill.branch !== admin.branch) {
+      return res.status(403).json({ error: "Bill not found" });
+    }
     const subInvoices = await createMilestoneSubInvoices(parentBillId, milestones, req.user.uid);
     res.json({
       success: true,
