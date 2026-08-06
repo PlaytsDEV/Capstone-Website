@@ -22,6 +22,7 @@ import {
   RefreshCw,
   Eye,
   EyeOff,
+  Info,
 } from "lucide-react";
 import { useAuth } from "../../../../shared/hooks/useAuth";
 import ConfirmModal from "../../../../shared/components/ConfirmModal";
