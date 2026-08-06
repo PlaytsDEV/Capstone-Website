@@ -22,7 +22,7 @@ import {
 } from "../../../shared/utils/lifecycleNaming";
 import {
   getReservationFeeStatusLabel,
-  getStructuredMoveInReadiness,
+  getMoveInReadinessLabel,
   resolveDisplayMoveInDate,
 } from "../utils/reservationReadiness";
 import {
@@ -464,13 +464,12 @@ function getStepDesc(step, status, reservation) {
       return step.desc;
     case 5:
       if (status === "complete") {
-        const readiness = getStructuredMoveInReadiness(reservation);
-        if (readiness.ready === false) {
-          // Reservation is secured, but structured billing/documents/house
-          // rules are not all cleared yet — do not claim move-in readiness.
-          return "Reservation secured — move-in requirements pending";
-        }
-        return "Move-in ready!";
+        // getMoveInReadinessLabel only claims "Move-in ready!" once the
+        // server's authoritative reservation.moveInReadiness confirms every
+        // backend blocker (Bill, documents, room/bed assignment, occupancy
+        // conflicts) is clear — applicant-side completeness alone is not
+        // enough. See reservationReadiness.js for the full contract.
+        return getMoveInReadinessLabel(reservation);
       }
       return step.desc;
     default:

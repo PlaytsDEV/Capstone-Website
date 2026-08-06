@@ -15,6 +15,16 @@
  * `initialPaymentStatus` field as a proxy for Bill settlement. See
  * reservationReadiness.test.mjs for fixtures cross-checked against the
  * backend's structuredMoveInReadiness.test.js scenarios.
+ *
+ * Because that mirror cannot see room/bed assignment or Stay/Reservation
+ * occupancy conflicts, it must never be the sole basis for claiming final
+ * "Move-in ready!" — see getMoveInReadinessLabel below, which only makes
+ * that claim when the server has attached an authoritative
+ * `reservation.moveInReadiness` (getStructuredMoveInReadinessSummary in
+ * server/services/structuredInitialPaymentService.js, attached to the
+ * single-reservation detail response). When that authoritative field isn't
+ * present yet, the label falls back to honest, non-final wording instead of
+ * guessing.
  */
 
 const STRUCTURED_WORKFLOW_VERSION = "structured-initial-payment-v1";
@@ -66,6 +76,56 @@ export const getStructuredMoveInReadiness = (reservation) => {
   }
   if (!reservation.houseRulesPreparedAt) reasons.push("House rules acknowledgment pending");
   return { ready: reasons.length === 0, reasons };
+};
+
+const AUTHORITATIVE_READY_LABEL = "Move-in ready!";
+const REQUIREMENTS_PENDING_LABEL = "Reservation secured — move-in requirements pending";
+const AWAITING_CONFIRMATION_LABEL = "Applicant requirements complete — final confirmation pending";
+
+/**
+ * Reads the server-attached `reservation.moveInReadiness` (see
+ * getStructuredMoveInReadinessSummary on the backend) without recomputing
+ * or second-guessing it. Returns `{ status: "unknown" }` when the field
+ * hasn't been fetched/attached yet — callers must treat "unknown" as "not
+ * confirmed", never as "ready".
+ */
+export const getAuthoritativeMoveInStatus = (reservation) => {
+  const readiness = reservation?.moveInReadiness;
+  if (!readiness || typeof readiness !== "object" || !readiness.status) {
+    return { status: "unknown", blockers: [] };
+  }
+  return {
+    status: readiness.status,
+    blockers: Array.isArray(readiness.blockers) ? readiness.blockers : [],
+  };
+};
+
+/**
+ * The single source of truth for the tenant dashboard's move-in status
+ * label. Only claims final "Move-in ready!" when the backend-authoritative
+ * `reservation.moveInReadiness.status` is explicitly "ready" (or the
+ * reservation predates the structured workflow entirely, matching the
+ * original unchanged legacy behavior). Applicant-side completeness
+ * (getStructuredMoveInReadiness) alone — which cannot see room/bed
+ * assignment or occupancy conflicts — is never enough on its own to produce
+ * that claim; it can only produce the softer "final confirmation pending"
+ * wording while authoritative data is unavailable, or the "requirements
+ * pending" wording once it (or the backend) reports something outstanding.
+ */
+export const getMoveInReadinessLabel = (reservation) => {
+  const applicant = getStructuredMoveInReadiness(reservation);
+  if (applicant.ready === null) {
+    // Legacy (pre-structured) workflow — unchanged behavior. Callers only
+    // reach this label once the reservation status already implies the
+    // legacy flow considers move-in confirmed.
+    return AUTHORITATIVE_READY_LABEL;
+  }
+  const authoritative = getAuthoritativeMoveInStatus(reservation);
+  if (authoritative.status === "ready") return AUTHORITATIVE_READY_LABEL;
+  if (authoritative.status === "blocked") return REQUIREMENTS_PENDING_LABEL;
+  // authoritative.status === "unknown" (not yet fetched) or "not_applicable"
+  // — never claim final readiness from applicant-only data.
+  return applicant.ready ? AWAITING_CONFIRMATION_LABEL : REQUIREMENTS_PENDING_LABEL;
 };
 
 /**

@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, jest, test } from "@jest/globals";
 import { Bill, Reservation, Room, Stay } from "../models/index.js";
-import { getStructuredMoveInBlockers } from "./structuredInitialPaymentService.js";
+import {
+  getStructuredMoveInBlockers,
+  getStructuredMoveInReadinessSummary,
+} from "./structuredInitialPaymentService.js";
 
 const queryResult = (value) => ({
   select: jest.fn().mockReturnThis(),
@@ -100,5 +103,57 @@ describe("structured move-in readiness", () => {
     });
     const blockers = await getStructuredMoveInBlockers(feeOnlyReservation);
     expect(blockers).toContain("Structured initial-payment Bill is missing.");
+  });
+
+  // getStructuredMoveInReadinessSummary is the API-facing wrapper attached to
+  // the reservation detail response as reservation.moveInReadiness — this is
+  // the ONLY thing the frontend (reservationReadiness.js's
+  // getMoveInReadinessLabel) is allowed to treat as authoritative for a
+  // final "Move-in ready!" claim, so its contract needs its own coverage
+  // beyond getStructuredMoveInBlockers's raw blocker-list assertions.
+  describe("getStructuredMoveInReadinessSummary (API-facing wrapper)", () => {
+    test("legacy (non-structured) reservation is not_applicable, not blocked", async () => {
+      await expect(getStructuredMoveInReadinessSummary({ status: "moveIn" })).resolves.toEqual({
+        status: "not_applicable",
+        blockers: [],
+      });
+    });
+
+    test("all blockers clear -> status ready with an empty blocker list", async () => {
+      mockAssignments();
+      await expect(
+        getStructuredMoveInReadinessSummary(readyReservation()),
+      ).resolves.toEqual({ status: "ready", blockers: [] });
+    });
+
+    test("any outstanding blocker -> status blocked, with the real blocker reasons surfaced", async () => {
+      mockAssignments({ branch: "guadalupe", conflict: { _id: "conflict" } });
+      const summary = await getStructuredMoveInReadinessSummary(readyReservation());
+      expect(summary.status).toBe("blocked");
+      expect(summary.blockers).toEqual(expect.arrayContaining([
+        "Room assignment does not match the approved branch.",
+        "A conflicting active Stay already uses this room or bed.",
+      ]));
+    });
+
+    test("a conflicting active Reservation on the same room/bed blocks readiness even when documents/payment/pricing are otherwise complete", async () => {
+      jest.spyOn(Bill, "findById").mockReturnValue(queryResult({
+        billType: "initial_payment",
+        status: "paid",
+        remainingAmount: 0,
+      }));
+      jest.spyOn(Room, "findById").mockReturnValue(queryResult({
+        branch: "gil-puyat",
+        beds: [{ id: "A" }],
+      }));
+      jest.spyOn(Stay, "findOne").mockReturnValue(queryResult(null));
+      jest.spyOn(Reservation, "findOne").mockReturnValue(queryResult({ _id: "other-reservation" }));
+
+      const summary = await getStructuredMoveInReadinessSummary(readyReservation());
+      expect(summary.status).toBe("blocked");
+      expect(summary.blockers).toContain(
+        "A conflicting active Reservation already uses this room or bed.",
+      );
+    });
   });
 });

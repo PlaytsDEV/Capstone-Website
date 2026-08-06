@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   getReservationFeeStatusLabel,
   getStructuredMoveInReadiness,
+  getAuthoritativeMoveInStatus,
+  getMoveInReadinessLabel,
   resolveDisplayMoveInDate,
 } from "./reservationReadiness.js";
 
@@ -76,6 +78,93 @@ test("readiness fails closed on missing/malformed data instead of claiming ready
   assert.equal(getStructuredMoveInReadiness(null).ready, false);
   assert.equal(getStructuredMoveInReadiness(undefined).ready, false);
   assert.equal(getStructuredMoveInReadiness("not-an-object").ready, false);
+});
+
+// ── authoritative backend readiness ─────────────────────────────────────────
+
+test("getAuthoritativeMoveInStatus: no moveInReadiness field attached yet -> unknown, not ready", () => {
+  const result = getAuthoritativeMoveInStatus(readyReservation());
+  assert.equal(result.status, "unknown");
+  assert.deepEqual(result.blockers, []);
+});
+
+test("getAuthoritativeMoveInStatus: malformed moveInReadiness (missing status) -> unknown", () => {
+  const result = getAuthoritativeMoveInStatus(readyReservation({ moveInReadiness: {} }));
+  assert.equal(result.status, "unknown");
+});
+
+test("getAuthoritativeMoveInStatus: backend-confirmed ready is passed through as-is", () => {
+  const result = getAuthoritativeMoveInStatus(
+    readyReservation({ moveInReadiness: { status: "ready", blockers: [] } }),
+  );
+  assert.equal(result.status, "ready");
+});
+
+test("getAuthoritativeMoveInStatus: backend-reported blockers (e.g. room/bed/occupancy conflict) are surfaced", () => {
+  const result = getAuthoritativeMoveInStatus(
+    readyReservation({
+      moveInReadiness: {
+        status: "blocked",
+        blockers: ["A conflicting active Reservation already uses this room or bed."],
+      },
+    }),
+  );
+  assert.equal(result.status, "blocked");
+  assert.deepEqual(result.blockers, [
+    "A conflicting active Reservation already uses this room or bed.",
+  ]);
+});
+
+// ── composed dashboard label — the only function allowed to say "Move-in ready!" ──
+
+test("getMoveInReadinessLabel: legacy (non-structured) workflow keeps unchanged 'Move-in ready!' wording", () => {
+  assert.equal(getMoveInReadinessLabel({ status: "reserved" }), "Move-in ready!");
+});
+
+test("getMoveInReadinessLabel: applicant-side requirements complete alone (no authoritative data yet) must NOT claim final readiness", () => {
+  // Applicant-side mirror reports ready=true, but the server hasn't attached
+  // moveInReadiness (e.g. list-endpoint data, or the detail fetch hasn't
+  // resolved yet) — this must never render "Move-in ready!" on its own.
+  const label = getMoveInReadinessLabel(readyReservation());
+  assert.notEqual(label, "Move-in ready!");
+  assert.equal(label, "Applicant requirements complete — final confirmation pending");
+});
+
+test("getMoveInReadinessLabel: authoritative backend 'ready' status produces the final readiness claim", () => {
+  const reservation = readyReservation({ moveInReadiness: { status: "ready", blockers: [] } });
+  assert.equal(getMoveInReadinessLabel(reservation), "Move-in ready!");
+});
+
+test("getMoveInReadinessLabel: authoritative backend 'blocked' status (e.g. occupancy conflict the frontend mirror can't see) produces a blocked/pending label, never 'Move-in ready!'", () => {
+  const reservation = readyReservation({
+    moveInReadiness: {
+      status: "blocked",
+      blockers: ["A conflicting active Stay already uses this room or bed."],
+    },
+  });
+  const label = getMoveInReadinessLabel(reservation);
+  assert.notEqual(label, "Move-in ready!");
+  assert.equal(label, "Reservation secured — move-in requirements pending");
+});
+
+test("getMoveInReadinessLabel: applicant-side requirements incomplete and no authoritative data -> pending label, not the awaiting-confirmation wording", () => {
+  const reservation = readyReservation({ initialPaymentStatus: "not_created" });
+  assert.equal(
+    getMoveInReadinessLabel(reservation),
+    "Reservation secured — move-in requirements pending",
+  );
+});
+
+test("getMoveInReadinessLabel: stale authoritative 'blocked' wins even if applicant-side fields now look complete", () => {
+  // Guards against a stale/cached moveInReadiness silently being ignored in
+  // favor of an over-eager applicant-side read.
+  const reservation = readyReservation({
+    moveInReadiness: { status: "blocked", blockers: ["Bed or slot assignment is missing."] },
+  });
+  assert.equal(
+    getMoveInReadinessLabel(reservation),
+    "Reservation secured — move-in requirements pending",
+  );
 });
 
 // ── date labeling ──────────────────────────────────────────────────────────

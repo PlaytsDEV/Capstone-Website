@@ -19,6 +19,7 @@ import {
 } from "../../../shared/utils/dateFormat";
 import { showNotification } from "../../../shared/utils/notification";
 import { getVisitManagementAvailability } from "../utils/visitStatusRules";
+import { resolveReservationApprovalPricingGate } from "../utils/reservationPricingGate";
 import "../styles/reservation-details-modal.css";
 
  const ACTION_MSGS = {
@@ -634,9 +635,8 @@ export default function ReservationDetailsModal({
  // server/services/contractPricingResolver.js) — no client-side
  // recomputation of rates/discounts here.
  const pricingDisplay = reservation?.pricingDisplay || null;
- const pricingIsUsable =
- pricingDisplay?.status === "preview" || pricingDisplay?.status === "snapshotted";
- const pricingBlocksApproval = Boolean(pricingDisplay) && !pricingIsUsable;
+ const { pricingIsUsable, pricingIsMissing, pricingBlocksApproval } =
+ resolveReservationApprovalPricingGate(pricingDisplay);
  const formatPhp = (value) =>
  Number.isFinite(Number(value))
  ? `PHP ${Number(value).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -974,8 +974,12 @@ export default function ReservationDetailsModal({
  </>
  ) : (
  <p style={{ fontSize: "0.85rem", color: "#B91C1C", fontWeight: 600 }}>
+ {pricingIsMissing
+ ? "Pricing information unavailable. Refresh and try again."
+ : <>
  Pricing configuration is unavailable. This reservation cannot be approved yet.
  {pricingDisplay?.message ? ` (${pricingDisplay.message})` : ""}
+ </>}
  </p>
  )}
  </div>
@@ -1636,7 +1640,9 @@ export default function ReservationDetailsModal({
  onClick={() => {
  if (pricingBlocksApproval) {
  showNotification(
- "Pricing configuration is unavailable. This reservation cannot be approved yet.",
+ pricingIsMissing
+ ? "Pricing information unavailable. Refresh and try again."
+ : "Pricing configuration is unavailable. This reservation cannot be approved yet.",
  "error",
  );
  return;
@@ -1654,7 +1660,9 @@ export default function ReservationDetailsModal({
  disabled={isSubmitting || pricingBlocksApproval}
  title={
  pricingBlocksApproval
- ? "Pricing configuration is unavailable. This reservation cannot be approved yet."
+ ? (pricingIsMissing
+ ? "Pricing information unavailable. Refresh and try again."
+ : "Pricing configuration is unavailable. This reservation cannot be approved yet.")
  : undefined
  }
  >

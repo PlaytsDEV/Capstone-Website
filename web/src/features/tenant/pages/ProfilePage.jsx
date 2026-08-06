@@ -10,11 +10,12 @@ import { authFetch } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "../../../shared/hooks/queries/useUsers";
-import { useReservations } from "../../../shared/hooks/queries/useReservations";
+import { useReservations, useReservation } from "../../../shared/hooks/queries/useReservations";
 import { billingApi } from "../../../shared/api/billingApi";
 import { hasReservationStatus } from "../../../shared/utils/lifecycleNaming";
 import { getReservationProgress, getNextAction } from "../utils/reservationProgress";
 import { resolveCurrentReservation, sortByRecency } from "../utils/reservationSelection";
+import { isStructuredWorkflow } from "../utils/reservationReadiness";
 import TenantMaintenanceWorkspace from "../components/maintenance/TenantMaintenanceWorkspace";
 import {
  ReceiptModal,
@@ -389,6 +390,26 @@ const ProfilePage = () => {
  activeReservations[0]
  : activeReservations[0];
 
+ // The reservations LIST endpoint never attaches authoritative
+ // moveInReadiness (it would fan out into Bill/Room/Stay/Reservation
+ // queries per row — see attachMoveInReadiness in
+ // reservationCrudController.js). Only the single-reservation DETAIL
+ // endpoint carries it, so fetch it here — scoped to just the selected
+ // reservation, and only when it's on the structured workflow — so the
+ // dashboard's "Move-in ready!" label can make an authoritative claim
+ // instead of falling back to non-final wording indefinitely.
+ const authoritativeReadinessQuery = useReservation(selectedReservation?._id, {
+ enabled: Boolean(selectedReservation?._id) && isStructuredWorkflow(selectedReservation),
+ });
+ const dashboardReservation = useMemo(() => {
+ if (!selectedReservation) return selectedReservation;
+ const detail = authoritativeReadinessQuery.data;
+ if (detail?._id === selectedReservation._id && detail?.moveInReadiness) {
+ return { ...selectedReservation, moveInReadiness: detail.moveInReadiness };
+ }
+ return selectedReservation;
+ }, [selectedReservation, authoritativeReadinessQuery.data]);
+
  const reservationProgress = getReservationProgress(selectedReservation);
  const nextAction = getNextAction(selectedReservation, reservationProgress);
  const isReservationConfirmed =
@@ -427,7 +448,7 @@ const ProfilePage = () => {
  <DashboardTab
  profileData={profileData}
  activeReservation={activeReservation}
- selectedReservation={selectedReservation}
+ selectedReservation={dashboardReservation}
  visits={visits}
  nextAction={nextAction}
  onGoToPersonal={() => handleTabChange("personal")}
