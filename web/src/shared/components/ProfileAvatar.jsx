@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 
 export function getProfileInitials(user = {}, fallback = "U") {
   const firstName = String(user?.firstName || "").trim();
@@ -26,6 +26,14 @@ export default function ProfileAvatar({
 }) {
   const label = initials || getProfileInitials(user);
   const imageSrc = src || user?.profileImage || user?.profileImageUrl || user?.avatar;
+  // Falls back to the initials avatar instead of a browser broken-image icon
+  // when the URL is missing, invalid, expired, or the request fails for any
+  // other reason. Re-arms whenever the source actually changes (e.g. the
+  // applicant uploads a new photo) so a stale failure doesn't stick forever.
+  const [imageFailed, setImageFailed] = useState(false);
+  useEffect(() => {
+    setImageFailed(false);
+  }, [imageSrc]);
 
   const baseStyle = {
     width: size,
@@ -46,13 +54,14 @@ export default function ProfileAvatar({
     ...style,
   };
 
-  if (imageSrc) {
+  if (imageSrc && !imageFailed) {
     return (
       <img
         src={imageSrc}
         alt={alt || "Profile"}
         className={className}
         style={{ ...baseStyle, objectFit: "cover" }}
+        onError={() => setImageFailed(true)}
         {...props}
       />
     );

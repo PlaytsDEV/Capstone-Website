@@ -10,6 +10,7 @@ import {
 import { validateContractForGeneration, transitionContract } from "./contractService.js";
 import {
   drawFittedField,
+  drawParagraphFlow,
   fitSingleLineText,
   PREPARED_COPY_LABEL,
 } from "./contractPdfTextService.js";
@@ -61,104 +62,44 @@ const eraseLayoutRegion = (page, region, debug) => {
   }
 };
 
-const drawFlowParagraph = ({
-  page,
-  fonts,
-  x,
-  firstBaselineY,
-  width,
-  lineHeight,
-  fontSize,
-  maximumLines,
-  segments,
-  overflowCode,
-  fieldName,
-}) => {
-  const words = segments.flatMap((segment) =>
-    String(segment.text || "").trim().split(/\s+/).filter(Boolean).map((text) => ({
-      text,
-      bold: segment.bold === true,
-    })));
-  const spaceWidth = fonts.regular.widthOfTextAtSize(" ", fontSize);
-  const lines = [];
-  let line = [];
-  let lineWidth = 0;
-  for (const word of words) {
-    const font = word.bold ? fonts.bold : fonts.regular;
-    const wordWidth = font.widthOfTextAtSize(word.text, fontSize);
-    const candidateWidth = lineWidth + (line.length ? spaceWidth : 0) + wordWidth;
-    if (line.length && candidateWidth > width) {
-      lines.push({ words: line, width: lineWidth });
-      line = [word];
-      lineWidth = wordWidth;
-    } else {
-      line.push(word);
-      lineWidth = candidateWidth;
-    }
-  }
-  if (line.length) lines.push({ words: line, width: lineWidth });
-  if (lines.length > maximumLines || lines.some((entry) => entry.width > width)) {
-    throw pdfError(
-      "A legal paragraph cannot fit safely without shrinking its typography.",
-      overflowCode,
-      422,
-      { field: fieldName, lineCount: lines.length, maximumLines, width },
-    );
-  }
-  const positions = [];
-  lines.forEach((entry, lineIndex) => {
-    const justify = lineIndex < lines.length - 1 && entry.words.length > 1;
-    const extraSpace = justify
-      ? Math.min(1.5, Math.max(0, (width - entry.width) / (entry.words.length - 1)))
-      : 0;
-    let cursor = x;
-    const y = firstBaselineY - lineIndex * lineHeight;
-    entry.words.forEach((word, wordIndex) => {
-      const font = word.bold ? fonts.bold : fonts.regular;
-      const wordWidth = font.widthOfTextAtSize(word.text, fontSize);
-      page.drawText(word.text, {
-        x: cursor, y, size: fontSize, font, color: rgb(0, 0, 0),
-      });
-      positions.push({ ...word, x: cursor, y, width: wordWidth, lineIndex });
-      cursor += wordWidth;
-      if (wordIndex < entry.words.length - 1) cursor += spaceWidth + extraSpace;
-    });
-  });
-  return { lines, positions, fontSize };
-};
-
 const drawTenantIdentityBlock = ({ page, fonts, fields, coordinates, debug }) => {
   const layout = coordinates.identityLayout;
   eraseLayoutRegion(page, layout.eraseRegion, debug);
   const name = String(fields.tenantLegalName || "").replace(/[,\s]+$/, "") + ",";
   const address = String(fields.tenantResidentialAddress || "")
     .trim().replace(/[,\s]+$/, "");
-  fitSingleLineText(fonts.bold, name, {
-    ...coordinates.fields.tenantLegalName,
-    preferredFontSize: layout.fontSize,
-    minimumFontSize: layout.fontSize,
-  }, "tenantLegalName");
-  fitSingleLineText(fonts.regular, address, {
-    width: layout.width,
-    preferredFontSize: layout.fontSize,
-    minimumFontSize: layout.fontSize,
-    overflowCode: "TENANT_ADDRESS_TOO_LONG_FOR_TEMPLATE",
-  }, "tenantResidentialAddress");
-  const flow = drawFlowParagraph({
+  // Fitted and drawn as ONE flowing paragraph (name + fixed legal wording +
+  // address + fixed legal wording), since that's how it's actually printed —
+  // the whole clause shrinks together from layout.fontSize down to
+  // layout.minimumFontSize before failing, rather than pre-validating the
+  // name/address against a box that doesn't match where they're really
+  // drawn (see contractPdfService.test.js history / PR notes for the bug
+  // this replaced: false-positive TENANT_NAME_TOO_LONG_FOR_TEMPLATE errors
+  // for names that would have rendered fine).
+  const flow = drawParagraphFlow({
     page,
     fonts,
     x: layout.x,
     firstBaselineY: layout.nameBaselineY,
-    width: layout.width,
     lineHeight: layout.lineHeight,
-    fontSize: layout.fontSize,
-    maximumLines: 3,
-    overflowCode: "TENANT_IDENTITY_PARAGRAPH_TOO_LONG_FOR_TEMPLATE",
     fieldName: "tenantIdentity",
+    config: {
+      width: layout.width,
+      preferredFontSize: layout.fontSize,
+      minimumFontSize: layout.minimumFontSize || layout.fontSize,
+      maximumLines: 3,
+      overflowCode: "TENANT_IDENTITY_PARAGRAPH_TOO_LONG_FOR_TEMPLATE",
+      fieldOverflowCodes: {
+        tenantLegalName: "TENANT_NAME_TOO_LONG_FOR_TEMPLATE",
+        tenantResidentialAddress: "TENANT_ADDRESS_TOO_LONG_FOR_TEMPLATE",
+      },
+    },
     segments: [
-      { text: name, bold: true },
-      { text: `of legal age, Filipino, with postal and residential address at ${address}, hereinafter referred to as the` },
-      { text: "LESSEE;", bold: true },
+      { text: name, bold: true, field: "tenantLegalName" },
+      { text: "of legal age, Filipino, with postal and residential address at", field: "legalText" },
+      { text: `${address},`, field: "tenantResidentialAddress" },
+      { text: "hereinafter referred to as the", field: "legalText" },
+      { text: "LESSEE;", bold: true, field: "legalText" },
     ],
   });
   drawInlineSegments({
@@ -172,13 +113,17 @@ const drawTenantIdentityBlock = ({ page, fonts, fields, coordinates, debug }) =>
       { text: "That" },
     ],
   });
-  const namePosition = flow.positions.find((position) => position.text === name);
-  const addressPositions = flow.positions.filter((position) =>
-    !position.bold && position.text !== "of" && position.lineIndex > 0);
+  const namePosition = flow.positions.find((position) => position.field === "tenantLegalName");
+  const addressPositions = flow.positions.filter((position) => position.field === "tenantResidentialAddress");
+  const addressLineIndexes = new Set(addressPositions.map((position) => position.lineIndex));
+  const addressLines = flow.lines
+    .map((line, lineIndex) => ({ lineIndex, text: line.words.map((word) => word.text).join(" ") }))
+    .filter((line) => addressLineIndexes.has(line.lineIndex))
+    .map((line) => line.text);
   return {
     tenantLegalName: {
       font: StandardFonts.TimesRomanBold,
-      fontSize: layout.fontSize,
+      fontSize: flow.fontSize,
       fieldBox: {
         x: layout.x, y: layout.eraseRegion.y,
         width: layout.width, height: layout.eraseRegion.height,
@@ -191,16 +136,16 @@ const drawTenantIdentityBlock = ({ page, fonts, fields, coordinates, debug }) =>
     },
     tenantResidentialAddress: {
       font: StandardFonts.TimesRoman,
-      fontSize: layout.fontSize,
+      fontSize: flow.fontSize,
       fieldBox: {
         x: layout.x, y: layout.eraseRegion.y,
         width: layout.width, height: layout.eraseRegion.height,
       },
       x: layout.x,
       baselineY: addressPositions[0]?.y ?? layout.nameBaselineY,
-      textWidth: Math.max(...flow.lines.map((line) => line.width)),
+      textWidth: Math.max(0, ...flow.lines.map((line) => line.width)),
       text: String(fields.tenantResidentialAddress || "").trim(),
-      lines: flow.lines.map((line) => line.words.map((word) => word.text).join(" ")),
+      lines: addressLines.length ? addressLines : flow.lines.map((line) => line.words.map((word) => word.text).join(" ")),
     },
   };
 };
@@ -212,23 +157,26 @@ const drawSection4Block = ({ page, fonts, fields, coordinates, debug }) => {
     `Php ${String(fields.advanceRentAmount || "").replace(/[,\s]+$/, "")},`;
   const depositValue =
     `Php ${String(fields.securityDepositAmount || "").replace(/[.\s]+$/, "")}.`;
-  const flow = drawFlowParagraph({
+  const flow = drawParagraphFlow({
     page,
     fonts,
     x: layout.x,
     firstBaselineY: layout.firstBaselineY,
-    width: layout.width,
     lineHeight: layout.firstBaselineY - layout.secondBaselineY,
-    fontSize: layout.fontSize,
-    maximumLines: 2,
-    overflowCode: "SECTION_4_CANNOT_FIT_SAFELY",
     fieldName: "section4",
+    config: {
+      width: layout.width,
+      preferredFontSize: layout.fontSize,
+      minimumFontSize: layout.minimumFontSize || layout.fontSize,
+      maximumLines: 2,
+      overflowCode: "SECTION_4_CANNOT_FIT_SAFELY",
+    },
     segments: [
       { text: "SECTION 4 – DEPOSITS AND ADVANCES.", bold: true },
       { text: "Upon moving in, the LESSEE shall pay one (1) month advance rent in the amount of" },
-      { text: advanceValue, bold: true },
+      { text: advanceValue, bold: true, field: "advanceRentAmount" },
       { text: `covering the period of ${fields.advanceCoverageStart} to ${fields.advanceCoverageEnd}, and one (1) month security deposit in the amount of` },
-      { text: depositValue, bold: true },
+      { text: depositValue, bold: true, field: "securityDepositAmount" },
     ],
   });
   drawInlineSegments({
@@ -249,7 +197,7 @@ const drawSection4Block = ({ page, fonts, fields, coordinates, debug }) => {
     const position = flow.positions.find((entry) => entry.text === text);
     return {
     font: StandardFonts.TimesRomanBold,
-    fontSize: layout.fontSize,
+    fontSize: flow.fontSize,
     fieldBox: {
       x: coordinates.fields[fieldName].x,
       y: coordinates.fields[fieldName].y,
@@ -258,7 +206,7 @@ const drawSection4Block = ({ page, fonts, fields, coordinates, debug }) => {
     },
     x: position?.x ?? layout.x,
     baselineY: position?.y ?? layout.secondBaselineY,
-    textWidth: position?.width ?? fonts.bold.widthOfTextAtSize(text, layout.fontSize),
+    textWidth: position?.width ?? fonts.bold.widthOfTextAtSize(text, flow.fontSize),
     text,
     lines: [text],
   };
@@ -432,7 +380,35 @@ const drawPropertyBlock = ({ page, fonts, property, coordinates, debug }) => {
   });
 };
 
+// Fields that MUST be present with real content for a legally coherent
+// contract — an empty value here would otherwise silently render a
+// malformed clause (e.g. "of legal age... with postal and residential
+// address at , hereinafter...") instead of failing loudly. This is a
+// defense-in-depth check at the render layer itself: the normal admin flow
+// already validates these upstream (contractService.js's
+// getContractValidation, run by validateContractForGeneration before
+// generatePreparedContractPdf ever calls this function), but any other
+// direct caller of renderPreparedContractPdf must get the same guarantee.
+const REQUIRED_RENDER_FIELDS = Object.freeze({
+  tenantLegalName: "Tenant legal name",
+  tenantResidentialAddress: "Tenant residential address",
+});
+
+const assertRequiredFieldsPresent = (fields) => {
+  for (const [key, label] of Object.entries(REQUIRED_RENDER_FIELDS)) {
+    if (!String(fields?.[key] || "").trim()) {
+      throw pdfError(
+        `${label} is required to generate the Contract.`,
+        "CONTRACT_REQUIRED_FIELD_MISSING",
+        422,
+        { field: key },
+      );
+    }
+  }
+};
+
 export const renderPreparedContractPdf = async (generationData) => {
+  assertRequiredFieldsPresent(generationData.fields);
   const coordinates = getContractTemplateCoordinates(generationData.template.templateId);
   assertContractFieldsAvoidLegalText(coordinates);
   const master = await inspectMasterPdf(generationData.template, coordinates);

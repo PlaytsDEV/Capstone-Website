@@ -56,4 +56,49 @@ describe("flow-based Contract HTML", () => {
       code: "CONTRACT_TEMPLATE_DURATION_MISMATCH",
     }));
   });
+
+  test("a long but realistic name (multiple middle names, hyphenated surname) renders normally", () => {
+    const html = buildContractHtml(fixture({
+      fields: { tenantLegalName: "MARIA FERNANDA ESPERANZA CASTELLANOS-VILLAREAL" },
+    }));
+    expect(html).toContain("MARIA FERNANDA ESPERANZA CASTELLANOS-VILLAREAL");
+  });
+
+  test("supported accented characters are preserved, not stripped or replaced", () => {
+    const html = buildContractHtml(fixture({
+      fields: { tenantLegalName: "JOSÉ MARÍA NIÑO PEÑA" },
+    }));
+    expect(html).toContain("JOSÉ MARÍA NIÑO PEÑA");
+  });
+
+  test("missing tenant legal name is rejected with a controlled error, not rendered blank", () => {
+    expect(() => buildContractHtml(fixture({ fields: { tenantLegalName: "" } })))
+      .toThrow(expect.objectContaining({ code: "CONTRACT_REQUIRED_FIELD_MISSING", statusCode: 422 }));
+  });
+
+  test("missing tenant address is rejected with a controlled error, not rendered blank", () => {
+    expect(() => buildContractHtml(fixture({ fields: { tenantResidentialAddress: "" } })))
+      .toThrow(expect.objectContaining({ code: "CONTRACT_REQUIRED_FIELD_MISSING", statusCode: 422 }));
+  });
+
+  test("an extremely long unbroken name token is rejected with a controlled error instead of rendering a malformed page", () => {
+    expect(() => buildContractHtml(fixture({ fields: { tenantLegalName: "A".repeat(400) } })))
+      .toThrow(expect.objectContaining({ code: "TENANT_NAME_TOO_LONG_FOR_TEMPLATE", statusCode: 422 }));
+  });
+
+  test("an extremely long unbroken address token is rejected with a controlled error instead of rendering a malformed page", () => {
+    expect(() => buildContractHtml(fixture({ fields: { tenantResidentialAddress: "B".repeat(400) } })))
+      .toThrow(expect.objectContaining({ code: "TENANT_ADDRESS_TOO_LONG_FOR_TEMPLATE", statusCode: 422 }));
+  });
+
+  test("a normal multi-word name/address of any total length is not blocked by the oversized-token guard", () => {
+    const html = buildContractHtml(fixture({
+      fields: {
+        tenantLegalName: "JUAN CARLOS MIGUEL ANTONIO DELA CRUZ SANTOS JR.",
+        tenantResidentialAddress:
+          "Unit 45B, Sunrise Residences Tower 2, 789 Extended Boulevard Avenue, Barangay San Isidro, City of Makati",
+      },
+    }));
+    expect(html).toContain("JUAN CARLOS MIGUEL ANTONIO DELA CRUZ SANTOS JR.");
+  });
 });

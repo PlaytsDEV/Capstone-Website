@@ -8,6 +8,32 @@ const escapeHtml = (value) => String(value ?? "")
   .replaceAll("&", "&amp;").replaceAll("<", "&lt;")
   .replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 
+// This pipeline relies on the browser's own CSS layout to wrap text (see
+// .contract-paragraph's white-space/word-break/overflow-wrap below) rather
+// than measuring text width server-side, so it can't overlap other content
+// the way a fixed-coordinate PDF overlay can. But a single, unbroken
+// whitespace-free run far longer than any real name/address token can still
+// render poorly (overflow past the page's printable width). No real legal
+// name or address contains a single unbroken token this long, so this is a
+// safety net for malformed/corrupted input, not a limit real applicants
+// would ever hit — mirrors the pdf-lib pipeline's TENANT_*_TOO_LONG codes
+// for a consistent, controlled failure instead of a malformed render.
+const MAX_UNBROKEN_TOKEN_LENGTH = 60;
+const assertNoOversizedToken = (value, fieldName, overflowCode) => {
+  const longestToken = String(value ?? "").split(/\s+/).reduce(
+    (max, token) => Math.max(max, token.length), 0,
+  );
+  if (longestToken > MAX_UNBROKEN_TOKEN_LENGTH) {
+    const error = new Error(
+      `The value for ${fieldName} cannot fit safely in the official template.`,
+    );
+    error.code = overflowCode;
+    error.statusCode = 422;
+    error.details = { field: fieldName, longestToken };
+    throw error;
+  }
+};
+
 const roomLabel = {
   private: "PRIVATE ROOM",
   "private-room": "PRIVATE ROOM",
@@ -19,6 +45,24 @@ const roomLabel = {
 };
 
 export const buildContractHtml = (data) => {
+  if (!String(data.fields?.tenantLegalName || "").trim()) {
+    const error = new Error("Tenant legal name is required to generate the Contract.");
+    error.code = "CONTRACT_REQUIRED_FIELD_MISSING";
+    error.statusCode = 422;
+    error.details = { field: "tenantLegalName" };
+    throw error;
+  }
+  if (!String(data.fields?.tenantResidentialAddress || "").trim()) {
+    const error = new Error("Tenant residential address is required to generate the Contract.");
+    error.code = "CONTRACT_REQUIRED_FIELD_MISSING";
+    error.statusCode = 422;
+    error.details = { field: "tenantResidentialAddress" };
+    throw error;
+  }
+  assertNoOversizedToken(data.fields?.tenantLegalName, "tenantLegalName", "TENANT_NAME_TOO_LONG_FOR_TEMPLATE");
+  assertNoOversizedToken(
+    data.fields?.tenantResidentialAddress, "tenantResidentialAddress", "TENANT_ADDRESS_TOO_LONG_FOR_TEMPLATE",
+  );
   const f = Object.fromEntries(Object.entries(data.fields)
     .map(([key, value]) => [key, escapeHtml(value)]));
   const propertyName = escapeHtml(data.property.propertyName);

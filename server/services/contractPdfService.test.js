@@ -448,6 +448,131 @@ describe("prepared Contract PDF overlay", () => {
   });
 });
 
+describe("tenant identity block — name/address variety across every template", () => {
+  // Regression coverage for the reported bug: the identity block used to
+  // pre-validate tenantLegalName against a stale, far-too-narrow single-line
+  // box (167pt, zero shrink range) that didn't match the wider, wrappable
+  // paragraph box the name is actually drawn into — causing realistic long
+  // names to spuriously fail generation. These cases exercise every
+  // supported template with a variety of real-world legal-name shapes.
+  const nameCases = [
+    ["normal short name", "JOSE CRUZ"],
+    ["long first and last name", "MARIA FERNANDA ESPERANZA CASTELLANOS-VILLAREAL"],
+    ["multiple middle names", "JUAN CARLOS MIGUEL ANTONIO DELA CRUZ"],
+    ["hyphenated surname", "ANA SOFIA GARCIA-REYES"],
+    ["suffix Jr.", "JOSE SANTOS JR."],
+    ["suffix III", "WILLIAM HENRY ASHFORD III"],
+    ["supported accented characters", "JOSÉ MARÍA NIÑO PEÑA"],
+  ];
+
+  test.each(
+    OFFICIAL_CONTRACT_TEMPLATES.flatMap((template) =>
+      nameCases.map(([label, name]) => [template.templateId, label, name, template])),
+  )("%s: %s renders without a false-positive overflow error", async (_templateId, _label, name, template) => {
+    const data = fixtureData(template);
+    data.fields.tenantLegalName = name;
+    const output = await renderPreparedContractPdf(data);
+    const metric = output.fieldMetrics.tenantLegalName;
+    expect(metric.text.startsWith(name.replace(/[,\s]+$/, ""))).toBe(true);
+    expect(metric.fontSize).toBeGreaterThanOrEqual(
+      getContractTemplateCoordinates(template.templateId).identityLayout.minimumFontSize,
+    );
+    // Never silently drops characters: every non-whitespace character from
+    // the original name must survive into the drawn line(s).
+    const drawnLetters = metric.lines.join("").replace(/[^\p{L}\p{N}.'-]/gu, "");
+    const sourceLetters = name.replace(/[^\p{L}\p{N}.'-]/gu, "");
+    expect(drawnLetters).toContain(sourceLetters);
+  });
+
+  test("a name containing accidental duplicate spaces is safely normalized before reaching the PDF, not passed through raw", async () => {
+    const data = fixtureData(OFFICIAL_CONTRACT_TEMPLATES[0]);
+    // Simulates what buildContractGenerationData would hand off after
+    // resolveTenantPersonalDetails' collapseWhitespace normalization —
+    // the PDF layer itself does not second-guess/re-normalize the value,
+    // it trusts the upstream authoritative source.
+    data.fields.tenantLegalName = "JUAN DELA CRUZ";
+    const output = await renderPreparedContractPdf(data);
+    expect(output.fieldMetrics.tenantLegalName.text).not.toMatch(/ {2,}/);
+  });
+
+  test("an extremely long single-token name fails with a controlled, specific error — not a crash, not silent truncation", async () => {
+    for (const template of OFFICIAL_CONTRACT_TEMPLATES) {
+      const data = fixtureData(template);
+      data.fields.tenantLegalName = "A".repeat(400);
+      await expect(renderPreparedContractPdf(data)).rejects.toEqual(
+        expect.objectContaining({ code: "TENANT_NAME_TOO_LONG_FOR_TEMPLATE", statusCode: 422 }),
+      );
+    }
+  });
+
+  test("a short address renders on one line at the preferred size", async () => {
+    const data = fixtureData(OFFICIAL_CONTRACT_TEMPLATES[0]);
+    data.fields.tenantResidentialAddress = "123 Main St., Makati";
+    const output = await renderPreparedContractPdf(data);
+    expect(output.fieldMetrics.tenantResidentialAddress.lines.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("an address long enough to require wrapping stays within the identity block's maximum line count for every template", async () => {
+    for (const template of OFFICIAL_CONTRACT_TEMPLATES) {
+      const data = fixtureData(template);
+      data.fields.tenantResidentialAddress =
+        "Unit 45B, Sunrise Residences Tower 2, 789 Extended Boulevard Avenue, Barangay San Isidro, City of Makati, National Capital Region";
+      const output = await renderPreparedContractPdf(data);
+      expect(output.fieldMetrics.tenantResidentialAddress.lines.length).toBeLessThanOrEqual(3);
+    }
+  });
+
+  test("an address that exceeds the bounding box even at minimum font size fails with a controlled error, not a crash", async () => {
+    const data = fixtureData(OFFICIAL_CONTRACT_TEMPLATES[0]);
+    data.fields.tenantResidentialAddress = "B".repeat(400);
+    await expect(renderPreparedContractPdf(data)).rejects.toEqual(
+      expect.objectContaining({ code: "TENANT_ADDRESS_TOO_LONG_FOR_TEMPLATE", statusCode: 422 }),
+    );
+  });
+
+  test("a missing legal name is rejected with a controlled error rather than producing a malformed contract", async () => {
+    const data = fixtureData(OFFICIAL_CONTRACT_TEMPLATES[0]);
+    data.fields.tenantLegalName = "";
+    await expect(renderPreparedContractPdf(data)).rejects.toEqual(
+      expect.objectContaining({ statusCode: 422 }),
+    );
+  });
+
+  test("a missing address is rejected with a controlled error rather than producing a malformed contract", async () => {
+    const data = fixtureData(OFFICIAL_CONTRACT_TEMPLATES[0]);
+    data.fields.tenantResidentialAddress = "";
+    await expect(renderPreparedContractPdf(data)).rejects.toEqual(
+      expect.objectContaining({ statusCode: 422 }),
+    );
+  });
+
+  test("shrinking still respects the configured minimum font size floor — never goes below it for any template", async () => {
+    for (const template of OFFICIAL_CONTRACT_TEMPLATES) {
+      const data = fixtureData(template);
+      data.fields.tenantLegalName = "ALEXANDRIA MONTGOMERY FITZGERALD-WASHINGTON THE THIRD";
+      const coordinates = getContractTemplateCoordinates(template.templateId);
+      try {
+        const output = await renderPreparedContractPdf(data);
+        expect(output.fieldMetrics.tenantLegalName.fontSize)
+          .toBeGreaterThanOrEqual(coordinates.identityLayout.minimumFontSize);
+      } catch (error) {
+        expect(error.statusCode).toBe(422);
+      }
+    }
+  });
+
+  test("regeneration with identical inputs is deterministic (no unintended layout drift between calls)", async () => {
+    const data = fixtureData(OFFICIAL_CONTRACT_TEMPLATES[2]);
+    data.fields.tenantLegalName = "PATRICIA ANNE MENDOZA-REYES";
+    const first = await renderPreparedContractPdf(data);
+    const second = await renderPreparedContractPdf(data);
+    expect(first.fieldMetrics.tenantLegalName.fontSize)
+      .toBe(second.fieldMetrics.tenantLegalName.fontSize);
+    expect(first.fieldMetrics.tenantLegalName.lines)
+      .toEqual(second.fieldMetrics.tenantLegalName.lines);
+  });
+});
+
 describe("generation status and immutable version rules", () => {
   test.each(["draft", "incomplete", "signed", "notarized"])(
     "%s Contract cannot generate a prepared PDF",

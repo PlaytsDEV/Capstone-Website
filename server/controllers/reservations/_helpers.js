@@ -179,7 +179,11 @@ export const ADMIN_LIST_FIELDS = [
   "idType",
   "validIDType",
 ].join(" ");
-export const POPULATE_USER = ["userId", "firstName lastName email phone"];
+// profileImage is the applicant's CURRENT/live profile photo (User.profileImage),
+// distinct from Reservation.selfiePhotoUrl (the photo submitted with THIS
+// application). Both are safe, non-sensitive fields — no auth/session/token
+// data is ever populated here.
+export const POPULATE_USER = ["userId", "firstName lastName email phone profileImage"];
 export const POPULATE_ROOM = [
   "roomId",
   "name roomNumber branch type price monthlyPrice capacity currentOccupancy beds floor description images amenities policies intendedTenant",
