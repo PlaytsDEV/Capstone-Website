@@ -45,7 +45,7 @@ import {
   isOtpDeliveryAccepted,
 } from "../../../shared/api/authFlowState";
 import { getAuthenticatedUserDestination } from "../../../shared/api/loginRouting";
-import { normalizeVerificationErrorCode } from "../../../shared/api/apiError";
+import { resolveResendVerificationMessage } from "../../../shared/api/apiError";
 import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
 import SocialAuthButtons from "../../../shared/components/SocialAuthButtons";
 import FloatingInput from "../../../shared/components/FloatingInput";
@@ -600,18 +600,9 @@ function SignIn() {
  navigate("/auth-action?state=sent", { replace: true });
  return;
  } catch (err) {
- const code = normalizeVerificationErrorCode(err, "UNKNOWN");
  const retryAfter = err.response?.data?.retryAfterSeconds;
  if (retryAfter) setResendCooldownEnd(Date.now() + retryAfter * 1000);
- showNotification(
- code === "RATE_LIMITED_OR_COOLDOWN_ACTIVE" || err.code === "auth/too-many-requests"
- ? "Too many requests. Please wait a few minutes."
- : err.code === "auth/wrong-password" ||
- err.code === "auth/invalid-credential"
- ? "Incorrect password. Please re-enter your password."
- : "We could not send a new verification link right now. Please try again.",
- "error",
- );
+ showNotification(resolveResendVerificationMessage(err), "error");
  } finally {
  try {
  await auth.signOut();

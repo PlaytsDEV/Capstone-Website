@@ -175,6 +175,84 @@ describe("email verification controller", () => {
     );
   });
 
+  test.each([
+    [{ success: false, code: "EMAIL_PROVIDER_NOT_CONFIGURED" }, "temporarily unavailable"],
+    [{ success: false, code: "EMAIL_PROVIDER_AUTH_FAILED" }, "temporarily unavailable"],
+    [{ success: false, code: "EMAIL_PROVIDER_TEMPORARILY_UNAVAILABLE" }, "temporarily unavailable"],
+    [{ success: false, code: "EMAIL_PROVIDER_RATE_LIMITED" }, "Too many verification-email requests"],
+    [{ success: false, code: "EMAIL_RECIPIENT_REJECTED" }, "check the address"],
+    [{ success: false }, "could not send a new verification link"],
+    [{ success: false, code: "SOME_UNKNOWN_INTERNAL_CODE" }, "could not send a new verification link"],
+    [null, "could not send a new verification link"],
+    [{}, "could not send a new verification link"],
+    ["not-an-object", "could not send a new verification link"],
+  ])("delivery failure %j maps to a stable, non-raw user-facing message", async (delivery, expectedSubstring) => {
+    sendEmailVerificationLinkEmail.mockResolvedValue(delivery);
+    const res = response();
+    await resendEmailVerification(sessionRequest(), res, jest.fn());
+    expect(res.statusCode).toBe(503);
+    expect(res.body.state).toBe(S.VERIFICATION_EMAIL_SEND_FAILED);
+    expect(res.body.message).toContain(expectedSubstring);
+    // Never expose raw provider codes/categories/attempts to the client.
+    expect(JSON.stringify(res.body)).not.toContain("EMAIL_PROVIDER");
+    expect(JSON.stringify(res.body)).not.toContain("attempts");
+  });
+
+  test("delivery failure logs a safe fingerprint + normalized category, never the raw email or link", async () => {
+    sendEmailVerificationLinkEmail.mockResolvedValue({
+      success: false,
+      category: "rate_limit",
+      code: "EMAIL_PROVIDER_RATE_LIMITED",
+      attempts: [{ provider: "resend", category: "rate_limit", code: "EMAIL_PROVIDER_RATE_LIMITED" }],
+    });
+    const res = response();
+    await resendEmailVerification(sessionRequest(), res, jest.fn());
+    expect(res.statusCode).toBe(503);
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        emailFingerprint: expect.any(String),
+        category: "rate_limit",
+        code: "EMAIL_PROVIDER_RATE_LIMITED",
+      }),
+      "Email verification send failed",
+    );
+    const loggedArgs = JSON.stringify(logger.error.mock.calls);
+    expect(loggedArgs).not.toContain("leigh@example.com");
+    expect(loggedArgs).not.toContain("oobCode");
+  });
+
+  test("Firebase link generation failure never attempts delivery, releases the reservation, and returns the generic 503", async () => {
+    firebaseAuth.generateEmailVerificationLink.mockRejectedValue(new Error("internal firebase error"));
+    const res = response();
+    await resendEmailVerification(sessionRequest(), res, jest.fn());
+    expect(res.statusCode).toBe(503);
+    expect(res.body.state).toBe(S.VERIFICATION_EMAIL_SEND_FAILED);
+    expect(res.body.message).toContain("temporarily unavailable");
+    expect(sendEmailVerificationLinkEmail).not.toHaveBeenCalled();
+    expect(User.updateOne).toHaveBeenCalledWith(
+      expect.any(Object),
+      { $unset: { emailVerificationSendReservedAt: 1, emailVerificationReservationId: 1 } },
+    );
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "EMAIL_LINK_GENERATION_FAILED" }),
+      "Email verification send failed",
+    );
+  });
+
+  test("a stale reservation lock self-recovers into the cooldown response, never the delivery-failure message", async () => {
+    // Simulate an old, still-active reservation blocking the atomic claim.
+    User.findOneAndUpdate.mockResolvedValueOnce(null);
+    User.findById.mockReturnValueOnce(
+      selectable(makeUser({ emailVerificationSendReservedAt: new Date(Date.now() - 5000) })),
+    );
+    const res = response();
+    await resendEmailVerification(sessionRequest(), res, jest.fn());
+    expect(res.statusCode).toBe(429);
+    expect(res.body.state).toBe(S.RATE_LIMITED_OR_COOLDOWN_ACTIVE);
+    expect(res.body.state).not.toBe(S.VERIFICATION_EMAIL_SEND_FAILED);
+    expect(sendEmailVerificationLinkEmail).not.toHaveBeenCalled();
+  });
+
   test("provider success plus cooldown finalization failure remains fail closed", async () => {
     User.updateOne.mockRejectedValueOnce(new Error("database unavailable"));
     const first = response();

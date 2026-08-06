@@ -40,6 +40,36 @@ const firebaseUnavailable = (res) => res.status(503).json({
   message: "Email verification is temporarily unavailable.",
 });
 
+// Internal-only classification -> stable, non-enumerating user-facing copy.
+// The wire "state" and HTTP status stay identical across every category so
+// no response shape difference can be used to fingerprint the failure cause
+// or an account's existence; only the message text varies.
+const DELIVERY_FAILURE_MESSAGES = {
+  EMAIL_PROVIDER_NOT_CONFIGURED: "Email service is temporarily unavailable. Please try again later.",
+  EMAIL_LINK_GENERATION_FAILED: "Email service is temporarily unavailable. Please try again later.",
+  EMAIL_PROVIDER_AUTH_FAILED: "Email service is temporarily unavailable. Please try again later.",
+  EMAIL_PROVIDER_TEMPORARILY_UNAVAILABLE: "Email service is temporarily unavailable. Please try again later.",
+  EMAIL_PROVIDER_RATE_LIMITED: "Too many verification-email requests. Please wait before trying again.",
+  EMAIL_RECIPIENT_REJECTED:
+    "We could not deliver the verification email to this address. Please check the address and try again.",
+  EMAIL_DELIVERY_FAILED: "We could not send a new verification link right now. Please try again.",
+};
+
+const KNOWN_DELIVERY_FAILURE_CODES = new Set(Object.keys(DELIVERY_FAILURE_MESSAGES));
+
+const classifyDeliveryFailure = (delivery) => {
+  const code =
+    typeof delivery?.code === "string" && KNOWN_DELIVERY_FAILURE_CODES.has(delivery.code)
+      ? delivery.code
+      : "EMAIL_DELIVERY_FAILED";
+  const category =
+    typeof delivery?.category === "string" && delivery.category.trim() ? delivery.category : "unknown";
+  return { category, code };
+};
+
+const userMessageForDeliveryFailure = (code) =>
+  DELIVERY_FAILURE_MESSAGES[code] || DELIVERY_FAILURE_MESSAGES.EMAIL_DELIVERY_FAILED;
+
 const identityFailureResponse = (res, failure) => {
   if (failure === "mismatch") {
     return res.status(409).json({
@@ -250,6 +280,7 @@ const sendForIdentity = async ({ firebaseAuth, firebaseUser, applicationUser, co
   }
 
   let actionExchange;
+  let failureClassification = null;
   try {
     actionExchange = await createExchange({
       kind: "action",
@@ -257,10 +288,18 @@ const sendForIdentity = async ({ firebaseAuth, firebaseUser, applicationUser, co
       email: firebaseUser.email,
       continuePath: safeContinuePath,
     });
-    const firebaseLink = await firebaseAuth.generateEmailVerificationLink(firebaseUser.email, {
-      url: getPublicUrlConfig().emailActionUrl,
-      handleCodeInApp: false,
-    });
+
+    let firebaseLink;
+    try {
+      firebaseLink = await firebaseAuth.generateEmailVerificationLink(firebaseUser.email, {
+        url: getPublicUrlConfig().emailActionUrl,
+        handleCodeInApp: false,
+      });
+    } catch (error) {
+      failureClassification = { category: "link_generation_failed", code: "EMAIL_LINK_GENERATION_FAILED" };
+      throw error;
+    }
+
     const verificationLink = buildCustomEmailVerificationLink({
       firebaseLink,
       exchangeToken: actionExchange.token,
@@ -270,7 +309,10 @@ const sendForIdentity = async ({ firebaseAuth, firebaseUser, applicationUser, co
       name: applicationUser.firstName,
       verificationLink,
     });
-    if (!delivery?.success) throw new Error("VERIFICATION_DELIVERY_REJECTED");
+    if (!delivery?.success) {
+      failureClassification = classifyDeliveryFailure(delivery);
+      throw new Error("VERIFICATION_DELIVERY_REJECTED");
+    }
   } catch (error) {
     if (actionExchange?.tokenHash) {
       await EmailVerificationExchange.updateOne(
@@ -279,9 +321,18 @@ const sendForIdentity = async ({ firebaseAuth, firebaseUser, applicationUser, co
       ).catch(() => undefined);
     }
     await releaseFailedReservation(applicationUser, reservationId);
+    const classification = failureClassification || { category: "unknown", code: "EMAIL_DELIVERY_FAILED" };
+    logger.error(
+      {
+        emailFingerprint: emailFingerprint(firebaseUser.email),
+        category: classification.category,
+        code: classification.code,
+      },
+      "Email verification send failed",
+    );
     return { status: 503, body: {
       state: EMAIL_VERIFICATION_STATES.VERIFICATION_EMAIL_SEND_FAILED,
-      message: "We could not send a new verification link right now. Please try again.",
+      message: userMessageForDeliveryFailure(classification.code),
       maskedEmail: maskEmail(firebaseUser.email),
       retryAfterSeconds: EMAIL_VERIFICATION_COOLDOWN_SECONDS,
       continuePath: safeContinuePath,
