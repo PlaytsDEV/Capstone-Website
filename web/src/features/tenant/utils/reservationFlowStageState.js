@@ -70,7 +70,10 @@ export const getReservationFlowStageState = ({
     Boolean(paymentSubmitted || reservation?.proofOfPaymentUrl) ||
     hasReservationStatus(status, PAYMENT_SUBMITTED_STATUSES);
   const reservationConfirmed =
-    Boolean(paymentApproved) || hasReservationStatus(status, CONFIRMED_STATUSES);
+    Boolean(paymentApproved) ||
+    reservation?.paymentStatus === "paid" ||
+    Boolean(reservation?.paymentDate) ||
+    hasReservationStatus(status, CONFIRMED_STATUSES);
 
   if (normalizedStageId === 1) {
     if (isActive) return buildState("active");

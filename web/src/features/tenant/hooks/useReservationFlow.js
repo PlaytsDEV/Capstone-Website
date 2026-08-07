@@ -164,7 +164,13 @@ const getDocumentPrecheckBlockMessage = (_label, precheck = {}) =>
     resolveDocumentPrecheckStatus(precheck),
   ) || DOCUMENT_PRECHECK_MESSAGES.failed;
 
-const resolveTargetStage = (status, viewingPreference, applicationUnlockedByVisit) => {
+const resolveTargetStage = (status, viewingPreference, applicationUnlockedByVisit, reservation = null) => {
+  const isPaid =
+    reservation?.paymentStatus === "paid" ||
+    Boolean(reservation?.paymentDate) ||
+    hasReservationStatus(status, "reserved", "moveIn", "moveOut");
+  if (isPaid) return 5;
+
   const map = {
     pending: 1,
     viewing_preference_selected:
@@ -176,6 +182,7 @@ const resolveTargetStage = (status, viewingPreference, applicationUnlockedByVisi
     rejected: 3,
     approved_for_payment: 4,
     payment_pending: 4,
+    payment_submitted: 4,
     reserved: 5,
     moveIn: 5,
   };
@@ -630,10 +637,15 @@ export default function useReservationFlow() {
   const isStageClickable = (stageId) => {
     const reservationStatus = normalizeReservationStatus(reservationData?.status);
     const paymentUnlocked = canReservationAccessPayment(reservationStatus);
+    const isPaid =
+      reservationData?.paymentStatus === "paid" ||
+      Boolean(reservationData?.paymentDate) ||
+      paymentApproved ||
+      hasReservationStatus(reservationStatus, "reserved", "moveIn", "moveOut");
     if (stageId === 1) return highestStageReached >= 2;
     if (stageId <= highestStageReached) return true;
-    if (stageId === 4 && (paymentUnlocked || paymentSubmitted || paymentApproved)) return true;
-    if (stageId === 5 && paymentSubmitted) return true;
+    if (stageId === 4 && (paymentUnlocked || paymentSubmitted || paymentApproved || isPaid)) return true;
+    if (stageId === 5 && (paymentSubmitted || paymentApproved || isPaid)) return true;
     return false;
   };
 
@@ -939,12 +951,17 @@ export default function useReservationFlow() {
     const hasApplication =
       APPLICATION_STATUSES.includes(status) || Boolean(r.applicationSubmittedAt);
     const paymentUnlocked = canReservationAccessPayment(status);
+    const isConfirmed =
+      hasReservationStatus(status, "reserved", "moveIn", "moveOut") ||
+      r.paymentStatus === "paid" ||
+      Boolean(r.paymentDate);
     const hasPayment =
       status === "payment_pending" ||
+      status === "payment_submitted" ||
       status === "reserved" ||
       status === "moveIn" ||
+      isConfirmed ||
       Boolean(r.proofOfPaymentUrl);
-    const isConfirmed = hasReservationStatus(status, "reserved", "moveIn", "moveOut");
 
     if (hasViewingPreference) setVisitCompleted(applicationAccess);
     if (isVisitApprovedFlag) setVisitApproved(true);
@@ -956,7 +973,8 @@ export default function useReservationFlow() {
     if (r.applicationReviewReason) setApplicationReviewReason(r.applicationReviewReason);
 
     // Status-driven highest stage
-    let highest = resolveTargetStage(status, viewingPreference, applicationAccess);
+    let highest = resolveTargetStage(status, viewingPreference, applicationAccess, r);
+    if (isConfirmed) highest = 5;
     // Fallback: data-presence checks for legacy records still at "pending"
     if (highest === 1) {
       if (hasViewingPreference) highest = 2;
@@ -1178,18 +1196,27 @@ export default function useReservationFlow() {
         if (!restoreLocalApplicationDraftIfNeeded(active)) {
           markBackendApplicationDraftRestored(active);
         }
-        const { highest } = computeLockingFlags(active);
+        const isPaid =
+          active.paymentStatus === "paid" ||
+          Boolean(active.paymentDate) ||
+          hasReservationStatus(normalizeReservationStatus(active.status), "reserved", "moveIn", "moveOut");
+
         if (active.paymentMethod) setPaymentMethod(active.paymentMethod);
         if (
           active.proofOfPaymentUrl ||
           active.paymentDate ||
           active.paymongoPaymentId ||
           active.paymentStatus === "paid" ||
-          active.paymentStatus === "partial"
+          active.paymentStatus === "partial" ||
+          isPaid
         )
           setPaymentSubmitted(true);
-        if (active.paymentStatus === "paid") setPaymentApproved(true);
-        setHighestStageReached(highest);
+        if (isPaid) setPaymentApproved(true);
+        const resolvedHighest = isPaid ? 5 : highest;
+        setHighestStageReached(resolvedHighest);
+        if (!stepOverride) {
+          setCurrentStage(resolvedHighest);
+        }
         const activeApplicationStageBlocked =
           isTenantApplicationStageRequestBlocked(stepOverride, {
             ...active,
@@ -1318,16 +1345,23 @@ export default function useReservationFlow() {
         setCurrentLocation(reservation.currentLocation);
       if (reservation.visitApproved !== undefined)
         setVisitApproved(reservation.visitApproved);
+      const reservationStatus = normalizeReservationStatus(reservation.status);
+      const isPaid =
+        reservation.paymentStatus === "paid" ||
+        Boolean(reservation.paymentDate) ||
+        hasReservationStatus(reservationStatus, "reserved", "moveIn", "moveOut");
+
       if (reservation.paymentMethod) setPaymentMethod(reservation.paymentMethod);
       if (
         reservation.proofOfPaymentUrl ||
         reservation.paymentDate ||
         reservation.paymongoPaymentId ||
         reservation.paymentStatus === "paid" ||
-        reservation.paymentStatus === "partial"
+        reservation.paymentStatus === "partial" ||
+        isPaid
       )
         setPaymentSubmitted(true);
-      if (reservation.paymentStatus === "paid") setPaymentApproved(true);
+      if (isPaid) setPaymentApproved(true);
       populateFromReservation(reservation);
       if (!restoreLocalApplicationDraftIfNeeded(reservation)) {
         markBackendApplicationDraftRestored(reservation);
@@ -1338,13 +1372,16 @@ export default function useReservationFlow() {
         hasApplication,
         hasPayment,
         isConfirmed,
-        highest,
+        highest: computedHighest,
         applicationUnlockedByVisit,
       } = computeLockingFlags(reservation);
 
+      const highest = isPaid ? 5 : computedHighest;
+
       // Status-driven stage calculation
-      const reservationStatus = normalizeReservationStatus(reservation.status);
-      let targetStage = resolveTargetStage(reservationStatus, getReservationViewingPreference(reservation), applicationUnlockedByVisit);
+      let targetStage = isPaid
+        ? 5
+        : resolveTargetStage(reservationStatus, getReservationViewingPreference(reservation), applicationUnlockedByVisit, reservation);
       const applicationStageBlocked =
         isTenantApplicationStageRequestBlocked(stepOverride, {
           ...reservation,
