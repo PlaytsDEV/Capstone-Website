@@ -14,7 +14,7 @@ test("resend button triggers a real resend instead of resetting the form", () =>
   assert.doesNotMatch(source, /onClick=\{handleResend\}[\s\S]{0,400}setEmail\(""\)/);
 });
 
-test("resend reuses the enumeration-safe Firebase reset call, not an OTP endpoint", () => {
+test("resend calls the backend password-reset request, not an OTP endpoint", () => {
   assert.match(source, /const handleResend = async \(\) => \{[\s\S]*requestPasswordReset\(email\)/);
   assert.doesNotMatch(source, /resendOtp|resend-otp|resendEmailVerification|email-verification\/resend/);
 });
@@ -28,7 +28,7 @@ test("resend uses a ref guard, not state alone, so a double-click before re-rend
   // A second click that lands before React commits the `resending` state
   // update still sees the previous render's stale `resending = false` in its
   // closure. Only a synchronously-mutated ref reliably blocks that second
-  // call from ever starting a second sendPasswordResetEmail request.
+  // call from ever starting a second requestPasswordReset call.
   assert.match(source, /const resendInFlightRef = useRef\(false\);/);
   assert.match(source, /resendInFlightRef\.current = true;\s*setResending\(true\);/);
   assert.match(source, /resendInFlightRef\.current = false;\s*setResending\(false\);/);
@@ -38,37 +38,42 @@ test("switching to a different email is blocked while a resend is in flight", ()
   assert.match(source, /disabled=\{resending\}[\s\S]{0,200}setEmailSent\(false\);/);
 });
 
-test("cooldown only starts after a confirmed send (success branch), not before the request", () => {
+test("cooldown only starts after a confirmed response, not before the request", () => {
   const bodyOnly = source.slice(source.indexOf("const requestPasswordReset"), source.indexOf("const handleResetPassword"));
   const cooldownCalls = bodyOnly.match(/setResendCooldown\(30\)/g) || [];
-  // One in the success path, one in the enumeration-safe "user-not-found" path.
-  assert.equal(cooldownCalls.length, 2);
-  assert.doesNotMatch(bodyOnly.slice(0, bodyOnly.indexOf("await sendPasswordResetEmail") + 1), /setResendCooldown/);
+  // The backend response is uniform/enumeration-safe (see
+  // passwordResetController.js), so there is now exactly one success path
+  // and therefore exactly one place the cooldown starts.
+  assert.equal(cooldownCalls.length, 1);
+  assert.doesNotMatch(
+    bodyOnly.slice(0, bodyOnly.indexOf("await authApi.requestPasswordReset") + 1),
+    /setResendCooldown/,
+  );
 });
 
 test("a distinct action exists to restart with a different email, separate from resend", () => {
   assert.match(source, /Use a different email/);
 });
 
-test("the reset link is built from the validated canonical app URL, not Firebase's implicit default", () => {
-  // Without an explicit actionCodeSettings.url, Firebase falls back to
-  // whatever's configured as the project's default action URL in the
-  // Firebase Console — which is how reset links ended up pointing at a
-  // Vercel deployment domain instead of the canonical production one.
-  assert.match(
-    source,
-    /sendPasswordResetEmail\(auth, targetEmail, \{\s*url: EMAIL_ACTION_URL,\s*handleCodeInApp: false,\s*\}\)/,
-  );
-  assert.match(source, /import \{ EMAIL_ACTION_URL, isAppUrlConfigured \} from "\.\.\/\.\.\/\.\.\/shared\/api\/publicUrls";/);
+test("password reset is requested through the backend API, not Firebase's client SDK directly", () => {
+  // The backend now generates the Firebase Admin reset link and sends a
+  // Lilycrest-branded email through the same SMTP/Resend pipeline as email
+  // verification (see server/controllers/passwordResetController.js and
+  // server/config/email.js's sendPasswordResetLinkEmail), instead of
+  // Firebase's client SDK emailing its own generic-branded template.
+  assert.match(source, /await authApi\.requestPasswordReset\(targetEmail\)/);
+  assert.match(source, /import \{ authApi \} from "\.\.\/\.\.\/\.\.\/shared\/api\/authApi";/);
+  assert.doesNotMatch(source, /sendPasswordResetEmail|from "firebase\/auth"/);
+});
+
+test("no distinct user-not-found branch remains — the backend response is already enumeration-safe", () => {
+  assert.doesNotMatch(source, /auth\/user-not-found/);
 });
 
 test("the reset URL is never built from window/document/request state", () => {
   assert.doesNotMatch(source, /window\.location|document\.referrer|req\.headers|req\.get\(/);
 });
 
-test("an unconfigured canonical app URL blocks sending instead of silently using the wrong domain", () => {
-  assert.match(
-    source,
-    /if \(!isAppUrlConfigured\) \{[\s\S]{0,200}return false;\s*\}/,
-  );
+test("a backend validation failure (malformed email) is shown distinctly from a generic delivery failure", () => {
+  assert.match(source, /error\?\.response\?\.status === 400/);
 });

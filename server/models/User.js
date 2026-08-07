@@ -294,6 +294,28 @@ const userSchema = new mongoose.Schema(
       default: null,
       select: false,
     },
+    // Backend-generated password-reset email delivery — same atomic
+    // reservation/cooldown pattern as emailVerification* above.
+    passwordResetLastSentAt: {
+      type: Date,
+      default: null,
+      select: false,
+    },
+    passwordResetDeliveredAt: {
+      type: Date,
+      default: null,
+      select: false,
+    },
+    passwordResetSendReservedAt: {
+      type: Date,
+      default: null,
+      select: false,
+    },
+    passwordResetReservationId: {
+      type: String,
+      default: null,
+      select: false,
+    },
     securityVersion: { type: Number, default: 0, min: 0 },
     authInvalidatedAt: { type: Date, default: null },
 

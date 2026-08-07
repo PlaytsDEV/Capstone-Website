@@ -32,7 +32,7 @@ await jest.unstable_mockModule('../middleware/auth.js', () => ({
   verifyOwner: pass,
 }));
 await jest.unstable_mockModule('../middleware/rateLimiter.js', () => ({ publicLimiter: pass, authLimiter: pass }));
-await jest.unstable_mockModule('../middleware/validation.js', () => ({ validateRegisterInput: {}, validateProfileUpdateInput: {}, createValidationMiddleware: () => pass }));
+await jest.unstable_mockModule('../middleware/validation.js', () => ({ validateRegisterInput: {}, validateProfileUpdateInput: {}, createValidationMiddleware: () => pass, sanitizeEmail: (v) => (typeof v === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim().toLowerCase()) ? v.trim().toLowerCase() : null) }));
 await jest.unstable_mockModule('../validation/validate.js', () => ({ validate: () => pass }));
 await jest.unstable_mockModule('../validation/schemas.js', () => ({ setRoleSchema: {}, updateBranchSchema: {} }));
 await jest.unstable_mockModule('../config/firebase.js', () => ({ getAuth: () => ({}) }));

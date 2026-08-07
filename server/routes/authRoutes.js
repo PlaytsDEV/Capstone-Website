@@ -48,6 +48,7 @@ import {
   sendAuthenticatedEmailVerification,
 } from "../controllers/emailVerificationController.js";
 import { requireEmailVerificationCsrf } from "../utils/emailVerificationCookie.js";
+import { requestPasswordReset } from "../controllers/passwordResetController.js";
 
 const router = express.Router();
 
@@ -203,6 +204,25 @@ router.post("/set-role", verifyToken, verifyOwner, validate(setRoleSchema), setR
  * @returns { message }
  */
 router.post("/log-password-reset", publicLimiter, logPasswordReset);
+
+/**
+ * POST /api/auth/request-password-reset
+ *
+ * Generates a Firebase Admin password-reset link and sends it through the
+ * same Lilycrest-branded, SMTP-primary/Resend-fallback delivery pipeline as
+ * email verification, instead of Firebase's client SDK sending its own
+ * generic-branded email directly.
+ *
+ * Public endpoint — no auth required (the caller is signed out by
+ * definition). Always responds with the same generic, enumeration-safe
+ * message regardless of whether the email is registered, on cooldown, or
+ * delivery failed — see passwordResetController.js for why a distinguishing
+ * status/response here would leak account existence.
+ *
+ * @body { email }
+ * @returns { message }
+ */
+router.post("/request-password-reset", authLimiter, requestPasswordReset);
 
 // Called only with a freshly authenticated Firebase token after the action-code
 // reset succeeds. The UID comes from the verified token, never from the body.
