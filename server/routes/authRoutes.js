@@ -203,6 +203,7 @@ router.post("/set-role", verifyToken, verifyOwner, validate(setRoleSchema), setR
  * @returns { message }
  */
 router.post("/log-password-reset", publicLimiter, logPasswordReset);
+router.post("/request-password-reset", publicLimiter, logPasswordReset);
 
 // Called only with a freshly authenticated Firebase token after the action-code
 // reset succeeds. The UID comes from the verified token, never from the body.

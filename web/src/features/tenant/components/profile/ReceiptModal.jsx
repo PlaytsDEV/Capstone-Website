@@ -2,6 +2,28 @@ import React from "react";
 import { formatPaymentMethod } from "../../../../shared/utils/formatPaymentMethod";
 import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
 import { getBedDisplayLabel } from "../../../../shared/utils/bedIdentifier";
+import { getResolvedMonthlyRate } from "../../utils/pricingDisplayHelpers";
+
+const getEffectiveMonthlyRate = (reservation) => {
+  const resolved = getResolvedMonthlyRate(reservation?.pricingDisplay);
+  if (resolved !== null && resolved !== undefined) return resolved;
+  if (Number.isFinite(Number(reservation?.pricingSnapshot?.finalMonthlyRate))) {
+    return Number(reservation.pricingSnapshot.finalMonthlyRate);
+  }
+  if (Number.isFinite(Number(reservation?.approvedMonthlyRate))) {
+    return Number(reservation.approvedMonthlyRate);
+  }
+  if (Number.isFinite(Number(reservation?.monthlyRent))) {
+    return Number(reservation.monthlyRent);
+  }
+  if (Number.isFinite(Number(reservation?.totalPrice))) {
+    return Number(reservation.totalPrice);
+  }
+  if (Number.isFinite(Number(reservation?.roomId?.price))) {
+    return Number(reservation.roomId.price);
+  }
+  return 0;
+};
 
 /**
  * Full-page receipt modal showing detailed info per reservation step.
@@ -214,12 +236,7 @@ const RoomReceipt = ({ reservation }) => (
  >
  <span style={{ color: "#6B7280" }}>Monthly Rate</span>
  <span style={{ color: "#FF8C42", fontWeight: "700", fontSize: "18px" }}>
- ₱
- {(
- reservation?.roomId?.price ||
- reservation?.totalPrice ||
- 0
- ).toLocaleString()}
+ ₱{getEffectiveMonthlyRate(reservation).toLocaleString()}
  </span>
  </div>
  {reservation?.roomId?.deposit && (
@@ -736,7 +753,7 @@ const ConfirmedReceipt = ({ reservation }) => (
  />
  <ReceiptRow
  label="Monthly Rate"
- value={`₱${(reservation?.roomId?.price || reservation?.totalPrice || 0).toLocaleString()}`}
+ value={`₱${getEffectiveMonthlyRate(reservation).toLocaleString()}`}
  valueColor="#FF8C42"
  valueWeight="700"
  />

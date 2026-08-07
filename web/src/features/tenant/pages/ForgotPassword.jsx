@@ -37,12 +37,27 @@ function ForgotPassword() {
  const resendInFlightRef = useRef(false);
 
  useEffect(() => {
- if (resendCooldown <= 0) return undefined;
- const interval = setInterval(() => {
- setResendCooldown((current) => (current <= 1 ? 0 : current - 1));
- }, 1000);
- return () => clearInterval(interval);
- }, [resendCooldown]);
+    if (resendCooldown <= 0) return undefined;
+    const interval = setInterval(() => {
+      setResendCooldown((current) => (current <= 1 ? 0 : current - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [resendCooldown]);
+
+  useEffect(() => {
+    if (!email) return;
+    const key = `pw_reset_cooldown_${email.trim().toLowerCase()}`;
+    const stored = localStorage.getItem(key);
+    if (stored) {
+      const endTime = parseInt(stored, 10);
+      const remaining = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
+      if (remaining > 0) {
+        setResendCooldown(remaining);
+      } else {
+        localStorage.removeItem(key);
+      }
+    }
+  }, [email]);
 
  const handleChange = (e) => {
  const value = e.target.value;
@@ -68,6 +83,32 @@ function ForgotPassword() {
  );
  return false;
  }
+
+    const normEmail = targetEmail.trim().toLowerCase();
+    const storageKey = `pw_reset_cooldown_${normEmail}`;
+
+    // Pre-flight check against server-side cooldown limit
+    try {
+      const preflightRes = await fetch("/api/auth/log-password-reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: targetEmail, checkOnly: true }),
+      });
+      if (preflightRes.status === 429) {
+        const data = await preflightRes.json().catch(() => ({}));
+        const retrySecs = data.retryAfterSeconds || 30;
+        const endTime = Date.now() + retrySecs * 1000;
+        localStorage.setItem(storageKey, endTime.toString());
+        showNotification(
+          data.error || `Please wait ${retrySecs}s before requesting another reset email.`,
+          "error",
+        );
+        return false;
+      }
+    } catch (_) {
+      /* non-critical preflight check */
+    }
+
  try {
  await sendPasswordResetEmail(auth, targetEmail, {
  url: EMAIL_ACTION_URL,
@@ -75,7 +116,9 @@ function ForgotPassword() {
  });
  setEmailSent(true);
  showNotification("Password reset email sent!", "success");
- setResendCooldown(30);
+      const endTime = Date.now() + 30000;
+      localStorage.setItem(storageKey, endTime.toString());
+      setResendCooldown(30);
  try {
  await fetch("/api/auth/log-password-reset", {
  method: "POST",
@@ -92,7 +135,9 @@ function ForgotPassword() {
  if (error.code === "auth/user-not-found") {
  setEmailSent(true);
  showNotification("Password reset email sent!", "success");
- setResendCooldown(30);
+        const endTime = Date.now() + 30000;
+        localStorage.setItem(storageKey, endTime.toString());
+        setResendCooldown(30);
  try {
  await fetch("/api/auth/log-password-reset", {
  method: "POST",
@@ -348,13 +393,16 @@ function ForgotPassword() {
  <button
  type="button"
  disabled={resending}
- onClick={() => {
- setEmailSent(false);
- setEmail("");
- setTouched(false);
- setFieldValid(false);
- setResendCooldown(0);
- }}
+  onClick={() => {
+    if (email) {
+      localStorage.removeItem(`pw_reset_cooldown_${email.trim().toLowerCase()}`);
+    }
+    setEmailSent(false);
+    setEmail("");
+    setTouched(false);
+    setFieldValid(false);
+    setResendCooldown(0);
+  }}
  className="w-full py-2 text-xs font-light text-muted-foreground hover:text-foreground transition-colors underline"
  style={{ opacity: resending ? 0.5 : 1, cursor: resending ? "not-allowed" : "pointer" }}
  >

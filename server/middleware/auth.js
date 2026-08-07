@@ -88,6 +88,7 @@ const OTP_SESSION_EXEMPT_PATHS = [
   "/api/auth/logout",
   "/api/auth/register",
   "/api/auth/log-password-reset",
+  "/api/auth/request-password-reset",
   "/api/auth/finalize-password-reset",
 ];
 

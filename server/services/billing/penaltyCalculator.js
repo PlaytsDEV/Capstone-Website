@@ -7,6 +7,7 @@
  */
 
 import dayjs from "dayjs";
+import { diffManilaDays } from "../../utils/dateUtils.js";
 import {
   getPenaltyRatePerDay,
   getMaxPenaltyCapPercent,
@@ -17,18 +18,13 @@ import {
  * Compute the penalty amount for a single overdue bill.
  */
 export async function computePenalty(bill, settings = null, now = dayjs()) {
-  const nowDayjs = dayjs.isDayjs(now) ? now : dayjs(now);
-
   const [configuredRate, maxCapPercent] = settings
     ? [settings.penaltyRatePerDay, settings.maxCapPercent]
     : await Promise.all([getPenaltyRatePerDay(), getMaxPenaltyCapPercent()]);
 
   // Compare calendar dates only (Asia/Manila billing day boundaries) —
-  // without normalizing both sides to startOf("day"), the day-late count
-  // depends on time-of-day and can be off by one near the due-date boundary.
-  const daysLate = nowDayjs
-    .startOf("day")
-    .diff(dayjs(bill.dueDate).startOf("day"), "day");
+  // using diffManilaDays ensures accurate day-difference calculation regardless of server timezone.
+  const daysLate = diffManilaDays(now, bill.dueDate);
 
   if (!Number.isFinite(daysLate) || daysLate <= 0) {
     return { penalty: 0, daysLate: 0, ratePerDay: configuredRate, capped: false };

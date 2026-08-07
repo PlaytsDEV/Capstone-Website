@@ -20,6 +20,8 @@ import {
   CheckCircle2,
 } from "lucide-react";
 
+import { getResolvedMonthlyRate } from "../../utils/pricingDisplayHelpers";
+
 const formatCurrency = (amount) =>
   `PHP ${Number.isFinite(Number(amount)) ? Number(amount).toLocaleString("en-PH") : "0"}`;
 
@@ -67,8 +69,12 @@ const ReservationPaymentStep = ({
   const reservationFeeAmount = Number.isFinite(Number(reservationData?.reservationFeeAmount))
     ? Number(reservationData.reservationFeeAmount)
     : 2000;
+  const resolvedServerRate = getResolvedMonthlyRate(reservationData?.pricingDisplay);
   const monthlyRent = Number(
-    reservationData?.monthlyRent ??
+    resolvedServerRate ??
+      reservationData?.pricingSnapshot?.finalMonthlyRate ??
+      reservationData?.approvedMonthlyRate ??
+      reservationData?.monthlyRent ??
       reservationData?.moveInCashOut?.monthlyAdvance ??
       room?.monthlyPrice ??
       room?.price ??

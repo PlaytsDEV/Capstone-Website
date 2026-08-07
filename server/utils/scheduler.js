@@ -1047,6 +1047,7 @@ export function startScheduler(options = {}) {
   scheduledJobs.push(
     cron.schedule("30 8 * * *", detectOverdueMoveIns, {
       scheduled: true,
+      timezone: process.env.APP_TIMEZONE || "Asia/Manila",
       name: "overdue-movein-detection",
     }),
   );
@@ -1055,6 +1056,7 @@ export function startScheduler(options = {}) {
   scheduledJobs.push(
     cron.schedule("*/2 * * * *", cleanupExpiredBedLocks, {
       scheduled: true,
+      timezone: process.env.APP_TIMEZONE || "Asia/Manila",
       name: "bed-lock-cleanup",
     }),
   );
@@ -1090,6 +1092,7 @@ export function startScheduler(options = {}) {
   scheduledJobs.push(
     cron.schedule("0 8 * * *", sendPaymentReminders, {
       scheduled: true,
+      timezone: process.env.APP_TIMEZONE || "Asia/Manila",
       name: "payment-due-reminders",
     }),
   );
@@ -1098,6 +1101,7 @@ export function startScheduler(options = {}) {
   scheduledJobs.push(
     cron.schedule("0 9 * * *", checkContractExpirations, {
       scheduled: true,
+      timezone: process.env.APP_TIMEZONE || "Asia/Manila",
       name: "contract-expiration-alerts",
     }),
   );
@@ -1106,6 +1110,7 @@ export function startScheduler(options = {}) {
   scheduledJobs.push(
     cron.schedule("0 3 * * *", cleanupOrphanedAccounts, {
       scheduled: true,
+      timezone: process.env.APP_TIMEZONE || "Asia/Manila",
       name: "firebase-mongodb-sync",
     }),
   );
@@ -1114,6 +1119,7 @@ export function startScheduler(options = {}) {
   scheduledJobs.push(
     cron.schedule("15 * * * *", expireStaleReservations, {
       scheduled: true,
+      timezone: process.env.APP_TIMEZONE || "Asia/Manila",
       name: "stale-reservation-expiry",
     }),
   );
@@ -1122,6 +1128,7 @@ export function startScheduler(options = {}) {
   scheduledJobs.push(
     cron.schedule("0 10 * * *", cancelNoShowReservations, {
       scheduled: true,
+      timezone: process.env.APP_TIMEZONE || "Asia/Manila",
       name: "noshow-reservation-cancel",
     }),
   );
@@ -1130,6 +1137,7 @@ export function startScheduler(options = {}) {
   scheduledJobs.push(
     cron.schedule("0 8 * * *", warnStaleVisitPending, {
       scheduled: true,
+      timezone: process.env.APP_TIMEZONE || "Asia/Manila",
       name: "stale-visit-pending-warning",
     }),
   );
@@ -1138,6 +1146,7 @@ export function startScheduler(options = {}) {
   scheduledJobs.push(
     cron.schedule("0 2 * * *", archiveStaleCancelled, {
       scheduled: true,
+      timezone: process.env.APP_TIMEZONE || "Asia/Manila",
       name: "archive-stale-cancelled",
     }),
   );
@@ -1146,6 +1155,7 @@ export function startScheduler(options = {}) {
   scheduledJobs.push(
     cron.schedule("* * * * *", dispatchScheduledAnnouncements, {
       scheduled: true,
+      timezone: process.env.APP_TIMEZONE || "Asia/Manila",
       name: "scheduled-announcement-dispatch",
     }),
   );
@@ -1155,6 +1165,7 @@ export function startScheduler(options = {}) {
   scheduledJobs.push(
     cron.schedule("0 6 * * *", detectSlaBreaches, {
       scheduled: true,
+      timezone: process.env.APP_TIMEZONE || "Asia/Manila",
       name: "sla-breach-detection",
     }),
   );
@@ -1175,6 +1186,7 @@ export function startScheduler(options = {}) {
       retryJobOperation(reconcileOccupancyIntegrity, { label: "Job 15: Occupancy reconciliation" }),
     {
       scheduled: true,
+      timezone: process.env.APP_TIMEZONE || "Asia/Manila",
       name: "occupancy-integrity-reconciliation",
     }),
   );

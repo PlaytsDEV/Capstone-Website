@@ -7,6 +7,7 @@
  */
 
 import dayjs from "dayjs";
+import { getManilaDayjs, toManilaStartOfDay } from "../../utils/dateUtils.js";
 
 export const roundMoney = (value) => Math.round((Number(value) || 0) * 100) / 100;
 export const UTILITY_CYCLE_DAY = 15;
@@ -14,8 +15,8 @@ export const UTILITY_CHARGE_FIELDS = ["electricity", "water"];
 const RENT_GENERATION_LEAD_DAYS = 5;
 
 function normalizeBillingDate(dateLike) {
-  const normalized = dayjs(dateLike).startOf("day");
-  return normalized.isValid() ? normalized : null;
+  const normalized = toManilaStartOfDay(dateLike);
+  return normalized && normalized.isValid() ? normalized : null;
 }
 
 export function sumBillCharges(charges = {}) {
@@ -256,25 +257,24 @@ export function syncBillAmounts(bill, { preserveStatus = false, now = new Date()
 }
 
 export function buildBillingCycle(checkInDate, cycleIndex = 0) {
-  const start = dayjs(checkInDate).startOf("day").add(cycleIndex, "month");
+  const start = toManilaStartOfDay(checkInDate).add(cycleIndex, "month");
   const end = start.add(1, "month");
 
   return {
-    billingMonth: start.startOf("day").toDate(),
-    billingCycleStart: start.startOf("day").toDate(),
-    billingCycleEnd: end.startOf("day").toDate(),
-    dueDate: end.startOf("day").toDate(),
+    billingMonth: start.toDate(),
+    billingCycleStart: start.toDate(),
+    billingCycleEnd: end.toDate(),
+    dueDate: end.toDate(),
   };
 }
 
 export function buildRentBillingCycle(moveInDate, cycleIndex = 0) {
-  const start = dayjs(moveInDate).startOf("day").add(cycleIndex, "month");
+  const start = toManilaStartOfDay(moveInDate).add(cycleIndex, "month");
   const end = start.add(1, "month");
   // Recurring due date follows the tenant's move-in day, not a fixed
   // business-day offset from the cycle end.
   const dueDate = start.toDate();
-  const generationDate = dayjs(dueDate)
-    .startOf("day")
+  const generationDate = start
     .subtract(RENT_GENERATION_LEAD_DAYS, "day")
     .toDate();
 

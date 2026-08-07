@@ -1,4 +1,5 @@
 import dayjs from "dayjs";
+import { formatManilaDate, getManilaDayjs } from "./dateUtils.js";
 import { Bill, Reservation, Room, User } from "../models/index.js";
 import {
   sendBillGeneratedEmail,
@@ -360,9 +361,9 @@ export async function sendDraftUtilityBills({ bills, period, result }) {
       [tenant?.firstName, tenant?.lastName].filter(Boolean).join(" ").trim() ||
       "Tenant";
     const billingMonthLabel = bill.utilityCycleEnd
-      ? dayjs(bill.utilityCycleEnd).format("MMMM YYYY")
-      : dayjs(bill.billingMonth || issuedAt).format("MMMM YYYY");
-    const dueDateLabel = dayjs(dueDate).format("MMMM D, YYYY");
+      ? formatManilaDate(bill.utilityCycleEnd, "MMMM YYYY")
+      : formatManilaDate(bill.billingMonth || issuedAt, "MMMM YYYY");
+    const dueDateLabel = formatManilaDate(dueDate, "MMMM D, YYYY");
 
     if (tenant?.email) {
       const emailResult = await sendBillGeneratedEmail({
@@ -479,9 +480,9 @@ export async function sendUtilityPeriodBills({
           .join(" ")
           .trim() || "Tenant";
       const billingMonthLabel = bill.utilityCycleEnd
-        ? dayjs(bill.utilityCycleEnd).format("MMMM YYYY")
-        : dayjs(bill.billingMonth || issuedAt).format("MMMM YYYY");
-      const dueDateLabel = dayjs(dueDate).format("MMMM D, YYYY");
+        ? formatManilaDate(bill.utilityCycleEnd, "MMMM YYYY")
+        : formatManilaDate(bill.billingMonth || issuedAt, "MMMM YYYY");
+      const dueDateLabel = formatManilaDate(dueDate, "MMMM D, YYYY");
       const visibleCharges = getVisibleBillCharges(bill);
       const visibleTotalAmount = bill.totalAmount;
       let emailError = null;

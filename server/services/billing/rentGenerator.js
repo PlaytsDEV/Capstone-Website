@@ -7,6 +7,7 @@
  */
 
 import dayjs from "dayjs";
+import { getManilaDayjs, toManilaStartOfDay } from "../../utils/dateUtils.js";
 import { Bill, Reservation } from "../../models/index.js";
 import {
   getReservationRecurringFees,
@@ -69,10 +70,10 @@ export function resolveReservationRentAmount(
     return roundMoney(reservation.pricingSnapshot.finalMonthlyRate);
   }
   const moveInDate = readMoveInDate(reservation);
-  const referenceDay = dayjs(referenceDate).startOf("day");
+  const referenceDay = toManilaStartOfDay(referenceDate);
   const isLongTerm =
     moveInDate &&
-    referenceDay.diff(dayjs(moveInDate).startOf("day"), "month", true) >= 6;
+    referenceDay.diff(toManilaStartOfDay(moveInDate), "month", true) >= 6;
 
   let rentPrice = reservation?.monthlyRent || reservation?.totalPrice;
   if (!rentPrice) {
@@ -92,7 +93,7 @@ export async function ensureCurrentCycleRentBill({
   requireGenerationDateMatch = false,
 } = {}) {
   const moveInDate = readMoveInDate(reservation);
-  const currentDay = dayjs(referenceDate).startOf("day");
+  const currentDay = toManilaStartOfDay(referenceDate);
   if (!moveInDate || !reservation?.userId || !reservation?.roomId) {
     return { status: "skipped", reason: "missing_context" };
   }
@@ -118,7 +119,7 @@ export async function ensureCurrentCycleRentBill({
   if (!billingCycle) {
     const reason =
       structured &&
-      dayjs(referenceDate).isBefore(dayjs(reservation.advanceCoverageEndExclusive))
+      getManilaDayjs(referenceDate).isBefore(getManilaDayjs(reservation.advanceCoverageEndExclusive))
         ? "advance_period_covered"
         : "outside_generation_window";
     if (reason === "advance_period_covered") {
@@ -139,7 +140,7 @@ export async function ensureCurrentCycleRentBill({
     };
   }
 
-  const generationDay = dayjs(billingCycle.generationDate).startOf("day");
+  const generationDay = toManilaStartOfDay(billingCycle.generationDate);
   if (requireGenerationDateMatch && !currentDay.isSame(generationDay, "day")) {
     return {
       status: "skipped",

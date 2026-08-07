@@ -72,3 +72,9 @@ test("an unconfigured canonical app URL blocks sending instead of silently using
     /if \(!isAppUrlConfigured\) \{[\s\S]{0,200}return false;\s*\}/,
   );
 });
+
+test("cooldown timer is persisted to localStorage and synchronized with server pre-flight status", () => {
+  assert.match(source, /localStorage\.setItem\(storageKey, endTime\.toString\(\)\)/);
+  assert.match(source, /localStorage\.getItem\(key\)/);
+  assert.match(source, /if \(preflightRes\.status === 429\)/);
+});

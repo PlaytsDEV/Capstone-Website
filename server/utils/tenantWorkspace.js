@@ -1,4 +1,5 @@
 import dayjs from "dayjs";
+import { diffManilaDays, toManilaStartOfDay } from "./dateUtils.js";
 import { getVisibleBillSnapshot, roundMoney } from "./billingPolicy.js";
 import {
   hasReservationStatus,
@@ -38,10 +39,8 @@ export function computeLeaseEndDate(reservation) {
 
 export function computeDaysUntil(dateLike, now = new Date()) {
   if (!dateLike) return null;
-  const target = dayjs(dateLike).startOf("day");
-  const anchor = dayjs(now).startOf("day");
-  if (!target.isValid() || !anchor.isValid()) return null;
-  return target.diff(anchor, "day");
+  const diff = diffManilaDays(dateLike, now);
+  return Number.isNaN(diff) ? null : diff;
 }
 
 export function buildBillingSummary(bills = [], now = new Date()) {

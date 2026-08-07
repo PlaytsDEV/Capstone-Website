@@ -19,6 +19,8 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import "./utils/dateUtils.js";
+process.env.TZ = process.env.APP_TIMEZONE || "Asia/Manila";
 import helmet from "helmet";
 import compression from "compression";
 import mongoose from "mongoose";

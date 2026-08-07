@@ -9,6 +9,7 @@ import {
   CheckCircle,
 } from "lucide-react";
 import { getReservationConfirmationState } from "../../utils/reservationConfirmationState";
+import { getResolvedMonthlyRate } from "../../utils/pricingDisplayHelpers";
 
 const REDIRECT_SECONDS = 15;
 
@@ -97,6 +98,16 @@ const ReservationConfirmationStep = ({
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
+    const resolvedMonthlyRate = Number(
+      getResolvedMonthlyRate(reservationData?.pricingDisplay) ??
+        reservationData?.pricingSnapshot?.finalMonthlyRate ??
+        reservationData?.approvedMonthlyRate ??
+        reservationData?.monthlyRent ??
+        room?.monthlyPrice ??
+        room?.price ??
+        0,
+    );
+
     printWindow.document.write(`
       <html>
       <head>
@@ -144,7 +155,7 @@ const ReservationConfirmationStep = ({
           <div class="receipt-row"><span class="label">Room</span><span class="value">${roomName}</span></div>
           <div class="receipt-row"><span class="label">Branch</span><span class="value">${formatBranch(room.branch)}</span></div>
           <div class="receipt-row"><span class="label">Type</span><span class="value">${formatRoomType(room.type)}</span></div>
-          <div class="receipt-row"><span class="label">Monthly Rate</span><span class="value">PHP ${Number(room.price || 0).toLocaleString("en-PH")}</span></div>
+          <div class="receipt-row"><span class="label">Monthly Rate</span><span class="value">PHP ${resolvedMonthlyRate.toLocaleString("en-PH")}</span></div>
           <div class="receipt-row"><span class="label">Lease Duration</span><span class="value">${leaseDuration || 12} months</span></div>
         </div>
         <div class="receipt-section">

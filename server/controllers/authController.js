@@ -1240,23 +1240,57 @@ export const setRole = async (req, res, next) => {
   }
 };
 
-// ============================================================================
-// PASSWORD RESET AUDIT LOGGING
-// ============================================================================
+const PASSWORD_RESET_COOLDOWN_MS = 30 * 1000;
+const passwordResetHistory = new Map();
+
+const cleanupPasswordResetHistory = () => {
+  const cutoff = Date.now() - PASSWORD_RESET_COOLDOWN_MS;
+  for (const [key, timestamp] of passwordResetHistory.entries()) {
+    if (timestamp < cutoff) {
+      passwordResetHistory.delete(key);
+    }
+  }
+};
 
 /**
  * POST /api/auth/log-password-reset
  *
- * Public endpoint to log password reset attempts in the audit trail.
+ * Public endpoint to check cooldown and log password reset attempts in the audit trail.
  * Called by the ForgotPassword frontend component.
  * No auth required since the user is not logged in at this point.
  */
 export const logPasswordReset = async (req, res, next) => {
   try {
-    const { email, success } = req.body;
+    const { email, success, checkOnly } = req.body;
 
     if (!email) {
       return res.status(400).json({ error: "Email is required" });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const now = Date.now();
+    const lastSentAt = passwordResetHistory.get(normalizedEmail);
+
+    if (lastSentAt) {
+      const elapsed = now - lastSentAt;
+      if (elapsed < PASSWORD_RESET_COOLDOWN_MS) {
+        const retryAfterSeconds = Math.ceil((PASSWORD_RESET_COOLDOWN_MS - elapsed) / 1000);
+        return res.status(429).json({
+          error: `Please wait ${retryAfterSeconds}s before requesting another reset email.`,
+          code: "PASSWORD_RESET_COOLDOWN",
+          retryAfterSeconds,
+        });
+      }
+    }
+
+    if (checkOnly) {
+      return res.json({ message: "Cooldown check passed", cooldownSeconds: 30, retryAfterSeconds: 30 });
+    }
+
+    if (success !== false) {
+      passwordResetHistory.set(normalizedEmail, now);
+      cleanupPasswordResetHistory();
+      User.updateOne({ email: normalizedEmail }, { $set: { lastPasswordResetAt: new Date(now) } }).catch(() => {});
     }
 
     await auditLogger.log({
@@ -1280,7 +1314,7 @@ export const logPasswordReset = async (req, res, next) => {
       },
     });
 
-    res.json({ message: "Logged" });
+    res.json({ message: "Logged", cooldownSeconds: 30, retryAfterSeconds: 30 });
   } catch (error) {
     logger.error({ err: error, requestId: req.id }, "Failed to log password reset");
     // Don't break the flow — just acknowledge

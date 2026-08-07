@@ -907,6 +907,24 @@ async function forgotPassword(req, res) {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
+    const db = getDb();
+
+    // Check for 30-second cooldown on reset attempts
+    const recentToken = await db.collection('password_reset_tokens').findOne({
+      email: normalizedEmail,
+      createdAt: { $gte: new Date(Date.now() - 30 * 1000) },
+    }).catch(() => null);
+
+    if (recentToken) {
+      const elapsed = Date.now() - new Date(recentToken.createdAt).getTime();
+      const retryAfterSeconds = Math.max(1, Math.ceil((30000 - elapsed) / 1000));
+      return res.status(429).json({
+        detail: `Please wait ${retryAfterSeconds}s before requesting another password reset email.`,
+        code: 'PASSWORD_RESET_COOLDOWN',
+        retryAfterSeconds,
+      });
+    }
+
     const tenantData = await verifyTenantInFirebase(normalizedEmail);
 
     if (tenantData) {
