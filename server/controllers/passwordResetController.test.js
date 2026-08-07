@@ -51,7 +51,10 @@ await jest.unstable_mockModule("../config/email.js", () => ({
   sendPasswordResetLinkEmail,
 }));
 await jest.unstable_mockModule("../config/publicUrls.js", () => ({
-  getPublicUrlConfig: () => ({ emailActionUrl: "https://www.lilycrest.space/auth-action" }),
+  getPublicUrlConfig: () => ({
+    emailActionUrl: "https://www.lilycrest.space/auth-action",
+    publicFrontendUrl: "https://www.lilycrest.space",
+  }),
 }));
 await jest.unstable_mockModule("../models/User.js", () => ({ default: FakeUser }));
 await jest.unstable_mockModule("../utils/auditLogger.js", () => ({ default: { log: auditLog } }));
@@ -64,7 +67,13 @@ const { requestPasswordReset } = await import("./passwordResetController.js");
 const REGISTERED_EMAIL = "known-tenant@example.test";
 const UNREGISTERED_EMAIL = "nobody@example.test";
 const FIREBASE_UID = "firebase-uid-1";
-const GENERATED_LINK = "https://www.lilycrest.space/auth-action?mode=resetPassword&oobCode=real-oob-code&apiKey=key";
+// Deliberately on a non-canonical host (mirrors the actual observed defect:
+// Firebase's raw generatePasswordResetLink() output is hosted wherever the
+// project's Console "Action URL" is configured, not wherever
+// actionCodeSettings.url points) to prove the controller rewrites it before
+// ever handing it to the email sender.
+const RAW_FIREBASE_LINK = "https://lilycrest-dormitory.vercel.app/auth-action?mode=resetPassword&oobCode=real-oob-code&apiKey=key";
+const REWRITTEN_LINK = "https://www.lilycrest.space/auth-action?mode=resetPassword&oobCode=real-oob-code&apiKey=key";
 
 const app = express();
 app.use(express.json());
@@ -98,7 +107,7 @@ beforeEach(() => {
       passwordResetReservationId: null,
     },
   ];
-  generatePasswordResetLink.mockResolvedValue(GENERATED_LINK);
+  generatePasswordResetLink.mockResolvedValue(RAW_FIREBASE_LINK);
   sendPasswordResetLinkEmail.mockResolvedValue({ success: true, provider: "smtp", attempts: [] });
 });
 
@@ -119,14 +128,18 @@ describe("requestPasswordReset — enumeration safety", () => {
     const result = await post({ email: REGISTERED_EMAIL });
     expect(result).toEqual({ status: 200, body: { message: GENERIC_MESSAGE } });
     expect(generatePasswordResetLink).toHaveBeenCalledWith(REGISTERED_EMAIL, {
-      url: "https://www.lilycrest.space/auth-action",
+      url: "https://www.lilycrest.space/signin",
       handleCodeInApp: false,
     });
+    // The raw Firebase link (mocked here as a Vercel host — the actual
+    // observed defect) must never reach the email sender unrewritten.
     expect(sendPasswordResetLinkEmail).toHaveBeenCalledWith({
       to: REGISTERED_EMAIL,
       name: "Jose",
-      resetLink: GENERATED_LINK,
+      resetLink: REWRITTEN_LINK,
     });
+    const [{ resetLink: deliveredLink }] = sendPasswordResetLinkEmail.mock.calls[0];
+    expect(deliveredLink).not.toContain("vercel.app");
     expect(state.users[0].passwordResetDeliveredAt).toBeInstanceOf(Date);
     expect(state.users[0].passwordResetSendReservedAt).toBeUndefined();
   });
@@ -146,7 +159,7 @@ describe("requestPasswordReset — enumeration safety", () => {
     expect(sendPasswordResetLinkEmail).toHaveBeenCalledWith({
       to: "interrupted@example.test",
       name: undefined,
-      resetLink: GENERATED_LINK,
+      resetLink: REWRITTEN_LINK,
     });
   });
 
@@ -199,13 +212,22 @@ describe("requestPasswordReset — input validation and safety", () => {
     expect(result.status).toBe(400);
   });
 
-  test("the generated link targets the canonical Lilycrest action URL, never localhost or a Vercel preview host", async () => {
+  test("actionCodeSettings.url (the post-reset continue URL) targets canonical /signin, never localhost or a Vercel preview host", async () => {
     getUserByEmail.mockResolvedValue({ uid: FIREBASE_UID, email: REGISTERED_EMAIL });
     await post({ email: REGISTERED_EMAIL });
     const [, options] = generatePasswordResetLink.mock.calls[0];
-    expect(options.url).toBe("https://www.lilycrest.space/auth-action");
+    expect(options.url).toBe("https://www.lilycrest.space/signin");
     expect(options.url).not.toContain("localhost");
     expect(options.url).not.toContain("vercel.app");
+  });
+
+  test("the actually-delivered reset link's host is always the canonical action URL, regardless of what Firebase's raw link returns", async () => {
+    getUserByEmail.mockResolvedValue({ uid: FIREBASE_UID, email: REGISTERED_EMAIL });
+    await post({ email: REGISTERED_EMAIL });
+    const [{ resetLink }] = sendPasswordResetLinkEmail.mock.calls[0];
+    expect(resetLink.startsWith("https://www.lilycrest.space/auth-action?")).toBe(true);
+    expect(resetLink).not.toContain("vercel.app");
+    expect(resetLink).not.toContain("localhost");
   });
 
   test("no raw email address, reset link, or password ever appears in a logger call", async () => {
@@ -213,7 +235,8 @@ describe("requestPasswordReset — input validation and safety", () => {
     await post({ email: REGISTERED_EMAIL });
     const allLogCalls = JSON.stringify([...loggerInfo.mock.calls, ...loggerError.mock.calls, ...loggerWarn.mock.calls]);
     expect(allLogCalls).not.toContain(REGISTERED_EMAIL);
-    expect(allLogCalls).not.toContain(GENERATED_LINK);
+    expect(allLogCalls).not.toContain(RAW_FIREBASE_LINK);
+    expect(allLogCalls).not.toContain(REWRITTEN_LINK);
 
     jest.clearAllMocks();
     getUserByEmail.mockRejectedValue(Object.assign(new Error("no user"), { code: "auth/user-not-found" }));
