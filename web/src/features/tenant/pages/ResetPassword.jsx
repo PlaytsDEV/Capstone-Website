@@ -5,6 +5,7 @@ import { CheckCircle, Loader2, XCircle } from "lucide-react";
 import PasswordVisibilityButton from "../../../shared/components/PasswordVisibilityButton";
 import { auth } from "../../../firebase/config";
 import { authApi } from "../../../shared/api/authApi";
+import { clearApplicationSession } from "../../../shared/api/authSession";
 import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
 import Lounge from "../../../assets/images/facilities/RD Lounge Area.jpg";
 
@@ -101,6 +102,18 @@ function ResetPassword() {
     // must never downgrade the user's view of an already-successful reset
     // back to an "invalid/expired link" state if it happens to fail.
     setStatus("success");
+    // If this browser tab already had an established Lilycrest session
+    // (SESSION_ESTABLISHED_KEY) from *before* this reset — e.g. the user
+    // opened "Forgot Password" while still signed in, or reused an
+    // already-logged-in tab — that marker must not survive a password
+    // reset. useAuth's checkAuth() treats a still-set marker as "just
+    // restore the existing session" and skips calling the OTP-gated
+    // /login endpoint entirely, so a stale marker here would let the very
+    // next sign-in (even with the new password) silently skip OTP. This
+    // mirrors what authApi.logout() already does on a normal sign-out;
+    // the transient signInWithEmailAndPassword/signOut pair below never
+    // goes through that helper, so it has to be cleared explicitly here.
+    clearApplicationSession();
     // Signing in here is transient - only to obtain a fresh ID token for
     // finalizePasswordReset(). Guard it the same way SignIn.jsx guards its
     // resend-verification sign-in, or useAuth's onAuthStateChanged listener

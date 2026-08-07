@@ -19,7 +19,7 @@ import logger from "../middleware/logger.js";
 import auditLogger from "../utils/auditLogger.js";
 import { sanitizeEmail } from "../middleware/validation.js";
 import { emailFingerprint, maskEmail } from "../services/emailVerificationService.js";
-import { PASSWORD_RESET_COOLDOWN_SECONDS } from "../services/passwordResetService.js";
+import { PASSWORD_RESET_COOLDOWN_SECONDS, buildCustomPasswordResetLink } from "../services/passwordResetService.js";
 
 const GENERIC_RESPONSE = {
   message: "If an account exists for this email, a password reset link has been sent.",
@@ -99,10 +99,16 @@ export const requestPasswordReset = async (req, res) => {
     let resetLink;
     let delivery;
     try {
-      resetLink = await firebaseAuth.generatePasswordResetLink(email, {
-        url: getPublicUrlConfig().emailActionUrl,
+      // actionCodeSettings.url only becomes the link's `continueUrl` param,
+      // not its host (see buildCustomPasswordResetLink's doc comment) — set
+      // it to the genuine post-reset destination. The link's actual host is
+      // forced onto our own canonical EMAIL_ACTION_URL below, independent of
+      // whatever Firebase Console's configured Action URL happens to be.
+      const rawFirebaseLink = await firebaseAuth.generatePasswordResetLink(email, {
+        url: `${getPublicUrlConfig().publicFrontendUrl}/signin`,
         handleCodeInApp: false,
       });
+      resetLink = buildCustomPasswordResetLink(rawFirebaseLink);
       delivery = await sendPasswordResetLinkEmail({
         to: email,
         name: displayNameFor(applicationUser),

@@ -93,3 +93,38 @@ test("the reset code is only ever validated once (no re-validation after submit)
   const occurrences = source.match(/verifyPasswordResetCode\(/g) || [];
   assert.equal(occurrences.length, 1, "verifyPasswordResetCode must only be called from the initial mount effect");
 });
+
+// Regression coverage for: a browser tab that already had an established
+// Lilycrest session (SESSION_ESTABLISHED_KEY, sessionStorage) before the
+// user ran Forgot Password kept that marker through a successful reset,
+// because this flow signs in/out via raw Firebase calls rather than the
+// app's authApi.logout() helper (which already clears it on a normal
+// sign-out). useAuth's checkAuth() treats a still-set marker as "just
+// restore the existing session" and skips the OTP-gated /login call
+// entirely — so the very next sign-in, even with the brand-new password,
+// silently skipped OTP.
+
+test("clearApplicationSession is imported from the same module authApi.logout() uses", () => {
+  assert.match(
+    source,
+    /import \{ clearApplicationSession \} from "\.\.\/\.\.\/\.\.\/shared\/api\/authSession";/,
+  );
+});
+
+test("clearApplicationSession is called as part of the success transition, before the transient sign-in", () => {
+  const successIndex = source.indexOf('setStatus("success");');
+  const clearIndex = source.indexOf("clearApplicationSession();");
+  const signInIndex = source.indexOf("await signInWithEmailAndPassword(auth, email, password);");
+  assert.ok(clearIndex > -1, "expected a clearApplicationSession() call");
+  assert.ok(
+    clearIndex > successIndex && clearIndex < signInIndex,
+    "clearApplicationSession() must run as part of the success transition, before the transient " +
+      "sign-in/finalize/sign-out chain — it must not depend on that chain succeeding",
+  );
+});
+
+test("clearApplicationSession is unconditional — not inside the try/catch around the transient sign-in", () => {
+  const clearIndex = source.indexOf("clearApplicationSession();");
+  const tryIndex = source.indexOf("sessionStorage.setItem(\"resendInProgress\", \"1\");");
+  assert.ok(clearIndex < tryIndex, "clearApplicationSession() must run before entering the best-effort cleanup try block");
+});
