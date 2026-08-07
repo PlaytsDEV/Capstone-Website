@@ -1198,6 +1198,12 @@ const RECIPIENT_REJECTION_PATTERN =
 const verificationEmailIdempotencyKey = (to, verificationLink) =>
   crypto.createHash("sha256").update(`email-verification:${to}:${verificationLink}`).digest("hex");
 
+// Same purpose as verificationEmailIdempotencyKey above, namespaced so a
+// verification-email retry and a password-reset retry for the same address
+// can never collide on the same Resend idempotency key.
+const passwordResetEmailIdempotencyKey = (to, resetLink) =>
+  crypto.createHash("sha256").update(`password-reset:${to}:${resetLink}`).digest("hex");
+
 /**
  * Classifies a provider error (SMTP or Resend) into one of the internal,
  * non-enumerable delivery-failure categories used to pick a safe, stable
@@ -1334,6 +1340,114 @@ export const sendEmailVerificationLinkEmail = async ({ to, name, verificationLin
 
   // Prefer the most specific (non-"not configured") failure so a
   // misconfigured fallback provider doesn't mask a real delivery rejection.
+  const specific = attempts.find((attempt) => attempt.code !== "EMAIL_PROVIDER_NOT_CONFIGURED");
+  const final = specific || attempts[attempts.length - 1] || { category: "unknown", code: "EMAIL_DELIVERY_FAILED" };
+  return { success: false, attempts, category: final.category, code: final.code };
+};
+
+// =============================================================================
+// PASSWORD RESET EMAIL — same Lilycrest branded shell/CTA/delivery
+// architecture as the verification email above (SMTP primary, Resend
+// fallback, hard timeout, idempotency key, no raw provider text ever
+// surfaced).
+// =============================================================================
+
+export const generatePasswordResetEmail = ({ displayName, resetLink }) => {
+  const safeName = displayName || "there";
+  const bodyHtml = `
+    ${p(`Hi <strong>${escapeHtml(safeName)}</strong>,`)}
+    ${p("We received a request to reset the password for your Lilycrest account.", { size: "14px" })}
+    ${p("Click the button below to create a new password.", { size: "14px" })}
+    <div style="text-align:center;margin:28px 0;">
+      <a href="${escapeHtml(resetLink)}" style="display:inline-block;background:${THEME.gold};color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:600;">Reset Password</a>
+    </div>
+    ${p("If you did not request a password reset, you can safely ignore this email. Your password will remain unchanged.", { size: "13px", color: THEME.textMuted, margin: "0 0 16px" })}
+    ${p("For security, this password reset link is temporary.", { size: "13px", color: THEME.textMuted, margin: "0 0 16px" })}
+    ${p("If the button above doesn't work, copy and paste the link below into your browser:", { size: "13px", color: THEME.textMuted, margin: "0 0 6px" })}
+    <p style="word-break:break-all;font-size:12px;margin:0;"><a href="${escapeHtml(resetLink)}" style="color:${THEME.gold};text-decoration:underline;">${escapeHtml(resetLink)}</a></p>
+  `;
+  return renderEmailShell({
+    title: "Reset your Lilycrest password",
+    branchName: "Lilycrest",
+    heading: "Reset Your Password",
+    bodyHtml,
+  });
+};
+
+export const sendPasswordResetLinkEmail = async ({ to, name, resetLink }) => {
+  const subject = "Reset your Lilycrest password";
+  const html = generatePasswordResetEmail({ displayName: name, resetLink });
+  const text = `Hi ${String(name || "there").replace(/[\r\n]+/g, " ")}, reset your Lilycrest password using this link: ${resetLink}\n\nIf you did not request this password reset, you can safely ignore this email. Your password will remain unchanged.`;
+
+  const attempts = [];
+  const recordFailure = (provider, classification) => {
+    attempts.push({ provider, ...classification });
+    console.error("Password reset email delivery failed", {
+      emailFingerprint: emailFingerprint(to),
+      provider,
+      category: classification.category,
+      code: classification.code,
+    });
+  };
+
+  if (isEmailConfigured) {
+    try {
+      const info = await sendMailWithHardTimeout(
+        {
+          from: { name: "Lilycrest Dormitory", address: emailConfig.user },
+          to,
+          subject,
+          html,
+          text,
+        },
+        EMAIL_PROVIDER_TIMEOUT_MS,
+      );
+      const accepted = Array.isArray(info?.accepted) && info.accepted.length > 0;
+      const rejected = Array.isArray(info?.rejected) && info.rejected.length > 0;
+      if (info?.messageId && accepted && !rejected) {
+        return { success: true, provider: "smtp", attempts };
+      }
+      if (rejected) {
+        recordFailure("smtp", { category: "recipient_rejected", code: "EMAIL_RECIPIENT_REJECTED" });
+      } else {
+        recordFailure("smtp", { category: "unexpected_response", code: "EMAIL_DELIVERY_FAILED" });
+      }
+    } catch (error) {
+      recordFailure("smtp", classifyVerificationDeliveryError(error));
+    }
+  } else {
+    attempts.push({ provider: "smtp", category: "configuration", code: "EMAIL_PROVIDER_NOT_CONFIGURED" });
+  }
+
+  if (resendClient && OTP_FROM) {
+    const resendAbortController = new AbortController();
+    try {
+      const { data, error } = await withProviderTimeout(
+        resendClient.emails.send(
+          { from: OTP_FROM, to: [to], subject, html, text },
+          {
+            signal: resendAbortController.signal,
+            idempotencyKey: passwordResetEmailIdempotencyKey(to, resetLink),
+          },
+        ),
+        EMAIL_PROVIDER_TIMEOUT_MS,
+        "EMAIL_PROVIDER_TIMEOUT",
+        () => resendAbortController.abort(),
+      );
+      if (error) {
+        recordFailure("resend", classifyVerificationDeliveryError(error));
+      } else if (typeof data?.id !== "string" || !data.id.trim()) {
+        recordFailure("resend", { category: "unexpected_response", code: "EMAIL_DELIVERY_FAILED" });
+      } else {
+        return { success: true, provider: "resend", attempts };
+      }
+    } catch (error) {
+      recordFailure("resend", classifyVerificationDeliveryError(error));
+    }
+  } else {
+    attempts.push({ provider: "resend", category: "configuration", code: "EMAIL_PROVIDER_NOT_CONFIGURED" });
+  }
+
   const specific = attempts.find((attempt) => attempt.code !== "EMAIL_PROVIDER_NOT_CONFIGURED");
   const final = specific || attempts[attempts.length - 1] || { category: "unknown", code: "EMAIL_DELIVERY_FAILED" };
   return { success: false, attempts, category: final.category, code: final.code };

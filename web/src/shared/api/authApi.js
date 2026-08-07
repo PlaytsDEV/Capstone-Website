@@ -168,6 +168,19 @@ export const authApi = {
   finalizePasswordReset: () => authRequest("/auth/finalize-password-reset", { method: "POST" }),
 
   /**
+   * Request a backend-generated, Lilycrest-branded password reset email.
+   * Always resolves with the same enumeration-safe response regardless of
+   * whether the address is registered — see passwordResetController.js.
+   * @param {string} email
+   * @returns {Promise<{message: string}>}
+   */
+  requestPasswordReset: (email) =>
+    authRequest("/auth/request-password-reset", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    }),
+
+  /**
    * Check if user exists in backend (doesn't create audit log)
    * Used for Google sign-in flow to check before registration
    * @returns {Promise<Object>} User data from backend

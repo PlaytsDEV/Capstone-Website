@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { confirmPasswordReset, signInWithEmailAndPassword, signOut, verifyPasswordResetCode } from "firebase/auth";
 import { CheckCircle, Loader2, XCircle } from "lucide-react";
 import PasswordVisibilityButton from "../../../shared/components/PasswordVisibilityButton";
 import { auth } from "../../../firebase/config";
 import { authApi } from "../../../shared/api/authApi";
+import { clearApplicationSession } from "../../../shared/api/authSession";
 import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
 import Lounge from "../../../assets/images/facilities/RD Lounge Area.jpg";
 
@@ -29,6 +30,11 @@ function ResetPassword() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  // A ref, not state, so a second submit that lands before React commits the
+  // `submitting` update (fast double-click, or Enter + a click on the same
+  // frame) can't slip past a state-only guard and fire confirmPasswordReset
+  // twice for the same one-time-use oobCode.
+  const submitInFlightRef = useRef(false);
 
   useEffect(() => {
     if (!oobCode) {
@@ -64,30 +70,67 @@ function ResetPassword() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!canSubmit || !oobCode) return;
+    if (!canSubmit || !oobCode || submitInFlightRef.current) return;
 
+    submitInFlightRef.current = true;
     setSubmitting(true);
     setErrorMessage("");
     try {
       await confirmPasswordReset(auth, oobCode, password);
-      // Signing in here is transient - only to obtain a fresh ID token for
-      // finalizePasswordReset(). Guard it the same way SignIn.jsx guards its
-      // resend-verification sign-in, or useAuth's onAuthStateChanged listener
-      // will treat it as a real login and RequireNonAdmin will navigate the
-      // user away before finalizePasswordReset()/signOut() complete.
-      sessionStorage.setItem("resendInProgress", "1");
-      try {
-        await signInWithEmailAndPassword(auth, email, password);
-        try { await authApi.finalizePasswordReset(); }
-        finally { await signOut(auth); }
-      } finally {
-        sessionStorage.removeItem("resendInProgress");
+    } catch (error) {
+      // Only a genuine failure of the reset call itself means the oobCode
+      // was invalid/expired/already used. A weak-password rejection or a
+      // network blip here means the password was NOT changed, but it says
+      // nothing about the link — keep the form up so the user can retry,
+      // instead of sending them to a dead-end "link unavailable" screen.
+      if (error?.code === "auth/weak-password") {
+        setErrorMessage("Please choose a stronger password that meets all the requirements below.");
+      } else if (error?.code === "auth/network-request-failed") {
+        setErrorMessage("Network error. Please check your connection and try again.");
+      } else {
+        setStatus("error");
+        setErrorMessage("This reset link is invalid or has expired.");
       }
-      setStatus("success");
+      submitInFlightRef.current = false;
+      setSubmitting(false);
+      return;
+    }
+
+    // The password has already been changed at this point via Firebase's
+    // one-time oobCode — that is the terminal success condition. Everything
+    // below is best-effort cleanup (revoking sessions on other devices) and
+    // must never downgrade the user's view of an already-successful reset
+    // back to an "invalid/expired link" state if it happens to fail.
+    setStatus("success");
+    // If this browser tab already had an established Lilycrest session
+    // (SESSION_ESTABLISHED_KEY) from *before* this reset — e.g. the user
+    // opened "Forgot Password" while still signed in, or reused an
+    // already-logged-in tab — that marker must not survive a password
+    // reset. useAuth's checkAuth() treats a still-set marker as "just
+    // restore the existing session" and skips calling the OTP-gated
+    // /login endpoint entirely, so a stale marker here would let the very
+    // next sign-in (even with the new password) silently skip OTP. This
+    // mirrors what authApi.logout() already does on a normal sign-out;
+    // the transient signInWithEmailAndPassword/signOut pair below never
+    // goes through that helper, so it has to be cleared explicitly here.
+    clearApplicationSession();
+    // Signing in here is transient - only to obtain a fresh ID token for
+    // finalizePasswordReset(). Guard it the same way SignIn.jsx guards its
+    // resend-verification sign-in, or useAuth's onAuthStateChanged listener
+    // will treat it as a real login and RequireNonAdmin will navigate the
+    // user away before finalizePasswordReset()/signOut() complete.
+    sessionStorage.setItem("resendInProgress", "1");
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      try { await authApi.finalizePasswordReset(); }
+      finally { await signOut(auth); }
     } catch {
-      setStatus("error");
-      setErrorMessage("This reset link is invalid or has expired.");
+      // Non-critical: cross-device session invalidation may not have
+      // completed, but the password reset itself already succeeded above.
+      // Nothing user-facing to show — status stays "success".
     } finally {
+      sessionStorage.removeItem("resendInProgress");
+      submitInFlightRef.current = false;
       setSubmitting(false);
     }
   };

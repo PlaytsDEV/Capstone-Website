@@ -41,6 +41,7 @@ await jest.unstable_mockModule("../middleware/validation.js", () => ({
   validateRegisterInput: jest.fn(),
   validateProfileUpdateInput: jest.fn(),
   createValidationMiddleware,
+  sanitizeEmail: jest.fn((v) => v),
 }));
 await jest.unstable_mockModule("../validation/validate.js", () => ({
   validate,

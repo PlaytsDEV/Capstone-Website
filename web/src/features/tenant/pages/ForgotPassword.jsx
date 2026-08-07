@@ -10,10 +10,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { sendPasswordResetEmail } from "firebase/auth";
 import { Mail, ArrowLeft, CheckCircle, Loader2 } from "lucide-react";
-import { auth } from "../../../firebase/config";
-import { EMAIL_ACTION_URL, isAppUrlConfigured } from "../../../shared/api/publicUrls";
+import { authApi } from "../../../shared/api/authApi";
 import { showNotification } from "../../../shared/utils/notification";
 import { validateEmail } from "../../../shared/utils/authValidation";
 import AuthBrandingPanel from "../../../shared/components/AuthBrandingPanel";
@@ -68,22 +66,13 @@ function ForgotPassword() {
  setFieldValid(!error);
  };
 
- // Shared by the initial submit and the "Resend email" action so both paths
- // apply the same enumeration-safe success/error handling and audit logging.
+ // Shared by the initial submit and the "Resend email" action. The backend
+ // (passwordResetController.js) always returns the same generic,
+ // enumeration-safe response regardless of whether the address is
+ // registered, so — unlike the old direct Firebase-client call this
+ // replaced — there is no longer a distinct "user-not-found" branch to
+ // handle here: any resolved response is shown as the same success state.
  const requestPasswordReset = async (targetEmail) => {
- // Without an explicit, code-controlled action URL, Firebase falls back to
- // whichever domain happens to be configured as the project's default in
- // the Firebase Console — that's how reset links ended up pointing at a
- // Vercel preview/default domain instead of the canonical production one.
- // Fail closed here rather than silently sending a link to the wrong host.
- if (!isAppUrlConfigured) {
- showNotification(
- "Password reset is temporarily unavailable. Please try again later.",
- "error",
- );
- return false;
- }
-
     const normEmail = targetEmail.trim().toLowerCase();
     const storageKey = `pw_reset_cooldown_${normEmail}`;
 
@@ -109,68 +98,36 @@ function ForgotPassword() {
       /* non-critical preflight check */
     }
 
- try {
- await sendPasswordResetEmail(auth, targetEmail, {
- url: EMAIL_ACTION_URL,
- handleCodeInApp: false,
- });
- setEmailSent(true);
- showNotification("Password reset email sent!", "success");
-      const endTime = Date.now() + 30000;
-      localStorage.setItem(storageKey, endTime.toString());
-      setResendCooldown(30);
- try {
- await fetch("/api/auth/log-password-reset", {
- method: "POST",
- headers: { "Content-Type": "application/json" },
- body: JSON.stringify({ email: targetEmail, success: true }),
- });
- } catch (_) {
- /* non-critical */
- }
- return true;
- } catch (error) {
- // Do not reveal whether an email is registered: show the same
- // "check your email" success state as a real send, not an error.
- if (error.code === "auth/user-not-found") {
- setEmailSent(true);
- showNotification("Password reset email sent!", "success");
-        const endTime = Date.now() + 30000;
+    try {
+      await authApi.requestPasswordReset(targetEmail);
+    } catch (error) {
+      if (error?.response?.status === 429) {
+        const retrySecs = error?.response?.data?.retryAfterSeconds || 30;
+        const endTime = Date.now() + retrySecs * 1000;
         localStorage.setItem(storageKey, endTime.toString());
-        setResendCooldown(30);
- try {
- await fetch("/api/auth/log-password-reset", {
- method: "POST",
- headers: { "Content-Type": "application/json" },
- body: JSON.stringify({ email: targetEmail, success: false }),
- });
- } catch (_) {
- /* non-critical */
- }
- return true;
- }
-
- let msg = "Failed to send reset email. ";
- if (error.code === "auth/invalid-email")
- msg = "Invalid email address format.";
- else if (error.code === "auth/too-many-requests")
- msg = "Too many requests. Please try again later.";
- else if (error.code === "auth/network-request-failed")
- msg = "Network error. Please check your connection.";
- else msg += error.message || "Please try again.";
- showNotification(msg, "error");
- // Log failed password reset attempt
- try {
- await fetch("/api/auth/log-password-reset", {
- method: "POST",
- headers: { "Content-Type": "application/json" },
- body: JSON.stringify({ email: targetEmail, success: false }),
- });
- } catch (_) {
- /* non-critical */
- }
- return false;
- }
+        setResendCooldown(retrySecs);
+        showNotification(
+          error?.response?.data?.error || `Please wait ${retrySecs}s before requesting another reset email.`,
+          "error",
+        );
+        return false;
+      }
+      const msg =
+        error?.response?.status === 400
+          ? "Please enter a valid email address."
+          : "We couldn't send the reset email right now. Please try again.";
+      showNotification(msg, "error");
+      return false;
+    }
+    setEmailSent(true);
+    showNotification(
+      "If an account exists for this email, a password reset link has been sent.",
+      "success",
+    );
+    const endTime = Date.now() + 30000;
+    localStorage.setItem(storageKey, endTime.toString());
+    setResendCooldown(30);
+    return true;
  };
 
  const handleResetPassword = async (e) => {
