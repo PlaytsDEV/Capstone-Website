@@ -6,7 +6,7 @@ import { useOperationsReport } from "../../../shared/hooks/queries/useAnalyticsR
 import { exportToCSV } from "../../../shared/utils/exportUtils";
 import { exportReportPdf } from "../../../shared/utils/reportPdf";
 import { OWNER_BRANCH_FILTER_OPTIONS } from "../../../shared/utils/constants";
-import { unwrapTableRows } from "./analyticsTabShared";
+import { unwrapTableRows, ExportButtons } from "./analyticsTabShared";
 import {
  ActionBar,
  DataTable,
@@ -146,18 +146,7 @@ export default function OperationsReportPage() {
  <ReportFilterBar
  title="Operations report"
  subtitle={`${buildRangeLabel(range)} • Scope: ${formatBranch(data?.scope?.branch || branch)}`}
- controls={
- <div className="admin-reports__actions">
- <button className="action-bar__btn action-bar__btn--ghost" onClick={handleCsvExport}>
- <FileDown size={15} />
- Export CSV
- </button>
- <button className="action-bar__btn action-bar__btn--primary" onClick={handlePdfExport}>
- <Download size={15} />
- Export PDF
- </button>
- </div>
- }
+ controls={<ExportButtons onCsv={handleCsvExport} onPdf={handlePdfExport} />}
  />
  <div className="admin-reports__metrics">
  {metricCards.map((item) => (

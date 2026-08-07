@@ -15,7 +15,7 @@ export default function AnalyticsTabLayout({
  return (
  <section
  className={joinClasses(
- "flex flex-col gap-6 md:gap-8 w-full max-w-[1440px] mx-auto py-2 md:py-4 px-1 md:px-0",
+ "flex flex-col gap-6 md:gap-8 w-full py-2 md:py-4 px-0",
  className,
  )}
  >

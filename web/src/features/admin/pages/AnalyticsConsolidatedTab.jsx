@@ -288,7 +288,7 @@ export default function AnalyticsConsolidatedTab({
         isError={insightsQuery.isError}
       />
 
-      <div className="admin-reports__grid">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <ReportChartPanel
           title="Branch performance"
           subtitle="Occupancy, collections, and maintenance pressure by branch"
@@ -333,7 +333,7 @@ export default function AnalyticsConsolidatedTab({
         </ReportChartPanel>
       </div>
 
-      <div className="admin-reports__grid">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <ReportChartPanel
           title="Occupancy trend"
           subtitle="Daily occupancy rate for the selected branch scope"

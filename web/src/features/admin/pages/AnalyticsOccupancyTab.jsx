@@ -19,6 +19,7 @@ import {
   AnalyticsTableToolbar,
   buildInsightPdfSections,
   buildBranchControl,
+  CardFilterSelect,
   ExportButtons,
   handleCsvExport,
   handlePdfExport,
@@ -27,7 +28,8 @@ import {
   unwrapTableRows,
   useReportInsights,
 } from "./analyticsTabShared";
-
+import "../styles/design-tokens.css";
+import "../styles/admin-reports.css";
 
 const INVENTORY_COLUMNS = [
   { key: "roomNumber", label: "Room", sortable: true },
@@ -47,12 +49,24 @@ const INVENTORY_COLUMNS = [
     label: "Status",
     render: (row) => {
       if (row.occupancyRate >= 100) {
-        return <span style={{ padding: "2px 8px", borderRadius: "12px", fontSize: "11px", background: "#dcfce7", color: "#166534", fontWeight: 500 }}>Full</span>;
+        return (
+          <span style={{ padding: "3px 10px", borderRadius: "12px", fontSize: "11px", background: "var(--success-subtle, #dcfce7)", color: "var(--success-dark, #166534)", fontWeight: 600, border: "1px solid rgba(22, 101, 52, 0.2)" }}>
+            Full
+          </span>
+        );
       }
       if (row.occupiedBeds === 0) {
-        return <span style={{ padding: "2px 8px", borderRadius: "12px", fontSize: "11px", background: "#fef3c7", color: "#92400e", fontWeight: 500 }}>Vacant</span>;
+        return (
+          <span style={{ padding: "3px 10px", borderRadius: "12px", fontSize: "11px", background: "var(--warning-subtle, #fef3c7)", color: "var(--warning-dark, #92400e)", fontWeight: 600, border: "1px solid rgba(146, 64, 14, 0.2)" }}>
+            Vacant
+          </span>
+        );
       }
-      return <span style={{ padding: "2px 8px", borderRadius: "12px", fontSize: "11px", background: "#dbeafe", color: "#1e40af", fontWeight: 500 }}>Partial</span>;
+      return (
+        <span style={{ padding: "3px 10px", borderRadius: "12px", fontSize: "11px", background: "var(--info-subtle, #dbeafe)", color: "var(--info-dark, #1e40af)", fontWeight: 600, border: "1px solid rgba(30, 64, 175, 0.2)" }}>
+          Partial
+        </span>
+      );
     },
   },
 ];
@@ -63,32 +77,36 @@ function ForecastCards({ forecast }) {
 
   if (!forecast?.sufficientHistory) {
     return (
-      <p className="admin-reports__hint">
-        {forecast?.insights?.headline ||
-          "Insufficient history to forecast occupancy."}
+      <p className="text-sm text-muted-foreground italic py-4">
+        {forecast?.insights?.headline || "Insufficient history to forecast occupancy."}
       </p>
     );
   }
 
   return (
-    <div className="admin-reports__panel-stack">
-      <p className="admin-reports__hint">{forecast.insights?.headline}</p>
-      {projectedMonths.map((item) => (
-        <div key={item.month} className="admin-reports__meta-card">
-          <span className="admin-reports__meta-label">{item.label}</span>
-          <div className="admin-reports__meta-value">
-            {item.projectedOccupancyRate}%
+    <div className="flex flex-col gap-4 py-2">
+      {forecast.insights?.headline && (
+        <p className="text-sm font-medium text-card-foreground">{forecast.insights.headline}</p>
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {projectedMonths.map((item) => (
+          <div key={item.month} className="bg-muted rounded-xl p-3.5 border border-border flex flex-col gap-1">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{item.label}</span>
+            <div className="text-2xl font-bold text-foreground">{item.projectedOccupancyRate}%</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Baseline <span className="font-medium text-card-foreground">{item.baselineRate}%</span> • Seasonal <span className="font-medium text-card-foreground">{item.seasonalMultiplier}x</span>
+            </p>
           </div>
-          <p className="admin-reports__hint">
-            Baseline {item.baselineRate}% • Seasonal {item.seasonalMultiplier}x
-          </p>
-        </div>
-      ))}
-      {recommendations.slice(0, 2).map((item) => (
-        <p key={item} className="admin-reports__hint">
-          {item}
-        </p>
-      ))}
+        ))}
+      </div>
+      <div className="mt-2 flex flex-col gap-2">
+        {recommendations.slice(0, 2).map((item, idx) => (
+          <div key={idx} className="flex items-start gap-2.5 bg-blue-50/50 p-3 rounded-lg border border-blue-100/50">
+            <div className="w-1.5 h-1.5 rounded-full bg-blue-400 mt-1.5" />
+            <p className="text-sm text-card-foreground leading-relaxed">{item}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -104,8 +122,17 @@ export default function AnalyticsOccupancyTab({
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [pageSize, setPageSize] = useState(5);
 
-  const params = useMemo(
+  const [trendRange, setTrendRange] = useState(null);
+  const [forecastRange, setForecastRange] = useState(null);
+  const [historyRange, setHistoryRange] = useState(null);
+
+  const activeTrendRange = trendRange || range;
+  const activeForecastRange = forecastRange || range;
+  const activeHistoryRange = historyRange || range;
+
+  const mainParams = useMemo(
     () => ({
       range,
       ...(isOwner ? { branch } : {}),
@@ -113,13 +140,38 @@ export default function AnalyticsOccupancyTab({
     [branch, isOwner, range],
   );
 
-  const { data, isLoading, isError } = useOccupancyReport(params);
-  const { data: forecast } = useOccupancyForecast(params);
-  const { data: historyData } = useOccupancyRateHistory(params);
+  const trendParams = useMemo(
+    () => ({
+      range: activeTrendRange,
+      ...(isOwner ? { branch } : {}),
+    }),
+    [branch, isOwner, activeTrendRange],
+  );
+
+  const forecastParams = useMemo(
+    () => ({
+      range: activeForecastRange,
+      ...(isOwner ? { branch } : {}),
+    }),
+    [branch, isOwner, activeForecastRange],
+  );
+
+  const historyParams = useMemo(
+    () => ({
+      range: activeHistoryRange,
+      ...(isOwner ? { branch } : {}),
+    }),
+    [branch, isOwner, activeHistoryRange],
+  );
+
+  const { data, isLoading, isError } = useOccupancyReport(mainParams);
+  const { data: trendData } = useOccupancyReport(trendParams);
+  const { data: forecast } = useOccupancyForecast(forecastParams);
+  const { data: historyData } = useOccupancyRateHistory(historyParams);
 
   const kpis = data?.kpis || {};
   const series = data?.series || {};
-  const trend = series.occupancyTrend || [];
+  const trend = (trendData?.series || series).occupancyTrend || [];
   const roomTypes = series.roomTypes || [];
   const forecastSeries = forecast?.series || [];
   const inventory = unwrapTableRows(data?.tables?.inventory);
@@ -198,14 +250,6 @@ export default function AnalyticsOccupancyTab({
         <AnalyticsToolbar
           title="Occupancy Analytics"
           subtitle={`Scope: ${formatBranch(data?.scope?.branch || branch)} • ${buildRangeLabel(range)}`}
-          range={{
-            value: range,
-            onChange: (value) => {
-              setPage(1);
-              onRangeChange(value);
-            },
-            options: RANGE_OPTIONS_SHORT,
-          }}
           branch={buildBranchControl({
             isOwner,
             branch,
@@ -228,10 +272,16 @@ export default function AnalyticsOccupancyTab({
         isError={isInsightError}
       />
 
-      <div className="admin-reports__grid">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <ReportChartPanel
           title="Occupancy trend"
           subtitle="Daily occupancy rate over the selected period"
+          actions={
+            <CardFilterSelect
+              value={activeTrendRange}
+              onChange={setTrendRange}
+            />
+          }
         >
           <AnalyticsLineChart
             data={trend.map((item) => ({
@@ -264,10 +314,16 @@ export default function AnalyticsOccupancyTab({
         </ReportChartPanel>
       </div>
 
-      <div className="admin-reports__grid">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <ReportChartPanel
           title="Forecast panel"
           subtitle="Projected occupancy compared with recent baseline"
+          actions={
+            <CardFilterSelect
+              value={activeForecastRange}
+              onChange={setForecastRange}
+            />
+          }
         >
           <AnalyticsLineChart
             data={forecastSeries}
@@ -281,6 +337,7 @@ export default function AnalyticsOccupancyTab({
           />
         </ReportChartPanel>
 
+
         <ReportChartPanel
           title="Forecast insights"
           subtitle="Deterministic 3-month occupancy projection"
@@ -289,59 +346,67 @@ export default function AnalyticsOccupancyTab({
         </ReportChartPanel>
       </div>
 
-      <ReportChartPanel
-        title="Historical Monthly Occupancy Rate & Turnaround"
-        subtitle="Bed-day utilization rate by month, average stay length, and turnaround efficiency"
-      >
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px", marginBottom: "16px" }}>
-          <div className="admin-reports__meta-card">
-            <span className="admin-reports__meta-label">Avg Length of Stay</span>
-            <div className="admin-reports__meta-value">{historyKpis.averageStayMonths || 0} mos</div>
-            <p className="admin-reports__hint">Mean tenant tenure</p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <ReportChartPanel
+          title="Historical Monthly Occupancy & Turnaround"
+          subtitle="Bed-day utilization rate by month, stay length, and turnaround efficiency"
+          actions={
+            <CardFilterSelect
+              value={activeHistoryRange}
+              onChange={setHistoryRange}
+            />
+          }
+        >
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "10px", marginBottom: "16px" }}>
+            <div className="admin-reports__meta-card">
+              <span className="admin-reports__meta-label">Avg Length of Stay</span>
+              <div className="admin-reports__meta-value">{historyKpis.averageStayMonths || 0} mos</div>
+              <p className="admin-reports__hint">Mean tenant tenure</p>
+            </div>
+            <div className="admin-reports__meta-card">
+              <span className="admin-reports__meta-label">Turnaround Time</span>
+              <div className="admin-reports__meta-value">{historyKpis.averageTurnaroundDays || 0} days</div>
+              <p className="admin-reports__hint">Vacancy gap between tenants</p>
+            </div>
+            <div className="admin-reports__meta-card">
+              <span className="admin-reports__meta-label">Peak Occupancy</span>
+              <div className="admin-reports__meta-value">{historyKpis.peakMonth?.month || "N/A"}</div>
+              <p className="admin-reports__hint">{historyKpis.peakMonth?.rate ?? 0}% bed utilization</p>
+            </div>
+            <div className="admin-reports__meta-card">
+              <span className="admin-reports__meta-label">Off-Peak Season</span>
+              <div className="admin-reports__meta-value">{historyKpis.offPeakMonth?.month || "N/A"}</div>
+              <p className="admin-reports__hint">{historyKpis.offPeakMonth?.rate ?? 0}% bed utilization</p>
+            </div>
           </div>
-          <div className="admin-reports__meta-card">
-            <span className="admin-reports__meta-label">Turnaround Time</span>
-            <div className="admin-reports__meta-value">{historyKpis.averageTurnaroundDays || 0} days</div>
-            <p className="admin-reports__hint">Vacancy gap between tenants</p>
-          </div>
-          <div className="admin-reports__meta-card">
-            <span className="admin-reports__meta-label">Peak Occupancy</span>
-            <div className="admin-reports__meta-value">{historyKpis.peakMonth?.month || "N/A"}</div>
-            <p className="admin-reports__hint">{historyKpis.peakMonth?.rate ?? 0}% bed utilization</p>
-          </div>
-          <div className="admin-reports__meta-card">
-            <span className="admin-reports__meta-label">Off-Peak Season</span>
-            <div className="admin-reports__meta-value">{historyKpis.offPeakMonth?.month || "N/A"}</div>
-            <p className="admin-reports__hint">{historyKpis.offPeakMonth?.rate ?? 0}% bed utilization</p>
-          </div>
-        </div>
 
-        <AnalyticsBarChart
-          data={historySeries}
-          bars={[{ key: "occupancyRate", label: "Occupancy Rate (%)", color: "#2563eb" }]}
-          valueFormatter={(val) => `${val}%`}
-          emptyTitle="No historical bed data"
-          emptyDescription="Historical monthly occupancy will populate as bed move-in records accumulate."
-        />
-      </ReportChartPanel>
+          <AnalyticsBarChart
+            data={historySeries}
+            bars={[{ key: "occupancyRate", label: "Occupancy Rate (%)", color: "#2563eb" }]}
+            valueFormatter={(val) => `${val}%`}
+            emptyTitle="No historical bed data"
+            emptyDescription="Historical monthly occupancy will populate as bed move-in records accumulate."
+          />
+        </ReportChartPanel>
 
-      <ReportChartPanel
-        title="Tenant Cohort Mix"
-        subtitle="Occupation & tenant status classification"
-      >
-        <AnalyticsDonutChart
-          data={(cohorts.tenantTypes || []).map((item) => ({
-            label: item.label,
-            value: item.count,
-          }))}
-          centerLabel={{
-            value: (cohorts.tenantTypes || []).reduce((sum, i) => sum + i.count, 0),
-            label: "Tenants",
-          }}
-          emptyTitle="No tenant type data"
-          emptyDescription="Tenant occupation data will appear once profiles are completed."
-        />
-      </ReportChartPanel>
+        <ReportChartPanel
+          title="Tenant Cohort Mix"
+          subtitle="Occupation & tenant status classification"
+        >
+          <AnalyticsDonutChart
+            data={(cohorts.tenantTypes || []).map((item) => ({
+              label: item.label,
+              value: item.count,
+            }))}
+            centerLabel={{
+              value: (cohorts.tenantTypes || []).reduce((sum, i) => sum + i.count, 0),
+              label: "Tenants",
+            }}
+            emptyTitle="No tenant type data"
+            emptyDescription="Tenant occupation data will appear once profiles are completed."
+          />
+        </ReportChartPanel>
+      </div>
 
       <ReportChartPanel
         title="Inventory table"
@@ -406,9 +471,10 @@ export default function AnalyticsOccupancyTab({
           loading={isLoading}
           pagination={{
             page,
-            pageSize: 10,
+            pageSize,
             total: filteredInventory.length,
             onPageChange: setPage,
+            onPageSizeChange: setPageSize,
           }}
           emptyState={{
             title: isError

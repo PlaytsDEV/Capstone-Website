@@ -25,6 +25,7 @@ import {
   useOperationsReport,
 } from "../../../shared/hooks/queries/useAnalyticsReports";
 import "../styles/design-tokens.css";
+import "../styles/admin-reports.css";
 import {
   AnalyticsBarChart,
   AnalyticsLineChart,
@@ -37,6 +38,7 @@ import {
 } from "./analyticsNavigation.mjs";
 import {
   RANGE_OPTIONS_SHORT,
+  CardFilterSelect,
   handlePdfExport,
 } from "./analyticsTabShared";
 import { buildRangeLabel, formatBranch, formatPeso } from "./reportCommon";
@@ -49,25 +51,27 @@ import AnalyticsMonitoringTab from "./AnalyticsMonitoringTab";
 import AnalyticsDemographicsTab from "./AnalyticsDemographicsTab";
 import { SurveyAnalyticsTab } from "./SurveyAnalyticsPage";
 
-// Inline styles matching the HTML
+// Inline styles matching system design tokens
 const styles = `
   .analytics-container {
     font-family: var(--font-sans, system-ui, sans-serif);
-    background: #f1f5f9);
+    background: var(--background, #f8fafc);
     color: var(--foreground, #1e293b);
     font-size: 13px;
     min-height: 100vh;
-    margin: 0px;        /* ← add */
-    padding: 0px;       /* ← add */
+    margin: 0px;
+    padding: 0px;
   }
 
   .analytics-topbar {
     background: var(--card, #ffffff);
-    border-bottom: 0.5px solid var(--border, #e2e8f0);
-    top: 0;
-    z-index: 10;
-    margin: 0;
-    padding: 16px 24px 0; /* ← add this */
+    border-bottom: 1px solid var(--border, #e2e8f0);
+    position: sticky;
+    top: calc(-1 * var(--spacing-page, 24px));
+    z-index: 40;
+    margin: calc(-1 * var(--spacing-page, 24px)) calc(-1 * var(--spacing-page, 24px)) 24px calc(-1 * var(--spacing-page, 24px));
+    padding: 16px 24px 0 24px;
+    box-shadow: 0 4px 12px -2px rgba(15, 23, 42, 0.08);
   }
 
   .analytics-topbar-row {
@@ -78,20 +82,24 @@ const styles = `
   }
 
   .analytics-topbar-title {
-    font-size: 18px;
-    font-weight: 500;
-    color: var(--foreground, #1e293b);
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--color-primary, #0a1628);
+    letter-spacing: -0.01em;
   }
 
   .analytics-topbar-sub {
     font-size: 12px;
     color: var(--muted-foreground, #64748b);
     margin-top: 2px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
 
   .analytics-topbar-actions {
     display: flex;
-    gap: 8px;
+    gap: 12px;
     align-items: center;
   }
 
@@ -103,55 +111,63 @@ const styles = `
 
   .analytics-filter-label {
     font-size: 12px;
+    font-weight: 500;
     color: var(--muted-foreground, #64748b);
   }
 
   .analytics-select {
     font-size: 12px;
-    padding: 5px 10px;
-    border: 0.5px solid var(--border, #e2e8f0);
+    font-weight: 500;
+    padding: 6px 12px;
+    border: 1px solid var(--border, #cbd5e1);
     border-radius: 6px;
     background: var(--card, #ffffff);
-    color: var(--foreground, #1e293b);
+    color: var(--foreground, #0f172a);
     cursor: pointer;
     outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
 
   .analytics-select:focus {
-    border-color: var(--info, #2563eb);
+    border-color: var(--color-primary, #0a1628);
+    box-shadow: 0 0 0 2px rgba(10, 22, 40, 0.1);
   }
 
   .analytics-btn {
     font-size: 12px;
-    padding: 5px 12px;
-    border: 0.5px solid var(--border, #e2e8f0);
+    font-weight: 600;
+    padding: 6px 14px;
+    border: 1px solid var(--border, #cbd5e1);
     border-radius: 6px;
     background: var(--card, #ffffff);
-    color: var(--foreground, #1e293b);
+    color: var(--foreground, #0f172a);
     cursor: pointer;
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: 6px;
+    transition: all 0.15s ease;
   }
 
   .analytics-btn:hover {
     background: var(--muted, #f1f5f9);
+    border-color: var(--border-hover, #94a3b8);
   }
 
   .analytics-btn-primary {
-    background: var(--info, #2563eb);
-    color: #fff;
-    border-color: var(--info, #2563eb);
+    background: var(--color-primary, #0a1628);
+    color: #ffffff;
+    border-color: var(--color-primary, #0a1628);
   }
 
   .analytics-btn-primary:hover {
-    background: var(--info-dark, #1e40af);
+    background: #11223b;
+    border-color: #11223b;
   }
 
   .analytics-tabs {
     display: flex;
     align-items: center;
-    gap: 0;
+    gap: 2px;
     border-bottom: 1px solid var(--border, #e2e8f0);
     margin-top: 12px;
     overflow-x: auto;
@@ -171,36 +187,25 @@ const styles = `
     color: var(--muted-foreground, #64748b);
     border-bottom: 2px solid transparent;
     transition: color .15s ease, border-color .15s ease, background .15s ease;
-    font-weight: 500;
+    font-weight: 600;
     display: inline-flex;
     align-items: center;
     gap: 7px;
     position: relative;
     text-transform: uppercase;
-    letter-spacing: .05em;
-  }
-
-  .analytics-tab:not(:last-child)::after {
-    content: "";
-    position: absolute;
-    right: 0;
-    top: 25%;
-    height: 50%;
-    width: 1px;
-    background: var(--border, #e2e8f0);
-    opacity: 0.6;
+    letter-spacing: .04em;
   }
 
   .analytics-tab:hover {
-    color: var(--foreground, #1e293b);
-    background: rgba(0, 0, 0, 0.02);
+    color: var(--color-primary, #0a1628);
+    background: rgba(10, 22, 40, 0.03);
   }
 
   .analytics-tab.active {
-    color: var(--primary, #d4af37);
-    border-bottom-color: var(--primary, #d4af37);
-    font-weight: 600;
-    background: rgba(212, 175, 55, 0.05);
+    color: var(--color-accent, #d4af37);
+    border-bottom-color: var(--color-accent, #d4af37);
+    font-weight: 700;
+    background: rgba(212, 175, 55, 0.06);
   }
 
   .analytics-tab-icon {
@@ -218,8 +223,7 @@ const styles = `
     width: 100%;
     padding: 24px;
     box-sizing: border-box;
-  }
-  min-width: 0;
+    min-width: 0;
   }
 
   .analytics-tab-content {
@@ -321,6 +325,10 @@ const styles = `
 
   .analytics-chart-card-header {
     padding: 14px 16px 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
   }
 
   .analytics-chart-card-title {
@@ -489,12 +497,20 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
   const requestedRange = searchParams.get("range");
   const requestedBranch = searchParams.get("branch");
 
+  const [overviewOccupancyRange, setOverviewOccupancyRange] = useState(null);
+  const [overviewBillingRange, setOverviewBillingRange] = useState(null);
+  const [overviewOperationsRange, setOverviewOperationsRange] = useState(null);
+
   const { range, branch } = normalizeAnalyticsSummaryState({
     requestedRange,
     requestedBranch,
     isOwner,
     userBranch: user?.branch || "gil-puyat",
   });
+
+  const activeOverviewOccupancyRange = overviewOccupancyRange || range;
+  const activeOverviewBillingRange = overviewBillingRange || range;
+  const activeOverviewOperationsRange = overviewOperationsRange || range;
 
   useEffect(() => {
     const tabInUrl = searchParams.get("tab") || "overview";
@@ -528,7 +544,7 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
     }
 
     if (!changed) return;
-    setSearchParams(nextParams, { replace: true });
+    setSearchParams(nextParams, { replace: true, preventScrollReset: true });
   }, [
     branch,
     clearLegacyOverview,
@@ -556,9 +572,33 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
     [branch, isOwner, range],
   );
 
-  const occupancyQuery = useOccupancyReport(sharedDayParams);
-  const billingQuery = useBillingReport(billingParams);
-  const operationsQuery = useOperationsReport(sharedDayParams);
+  const overviewOccupancyParams = useMemo(
+    () => ({
+      range: activeOverviewOccupancyRange,
+      ...(isOwner ? { branch } : {}),
+    }),
+    [branch, isOwner, activeOverviewOccupancyRange],
+  );
+
+  const overviewBillingParams = useMemo(
+    () => ({
+      range: getSummaryDetailRange("billing", activeOverviewBillingRange),
+      ...(isOwner ? { branch } : {}),
+    }),
+    [branch, isOwner, activeOverviewBillingRange],
+  );
+
+  const overviewOperationsParams = useMemo(
+    () => ({
+      range: activeOverviewOperationsRange,
+      ...(isOwner ? { branch } : {}),
+    }),
+    [branch, isOwner, activeOverviewOperationsRange],
+  );
+
+  const occupancyQuery = useOccupancyReport(overviewOccupancyParams);
+  const billingQuery = useBillingReport(overviewBillingParams);
+  const operationsQuery = useOperationsReport(overviewOperationsParams);
 
   const occupancyData = occupancyQuery.data;
   const billingData = billingQuery.data;
@@ -580,13 +620,13 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
   const handleRangeChange = (value) => {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set("range", value);
-    setSearchParams(nextParams, { replace: true });
+    setSearchParams(nextParams, { replace: true, preventScrollReset: true });
   };
 
   const handleBranchChange = (value) => {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set("branch", value);
-    setSearchParams(nextParams, { replace: true });
+    setSearchParams(nextParams, { replace: true, preventScrollReset: true });
   };
 
   const handleTabChange = (nextTab) => {
@@ -597,8 +637,9 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
     } else {
       nextParams.set("tab", nextTab);
     }
-    setSearchParams(nextParams, { replace: true });
+    setSearchParams(nextParams, { replace: true, preventScrollReset: true });
   };
+
 
   const surveyParams = new URLSearchParams(
     isOwner && branch !== "all" ? { branch } : {},
@@ -616,21 +657,6 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
     [branch, activeTab, range, isOwner],
   );
 
-  const handleGlobalExport = () => {
-    handlePdfExport({
-      title: "Analytics Executive Summary",
-      subtitle: `${branchLabel} • ${buildRangeLabel(range)}`,
-      filename: `analytics-executive-summary-${range}.pdf`,
-      reportType: "Executive Overview",
-      kpis: [
-        { label: "Occupancy Rate", value: occupancyKpis.occupancyRateLabel || "0%" },
-        { label: "Revenue Collected", value: billingKpis.collectedRevenueLabel || "PHP 0" },
-        { label: "Reservations", value: operationsKpis.reservations || 0 },
-        { label: "Maintenance Requests", value: operationsKpis.maintenanceRequests || 0 },
-      ],
-    });
-  };
-
   return (
     <div className="analytics-container">
       <style>{styles}</style>
@@ -643,39 +669,6 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
             <div className="analytics-topbar-sub">
               {branchLabel} • {buildRangeLabel(range)}
             </div>
-          </div>
-          <div className="analytics-topbar-actions">
-            <div className="analytics-filter-row">
-              <span className="analytics-filter-label">Range</span>
-              <select
-                className="analytics-select"
-                value={range}
-                onChange={(e) => handleRangeChange(e.target.value)}
-              >
-                {RANGE_OPTIONS_SHORT.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              {isOwner && (
-                <>
-                  <span className="analytics-filter-label">Branch</span>
-                  <select
-                    className="analytics-select"
-                    value={branch}
-                    onChange={(e) => handleBranchChange(e.target.value)}
-                  >
-                    <option value="all">All branches</option>
-                    <option value="gil-puyat">Gil Puyat</option>
-                    <option value="makati">Makati</option>
-                  </select>
-                </>
-              )}
-            </div>
-            <button className="analytics-btn analytics-btn-primary" onClick={handleGlobalExport}>
-              ↓ Export
-            </button>
           </div>
         </div>
         <div className="analytics-tabs">
@@ -805,10 +798,16 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
               <div className="analytics-charts-grid">
                 <div className="analytics-chart-card">
                   <div className="analytics-chart-card-header">
-                    <div className="analytics-chart-card-title">Occupancy trend</div>
-                    <div className="analytics-chart-card-sub">
-                      Daily rate — {buildRangeLabel(range).toLowerCase()}
+                    <div>
+                      <div className="analytics-chart-card-title">Occupancy trend</div>
+                      <div className="analytics-chart-card-sub">
+                        Daily rate — {buildRangeLabel(activeOverviewOccupancyRange).toLowerCase()}
+                      </div>
                     </div>
+                    <CardFilterSelect
+                      value={activeOverviewOccupancyRange}
+                      onChange={setOverviewOccupancyRange}
+                    />
                   </div>
                   <div className="analytics-chart-card-body">
                     <AnalyticsLineChart
@@ -827,8 +826,14 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
 
                 <div className="analytics-chart-card">
                   <div className="analytics-chart-card-header">
-                    <div className="analytics-chart-card-title">Revenue collections</div>
-                    <div className="analytics-chart-card-sub">Billed vs collected — monthly</div>
+                    <div>
+                      <div className="analytics-chart-card-title">Revenue collections</div>
+                      <div className="analytics-chart-card-sub">Billed vs collected — monthly</div>
+                    </div>
+                    <CardFilterSelect
+                      value={activeOverviewBillingRange}
+                      onChange={setOverviewBillingRange}
+                    />
                   </div>
                   <div className="analytics-chart-card-body">
                     <AnalyticsBarChart
@@ -851,8 +856,14 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
 
                 <div className="analytics-chart-card">
                   <div className="analytics-chart-card-header">
-                    <div className="analytics-chart-card-title">Reservation activity</div>
-                    <div className="analytics-chart-card-sub">Bookings per week</div>
+                    <div>
+                      <div className="analytics-chart-card-title">Reservation activity</div>
+                      <div className="analytics-chart-card-sub">Bookings per week</div>
+                    </div>
+                    <CardFilterSelect
+                      value={activeOverviewOperationsRange}
+                      onChange={setOverviewOperationsRange}
+                    />
                   </div>
                   <div className="analytics-chart-card-body">
                     <AnalyticsBarChart

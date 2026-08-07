@@ -16,6 +16,7 @@ import {
   AnalyticsTableToolbar,
   buildInsightPdfSections,
   buildBranchControl,
+  CardFilterSelect,
   ExportButtons,
   handleCsvExport,
   handlePdfExport,
@@ -28,8 +29,69 @@ import {
 const MAINTENANCE_COLUMNS = [
   { key: "requestId", label: "Request ID", sortable: true },
   { key: "typeLabel", label: "Type", sortable: true },
-  { key: "urgency", label: "Urgency", sortable: true },
-  { key: "status", label: "Status", sortable: true },
+  {
+    key: "urgency",
+    label: "Urgency",
+    sortable: true,
+    render: (row) => {
+      const val = String(row.urgency || "").toLowerCase();
+      const isUrgent = val === "emergency" || val === "high";
+      return (
+        <span
+          style={{
+            padding: "3px 10px",
+            borderRadius: "12px",
+            fontSize: "11px",
+            background: isUrgent ? "var(--danger-subtle, #fee2e2)" : "var(--info-subtle, #dbeafe)",
+            color: isUrgent ? "var(--danger-dark, #b91c1c)" : "var(--info-dark, #1e40af)",
+            fontWeight: 600,
+            border: isUrgent ? "1px solid rgba(185, 28, 28, 0.2)" : "1px solid rgba(30, 64, 175, 0.2)",
+            textTransform: "capitalize",
+          }}
+        >
+          {row.urgency || "Normal"}
+        </span>
+      );
+    },
+  },
+  {
+    key: "status",
+    label: "Status",
+    sortable: true,
+    render: (row) => {
+      const val = String(row.status || "").toLowerCase();
+      const isDone = val === "resolved" || val === "completed";
+      const isInProgress = val === "in_progress" || val === "in progress";
+      return (
+        <span
+          style={{
+            padding: "3px 10px",
+            borderRadius: "12px",
+            fontSize: "11px",
+            background: isDone
+              ? "var(--success-subtle, #dcfce7)"
+              : isInProgress
+              ? "var(--info-subtle, #dbeafe)"
+              : "var(--warning-subtle, #fef3c7)",
+            color: isDone
+              ? "var(--success-dark, #166534)"
+              : isInProgress
+              ? "var(--info-dark, #1e40af)"
+              : "var(--warning-dark, #92400e)",
+            fontWeight: 600,
+            border: isDone
+              ? "1px solid rgba(22, 101, 52, 0.2)"
+              : isInProgress
+              ? "1px solid rgba(30, 64, 175, 0.2)"
+              : "1px solid rgba(146, 64, 14, 0.2)",
+            textTransform: "capitalize",
+          }}
+        >
+          {row.status || "Pending"}
+        </span>
+      );
+    },
+  },
   { key: "branch", label: "Branch", render: (row) => formatBranch(row.branch) },
   { key: "createdAt", label: "Created", render: (row) => formatDateTime(row.createdAt) },
   {
@@ -37,7 +99,30 @@ const MAINTENANCE_COLUMNS = [
     label: "Resolution",
     render: (row) => (row.resolutionHours == null ? "-" : `${row.resolutionHours} hrs`),
   },
-  { key: "slaState", label: "SLA", sortable: true },
+  {
+    key: "slaState",
+    label: "SLA",
+    sortable: true,
+    render: (row) => {
+      const val = String(row.slaState || "").toLowerCase();
+      const isMet = val.includes("met");
+      return (
+        <span
+          style={{
+            padding: "3px 10px",
+            borderRadius: "12px",
+            fontSize: "11px",
+            background: isMet ? "var(--success-subtle, #dcfce7)" : "var(--danger-subtle, #fee2e2)",
+            color: isMet ? "var(--success-dark, #166534)" : "var(--danger-dark, #b91c1c)",
+            fontWeight: 600,
+            border: isMet ? "1px solid rgba(22, 101, 52, 0.2)" : "1px solid rgba(185, 28, 28, 0.2)",
+          }}
+        >
+          {row.slaState || "Pending SLA"}
+        </span>
+      );
+    },
+  },
 ];
 
 const EVENT_COLUMNS = [
@@ -59,6 +144,13 @@ export default function AnalyticsOperationsTab({
   const [searchQuery, setSearchQuery] = useState("");
   const [slaFilter, setSlaFilter] = useState("all");
   const [urgencyFilter, setUrgencyFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [pageSize, setPageSize] = useState(5);
+  const [eventPage, setEventPage] = useState(1);
+  const [eventsPageSize, setEventsPageSize] = useState(5);
+
+  const [resRange, setResRange] = useState(null);
+  const activeResRange = resRange || range;
 
   const params = useMemo(
     () => ({
@@ -68,7 +160,16 @@ export default function AnalyticsOperationsTab({
     [branch, isOwner, range],
   );
 
+  const resParams = useMemo(
+    () => ({
+      range: activeResRange,
+      ...(isOwner ? { branch } : {}),
+    }),
+    [branch, isOwner, activeResRange],
+  );
+
   const { data, isLoading, isError } = useOperationsReport(params);
+  const { data: resData } = useOperationsReport(resParams);
   const { data: auditData } = useAuditAnalytics(params);
 
   const {
@@ -84,7 +185,7 @@ export default function AnalyticsOperationsTab({
   const maintenanceIssues = unwrapTableRows(data?.tables?.maintenanceIssues);
   const reservations = Array.isArray(data?.tables?.reservations) ? data?.tables?.reservations : [];
   const inquiryWindows = Array.isArray(data?.tables?.peakInquiryWindows) ? data?.tables?.peakInquiryWindows : [];
-  const reservationsByPeriod = data?.series?.reservationsByPeriod || [];
+  const reservationsByPeriod = (resData || data)?.series?.reservationsByPeriod || [];
   const maintenanceByType = data?.series?.maintenanceByType || [];
   const maintenanceResolution = data?.series?.maintenanceResolution || [];
 
@@ -192,7 +293,6 @@ export default function AnalyticsOperationsTab({
         <AnalyticsToolbar
           title="Operations & Health Analytics"
           subtitle={`Scope: ${formatBranch(data?.scope?.branch || branch)} • ${buildRangeLabel(range)}`}
-          range={{ value: range, onChange: (value) => { setPage(1); onRangeChange(value); }, options: RANGE_OPTIONS_SHORT }}
           branch={buildBranchControl({
             isOwner,
             branch,
@@ -215,8 +315,17 @@ export default function AnalyticsOperationsTab({
         isError={isInsightError}
       />
 
-      <div className="admin-reports__grid">
-        <ReportChartPanel title="Reservation trend" subtitle="Reservation volume over the selected period">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <ReportChartPanel
+          title="Reservation trend"
+          subtitle="Reservation volume over the selected period"
+          actions={
+            <CardFilterSelect
+              value={activeResRange}
+              onChange={setResRange}
+            />
+          }
+        >
           <AnalyticsBarChart
             data={reservationsByPeriod.map((item) => ({ label: item.label, count: item.count }))}
             bars={[{ key: "count", label: "Reservations" }]}
@@ -235,7 +344,7 @@ export default function AnalyticsOperationsTab({
         </ReportChartPanel>
       </div>
 
-      <div className="admin-reports__grid">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <ReportChartPanel title="Inquiry timing" subtitle="Peak inquiry windows in two-hour blocks">
           <AnalyticsBarChart
             data={inquiryWindows.map((item) => ({ label: item.label, count: item.count }))}
@@ -316,9 +425,10 @@ export default function AnalyticsOperationsTab({
           loading={isLoading}
           pagination={{
             page,
-            pageSize: 10,
+            pageSize,
             total: filteredMaintenance.length,
             onPageChange: setPage,
+            onPageSizeChange: setPageSize,
           }}
           emptyState={{
             title: isError ? "Operations report unavailable" : "No maintenance issues",
@@ -342,12 +452,13 @@ export default function AnalyticsOperationsTab({
         >
           <DataTable
             columns={EVENT_COLUMNS}
-            data={recentSecurityEvents.slice(0, 10)}
+            data={recentSecurityEvents}
             pagination={{
-              page: 1,
-              pageSize: 10,
-              total: Math.min(10, recentSecurityEvents.length),
-              onPageChange: () => {},
+              page: eventPage,
+              pageSize: eventsPageSize,
+              total: recentSecurityEvents.length,
+              onPageChange: setEventPage,
+              onPageSizeChange: setEventsPageSize,
             }}
             emptyState={{
               title: "No audit events",

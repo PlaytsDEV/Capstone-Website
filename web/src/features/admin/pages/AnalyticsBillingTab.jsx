@@ -19,11 +19,13 @@ import {
   AnalyticsInsightSection,
   buildInsightPdfSections,
   buildBranchControl,
+  CardFilterSelect,
   ExportButtons,
   handleCsvExport,
   handlePdfExport,
   MetricGrid,
   RANGE_OPTIONS_LONG,
+  RANGE_OPTIONS_SHORT,
   unwrapTableRows,
   useReportInsights,
 } from "./analyticsTabShared";
@@ -32,17 +34,52 @@ const OVERDUE_COLUMNS = [
   { key: "tenantName", label: "Tenant", sortable: true },
   { key: "roomName", label: "Room", sortable: true },
   { key: "branch", label: "Branch", render: (row) => formatBranch(row.branch) },
-  { key: "status", label: "Status", sortable: true },
+  {
+    key: "status",
+    label: "Status",
+    sortable: true,
+    render: (row) => (
+      <span style={{ padding: "3px 10px", borderRadius: "12px", fontSize: "11px", background: "var(--danger-subtle, #fee2e2)", color: "var(--danger-dark, #b91c1c)", fontWeight: 600, border: "1px solid rgba(185, 28, 28, 0.2)" }}>
+        {row.status || "Overdue"}
+      </span>
+    ),
+  },
   {
     key: "dueDate",
     label: "Due Date",
     render: (row) => formatDate(row.dueDate),
   },
-  { key: "daysOverdue", label: "Days Overdue", sortable: true },
+  {
+    key: "daysOverdue",
+    label: "Days Overdue",
+    sortable: true,
+    render: (row) => {
+      const isCritical = (row.daysOverdue || 0) > 30;
+      return (
+        <span
+          style={{
+            padding: "3px 10px",
+            borderRadius: "12px",
+            fontSize: "11px",
+            background: isCritical ? "var(--danger-subtle, #fee2e2)" : "var(--warning-subtle, #fef3c7)",
+            color: isCritical ? "var(--danger-dark, #b91c1c)" : "var(--warning-dark, #92400e)",
+            fontWeight: 600,
+            border: isCritical ? "1px solid rgba(185, 28, 28, 0.2)" : "1px solid rgba(146, 64, 14, 0.2)",
+          }}
+        >
+          {row.daysOverdue} days
+        </span>
+      );
+    },
+  },
   {
     key: "balance",
     label: "Balance",
-    render: (row) => formatPeso(row.balance),
+    render: (row) => (
+      <span style={{ fontWeight: 700, color: "var(--color-primary, #0a1628)" }}>
+        {formatPeso(row.balance)}
+      </span>
+    ),
     sortable: true,
   },
 ];
@@ -57,6 +94,10 @@ export default function AnalyticsBillingTab({
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [pageSize, setPageSize] = useState(5);
+
+  const [revenueRange, setRevenueRange] = useState(null);
+  const activeRevenueRange = revenueRange || range;
 
   const params = useMemo(
     () => ({
@@ -66,7 +107,16 @@ export default function AnalyticsBillingTab({
     [branch, isOwner, range],
   );
 
+  const revenueParams = useMemo(
+    () => ({
+      range: activeRevenueRange,
+      ...(isOwner ? { branch } : {}),
+    }),
+    [branch, isOwner, activeRevenueRange],
+  );
+
   const { data, isLoading, isError } = useBillingReport(params);
+  const { data: revenueData } = useBillingReport(revenueParams);
   const { data: financialsData } = useFinancialsAnalytics(params);
   const {
     data: insightData,
@@ -82,7 +132,7 @@ export default function AnalyticsBillingTab({
   const unpaidBalances = Array.isArray(data?.tables?.unpaidBalances)
     ? data?.tables?.unpaidBalances
     : [];
-  const revenueByMonth = data?.series?.revenueByMonth || [];
+  const revenueByMonth = (revenueData || data)?.series?.revenueByMonth || [];
   const statusDistribution = data?.series?.statusDistribution || [];
   const overdueAging = data?.series?.overdueAging || [];
   const branchComparison = financialsData?.series?.branchComparison || [];
@@ -210,7 +260,6 @@ export default function AnalyticsBillingTab({
         <AnalyticsToolbar
           title="Billing & Revenue Analytics"
           subtitle={`Scope: ${formatBranch(data?.scope?.branch || branch)} • ${buildRangeLabel(range)}`}
-          range={{ value: range, onChange: (value) => { setPage(1); onRangeChange(value); }, options: RANGE_OPTIONS_LONG }}
           branch={buildBranchControl({
             isOwner,
             branch,
@@ -252,8 +301,18 @@ export default function AnalyticsBillingTab({
         </ReportChartPanel>
       )}
 
-      <div className="admin-reports__grid">
-        <ReportChartPanel title="Revenue by month" subtitle="Collected vs billed revenue across time">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <ReportChartPanel
+          title="Revenue by month"
+          subtitle="Collected vs billed revenue across time"
+          actions={
+            <CardFilterSelect
+              value={activeRevenueRange}
+              onChange={setRevenueRange}
+              options={RANGE_OPTIONS_LONG}
+            />
+          }
+        >
           <AnalyticsBarChart
             data={revenueByMonth.map((item) => ({
               label: item.label,
@@ -286,7 +345,7 @@ export default function AnalyticsBillingTab({
         </ReportChartPanel>
       </div>
 
-      <div className="admin-reports__grid">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <ReportChartPanel title="Overdue aging" subtitle="Unpaid balances bucketed by delay">
           <AnalyticsBarChart
             data={overdueAging.map((item) => ({
@@ -368,9 +427,10 @@ export default function AnalyticsBillingTab({
           loading={isLoading}
           pagination={{
             page,
-            pageSize: 10,
+            pageSize,
             total: filteredOverdue.length,
             onPageChange: setPage,
+            onPageSizeChange: setPageSize,
           }}
           emptyState={{
             title: isError ? "Billing report unavailable" : "No overdue accounts",

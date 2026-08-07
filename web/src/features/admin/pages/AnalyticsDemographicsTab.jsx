@@ -52,6 +52,8 @@ export default function AnalyticsDemographicsTab({
  const [drilldown, setDrilldown] = useState(null);
  const [drilldownPage, setDrilldownPage] = useState(1);
  const [drilldownSearch, setDrilldownSearch] = useState("");
+ const [pageSize, setPageSize] = useState(5);
+ const [drilldownPageSize, setDrilldownPageSize] = useState(5);
 
  const params = useMemo(
   () => ({
@@ -275,7 +277,7 @@ export default function AnalyticsDemographicsTab({
     isError={isInsightError}
    />
 
-   <div className="admin-reports__grid">
+   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
     <ReportChartPanel title="Occupation mix" subtitle="Student vs professional vs unspecified breakdown">
      <AnalyticsDonutChart
       data={occupationMix}
@@ -295,7 +297,7 @@ export default function AnalyticsDemographicsTab({
     </ReportChartPanel>
    </div>
 
-   <div className="admin-reports__grid">
+   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
     <ReportChartPanel title="Room type preferences" subtitle="What room types tenants prefer when booking">
      <AnalyticsDonutChart
       data={roomTypePref}
@@ -315,7 +317,7 @@ export default function AnalyticsDemographicsTab({
     </ReportChartPanel>
    </div>
 
-   <div className="admin-reports__grid">
+   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
     <ReportChartPanel title="Booking time of day" subtitle="When applicants create their reservations (2-hour windows)">
      <AnalyticsBarChart
       data={bookingByHour}
@@ -335,7 +337,7 @@ export default function AnalyticsDemographicsTab({
     </ReportChartPanel>
    </div>
 
-   <div className="admin-reports__grid">
+   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
     <ReportChartPanel title="Referral sources" subtitle="How confirmed tenants discovered Lilycrest">
      <AnalyticsDonutChart
       data={referralSources}
@@ -355,7 +357,7 @@ export default function AnalyticsDemographicsTab({
     </ReportChartPanel>
    </div>
 
-   <div className="admin-reports__grid">
+   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
     <ReportChartPanel title="Age distribution" subtitle="Age bracket breakdown from application birthday fields">
      <AnalyticsBarChart
       data={ageDistribution}
@@ -417,9 +419,10 @@ export default function AnalyticsDemographicsTab({
      loading={isLoading}
      pagination={{
       page,
-      pageSize: 10,
+      pageSize,
       total: filteredGeographicOrigin.length,
       onPageChange: setPage,
+      onPageSizeChange: setPageSize,
      }}
      emptyState={{
       title: isError ? "Demographics report unavailable" : "No geographic data",
@@ -459,9 +462,10 @@ export default function AnalyticsDemographicsTab({
      data={filteredDrilldownRows}
      pagination={{
       page: drilldownPage,
-      pageSize: 10,
+      pageSize: drilldownPageSize,
       total: filteredDrilldownRows.length,
       onPageChange: setDrilldownPage,
+      onPageSizeChange: setDrilldownPageSize,
      }}
      emptyState={{
       title: "No matching tenants",

@@ -44,6 +44,8 @@ export default function AnalyticsMonitoringTab({ branch, range, onBranchChange, 
  const [ipPage, setIpPage] = useState(1);
  const [searchQuery, setSearchQuery] = useState("");
  const [severityFilter, setSeverityFilter] = useState("all");
+ const [eventPageSize, setEventPageSize] = useState(5);
+ const [ipPageSize, setIpPageSize] = useState(5);
 
  const params = useMemo(() => ({ branch, range }), [branch, range]);
  const { data, isLoading, isError } = useAuditAnalytics(params);
@@ -204,7 +206,7 @@ export default function AnalyticsMonitoringTab({ branch, range, onBranchChange, 
  isError={isInsightError}
  />
 
- <div className="admin-reports__grid">
+ <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
  <ReportChartPanel title="Severity distribution" subtitle="Security and audit events by severity">
  <AnalyticsDonutChart
  data={severityDistribution.map((item) => ({
@@ -234,7 +236,7 @@ export default function AnalyticsMonitoringTab({ branch, range, onBranchChange, 
  </ReportChartPanel>
  </div>
 
- <div className="admin-reports__grid">
+ <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
   <ReportChartPanel title="Recent security events" subtitle="Latest owner-level security and audit activity">
    <AnalyticsTableToolbar
      searchQuery={searchQuery}
@@ -273,52 +275,54 @@ export default function AnalyticsMonitoringTab({ branch, range, onBranchChange, 
      }
    />
 
- <DataTable
- columns={EVENT_COLUMNS}
- data={filteredSecurityEvents}
- loading={isLoading}
- pagination={{
- page: eventPage,
- pageSize: 10,
- total: filteredSecurityEvents.length,
- onPageChange: setEventPage,
- }}
- emptyState={{
- title: isError ? "System monitoring unavailable" : "No recent security events",
- description: isError
- ? "The audit summary could not be loaded."
- : "No recent security activity matched the selected filter.",
- }}
- />
- </ReportChartPanel>
+  <DataTable
+  columns={EVENT_COLUMNS}
+  data={filteredSecurityEvents}
+  loading={isLoading}
+  pagination={{
+  page: eventPage,
+  pageSize: eventPageSize,
+  total: filteredSecurityEvents.length,
+  onPageChange: setEventPage,
+  onPageSizeChange: setEventPageSize,
+  }}
+  emptyState={{
+  title: isError ? "System monitoring unavailable" : "No recent security events",
+  description: isError
+  ? "The audit summary could not be loaded."
+  : "No recent security activity matched the selected filter.",
+  }}
+  />
+  </ReportChartPanel>
 
- <ReportChartPanel
- title="Suspicious IPs"
- subtitle="Failed login sources with repeated attempts"
- actions={
- <Link to="/admin/audit-logs" className="admin-reports__link">
- Open full audit log
- <ExternalLink size={14} />
- </Link>
- }
- >
- <DataTable
- columns={SUSPICIOUS_IP_COLUMNS}
- data={suspiciousIps}
- loading={isLoading}
- pagination={{
- page: ipPage,
- pageSize: 10,
- total: suspiciousIps.length,
- onPageChange: setIpPage,
- }}
- emptyState={{
- title: isError ? "Suspicious IP summary unavailable" : "No suspicious IPs",
- description: isError
- ? "The suspicious IP summary could not be loaded."
- : "No repeated failed-login IPs were found for this scope.",
- }}
- />
+  <ReportChartPanel
+  title="Suspicious IPs"
+  subtitle="Failed login sources with repeated attempts"
+  actions={
+  <Link to="/admin/audit-logs" className="admin-reports__link">
+  Open full audit log
+  <ExternalLink size={14} />
+  </Link>
+  }
+  >
+  <DataTable
+  columns={SUSPICIOUS_IP_COLUMNS}
+  data={suspiciousIps}
+  loading={isLoading}
+  pagination={{
+  page: ipPage,
+  pageSize: ipPageSize,
+  total: suspiciousIps.length,
+  onPageChange: setIpPage,
+  onPageSizeChange: setIpPageSize,
+  }}
+  emptyState={{
+  title: isError ? "Suspicious IP summary unavailable" : "No suspicious IPs",
+  description: isError
+  ? "The suspicious IP summary could not be loaded."
+  : "No repeated failed-login IPs were found for this scope.",
+  }}
+  />
  </ReportChartPanel>
  </div>
  </AnalyticsTabLayout>
