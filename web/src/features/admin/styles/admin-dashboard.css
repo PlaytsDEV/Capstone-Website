@@ -96,9 +96,9 @@
 }
 
 .admin-dashboard-section-title {
-  font-size: var(--font-size-md);
-  font-weight: 650;
-  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--foreground, #1e293b);
   margin: 0 0 14px;
   letter-spacing: -0.01em;
 }

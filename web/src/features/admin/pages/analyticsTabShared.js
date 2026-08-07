@@ -1,10 +1,89 @@
 import { useMemo } from "react";
-import { Download, FileDown } from "lucide-react";
+import { Download, FileDown, Search, Filter, RotateCcw } from "lucide-react";
 import { exportToCSV } from "../../../shared/utils/exportUtils";
 import { exportReportPdf } from "../../../shared/utils/reportPdf";
 import { OWNER_BRANCH_FILTER_OPTIONS } from "../../../shared/utils/constants";
 import { useAnalyticsInsights } from "../../../shared/hooks/queries/useAnalyticsReports";
 import { AnalyticsInsightPanel, ReportChartPanel, ReportMetricCard } from "../components/shared";
+
+/**
+ * Reusable table filter toolbar for Analytics tables.
+ * Provides high-contrast, gradient-free search and select dropdown controls with clean 1px borders.
+ */
+export function AnalyticsTableToolbar({
+  searchQuery = "",
+  onSearchChange,
+  searchPlaceholder = "Search...",
+  filters = [],
+  onResetFilters,
+  hasActiveFilters = false,
+  extraActions = null,
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 mb-4 p-3 bg-muted/40 border border-border rounded-xl">
+      <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[240px]">
+        {onSearchChange && (
+          <div className="relative flex-1 min-w-[200px] max-w-xs">
+            <Search
+              size={15}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+            />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              placeholder={searchPlaceholder}
+              className="w-full pl-9 pr-3 py-1.5 text-sm bg-background text-foreground border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all placeholder:text-muted-foreground"
+            />
+          </div>
+        )}
+
+        {filters.map((filter) => (
+          <div key={filter.key} className="flex items-center gap-2">
+            {filter.label && (
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                {filter.label}:
+              </span>
+            )}
+            <div className="relative">
+              <select
+                value={filter.value}
+                onChange={(e) => filter.onChange(e.target.value)}
+                className="appearance-none pl-3 pr-8 py-1.5 text-sm bg-background text-foreground border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all font-medium cursor-pointer"
+              >
+                {filter.options.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <Filter
+                size={12}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none opacity-60"
+              />
+            </div>
+          </div>
+        ))}
+
+        {hasActiveFilters && onResetFilters && (
+          <button
+            onClick={onResetFilters}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground bg-background hover:bg-muted border border-border rounded-lg transition-colors"
+            title="Reset filters"
+          >
+            <RotateCcw size={13} />
+            <span>Reset</span>
+          </button>
+        )}
+      </div>
+
+      {extraActions && (
+        <div className="flex items-center gap-2">{extraActions}</div>
+      )}
+    </div>
+  );
+}
+
 
 /**
  * Safely unwrap a table field from the analytics API.

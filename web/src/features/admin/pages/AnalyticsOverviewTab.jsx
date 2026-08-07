@@ -18,12 +18,14 @@ import {
 } from "../components/shared";
 import { buildRangeLabel, formatBranch, formatDate, formatDateTime } from "./reportCommon";
 import {
+ AnalyticsInsightSection,
  buildBranchControl,
  ExportButtons,
  handleCsvExport,
  handlePdfExport,
  MetricGrid,
  RANGE_OPTIONS_SHORT,
+ useReportInsights,
 } from "./analyticsTabShared";
 
 function ForecastCards({ forecast }) {
@@ -82,6 +84,15 @@ export default function AnalyticsOverviewTab({
  const { data: forecastData } = useOccupancyForecast({
  months: 3,
  ...(isOwner ? { branch } : {}),
+ });
+ const {
+ data: insightData,
+ isLoading: isInsightLoading,
+ isError: isInsightError,
+ } = useReportInsights({
+ reportType: "hub",
+ range,
+ branch: isOwner ? branch : undefined,
  });
 
  const kpis = data?.kpis || {};
@@ -191,7 +202,15 @@ export default function AnalyticsOverviewTab({
  />
  }
  >
- <MetricGrid items={metricCards} />
+  <MetricGrid items={metricCards} />
+
+  <AnalyticsInsightSection
+   reportLabel="overview"
+   summaryTitle="Executive Overview Summary"
+   data={insightData}
+   isLoading={isInsightLoading}
+   isError={isInsightError}
+  />
 
  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
  <ReportChartPanel

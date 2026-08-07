@@ -1842,6 +1842,21 @@ const buildLeaseDurationDistribution = (reservations) => {
   return brackets.map(({ label, count }) => ({ label, count }));
 };
 
+const buildGenderDistribution = (reservations) => {
+  const counts = { Male: 0, Female: 0, Unspecified: 0 };
+  for (const reservation of reservations) {
+    const rawGender = (reservation.gender || reservation.userId?.gender || "").toLowerCase().trim();
+    if (rawGender === "male") counts.Male += 1;
+    else if (rawGender === "female") counts.Female += 1;
+    else counts.Unspecified += 1;
+  }
+  return [
+    { label: "Male", value: counts.Male },
+    { label: "Female", value: counts.Female },
+    { label: "Unspecified", value: counts.Unspecified },
+  ];
+};
+
 const buildDemographicsReportData = async (scope, rangeKey, tableRequest = parseTableRequest()) => {
   const rangeMonths = parseReportMonths(rangeKey);
   const sinceDate = dayjs().subtract(rangeMonths, "month").startOf("day").toDate();
@@ -1864,10 +1879,10 @@ const buildDemographicsReportData = async (scope, rangeKey, tableRequest = parse
       })
         .select(
           "createdAt preferredRoomType referralSource workSchedule birthday " +
-          "leaseDuration educationLevel employment address maritalStatus nationality " +
+          "leaseDuration educationLevel employment address maritalStatus nationality gender " +
           "firstName lastName status roomId userId",
         )
-        .populate("userId", "firstName lastName email")
+        .populate("userId", "firstName lastName email gender")
         .populate("roomId", "name roomNumber branch type")
         .lean()
     : [];
@@ -1901,6 +1916,7 @@ const buildDemographicsReportData = async (scope, rangeKey, tableRequest = parse
   const topRoomType = roomTypePref.length > 0 ? roomTypePref[0].label : "N/A";
 
   const geographicRows = buildGeographicOriginRows(confirmedReservations);
+  const genderDistribution = buildGenderDistribution(confirmedReservations);
 
   // Build a concise tenant row for drill-down lists
   const formatTenantRow = (r) => ({
@@ -1951,6 +1967,7 @@ const buildDemographicsReportData = async (scope, rangeKey, tableRequest = parse
     },
     series: {
       occupationMix,
+      genderDistribution,
       reservationsByMonth,
       roomTypePreference: buildRoomTypePreferences(allReservations),
       bookingByHour: buildBookingByHour(allReservations),

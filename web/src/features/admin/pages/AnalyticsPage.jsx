@@ -3,14 +3,19 @@ import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import {
   BarChart3,
   Bed,
+  BedDouble,
+  Receipt,
   DollarSign,
   Shield,
+  ShieldAlert,
   TrendingUp,
   Wrench,
   LayoutGrid,
   PhilippinePeso,
   CalendarDays,
   ClipboardList,
+  Users,
+  PanelsTopLeft,
 } from "lucide-react";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { usePermissions } from "../../../shared/hooks/usePermissions";
@@ -32,8 +37,17 @@ import {
 } from "./analyticsNavigation.mjs";
 import {
   RANGE_OPTIONS_SHORT,
+  handlePdfExport,
 } from "./analyticsTabShared";
 import { buildRangeLabel, formatBranch, formatPeso } from "./reportCommon";
+import AnalyticsOccupancyTab from "./AnalyticsOccupancyTab";
+import AnalyticsBillingTab from "./AnalyticsBillingTab";
+import AnalyticsOperationsTab from "./AnalyticsOperationsTab";
+import AnalyticsConsolidatedTab from "./AnalyticsConsolidatedTab";
+import AnalyticsFinancialsTab from "./AnalyticsFinancialsTab";
+import AnalyticsMonitoringTab from "./AnalyticsMonitoringTab";
+import AnalyticsDemographicsTab from "./AnalyticsDemographicsTab";
+import { SurveyAnalyticsTab } from "./SurveyAnalyticsPage";
 
 // Inline styles matching the HTML
 const styles = `
@@ -136,156 +150,75 @@ const styles = `
 
   .analytics-tabs {
     display: flex;
+    align-items: center;
     gap: 0;
-    border-bottom: none;
+    border-bottom: 1px solid var(--border, #e2e8f0);
     margin-top: 12px;
     overflow-x: auto;
     white-space: nowrap;
+    scrollbar-width: none;
+  }
+  .analytics-tabs::-webkit-scrollbar {
+    display: none;
   }
 
   .analytics-tab {
-    font-size: 13px;
-    padding: 8px 16px;
+    font-size: 12px;
+    padding: 10px 18px;
     border: none;
-    background: none;
+    background: transparent;
     cursor: pointer;
     color: var(--muted-foreground, #64748b);
     border-bottom: 2px solid transparent;
-    transition: color .15s, border-color .15s;
-    font-weight: 400;
+    transition: color .15s ease, border-color .15s ease, background .15s ease;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    position: relative;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+
+  .analytics-tab:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    top: 25%;
+    height: 50%;
+    width: 1px;
+    background: var(--border, #e2e8f0);
+    opacity: 0.6;
   }
 
   .analytics-tab:hover {
     color: var(--foreground, #1e293b);
+    background: rgba(0, 0, 0, 0.02);
   }
 
- .analytics-tab.active {
-  color: var(--primary, #d4af37);
-  border-bottom-color: var(--primary, #d4af37);
-  font-weight: 500;
-}
+  .analytics-tab.active {
+    color: var(--primary, #d4af37);
+    border-bottom-color: var(--primary, #d4af37);
+    font-weight: 600;
+    background: rgba(212, 175, 55, 0.05);
+  }
+
+  .analytics-tab-icon {
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+  }
 
   .analytics-layout {
-    display: flex;
-  }
-
-  .analytics-sidebar {
-      width: 280px;
-  flex-shrink: 0;
-  background: var(--bg-sidebar, var(--card, #ffffff));
-  border-right: 0.5px solid var(--color-border-subtle, var(--border, #e2e8f0));
-  padding: 20px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  min-height: calc(100vh - 113px); /* adjust 113px to match your topbar height */
-  }
-
-  .analytics-sidebar-section-label {
-    font-size: var(--font-size-sm, 12px);
-    font-weight: 500;
-    color: var(--color-text-secondary, var(--muted-foreground, #64748b));
-    text-transform: uppercase;
-    letter-spacing: .06em;
-    margin-bottom: 8px;
-  }
-
-  .analytics-quick-links {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .analytics-quick-link {
+    display: block;
     width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    border: 1px solid var(--color-border-subtle, var(--border, #e2e8f0));
-    border-radius: var(--radius-md, 8px);
-    text-decoration: none;
-    background: var(--color-bg-surface, var(--card, #ffffff));
-    color: var(--color-text-primary, var(--foreground, #1e293b));
-    font-size: var(--font-size-md, 14px);
-    font-weight: var(--font-weight-medium, 500);
-    transition:
-      background var(--duration-fast, 0.15s) var(--ease-out, ease),
-      border-color var(--duration-fast, 0.15s) var(--ease-out, ease),
-      color var(--duration-fast, 0.15s) var(--ease-out, ease);
-  }
-
-.analytics-quick-link:hover {
-  background: var(--bg-hover, var(--muted, #f1f5f9));
-  border-color: #d4af37;
-  color: #d4af37;
-}
-
-  .analytics-quick-link-icon {
-    width: 18px;
-    height: 18px;
-    flex-shrink: 0;
-    color: var(--color-text-secondary, var(--muted-foreground, #64748b));
-  }
-
-  .analytics-quick-link:hover .analytics-quick-link-icon {
-  color: #d4af37;
-}
-
-  .analytics-quick-link-label {
-    line-height: 1.2;
-  }
-
-  .analytics-quick-link-tag {
-    margin-left: auto;
-    font-size: var(--font-size-xs, 11px);
-    font-weight: var(--font-weight-medium, 500);
-    color: var(--color-text-secondary, var(--muted-foreground, #64748b));
-    background: var(--status-neutral-bg, rgba(100, 116, 139, 0.1));
-    padding: 2px 6px;
-    border-radius: var(--radius-sm, 5px);
-  }
-
-  .analytics-quick-link.is-disabled {
-    opacity: 0.68;
-    cursor: not-allowed;
-    pointer-events: none;
-  }
-
-  .analytics-insight-card {
-    border-radius: 8px;
-    border: 0.5px solid;
-    padding: 10px 12px;
-    font-size: 12px;
-    line-height: 1.5;
-  }
-
-  .analytics-insight-card .ic-title {
-    font-weight: 500;
-    margin-bottom: 2px;
-  }
-
-  .analytics-insight-card.green {
-    background: var(--success-light, #dcfce7);
-    border-color: #bbf7d0;
-    color: var(--success-dark, #166534);
-  }
-
-  .analytics-insight-card.amber {
-    background: var(--warning-light, #fef3c7);
-    border-color: #fde68a;
-    color: var(--warning-dark, #92400e);
-  }
-
-  .analytics-insight-card.blue {
-    background: var(--info-light, #dbeafe);
-    border-color: #bfdbfe;
-    color: var(--info-dark, #1e40af);
   }
 
   .analytics-main {
-  flex: 1;
-  padding: 24px; /* keep or adjust as needed */
+    width: 100%;
+    padding: 24px;
+    box-sizing: border-box;
+  }
   min-width: 0;
   }
 
@@ -548,18 +481,27 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
   const { can } = usePermissions();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState("overview");
 
   const isOwner = user?.role === "owner";
   const canViewSurveyAnalytics = can("viewSurveyAnalytics");
+  const requestedTab = searchParams.get("tab") || "overview";
+  const [activeTab, setActiveTab] = useState(requestedTab);
   const requestedRange = searchParams.get("range");
   const requestedBranch = searchParams.get("branch");
+
   const { range, branch } = normalizeAnalyticsSummaryState({
     requestedRange,
     requestedBranch,
     isOwner,
     userBranch: user?.branch || "gil-puyat",
   });
+
+  useEffect(() => {
+    const tabInUrl = searchParams.get("tab") || "overview";
+    if (tabInUrl !== activeTab) {
+      setActiveTab(tabInUrl);
+    }
+  }, [searchParams, activeTab]);
 
   useEffect(() => {
     const nextParams = new URLSearchParams(searchParams);
@@ -635,12 +577,6 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
       branch,
   );
 
-  const hasPartialError = [
-    occupancyQuery.isError,
-    billingQuery.isError,
-    operationsQuery.isError,
-  ].some(Boolean);
-
   const handleRangeChange = (value) => {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set("range", value);
@@ -653,50 +589,47 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
     setSearchParams(nextParams, { replace: true });
   };
 
-  const occupancyRate = parseFloat(occupancyKpis.occupancyRateLabel || "0");
-  const isHighOccupancy = occupancyRate > 85;
-  const allDataLoaded = !hasPartialError;
+  const handleTabChange = (nextTab) => {
+    setActiveTab(nextTab);
+    const nextParams = new URLSearchParams(searchParams);
+    if (nextTab === "overview") {
+      nextParams.delete("tab");
+    } else {
+      nextParams.set("tab", nextTab);
+    }
+    setSearchParams(nextParams, { replace: true });
+  };
 
-  const occupancyDetailHref = buildAnalyticsDetailsHref({
-    tab: "occupancy",
-    range,
-    branch,
-    isOwner,
-  });
-  const billingDetailHref = buildAnalyticsDetailsHref({
-    tab: "billing",
-    range,
-    branch,
-    isOwner,
-  });
-  const operationsDetailHref = buildAnalyticsDetailsHref({
-    tab: "operations",
-    range,
-    branch,
-    isOwner,
-  });
-  const consolidatedDetailHref = buildAnalyticsDetailsHref({
-    tab: "consolidated",
-    range,
-    branch,
-    isOwner,
-  });
-  const financialsDetailHref = buildAnalyticsDetailsHref({
-    tab: "financials",
-    range,
-    branch,
-    isOwner,
-  });
-  const monitoringDetailHref = buildAnalyticsDetailsHref({
-    tab: "monitoring",
-    range,
-    branch,
-    isOwner,
-  });
   const surveyParams = new URLSearchParams(
     isOwner && branch !== "all" ? { branch } : {},
   );
   const surveyAnalyticsHref = `/admin/analytics/feedback-surveys${surveyParams.size ? `?${surveyParams}` : ""}`;
+
+  const detailSharedProps = useMemo(
+    () => ({
+      branch,
+      range: getSummaryDetailRange(activeTab, range),
+      isOwner,
+      onRangeChange: handleRangeChange,
+      onBranchChange: handleBranchChange,
+    }),
+    [branch, activeTab, range, isOwner],
+  );
+
+  const handleGlobalExport = () => {
+    handlePdfExport({
+      title: "Analytics Executive Summary",
+      subtitle: `${branchLabel} • ${buildRangeLabel(range)}`,
+      filename: `analytics-executive-summary-${range}.pdf`,
+      reportType: "Executive Overview",
+      kpis: [
+        { label: "Occupancy Rate", value: occupancyKpis.occupancyRateLabel || "0%" },
+        { label: "Revenue Collected", value: billingKpis.collectedRevenueLabel || "PHP 0" },
+        { label: "Reservations", value: operationsKpis.reservations || 0 },
+        { label: "Maintenance Requests", value: operationsKpis.maintenanceRequests || 0 },
+      ],
+    });
+  };
 
   return (
     <div className="analytics-container">
@@ -740,7 +673,7 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
                 </>
               )}
             </div>
-            <button className="analytics-btn analytics-btn-primary">
+            <button className="analytics-btn analytics-btn-primary" onClick={handleGlobalExport}>
               ↓ Export
             </button>
           </div>
@@ -748,467 +681,286 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
         <div className="analytics-tabs">
           <button
             className={`analytics-tab ${activeTab === "overview" ? "active" : ""}`}
-            onClick={() => setActiveTab("overview")}
+            onClick={() => handleTabChange("overview")}
           >
+            <LayoutGrid className="analytics-tab-icon" />
             Overview
           </button>
           <button
             className={`analytics-tab ${activeTab === "occupancy" ? "active" : ""}`}
-            onClick={() => setActiveTab("occupancy")}
+            onClick={() => handleTabChange("occupancy")}
           >
+            <BedDouble className="analytics-tab-icon" />
             Occupancy
           </button>
           <button
-            className={`analytics-tab ${activeTab === "revenue" ? "active" : ""}`}
-            onClick={() => setActiveTab("revenue")}
+            className={`analytics-tab ${activeTab === "revenue" || activeTab === "billing" ? "active" : ""}`}
+            onClick={() => handleTabChange("revenue")}
           >
-            Revenue
+            <Receipt className="analytics-tab-icon" />
+            Billing &amp; Revenue
           </button>
           <button
             className={`analytics-tab ${activeTab === "operations" ? "active" : ""}`}
-            onClick={() => setActiveTab("operations")}
+            onClick={() => handleTabChange("operations")}
           >
+            <Wrench className="analytics-tab-icon" />
             Operations
+          </button>
+          <button
+            className={`analytics-tab ${activeTab === "demographics" ? "active" : ""}`}
+            onClick={() => handleTabChange("demographics")}
+          >
+            <Users className="analytics-tab-icon" />
+            Demographics
           </button>
           {canViewSurveyAnalytics && (
             <button
-              className="analytics-tab"
-              onClick={() => navigate(surveyAnalyticsHref)}
+              className={`analytics-tab ${activeTab === "surveys" || activeTab === "feedback-surveys" ? "active" : ""}`}
+              onClick={() => handleTabChange("surveys")}
             >
+              <ClipboardList className="analytics-tab-icon" />
               Feedback &amp; Surveys
+            </button>
+          )}
+          {isOwner && (
+            <button
+              className={`analytics-tab ${activeTab === "consolidated" ? "active" : ""}`}
+              onClick={() => handleTabChange("consolidated")}
+            >
+              <PanelsTopLeft className="analytics-tab-icon" />
+              Consolidated
             </button>
           )}
         </div>
       </div>
 
       <div className="analytics-layout">
-        {/* Sidebar */}
-        <aside className="analytics-sidebar">
-          <div>
-            <div className="analytics-sidebar-section-label">Insights</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              {isHighOccupancy && (
-                <div className="analytics-insight-card green">
-                  <div className="ic-title">High occupancy</div>
-                  Above 85% — consider reviewing pricing.
-                </div>
-              )}
-              {allDataLoaded && (
-                <div className="analytics-insight-card blue">
-                  <div className="ic-title">All data loaded</div>
-                  All three reports loaded successfully.
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="analytics-divider"></div>
-          <div>
-            <div className="analytics-sidebar-section-label">Quick links</div>
-            <div className="analytics-quick-links">
-              <a
-                href={occupancyDetailHref}
-                className="analytics-quick-link"
-              >
-                <Bed className="analytics-quick-link-icon" aria-hidden="true" />
-                <span className="analytics-quick-link-label">Occupancy Analytics</span>
-              </a>
-              <a
-                href={billingDetailHref}
-                className="analytics-quick-link"
-              >
-                <DollarSign className="analytics-quick-link-icon" aria-hidden="true" />
-                <span className="analytics-quick-link-label">Billing Analytics</span>
-              </a>
-              <a
-                href={operationsDetailHref}
-                className="analytics-quick-link"
-              >
-                <Wrench className="analytics-quick-link-icon" aria-hidden="true" />
-                <span className="analytics-quick-link-label">Operations Analytics</span>
-              </a>
-              <a
-                href={consolidatedDetailHref}
-                className={`analytics-quick-link ${!isOwner ? "is-disabled" : ""}`}
-                aria-disabled={!isOwner}
-              >
-                <BarChart3 className="analytics-quick-link-icon" aria-hidden="true" />
-                <span className="analytics-quick-link-label">Consolidated Reports</span>
-                {!isOwner && <span className="analytics-quick-link-tag">Owner</span>}
-              </a>
-              {canViewSurveyAnalytics && (
-                <a
-                  href={surveyAnalyticsHref}
-                  className="analytics-quick-link"
-                >
-                  <ClipboardList className="analytics-quick-link-icon" aria-hidden="true" />
-                  <span className="analytics-quick-link-label">Feedback &amp; Surveys</span>
-                </a>
-              )}
-              <a
-                href={financialsDetailHref}
-                className={`analytics-quick-link ${!isOwner ? "is-disabled" : ""}`}
-                aria-disabled={!isOwner}
-              >
-                <TrendingUp className="analytics-quick-link-icon" aria-hidden="true" />
-                <span className="analytics-quick-link-label">Financial Analytics</span>
-                {!isOwner && <span className="analytics-quick-link-tag">Owner</span>}
-              </a>
-              <a
-                href={monitoringDetailHref}
-                className={`analytics-quick-link ${!isOwner ? "is-disabled" : ""}`}
-                aria-disabled={!isOwner}
-              >
-                <Shield className="analytics-quick-link-icon" aria-hidden="true" />
-                <span className="analytics-quick-link-label">System Monitoring</span>
-                {!isOwner && <span className="analytics-quick-link-tag">Owner</span>}
-              </a>
-            </div>
-          </div>
-        </aside>
-
         {/* Main Content */}
         <main className="analytics-main">
           {/* Overview Tab */}
-          <div className={`analytics-tab-content ${activeTab === "overview" ? "active" : ""}`}>
-            <div className="analytics-kpi-grid">
-              <div className="analytics-kpi-card">
-                <div className="analytics-kpi-icon blue">
-                    <Bed size={15} strokeWidth={1.5} />
-                </div>
-                <div className="analytics-kpi-label">Occupancy rate</div>
-                <div className="analytics-kpi-value">
-                  {occupancyQuery.isLoading ? "..." : occupancyKpis.occupancyRateLabel || "0%"}
-                </div>
-                <div className="analytics-kpi-change up">↑ 5.2% vs prev period</div>
-              </div>
-              <div className="analytics-kpi-card">
-                <div className="analytics-kpi-icon green">
-                     <PhilippinePeso size={15} strokeWidth={1.5} />
-                </div>
-                <div className="analytics-kpi-label">Revenue collected</div>
-                <div className="analytics-kpi-value">
-                  {billingQuery.isLoading
-                    ? "..."
-                    : billingKpis.collectedRevenueLabel?.replace("PHP ", "₱") || "₱0"}
-                </div>
-                <div className="analytics-kpi-change up">↑ 12.3% vs prev period</div>
-              </div>
-              <div className="analytics-kpi-card">
-                <div className="analytics-kpi-icon amber">
-                    <CalendarDays size={15} strokeWidth={1.5} />
-                </div>
-                <div className="analytics-kpi-label">Reservations</div>
-                <div className="analytics-kpi-value">
-                  {operationsQuery.isLoading ? "..." : operationsKpis.reservations || 0}
-                </div>
-                <div className="analytics-kpi-change up">↑ 8.1% vs prev period</div>
-              </div>
-              <div className="analytics-kpi-card">
-                <div className="analytics-kpi-icon purple">
-                  <Wrench size={15} strokeWidth={1.5} />
-                </div>
-                <div className="analytics-kpi-label">Maintenance</div>
-                <div className="analytics-kpi-value">
-                  {operationsQuery.isLoading ? "..." : operationsKpis.maintenanceRequests || 0}
-                </div>
-                <div className="analytics-kpi-change down">↓ 4.2% vs prev period</div>
-              </div>
-            </div>
-
-            <div className="analytics-charts-grid">
-              <div className="analytics-chart-card">
-                <div className="analytics-chart-card-header">
-                  <div className="analytics-chart-card-title">Occupancy trend</div>
-                  <div className="analytics-chart-card-sub">
-                    Daily rate — {buildRangeLabel(range).toLowerCase()}
-                  </div>
-                </div>
-                <div className="analytics-chart-card-body">
-                  <AnalyticsLineChart
-                    data={occupancyTrend.map((item) => ({
-                      label: item.label,
-                      occupancy: item.totalRate,
-                    }))}
-                    lines={[{ key: "occupancy", label: "Occupancy rate" }]}
-                    height={140}
-                    valueFormatter={(value) => `${value}%`}
-                    emptyTitle="No occupancy data"
-                    emptyDescription="Data will appear once available."
-                  />
-                </div>
-              </div>
-
-              <div className="analytics-chart-card">
-                <div className="analytics-chart-card-header">
-                  <div className="analytics-chart-card-title">Revenue collections</div>
-                  <div className="analytics-chart-card-sub">Billed vs collected — monthly</div>
-                </div>
-                <div className="analytics-chart-card-body">
-                  <AnalyticsBarChart
-                    data={revenueByMonth.map((item) => ({
-                      label: item.label,
-                      collected: item.collectedRevenue,
-                      billed: item.billedAmount,
-                    }))}
-                    bars={[
-                      { key: "collected", label: "Collected", color: "#16a34a" },
-                      { key: "billed", label: "Billed", color: "#0f766e" },
-                    ]}
-                    height={120}
-                    valueFormatter={(value) => formatPeso(value)}
-                    emptyTitle="No billing data"
-                    emptyDescription="Data will appear once available."
-                  />
-                </div>
-              </div>
-
-              <div className="analytics-chart-card">
-                <div className="analytics-chart-card-header">
-                  <div className="analytics-chart-card-title">Reservation activity</div>
-                  <div className="analytics-chart-card-sub">Bookings per week</div>
-                </div>
-                <div className="analytics-chart-card-body">
-                  <AnalyticsBarChart
-                    data={reservationsByPeriod.map((item) => ({
-                      label: item.label,
-                      count: item.count,
-                    }))}
-                    bars={[{ key: "count", label: "Reservations", color: "#f59e0b" }]}
-                    height={120}
-                    emptyTitle="No reservation data"
-                    emptyDescription="Data will appear once available."
-                  />
-                </div>
-              </div>
-
-              <div className="analytics-chart-card">
-                <div className="analytics-chart-card-header">
-                  <div className="analytics-chart-card-title">Period comparison</div>
-                  <div className="analytics-chart-card-sub">Current vs previous period</div>
-                </div>
-                <div className="analytics-chart-card-body">
-                  <div className="analytics-metric-row">
-                    <div>
-                      <div className="analytics-metric-row-label">Occupancy rate</div>
-                      <div className="analytics-metric-row-sub">vs previous period</div>
-                    </div>
-                    <div>
-                      <div className="analytics-metric-row-val">
-                        {occupancyKpis.occupancyRateLabel || "0%"}
-                      </div>
-                      <div
-                        className="analytics-metric-row-change"
-                        style={{ color: "var(--success)" }}
-                      >
-                        ↑ 12 pp
-                      </div>
-                    </div>
-                  </div>
-                  <div className="analytics-metric-row">
-                    <div>
-                      <div className="analytics-metric-row-label">Revenue collected</div>
-                      <div className="analytics-metric-row-sub">vs previous period</div>
-                    </div>
-                    <div>
-                      <div className="analytics-metric-row-val">
-                        {billingKpis.collectedRevenueLabel?.replace("PHP ", "₱") || "₱0"}
-                      </div>
-                      <div
-                        className="analytics-metric-row-change"
-                        style={{ color: "var(--success)" }}
-                      >
-                        ↑ 24%
-                      </div>
-                    </div>
-                  </div>
-                  <div className="analytics-metric-row">
-                    <div>
-                      <div className="analytics-metric-row-label">Reservations</div>
-                      <div className="analytics-metric-row-sub">vs previous period</div>
-                    </div>
-                    <div>
-                      <div className="analytics-metric-row-val">
-                        {operationsKpis.reservations || 0}
-                      </div>
-                      <div
-                        className="analytics-metric-row-change"
-                        style={{ color: "var(--success)" }}
-                      >
-                        ↑ 14
-                      </div>
-                    </div>
-                  </div>
-                  <div className="analytics-metric-row">
-                    <div>
-                      <div className="analytics-metric-row-label">Maintenance</div>
-                      <div className="analytics-metric-row-sub">vs previous period</div>
-                    </div>
-                    <div>
-                      <div className="analytics-metric-row-val">
-                        {operationsKpis.maintenanceRequests || 0}
-                      </div>
-                      <div
-                        className="analytics-metric-row-change"
-                        style={{ color: "var(--danger)" }}
-                      >
-                        ↓ 3
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Occupancy Tab */}
-          <div className={`analytics-tab-content ${activeTab === "occupancy" ? "active" : ""}`}>
-            <div className="analytics-hero-banner blue">
-              <div>
-                <div className="analytics-hero-banner-val">
-                  {occupancyQuery.isLoading ? "..." : occupancyKpis.occupancyRateLabel || "0%"}
-                </div>
-                <div className="analytics-hero-banner-label">Current occupancy rate</div>
-                <div style={{ fontSize: "12px", color: "var(--info)", marginTop: "6px" }}>
-                  ↑ 5.2% from previous period
-                </div>
-              </div>
-              <div className="analytics-hero-banner-icon">⊞</div>
-            </div>
-            <div className="analytics-chart-card">
-              <div className="analytics-chart-card-header">
-                <div className="analytics-chart-card-title">Occupancy trend — detailed</div>
-                <div className="analytics-chart-card-sub">
-                  Daily rate for {buildRangeLabel(range).toLowerCase()}
-                </div>
-              </div>
-              <div className="analytics-chart-card-body">
-                <AnalyticsLineChart
-                  data={occupancyTrend.map((item) => ({
-                    label: item.label,
-                    occupancy: item.totalRate,
-                  }))}
-                  lines={[{ key: "occupancy", label: "Occupancy rate" }]}
-                  height={200}
-                  valueFormatter={(value) => `${value}%`}
-                  emptyTitle="No occupancy trend"
-                  emptyDescription="The selected scope does not yet have sufficient occupancy history."
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Revenue Tab */}
-          <div className={`analytics-tab-content ${activeTab === "revenue" ? "active" : ""}`}>
-            <div className="analytics-hero-banner green">
-              <div>
-                <div className="analytics-hero-banner-val">
-                  {billingQuery.isLoading
-                    ? "..."
-                    : billingKpis.collectedRevenueLabel?.replace("PHP ", "₱") || "₱0"}
-                </div>
-                <div className="analytics-hero-banner-label">Total revenue collected</div>
-                <div style={{ fontSize: "12px", color: "var(--success)", marginTop: "6px" }}>
-                  ↑ 12.3% from previous period
-                </div>
-              </div>
-              <div className="analytics-hero-banner-icon">₱</div>
-            </div>
-            <div className="analytics-chart-card">
-              <div className="analytics-chart-card-header">
-                <div className="analytics-chart-card-title">Revenue breakdown</div>
-                <div className="analytics-chart-card-sub">
-                  Billed vs collected — {buildRangeLabel(billingParams.range).toLowerCase()}
-                </div>
-              </div>
-              <div className="analytics-chart-card-body">
-                <AnalyticsBarChart
-                  data={revenueByMonth.map((item) => ({
-                    label: item.label,
-                    collected: item.collectedRevenue,
-                    billed: item.billedAmount,
-                  }))}
-                  bars={[
-                    { key: "collected", label: "Collected", color: "#16a34a" },
-                    { key: "billed", label: "Billed", color: "#0f766e" },
-                  ]}
-                  height={180}
-                  valueFormatter={(value) => formatPeso(value)}
-                  emptyTitle="No billing collection data"
-                  emptyDescription="Collection history will appear once billing data is available for this scope."
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Operations Tab */}
-          <div className={`analytics-tab-content ${activeTab === "operations" ? "active" : ""}`}>
-            <div className="analytics-hero-banner amber">
-              <div>
-                <div className="analytics-hero-banner-val">
-                  {operationsQuery.isLoading ? "..." : operationsKpis.reservations || 0}
-                </div>
-                <div className="analytics-hero-banner-label">Total reservations</div>
+          {activeTab === "overview" && (
+            <div className="analytics-tab-content active">
+              <div className="analytics-kpi-grid">
                 <div
-                  style={{ fontSize: "12px", color: "var(--warning-dark)", marginTop: "6px" }}
+                  className="analytics-kpi-card"
+                  style={{ cursor: "pointer" }}
+                  onClick={() => handleTabChange("occupancy")}
                 >
-                  ↑ 8.1% from previous period
+                  <div className="analytics-kpi-icon blue">
+                    <Bed size={15} strokeWidth={1.5} />
+                  </div>
+                  <div className="analytics-kpi-label">Occupancy rate</div>
+                  <div className="analytics-kpi-value">
+                    {occupancyQuery.isLoading ? "..." : occupancyKpis.occupancyRateLabel || "0%"}
+                  </div>
+                  <div className="analytics-kpi-change up">↑ 5.2% vs prev period</div>
+                </div>
+                <div
+                  className="analytics-kpi-card"
+                  style={{ cursor: "pointer" }}
+                  onClick={() => handleTabChange("revenue")}
+                >
+                  <div className="analytics-kpi-icon green">
+                    <PhilippinePeso size={15} strokeWidth={1.5} />
+                  </div>
+                  <div className="analytics-kpi-label">Revenue collected</div>
+                  <div className="analytics-kpi-value">
+                    {billingQuery.isLoading
+                      ? "..."
+                      : billingKpis.collectedRevenueLabel?.replace("PHP ", "₱") || "₱0"}
+                  </div>
+                  <div className="analytics-kpi-change up">↑ 12.3% vs prev period</div>
+                </div>
+                <div
+                  className="analytics-kpi-card"
+                  style={{ cursor: "pointer" }}
+                  onClick={() => handleTabChange("operations")}
+                >
+                  <div className="analytics-kpi-icon amber">
+                    <CalendarDays size={15} strokeWidth={1.5} />
+                  </div>
+                  <div className="analytics-kpi-label">Reservations</div>
+                  <div className="analytics-kpi-value">
+                    {operationsQuery.isLoading ? "..." : operationsKpis.reservations || 0}
+                  </div>
+                  <div className="analytics-kpi-change up">↑ 8.1% vs prev period</div>
+                </div>
+                <div
+                  className="analytics-kpi-card"
+                  style={{ cursor: "pointer" }}
+                  onClick={() => handleTabChange("operations")}
+                >
+                  <div className="analytics-kpi-icon purple">
+                    <Wrench size={15} strokeWidth={1.5} />
+                  </div>
+                  <div className="analytics-kpi-label">Maintenance</div>
+                  <div className="analytics-kpi-value">
+                    {operationsQuery.isLoading ? "..." : operationsKpis.maintenanceRequests || 0}
+                  </div>
+                  <div className="analytics-kpi-change down">↓ 4.2% vs prev period</div>
                 </div>
               </div>
-              <div className="analytics-hero-banner-icon"><CalendarDays size={24} /></div>
-            </div>
-            <div className="analytics-charts-grid">
-              <div className="analytics-chart-card">
-                <div className="analytics-chart-card-header">
-                  <div className="analytics-chart-card-title">Reservation trends</div>
-                  <div className="analytics-chart-card-sub">Bookings per week</div>
-                </div>
-                <div className="analytics-chart-card-body">
-                  <AnalyticsBarChart
-                    data={reservationsByPeriod.map((item) => ({
-                      label: item.label,
-                      count: item.count,
-                    }))}
-                    bars={[{ key: "count", label: "Reservations", color: "#f59e0b" }]}
-                    height={160}
-                    emptyTitle="No reservation trend"
-                    emptyDescription="Reservation activity will appear once data is available for the selected period."
-                  />
-                </div>
-              </div>
-              <div className="analytics-chart-card">
-                <div className="analytics-chart-card-header">
-                  <div className="analytics-chart-card-title">Maintenance overview</div>
-                  <div className="analytics-chart-card-sub">Active requests</div>
-                </div>
-                <div className="analytics-chart-card-body">
-                  <div style={{ textAlign: "center", padding: "16px 0" }}>
-                    <div style={{ fontSize: "48px", fontWeight: "500", color: "#7c3aed" }}>
-                      {operationsQuery.isLoading ? "..." : operationsKpis.maintenanceRequests || 0}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "12px",
-                        color: "var(--muted-foreground)",
-                        marginTop: "4px",
-                      }}
-                    >
-                      Active requests
+
+              <div className="analytics-charts-grid">
+                <div className="analytics-chart-card">
+                  <div className="analytics-chart-card-header">
+                    <div className="analytics-chart-card-title">Occupancy trend</div>
+                    <div className="analytics-chart-card-sub">
+                      Daily rate — {buildRangeLabel(range).toLowerCase()}
                     </div>
                   </div>
-                  <div className="analytics-maint-grid">
-                    <div className="analytics-maint-box green">
-                      <div className="analytics-maint-val">12</div>
-                      <div className="analytics-maint-sub">Resolved this week</div>
+                  <div className="analytics-chart-card-body">
+                    <AnalyticsLineChart
+                      data={occupancyTrend.map((item) => ({
+                        label: item.label,
+                        occupancy: item.totalRate,
+                      }))}
+                      lines={[{ key: "occupancy", label: "Occupancy rate" }]}
+                      height={140}
+                      valueFormatter={(value) => `${value}%`}
+                      emptyTitle="No occupancy data"
+                      emptyDescription="Data will appear once available."
+                    />
+                  </div>
+                </div>
+
+                <div className="analytics-chart-card">
+                  <div className="analytics-chart-card-header">
+                    <div className="analytics-chart-card-title">Revenue collections</div>
+                    <div className="analytics-chart-card-sub">Billed vs collected — monthly</div>
+                  </div>
+                  <div className="analytics-chart-card-body">
+                    <AnalyticsBarChart
+                      data={revenueByMonth.map((item) => ({
+                        label: item.label,
+                        collected: item.collectedRevenue,
+                        billed: item.billedAmount,
+                      }))}
+                      bars={[
+                        { key: "collected", label: "Collected", color: "#16a34a" },
+                        { key: "billed", label: "Billed", color: "#0f766e" },
+                      ]}
+                      height={120}
+                      valueFormatter={(value) => formatPeso(value)}
+                      emptyTitle="No billing data"
+                      emptyDescription="Data will appear once available."
+                    />
+                  </div>
+                </div>
+
+                <div className="analytics-chart-card">
+                  <div className="analytics-chart-card-header">
+                    <div className="analytics-chart-card-title">Reservation activity</div>
+                    <div className="analytics-chart-card-sub">Bookings per week</div>
+                  </div>
+                  <div className="analytics-chart-card-body">
+                    <AnalyticsBarChart
+                      data={reservationsByPeriod.map((item) => ({
+                        label: item.label,
+                        count: item.count,
+                      }))}
+                      bars={[{ key: "count", label: "Reservations", color: "#f59e0b" }]}
+                      height={120}
+                      emptyTitle="No reservation data"
+                      emptyDescription="Data will appear once available."
+                    />
+                  </div>
+                </div>
+
+                <div className="analytics-chart-card">
+                  <div className="analytics-chart-card-header">
+                    <div className="analytics-chart-card-title">Period comparison</div>
+                    <div className="analytics-chart-card-sub">Current vs previous period</div>
+                  </div>
+                  <div className="analytics-chart-card-body">
+                    <div className="analytics-metric-row">
+                      <div>
+                        <div className="analytics-metric-row-label">Occupancy rate</div>
+                        <div className="analytics-metric-row-sub">vs previous period</div>
+                      </div>
+                      <div>
+                        <div className="analytics-metric-row-val">
+                          {occupancyKpis.occupancyRateLabel || "0%"}
+                        </div>
+                        <div
+                          className="analytics-metric-row-change"
+                          style={{ color: "var(--success)" }}
+                        >
+                          ↑ 12 pp
+                        </div>
+                      </div>
                     </div>
-                    <div className="analytics-maint-box amber">
-                      <div className="analytics-maint-val">5</div>
-                      <div className="analytics-maint-sub">Avg. resolution days</div>
+                    <div className="analytics-metric-row">
+                      <div>
+                        <div className="analytics-metric-row-label">Revenue collected</div>
+                        <div className="analytics-metric-row-sub">vs previous period</div>
+                      </div>
+                      <div>
+                        <div className="analytics-metric-row-val">
+                          {billingKpis.collectedRevenueLabel?.replace("PHP ", "₱") || "₱0"}
+                        </div>
+                        <div
+                          className="analytics-metric-row-change"
+                          style={{ color: "var(--success)" }}
+                        >
+                          ↑ 24%
+                        </div>
+                      </div>
+                    </div>
+                    <div className="analytics-metric-row">
+                      <div>
+                        <div className="analytics-metric-row-label">Reservations</div>
+                        <div className="analytics-metric-row-sub">vs previous period</div>
+                      </div>
+                      <div>
+                        <div className="analytics-metric-row-val">
+                          {operationsKpis.reservations || 0}
+                        </div>
+                        <div
+                          className="analytics-metric-row-change"
+                          style={{ color: "var(--success)" }}
+                        >
+                          ↑ 14
+                        </div>
+                      </div>
+                    </div>
+                    <div className="analytics-metric-row">
+                      <div>
+                        <div className="analytics-metric-row-label">Maintenance</div>
+                        <div className="analytics-metric-row-sub">vs previous period</div>
+                      </div>
+                      <div>
+                        <div className="analytics-metric-row-val">
+                          {operationsKpis.maintenanceRequests || 0}
+                        </div>
+                        <div
+                          className="analytics-metric-row-change"
+                          style={{ color: "var(--danger)" }}
+                        >
+                          ↓ 3
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
+
+          {/* Detailed Reports Render */}
+          {activeTab === "occupancy" && <AnalyticsOccupancyTab {...detailSharedProps} />}
+          {(activeTab === "revenue" || activeTab === "billing" || activeTab === "financials") && (
+            <AnalyticsBillingTab {...detailSharedProps} />
+          )}
+          {(activeTab === "operations" || activeTab === "monitoring") && (
+            <AnalyticsOperationsTab {...detailSharedProps} />
+          )}
+          {activeTab === "demographics" && <AnalyticsDemographicsTab {...detailSharedProps} />}
+          {(activeTab === "surveys" || activeTab === "feedback-surveys") && (
+            <SurveyAnalyticsTab />
+          )}
+          {activeTab === "consolidated" && <AnalyticsConsolidatedTab {...detailSharedProps} />}
         </main>
       </div>
     </div>
@@ -1216,17 +968,5 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
 }
 
 export default function AnalyticsPageFinal() {
-  const [searchParams] = useSearchParams();
-  const legacyTab = searchParams.get("tab");
-
-  if (legacyTab && legacyTab !== "overview") {
-    return (
-      <Navigate
-        to={`${ANALYTICS_DETAILS_PATH}?${searchParams.toString()}`}
-        replace
-      />
-    );
-  }
-
-  return <AnalyticsFinalLayout clearLegacyOverview={legacyTab === "overview"} />;
+  return <AnalyticsFinalLayout />;
 }

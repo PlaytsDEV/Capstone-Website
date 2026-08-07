@@ -16,8 +16,18 @@ html:has(.admin-layout) body {
   height: 100vh;
   background: var(--bg-page);
   font-family: var(--font-family);
+  font-size: var(--font-size-base, 13px);
+  line-height: 1.5;
+  color: var(--foreground, #1e293b);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+.admin-layout button,
+.admin-layout input,
+.admin-layout select,
+.admin-layout textarea {
+  font-family: var(--font-family);
 }
 
 /* Content shifts based on sidebar state */
@@ -73,9 +83,9 @@ html:has(.admin-layout) body {
 }
 
 .admin-topbar-title {
-  font-size: var(--font-size-xl);
-  font-weight: 600;
-  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--foreground, #1e293b);
   margin: 0;
   letter-spacing: -0.02em;
 }
@@ -85,9 +95,10 @@ html:has(.admin-layout) body {
 }
 
 .admin-topbar-subtitle {
-  margin: 4px 0 0;
-  color: var(--text-secondary);
-  font-size: var(--font-size-base);
+  margin: 2px 0 0;
+  color: var(--muted-foreground, #64748b);
+  font-size: 12px;
+  font-weight: 400;
   max-width: 720px;
 }
 

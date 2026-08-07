@@ -1,5 +1,6 @@
 const DEVICE_ID_KEY = "lilycrest_device_id";
 const SESSION_ESTABLISHED_KEY = "lilycrest_session_established";
+const SESSION_ID_KEY = "lilycrest_session_id";
 const OTP_PENDING_KEY = "lilycrest_otp_pending";
 const LOGIN_IN_PROGRESS_KEY = "lilycrest_login_in_progress";
 
@@ -19,16 +20,22 @@ export const getDeviceId = () => {
   return deviceId;
 };
 
+export const getSessionId = () =>
+  sessionStorage.getItem(SESSION_ID_KEY) || "";
+
 export const hasApplicationSession = () =>
   sessionStorage.getItem(SESSION_ESTABLISHED_KEY) === "1";
 
-export const markApplicationSession = () => {
+export const markApplicationSession = (sessionId = "") => {
   sessionStorage.setItem(SESSION_ESTABLISHED_KEY, "1");
+  if (sessionId && typeof sessionId === "string") {
+    sessionStorage.setItem(SESSION_ID_KEY, sessionId);
+  }
 };
 
 export const clearApplicationSession = () => {
   sessionStorage.removeItem(SESSION_ESTABLISHED_KEY);
-  // Remove the former browser-readable session value during migration.
+  sessionStorage.removeItem(SESSION_ID_KEY);
   localStorage.removeItem("lilycrest_session_id");
 };
 
@@ -59,6 +66,10 @@ export const clearLoginInProgress = () => {
 export const isLoginInProgress = () =>
   sessionStorage.getItem(LOGIN_IN_PROGRESS_KEY) === "1";
 
-export const getSessionHeaders = () => ({
-  "x-device-id": getDeviceId(),
-});
+export const getSessionHeaders = () => {
+  const sessionId = getSessionId();
+  return {
+    "x-device-id": getDeviceId(),
+    ...(sessionId ? { "x-session-id": sessionId } : {}),
+  };
+};

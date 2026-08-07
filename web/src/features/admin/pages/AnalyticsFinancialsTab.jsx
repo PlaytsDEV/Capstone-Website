@@ -11,6 +11,7 @@ import {
 import { buildRangeLabel, formatBranch, formatPeso } from "./reportCommon";
 import {
  AnalyticsInsightSection,
+ AnalyticsTableToolbar,
  buildInsightPdfSections,
  ExportButtons,
  handleCsvExport,
@@ -36,6 +37,9 @@ const OVERDUE_ROOM_COLUMNS = [
 
 export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, onRangeChange }) {
  const [page, setPage] = useState(1);
+ const [searchQuery, setSearchQuery] = useState("");
+ const [exposureFilter, setExposureFilter] = useState("all");
+
  const params = useMemo(() => ({ branch, range }), [branch, range]);
  const { data, isLoading, isError } = useFinancialsAnalytics(params);
  const {
@@ -49,9 +53,26 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
  });
  const branchComparison = data?.series?.branchComparison || [];
  const revenueByMonth = data?.series?.revenueByMonth || [];
+ const overdueAging = data?.series?.overdueAging || [];
  const overdueAccounts = data?.tables?.overdueRooms;
  const overdueRooms = unwrapTableRows(overdueAccounts);
- const overdueRoomsPagination = overdueAccounts?.pagination;
+ const overdueRoomsPagination = overdueAccounts?.pagination || { total: 0 };
+
+ const filteredOverdueRooms = useMemo(() => {
+   return overdueRooms.filter((item) => {
+     const matchSearch =
+       !searchQuery ||
+       (item.roomName && String(item.roomName).toLowerCase().includes(searchQuery.toLowerCase())) ||
+       (item.branch && String(item.branch).toLowerCase().includes(searchQuery.toLowerCase()));
+
+     const matchExposure =
+       exposureFilter === "all" ||
+       (exposureFilter === "multiple" && (item.overdueCount ?? 0) > 1) ||
+       (exposureFilter === "single" && (item.overdueCount ?? 0) === 1);
+
+     return matchSearch && matchExposure;
+   });
+ }, [overdueRooms, searchQuery, exposureFilter]);
 
  const metricCards = [
  { label: "Collected", value: data?.kpis?.collectedRevenueLabel || "PHP 0", tone: "green" },
@@ -235,22 +256,56 @@ export default function AnalyticsFinancialsTab({ branch, range, onBranchChange, 
  </div>
 
  <ReportChartPanel title="Overdue exposure tables" subtitle="Rooms carrying the highest unpaid balance">
+ <AnalyticsTableToolbar
+ searchQuery={searchQuery}
+ onSearchChange={(val) => {
+   setSearchQuery(val);
+   setPage(1);
+ }}
+ searchPlaceholder="Search room or branch..."
+ filters={[
+   {
+     key: "exposureFilter",
+     label: "Exposure Level",
+     value: exposureFilter,
+     onChange: (val) => {
+       setExposureFilter(val);
+       setPage(1);
+     },
+     options: [
+       { value: "all", label: "All Overdue Rooms" },
+       { value: "single", label: "Single Overdue Bill" },
+       { value: "multiple", label: "Multiple Overdue Bills (Critical)" },
+     ],
+   },
+ ]}
+ hasActiveFilters={Boolean(searchQuery || exposureFilter !== "all")}
+ onResetFilters={() => {
+   setSearchQuery("");
+   setExposureFilter("all");
+   setPage(1);
+ }}
+ extraActions={
+   <span className="text-xs font-medium text-muted-foreground">
+     Showing {filteredOverdueRooms.length} of {overdueRooms.length} rooms
+   </span>
+ }
+ />
  <DataTable
  columns={OVERDUE_ROOM_COLUMNS}
- data={overdueRooms}
+ data={filteredOverdueRooms}
  loading={isLoading}
- serverPagination
  pagination={{
  page,
  pageSize: 10,
- total: overdueRoomsPagination.total,
+ total: filteredOverdueRooms.length,
  onPageChange: setPage,
  }}
  emptyState={{
  title: isError ? "Financial overview unavailable" : "No overdue rooms",
  description: isError
  ? "The financial overview could not be loaded."
- : "No overdue room exposure was found for the selected scope.",
+ : "No overdue room exposure was found for the selected filter.",
  }}
  />
  </ReportChartPanel>

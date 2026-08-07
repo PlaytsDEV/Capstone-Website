@@ -13,6 +13,7 @@ import {
 import { buildRangeLabel, formatBranch } from "./reportCommon";
 import {
  AnalyticsInsightSection,
+ AnalyticsTableToolbar,
  buildInsightPdfSections,
  buildBranchControl,
  ExportButtons,
@@ -46,8 +47,11 @@ export default function AnalyticsDemographicsTab({
  onRangeChange,
 }) {
  const [page, setPage] = useState(1);
+ const [geoSearch, setGeoSearch] = useState("");
+ const [geoMinCount, setGeoMinCount] = useState("all");
  const [drilldown, setDrilldown] = useState(null);
  const [drilldownPage, setDrilldownPage] = useState(1);
+ const [drilldownSearch, setDrilldownSearch] = useState("");
 
  const params = useMemo(
   () => ({
@@ -70,6 +74,7 @@ export default function AnalyticsDemographicsTab({
  const kpis = data?.kpis || {};
  const kpiDetails = data?.kpiDetails || {};
  const occupationMix = data?.series?.occupationMix || [];
+ const genderDistribution = data?.series?.genderDistribution || [];
  const reservationsByMonth = data?.series?.reservationsByMonth || [];
  const roomTypePref = data?.series?.roomTypePreference || [];
  const bookingByHour = data?.series?.bookingByHour || [];
@@ -80,9 +85,37 @@ export default function AnalyticsDemographicsTab({
  const leaseDuration = data?.series?.leaseDuration || [];
  const geographicOrigin = unwrapTableRows(data?.tables?.geographicOrigin);
 
+ const filteredGeographicOrigin = useMemo(() => {
+  return geographicOrigin.filter((item) => {
+   const matchSearch =
+    !geoSearch ||
+    (item.province && String(item.province).toLowerCase().includes(geoSearch.toLowerCase())) ||
+    (item.city && String(item.city).toLowerCase().includes(geoSearch.toLowerCase()));
+
+   const count = Number(item.count || 0);
+   const matchCount =
+    geoMinCount === "all" ||
+    (geoMinCount === "5+" && count >= 5) ||
+    (geoMinCount === "2+" && count >= 2);
+
+   return matchSearch && matchCount;
+  });
+ }, [geographicOrigin, geoSearch, geoMinCount]);
+
+ const filteredDrilldownRows = useMemo(() => {
+  if (!drilldown?.rows) return [];
+  if (!drilldownSearch) return drilldown.rows;
+  return drilldown.rows.filter((row) =>
+   (row.name && String(row.name).toLowerCase().includes(drilldownSearch.toLowerCase())) ||
+   (row.room && String(row.room).toLowerCase().includes(drilldownSearch.toLowerCase())) ||
+   (row.roomType && String(row.roomType).toLowerCase().includes(drilldownSearch.toLowerCase()))
+  );
+ }, [drilldown?.rows, drilldownSearch]);
+
  const openDrilldown = (title, rows, subtitle) => {
   setDrilldown({ title, rows: rows || [], subtitle });
   setDrilldownPage(1);
+  setDrilldownSearch("");
  };
 
  const metricCards = [
@@ -178,6 +211,15 @@ export default function AnalyticsDemographicsTab({
      })),
     },
     {
+     title: "Gender Distribution",
+     type: "table",
+     headers: ["Gender", "Tenants"],
+     rows: genderDistribution.map((item) => ({
+      Gender: item.label,
+      Tenants: item.value,
+     })),
+    },
+    {
      title: "Reservation Volume by Month",
      type: "table",
      headers: ["Month", "Reservations"],
@@ -243,6 +285,17 @@ export default function AnalyticsDemographicsTab({
      />
     </ReportChartPanel>
 
+    <ReportChartPanel title="Gender distribution" subtitle="Resident gender ratio (Male vs Female vs Unspecified)">
+     <AnalyticsDonutChart
+      data={genderDistribution}
+      centerLabel={{ value: genderDistribution.reduce((sum, item) => sum + item.value, 0), label: "Tenants" }}
+      emptyTitle="No gender data"
+      emptyDescription="Gender demographic distribution will appear as tenants register."
+     />
+    </ReportChartPanel>
+   </div>
+
+   <div className="admin-reports__grid">
     <ReportChartPanel title="Room type preferences" subtitle="What room types tenants prefer when booking">
      <AnalyticsDonutChart
       data={roomTypePref}
@@ -251,16 +304,16 @@ export default function AnalyticsDemographicsTab({
       emptyDescription="Room type preferences will appear once reservations include preferred room type."
      />
     </ReportChartPanel>
-   </div>
 
-   <ReportChartPanel title="Peak reservation months" subtitle="Which months have the most reservation activity (all reservations)">
-    <AnalyticsBarChart
-     data={reservationsByMonth}
-     bars={[{ key: "count", label: "Reservations" }]}
-     emptyTitle="No monthly data"
-     emptyDescription="Monthly reservation volumes will appear once booking history exists."
-    />
-   </ReportChartPanel>
+    <ReportChartPanel title="Peak reservation months" subtitle="Which months have the most reservation activity (all reservations)">
+     <AnalyticsBarChart
+      data={reservationsByMonth}
+      bars={[{ key: "count", label: "Reservations" }]}
+      emptyTitle="No monthly data"
+      emptyDescription="Monthly reservation volumes will appear once booking history exists."
+     />
+    </ReportChartPanel>
+   </div>
 
    <div className="admin-reports__grid">
     <ReportChartPanel title="Booking time of day" subtitle="When applicants create their reservations (2-hour windows)">
@@ -323,49 +376,98 @@ export default function AnalyticsDemographicsTab({
    </div>
 
    <ReportChartPanel title="Geographic origin" subtitle="Where tenants come from — top provinces and cities">
+    <AnalyticsTableToolbar
+     searchQuery={geoSearch}
+     onSearchChange={(val) => {
+      setGeoSearch(val);
+      setPage(1);
+     }}
+     searchPlaceholder="Search province or city..."
+     filters={[
+      {
+       key: "geoMinCount",
+       label: "Minimum Count",
+       value: geoMinCount,
+       onChange: (val) => {
+        setGeoMinCount(val);
+        setPage(1);
+       },
+       options: [
+        { value: "all", label: "All Origins" },
+        { value: "2+", label: "2+ Tenants" },
+        { value: "5+", label: "5+ Tenants (Major Origin)" },
+       ],
+      },
+     ]}
+     hasActiveFilters={Boolean(geoSearch || geoMinCount !== "all")}
+     onResetFilters={() => {
+      setGeoSearch("");
+      setGeoMinCount("all");
+      setPage(1);
+     }}
+     extraActions={
+      <span className="text-xs font-medium text-muted-foreground">
+       Showing {filteredGeographicOrigin.length} of {geographicOrigin.length} locations
+      </span>
+     }
+    />
     <DataTable
      columns={GEO_COLUMNS}
-     data={geographicOrigin}
+     data={filteredGeographicOrigin}
      loading={isLoading}
      pagination={{
       page,
       pageSize: 10,
-      total: geographicOrigin.length,
+      total: filteredGeographicOrigin.length,
       onPageChange: setPage,
      }}
      emptyState={{
       title: isError ? "Demographics report unavailable" : "No geographic data",
       description: isError
        ? "The demographics report could not be loaded."
-       : "Geographic origin data requires address details in tenant applications.",
+       : "No locations match the selected filter.",
      }}
     />
    </ReportChartPanel>
 
-   {/* KPI Drill-Down Modal */}
    <DetailDrawer
-    open={Boolean(drilldown)}
+    isOpen={Boolean(drilldown)}
     onClose={() => setDrilldown(null)}
-    title={drilldown?.title || "Details"}
+    title={drilldown?.title || "Tenant Breakdown"}
     subtitle={drilldown?.subtitle}
-    width={840}
    >
-    {drilldown && (
-     <DataTable
-      columns={DRILLDOWN_COLUMNS}
-      data={drilldown.rows}
-      pagination={{
-       page: drilldownPage,
-       pageSize: 8,
-       total: drilldown.rows.length,
-       onPageChange: setDrilldownPage,
-      }}
-      emptyState={{
-       title: "No records",
-       description: "No tenant records match this category.",
-      }}
-     />
-    )}
+    <AnalyticsTableToolbar
+     searchQuery={drilldownSearch}
+     onSearchChange={(val) => {
+      setDrilldownSearch(val);
+      setDrilldownPage(1);
+     }}
+     searchPlaceholder="Search tenant name, room, or type..."
+     hasActiveFilters={Boolean(drilldownSearch)}
+     onResetFilters={() => {
+      setDrilldownSearch("");
+      setDrilldownPage(1);
+     }}
+     extraActions={
+      <span className="text-xs font-medium text-muted-foreground">
+       {filteredDrilldownRows.length} tenants found
+      </span>
+     }
+    />
+    <DataTable
+     columns={DRILLDOWN_COLUMNS}
+     data={filteredDrilldownRows}
+     pagination={{
+      page: drilldownPage,
+      pageSize: 10,
+      total: filteredDrilldownRows.length,
+      onPageChange: setDrilldownPage,
+     }}
+     emptyState={{
+      title: "No matching tenants",
+      description: drilldownSearch ? "No tenants match your search filter." : "No tenant records found.",
+     }}
+    />
    </DetailDrawer>
   </AnalyticsTabLayout>
  );

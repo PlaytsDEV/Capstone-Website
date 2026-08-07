@@ -17,7 +17,7 @@ import {
   describeSocketTarget,
 } from "../api/socketConfig";
 import { getFreshToken } from "../api/httpClient";
-import { getDeviceId } from "../api/authSession";
+import { getDeviceId, getSessionId } from "../api/authSession";
 import { showNotification } from "../utils/notification";
 import {
   getNotificationQueryScope,
@@ -58,7 +58,7 @@ export default function useSocketClient() {
       if (cancelled || !token || socketRef.current?.connected) return;
 
       const socket = io(SOCKET_BASE_URL, {
-        auth: { token, deviceId: getDeviceId() },
+        auth: { token, deviceId: getDeviceId(), sessionId: getSessionId() },
         ...SOCKET_CLIENT_OPTIONS,
       });
 

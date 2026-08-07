@@ -179,7 +179,7 @@ describe("authentication identity safety", () => {
     const res = { ...response(), cookie: jest.fn() };
     await login(req, res, jest.fn());
     expect(res.statusCode).toBe(200);
-    expect(res.body).not.toHaveProperty("sessionId");
+    expect(res.body).toHaveProperty("sessionId", "opaque-test-session");
     expect(res.body.user).not.toHaveProperty("firebaseUid");
     expect(res.cookie).toHaveBeenCalledWith(
       "lilycrest_web_session",

@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
-import { useBillingReport } from "../../../shared/hooks/queries/useAnalyticsReports";
+import { useBillingReport, useFinancialsAnalytics } from "../../../shared/hooks/queries/useAnalyticsReports";
 import {
   AnalyticsBarChart,
+  AnalyticsComparisonChart,
   AnalyticsDonutChart,
   AnalyticsTabLayout,
   AnalyticsToolbar,
@@ -54,6 +55,9 @@ export default function AnalyticsBillingTab({
   onRangeChange,
 }) {
   const [page, setPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+
   const params = useMemo(
     () => ({
       range,
@@ -61,7 +65,9 @@ export default function AnalyticsBillingTab({
     }),
     [branch, isOwner, range],
   );
+
   const { data, isLoading, isError } = useBillingReport(params);
+  const { data: financialsData } = useFinancialsAnalytics(params);
   const {
     data: insightData,
     isLoading: isInsightLoading,
@@ -71,6 +77,7 @@ export default function AnalyticsBillingTab({
     range,
     branch: isOwner ? branch : undefined,
   });
+
   const overdueAccounts = unwrapTableRows(data?.tables?.overdueAccounts);
   const unpaidBalances = Array.isArray(data?.tables?.unpaidBalances)
     ? data?.tables?.unpaidBalances
@@ -78,11 +85,27 @@ export default function AnalyticsBillingTab({
   const revenueByMonth = data?.series?.revenueByMonth || [];
   const statusDistribution = data?.series?.statusDistribution || [];
   const overdueAging = data?.series?.overdueAging || [];
+  const branchComparison = financialsData?.series?.branchComparison || [];
   const insight = insightData?.insight;
+
+  const filteredOverdue = useMemo(() => {
+    return overdueAccounts.filter((item) => {
+      const matchSearch =
+        !searchQuery ||
+        (item.tenantName && String(item.tenantName).toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (item.roomName && String(item.roomName).toLowerCase().includes(searchQuery.toLowerCase()));
+
+      const matchStatus =
+        statusFilter === "all" ||
+        (item.status && String(item.status).toLowerCase() === statusFilter.toLowerCase());
+
+      return matchSearch && matchStatus;
+    });
+  }, [overdueAccounts, searchQuery, statusFilter]);
 
   const metricCards = [
     {
-      label: "Collected",
+      label: "Collected Revenue",
       value: data?.kpis?.collectedRevenueLabel || "PHP 0",
       tone: "green",
     },
@@ -92,7 +115,7 @@ export default function AnalyticsBillingTab({
       tone: "blue",
     },
     {
-      label: "Outstanding",
+      label: "Outstanding Overdue",
       value: data?.kpis?.outstandingBalanceLabel || "PHP 0",
       tone: "rose",
     },
@@ -105,36 +128,15 @@ export default function AnalyticsBillingTab({
 
   const exportCsv = () => {
     handleCsvExport(
-      unpaidBalances,
+      overdueAccounts,
       [
         { key: "tenantName", label: "Tenant" },
         { key: "roomName", label: "Room" },
-        {
-          key: "branch",
-          label: "Branch",
-          formatter: (value) => formatBranch(value),
-        },
+        { key: "branch", label: "Branch", formatter: (value) => formatBranch(value) },
         { key: "status", label: "Status" },
-        {
-          key: "billingMonth",
-          label: "Billing Month",
-          formatter: (value) => formatDate(value),
-        },
-        {
-          key: "dueDate",
-          label: "Due Date",
-          formatter: (value) => formatDate(value),
-        },
-        {
-          key: "paidAmount",
-          label: "Paid",
-          formatter: (value) => formatPeso(value),
-        },
-        {
-          key: "balance",
-          label: "Balance",
-          formatter: (value) => formatPeso(value),
-        },
+        { key: "dueDate", label: "Due Date", formatter: (value) => formatDate(value) },
+        { key: "daysOverdue", label: "Days Overdue" },
+        { key: "balance", label: "Balance", formatter: (value) => formatPeso(value) },
       ],
       `billing-report-${range}`,
     );
@@ -142,7 +144,7 @@ export default function AnalyticsBillingTab({
 
   const exportPdf = () => {
     handlePdfExport({
-      title: "Billing & Collections Report",
+      title: "Billing & Revenue Analytics",
       subtitle: `${buildRangeLabel(range)} • ${formatBranch(data?.scope?.branch || branch)}`,
       filename: `billing-report-${range}.pdf`,
       reportType: "Billing",
@@ -168,16 +170,7 @@ export default function AnalyticsBillingTab({
       },
       sections: [
         {
-          title: "Status distribution",
-          type: "table",
-          headers: ["Status", "Count"],
-          rows: statusDistribution.map((item) => ({
-            Status: item.status || item.label || "Unknown",
-            Count: item.count || 0,
-          })),
-        },
-        {
-          title: "Monthly Collections",
+          title: "Revenue by Month",
           type: "table",
           headers: ["Month", "Collected", "Billed"],
           rows: revenueByMonth.map((item) => ({
@@ -187,15 +180,24 @@ export default function AnalyticsBillingTab({
           })),
         },
         {
-          title: "Top Outstanding Bills",
+          title: "Overdue Aging",
           type: "table",
-          headers: ["Tenant", "Room", "Balance", "Due Date", "Status"],
-          rows: unpaidBalances.slice(0, 12).map((item) => ({
+          headers: ["Aging Bracket", "Outstanding Amount"],
+          rows: overdueAging.map((item) => ({
+            "Aging Bracket": item.label,
+            "Outstanding Amount": formatPeso(item.amount),
+          })),
+        },
+        {
+          title: "Top Overdue Accounts",
+          type: "table",
+          headers: ["Tenant", "Room", "Branch", "Balance", "Days Overdue"],
+          rows: overdueAccounts.slice(0, 10).map((item) => ({
             Tenant: item.tenantName || "-",
             Room: item.roomName || "-",
+            Branch: formatBranch(item.branch),
             Balance: formatPeso(item.balance),
-            "Due Date": formatDate(item.dueDate),
-            Status: item.status || "-",
+            "Days Overdue": item.daysOverdue || 0,
           })),
         },
       ],
@@ -206,16 +208,9 @@ export default function AnalyticsBillingTab({
     <AnalyticsTabLayout
       header={
         <AnalyticsToolbar
-          title="Billing Analytics"
+          title="Billing & Revenue Analytics"
           subtitle={`Scope: ${formatBranch(data?.scope?.branch || branch)} • ${buildRangeLabel(range)}`}
-          range={{
-            value: range,
-            onChange: (value) => {
-              setPage(1);
-              onRangeChange(value);
-            },
-            options: RANGE_OPTIONS_LONG,
-          }}
+          range={{ value: range, onChange: (value) => { setPage(1); onRangeChange(value); }, options: RANGE_OPTIONS_LONG }}
           branch={buildBranchControl({
             isOwner,
             branch,
@@ -232,17 +227,33 @@ export default function AnalyticsBillingTab({
 
       <AnalyticsInsightSection
         reportLabel="billing"
-        summaryTitle="Billing Summary"
+        summaryTitle="Billing & Financial Summary"
         data={insightData}
         isLoading={isInsightLoading}
         isError={isInsightError}
       />
 
+      {isOwner && branchComparison.length > 0 && (
+        <ReportChartPanel title="Branch financial comparison" subtitle="Collections, overdue exposure, and collection rate by branch">
+          <AnalyticsComparisonChart
+            data={branchComparison.map((item) => ({
+              label: item.label,
+              collected: item.collectedRevenue,
+              overdue: item.overdueAmount,
+            }))}
+            bars={[
+              { key: "collected", label: "Collected", color: "#2563eb" },
+              { key: "overdue", label: "Overdue", color: "#dc2626" },
+            ]}
+            valueFormatter={(value) => formatPeso(value)}
+            emptyTitle="No branch comparison data"
+            emptyDescription="Branch financial comparison will appear once billing records are available."
+          />
+        </ReportChartPanel>
+      )}
+
       <div className="admin-reports__grid">
-        <ReportChartPanel
-          title="Monthly collections"
-          subtitle="Collected and billed amounts in the selected window"
-        >
+        <ReportChartPanel title="Revenue by month" subtitle="Collected vs billed revenue across time">
           <AnalyticsBarChart
             data={revenueByMonth.map((item) => ({
               label: item.label,
@@ -250,98 +261,122 @@ export default function AnalyticsBillingTab({
               billed: item.billedAmount,
             }))}
             bars={[
-              { key: "collected", label: "Collected", color: "#2563eb" },
-              { key: "billed", label: "Billed", color: "#0f766e" },
+              { key: "collected", label: "Collected", color: "#0f766e" },
+              { key: "billed", label: "Billed", color: "#2563eb" },
             ]}
-            valueFormatter={(value) => formatPeso(value)}
-            emptyTitle="No billing collection data"
-            emptyDescription="Collection history will appear once billing records exist for this branch and range."
+            valueFormatter={(val) => formatPeso(val)}
+            emptyTitle="No revenue data"
+            emptyDescription="Monthly revenue trends will appear once billing history is recorded."
           />
         </ReportChartPanel>
 
-        <ReportChartPanel
-          title="Overdue aging"
-          subtitle="Open balances bucketed by days overdue"
-        >
-          <AnalyticsBarChart
-            data={overdueAging.map((item) => ({
+        <ReportChartPanel title="Payment status distribution" subtitle="Current status of all generated bills">
+          <AnalyticsDonutChart
+            data={statusDistribution.map((item) => ({
               label: item.label,
-              amount: item.amount,
+              value: item.count,
             }))}
-            bars={[
-              { key: "amount", label: "Outstanding balance", color: "#f97316" },
-            ]}
-            valueFormatter={(value) => formatPeso(value)}
-            emptyTitle="No overdue aging data"
-            emptyDescription="There are no overdue buckets for the selected scope."
+            centerLabel={{
+              value: statusDistribution.reduce((sum, i) => sum + i.count, 0),
+              label: "Bills",
+            }}
+            emptyTitle="No bill status data"
+            emptyDescription="Bill status distribution will populate as billing periods run."
           />
         </ReportChartPanel>
       </div>
 
       <div className="admin-reports__grid">
-        <ReportChartPanel
-          title="Billing status mix"
-          subtitle="Current billing status distribution"
-        >
-          <AnalyticsDonutChart
-            data={statusDistribution.map((item) => ({
-              label: item.status,
-              value: item.count,
+        <ReportChartPanel title="Overdue aging" subtitle="Unpaid balances bucketed by delay">
+          <AnalyticsBarChart
+            data={overdueAging.map((item) => ({
+              label: item.label,
+              amount: item.amount,
             }))}
-            centerLabel={{ value: overdueAccounts.length, label: "Overdue" }}
-            emptyTitle="No billing statuses"
-            emptyDescription="Status distribution will appear once bills are generated."
+            bars={[{ key: "amount", label: "Overdue Amount", color: "#f97316" }]}
+            valueFormatter={(val) => formatPeso(val)}
+            emptyTitle="No overdue aging data"
+            emptyDescription="Overdue aging distribution will appear when overdue bills exist."
           />
         </ReportChartPanel>
 
-        <ReportChartPanel
-          title="Largest unpaid balances"
-          subtitle="Highest remaining balances in this branch scope"
-        >
-          <div className="admin-reports__panel-stack">
-            {unpaidBalances.slice(0, 6).map((item) => (
-              <div key={item.id} className="admin-reports__meta-card">
-                <span className="admin-reports__meta-label">
-                  {item.tenantName}
-                </span>
-                <div className="admin-reports__meta-value">
-                  {formatPeso(item.balance)}
-                </div>
-                <p className="admin-reports__hint">
-                  {item.roomName} • due {formatDate(item.dueDate)}
-                </p>
+        <ReportChartPanel title="Net position summary" subtitle="Collected revenue versus overdue exposure">
+          <div className="admin-reports__meta-grid">
+            <div className="admin-reports__meta-card">
+              <span className="admin-reports__meta-label">Total Billed</span>
+              <div className="admin-reports__meta-value">
+                {data?.kpis?.billedAmountLabel || "PHP 0"}
               </div>
-            ))}
-            {!unpaidBalances.length ? (
-              <p className="admin-reports__hint">
-                No unpaid balances for this scope.
-              </p>
-            ) : null}
+            </div>
+            <div className="admin-reports__meta-card">
+              <span className="admin-reports__meta-label">Total Collected</span>
+              <div className="admin-reports__meta-value">
+                {data?.kpis?.collectedRevenueLabel || "PHP 0"}
+              </div>
+            </div>
           </div>
         </ReportChartPanel>
       </div>
 
-      <ReportChartPanel
-        title="Overdue and unpaid tables"
-        subtitle="Bills past due date and still carrying an outstanding balance"
-      >
+      <ReportChartPanel title="Overdue accounts table" subtitle="Tenants with outstanding unpaid balances">
+        <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "12px", flexWrap: "wrap" }}>
+          <input
+            type="text"
+            placeholder="Search tenant or room..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setPage(1);
+            }}
+            style={{
+              fontSize: "12px",
+              padding: "6px 12px",
+              border: "1px solid var(--border, #e2e8f0)",
+              borderRadius: "6px",
+              width: "180px",
+              outline: "none",
+            }}
+          />
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setPage(1);
+            }}
+            style={{
+              fontSize: "12px",
+              padding: "6px 10px",
+              border: "1px solid var(--border, #e2e8f0)",
+              borderRadius: "6px",
+              background: "#fff",
+              cursor: "pointer",
+            }}
+          >
+            <option value="all">All Statuses</option>
+            <option value="overdue">Overdue</option>
+            <option value="unpaid">Unpaid</option>
+            <option value="partial">Partial</option>
+          </select>
+          <span style={{ fontSize: "12px", color: "var(--muted-foreground, #64748b)", marginLeft: "auto" }}>
+            Showing {filteredOverdue.length} of {overdueAccounts.length} accounts
+          </span>
+        </div>
+
         <DataTable
           columns={OVERDUE_COLUMNS}
-          data={overdueAccounts}
+          data={filteredOverdue}
           loading={isLoading}
           pagination={{
             page,
             pageSize: 10,
-            total: overdueAccounts.length,
+            total: filteredOverdue.length,
             onPageChange: setPage,
           }}
           emptyState={{
-            title: isError
-              ? "Billing report unavailable"
-              : "No overdue accounts",
+            title: isError ? "Billing report unavailable" : "No overdue accounts",
             description: isError
               ? "The billing report could not be loaded."
-              : "No overdue balances were found for the selected scope.",
+              : "No overdue tenant accounts found matching your filter.",
           }}
         />
       </ReportChartPanel>

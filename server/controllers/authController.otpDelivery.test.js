@@ -239,7 +239,7 @@ describe("web login OTP verification", () => {
     expect(findOneAndUpdate.mock.invocationCallOrder[0]).toBeLessThan(
       createSession.mock.invocationCallOrder[0],
     );
-    expect(res.body).not.toHaveProperty("sessionId");
+    expect(res.body).toHaveProperty("sessionId", "private-session-id");
     expect(res.cookie).toHaveBeenCalledWith(
       "lilycrest_web_session",
       "private-session-id",

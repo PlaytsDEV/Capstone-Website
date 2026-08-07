@@ -134,7 +134,7 @@ export const authApi = {
    */
   login: async () => {
     const response = await authRequest("/auth/login", { method: "POST" });
-    if (!response?.requiresOtp) markApplicationSession();
+    if (!response?.requiresOtp) markApplicationSession(response?.sessionId);
     return response;
   },
 
@@ -143,7 +143,7 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify({ otp }),
     });
-    markApplicationSession();
+    markApplicationSession(response?.sessionId);
     return response;
   },
 

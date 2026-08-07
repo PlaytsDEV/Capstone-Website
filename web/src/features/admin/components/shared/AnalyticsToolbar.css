@@ -3,12 +3,10 @@
   justify-content: space-between;
   align-items: flex-start;
   gap: 1rem;
-  padding: 1rem 1.15rem;
-  border-radius: 1rem;
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  background:
-    radial-gradient(circle at top right, rgba(56, 189, 248, 0.08), transparent 32%),
-    linear-gradient(135deg, #f8fafc, #eef2ff);
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 0.5px solid var(--border, #e2e8f0);
+  background: var(--card, #ffffff);
 }
 
 .analytics-toolbar__copy {
@@ -17,14 +15,16 @@
 
 .analytics-toolbar__title {
   margin: 0;
-  font-size: 1rem;
-  color: #0f172a;
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--foreground, #1e293b);
 }
 
 .analytics-toolbar__subtitle {
-  margin: 0.3rem 0 0;
-  font-size: 0.9rem;
-  color: #64748b;
+  margin: 2px 0 0;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted-foreground, #64748b);
 }
 
 .analytics-toolbar__controls {

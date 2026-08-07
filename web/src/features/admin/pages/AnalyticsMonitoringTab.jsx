@@ -14,6 +14,7 @@ import {
 import { buildRangeLabel, formatBranch, formatDate, formatDateTime } from "./reportCommon";
 import {
  AnalyticsInsightSection,
+ AnalyticsTableToolbar,
  buildInsightPdfSections,
  ExportButtons,
  handleCsvExport,
@@ -41,6 +42,9 @@ const SUSPICIOUS_IP_COLUMNS = [
 export default function AnalyticsMonitoringTab({ branch, range, onBranchChange, onRangeChange }) {
  const [eventPage, setEventPage] = useState(1);
  const [ipPage, setIpPage] = useState(1);
+ const [searchQuery, setSearchQuery] = useState("");
+ const [severityFilter, setSeverityFilter] = useState("all");
+
  const params = useMemo(() => ({ branch, range }), [branch, range]);
  const { data, isLoading, isError } = useAuditAnalytics(params);
  const {
@@ -58,6 +62,21 @@ export default function AnalyticsMonitoringTab({ branch, range, onBranchChange, 
  const severityDistribution = Array.isArray(data?.series?.severityDistribution) ? data?.series?.severityDistribution : [];
  const recentSecurityEvents = unwrapTableRows(data?.tables?.recentSecurityEvents);
  const suspiciousIps = Array.isArray(data?.tables?.suspiciousIps) ? data?.tables?.suspiciousIps : [];
+
+ const filteredSecurityEvents = useMemo(() => {
+  return recentSecurityEvents.filter((item) => {
+   const matchSearch =
+    !searchQuery ||
+    (item.action && String(item.action).toLowerCase().includes(searchQuery.toLowerCase())) ||
+    (item.user && String(item.user).toLowerCase().includes(searchQuery.toLowerCase()));
+
+   const matchSeverity =
+    severityFilter === "all" ||
+    (item.severity && String(item.severity).toLowerCase() === severityFilter.toLowerCase());
+
+   return matchSearch && matchSeverity;
+  });
+ }, [recentSecurityEvents, searchQuery, severityFilter]);
 
  const metricCards = [
  { label: "Failed Logins", value: kpis.failedLogins || 0, tone: "rose" },
@@ -216,22 +235,59 @@ export default function AnalyticsMonitoringTab({ branch, range, onBranchChange, 
  </div>
 
  <div className="admin-reports__grid">
- <ReportChartPanel title="Recent security events" subtitle="Latest owner-level security and audit activity">
+  <ReportChartPanel title="Recent security events" subtitle="Latest owner-level security and audit activity">
+   <AnalyticsTableToolbar
+     searchQuery={searchQuery}
+     onSearchChange={(val) => {
+       setSearchQuery(val);
+       setEventPage(1);
+     }}
+     searchPlaceholder="Search event or user..."
+     filters={[
+       {
+         key: "severityFilter",
+         label: "Severity",
+         value: severityFilter,
+         onChange: (val) => {
+           setSeverityFilter(val);
+           setEventPage(1);
+         },
+         options: [
+           { value: "all", label: "All Severities" },
+           { value: "critical", label: "Critical" },
+           { value: "warning", label: "Warning" },
+           { value: "info", label: "Info" },
+         ],
+       },
+     ]}
+     hasActiveFilters={Boolean(searchQuery || severityFilter !== "all")}
+     onResetFilters={() => {
+       setSearchQuery("");
+       setSeverityFilter("all");
+       setEventPage(1);
+     }}
+     extraActions={
+       <span className="text-xs font-medium text-muted-foreground">
+         Showing {filteredSecurityEvents.length} of {recentSecurityEvents.length} events
+       </span>
+     }
+   />
+
  <DataTable
  columns={EVENT_COLUMNS}
- data={recentSecurityEvents}
+ data={filteredSecurityEvents}
  loading={isLoading}
  pagination={{
  page: eventPage,
  pageSize: 10,
- total: recentSecurityEvents.length,
+ total: filteredSecurityEvents.length,
  onPageChange: setEventPage,
  }}
  emptyState={{
  title: isError ? "System monitoring unavailable" : "No recent security events",
  description: isError
  ? "The audit summary could not be loaded."
- : "No recent security activity matched the selected scope.",
+ : "No recent security activity matched the selected filter.",
  }}
  />
  </ReportChartPanel>

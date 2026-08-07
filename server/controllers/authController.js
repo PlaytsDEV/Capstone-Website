@@ -578,6 +578,7 @@ export const login = async (req, res, next) => {
             return res.json({
               message: "Login successful",
               user: buildUserPayload(user),
+              sessionId: exemption.session.sessionId,
             });
           }
         }
@@ -602,6 +603,7 @@ export const login = async (req, res, next) => {
     res.json({
       message: "Login successful",
       user: buildUserPayload(user),
+      sessionId: session?.sessionId,
     });
   } catch (error) {
     await auditLogger.logError(req, error, "Login error");
@@ -724,6 +726,7 @@ export const verifyLoginOtp = async (req, res, next) => {
     return res.json({
       message: "OTP verified",
       user: buildUserPayload(user),
+      sessionId: session.sessionId,
     });
   } catch (error) {
     await auditLogger.logError(req, error, "OTP verification error");

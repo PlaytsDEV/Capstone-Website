@@ -16,6 +16,7 @@ import {
 import { buildRangeLabel, formatBranch } from "./reportCommon";
 import {
   AnalyticsInsightSection,
+  AnalyticsTableToolbar,
   buildInsightPdfSections,
   buildBranchControl,
   ExportButtons,
@@ -40,6 +41,19 @@ const INVENTORY_COLUMNS = [
     key: "occupancyRate",
     label: "Rate",
     render: (row) => `${row.occupancyRate}%`,
+  },
+  {
+    key: "status",
+    label: "Status",
+    render: (row) => {
+      if (row.occupancyRate >= 100) {
+        return <span style={{ padding: "2px 8px", borderRadius: "12px", fontSize: "11px", background: "#dcfce7", color: "#166534", fontWeight: 500 }}>Full</span>;
+      }
+      if (row.occupiedBeds === 0) {
+        return <span style={{ padding: "2px 8px", borderRadius: "12px", fontSize: "11px", background: "#fef3c7", color: "#92400e", fontWeight: 500 }}>Vacant</span>;
+      }
+      return <span style={{ padding: "2px 8px", borderRadius: "12px", fontSize: "11px", background: "#dbeafe", color: "#1e40af", fontWeight: 500 }}>Partial</span>;
+    },
   },
 ];
 
@@ -87,6 +101,10 @@ export default function AnalyticsOccupancyTab({
   onRangeChange,
 }) {
   const [page, setPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+
   const params = useMemo(
     () => ({
       range,
@@ -95,11 +113,84 @@ export default function AnalyticsOccupancyTab({
     [branch, isOwner, range],
   );
 
+  const { data, isLoading, isError } = useOccupancyReport(params);
+  const { data: forecast } = useOccupancyForecast(params);
   const { data: historyData } = useOccupancyRateHistory(params);
+
+  const kpis = data?.kpis || {};
+  const series = data?.series || {};
+  const trend = series.occupancyTrend || [];
+  const roomTypes = series.roomTypes || [];
+  const forecastSeries = forecast?.series || [];
+  const inventory = unwrapTableRows(data?.tables?.inventory);
 
   const historySeries = historyData?.series || [];
   const historyKpis = historyData?.kpis || {};
   const cohorts = historyData?.cohorts || {};
+
+  const filteredInventory = useMemo(() => {
+    return inventory.filter((item) => {
+      const matchSearch =
+        !searchQuery ||
+        (item.roomNumber && String(item.roomNumber).toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (item.roomTypeLabel && String(item.roomTypeLabel).toLowerCase().includes(searchQuery.toLowerCase()));
+
+      const matchType =
+        typeFilter === "all" ||
+        (item.type && String(item.type).toLowerCase() === typeFilter.toLowerCase()) ||
+        (item.roomTypeLabel && String(item.roomTypeLabel).toLowerCase().includes(typeFilter.toLowerCase()));
+
+      const matchStatus =
+        statusFilter === "all" ||
+        (statusFilter === "full" && item.occupancyRate >= 100) ||
+        (statusFilter === "vacant" && item.occupiedBeds === 0) ||
+        (statusFilter === "partial" && item.occupiedBeds > 0 && item.occupancyRate < 100);
+
+      return matchSearch && matchType && matchStatus;
+    });
+  }, [inventory, searchQuery, typeFilter, statusFilter]);
+
+  const insightData = useMemo(
+    () => ({ kpis, series, tables: data?.tables }),
+    [kpis, series, data?.tables],
+  );
+  const { isInsightLoading, isInsightError } = useReportInsights(
+    "occupancy",
+    insightData,
+  );
+
+  const metricCards = [
+    {
+      label: "Occupancy Rate",
+      value: kpis.occupancyRateLabel || "0%",
+      note: "Beds occupied",
+    },
+    {
+      label: "Occupied Beds",
+      value: kpis.occupiedBeds || 0,
+      note: "Active tenants",
+    },
+    {
+      label: "Available Beds",
+      value: kpis.availableBeds || 0,
+      note: "Ready for move-in",
+    },
+    {
+      label: "Total Beds",
+      value: kpis.totalCapacity || 0,
+      note: "Total inventory",
+    },
+  ];
+
+  const exportPdf = () =>
+    handlePdfExport({
+      title: "Occupancy Analytics",
+      subtitle: `${formatBranch(data?.scope?.branch || branch)} • ${buildRangeLabel(range)}`,
+      metrics: metricCards,
+      insights: buildInsightPdfSections(insightData?.insights),
+      tables: [{ title: "Inventory", columns: INVENTORY_COLUMNS, rows: inventory }],
+    });
+  const exportCsv = () => handleCsvExport("occupancy_inventory.csv", inventory);
 
   return (
     <AnalyticsTabLayout
@@ -234,56 +325,89 @@ export default function AnalyticsOccupancyTab({
         />
       </ReportChartPanel>
 
-      <div className="admin-reports__grid">
-        <ReportChartPanel
-          title="Tenant Cohort Mix"
-          subtitle="Occupation & tenant status classification"
-        >
-          <AnalyticsDonutChart
-            data={(cohorts.tenantTypes || []).map((item) => ({
-              label: item.label,
-              value: item.count,
-            }))}
-            centerLabel={{
-              value: (cohorts.tenantTypes || []).reduce((sum, i) => sum + i.count, 0),
-              label: "Tenants",
-            }}
-            emptyTitle="No tenant type data"
-            emptyDescription="Tenant occupation data will appear once profiles are completed."
-          />
-        </ReportChartPanel>
-
-        <ReportChartPanel
-          title="Gender Demographics"
-          subtitle="Resident gender distribution ratio"
-        >
-          <AnalyticsDonutChart
-            data={(cohorts.genders || []).map((item) => ({
-              label: item.label,
-              value: item.count,
-            }))}
-            centerLabel={{
-              value: (cohorts.genders || []).reduce((sum, i) => sum + i.count, 0),
-              label: "Tenants",
-            }}
-            emptyTitle="No gender data"
-            emptyDescription="Gender demographic distribution will appear as tenants register."
-          />
-        </ReportChartPanel>
-      </div>
+      <ReportChartPanel
+        title="Tenant Cohort Mix"
+        subtitle="Occupation & tenant status classification"
+      >
+        <AnalyticsDonutChart
+          data={(cohorts.tenantTypes || []).map((item) => ({
+            label: item.label,
+            value: item.count,
+          }))}
+          centerLabel={{
+            value: (cohorts.tenantTypes || []).reduce((sum, i) => sum + i.count, 0),
+            label: "Tenants",
+          }}
+          emptyTitle="No tenant type data"
+          emptyDescription="Tenant occupation data will appear once profiles are completed."
+        />
+      </ReportChartPanel>
 
       <ReportChartPanel
         title="Inventory table"
         subtitle="Current room capacity, occupancy, and unavailable inventory"
       >
+        <AnalyticsTableToolbar
+          searchQuery={searchQuery}
+          onSearchChange={(val) => {
+            setSearchQuery(val);
+            setPage(1);
+          }}
+          searchPlaceholder="Search room number or type..."
+          filters={[
+            {
+              key: "typeFilter",
+              label: "Type",
+              value: typeFilter,
+              onChange: (val) => {
+                setTypeFilter(val);
+                setPage(1);
+              },
+              options: [
+                { value: "all", label: "All Room Types" },
+                { value: "private", label: "Private" },
+                { value: "double-sharing", label: "Double Sharing" },
+                { value: "quadruple-sharing", label: "Quadruple Sharing" },
+              ],
+            },
+            {
+              key: "statusFilter",
+              label: "Status",
+              value: statusFilter,
+              onChange: (val) => {
+                setStatusFilter(val);
+                setPage(1);
+              },
+              options: [
+                { value: "all", label: "All Statuses" },
+                { value: "vacant", label: "Vacant (0% Occupied)" },
+                { value: "partial", label: "Partial Occupancy" },
+                { value: "full", label: "Full (100% Occupied)" },
+              ],
+            },
+          ]}
+          hasActiveFilters={Boolean(searchQuery || typeFilter !== "all" || statusFilter !== "all")}
+          onResetFilters={() => {
+            setSearchQuery("");
+            setTypeFilter("all");
+            setStatusFilter("all");
+            setPage(1);
+          }}
+          extraActions={
+            <span className="text-xs font-medium text-muted-foreground">
+              Showing {filteredInventory.length} of {inventory.length} rooms
+            </span>
+          }
+        />
+
         <DataTable
           columns={INVENTORY_COLUMNS}
-          data={inventory}
+          data={filteredInventory}
           loading={isLoading}
           pagination={{
             page,
             pageSize: 10,
-            total: inventory.length,
+            total: filteredInventory.length,
             onPageChange: setPage,
           }}
           emptyState={{
@@ -292,7 +416,7 @@ export default function AnalyticsOccupancyTab({
               : "No occupancy rows",
             description: isError
               ? "The occupancy report could not be loaded."
-              : "No room inventory matched this branch scope yet.",
+              : "No room inventory matched the selected filter.",
           }}
         />
       </ReportChartPanel>

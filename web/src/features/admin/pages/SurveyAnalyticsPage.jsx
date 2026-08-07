@@ -36,18 +36,6 @@ const EMPTY_SCHEDULE = {
 const pretty = (value = "") => value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 const apiData = (result) => result?.data ?? result;
 
-function AnalyticsNav({ searchParams }) {
-  const suffix = searchParams.size ? `?${searchParams}` : "";
-  return (
-    <nav className="survey-analytics-nav" aria-label="Analytics sections">
-      <Link to="/admin/analytics">Overview</Link>
-      <Link to="/admin/analytics/details?tab=occupancy">Occupancy</Link>
-      <Link to="/admin/analytics/details?tab=billing">Revenue</Link>
-      <Link to="/admin/analytics/details?tab=operations">Operations</Link>
-      <Link className="is-active" aria-current="page" to={`/admin/analytics/feedback-surveys${suffix}`}>Feedback &amp; Surveys</Link>
-    </nav>
-  );
-}
 
 function FilterToolbar({ filters, isOwner, onChange, onReset }) {
   return (
@@ -381,6 +369,10 @@ function ScheduleModal({ open, form, setForm, templates, branchId, busy, onClose
   </BaseModal>;
 }
 
+export function SurveyAnalyticsTab() {
+  return <SurveyAnalyticsPage />;
+}
+
 export default function SurveyAnalyticsPage() {
   const { isOwner } = usePermissions();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -493,9 +485,13 @@ export default function SurveyAnalyticsPage() {
     } finally { setBusy(false); }
   };
   return <div className="survey-dashboard">
-    <AnalyticsNav searchParams={searchParams} />
-    <header className="survey-page-header"><div><h1>Feedback &amp; Surveys</h1><p>Monitor tenant feedback, manage survey cycles, and generate evidence-based recommendations.</p></div>
-      <button className="btn btn-primary" onClick={browseTemplates}><Plus size={17} /> Create Survey</button></header>
+    <div className="survey-tab-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+      <div>
+        <h2 style={{ fontSize: '16px', fontWeight: 600, margin: 0, color: 'var(--foreground)' }}>Feedback &amp; Surveys Workspace</h2>
+        <p style={{ fontSize: '12px', color: 'var(--muted-foreground)', margin: '2px 0 0' }}>Monitor tenant feedback, manage survey cycles, and generate evidence-based recommendations.</p>
+      </div>
+      <button className="btn btn-primary" onClick={browseTemplates}><Plus size={17} /> Create Survey</button>
+    </div>
     <FilterToolbar filters={filters} isOwner={isOwner} onChange={setFilter} onReset={() => setSearchParams({})} />
     {loading && <section className="survey-template-loading" role="status" aria-live="polite"><header><div><h2>Survey Templates</h2><p>Loading recommended and organization templates…</p></div></header><div className="survey-library-grid">{[1, 2, 3, 4, 5].map((item) => <div className="survey-template-skeleton" key={item}><span /><span /><span /><span /></div>)}</div><div className="survey-table-skeleton"><span /><span /><span /></div></section>}
     {error && <section className="survey-state survey-state--error" role="alert"><AlertCircle size={22} /><div><h2>Unable to load survey templates</h2><p>The template library could not be loaded. Check the server connection and try again.</p><small>{error}</small></div><button className="btn btn-secondary" onClick={load}>Retry</button></section>}

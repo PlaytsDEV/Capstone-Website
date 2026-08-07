@@ -46,15 +46,13 @@ test("analytics summary opts into topbar and layout controls", async () => {
   assert.match(source, /className="analytics-select"/);
 });
 
-test("analytics exposes permission-aware Feedback & Surveys navigation", async () => {
+test("analytics exposes permission-aware Feedback & Surveys navigation tab", async () => {
   const source = await readSource("AnalyticsPage.jsx");
 
   assert.match(source, /can\("viewSurveyAnalytics"\)/);
-  assert.match(source, /\/admin\/analytics\/feedback-surveys/);
-  assert.match(source, /onClick=\{\(\) => navigate\(surveyAnalyticsHref\)\}/);
-  assert.match(source, /href=\{surveyAnalyticsHref\}/);
+  assert.match(source, /handleTabChange\("surveys"\)/);
+  assert.match(source, /<SurveyAnalyticsTab \/>/);
   assert.match(source, /Feedback &amp; Surveys/g);
-  assert.match(source, /overflow-x:\s*auto/);
 });
 
 test("analytics summary uses default page scrolling instead of an inner chart scroller", async () => {

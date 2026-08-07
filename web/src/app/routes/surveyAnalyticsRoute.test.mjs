@@ -11,18 +11,10 @@ const layoutSource = readFileSync(
   "utf8",
 );
 
-test("feedback survey analytics route uses the centralized permission guard", () => {
+test("feedback survey analytics route redirects to analytics tab", () => {
   assert.match(routesSource, /path="analytics\/feedback-surveys"/);
   assert.match(
     routesSource,
-    /<RequirePermission permission="viewSurveyAnalytics">[\s\S]*?<SurveyAnalyticsPage \/>/,
+    /<Navigate to="\/admin\/analytics\?tab=surveys" replace \/>/,
   );
-});
-
-test("feedback survey analytics route has nested Analytics breadcrumbs", () => {
-  assert.match(
-    layoutSource,
-    /location\.pathname === "\/admin\/analytics\/feedback-surveys"/,
-  );
-  assert.match(layoutSource, /\["Admin", "Analytics", pageMeta\.title\]/);
 });

@@ -44,7 +44,11 @@ export const clearWebSessionCookie = (res) => {
 };
 
 export const getWebSessionId = (requestLike = {}) => {
-  const explicitSession = requestLike.headers?.["x-session-id"];
+  const explicitSession =
+    requestLike.headers?.["x-session-id"] ||
+    requestLike.handshake?.auth?.sessionId ||
+    requestLike.handshake?.headers?.["x-session-id"] ||
+    requestLike.auth?.sessionId;
   if (typeof explicitSession === "string" && explicitSession.trim()) {
     return explicitSession.trim();
   }

@@ -162,13 +162,7 @@ export function AdminRoutes() {
       />
       <Route
         path="analytics/feedback-surveys"
-        element={
-          <RequirePermission permission="viewSurveyAnalytics">
-            <RouteShell name="SurveyAnalytics" fallback={<AdminDashboardSkeleton />}>
-              <SurveyAnalyticsPage />
-            </RouteShell>
-          </RequirePermission>
-        }
+        element={<Navigate to="/admin/analytics?tab=surveys" replace />}
       />
       <Route
         path="analytics/details"
