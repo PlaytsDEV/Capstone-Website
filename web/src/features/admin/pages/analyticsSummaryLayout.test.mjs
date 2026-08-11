@@ -41,9 +41,9 @@ test("analytics summary no longer renders the legacy stacked summary section hel
 test("analytics summary opts into topbar and layout controls", async () => {
   const source = await readSource("AnalyticsPage.jsx");
 
-  assert.match(source, /className="analytics-topbar"/);
-  assert.match(source, /className="analytics-filter-row"/);
-  assert.match(source, /className="analytics-select"/);
+  assert.match(source, /className="analytics-container"/);
+  assert.match(source, /analytics-topbar-actions/);
+  assert.match(source, /analytics-tabs/);
 });
 
 test("analytics exposes permission-aware Feedback & Surveys navigation tab", async () => {

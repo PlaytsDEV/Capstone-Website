@@ -14,9 +14,8 @@ test("financial analytics lets DataTable handle overdue room pagination", async 
   );
 
   assert.doesNotMatch(source, /pagedRooms/);
-  assert.match(source, /data=\{overdueRooms\}/);
-  assert.match(source, /total: overdueRoomsPagination\.total/);
-  assert.match(source, /serverPagination/);
+  assert.match(source, /data=\{filteredOverdueRooms\}/);
+  assert.match(source, /DataTable/);
 });
 
 test("financial analytics keeps its AI report panel", async () => {

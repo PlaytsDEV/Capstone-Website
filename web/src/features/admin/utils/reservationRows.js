@@ -53,6 +53,11 @@ export function isPendingAdminApproval(reservation) {
   if (!reservation) return false;
   if (reservation.isArchived) return false;
 
+  // 1. Pending cancellation request (requires admin action regardless of status)
+  if (hasPendingCancellationRequest(reservation)) {
+    return true;
+  }
+
   const status = (reservation.status || "").toLowerCase();
 
   // Terminal or resolved statuses require no admin action
