@@ -475,6 +475,11 @@ export async function sendUtilityPeriodBills({
 
       const tenant =
         bill.userId && typeof bill.userId === "object" ? bill.userId : null;
+      const targetUserId = bill.userId?._id
+        ? String(bill.userId._id)
+        : bill.userId
+          ? String(bill.userId)
+          : null;
       const tenantName =
         [tenant?.firstName, tenant?.lastName]
           .filter(Boolean)
@@ -502,14 +507,16 @@ export async function sendUtilityPeriodBills({
               branchName: bill.roomId?.branch || bill.branch || "Lilycrest",
             })
           : Promise.resolve(null),
-        notify.utilityChargeAvailable(
-          bill.userId?._id || bill.userId,
-          utilityType,
-          billingMonthLabel,
-          utilityAmount,
-          visibleTotalAmount,
-          dueDateLabel,
-        ),
+        targetUserId
+          ? notify.utilityChargeAvailable(
+              targetUserId,
+              utilityType,
+              billingMonthLabel,
+              utilityAmount,
+              visibleTotalAmount,
+              dueDateLabel,
+            )
+          : Promise.reject(new Error("No tenant user assigned to bill")),
       ]);
 
       if (emailResult.status === "fulfilled" && emailResult.value) {
@@ -528,16 +535,19 @@ export async function sendUtilityPeriodBills({
           notificationResult.reason?.message || "Notification delivery failed";
       }
 
+      const emailSent = Boolean(tenant?.email && !emailError);
+      const notificationSent = Boolean(targetUserId && !notificationError);
+
       bill.delivery = {
         ...(bill.delivery || {}),
         email: {
-          status: emailError ? "failed" : tenant?.email ? "sent" : "not_attempted",
-          sentAt: emailError || !tenant?.email ? null : new Date(),
+          status: emailError ? "failed" : emailSent ? "sent" : "not_attempted",
+          sentAt: emailSent ? new Date() : null,
           error: emailError || "",
         },
         notification: {
-          status: notificationError ? "failed" : "sent",
-          sentAt: notificationError ? null : new Date(),
+          status: notificationError ? "failed" : notificationSent ? "sent" : "not_attempted",
+          sentAt: notificationSent ? new Date() : null,
           error: notificationError || "",
         },
       };
@@ -545,22 +555,49 @@ export async function sendUtilityPeriodBills({
 
       return {
         billId: bill._id,
-        tenantId: bill.userId?._id || bill.userId,
+        tenantId: targetUserId,
         utilityType,
         utilityAmount,
         totalAmount: visibleTotalAmount,
         visibleCharges,
+        emailSent,
         emailError,
+        notificationSent,
         notificationError,
       };
     },
   );
 
+  let emailSuccessCount = 0;
+  let emailFailedCount = 0;
+  let notificationSuccessCount = 0;
+  let notificationFailedCount = 0;
+
   for (const delivery of settledDeliveries) {
     if (!delivery) continue;
     deliveries.push(delivery);
     sent += 1;
+    if (delivery.emailError) {
+      emailFailedCount += 1;
+    } else if (delivery.emailSent) {
+      emailSuccessCount += 1;
+    }
+    if (delivery.notificationError) {
+      notificationFailedCount += 1;
+    } else if (delivery.notificationSent) {
+      notificationSuccessCount += 1;
+    }
   }
 
-  return { sent, issuedAt, dueDate, publishedAt, deliveries };
+  return {
+    sent,
+    issuedAt,
+    dueDate,
+    publishedAt,
+    deliveries,
+    emailSuccessCount,
+    emailFailedCount,
+    notificationSuccessCount,
+    notificationFailedCount,
+  };
 }

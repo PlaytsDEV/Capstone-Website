@@ -1566,10 +1566,17 @@ const UtilityBillingTab = ({
       const response = await sendPeriod.mutateAsync({ periodId });
       if (response?.published > 0) {
         notify.success(
-          `${utilityType === "water" ? "Water" : "Electricity"} sent to ${response.published} tenant${response.published === 1 ? "" : "s"} for ${roomName}.`,
+          `${utilityType === "water" ? "Water" : "Electricity"} charge sent to ${response.published} tenant${response.published === 1 ? "" : "s"} for ${roomName}.`,
         );
       } else {
         notify.warn(`No tenant charges were sent for ${roomName}.`);
+      }
+      if (response?.emailFailedCount > 0) {
+        notify.warn(
+          `Email delivery skipped or failed for ${response.emailFailedCount} tenant(s). Check server email configuration.`,
+        );
+      } else if (response?.emailSuccessCount > 0) {
+        notify.info(`Email notifications dispatched successfully.`);
       }
       if (response?.partialFailures?.length > 0) {
         notify.warn(

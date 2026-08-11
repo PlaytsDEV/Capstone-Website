@@ -327,7 +327,7 @@ const notify = {
       "bill_generated",
       `${utilityType === "water" ? "Water" : "Electricity"} Charge Available`,
       `Your ${utilityType} charge for ${billingMonth} is ₱${utilityAmount}. Current bill total: ₱${totalAmount}. Due by ${dueDate}.`,
-      { entityType: "bill" },
+      { entityType: "bill", actionUrl: "/tenant/account?tab=billing" },
     ),
 
   overdueMoveIn: (userId, reservationCode, roomName, tenantName, daysOverdue) => {

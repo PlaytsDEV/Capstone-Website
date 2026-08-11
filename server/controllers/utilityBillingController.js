@@ -1324,6 +1324,10 @@ export const sendUtilityPeriod = async (req, res, next) => {
       publishedAt: sendResult.publishedAt,
       issuedAt: sendResult.issuedAt,
       dueDate: sendResult.dueDate,
+      emailSuccessCount: sendResult.emailSuccessCount || 0,
+      emailFailedCount: sendResult.emailFailedCount || 0,
+      notificationSuccessCount: sendResult.notificationSuccessCount || 0,
+      notificationFailedCount: sendResult.notificationFailedCount || 0,
       deliveries: sendResult.deliveries,
       partialFailures: sendResult.deliveries.filter(
         (entry) => entry.emailError || entry.notificationError,
