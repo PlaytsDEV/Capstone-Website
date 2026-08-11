@@ -1871,7 +1871,7 @@ export const updateReservationByUser = async (req, res, next) => {
           await notify.general(
             updatedReservation.userId._id,
             "Application Pending Review",
-            "Your application is pending review. Payment will be available once your application and documents are approved.",
+            "Your application is under review. We will notify you once approved.",
             {
               entityType: "reservation",
               entityId: String(updatedReservation._id),

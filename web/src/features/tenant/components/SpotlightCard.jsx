@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useCallback } from "react";
 
 /**
  * SpotlightCard — card container with a mouse-following radial gradient spotlight effect.
@@ -13,15 +13,18 @@ function SpotlightCard({
 }) {
  const containerRef = useRef(null);
 
- const handleMouseMove = (e) => {
- const el = containerRef.current;
- if (!el) return;
- const rect = el.getBoundingClientRect();
- const x = e.clientX - rect.left;
- const y = e.clientY - rect.top;
- el.style.setProperty("--spot-x", `${x}px`);
- el.style.setProperty("--spot-y", `${y}px`);
- };
+  // RAF-throttled: prevents forced synchronous layout reflow on every mousemove pixel
+  const handleMouseMove = useCallback((e) => {
+    const clientX = e.clientX;
+    const clientY = e.clientY;
+    requestAnimationFrame(() => {
+      const el = containerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      el.style.setProperty("--spot-x", `${clientX - rect.left}px`);
+      el.style.setProperty("--spot-y", `${clientY - rect.top}px`);
+    });
+  }, []);
 
  return (
  <div

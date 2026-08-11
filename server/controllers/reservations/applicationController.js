@@ -461,10 +461,11 @@ export const submitApplication = async (req, res, next) => {
     });
 
     if (documentIssues.length > 0) {
+      const issueSummary = documentIssues
+        .map((issue) => `${issue.label}: ${issue.message}`)
+        .join(". ");
       return res.status(422).json({
-        error: `Please fix the following document before submitting: ${documentIssues
-          .map((issue) => `${issue.label} - ${issue.message}`)
-          .join("; ")}`,
+        error: issueSummary || "Please re-upload a clearer copy of the highlighted document.",
         code: "DOCUMENT_PRECHECK_BLOCKED",
         documentIssues,
       });
@@ -525,7 +526,7 @@ export const submitApplication = async (req, res, next) => {
         await notify.general(
           updatedReservation.userId._id,
           "Application Pending Review",
-          "Your application is pending review. Payment will be available once your application and documents are approved.",
+          "Your application is under review. We will notify you once approved.",
           {
             entityType: "reservation",
             entityId: String(updatedReservation._id),

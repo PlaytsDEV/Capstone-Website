@@ -148,7 +148,7 @@ const roomSchema = new mongoose.Schema(
           // 5-state: available, locked (temp hold), reserved (confirmed), occupied, maintenance
           status: {
             type: String,
-            enum: ["available", "locked", "reserved", "occupied", "maintenance", "cleaning_in_progress"],
+            enum: ["available", "locked", "reserved", "occupied", "maintenance"],
             default: "available",
           },
           // Lock expiry for temporary bed holds
@@ -309,33 +309,22 @@ roomSchema.methods.vacateBed = function (bedId) {
 };
 
 /**
- * Mark a bed as cleaning_in_progress during move-out turnover
- * @param {string} bedId - The bed ID to mark for cleaning
- * @returns {boolean} - true if successful
+ * Mark a bed as vacated during move-out turnover (formerly cleaning_in_progress — now skipped)
+ * Alias kept for backward compatibility. Immediately vacates the bed.
+ * @param {string} bedId
+ * @returns {boolean}
  */
 roomSchema.methods.markBedForCleaning = function (bedId) {
-  const bed = this.beds.find((b) => b.id === bedId || String(b._id) === String(bedId));
-  if (!bed) return false;
-
-  bed.status = "cleaning_in_progress";
-  bed.occupiedBy = {
-    userId: null,
-    reservationId: null,
-    occupiedSince: null,
-  };
-  return true;
+  return this.vacateBed(bedId);
 };
 
 /**
- * Complete bed turnover cleaning (cleaning_in_progress -> available)
- * @param {string} bedId - The bed ID to mark clean
- * @returns {boolean} - true if successful
+ * Complete bed turnover — no-op, kept for backward compatibility.
+ * (cleaning_in_progress state has been removed; vacateBed is now called directly.)
+ * @param {string} bedId
+ * @returns {boolean}
  */
 roomSchema.methods.completeBedCleaning = function (bedId) {
-  const bed = this.beds.find((b) => b.id === bedId || String(b._id) === String(bedId));
-  if (!bed) return false;
-
-  bed.status = "available";
   return true;
 };
 

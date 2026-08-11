@@ -66,7 +66,7 @@ export function resolveTenantPersonalDetails({ user = {}, reservation = {} } = {
     currentAddress: collapseWhitespace(preferred(joinAddress(reservationAddress), user.address)) || null,
     city: preferred(reservationAddress.city, user.city),
     province: preferred(reservationAddress.province, user.province),
-    profileImage: firstValue(user.profileImage, reservation.selfiePhotoUrl),
+    profileImage: user.profileImage || null,
     emergencyContact: {
       name: firstValue(user.emergencyContact, emergency.name),
       relationship: firstValue(

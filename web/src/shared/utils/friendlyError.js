@@ -60,8 +60,10 @@ export function getFriendlyError(error, fallback = "Something went wrong. Please
   const serverMsg = error?.response?.data?.error || error?.response?.data?.message;
   const rawMsg = typeof error === "string" ? error : (serverMsg || error?.message || "");
 
-  // If the server sent a clean, short message (likely already user-friendly), use it
-  if (serverMsg && serverMsg.length < 120 && !/error|exception|stack|at\s+\w/i.test(serverMsg)) {
+  const isCodeError = /TypeError|ReferenceError|SyntaxError|MongoError|CastError|ValidationError:\s*path|at\s+\w|Internal\s*Server\s*Error/i.test(rawMsg);
+
+  // If the server sent a clean domain message (no stack trace or internal code errors), use it directly
+  if (serverMsg && typeof serverMsg === "string" && !isCodeError) {
     return serverMsg;
   }
 
@@ -70,8 +72,8 @@ export function getFriendlyError(error, fallback = "Something went wrong. Please
     if (pattern.test(rawMsg)) return friendly;
   }
 
-  // If the raw message is short + clean (no stack trace / code-like content), use it
-  if (rawMsg && rawMsg.length < 100 && !/\{|\}|TypeError|ReferenceError|SyntaxError|at\s+\w/i.test(rawMsg)) {
+  // If the raw message is clean (no stack trace / code error content), use it
+  if (rawMsg && typeof rawMsg === "string" && !isCodeError && rawMsg.length < 400) {
     return rawMsg;
   }
 

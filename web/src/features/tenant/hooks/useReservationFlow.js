@@ -1074,7 +1074,7 @@ export default function useReservationFlow() {
           setReservationData(JSON.parse(stored));
         } else if (storedResId) {
           loadExistingReservation(storedResId);
-        } else if (isStepMode) {
+        } else if (isStepMode || user) {
           loadActiveReservation();
         } else {
           appNavigate("/applicant/check-availability", {
@@ -1134,6 +1134,9 @@ export default function useReservationFlow() {
       if (active) {
         const room = active.roomId || {};
         setReservationId(active._id);
+        if (user?.firebaseUid) {
+          sessionStorage.setItem(getActiveResKey(user.firebaseUid), active._id);
+        }
         if (active.reservationCode) setReservationCode(active.reservationCode);
         if (active.visitCode) setVisitCode(active.visitCode);
         setReservationData({
@@ -1232,7 +1235,7 @@ export default function useReservationFlow() {
     } catch (err) {
       console.error("Failed to load reservation:", err);
       appNavigate("/applicant/check-availability", {
-        flash: { type: "warning", message: "No room selected. Redirecting..." },
+        flash: { type: "warning", message: "Failed to load active reservation. Please try again." },
       });
     } finally {
       setIsLoading(false);
@@ -1286,7 +1289,11 @@ export default function useReservationFlow() {
     try {
       setIsLoading(true);
       const reservation = await reservationApi.getById(resId);
-      setReservationId(reservation._id || resId);
+      const targetResId = reservation._id || resId;
+      setReservationId(targetResId);
+      if (user?.firebaseUid) {
+        sessionStorage.setItem(getActiveResKey(user.firebaseUid), targetResId);
+      }
       if (reservation.reservationCode)
         setReservationCode(reservation.reservationCode);
       if (reservation.visitCode)
@@ -2580,15 +2587,13 @@ export default function useReservationFlow() {
           setSuccessOverlay({
             show: true,
             title: "Application Submitted!",
-            subtitle:
-              "Your application is pending review. Payment will be available once your application and documents are approved.",
+            subtitle: "Your application is under review. We will notify you once approved.",
           });
           appNavigate("/applicant/profile", {
             flash: {
               type: "success",
               title: "Application Submitted!",
-              message:
-                "Your application is pending review. Payment will be available once your application and documents are approved.",
+              message: "Your application is under review. We will notify you once approved.",
             },
           });
         } finally {
@@ -2618,10 +2623,31 @@ export default function useReservationFlow() {
         navigate("/applicant/profile");
       }
     } catch (error) {
+      const documentIssues = error?.response?.data?.documentIssues;
+      if (Array.isArray(documentIssues) && documentIssues.length > 0) {
+        setShowValidationErrors(true);
+        setDocumentPrechecks((previous) => {
+          const next = { ...previous };
+          documentIssues.forEach((issue) => {
+            if (issue.key && next[issue.key]) {
+              next[issue.key] = {
+                ...normalizeDocumentPrecheckEntry(next[issue.key]),
+                precheckStatus: issue.precheckStatus || "needs_reupload",
+                readabilityStatus: issue.readabilityStatus || "unknown",
+                documentTypeStatus: issue.documentTypeStatus || "unknown",
+                canSubmit: false,
+                applicantMessage: issue.message,
+                summaryMessage: issue.message,
+              };
+            }
+          });
+          return next;
+        });
+      }
       showNotification(
         getFriendlyError(error, "Failed to process reservation. Please try again."),
         "error",
-        3000,
+        6000,
       );
     } finally {
       setIsLoading(false);

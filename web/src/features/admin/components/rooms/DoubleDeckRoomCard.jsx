@@ -76,9 +76,10 @@ export default function DoubleDeckRoomCard({ room, onConfigure, onViewHistory, c
   const getDeckPillStyle = (bed) => {
     if (!bed) return { bg: "bg-slate-100 dark:bg-slate-800", text: "text-slate-400", label: "Empty", dot: "bg-slate-300" };
 
-    const isOcc = bed.status === "occupied" || Boolean(bed.occupiedBy?.userId);
-    const isRes = bed.status === "reserved";
-    const isMaint = bed.status === "maintenance";
+    const bedStatus = String(bed.status || "").toLowerCase().trim();
+    const isOcc = bedStatus === "occupied" || Boolean(bed.occupiedBy?.userId);
+    const isRes = bedStatus === "reserved";
+    const isMaint = bedStatus === "maintenance";
 
     if (isOcc) {
       return {

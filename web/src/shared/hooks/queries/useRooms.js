@@ -9,7 +9,7 @@ export function useRooms(filters, options = {}) {
     queryKey: queryKeys.rooms.all(filters),
     queryFn: () => roomApi.getAll(filters),
     placeholderData: keepPreviousData,   // keep stale data visible during refetch
-    refetchOnWindowFocus: true,          // re-sync when user tabs back
+    refetchOnWindowFocus: false,         // rooms rarely change mid-session; avoids jank on tab-switch
     refetchInterval: pollInterval,
     ...queryOptions,
   });

@@ -25,7 +25,7 @@ import { showNotification } from "../../../shared/utils/notification";
 function getAvailabilityLabel(room) {
  const beds = room.beds || [];
  const totalBeds = room.capacity || beds.length || 0;
- const availableBeds = room.availableBeds ?? beds.filter((bed) => bed.status === "available" || (bed.status === undefined && bed.available)).length;
+ const availableBeds = room.availableBeds ?? beds.filter((bed) => String(bed.status || "").toLowerCase().trim() === "available" || (bed.status === undefined && bed.available)).length;
 
  if (!totalBeds) return "Available";
  if (availableBeds === 0) {
@@ -236,25 +236,25 @@ export default function RoomDetailsModal({
   };
 
  const totalBeds = room.capacity || room.beds?.length || 0;
- const availableBeds = room.availableBeds ?? (room.beds
- ? room.beds.filter((bed) => bed.status === "available" || (bed.status === undefined && bed.available)).length
- : 0);
- const occupancyPercentage = totalBeds
- ? ((totalBeds - availableBeds) / totalBeds) * 100
- : 0;
- const upperBeds = room.beds
- ? room.beds.filter(
- (bed) => bed.position === "upper" || bed.position === "top",
- )
- : [];
- const lowerBeds = room.beds
- ? room.beds.filter(
- (bed) => bed.position === "lower" || bed.position === "bottom",
- )
- : [];
- const hasBunkPreference = upperBeds.length > 0 || lowerBeds.length > 0;
- const hasAvailableUpper = upperBeds.some((bed) => bed.status === "available" || (bed.status === undefined && bed.available));
- const hasAvailableLower = lowerBeds.some((bed) => bed.status === "available" || (bed.status === undefined && bed.available));
+  const availableBeds = room.availableBeds ?? (room.beds
+  ? room.beds.filter((bed) => String(bed.status || "").toLowerCase().trim() === "available" || (bed.status === undefined && bed.available)).length
+  : 0);
+  const occupancyPercentage = totalBeds
+  ? ((totalBeds - availableBeds) / totalBeds) * 100
+  : 0;
+  const upperBeds = room.beds
+  ? room.beds.filter(
+  (bed) => bed.position === "upper" || bed.position === "top",
+  )
+  : [];
+  const lowerBeds = room.beds
+  ? room.beds.filter(
+  (bed) => bed.position === "lower" || bed.position === "bottom",
+  )
+  : [];
+  const hasBunkPreference = upperBeds.length > 0 || lowerBeds.length > 0;
+  const hasAvailableUpper = upperBeds.some((bed) => String(bed.status || "").toLowerCase().trim() === "available" || (bed.status === undefined && bed.available));
+  const hasAvailableLower = lowerBeds.some((bed) => String(bed.status || "").toLowerCase().trim() === "available" || (bed.status === undefined && bed.available));
 
  const handlePrevImage = () => {
  if (!images.length) return;
@@ -663,7 +663,7 @@ export default function RoomDetailsModal({
                 }`}
               >
                 <span className="text-xs leading-tight font-semibold">{labelStr}</span>
-                {itemIsLongTerm && isDiscountEnabled && discountPercent > 0 ? (
+                {isDiscountEnabled && discountPercent > 0 ? (
                   <span className={`text-[9px] leading-tight mt-0.5 font-semibold ${isSelected ? "text-emerald-300 dark:text-slate-950" : "text-emerald-600 dark:text-emerald-400"}`}>
                     {discountPercent}% OFF
                   </span>

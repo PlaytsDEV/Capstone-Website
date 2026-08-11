@@ -286,8 +286,18 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
       {/* Amenities */}
       {amenities.length > 0 && (
         <section className="content-card rf-summary-panel">
-          <div className="card-section-title"><div className="icon"><Bed size={15} /></div>Room Includes</div>
-          <div className="rf-inclusion-list">{amenities.map((amenity) => (<span className="rf-inclusion-item" key={amenity}><CheckCircle size={14} />{amenity}</span>))}</div>
+          <div className="card-section-title">
+            <div className="icon"><Bed size={15} /></div>
+            Room Includes
+          </div>
+          <div className="rf-inclusion-list">
+            {amenities.map((amenity) => (
+              <div className="rf-inclusion-item" key={amenity}>
+                <CheckCircle size={15} className="rf-inclusion-icon" />
+                <span>{amenity}</span>
+              </div>
+            ))}
+          </div>
         </section>
       )}
 

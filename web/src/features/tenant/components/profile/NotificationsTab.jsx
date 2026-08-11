@@ -252,33 +252,16 @@ const NotificationsTab = ({ onTabChange }) => {
 				}}
 			>
 				<div>
-					<div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
-						<h1
-							style={{
-								fontSize: "22px",
-								fontWeight: 700,
-								color: "var(--text-heading, #1F2937)",
-								margin: 0,
-							}}
-						>
-							Notifications
-						</h1>
-						{unreadCount > 0 && (
-							<span
-								style={{
-									fontSize: "12px",
-									fontWeight: 600,
-									color: "#D97706",
-									backgroundColor: "#FEF3C7",
-									border: "1px solid #FDE68A",
-									padding: "2px 10px",
-									borderRadius: "12px",
-								}}
-							>
-								{unreadCount} unread
-							</span>
-						)}
-					</div>
+					<h1
+						style={{
+							fontSize: "22px",
+							fontWeight: 700,
+							color: "var(--text-heading, #1F2937)",
+							margin: "0 0 4px 0",
+						}}
+					>
+						Notifications
+					</h1>
 					<p style={{ fontSize: "14px", color: "var(--text-muted, #94A3B8)", margin: 0 }}>
 						{isApplicant
 							? "Stay updated on your reservation, visit, and application progress"

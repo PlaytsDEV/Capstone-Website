@@ -2359,6 +2359,42 @@ html[data-theme="dark"] .rf-option-card[data-option="urgent_move_in_review"].sel
 .rf-summary-panel + .rf-summary-panel { align-self: start; }
 .rf-summary-panel .summary-section { --summary-pad: 16px; padding: var(--summary-pad); overflow: hidden; position: relative; }
 
+/* Room Includes Badge Grid */
+.rf-inclusion-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.rf-inclusion-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 12px;
+  background: var(--rf-surface-alt, #F8FAFC);
+  border: 1px solid var(--rf-border, #E2E8F0);
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--rf-text, #0F172A);
+  line-height: 1.3;
+  transition: all 0.15s ease;
+}
+
+.rf-inclusion-item:hover {
+  background: var(--rf-surface-muted, #F1F5F9);
+  border-color: var(--rf-border-card, #CBD5E1);
+}
+
+.rf-inclusion-item .rf-inclusion-icon,
+.rf-inclusion-item svg {
+  color: var(--rf-success, #16A34A);
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+}
+
 @media (max-width: 900px) {
   .rf-room-review-grid { grid-template-columns: 1fr; }
   .rf-room-photo-open img { height: 300px; }

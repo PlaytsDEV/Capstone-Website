@@ -118,7 +118,7 @@ describe("reservationDocumentPrecheckService", () => {
       requiresManualReview: true,
       aiCheckStatus: "passed",
     });
-    expect(result.applicantMessage).toContain("Readable text was detected");
+    expect(result.applicantMessage).toContain("Document verified and ready for review.");
   });
 
   test("marks low-confidence OCR as needing clearer upload", async () => {

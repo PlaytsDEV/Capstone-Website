@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useMemo } from "react";
 import { ChevronLeft, ChevronRight, MapPin } from "lucide-react";
 import { getOptimizedUrl } from "../../../../shared/utils/imageOptimizer";
 
@@ -10,21 +10,10 @@ const RoomCard = React.memo(({ room, onClick, selectedLeaseTermFilter = "All" })
   const [loadedMap, setLoadedMap] = useState({});   // { [index]: true } when fully loaded
   const debounceRef = useRef(false);
 
-  const rawImages = room.images?.length ? room.images : [room.image];
-  // Normalize all URLs through imageOptimizer (ensures Firebase alt=media)
-  const images = rawImages.map((src) => getOptimizedUrl(src));
-
-  // ── Preload all images in the background on first render ──────────────────
-  useEffect(() => {
-    images.forEach((src, idx) => {
-      if (!src) return;
-      const img = new window.Image();
-      img.src = src;
-      img.onload = () => setLoadedMap((prev) => ({ ...prev, [idx]: true }));
-      img.onerror = () => setLoadedMap((prev) => ({ ...prev, [idx]: true })); // show on error too
-    });
-    // Mark index 0 as loading initially
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const images = useMemo(() => {
+    const rawImages = room.images?.length ? room.images : [room.image];
+    return rawImages.map((src) => getOptimizedUrl(src));
+  }, [room.images, room.image]);
 
   const navigate = useCallback((delta, e) => {
     e.stopPropagation();
@@ -34,100 +23,107 @@ const RoomCard = React.memo(({ room, onClick, selectedLeaseTermFilter = "All" })
     setTimeout(() => { debounceRef.current = false; }, 150);
   }, [images.length]);
 
-  const nextImage = (e) => navigate(1, e);
-  const prevImage = (e) => navigate(-1, e);
+  const nextImage = useCallback((e) => navigate(1, e), [navigate]);
+  const prevImage = useCallback((e) => navigate(-1, e), [navigate]);
 
   const isCurrentLoaded = Boolean(loadedMap[currentImageIndex]);
 
+  // Memoized bed metrics & rate calculations
+  const {
+    totalBeds,
+    reservedBeds,
+    lockedBeds,
+    availableBeds,
+    takenBeds,
+    availabilityLabel,
+    isPrivate,
+    minMonths,
+    shortTermRate,
+    longTermRate,
+    discountPercent,
+  } = useMemo(() => {
+    const totalBedsCount = room.capacity || room.beds?.length || parseInt(room.occupancy?.split("/")[1]) || 0;
+    const occupiedFromBedsCount = room.beds
+      ? room.beds.filter((b) => String(b.status || "").toLowerCase() === "occupied" || (b.status === undefined && b.available === false)).length
+      : parseInt(room.occupancy?.split("/")[0]) || 0;
+    const occupiedCount = room.beds?.length > 0 ? occupiedFromBedsCount : Math.max(room.currentOccupancy ?? 0, occupiedFromBedsCount);
+    const reservedBedsCount = room.reservedBeds ?? (
+      room.beds
+        ? room.beds.filter((b) => String(b.status || "").toLowerCase() === "reserved").length
+        : 0
+    );
+    const lockedBedsCount = room.unavailableBeds ?? (
+      room.beds
+        ? room.beds.filter((b) => ["locked", "maintenance"].includes(String(b.status || "").toLowerCase())).length
+        : 0
+    );
+    const availableBedsCount = room.availableBeds ?? Math.max(0, totalBedsCount - occupiedCount - reservedBedsCount - lockedBedsCount);
+    const takenBedsCount = Math.min(totalBedsCount, occupiedCount);
+    const availLabel = availableBedsCount === 0 && lockedBedsCount > 0 ? "Unavailable" : "Full";
 
-  // Reserved beds are not open, even when room occupancy has not changed yet.
-  const totalBeds = room.capacity || room.beds?.length || parseInt(room.occupancy?.split("/")[1]) || 0;
-  const occupiedFromBeds = room.beds
-    ? room.beds.filter((b) => String(b.status || "").toLowerCase() === "occupied" || (b.status === undefined && b.available === false)).length
-    : parseInt(room.occupancy?.split("/")[0]) || 0;
-  // Prefer bed-level count as ground truth when beds data is present.
-  // Using Math.max with currentOccupancy here re-introduces the same stale-counter
-  // drift that causes the "Full" label when beds are actually available.
-  const occupied = room.beds?.length > 0 ? occupiedFromBeds : Math.max(room.currentOccupancy ?? 0, occupiedFromBeds);
-  const reservedBeds = room.reservedBeds ?? (
-    room.beds
-      ? room.beds.filter((b) => String(b.status || "").toLowerCase() === "reserved").length
-      : 0
-  );
-  const lockedBeds = room.unavailableBeds ?? (
-    room.beds
-      ? room.beds.filter((b) => ["locked", "maintenance"].includes(String(b.status || "").toLowerCase())).length
-      : 0
-  );
-  const availableBeds = room.availableBeds ?? Math.max(0, totalBeds - occupied - reservedBeds - lockedBeds);
-  const takenBeds = Math.min(totalBeds, occupied);
-  const availabilityLabel =
-    availableBeds === 0 && lockedBeds > 0 ? "Unavailable" : "Full";
+    const privateType = String(room.type || "").toLowerCase().includes("private");
+    const minMonthsVal = room.longTermLeaseMinMonths ?? 6;
 
-  const isPrivate = String(room.type || "").toLowerCase().includes("private");
-
-  const minMonths = room.longTermLeaseMinMonths ?? 6;
-
-  const getFlyerRates = (roomType, targetRoom = {}) => {
-    const norm = String(roomType || "").toLowerCase();
-    let regularLong = targetRoom.regularLongRate ?? 6000;
-    let regularShort = targetRoom.regularShortRate ?? 7000;
-    let defaultDiscount = targetRoom.quadrupleDiscountPercent ?? 10;
+    // Flyer calculation logic
+    const norm = String(room.type || "").toLowerCase();
+    let regularLong = room.regularLongRate ?? 6000;
+    let regularShort = room.regularShortRate ?? 7000;
+    let defaultDiscount = room.quadrupleDiscountPercent ?? 10;
 
     if (norm.includes("double")) {
-      regularLong = targetRoom.regularLongRate ?? 9000;
-      regularShort = targetRoom.regularShortRate ?? 10000;
-      defaultDiscount = targetRoom.doubleDiscountPercent ?? 20;
+      regularLong = room.regularLongRate ?? 9000;
+      regularShort = room.regularShortRate ?? 10000;
+      defaultDiscount = room.doubleDiscountPercent ?? 20;
     } else if (norm.includes("private")) {
-      regularLong = targetRoom.regularLongRate ?? 15000;
-      regularShort = targetRoom.regularShortRate ?? 16000;
-      defaultDiscount = targetRoom.privateDiscountPercent ?? 10;
-    } else {
-      regularLong = targetRoom.regularLongRate ?? 6000;
-      regularShort = targetRoom.regularShortRate ?? 7000;
-      defaultDiscount = targetRoom.quadrupleDiscountPercent ?? 10;
+      regularLong = room.regularLongRate ?? 15000;
+      regularShort = room.regularShortRate ?? 16000;
+      defaultDiscount = room.privateDiscountPercent ?? 10;
     }
 
-    const discountPercent = typeof targetRoom.longTermDiscountPercent === "number"
-      ? targetRoom.longTermDiscountPercent
+    const discountPercentConfig = typeof room.longTermDiscountPercent === "number"
+      ? room.longTermDiscountPercent
       : defaultDiscount;
 
-    let longTerm = typeof targetRoom.monthlyPrice === "number" && targetRoom.monthlyPrice > 0
-      ? targetRoom.monthlyPrice
-      : Math.round(regularLong * (1 - discountPercent / 100));
+    let longTermCalculated = typeof room.monthlyPrice === "number" && room.monthlyPrice > 0
+      ? room.monthlyPrice
+      : Math.round(regularLong * (1 - discountPercentConfig / 100));
 
-    let shortTerm = typeof targetRoom.shortTermRate === "number" && targetRoom.shortTermRate > 0
-      ? targetRoom.shortTermRate
-      : (typeof targetRoom.price === "number" && targetRoom.price > 0 ? targetRoom.price : Math.round(regularShort * (1 - discountPercent / 100)));
+    let shortTermCalculated = typeof room.shortTermRate === "number" && room.shortTermRate > 0
+      ? room.shortTermRate
+      : (typeof room.price === "number" && room.price > 0 ? room.price : Math.round(regularShort * (1 - discountPercentConfig / 100)));
 
-    if (discountPercent > 0 && discountPercent < 100) {
-      regularLong = Math.round(longTerm / (1 - discountPercent / 100));
-      regularShort = Math.round(shortTerm / (1 - discountPercent / 100));
+    if (discountPercentConfig > 0 && discountPercentConfig < 100) {
+      regularLong = Math.round(longTermCalculated / (1 - discountPercentConfig / 100));
+      regularShort = Math.round(shortTermCalculated / (1 - discountPercentConfig / 100));
     }
 
+    const discountEnabled = room.isDiscountEnabled !== false;
+    const activeRegRate = regularLong;
+    const finalLongTermRate = !discountEnabled ? regularLong : (room.monthlyPrice || longTermCalculated);
+    const finalShortTermRate = !discountEnabled ? regularShort : (room.shortTermRate || shortTermCalculated);
+
+    const activeDiscount = (discountEnabled && activeRegRate > finalLongTermRate)
+      ? (activeRegRate - finalLongTermRate)
+      : 0;
+
+    const discountPct = (discountEnabled && activeRegRate > 0 && activeDiscount > 0)
+      ? Math.round((activeDiscount / activeRegRate) * 100)
+      : 0;
+
     return {
-      regularShort,
-      shortTerm,
-      regularLong,
-      longTerm,
-      discountPercent,
+      totalBeds: totalBedsCount,
+      reservedBeds: reservedBedsCount,
+      lockedBeds: lockedBedsCount,
+      availableBeds: availableBedsCount,
+      takenBeds: takenBedsCount,
+      availabilityLabel: availLabel,
+      isPrivate: privateType,
+      minMonths: minMonthsVal,
+      shortTermRate: finalShortTermRate,
+      longTermRate: finalLongTermRate,
+      discountPercent: discountPct,
     };
-  };
-
-  const flyer = getFlyerRates(room.type, room);
-  const isDiscountEnabled = room.isDiscountEnabled !== false;
-
-  const activeRegularRate = flyer.regularLong;
-  const longTermRate = !isDiscountEnabled ? flyer.regularLong : (room.monthlyPrice || flyer.longTerm);
-  const shortTermRate = !isDiscountEnabled ? flyer.regularShort : (room.shortTermRate || flyer.shortTerm);
-
-  const activeFlyerDiscount = (isDiscountEnabled && activeRegularRate > longTermRate)
-    ? (activeRegularRate - longTermRate)
-    : 0;
-
-  const discountPercent = (isDiscountEnabled && activeRegularRate > 0 && activeFlyerDiscount > 0)
-    ? Math.round((activeFlyerDiscount / activeRegularRate) * 100)
-    : 0;
+  }, [room]);
 
   return (
     <div className="ca-card" onClick={onClick}>
@@ -156,6 +152,8 @@ const RoomCard = React.memo(({ room, onClick, selectedLeaseTermFilter = "All" })
           loading={currentImageIndex === 0 ? "eager" : "lazy"}
           fetchpriority={currentImageIndex === 0 ? "high" : "auto"}
           decoding="async"
+          onLoad={() => setLoadedMap((prev) => ({ ...prev, [currentImageIndex]: true }))}
+          onError={() => setLoadedMap((prev) => ({ ...prev, [currentImageIndex]: true }))}
           style={{
             opacity: isCurrentLoaded ? 1 : 0,
             transition: "opacity 0.3s ease",
@@ -166,17 +164,10 @@ const RoomCard = React.memo(({ room, onClick, selectedLeaseTermFilter = "All" })
           }}
         />
 
-        <style>{`
-          @keyframes caCardShimmer {
-            0%   { background-position: 200% 0; }
-            100% { background-position: -200% 0; }
-          }
-        `}</style>
-
         {/* Discount Badge */}
         {discountPercent > 0 && (
           <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full text-[11px] font-bold shadow-md bg-amber-500 text-slate-950 z-10">
-            {discountPercent}% OFF ({minMonths}+ mos)
+            {discountPercent}% OFF
           </div>
         )}
 

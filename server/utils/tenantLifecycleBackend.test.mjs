@@ -6,7 +6,7 @@ import Reservation from "../models/Reservation.js";
 import BedHistory from "../models/BedHistory.js";
 import { checkAndReleaseExpiredPaymentHolds } from "../services/paymentExpirationService.js";
 
-test("Room model bed status enum supports cleaning_in_progress and turnover methods", () => {
+test("Room model markBedForCleaning now vacates immediately (cleaning_in_progress removed)", () => {
   const room = new Room({
     name: "Test Room 101",
     roomNumber: "101",
@@ -22,13 +22,13 @@ test("Room model bed status enum supports cleaning_in_progress and turnover meth
 
   assert.equal(room.beds[0].status, "occupied");
 
-  // Mark bed for cleaning
+  // markBedForCleaning now delegates to vacateBed — bed goes straight to available
   const marked = room.markBedForCleaning("bed-1");
   assert.equal(marked, true);
-  assert.equal(room.beds[0].status, "cleaning_in_progress");
+  assert.equal(room.beds[0].status, "available");
   assert.equal(room.beds[0].occupiedBy.userId, null);
 
-  // Complete cleaning
+  // completeBedCleaning is a no-op kept for backward compat — still returns true
   const cleaned = room.completeBedCleaning("bed-1");
   assert.equal(cleaned, true);
   assert.equal(room.beds[0].status, "available");

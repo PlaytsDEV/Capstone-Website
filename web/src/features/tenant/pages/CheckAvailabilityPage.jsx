@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback, Suspense, lazy } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { showNotification } from "../../../shared/utils/notification";
 import getFriendlyError from "../../../shared/utils/friendlyError";
@@ -14,8 +14,6 @@ import ConfirmModal from "../../../shared/components/ConfirmModal";
 import BaseModal from "../../../shared/components/BaseModal";
 import "../../../shared/styles/notification.css";
 import "../styles/check-availability.css";
-import InquiryModal from "../../public/modals/InquiryModal";
-import RoomDetailsModal from "../modals/RoomDetailsModal";
 import CheckAvailabilitySkeleton from "../components/check-availability/CheckAvailabilitySkeleton";
 import {
  ROOM_SELECTION_LOCKED_MESSAGE,
@@ -37,6 +35,37 @@ import {
  getRoomImages,
  buildBedsFromCapacity,
 } from "./check-availability";
+
+// Lazy-loaded — excluded from the initial JS chunk (~29 KB saved on first navigation)
+const RoomDetailsModal = lazy(() => import("../modals/RoomDetailsModal"));
+const InquiryModal = lazy(() => import("../../public/modals/InquiryModal"));
+
+// ─────────────────────────────────────────────────────────────
+// LoginConfirmModal — hoisted OUTSIDE CheckAvailabilityPage so
+// React never sees a new component type on parent re-renders.
+// Defining it inside the parent caused full re-mount on every
+// keystroke / filter change (silent performance bug).
+// ─────────────────────────────────────────────────────────────
+function LoginConfirmModal({ isOpen, onClose, onConfirm }) {
+  return (
+    <BaseModal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Sign in to continue"
+      subtitle="Account required for room reservation"
+      variant="info"
+      size="sm"
+      cancelText="Maybe later"
+      confirmText="Sign In"
+      onConfirm={onConfirm}
+    >
+      <p style={{ margin: 0, color: "var(--text-secondary, #475569)", lineHeight: 1.5 }}>
+        You need an account to reserve a room. Sign in if you already have one, or create a new
+        account — it only takes a minute.
+      </p>
+    </BaseModal>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────
 // CheckAvailabilityPage — orchestrator
@@ -144,29 +173,33 @@ function CheckAvailabilityPage() {
  : getRoomImages(normalizedType, room.branch);
  const primaryImage = images[0] || getPrimaryImage(normalizedType);
  const roomNumber = room.roomNumber || room.room_number || displayName;
- const beds = room.beds?.length
- ? room.beds.map((bed) => ({
- ...bed,
- available:
- bed.status !== undefined
- ? bed.status === "available"
- : bed.available !== false,
- }))
- : buildBedsFromCapacity(
- roomNumber,
- normalizedType,
- room.currentOccupancy || 0,
- );
- const reservedBeds = beds.filter(
- (bed) => String(bed.status || "").toLowerCase() === "reserved",
- ).length;
- const unavailableBeds = beds.filter((bed) =>
- ["locked", "maintenance"].includes(String(bed.status || "").toLowerCase()),
- ).length;
- const occupiedFromBeds = beds.filter((bed) =>
- String(bed.status || "").toLowerCase() === "occupied" ||
- (bed.status === undefined && bed.available === false),
- ).length;
+  const beds = room.beds?.length
+  ? room.beds.map((bed) => {
+      const normalizedStatus = bed.status ? String(bed.status).toLowerCase().trim() : undefined;
+      return {
+        ...bed,
+        status: normalizedStatus || (bed.available === false ? "occupied" : "available"),
+        available:
+          normalizedStatus !== undefined
+            ? normalizedStatus === "available"
+            : bed.available !== false,
+      };
+    })
+  : buildBedsFromCapacity(
+  roomNumber,
+  normalizedType,
+  room.currentOccupancy || 0,
+  );
+  const reservedBeds = beds.filter(
+  (bed) => String(bed.status || "").toLowerCase().trim() === "reserved",
+  ).length;
+  const unavailableBeds = beds.filter((bed) =>
+  ["locked", "maintenance"].includes(String(bed.status || "").toLowerCase().trim()),
+  ).length;
+  const occupiedFromBeds = beds.filter((bed) =>
+  String(bed.status || "").toLowerCase().trim() === "occupied" ||
+  (bed.status === undefined && bed.available === false),
+  ).length;
  // Prefer bed-level count as ground truth when bed data is present.
  // Falling back to currentOccupancy for legacy rooms with no beds array prevents
  // stale counter drift from making a room appear "Full" when beds are free.
@@ -234,32 +267,35 @@ function CheckAvailabilityPage() {
  // ── Capacity validation (dev-only debug removed) ─────────
 
   // ── Filtering ──────────────────────────────────────────────
-  const getAvailableRoomTypes = () => {
+  const availableRoomTypes = useMemo(() => {
     if (selectedBranch === "Guadalupe") return ["All", "Quadruple"];
     return ["All", "Private", "Shared", "Quadruple"];
-  };
-  const availableRoomTypes = getAvailableRoomTypes();
+  }, [selectedBranch]);
 
-  const filteredRooms = rooms.filter((room) => {
-    const matchesSearch =
-      room.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      room.branch.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredRooms = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return rooms.filter((room) => {
+      const matchesSearch =
+        !query ||
+        room.title.toLowerCase().includes(query) ||
+        room.branch.toLowerCase().includes(query);
 
-    let effectivePrice = room.price;
-    if (selectedLeaseTermFilter === "shortTerm") {
-      effectivePrice = room.shortTermRate || room.regularShortRate || room.price;
-    } else if (selectedLeaseTermFilter === "longTerm") {
-      effectivePrice = room.monthlyPrice || room.regularLongRate || room.price;
-    }
+      let effectivePrice = room.price;
+      if (selectedLeaseTermFilter === "shortTerm") {
+        effectivePrice = room.shortTermRate || room.regularShortRate || room.price;
+      } else if (selectedLeaseTermFilter === "longTerm") {
+        effectivePrice = room.monthlyPrice || room.regularLongRate || room.price;
+      }
 
-    return (
-      matchesSearch &&
-      (selectedBranch === "All" || room.branch === selectedBranch) &&
-      (selectedRoomType === "All" || room.type === selectedRoomType) &&
-      effectivePrice >= minPrice &&
-      effectivePrice <= maxPrice
-    );
-  });
+      return (
+        matchesSearch &&
+        (selectedBranch === "All" || room.branch === selectedBranch) &&
+        (selectedRoomType === "All" || room.type === selectedRoomType) &&
+        effectivePrice >= minPrice &&
+        effectivePrice <= maxPrice
+      );
+    });
+  }, [rooms, searchQuery, selectedLeaseTermFilter, selectedBranch, selectedRoomType, minPrice, maxPrice]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -268,59 +304,84 @@ function CheckAvailabilityPage() {
 
   // Paginated rooms
   const totalPages = Math.max(1, Math.ceil(filteredRooms.length / ROOMS_PER_PAGE));
-  const paginatedRooms = filteredRooms.slice(
-    (currentPage - 1) * ROOMS_PER_PAGE,
-    currentPage * ROOMS_PER_PAGE,
+  const paginatedRooms = useMemo(
+    () => filteredRooms.slice((currentPage - 1) * ROOMS_PER_PAGE, currentPage * ROOMS_PER_PAGE),
+    [filteredRooms, currentPage],
   );
 
-  const handleBranchFilter = (branch) => {
+  const handleBranchFilter = useCallback((branch) => {
     setSelectedBranch(branch);
     setSelectedRoomType("All");
-  };
-  const clearAllFilters = () => {
+  }, []);
+
+  const clearAllFilters = useCallback(() => {
     setSelectedBranch("All");
     setSelectedRoomType("All");
     setSelectedLeaseTermFilter("All");
     setMinPrice(0);
     setMaxPrice(15000);
     setSearchQuery("");
-  };
+  }, []);
+
+  // Stable callbacks for LoginConfirmModal and logout — prevents inline-arrow
+  // prop churn that would break React.memo on AvailabilityHeader.
+  const handleLoginConfirmClose = useCallback(
+    () => setShowLoginConfirmBeforeReserve(false),
+    [],
+  );
+  const handleLoginConfirm = useCallback(() => {
+    setShowLoginConfirmBeforeReserve(false);
+    appNavigate("/signin", {
+      flash: { type: "info", message: "Please sign in to reserve a room" },
+    });
+  }, [appNavigate]);
+  const handleLogout = useCallback(() => setShowLogoutConfirm(true), []);
 
   // ── Room details / appliances ──────────────────────────────
-  const openRoomDetails = (room) => {
+  const openRoomDetails = useCallback((room) => {
     setSelectedRoom(room);
     setSelectedAppliances({});
     setSelectedBed(null);
     setSelectedLeaseDuration("");
     setIsDetailsModalOpen(true);
-  };
-  const closeRoomDetails = () => {
+  }, []);
+
+  const closeRoomDetails = useCallback(() => {
     setIsDetailsModalOpen(false);
     setSelectedRoom(null);
     setSelectedAppliances({});
     setSelectedBed(null);
     setSelectedLeaseDuration("");
-  };
- const handleApplianceQuantityChange = (id, qty) => {
- setSelectedAppliances((prev) => ({
- ...prev,
- [id]: Math.max(0, parseInt(qty, 10) || 0),
- }));
- };
- const buildSelectedAppliancesPayload = () =>
- Object.fromEntries(
- Object.entries(selectedAppliances).filter(
- ([, quantity]) => Number.isInteger(quantity) && quantity > 0,
- ),
- );
- const calculateApplianceFees = () =>
- AVAILABLE_APPLIANCES.reduce(
- (total, a) =>
- total +
- (selectedRoom?.applianceFeeAmountPerUnit || a.price) *
- (selectedAppliances[a.id] || 0),
- 0,
- );
+  }, []);
+
+  const handleApplianceQuantityChange = useCallback((id, qty) => {
+    setSelectedAppliances((prev) => ({
+      ...prev,
+      [id]: Math.max(0, parseInt(qty, 10) || 0),
+    }));
+  }, []);
+
+  const buildSelectedAppliancesPayload = useCallback(
+    () =>
+      Object.fromEntries(
+        Object.entries(selectedAppliances).filter(
+          ([, quantity]) => Number.isInteger(quantity) && quantity > 0,
+        ),
+      ),
+    [selectedAppliances],
+  );
+
+  const calculateApplianceFees = useCallback(
+    () =>
+      AVAILABLE_APPLIANCES.reduce(
+        (total, a) =>
+          total +
+          (selectedRoom?.applianceFeeAmountPerUnit || a.price) *
+            (selectedAppliances[a.id] || 0),
+        0,
+      ),
+    [selectedRoom, selectedAppliances],
+  );
 
   // ── Reservation logic ──────────────────────────────────────
   const handleProceedToReservation = () => {
@@ -410,89 +471,73 @@ function CheckAvailabilityPage() {
         viewingType: null,
         agreedToPrivacy: false,
       };
- try {
- await reservationApi.create(payload);
- } catch (createErr) {
- if (createErr?.response?.data?.code === "RESERVATION_ALREADY_EXISTS") {
- // Block ALL room changes when an active reservation exists.
- // Users must cancel their current reservation first.
- closeRoomDetails();
- showNotification(
- "You already have an active reservation. Cancel it first if you'd like a different room.",
- "warning",
- 5000,
- );
- appNavigate("/applicant/profile", {
- flash: {
- type: "warning",
- message:
- "You already have an active reservation. Cancel it first if you'd like a different room.",
- },
- });
- return;
- } else {
- throw createErr;
- }
- }
+  try {
+    const createdRes = await reservationApi.create(payload);
+    if (createdRes?._id && user?.firebaseUid) {
+      sessionStorage.setItem(`activeReservationId_${user.firebaseUid}`, createdRes._id);
+    }
+  } catch (createErr) {
+  if (createErr?.response?.data?.code === "RESERVATION_ALREADY_EXISTS") {
+  if (createErr?.response?.data?.existingReservationId && user?.firebaseUid) {
+    sessionStorage.setItem(
+      `activeReservationId_${user.firebaseUid}`,
+      createErr.response.data.existingReservationId
+    );
+  }
+  // Block ALL room changes when an active reservation exists.
+  // Users must cancel their current reservation first.
+  closeRoomDetails();
+  showNotification(
+  "You already have an active reservation. Cancel it first if you'd like a different room.",
+  "warning",
+  5000,
+  );
+  appNavigate("/applicant/profile", {
+  flash: {
+  type: "warning",
+  message:
+  "You already have an active reservation. Cancel it first if you'd like a different room.",
+   },
+   });
+   return;
+  } else {
+   throw createErr;
+  }
+  }
  closeRoomDetails();
  await queryClient.invalidateQueries({ queryKey: ["reservations"] });
  appNavigate("/applicant/profile", {
- flash: {
- type: "success",
- message: `Room ${selectedRoom.title} reserved! Continue from your dashboard.`,
- },
- });
- } catch (err) {
- console.error("Failed to reserve room:", err);
- if (err?.response?.data?.code === "RESERVATION_ALREADY_EXISTS") {
- showNotification(
- "You already have an ongoing reservation. Go to your profile to continue.",
- "warning",
- 4000,
- );
- } else {
- showNotification(
- getFriendlyError(err, "Failed to reserve room. Please try again."),
- "error",
- 4000,
- );
- }
- }
+  flash: {
+  type: "success",
+  message: `Room ${selectedRoom.title} reserved! Continue from your dashboard.`,
+  },
+  });
+  } catch (err) {
+  console.error("Failed to reserve room:", err);
+  if (err?.response?.data?.code === "RESERVATION_ALREADY_EXISTS") {
+  showNotification(
+  "You already have an ongoing reservation. Go to your profile to continue.",
+  "warning",
+  4000,
+  );
+  } else {
+  showNotification(
+  getFriendlyError(err, "Failed to reserve room. Please try again."),
+  "error",
+  4000,
+  );
+  }
+  }
  };
 
-  // ── Login confirm modal ────────────────────
-  const LoginConfirmBeforeReserveModal = () => {
-    return (
-      <BaseModal
+  // ── Render ─────────────────────────────────────────────────
+  return (
+  <div className="min-h-screen" style={{ backgroundColor: "var(--surface-page)" }}>
+      <LoginConfirmModal
         isOpen={showLoginConfirmBeforeReserve}
-        onClose={() => setShowLoginConfirmBeforeReserve(false)}
-        title="Sign in to continue"
-        subtitle="Account required for room reservation"
-        variant="info"
-        size="sm"
-        cancelText="Maybe later"
-        confirmText="Sign In"
-        onConfirm={() => {
-          setShowLoginConfirmBeforeReserve(false);
-          appNavigate("/signin", {
-            flash: {
-              type: "info",
-              message: "Please sign in to reserve a room",
-            },
-          });
-        }}
-      >
-        <p style={{ margin: 0, color: "var(--text-secondary, #475569)", lineHeight: 1.5 }}>
-          You need an account to reserve a room. Sign in if you already have one, or create a new account — it only takes a minute.
-        </p>
-      </BaseModal>
-    );
-  };
-
- // ── Render ─────────────────────────────────────────────────
- return (
- <div className="min-h-screen" style={{ backgroundColor: "var(--surface-page)" }}>
- <LoginConfirmBeforeReserveModal />
+        onClose={handleLoginConfirmClose}
+        onConfirm={handleLoginConfirm}
+      />
 
       <AvailabilityHeader
         user={user}
@@ -508,7 +553,7 @@ function CheckAvailabilityPage() {
         maxPrice={maxPrice}
         setMaxPrice={setMaxPrice}
         onClearAll={clearAllFilters}
-        onLogout={() => setShowLogoutConfirm(true)}
+        onLogout={handleLogout}
       />
 
  <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -637,32 +682,38 @@ function CheckAvailabilityPage() {
  </section>
  </main>
 
- <RoomDetailsModal
- isOpen={isDetailsModalOpen}
- room={selectedRoom}
- onClose={closeRoomDetails}
- onProceed={handleProceedToReservation}
- proceedButtonText={
- isChangeRoomMode ? "Confirm Room Change" : "Proceed to Reservation"
- }
- isOverbooked={selectedRoom ? checkRoomOverbooking(selectedRoom) : false}
- selectedBed={selectedBed}
- onSelectBed={setSelectedBed}
- selectedAppliances={selectedAppliances}
- onApplianceQuantityChange={handleApplianceQuantityChange}
- calculateApplianceFees={calculateApplianceFees}
- selectedLeaseDuration={selectedLeaseDuration}
- onSelectLeaseDuration={setSelectedLeaseDuration}
- availableAppliances={AVAILABLE_APPLIANCES.map((appliance) => ({
- ...appliance,
- price: selectedRoom?.applianceFeeAmountPerUnit || appliance.price,
- }))}
- />
+  {isDetailsModalOpen && selectedRoom && (
+    <Suspense fallback={null}>
+      <RoomDetailsModal
+        isOpen={isDetailsModalOpen}
+        room={selectedRoom}
+        onClose={closeRoomDetails}
+        onProceed={handleProceedToReservation}
+        proceedButtonText={
+          isChangeRoomMode ? "Confirm Room Change" : "Proceed to Reservation"
+        }
+        isOverbooked={checkRoomOverbooking(selectedRoom)}
+        selectedBed={selectedBed}
+        onSelectBed={setSelectedBed}
+        selectedAppliances={selectedAppliances}
+        onApplianceQuantityChange={handleApplianceQuantityChange}
+        calculateApplianceFees={calculateApplianceFees}
+        selectedLeaseDuration={selectedLeaseDuration}
+        onSelectLeaseDuration={setSelectedLeaseDuration}
+        availableAppliances={AVAILABLE_APPLIANCES.map((appliance) => ({
+          ...appliance,
+          price: selectedRoom?.applianceFeeAmountPerUnit || appliance.price,
+        }))}
+      />
+    </Suspense>
+  )}
 
- <InquiryModal
- isOpen={isInquiryModalOpen}
- onClose={() => setIsInquiryModalOpen(false)}
- />
+ <Suspense fallback={null}>
+   <InquiryModal
+     isOpen={isInquiryModalOpen}
+     onClose={() => setIsInquiryModalOpen(false)}
+   />
+ </Suspense>
 
  <ConfirmModal
  isOpen={showLogoutConfirm}

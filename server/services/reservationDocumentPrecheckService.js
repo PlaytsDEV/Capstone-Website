@@ -238,7 +238,7 @@ const buildResult = ({
 };
 
 const buildManualFallbackResult = ({
-  applicantMessage = "Document uploaded successfully. We could not complete the readability check, so this document will be reviewed manually.",
+  applicantMessage = "Document attached. Will be reviewed manually by admin.",
   adminNote = "OCR could not complete. Manual review required.",
   flags = ["ocr_manual_fallback"],
 } = {}) =>
@@ -281,8 +281,7 @@ const buildReadyResult = ({
     readabilityStatus: "readable",
     documentTypeStatus,
     canSubmit: true,
-    applicantMessage:
-      "Document uploaded successfully. Readable text was detected. This document is ready for submission and will still be reviewed by admin.",
+    applicantMessage: "Document verified and ready for review.",
     adminNote: "OCR detected readable text. Manual review is still required.",
     confidence,
     flags,
@@ -524,7 +523,7 @@ const buildNeedsReuploadMessage = ({
   if (documentTypeStatus === "possible_mismatch") {
     return {
       applicantMessage:
-        "Document uploaded successfully, but it may not match the required document type. Please check the file and re-upload the correct document before submitting.",
+        "File may not match the required document type. Please re-upload the correct document.",
       adminNote:
         "OCR flagged a possible document type mismatch. Please inspect manually.",
     };
@@ -533,7 +532,7 @@ const buildNeedsReuploadMessage = ({
   if (readabilityStatus === "unreadable") {
     return {
       applicantMessage:
-        "Document uploaded successfully, but the image appears unclear or unreadable. Please re-upload a clearer copy before submitting your application.",
+        "Image appears unclear or unreadable. Please upload a clearer photo.",
       adminNote:
         "OCR could not detect enough readable text. Please inspect manually.",
     };
@@ -541,7 +540,7 @@ const buildNeedsReuploadMessage = ({
 
   return {
     applicantMessage:
-      "Document uploaded successfully, but the image appears unclear or unreadable. Please re-upload a clearer copy before submitting your application.",
+      "Image appears unclear or unreadable. Please upload a clearer photo.",
     adminNote: "OCR flagged low readability. Please inspect manually.",
   };
 };
@@ -555,7 +554,7 @@ export const runReservationDocumentPrecheck = async ({
     return buildNeedsReuploadResult({
       readabilityStatus: "unreadable",
       applicantMessage:
-        "Document uploaded successfully, but the image appears unclear or unreadable. Please re-upload a clearer copy before submitting your application.",
+        "Image appears unclear or unreadable. Please upload a clearer photo.",
       adminNote: "No document URL was provided for OCR pre-check.",
       flags: ["missing_document_url"],
     });

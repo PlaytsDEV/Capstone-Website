@@ -13,8 +13,8 @@ const BedSelector = ({ beds = [], selectedBed, onSelect, readOnly = false }) => 
 
   const getStatus = (bed) => {
     if (!bed) return "empty";
-    if (bed.status) return bed.status; // available, occupied, reserved, locked, maintenance
-    return bed.available === false ? "occupied" : "available";
+    const rawStatus = bed.status || (bed.available === false ? "occupied" : "available");
+    return String(rawStatus).toLowerCase().trim();
   };
 
   const isSelectable = (bed) => {

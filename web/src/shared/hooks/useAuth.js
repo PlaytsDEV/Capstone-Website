@@ -60,10 +60,17 @@ const AuthContext =
 
 const TENANT_WARM_ROUTES = ["/applicant/profile", "/applicant/reservation"];
 
-const attachManagedFirebaseIdentity = (userData) =>
-  userData && auth.currentUser?.uid
-    ? { ...userData, firebaseUid: auth.currentUser.uid }
-    : userData;
+const attachManagedFirebaseIdentity = (userData) => {
+  if (!userData || !auth.currentUser?.uid) return userData;
+  if (userData.firebaseUid === auth.currentUser.uid) return userData;
+  return { ...userData, firebaseUid: auth.currentUser.uid };
+};
+
+const isSameUser = (userA, userB) => {
+  if (userA === userB) return true;
+  if (!userA || !userB) return false;
+  return JSON.stringify(userA) === JSON.stringify(userB);
+};
 
 const warmTenantRouteData = (queryClient, userData) => {
   const isTenantPortalUser =
@@ -465,6 +472,9 @@ export const AuthProvider = ({ children }) => {
       if (!nextUser || !auth.currentUser) return;
 
       setUser((prev) => {
+        if (isSameUser(prev, nextUser)) {
+          return prev;
+        }
         if (
           prev?.role &&
           prev.role !== nextUser.role &&
@@ -474,7 +484,7 @@ export const AuthProvider = ({ children }) => {
         }
         return nextUser;
       });
-      setIsAuthenticated(true);
+      setIsAuthenticated((prev) => (prev ? prev : true));
     });
 
     return unsubscribe;
@@ -486,7 +496,7 @@ export const AuthProvider = ({ children }) => {
    */
   const updateUser = (userData) => {
     const resolvedUser = attachManagedFirebaseIdentity(userData);
-    setUser(resolvedUser);
+    setUser((prev) => (isSameUser(prev, resolvedUser) ? prev : resolvedUser));
     setIsAuthenticated(Boolean(userData));
   };
 

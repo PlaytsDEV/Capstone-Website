@@ -471,8 +471,8 @@ export async function transferStayWorkflow({ reservationId, payload, actorId }) 
       if (!currentRoom) {
         throw Object.assign(new Error("Current room not found."), { statusCode: 404, code: "CURRENT_ROOM_NOT_FOUND" });
       }
-      // Vacate current bed and mark as cleaning_in_progress for turnover
-      currentRoom.markBedForCleaning(activeStay.bedId);
+      // Vacate current bed immediately — bed is available for the next tenant
+      currentRoom.vacateBed(activeStay.bedId);
       currentRoom.currentOccupancy = Math.max(0, Number(currentRoom.currentOccupancy || 0) - 1);
       currentRoom.updateAvailability();
       await currentRoom.save({ session });
@@ -944,8 +944,8 @@ export async function moveOutStayWorkflow({ reservationId, payload, actorId }) {
 
       const room = await Room.findById(activeStay.roomId).session(session);
       if (room) {
-        // Mark bed status as cleaning_in_progress for room turnover
-        room.markBedForCleaning(activeStay.bedId);
+        // Vacate bed immediately — available for the next reservation
+        room.vacateBed(activeStay.bedId);
         room.currentOccupancy = Math.max(0, Number(room.currentOccupancy || 0) - 1);
         room.updateAvailability();
         await room.save({ session });

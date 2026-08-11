@@ -89,6 +89,20 @@ describe("tenantProfileService", () => {
     expect(details.emergencyContact.phone).toBeNull();
   });
 
+  test("does not pollute user profileImage with reservation.selfiePhotoUrl", () => {
+    const details = resolveTenantPersonalDetails({
+      user: { profileImage: null },
+      reservation: { selfiePhotoUrl: "https://example.com/selfie.jpg" },
+    });
+    expect(details.profileImage).toBeNull();
+
+    const populatedUser = resolveTenantPersonalDetails({
+      user: { profileImage: "https://example.com/user-avatar.jpg" },
+      reservation: { selfiePhotoUrl: "https://example.com/selfie.jpg" },
+    });
+    expect(populatedUser.profileImage).toBe("https://example.com/user-avatar.jpg");
+  });
+
   test("financial summary uses approved reservation rate and separates charges", () => {
     const summary = resolveTenantFinancialSummary({
       reservation,

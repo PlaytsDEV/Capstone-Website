@@ -487,6 +487,12 @@ export default function ReservationDashboard({
   onGoToReservation,
 }) {
   const navigate = useNavigate();
+  const goToFlow = (to) => {
+    if (reservation?._id) {
+      sessionStorage.setItem("activeReservationId", reservation._id);
+    }
+    navigate(to, { state: { continueFlow: true, reservationId: reservation?._id } });
+  };
   const queryClient = useQueryClient();
   const currentStage = resolveCurrentStage(reservation);
   const totalSegments = Math.max(STEPS.length - 1, 1);
@@ -695,7 +701,7 @@ export default function ReservationDashboard({
             {feedback.viewingPreference === "physical_visit" ? (
               <button
                 type="button"
-                onClick={() => navigate("/applicant/reservation?step=2&edit=1")}
+                onClick={() => goToFlow("/applicant/reservation?step=2&edit=1")}
                 style={styles.receiptPrimaryBtn}
               >
                 Review Visit Schedule
@@ -703,7 +709,7 @@ export default function ReservationDashboard({
             ) : (
               <button
                 type="button"
-                onClick={() => navigate("/applicant/reservation?step=3")}
+                onClick={() => goToFlow("/applicant/reservation?step=3")}
                 style={styles.receiptPrimaryBtn}
               >
                 Complete Application
@@ -711,7 +717,7 @@ export default function ReservationDashboard({
             )}
             <button
               type="button"
-              onClick={() => navigate("/applicant/reservation?step=2&edit=1")}
+              onClick={() => goToFlow("/applicant/reservation?step=2&edit=1")}
               style={styles.receiptSecondaryBtn}
             >
               Change Viewing Preference
@@ -758,13 +764,13 @@ export default function ReservationDashboard({
                     step.stage === 1 &&
                     (status === "complete" || status === "waiting")
                   ) {
-                    navigate(`/applicant/reservation?step=${step.stage}`);
+                    goToFlow(`/applicant/reservation?step=${step.stage}`);
                     return;
                   }
                   if (status === "current" && action.route) {
-                    navigate(action.route);
+                    goToFlow(action.route);
                   } else if (status === "complete" || status === "waiting") {
-                    navigate(`/applicant/reservation?step=${step.stage}`);
+                    goToFlow(`/applicant/reservation?step=${step.stage}`);
                   }
                 }}
                 title={
@@ -903,7 +909,7 @@ export default function ReservationDashboard({
           </div>
           {action.buttonLabel && action.route && (
             <button
-              onClick={() => navigate(action.route)}
+              onClick={() => goToFlow(action.route)}
               style={{
                 flexShrink: 0,
                 padding: "6px 14px",

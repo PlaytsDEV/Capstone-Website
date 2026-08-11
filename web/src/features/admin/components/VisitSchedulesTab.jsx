@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Ban,
   Calendar,
@@ -11,6 +12,7 @@ import {
   AlertCircle,
   CalendarDays,
   ChevronDown,
+  MoreVertical,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { reservationApi } from "../../../shared/api/apiClient";
@@ -58,22 +60,62 @@ function VisitActionMenu({
   handleDeleteHistoryEntry,
 }) {
   const [isOpen, setIsOpen] = useState(false);
-  const menuRef = useRef(null);
+  const [coords, setCoords] = useState({ top: 0, left: 0, openUp: false });
+  const buttonRef = useRef(null);
+
+  const updatePosition = useCallback(() => {
+    if (!buttonRef.current) return;
+    const rect = buttonRef.current.getBoundingClientRect();
+    const menuHeight = row.isHistorical ? 50 : 180;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openUp = spaceBelow < menuHeight && rect.top > menuHeight;
+
+    const menuWidth = 160;
+    const left = Math.max(
+      10,
+      Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 10)
+    );
+    const top = openUp ? rect.top - 6 : rect.bottom + 6;
+
+    setCoords({ top, left, openUp });
+  }, [row.isHistorical]);
+
+  const toggleMenu = (e) => {
+    e.stopPropagation();
+    if (!isOpen) {
+      updatePosition();
+    }
+    setIsOpen(!isOpen);
+  };
 
   useEffect(() => {
-    function handleClickOutside(event) {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setIsOpen(false);
-      }
+    if (!isOpen) return;
+
+    function handleScrollOrResize() {
+      updatePosition();
     }
 
-    if (isOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
+    function handleClickOutside(event) {
+      if (buttonRef.current && buttonRef.current.contains(event.target)) {
+        return;
+      }
+      const menuEl = document.getElementById(`visit-actions-menu-${row.id}`);
+      if (menuEl && menuEl.contains(event.target)) {
+        return;
+      }
+      setIsOpen(false);
     }
+
+    window.addEventListener("scroll", handleScrollOrResize, true);
+    window.addEventListener("resize", handleScrollOrResize);
+    document.addEventListener("mousedown", handleClickOutside);
+
     return () => {
+      window.removeEventListener("scroll", handleScrollOrResize, true);
+      window.removeEventListener("resize", handleScrollOrResize);
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [isOpen]);
+  }, [isOpen, updatePosition, row.id]);
 
   const canPerformVisitActions =
     !row.visitApproved &&
@@ -83,94 +125,104 @@ function VisitActionMenu({
 
   return (
     <div
-      ref={menuRef}
       className="relative flex items-center justify-end"
       onClick={(e) => e.stopPropagation()}
     >
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        ref={buttonRef}
+        onClick={toggleMenu}
         disabled={actionLoading === row.id}
         className="px-3 py-1.5 text-xs font-medium rounded-lg border border-[var(--border-light)] bg-card text-foreground hover:bg-muted transition-colors flex items-center gap-1.5 shadow-xs disabled:opacity-50"
       >
         <span>Actions</span>
-        <ChevronDown
-          className={`w-3.5 h-3.5 transition-transform duration-150 ${
-            isOpen ? "rotate-180" : ""
-          }`}
-        />
+        <MoreVertical className="w-3.5 h-3.5 text-muted-foreground" />
       </button>
 
-      {isOpen && (
-        <div className="absolute right-0 top-9 z-50 min-w-[160px] rounded-lg border border-[var(--border-light)] bg-card p-1.5 shadow-lg animate-in fade-in zoom-in-95 duration-100 text-left">
-          {row.isHistorical ? (
-            <button
-              className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium text-[color:var(--danger)] hover:bg-[color:var(--danger-light)] transition-colors"
-              onClick={() => {
-                setIsOpen(false);
-                handleDeleteHistoryEntry(row.reservationId, row.historyIndex);
-              }}
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              Delete History Entry
-            </button>
-          ) : (
-            <>
-              {canPerformVisitActions && (
-                <>
-                  <button
-                    className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium text-[color:var(--success-dark)] hover:bg-[color:var(--success-light)] transition-colors"
-                    disabled={actionLoading === row.id}
-                    onClick={() => {
-                      setIsOpen(false);
-                      handleVerify(row.id);
-                    }}
-                  >
-                    <Check className="w-3.5 h-3.5 text-[color:var(--success)]" />
-                    Mark Visited
-                  </button>
-
-                  <button
-                    className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium text-[color:var(--warning-dark,#92400E)] hover:bg-[color:var(--warning-light,#FEF3C7)] transition-colors"
-                    disabled={actionLoading === row.id}
-                    onClick={() => {
-                      setIsOpen(false);
-                      handleMarkNoShow(row.id);
-                    }}
-                  >
-                    <AlertCircle className="w-3.5 h-3.5 text-[color:var(--warning)]" />
-                    No-Show
-                  </button>
-
-                  <button
-                    className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium text-[color:var(--danger-dark)] hover:bg-[color:var(--danger-light)] transition-colors"
-                    disabled={actionLoading === row.id}
-                    onClick={() => {
-                      setIsOpen(false);
-                      setSelectedSchedule(row);
-                    }}
-                  >
-                    <XIcon className="w-3.5 h-3.5 text-[color:var(--danger)]" />
-                    Reject
-                  </button>
-
-                  <div className="my-1 border-t border-[var(--border-light)]" />
-                </>
-              )}
-
+      {isOpen &&
+        createPortal(
+          <div
+            id={`visit-actions-menu-${row.id}`}
+            style={{
+              position: "fixed",
+              left: `${coords.left}px`,
+              ...(coords.openUp
+                ? { bottom: `${window.innerHeight - coords.top}px` }
+                : { top: `${coords.top}px` }),
+              zIndex: 9999,
+            }}
+            className="min-w-[160px] rounded-lg border border-[var(--border-light)] bg-card p-1.5 shadow-xl animate-in fade-in zoom-in-95 duration-100 text-left"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {row.isHistorical ? (
               <button
                 className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium text-[color:var(--danger)] hover:bg-[color:var(--danger-light)] transition-colors"
                 onClick={() => {
                   setIsOpen(false);
-                  handleDelete(row.id);
+                  handleDeleteHistoryEntry(row.reservationId, row.historyIndex);
                 }}
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                Archive Schedule
+                Delete History Entry
               </button>
-            </>
-          )}
-        </div>
-      )}
+            ) : (
+              <>
+                {canPerformVisitActions && (
+                  <>
+                    <button
+                      className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium text-[color:var(--success-dark)] hover:bg-[color:var(--success-light)] transition-colors"
+                      disabled={actionLoading === row.id}
+                      onClick={() => {
+                        setIsOpen(false);
+                        handleVerify(row.id);
+                      }}
+                    >
+                      <Check className="w-3.5 h-3.5 text-[color:var(--success)]" />
+                      Mark Visited
+                    </button>
+
+                    <button
+                      className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium text-[color:var(--warning-dark,#92400E)] hover:bg-[color:var(--warning-light,#FEF3C7)] transition-colors"
+                      disabled={actionLoading === row.id}
+                      onClick={() => {
+                        setIsOpen(false);
+                        handleMarkNoShow(row.id);
+                      }}
+                    >
+                      <AlertCircle className="w-3.5 h-3.5 text-[color:var(--warning)]" />
+                      No-Show
+                    </button>
+
+                    <button
+                      className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium text-[color:var(--danger-dark)] hover:bg-[color:var(--danger-light)] transition-colors"
+                      disabled={actionLoading === row.id}
+                      onClick={() => {
+                        setIsOpen(false);
+                        setSelectedSchedule(row);
+                      }}
+                    >
+                      <XIcon className="w-3.5 h-3.5 text-[color:var(--danger)]" />
+                      Reject
+                    </button>
+
+                    <div className="my-1 border-t border-[var(--border-light)]" />
+                  </>
+                )}
+
+                <button
+                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-xs font-medium text-[color:var(--danger)] hover:bg-[color:var(--danger-light)] transition-colors"
+                  onClick={() => {
+                    setIsOpen(false);
+                    handleDelete(row.id);
+                  }}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Archive Schedule
+                </button>
+              </>
+            )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
