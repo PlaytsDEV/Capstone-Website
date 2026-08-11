@@ -1912,8 +1912,14 @@ describe("reservationsController.updateReservation access hardening", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  test("blocks approval when a submitted document has needs_reupload precheck status", async () => {
+  test("allows approval when a submitted document has needs_reupload precheck status (manual admin review)", async () => {
     const save = jest.fn().mockResolvedValue(undefined);
+    reservationFindByIdAndUpdate.mockResolvedValue({
+      _id: "507f1f77bcf86cd799439030",
+      status: "approved_for_payment",
+      userId: { _id: "tenant-1" },
+      toObject: () => ({ status: "approved_for_payment" }),
+    });
     const reservation = {
       _id: "507f1f77bcf86cd799439030",
       status: "pending_application_review",
@@ -1966,12 +1972,10 @@ describe("reservationsController.updateReservation access hardening", () => {
 
     await updateReservation(req, res, next);
 
-    expect(res.statusCode).toBe(422);
-    expect(res.body.code).toBe("DOCUMENT_PRECHECK_BLOCKS_APPROVAL");
-    expect(res.body.blockedDocuments).toHaveLength(1);
-    expect(res.body.blockedDocuments[0].key).toBe("valid_id_front");
-    expect(save).not.toHaveBeenCalled();
-    expect(next).not.toHaveBeenCalled();
+    expect(res.statusCode).not.toBe(422);
+    expect(res.body?.code).not.toBe("DOCUMENT_PRECHECK_BLOCKS_APPROVAL");
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(reservation.status).toBe("approved_for_payment");
   });
 
   test("allows approval when blocked document has manual_review_fallback status", async () => {

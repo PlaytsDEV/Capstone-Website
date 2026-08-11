@@ -194,20 +194,6 @@ export default function ReservationSidePanel({ reservation, onClick }) {
  tabIndex={onClick ? 0 : undefined}
  >
  <div style={S.headerShell}>
- <div style={S.statusRow}>
- <span style={{ ...S.statusDot, background: panelTone.accent }} />
- <span
- style={{
- ...S.statusChip,
- color: panelTone.accent,
- background: panelTone.soft,
- border: `1px solid ${panelTone.border}`,
- }}
- >
- {panelTone.label}
- </span>
- </div>
-
  <div style={S.roomSection}>
  <div style={S.roomIconWrap}>
  <Home size={20} color="var(--text-secondary, #64748B)" />
@@ -222,14 +208,14 @@ export default function ReservationSidePanel({ reservation, onClick }) {
  </div>
  </div>
 
- <div
- style={{
- ...S.detailsShell,
- background: isDark
- ? "linear-gradient(180deg, rgba(15,27,45,0.9) 0%, rgba(15,27,45,0.98) 100%)"
- : S.detailsShell.background,
- }}
- >
+      <div
+        style={{
+          ...S.detailsShell,
+          background: isDark
+            ? "linear-gradient(180deg, rgba(15,27,45,0.9) 0%, rgba(15,27,45,0.98) 100%)"
+            : S.detailsShell.background,
+        }}
+      >
  {hasVisit && (
  <>
  <DetailRow
@@ -412,13 +398,13 @@ const S = {
  card: {
  background: "var(--surface-card, #FFFFFF)",
  border: "1px solid var(--border-card, #E2E8F0)",
- borderRadius: 20,
+ borderRadius: 16,
  overflow: "hidden",
  display: "flex",
  flexDirection: "column",
  height: "100%",
  boxSizing: "border-box",
- boxShadow: "0 8px 24px rgba(15, 23, 42, 0.06)",
+ boxShadow: "0 4px 14px rgba(15, 23, 42, 0.04)",
  transition: "border-color 0.2s ease, box-shadow 0.2s ease",
  cursor: "default",
  },
@@ -485,13 +471,13 @@ const S = {
  },
 
  detailsShell: {
- display: "flex",
- flexDirection: "column",
- gap: 8,
- flex: 1,
- padding: "12px 14px",
- background: "linear-gradient(180deg, rgba(248,250,252,0.8) 0%, rgba(255,255,255,0.98) 100%)",
- },
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    flex: 1,
+    padding: "12px 14px",
+    background: "linear-gradient(180deg, rgba(248,250,252,0.8) 0%, rgba(255,255,255,0.98) 100%)",
+  },
  detailRow: {
  display: "flex",
  alignItems: "center",

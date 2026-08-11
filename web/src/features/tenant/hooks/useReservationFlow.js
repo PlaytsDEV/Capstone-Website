@@ -267,19 +267,28 @@ export default function useReservationFlow() {
   const [reservationData, setReservationData] = useState(null);
   const [currentStage, setCurrentStage] = useState(1);
   const [highestStageReached, setHighestStageReached] = useState(1);
-  const [isLoading, setIsLoading] = useState(
-    () =>
-      new URLSearchParams(window.location.search).has("payment") ||
-      sessionStorage.getItem(PAYMENT_RETURN_PENDING_KEY) === "1" ||
+  const [isLoading, setIsLoading] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paymentParam = params.get("payment");
+    const hasPending = sessionStorage.getItem(PAYMENT_RETURN_PENDING_KEY) === "1";
+    // Abandoned payment returns (any non-success: cancel, browser back, tab close, etc.)
+    // skip the payment confirmation spinner — they land directly on Step 4.
+    if (hasPending && paymentParam !== "success") return false;
+    return (
+      paymentParam === "success" ||
+      hasPending ||
       Boolean(sessionStorage.getItem("activeReservationId")) ||
-      // Also check user-scoped keys (set after login is known)
       Object.keys(sessionStorage).some((k) => k.startsWith("activeReservationId_"))
-  );
-  const [paymentReturnLoading, setPaymentReturnLoading] = useState(
-    () =>
-      new URLSearchParams(window.location.search).has("payment") ||
-      sessionStorage.getItem(PAYMENT_RETURN_PENDING_KEY) === "1"
-  );
+    );
+  });
+  const [paymentReturnLoading, setPaymentReturnLoading] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paymentParam = params.get("payment");
+    const hasPending = sessionStorage.getItem(PAYMENT_RETURN_PENDING_KEY) === "1";
+    // Only show the "Confirming your payment..." loader for explicit success returns.
+    if (hasPending && paymentParam !== "success") return false;
+    return paymentParam === "success" || hasPending;
+  });
   const [visitApproved, setVisitApproved] = useState(false);
   const [visitCompleted, setVisitCompleted] = useState(false);
   const [scheduleRejected, setScheduleRejected] = useState(false);
@@ -292,6 +301,18 @@ export default function useReservationFlow() {
   const [_devBypassValidation, setDevBypassValidation] = useState(false);
   const devBypassValidation = import.meta.env.DEV ? _devBypassValidation : false;
   const [payingOnline, setPayingOnline] = useState(false);
+  // True whenever the user left PayMongo without completing payment.
+  // Covers ALL abandonment scenarios:
+  //   - PayMongo cancel button  → ?payment=cancelled
+  //   - Browser Back button     → no ?payment= param, pending key in sessionStorage
+  //   - Tab closed & re-opened  → no ?payment= param, pending key in sessionStorage
+  //   - Internet loss / timeout → no ?payment= param, pending key in sessionStorage
+  // Only a ?payment=success return is NOT considered abandoned.
+  const [paymentCancelled, setPaymentCancelled] = useState(() => {
+    const paymentParam = new URLSearchParams(window.location.search).get("payment");
+    const hasPending = sessionStorage.getItem(PAYMENT_RETURN_PENDING_KEY) === "1";
+    return (paymentParam === "cancelled") || (hasPending && paymentParam !== "success");
+  });
   const [successOverlay, setSuccessOverlay] = useState({
     show: false,
     title: "",
@@ -1033,33 +1054,61 @@ export default function useReservationFlow() {
     setAgreedToPrivacy(false);
     setAgreedToCertification(false);
 
+    // ── General payment abandonment detection ─────────────────────────────────
+    // Only run the 20s verification loop when PayMongo explicitly sent back
+    // ?payment=success. Every other scenario (cancel button, browser Back,
+    // tab close, network loss, manual navigation) has PAYMENT_RETURN_PENDING_KEY
+    // in sessionStorage but no success param — all treated as abandoned.
+    const isExplicitPaymentSuccess = paymentReturnStatusRef.current === "success";
+    const hasPaymentReturnPending = sessionStorage.getItem(PAYMENT_RETURN_PENDING_KEY) === "1";
+    const isAbandonedPaymentReturn = hasPaymentReturnPending && !isExplicitPaymentSuccess;
     const shouldVerifyPaymentReturn =
-      isPaymentReturnRef.current ||
-      sessionStorage.getItem(PAYMENT_RETURN_PENDING_KEY) === "1";
+      isExplicitPaymentSuccess && (isPaymentReturnRef.current || hasPaymentReturnPending);
 
     if ((continueReservation || editMode) && resId) {
-      if (shouldVerifyPaymentReturn) {
+      if (isAbandonedPaymentReturn) {
+        // Abandoned: clear pending keys, load reservation normally — no polling.
+        sessionStorage.removeItem(PAYMENT_RETURN_PENDING_KEY);
+        sessionStorage.removeItem(PAYMENT_SESSION_KEY);
+        isPaymentReturnRef.current = false;
+        loadExistingReservation(resId);
+      } else {
+        if (shouldVerifyPaymentReturn) {
+          paymentVerifyingRef.current = true;
+          setPaymentReturnLoading(true);
+          isPaymentReturnRef.current = false;
+        }
+        loadExistingReservation(resId, shouldVerifyPaymentReturn);
+      }
+    } else {
+      const state = location.state?.roomData;
+      if (state) {
+        setReservationData(state);
+        prefillFromProfile();
+      } else if (isAbandonedPaymentReturn) {
+        // ── Abandoned payment: browser Back, tab close, cancel, etc. ───────────
+        // Clear pending keys and load the reservation normally. paymentCancelled
+        // state (set in useState initializer) drives the inline Step 4 banner.
+        // resolveTargetStage will land on Stage 4 for payment_pending status.
+        sessionStorage.removeItem(PAYMENT_RETURN_PENDING_KEY);
+        sessionStorage.removeItem(PAYMENT_SESSION_KEY);
+        isPaymentReturnRef.current = false;
+        const storedResId =
+          sessionStorage.getItem(getActiveResKey(user?.firebaseUid)) ||
+          sessionStorage.getItem("activeReservationId");
+        if (storedResId) {
+          loadExistingReservation(storedResId);
+        } else {
+          loadActiveReservation();
+        }
+      } else if (shouldVerifyPaymentReturn) {
+        // ── Explicit ?payment=success: run the verification loop ────────────────
         paymentVerifyingRef.current = true;
         setPaymentReturnLoading(true);
         isPaymentReturnRef.current = false;
-      }
-      loadExistingReservation(resId, shouldVerifyPaymentReturn);
-    } else {
-      const state = location.state?.roomData;
-      // Check if this is a PayMongo return ΓÇö defer stage logic to usePaymentRedirect
-      const paymentParam = new URLSearchParams(window.location.search).get("payment");
-      if (state) {
-        setReservationData(state);
-        prefillFromProfile(); // Pre-fill Step 3 from profile for new reservations
-      } else if (shouldVerifyPaymentReturn) {
-        // Returning from PayMongo ΓÇö load reservation data for display,
-        // and verify payment using the reservation's stored session ID.
-        paymentVerifyingRef.current = true; // block re-init from hook's setSearchParams
-        setPaymentReturnLoading(true);
-        isPaymentReturnRef.current = false; // consume the flag
         const storedResId =
           sessionStorage.getItem(getActiveResKey(user?.firebaseUid)) ||
-          sessionStorage.getItem("activeReservationId"); // legacy fallback
+          sessionStorage.getItem("activeReservationId");
         if (storedResId) {
           loadExistingReservation(storedResId, true);
         } else {
@@ -1186,7 +1235,12 @@ export default function useReservationFlow() {
           applianceFees: active.applianceFees || 0,
           applicationReviewReason: active.applicationReviewReason || "",
         });
-        if (active.visitDate) setVisitDate(active.visitDate.split("T")[0]);
+        if (active.visitDate) {
+          const rawVisitDate = typeof active.visitDate === "string"
+            ? active.visitDate
+            : new Date(active.visitDate).toISOString();
+          setVisitDate(rawVisitDate.split("T")[0]);
+        }
         if (active.visitTime) setVisitTime(active.visitTime);
         if (active.viewingPreference || active.viewingType) {
           setViewingType(active.viewingPreference || active.viewingType);
@@ -1413,7 +1467,7 @@ export default function useReservationFlow() {
 
       // If visit was rejected, allow user to stay on step 2 to reschedule
       if (reservation.scheduleRejected) {
-        setVisitDate("");
+          setVisitDate("");
         setVisitTime("");
         setScheduleRejected(true);
         setScheduleRejectionReason(reservation.scheduleRejectionReason || "");
@@ -1433,7 +1487,23 @@ export default function useReservationFlow() {
         targetStage = 2;
       }
       if (skipStageSet) {
-        // Payment redirect ΓÇö verify using the reservation's stored paymongoSessionId
+        // ── Early-exit: user pressed Back from PayMongo without paying ─────────
+        // paymentReturnStatusRef is set synchronously from the URL before any
+        // effects run, so this check is reliable even on first render.
+        if (paymentReturnStatusRef.current === "cancelled") {
+          sessionStorage.removeItem(PAYMENT_RETURN_PENDING_KEY);
+          sessionStorage.removeItem(PAYMENT_SESSION_KEY);
+          paymentVerifyingRef.current = false;
+          // Land directly on Step 4 with a calm inline recovery banner.
+          // The PayMongo session (paymongoSessionId) is preserved on the
+          // reservation and will be reused by createDepositCheckout on retry.
+          setCurrentStage(4);
+          setHighestStageReached((prev) => Math.max(prev, highest));
+          setPaymentCancelled(true);
+          return;
+        }
+
+        // Payment redirect — verify using the reservation's stored paymongoSessionId
         // Set highest to 5 immediately so the stepper renders all stages green from the start
         setHighestStageReached(5);
         const verificationSessionId =
@@ -1561,15 +1631,19 @@ export default function useReservationFlow() {
       } else {
         setCurrentStage(targetStage);
       }
-      showNotification(
-        applicationStageBlocked
-          ? TENANT_APPLICATION_LOCKED_MESSAGE
-          : stepOverride
-          ? "Editing your application. Make your changes and save."
-          : "Reservation data loaded. Continue where you left off!",
-        applicationStageBlocked ? "info" : "success",
-        applicationStageBlocked ? 5000 : 3000,
-      );
+      // Suppress generic "data loaded" toast when returning from PayMongo cancellation.
+      // The inline cancelled banner on Step 4 already communicates the right context.
+      if (paymentReturnStatusRef.current !== "cancelled") {
+        showNotification(
+          applicationStageBlocked
+            ? TENANT_APPLICATION_LOCKED_MESSAGE
+            : stepOverride
+            ? "Editing your application. Make your changes and save."
+            : "Reservation data loaded. Continue where you left off!",
+          applicationStageBlocked ? "info" : "success",
+          applicationStageBlocked ? 5000 : 3000,
+        );
+      }
     } catch (err) {
       console.error("Γ¥î [LOAD_RESERVATION] Failed to load reservation id:", resId, "| status:", err?.response?.status, "| message:", err?.message, err);
       const status = err?.response?.status;
@@ -2888,5 +2962,9 @@ export default function useReservationFlow() {
 
     // Submit loading state (stage 3 upload + API)
     isSubmittingApplication,
+
+    // Payment cancellation recovery
+    paymentCancelled,
+    setPaymentCancelled,
   };
 }

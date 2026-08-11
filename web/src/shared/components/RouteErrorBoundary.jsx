@@ -15,34 +15,45 @@ import React from "react";
 import { AlertTriangle } from "lucide-react";
 
 class RouteErrorBoundary extends React.Component {
- constructor(props) {
- super(props);
- this.state = { hasError: false, error: null, errorInfo: null };
- }
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: null, isChunkError: false };
+  }
 
- static getDerivedStateFromError(error) {
- return { hasError: true, error };
- }
+  static getDerivedStateFromError(error) {
+    const isChunkError =
+      error?.name === "ChunkLoadError" ||
+      (error instanceof TypeError &&
+        (error.message?.includes("Failed to fetch dynamically imported module") ||
+         error.message?.includes("importing a module script failed"))) ||
+      error?.message?.includes("Loading chunk");
 
- componentDidCatch(error, errorInfo) {
- this.setState({ errorInfo });
- console.error(
- `[RouteErrorBoundary] Error in ${this.props.name || "route"}:`,
- error,
- errorInfo,
- );
- }
+    return { hasError: true, error, isChunkError: Boolean(isChunkError) };
+  }
 
- handleRetry = () => {
- this.setState({ hasError: false, error: null, errorInfo: null });
- };
+  componentDidCatch(error, errorInfo) {
+    this.setState({ errorInfo });
+    console.error(
+      `[RouteErrorBoundary] Error in ${this.props.name || "route"}:`,
+      error,
+      errorInfo,
+    );
+  }
 
- render() {
- if (this.state.hasError) {
- // If a custom fallback was provided, use it
- if (this.props.fallback) {
- return this.props.fallback;
- }
+  handleRetry = () => {
+    if (this.state.isChunkError) {
+      window.location.reload();
+    } else {
+      this.setState({ hasError: false, error: null, errorInfo: null, isChunkError: false });
+    }
+  };
+
+  render() {
+    if (this.state.hasError) {
+      // If a custom fallback was provided, use it
+      if (this.props.fallback) {
+        return this.props.fallback;
+      }
 
  return (
  <div
@@ -78,7 +89,7 @@ class RouteErrorBoundary extends React.Component {
  color: "var(--text-heading, #1a1a2e)",
  }}
  >
- Something went wrong
+ {this.state.isChunkError ? "Page Update Available" : "Something went wrong"}
  </h2>
  <p
  style={{
@@ -88,8 +99,9 @@ class RouteErrorBoundary extends React.Component {
  lineHeight: "1.5",
  }}
  >
- This page encountered an unexpected error. Your other pages still
- work fine.
+ {this.state.isChunkError
+    ? "A new version of this page is available or the network connection was updated. Reloading will load the latest version."
+    : "This page encountered an unexpected error. Your other pages still work fine."}
  </p>
 
  <div
@@ -108,7 +120,7 @@ class RouteErrorBoundary extends React.Component {
  fontWeight: 500,
  }}
  >
- Try Again
+ {this.state.isChunkError ? "Reload Page" : "Try Again"}
  </button>
  <button
  onClick={() => (window.location.href = "/")}

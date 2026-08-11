@@ -35,11 +35,15 @@ function ReservationFlowPage() {
   const flow = useReservationFlow();
 
   // ΓöÇΓöÇ Loading ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  // payment=cancelled returns skip the spinner entirely — the user deliberately
+  // pressed Back. Show Step 4 immediately with the inline recovery banner.
+  const isPaymentCancellation = flow.paymentCancelled;
+
   if (
     !flow.reservationData ||
     flow.isLoading ||
-    flow.paymentReturnLoading ||
-    flow.paymentVerifyingRef.current
+    (!isPaymentCancellation && flow.paymentReturnLoading) ||
+    (!isPaymentCancellation && flow.paymentVerifyingRef.current)
   ) {
     const isConfirmingPayment =
       flow.paymentReturnLoading || flow.paymentVerifyingRef.current;
@@ -101,15 +105,17 @@ function ReservationFlowPage() {
       />
 
       <div className="reservation-layout">
-        {/* Breadcrumb */}
-        <nav className="rf-breadcrumb">
+        {/* Back Button */}
+        <div className="rf-back-navigation">
           <button
-            className="rf-breadcrumb-link"
+            type="button"
+            className="rf-back-button"
             onClick={() => flow.navigate("/applicant/profile")}
+            aria-label="Back to Dashboard"
           >
             <svg
-              width="14"
-              height="14"
+              width="16"
+              height="16"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -122,9 +128,7 @@ function ReservationFlowPage() {
             </svg>
             Dashboard
           </button>
-          <span className="rf-breadcrumb-sep">/</span>
-          <span className="rf-breadcrumb-current">Reservation Flow</span>
-        </nav>
+        </div>
 
         <ReservationStepper
           currentStage={flow.currentStage}
@@ -449,6 +453,7 @@ function ReservationFlowPage() {
                 applicationReviewReason: flow.applicationReviewReason,
                 agreedToFeePolicy: flow.agreedToFeePolicy,
                 setAgreedToFeePolicy: flow.setAgreedToFeePolicy,
+                paymentCancelled: flow.paymentCancelled,
               }}
               onPrev={flow.handlePrevStage}
               onNext={flow.handleNextStage}
@@ -465,6 +470,8 @@ function ReservationFlowPage() {
                   );
                   return;
                 }
+                // Clear the cancellation banner before redirecting to PayMongo.
+                flow.setPaymentCancelled(false);
                 try {
                   flow.setPayingOnline(true);
                   // Save move-in date before redirecting

@@ -49,6 +49,75 @@ export function isNewReservation(reservation, maxAgeHours = 48) {
   return diffHours >= 0 && diffHours <= maxAgeHours;
 }
 
+export function isPendingAdminApproval(reservation) {
+  if (!reservation) return false;
+  if (reservation.isArchived) return false;
+
+  const status = (reservation.status || "").toLowerCase();
+
+  // Terminal or resolved statuses require no admin action
+  if (
+    status === "cancelled" ||
+    status === "rejected" ||
+    status === "reserved" ||
+    status === "checked_in" ||
+    status === "checked_out" ||
+    status === "moved_in"
+  ) {
+    return false;
+  }
+
+  // 1. Pending application review (new submission requiring admin action)
+  if (
+    status === "pending" ||
+    status === "pending_application_review" ||
+    status === "pending_review" ||
+    status === "under_review" ||
+    status === "viewing_preference_selected"
+  ) {
+    return true;
+  }
+
+  // 2. Proof of payment uploaded (requiring admin verification)
+  if (
+    reservation.paymentStatus === "proof_uploaded" ||
+    status === "payment_uploaded" ||
+    status === "awaiting_verification"
+  ) {
+    return true;
+  }
+
+  // 3. Pending cancellation request
+  if (hasPendingCancellationRequest(reservation)) {
+    return true;
+  }
+
+  // 4. Pending visit / schedule approval
+  if (
+    reservation.visitStatus === "pending" ||
+    status === "visit_pending" ||
+    (reservation.viewingPreference === "physical_visit" &&
+      reservation.visitDate &&
+      !reservation.visitApproved &&
+      !reservation.scheduleApproved &&
+      !reservation.scheduleRejected)
+  ) {
+    return true;
+  }
+
+  // 5. Unviewed recent creation (<48h) in an active status
+  if (
+    isNewReservation(reservation) &&
+    !reservation.isViewedByAdmin &&
+    status !== "approved_for_payment" &&
+    status !== "needs_revision"
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 export function getCancelledByName(cancelledBy, cancellationSource, customerName, userId) {
   const cancelledById = typeof cancelledBy === "object" ? String(cancelledBy?._id || cancelledBy?.id || "") : String(cancelledBy || "");
   const userIdVal = typeof userId === "object" ? String(userId?._id || userId?.id || "") : String(userId || "");
@@ -75,7 +144,7 @@ export function mapReservationAdminRow(reservation) {
   const branchCode = reservation.roomId?.branch || "";
   const isViewedByAdmin = Boolean(reservation.isViewedByAdmin);
   const isPendingCancellation = hasPendingCancellationRequest(reservation);
-  const isNew = (isNewReservation(reservation) && !isViewedByAdmin) || isPendingCancellation;
+  const isNew = isPendingAdminApproval(reservation);
   const customer =
     `${reservation.userId?.firstName || ""} ${reservation.userId?.lastName || ""}`.trim() ||
     "Unknown";
@@ -131,6 +200,7 @@ export function mapReservationAdminRow(reservation) {
     archivedPreviousStatus: reservation.archivedPreviousStatus || reservation.status || null,
     archiveReason: reservation.archiveReason || "",
     createdAt: reservation.createdAt,
+    documentPrechecks: reservation.documentPrechecks || {},
     _raw: reservation,
   };
 }
@@ -349,4 +419,48 @@ export function applyQuickChip(row, chip) {
   if (chip === "awaiting_payment") return row?.paymentStatus === "pending" && row?.status === "approved_for_payment";
   if (chip === "proof_uploaded") return row?.paymentStatus === "proof_uploaded";
   return true;
+}
+
+export function getReservationDocumentWarnings(reservation) {
+  const prechecks = reservation?.documentPrechecks;
+  if (!prechecks || typeof prechecks !== "object") return [];
+
+  const warnings = [];
+  const labelMap = {
+    selfiePhoto: "Selfie Photo",
+    validIDFront: "Valid ID (Front)",
+    validIDBack: "Valid ID (Back)",
+    nbiClearance: "NBI Clearance",
+    companyID: "Company/School ID",
+  };
+
+  Object.entries(labelMap).forEach(([key, label]) => {
+    const item = prechecks[key];
+    if (!item) return;
+
+    const isUnreadable =
+      item.readabilityStatus === "unreadable" ||
+      item.readabilityStatus === "low_readability";
+    const isMismatch = item.documentTypeStatus === "possible_mismatch";
+    const isManualFallback = item.precheckStatus === "manual_review_fallback";
+    const isNeedsReupload = item.precheckStatus === "needs_reupload";
+    const hasWarnings = Array.isArray(item.aiCheckWarnings) && item.aiCheckWarnings.length > 0;
+
+    if (isUnreadable || isMismatch || isNeedsReupload || isManualFallback || hasWarnings) {
+      let msg =
+        item.applicantMessage ||
+        item.adminNote ||
+        (isMismatch
+          ? "Possible document type mismatch."
+          : "Image appears unclear or unreadable. Please inspect manually.");
+
+      if (Array.isArray(item.aiCheckWarnings) && item.aiCheckWarnings.length > 0) {
+        msg = item.aiCheckWarnings.join(" ");
+      }
+
+      warnings.push(`${label}: ${msg}`);
+    }
+  });
+
+  return warnings;
 }

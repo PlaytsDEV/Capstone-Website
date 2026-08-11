@@ -52,10 +52,11 @@ const ProfileCompletionCard = ({ profileData, onGoToPersonal }) => {
     <div
       style={{
         backgroundColor: "var(--surface-card, #fff)",
-        borderRadius: "12px",
-        border: "1px solid var(--border-card, #E8EBF0)",
+        borderRadius: "16px",
+        border: "1px solid var(--border-card, #E2E8F0)",
         padding: "20px 24px",
-        marginBottom: "20px",
+        marginBottom: 0,
+        boxShadow: "0 4px 14px rgba(15, 23, 42, 0.04)",
       }}
     >
       {/* Header */}

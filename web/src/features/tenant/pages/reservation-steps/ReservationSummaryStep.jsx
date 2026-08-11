@@ -6,24 +6,30 @@ import {
   Bed,
   ChevronLeft,
   ChevronRight,
-  CheckCircle,
   Home,
   Image as ImageIcon,
   Maximize2,
   Wallet,
   X,
-  Info,
-  Lock,
   MapPin,
-  DollarSign,
-  Calendar,
-  Sparkles,
   AlertCircle,
+  Wind,
+  Wifi,
+  BookOpen,
+  UserCheck,
+  Box,
+  ShowerHead,
+  Bath,
+  CheckCircle2,
+  Layers,
+  Sparkles,
+  Users,
 } from "lucide-react";
 import { formatBranch, formatRoomType } from "../../../../shared/utils/formatDate";
 import { getRoomImages as getFallbackRoomImages } from "../check-availability/checkAvailabilityConstants";
 import { getBedDisplayLabel } from "../../../../shared/utils/bedIdentifier";
 import { getResolvedMonthlyRate, isPricingDisplayUsable } from "../../utils/pricingDisplayHelpers";
+import { ROOM_SELECTION_LOCKED_MESSAGE } from "../../utils/reservationRoomLock";
 
 const toDisplayString = (value, fallback = "") => {
   if (value === null || value === undefined) return fallback;
@@ -54,12 +60,6 @@ const toDisplayString = (value, fallback = "") => {
 const toFiniteNumber = (value, fallback = 0) => {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
-};
-
-const toTitle = (value, fallback = "") => {
-  const text = toDisplayString(value, fallback).trim();
-  if (!text) return fallback;
-  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
 };
 
 const formatCurrency = (value) => `\u20b1${toFiniteNumber(value).toLocaleString()}`;
@@ -127,6 +127,19 @@ const formatSelectedAppliance = (item) => {
   return `${name}${quantity > 0 ? ` x${quantity}` : ""}`;
 };
 
+const getAmenityIcon = (name) => {
+  const normalized = String(name).toLowerCase();
+  if (normalized.includes("air") || normalized.includes("ac") || normalized.includes("cooling")) return Wind;
+  if (normalized.includes("wifi") || normalized.includes("internet")) return Wifi;
+  if (normalized.includes("bed") || normalized.includes("mattress") || normalized.includes("bunk")) return Bed;
+  if (normalized.includes("table") || normalized.includes("desk") || normalized.includes("study")) return BookOpen;
+  if (normalized.includes("chair") || normalized.includes("seat")) return UserCheck;
+  if (normalized.includes("cabinet") || normalized.includes("closet") || normalized.includes("wardrobe") || normalized.includes("storage")) return Box;
+  if (normalized.includes("shower") || normalized.includes("water heater") || normalized.includes("heater")) return ShowerHead;
+  if (normalized.includes("bath") || normalized.includes("restroom") || normalized.includes("toilet")) return Bath;
+  return CheckCircle2;
+};
+
 /**
  * Reservation Summary Step
  */
@@ -138,10 +151,6 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
 
   const selectedBed = reservationData?.selectedBed;
   const applianceFees = toFiniteNumber(reservationData?.applianceFees, 0);
-  // The final monthly rate depends on lease duration (short vs. long-term
-  // discount), which isn't known yet at this step. Only show a number when
-  // the server has already resolved it (pricingDisplay, from GET
-  // /reservations/:id) — never guess with a flat room.price/monthlyPrice.
   const pricingDisplay = reservationData?.pricingDisplay;
   const hasResolvedMonthlyRate = isPricingDisplayUsable(pricingDisplay);
   const monthlyRent = getResolvedMonthlyRate(pricingDisplay);
@@ -178,24 +187,29 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
   const closeViewer = () => setViewerOpen(false);
 
   return (
-    <div className="w-full max-w-5xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="space-y-4">
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-orange-50 to-orange-100 border border-orange-200 rounded-full">
-          <span className="text-xs font-semibold text-orange-700 uppercase tracking-wider">Step 1 · Getting Started</span>
+    <div className="w-full max-w-3xl mx-auto space-y-6">
+      {/* Header (Strictly Solid Colors, No Gradients) */}
+      <div className="space-y-3">
+        <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 rounded-full">
+          <Sparkles className="w-3.5 h-3.5 text-amber-700 dark:text-amber-400" />
+          <span className="text-xs font-semibold text-amber-800 dark:text-amber-300 uppercase tracking-wider">
+            Step 1 · Getting Started
+          </span>
         </div>
         <div>
-          <h2 className="text-3xl font-bold text-slate-900 mb-2 flex items-center gap-3">
-            <div className="p-2.5 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl">
-              <Home className="w-6 h-6 text-white" />
+          <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white mb-1 flex items-center gap-3">
+            <div className="p-2.5 bg-slate-900 dark:bg-amber-600 text-white rounded-xl shadow-sm flex items-center justify-center">
+              <Home className="w-5 h-5 text-white" />
             </div>
             Room Summary
           </h2>
-          <p className="text-slate-600 leading-relaxed">Review the details of your selected room below. Once confirmed, you'll proceed to choose your viewing or move-in preference.</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+            Review the specifications and pricing preview for your selected dormitory space before scheduling your visit or move-in preference.
+          </p>
         </div>
       </div>
 
-      {/* Photos */}
+      {/* Photos Carousel */}
       {roomImages.length > 0 && (
         <section className="content-card rf-room-photos-card">
           <div className="card-section-title">
@@ -248,66 +262,128 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
         document.body,
       )}
 
-      {/* Summary Grid */}
-      <div className="rf-summary-grid rf-room-review-grid">
-        <section className="content-card rf-summary-panel rf-summary-panel-main">
-          <div className="card-section-title">
-            <div className="icon"><Home size={15} /></div>
-            Room Information
+      {/* Room Specifications Card (Single Column Stack) */}
+      <section className="content-card rf-summary-panel">
+        <div className="card-section-title">
+          <div className="icon"><Home size={15} /></div>
+          Room Specifications
+        </div>
+
+        <div className="summary-section">
+          <div className="summary-row">
+            <span className="summary-label">Branch</span>
+            <span className="summary-value flex items-center gap-1.5">
+              <MapPin className="w-3.5 h-3.5 text-slate-400" />
+              {formatBranch(room.branch)}
+            </span>
           </div>
-
-          <div className="summary-section">
-            <div className="summary-row"><span className="summary-label">Branch</span><span className="summary-value">{formatBranch(room.branch)}</span></div>
-            <div className="summary-row"><span className="summary-label">Room Type</span><span className="summary-value">{formatRoomType(room.type)}</span></div>
-            <div className="summary-row"><span className="summary-label">Room</span><span className="summary-value">{getRoomName(room)}</span></div>
-            <div className="summary-row"><span className="summary-label">Floor</span><span className="summary-value">{floorLabel ? `Floor ${floorLabel}` : "To be confirmed"}</span></div>
-            <div className="summary-row"><span className="summary-label">Selected Bed</span><span className="summary-value">{getSelectedBedLabel(selectedBed)}</span></div>
-            <div className="summary-row"><span className="summary-label">Availability</span><span className={`rf-status-pill rf-status-pill-${availabilityTone}`}>{availabilityLabel}</span></div>
+          <div className="summary-row">
+            <span className="summary-label">Room Type</span>
+            <span className="summary-value">{formatRoomType(room.type)}</span>
           </div>
-        </section>
-
-        <section className="content-card rf-summary-panel">
-          <div className="card-section-title"><div className="icon"><Wallet size={15} /></div>Payment Preview</div>
-
-          <div className="summary-section">
-            <div className="summary-row"><span className="summary-label">Monthly Rent</span><span className="summary-value">{hasResolvedMonthlyRate ? `${formatCurrency(monthlyRent)}/month` : "Pricing will be confirmed during review"}</span></div>
-            {selectedAppliances.length > 0 && (
-              <div className="summary-row"><span className="summary-label">Selected Appliances</span><span className="summary-value">{selectedAppliances.map(formatSelectedAppliance).join(", ")}</span></div>
-            )}
-            {applianceFees > 0 && (
-              <div className="summary-row"><span className="summary-label">Appliance Fees</span><span className="summary-value">{formatCurrency(applianceFees)}/month</span></div>
-            )}
-            <div className="summary-row"><span className="summary-label">Reservation Fee</span><span className="summary-value">{formatCurrency(reservationFeeAmount)} due later</span></div>
-            <div className="total-section"><span>Estimated Monthly Total</span><span className="total-amount">{hasResolvedMonthlyRate ? formatCurrency(estimatedMonthlyTotal) : "To be confirmed"}</span></div>
+          <div className="summary-row">
+            <span className="summary-label">Room Designation</span>
+            <span className="summary-value font-bold text-slate-900 dark:text-white">{getRoomName(room)}</span>
           </div>
-        </section>
-      </div>
+          {floorLabel && (
+            <div className="summary-row">
+              <span className="summary-label">Floor Location</span>
+              <span className="summary-value">Floor {floorLabel}</span>
+            </div>
+          )}
+          <div className="summary-row">
+            <span className="summary-label">Selected Bed</span>
+            <span className="summary-value font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
+              <Bed className="w-3.5 h-3.5 text-amber-600" />
+              {getSelectedBedLabel(selectedBed)}
+            </span>
+          </div>
+          <div className="summary-row">
+            <span className="summary-label">Capacity</span>
+            <span className="summary-value text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <Users className="w-3.5 h-3.5 text-slate-400" />
+              {capacityLabel} Beds total
+            </span>
+          </div>
+        </div>
+      </section>
 
-      {/* Amenities */}
+      {/* Room Features & Amenities */}
       {amenities.length > 0 && (
         <section className="content-card rf-summary-panel">
           <div className="card-section-title">
-            <div className="icon"><Bed size={15} /></div>
-            Room Includes
+            <div className="icon"><Layers size={15} /></div>
+            Room Features & Inclusions
           </div>
-          <div className="rf-inclusion-list">
-            {amenities.map((amenity) => (
-              <div className="rf-inclusion-item" key={amenity}>
-                <CheckCircle size={15} className="rf-inclusion-icon" />
-                <span>{amenity}</span>
-              </div>
-            ))}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 pt-1">
+            {amenities.map((amenity) => {
+              const IconComponent = getAmenityIcon(amenity);
+              return (
+                <div
+                  key={amenity}
+                  className="flex items-center gap-2.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 text-slate-800 dark:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600 transition-colors"
+                >
+                  <div className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex-shrink-0">
+                    <IconComponent size={16} />
+                  </div>
+                  <span className="text-xs font-semibold leading-tight">{amenity}</span>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
 
-      {/* Info / Locked Notice */}
-      {!readOnly && (
-        <div className="info-box" style={{ marginTop: 24, marginBottom: 24 }}>
-          <div className="info-box-title">What happens next?</div>
-          <div className="info-text">After confirming, you'll choose between a physical visit, 2D remote viewing, or an urgent move-in review request before submitting your tenant application.</div>
+      {/* Pricing Card (Single Column Stack) */}
+      <section className="content-card rf-summary-panel">
+        <div className="card-section-title">
+          <div className="icon"><Wallet size={15} /></div>
+          Price
         </div>
-      )}
+
+        <div className="summary-section">
+          <div className="summary-row">
+            <span className="summary-label">Monthly Rent</span>
+            <span className="summary-value font-semibold text-slate-900 dark:text-white">
+              {hasResolvedMonthlyRate ? `${formatCurrency(monthlyRent)} / month` : "Calculated upon review"}
+            </span>
+          </div>
+
+          {selectedAppliances.length > 0 && (
+            <div className="summary-row">
+              <span className="summary-label">Add-on Appliances</span>
+              <span className="summary-value">{selectedAppliances.map(formatSelectedAppliance).join(", ")}</span>
+            </div>
+          )}
+
+          {applianceFees > 0 && (
+            <div className="summary-row">
+              <span className="summary-label">Appliance Monthly Fee</span>
+              <span className="summary-value text-slate-700 dark:text-slate-300">{formatCurrency(applianceFees)} / month</span>
+            </div>
+          )}
+
+          <div className="summary-row">
+            <span className="summary-label">Reservation Fee Deposit</span>
+            <span className="summary-value text-slate-800 dark:text-slate-200 text-right">
+              {formatCurrency(reservationFeeAmount)}
+              <span className="block text-[11px] font-normal text-slate-500 dark:text-slate-400">
+                Credited toward 1st month rent
+              </span>
+            </span>
+          </div>
+
+          <div className="total-section mt-4 bg-slate-900 text-white rounded-xl p-4 flex items-center justify-between shadow-sm">
+            <div className="flex flex-col">
+              <span className="text-xs uppercase tracking-wide font-medium text-slate-300">Estimated Monthly Total</span>
+              <span className="text-[11px] text-slate-400 font-normal">Excludes utility water/electricity share</span>
+            </div>
+            <span className="total-amount text-xl font-bold text-white">
+              {hasResolvedMonthlyRate ? formatCurrency(estimatedMonthlyTotal) : "To be confirmed"}
+            </span>
+          </div>
+        </div>
+      </section>
 
       {readOnly && (
         <div className="rf-locked-banner">
@@ -316,9 +392,9 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
         </div>
       )}
 
-      {/* Actions */}
+      {/* Navigation Actions */}
       {!readOnly && (
-        <div className="stage-buttons rf-summary-actions" style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+        <div className="stage-buttons rf-summary-actions pt-2" style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
           <div>
             {onChangeRoom && (
               <button
@@ -340,35 +416,12 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
 
           <div>
             <button type="button" onClick={onNext} className="btn btn-success">
-              Confirm Room & Continue <ArrowRight size={16} style={{ marginLeft: 8 }} />
+              Confirm & Continue <ArrowRight size={16} style={{ marginLeft: 8 }} />
             </button>
           </div>
         </div>
       )}
 
-      {/* Features Grid (informational) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
-        <div className="bg-white rounded-xl border-2 border-green-200 p-5">
-          <div className="flex items-start gap-3">
-            <div className="p-2 bg-green-100 rounded-lg flex-shrink-0"><CheckCircle className="w-5 h-5 text-green-600" /></div>
-            <div><h5 className="text-sm font-bold text-slate-900 mb-1">Verified Room</h5><p className="text-xs text-slate-600">Quality assured and inspected</p></div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border-2 border-blue-200 p-5">
-          <div className="flex items-start gap-3">
-            <div className="p-2 bg-blue-100 rounded-lg flex-shrink-0"><Calendar className="w-5 h-5 text-blue-600" /></div>
-            <div><h5 className="text-sm font-bold text-slate-900 mb-1">Flexible Booking</h5><p className="text-xs text-slate-600">Schedule your visit anytime</p></div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border-2 border-purple-200 p-5">
-          <div className="flex items-start gap-3">
-            <div className="p-2 bg-purple-100 rounded-lg flex-shrink-0"><AlertCircle className="w-5 h-5 text-purple-600" /></div>
-            <div><h5 className="text-sm font-bold text-slate-900 mb-1">No Commitment</h5><p className="text-xs text-slate-600">Cancel or modify anytime</p></div>
-          </div>
-        </div>
-      </div>
       {/* Room Change Confirmation Modal */}
       {showRoomChangeConfirm && createPortal(
         <div className="rf-photo-viewer" role="dialog" aria-modal="true" style={{ backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -410,3 +463,4 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
 };
 
 export default ReservationSummaryStep;
+

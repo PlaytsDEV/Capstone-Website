@@ -66,6 +66,7 @@ html {
   --border-card:    #e5e7eb;
   --border-subtle:  #f1f5f9;
   --border-divider: #e5e7eb;
+  --radius-btn:     9999px;
 
   /* ── Text Scale (legacy) ─────────────────────────────────── */
   --text-primary: #0F172A;
@@ -613,4 +614,17 @@ html[data-theme="dark"] .border-gray-100 {
 }
 .img-reveal.loaded {
   opacity: 1;
+}
+
+/* =============================================================================
+   CURVY BUTTON SYSTEM — Pill Shape Standard (border-radius: 9999px)
+   ============================================================================= */
+.btn,
+.btn-primary,
+.btn-secondary,
+.btn-success,
+.btn-danger,
+.auth-btn-primary,
+.auth-btn-google {
+  border-radius: 9999px !important;
 }

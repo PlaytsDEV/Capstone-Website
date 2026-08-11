@@ -12,7 +12,7 @@ import {
   AlertCircle,
   CalendarDays,
   ChevronDown,
-  MoreVertical,
+  ArrowUpRight,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { reservationApi } from "../../../shared/api/apiClient";
@@ -132,10 +132,10 @@ function VisitActionMenu({
         ref={buttonRef}
         onClick={toggleMenu}
         disabled={actionLoading === row.id}
-        className="px-3 py-1.5 text-xs font-medium rounded-lg border border-[var(--border-light)] bg-card text-foreground hover:bg-muted transition-colors flex items-center gap-1.5 shadow-xs disabled:opacity-50"
+        className="group px-3 py-1.5 text-xs font-semibold rounded-lg border border-[var(--border-light)] bg-card text-foreground hover:border-slate-400 dark:hover:border-slate-600 hover:bg-muted active:scale-95 transition-all duration-150 flex items-center gap-1.5 shadow-xs disabled:opacity-50 cursor-pointer"
       >
-        <span>Actions</span>
-        <MoreVertical className="w-3.5 h-3.5 text-muted-foreground" />
+        <span className="group-hover:text-foreground transition-colors duration-150">Actions</span>
+        <ArrowUpRight className="w-3.5 h-3.5 text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform duration-150" />
       </button>
 
       {isOpen &&

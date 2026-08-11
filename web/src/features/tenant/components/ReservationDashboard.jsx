@@ -942,9 +942,7 @@ export default function ReservationDashboard({
                 padding: "7px 16px",
                 background: action.isRejected
                   ? "#DC2626"
-                  : action.isPayment || action.route?.includes("step=4")
-                  ? "#059669"
-                  : "var(--text-heading, #0F172A)",
+                  : "#059669",
                 color: "#ffffff",
                 border: "none",
                 borderRadius: 6,
@@ -952,10 +950,9 @@ export default function ReservationDashboard({
                 fontWeight: 600,
                 cursor: "pointer",
                 whiteSpace: "nowrap",
-                boxShadow:
-                  action.isPayment || action.route?.includes("step=4")
-                    ? "0 2px 8px rgba(5, 150, 105, 0.25)"
-                    : "0 1px 2px rgba(0, 0, 0, 0.05)",
+                boxShadow: action.isRejected
+                  ? "0 1px 2px rgba(0, 0, 0, 0.05)"
+                  : "0 2px 8px rgba(5, 150, 105, 0.25)",
                 transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
               }}
               onMouseEnter={(e) => {
@@ -964,17 +961,10 @@ export default function ReservationDashboard({
                   e.currentTarget.style.backgroundColor = "#B91C1C";
                   e.currentTarget.style.boxShadow =
                     "0 4px 12px rgba(220, 38, 38, 0.35)";
-                } else if (
-                  action.isPayment ||
-                  action.route?.includes("step=4")
-                ) {
+                } else {
                   e.currentTarget.style.backgroundColor = "#047857";
                   e.currentTarget.style.boxShadow =
                     "0 4px 14px rgba(5, 150, 105, 0.35)";
-                } else {
-                  e.currentTarget.style.backgroundColor = "#1E293B";
-                  e.currentTarget.style.boxShadow =
-                    "0 4px 12px rgba(15, 23, 42, 0.25)";
                 }
               }}
               onMouseLeave={(e) => {
@@ -983,44 +973,26 @@ export default function ReservationDashboard({
                   e.currentTarget.style.backgroundColor = "#DC2626";
                   e.currentTarget.style.boxShadow =
                     "0 1px 2px rgba(0, 0, 0, 0.05)";
-                } else if (
-                  action.isPayment ||
-                  action.route?.includes("step=4")
-                ) {
+                } else {
                   e.currentTarget.style.backgroundColor = "#059669";
                   e.currentTarget.style.boxShadow =
                     "0 2px 8px rgba(5, 150, 105, 0.25)";
-                } else {
-                  e.currentTarget.style.backgroundColor =
-                    "var(--text-heading, #0F172A)";
-                  e.currentTarget.style.boxShadow =
-                    "0 1px 2px rgba(0, 0, 0, 0.05)";
                 }
               }}
               onMouseDown={(e) => {
                 e.currentTarget.style.transform = "translateY(0)";
                 if (action.isRejected) {
                   e.currentTarget.style.backgroundColor = "#991B1B";
-                } else if (
-                  action.isPayment ||
-                  action.route?.includes("step=4")
-                ) {
-                  e.currentTarget.style.backgroundColor = "#065F46";
                 } else {
-                  e.currentTarget.style.backgroundColor = "#020617";
+                  e.currentTarget.style.backgroundColor = "#065F46";
                 }
               }}
               onMouseUp={(e) => {
                 e.currentTarget.style.transform = "translateY(-1px)";
                 if (action.isRejected) {
                   e.currentTarget.style.backgroundColor = "#B91C1C";
-                } else if (
-                  action.isPayment ||
-                  action.route?.includes("step=4")
-                ) {
-                  e.currentTarget.style.backgroundColor = "#047857";
                 } else {
-                  e.currentTarget.style.backgroundColor = "#1E293B";
+                  e.currentTarget.style.backgroundColor = "#047857";
                 }
               }}
             >
@@ -1208,7 +1180,7 @@ export default function ReservationDashboard({
         }}
         title="Cancel Reservation Process?"
         subtitle={`Room: ${roomName}`}
-        variant="warning"
+        variant="danger"
         size="sm"
         cancelText="Keep process"
         confirmText={isCancelling ? "Cancelling Process..." : "Cancel Process"}
@@ -1304,10 +1276,12 @@ export default function ReservationDashboard({
 const styles = {
   card: {
     background: "var(--surface-card, #FFFFFF)",
-    borderRadius: 12,
+    borderRadius: 16,
     border: "1px solid var(--border-card, #E2E8F0)",
     padding: "24px 28px",
     marginBottom: 0,
+    boxShadow: "0 4px 14px rgba(15, 23, 42, 0.04)",
+    transition: "border-color 0.2s ease, box-shadow 0.2s ease",
   },
 
   /* empty state */
@@ -1521,7 +1495,7 @@ const styles = {
     flex: 1,
     minWidth: 140,
     padding: "7px 12px",
-    background: "var(--text-heading, #0F172A)",
+    background: "#059669",
     color: "#fff",
     border: "none",
     borderRadius: 6,
@@ -1529,6 +1503,7 @@ const styles = {
     fontWeight: 600,
     cursor: "pointer",
     textAlign: "center",
+    boxShadow: "0 2px 8px rgba(5, 150, 105, 0.25)",
   },
   receiptSecondaryBtn: {
     flex: 1,
@@ -1629,11 +1604,11 @@ const styles = {
     transition: "all 0.2s",
   },
   stepComplete: {
-    background: "linear-gradient(135deg, #059669 0%, #10B981 100%)",
+    background: "#059669",
     boxShadow: "0 0 0 3px rgba(16, 185, 129, 0.2)",
   },
   stepCurrent: {
-    background: "linear-gradient(135deg, #D4AF37 0%, #c49a1f 100%)",
+    background: "#D4AF37",
     boxShadow:
       "0 0 0 4px rgba(212, 175, 55, 0.25), 0 0 12px rgba(212, 175, 55, 0.3)",
   },
@@ -1642,7 +1617,7 @@ const styles = {
     boxShadow: "0 0 0 4px rgba(37, 99, 235, 0.15)",
   },
   stepRejected: {
-    background: "linear-gradient(135deg, #DC2626 0%, #EF4444 100%)",
+    background: "#DC2626",
     boxShadow:
       "0 0 0 4px rgba(220, 38, 38, 0.2), 0 0 12px rgba(220, 38, 38, 0.15)",
   },
@@ -1698,7 +1673,7 @@ const styles = {
   },
   actionButton: {
     padding: "8px 20px",
-    background: "var(--text-heading, #0F172A)",
+    background: "#059669",
     color: "#fff",
     border: "none",
     borderRadius: 6,
@@ -1706,6 +1681,7 @@ const styles = {
     fontWeight: 600,
     cursor: "pointer",
     whiteSpace: "nowrap",
+    boxShadow: "0 2px 8px rgba(5, 150, 105, 0.25)",
   },
 
   /* post-confirmation dashboard */

@@ -285,7 +285,7 @@ export default function BaseModal({
                 style={{
                   padding: "9px 18px",
                   border: "1px solid var(--border-card, #e2e8f0)",
-                  borderRadius: 8,
+                  borderRadius: 9999,
                   background: "var(--surface-card, #ffffff)",
                   fontSize: 13,
                   fontWeight: 500,
@@ -312,7 +312,7 @@ export default function BaseModal({
                 style={{
                   padding: "9px 20px",
                   border: "none",
-                  borderRadius: 8,
+                  borderRadius: 9999,
                   background: confirmDisabled ? "#cbd5e1" : v.btnBg,
                   fontSize: 13,
                   fontWeight: 600,

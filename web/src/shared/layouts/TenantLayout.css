@@ -23,9 +23,10 @@
 
 .tenant-content {
   flex: 1;
-  padding: 32px;
+  padding: 16px 24px 32px;
   overflow-y: auto;
 }
+
 
 .tenant-route-transition {
   width: 100%;

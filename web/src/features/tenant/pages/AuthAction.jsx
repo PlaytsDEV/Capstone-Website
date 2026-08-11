@@ -323,37 +323,37 @@ function AuthAction() {
       {details.maskedEmail && <p className="text-sm text-gray-500 mb-5">Email: {details.maskedEmail}</p>}
 
       {canResend && (
-        <button type="button" onClick={handleResend} disabled={resending || cooldown > 0} className="block w-full py-4 rounded-xl text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed" style={{ backgroundColor: "#D4AF37" }}>
+        <button type="button" onClick={handleResend} disabled={resending || cooldown > 0} className="block w-full py-4 rounded-full text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed" style={{ backgroundColor: "#D4AF37" }}>
           {resending ? "Sending..." : cooldown > 0 ? `Resend available in ${cooldown}s` : "Send a new verification link"}
         </button>
       )}
 
       {state === EMAIL_VERIFICATION_STATES.RECONCILIATION_REQUIRED && (
-        <button type="button" onClick={handleReconcile} disabled={reconciling} className="block w-full py-4 rounded-xl text-white font-medium disabled:opacity-60" style={{ backgroundColor: "#D4AF37" }}>
+        <button type="button" onClick={handleReconcile} disabled={reconciling} className="block w-full py-4 rounded-full text-white font-medium disabled:opacity-60" style={{ backgroundColor: "#D4AF37" }}>
           {reconciling ? "Updating account..." : "Retry account update"}
         </button>
       )}
 
       {state === EMAIL_VERIFICATION_STATES.ACCOUNT_MISMATCH && (
         <>
-          <button type="button" onClick={() => signOutAndNavigate(`/signin?${new URLSearchParams({ continue: continuation }).toString()}`)} className="block w-full py-4 rounded-xl text-white font-medium" style={{ backgroundColor: "#D4AF37" }}>
+          <button type="button" onClick={() => signOutAndNavigate(`/signin?${new URLSearchParams({ continue: continuation }).toString()}`)} className="block w-full py-4 rounded-full text-white font-medium" style={{ backgroundColor: "#D4AF37" }}>
             Sign out and continue with the correct account
           </button>
-          <button type="button" onClick={() => signOutAndNavigate("/signin")} className="block w-full py-3 mt-3 rounded-xl text-sm text-gray-700 bg-gray-100">
+          <button type="button" onClick={() => signOutAndNavigate("/signin")} className="block w-full py-3 mt-3 rounded-full text-sm text-gray-700 bg-gray-100">
             Return to standard sign-in
           </button>
         </>
       )}
 
       {state === EMAIL_VERIFICATION_STATES.VALID_UNUSED_LINK && hasReservationContinuation && (
-        <Link to={signedInContinuation} className="block w-full py-4 rounded-xl text-white font-medium" style={{ backgroundColor: "#D4AF37" }}>Continue reservation</Link>
+        <Link to={signedInContinuation} className="block w-full py-4 rounded-full text-white font-medium" style={{ backgroundColor: "#D4AF37" }}>Continue reservation</Link>
       )}
 
       {[EMAIL_VERIFICATION_STATES.VALID_UNUSED_LINK, EMAIL_VERIFICATION_STATES.ALREADY_USED_LINK_VERIFIED_USER, EMAIL_VERIFICATION_STATES.ALREADY_VERIFIED_ACCOUNT].includes(state) && !hasReservationContinuation && (
-        <Link to="/signin?verified=true" className="block w-full py-4 rounded-xl text-white font-medium" style={{ backgroundColor: "#D4AF37" }}>Continue to login</Link>
+        <Link to="/signin?verified=true" className="block w-full py-4 rounded-full text-white font-medium" style={{ backgroundColor: "#D4AF37" }}>Continue to login</Link>
       )}
 
-      <Link to="/" className="block w-full py-3 mt-3 rounded-xl text-sm text-gray-700 bg-gray-100">
+      <Link to="/" className="block w-full py-3 mt-3 rounded-full text-sm text-gray-700 bg-gray-100">
         {state === EMAIL_VERIFICATION_STATES.ACCOUNT_MISMATCH ? "Cancel" : "Return to the application"}
       </Link>
     </VerificationLayout>

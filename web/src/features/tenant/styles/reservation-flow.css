@@ -194,15 +194,54 @@ html[data-theme="dark"] .rf-receipt-header__badge { color: var(--rf-success-text
 }
 
 .reservation-layout {
-  max-width: 780px;
+  max-width: 1080px;
   margin: 0 auto;
-  padding: 28px 20px 0;
+  padding: 8px 20px 0;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
-/* ============ BREADCRUMB ============ */
+
+/* ============ BACK BUTTON & BREADCRUMB ============ */
+.rf-back-navigation {
+  display: flex;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.rf-back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--rf-surface, #ffffff);
+  border: 1px solid var(--rf-border, #e2e8f0);
+  color: var(--rf-text-secondary, #475569);
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 6px 16px;
+  border-radius: 9999px;
+  transition: all 0.2s ease-in-out;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.rf-back-button:hover {
+  color: var(--rf-primary, #0f172a);
+  background: rgba(10, 22, 40, 0.04);
+  border-color: var(--rf-text-muted, #94a3b8);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.rf-back-button svg {
+  transition: transform 0.2s ease-in-out;
+}
+
+.rf-back-button:hover svg {
+  transform: translateX(-3px);
+}
+
 .rf-breadcrumb {
   display: flex;
   align-items: center;
@@ -266,7 +305,7 @@ html[data-theme="dark"] .rf-receipt-header__badge { color: var(--rf-success-text
 .rf-stepper-track {
   display: flex;
   align-items: flex-start;
-  justify-content: center;
+  justify-content: space-between;
   gap: 0;
   width: 100%;
 }
@@ -329,7 +368,7 @@ html[data-theme="dark"] .rf-receipt-header__badge { color: var(--rf-success-text
   color: var(--rf-text-muted);
   text-align: center;
   line-height: 1.3;
-  max-width: 90px;
+  max-width: 130px;
   word-wrap: break-word;
 }
 .rf-stepper-step.active .rf-stepper-label   { color: var(--rf-accent); font-weight: 700; }
@@ -339,8 +378,8 @@ html[data-theme="dark"] .rf-receipt-header__badge { color: var(--rf-success-text
 .rf-stepper-line {
   flex: 1;
   height: 2px;
-  min-width: 24px;
-  max-width: 80px;
+  min-width: 20px;
+  max-width: 180px;
   background: var(--rf-border);
   border-radius: 1px;
   align-self: flex-start;
@@ -562,13 +601,13 @@ html[data-theme="dark"] .rf-receipt-header__badge { color: var(--rf-success-text
 
 .form-group  { margin-bottom: 18px; }
 .form-helper { font-size: 12px; color: var(--rf-text-muted); margin-top: 4px; line-height: 1.4; }
-.form-row    { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-row    { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .form-row.form-row--3col { grid-template-columns: 1fr 1fr 1fr; }
 
 .rf-date-part-row {
   display: grid;
-  grid-template-columns: 2fr 1fr 1.2fr;
-  gap: 6px;
+  grid-template-columns: 2.2fr 1.2fr 1.5fr;
+  gap: 8px;
 }
 .rf-date-part-row--error .form-select {
   border-color: #dc2626;
@@ -605,7 +644,7 @@ html[data-theme="dark"] .rf-receipt-header__badge { color: var(--rf-success-text
   gap: 6px;
   height: 44px;
   padding: 0 20px;
-  border-radius: var(--rf-radius-sm);
+  border-radius: 9999px;
   font-family: "Inter", sans-serif;
   font-size: 0.875rem;
   font-weight: 600;
@@ -637,17 +676,18 @@ html[data-theme="dark"] .rf-receipt-header__badge { color: var(--rf-success-text
 .btn-secondary:active:not(:disabled) { transform: translateY(1px) scale(0.98); transition-duration: 0.08s; }
 
 .btn-success {
-  background: #059669;
+  background: var(--rf-primary, #0A2463);
   color: #ffffff;
-  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.22);
+  box-shadow: 0 2px 8px rgba(10, 36, 99, 0.22);
 }
 .btn-success:hover:not(:disabled) {
-  background: #047857;
-  box-shadow: 0 4px 14px rgba(5, 150, 105, 0.32);
+  background: var(--rf-primary-dark, #071A47);
+  box-shadow: 0 4px 14px rgba(10, 36, 99, 0.32);
   transform: translateY(-2px);
 }
 .btn-success:active:not(:disabled) { transform: translateY(1px) scale(0.98); transition-duration: 0.08s; }
 .btn-success:disabled { background: var(--rf-border); color: var(--rf-text-muted); cursor: not-allowed; transform: none; box-shadow: none; }
+
 
 .rf-modal-icon-wrap--emerald {
   background: #ecfdf5 !important;
@@ -1145,10 +1185,10 @@ html[data-theme="dark"] .rf-pay-pill {
   font-size: 1rem;
   font-weight: 700;
   color: #ffffff !important;
-  border-radius: var(--rf-radius-sm, 10px);
-  background: var(--rf-primary, #0c375f);
-  border: 1px solid var(--rf-primary-dark, #092a4a);
-  box-shadow: 0 4px 14px rgba(12, 55, 95, 0.25);
+  border-radius: 9999px;
+  background: #059669 !important;
+  border: 1px solid #047857 !important;
+  box-shadow: 0 4px 14px rgba(5, 150, 105, 0.25);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   width: 100%;
 }
@@ -1158,16 +1198,16 @@ html[data-theme="dark"] .rf-pay-pill {
 }
 
 .btn-pay-online-reservation:hover:not(:disabled):not(.is-disabled-btn) {
-  background: var(--rf-primary-dark, #092a4a);
-  border-color: #061d36;
+  background: #047857 !important;
+  border-color: #065f46 !important;
   transform: translateY(-2px);
-  box-shadow: 0 6px 22px rgba(12, 55, 95, 0.35);
+  box-shadow: 0 6px 22px rgba(5, 150, 105, 0.35) !important;
 }
 
 .btn-pay-online-reservation:active:not(:disabled):not(.is-disabled-btn) {
-  background: #061d36;
+  background: #065f46 !important;
   transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(12, 55, 95, 0.25);
+  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.25) !important;
 }
 
 .btn-pay-online-reservation:disabled,
@@ -1596,13 +1636,14 @@ html[data-theme="dark"] .rf-hint-pending {
 .rf-app-header__icon {
   width: 56px;
   height: 56px;
-  border-radius: 10px;
-  background: var(--rf-accent);
+  border-radius: 12px;
+  background: var(--rf-primary, #0A2463);
   color: #ffffff;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(10, 36, 99, 0.15);
 }
 
 .rf-app-header__content {
@@ -1652,32 +1693,36 @@ html[data-theme="dark"] .rf-hint-pending {
 
 .rf-app-actions .rf-reset-btn {
   background: transparent;
-  border-color: var(--rf-border);
+  border: 1px solid var(--rf-border);
+  color: var(--rf-text-secondary);
 }
 
 .rf-app-actions .rf-reset-btn:hover {
   background: var(--rf-hover-bg);
+  border-color: var(--rf-text-muted);
 }
 
 .rf-app-actions .rf-dev-fill-btn {
   background: transparent;
-  border: 1px solid var(--rf-accent);
-  color: var(--rf-accent);
+  border: 1px solid var(--rf-border);
+  color: var(--rf-text-secondary);
 }
 
 .rf-app-actions .rf-dev-fill-btn:hover {
-  background: var(--rf-selection-bg);
+  background: var(--rf-hover-bg);
+  border-color: var(--rf-text-muted);
+  color: var(--rf-text);
 }
 
 .rf-app-sections {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
 }
 
 .rf-app-section {
   background: var(--rf-surface);
-  border: 1.6px solid var(--rf-border);
+  border: 1.5px solid var(--rf-border);
   border-radius: 14px;
   overflow: hidden;
   transition:
@@ -1687,13 +1732,13 @@ html[data-theme="dark"] .rf-hint-pending {
 }
 
 .rf-app-section:focus-within {
-  border-color: rgba(231, 113, 15, 0.45);
-  box-shadow: 0 0 0 3px rgba(231, 113, 15, 0.08);
+  border-color: rgba(10, 36, 99, 0.35);
+  box-shadow: 0 0 0 3px rgba(10, 36, 99, 0.06);
 }
 
 .rf-app-section__header {
-  min-height: 86px;
-  padding: 24px 26px;
+  min-height: 80px;
+  padding: 22px 26px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1706,7 +1751,7 @@ html[data-theme="dark"] .rf-hint-pending {
   padding: 0;
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   min-width: 0;
   text-align: left;
   cursor: pointer;
@@ -1717,22 +1762,23 @@ html[data-theme="dark"] .rf-hint-pending {
   width: 32px;
   height: 32px;
   border-radius: 999px;
-  background: var(--rf-accent);
+  background: var(--rf-primary, #0A2463);
   color: #ffffff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   line-height: 1;
 }
 
 .rf-app-section__title {
-  color: var(--rf-accent);
-  font-size: 20px;
-  font-weight: 600;
+  color: var(--rf-text-heading, #0A2463);
+  font-size: 19px;
+  font-weight: 700;
   line-height: 1.4;
+  letter-spacing: -0.01em;
 }
 
 .rf-app-section__toggle {
@@ -1741,18 +1787,20 @@ html[data-theme="dark"] .rf-hint-pending {
   border: 0;
   border-radius: 10px;
   background: transparent;
-  color: var(--rf-accent);
+  color: var(--rf-text-secondary, #475569);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   cursor: pointer;
-  transition: background-color var(--rf-transition);
+  transition: background-color var(--rf-transition), color var(--rf-transition);
 }
 
 .rf-app-section__toggle:hover {
   background: var(--rf-hover-bg);
+  color: var(--rf-primary, #0A2463);
 }
+
 
 .rf-app-section__chevron {
   transition: transform var(--rf-transition);
@@ -1806,9 +1854,9 @@ html[data-theme="dark"] .rf-hint-pending {
 .payment-online-section,
 .payment-manual-section { animation: rfSlideIn 0.25s ease both; }
 
-.btn-pay-online-reservation:not(:disabled):not(.is-disabled-btn) { background: var(--rf-primary, #0c375f) !important; border: 1px solid var(--rf-primary-dark, #092a4a) !important; color: white !important; font-weight: 600 !important; font-size: 15px !important; padding: 14px 28px !important; }
-.btn-pay-online-reservation:hover:not(:disabled):not(.is-disabled-btn) { background: var(--rf-primary-dark, #092a4a) !important; box-shadow: 0 6px 20px rgba(12, 55, 95, 0.35) !important; transform: translateY(-2px); }
-.btn-pay-online-reservation:active:not(:disabled):not(.is-disabled-btn) { transform: translateY(1px) scale(0.98); transition-duration: 0.08s; }
+.btn-pay-online-reservation:not(:disabled):not(.is-disabled-btn) { background: #059669 !important; border: 1px solid #047857 !important; color: white !important; font-weight: 600 !important; font-size: 15px !important; padding: 14px 28px !important; }
+.btn-pay-online-reservation:hover:not(:disabled):not(.is-disabled-btn) { background: #047857 !important; box-shadow: 0 6px 20px rgba(5, 150, 105, 0.35) !important; transform: translateY(-2px); }
+.btn-pay-online-reservation:active:not(:disabled):not(.is-disabled-btn) { background: #065f46 !important; transform: translateY(1px) scale(0.98); transition-duration: 0.08s; }
 .btn-pay-online-reservation:disabled,
 .btn-pay-online-reservation.is-disabled-btn { background: #e2e8f0 !important; border: 1px solid #cbd5e1 !important; color: #94a3b8 !important; opacity: 0.75 !important; cursor: not-allowed !important; box-shadow: none !important; transform: none !important; }
 
@@ -3078,9 +3126,9 @@ html[data-theme="dark"] .rf-selection-confirm strong { color: var(--rf-text); }
 .btn-pay-online-reservation {
   width: 100%;
   padding: 14px 20px;
-  background: var(--rf-primary, #0c375f);
+  background: #059669;
   color: #ffffff;
-  border: 1px solid var(--rf-primary-dark, #092a4a);
+  border: 1px solid #047857;
   border-radius: var(--rf-radius, 12px);
   font-size: 15px;
   font-weight: 700;
@@ -3089,14 +3137,14 @@ html[data-theme="dark"] .rf-selection-confirm strong { color: var(--rf-text); }
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 14px rgba(12, 55, 95, 0.25);
+  box-shadow: 0 4px 14px rgba(5, 150, 105, 0.25);
   letter-spacing: 0.01em;
 }
 .btn-pay-online-reservation:hover:not(:disabled):not(.is-disabled-btn) {
-  background: var(--rf-primary-dark, #092a4a);
-  border-color: #061d36;
+  background: #047857;
+  border-color: #065f46;
   transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(12, 55, 95, 0.35);
+  box-shadow: 0 6px 18px rgba(5, 150, 105, 0.35);
 }
 .btn-pay-online-reservation:disabled,
 .btn-pay-online-reservation.is-disabled-btn {
@@ -3158,6 +3206,57 @@ html[data-theme="dark"] .rf-selection-confirm strong { color: var(--rf-text); }
   line-height: 1.5;
 }
 
+/* Payment cancelled recovery banner — shown when user pressed Back from PayMongo */
+.rf-payment-cancelled-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 18px;
+  background: var(--rf-info-bg);
+  border: 1px solid var(--rf-info-border);
+  border-radius: var(--rf-radius);
+  margin-bottom: 16px;
+  color: var(--rf-info-text);
+}
+.rf-pcb-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  background: rgba(10, 36, 99, 0.08);
+  border-radius: 50%;
+  color: var(--rf-info-icon);
+  margin-top: 1px;
+}
+.rf-pcb-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.rf-pcb-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--rf-info-text);
+  line-height: 1.4;
+}
+.rf-pcb-body {
+  font-size: 13px;
+  color: var(--rf-text-secondary);
+  line-height: 1.55;
+  margin: 0;
+}
+
+/* Dark mode */
+html[data-theme="dark"] .rf-payment-cancelled-banner {
+  background: rgba(10, 36, 99, 0.12);
+  border-color: rgba(10, 36, 99, 0.25);
+}
+html[data-theme="dark"] .rf-pcb-icon-wrap {
+  background: rgba(10, 36, 99, 0.2);
+}
+
 /* Read-only wrapper overlay */
 .rf-readonly-wrapper {
   opacity: 0.75;
@@ -3178,7 +3277,7 @@ html[data-theme="dark"] .rf-pay-pill {
   border-color: rgba(255, 255, 255, 0.12);
   color: var(--rf-primary);
 }
-html[data-theme="dark"] .btn-pay-online-reservation { background: var(--rf-primary); }
-html[data-theme="dark"] .btn-pay-online-reservation:hover:not(:disabled) { background: var(--rf-primary-light); }
+html[data-theme="dark"] .btn-pay-online-reservation { background: #059669; }
+html[data-theme="dark"] .btn-pay-online-reservation:hover:not(:disabled) { background: #047857; }
 html[data-theme="dark"] .rf-policy-ack-box { border-color: var(--rf-border-card); background: rgba(255,255,255,0.03); }
 html[data-theme="dark"] .rf-policy-ack-box.is-checked { background: rgba(255, 140, 66, 0.08); }

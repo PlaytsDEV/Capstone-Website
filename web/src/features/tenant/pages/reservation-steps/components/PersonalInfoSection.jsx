@@ -7,6 +7,16 @@ import { validateBirthday } from "../../../utils/reservationValidation";
 const errBorder = (show, value) =>
   show && !value ? "1.5px solid #dc2626" : undefined;
 
+const ID_TYPE_LABELS = {
+  national_id: "National ID",
+  drivers_license: "Driver's License",
+  passport: "Passport",
+  sss_id: "SSS ID",
+  umid: "UMID",
+  school_id: "School ID",
+  other: "Valid ID",
+};
+
 const MONTH_OPTIONS = [
   { value: "01", label: "January" },
   { value: "02", label: "February" },
@@ -364,28 +374,32 @@ const PersonalInfoSection = ({
       />
     </div>
 
-    <div data-field="validIDFront">
-      <FileUploadField
-        label="Valid ID (Front)"
-        value={validIDFront}
-        onChange={setValidIDFront}
-        documentType="valid-id-front"
-        hint="Government-issued ID (Front side)"
-        hasError={showValidationErrors && !validIDFront}
-        required
-      />
-    </div>
-    <div data-field="validIDBack">
-      <FileUploadField
-        label="Valid ID (Back)"
-        value={validIDBack}
-        onChange={setValidIDBack}
-        documentType="valid-id-back"
-        hint="Government-issued ID (Back side)"
-        hasError={showValidationErrors && !validIDBack}
-        required
-      />
-    </div>
+    {Boolean(validIDType) && (
+      <>
+        <div data-field="validIDFront">
+          <FileUploadField
+            label={`${ID_TYPE_LABELS[validIDType] || "Valid ID"} (Front)`}
+            value={validIDFront}
+            onChange={setValidIDFront}
+            documentType="valid-id-front"
+            hint={`${ID_TYPE_LABELS[validIDType] || "Valid ID"} (Front side)`}
+            hasError={showValidationErrors && !validIDFront}
+            required
+          />
+        </div>
+        <div data-field="validIDBack">
+          <FileUploadField
+            label={`${ID_TYPE_LABELS[validIDType] || "Valid ID"} (Back)`}
+            value={validIDBack}
+            onChange={setValidIDBack}
+            documentType="valid-id-back"
+            hint={`${ID_TYPE_LABELS[validIDType] || "Valid ID"} (Back side)`}
+            hasError={showValidationErrors && !validIDBack}
+            required
+          />
+        </div>
+      </>
+    )}
 
     <div data-field="nbiClearance">
       <FileUploadField

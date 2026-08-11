@@ -895,18 +895,9 @@ export const getDocumentPrecheckStatus = (precheck = {}) => {
 };
 
 export const shouldBlockDocumentSubmission = (precheck = {}) => {
-  const status = getDocumentPrecheckStatus(precheck);
-  if (status === "manual_review_fallback") {
-    return false;
-  }
-
-  return (
-    status === "needs_reupload" ||
-    precheck?.readabilityStatus === "low_readability" ||
-    precheck?.readabilityStatus === "unreadable" ||
-    precheck?.documentTypeStatus === "possible_mismatch" ||
-    precheck?.canSubmit === false
-  );
+  // Document precheck never blocks application submission or approval.
+  // All document issues fall back to manual admin review on the admin dashboard.
+  return false;
 };
 
 export const deriveViewingPreference = (reservation, updates = {}) => {

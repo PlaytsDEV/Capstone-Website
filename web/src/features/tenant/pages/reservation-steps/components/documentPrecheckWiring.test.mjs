@@ -14,12 +14,12 @@ const personalInfoSource = readTenantSource(
   "pages/reservation-steps/components/PersonalInfoSection.jsx",
 );
 
-const getUploadFieldBlock = (label) => {
-  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const getUploadFieldBlock = (docTypeOrLabel) => {
+  const escaped = docTypeOrLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = personalInfoSource.match(
-    new RegExp(`label="${escapedLabel}"[\\s\\S]*?/>`),
+    new RegExp(`<FileUploadField[\\s\\S]*?(?:label="[^\"]*${escaped}[^\"]*"|documentType="${escaped}")[\\s\\S]*?/>`),
   );
-  assert.ok(match, `${label} upload field should exist`);
+  assert.ok(match, `${docTypeOrLabel} upload field should exist`);
   return match[0];
 };
 
@@ -30,14 +30,14 @@ test("personal info section receives document precheck props", () => {
 });
 
 test("valid ID front upload renders document field without AI precheck blockers", () => {
-  const block = getUploadFieldBlock("Valid ID (Front)");
+  const block = getUploadFieldBlock("valid-id-front");
 
   assert.match(block, /documentType="valid-id-front"/);
   assert.match(block, /value=\{validIDFront\}/);
 });
 
 test("valid ID back upload renders document field without AI precheck blockers", () => {
-  const block = getUploadFieldBlock("Valid ID (Back)");
+  const block = getUploadFieldBlock("valid-id-back");
 
   assert.match(block, /documentType="valid-id-back"/);
   assert.match(block, /value=\{validIDBack\}/);

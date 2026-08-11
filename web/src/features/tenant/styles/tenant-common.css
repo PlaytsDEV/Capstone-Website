@@ -846,9 +846,9 @@
 }
 
 .btn-primary {
-  background: none 0%, #1E3A5F 100%);
+  background: #1E3A5F;
   color: white;
-  box-shadow: 0 12px 24px rgba(10, 22, 40, 0.16);
+  box-shadow: 0 4px 12px rgba(10, 22, 40, 0.16);
 }
 
 .btn-primary:hover {

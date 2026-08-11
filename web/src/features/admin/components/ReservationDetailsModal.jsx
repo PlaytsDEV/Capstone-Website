@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { Calendar, ClipboardList, CreditCard, Eye } from "lucide-react";
+import { AlertTriangle, Calendar, Camera, CheckCircle, ClipboardList, CreditCard, Eye, Image as ImageIcon, Maximize2 } from "lucide-react";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
 import { reservationApi } from "../../../shared/api/apiClient";
 import { useVisitAvailability } from "../../../shared/hooks/queries/useReservations";
@@ -980,11 +980,6 @@ export default function ReservationDetailsModal({
  <span className="rdm-info-value">{formatPhp(pricingDisplay.estimatedInitialPaymentTotal)}</span>
  </div>
  </div>
- <p style={{ fontSize: "0.75rem", color: "#94A3B8", marginTop: 8 }}>
- {pricingDisplay.status === "snapshotted"
- ? "Approved pricing snapshot — immutable, source: server policy."
- : "Pre-approval preview — will be locked in as an immutable snapshot at approval. Source: server policy."}
- </p>
  </>
  ) : (
  <p style={{ fontSize: "0.85rem", color: "#B91C1C", fontWeight: 600 }}>
@@ -1116,19 +1111,85 @@ export default function ReservationDetailsModal({
  </div>
  </div>
  {roomImages.length > 0 && (
- <div className="rdm-doc-links" style={{ marginTop: 12 }}>
- {roomImages.map((image, index) => (
- <button
- key={`${image}-${index}`}
- type="button"
- className="rdm-doc-view"
- onClick={() => openImage(image, `Room photo ${index + 1}`)}
- >
- Room Photo {index + 1}
- </button>
- ))}
- </div>
- )}
+  <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid rgba(15, 23, 42, 0.08)" }}>
+  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+  <span className="rdm-info-label" style={{ display: "flex", alignItems: "center", gap: 6, margin: 0 }}>
+  <Camera size={13} style={{ color: "#64748B" }} />
+  <span>Assigned Room Photos</span>
+  </span>
+  <span style={{ fontSize: "0.74rem", color: "#64748B", fontWeight: 500 }}>
+  {roomImages.length} photo{roomImages.length > 1 ? "s" : ""}
+  </span>
+  </div>
+  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+  {roomImages.map((imageUrl, index) => (
+  <button
+  key={`${imageUrl}-${index}`}
+  type="button"
+  onClick={() => openImage(imageUrl, `Room Photo ${index + 1}`)}
+  style={{
+  position: "relative",
+  width: 80,
+  height: 60,
+  borderRadius: 8,
+  overflow: "hidden",
+  border: "1px solid rgba(15, 23, 42, 0.12)",
+  background: "#F8FAFC",
+  padding: 0,
+  cursor: "pointer",
+  transition: "all 0.15s ease-in-out",
+  boxShadow: "0 1px 3px rgba(0, 0, 0, 0.04)",
+  }}
+  className="hover:border-slate-400 focus:outline-none group"
+  title={`Click to view Room Photo ${index + 1}`}
+  >
+  <img
+  src={imageUrl}
+  alt={`Room photo ${index + 1}`}
+  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+  onError={(event) => {
+  event.target.style.display = "none";
+  if (event.target.nextSibling) event.target.nextSibling.style.display = "flex";
+  }}
+  />
+  <div
+  style={{
+  display: "none",
+  width: "100%",
+  height: "100%",
+  alignItems: "center",
+  justifyContent: "center",
+  flexDirection: "column",
+  gap: 2,
+  background: "#F1F5F9",
+  color: "#64748B",
+  fontSize: "0.68rem",
+  }}
+  >
+  <ImageIcon size={16} />
+  <span>Photo {index + 1}</span>
+  </div>
+  <div
+  style={{
+  position: "absolute",
+  inset: 0,
+  background: "rgba(15, 23, 42, 0.45)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  color: "#FFFFFF",
+  opacity: 0,
+  transition: "opacity 0.15s ease",
+  }}
+  className="group-hover:opacity-100"
+  >
+  <Maximize2 size={15} />
+  </div>
+  </button>
+  ))}
+  </div>
+  </div>
+  )}
  </div>
 
  {physicalVisitSelected && (
@@ -1561,47 +1622,61 @@ export default function ReservationDetailsModal({
  <div key={`${doc.label}-${index}`} className="rdm-doc-row">
  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
  <span className="rdm-doc-label">{doc.label}</span>
- {(() => {
- const appearance = getPrecheckAppearance(doc.precheck);
- const notes = [
- doc.precheck?.adminNote,
- ...(Array.isArray(doc.precheck?.aiCheckWarnings)
- ? doc.precheck.aiCheckWarnings
- : []),
- ]
- .map((note) => String(note || "").trim())
- .filter(Boolean);
- if (!appearance && notes.length === 0) return null;
- return (
- <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
- {appearance ? (
- <span
- style={{
- display: "inline-flex",
- alignItems: "center",
- width: "fit-content",
- padding: "2px 8px",
- borderRadius: 999,
- fontSize: "0.72rem",
- fontWeight: 700,
- background: appearance.bg,
- color: appearance.color,
- }}
- >
- {appearance.label}
- </span>
- ) : null}
- {notes.slice(0, 2).map((warning, warningIndex) => (
- <span
- key={`${doc.label}-warning-${warningIndex}`}
- style={{ fontSize: "0.78rem", color: "#6B7280", lineHeight: 1.4 }}
- >
- {warning}
- </span>
- ))}
- </div>
- );
- })()}
+  {(() => {
+  const appearance = getPrecheckAppearance(doc.precheck);
+  const notes = [
+  doc.precheck?.applicantMessage,
+  doc.precheck?.adminNote,
+  ...(Array.isArray(doc.precheck?.aiCheckWarnings)
+  ? doc.precheck.aiCheckWarnings
+  : []),
+  ]
+  .map((note) => String(note || "").trim())
+  .filter(Boolean);
+
+  if (!appearance && notes.length === 0) return null;
+
+  const tooltipText =
+  notes.length > 0
+  ? notes.join(" • ")
+  : appearance?.label || "Manual admin inspection recommended";
+
+  const isWarningState =
+  appearance &&
+  (appearance.label.includes("Manual") ||
+  appearance.label.includes("Clearer") ||
+  appearance.label.includes("Type"));
+
+  return (
+  <div style={{ display: "inline-flex", alignItems: "center", marginTop: 2 }}>
+  {appearance ? (
+  <span
+  title={`Document Review Note:\n• ${tooltipText}`}
+  style={{
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 5,
+  padding: "3px 10px",
+  borderRadius: 999,
+  fontSize: "0.72rem",
+  fontWeight: 600,
+  background: appearance.bg,
+  color: appearance.color,
+  cursor: "help",
+  border: `1px solid ${appearance.color}30`,
+  }}
+  >
+  {isWarningState ? (
+  <AlertTriangle size={12} style={{ flexShrink: 0 }} />
+  ) : (
+  <CheckCircle size={12} style={{ flexShrink: 0 }} />
+  )}
+  <span>{appearance.label}</span>
+  </span>
+  ) : null}
+  </div>
+  );
+  })()}
  </div>
  {doc.url && isSafeDocumentUrl(doc.url) ? (
  <button
@@ -2004,12 +2079,12 @@ export default function ReservationDetailsModal({
  }}
  disabled={isSubmitting}
  >
- Confirm
- </button>
- </div>
- </div>
- </div>
- )}
+  Confirm
+  </button>
+  </div>
+  </div>
+  </div>
+  )}
 
  <ConfirmModal
  isOpen={confirmModal.open}

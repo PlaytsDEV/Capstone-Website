@@ -54,6 +54,7 @@ import {
   applyMoveInFilter,
   applyAppDateFilter,
   applyQuickChip,
+  getReservationDocumentWarnings,
 } from "../utils/reservationRows";
 import ReservationQuickChips from "../components/ReservationQuickChips";
 import ReservationFilterDrawer from "../components/ReservationFilterDrawer";
@@ -191,17 +192,8 @@ function ReservationsPage() {
   const error = queryError?.message || null;
 
   const reservations = useMemo(
-    () =>
-      rawReservations.map((raw) => {
-        const row = mapReservationAdminRow(raw);
-        const isPendingCancellation = hasPendingCancellationRequest(row);
-        const isRecentlyCreated = isNewReservation(raw) && !raw.isViewedByAdmin && !seenIds.has(row.id);
-        return {
-          ...row,
-          isNew: isRecentlyCreated || isPendingCancellation,
-        };
-      }),
-    [rawReservations, seenIds],
+    () => rawReservations.map((raw) => mapReservationAdminRow(raw)),
+    [rawReservations],
   );
 
   const activeReservations = useMemo(
@@ -741,6 +733,7 @@ function ReservationsPage() {
         sortable: true,
         render: (row) => {
           const rowInitials = initials(row.customer);
+          const docWarnings = getReservationDocumentWarnings(row);
           return (
             <div className="res-applicant-cell">
               <div
@@ -750,19 +743,30 @@ function ReservationsPage() {
                 {rowInitials}
               </div>
               <div className="res-applicant-info">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="res-applicant-name">{row.customer}</span>
                   {row.isNew && (
                     <span
                       className="res-badge-new"
                       title={
                         hasPendingCancellationRequest(row)
-                          ? "Cancellation requested (New action)"
-                          : "New reservation (created within 48 hours)"
+                          ? "Cancellation requested (Requires admin action)"
+                          : row.paymentStatus === "proof_uploaded"
+                            ? "Payment proof uploaded (Requires admin verification)"
+                            : "Requires admin review / approval"
                       }
                     >
                       <span className="res-badge-new__dot" />
                       NEW
+                    </span>
+                  )}
+                  {docWarnings.length > 0 && (
+                    <span
+                      className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-300 rounded px-1.5 py-0.5 text-xs font-semibold cursor-help"
+                      title={`Document Precheck Warning:\n• ${docWarnings.join("\n• ")}`}
+                    >
+                      <AlertTriangle className="w-3 h-3 text-amber-600 flex-shrink-0" />
+                      <span>Doc Warning</span>
                     </span>
                   )}
                 </div>
@@ -1155,7 +1159,13 @@ function ReservationsPage() {
                                 {row.isNew && (
                                   <span
                                     className="res-badge-new"
-                                    title="New reservation (created within 48 hours)"
+                                    title={
+                                      hasPendingCancellationRequest(row)
+                                        ? "Cancellation requested (Requires admin action)"
+                                        : row.paymentStatus === "proof_uploaded"
+                                          ? "Payment proof uploaded (Requires admin verification)"
+                                          : "Requires admin review / approval"
+                                    }
                                   >
                                     <span className="res-badge-new__dot" />
                                     NEW

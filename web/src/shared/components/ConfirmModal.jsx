@@ -246,7 +246,7 @@ export default function ConfirmModal({
  style={{
  padding: "8px 18px",
  border: "1px solid var(--border-card, #e2e8f0)",
- borderRadius: 6,
+ borderRadius: 9999,
  background: "var(--surface-card, #fff)",
  fontSize: 13,
  fontWeight: 500,
@@ -265,7 +265,7 @@ export default function ConfirmModal({
  style={{
  padding: "8px 18px",
  border: "none",
- borderRadius: 6,
+ borderRadius: 9999,
  background: c.btn,
  fontSize: 13,
  fontWeight: 600,

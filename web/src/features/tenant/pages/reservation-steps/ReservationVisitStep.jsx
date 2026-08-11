@@ -229,16 +229,19 @@ function getSelectedVisitSummary({ visitDate, visitTime, reservationData }) {
   const branch = toDisplayString(room.branch || reservationData?.branch, "Branch");
   const price = formatMoney(room.price);
 
-  if (!visitDate) {
+  const effectiveDate = visitDate || reservationData?.visitDate;
+  const effectiveTime = visitTime || reservationData?.visitTime;
+
+  if (!effectiveDate) {
     return { status: "empty", title: "Select a date and time to continue", detail: `${roomName} - ${branch} - ${price}`, mobile: "No visit selected", rows: [] };
   }
 
-  const fullDate = fmtDateFull(visitDate);
-  if (!visitTime) {
+  const fullDate = fmtDateFull(effectiveDate);
+  if (!effectiveTime) {
     return { status: "partial", title: fullDate, detail: "Choose an available time slot", mobile: fullDate, rows: [{ label: "Date", value: fullDate }, { label: "Time", value: "Not selected" }] };
   }
 
-  return { status: "complete", title: `${fullDate} at ${visitTime}`, detail: `${roomName} - ${branch} - ${price}`, mobile: `${fmtDate(new Date(visitDate + "T00:00:00"))} - ${visitTime}`, rows: [{ label: "Date", value: fullDate }, { label: "Time", value: visitTime }, { label: "Room", value: roomName }, { label: "Branch", value: branch }, { label: "Price", value: price }] };
+  return { status: "complete", title: `${fullDate} at ${effectiveTime}`, detail: `${roomName} - ${branch} - ${price}`, mobile: `${fmtDate(new Date(String(effectiveDate).split("T")[0] + "T00:00:00"))} - ${effectiveTime}`, rows: [{ label: "Date", value: fullDate }, { label: "Time", value: effectiveTime }, { label: "Room", value: roomName }, { label: "Branch", value: branch }, { label: "Price", value: price }] };
 }
 
 /* Modal portal used for previews and confirmations */
@@ -470,8 +473,8 @@ const ReservationVisitStep = ({
               <div className="rf-receipt-row"><span className="rf-receipt-row__label">Room</span><span className="rf-receipt-row__value">{toDisplayString(room.name || room.roomNumber, "Room")}</span></div>
               <div className="rf-receipt-row"><span className="rf-receipt-row__label">Branch</span><span className="rf-receipt-row__value">{room.branch ? toTitleCase(toDisplayString(room.branch)) : "N/A"}</span></div>
               {reservationData?.selectedBed && (<div className="rf-receipt-row"><span className="rf-receipt-row__label">Bed</span><span className="rf-receipt-row__value">{toDisplayString(reservationData.selectedBed.position, "Bed")}{toDisplayString(reservationData.selectedBed.id) ? ` (${toDisplayString(reservationData.selectedBed.id)})` : ""}</span></div>)}
-              <div className="rf-receipt-row"><span className="rf-receipt-row__label">Preferred Visit Date</span><span className="rf-receipt-row__value">{fmtDateFull(visitDate)}</span></div>
-              <div className="rf-receipt-row"><span className="rf-receipt-row__label">Preferred Visit Time</span><span className="rf-receipt-row__value">{visitTime || "Not scheduled"}</span></div>
+              <div className="rf-receipt-row"><span className="rf-receipt-row__label">Preferred Visit Date</span><span className="rf-receipt-row__value">{fmtDateFull(visitDate || reservationData?.visitDate)}</span></div>
+              <div className="rf-receipt-row"><span className="rf-receipt-row__label">Preferred Visit Time</span><span className="rf-receipt-row__value">{visitTime || reservationData?.visitTime || "Not scheduled"}</span></div>
               {visitCode && (<div className="rf-receipt-row rf-receipt-row--highlighted"><span className="rf-receipt-row__label">Visit Code</span><span className="rf-receipt-row__code">{visitCode}</span></div>)}
               <div className="rf-receipt-row"><span className="rf-receipt-row__label">Status</span><span className="rf-receipt-row__value">{physicalVisitState?.title || "Physical Visit Scheduled"}</span></div>
             </>
@@ -840,11 +843,11 @@ const ReservationVisitStep = ({
               <>
                 <div className="rf-receipt-row">
                   <span className="rf-receipt-row__label">Visit Date</span>
-                  <span className="rf-receipt-row__value" style={{ fontWeight: 600 }}>{fmtDateFull(visitDate)}</span>
+                  <span className="rf-receipt-row__value" style={{ fontWeight: 600 }}>{fmtDateFull(visitDate || reservationData?.visitDate)}</span>
                 </div>
                 <div className="rf-receipt-row">
                   <span className="rf-receipt-row__label">Visit Time</span>
-                  <span className="rf-receipt-row__value" style={{ fontWeight: 600 }}>{visitTime}</span>
+                  <span className="rf-receipt-row__value" style={{ fontWeight: 600 }}>{visitTime || reservationData?.visitTime || "Not scheduled"}</span>
                 </div>
               </>
             )}

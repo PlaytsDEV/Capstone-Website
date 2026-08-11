@@ -18,7 +18,7 @@ export default function ApplicantTopBar({ onOpenSidebar }) {
     location.state,
   );
   const portalLabel = user?.role === "tenant" ? "Resident" : "Applicant";
-  const breadcrumbs = [portalLabel, pageMeta.title];
+  const breadcrumbs = user?.role === "tenant" ? [portalLabel, pageMeta.title] : [pageMeta.title];
   const currentCrumb = pageMeta.title;
 
   const displayName = useMemo(() => {

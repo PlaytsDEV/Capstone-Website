@@ -110,65 +110,61 @@ const DashboardTab = ({
  {/* ── Main grid: left stacks, right spans ─────────────── */}
  <div style={gridStyle}>
 
- {/* Left col, row 1: Profile Completion */}
- <div style={isMobile ? {} : S.leftTop}>
- <ProfileCompletionCard
- profileData={profileData}
- onGoToPersonal={onGoToPersonal}
- />
- </div>
+        {/* Left column stack */}
+        <div style={isMobile ? S.gridMobile : S.leftCol}>
+          <ProfileCompletionCard
+            profileData={profileData}
+            onGoToPersonal={onGoToPersonal}
+          />
+          <ReservationDashboard
+            reservation={selectedReservation}
+            visits={visits}
+            onGoToReservation={onGoToReservation}
+          />
+          <div style={S.shortcutsGrid}>
+            <button
+              type="button"
+              onClick={() => navigate("/applicant/check-availability")}
+              style={shortcutCardStyle}
+            >
+              <span
+                style={{
+                  ...S.shortcutIconWrap,
+                  background: isDark ? "rgba(212, 175, 55, 0.22)" : "rgba(212, 175, 55, 0.14)",
+                }}
+              >
+                <Search size={19} color="var(--color-primary, #D4AF37)" />
+              </span>
+              <span style={S.shortcutContent}>
+                <span style={shortcutTitleStyle}>Browse Rooms</span>
+                <span style={shortcutSubtitleStyle}>View available rooms</span>
+              </span>
+              <ChevronRight size={18} color={shortcutChevronColor} />
+            </button>
 
- {/* Left col, row 2: Reservation progress */}
- <div style={isMobile ? {} : S.leftBottom}>
- <ReservationDashboard
- reservation={selectedReservation}
- visits={visits}
- onGoToReservation={onGoToReservation}
- />
- <div style={S.shortcutsGrid}>
- <button
- type="button"
- onClick={() => navigate("/applicant/check-availability")}
- style={shortcutCardStyle}
- >
- <span
- style={{
- ...S.shortcutIconWrap,
- background: isDark ? "rgba(212, 175, 55, 0.22)" : "rgba(212, 175, 55, 0.14)",
- }}
- >
- <Search size={19} color="var(--color-primary, #D4AF37)" />
- </span>
- <span style={S.shortcutContent}>
- <span style={shortcutTitleStyle}>Browse Rooms</span>
- <span style={shortcutSubtitleStyle}>View available rooms</span>
- </span>
- <ChevronRight size={18} color={shortcutChevronColor} />
- </button>
-
- {canViewTenantModules && (
- <button
- type="button"
- onClick={() => navigate("/applicant/billing")}
- style={shortcutCardStyle}
- >
- <span
- style={{
- ...S.shortcutIconWrap,
- background: isDark ? "rgba(16, 185, 129, 0.2)" : "rgba(16, 185, 129, 0.16)",
- }}
- >
- <CreditCard size={18} color={isDark ? "#34D399" : "#059669"} />
- </span>
- <span style={S.shortcutContent}>
- <span style={shortcutTitleStyle}>My Bills</span>
- <span style={shortcutSubtitleStyle}>View billing details</span>
- </span>
- <ChevronRight size={18} color={shortcutChevronColor} />
- </button>
- )}
- </div>
- </div>
+            {canViewTenantModules && (
+              <button
+                type="button"
+                onClick={() => navigate("/applicant/billing")}
+                style={shortcutCardStyle}
+              >
+                <span
+                  style={{
+                    ...S.shortcutIconWrap,
+                    background: isDark ? "rgba(16, 185, 129, 0.2)" : "rgba(16, 185, 129, 0.16)",
+                  }}
+                >
+                  <CreditCard size={18} color={isDark ? "#34D399" : "#059669"} />
+                </span>
+                <span style={S.shortcutContent}>
+                  <span style={shortcutTitleStyle}>My Bills</span>
+                  <span style={shortcutSubtitleStyle}>View billing details</span>
+                </span>
+                <ChevronRight size={18} color={shortcutChevronColor} />
+              </button>
+            )}
+          </div>
+        </div>
 
  {/* Right col: spans both rows on desktop, below on mobile */}
  <div style={rightColStyle}>
@@ -202,30 +198,24 @@ const S = {
  margin: "0 0 16px",
  },
 
- /* Desktop grid */
- grid: {
- display: "grid",
- gridTemplateColumns: "1fr 280px",
- gridTemplateRows: "auto 1fr",
- gap: 16,
- minHeight: 440,
- },
- leftTop: {
- gridColumn: 1,
- gridRow: 1,
- },
- leftBottom: {
- gridColumn: 1,
- gridRow: 2,
- },
- rightCol: {
- gridColumn: 2,
- gridRow: "1 / -1",
- display: "flex",
- flexDirection: "column",
- alignItems: "stretch",
- alignSelf: "stretch",
- },
+  /* Desktop grid */
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 280px",
+    gap: 16,
+    alignItems: "start",
+  },
+  leftCol: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 16,
+  },
+  rightCol: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "stretch",
+    alignSelf: "stretch",
+  },
 
  /* Mobile — single column */
  gridMobile: {

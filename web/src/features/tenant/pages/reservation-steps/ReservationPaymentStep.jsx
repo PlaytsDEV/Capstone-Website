@@ -18,6 +18,7 @@ import {
   Calendar,
   AlertCircle,
   CheckCircle2,
+  ArrowLeft,
 } from "lucide-react";
 
 import { getResolvedMonthlyRate } from "../../utils/pricingDisplayHelpers";
@@ -63,6 +64,7 @@ const ReservationPaymentStep = ({
   readOnly,
   agreedToFeePolicy = false,
   setAgreedToFeePolicy = () => {},
+  paymentCancelled = false,
 }) => {
   const room = reservationData?.room || {};
   const roomName = toDisplayString(room.name || room.roomNumber || room.title || room.id, "N/A");
@@ -130,6 +132,21 @@ const ReservationPaymentStep = ({
           Pay the one-time reservation fee deposit to lock and secure your room.
         </p>
       </div>
+
+      {/* Payment Cancelled Recovery Banner */}
+      {paymentCancelled && !readOnly && (
+        <div className="rf-payment-cancelled-banner" role="status" aria-live="polite">
+          <div className="rf-pcb-icon-wrap">
+            <ArrowLeft size={18} aria-hidden="true" />
+          </div>
+          <div className="rf-pcb-content">
+            <strong className="rf-pcb-title">You left before completing payment.</strong>
+            <p className="rf-pcb-body">
+              No worries — your reservation is still held. You can retry payment below whenever you're ready.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Payment Complete Banner */}
       {readOnly && (

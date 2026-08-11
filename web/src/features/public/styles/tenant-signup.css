@@ -196,7 +196,7 @@
 /* Form Styles */
 .tenant-signup-form {
   width: 100%;
-  max-width: 360px;
+  max-width: 500px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -725,7 +725,7 @@
 /* Divider */
 .tenant-signup-divider {
   width: 100%;
-  max-width: 360px;
+  max-width: 500px;
   display: flex;
   align-items: center;
   text-align: center;
@@ -748,7 +748,7 @@
 /* Social Buttons */
 .tenant-signup-social {
   width: 100%;
-  max-width: 360px;
+  max-width: 500px;
   display: flex;
   flex-direction: column;
   gap: 12px;
