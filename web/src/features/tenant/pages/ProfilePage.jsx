@@ -484,7 +484,7 @@ const ProfilePage = () => {
 
  {activeTab === "maintenance" && <TenantMaintenanceWorkspace embedded />}
  {activeTab === "announcements" && canViewAnnouncements && <AnnouncementsTab />}
- {activeTab === "notifications" && <NotificationsTab />}
+ {activeTab === "notifications" && <NotificationsTab onTabChange={handleTabChange} />}
  {activeTab === "settings" && <SettingsTab />}
  {activeTab === "contract" && <ContractTab />}
 

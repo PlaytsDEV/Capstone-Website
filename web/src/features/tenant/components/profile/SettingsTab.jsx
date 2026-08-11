@@ -21,6 +21,7 @@ import {
  Moon,
 } from "lucide-react";
 import PasswordVisibilityButton from "../../../../shared/components/PasswordVisibilityButton";
+import ConfirmModal from "../../../../shared/components/ConfirmModal";
 import { useTheme } from "../../../../features/public/context/ThemeContext";
 import {
  EmailAuthProvider,
@@ -68,6 +69,7 @@ const SettingsTab = () => {
  const [showConfirmPw, setShowConfirmPw] = useState(false);
  const [changingPassword, setChangingPassword] = useState(false);
  const [signingOutAll, setSigningOutAll] = useState(false);
+ const [showSignOutAllConfirm, setShowSignOutAllConfirm] = useState(false);
  const [savedTheme, setSavedTheme] = useState(false);
 
  const hasEmailAuth = isEmailPasswordAccount();
@@ -176,6 +178,7 @@ const SettingsTab = () => {
  showNotification("Failed to sign out from all devices", "error");
  } finally {
  setSigningOutAll(false);
+ setShowSignOutAllConfirm(false);
  }
  };
 
@@ -764,7 +767,7 @@ const SettingsTab = () => {
 
  {/* Sign out all button */}
  <button
- onClick={handleSignOutAll}
+ onClick={() => setShowSignOutAllConfirm(true)}
  disabled={signingOutAll}
  style={{
  width: "100%",
@@ -894,6 +897,17 @@ const SettingsTab = () => {
  />
  </div>
  </div>
+
+ <ConfirmModal
+ isOpen={showSignOutAllConfirm}
+ onClose={() => !signingOutAll && setShowSignOutAllConfirm(false)}
+ onConfirm={handleSignOutAll}
+ title="Sign Out of All Devices"
+ message="Are you sure you want to sign out from all devices? You will be logged out of this device and any other active sessions."
+ variant="danger"
+ confirmText="Sign Out All"
+ loading={signingOutAll}
+ />
  </div>
  );
 };

@@ -210,7 +210,7 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
               onClick={() => setViewerOpen(true)}
               aria-label="Open room photo viewer"
             >
-              <img src={activePhoto} alt={`${getRoomName(room)} photo ${activePhotoIndex + 1}`} loading="lazy" />
+              <img src={activePhoto} alt={`${getRoomName(room)} photo ${activePhotoIndex + 1}`} loading="lazy" className="img-reveal" onLoad={(e) => e.currentTarget.classList.add("loaded")} />
               <span className="rf-room-photo-open-hint"><Maximize2 size={14} />View</span>
             </button>
 
@@ -242,7 +242,7 @@ const ReservationSummaryStep = ({ reservationData, onNext, onChangeRoom, readOnl
           </div>
 
           <div className="rf-photo-viewer-stage" onClick={(event) => event.stopPropagation()}>
-            <img src={activePhoto} alt={`${getRoomName(room)} enlarged photo ${activePhotoIndex + 1}`} />
+            <img src={activePhoto} alt={`${getRoomName(room)} enlarged photo ${activePhotoIndex + 1}`} className="img-reveal" onLoad={(e) => e.currentTarget.classList.add("loaded")} />
           </div>
         </div>,
         document.body,

@@ -421,7 +421,8 @@ const ReservationCard = ({ reservation, isOpen, onToggle, timelineSort, onTimeli
  }}>
  {room.images?.[0]
  ? <img src={room.images[0]} alt={room.name}
- style={{ width: "100%", height: "100%", objectFit: "cover" }}
+ style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0, transition: "opacity 0.25s ease" }}
+ onLoad={(e) => { e.currentTarget.style.opacity = "1"; }}
  onError={(e) => { e.currentTarget.style.display = "none"; }} />
  : <Home size={20} color="#94A3B8" />
  }

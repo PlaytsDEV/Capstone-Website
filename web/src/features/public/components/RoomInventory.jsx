@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { roomApi } from '../../../shared/api/roomApi';
+import { ProgressiveImage } from '../../../shared/components/ProgressiveImage';
 import hero1 from "../../../assets/images/hero1.webp";
 import hero2 from "../../../assets/images/hero2.webp";
 import hero3 from "../../../assets/images/hero3.webp";
@@ -117,7 +118,7 @@ export function RoomInventory() {
 
         {/* Room Cards */}
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 items-start">
-          {roomListings.map((room) => (
+          {roomListings.map((room, cardIdx) => (
             <div
               key={room.id}
               role="article"
@@ -137,13 +138,14 @@ export function RoomInventory() {
                 e.currentTarget.style.transform = 'translateY(0)';
               }}
             >
-              {/* Image - Popular badge now a corner ribbon */}
+              {/* Image — priority on first card so it loads immediately */}
               <div className="relative h-72 overflow-hidden">
-                <img
+                <ProgressiveImage
                   src={room.image}
                   alt={room.title}
-                  loading="lazy"
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  priority={cardIdx === 0}
+                  style={{ height: '100%', objectFit: 'cover' }}
+                  className="group-hover:scale-105 transition-transform duration-500"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 

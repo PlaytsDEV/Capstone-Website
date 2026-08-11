@@ -18,6 +18,7 @@
  */
 
 import React, { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import {
 	Bell,
 	Check,
@@ -31,6 +32,9 @@ import {
 	ChevronLeft,
 	ChevronRight,
 	Filter,
+	RotateCcw,
+	ArrowRight,
+	Bed,
 } from "lucide-react";
 import {
 	useNotifications,
@@ -143,8 +147,9 @@ const getFilterPillStyle = (isActive, accentColor) => ({
 
 // ── Component ──
 
-const NotificationsTab = () => {
+const NotificationsTab = ({ onTabChange }) => {
 	const { user } = useAuth();
+	const navigate = useNavigate();
 	const [page, setPage] = useState(1);
 	const [typeFilter, setTypeFilter] = useState("all");
 	const [unreadOnly, setUnreadOnly] = useState(false);
@@ -159,6 +164,30 @@ const NotificationsTab = () => {
 
 	const currentRole = isApplicant ? "applicant" : "tenant";
 	const filterTabs = ALL_FILTER_TABS.filter((t) => t.roles.includes(currentRole));
+
+	// Compute category notification counts
+	const categoryCounts = useMemo(() => {
+		const counts = { all: notifications.length };
+		filterTabs.forEach((tab) => {
+			if (tab.key !== "all") {
+				counts[tab.key] = notifications.filter((n) => matchesFilter(n, tab.key)).length;
+			}
+		});
+		return counts;
+	}, [notifications, filterTabs]);
+
+	// Navigation Handlers
+	const handleBrowseRooms = () => {
+		navigate("/applicant/check-availability");
+	};
+
+	const handleCheckReservation = () => {
+		if (onTabChange) {
+			onTabChange("reservation");
+		} else {
+			navigate("/applicant/profile", { state: { tab: "reservation" } });
+		}
+	};
 
 	// Apply type filter
 	const filtered = useMemo(
@@ -195,6 +224,12 @@ const NotificationsTab = () => {
 		setPage(1);
 	};
 
+	const handleResetFilters = () => {
+		setTypeFilter("all");
+		setUnreadOnly(false);
+		setPage(1);
+	};
+
 	// ── Styles ──
 	const cardStyle = {
 		backgroundColor: "var(--surface-card, #fff)",
@@ -204,7 +239,7 @@ const NotificationsTab = () => {
 	};
 
 	return (
-		<div style={{ maxWidth: "1200px" }}>
+		<div style={{ width: "100%" }}>
 			{/* Header */}
 			<div
 				style={{
@@ -212,19 +247,38 @@ const NotificationsTab = () => {
 					alignItems: "center",
 					justifyContent: "space-between",
 					marginBottom: "16px",
+					flexWrap: "wrap",
+					gap: "12px",
 				}}
 			>
 				<div>
-					<h1
-						style={{
-							fontSize: "22px",
-							fontWeight: 700,
-							color: "var(--text-heading, #1F2937)",
-							margin: "0 0 4px",
-						}}
-					>
-						Notifications
-					</h1>
+					<div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
+						<h1
+							style={{
+								fontSize: "22px",
+								fontWeight: 700,
+								color: "var(--text-heading, #1F2937)",
+								margin: 0,
+							}}
+						>
+							Notifications
+						</h1>
+						{unreadCount > 0 && (
+							<span
+								style={{
+									fontSize: "12px",
+									fontWeight: 600,
+									color: "#D97706",
+									backgroundColor: "#FEF3C7",
+									border: "1px solid #FDE68A",
+									padding: "2px 10px",
+									borderRadius: "12px",
+								}}
+							>
+								{unreadCount} unread
+							</span>
+						)}
+					</div>
 					<p style={{ fontSize: "14px", color: "var(--text-muted, #94A3B8)", margin: 0 }}>
 						{isApplicant
 							? "Stay updated on your reservation, visit, and application progress"
@@ -240,7 +294,7 @@ const NotificationsTab = () => {
 							display: "flex",
 							alignItems: "center",
 							gap: "6px",
-							backgroundColor: "transparent",
+							backgroundColor: "var(--surface-card, #fff)",
 							border: "1px solid var(--border-card, #E8EBF0)",
 							borderRadius: "8px",
 							padding: "8px 14px",
@@ -248,16 +302,18 @@ const NotificationsTab = () => {
 							fontWeight: 500,
 							color: "var(--text-secondary, #6B7280)",
 							cursor: "pointer",
-							transition: "all 0.2s",
+							transition: "all 0.18s ease",
 						}}
 						onMouseEnter={(e) => {
 							e.currentTarget.style.backgroundColor = "var(--surface-muted, #F8FAFC)";
+							e.currentTarget.style.borderColor = "#CBD5E1";
 						}}
 						onMouseLeave={(e) => {
-							e.currentTarget.style.backgroundColor = "transparent";
+							e.currentTarget.style.backgroundColor = "var(--surface-card, #fff)";
+							e.currentTarget.style.borderColor = "var(--border-card, #E8EBF0)";
 						}}
 					>
-						<CheckCheck style={{ width: "14px", height: "14px" }} />
+						<CheckCheck style={{ width: "14px", height: "14px", color: "#10B981" }} />
 						Mark all as read
 					</button>
 				)}
@@ -273,15 +329,29 @@ const NotificationsTab = () => {
 					alignItems: "center",
 				}}
 			>
-				{filterTabs.map((tab) => (
-					<button
-						key={tab.key}
-						onClick={() => handleFilterChange(tab.key)}
-						style={getFilterPillStyle(typeFilter === tab.key)}
-					>
-						{tab.label}
-					</button>
-				))}
+				{filterTabs.map((tab) => {
+					const isActive = typeFilter === tab.key;
+					const count = categoryCounts[tab.key] || 0;
+					return (
+						<button
+							key={tab.key}
+							onClick={() => handleFilterChange(tab.key)}
+							style={getFilterPillStyle(isActive)}
+						>
+							{tab.label}
+							<span
+								style={{
+									marginLeft: "5px",
+									fontSize: "11px",
+									opacity: isActive ? 0.9 : 0.6,
+									fontWeight: isActive ? 600 : 400,
+								}}
+							>
+								({count})
+							</span>
+						</button>
+					);
+				})}
 
 				{/* Separator */}
 				<span
@@ -296,11 +366,11 @@ const NotificationsTab = () => {
 				{/* Unread only toggle */}
 				<button
 					onClick={handleToggleUnread}
-					style={getFilterPillStyle(unreadOnly, "#D4AF37")}
+					style={getFilterPillStyle(unreadOnly, "#1F2937")}
 				>
-					<span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+					<span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
 						<Filter style={{ width: "12px", height: "12px" }} />
-						Unread only
+						Unread only ({unreadCount})
 					</span>
 				</button>
 			</div>
@@ -323,36 +393,184 @@ const NotificationsTab = () => {
 				<div
 					style={{
 						...cardStyle,
-						padding: "64px 32px",
+						padding: "56px 32px",
 						textAlign: "center",
 					}}
 				>
 					<div
 						style={{
-							width: "64px",
-							height: "64px",
+							width: "60px",
+							height: "60px",
 							borderRadius: "50%",
-							backgroundColor: "var(--surface-muted, #F8FAFC)",
+							backgroundColor: "#F1F5F9",
+							border: "1px solid #E2E8F0",
 							display: "flex",
 							alignItems: "center",
 							justifyContent: "center",
 							margin: "0 auto 16px",
 						}}
 					>
-						<Bell style={{ width: "28px", height: "28px", color: "#CBD5E1" }} />
+						<Bell style={{ width: "26px", height: "26px", color: "#64748B" }} />
 					</div>
-					<p style={{ fontSize: "16px", fontWeight: 600, color: "var(--text-heading, #1F2937)", margin: "0 0 4px" }}>
+					<p style={{ fontSize: "16px", fontWeight: 600, color: "var(--text-heading, #1F2937)", margin: "0 0 6px" }}>
 						{typeFilter !== "all" || unreadOnly
 							? "No matching notifications"
 							: "No notifications yet"}
 					</p>
-					<p style={{ fontSize: "14px", color: "var(--text-muted, #94A3B8)", margin: 0 }}>
+					<p style={{ fontSize: "14px", color: "var(--text-muted, #94A3B8)", margin: "0 0 20px", maxWidth: "480px", marginLeft: "auto", marginRight: "auto" }}>
 						{typeFilter !== "all"
 							? `No ${filterTabs.find((t) => t.key === typeFilter)?.label?.toLowerCase() || ""} notifications found.`
 							: unreadOnly
 								? "No unread notifications — you're all caught up!"
-								: "You're all caught up! We'll notify you when something happens."}
+								: "You're all caught up! We'll notify you when something happens with your reservations or stay."}
 					</p>
+
+					{/* Active Filter Reset */}
+					{(typeFilter !== "all" || unreadOnly) && (
+						<button
+							onClick={handleResetFilters}
+							style={{
+								display: "inline-flex",
+								alignItems: "center",
+								gap: "6px",
+								padding: "8px 16px",
+								borderRadius: "8px",
+								border: "1px solid var(--border-card, #E8EBF0)",
+								backgroundColor: "var(--surface-card, #fff)",
+								color: "var(--text-heading, #1F2937)",
+								fontSize: "13px",
+								fontWeight: 500,
+								cursor: "pointer",
+								transition: "all 0.18s ease",
+							}}
+							onMouseEnter={(e) => {
+								e.currentTarget.style.backgroundColor = "var(--surface-muted, #F8FAFC)";
+							}}
+							onMouseLeave={(e) => {
+								e.currentTarget.style.backgroundColor = "var(--surface-card, #fff)";
+							}}
+						>
+							<RotateCcw style={{ width: "14px", height: "14px" }} />
+							Reset Filters
+						</button>
+					)}
+
+					{/* Actionable Quick Links when inbox is completely empty */}
+					{typeFilter === "all" && !unreadOnly && (
+						<div
+							style={{
+								display: "flex",
+								alignItems: "center",
+								justifyContent: "center",
+								gap: "12px",
+								flexWrap: "wrap",
+							}}
+						>
+							{isApplicant ? (
+								<>
+									<button
+										onClick={handleBrowseRooms}
+										style={{
+											display: "inline-flex",
+											alignItems: "center",
+											gap: "8px",
+											padding: "9px 18px",
+											borderRadius: "8px",
+											border: "1px solid #1F2937",
+											backgroundColor: "#1F2937",
+											color: "#FFFFFF",
+											fontSize: "13px",
+											fontWeight: 600,
+											cursor: "pointer",
+											transition: "all 0.18s ease",
+										}}
+										onMouseEnter={(e) => {
+											e.currentTarget.style.backgroundColor = "#111827";
+										}}
+										onMouseLeave={(e) => {
+											e.currentTarget.style.backgroundColor = "#1F2937";
+										}}
+									>
+										<Bed style={{ width: "15px", height: "15px" }} />
+										Browse Available Rooms
+										<ArrowRight style={{ width: "14px", height: "14px" }} />
+									</button>
+									<button
+										onClick={handleCheckReservation}
+										style={{
+											display: "inline-flex",
+											alignItems: "center",
+											gap: "8px",
+											padding: "9px 18px",
+											borderRadius: "8px",
+											border: "1px solid var(--border-card, #E8EBF0)",
+											backgroundColor: "var(--surface-card, #fff)",
+											color: "var(--text-heading, #1F2937)",
+											fontSize: "13px",
+											fontWeight: 600,
+											cursor: "pointer",
+											transition: "all 0.18s ease",
+										}}
+										onMouseEnter={(e) => {
+											e.currentTarget.style.backgroundColor = "var(--surface-muted, #F8FAFC)";
+											e.currentTarget.style.borderColor = "#CBD5E1";
+										}}
+										onMouseLeave={(e) => {
+											e.currentTarget.style.backgroundColor = "var(--surface-card, #fff)";
+											e.currentTarget.style.borderColor = "var(--border-card, #E8EBF0)";
+										}}
+									>
+										<Calendar style={{ width: "15px", height: "15px", color: "#6B7280" }} />
+										Check Reservation
+									</button>
+								</>
+							) : (
+								<>
+									<button
+										onClick={() => navigate("/applicant/billing")}
+										style={{
+											display: "inline-flex",
+											alignItems: "center",
+											gap: "8px",
+											padding: "9px 18px",
+											borderRadius: "8px",
+											border: "1px solid #1F2937",
+											backgroundColor: "#1F2937",
+											color: "#FFFFFF",
+											fontSize: "13px",
+											fontWeight: 600,
+											cursor: "pointer",
+											transition: "all 0.18s ease",
+										}}
+									>
+										<CreditCard style={{ width: "15px", height: "15px" }} />
+										View My Bills
+										<ArrowRight style={{ width: "14px", height: "14px" }} />
+									</button>
+									<button
+										onClick={() => navigate("/applicant/maintenance")}
+										style={{
+											display: "inline-flex",
+											alignItems: "center",
+											gap: "8px",
+											padding: "9px 18px",
+											borderRadius: "8px",
+											border: "1px solid var(--border-card, #E8EBF0)",
+											backgroundColor: "var(--surface-card, #fff)",
+											color: "var(--text-heading, #1F2937)",
+											fontSize: "13px",
+											fontWeight: 500,
+											cursor: "pointer",
+											transition: "all 0.18s ease",
+										}}
+									>
+										<Wrench style={{ width: "15px", height: "15px" }} />
+										Request Maintenance
+									</button>
+								</>
+							)}
+						</div>
+					)}
 				</div>
 			)}
 
@@ -551,3 +769,4 @@ const NotificationsTab = () => {
 };
 
 export default NotificationsTab;
+

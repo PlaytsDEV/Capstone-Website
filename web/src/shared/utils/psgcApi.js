@@ -22,17 +22,35 @@ const fetchJson = async (url) => {
   return res.json();
 };
 
+/** Fix double-encoded UTF-8 character artifacts (Mojibake) from external APIs */
+export const sanitizeName = (str) => {
+  if (!str) return "";
+  return str
+    .replace(/Ã±/g, "ñ")
+    .replace(/Ã\+/g, "Ñ")
+    .replace(/Ã‘/g, "Ñ")
+    .replace(/Ã³/g, "ó")
+    .replace(/Ã¡/g, "á")
+    .replace(/Ã©/g, "é")
+    .replace(/Ã­/g, "í")
+    .replace(/Ãº/g, "ú");
+};
+
 const byName = (a, b) => a.name.localeCompare(b.name, undefined, {
   numeric: true,
   sensitivity: "base",
 });
 
-const mapBarangay = (b, subMunicipalityName = "") => ({
-  code: b.code,
-  name: b.name,
-  label: subMunicipalityName ? `${b.name} (${subMunicipalityName})` : b.name,
-  subMunicipalityName,
-});
+const mapBarangay = (b, subMunicipalityName = "") => {
+  const cleanName = sanitizeName(b.name);
+  const cleanSub = sanitizeName(subMunicipalityName);
+  return {
+    code: b.code,
+    name: cleanName,
+    label: cleanSub ? `${cleanName} (${cleanSub})` : cleanName,
+    subMunicipalityName: cleanSub,
+  };
+};
 
 const getRegionPlaces = (regionCode) => {
   if (!regionPlacesCache.has(regionCode)) {
@@ -50,7 +68,7 @@ const getManilaSubMunicipalities = async () => {
 
   return places
     .filter((place) => place.type === "SubMun" && place.code.startsWith(cityPrefix))
-    .map((place) => ({ code: place.code, name: place.name }))
+    .map((place) => ({ code: place.code, name: sanitizeName(place.name) }))
     .sort(byName);
 };
 
@@ -58,7 +76,7 @@ const getManilaSubMunicipalities = async () => {
 export const getRegions = async () => {
   const data = await fetchJson(`${BASE}/regions`);
   return data
-    .map((r) => ({ code: r.code, name: r.name }))
+    .map((r) => ({ code: r.code, name: sanitizeName(r.name) }))
     .sort(byName);
 };
 
@@ -66,7 +84,7 @@ export const getRegions = async () => {
 export const getProvinces = async (regionCode) => {
   const data = await fetchJson(`${BASE}/regions/${regionCode}/provinces`);
   return data
-    .map((p) => ({ code: p.code, name: p.name }))
+    .map((p) => ({ code: p.code, name: sanitizeName(p.name) }))
     .sort(byName);
 };
 
@@ -83,7 +101,7 @@ export const getCities = async (provinceCode, regionCode) => {
 
   return data
     .filter((c) => c.type === "City" || c.type === "Mun")
-    .map((c) => ({ code: c.code, name: c.name }))
+    .map((c) => ({ code: c.code, name: sanitizeName(c.name) }))
     .sort(byName);
 };
 

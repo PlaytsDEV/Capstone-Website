@@ -601,3 +601,16 @@ html[data-theme="dark"] .border-gray-200,
 html[data-theme="dark"] .border-gray-100 {
   border-color: var(--border-card) !important;
 }
+
+/* =============================================================================
+   IMAGE REVEAL UTILITY — eliminates top-to-bottom scanline rendering
+   Images stay invisible while loading; a smooth opacity transition fires
+   once the browser fully decodes the image (onLoad handler adds .loaded).
+   ============================================================================= */
+.img-reveal {
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.img-reveal.loaded {
+  opacity: 1;
+}

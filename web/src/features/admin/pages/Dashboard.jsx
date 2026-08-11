@@ -114,69 +114,19 @@ function AlertBanner({ activeTickets, pendingReservations, unresolvedInquiries }
 
 function DashboardLoadingSkeleton() {
   return (
-    <div className="flex flex-col gap-6">
-      {/* 5 KPI Stat Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-        {[1, 2, 3, 4, 5].map((i) => (
-          <div
-            key={i}
-            className="rounded-xl border p-5 bg-card flex flex-col gap-2 opacity-70"
-            style={{ borderColor: "var(--border-light)", backgroundColor: "var(--bg-card)" }}
-          >
-            <div className="flex justify-between items-center mb-2">
-              <SkeletonPulse width="80px" height="11px" />
-              <SkeletonPulse width="16px" height="16px" borderRadius="4px" />
-            </div>
-            <SkeletonPulse width="60px" height="28px" style={{ marginBottom: 4 }} />
-            <SkeletonPulse width="110px" height="11px" />
-          </div>
-        ))}
-      </div>
-
-      {/* Middle Grid (Inquiries + Status Donut) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        <div
-          className="lg:col-span-2 rounded-xl border p-6 bg-card opacity-70"
-          style={{ borderColor: "var(--border-light)", backgroundColor: "var(--bg-card)" }}
-        >
-          <div className="flex justify-between items-center mb-6">
-            <SkeletonPulse width="160px" height="20px" />
-            <SkeletonPulse width="80px" height="14px" />
-          </div>
-          <div className="space-y-3">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="flex items-center justify-between p-3.5 rounded-xl border border-transparent" style={{ background: "rgba(0,0,0,0.02)" }}>
-                <div className="flex items-center gap-3">
-                  <SkeletonPulse width="40px" height="40px" borderRadius="10px" />
-                  <div>
-                    <SkeletonPulse width="130px" height="14px" style={{ marginBottom: 6 }} />
-                    <SkeletonPulse width="180px" height="12px" />
-                  </div>
-                </div>
-                <SkeletonPulse width="70px" height="22px" borderRadius="6px" />
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div
-          className="rounded-xl border p-6 bg-card opacity-70"
-          style={{ borderColor: "var(--border-light)", backgroundColor: "var(--bg-card)" }}
-        >
-          <SkeletonPulse width="140px" height="20px" style={{ marginBottom: 16 }} />
-          <div className="flex justify-center py-6">
-            <SkeletonPulse variant="circle" width="140px" />
-          </div>
-          <div className="space-y-3 mt-2">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="flex justify-between items-center">
-                <SkeletonPulse width="90px" height="13px" />
-                <SkeletonPulse width="30px" height="13px" />
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+    <div
+      aria-live="polite"
+      aria-busy="true"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: "360px",
+        width: "100%",
+        padding: "48px 24px",
+      }}
+    >
+      <div className="global-spinner" />
     </div>
   );
 }

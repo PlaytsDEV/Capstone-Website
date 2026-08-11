@@ -1352,12 +1352,21 @@ html[data-theme="dark"] .rf-hint-pending {
   border-radius: 20px;
 }
 
+.rf-room-gallery__item {
+  background: var(--surface-muted, #F1F5F9);
+}
+
 .rf-room-gallery__image {
   width: 100%;
   height: 140px;
   object-fit: cover;
   display: block;
-  transition: transform 0.25s ease;
+  opacity: 0;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.rf-room-gallery__image.loaded {
+  opacity: 1;
 }
 
 .rf-room-gallery__item:hover .rf-room-gallery__image {

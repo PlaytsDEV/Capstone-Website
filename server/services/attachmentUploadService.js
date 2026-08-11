@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import mongoose from "mongoose";
 import path from "path";
 import { fileURLToPath } from "url";
+import sharp from "sharp";
 
 import admin from "../config/firebase.js";
 import { ROOM_BRANCH_LABELS, ROOM_BRANCHES } from "../config/branches.js";
@@ -1036,6 +1037,31 @@ const assertUploadableAttachmentFile = (file) => {
   }
 };
 
+/**
+ * Compress and convert an image buffer to WebP.
+ * Skips non-image MIME types (e.g. PDFs) and falls back to the original
+ * buffer if Sharp processing fails.
+ *
+ * @param {Buffer} buffer   - Raw file buffer from multer
+ * @param {string} mimeType - Resolved MIME type of the file
+ * @returns {{ buffer: Buffer, mimeType: string }}
+ */
+const compressImageBuffer = async (buffer, mimeType) => {
+  const isImage = mimeType.startsWith("image/");
+  if (!isImage) return { buffer, mimeType };
+
+  try {
+    const compressed = await sharp(buffer)
+      .resize({ width: 1600, withoutEnlargement: true })
+      .webp({ quality: 85 })
+      .toBuffer();
+    return { buffer: compressed, mimeType: "image/webp" };
+  } catch {
+    // Graceful fallback — store original if sharp fails (e.g. corrupt HEIC)
+    return { buffer, mimeType };
+  }
+};
+
 const storeAttachmentFile = async ({
   req,
   file,
@@ -1047,7 +1073,27 @@ const storeAttachmentFile = async ({
   senderRole = "user",
 }) => {
   const mimeType = resolveAttachmentMimeType(file);
-  const safeName = sanitizeStorageSegment(file.originalname, "attachment");
+
+  // ── Compress images before upload ──────────────────────────────────────
+  const { buffer: compressedBuffer, mimeType: finalMimeType } =
+    await compressImageBuffer(file.buffer, mimeType);
+
+  const compressedFile = {
+    ...file,
+    buffer: compressedBuffer,
+    size: compressedBuffer.length,
+    mimetype: finalMimeType,
+  };
+
+  // Use .webp extension for compressed images so Firebase serves correct type
+  const originalExt = path.extname(file.originalname || "").toLowerCase();
+  const finalExt = finalMimeType === "image/webp" && originalExt !== ".webp"
+    ? ".webp"
+    : originalExt;
+  const baseName = path.basename(file.originalname || "attachment", originalExt);
+  const finalOriginalname = `${baseName}${finalExt}`;
+
+  const safeName = sanitizeStorageSegment(finalOriginalname, "attachment");
   const storagePath = [
     "uploads",
     "attachments",
@@ -1069,10 +1115,10 @@ const storeAttachmentFile = async ({
 
   const stored = await resolveStoredAttachmentFile({
     req,
-    file,
+    file: compressedFile,
     storagePath,
     metadata: baseMetadata,
-    mimeType,
+    mimeType: finalMimeType,
   });
   const savedFilename =
     stored.savedFilename ||
@@ -1101,9 +1147,9 @@ const storeAttachmentFile = async ({
     name: file.originalname,
     filename: file.originalname,
     originalName: file.originalname,
-    type: mimeType,
-    mimeType,
-    size: file.size,
+    type: finalMimeType,
+    mimeType: finalMimeType,
+    size: compressedFile.size,
     uri: stored.downloadUrl,
     url: stored.downloadUrl,
     downloadUrl: stored.downloadUrl,

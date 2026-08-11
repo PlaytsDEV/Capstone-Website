@@ -709,7 +709,7 @@ const ReservationVisitStep = ({
                             onClick={() => setPreviewImageIndex(index)}
                             aria-label={`View photo ${index + 1} of ${roomImages.length}`}
                           >
-                            <img src={image} alt={`Room photo ${index + 1}`} className="rf-room-gallery__image" />
+                            <img src={image} alt={`Room photo ${index + 1}`} className="rf-room-gallery__image" onLoad={(e) => e.currentTarget.classList.add("loaded")} />
                             <div className="rf-room-gallery__hover-overlay">
                               <span className="rf-room-gallery__hover-label"><Eye size={12} />View photo</span>
                             </div>
@@ -806,7 +806,7 @@ const ReservationVisitStep = ({
             </div>
             <button type="button" className="rf-modal-close-btn" onClick={() => setPreviewImageIndex(null)} aria-label="Close image preview"><X size={18} /></button>
           </div>
-          {previewImageIndex !== null && (<img src={roomImages[previewImageIndex]} alt={`Room photo ${previewImageIndex + 1}`} className="rf-photo-preview-modal__image" style={{ width: "100%", borderRadius: 8 }} />)}
+          {previewImageIndex !== null && (<img src={roomImages[previewImageIndex]} alt={`Room photo ${previewImageIndex + 1}`} className="rf-photo-preview-modal__image img-reveal" style={{ width: "100%", borderRadius: 8 }} onLoad={(e) => e.currentTarget.classList.add("loaded")} />)}
         </div>
       </Modal>
 

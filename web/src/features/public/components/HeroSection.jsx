@@ -125,6 +125,9 @@ export function HeroSection() {
               src={src}
               alt={`Lilycrest Dormitory ${i + 1}`}
               className="w-full h-full object-cover"
+              loading="eager"
+              fetchpriority={i === 0 ? "high" : "low"}
+              decoding="async"
               style={{
                 objectPosition: "center 68%",
                 transform: readyToZoom[i] ? "scale(1.08)" : "scale(1)",

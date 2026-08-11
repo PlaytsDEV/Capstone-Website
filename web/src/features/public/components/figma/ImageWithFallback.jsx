@@ -1,13 +1,16 @@
 import { useState } from "react";
+import { getOptimizedUrl } from "../../../../shared/utils/imageOptimizer";
 
 /**
  * ImageWithFallback — renders an img with a graceful placeholder on error.
  * Used by FacilitiesSection.jsx for facility card images.
  */
-export function ImageWithFallback({ src, alt, className = "", style = {}, ...props }) {
+export function ImageWithFallback({ src, alt, className = "", style = {}, priority = false, ...props }) {
   const [errored, setErrored] = useState(false);
 
-  if (errored || !src) {
+  const optimizedSrc = getOptimizedUrl(src);
+
+  if (errored || !optimizedSrc) {
     return (
       <div
         className={className}
@@ -29,9 +32,10 @@ export function ImageWithFallback({ src, alt, className = "", style = {}, ...pro
 
   return (
     <img
-      src={src}
+      src={optimizedSrc}
       alt={alt}
-      loading="lazy"
+      loading={priority ? "eager" : "lazy"}
+      fetchpriority={priority ? "high" : "auto"}
       decoding="async"
       className={className}
       style={style}
@@ -42,3 +46,4 @@ export function ImageWithFallback({ src, alt, className = "", style = {}, ...pro
 }
 
 export default ImageWithFallback;
+

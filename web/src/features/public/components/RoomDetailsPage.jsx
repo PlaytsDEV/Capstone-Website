@@ -125,6 +125,9 @@ function RoomDetailsPage({
                 <img
                   src={images[currentSlide]}
                   alt={`Room ${currentSlide + 1}`}
+                  loading="eager"
+                  fetchpriority="high"
+                  decoding="async"
                 />
 
                 {/* Price Card Overlay */}
@@ -219,7 +222,7 @@ function RoomDetailsPage({
               {otherRooms.map((room, index) => (
                 <div key={index} className="room-details-other-room-card">
                   <div className="room-details-other-room-image">
-                    <img src={room.image} alt={room.title} />
+                    <img src={room.image} alt={room.title} loading="lazy" decoding="async" onLoad={(e) => e.currentTarget.classList.add("loaded")} />
                     {room.badge && (
                       <span className="room-details-room-badge">
                         {room.badge}

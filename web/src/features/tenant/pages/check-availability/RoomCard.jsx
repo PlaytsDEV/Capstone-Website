@@ -1,21 +1,44 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { ChevronLeft, ChevronRight, MapPin } from "lucide-react";
+import { getOptimizedUrl } from "../../../../shared/utils/imageOptimizer";
 
 /**
  * Redesigned Room Card — soft shadows, bed availability dots, muted type badge.
  */
 const RoomCard = React.memo(({ room, onClick, selectedLeaseTermFilter = "All" }) => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const images = room.images?.length ? room.images : [room.image];
+  const [loadedMap, setLoadedMap] = useState({});   // { [index]: true } when fully loaded
+  const debounceRef = useRef(false);
 
-  const nextImage = (e) => {
+  const rawImages = room.images?.length ? room.images : [room.image];
+  // Normalize all URLs through imageOptimizer (ensures Firebase alt=media)
+  const images = rawImages.map((src) => getOptimizedUrl(src));
+
+  // ── Preload all images in the background on first render ──────────────────
+  useEffect(() => {
+    images.forEach((src, idx) => {
+      if (!src) return;
+      const img = new window.Image();
+      img.src = src;
+      img.onload = () => setLoadedMap((prev) => ({ ...prev, [idx]: true }));
+      img.onerror = () => setLoadedMap((prev) => ({ ...prev, [idx]: true })); // show on error too
+    });
+    // Mark index 0 as loading initially
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const navigate = useCallback((delta, e) => {
     e.stopPropagation();
-    setCurrentImageIndex((prev) => (prev + 1) % images.length);
-  };
-  const prevImage = (e) => {
-    e.stopPropagation();
-    setCurrentImageIndex((prev) => (prev - 1 + images.length) % images.length);
-  };
+    if (debounceRef.current) return;
+    debounceRef.current = true;
+    setCurrentImageIndex((prev) => (prev + delta + images.length) % images.length);
+    setTimeout(() => { debounceRef.current = false; }, 150);
+  }, [images.length]);
+
+  const nextImage = (e) => navigate(1, e);
+  const prevImage = (e) => navigate(-1, e);
+
+  const isCurrentLoaded = Boolean(loadedMap[currentImageIndex]);
+
 
   // Reserved beds are not open, even when room occupancy has not changed yet.
   const totalBeds = room.capacity || room.beds?.length || parseInt(room.occupancy?.split("/")[1]) || 0;
@@ -110,12 +133,45 @@ const RoomCard = React.memo(({ room, onClick, selectedLeaseTermFilter = "All" })
     <div className="ca-card" onClick={onClick}>
       {/* Image carousel */}
       <div className="ca-card-image-wrap">
+        {/* Shimmer overlay — visible until this image is fully preloaded */}
+        {!isCurrentLoaded && (
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 2,
+              background:
+                "linear-gradient(90deg,var(--skeleton-base,#e2e8f0) 25%,var(--skeleton-shine,#f1f5f9) 50%,var(--skeleton-base,#e2e8f0) 75%)",
+              backgroundSize: "200% 100%",
+              animation: "caCardShimmer 1.4s infinite",
+              borderRadius: "inherit",
+            }}
+          />
+        )}
+
         <img
           src={images[currentImageIndex]}
           alt={room.title || "Room photo"}
-          loading="lazy"
+          loading={currentImageIndex === 0 ? "eager" : "lazy"}
+          fetchpriority={currentImageIndex === 0 ? "high" : "auto"}
           decoding="async"
+          style={{
+            opacity: isCurrentLoaded ? 1 : 0,
+            transition: "opacity 0.3s ease",
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            display: "block",
+          }}
         />
+
+        <style>{`
+          @keyframes caCardShimmer {
+            0%   { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+          }
+        `}</style>
 
         {/* Discount Badge */}
         {discountPercent > 0 && (

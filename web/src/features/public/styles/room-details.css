@@ -395,12 +395,19 @@
   position: relative;
   height: 200px;
   overflow: hidden;
+  background: #F1F5F9;
 }
 
 .room-details-other-room-image img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+
+.room-details-other-room-image img.loaded {
+  opacity: 1;
 }
 
 .room-details-room-badge {
