@@ -230,7 +230,7 @@ function getNextAction(reservation, currentStage) {
       description:
         reservation.applicationReviewReason ||
         "Please update your application or documents so admin can review them again.",
-      buttonLabel: "Update Application ->",
+      buttonLabel: "Update Application",
       route: "/applicant/reservation?step=3",
       isWaiting: false,
       isRejected: true,
@@ -253,9 +253,10 @@ function getNextAction(reservation, currentStage) {
       title: "Payment In Progress",
       description:
         "Your checkout was started. We'll confirm the reservation once payment is completed.",
-      buttonLabel: "Review Payment ->",
+      buttonLabel: "Review Payment",
       route: "/applicant/reservation?step=4",
       isWaiting: true,
+      isPayment: true,
     };
   }
 
@@ -263,9 +264,10 @@ function getNextAction(reservation, currentStage) {
     return {
       title: "Pay Reservation Fee",
       description: `Pay PHP ${reservationFeeAmount.toLocaleString("en-PH")} online to secure your reservation.`,
-      buttonLabel: "Pay Reservation Fee ->",
+      buttonLabel: "Pay Reservation Fee",
       route: "/applicant/reservation?step=4",
       isWaiting: false,
+      isPayment: true,
     };
   }
 
@@ -289,7 +291,7 @@ function getNextAction(reservation, currentStage) {
       return {
         title: "Confirm Room & Continue",
         description: "Review your selected room and confirm your choice",
-        buttonLabel: "Continue →",
+        buttonLabel: "Continue",
         route: `/applicant/reservation?step=1`,
         isWaiting: false,
       };
@@ -312,7 +314,7 @@ function getNextAction(reservation, currentStage) {
             title: "Remote Viewing Requested",
             description:
               "Your remote viewing request was saved. You may now complete your tenant application.",
-            buttonLabel: "Fill Application ->",
+            buttonLabel: "Fill Application",
             route: `/applicant/reservation?step=3`,
             isWaiting: false,
           };
@@ -322,7 +324,7 @@ function getNextAction(reservation, currentStage) {
             title: "Priority Review Requested",
             description:
               "Your priority viewing request has been saved. Proceed to complete your application.",
-            buttonLabel: "Fill Application →",
+            buttonLabel: "Fill Application",
             route: `/applicant/reservation?step=3`,
             isWaiting: false,
           };
@@ -333,7 +335,7 @@ function getNextAction(reservation, currentStage) {
         return {
           title: "Physical Visit Confirmed",
           description: `Your physical visit${fDate ? ` on ${fDate}` : ""} has been completed or cleared by admin. You may now continue to the tenant application.`,
-          buttonLabel: "Fill Application ->",
+          buttonLabel: "Fill Application",
           route: `/applicant/reservation?step=3`,
           isWaiting: false,
         };
@@ -342,7 +344,7 @@ function getNextAction(reservation, currentStage) {
         title: "Choose Your Viewing Preference",
         description:
           "Select a physical visit, remote viewing, or priority review before submitting your application.",
-        buttonLabel: "Continue ->",
+        buttonLabel: "Continue",
         route: `/applicant/reservation?step=2`,
         isWaiting: false,
       };
@@ -351,7 +353,7 @@ function getNextAction(reservation, currentStage) {
       return {
         title: "Complete Your Application",
         description: "Fill in personal details and upload required documents",
-        buttonLabel: "Fill Application →",
+        buttonLabel: "Fill Application",
         route: `/applicant/reservation?step=3`,
         isWaiting: false,
       };
@@ -359,9 +361,10 @@ function getNextAction(reservation, currentStage) {
       return {
         title: "Pay Reservation Fee",
         description: `Pay PHP ${reservationFeeAmount.toLocaleString("en-PH")} online via GCash, Maya, or Card to secure your reservation`,
-        buttonLabel: "Pay Reservation Fee ->",
+        buttonLabel: "Pay Reservation Fee",
         route: `/applicant/reservation?step=4`,
         isWaiting: false,
+        isPayment: true,
       };
     }
     default:
@@ -758,6 +761,30 @@ export default function ReservationDashboard({
                       ? "pointer"
                       : "default",
                   opacity: status === "locked" ? 0.4 : 1,
+                  padding: "6px 8px",
+                  borderRadius: 8,
+                  transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                }}
+                onMouseEnter={(e) => {
+                  if (status !== "locked") {
+                    e.currentTarget.style.backgroundColor =
+                      "rgba(255, 255, 255, 0.08)";
+                    e.currentTarget.style.transform = isFirst
+                      ? "translateX(-18px) translateY(-2px)"
+                      : isLast
+                        ? "translateX(18px) translateY(-2px)"
+                        : "translateY(-2px)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (status !== "locked") {
+                    e.currentTarget.style.backgroundColor = "transparent";
+                    e.currentTarget.style.transform = isFirst
+                      ? "translateX(-18px)"
+                      : isLast
+                        ? "translateX(18px)"
+                        : "translateY(0)";
+                  }
                 }}
                 onClick={() => {
                   if (
@@ -912,20 +939,92 @@ export default function ReservationDashboard({
               onClick={() => goToFlow(action.route)}
               style={{
                 flexShrink: 0,
-                padding: "6px 14px",
+                padding: "7px 16px",
                 background: action.isRejected
                   ? "#DC2626"
+                  : action.isPayment || action.route?.includes("step=4")
+                  ? "#059669"
                   : "var(--text-heading, #0F172A)",
-                color: "#fff",
+                color: "#ffffff",
                 border: "none",
                 borderRadius: 6,
                 fontSize: 13,
                 fontWeight: 600,
                 cursor: "pointer",
                 whiteSpace: "nowrap",
+                boxShadow:
+                  action.isPayment || action.route?.includes("step=4")
+                    ? "0 2px 8px rgba(5, 150, 105, 0.25)"
+                    : "0 1px 2px rgba(0, 0, 0, 0.05)",
+                transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translateY(-1px)";
+                if (action.isRejected) {
+                  e.currentTarget.style.backgroundColor = "#B91C1C";
+                  e.currentTarget.style.boxShadow =
+                    "0 4px 12px rgba(220, 38, 38, 0.35)";
+                } else if (
+                  action.isPayment ||
+                  action.route?.includes("step=4")
+                ) {
+                  e.currentTarget.style.backgroundColor = "#047857";
+                  e.currentTarget.style.boxShadow =
+                    "0 4px 14px rgba(5, 150, 105, 0.35)";
+                } else {
+                  e.currentTarget.style.backgroundColor = "#1E293B";
+                  e.currentTarget.style.boxShadow =
+                    "0 4px 12px rgba(15, 23, 42, 0.25)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "translateY(0)";
+                if (action.isRejected) {
+                  e.currentTarget.style.backgroundColor = "#DC2626";
+                  e.currentTarget.style.boxShadow =
+                    "0 1px 2px rgba(0, 0, 0, 0.05)";
+                } else if (
+                  action.isPayment ||
+                  action.route?.includes("step=4")
+                ) {
+                  e.currentTarget.style.backgroundColor = "#059669";
+                  e.currentTarget.style.boxShadow =
+                    "0 2px 8px rgba(5, 150, 105, 0.25)";
+                } else {
+                  e.currentTarget.style.backgroundColor =
+                    "var(--text-heading, #0F172A)";
+                  e.currentTarget.style.boxShadow =
+                    "0 1px 2px rgba(0, 0, 0, 0.05)";
+                }
+              }}
+              onMouseDown={(e) => {
+                e.currentTarget.style.transform = "translateY(0)";
+                if (action.isRejected) {
+                  e.currentTarget.style.backgroundColor = "#991B1B";
+                } else if (
+                  action.isPayment ||
+                  action.route?.includes("step=4")
+                ) {
+                  e.currentTarget.style.backgroundColor = "#065F46";
+                } else {
+                  e.currentTarget.style.backgroundColor = "#020617";
+                }
+              }}
+              onMouseUp={(e) => {
+                e.currentTarget.style.transform = "translateY(-1px)";
+                if (action.isRejected) {
+                  e.currentTarget.style.backgroundColor = "#B91C1C";
+                } else if (
+                  action.isPayment ||
+                  action.route?.includes("step=4")
+                ) {
+                  e.currentTarget.style.backgroundColor = "#047857";
+                } else {
+                  e.currentTarget.style.backgroundColor = "#1E293B";
+                }
               }}
             >
-              {action.buttonLabel}
+              {action.buttonLabel.replace(/\s*(->|→)\s*$/, "")}
             </button>
           )}
         </div>
@@ -999,6 +1098,17 @@ export default function ReservationDashboard({
                       )
                     }
                     style={styles.footerLinkSecondary}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor =
+                        "var(--surface-muted, #F1F5F9)";
+                      e.currentTarget.style.color =
+                        "var(--text-heading, #0F172A)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = "transparent";
+                      e.currentTarget.style.color =
+                        "var(--text-secondary, #64748B)";
+                    }}
                   >
                     ↩ Change Room
                   </button>
@@ -1027,6 +1137,29 @@ export default function ReservationDashboard({
                     }
                   }}
                   style={styles.footerLinkDanger}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = "#FEF2F2";
+                    e.currentTarget.style.borderColor = "#EF4444";
+                    e.currentTarget.style.color = "#B91C1C";
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                    e.currentTarget.style.boxShadow =
+                      "0 2px 6px rgba(220, 38, 38, 0.12)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = "transparent";
+                    e.currentTarget.style.borderColor = "#FCA5A5";
+                    e.currentTarget.style.color = "#DC2626";
+                    e.currentTarget.style.transform = "translateY(0)";
+                    e.currentTarget.style.boxShadow = "none";
+                  }}
+                  onMouseDown={(e) => {
+                    e.currentTarget.style.transform = "translateY(0)";
+                    e.currentTarget.style.backgroundColor = "#FEE2E2";
+                  }}
+                  onMouseUp={(e) => {
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                    e.currentTarget.style.backgroundColor = "#FEF2F2";
+                  }}
                 >
                   Request Cancellation
                 </button>
@@ -1037,6 +1170,29 @@ export default function ReservationDashboard({
                   setShowCancelModal(true);
                 }}
                 style={styles.footerLinkDanger}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = "#FEF2F2";
+                  e.currentTarget.style.borderColor = "#EF4444";
+                  e.currentTarget.style.color = "#B91C1C";
+                  e.currentTarget.style.transform = "translateY(-1px)";
+                  e.currentTarget.style.boxShadow =
+                    "0 2px 6px rgba(220, 38, 38, 0.12)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "transparent";
+                  e.currentTarget.style.borderColor = "#FCA5A5";
+                  e.currentTarget.style.color = "#DC2626";
+                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.boxShadow = "none";
+                }}
+                onMouseDown={(e) => {
+                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.backgroundColor = "#FEE2E2";
+                }}
+                onMouseUp={(e) => {
+                  e.currentTarget.style.transform = "translateY(-1px)";
+                  e.currentTarget.style.backgroundColor = "#FEF2F2";
+                }}
               >
                 Cancel reservation process
               </button>
@@ -1624,7 +1780,7 @@ const styles = {
     transition: "background 0.15s, color 0.15s",
   },
   footerLinkDanger: {
-    background: "none",
+    background: "transparent",
     border: "1px solid #FCA5A5",
     color: "#DC2626",
     fontSize: 13,
@@ -1632,7 +1788,7 @@ const styles = {
     padding: "6px 12px",
     borderRadius: 6,
     fontWeight: 500,
-    transition: "background 0.15s",
+    transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
   },
   cancelLink: {
     background: "none",

@@ -145,57 +145,68 @@ const ReservationPaymentStep = ({
       )}
 
       <div className={readOnly ? "rf-readonly-wrapper" : ""}>
-        <div className="rf-payment-card-wrap">
-          {/* Card 1: Payment Hero & Essential Room Summary */}
-          <div className="rf-payment-summary-hero">
-            <div className="rf-payment-amount-box">
-              <span className="rf-payment-amount-label">One-Time Reservation Fee</span>
-              <div className="rf-payment-amount-value total-amount">
-                {formatCurrency(reservationFeeAmount)}
-              </div>
-              <span className="rf-payment-amount-badge">Deductible Partial Payment</span>
+        <div className="rf-unified-checkout-card">
+          {/* Top Hero Banner */}
+          <div className="rf-uc-hero">
+            <div className="rf-uc-hero-badge">STEP 4 • FINALIZATION</div>
+            <span className="rf-uc-hero-label">One-Time Reservation Fee</span>
+            <div className="rf-uc-hero-amount whitespace-nowrap">
+              {formatCurrency(reservationFeeAmount)}
             </div>
+            <div className="rf-uc-hero-subbadge">Deductible Partial Payment Deposit</div>
+          </div>
 
-            <div className="rf-payment-room-chips summary-section rf-payment-summary">
-              <div className="rf-room-chip summary-row rf-payment-room-row">
-                <Home size={14} className="rf-chip-icon" />
-                <span className="summary-label">Room:</span>
-                <span className="summary-value">{roomName}</span>
-                {formatBranch(room.branch) && (
-                  <span className="rf-chip-sub">({formatBranch(room.branch)})</span>
-                )}
+          {/* Body Content */}
+          <div className="rf-uc-body">
+            {/* Room Details Flat Summary List */}
+            <div className="rf-uc-summary-list">
+              <div className="rf-uc-summary-row">
+                <div className="rf-uc-row-left">
+                  <Home size={15} className="rf-uc-icon" />
+                  <span className="rf-uc-label">Room</span>
+                </div>
+                <div className="rf-uc-row-right">
+                  <span className="rf-uc-val-primary">{roomName}</span>
+                  {formatBranch(room.branch) && (
+                    <span className="rf-uc-val-sub">({formatBranch(room.branch)})</span>
+                  )}
+                </div>
               </div>
 
               {bedDisplay && (
-                <div className="rf-room-chip summary-row">
-                  <span className="summary-label">Bed:</span>
-                  <span className="summary-value">{bedDisplay}</span>
+                <div className="rf-uc-summary-row">
+                  <div className="rf-uc-row-left">
+                    <span className="rf-uc-label">Bed</span>
+                  </div>
+                  <div className="rf-uc-row-right">
+                    <span className="rf-uc-val-primary">{bedDisplay}</span>
+                  </div>
                 </div>
               )}
 
               {targetMoveInDate && (
-                <div className="rf-room-chip summary-row">
-                  <Calendar size={14} className="rf-chip-icon" />
-                  <span className="summary-label">Target Move-In:</span>
-                  <span className="summary-value">{fmtDate(targetMoveInDate)}</span>
+                <div className="rf-uc-summary-row">
+                  <div className="rf-uc-row-left">
+                    <Calendar size={15} className="rf-uc-icon" />
+                    <span className="rf-uc-label">Target Move-In</span>
+                  </div>
+                  <div className="rf-uc-row-right">
+                    <span className="rf-uc-val-primary whitespace-nowrap">{fmtDate(targetMoveInDate)}</span>
+                  </div>
                 </div>
               )}
-            </div>
 
-            {/* Reservation Fee Deposit Breakdown */}
-            <div className="rf-movein-breakdown rf-payment-breakdown-box">
-              <div className="rf-payment-breakdown-title">
-                Payment Summary
-              </div>
-              <div className="rf-payment-breakdown-row">
-                <span>Reservation Fee (Due Now):</span>
-                <span>{formatCurrency(reservationFeeAmount)}</span>
+              <div className="rf-uc-summary-row rf-uc-total-row">
+                <div className="rf-uc-row-left">
+                  <span className="rf-uc-total-label">Reservation Fee (Due Now)</span>
+                </div>
+                <div className="rf-uc-row-right">
+                  <span className="rf-uc-total-amount whitespace-nowrap">{formatCurrency(reservationFeeAmount)}</span>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Card 2: Checkout Action Section */}
-          <div className="rf-payment-checkout-section">
+            {/* Checkout Action Section */}
             {!paymentAvailable && !readOnly ? (
               <div className="rf-locked-banner rf-payment-locked-box">
                 <div className="info-box-title">
@@ -208,7 +219,7 @@ const ReservationPaymentStep = ({
               </div>
             ) : (
               !readOnly && (
-                <>
+                <div className="rf-uc-actions">
                   {/* Accepted Payment Methods */}
                   <div className="rf-payment-methods-bar">
                     <span className="rf-payment-methods-label">Accepted Online Methods:</span>
@@ -245,15 +256,24 @@ const ReservationPaymentStep = ({
                     </div>
                     <label htmlFor="agreedToFeePolicy" className="rf-policy-label" onClick={(e) => e.stopPropagation()}>
                       <span>
-                        I understand that the <strong>{formatCurrency(reservationFeeAmount)}</strong> reservation fee is non-refundable.
+                        I understand that the <strong className="whitespace-nowrap">{formatCurrency(reservationFeeAmount)}</strong> reservation fee is non-refundable.
                       </span>
                     </label>
                   </div>
 
+                  {/* Minimalist State Hint (Simple text, no background box, no color callout) */}
+                  {!agreedToFeePolicy && (
+                    <div className="rf-payment-footer-note" id="reservation-payment-help">
+                      <p className="rf-hint-text-minimal">
+                        Please check the policy box above to proceed.
+                      </p>
+                    </div>
+                  )}
+
                   {/* Pay Button */}
                   <button
                     onClick={handlePayClick}
-                    className={`btn btn-success btn-pay-online-reservation ${payingOnline ? "is-loading" : ""}`}
+                    className={`btn btn-success btn-pay-online-reservation ${payingOnline ? "is-loading" : ""} ${!canPay ? "is-disabled-btn" : ""}`}
                     disabled={!canPay}
                     aria-describedby="reservation-payment-help"
                   >
@@ -265,27 +285,12 @@ const ReservationPaymentStep = ({
                     ) : (
                       <span className="rf-pay-btn-inner rf-pay-btn-icon">
                         <CreditCard size={18} aria-hidden="true" />
-                        <span>{payButtonLabel}</span>
+                        <span className="whitespace-nowrap">{payButtonLabel}</span>
                         <ChevronRight size={18} aria-hidden="true" />
                       </span>
                     )}
                   </button>
-
-                  {/* Security Note & State Hint */}
-                  <div className="rf-payment-footer-note" id="reservation-payment-help">
-                    <div className={`rf-payment-state-hint ${agreedToFeePolicy ? "rf-payment-state-hint--ready" : ""}`}>
-                      {agreedToFeePolicy ? (
-                        <span className="rf-hint-ready">
-                          <CheckCircle2 size={14} /> Policy acknowledged. Click button above to continue.
-                        </span>
-                      ) : (
-                        <span className="rf-hint-pending">
-                          <AlertCircle size={14} /> Please acknowledge the non-refundable fee policy above to proceed.
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </>
+                </div>
               )
             )}
           </div>

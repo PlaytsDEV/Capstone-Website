@@ -124,10 +124,20 @@ html[data-theme="dark"] .sidebar {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px;
+  padding: 12px 14px;
+  border: none;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   overflow: hidden;
+  width: 100%;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.sidebar-identity:hover {
+  background-color: var(--muted, rgba(0, 0, 0, 0.04));
 }
 
 .sidebar-avatar {
@@ -150,8 +160,8 @@ html[data-theme="dark"] .sidebar {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--primary) 0%, color-mix(in srgb, var(--primary) 70%, var(--secondary)) 100%);
-  color: var(--primary-foreground);
+  background: var(--primary, #0f1a2f);
+  color: var(--primary-foreground, #ffffff);
   font-size: 12px;
   font-weight: 700;
   border-radius: 50%;

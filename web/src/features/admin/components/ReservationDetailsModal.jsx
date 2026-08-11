@@ -1077,7 +1077,24 @@ export default function ReservationDetailsModal({
  </div>
  <div className="rdm-info-item">
  <span className="rdm-info-label">Visit Code</span>
- <span className="rdm-info-value">{fmt(reservation.visitCode)}</span>
+ <span className="rdm-info-value">
+ {reservation.visitCode ? (
+ <button
+ type="button"
+ className="rdm-visit-code-badge"
+ onClick={() => {
+ navigator.clipboard.writeText(reservation.visitCode);
+ showNotification("Visit Code copied to clipboard!", "success", 2000);
+ }}
+ title="Click to copy Visit Code"
+ >
+ <span>{reservation.visitCode}</span>
+ <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+ </button>
+ ) : (
+ "\u2014"
+ )}
+ </span>
  </div>
  <div className="rdm-info-item rdm-info-item--wide">
  <span className="rdm-info-label">Remote Viewing Acknowledgement</span>
@@ -1160,7 +1177,24 @@ export default function ReservationDetailsModal({
  </div>
  <div className="rdm-info-item">
  <span className="rdm-info-label">Visit Code</span>
- <span className="rdm-info-value">{fmt(reservation.visitCode)}</span>
+ <span className="rdm-info-value">
+ {reservation.visitCode ? (
+ <button
+ type="button"
+ className="rdm-visit-code-badge"
+ onClick={() => {
+ navigator.clipboard.writeText(reservation.visitCode);
+ showNotification("Visit Code copied to clipboard!", "success", 2000);
+ }}
+ title="Click to copy Visit Code"
+ >
+ <span>{reservation.visitCode}</span>
+ <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+ </button>
+ ) : (
+ "\u2014"
+ )}
+ </span>
  </div>
  <div className="rdm-info-item">
  <span className="rdm-info-label">Current Visit Status</span>

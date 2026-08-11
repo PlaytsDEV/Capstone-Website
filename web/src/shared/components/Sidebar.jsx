@@ -49,7 +49,7 @@ const buildNavSections = (isTenant) => [
     items: [
       {
         id: "personal",
-        label: "Personal Details",
+        label: "My Profile",
         icon: User,
         path: "/applicant/profile",
         tab: "personal",
@@ -216,7 +216,13 @@ export default function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleColl
         )}
       </div>
 
-      {/* <div className="sidebar-identity">
+      <button
+        type="button"
+        className="sidebar-identity"
+        onClick={() => handleItemClick({ path: "/applicant/profile", tab: "personal" })}
+        title="View My Profile"
+        aria-label="View My Profile"
+      >
         <div className="sidebar-avatar">
           {user?.profileImage ? (
             <img src={user.profileImage} alt="Profile" className="sidebar-avatar-img" />
@@ -228,7 +234,7 @@ export default function Sidebar({ isOpen, toggleSidebar, isCollapsed, toggleColl
           <p className="sidebar-identity-name">{fullName}</p>
           <p className="sidebar-identity-email">{email}</p>
         </div>
-      </div> */}
+      </button>
 
       <div className="sidebar-cta-wrap">
         <button type="button" className="sidebar-cta" onClick={() => handleItemClick({ path: "/applicant/check-availability" })} title="Browse Rooms">

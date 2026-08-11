@@ -851,7 +851,7 @@ html[data-theme="dark"] .rf-modal-icon-wrap--emerald {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  max-width: 640px;
+  max-width: 540px;
   margin: 0 auto;
 }
 
@@ -1146,20 +1146,39 @@ html[data-theme="dark"] .rf-pay-pill {
   font-weight: 700;
   color: #ffffff !important;
   border-radius: var(--rf-radius-sm, 10px);
-  background: #059669;
-  border: 1px solid #047857;
-  box-shadow: 0 4px 14px rgba(5, 150, 105, 0.28);
+  background: var(--rf-primary, #0c375f);
+  border: 1px solid var(--rf-primary-dark, #092a4a);
+  box-shadow: 0 4px 14px rgba(12, 55, 95, 0.25);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   width: 100%;
 }
 
 .btn-pay-online-reservation * {
-  color: #ffffff !important;
+  color: inherit;
 }
 
-.btn-pay-online-reservation:hover:not(:disabled) {
+.btn-pay-online-reservation:hover:not(:disabled):not(.is-disabled-btn) {
+  background: var(--rf-primary-dark, #092a4a);
+  border-color: #061d36;
   transform: translateY(-2px);
-  box-shadow: 0 6px 22px rgba(231, 113, 15, 0.42);
+  box-shadow: 0 6px 22px rgba(12, 55, 95, 0.35);
+}
+
+.btn-pay-online-reservation:active:not(:disabled):not(.is-disabled-btn) {
+  background: #061d36;
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(12, 55, 95, 0.25);
+}
+
+.btn-pay-online-reservation:disabled,
+.btn-pay-online-reservation.is-disabled-btn {
+  background: #e2e8f0 !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #94a3b8 !important;
+  box-shadow: none !important;
+  opacity: 0.75 !important;
+  cursor: not-allowed !important;
+  transform: none !important;
 }
 
 .rf-payment-footer-note {
@@ -1787,10 +1806,11 @@ html[data-theme="dark"] .rf-hint-pending {
 .payment-online-section,
 .payment-manual-section { animation: rfSlideIn 0.25s ease both; }
 
-.btn-pay-online-reservation { background: #059669 !important; border: 1px solid #047857 !important; color: white !important; font-weight: 600 !important; font-size: 15px !important; padding: 14px 28px !important; }
-.btn-pay-online-reservation:hover:not(:disabled) { box-shadow: 0 6px 20px rgba(5, 150, 105, 0.35); transform: translateY(-2px); }
-.btn-pay-online-reservation:active:not(:disabled) { transform: translateY(1px) scale(0.98); transition-duration: 0.08s; }
-.btn-pay-online-reservation:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+.btn-pay-online-reservation:not(:disabled):not(.is-disabled-btn) { background: var(--rf-primary, #0c375f) !important; border: 1px solid var(--rf-primary-dark, #092a4a) !important; color: white !important; font-weight: 600 !important; font-size: 15px !important; padding: 14px 28px !important; }
+.btn-pay-online-reservation:hover:not(:disabled):not(.is-disabled-btn) { background: var(--rf-primary-dark, #092a4a) !important; box-shadow: 0 6px 20px rgba(12, 55, 95, 0.35) !important; transform: translateY(-2px); }
+.btn-pay-online-reservation:active:not(:disabled):not(.is-disabled-btn) { transform: translateY(1px) scale(0.98); transition-duration: 0.08s; }
+.btn-pay-online-reservation:disabled,
+.btn-pay-online-reservation.is-disabled-btn { background: #e2e8f0 !important; border: 1px solid #cbd5e1 !important; color: #94a3b8 !important; opacity: 0.75 !important; cursor: not-allowed !important; box-shadow: none !important; transform: none !important; }
 
 /* ============ CONFIRMATION STEP ============ */
 .rf-confirmation-wrapper { max-width: 640px; margin: 0 auto; padding: 8px 0 32px; }
@@ -2662,18 +2682,157 @@ html[data-theme="dark"] .rf-selection-confirm strong { color: var(--rf-text); }
 
 /* ============ STEP 4 — PAYMENT STAGE ============ */
 
-/* Payment Stage Wrapper */
-.rf-payment-stage {}
-
-/* Payment card layout: left summary + right checkout */
-.rf-payment-card-wrap {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  margin-top: 20px;
+/* Unified Single Checkout Card Architecture */
+.rf-unified-checkout-card {
+  max-width: 520px;
+  margin: 24px auto 0;
+  background: var(--rf-surface, #ffffff);
+  border: 1px solid var(--rf-border-card, #e2e8f0);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-direction: column;
 }
-@media (max-width: 680px) {
-  .rf-payment-card-wrap { grid-template-columns: 1fr; }
+
+/* Top Hero Banner */
+.rf-uc-hero {
+  background: var(--rf-primary, #0c375f);
+  color: #ffffff;
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.rf-uc-hero-badge {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  margin-bottom: 2px;
+}
+
+.rf-uc-hero-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #cbd5e1;
+}
+
+.rf-uc-hero-amount {
+  font-size: 34px;
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin: 2px 0 6px;
+}
+
+.rf-uc-hero-subbadge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  padding: 3px 12px;
+}
+
+/* Body Content */
+.rf-uc-body {
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Flat Summary List */
+.rf-uc-summary-list {
+  display: flex;
+  flex-direction: column;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 6px 16px;
+}
+
+.rf-uc-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 13.5px;
+}
+.rf-uc-summary-row:last-child {
+  border-bottom: none;
+}
+
+.rf-uc-row-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #64748b;
+}
+
+.rf-uc-icon {
+  color: #0f172a;
+  flex-shrink: 0;
+}
+
+.rf-uc-label {
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #475569;
+}
+
+.rf-uc-row-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-align: right;
+}
+
+.rf-uc-val-primary {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.rf-uc-val-sub {
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* Total row */
+.rf-uc-total-row {
+  background: transparent;
+  padding-top: 14px;
+}
+
+.rf-uc-total-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.rf-uc-total-amount {
+  font-size: 16px;
+  font-weight: 800;
+  color: #0c375f;
+}
+
+/* Actions Section */
+.rf-uc-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 /* Payment summary hero card — left column */
@@ -2866,22 +3025,22 @@ html[data-theme="dark"] .rf-selection-confirm strong { color: var(--rf-text); }
   padding: 3px 12px;
 }
 
-/* Policy acknowledgement checkbox block */
+/* Policy acknowledgement checkbox block - Clean Minimalist */
 .rf-policy-ack-box {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  padding: 14px 16px;
-  border-radius: var(--rf-radius);
-  border: 1.5px solid var(--rf-border-card);
-  background: var(--rf-surface-muted);
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
   cursor: pointer;
-  transition: all var(--rf-transition);
+  transition: all 0.2s ease;
 }
-.rf-policy-ack-box:hover { border-color: var(--rf-accent); background: rgba(255, 140, 66, 0.04); }
+.rf-policy-ack-box:hover { border-color: #cbd5e1; background: #f1f5f9; }
 .rf-policy-ack-box.is-checked {
-  border-color: var(--rf-accent);
-  background: rgba(255, 140, 66, 0.06);
+  border-color: var(--rf-primary, #0c375f);
+  background: #f1f5f9;
 }
 .rf-policy-ack-box.is-disabled { opacity: 0.55; cursor: not-allowed; pointer-events: none; }
 
@@ -2919,32 +3078,38 @@ html[data-theme="dark"] .rf-selection-confirm strong { color: var(--rf-text); }
 .btn-pay-online-reservation {
   width: 100%;
   padding: 14px 20px;
-  background: var(--rf-primary);
+  background: var(--rf-primary, #0c375f);
   color: #ffffff;
-  border: none;
-  border-radius: var(--rf-radius);
+  border: 1px solid var(--rf-primary-dark, #092a4a);
+  border-radius: var(--rf-radius, 12px);
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
-  transition: all var(--rf-transition);
+  transition: all var(--rf-transition, 0.2s ease);
   display: flex;
   align-items: center;
   justify-content: center;
-  border-bottom: 3px solid var(--rf-gold);
+  box-shadow: 0 4px 14px rgba(12, 55, 95, 0.25);
   letter-spacing: 0.01em;
 }
-.btn-pay-online-reservation:hover:not(:disabled) {
-  background: var(--rf-primary-dark);
+.btn-pay-online-reservation:hover:not(:disabled):not(.is-disabled-btn) {
+  background: var(--rf-primary-dark, #092a4a);
+  border-color: #061d36;
   transform: translateY(-1px);
-  box-shadow: var(--rf-shadow-md);
+  box-shadow: 0 6px 18px rgba(12, 55, 95, 0.35);
 }
-.btn-pay-online-reservation:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-  transform: none;
+.btn-pay-online-reservation:disabled,
+.btn-pay-online-reservation.is-disabled-btn {
+  background: #e2e8f0 !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #94a3b8 !important;
+  box-shadow: none !important;
+  opacity: 0.75 !important;
+  cursor: not-allowed !important;
+  transform: none !important;
 }
 .btn-pay-online-reservation.is-loading {
-  background: var(--rf-primary-light);
+  background: var(--rf-primary-dark, #092a4a);
   cursor: wait;
 }
 
@@ -2954,36 +3119,19 @@ html[data-theme="dark"] .rf-selection-confirm strong { color: var(--rf-text); }
   gap: 10px;
 }
 
-/* Payment footer note */
+/* Minimalist Text Hint - Plain text, no colored background/box */
+.rf-hint-text-minimal {
+  font-size: 12.5px;
+  color: #64748b;
+  font-weight: 500;
+  margin: 2px 0 0;
+  padding: 0 4px;
+  line-height: 1.4;
+}
+
 .rf-payment-footer-note {
   font-size: 12px;
   color: var(--rf-text-muted);
-}
-
-.rf-payment-state-hint {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  padding: 10px 14px;
-  border-radius: var(--rf-radius-sm);
-  border: 1px solid var(--rf-border);
-  background: var(--rf-surface-muted);
-  color: var(--rf-text-secondary);
-}
-
-.rf-payment-state-hint--ready {
-  border-color: rgba(22, 163, 74, 0.2);
-  background: var(--rf-success-bg);
-  color: var(--rf-success-text);
-}
-
-.rf-hint-ready, .rf-hint-pending {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  width: 100%;
 }
 
 /* Payment complete banner */

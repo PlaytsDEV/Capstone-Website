@@ -150,7 +150,7 @@ export const getPhysicalVisitApplicantState = (reservation = {}) => {
       statusKey: "application_locked",
       title: "Application Locked",
       message: TENANT_APPLICATION_LOCKED_MESSAGE,
-      buttonLabel: "View Status ->",
+      buttonLabel: "View Status",
       route: "/applicant/profile",
       canFillApplication: false,
       isWaiting: false,
@@ -167,7 +167,7 @@ export const getPhysicalVisitApplicantState = (reservation = {}) => {
         title: "Physical Visit Confirmed",
         message:
           "Your physical visit has been confirmed. You may now complete your tenant application.",
-        buttonLabel: "Fill Application ->",
+        buttonLabel: "Fill Application",
         route: "/applicant/reservation?step=3",
         canFillApplication: true,
         isWaiting: false,
@@ -179,7 +179,7 @@ export const getPhysicalVisitApplicantState = (reservation = {}) => {
         title: "Application Access Granted",
         message:
           "Admin has allowed you to continue your tenant application without a completed physical visit.",
-        buttonLabel: "Fill Application ->",
+        buttonLabel: "Fill Application",
         route: "/applicant/reservation?step=3",
         canFillApplication: true,
         isWaiting: false,
@@ -191,7 +191,7 @@ export const getPhysicalVisitApplicantState = (reservation = {}) => {
         title: "Visit Marked as No-Show",
         message:
           "You missed your scheduled visit. Please reschedule your visit or contact admin.",
-        buttonLabel: "View Status ->",
+        buttonLabel: "View Status",
         route: "/applicant/reservation?step=2",
         canFillApplication: false,
         isWaiting: false,
@@ -203,7 +203,7 @@ export const getPhysicalVisitApplicantState = (reservation = {}) => {
         title: "Visit Schedule Cancelled",
         message:
           "Your physical visit schedule was cancelled. Please contact admin or request a new visit schedule before continuing.",
-        buttonLabel: "Review Visit ->",
+        buttonLabel: "Review Visit",
         route: "/applicant/reservation?step=2",
         canFillApplication: false,
         isWaiting: false,
@@ -215,7 +215,7 @@ export const getPhysicalVisitApplicantState = (reservation = {}) => {
         title: "Visit Confirmed — Attend Your Visit",
         message:
           "Your visit schedule has been confirmed. Please attend on the scheduled date. You may continue to the tenant application after admin records your visit.",
-        buttonLabel: "Review Visit ->",
+        buttonLabel: "Review Visit",
         route: "/applicant/reservation?step=2",
         canFillApplication: false,
         isWaiting: true,
@@ -227,7 +227,7 @@ export const getPhysicalVisitApplicantState = (reservation = {}) => {
         title: "Visit Rescheduled",
         message:
           "Please attend your updated room visit first. You may continue to the tenant application after admin confirms your visit or allows you to proceed.",
-        buttonLabel: "Review Visit ->",
+        buttonLabel: "Review Visit",
         route: "/applicant/reservation?step=2",
         canFillApplication: false,
         isWaiting: true,
@@ -240,7 +240,7 @@ export const getPhysicalVisitApplicantState = (reservation = {}) => {
         title: "Physical Visit Scheduled",
         message:
           "Please attend your scheduled room visit first. You may continue to the tenant application after admin confirms your visit or allows you to proceed.",
-        buttonLabel: "Review Visit ->",
+        buttonLabel: "Review Visit",
         route: "/applicant/reservation?step=2",
         canFillApplication: false,
         isWaiting: true,
