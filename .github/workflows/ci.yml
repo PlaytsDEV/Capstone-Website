@@ -47,6 +47,7 @@ jobs:
       - name: Server Unit Test Suite
         env:
           NODE_OPTIONS: --experimental-vm-modules
+          TZ: Asia/Manila
         run: npm run test:ci
 
   # ============================
