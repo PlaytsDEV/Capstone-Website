@@ -6,6 +6,7 @@ import dayjs from "dayjs";
 import { Inquiry, User } from "../models/index.js";
 import { sendInquiryResponseEmail } from "../config/email.js";
 import auditLogger from "../utils/auditLogger.js";
+import { createNotification } from "../services/notifications/notificationService.js";
 import {
   sendSuccess,
   sendError,
@@ -229,6 +230,37 @@ export const createInquiry = async (req, res, next) => {
 
     await inquiry.save();
 
+    // Create automated notification for admin users
+    try {
+      const adminUsers = await User.find({
+        role: { $in: ["admin", "super-admin"] },
+        isActive: { $ne: false },
+      }).select("_id branch role");
+
+      for (const admin of adminUsers) {
+        if (
+          admin.role === "super-admin" ||
+          !admin.branch ||
+          admin.branch === branch ||
+          branch === "general"
+        ) {
+          await createNotification(
+            admin._id,
+            "inquiry_new",
+            "New Customer Inquiry Received",
+            `New inquiry from ${name.trim()} (${email.toLowerCase().trim()}) regarding "${subject.trim()}".`,
+            {
+              actionUrl: "/admin/reservations?tab=inquiries",
+              entityType: "Inquiry",
+              entityId: inquiry._id,
+            }
+          );
+        }
+      }
+    } catch (notifErr) {
+      console.error("⚠️ Failed to create admin inquiry notification:", notifErr);
+    }
+
     res.status(201).json({
       message: "Inquiry submitted successfully. We will get back to you soon!",
       inquiryId: inquiry._id,
@@ -296,6 +328,7 @@ export const updateInquiry = async (req, res, next) => {
         branchNameMap[existingInquiry.branch] || "Lilycrest";
 
       emailSent = false;
+      let emailErrorDetails = null;
       try {
         const emailResult = await sendInquiryResponseEmail({
           to: existingInquiry.email,
@@ -307,12 +340,14 @@ export const updateInquiry = async (req, res, next) => {
 
         emailSent = emailResult.success;
         if (!emailResult.success) {
+          emailErrorDetails = emailResult.error || emailResult.message;
           console.error(
             `[INQUIRY] Email failed for inquiry ${id} to ${existingInquiry.email}:`,
-            emailResult.error || emailResult.message,
+            emailErrorDetails,
           );
         }
       } catch (emailErr) {
+        emailErrorDetails = emailErr.message;
         console.error(
           `[INQUIRY] Email error for inquiry ${id}:`,
           emailErr.message,
@@ -349,6 +384,7 @@ export const updateInquiry = async (req, res, next) => {
       message: "Inquiry updated successfully",
       inquiry,
       emailSent,
+      emailError: emailSent === false ? (emailErrorDetails || "Failed to deliver email to customer address.") : undefined,
     });
 
     try {

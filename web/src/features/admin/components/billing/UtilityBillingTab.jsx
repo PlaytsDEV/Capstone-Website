@@ -69,6 +69,21 @@ import {
 } from "./paymentDisplay";
 
 const EMPTY_VALUE = "-";
+
+const getRoomFloor = (r) => {
+  if (!r) return "1";
+  if (r.floor != null && r.floor !== "") return String(r.floor);
+  const identifier = String(r.roomNumber || r.name || r.id || "");
+  const match = identifier.match(/\b([1-9])\d{2}\b/) || identifier.match(/(\d{3,4})/);
+  if (match) {
+    const digits = match[1] || match[0];
+    if (digits.length === 3) return digits[0];
+    if (digits.length === 4) return digits.substring(0, 2);
+  }
+  const leadingDigit = identifier.match(/([1-9])/);
+  if (leadingDigit) return leadingDigit[1];
+  return "1";
+};
 const WATER_BILLABLE_ROOM_TYPES = new Set(["private", "double-sharing"]);
 const fmtCurrency = (val) =>
   val != null
@@ -148,12 +163,12 @@ const getEventDayKey = (value) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 };
 const EVENT_TYPE_LABELS = {
-  moveIn: "Move In",
-  moveOut: "Move Out",
-  regularBilling: "Regular Reading",
-  periodStart: "Start Reading",
-  periodEnd: "End Reading",
-  manualAdjustment: "Adjustment",
+  moveIn: "Tenant Move In",
+  moveOut: "Tenant Move Out",
+  regularBilling: "Mid-Cycle Reading",
+  periodStart: "Opening Meter Reading",
+  periodEnd: "Closing Meter Reading",
+  manualAdjustment: "Meter Correction",
   roomTransfer: "Room Transfer",
 };
 const EVENT_TYPE_ORDER = {
@@ -181,16 +196,16 @@ const isSystemBoundaryEvent = (eventType) =>
 const getReadingStatusLabel = (reading) => {
   if (!reading) return "Recorded";
   if (reading.readingStatus === "voided") return "Canceled";
-  if (reading.readingStatus === "corrected") return "Corrected";
-  if (reading.readingStatus === "locked" || reading.isLocked) return "Locked";
-  return "Saved";
+  if (reading.readingStatus === "corrected") return "Revised";
+  if (reading.readingStatus === "locked" || reading.isLocked) return "Finalized";
+  return "Editable Draft";
 };
 const getTimelineRecordLabel = (row) => {
   if (!row) return EMPTY_VALUE;
-  if (row.source === "transfer") return "Transfer Event";
-  if (row.source === "merged") return "Verified Event";
-  if (row.source === "occupancy") return "Occupancy Event";
-  if (row.source === "meter") return "Meter Reading";
+  if (row.source === "transfer") return "Room Change";
+  if (row.source === "merged") return "System Linked";
+  if (row.source === "occupancy") return "Tenant Activity";
+  if (row.source === "meter") return "Submeter Log";
   return row.source || EMPTY_VALUE;
 };
 const getTimelineStatusLabel = (row) => {
@@ -201,9 +216,9 @@ const getTimelineStatusLabel = (row) => {
   }
   if (row.source === "occupancy") {
     if (isUtilityEventType(row.eventType, "moveIn")) {
-      return row.isActive ? "Current" : "Past";
+      return row.isActive ? "Active Tenant" : "Vacated";
     }
-    if (isUtilityEventType(row.eventType, "moveOut")) return "Moved Out";
+    if (isUtilityEventType(row.eventType, "moveOut")) return "Vacated";
   }
   if (row.rawReading) return getReadingStatusLabel(row.rawReading);
   return EMPTY_VALUE;
@@ -476,8 +491,10 @@ const UtilityBillingTab = ({
     ? (onOwnerBranchChange ?? (() => {}))
     : setLocalBranchFilter;
 
-  // Sidebar search
+  // Sidebar search & filters
   const [sidebarSearch, setSidebarSearch] = useState("");
+  const [floorFilter, setFloorFilter] = useState("all");
+  const [roomStatusFilter, setRoomStatusFilter] = useState("all");
 
   // Panel / section state
   const [activePanel, setActivePanel] = useState(null);
@@ -522,7 +539,7 @@ const UtilityBillingTab = ({
   // Pagination
   const PERIODS_PER_PAGE = 5;
   const TIMELINE_PER_PAGE = 8;
-  const ROOMS_PER_PAGE = 5;
+  const ROOMS_PER_PAGE = 10;
   const [periodsPage, setPeriodsPage] = useState(1);
   const [timelinePage, setTimelinePage] = useState(1);
   const [roomsPage, setRoomsPage] = useState(1);
@@ -937,23 +954,58 @@ const UtilityBillingTab = ({
   const currentPeriod = periods[0] || null;
   const openPeriodForRoom = periods.find((p) => p.status === "open");
   const lastClosedPeriod = periods.find(
-    (p) => p.status === "closed" || p.status === "revised",
+    (p) => p.status === "closed" || p.status === "revised"
   );
   const defaultRatePerUnit =
     utilityType === "electricity"
       ? (businessSettings?.defaultElectricityRatePerKwh ?? "")
       : (businessSettings?.defaultWaterRatePerUnit ?? "");
 
+  const availableFloors = useMemo(() => {
+    const floorsSet = new Set();
+    rooms.forEach((r) => {
+      floorsSet.add(getRoomFloor(r));
+    });
+    return Array.from(floorsSet).sort((a, b) => Number(a) - Number(b));
+  }, [rooms]);
+
   const filteredRooms = useMemo(() => {
     let list = branchFilter
       ? rooms.filter((r) => r.branch === branchFilter)
       : rooms;
+
+    if (floorFilter !== "all") {
+      list = list.filter((r) => getRoomFloor(r) === String(floorFilter));
+    }
+
+    if (roomStatusFilter === "occupied") {
+      list = list.filter(
+        (r) =>
+          Boolean(
+            r.hasActiveTenants ||
+              (r.activeTenantCount != null && r.activeTenantCount > 0),
+          ),
+      );
+    } else if (roomStatusFilter === "vacant") {
+      list = list.filter(
+        (r) =>
+          !r.hasActiveTenants &&
+          (!r.activeTenantCount || r.activeTenantCount === 0),
+      );
+    }
+
     if (sidebarSearch.trim()) {
       const q = sidebarSearch.trim().toLowerCase();
-      list = list.filter((r) => getRoomLabel(r, "").toLowerCase().includes(q));
+      list = list.filter(
+        (r) =>
+          r.name?.toLowerCase().includes(q) ||
+          r.roomNumber?.toString().toLowerCase().includes(q) ||
+          r.tenantName?.toLowerCase().includes(q),
+      );
     }
     return list;
-  }, [rooms, branchFilter, sidebarSearch]);
+  }, [rooms, branchFilter, floorFilter, roomStatusFilter, sidebarSearch]);
+
   const readyRooms = useMemo(
     () =>
       filteredRooms.filter(
@@ -980,8 +1032,8 @@ const UtilityBillingTab = ({
         : null;
   const isCurrentCycleLocked = Boolean(
     currentPeriod?.status === "locked" ||
-    currentPeriod?.isLocked ||
-    currentPeriod?.locked,
+      currentPeriod?.isLocked ||
+      currentPeriod?.locked,
   );
 
   // Paginated slices
@@ -1093,37 +1145,63 @@ const UtilityBillingTab = ({
     }
   }, [periods, selectedPeriodId]);
 
-  // Pagination component
   const Pagination = ({ page, total, onChange, countLabel }) => {
-    if (total <= 1) return null;
+    if (total === 0) return null;
+
+    const getPageNumbers = () => {
+      if (total <= 5) {
+        return Array.from({ length: total }, (_, i) => i + 1);
+      }
+      if (page <= 3) {
+        return [1, 2, 3, "...", total];
+      }
+      if (page >= total - 2) {
+        return [1, "...", total - 2, total - 1, total];
+      }
+      return [1, "...", page, "...", total];
+    };
+
+    const pages = getPageNumbers();
+
     return (
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>{countLabel}</span>
         <div className="flex items-center gap-1">
           <button
-            className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+            type="button"
+            className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
             onClick={() => onChange(page - 1)}
-            disabled={page === 1}
+            disabled={page <= 1}
+            aria-label="Previous page"
           >
             &lt;
           </button>
-          {Array.from({ length: total }, (_, i) => i + 1).map((n) => (
-            <button
-              key={n}
-              className={`rounded-md border px-2 py-1 text-xs ${
-                page === n
-                  ? "border-amber-400 bg-amber-400/20 text-warning-dark"
-                  : "border-border text-muted-foreground hover:bg-muted"
-              }`}
-              onClick={() => onChange(n)}
-            >
-              {n}
-            </button>
-          ))}
+          {pages.map((p, idx) =>
+            p === "..." ? (
+              <span key={`ellipsis-${idx}`} className="px-1 text-xs text-muted-foreground">
+                ...
+              </span>
+            ) : (
+              <button
+                key={p}
+                type="button"
+                className={`rounded-md border px-2 py-1 text-xs font-semibold ${
+                  page === p
+                    ? "border-amber-400 bg-amber-400/20 text-warning-dark dark:text-amber-300"
+                    : "border-border text-muted-foreground hover:bg-muted"
+                }`}
+                onClick={() => onChange(p)}
+              >
+                {p}
+              </button>
+            ),
+          )}
           <button
-            className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+            type="button"
+            className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
             onClick={() => onChange(page + 1)}
-            disabled={page === total}
+            disabled={page >= total}
+            aria-label="Next page"
           >
             &gt;
           </button>
@@ -1132,7 +1210,7 @@ const UtilityBillingTab = ({
     );
   };
 
-  // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Handlers ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
+  // ---------------- Handlers ----------------
 
   const selectAndFocusPeriod = (periodId) => {
     setSelectedPeriodId(periodId);
@@ -1276,7 +1354,7 @@ const UtilityBillingTab = ({
     const targetPeriod = periods.find((p) => p.id === periodId);
     const isOpenPeriod = targetPeriod?.status === "open";
     const message = isOpenPeriod
-      ? "This will delete the current open billing period (auto-created after the last close). You can re-create it with '+ New Billing Period' Ã¢â‚¬â€ the form will pre-fill from the last closed period."
+      ? "This will delete the current open billing period (auto-created after the last close). You can re-create it with '+ New Billing Period' — the form will pre-fill from the last closed period."
       : "This will permanently delete the billing period AND all its meter readings and generated tenant bills. This cannot be undone.";
     setConfirmModal({
       open: true,
@@ -1371,7 +1449,7 @@ const UtilityBillingTab = ({
     }
   };
 
-  // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Draft bills handlers (expand-on-edit) ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
+  // ---------------- Draft bills handlers (expand-on-edit) ----------------
 
   const handleOpenEditPeriod = (period) => {
     if (!period?.id) return;
@@ -1645,13 +1723,13 @@ const UtilityBillingTab = ({
       status: getTimelineStatusLabel(row),
       tenant: isMoveLifecycleEvent(row.eventType)
         ? row.tenantName || EMPTY_VALUE
-        : "Room Level",
+        : "Entire Room",
       tenantEmail: isMoveLifecycleEvent(row.eventType)
         ? row.tenantEmail || EMPTY_VALUE
         : EMPTY_VALUE,
       bed: isMoveLifecycleEvent(row.eventType)
         ? row.bedName || EMPTY_VALUE
-        : "Room Level",
+        : "Entire Room",
       reading:
         row.reading != null
           ? `${fmtNumber(row.reading, 2)} ${utilityType === "electricity" ? "kWh" : "cu.m."}`
@@ -1756,11 +1834,11 @@ const UtilityBillingTab = ({
       className="space-y-4"
       aria-label={`${utilityType} billing workspace`}
     >
-      <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)] lg:auto-rows-auto">
-        <aside className="rounded-xl border border-border bg-card p-4">
+      <div className="grid gap-4 lg:grid-cols-[360px_minmax(0,1fr)] xl:grid-cols-[380px_minmax(0,1fr)] items-start">
+        <aside className="rounded-xl border border-border bg-card p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--color-accent,#D4AF37)]">
-              <Search size={12} className="shrink-0" />
+            <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-foreground dark:text-amber-400">
+              <Search size={13} className="shrink-0 text-[color:var(--color-accent,#D4AF37)]" />
               Room Selection
             </span>
             <span className="text-xs text-muted-foreground">
@@ -1768,7 +1846,7 @@ const UtilityBillingTab = ({
             </span>
           </div>
 
-          <div className="mt-3">
+          <div>
             <input
               type="text"
               className="w-full rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground placeholder:text-muted-foreground focus:outline-none"
@@ -1782,16 +1860,6 @@ const UtilityBillingTab = ({
                 e.currentTarget.style.borderColor = "";
                 e.currentTarget.style.boxShadow = "";
               }}
-              // // style={{ "--tw-ring-color": "var(--primary)" }}
-              // // onFocus={(e) => {
-              // //   e.currentTarget.style.borderColor = "var(--primary)";
-              // //   e.currentTarget.style.boxShadow =
-              // //     "0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent)";
-              // // }}
-              // onBlur={(e) => {
-              //   e.currentTarget.style.borderColor = "";
-              //   e.currentTarget.style.boxShadow = "";
-              // }}
               placeholder="Search by room name or number..."
               value={sidebarSearch}
               onChange={(e) => {
@@ -1802,35 +1870,51 @@ const UtilityBillingTab = ({
             />
           </div>
 
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <div className="flex items-center rounded-lg border border-border bg-muted px-2 py-2 text-xs text-muted-foreground">
-              {branchFilter === "gil-puyat"
-                ? "Gil Puyat"
-                : branchFilter === "guadalupe"
-                ? "Guadalupe"
-                : "All branches"}
-            </div>
+          <div className="grid grid-cols-2 gap-2">
             <select
-              defaultValue="all"
-              disabled
-              className="rounded-lg border border-border bg-muted px-2 py-2 text-xs text-muted-foreground"
+              aria-label="Filter by floor level"
+              className="rounded-lg border border-border bg-card px-2.5 py-2 text-xs text-foreground focus:border-amber-400 focus:outline-none dark:bg-muted"
+              value={floorFilter}
+              onChange={(e) => {
+                setFloorFilter(e.target.value);
+                setRoomsPage(1);
+              }}
             >
-              <option value="all">All status</option>
+              <option value="all">All Floors</option>
+              {availableFloors.map((fl) => (
+                <option key={fl} value={fl}>
+                  Floor {fl}
+                </option>
+              ))}
+            </select>
+
+            <select
+              aria-label="Filter by occupancy status"
+              className="rounded-lg border border-border bg-card px-2.5 py-2 text-xs text-foreground focus:border-amber-400 focus:outline-none dark:bg-muted"
+              value={roomStatusFilter}
+              onChange={(e) => {
+                setRoomStatusFilter(e.target.value);
+                setRoomsPage(1);
+              }}
+            >
+              <option value="all">All Status</option>
+              <option value="occupied">Occupied</option>
+              <option value="vacant">Vacant</option>
             </select>
           </div>
 
-          <div className="mt-4 space-y-2">
+          <div className="h-[570px] min-h-[570px] max-h-[570px] space-y-2 pt-1 overflow-y-auto pr-1">
             {roomsLoading ? (
               <div className="space-y-2">
-                {[1, 2, 3, 4].map((i) => (
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => (
                   <div
                     key={i}
-                    className="h-12 w-full animate-pulse rounded-lg bg-muted"
+                    className="h-[50px] w-full animate-pulse rounded-lg bg-muted"
                   />
                 ))}
               </div>
             ) : filteredRooms.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
+              <div className="flex h-full min-h-[200px] items-center justify-center rounded-lg border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
                 {sidebarSearch
                   ? "No rooms match your search"
                   : "No rooms found"}
@@ -1844,7 +1928,7 @@ const UtilityBillingTab = ({
                 return (
                   <button
                     key={room.id}
-                    className="w-full rounded-lg border px-3 py-2 text-left transition"
+                    className="w-full rounded-lg border px-3 py-2 text-left transition shrink-0"
                     style={
                       isSelected
                         ? {
@@ -1912,42 +1996,19 @@ const UtilityBillingTab = ({
             )}
           </div>
 
-          <div className="mt-4 text-xs text-muted-foreground">
-            Use filters to quickly find and select rooms. Manage meter readings
-            and billing for the selected room.
+          <div className="pt-2 border-t border-border/40">
+            <Pagination
+              page={roomsPage}
+              total={totalRoomPages}
+              onChange={setRoomsPage}
+              countLabel={`${filteredRooms.length} room${filteredRooms.length !== 1 ? "s" : ""}`}
+            />
           </div>
-
-          {filteredRooms.length > ROOMS_PER_PAGE && (
-            <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-              <span>{filteredRooms.length} rooms</span>
-              <div className="flex items-center gap-2">
-                <button
-                  className="rounded-md border border-border px-2 py-1 text-muted-foreground hover:bg-muted disabled:opacity-40"
-                  disabled={roomsPage <= 1}
-                  onClick={() => setRoomsPage((p) => p - 1)}
-                  aria-label="Previous room page"
-                >
-                  <ChevronLeft size={14} />
-                </button>
-                <span>
-                  {roomsPage}/{totalRoomPages}
-                </span>
-                <button
-                  className="rounded-md border border-border px-2 py-1 text-muted-foreground hover:bg-muted disabled:opacity-40"
-                  disabled={roomsPage >= totalRoomPages}
-                  onClick={() => setRoomsPage((p) => p + 1)}
-                  aria-label="Next room page"
-                >
-                  <ChevronRight size={14} />
-                </button>
-              </div>
-            </div>
-          )}
         </aside>
 
-        <div className="space-y-4">
+        <div className="flex flex-col h-full space-y-4">
           {!selectedRoomId ? (
-            <div className="flex min-h-[440px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card px-6 py-10 text-center">
+            <div className="flex min-h-[200px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card px-6 py-8 text-center">
               <Zap size={36} strokeWidth={1.5} className="text-slate-300" />
               <p className="mt-3 text-sm font-semibold text-card-foreground">
                 Select a room to continue
@@ -1972,7 +2033,7 @@ const UtilityBillingTab = ({
                 </div>
               )}
 
-              <div className="rounded-[14px] border border-border bg-card px-5 py-4 shadow-[0_1px_0_rgba(15,23,42,0.02)] min-h-[440px]">
+              <div className="rounded-[14px] border border-border bg-card px-5 py-4 shadow-[0_1px_0_rgba(15,23,42,0.02)]">
                 <div className="flex items-center gap-3">
                   <span
                     className="inline-flex h-7 w-7 items-center justify-center rounded-md text-primary
@@ -2048,7 +2109,7 @@ const UtilityBillingTab = ({
                     </div>
                   </>
                 ) : (
-                  <div className="mt-4 flex flex-col items-center justify-center gap-2 px-4 py-24 text-center">
+                  <div className="mt-3 flex flex-col items-center justify-center gap-1.5 px-4 py-6 text-center">
                     <FileX size={28} style={{ color: "var(--neutral)" }} />
                     <p
                       className="text-sm font-medium"
@@ -2067,320 +2128,322 @@ const UtilityBillingTab = ({
               </div>
             </>
           )}
+
+          <section className="rounded-xl border border-border bg-card p-4 flex-1 flex flex-col justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-foreground dark:text-amber-400">
+                  <History size={13} className="shrink-0 text-[color:var(--color-accent,#D4AF37)]" />
+                  Billing Cycle History
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Closed and revised periods remain available for review, sending,
+                  and revision actions.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+                  style={{
+                    background: "var(--primary)",
+                    color: "var(--primary-foreground)",
+                  }}
+                  onClick={() => setIsNewPeriodModalOpen(true)}
+                  disabled={selectedRoom?.branch === "guadalupe"}
+                  title={
+                    selectedRoom?.branch === "guadalupe"
+                      ? "Guadalupe uses fixed-rate billing. Separate sub-metered utility cycles are not used for this branch."
+                      : undefined
+                  }
+                >
+                  <Plus size={12} /> {selectedRoom?.branch === "guadalupe" ? "Fixed-Rate Branch" : "New Billing Period"}
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50"
+                  onClick={handleExportRows}
+                  disabled={isExporting}
+                >
+                  <Download size={12} />
+                  {isExporting ? "Exporting..." : "Upload & Export"}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 md:grid-cols-4">
+              {/* Status filter */}
+              <select
+                value={periodStatusFilter}
+                onChange={(e) => {
+                  setPeriodStatusFilter(e.target.value);
+                  setPeriodsPage(1);
+                }}
+                className="w-full rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground focus:outline-none appearance-none"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml;charset=US-ASCII,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'16' height%3D'16' viewBox%3D'0 0 24 24' fill%3D'none' stroke%3D'%231e293b' stroke-width%3D'2' stroke-linecap%3D'round' stroke-linejoin%3D'round'%3E%3Cpolyline points%3D'6 9 12 15 18 9'%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E")`,
+                  backgroundRepeat: "no-repeat",
+                  backgroundPosition: "right 10px center",
+                  backgroundSize: "14px 14px",
+                  paddingRight: "32px",
+                }}
+              >
+                <option value="">All Status</option>
+                <option value="draft">Draft</option>
+                <option value="pending">Pending</option>
+                <option value="sent">Sent</option>
+                <option value="paid">Paid</option>
+              </select>
+
+              {/* Start date */}
+              <input
+                type="date"
+                value={periodStartDate}
+                onChange={(e) => {
+                  setPeriodStartDate(e.target.value);
+                  setPeriodsPage(1);
+                }}
+                className="w-full rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground focus:outline-none"
+                style={{ outlineColor: "var(--ring)" }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = "var(--ring)";
+                  e.currentTarget.style.boxShadow =
+                    "0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent)";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = "";
+                  e.currentTarget.style.boxShadow = "";
+                }}
+              />
+
+              {/* End date */}
+              <input
+                type="date"
+                value={periodEndDate}
+                onChange={(e) => {
+                  setPeriodEndDate(e.target.value);
+                  setPeriodsPage(1);
+                }}
+                className="w-full rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground focus:outline-none"
+                style={{ outlineColor: "var(--ring)" }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = "var(--ring)";
+                  e.currentTarget.style.boxShadow =
+                    "0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent)";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = "";
+                  e.currentTarget.style.boxShadow = "";
+                }}
+              />
+
+              {/* Cycle search */}
+              <input
+                type="text"
+                value={periodSearch}
+                onChange={(e) => {
+                  setPeriodSearch(e.target.value);
+                  setPeriodsPage(1);
+                }}
+                placeholder="Search by cycle..."
+                className="w-full rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground placeholder:text-muted-foreground focus:outline-none"
+                style={{ outlineColor: "var(--ring)" }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = "var(--ring)";
+                  e.currentTarget.style.boxShadow =
+                    "0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent)";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = "";
+                  e.currentTarget.style.boxShadow = "";
+                }}
+              />
+            </div>
+
+            <div className="mt-2 flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                Showing {filteredPeriods.length} of {periods.length} billing cycles
+              </p>
+              {(periodStatusFilter ||
+                periodStartDate ||
+                periodEndDate ||
+                periodSearch) && (
+                <button
+                  type="button"
+                  className="text-xs font-medium transition-colors"
+                  style={{ color: "var(--neutral)" }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.color = "var(--foreground)")
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.color = "var(--neutral)")
+                  }
+                  onClick={() => {
+                    setPeriodStatusFilter("");
+                    setPeriodStartDate("");
+                    setPeriodEndDate("");
+                    setPeriodSearch("");
+                    setPeriodsPage(1);
+                  }}
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+
+            <div className="mt-3 flex-1 flex flex-col space-y-2">
+              {filteredPeriods.length === 0 ? (
+                <div className="flex flex-1 flex-col items-center justify-center gap-2 py-8 text-center min-h-[220px]">
+                  <ClipboardX size={28} style={{ color: "var(--neutral)" }} />
+                  <p
+                    className="text-sm font-medium"
+                    style={{ color: "var(--neutral)" }}
+                  >
+                    {periods.length === 0
+                      ? "No billing history yet."
+                      : "No cycles match your filters."}
+                  </p>
+                  <p className="text-xs" style={{ color: "var(--neutral-dark)" }}>
+                    {periods.length === 0
+                      ? "Closed and revised periods will appear here once created."
+                      : "Try adjusting your filters or clearing them."}
+                  </p>
+                </div>
+              ) : (
+                pagedPeriods.map((p) => {
+                  const status = getDisplayStatus(p);
+                  const canOpenHistory =
+                    p.status === "closed" || p.status === "revised";
+                  const isSelectedPeriod = selectedPeriodId === p.id;
+                  return (
+                    <div
+                      key={p.id}
+                      className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3 ${
+                        isSelectedPeriod
+                          ? "border-amber-300 bg-amber-50/40"
+                          : "border-border bg-card"
+                      }`}
+                      onClick={() => selectAndFocusPeriod(p.id)}
+                      title="Click to monitor this billing cycle"
+                    >
+                      <div>
+                        <p className="text-sm font-semibold text-card-foreground">
+                          {getCycleLabel(p)}
+                        </p>
+                        <p className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+                          {getMeterRangeLabel(p, utilityType)}
+                          {utilityType !== "water" && (
+                            <DeltaChip
+                              start={p.startReading}
+                              end={p.endReading}
+                              unit={utilityType === "electricity" ? "kWh" : "cu.m."}
+                            />
+                          )}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-semibold text-muted-foreground">
+                          {fmtCurrency(p.ratePerUnit)}
+                        </span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${getHistoryStatusClasses(status)}`}
+                        >
+                          {getDisplayStatusLabel(p)}
+                        </span>
+                        {p.revised ? (
+                          <span
+                            className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                            style={{
+                              background:
+                                "color-mix(in srgb, var(--warning) 12%, var(--card))",
+                              color: "var(--warning-dark)",
+                            }}
+                          >
+                            Edited
+                          </span>
+                        ) : null}
+                        <div
+                          className="flex items-center gap-1"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {getDisplayStatus(p) === "ready_to_send" && (
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold disabled:opacity-50"
+                              style={{
+                                background: "var(--primary)",
+                                color: "var(--primary-foreground)",
+                              }}
+                              onClick={() =>
+                                handleSendPeriod(
+                                  p,
+                                  getRoomLabel(selectedRoom || {}, "Room"),
+                                )
+                              }
+                              disabled={
+                                Boolean(sendingByPeriodId[p.id]) ||
+                                sendPeriod.isPending
+                              }
+                            >
+                              <Send size={11} />
+                              {sendingByPeriodId[p.id] ? "Sending..." : "Send"}
+                            </button>
+                          )}
+                          {canEditPeriod(p) && (
+                            <button
+                              type="button"
+                              className="rounded-md border border-border p-1 text-muted-foreground hover:bg-muted"
+                              onClick={() => handleOpenEditPeriod(p)}
+                              aria-label="Edit period"
+                            >
+                              <Pencil size={12} />
+                            </button>
+                          )}
+                          {canDeletePeriod(p) && (
+                            <button
+                              type="button"
+                              className="rounded-md border border-border p-1 hover:bg-muted"
+                              style={{ color: "var(--danger)" }}
+                              onClick={() => handleDeletePeriod(p.id)}
+                              aria-label="Delete period"
+                              disabled={deletePeriod.isPending}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          )}
+                          {canOpenHistory && (
+                            <button
+                              type="button"
+                              className="rounded-md border border-border px-2 py-1 text-[11px] font-semibold text-muted-foreground hover:bg-muted"
+                              onClick={() => openHistoryModal(p.id)}
+                            >
+                              View
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="mt-auto pt-2 border-t border-border/40">
+              <Pagination
+                page={periodsPage}
+                total={totalPeriodPages}
+                onChange={setPeriodsPage}
+                countLabel={`${filteredPeriods.length} of ${periods.length} period${periods.length !== 1 ? "s" : ""}`}
+              />
+            </div>
+          </section>
         </div>
       </div>
 
       <section className="rounded-xl border border-border bg-card p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--color-accent,#D4AF37)]">
-              <History size={12} className="shrink-0" />
-              Billing Cycle History
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Closed and revised periods remain available for review, sending,
-              and revision actions.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
-              style={{
-                background: "var(--primary)",
-                color: "var(--primary-foreground)",
-              }}
-              onClick={() => setIsNewPeriodModalOpen(true)}
-              disabled={selectedRoom?.branch === "guadalupe"}
-              title={
-                selectedRoom?.branch === "guadalupe"
-                  ? "Guadalupe uses fixed-rate billing. Separate sub-metered utility cycles are not used for this branch."
-                  : undefined
-              }
-            >
-              <Plus size={12} /> {selectedRoom?.branch === "guadalupe" ? "Fixed-Rate Branch" : "New Billing Period"}
-            </button>
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50"
-              onClick={handleExportRows}
-              disabled={isExporting}
-            >
-              <Download size={12} />
-              {isExporting ? "Exporting..." : "Upload & Export"}
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-4 grid gap-2 sm:grid-cols-2 md:grid-cols-4">
-          {/* Status filter */}
-          <select
-            value={periodStatusFilter}
-            onChange={(e) => {
-              setPeriodStatusFilter(e.target.value);
-              setPeriodsPage(1);
-            }}
-            className="w-full rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground focus:outline-none appearance-none"
-            style={{
-              backgroundImage: `url("data:image/svg+xml;charset=US-ASCII,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'16' height%3D'16' viewBox%3D'0 0 24 24' fill%3D'none' stroke%3D'%231e293b' stroke-width%3D'2' stroke-linecap%3D'round' stroke-linejoin%3D'round'%3E%3Cpolyline points%3D'6 9 12 15 18 9'%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E")`,
-              backgroundRepeat: "no-repeat",
-              backgroundPosition: "right 10px center",
-              backgroundSize: "14px 14px",
-              paddingRight: "32px",
-            }}
-          >
-            <option value="">All Status</option>
-            <option value="draft">Draft</option>
-            <option value="pending">Pending</option>
-            <option value="sent">Sent</option>
-            <option value="paid">Paid</option>
-          </select>
-
-          {/* Start date */}
-          <input
-            type="date"
-            value={periodStartDate}
-            onChange={(e) => {
-              setPeriodStartDate(e.target.value);
-              setPeriodsPage(1);
-            }}
-            className="w-full rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground focus:outline-none"
-            style={{ outlineColor: "var(--ring)" }}
-            onFocus={(e) => {
-              e.currentTarget.style.borderColor = "var(--ring)";
-              e.currentTarget.style.boxShadow =
-                "0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent)";
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = "";
-              e.currentTarget.style.boxShadow = "";
-            }}
-          />
-
-          {/* End date */}
-          <input
-            type="date"
-            value={periodEndDate}
-            onChange={(e) => {
-              setPeriodEndDate(e.target.value);
-              setPeriodsPage(1);
-            }}
-            className="w-full rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground focus:outline-none"
-            style={{ outlineColor: "var(--ring)" }}
-            onFocus={(e) => {
-              e.currentTarget.style.borderColor = "var(--ring)";
-              e.currentTarget.style.boxShadow =
-                "0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent)";
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = "";
-              e.currentTarget.style.boxShadow = "";
-            }}
-          />
-
-          {/* Cycle search */}
-          <input
-            type="text"
-            value={periodSearch}
-            onChange={(e) => {
-              setPeriodSearch(e.target.value);
-              setPeriodsPage(1);
-            }}
-            placeholder="Search by cycle..."
-            className="w-full rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground placeholder:text-muted-foreground focus:outline-none"
-            style={{ outlineColor: "var(--ring)" }}
-            onFocus={(e) => {
-              e.currentTarget.style.borderColor = "var(--ring)";
-              e.currentTarget.style.boxShadow =
-                "0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent)";
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = "";
-              e.currentTarget.style.boxShadow = "";
-            }}
-          />
-        </div>
-
-        <div className="mt-2 flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">
-            Showing {filteredPeriods.length} of {periods.length} billing cycles
-          </p>
-          {(periodStatusFilter ||
-            periodStartDate ||
-            periodEndDate ||
-            periodSearch) && (
-            <button
-              type="button"
-              className="text-xs font-medium transition-colors"
-              style={{ color: "var(--neutral)" }}
-              onMouseEnter={(e) =>
-                (e.currentTarget.style.color = "var(--foreground)")
-              }
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.color = "var(--neutral)")
-              }
-              onClick={() => {
-                setPeriodStatusFilter("");
-                setPeriodStartDate("");
-                setPeriodEndDate("");
-                setPeriodSearch("");
-                setPeriodsPage(1);
-              }}
-            >
-              Clear filters
-            </button>
-          )}
-        </div>
-
-        <div className="mt-3 min-h-[420px] space-y-2">
-          {filteredPeriods.length === 0 ? (
-            <div className="flex h-[420px] flex-col items-center justify-center gap-2 text-center">
-              <ClipboardX size={28} style={{ color: "var(--neutral)" }} />
-              <p
-                className="text-sm font-medium"
-                style={{ color: "var(--neutral)" }}
-              >
-                {periods.length === 0
-                  ? "No billing history yet."
-                  : "No cycles match your filters."}
-              </p>
-              <p className="text-xs" style={{ color: "var(--neutral-dark)" }}>
-                {periods.length === 0
-                  ? "Closed and revised periods will appear here once created."
-                  : "Try adjusting your filters or clearing them."}
-              </p>
-            </div>
-          ) : (
-            pagedPeriods.map((p) => {
-              const status = getDisplayStatus(p);
-              const canOpenHistory =
-                p.status === "closed" || p.status === "revised";
-              const isSelectedPeriod = selectedPeriodId === p.id;
-              return (
-                <div
-                  key={p.id}
-                  className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-3 ${
-                    isSelectedPeriod
-                      ? "border-amber-300 bg-amber-50/40"
-                      : "border-border bg-card"
-                  }`}
-                  onClick={() => selectAndFocusPeriod(p.id)}
-                  title="Click to monitor this billing cycle"
-                >
-                  <div>
-                    <p className="text-sm font-semibold text-card-foreground">
-                      {getCycleLabel(p)}
-                    </p>
-                    <p className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                      {getMeterRangeLabel(p, utilityType)}
-                      {utilityType !== "water" && (
-                        <DeltaChip
-                          start={p.startReading}
-                          end={p.endReading}
-                          unit={utilityType === "electricity" ? "kWh" : "cu.m."}
-                        />
-                      )}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-semibold text-muted-foreground">
-                      {fmtCurrency(p.ratePerUnit)}
-                    </span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${getHistoryStatusClasses(status)}`}
-                    >
-                      {getDisplayStatusLabel(p)}
-                    </span>
-                    {p.revised ? (
-                      <span
-                        className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
-                        style={{
-                          background:
-                            "color-mix(in srgb, var(--warning) 12%, var(--card))",
-                          color: "var(--warning-dark)",
-                        }}
-                      >
-                        Edited
-                      </span>
-                    ) : null}
-                    <div
-                      className="flex items-center gap-1"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {getDisplayStatus(p) === "ready_to_send" && (
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold disabled:opacity-50"
-                          style={{
-                            background: "var(--primary)",
-                            color: "var(--primary-foreground)",
-                          }}
-                          onClick={() =>
-                            handleSendPeriod(
-                              p,
-                              getRoomLabel(selectedRoom || {}, "Room"),
-                            )
-                          }
-                          disabled={
-                            Boolean(sendingByPeriodId[p.id]) ||
-                            sendPeriod.isPending
-                          }
-                        >
-                          <Send size={11} />
-                          {sendingByPeriodId[p.id] ? "Sending..." : "Send"}
-                        </button>
-                      )}
-                      {canEditPeriod(p) && (
-                        <button
-                          type="button"
-                          className="rounded-md border border-border p-1 text-muted-foreground hover:bg-muted"
-                          onClick={() => handleOpenEditPeriod(p)}
-                          aria-label="Edit period"
-                        >
-                          <Pencil size={12} />
-                        </button>
-                      )}
-                      {canDeletePeriod(p) && (
-                        <button
-                          type="button"
-                          className="rounded-md border border-border p-1 hover:bg-muted"
-                          style={{ color: "var(--danger)" }}
-                          onClick={() => handleDeletePeriod(p.id)}
-                          aria-label="Delete period"
-                          disabled={deletePeriod.isPending}
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      )}
-                      {canOpenHistory && (
-                        <button
-                          type="button"
-                          className="rounded-md border border-border px-2 py-1 text-[11px] font-semibold text-muted-foreground hover:bg-muted"
-                          onClick={() => openHistoryModal(p.id)}
-                        >
-                          View
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        <Pagination
-          page={periodsPage}
-          total={totalPeriodPages}
-          onChange={setPeriodsPage}
-          countLabel={`${filteredPeriods.length} of ${periods.length} period${periods.length !== 1 ? "s" : ""}`}
-        />
-      </section>
-
-      <section className="rounded-xl border border-border bg-card p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--color-accent,#D4AF37)]">
-              <Check size={12} className="shrink-0" />
+            <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-foreground dark:text-amber-400">
+              <Check size={13} className="shrink-0 text-[color:var(--color-accent,#D4AF37)]" />
               Tenant Billing & Payments
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -2431,7 +2494,7 @@ const UtilityBillingTab = ({
                   ].map((label) => (
                     <th
                       key={label}
-                      className="whitespace-nowrap py-2 pr-5 text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground"
+                      className="whitespace-nowrap py-2.5 pr-5 text-xs font-bold uppercase tracking-[0.1em] text-foreground/80 dark:text-slate-300"
                     >
                       {label}
                     </th>
@@ -2970,15 +3033,17 @@ const UtilityBillingTab = ({
                       {getEventTypeLabel(row.eventType)}
                     </p>
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                      <span className="rounded-full bg-muted px-2 py-0.5">
-                        {getTimelineRecordLabel(row)}
-                      </span>
+                      {row.source !== "meter" && (
+                        <span className="rounded-full bg-muted px-2 py-0.5">
+                          {getTimelineRecordLabel(row)}
+                        </span>
+                      )}
                       <span className="rounded-full bg-muted px-2 py-0.5">
                         {getTimelineStatusLabel(row)}
                       </span>
                       <span className="text-muted-foreground">
                         {!isMoveLifecycleEvent(row.eventType) ? (
-                          "Room Level"
+                          "Entire Room"
                         ) : (
                           <span className="inline-flex items-center gap-1.5 font-mono text-[11px]">
                             <button

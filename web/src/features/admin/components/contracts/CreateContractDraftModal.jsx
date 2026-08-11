@@ -58,7 +58,7 @@ export default function CreateContractDraftModal({ open, branch, onClose, onCrea
         <header>
           <div>
             <h2>Create Contract Draft</h2>
-            <p>Select an eligible resident. All legal and lease values are resolved by the backend.</p>
+            <p>Select an eligible tenant. All legal and lease values are resolved by the backend.</p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close"><X size={19} /></button>
         </header>
@@ -70,7 +70,7 @@ export default function CreateContractDraftModal({ open, branch, onClose, onCrea
               setExistingContract(null);
               setError("");
             }} disabled={loading}>
-              <option value="">{loading ? "Loading eligible residents…" : "Select a resident"}</option>
+              <option value="">{loading ? "Loading eligible tenants…" : "Select a tenant"}</option>
               {tenants.map((tenant) => (
                 <option key={tenant.reservationId} value={tenant.reservationId}>
                   {tenant.tenantName} — {tenant.room || "No room"} ({tenant.branch})

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Calendar, Camera, CheckCircle, ClipboardList, CreditCard, Eye, Image as ImageIcon, Maximize2 } from "lucide-react";
+import { AlertTriangle, Calendar, Camera, CheckCircle, ClipboardList, CreditCard, Eye, Image as ImageIcon, Info, Maximize2 } from "lucide-react";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
 import { reservationApi } from "../../../shared/api/apiClient";
 import { useVisitAvailability } from "../../../shared/hooks/queries/useReservations";
+import { useUtilityLatestReading } from "../../../shared/hooks/queries/useUtility";
 import useBodyScrollLock from "../../../shared/hooks/useBodyScrollLock";
 import useEscapeClose from "../../../shared/hooks/useEscapeClose";
 import getFriendlyError from "../../../shared/utils/friendlyError";
@@ -485,6 +486,13 @@ export default function ReservationDetailsModal({
  const visitRoomId = reservation?.roomId?._id || reservation?.roomId || "";
  const appearance = getReservationStatusAppearance(status);
  const allowedActions = getAllowedReservationActions(status);
+ const hasQuickActions =
+   allowedActions.includes("moveIn") ||
+   allowedActions.includes("extend") ||
+   allowedActions.includes("approve_for_payment") ||
+   allowedActions.includes("needs_revision") ||
+   allowedActions.includes("rejected") ||
+   (allowedActions.includes("cancelled") && !cancellationPending);
  const moveInDate = readMoveInDate(reservation);
  const isMovedOut = status === "moveOut";
  const isOverdue =
@@ -511,12 +519,22 @@ export default function ReservationDetailsModal({
  }),
  [reservationId, visitBranch, visitRoomId],
  );
- const {
- data: visitAvailability,
- isLoading: loadingVisitAvailability,
- } = useVisitAvailability(availabilityParams, {
- enabled: physicalVisitSelected && Boolean(visitBranch),
- });
+  const {
+    data: visitAvailability,
+    isLoading: loadingVisitAvailability,
+  } = useVisitAvailability(availabilityParams, {
+    enabled: physicalVisitSelected && Boolean(visitBranch),
+  });
+  const { data: latestUtilityRes } = useUtilityLatestReading(
+    "electricity",
+    visitRoomId,
+    { enabled: Boolean(visitRoomId) },
+  );
+  const previousMeterReading =
+    latestUtilityRes?.reading ??
+    latestUtilityRes?.data?.reading ??
+    reservation?.roomId?.lastMeterReading ??
+    null;
  const rescheduleDateOption = useMemo(
  () =>
  Array.isArray(visitAvailability?.dates)
@@ -868,7 +886,7 @@ export default function ReservationDetailsModal({
  src={guestPhotoUrl}
  initials={guestInitials}
  alt={`${guestName} profile photo`}
- size={36}
+ size={44}
  />
  <div className="rdm-guest-copy">
  <h2 className="rdm-title">{guestName}</h2>
@@ -1209,9 +1227,9 @@ export default function ReservationDetailsModal({
  <div
  className="rdm-status-chip rdm-visit-status-chip"
  style={{
- background: visitStatusAppearance.bg,
+ background: "transparent",
  color: visitStatusAppearance.color,
- padding: "5px 12px",
+ padding: "2px 0",
  }}
  >
  <span
@@ -1299,8 +1317,8 @@ export default function ReservationDetailsModal({
  key={`${entry.status || "visit"}-${entry.updatedAt || entry.scheduledAt || index}`}
  style={{
  padding: "10px 12px",
- borderRadius: 10,
- background: "rgba(15, 23, 42, 0.03)",
+ borderRadius: 8,
+ background: "transparent",
  border: "1px solid rgba(15, 23, 42, 0.08)",
  }}
  >
@@ -1724,8 +1742,136 @@ export default function ReservationDetailsModal({
 
  {status !== "cancelled" && !isMovedOut && (
  <div className="rdm-side-card">
- <h4 className="rdm-side-title">Quick Actions</h4>
+ <h4 className="rdm-side-title">
+ {showMeterPrompt ? "Move-In Details" : "Quick Actions"}
+ </h4>
  <div className="rdm-actions-card rdm-actions-card-dark">
+ {showMeterPrompt ? (
+ <div className="rdm-inline-movein-form">
+ <p className="rdm-inline-form-copy">
+ Confirm actual move-in date and initial meter reading before recording occupancy.
+ </p>
+
+ <div className="rdm-inline-field">
+ <label className="rdm-inline-label">
+ Actual Move-In Date <span className="rdm-asterisk">*</span>
+ </label>
+ <input
+ type="date"
+ value={actualMoveInDate}
+ onChange={(event) => setActualMoveInDate(event.target.value)}
+ className="rdm-inline-input"
+ />
+ </div>
+
+ <div className="rdm-inline-field">
+                      <div className="rdm-inline-label-group">
+                        <label className="rdm-inline-label">
+                          Starting Meter Reading <span className="rdm-asterisk">*</span>
+                        </label>
+                        <div
+                          className="rdm-meter-info-badge"
+                          onClick={() => {
+                            if (previousMeterReading != null) {
+                              setMeterReadingVal(String(previousMeterReading));
+                            }
+                          }}
+                          title={previousMeterReading != null ? "Click to auto-fill previous reading baseline" : "No previous reading logged"}
+                        >
+                          <Info size={16} className="rdm-meter-info-icon" />
+                          <div className="rdm-meter-tooltip">
+                            <span>
+                              {previousMeterReading != null ? (
+                                <>Last Recorded: <strong>{Number(previousMeterReading).toLocaleString("en-PH")} kWh</strong></>
+                              ) : (
+                                "No previous reading logged yet for this room."
+                              )}
+                            </span>
+                            <span className="rdm-meter-tooltip-hint">
+                              {previousMeterReading != null
+                                ? "Click to auto-fill starting baseline"
+                                : "Enter initial room meter reading"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+ <div className="rdm-inline-addon-group">
+ <input
+ type="number"
+ min="0"
+ max="99999"
+ step="0.01"
+ value={meterReadingVal}
+ onChange={(event) => setMeterReadingVal(event.target.value)}
+ className="rdm-inline-addon-input"
+ placeholder="e.g. 1250"
+ autoFocus
+ />
+ <span className="rdm-inline-addon-label">kWh</span>
+ </div>
+ </div>
+
+ <div className="rdm-inline-actions">
+ <button
+ type="button"
+ className="rdm-action rdm-action-secondary"
+ onClick={() => setShowMeterPrompt(false)}
+ disabled={isSubmitting}
+ >
+ Cancel
+ </button>
+ <button
+ type="button"
+ className="rdm-action rdm-action-primary rdm-action-success"
+ onClick={() => {
+ const reading = Number(meterReadingVal);
+ if (!meterReadingVal.trim() || Number.isNaN(reading) || reading < 0) {
+ showNotification(
+ "A valid meter reading (kWh) is required.",
+ "error",
+ 4000,
+ );
+ return;
+ }
+ if (!actualMoveInDate) {
+ showNotification("The actual move-in date is required.", "error", 4000);
+ return;
+ }
+
+ doAction(
+ "moveIn",
+ async () => {
+ try {
+ await reservationApi.update(reservation.id, {
+ status: "moveIn",
+ meterReading: reading,
+ actualMoveInDate,
+ houseRulesPrepared: true,
+ });
+ // Invalidate utility caches so the billing timeline auto-updates.
+ await queryClient.invalidateQueries({ queryKey: ["utilities"] });
+ } catch (apiErr) {
+ // Surface backend blocker reasons if available
+ const blockers = apiErr?.response?.data?.missing || apiErr?.data?.missing;
+ if (blockers && blockers.length > 0) {
+ throw new Error(
+ "Move-in prerequisites not met:\n• " + blockers.join("\n• "),
+ );
+ }
+ throw apiErr;
+ }
+ },
+ "Tenant moved in successfully",
+ );
+ }}
+ disabled={isSubmitting}
+ >
+ {isSubmitting ? "Processing..." : "Move In"}
+ </button>
+ </div>
+ </div>
+ ) : (
+ <>
  {stageGuide && (
  <div className="rdm-stage-guide rdm-stage-guide-dark">
  <div className="rdm-stage-guide-icon-wrap">
@@ -1847,6 +1993,8 @@ export default function ReservationDetailsModal({
  Cancel Reservation
  </button>
  )}
+ </>
+ )}
  </div>
  </div>
  )}
@@ -1869,135 +2017,6 @@ export default function ReservationDetailsModal({
  </div>
  </div>
  </div>
-
- {showMeterPrompt && (
- <div
- className="rdm-extend-overlay"
- onClick={() => setShowMeterPrompt(false)}
- >
- <div
- className="rdm-extend-dialog"
- onClick={(event) => event.stopPropagation()}
- >
- <div className="rdm-extend-dialog-body">
- <h3 className="rdm-extend-dialog-title">Move-In Details</h3>
- <p className="rdm-extend-dialog-copy">
-  Confirm the actual move-in date, house-rules preparation, and starting
-  kWh meter reading before recording occupancy.
- </p>
-
- <label style={{ display: "block", fontSize: "0.75rem", fontWeight: 600, marginBottom: 4 }}>
- Actual Move-In Date <span style={{ color: "var(--danger, #ef4444)" }}>*</span>
- </label>
- <input
- type="date"
- value={actualMoveInDate}
- onChange={(event) => setActualMoveInDate(event.target.value)}
- className="rdm-extend-dialog-input rdm-extend-dialog-input--wide"
- style={{ width: "100%", marginBottom: 12 }}
- />
- <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: "0.8rem", marginBottom: 12 }}>
- <input
- type="checkbox"
- checked={houseRulesPrepared}
- onChange={(event) => setHouseRulesPrepared(event.target.checked)}
- />
- House rules are prepared for tenant acknowledgment
- </label>
-
- {/* Meter reading */}
- <label
- style={{
- display: "block",
- fontSize: "0.75rem",
- fontWeight: 600,
- marginBottom: 4,
- color: "var(--muted-foreground, #6b7280)",
- }}
- >
- Starting Meter Reading (kWh) <span style={{ color: "var(--danger, #ef4444)" }}>*</span>
- </label>
- <div
- className="rdm-extend-dialog-input-row"
- style={{ width: "100%" }}
- >
- <input
- type="number"
- min="0"
- max="99999"
- step="0.01"
- value={meterReadingVal}
- onChange={(event) => setMeterReadingVal(event.target.value)}
- className="rdm-extend-dialog-input rdm-extend-dialog-input--wide"
- placeholder="e.g. 1250"
- autoFocus
- />
- <span className="rdm-extend-dialog-unit">kWh</span>
- </div>
- </div>
- <div className="rdm-extend-dialog-actions">
- <button
- className="rdm-extend-dialog-cancel"
- onClick={() => setShowMeterPrompt(false)}
- >
- Cancel
- </button>
- <button
- className="rdm-extend-dialog-confirm"
- onClick={() => {
- const reading = Number(meterReadingVal);
- if (!meterReadingVal.trim() || Number.isNaN(reading) || reading < 0) {
- showNotification(
- "A valid meter reading (kWh) is required.",
- "error",
- 4000,
- );
- return;
- }
- if (!actualMoveInDate) {
- showNotification("The actual move-in date is required.", "error", 4000);
- return;
- }
- if (!houseRulesPrepared) {
- showNotification("Confirm that house rules are prepared before move-in.", "error", 4000);
- return;
- }
-
- setShowMeterPrompt(false);
- doAction(
- "moveIn",
- async () => {
- try {
- await reservationApi.update(reservation.id, {
- status: "moveIn",
- meterReading: reading,
- actualMoveInDate,
- houseRulesPrepared: true,
- });
-  // Invalidate utility caches so the billing timeline auto-updates.
-  await queryClient.invalidateQueries({ queryKey: ["utilities"] });
- } catch (apiErr) {
- // Surface backend blocker reasons if available
- const blockers = apiErr?.response?.data?.missing || apiErr?.data?.missing;
- if (blockers && blockers.length > 0) {
- throw new Error(
- "Move-in prerequisites not met:\n• " + blockers.join("\n• "),
- );
- }
- throw apiErr;
- }
- },
- "Tenant moved in successfully",
- );
- }}
- disabled={isSubmitting}
- >
- Move In
- </button>
- </div>
- </div>
- </div>
- )}
 
  {showExtendPrompt && (
  <div

@@ -55,7 +55,7 @@ export function BenefitsSection() {
             className="max-w-2xl mx-auto font-light leading-relaxed text-sm"
             style={{ color: 'var(--lp-text-secondary)' }}
           >
-            Discover why thousands of residents choose Lilycrest for their
+            Discover why thousands of tenants choose Lilycrest for their
             dormitory living experience.
           </p>
         </div>

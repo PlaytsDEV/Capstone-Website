@@ -297,127 +297,151 @@ const StatementScopeNotice = ({ remainingAmount, label }) => (
 );
 
 const SplitDashboard = ({
- unpaidRent,
- unpaidElec,
- unpaidWater,
- hasWaterBilling,
- onPay,
- payingOnline,
- combinedStatementCount = 0,
+  unpaidRent,
+  unpaidElec,
+  unpaidWater,
+  hasWaterBilling,
+  onPay,
+  payingOnline,
+  combinedStatementCount = 0,
+  payableRentBills = [],
+  payableUtilityBills = [],
 }) => {
- const unpaidUtilities = unpaidElec + unpaidWater;
- return (
- <div>
- {combinedStatementCount > 0 && (
- <div style={dash.notice}>
- <AlertCircle size={16} color="#B45309" />
- <span>
- {combinedStatementCount === 1
- ? "1 open statement combines multiple charge types."
- : `${combinedStatementCount} open statements combine multiple charge types.`}{" "}
- Checkout always pays the full remaining balance of the statement you open.
- </span>
- </div>
- )}
+  const unpaidUtilities = unpaidElec + unpaidWater;
+  const oldestRentBill = payableRentBills[0];
+  const oldestUtilityBill = payableUtilityBills[0];
 
- <div
- style={{
- display: "grid",
- gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
- gap: "20px",
- marginBottom: "24px",
- }}
- >
- {/* Rent Panel */}
- <div style={dash.wrapper}>
- <div style={dash.headerRow}>
- <div>
- <h2 style={{...dash.title, color: "#F57C00", display: "flex", gap: "6px", alignItems: "center"}}>
- <Home size={16} /> Rent & Fees Due
- </h2>
- <div style={dash.amount}>{fmt(unpaidRent)}</div>
- </div>
- </div>
- <div style={dash.helperText}>
- Opens the oldest unpaid statement that includes rent or fees. Monthly
- bills are paid through PayMongo checkout.
- </div>
- {unpaidRent > 0 && (
- <button
- onClick={() => onPay("rent")}
- disabled={payingOnline === "rent" || payingOnline === "all"}
- style={{
- ...dash.payBtn,
- width: "100%",
- opacity: payingOnline ? 0.6 : 1,
- cursor: payingOnline ? "not-allowed" : "pointer",
- }}
- >
- <CreditCard size={18} />
- {payingOnline === "rent" ? "Processing..." : "Continue to PayMongo"}
- </button>
- )}
- </div>
+  return (
+    <div>
+      {combinedStatementCount > 0 && (
+        <div style={dash.notice}>
+          <AlertCircle size={16} color="#B45309" />
+          <span>
+            {combinedStatementCount === 1
+              ? "1 open statement combines multiple charge types."
+              : `${combinedStatementCount} open statements combine multiple charge types.`}{" "}
+            Checkout always pays the full remaining balance of the statement you open.
+          </span>
+        </div>
+      )}
 
- {/* Utilities Panel */}
- <div style={dash.wrapper}>
- <div style={dash.headerRow}>
- <div>
- <h2 style={{...dash.title, color: "#3B82F6", display: "flex", gap: "6px", alignItems: "center"}}>
- <Activity size={16} /> Utilities Due
- </h2>
- <div style={dash.amount}>{fmt(unpaidUtilities)}</div>
- </div>
- </div>
- <div style={dash.helperText}>
- Opens the oldest unpaid statement that includes electricity or water
- charges. Offline settlements are recorded by branch staff after
- confirmation.
- </div>
- 
- {(unpaidUtilities > 0 || hasWaterBilling) && (
- <div style={{...dash.breakdownRow, marginBottom: "16px"}}>
- <div style={dash.breakdownItem}>
- <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#64748b" }}>
- <Zap size={14} color="#F59E0B" /> <span style={{ fontSize: 12, fontWeight: 500 }}>Electricity</span>
- </div>
- <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-heading)" }}>{fmt(unpaidElec)}</div>
- </div>
- {hasWaterBilling && (
- <>
- <div style={dash.divider} />
- <div style={dash.breakdownItem}>
- <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#64748b" }}>
- <Droplets size={14} color="#3B82F6" /> <span style={{ fontSize: 12, fontWeight: 500 }}>Water</span>
- </div>
- <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-heading)" }}>{fmt(unpaidWater)}</div>
- </div>
- </>
- )}
- </div>
- )}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+          gap: "20px",
+          marginBottom: "24px",
+        }}
+      >
+        {/* Rent Panel */}
+        <div style={dash.wrapper}>
+          <div style={dash.headerRow}>
+            <div>
+              <h2 style={{...dash.title, color: "#0A1628", display: "flex", gap: "6px", alignItems: "center"}}>
+                <Home size={16} color="#0A1628" /> Rent & Fees Due
+              </h2>
+              <div style={{ display: "flex", alignItems: "baseline", gap: "10px", flexWrap: "wrap", marginTop: "4px" }}>
+                <div style={dash.amount}>{fmt(unpaidRent)}</div>
+                {unpaidRent === 0 ? (
+                  <span style={dash.noDueDateText}>
+                    <CheckCircle size={13} color="#0A1628" /> No Due Date • All Caught Up
+                  </span>
+                ) : oldestRentBill?.dueDate ? (
+                  <DeadlineBadge dueDate={oldestRentBill.dueDate} status={oldestRentBill.status} type="bill" />
+                ) : null}
+              </div>
+            </div>
+          </div>
+          <div style={dash.helperText}>
+            {unpaidRent === 0
+              ? "You have no active due dates or unpaid rent statements. Monthly bills are paid through PayMongo checkout once issued."
+              : "Opens the oldest unpaid statement that includes rent or fees. Monthly bills are paid through PayMongo checkout."}
+          </div>
+          {unpaidRent > 0 && (
+            <button
+              onClick={() => onPay("rent")}
+              disabled={payingOnline === "rent" || payingOnline === "all"}
+              style={{
+                ...dash.payBtn,
+                width: "100%",
+                opacity: payingOnline ? 0.6 : 1,
+                cursor: payingOnline ? "not-allowed" : "pointer",
+              }}
+            >
+              <CreditCard size={18} />
+              {payingOnline === "rent" ? "Processing..." : "Continue to PayMongo"}
+            </button>
+          )}
+        </div>
 
- {unpaidUtilities > 0 && (
- <button
- onClick={() => onPay("utilities")}
- disabled={payingOnline === "utilities" || payingOnline === "all"}
- style={{
- ...dash.payBtn,
- background: "linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)",
- boxShadow: "0 4px 12px rgba(59, 130, 246, 0.3)",
- width: "100%",
- opacity: payingOnline ? 0.6 : 1,
- cursor: payingOnline ? "not-allowed" : "pointer",
- }}
- >
- <CreditCard size={18} />
- {payingOnline === "utilities" ? "Processing..." : "Pay Oldest Utility Statement"}
- </button>
- )}
- </div>
- </div>
- </div>
- );
+        {/* Utilities Panel */}
+        <div style={dash.wrapper}>
+          <div style={dash.headerRow}>
+            <div>
+              <h2 style={{...dash.title, color: "#0A1628", display: "flex", gap: "6px", alignItems: "center"}}>
+                <Activity size={16} color="#0A1628" /> Utilities Due
+              </h2>
+              <div style={{ display: "flex", alignItems: "baseline", gap: "10px", flexWrap: "wrap", marginTop: "4px" }}>
+                <div style={dash.amount}>{fmt(unpaidUtilities)}</div>
+                {unpaidUtilities === 0 ? (
+                  <span style={dash.noDueDateText}>
+                    <CheckCircle size={13} color="#0A1628" /> No Due Date • All Caught Up
+                  </span>
+                ) : oldestUtilityBill?.dueDate ? (
+                  <DeadlineBadge dueDate={oldestUtilityBill.dueDate} status={oldestUtilityBill.status} type="bill" />
+                ) : null}
+              </div>
+            </div>
+          </div>
+          <div style={dash.helperText}>
+            {unpaidUtilities === 0
+              ? "You have no active due dates or unpaid utility charges. Offline settlements are recorded by branch staff after confirmation."
+              : "Opens the oldest unpaid statement that includes electricity or water charges. Offline settlements are recorded by branch staff after confirmation."}
+          </div>
+          
+          {(unpaidUtilities > 0 || hasWaterBilling) && (
+            <div style={{...dash.breakdownRow, marginBottom: "16px"}}>
+              <div style={dash.breakdownItem}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#64748b" }}>
+                  <Zap size={14} color="#F59E0B" /> <span style={{ fontSize: 12, fontWeight: 500 }}>Electricity</span>
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-heading)" }}>{fmt(unpaidElec)}</div>
+              </div>
+              {hasWaterBilling && (
+                <>
+                  <div style={dash.divider} />
+                  <div style={dash.breakdownItem}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#64748b" }}>
+                      <Droplets size={14} color="#3B82F6" /> <span style={{ fontSize: 12, fontWeight: 500 }}>Water</span>
+                    </div>
+                    <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-heading)" }}>{fmt(unpaidWater)}</div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {unpaidUtilities > 0 && (
+            <button
+              onClick={() => onPay("utilities")}
+              disabled={payingOnline === "utilities" || payingOnline === "all"}
+              style={{
+                ...dash.payBtn,
+                background: "#2563EB",
+                boxShadow: "0 4px 12px rgba(37, 99, 235, 0.25)",
+                width: "100%",
+                opacity: payingOnline ? 0.6 : 1,
+                cursor: payingOnline ? "not-allowed" : "pointer",
+              }}
+            >
+              <CreditCard size={18} />
+              {payingOnline === "utilities" ? "Processing..." : "Pay Oldest Utility Statement"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 };
 
 /* ── Monthly Payment View ──────────────────────────── */
@@ -561,7 +585,7 @@ const MonthlyBillCard = ({ bill }) => {
  </div>
  ))}
  <div style={elecS.tableRow2}>
- <span style={{ ...elecS.tableCell2, color: "#059669" }}>Less: Reservation Fee Credit</span>
+ <span style={elecS.tableCell2}>Less: Reservation Fee Credit</span>
  <span style={{ ...elecS.tableCell2, color: "#059669", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>-{fmt(initial.reservationFeeCredit)}</span>
  </div>
  <div style={elecS.tableRow2}>
@@ -879,189 +903,195 @@ const ElectricityFinalBreakdownCard = ({ data, period, electricityAmount }) => {
 };
 
 const ElectricityPeriodRow = ({ period }) => {
- const [open, setOpen] = useState(false);
- const { data: fetchedData, isLoading } = useMyUtilityBreakdownByBillId(
- "electricity",
- open ? (period.id || period._id) : null,
- );
- const data = period.utilityBreakdowns?.electricity || fetchedData;
- const summary = getBillChargeSummary(period);
- const electricityAmount = period.billAmount ?? period.charges?.electricity ?? 0;
- const electricityKwh = period.totalKwh ?? period.totalUsage ?? data?.myTotalKwh ?? null;
+  const [open, setOpen] = useState(false);
+  const { data: fetchedData, isLoading } = useMyUtilityBreakdownByBillId(
+    "electricity",
+    open ? (period.id || period._id) : null,
+  );
+  const data = period.utilityBreakdowns?.electricity || fetchedData;
+  const summary = getBillChargeSummary(period);
+  const electricityAmount = period.billAmount ?? period.charges?.electricity ?? 0;
+  const electricityKwh = period.totalKwh ?? period.totalUsage ?? data?.myTotalKwh ?? null;
 
- return (
- <div style={{ ...s.billCard, borderColor: open ? "#fcd34d" : "var(--border-card)" }}>
- <button onClick={() => setOpen((v) => !v)} style={s.billHeader}>
- <Zap size={16} color="#F59E0B" />
- <div style={{ flex: 1, marginLeft: 10, textAlign: "left" }}>
- <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-heading)" }}>
- {fmtMonth(getUtilityDisplayEnd(period) || period.billingMonth || period.computedAt)}
- </div>
- <div style={{ fontSize: 12, color: "#94a3b8" }}>
- Cycle: {fmtUtilityCycle(period) || fmtCycle(period) || "—"}
- </div>
- </div>
- <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
- <span style={{ fontSize: 13, color: "#64748b" }}>
- {electricityKwh != null ? fmtKwh(electricityKwh) : "Usage pending"}
- </span>
- <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-heading)" }}>{fmt(electricityAmount)}</span>
- </div>
- {open ? <ChevronUp size={16} color="#94a3b8" style={{ marginLeft: 8 }} /> : <ChevronDown size={16} color="#94a3b8" style={{ marginLeft: 8 }} />}
- </button>
+  return (
+    <div style={{ ...s.billCard, borderColor: open ? "#fcd34d" : "var(--border-card)" }}>
+      <button onClick={() => setOpen((v) => !v)} style={s.billHeader}>
+        <Zap size={16} color="#F59E0B" />
+        <div style={{ flex: 1, marginLeft: 10, textAlign: "left" }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-heading)" }}>
+            {fmtMonth(getUtilityDisplayEnd(period) || period.billingMonth || period.computedAt)}
+          </div>
+          <div style={{ fontSize: 12, color: "#94a3b8" }}>
+            Cycle: {fmtUtilityCycle(period) || fmtCycle(period) || "—"}
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <StatusChip status={period.status || "pending"} variant="text" />
+          <span style={{ fontSize: 13, color: "#64748b" }}>
+            {electricityKwh != null ? fmtKwh(electricityKwh) : "Usage pending"}
+          </span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-heading)" }}>{fmt(electricityAmount)}</span>
+        </div>
+        {open ? <ChevronUp size={16} color="#94a3b8" style={{ marginLeft: 8 }} /> : <ChevronDown size={16} color="#94a3b8" style={{ marginLeft: 8 }} />}
+      </button>
 
- {open && (
- <div style={s.breakdown}>
- {isLoading ? (
- <div style={elecS.loadingRow}><Activity size={14} /> Loading breakdown...</div>
- ) : data ? (
- <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
- <div style={{ display: "flex", gap: 16, fontSize: 13, color: "#64748b", padding: "4px 0" }}>
- <span>Rate: <strong style={{ color: "var(--text-heading)" }}>₱{data.ratePerKwh}/kWh</strong></span>
- <span>Your Share: <strong style={{ color: "var(--text-heading)" }}>{fmtKwh(data.myTotalKwh)}</strong></span>
- <span>Total Due: <strong style={{ color: "#F59E0B" }}>{fmt(data.myBillAmount)}</strong></span>
- </div>
- {(data.segments || []).map((seg, i) => (
- <ElectricityReferenceSegmentCard key={i} seg={seg} ratePerKwh={data.ratePerKwh} />
- ))}
- <ElectricityFinalBreakdownCard
- data={data}
- period={period}
- electricityAmount={electricityAmount}
- />
- </div>
- ) : (
- <div style={elecS.loadingRow}>
- {electricityAmount > 0
- ? `Electricity charge recorded: ${fmt(electricityAmount)}. Detailed segment data is not available for this statement.`
- : "Details not available."}
- </div>
- )}
+      {open && (
+        <div style={s.breakdown}>
+          {isLoading ? (
+            <div style={elecS.loadingRow}><Activity size={14} /> Loading breakdown...</div>
+          ) : data ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ display: "flex", gap: 16, fontSize: 13, color: "#64748b", padding: "4px 0" }}>
+                <span>Rate: <strong style={{ color: "var(--text-heading)" }}>₱{data.ratePerKwh}/kWh</strong></span>
+                <span>Your Share: <strong style={{ color: "var(--text-heading)" }}>{fmtKwh(data.myTotalKwh)}</strong></span>
+                <span>Total Due: <strong style={{ color: "#F59E0B" }}>{fmt(data.myBillAmount)}</strong></span>
+              </div>
+              {(data.segments || []).map((seg, i) => (
+                <ElectricityReferenceSegmentCard key={i} seg={seg} ratePerKwh={data.ratePerKwh} />
+              ))}
+              <ElectricityFinalBreakdownCard
+                data={data}
+                period={period}
+                electricityAmount={electricityAmount}
+              />
+            </div>
+          ) : (
+            <div style={elecS.loadingRow}>
+              {electricityAmount > 0
+                ? `Electricity charge recorded: ${fmt(electricityAmount)}. Detailed segment data is not available for this statement.`
+                : "Details not available."}
+            </div>
+          )}
 
- {summary.isCombinedStatement && (
- <StatementScopeNotice
- remainingAmount={summary.remaining}
- label="additional charge types"
- />
- )}
- </div>
- )}
- </div>
- );
+          {summary.isCombinedStatement && (
+            <StatementScopeNotice
+              remainingAmount={summary.remaining}
+              label="additional charge types"
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
 };
 
 const ElectricityTabContent = ({
- bills = [],
- isLoading = false,
- filter = "all",
- setFilter,
+  bills = [],
+  isLoading = false,
+  filter = "all",
+  setFilter,
 }) => {
- if (isLoading) return <UtilityListSkeleton />;
- const { filtered } = getBillFilterGroups(bills, filter);
+  if (isLoading) return <UtilityListSkeleton />;
+  const { filtered } = getBillFilterGroups(bills, filter);
 
- return (
- <>
- <BillStatusFilters bills={bills} filter={filter} setFilter={setFilter} />
+  return (
+    <>
+      <BillStatusFilters bills={bills} filter={filter} setFilter={setFilter} />
 
- {filtered.length === 0 ? (
- <div style={s.emptyState}>
- <CreditCard size={40} color="#D1D5DB" />
- <h3 style={{ fontSize: 15, fontWeight: 600, color: "#374151", margin: "16px 0 8px" }}>
- {getEmptyFilterTitle(filter, "electricity bills")}
- </h3>
- </div>
- ) : (
- <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
- {filtered.map((bill) => (
- <ElectricityPeriodRow key={bill.id || bill._id} period={bill} />
- ))}
- </div>
- )}
- </>
- );
+      {filtered.length === 0 ? (
+        <div style={s.emptyState}>
+          <CreditCard size={40} color="#D1D5DB" />
+          <h3 style={{ fontSize: 15, fontWeight: 600, color: "#374151", margin: "16px 0 8px" }}>
+            {getEmptyFilterTitle(filter, "electricity bills")}
+          </h3>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {filtered.map((bill) => (
+            <ElectricityPeriodRow key={bill.id || bill._id} period={bill} />
+          ))}
+        </div>
+      )}
+    </>
+  );
 };
 
 /* ── Water Tab (Detailed Breakdown) ────────────────── */
 
 const WaterPeriodRow = ({ period }) => {
- const [open, setOpen] = useState(false);
- const { data: fetchedData, isLoading } = useMyUtilityBreakdownByBillId("water", open ? period.id || period._id : null);
- const data = period.utilityBreakdowns?.water || fetchedData;
- const record = data?.record;
- const summary = getBillChargeSummary(period);
+  const [open, setOpen] = useState(false);
+  const { data: fetchedData, isLoading } = useMyUtilityBreakdownByBillId("water", open ? period.id || period._id : null);
+  const data = period.utilityBreakdowns?.water || fetchedData;
+  const record = data?.record;
+  const summary = getBillChargeSummary(period);
+  const waterAmount = period.billAmount ?? period.charges?.water ?? period.myShare ?? record?.myShare ?? 0;
 
- return (
- <div style={{ ...s.billCard, borderColor: open ? "#93c5fd" : "var(--border-card)" }}>
- <button onClick={() => setOpen((v) => !v)} style={s.billHeader}>
- <Droplets size={16} color="#3B82F6" />
- <div style={{ flex: 1, marginLeft: 10, textAlign: "left" }}>
- <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-heading)" }}>
- {fmtMonth(period.billingMonth || period.endDate || period.createdAt)}
- </div>
- <div style={{ fontSize: 12, color: "#94a3b8" }}>
- Cycle: {fmtCycle(period) || "—"}
- </div>
- </div>
- <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
- <span style={{ fontSize: 13, color: "#64748b" }}>{period.myShare ? "Billed" : "Pending"}</span>
- <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-heading)" }}>{fmt(period.myShare || period.billAmount || 0)}</span>
- </div>
- {open ? <ChevronUp size={16} color="#94a3b8" style={{ marginLeft: 8 }} /> : <ChevronDown size={16} color="#94a3b8" style={{ marginLeft: 8 }} />}
- </button>
+  return (
+    <div style={{ ...s.billCard, borderColor: open ? "#93c5fd" : "var(--border-card)" }}>
+      <button onClick={() => setOpen((v) => !v)} style={s.billHeader}>
+        <Droplets size={16} color="#3B82F6" />
+        <div style={{ flex: 1, marginLeft: 10, textAlign: "left" }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-heading)" }}>
+            {fmtMonth(getUtilityDisplayEnd(period) || period.billingMonth || period.endDate || period.createdAt)}
+          </div>
+          <div style={{ fontSize: 12, color: "#94a3b8" }}>
+            Cycle: {fmtUtilityCycle(period) || fmtCycle(period) || "—"}
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <StatusChip status={period.status || "pending"} variant="text" />
+          <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-heading)" }}>{fmt(waterAmount)}</span>
+        </div>
+        {open ? <ChevronUp size={16} color="#94a3b8" style={{ marginLeft: 8 }} /> : <ChevronDown size={16} color="#94a3b8" style={{ marginLeft: 8 }} />}
+      </button>
 
- {open && (
- <div style={s.breakdown}>
- {isLoading ? (
- <div style={elecS.loadingRow}><Activity size={14} /> Loading breakdown...</div>
- ) : record ? (
- <div style={elecS.segmentCard}>
- <div style={elecS.segmentHeader}>
- <span>Occupants sharing:</span>
- <span style={{ fontWeight: 700 }}>{record.tenantsSharing}</span>
- </div>
- <div style={{ padding: "0 16px" }}>
- <div style={elecS.tableHeader}>
- <span style={{ ...elecS.tableHeaderCell, gridColumn: "span 2" }}>metric</span>
- <span style={{ ...elecS.tableHeaderCell, textAlign: "right" }}>value</span>
- </div>
- <div style={elecS.tableRow2}>
- <span style={elecS.tableCell2}>Total Room Usage</span>
- <span style={{ ...elecS.tableCell2, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
- {Number(record.usage || 0).toLocaleString("en-PH", { maximumFractionDigits: 2 })} units
- </span>
- </div>
- <div style={elecS.tableRow2}>
- <span style={elecS.tableCell2}>Rate per Unit</span>
- <span style={{ ...elecS.tableCell2, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
- {fmt(record.ratePerUnit)}
- </span>
- </div>
- <div style={{ ...elecS.tableRow2, borderBottom: "none" }}>
- <span style={{ ...elecS.tableCell2, color: "#0A1628", fontWeight: 600 }}>Total Room Cost</span>
- <span style={{ ...elecS.tableCell2, textAlign: "right", color: "#0A1628", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
- {fmt(record.roomTotal)}
- </span>
- </div>
- <div style={{ ...elecS.segmentFooter, borderTop: "1px solid #f1f5f9", marginTop: 4 }}>
- <span>Your share (split among {record.tenantsSharing})</span>
- <span style={{ fontSize: 14, fontWeight: 700 }}>{fmt(record.myShare)}</span>
- </div>
- </div>
- </div>
- ) : (
- <div style={elecS.loadingRow}>Details not available.</div>
- )}
+      {open && (
+        <div style={s.breakdown}>
+          {isLoading ? (
+            <div style={elecS.loadingRow}><Activity size={14} /> Loading breakdown...</div>
+          ) : record ? (
+            <div style={elecS.segmentCard}>
+              <div style={elecS.segmentHeader}>
+                <span>Occupants sharing:</span>
+                <span style={{ fontWeight: 700 }}>{record.tenantsSharing}</span>
+              </div>
+              <div style={{ padding: "0 16px" }}>
+                <div style={elecS.tableHeader}>
+                  <span style={{ ...elecS.tableHeaderCell, gridColumn: "span 2" }}>metric</span>
+                  <span style={{ ...elecS.tableHeaderCell, textAlign: "right" }}>value</span>
+                </div>
+                <div style={elecS.tableRow2}>
+                  <span style={elecS.tableCell2}>Total Room Usage</span>
+                  <span style={{ ...elecS.tableCell2, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                    {Number(record.usage || 0).toLocaleString("en-PH", { maximumFractionDigits: 2 })} units
+                  </span>
+                </div>
+                <div style={elecS.tableRow2}>
+                  <span style={elecS.tableCell2}>Rate per Unit</span>
+                  <span style={{ ...elecS.tableCell2, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                    {fmt(record.ratePerUnit)}
+                  </span>
+                </div>
+                <div style={{ ...elecS.tableRow2, borderBottom: "none" }}>
+                  <span style={{ ...elecS.tableCell2, color: "#0A1628", fontWeight: 600 }}>Total Room Cost</span>
+                  <span style={{ ...elecS.tableCell2, textAlign: "right", color: "#0A1628", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+                    {fmt(record.roomTotal)}
+                  </span>
+                </div>
+                <div style={{ ...elecS.segmentFooter, borderTop: "1px solid #f1f5f9", marginTop: 4 }}>
+                  <span>Your share (split among {record.tenantsSharing})</span>
+                  <span style={{ fontSize: 14, fontWeight: 700 }}>{fmt(record.myShare)}</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={elecS.loadingRow}>
+              {waterAmount > 0
+                ? `Water charge recorded: ${fmt(waterAmount)}. Detailed breakdown data is not available for this statement.`
+                : "Details not available."}
+            </div>
+          )}
 
- {summary.isCombinedStatement && (
- <StatementScopeNotice
- remainingAmount={summary.remaining}
- label="additional charge types"
- />
- )}
- </div>
- )}
- </div>
- );
+          {summary.isCombinedStatement && (
+            <StatementScopeNotice
+              remainingAmount={summary.remaining}
+              label="additional charge types"
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
 };
 
 const WaterTabContent = ({
@@ -1254,6 +1284,8 @@ const BillingTab = () => {
  onPay={handlePay}
  payingOnline={payingOnline}
  combinedStatementCount={combinedStatementCount}
+ payableRentBills={payableRentBills}
+ payableUtilityBills={payableUtilityBills}
  />
 
  {/* 2. Embedded Sub-Tabs */}
@@ -1358,6 +1390,14 @@ const dash = {
  color: "#0A1628",
  lineHeight: 1,
  },
+ noDueDateText: {
+ display: "inline-flex",
+ alignItems: "center",
+ gap: "5px",
+ fontSize: "12px",
+ fontWeight: "600",
+ color: "#0A1628",
+ },
  helperText: {
  marginBottom: 16,
  fontSize: 12,
@@ -1367,15 +1407,16 @@ const dash = {
  payBtn: {
  display: "inline-flex",
  alignItems: "center",
+ justifyContent: "center",
  gap: 8,
- background: "linear-gradient(135deg, #FF8C42 0%, #F57C00 100%)",
+ background: "#F57C00",
  color: "#fff",
  border: "none",
  borderRadius: 8,
  padding: "12px 24px",
  fontSize: 14,
  fontWeight: 700,
- boxShadow: "0 4px 12px rgba(255, 140, 66, 0.3)",
+ boxShadow: "0 4px 12px rgba(245, 124, 0, 0.25)",
  transition: "transform 0.1s, box-shadow 0.1s",
  },
  breakdownRow: {

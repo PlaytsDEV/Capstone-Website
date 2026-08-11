@@ -26,8 +26,42 @@ function InquiryModal({ isOpen, onClose, defaultBranch = "general" }) {
     if (error) setError("");
   };
 
+  const handlePhoneInputChange = (e) => {
+    let raw = e.target.value.replace(/\D/g, "");
+    if (raw.startsWith("09")) {
+      raw = raw.slice(1);
+    } else if (raw.startsWith("639")) {
+      raw = raw.slice(2);
+    } else if (raw.startsWith("0")) {
+      raw = raw.slice(1);
+    }
+    raw = raw.slice(0, 10);
+
+    let formatted = raw;
+    if (raw.length > 3 && raw.length <= 6) {
+      formatted = `${raw.slice(0, 3)} ${raw.slice(3)}`;
+    } else if (raw.length > 6) {
+      formatted = `${raw.slice(0, 3)} ${raw.slice(3, 6)} ${raw.slice(6)}`;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      phone: raw ? `+63 ${formatted}` : "",
+    }));
+
+    if (raw.length > 0 && !raw.startsWith("9")) {
+      setError("Phone number must start with 9 after +63 (e.g. +63 917 123 4567)");
+    } else if (error) {
+      setError("");
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (formData.phone && (!formData.phone.includes("+63 9") && !formData.phone.includes("+639"))) {
+      setError("Phone number must start with 9 after +63 (e.g. +63 917 123 4567)");
+      return;
+    }
     setLoading(true);
     setError("");
 
@@ -210,9 +244,9 @@ function InquiryModal({ isOpen, onClose, defaultBranch = "general" }) {
                       type="tel"
                       id="phone"
                       name="phone"
-                      placeholder="+63 XXX XXX XXXX"
+                      placeholder="+63 917 123 4567"
                       value={formData.phone}
-                      onChange={handleInputChange}
+                      onChange={handlePhoneInputChange}
                       disabled={loading}
                       className="inquiry-input"
                     />

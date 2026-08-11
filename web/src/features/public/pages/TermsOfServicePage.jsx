@@ -88,10 +88,10 @@ export function TermsOfServicePage() {
               4. Cancellation Policy
             </h2>
             <p className="text-gray-600 leading-relaxed font-light">
-              Residents may cancel their contract with 30 days written notice.
+              Tenants may cancel their contract with 30 days written notice.
               The security deposit will be refunded upon move-out, provided the
               room is in good condition and all outstanding balances are
-              settled. A 7-day satisfaction guarantee applies to new residents.
+              settled. A 7-day satisfaction guarantee applies to new tenants.
             </p>
           </section>
 
@@ -103,7 +103,7 @@ export function TermsOfServicePage() {
               5. House Rules
             </h2>
             <p className="text-gray-600 leading-relaxed font-light">
-              All residents must comply with Lilycrest's house rules and
+              All tenants must comply with Lilycrest's house rules and
               policies. Violation of house rules may result in warnings, fines,
               or termination of the lease agreement. Complete house rules are
               provided upon move-in.
@@ -119,7 +119,7 @@ export function TermsOfServicePage() {
             </h2>
             <p className="text-gray-600 leading-relaxed font-light">
               Lilycrest is not liable for loss, theft, or damage to personal
-              belongings of residents. Residents are encouraged to secure their
+              belongings of tenants. Tenants are encouraged to secure their
               valuables and obtain personal insurance as needed. We maintain
               insurance for common areas and building structures.
             </p>

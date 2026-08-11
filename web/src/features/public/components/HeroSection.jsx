@@ -43,7 +43,7 @@ function useCounter(target, duration = 2, isInView) {
 }
 
 const stats = [
-  { icon: Users, value: 100, suffix: "+", label: "Happy Residents" },
+  { icon: Users, value: 100, suffix: "+", label: "Happy Tenants" },
   { icon: MapPin, value: 2, suffix: "", label: "Branches" },
   { icon: ThumbsUp, value: 98, suffix: "%", label: "Satisfaction Rate" },
 ];

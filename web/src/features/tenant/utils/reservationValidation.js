@@ -18,41 +18,40 @@ export const validateNameField = (name) => {
 };
 
 export const validatePhoneNumber = (phone) => {
- if (!phone) return { valid: false, error: "Phone number is required" };
- // Must start with +63
- if (!phone.startsWith("+63"))
- return { valid: false, error: "Phone number must start with +63" };
- // Remove +63 and check if rest are digits only
- const remainder = phone.substring(3);
- if (!/^\d+$/.test(remainder))
- return {
- valid: false,
- error: "Phone number can only contain digits after +63",
- };
- if (phone.length < 12)
- return {
- valid: false,
- error: "Phone number must be at least 12 characters",
- };
- if (phone.length > 15)
- return { valid: false, error: "Phone number is too long" };
- return { valid: true };
+  if (!phone) return { valid: false, error: "Phone number is required" };
+  // Must start with +63
+  if (!phone.startsWith("+63"))
+    return { valid: false, error: "Phone number must start with +63" };
+  // Remove +63 and check if rest starts with 9
+  const remainder = phone.substring(3).trim();
+  if (!remainder.startsWith("9"))
+    return { valid: false, error: "Phone number must start with 9 after +63" };
+  if (!/^\d+$/.test(remainder))
+    return {
+      valid: false,
+      error: "Phone number can only contain digits after +63",
+    };
+  if (remainder.length !== 10)
+    return {
+      valid: false,
+      error: "Phone number must be 10 digits after +63 (e.g. +63 917 123 4567)",
+    };
+  return { valid: true };
 };
 
 /**
  * Validate Philippine mobile number format.
  * Used for all phone fields in the reservation flow.
- * Accepts the local format saved by the backend and the E.164 format emitted
- * by PhoneInput.
+ * Accepts local format (e.g. 9171234567) or E.164 (+639171234567).
  */
 export const validatePHPhoneLocal = (phone) => {
   if (!phone || !phone.trim())
-    return { valid: false, error: "Enter a valid mobile number (e.g. 9123456789)" };
+    return { valid: false, error: "Enter a valid mobile number starting with 9 (e.g. 9171234567)" };
   const digits = phone.replace(/\D/g, "");
-  const valid = /^09\d{9}$/.test(digits) || /^639\d{9}$/.test(digits);
+  const valid = /^9\d{9}$/.test(digits) || /^09\d{9}$/.test(digits) || /^639\d{9}$/.test(digits);
   return valid
     ? { valid: true }
-    : { valid: false, error: "Enter a valid mobile number (e.g. 9123456789)" };
+    : { valid: false, error: "Phone number must start with 9 after +63 (e.g. +63 917 123 4567)" };
 };
 
 export const validateBirthday = (birthday) => {

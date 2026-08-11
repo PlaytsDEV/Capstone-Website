@@ -20,7 +20,7 @@ export function StorytellingSection() {
                 Today, we've created the living spaces we wished existed. Every detail — from the high-speed internet to the 24/7 security — is designed with your comfort and peace of mind in focus.
               </p>
               <p className="leading-relaxed" style={{ color: 'var(--lp-text-secondary)' }}>
-                Our mission is simple: provide residents with a safe, comfortable, and inspiring home where they can focus on what truly matters — their personal and professional growth.
+                Our mission is simple: provide tenants with a safe, comfortable, and inspiring home where they can focus on what truly matters — their personal and professional growth.
               </p>
             </div>
 
@@ -47,9 +47,9 @@ export function StorytellingSection() {
           {/* Right - Values */}
           <div className="space-y-5">
             {[
-              { icon: Heart, title: 'Resident-First Approach', desc: 'Every decision we make prioritizes the comfort, safety, and well-being of our residents. Your peace of mind is our top priority.' },
-              { icon: Users, title: 'Community Matters', desc: 'We foster a supportive environment where residents can build lasting friendships and meaningful connections.' },
-              { icon: Award, title: 'Quality & Transparency', desc: 'No hidden fees, no surprises. We maintain high standards and communicate openly with all our residents.' },
+              { icon: Heart, title: 'Tenant-First Approach', desc: 'Every decision we make prioritizes the comfort, safety, and well-being of our tenants. Your peace of mind is our top priority.' },
+              { icon: Users, title: 'Community Matters', desc: 'We foster a supportive environment where tenants can build lasting friendships and meaningful connections.' },
+              { icon: Award, title: 'Quality & Transparency', desc: 'No hidden fees, no surprises. We maintain high standards and communicate openly with all our tenants.' },
             ].map((item, i) => {
               const Icon = item.icon;
               return (

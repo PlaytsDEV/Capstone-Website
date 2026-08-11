@@ -336,22 +336,29 @@ export const sendInquiryResponseEmail = async ({
 }) => {
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
     console.log("⚠️ Email not sent - EMAIL_USER and EMAIL_PASSWORD not configured");
-    return { success: false, message: "Email service not configured" };
+    return { success: false, message: "Email service not configured. Please configure EMAIL_USER and EMAIL_PASSWORD in server .env." };
   }
+
+  // Clean recipient email address (replace typos like commas with periods, trim whitespace)
+  const cleanTo = String(to || "").trim().replace(/,/g, ".");
+  if (!cleanTo || !cleanTo.includes("@")) {
+    return { success: false, error: `Invalid recipient email address: "${to}"` };
+  }
+
   const mailOptions = {
     from: { name: "Lilycrest Dormitory", address: process.env.EMAIL_USER },
-    to,
+    to: cleanTo,
     subject: `Re: Your Inquiry - Lilycrest Dormitory ${branchName}`,
     html: generateInquiryResponseEmail(customerName, inquirySubject, response, branchName),
     text: `Hello ${customerName}!\n\nThank you for reaching out to us. We have reviewed your inquiry and here is our response:\n\nYour Inquiry:\n${inquirySubject}\n\nOur Response:\n${response}\n\nIf you have any further questions, feel free to submit another inquiry through our website.\n\nBest regards,\nLilycrest Dormitory Team`,
   };
   try {
     const info = await transporter.sendMail(mailOptions);
-    console.log("✅ Email accepted", { emailFingerprint: emailFingerprint(to), success: true });
+    console.log("✅ Inquiry response email accepted", { emailFingerprint: emailFingerprint(cleanTo), success: true });
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error("❌ Email send failed", { emailFingerprint: emailFingerprint(to), ...safeEmailFailure(error) });
-    return { success: false, error: error.message };
+    console.error("❌ Inquiry response email send failed", { emailFingerprint: emailFingerprint(cleanTo), ...safeEmailFailure(error) });
+    return { success: false, error: error.message || "Failed to deliver email to customer address" };
   }
 };
 

@@ -57,8 +57,8 @@ export default function BedOccupantDetailModal({
       ? `${occupant.firstName || ""} ${occupant.lastName || ""}`.trim()
       : null);
 
-  const email = occupant.email || occupant.userEmail || bed?.userEmail || extraDetails?.resident?.email || null;
-  const phone = occupant.phone || occupant.userPhone || bed?.userPhone || extraDetails?.resident?.phone || null;
+  const email = occupant.email || occupant.userEmail || bed?.userEmail || extraDetails?.tenant?.email || extraDetails?.resident?.email || null;
+  const phone = occupant.phone || occupant.userPhone || bed?.userPhone || extraDetails?.tenant?.phone || extraDetails?.resident?.phone || null;
   const reservationId = occupant.reservationId || bed?.reservationId || extraDetails?.reservationId || extraDetails?._id || null;
   const occupiedSince = occupant.occupiedSince || bed?.occupiedSince || extraDetails?.moveInDate || extraDetails?.startDate || null;
   const expectedVacancy = bed?.expectedVacancyDate || occupant.expectedVacancyDate || extraDetails?.endDate || extraDetails?.expectedVacancyDate || null;

@@ -632,7 +632,7 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
 
  {paymentDate ? (
  <>
- <p style={{ color: "#475569", fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
+ <p style={{ color: "#64748B", fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
  Your {paymentDescriptor} payment of <strong>{`PHP ${reservationFeeAmount.toLocaleString("en-PH")}`}</strong> was confirmed on{" "}
  <strong>{paymentDate}</strong>.
  </p>
@@ -646,9 +646,9 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  justifyContent: "center",
  gap: 6,
  padding: "10px 16px",
- background: "#E8734A",
+ background: "#059669",
  color: "#fff",
- border: "none",
+ border: "1px solid #047857",
  borderRadius: 8,
  fontSize: 13,
  fontWeight: 600,
@@ -656,11 +656,11 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  transition: "all 0.15s",
  }}
  onMouseEnter={(e) => {
- e.currentTarget.style.background = "#D4622F";
+ e.currentTarget.style.background = "#047857";
  e.currentTarget.style.transform = "translateY(-1px)";
  }}
  onMouseLeave={(e) => {
- e.currentTarget.style.background = "#E8734A";
+ e.currentTarget.style.background = "#059669";
  e.currentTarget.style.transform = "translateY(0)";
  }}
  >
@@ -675,9 +675,9 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  justifyContent: "center",
  gap: 6,
  padding: "10px 16px",
- background: "transparent",
- color: "#0A1628",
- border: "1.5px solid #0A1628",
+ background: "#FFFFFF",
+ color: "#1E293B",
+ border: "1px solid #CBD5E1",
  borderRadius: 8,
  fontSize: 13,
  fontWeight: 600,
@@ -685,12 +685,14 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  transition: "all 0.15s",
  }}
  onMouseEnter={(e) => {
- e.currentTarget.style.background = "#0A1628";
- e.currentTarget.style.color = "#fff";
+ e.currentTarget.style.background = "#F8FAFC";
+ e.currentTarget.style.borderColor = "#94A3B8";
+ e.currentTarget.style.color = "#0F172A";
  }}
  onMouseLeave={(e) => {
- e.currentTarget.style.background = "transparent";
- e.currentTarget.style.color = "#0A1628";
+ e.currentTarget.style.background = "#FFFFFF";
+ e.currentTarget.style.borderColor = "#CBD5E1";
+ e.currentTarget.style.color = "#1E293B";
  }}
  >
  <Eye size={14} /> View Receipt

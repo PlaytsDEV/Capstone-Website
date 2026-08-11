@@ -43,7 +43,8 @@ const validators = {
   phone: (v) => {
     // v is stored as raw digits only (no +63 prefix in state)
     if (!v || v.length === 0) return 'Phone number is required';
-    if (v.length < PHONE_DIGITS) return `Enter ${PHONE_DIGITS} digits after +63`;
+    if (!v.startsWith('9')) return 'Phone number must start with 9 after +63 (e.g. 917 123 4567)';
+    if (v.length < PHONE_DIGITS) return `Enter 10 digits starting with 9`;
     if (!/^\d{10}$/.test(v)) return 'Only digits allowed';
     return null;
   },
@@ -217,12 +218,25 @@ export function InquiryForm() {
   };
 
   const handlePhoneChange = (e) => {
-    // Extract only digits, cap at 10
-    const raw = e.target.value.replace(/\D/g, '').slice(0, PHONE_DIGITS);
+    let raw = e.target.value.replace(/\D/g, '');
+    // Auto-strip leading 0 or 63 if typed (e.g. 0917... -> 917...)
+    if (raw.startsWith('09')) {
+      raw = raw.slice(1);
+    } else if (raw.startsWith('639')) {
+      raw = raw.slice(2);
+    } else if (raw.startsWith('0')) {
+      raw = raw.slice(1);
+    }
+    raw = raw.slice(0, PHONE_DIGITS);
     setFormData((prev) => ({ ...prev, phoneDigits: raw }));
     setApiError(null);
-    if (touched.phone && validators.phone) {
-      setErrors((prev) => ({ ...prev, phone: validators.phone(raw) }));
+
+    const phoneErr = validators.phone(raw);
+    if (raw.length > 0 && !raw.startsWith('9')) {
+      setTouched((prev) => ({ ...prev, phone: true }));
+      setErrors((prev) => ({ ...prev, phone: phoneErr }));
+    } else if (touched.phone) {
+      setErrors((prev) => ({ ...prev, phone: phoneErr }));
     }
   };
 

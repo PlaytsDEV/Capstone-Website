@@ -260,7 +260,7 @@ export default function TenantsWorkspacePage() {
     const summaryItems = useMemo(
         () => [
         {
-            label: "Total Residents",
+            label: "Total Tenants",
             value: baseFiltered.length,
             icon: Users,
             color: "blue",
@@ -677,7 +677,7 @@ export default function TenantsWorkspacePage() {
                   {summaryItems[0].value}
                 </div>
                 <div className="text-xs text-muted-foreground uppercase tracking-wide">
-                  Total Residents
+                  Total Tenants
                 </div>
               </div>
             </div>

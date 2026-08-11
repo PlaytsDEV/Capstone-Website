@@ -443,72 +443,72 @@ const ProfilePage = () => {
  if (loading) return <ProfilePageSkeleton />;
 
  return (
- <>
- {activeTab === "dashboard" && (
- <DashboardTab
- profileData={profileData}
- activeReservation={activeReservation}
- selectedReservation={dashboardReservation}
- visits={visits}
- nextAction={nextAction}
- onGoToPersonal={() => handleTabChange("personal")}
- onGoToReservation={() => handleTabChange("reservation")}
- />
- )}
+    <div className="profile-page">
+      {activeTab === "dashboard" && (
+        <DashboardTab
+          profileData={profileData}
+          activeReservation={activeReservation}
+          selectedReservation={dashboardReservation}
+          visits={visits}
+          nextAction={nextAction}
+          onGoToPersonal={() => handleTabChange("personal")}
+          onGoToReservation={() => handleTabChange("reservation")}
+        />
+      )}
 
- {activeTab === "personal" && (
- <PersonalDetailsTab
- profileData={profileData}
- editData={editData}
- setEditData={setEditData}
- fullName={fullName}
- isEditingProfile={isEditingProfile}
- setIsEditingProfile={setIsEditingProfile}
- saving={saving}
- onSave={handleSaveProfile}
- onCancel={handleCancelEdit}
- />
- )}
+      {activeTab === "personal" && (
+        <PersonalDetailsTab
+          profileData={profileData}
+          editData={editData}
+          setEditData={setEditData}
+          fullName={fullName}
+          isEditingProfile={isEditingProfile}
+          setIsEditingProfile={setIsEditingProfile}
+          saving={saving}
+          onSave={handleSaveProfile}
+          onCancel={handleCancelEdit}
+        />
+      )}
 
- {activeTab === "reservation" && (
- <ReservationAgreementPage
- reservation={confirmedReservation}
- onBack={() => handleTabChange("dashboard")}
- onReservationUpdated={refetchReservations}
- />
- )}
+      {activeTab === "reservation" && (
+        <ReservationAgreementPage
+          reservation={confirmedReservation}
+          onBack={() => handleTabChange("dashboard")}
+          onReservationUpdated={refetchReservations}
+        />
+      )}
 
- {activeTab === "history" && (
- <ActivityHistoryTab reservations={reservations} />
- )}
+      {activeTab === "history" && (
+        <ActivityHistoryTab reservations={reservations} />
+      )}
 
- {activeTab === "maintenance" && <TenantMaintenanceWorkspace embedded />}
- {activeTab === "announcements" && canViewAnnouncements && <AnnouncementsTab />}
- {activeTab === "notifications" && <NotificationsTab onTabChange={handleTabChange} />}
- {activeTab === "settings" && <SettingsTab />}
- {activeTab === "contract" && <ContractTab />}
+      {activeTab === "maintenance" && <TenantMaintenanceWorkspace embedded />}
+      {activeTab === "announcements" && canViewAnnouncements && <AnnouncementsTab />}
+      {activeTab === "notifications" && <NotificationsTab onTabChange={handleTabChange} />}
+      {activeTab === "settings" && <SettingsTab />}
+      {activeTab === "contract" && <ContractTab />}
 
- <ReceiptModal
- isOpen={receiptModal.open}
- step={receiptModal.step}
- reservation={activeReservation}
- onClose={() => setReceiptModal({ open: false, step: null })}
- />
+      <ReceiptModal
+        isOpen={receiptModal.open}
+        step={receiptModal.step}
+        reservation={activeReservation}
+        onClose={() => setReceiptModal({ open: false, step: null })}
+      />
 
- <ConfirmModal
- isOpen={showUnsavedWarning}
- onClose={() => {
- setShowUnsavedWarning(false);
- setPendingTab(null);
- }}
- onConfirm={confirmDiscardChanges}
- title="Unsaved Changes"
- message="You have unsaved changes. Are you sure you want to leave this tab? Your changes will be lost."
- variant="warning"
- confirmText="Discard Changes"
- cancelText="Keep Editing"
- />
- </>
+      <ConfirmModal
+        isOpen={showUnsavedWarning}
+        onClose={() => {
+          setShowUnsavedWarning(false);
+          setPendingTab(null);
+        }}
+        onConfirm={confirmDiscardChanges}
+        title="Unsaved Changes"
+        message="You have unsaved changes. Are you sure you want to leave this tab? Your changes will be lost."
+        variant="warning"
+        confirmText="Discard Changes"
+        cancelText="Keep Editing"
+      />
+    </div>
  );
 };
 

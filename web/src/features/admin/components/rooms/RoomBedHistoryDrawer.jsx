@@ -92,7 +92,7 @@ export default function RoomBedHistoryDrawer({ roomId, onClose }) {
                     <span className="text-[11px] text-muted-foreground">Recorded bed assignments</span>
                   </div>
                   <div className="p-3.5 rounded-xl border border-border bg-muted/30">
-                    <span className="text-xs font-medium text-muted-foreground block">Active Residents</span>
+                    <span className="text-xs font-medium text-muted-foreground block">Active Tenants</span>
                     <span className="text-2xl font-bold text-foreground mt-1 block">
                       {summary.activeStaysCount || 0} / {room.capacity || 0}
                     </span>
@@ -242,7 +242,7 @@ export default function RoomBedHistoryDrawer({ roomId, onClose }) {
                                                 : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
                                             }`}
                                           >
-                                            {record.status === "active" ? "Active Resident" : "Completed Stay"}
+                                            {record.status === "active" ? "Active Tenant" : "Completed Stay"}
                                           </span>
                                         </div>
 

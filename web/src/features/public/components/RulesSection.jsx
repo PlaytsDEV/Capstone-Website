@@ -20,7 +20,7 @@ const rules = [
   {
     icon: HeartHandshake,
     title: 'Respect and Proper Conduct',
-    description: 'Residents must show respect to others and avoid any disruptive or inappropriate behavior.',
+    description: 'Tenants must show respect to others and avoid any disruptive or inappropriate behavior.',
   },
   {
     icon: ShieldCheck,
@@ -47,7 +47,7 @@ export function RulesSection() {
         {/* Header */}
         <div className="text-center mb-12">
           <p className="text-xs mb-3 tracking-widest uppercase font-medium" style={{ color: 'var(--lp-accent)' }}>
-            Resident Rules
+            Tenant Rules
           </p>
           <h2 className="text-3xl lg:text-4xl font-medium mb-5 tracking-tight" style={{ color: 'var(--lp-text)' }}>
             Rules & Policies
@@ -129,7 +129,7 @@ export function RulesSection() {
           <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: 'var(--lp-accent)' }} />
           <p className="text-sm leading-relaxed" style={{ color: 'var(--lp-text-secondary)' }}>
             <span className="font-semibold" style={{ color: 'var(--lp-text)' }}>Important: </span>
-            Violation of house rules may result in warnings, fines, or termination of contract. We maintain these policies to ensure a safe and comfortable environment for all residents.
+            Violation of house rules may result in warnings, fines, or termination of contract. We maintain these policies to ensure a safe and comfortable environment for all tenants.
           </p>
         </div>
       </div>

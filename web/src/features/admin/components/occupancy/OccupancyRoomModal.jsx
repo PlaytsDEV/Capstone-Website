@@ -172,7 +172,7 @@ export default function OccupancyRoomModal({ room, loadingDetails, onClose }) {
  </button>
  </div>
  <p className="text-sm text-foreground">
- Resident: {formatOccupantName(bed)}
+ Tenant: {formatOccupantName(bed)}
  </p>
  {formatOccupantEmail(bed) && (
  <p className="text-sm text-muted-foreground">Email: {formatOccupantEmail(bed)}</p>

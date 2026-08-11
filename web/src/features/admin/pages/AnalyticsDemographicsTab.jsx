@@ -287,7 +287,7 @@ export default function AnalyticsDemographicsTab({
      />
     </ReportChartPanel>
 
-    <ReportChartPanel title="Gender distribution" subtitle="Resident gender ratio (Male vs Female vs Unspecified)">
+    <ReportChartPanel title="Gender distribution" subtitle="Tenant gender ratio (Male vs Female vs Unspecified)">
      <AnalyticsDonutChart
       data={genderDistribution}
       centerLabel={{ value: genderDistribution.reduce((sum, item) => sum + item.value, 0), label: "Tenants" }}

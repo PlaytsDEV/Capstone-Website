@@ -599,11 +599,11 @@ export default function RentBillingTab({ isActive }) {
           <table className="w-full text-left text-sm">
             <thead className="bg-background">
               <tr>
-                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">Tenant / Room</th>
-                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">System Status</th>
-                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">Cycle & Due Date</th>
-                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">Amount Tracker</th>
-                <th className="px-6 py-4 text-right text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground">Override Actions</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-[0.12em] text-foreground/80 dark:text-slate-300">Tenant / Room</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-[0.12em] text-foreground/80 dark:text-slate-300">System Status</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-[0.12em] text-foreground/80 dark:text-slate-300">Cycle & Due Date</th>
+                <th className="px-6 py-4 text-xs font-bold uppercase tracking-[0.12em] text-foreground/80 dark:text-slate-300">Amount Tracker</th>
+                <th className="px-6 py-4 text-right text-xs font-bold uppercase tracking-[0.12em] text-foreground/80 dark:text-slate-300">Override Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50 bg-card">

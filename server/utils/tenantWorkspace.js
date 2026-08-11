@@ -143,7 +143,7 @@ export function buildWarningFlags({
     flags.push({
       code: "lease_expired",
       severity: WARNING_SEVERITY.error,
-      message: "The lease contract for this resident has expired.",
+      message: "The lease contract for this tenant has expired.",
       details: "This tenant's rental agreement end date has already passed.",
       impact: "The tenant is still checked in, but their contract status is marked as expired.",
       recommendation: "Renew the lease agreement or prepare to process the tenant's move-out.",
@@ -210,7 +210,7 @@ export function buildWarningFlags({
       code: "billing_impact_warning",
       severity: WARNING_SEVERITY.info,
       message: "Move-out date affects bill calculation for this stay.",
-      details: "A move-out date has been scheduled for this resident.",
+      details: "A move-out date has been scheduled for this tenant.",
       impact: "Monthly rent and utility bills will be adjusted to cover only the exact days stayed.",
       recommendation: "Make sure final meter readings and room inspection notes are recorded.",
     });
@@ -460,6 +460,7 @@ export function buildTenantWorkspaceEntry({
 
 export function buildTenantWorkspaceStats(entries = []) {
   return {
+    totalTenants: entries.length,
     totalResidents: entries.length,
     activeTenants: entries.filter((entry) => entry.stayStatus === "active").length,
     expiringSoon: entries.filter((entry) => entry.leaseStatus === "expiring_soon").length,

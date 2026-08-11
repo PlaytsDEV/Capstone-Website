@@ -1767,7 +1767,7 @@ export const getUtilityAiReview = async (req, res, next) => {
     }
 
     const room = await Room.findById(period.roomId)
-      .select("_id name roomNumber branch type capacity")
+      .select("_id name roomNumber branch type capacity floor")
       .lean();
     if (!room) return res.status(404).json({ error: "Room not found" });
     if (!admin.isOwner && room.branch !== admin.branch) {

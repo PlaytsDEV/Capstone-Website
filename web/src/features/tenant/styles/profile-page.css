@@ -4,7 +4,9 @@
 
 .profile-page {
   width: 100%;
-  padding: 2rem;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
 }
 
 /* Shared class for all profile tab content wrappers */

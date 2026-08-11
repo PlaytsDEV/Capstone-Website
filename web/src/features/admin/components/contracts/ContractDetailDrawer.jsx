@@ -139,12 +139,12 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
 
   const archiveCurrentContract = () => showWorkflow({
     title: "Archive Contract",
-    message: "Archive is the recommended action. The Contract remains available to authorized administrators for audit and is removed from resident and active Contract views.",
+    message: "Archive is the recommended action. The Contract remains available to authorized administrators for audit and is removed from tenant and active Contract views.",
     fields: [
       { key: "reason", label: "Archive reason", type: "textarea", required: true },
       { key: "duplicateOfContractId", label: "Replacement canonical Contract ID (required when archiving a canonical Contract)" },
     ],
-    checks: [{ key: "confirmed", label: "I confirmed this Contract is unnecessary and archiving will not remove the resident's only valid Contract." }],
+    checks: [{ key: "confirmed", label: "I confirmed this Contract is unnecessary and archiving will not remove the tenant's only valid Contract." }],
     submitLabel: "Archive Contract",
     onSubmit: (values) => runAction(
       "archive",
@@ -155,7 +155,7 @@ export default function ContractDetailDrawer({ contractId, open, onClose, onChan
 
   const restoreCurrentContract = () => showWorkflow({
     title: "Restore Archived Contract",
-    message: "Restoration does not automatically make this Contract canonical or resident-visible.",
+    message: "Restoration does not automatically make this Contract canonical or tenant-visible.",
     fields: [{ key: "reason", label: "Restore reason", type: "textarea", required: true }],
     checks: [{ key: "confirmed", label: "I confirmed there is no conflicting canonical Contract." }],
     submitLabel: "Restore Contract",

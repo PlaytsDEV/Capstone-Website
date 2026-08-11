@@ -820,7 +820,7 @@ const navigate = useNavigate();
                       ) : (
                         <div className="py-4 text-center space-y-2">
                           <p className="text-xs text-muted-foreground">
-                            {contractLookupDone ? "No dedicated Contract record exists for this resident." : "Checking for a dedicated Contract record…"}
+                            {contractLookupDone ? "No dedicated Contract record exists for this tenant." : "Checking for a dedicated Contract record…"}
                           </p>
                           {contractLookupDone && (
                             <button

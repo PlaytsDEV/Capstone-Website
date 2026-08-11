@@ -104,6 +104,7 @@ describe("tenantWorkspace utilities", () => {
     ]);
 
     expect(stats).toEqual({
+      totalTenants: 2,
       totalResidents: 2,
       activeTenants: 2,
       expiringSoon: 1,

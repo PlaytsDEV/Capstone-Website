@@ -139,7 +139,7 @@ export function PoliciesTermsModal({ isOpen, onClose }) {
  <PolicyList
  items={[
  "Keep common areas clean and organized at all times.",
- "Respect the privacy and personal space of other residents.",
+ "Respect the privacy and personal space of other tenants.",
  "No loud music or disruptive activities after quiet hours.",
  "Lock your room when leaving the premises.",
  "Report maintenance issues to the management immediately.",

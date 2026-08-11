@@ -65,7 +65,7 @@ export default function DepositRefundModal({
       isOpen={isOpen}
       onClose={onClose}
       title="Deposit Reconciliation & Settlement"
-      subtitle={`Tenant: ${reservation.tenantName || reservation.userId?.name || "Resident"}`}
+      subtitle={`Tenant: ${reservation.tenantName || reservation.userId?.name || "Tenant"}`}
       variant={isForfeited ? "warning" : "primary"}
       size="md"
       loading={loading}

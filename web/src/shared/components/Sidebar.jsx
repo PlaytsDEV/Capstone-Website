@@ -89,6 +89,13 @@ const buildNavSections = (isTenant) => [
         path: "/applicant/profile",
         tab: "reservation",
       },
+      {
+        id: "history",
+        label: "My History",
+        icon: History,
+        path: "/applicant/profile",
+        tab: "history",
+      },
       ...(isTenant
         ? [
             {
@@ -96,13 +103,6 @@ const buildNavSections = (isTenant) => [
               label: "My Contract",
               icon: FileText,
               path: "/applicant/contracts",
-            },
-            {
-              id: "history",
-              label: "My History",
-              icon: History,
-              path: "/applicant/profile",
-              tab: "history",
             },
           ]
         : []),

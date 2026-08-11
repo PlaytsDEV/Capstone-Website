@@ -3,10 +3,12 @@ import { inquiryApi } from "../../api/apiClient";
 import { queryKeys } from "../../lib/queryKeys";
 
 /** Fetch all inquiries with optional params */
-export function useInquiries(params) {
+export function useInquiries(params, options = {}) {
   return useQuery({
     queryKey: queryKeys.inquiries.all(params),
     queryFn: () => inquiryApi.getAll(params),
+    refetchInterval: 8000,
+    ...options,
   });
 }
 

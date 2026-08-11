@@ -19,7 +19,7 @@ const testimonials = [
   },
   {
     name: "Angela Cruz",
-    role: "Long-term Resident",
+    role: "Long-term Tenant",
     initials: "AC",
     quote:
       "The community here is amazing. I've made lifelong friends, and the 24/7 security gives my family peace of mind.",
@@ -27,7 +27,7 @@ const testimonials = [
   },
   {
     name: "Carlos Mendoza",
-    role: "New Resident",
+    role: "New Tenant",
     initials: "CM",
     quote:
       "Moving in was completely stress-free. Everything was furnished and ready to go. I was settled in on the same day.",

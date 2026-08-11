@@ -17,7 +17,7 @@ export default function ApplicantTopBar({ onOpenSidebar }) {
     location.search,
     location.state,
   );
-  const portalLabel = user?.role === "tenant" ? "Resident" : "Applicant";
+  const portalLabel = user?.role === "tenant" ? "Tenant" : "Applicant";
   const breadcrumbs = user?.role === "tenant" ? [portalLabel, pageMeta.title] : [pageMeta.title];
   const currentCrumb = pageMeta.title;
 
@@ -31,7 +31,7 @@ export default function ApplicantTopBar({ onOpenSidebar }) {
   }, [user]);
 
   const roleLabel = useMemo(() => {
-    if (user?.role === "tenant") return "Resident";
+    if (user?.role === "tenant") return "Tenant";
     return "Applicant";
   }, [user]);
 

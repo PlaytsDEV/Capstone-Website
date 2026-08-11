@@ -125,7 +125,7 @@ export default function AdminContractsPage() {
               loading={loading}
               onRowClick={openContract}
               pagination={{ page, pageSize: PAGE_SIZE, total: filtered.length, onPageChange: setPage }}
-              emptyState={{ icon: FileSignature, title: filters.archive === "archived" ? "No archived Contracts found" : "No Contracts found", description: filters.archive === "archived" ? "Archived and voided Contracts remain available here for authorized audit review." : "Create a draft from an eligible resident reservation to begin." }}
+              emptyState={{ icon: FileSignature, title: filters.archive === "archived" ? "No archived Contracts found" : "No Contracts found", description: filters.archive === "archived" ? "Archived and voided Contracts remain available here for authorized audit review." : "Create a draft from an eligible tenant reservation to begin." }}
             />
           </div>
         </PageShell.Content>

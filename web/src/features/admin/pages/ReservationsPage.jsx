@@ -852,7 +852,7 @@ function ReservationsPage() {
             Reservations
           </h1>
           <p className="text-sm text-muted-foreground">
-            Review applications, confirm documents, and move accepted residents
+            Review applications, confirm documents, and move accepted tenants
             toward assignment.
           </p>
         </div>

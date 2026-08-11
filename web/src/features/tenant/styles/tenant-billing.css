@@ -3,9 +3,10 @@
    ============================================================================ */
 
 .tenant-billing {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 1.5rem;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
   color: var(--text-primary);
 }
 
