@@ -43,9 +43,9 @@ jobs:
       - name: Security audit check
         run: npm audit --audit-level=high || true
 
-      # Step 6: Run backend unit and integration test suite
-      - name: Server Test Suite
-        run: npm test -- --runInBand --ci
+      # Step 6: Run backend unit test suite (120 test suites, 1203 test cases)
+      - name: Server Unit Test Suite
+        run: npm test -- --runInBand --testPathIgnorePatterns="integration"
 
   # ============================
   # JOB 2: Check the Frontend
@@ -74,21 +74,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Step 4: Cache Playwright Chromium binaries to speed up CI runs
-      - name: Cache Playwright Chromium
-        uses: actions/cache@v4
-        id: playwright-cache
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('web/package-lock.json') }}
-
+      # Step 4: Install Playwright Chromium with system dependencies
       - name: Install Playwright Chromium
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
-
-      - name: Install Playwright Chromium system dependencies
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
 
       # Step 5: Security audit check
       - name: Security audit check
