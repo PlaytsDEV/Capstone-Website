@@ -44,6 +44,7 @@ import {
 import { useAuth } from "../../../../shared/hooks/useAuth";
 import { ListSkeleton } from "../../../../shared/components/LoadingSkeletons";
 import { getVisibleNotificationsForUser } from "../../../../shared/utils/notificationVisibility";
+import { cleanNotificationMessage } from "../../../../shared/utils/notification";
 
 // ── Filter tabs per role ──
 const ALL_FILTER_TABS = [
@@ -657,7 +658,7 @@ const NotificationsTab = ({ onTabChange }) => {
 														lineHeight: 1.4,
 													}}
 												>
-													{notification.message}
+													{cleanNotificationMessage(notification.message)}
 												</p>
 												<span
 													style={{

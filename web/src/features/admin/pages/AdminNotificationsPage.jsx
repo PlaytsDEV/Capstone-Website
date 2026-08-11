@@ -20,6 +20,7 @@ import {
   useUnreadCount,
 } from "../../../shared/hooks/queries/useNotifications";
 import { ListSkeleton } from "../../../shared/components/LoadingSkeletons";
+import { cleanNotificationMessage } from "../../../shared/utils/notification";
 import "../styles/design-tokens.css";
 import "../styles/admin-notifications.css";
 
@@ -270,7 +271,7 @@ export default function AdminNotificationsPage() {
                       {fmtRelative(notification.createdAt)}
                     </time>
                   </div>
-                  <p className="admin-notif-item__message">{notification.message}</p>
+                  <p className="admin-notif-item__message">{cleanNotificationMessage(notification.message)}</p>
                   <span className={`admin-notif-item__type-tag admin-notif-item__type-tag--${meta.priority}`}>
                     {meta.label}
                   </span>

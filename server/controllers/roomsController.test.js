@@ -56,6 +56,7 @@ await jest.unstable_mockModule("../utils/businessSettings.js", () => ({
 await jest.unstable_mockModule("../utils/occupancyManager.js", () => ({
   deriveRoomOccupancyState,
   recalculateRoomOccupancy,
+  getDisplayStatusForReservation: (status) => (status === "moveIn" ? "occupied" : status === "reserved" ? "reserved" : "locked"),
 }));
 await jest.unstable_mockModule("../middleware/errorHandler.js", () => ({
   sendSuccess,

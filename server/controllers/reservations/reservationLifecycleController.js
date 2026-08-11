@@ -852,24 +852,119 @@ export const updateReservation = async (req, res, next) => {
       `Admin updated reservation status to ${updatedReservation.status}`,
     );
 
+    const recipientId =
+      updatedReservation.userId?._id || updatedReservation.userId;
+
     if (
-      req.body.visitApproved === true &&
-      !oldData.visitApproved &&
-      updatedReservation.userId?.email
+      hasReservationStatus(updatedReservation.status, "approved_for_payment") &&
+      !hasReservationStatus(oldData.status, "approved_for_payment")
     ) {
       try {
-        await sendVisitApprovedEmail({
-          to: updatedReservation.userId.email,
-          tenantName: `${updatedReservation.userId.firstName || ""} ${updatedReservation.userId.lastName || ""}`.trim(),
-          roomName: updatedReservation.roomId?.name || "your room",
-          visitDate: updatedReservation.visitDate,
-          visitTime: updatedReservation.visitTime,
-        });
+        const { notify } = await import("../../utils/notificationService.js");
+        const roomName = updatedReservation.roomId?.name || "your room";
+        await notify.general(
+          recipientId,
+          "Application Approved for Payment",
+          `Your application for ${roomName} has been approved. You can now proceed to pay the reservation fee to secure your room.`,
+          {
+            entityType: "reservation",
+            entityId: String(updatedReservation._id),
+            actionUrl: "/applicant/reservation",
+          },
+        );
+      } catch (notifyErr) {
+        logger.warn(
+          { err: notifyErr, requestId: req.id },
+          "Application approved notification failed (non-fatal)",
+        );
+      }
+    }
+
+    if (
+      hasReservationStatus(updatedReservation.status, "needs_revision") &&
+      !hasReservationStatus(oldData.status, "needs_revision")
+    ) {
+      try {
+        const { notify } = await import("../../utils/notificationService.js");
+        const reason =
+          updatedReservation.applicationReviewReason ||
+          updatedReservation.documentRejectionReason ||
+          "Please review your uploaded documents and resubmit.";
+        await notify.general(
+          recipientId,
+          "Application Needs Revision",
+          `Your application requires revision: ${reason}`,
+          {
+            entityType: "reservation",
+            entityId: String(updatedReservation._id),
+            actionUrl: "/applicant/reservation",
+          },
+        );
+      } catch (notifyErr) {
+        logger.warn(
+          { err: notifyErr, requestId: req.id },
+          "Application revision notification failed (non-fatal)",
+        );
+      }
+    }
+
+    if (
+      hasReservationStatus(updatedReservation.status, "rejected") &&
+      !hasReservationStatus(oldData.status, "rejected")
+    ) {
+      try {
+        const { notify } = await import("../../utils/notificationService.js");
+        const reason =
+          updatedReservation.applicationReviewReason ||
+          "Your application was not approved.";
+        await notify.general(
+          recipientId,
+          "Application Rejected",
+          `Your application has been rejected: ${reason}`,
+          {
+            entityType: "reservation",
+            entityId: String(updatedReservation._id),
+            actionUrl: "/applicant/reservation",
+          },
+        );
+      } catch (notifyErr) {
+        logger.warn(
+          { err: notifyErr, requestId: req.id },
+          "Application rejected notification failed (non-fatal)",
+        );
+      }
+    }
+
+    if (
+      req.body.visitApproved === true &&
+      !oldData.visitApproved
+    ) {
+      try {
+        const { notify } = await import("../../utils/notificationService.js");
+        const branchName = updatedReservation.roomId?.branch || "Lilycrest";
+        await notify.visitApproved(recipientId, branchName);
       } catch (e) {
         logger.warn(
           { err: e, requestId: req.id },
-          "Visit approved email failed",
+          "Visit approved notification failed (non-fatal)",
         );
+      }
+
+      if (updatedReservation.userId?.email) {
+        try {
+          await sendVisitApprovedEmail({
+            to: updatedReservation.userId.email,
+            tenantName: `${updatedReservation.userId.firstName || ""} ${updatedReservation.userId.lastName || ""}`.trim(),
+            roomName: updatedReservation.roomId?.name || "your room",
+            visitDate: updatedReservation.visitDate,
+            visitTime: updatedReservation.visitTime,
+          });
+        } catch (e) {
+          logger.warn(
+            { err: e, requestId: req.id },
+            "Visit approved email failed",
+          );
+        }
       }
     }
 
@@ -897,23 +992,39 @@ export const updateReservation = async (req, res, next) => {
 
     if (
       req.body.status === "reserved" &&
-      !hasReservationStatus(oldData.status, "reserved") &&
-      updatedReservation.userId?.email
+      !hasReservationStatus(oldData.status, "reserved")
     ) {
       try {
-        await sendReservationConfirmedEmail({
-          to: updatedReservation.userId.email,
-          tenantName: `${updatedReservation.userId.firstName || ""} ${updatedReservation.userId.lastName || ""}`.trim(),
-          reservationCode: updatedReservation.reservationCode,
-          roomName: updatedReservation.roomId?.name || "your room",
-          moveInDate: updatedReservation.moveInDate,
-          totalPrice: updatedReservation.totalPrice,
-        });
+        const { notify } = await import("../../utils/notificationService.js");
+        const roomName = updatedReservation.roomId?.name || "your room";
+        await notify.reservationConfirmed(
+          recipientId,
+          updatedReservation.reservationCode,
+          roomName,
+        );
       } catch (e) {
         logger.warn(
           { err: e, requestId: req.id },
-          "Reservation confirmed email failed",
+          "Reservation confirmed notification failed (non-fatal)",
         );
+      }
+
+      if (updatedReservation.userId?.email) {
+        try {
+          await sendReservationConfirmedEmail({
+            to: updatedReservation.userId.email,
+            tenantName: `${updatedReservation.userId.firstName || ""} ${updatedReservation.userId.lastName || ""}`.trim(),
+            reservationCode: updatedReservation.reservationCode,
+            roomName: updatedReservation.roomId?.name || "your room",
+            moveInDate: updatedReservation.moveInDate,
+            totalPrice: updatedReservation.totalPrice,
+          });
+        } catch (e) {
+          logger.warn(
+            { err: e, requestId: req.id },
+            "Reservation confirmed email failed",
+          );
+        }
       }
     }
 

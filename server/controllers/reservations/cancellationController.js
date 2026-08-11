@@ -134,7 +134,7 @@ export const cancelReservationByUser = async (req, res, next) => {
       logger.warn({ err: lifecycleErr, reservationId }, "Cancel: lifecycle sync failed (non-fatal)");
     }
 
-    const notifCode = updated.reservationCode || "N/A";
+    const notifCode = updated.reservationCode || null;
     notify
       .reservationCancelled(dbUser._id, notifCode, req.body.reason || "Cancelled by applicant")
       .catch((e) => logger.warn({ err: e }, "Cancel notification failed (non-fatal)"));

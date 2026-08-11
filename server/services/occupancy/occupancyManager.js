@@ -21,8 +21,20 @@ import { resolveReferencedUser } from "../../utils/userReference.js";
 
 const ACTIVE_OCCUPANCY_STATUSES = ACTIVE_OCCUPANCY_STATUS_QUERY;
 
-const getDisplayStatusForReservation = (status) =>
-  hasReservationStatus(status, "moveIn") ? "occupied" : "reserved";
+/**
+ * Maps a reservation status to the bed display status.
+ * - In-progress (pre-payment) reservations → "locked" (temporarily held)
+ * - Payment-confirmed reservations         → "reserved"
+ * - Checked-in tenants                     → "occupied"
+ */
+export const getDisplayStatusForReservation = (status) => {
+  if (hasReservationStatus(status, "moveIn")) return "occupied";
+  if (hasReservationStatus(status, "reserved")) return "reserved";
+  // All early-stage statuses (pending, visit_pending, pending_application_review,
+  // needs_revision, approved_for_payment, payment_pending, etc.) are treated as
+  // temporarily locked — NOT yet confirmed/reserved.
+  return "locked";
+};
 
 const buildOccupantSnapshot = (userRef, reservation, occupiedSince = null) => {
   if (!userRef) return null;
@@ -120,8 +132,23 @@ export const deriveRoomOccupancyState = (room, reservations = []) => {
       null;
 
     let status = bed.status || "available";
-    if (matchedReservation && status !== "maintenance" && status !== "locked") {
-      status = getDisplayStatusForReservation(matchedReservation.status);
+    if (status === "locked" && (!matchedReservation || (bed.lockExpiresAt && new Date(bed.lockExpiresAt) < new Date()))) {
+      status = "available";
+    }
+    if (matchedReservation) {
+      const normResStatus = normalizeReservationStatus(matchedReservation.status);
+      if (normResStatus === "cancelled" || normResStatus === "archived") {
+        if (status === "locked" || status === "reserved" || status === "occupied") {
+          status = "available";
+        }
+      } else if (status !== "maintenance") {
+        // Always re-derive the bed status from the live reservation status.
+        // This ensures a bed that was written as "locked" (in-progress) gets
+        // correctly promoted to "reserved" or "occupied" if the reservation
+        // has since advanced — and a bed that was "reserved" gets demoted
+        // back to "locked" if the reservation was rolled back.
+        status = getDisplayStatusForReservation(matchedReservation.status);
+      }
     }
 
     return {
@@ -369,22 +396,28 @@ export const updateOccupancyOnReservationChange = async (
       const previouslyHeldOccupancy =
         ACTIVE_OCCUPANCY_STATUSES.includes(previousStatus);
 
-      if (
-        (newStatus === "cancelled" || newStatus === "archived") &&
-        previouslyHeldOccupancy
-      ) {
-        await decreaseOccupancy();
+      if (newStatus === "cancelled" || newStatus === "archived") {
+        if (previouslyHeldOccupancy) {
+          await decreaseOccupancy();
+        }
 
         if (reservation.selectedBed?.id) {
           const vacated = room.vacateBed(reservation.selectedBed.id);
           if (vacated) roomChanged = true;
         }
 
-        // Phase 4: fallback sweep — clear ALL beds that reference this reservation.
-        // Covers cases where selectedBed was null/missing or pointed to a different bed.
+        // Fallback sweep — clear ALL beds that reference this reservation or are locked by this user
         const reservationIdStr = String(reservation._id);
+        const userIdStr = reservation.userId
+          ? String(reservation.userId._id || reservation.userId)
+          : null;
+
         for (const bed of room.beds) {
-          if (String(bed.occupiedBy?.reservationId) === reservationIdStr) {
+          const matchesReservation = String(bed.occupiedBy?.reservationId) === reservationIdStr;
+          const matchesUserLock =
+            bed.status === "locked" && userIdStr && String(bed.lockedBy) === userIdStr;
+
+          if (matchesReservation || matchesUserLock) {
             bed.status = "available";
             bed.lockedBy = null;
             bed.lockExpiresAt = null;
@@ -478,9 +511,9 @@ export const recalculateRoomOccupancy = async (roomId) => {
         (res) => res.selectedBed?.id === bed.id,
       );
       if (occupier) {
-        bed.status = hasReservationStatus(occupier.status, "moveIn")
-          ? "occupied"
-          : "reserved";
+        // Use the canonical display-status mapping so in-progress reservations
+        // show as "locked" (temporarily held) rather than "reserved".
+        bed.status = getDisplayStatusForReservation(occupier.status);
         bed.occupiedBy = {
           userId: occupier.userId,
           reservationId: occupier._id,
@@ -662,7 +695,7 @@ export const releaseOrphanedBeds = async (userIds = [], reservationIds = []) => 
         );
 
       if (
-        (bed.status === "locked" && isLockedByDeleted) ||
+        (bed.status === "locked" && (isLockedByDeleted || isOccupiedByDeletedReservation)) ||
         (bed.status === "reserved" && (isOccupiedByDeletedUser || isOccupiedByDeletedReservation)) ||
         (bed.status === "occupied" && (isOccupiedByDeletedUser || isOccupiedByDeletedReservation))
       ) {

@@ -14,6 +14,7 @@ export {
   getRoomOccupancyStatus,
   getBranchOccupancyStats,
   releaseOrphanedBeds,
+  getDisplayStatusForReservation,
 } from "../services/occupancy/occupancyManager.js";
 import occupancyManager from "../services/occupancy/occupancyManager.js";
 export default occupancyManager;

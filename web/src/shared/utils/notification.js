@@ -153,3 +153,18 @@ export const showConfirmation = (
     }
   });
 };
+
+/**
+ * Sanitizes notification message strings to remove legacy or accidental "N/A" placeholders.
+ * E.g., "Your reservation N/A has been cancelled." -> "Your reservation has been cancelled."
+ */
+export const cleanNotificationMessage = (message) => {
+  if (!message || typeof message !== "string") return message;
+  return message
+    .replace(/\bYour reservation N\/A\b/gi, "Your reservation")
+    .replace(/\b reservation N\/A\b/gi, " reservation")
+    .replace(/\b N\/A\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+};
+

@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from "react";
 import { uploadToFirebaseStorage, validateFile } from "../../../../../shared/utils/firebaseStorageUpload";
 import { useAuth } from "../../../../../shared/hooks/useAuth";
-import { CheckCircle, AlertTriangle, Upload, Loader2, Trash2 } from "lucide-react";
+import { CheckCircle, AlertTriangle, Upload, Trash2, User } from "lucide-react";
 
 function formatFileSize(bytes) {
   if (!bytes) return "";
@@ -16,6 +16,39 @@ function truncateName(name, max = 28) {
   return name.slice(0, max - ext.length - 3) + "..." + ext;
 }
 
+const CircularProgressRing = ({ progress, size = 36, strokeWidth = 3.5 }) => {
+  const center = size / 2;
+  const radius = center - strokeWidth;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (Math.min(100, Math.max(0, progress)) / 100) * circumference;
+
+  return (
+    <div className="rf-circular-progress-wrap" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="rf-circular-progress-svg">
+        <circle
+          cx={center}
+          cy={center}
+          r={radius}
+          fill="transparent"
+          className="rf-circular-bg"
+          strokeWidth={strokeWidth}
+        />
+        <circle
+          cx={center}
+          cy={center}
+          r={radius}
+          fill="transparent"
+          className="rf-circular-fill"
+          strokeWidth={strokeWidth}
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+        />
+      </svg>
+    </div>
+  );
+};
+
 const FileUploadField = ({
   label, value, onChange,
   accept = "image/*,.pdf", hint,
@@ -27,6 +60,7 @@ const FileUploadField = ({
   const inputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [progress, setProgress] = useState(0);
   const [displayProgress, setDisplayProgress] = useState(0);
   const [error, setError] = useState(null);
@@ -56,7 +90,6 @@ const FileUploadField = ({
   }, [progress, uploading]);
 
   // An existing HTTPS URL (saved from a previous session) counts as uploaded.
-  // uploadSuccess covers the just-uploaded case before the value prop updates.
   const isUploaded = uploadSuccess || (typeof value === "string" && value.startsWith("https://"));
   const isFile = value instanceof File;
   const showFieldError = Boolean(hasError);
@@ -117,7 +150,6 @@ const FileUploadField = ({
       setProgress(0);
       setDisplayProgress(0);
       setError(err.message || "Upload failed. Please try again.");
-      // Keep the File object in state so the user can retry without re-selecting
       onChange(file);
     }
   };
@@ -130,11 +162,20 @@ const FileUploadField = ({
 
   const handleDrop = (event) => {
     event.preventDefault();
+    setIsDragging(false);
     const file = event.dataTransfer.files?.[0] || null;
     if (file) processFile(file);
   };
 
-  const handleDragOver = (event) => event.preventDefault();
+  const handleDragOver = (event) => {
+    event.preventDefault();
+    if (!isDragging) setIsDragging(true);
+  };
+
+  const handleDragLeave = (event) => {
+    event.preventDefault();
+    setIsDragging(false);
+  };
 
   const handleKeyDown = (event) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -143,8 +184,13 @@ const FileUploadField = ({
     }
   };
 
+  const isAttached = isUploaded || isFile;
+  const canHoverGreen = !uploading && !isAttached && !error && !showFieldError;
+
   const zoneClass = [
     "rf-upload-zone",
+    canHoverGreen ? "rf-upload-zone--can-hover" : "",
+    isDragging && canHoverGreen ? "rf-upload-zone--hover" : "",
     showFieldError ? "rf-upload-zone--error" : "",
     error ? "rf-upload-zone--error" : "",
     isUploaded ? "rf-upload-zone--success" : "",
@@ -171,24 +217,24 @@ const FileUploadField = ({
         onClick={handleClick}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
         onKeyDown={handleKeyDown}
         role="button"
         tabIndex={0}
       >
         {uploading ? (
-          <div className="rf-upload-loading">
-            <div className="rf-upload-status rf-upload-status--uploading">
-              <Loader2 size={16} className="rf-upload-spinner" />
-              <span>{displayProgress < 100 ? `Uploading... ${displayProgress}%` : "Finalizing upload..."}</span>
+          /* PANEL 3: UPLOADING PROGRESS STATE */
+          <div className="rf-upload-loading-panel">
+            <div className="rf-upload-preview-card">
+              <div className="rf-upload-doc-icon-wrap">
+                <User size={34} className="rf-upload-doc-avatar" />
+              </div>
             </div>
-            {fileMeta ? (
-              <div className="rf-upload-filename">{truncateName(fileMeta.name)}</div>
-            ) : null}
-            <div className="rf-upload-progress-track">
-              <div
-                className="rf-upload-progress-fill"
-                style={{ width: `${Math.max(displayProgress, 5)}%` }}
-              />
+            <div className="rf-upload-progress-info">
+              <CircularProgressRing progress={displayProgress} />
+              <span className="rf-upload-progress-percent">
+                {displayProgress < 100 ? `Uploading... ${displayProgress}%` : "Finalizing upload..."}
+              </span>
             </div>
           </div>
         ) : isUploaded ? (
@@ -237,24 +283,19 @@ const FileUploadField = ({
             </div>
           </div>
         ) : (
-          <>
+          /* PANEL 1: DEFAULT STATE */
+          <div className="rf-upload-default-box">
             <div className="rf-upload-icon"><Upload size={20} /></div>
             <div className="rf-upload-cta">Click to upload or drag and drop</div>
-          </>
+            {hint ? <div className="rf-upload-hint">{hint}</div> : null}
+            {!error ? <div className="rf-upload-limit">Max 5MB - JPEG, PNG, or PDF</div> : null}
+          </div>
         )}
 
         {error && !uploading ? (
           <div className="rf-upload-error">
             <AlertTriangle size={12} /> {error}
           </div>
-        ) : null}
-
-        {hint && !error && !uploading && !isUploaded ? (
-          <div className="rf-upload-hint">{hint}</div>
-        ) : null}
-
-        {!isUploaded && !isFile && !uploading && !error ? (
-          <div className="rf-upload-limit">Max 5MB · JPEG, PNG, or PDF</div>
         ) : null}
       </div>
     </div>

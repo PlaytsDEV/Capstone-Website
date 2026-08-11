@@ -24,6 +24,7 @@ import { emitRoomUpdate } from "../utils/socket.js";
 import {
   deriveRoomOccupancyState,
   recalculateRoomOccupancy,
+  getDisplayStatusForReservation,
 } from "../utils/occupancyManager.js";
 import { sendSuccess, AppError } from "../middleware/errorHandler.js";
 import { OPEN_MAINTENANCE_STATUSES } from "../config/maintenance.js";
@@ -146,7 +147,7 @@ const syncRealtimeBedStatuses = async (rooms) => {
 
       if (matchingHold) {
         matchedResIds.add(String(matchingHold._id));
-        const nextStatus = matchingHold.status === "moveIn" ? "occupied" : "reserved";
+        const nextStatus = getDisplayStatusForReservation(matchingHold.status);
         let expectedVacancyDate = null;
         let daysRemaining = null;
 
@@ -217,7 +218,7 @@ const syncRealtimeBedStatuses = async (rooms) => {
       updatedBeds = updatedBeds.map((bed) => {
         if (bed.status === "available" && unmatchedReservations.length > 0) {
           const matchingHold = unmatchedReservations.shift();
-          const nextStatus = matchingHold.status === "moveIn" ? "occupied" : "reserved";
+          const nextStatus = getDisplayStatusForReservation(matchingHold.status);
           let expectedVacancyDate = null;
           let daysRemaining = null;
 

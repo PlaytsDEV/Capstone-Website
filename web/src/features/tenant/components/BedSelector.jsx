@@ -76,10 +76,12 @@ const BedSelector = ({ beds = [], selectedBed, onSelect, readOnly = false }) => 
               </>
             ) : status === "locked" ? (
               <>
-                <Wrench size={12} strokeWidth={2} /> Locked
+                <Lock size={12} strokeWidth={2} /> In Progress
               </>
             ) : status === "maintenance" ? (
-              "Locked"
+              <>
+                <Wrench size={12} strokeWidth={2} /> Maint
+              </>
             ) : (
               "Available"
             )}
@@ -97,7 +99,7 @@ const BedSelector = ({ beds = [], selectedBed, onSelect, readOnly = false }) => 
           <span className="bs-legend-item"><span className="bs-legend-dot bs-legend-avail" />Available</span>
           <span className="bs-legend-item"><span className="bs-legend-dot bs-legend-occ" />Occupied</span>
           <span className="bs-legend-item"><span className="bs-legend-dot bs-legend-resv" />Reserved</span>
-          <span className="bs-legend-item"><span className="bs-legend-dot bs-legend-lock" />Locked</span>
+          <span className="bs-legend-item"><span className="bs-legend-dot bs-legend-lock" />In Progress</span>
         </div>
       </div>
 

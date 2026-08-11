@@ -127,42 +127,67 @@ const buildMaintenanceUpdateMessage = (
   return "Your maintenance request has been updated.";
 };
 
+const formatCode = (code) => {
+  if (!code || code === "N/A" || code === "—" || code === "-") return "";
+  return String(code).trim();
+};
+
 const notify = {
-  reservationConfirmed: (userId, reservationCode, roomName) =>
-    createNotification(userId, "reservation_confirmed", "Reservation Confirmed",
-      `Your reservation ${reservationCode} for ${roomName} has been confirmed.`,
-      { entityType: "reservation" }),
+  reservationConfirmed: (userId, reservationCode, roomName) => {
+    const code = formatCode(reservationCode);
+    const codeStr = code ? ` ${code}` : "";
+    const roomStr = roomName ? ` for ${roomName}` : "";
+    return createNotification(userId, "reservation_confirmed", "Reservation Confirmed",
+      `Your reservation${codeStr}${roomStr} has been confirmed.`,
+      { entityType: "reservation" });
+  },
 
-  reservationCancelled: (userId, reservationCode, reason) =>
-    createNotification(userId, "reservation_cancelled", "Reservation Cancelled",
-      `Your reservation ${reservationCode} has been cancelled. ${reason ? `Reason: ${reason}` : ""}`,
-      { entityType: "reservation" }),
+  reservationCancelled: (userId, reservationCode, reason) => {
+    const code = formatCode(reservationCode);
+    const codeStr = code ? ` ${code}` : "";
+    const reasonStr = reason ? `. Reason: ${reason}` : "";
+    return createNotification(userId, "reservation_cancelled", "Reservation Cancelled",
+      `Your reservation${codeStr} has been cancelled${reasonStr}.`,
+      { entityType: "reservation" });
+  },
 
-  cancellationRequested: (userId, reservationCode) =>
-    createNotification(userId, "reservation_cancellation_requested", "Cancellation Request Submitted",
-      `Your cancellation request for reservation ${reservationCode} is pending admin review.`,
-      { entityType: "reservation", actionUrl: "/applicant/profile" }),
+  cancellationRequested: (userId, reservationCode) => {
+    const code = formatCode(reservationCode);
+    const codeStr = code ? ` ${code}` : "";
+    return createNotification(userId, "reservation_cancellation_requested", "Cancellation Request Submitted",
+      `Your cancellation request for reservation${codeStr} is pending admin review.`,
+      { entityType: "reservation", actionUrl: "/applicant/profile" });
+  },
 
-  cancellationApproved: (userId, reservationCode) =>
-    createNotification(userId, "reservation_cancelled", "Reservation Cancelled",
-      `Your reservation ${reservationCode} has been cancelled. The reservation fee is non-refundable.`,
-      { entityType: "reservation" }),
+  cancellationApproved: (userId, reservationCode) => {
+    const code = formatCode(reservationCode);
+    const codeStr = code ? ` ${code}` : "";
+    return createNotification(userId, "reservation_cancelled", "Reservation Cancelled",
+      `Your reservation${codeStr} has been cancelled. The reservation fee is non-refundable.`,
+      { entityType: "reservation" });
+  },
 
-  cancellationRejected: (userId, reservationCode, note) =>
-    createNotification(userId, "reservation_cancellation_rejected", "Cancellation Request Not Approved",
-      `Your cancellation request for reservation ${reservationCode} was not approved.${note ? ` Admin note: ${note}` : ""}`,
-      { entityType: "reservation" }),
+  cancellationRejected: (userId, reservationCode, note) => {
+    const code = formatCode(reservationCode);
+    const codeStr = code ? ` ${code}` : "";
+    return createNotification(userId, "reservation_cancellation_rejected", "Cancellation Request Not Approved",
+      `Your cancellation request for reservation${codeStr} was not approved.${note ? ` Admin note: ${note}` : ""}`,
+      { entityType: "reservation" });
+  },
 
-  cancellationRequestAlert: (adminUserId, tenantName, reservationCode, reservationId = null) =>
-    createNotification(adminUserId, "reservation_cancellation_requested", "Cancellation Request Received",
-      `${tenantName} has requested cancellation for reservation ${reservationCode}. Review required. The reservation fee is non-refundable.`,
+  cancellationRequestAlert: (adminUserId, tenantName, reservationCode, reservationId = null) => {
+    const code = formatCode(reservationCode);
+    const codeStr = code ? ` for reservation ${code}` : " for reservation";
+    return createNotification(adminUserId, "reservation_cancellation_requested", "Cancellation Request Received",
+      `${tenantName} has requested cancellation${codeStr}. Review required. The reservation fee is non-refundable.`,
       {
         entityType: "reservation",
         entityId: reservationId ? String(reservationId) : null,
         actionUrl: reservationId
           ? `/admin/reservations?reservationId=${String(reservationId)}&focus=cancellation`
           : "/admin/reservations",
-      }),
+      });
+  },
 
   visitApproved: (userId, branchName) =>
     createNotification(userId, "visit_approved", "Visit Schedule Confirmed",
@@ -305,10 +330,13 @@ const notify = {
       { entityType: "bill" },
     ),
 
-  overdueMoveIn: (userId, reservationCode, roomName, tenantName, daysOverdue) =>
-    createNotification(userId, "grace_period_warning", "Overdue Move-In",
-      `${tenantName} (${reservationCode}) is ${daysOverdue} day${daysOverdue === 1 ? "" : "s"} overdue for move-in to ${roomName}. Please extend or cancel.`,
-      { entityType: "reservation" }),
+  overdueMoveIn: (userId, reservationCode, roomName, tenantName, daysOverdue) => {
+    const code = formatCode(reservationCode);
+    const codeStr = code ? ` (${code})` : "";
+    return createNotification(userId, "grace_period_warning", "Overdue Move-In",
+      `${tenantName}${codeStr} is ${daysOverdue} day${daysOverdue === 1 ? "" : "s"} overdue for move-in to ${roomName}. Please extend or cancel.`,
+      { entityType: "reservation" });
+  },
 
   accountSuspended: (userId, reason) =>
     createNotification(userId, "account_suspended", "Account Suspended",
@@ -400,15 +428,23 @@ const notify = {
     );
   },
 
-  reservationExpired: (userId, reservationCode, roomName) =>
-    createNotification(userId, "reservation_expired", "Reservation Expired",
-      `Your reservation ${reservationCode} for ${roomName} has expired due to inactivity. The bed has been released.`,
-      { entityType: "reservation" }),
+  reservationExpired: (userId, reservationCode, roomName) => {
+    const code = formatCode(reservationCode);
+    const codeStr = code ? ` ${code}` : "";
+    const roomStr = roomName ? ` for ${roomName}` : "";
+    return createNotification(userId, "reservation_expired", "Reservation Expired",
+      `Your reservation${codeStr}${roomStr} has expired due to inactivity. The bed has been released.`,
+      { entityType: "reservation" });
+  },
 
-  reservationNoShow: (userId, reservationCode, roomName, daysOverdue) =>
-    createNotification(userId, "reservation_noshow", "Reservation Cancelled — No Show",
-      `Your reservation ${reservationCode} for ${roomName} has been cancelled. You did not move in within ${daysOverdue} days of your deadline.`,
-      { entityType: "reservation" }),
+  reservationNoShow: (userId, reservationCode, roomName, daysOverdue) => {
+    const code = formatCode(reservationCode);
+    const codeStr = code ? ` ${code}` : "";
+    const roomStr = roomName ? ` for ${roomName}` : "";
+    return createNotification(userId, "reservation_noshow", "Reservation Cancelled — No Show",
+      `Your reservation${codeStr}${roomStr} has been cancelled. You did not move in within ${daysOverdue} days of your deadline.`,
+      { entityType: "reservation" });
+  },
 
   stalePendingVisitWarning: (adminUserId, tenantName, roomName, daysPending) =>
     createNotification(adminUserId, "general", "Unactioned Visit Request",

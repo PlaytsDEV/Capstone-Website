@@ -65,6 +65,7 @@ const ReservationPaymentStep = ({
   agreedToFeePolicy = false,
   setAgreedToFeePolicy = () => {},
   paymentCancelled = false,
+  paymentApproved = false,
 }) => {
   const room = reservationData?.room || {};
   const roomName = toDisplayString(room.name || room.roomNumber || room.title || room.id, "N/A");
@@ -149,7 +150,7 @@ const ReservationPaymentStep = ({
       )}
 
       {/* Payment Complete Banner */}
-      {readOnly && (
+      {readOnly && (paymentApproved || reservationData?.paymentStatus === "paid") && (
         <div className="rf-success-banner rf-payment-complete-banner">
           <ShieldCheck size={22} aria-hidden="true" />
           <div>

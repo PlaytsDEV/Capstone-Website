@@ -668,7 +668,7 @@ export default function RoomConfigModal({
                         : null);
 
                     const isOccupiedOrReserved =
-                      ["occupied", "reserved"].includes(normStatus) ||
+                      ["occupied", "reserved", "locked"].includes(normStatus) ||
                       bed.available === false ||
                       Boolean(occupantName) ||
                       Boolean(occupant.userId) ||
@@ -720,13 +720,21 @@ export default function RoomConfigModal({
                             <div className="shrink-0">
                               <button
                                 type="button"
-                                className={`bed-occupant-badge bed-occupant-badge--${normStatus === "reserved" ? "reserved" : "occupied"}`}
+                                className={`bed-occupant-badge bed-occupant-badge--${
+                                  normStatus === "reserved" ? "reserved"
+                                  : normStatus === "locked" ? "locked"
+                                  : "occupied"
+                                }`}
                                 onClick={() => handleOpenOccupantDetails(bed)}
                                 title={`View summary for ${occupantName || "occupant"}`}
                               >
                                 <User size={13} className="bed-occupant-icon" />
                                 <span className="bed-occupant-name truncate max-w-[120px]">
-                                  {occupantName || (normStatus === "reserved" ? "Reserved" : "Occupied")}
+                                  {occupantName || (
+                                    normStatus === "reserved" ? "Reserved"
+                                    : normStatus === "locked" ? "In Progress"
+                                    : "Occupied"
+                                  )}
                                 </span>
                                 <ExternalLink size={12} className="bed-occupant-link-icon shrink-0" />
                               </button>

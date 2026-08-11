@@ -692,6 +692,23 @@ body.modal-open {
   background: color-mix(in srgb, #d97706 22%, transparent);
 }
 
+/* In-progress reservation bed — temporarily held but not yet confirmed */
+.bed-occupant-badge--locked {
+  background: color-mix(in srgb, #f59e0b 14%, transparent);
+  color: #b45309;
+  border-color: color-mix(in srgb, #f59e0b 30%, transparent);
+}
+
+.dark .bed-occupant-badge--locked {
+  background: color-mix(in srgb, #f59e0b 18%, transparent);
+  color: #fcd34d;
+  border-color: color-mix(in srgb, #f59e0b 35%, transparent);
+}
+
+.bed-occupant-badge--locked:hover {
+  background: color-mix(in srgb, #f59e0b 25%, transparent);
+}
+
 .bed-occupant-icon {
   flex-shrink: 0;
   opacity: 0.85;

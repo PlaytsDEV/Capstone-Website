@@ -328,6 +328,42 @@ const ReservationVisitStep = ({
   const room = reservationData?.room || {};
   const uploadedRoomImages = Array.isArray(room.images) ? room.images.filter((entry) => typeof entry === "string" && entry.trim()) : [];
   const roomImages = uploadedRoomImages.length > 0 ? uploadedRoomImages : getRemoteViewingImages(room.type, room.branchKey || room.branch || reservationData?.branch);
+
+  const touchStartXRef = useRef(null);
+
+  useEffect(() => {
+    if (previewImageIndex === null) return;
+    const handleKeyDown = (e) => {
+      if (e.key === "ArrowLeft") {
+        setPreviewImageIndex((i) => (i !== null ? Math.max(0, i - 1) : null));
+      } else if (e.key === "ArrowRight") {
+        setPreviewImageIndex((i) => (i !== null ? Math.min(roomImages.length - 1, i + 1) : null));
+      } else if (e.key === "Escape") {
+        setPreviewImageIndex(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [previewImageIndex, roomImages.length]);
+
+  const handleTouchStart = (e) => {
+    if (e.touches && e.touches.length > 0) {
+      touchStartXRef.current = e.touches[0].clientX;
+    }
+  };
+
+  const handleTouchEnd = (e) => {
+    if (touchStartXRef.current === null) return;
+    if (e.changedTouches && e.changedTouches.length > 0) {
+      const deltaX = e.changedTouches[0].clientX - touchStartXRef.current;
+      if (deltaX > 40) {
+        setPreviewImageIndex((i) => (i !== null ? Math.max(0, i - 1) : null));
+      } else if (deltaX < -40) {
+        setPreviewImageIndex((i) => (i !== null ? Math.min(roomImages.length - 1, i + 1) : null));
+      }
+    }
+    touchStartXRef.current = null;
+  };
   const chosenBedData = reservationData?.selectedBed || reservationData?.selectedBedCode || reservationData?.bedCode || reservationData?.bed;
   const chosenBedCode = getChosenBedCode(chosenBedData, room.roomNumber || room.name);
 
@@ -482,7 +518,6 @@ const ReservationVisitStep = ({
           {selectedVisit === "remote_2d_viewing" && (
             <>
               <div className="rf-receipt-row"><span className="rf-receipt-row__label">Acknowledgement</span><span className="rf-receipt-row__value">{remoteViewingAcknowledged ? "Confirmed" : "Pending"}</span></div>
-              <div className="rf-receipt-row"><span className="rf-receipt-row__label">Questions / Concerns</span><span className="rf-receipt-row__value">{remoteViewingQuestions || "None provided"}</span></div>
             </>
           )}
           {selectedVisit === "urgent_move_in_review" && (<div className="rf-receipt-row"><span className="rf-receipt-row__label">Urgent Review</span><span className="rf-receipt-row__value">{isUrgentMoveIn ? "Requested" : "Not requested"}</span></div>)}
@@ -753,23 +788,6 @@ const ReservationVisitStep = ({
                       />
                       <span className="rf-ack-card__text">{REMOTE_ACKNOWLEDGEMENT}</span>
                     </label>
-
-                    <div className="form-group">
-                      <label className="form-label" htmlFor="remote-viewing-questions">
-                        Questions or Concerns <span style={{ fontWeight: 400, color: "var(--rf-text-muted)" }}>(Optional)</span>
-                      </label>
-                      <textarea
-                        id="remote-viewing-questions"
-                        className="form-textarea rf-textarea"
-                        rows={4}
-                        value={remoteViewingQuestions}
-                        maxLength={1500}
-                        disabled={preferenceReadOnly}
-                        onChange={(event) => setRemoteViewingQuestions(event.target.value)}
-                        placeholder="Ask about the room setup, amenities, layout, or anything you would like the admin to clarify before your application."
-                      />
-                      <div className="form-helper">Your questions will be forwarded to the admin for review. Payment is only available after your application and required documents are approved.</div>
-                    </div>
                   </div>
                 </>
               )}
@@ -795,21 +813,65 @@ const ReservationVisitStep = ({
       </Modal>
 
       <Modal show={previewImageIndex !== null} onBackdropClick={() => setPreviewImageIndex(null)}>
-        <div className="rf-photo-preview" style={{ padding: 12 }}>
-          <div className="rf-photo-controls" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-            <div />
-            <div>
-              {roomImages.length > 1 && (
-                <>
-                  <button type="button" className="rf-photo-nav__btn" onClick={() => setPreviewImageIndex((i) => Math.max(0, i - 1))} disabled={previewImageIndex === 0} aria-label="Previous photo"><ChevronLeft size={20} /></button>
-                  <span className="rf-photo-nav__counter" style={{ margin: "0 8px" }}>{previewImageIndex + 1} of {roomImages.length}</span>
-                  <button type="button" className="rf-photo-nav__btn" onClick={() => setPreviewImageIndex((i) => Math.min(roomImages.length - 1, i + 1))} disabled={previewImageIndex === roomImages.length - 1} aria-label="Next photo"><ChevronRight size={20} /></button>
-                </>
-              )}
-            </div>
-            <button type="button" className="rf-modal-close-btn" onClick={() => setPreviewImageIndex(null)} aria-label="Close image preview"><X size={18} /></button>
+        <div className="rf-gallery-modal">
+          <button type="button" className="rf-gallery-close-btn" onClick={() => setPreviewImageIndex(null)} aria-label="Close image preview"><X size={18} /></button>
+
+          <div className="rf-gallery-stage" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+            {previewImageIndex !== null && (
+              <img
+                src={roomImages[previewImageIndex]}
+                alt={`Room photo ${previewImageIndex + 1}`}
+                className="rf-gallery-main-image img-reveal"
+                onLoad={(e) => e.currentTarget.classList.add("loaded")}
+              />
+            )}
+
+            {roomImages.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  className="rf-gallery-arrow rf-gallery-arrow--prev"
+                  onClick={(e) => { e.stopPropagation(); setPreviewImageIndex((i) => Math.max(0, i - 1)); }}
+                  disabled={previewImageIndex === 0}
+                  aria-label="Previous photo"
+                >
+                  <ChevronLeft size={20} />
+                </button>
+
+                <button
+                  type="button"
+                  className="rf-gallery-arrow rf-gallery-arrow--next"
+                  onClick={(e) => { e.stopPropagation(); setPreviewImageIndex((i) => Math.min(roomImages.length - 1, i + 1)); }}
+                  disabled={previewImageIndex === roomImages.length - 1}
+                  aria-label="Next photo"
+                >
+                  <ChevronRight size={20} />
+                </button>
+              </>
+            )}
           </div>
-          {previewImageIndex !== null && (<img src={roomImages[previewImageIndex]} alt={`Room photo ${previewImageIndex + 1}`} className="rf-photo-preview-modal__image img-reveal" style={{ width: "100%", borderRadius: 8 }} onLoad={(e) => e.currentTarget.classList.add("loaded")} />)}
+
+          {roomImages.length > 1 && (
+            <div className="rf-gallery-thumbnails">
+              {roomImages.map((imgSrc, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  className={`rf-gallery-thumb${idx === previewImageIndex ? " active" : ""}`}
+                  onClick={() => setPreviewImageIndex(idx)}
+                  aria-label={`View photo ${idx + 1}`}
+                >
+                  <img src={imgSrc} alt={`Thumbnail ${idx + 1}`} />
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="rf-gallery-footer">
+            <span className="rf-gallery-counter">
+              {previewImageIndex !== null && `${previewImageIndex + 1} of ${roomImages.length}`}
+            </span>
+          </div>
         </div>
       </Modal>
 

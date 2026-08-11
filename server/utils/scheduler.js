@@ -826,12 +826,18 @@ async function reconcileOccupancyIntegrity() {
       let bedChanged = false;
 
       for (const bed of room.beds) {
-        if (bed.status === "maintenance" || bed.status === "locked") continue;
+        if (bed.status === "maintenance") continue;
 
-        if (
-          (bed.status === "occupied" || bed.status === "reserved") &&
-          bed.occupiedBy?.reservationId
-        ) {
+        // "locked" beds with an occupiedBy.reservationId are in-progress reservations
+        // (post bed-status-mapping fix). Include them in stale-pointer cleanup so that
+        // if the underlying reservation is cancelled/deleted without going through the
+        // normal lifecycle path, the bed is freed. Pure admin/maintenance locks
+        // (no occupiedBy.reservationId) are still skipped.
+        const isReservationHeldBed =
+          (bed.status === "occupied" || bed.status === "reserved") ||
+          (bed.status === "locked" && bed.occupiedBy?.reservationId);
+
+        if (isReservationHeldBed && bed.occupiedBy?.reservationId) {
           const resIdStr = String(bed.occupiedBy.reservationId);
 
           // Pass A: dead reference — reservation no longer active

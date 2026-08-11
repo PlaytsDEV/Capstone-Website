@@ -81,7 +81,7 @@ const repairOrphanedBeds = async () => {
         continue;
       }
 
-      // Case 2: locked bed — lockedBy user no longer exists
+      // Case 2: locked bed — lockedBy user no longer exists OR has no active reservation
       if (bed.status === "locked" && bed.lockedBy) {
         let userExists = null;
         try {
@@ -91,11 +91,22 @@ const repairOrphanedBeds = async () => {
           );
         } catch (_) { /* malformed id — treat as orphaned */ }
 
-        if (!userExists) {
+        let activeRes = null;
+        if (userExists) {
+          activeRes = await reservations.findOne({
+            userId: new mongoose.Types.ObjectId(String(bed.lockedBy)),
+            roomId: room._id,
+            status: { $nin: ["cancelled", "archived", "rejected"] },
+          });
+        }
+
+        if (!userExists || !activeRes) {
           bedChanges.push({
             bedId: bed.id,
             code: bed.code,
-            reason: `lockedBy user ${bed.lockedBy} does not exist`,
+            reason: !userExists
+              ? `lockedBy user ${bed.lockedBy} does not exist`
+              : `lockedBy user ${bed.lockedBy} has no active reservation for room ${room.roomNumber || room.name}`,
           });
           bed.status = "available";
           bed.lockedBy = null;
@@ -149,11 +160,13 @@ const repairOrphanedBeds = async () => {
           );
         } catch (_) { /* malformed id */ }
 
-        if (!resExists) {
+        if (!resExists || ["cancelled", "archived"].includes(resExists.status)) {
           bedChanges.push({
             bedId: bed.id,
             code: bed.code,
-            reason: `occupiedBy.reservationId ${bed.occupiedBy.reservationId} does not exist`,
+            reason: !resExists
+              ? `occupiedBy.reservationId ${bed.occupiedBy.reservationId} does not exist`
+              : `associated reservation ${bed.occupiedBy.reservationId} status is "${resExists.status}"`,
           });
           bed.status = "available";
           bed.lockedBy = null;

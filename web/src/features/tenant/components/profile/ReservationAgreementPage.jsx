@@ -36,6 +36,8 @@ import {
 } from "../../../../shared/utils/lifecycleNaming";
 import {
   RESERVATION_FEE_NON_REFUNDABLE_NOTICE,
+  MAX_CANCELLATION_REASON_LENGTH,
+  PREDEFINED_CANCELLATION_REASONS,
   getReservationCancellationUiState,
 } from "./reservationCancellationUi";
 import { getRoomImages } from "../../pages/check-availability/checkAvailabilityConstants";
@@ -776,18 +778,18 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  style={{
  width: "min(520px, 100%)",
  background: "#fff",
- borderRadius: 14,
- boxShadow: "0 24px 60px rgba(15, 23, 42, 0.22)",
- padding: 24,
+ borderRadius: 18,
+ boxShadow: "0 20px 50px -10px rgba(15, 23, 42, 0.2)",
+ padding: 26,
  }}
  >
- <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 14 }}>
+ <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 16 }}>
  <div
  style={{
- width: 42,
- height: 42,
+ width: 44,
+ height: 44,
  borderRadius: 12,
- background: "#FEF2F2",
+ background: "#FEE2E2",
  color: "#DC2626",
  display: "grid",
  placeItems: "center",
@@ -797,7 +799,7 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  <AlertCircle size={22} />
  </div>
  <div>
- <h3 style={{ margin: "0 0 6px", fontSize: 18, color: "#0A1628" }}>
+ <h3 style={{ margin: "0 0 6px", fontSize: 19, fontWeight: 600, color: "#111827" }}>
  Request reservation cancellation?
  </h3>
  <p style={{ margin: 0, color: "#475569", fontSize: 13, lineHeight: 1.6 }}>
@@ -806,16 +808,58 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  </div>
  </div>
 
- <label style={{ display: "block", marginTop: 16 }}>
- <span style={{ display: "block", color: "#334155", fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
+ <div style={{ marginTop: 18 }}>
+ <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+ <span style={{ color: "#1E293B", fontSize: 13, fontWeight: 700 }}>
  Reason for cancellation (optional)
  </span>
- <textarea
- rows={4}
- value={cancellationReason}
- onChange={(event) => setCancellationReason(event.target.value)}
+ <span
+ style={{
+ fontSize: 11,
+ fontWeight: 600,
+ color: cancellationReason.length >= MAX_CANCELLATION_REASON_LENGTH ? "#DC2626" : "#64748B",
+ }}
+ >
+ {cancellationReason.length} / {MAX_CANCELLATION_REASON_LENGTH}
+ </span>
+ </div>
+
+ <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+ {PREDEFINED_CANCELLATION_REASONS.map((reasonText) => {
+ const isSelected = cancellationReason === reasonText;
+ return (
+ <button
+ key={reasonText}
+ type="button"
  disabled={isRequestingCancellation}
- placeholder="Share a short reason for admin review."
+ onClick={() => setCancellationReason(isSelected ? "" : reasonText)}
+ style={{
+ padding: "5px 11px",
+ borderRadius: 16,
+ fontSize: 12,
+ fontWeight: 500,
+ border: isSelected ? "1px solid #0A2463" : "1px solid #CBD5E1",
+ background: isSelected ? "#0A2463" : "#F8FAFC",
+ color: isSelected ? "#FFFFFF" : "#334155",
+ cursor: isRequestingCancellation ? "default" : "pointer",
+ transition: "all 0.15s ease",
+ }}
+ >
+ {reasonText}
+ </button>
+ );
+ })}
+ </div>
+
+ <textarea
+ rows={3}
+ maxLength={MAX_CANCELLATION_REASON_LENGTH}
+ value={cancellationReason}
+ onChange={(event) =>
+ setCancellationReason(event.target.value.slice(0, MAX_CANCELLATION_REASON_LENGTH))
+ }
+ disabled={isRequestingCancellation}
+ placeholder="Share a short reason or select an option above."
  style={{
  width: "100%",
  resize: "vertical",
@@ -826,23 +870,25 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  color: "#0F172A",
  outline: "none",
  boxSizing: "border-box",
+ fontFamily: "inherit",
  }}
  />
- </label>
+ </div>
 
  <label
  style={{
  display: "flex",
- gap: 10,
+ gap: 12,
  alignItems: "flex-start",
- marginTop: 14,
- padding: "12px 14px",
+ marginTop: 16,
+ padding: "14px 16px",
  background: "#FFF7ED",
  border: "1px solid #FED7AA",
  borderRadius: 10,
  color: "#7C2D12",
  fontSize: 13,
  lineHeight: 1.5,
+ cursor: isRequestingCancellation ? "default" : "pointer",
  }}
  >
  <input
@@ -850,24 +896,24 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  checked={acknowledgedCancellationPolicy}
  onChange={(event) => setAcknowledgedCancellationPolicy(event.target.checked)}
  disabled={isRequestingCancellation}
- style={{ marginTop: 3 }}
+ style={{ marginTop: 2, accentColor: "#DC2626", width: 16, height: 16, cursor: isRequestingCancellation ? "default" : "pointer" }}
  />
  <span>
- I understand that the reservation fee is non-refundable even if my cancellation request is approved.
+ I understand that the <strong>reservation fee is non-refundable</strong> even if my cancellation request is approved.
  </span>
  </label>
 
- <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
+ <div style={{ display: "flex", gap: 12, justifyContent: "flex-end", marginTop: 24 }}>
  <button
  type="button"
  onClick={resetCancellationModal}
  disabled={isRequestingCancellation}
  style={{
- padding: "10px 16px",
+ padding: "10px 20px",
  borderRadius: 8,
  border: "1px solid #CBD5E1",
  background: "#fff",
- color: "#334155",
+ color: "#0F172A",
  fontSize: 13,
  fontWeight: 700,
  cursor: isRequestingCancellation ? "default" : "pointer",
@@ -880,10 +926,10 @@ const ReservationAgreementPage = ({ reservation, onBack, onReservationUpdated })
  onClick={handleRequestCancellation}
  disabled={isRequestingCancellation || !acknowledgedCancellationPolicy}
  style={{
- padding: "10px 16px",
+ padding: "10px 20px",
  borderRadius: 8,
  border: "none",
- background: "#DC2626",
+ background: "#E54D4D",
  color: "#fff",
  fontSize: 13,
  fontWeight: 700,

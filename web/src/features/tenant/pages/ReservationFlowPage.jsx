@@ -45,13 +45,7 @@ function ReservationFlowPage() {
     (!isPaymentCancellation && flow.paymentReturnLoading) ||
     (!isPaymentCancellation && flow.paymentVerifyingRef.current)
   ) {
-    const isConfirmingPayment =
-      flow.paymentReturnLoading || flow.paymentVerifyingRef.current;
-    return (
-      <GlobalLoading
-        message={isConfirmingPayment ? "Confirming your payment..." : ""}
-      />
-    );
+    return <GlobalLoading />;
   }
 
   // ΓöÇΓöÇ Render ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -454,6 +448,7 @@ function ReservationFlowPage() {
                 agreedToFeePolicy: flow.agreedToFeePolicy,
                 setAgreedToFeePolicy: flow.setAgreedToFeePolicy,
                 paymentCancelled: flow.paymentCancelled,
+                paymentApproved: flow.paymentApproved,
               }}
               onPrev={flow.handlePrevStage}
               onNext={flow.handleNextStage}

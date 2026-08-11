@@ -46,6 +46,7 @@ export default function BedOccupantDetailModal({
   const occupant = bed?.occupiedBy || bed?.reservedBy || bed?.occupant || {};
   const rawStatus = (bed?.status || (bed?.available === false ? "occupied" : "available")).toLowerCase();
   const isReserved = rawStatus === "reserved";
+  const isLocked = rawStatus === "locked";
 
   const occupantName =
     occupant.name ||
@@ -105,7 +106,7 @@ export default function BedOccupantDetailModal({
 
   const bedLabel = getBedDisplayLabel(bed || {});
   const roomName = room?.name || room?.roomNumber || "Room";
-  const initials = occupantName ? getInitials(occupantName) : isReserved ? "RES" : "OCC";
+  const initials = occupantName ? getInitials(occupantName) : isReserved ? "RES" : isLocked ? "HLD" : "OCC";
 
   const modalContent = (
     <div
@@ -125,14 +126,16 @@ export default function BedOccupantDetailModal({
               className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0 ${
                 isReserved
                   ? "bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800"
-                  : "bg-blue-100 text-blue-900 border border-blue-300 dark:bg-blue-950 dark:text-blue-200 dark:border-blue-800"
+                  : isLocked
+                    ? "bg-orange-100 text-orange-900 border border-orange-300 dark:bg-orange-950 dark:text-orange-200 dark:border-orange-800"
+                    : "bg-blue-100 text-blue-900 border border-blue-300 dark:bg-blue-950 dark:text-blue-200 dark:border-blue-800"
               }`}
             >
               {initials}
             </div>
             <div className="min-w-0">
               <h3 className="font-bold text-sm text-foreground truncate leading-snug">
-                {occupantName || (isReserved ? "Reserved Bed" : "Occupied Bed")}
+                {occupantName || (isReserved ? "Reserved Bed" : isLocked ? "In Progress (Hold)" : "Occupied Bed")}
               </h3>
               <p className="text-xs text-muted-foreground truncate mt-0.5">
                 {roomName} &bull; {bedLabel}
@@ -158,11 +161,13 @@ export default function BedOccupantDetailModal({
               className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-medium text-[11px] ${
                 isReserved
                   ? "bg-amber-50 text-amber-800 border border-amber-200 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800"
-                  : "bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800"
+                  : isLocked
+                    ? "bg-orange-50 text-orange-800 border border-orange-200 dark:bg-orange-950/60 dark:text-orange-300 dark:border-orange-800"
+                    : "bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800"
               }`}
             >
-              {isReserved ? <Lock size={12} /> : <CheckCircle2 size={12} />}
-              {isReserved ? "Reserved" : "Moved In"}
+              {isReserved ? <Lock size={12} /> : isLocked ? <Lock size={12} /> : <CheckCircle2 size={12} />}
+              {isReserved ? "Reserved" : isLocked ? "In Progress (Hold)" : "Moved In"}
             </span>
 
             {reservationId && (

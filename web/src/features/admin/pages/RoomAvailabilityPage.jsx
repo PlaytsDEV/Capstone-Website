@@ -988,6 +988,10 @@ function RoomAvailabilityPage() {
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-800" />
                     Reserved
                   </span>
+                  <span className="inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                    In Progress
+                  </span>
                   <span className="inline-flex items-center gap-1 font-medium px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
                     <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
                     Maint

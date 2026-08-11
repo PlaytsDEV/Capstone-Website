@@ -24,7 +24,7 @@ const ROOM_CONFIRMED_STATUSES = [
 ];
 
 const PAYMENT_SUBMITTED_STATUSES = [
-  "payment_pending",
+  "payment_submitted",
   "reserved",
   "moveIn",
   "moveOut",

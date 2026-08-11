@@ -920,6 +920,69 @@ export default function ReservationDetailsModal({
 
  <div className="rdm-body rdm-layout">
  <div className="rdm-main-column">
+ {cancellationPending && (
+ <div
+ ref={cancellationPanelRef}
+ className={`rdm-section rdm-surface-card rdm-cancellation-request${
+ focusCancellation ? " rdm-cancellation-request--focused" : ""
+ }`}
+ >
+ <div className="rdm-cancellation-request__header">
+ <div>
+ <h4 className="rdm-section-title rdm-cancellation-request__title">
+ Cancellation Request
+ </h4>
+ <p className="rdm-cancellation-request__copy">
+ Review this tenant request before releasing the bed. The reservation fee is non-refundable.
+ </p>
+ </div>
+ <span className="rdm-cancellation-request__badge">
+ Pending Review
+ </span>
+ </div>
+ <div className="rdm-info-grid rdm-info-grid-dark rdm-cancellation-request__details">
+ {cancellationRequestDetails.map(([label, value]) => (
+ <div className="rdm-info-item" key={label}>
+ <span className="rdm-info-label">{label}</span>
+ <span className="rdm-info-value">{value}</span>
+ </div>
+ ))}
+ </div>
+ <div className="rdm-cancellation-request__impact">
+ <AlertTriangle size={15} style={{ flexShrink: 0 }} />
+ <span>Approving cancels the reservation and releases the assigned bed.</span>
+ </div>
+ <div className="rdm-cancellation-request__actions">
+ <button
+ className="rdm-action rdm-action-danger-solid"
+ onClick={() =>
+ doAction(
+ "approveCancellation",
+ () => reservationApi.approveCancellationRequest(reservation.id),
+ "Cancellation approved. Reservation cancelled and bed released.",
+ )
+ }
+ disabled={isSubmitting}
+ >
+ Approve Cancellation
+ </button>
+ <button
+ className="rdm-action rdm-action-neutral-outline"
+ onClick={() =>
+ doAction(
+ "rejectCancellation",
+ () => reservationApi.rejectCancellationRequest(reservation.id),
+ "Cancellation request rejected. Reservation remains active.",
+ )
+ }
+ disabled={isSubmitting}
+ >
+ Reject Request
+ </button>
+ </div>
+ </div>
+ )}
+
  <div className="rdm-section rdm-surface-card">
  <h3 className="rdm-top-section-label">Booking Details</h3>
  <div className="rdm-info-grid rdm-info-grid-dark">
@@ -993,67 +1056,6 @@ export default function ReservationDetailsModal({
  )}
  </div>
 
- {cancellationPending && (
- <div
- ref={cancellationPanelRef}
- className={`rdm-section rdm-surface-card rdm-cancellation-request${
- focusCancellation ? " rdm-cancellation-request--focused" : ""
- }`}
- >
- <div className="rdm-cancellation-request__header">
- <div>
- <h4 className="rdm-section-title rdm-cancellation-request__title">
- Cancellation Request
- </h4>
- <p className="rdm-cancellation-request__copy">
- Review this tenant request before releasing the bed. The reservation fee is non-refundable.
- </p>
- </div>
- <span className="rdm-cancellation-request__badge">
- Pending Review
- </span>
- </div>
- <div className="rdm-info-grid rdm-info-grid-dark rdm-cancellation-request__details">
- {cancellationRequestDetails.map(([label, value]) => (
- <div className="rdm-info-item" key={label}>
- <span className="rdm-info-label">{label}</span>
- <span className="rdm-info-value">{value}</span>
- </div>
- ))}
- </div>
- <div className="rdm-cancellation-request__impact">
- Approving cancels the reservation and releases the assigned bed.
- </div>
- <div className="rdm-cancellation-request__actions">
- <button
- className="rdm-action rdm-action-dark rdm-action-dark-cancel"
- onClick={() =>
- doAction(
- "approveCancellation",
- () => reservationApi.approveCancellationRequest(reservation.id),
- "Cancellation approved. Reservation cancelled and bed released.",
- )
- }
- disabled={isSubmitting}
- >
- Approve Cancellation
- </button>
- <button
- className="rdm-action rdm-action-dark"
- onClick={() =>
- doAction(
- "rejectCancellation",
- () => reservationApi.rejectCancellationRequest(reservation.id),
- "Cancellation request rejected. Reservation remains active.",
- )
- }
- disabled={isSubmitting}
- >
- Reject Request
- </button>
- </div>
- </div>
- )}
 
  <div className="rdm-section rdm-surface-card">
  <h4 className="rdm-section-title">Viewing Preference</h4>
@@ -1827,36 +1829,6 @@ export default function ReservationDetailsModal({
  </button>
  )}
 
- {cancellationPending && (
-   <>
-     <button
-       className="rdm-action rdm-action-danger-outline"
-       onClick={() =>
-         doAction(
-           "approveCancellation",
-           () => reservationApi.approveCancellationRequest(reservation.id),
-           "Cancellation approved. Reservation cancelled and bed released.",
-         )
-       }
-       disabled={isSubmitting}
-     >
-       Approve Cancellation
-     </button>
-     <button
-       className="rdm-action rdm-action-dark"
-       onClick={() =>
-         doAction(
-           "rejectCancellation",
-           () => reservationApi.rejectCancellationRequest(reservation.id),
-           "Cancellation request rejected. Reservation remains active.",
-         )
-       }
-       disabled={isSubmitting}
-     >
-       Reject Request
-     </button>
-   </>
- )}
  {allowedActions.includes("cancelled") && !cancellationPending && (
  <button
  className="rdm-action rdm-action-danger-outline"

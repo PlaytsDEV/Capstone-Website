@@ -3,6 +3,16 @@ import { hasReservationStatus } from "../../../../shared/utils/lifecycleNaming.j
 export const RESERVATION_FEE_NON_REFUNDABLE_NOTICE =
   "The reservation fee is non-refundable. If admin approves your cancellation request, the paid reservation fee will not be returned.";
 
+export const MAX_CANCELLATION_REASON_LENGTH = 250;
+
+export const PREDEFINED_CANCELLATION_REASONS = [
+  "Personal / Family reasons",
+  "Found alternative housing",
+  "Schedule / Term changes",
+  "Financial / Budget changes",
+  "Distance / Location issue",
+];
+
 const CANCELLATION_REQUEST_STATUSES = new Set([
   "pending",
   "viewing_preference_selected",

@@ -77,9 +77,10 @@ export default function DoubleDeckRoomCard({ room, onConfigure, onViewHistory, c
     if (!bed) return { bg: "bg-slate-100 dark:bg-slate-800", text: "text-slate-400", label: "Empty", dot: "bg-slate-300" };
 
     const bedStatus = String(bed.status || "").toLowerCase().trim();
-    const isOcc = bedStatus === "occupied" || Boolean(bed.occupiedBy?.userId);
+    const isLocked = bedStatus === "locked";
     const isRes = bedStatus === "reserved";
     const isMaint = bedStatus === "maintenance";
+    const isOcc = bedStatus === "occupied" || (Boolean(bed.occupiedBy?.userId) && !isLocked && !isRes && !isMaint);
 
     if (isOcc) {
       return {
@@ -95,6 +96,14 @@ export default function DoubleDeckRoomCard({ room, onConfigure, onViewHistory, c
         text: "text-slate-950",
         label: "Reserved",
         dot: "bg-amber-700",
+      };
+    }
+    if (isLocked) {
+      return {
+        bg: "bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 border border-amber-300 dark:border-amber-700",
+        text: "text-amber-900 dark:text-amber-300",
+        label: bed.occupiedBy?.fullName ? `${bed.occupiedBy.fullName.split(" ")[0]} (Hold)` : "In Progress",
+        dot: "bg-amber-500",
       };
     }
     if (isMaint) {

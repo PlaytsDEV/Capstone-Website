@@ -10,6 +10,7 @@ import {
 import useNotificationStore from "../stores/notificationStore";
 import { useAuth } from "../hooks/useAuth";
 import { getVisibleNotificationsForUser } from "../utils/notificationVisibility";
+import { cleanNotificationMessage } from "../utils/notification";
 import "./NotificationBell.css";
 import {
   Bell,
@@ -265,7 +266,7 @@ export default function NotificationBell() {
  </span>
  <div className="nb-item-content">
  <p className="nb-item-title">{notification.title}</p>
- <p className="nb-item-message">{notification.message}</p>
+ <p className="nb-item-message">{cleanNotificationMessage(notification.message)}</p>
  <span className="nb-item-time">
  {timeAgo(notification.createdAt)}
  </span>
