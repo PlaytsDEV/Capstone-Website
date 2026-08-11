@@ -45,7 +45,7 @@ jobs:
 
       # Step 6: Run backend unit test suite (120 test suites, 1203 test cases)
       - name: Server Unit Test Suite
-        run: npm test -- --runInBand --testPathIgnorePatterns="integration"
+        run: npm run test:ci
 
   # ============================
   # JOB 2: Check the Frontend
