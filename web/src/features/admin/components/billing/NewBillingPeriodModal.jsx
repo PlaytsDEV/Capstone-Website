@@ -19,11 +19,19 @@ const get15th = () => {
   return d.toISOString().slice(0, 10);
 };
 
-const getNext15th = (fromDateStr) => {
-  const d = fromDateStr ? new Date(fromDateStr) : new Date();
+const addOneMonth = (fromDateStr) => {
+  if (!fromDateStr) return "";
+  const d = new Date(fromDateStr);
+  if (Number.isNaN(d.getTime())) return "";
+  const currentDay = d.getDate();
   d.setMonth(d.getMonth() + 1);
-  d.setDate(15);
-  return d.toISOString().slice(0, 10);
+  if (d.getDate() !== currentDay) {
+    d.setDate(0);
+  }
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 };
 
 const toInputDate = (value) => {
@@ -38,15 +46,15 @@ const toInputDate = (value) => {
 
 /** Reusable token-aware focus handlers for inputs/selects */
 const ringFocus = {
-  style: { outlineColor: "var(--ring)" },
   onFocus: (e) => {
     e.currentTarget.style.borderColor = "var(--ring)";
-    e.currentTarget.style.boxShadow =
-      "0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent)";
+    e.currentTarget.style.boxShadow = "none";
+    e.currentTarget.style.outline = "none";
   },
   onBlur: (e) => {
     e.currentTarget.style.borderColor = "";
     e.currentTarget.style.boxShadow = "";
+    e.currentTarget.style.outline = "";
   },
 };
 
@@ -76,8 +84,17 @@ export default function NewBillingPeriodModal({
     startReading: "",
     ratePerUnit: defaultRatePerUnit || "",
     endReading: "",
-    endDate: getNext15th(),
+    endDate: addOneMonth(get15th()),
   });
+
+  const handleStartDateChange = (e) => {
+    const newStart = e.target.value;
+    setPeriodForm((prev) => ({
+      ...prev,
+      startDate: newStart,
+      endDate: addOneMonth(newStart) || prev.endDate,
+    }));
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -85,10 +102,15 @@ export default function NewBillingPeriodModal({
         ? toInputDate(lastClosedPeriod.endDate)
         : null;
       const continuationReading = lastClosedPeriod?.endReading ?? null;
-      const startDate = continuationDate || get15th();
+      const startDate = continuationDate || toInputDate(new Date());
+      const initialStartReading =
+        continuationReading ?? latestReading?.reading ?? 0;
       setPeriodForm({
         startDate,
-        startReading: continuationReading ?? latestReading?.reading ?? "",
+        startReading:
+          initialStartReading !== undefined && initialStartReading !== null
+            ? String(initialStartReading)
+            : "0",
         ratePerUnit:
           lastClosedPeriod?.ratePerUnit != null
             ? String(lastClosedPeriod.ratePerUnit)
@@ -98,7 +120,7 @@ export default function NewBillingPeriodModal({
               ? String(defaultRatePerUnit)
               : "",
         endReading: "",
-        endDate: getNext15th(startDate),
+        endDate: addOneMonth(startDate),
       });
       setGenerationBlocker(null);
     }
@@ -114,13 +136,16 @@ export default function NewBillingPeriodModal({
       ? `Auto-filled from previous closed cycle (${lastClosedPeriod.endReading} kWh)`
       : latestReading?.reading != null
         ? `Pre-filled from latest room meter log (${latestReading.reading} kWh)`
-        : "Manual entry baseline";
+        : "Auto-filled baseline starting reading (0 kWh)";
 
   // Calculations for live calculation preview
   const isElectricity = utilityType === "electricity";
   const startNum = parseFloat(periodForm.startReading);
   const endNum = parseFloat(periodForm.endReading);
   const rateNum = parseFloat(periodForm.ratePerUnit);
+
+  const isRateInvalid = !isNaN(rateNum) && rateNum < 0;
+  const hasValidRate = !isNaN(rateNum) && rateNum >= 0;
 
   const hasValidReadings =
     !isNaN(startNum) && !isNaN(endNum) && endNum >= startNum;
@@ -134,9 +159,9 @@ export default function NewBillingPeriodModal({
   const calculatedUsage =
     isElectricity && hasValidReadings ? endNum - startNum : 0;
   const estimatedTotalCost =
-    isElectricity && hasValidReadings && !isNaN(rateNum)
+    isElectricity && hasValidReadings && hasValidRate
       ? calculatedUsage * rateNum
-      : !isElectricity && !isNaN(rateNum)
+      : !isElectricity && hasValidRate
         ? rateNum
         : 0;
 
@@ -192,6 +217,10 @@ export default function NewBillingPeriodModal({
       (isElectricity && (!periodForm.startReading || !periodForm.endReading))
     ) {
       return notify.warn("All fields (dates, readings, and rate) are required.");
+    }
+
+    if (isRateInvalid) {
+      return notify.warn("Rate cannot be a negative value.");
     }
 
     if (isReadingLower) {
@@ -352,9 +381,7 @@ export default function NewBillingPeriodModal({
                 className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-card-foreground focus:outline-none disabled:opacity-60"
                 {...ringFocus}
                 value={periodForm.startDate}
-                onChange={(e) =>
-                  setPeriodForm({ ...periodForm, startDate: e.target.value })
-                }
+                onChange={handleStartDateChange}
                 disabled={isPending || isFixedRateBranch}
               />
             </div>
@@ -389,7 +416,10 @@ export default function NewBillingPeriodModal({
               <input
                 type="number"
                 step="0.01"
-                className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-card-foreground focus:outline-none disabled:opacity-60"
+                min="0"
+                className={`w-full rounded-lg border px-3 py-2 text-sm text-card-foreground focus:outline-none disabled:opacity-60 ${
+                  isRateInvalid && !isFixedRateBranch ? "border-red-500" : "border-border bg-card"
+                }`}
                 {...ringFocus}
                 value={periodForm.ratePerUnit}
                 onChange={(e) =>
@@ -398,6 +428,11 @@ export default function NewBillingPeriodModal({
                 placeholder="e.g. 16.00"
                 disabled={isPending || isFixedRateBranch}
               />
+              {isRateInvalid && !isFixedRateBranch && (
+                <p className="text-[11px] font-medium text-red-500">
+                  Rate cannot be negative
+                </p>
+              )}
             </div>
           </div>
 
@@ -487,13 +522,13 @@ export default function NewBillingPeriodModal({
                   <div className="rounded-lg bg-card border border-border p-2">
                     <div className="text-[11px] text-muted-foreground">Rate</div>
                     <div className="text-sm font-semibold text-foreground mt-0.5">
-                      {!isNaN(rateNum) && !isFixedRateBranch ? `₱${rateNum.toFixed(2)}/kWh` : "—"}
+                      {hasValidRate && !isFixedRateBranch ? `₱${rateNum.toFixed(2)}/kWh` : "—"}
                     </div>
                   </div>
                   <div className="rounded-lg bg-card border border-border p-2">
                     <div className="text-[11px] text-muted-foreground">Est. Room Total</div>
                     <div className="text-sm font-bold text-emerald-600 mt-0.5">
-                      {hasValidReadings && !isNaN(rateNum) && !isFixedRateBranch
+                      {hasValidReadings && hasValidRate && !isFixedRateBranch
                         ? fmtCurrency(estimatedTotalCost)
                         : "—"}
                     </div>
@@ -524,7 +559,7 @@ export default function NewBillingPeriodModal({
                 <div className="flex items-center justify-between rounded-lg bg-card border border-border p-3">
                   <span className="text-xs text-muted-foreground font-medium">Total Water Charge:</span>
                   <span className="text-base font-bold text-emerald-600">
-                    {!isNaN(rateNum) && !isFixedRateBranch ? fmtCurrency(rateNum) : "₱0.00"}
+                    {hasValidRate && !isFixedRateBranch ? fmtCurrency(rateNum) : "₱0.00"}
                   </span>
                 </div>
               </div>
@@ -543,7 +578,7 @@ export default function NewBillingPeriodModal({
           </button>
           <button
             onClick={handleGenerateCycle}
-            disabled={isPending || isReadingLower || isDateInvalid || isFixedRateBranch}
+            disabled={isPending || isReadingLower || isDateInvalid || isRateInvalid || isFixedRateBranch}
             className="rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50 transition-opacity"
             style={{
               background: "var(--primary)",

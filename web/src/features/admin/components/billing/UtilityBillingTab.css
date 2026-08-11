@@ -164,16 +164,14 @@
 }
 
 .eb-room:focus-visible {
-  outline: 2px solid #2563eb;
-  outline-offset: 2px;
+  outline: none;
+  border-color: var(--primary, #2563eb);
 }
 
 .eb-room--active {
   background: var(--surface-card, #fff);
-  border-color: var(--color-info, #2563eb);
-  box-shadow:
-    0 0 0 2px rgba(37, 99, 235, 0.12),
-    0 1px 4px rgba(0, 0, 0, 0.06);
+  border-color: var(--primary, #2563eb);
+  box-shadow: none;
 }
 
 /* Room card row helpers */

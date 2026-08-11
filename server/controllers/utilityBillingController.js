@@ -541,6 +541,10 @@ export const openUtilityPeriod = async (req, res, next) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
+    if (Number(ratePerUnit) < 0) {
+      return res.status(400).json({ error: "Utility rate cannot be negative." });
+    }
+
     const room = await Room.findById(roomId);
     if (!room) return res.status(404).json({ error: "Room not found" });
 

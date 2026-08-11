@@ -221,13 +221,46 @@ const billSchema = new mongoose.Schema(
       default: 0,
     },
 
-    // --- Payment Status ---
+    // --- Payment Status (Legacy combined field — kept for query indexes and backward compat) ---
+    // Derived from the 4 independent dimensions below; do NOT write to this directly.
+    // Use syncBillAmounts() which reconciles all dimensions and updates this cache.
     status: {
       type: String,
       enum: ["draft", "pending", "paid", "overdue", "partially-paid", "voided"],
       default: "pending",
       index: true,
     },
+
+    // -------------------------------------------------------------------------
+    // INDEPENDENT LIFECYCLE STATE DIMENSIONS (Phase 3 — spec docs 01, 02)
+    // These are the authoritative source of truth. `status` above is a derived cache.
+    // -------------------------------------------------------------------------
+
+    /** Whether the bill has been published and made tenant-visible. */
+    publicationState: {
+      type: String,
+      enum: ["draft", "published"],
+      default: "draft",
+      index: true,
+    },
+
+    /** Payment progress state — independent of whether the bill is overdue. */
+    paymentState: {
+      type: String,
+      enum: ["unpaid", "partially-paid", "paid"],
+      default: "unpaid",
+    },
+
+    /**
+     * Due state — tracks whether the bill is past its due date.
+     * Independent of paymentState; a bill can be overdue + partially-paid simultaneously.
+     */
+    dueState: {
+      type: String,
+      enum: ["current", "overdue"],
+      default: "current",
+    },
+
     // --- Milestone & Sub-Invoice Extensions ---
     invoiceVersion: {
       type: Number,

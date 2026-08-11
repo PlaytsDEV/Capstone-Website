@@ -31,7 +31,7 @@
     "seed:service-providers:write": "node scripts/seed_service_providers.mjs --write",
     "surveys:seed-defaults": "node scripts/seed_default_survey_templates.mjs",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
-    "test:ci": "npx jest --runInBand --testPathIgnorePatterns=integration"
+    "test:ci": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --testPathIgnorePatterns=integration"
   },
   "keywords": [
     "express",

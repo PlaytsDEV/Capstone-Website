@@ -31,7 +31,7 @@ const generateRooms = () => {
     { branch: "gil-puyat", floor: 5, roomNumber: "510", type: "double-sharing" },
     
     ...Array.from({ length: 8 }, (_, i) => ({ branch: "gil-puyat", floor: 6, roomNumber: `60${i+1}`, type: "quadruple-sharing" })),
-    ...Array.from({ length: 2 }, (_, i) => ({ branch: "gil-puyat", floor: 6, roomNumber: `60${i+9}`, type: "double-sharing" })),
+    ...Array.from({ length: 2 }, (_, i) => ({ branch: "gil-puyat", floor: 6, roomNumber: `6${(i+9).toString().padStart(2, '0')}`, type: "double-sharing" })),
     
     ...Array.from({ length: 3 }, (_, i) => ({ branch: "gil-puyat", floor: 7, roomNumber: `70${i+1}`, type: "double-sharing" })),
     ...Array.from({ length: 10 }, (_, i) => ({ branch: "gil-puyat", floor: 7, roomNumber: `7${(i+4).toString().padStart(2, '0')}`, type: "private" })),

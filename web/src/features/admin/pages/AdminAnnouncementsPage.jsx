@@ -163,15 +163,15 @@ const groupAnnouncementsByMonth = (announcements) => {
 
 /** Shared focus ring helper — uses var(--ring) */
 const ringFocus = {
-  style: { outlineColor: "var(--ring)" },
   onFocus: (e) => {
     e.currentTarget.style.borderColor = "var(--ring)";
-    e.currentTarget.style.boxShadow =
-      "0 0 0 2px color-mix(in srgb, var(--ring) 20%, transparent)";
+    e.currentTarget.style.boxShadow = "none";
+    e.currentTarget.style.outline = "none";
   },
   onBlur: (e) => {
     e.currentTarget.style.borderColor = "";
     e.currentTarget.style.boxShadow = "";
+    e.currentTarget.style.outline = "";
   },
 };
 

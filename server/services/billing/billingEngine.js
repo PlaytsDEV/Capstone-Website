@@ -17,8 +17,15 @@ import {
   readMoveInDate,
   readMoveOutDate,
 } from "../../utils/lifecycleNaming.js";
+import {
+  toCents,
+  toPesos,
+  hamiltonAllocate,
+  verifyReconciliation,
+} from "./financialMath.js";
 
 export const truncate4 = (n) => Math.floor(n * 10000) / 10000;
+/** @deprecated Use toPesos/toCents from financialMath.js */
 export const roundMoney = (n) => Math.round(n * 100) / 100;
 
 const WATER_SHARED_ROOM_TYPES = new Set([
@@ -266,8 +273,37 @@ function formatPeriodLabel(start, end) {
   return `${s} – ${e}`;
 }
 
+/**
+ * Detect duplicate timestamps in the reading sequence.
+ * Returns an array of { date, eventType } objects for duplicates.
+ * @param {Array} sortedReadings
+ * @returns {{ date: Date, eventType: string }[]}
+ */
+export function detectDuplicateTimestamps(sortedReadings) {
+  const seen = new Map();
+  const duplicates = [];
+  for (const reading of sortedReadings) {
+    const key = `${new Date(reading.date).getTime()}:${reading.eventType || ""}`;
+    if (seen.has(key)) {
+      duplicates.push({ date: new Date(reading.date), eventType: reading.eventType });
+    } else {
+      seen.set(key, true);
+    }
+  }
+  return duplicates;
+}
+
 export function buildSegments(sortedReadings, tenantEvents) {
   if (!sortedReadings || sortedReadings.length < 2) return [];
+
+  // Phase 2: Detect duplicate timestamps before building segments
+  const duplicates = detectDuplicateTimestamps(sortedReadings);
+  if (duplicates.length > 0) {
+    const detail = duplicates.map((d) => `${d.eventType}@${dayjs(d.date).format("YYYY-MM-DD")}`).join(", ");
+    throw new Error(
+      `DUPLICATE_TIMESTAMP: Duplicate meter reading timestamps detected: ${detail}. Remove duplicates before computing billing.`,
+    );
+  }
 
   const segments = [];
   for (let i = 0; i < sortedReadings.length - 1; i++) {
@@ -280,7 +316,7 @@ export function buildSegments(sortedReadings, tenantEvents) {
 
     if (unitsConsumed < 0) {
       throw new Error(
-        `Invalid reading sequence: reading ${readingTo} is lower than ${readingFrom}.`,
+        `NEGATIVE_DELTA: Invalid reading sequence: reading ${readingTo} is lower than ${readingFrom} (segment ${i + 1}). Possible meter reset — flag for admin review.`,
       );
     }
 
@@ -309,12 +345,24 @@ export function buildSegments(sortedReadings, tenantEvents) {
 export function computeSegmentShares(segment, ratePerUnit) {
   const { unitsConsumed, activeTenantCount } = segment;
 
-  if (unitsConsumed === 0 || activeTenantCount === 0) {
+  if (unitsConsumed === 0) {
     return { sharePerTenantUnits: 0, sharePerTenantCost: 0, totalCost: 0 };
   }
 
+  // Phase 2: Zero-occupancy with consumption is an explicit anomaly, not a silent zero.
+  if (activeTenantCount === 0) {
+    return {
+      sharePerTenantUnits: 0,
+      sharePerTenantCost: 0,
+      totalCost: 0,
+      exception: "ZERO_OCCUPANCY_WITH_CONSUMPTION",
+      exceptionDetail: `Segment consumed ${unitsConsumed} kWh but has no active tenants. Flag for admin review.`,
+    };
+  }
+
+  const totalCost = truncate4(unitsConsumed * ratePerUnit);
+
   if (activeTenantCount === 1) {
-    const totalCost = truncate4(unitsConsumed * ratePerUnit);
     return {
       sharePerTenantUnits: unitsConsumed,
       sharePerTenantCost: totalCost,
@@ -322,11 +370,24 @@ export function computeSegmentShares(segment, ratePerUnit) {
     };
   }
 
-  const sharePerTenantUnits = truncate4(unitsConsumed / activeTenantCount);
-  const totalCost = truncate4(unitsConsumed * ratePerUnit);
-  const sharePerTenantCost = truncate4(totalCost / activeTenantCount);
+  // Phase 1: Use Hamilton cent allocation for multi-tenant splits
+  // (equal weights per tenant — units are split evenly)
+  const equalWeights = Array(activeTenantCount).fill(1);
+  const totalCostCents = toCents(totalCost);
+  const tieKeys = segment.activeTenantIds.map(String);
+  const centShares = hamiltonAllocate(totalCostCents, equalWeights, tieKeys);
 
-  return { sharePerTenantUnits, sharePerTenantCost, totalCost };
+  const unitShare = truncate4(unitsConsumed / activeTenantCount);
+  // Cost per tenant derived from Hamilton cents (ensures sum === totalCost exactly)
+  const sharePerTenantCost = toPesos(centShares[0]); // representative; per-tenant costs in segments array
+
+  return {
+    sharePerTenantUnits: unitShare,
+    sharePerTenantCost,
+    totalCost,
+    // Expose the per-tenant cent shares for aggregation
+    _centSharesByTenantIndex: centShares,
+  };
 }
 
 export function calculateOverlapDays(
@@ -448,6 +509,7 @@ export function computeBilling({
     }
 
     const allPeriodTenantIds = tenantEvents.map((t) => t.tenantId);
+    const segmentExceptions = [];
 
     const computedSegments = rawSegments.map((seg) => {
       let activeTenantIds = seg.activeTenantIds;
@@ -466,14 +528,15 @@ export function computeBilling({
         coveredTenantNames = tenantEvents.map((t) => t.tenantName);
       }
 
-      if (
-        forceSegmented &&
-        seg.unitsConsumed > 0 &&
-        activeTenantCount === 0
-      ) {
-        throw new Error(
-          `Segment ${seg.segmentIndex + 1} has consumption but no active tenants. Check occupancy and lifecycle meter events.`,
-        );
+      if (seg.unitsConsumed > 0 && activeTenantCount === 0) {
+        // Phase 2: Zero occupancy with consumption — explicit exception.
+        const excDetail = `Segment ${seg.segmentIndex + 1}: ${seg.unitsConsumed} kWh consumed but no active tenants.`;
+        segmentExceptions.push({ code: "ZERO_OCCUPANCY_WITH_CONSUMPTION", detail: excDetail });
+        if (forceSegmented) {
+          throw new Error(
+            `ZERO_OCCUPANCY_WITH_CONSUMPTION: ${excDetail} Check occupancy and lifecycle meter events.`,
+          );
+        }
       }
 
       const segmentWithTenants = {
@@ -484,6 +547,10 @@ export function computeBilling({
       };
 
       const shares = computeSegmentShares(segmentWithTenants, ratePerUnit);
+      // Propagate exception from computeSegmentShares
+      if (shares.exception) {
+        segmentExceptions.push({ code: shares.exception, detail: shares.exceptionDetail });
+      }
       return { ...segmentWithTenants, ...shares, ratePerUnit };
     });
 
@@ -494,21 +561,28 @@ export function computeBilling({
         segmentIndex,
       }));
 
+    // Phase 1: Aggregate per-tenant kWh, then apply Hamilton cent allocation for bill amounts.
     const tenantKwhMap = new Map();
+    const tenantCentMap = new Map(); // Accumulate per-tenant cents from _centSharesByTenantIndex
     for (const segment of segments) {
-      for (const tenantId of segment.activeTenantIds) {
+      for (let ti = 0; ti < segment.activeTenantIds.length; ti++) {
+        const tenantId = segment.activeTenantIds[ti];
         const key = String(tenantId);
         tenantKwhMap.set(
           key,
           (tenantKwhMap.get(key) || 0) + segment.sharePerTenantUnits,
         );
+        // Accumulate Hamilton cents from the segment's per-tenant allocation
+        const centShare = segment._centSharesByTenantIndex?.[ti] ?? toCents(segment.sharePerTenantCost);
+        tenantCentMap.set(key, (tenantCentMap.get(key) || 0) + centShare);
       }
     }
 
     const tenantSummaries = [];
     for (const [tenantIdStr, rawKwh] of tenantKwhMap) {
       const totalUsage = truncate4(rawKwh);
-      const billAmount = truncate4(totalUsage * ratePerUnit);
+      // Use accumulated Hamilton cents; convert to pesos for the API surface
+      const billAmount = toPesos(tenantCentMap.get(tenantIdStr) || 0);
       const event = tenantEvents.find(
         (t) => String(t.tenantId) === tenantIdStr,
       );
@@ -539,7 +613,13 @@ export function computeBilling({
       (sum, t) => sum + t.totalUsage,
       0,
     );
-    const valid = Math.abs(sumTenantKwh - totalUnits) <= 0.01;
+    // Phase 1: Strict cent-level reconciliation (not ±0.01 float tolerance)
+    const totalCostCents = toCents(totalCost);
+    const sumTenantCents = tenantSummaries.reduce((sum, t) => sum + toCents(t.billAmount), 0);
+    const reconciliation = verifyReconciliation(
+      tenantSummaries.map((t) => toCents(t.billAmount)),
+      totalCostCents,
+    );
 
     return {
       strategy: forceSegmented ? "segment-based-strict" : "segment-based",
@@ -547,7 +627,9 @@ export function computeBilling({
       tenantSummaries,
       computedTotalUsage: totalUnits,
       computedTotalCost: totalCost,
-      verified: valid,
+      verified: reconciliation.valid && Math.abs(sumTenantKwh - totalUnits) <= 0.01,
+      reconciliationDeltaCents: reconciliation.delta,
+      exceptions: segmentExceptions,
     };
   } else {
     const shareAmounts = buildProratedShareAmounts(

@@ -53,26 +53,30 @@ describe("applyBillPayment", () => {
     expect(bill.save).toHaveBeenCalledTimes(1);
   });
 
-  test("caps an overpayment at the remaining balance and marks the bill paid", async () => {
+  test("rejects an overpayment exceeding the remaining balance (Phase 4 policy)", async () => {
     const bill = buildBillFixture();
     const paymentModel = {
       create: jest.fn(async (payload) => ({ ...payload, deleteOne: jest.fn() })),
+      findOne: jest.fn(async () => null),
     };
 
-    const result = await applyBillPayment({
-      bill,
-      amount: 2000,
-      method: "bank",
-      source: "admin-manual",
-      actorId: "admin-1",
-      paymentModel,
-      now: new Date("2026-04-03T10:00:00.000Z"),
-    });
+    // amount: 2000 > remaining: 1500 → must throw OVERPAYMENT_REJECTED
+    await expect(
+      applyBillPayment({
+        bill,
+        amount: 2000,
+        method: "bank",
+        source: "admin-manual",
+        actorId: "admin-1",
+        paymentModel,
+        now: new Date("2026-04-03T10:00:00.000Z"),
+      }),
+    ).rejects.toThrow(/OVERPAYMENT_REJECTED/);
 
-    expect(result.bill.totalAmount).toBe(1500);
-    expect(result.bill.remainingAmount).toBe(0);
-    expect(result.bill.status).toBe("paid");
-    expect(result.payment.amount).toBe(1500);
+    // No payment should have been created
+    expect(paymentModel.create).not.toHaveBeenCalled();
+    // Bill amounts unchanged
+    expect(bill.paidAmount).toBe(0);
   });
 
   test("rejects a payment when the bill has no remaining balance", async () => {

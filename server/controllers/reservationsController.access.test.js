@@ -1715,7 +1715,7 @@ describe("reservationsController.updateReservation access hardening", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  test("admin marking no-show keeps physical visit application locked", async () => {
+  test("admin marking no-show auto-cancels the room reservation", async () => {
     const save = jest.fn().mockResolvedValue(undefined);
     const populate = jest.fn().mockResolvedValue(undefined);
     const reservation = {
@@ -1760,7 +1760,13 @@ describe("reservationsController.updateReservation access hardening", () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.body?.reservation?.visitStatus).toBe("no_show");
-    expect(reservation.status).toBe("visit_pending");
+    // Reservation must be fully cancelled on no-show
+    expect(reservation.status).toBe("cancelled");
+    expect(reservation.cancellationSource).toBe("admin");
+    expect(reservation.cancellationReason).toBe("Applicant missed the visit.");
+    expect(reservation.reservationFeeForfeited).toBe(true);
+    expect(reservation.reservationFeeRefundable).toBe(false);
+    expect(reservation.cancelledAt).toBeDefined();
     expect(reservation.visitApproved).toBe(false);
     expect(save).toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();

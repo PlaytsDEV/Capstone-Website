@@ -332,7 +332,7 @@ export const VISIT_MANAGEMENT_ACTIONS_BY_STATUS = Object.freeze({
     "cancel_visit",
     "allow_without_visit",
   ]),
-  no_show: Object.freeze(["reschedule", "allow_without_visit"]),
+  no_show: Object.freeze([]), // Reservation is auto-cancelled on no-show; no further visit actions
   visit_cancelled: Object.freeze(["reschedule", "allow_without_visit"]),
   visit_completed: Object.freeze([]),
   allowed_without_visit: Object.freeze([]),

@@ -325,4 +325,69 @@ export function findBedOccupancyOverlaps({
   };
 }
 
+/**
+ * Validate a raw meter reading sequence and return typed issues.
+ * Does NOT throw — returns structured issues so callers can decide
+ * whether to block or warn.
+ *
+ * Issue codes:
+ *   NEGATIVE_DELTA        — a reading is lower than the previous one
+ *   DUPLICATE_TIMESTAMP   — two readings share the same date + eventType
+ *   MISSING_BOUNDARY      — readings array is empty or has fewer than 2 entries
+ *
+ * @param {Array<{ reading: number, date: Date|string, eventType?: string }>} readings
+ * @returns {{ valid: boolean, issues: Array<{ code: string, detail: string, index?: number }> }}
+ */
+export function validateMeterSequence(readings = []) {
+  const issues = [];
+
+  if (!Array.isArray(readings) || readings.length === 0) {
+    issues.push({ code: "MISSING_BOUNDARY", detail: "No readings provided." });
+    return { valid: false, issues };
+  }
+
+  if (readings.length < 2) {
+    issues.push({
+      code: "MISSING_BOUNDARY",
+      detail: "At least two readings (period start and period end) are required.",
+    });
+    return { valid: false, issues };
+  }
+
+  // Sort by date ascending for sequential validation
+  const sorted = [...readings].sort(
+    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+  );
+
+  // Check for duplicate timestamps (same date + same eventType)
+  const seen = new Map();
+  for (const reading of sorted) {
+    const key = `${new Date(reading.date).getTime()}:${reading.eventType || ""}`;
+    if (seen.has(key)) {
+      issues.push({
+        code: "DUPLICATE_TIMESTAMP",
+        detail: `Duplicate reading at ${reading.date} (eventType: ${reading.eventType || "unknown"}).`,
+      });
+    } else {
+      seen.set(key, true);
+    }
+  }
+
+  // Check for negative deltas
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1];
+    const curr = sorted[i];
+    const delta = Number(curr.reading) - Number(prev.reading);
+    if (delta < 0) {
+      issues.push({
+        code: "NEGATIVE_DELTA",
+        detail: `Reading at index ${i} (${curr.reading}) is lower than index ${i - 1} (${prev.reading}). Possible meter reset.`,
+        index: i,
+      });
+    }
+  }
+
+  return { valid: issues.length === 0, issues };
+}
+
 export { WATER_BILLABLE_ROOM_TYPES };

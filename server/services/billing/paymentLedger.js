@@ -66,6 +66,14 @@ async function finalizeBillPayment({
     throw new Error("Bill has no remaining balance.");
   }
 
+  // Phase 4: Reject overpayments — excess payment must not silently disappear.
+  // 1-cent tolerance handles floating-point drift at the peso/cent boundary.
+  if (amount > remainingBefore + 0.01) {
+    throw new Error(
+      `OVERPAYMENT_REJECTED: Payment amount (₱${amount.toFixed(2)}) exceeds remaining balance (₱${remainingBefore.toFixed(2)}). Reduce the payment amount or settle the exact balance.`,
+    );
+  }
+
   const appliedAmount = Math.min(remainingBefore, amount);
   if (appliedAmount <= 0) {
     throw new Error("Bill has no remaining balance.");

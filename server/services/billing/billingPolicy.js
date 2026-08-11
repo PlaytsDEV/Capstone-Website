@@ -234,12 +234,50 @@ export function resolveBillStatus(billLike, now = new Date()) {
   return "pending";
 }
 
+/**
+ * Resolve the authoritative paymentState dimension from a bill snapshot.
+ * Pure function — does not mutate.
+ * @param {Object} billLike
+ * @returns {"unpaid"|"partially-paid"|"paid"}
+ */
+export function resolvePaymentState(billLike) {
+  const remaining = getBillRemainingAmount(billLike);
+  if (remaining <= 0) return "paid";
+  if ((billLike.paidAmount || 0) > 0) return "partially-paid";
+  return "unpaid";
+}
+
+/**
+ * Resolve the authoritative dueState dimension from a bill snapshot.
+ * Pure function — does not mutate.
+ * @param {Object} billLike
+ * @param {Date} [now]
+ * @returns {"current"|"overdue"}
+ */
+export function resolveDueState(billLike, now = new Date()) {
+  if (billLike.dueDate && new Date(billLike.dueDate) < now) {
+    return "overdue";
+  }
+  return "current";
+}
+
 export function syncBillAmounts(bill, { preserveStatus = false, now = new Date() } = {}) {
   const snapshot = getVisibleBillSnapshot(bill, now);
 
   bill.grossAmount = snapshot.grossAmount;
   bill.totalAmount = snapshot.totalAmount;
   bill.remainingAmount = snapshot.remainingAmount;
+
+  // Phase 3: Write the authoritative independent state dimensions.
+  // These are written lazily on every sync — no migration script required.
+  bill.paymentState = resolvePaymentState(bill);
+  bill.dueState = resolveDueState(bill, now);
+  // publicationState is set explicitly by publish operations (rentBillingController, utilityBillFlow);
+  // syncBillAmounts preserves the existing value and only initialises it if missing.
+  if (!bill.publicationState) {
+    // Infer from legacy status for existing documents
+    bill.publicationState = bill.status === "draft" ? "draft" : "published";
+  }
 
   if (!preserveStatus) {
     bill.status = snapshot.status;

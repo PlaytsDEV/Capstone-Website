@@ -315,6 +315,7 @@ export async function sendDraftUtilityBills({ bills, period, result }) {
     bill.dueDate = dueDate;
     bill.sentAt = sentAt;
     bill.status = "pending";
+    bill.publicationState = "published"; // Phase 3: mark as published (tenant-visible)
     syncBillAmounts(bill);
     await bill.save();
 

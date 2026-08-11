@@ -153,6 +153,33 @@ export async function markOverdueBills(bills) {
   }
 }
 
+/**
+ * Phase 5 — Published Bill Immutability Guard
+ *
+ * Throws an AppError (409 BILL_IMMUTABLE) if a caller attempts to silently
+ * mutate the charge composition of a published bill.
+ *
+ * Pass `{ allowAdjustment: true }` only when the caller is explicitly creating
+ * an audit-tracked adjustment (e.g. discount, manual correction).
+ *
+ * @param {Object} bill - Mongoose Bill document
+ * @param {{ allowAdjustment?: boolean }} [options]
+ * @throws {AppError} 409 BILL_IMMUTABLE
+ */
+export function assertBillMutable(bill, { allowAdjustment = false } = {}) {
+  if (
+    (bill.publicationState === "published" || bill.sentAt || bill.issuedAt) &&
+    !allowAdjustment &&
+    !bill.isManuallyAdjusted
+  ) {
+    throw new AppError(
+      "Published bills cannot be silently mutated. Create an explicit adjustment record instead.",
+      409,
+      "BILL_IMMUTABLE",
+    );
+  }
+}
+
 /** Map a Bill document to API response shape */
 export const formatBill = (bill) => {
   const visible = getVisibleBillSnapshot(bill);

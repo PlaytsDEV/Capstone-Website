@@ -2527,19 +2527,17 @@ export const manageReservationVisit = async (req, res, next) => {
         note,
         updatedAt: now,
       });
-      if (
-        hasReservationStatus(
-          reservation.status,
-          LEGACY_VISIT_STATUSES,
-          "pending",
-          "viewing_preference_selected",
-        )
-      ) {
-        reservation.status = "visit_pending";
-      }
-      applicantNotificationTitle = "Missed Physical Visit";
+      // Auto-cancel the room reservation when the applicant is a no-show
+      reservation.status = "cancelled";
+      reservation.cancelledAt = now;
+      reservation.cancelledBy = actorId;
+      reservation.cancellationSource = "admin";
+      reservation.cancellationReason = note || "No-show at scheduled visit";
+      reservation.reservationFeeRefundable = false;
+      reservation.reservationFeeForfeited = true;
+      applicantNotificationTitle = "Reservation Cancelled — Missed Visit";
       applicantNotificationMessage =
-        "You missed your scheduled visit. Please reschedule your visit or contact admin before continuing. Your tenant application remains locked.";
+        "You missed your scheduled visit and your room reservation has been automatically cancelled. Please contact admin if you believe this was in error.";
       applicantEmailStatus = "no_show";
     }
 
@@ -2629,6 +2627,36 @@ export const manageReservationVisit = async (req, res, next) => {
     await reservation.populate(...POPULATE_USER);
     await reservation.populate(...POPULATE_ROOM);
 
+    // Post-save side effects for no-show auto-cancellation
+    if (action === "mark_no_show") {
+      const noShowPreviousStatus = previousSnapshot.status;
+      try {
+        await updateOccupancyOnReservationChange(
+          { ...reservation.toObject(), roomId },
+          { status: noShowPreviousStatus },
+        );
+      } catch (occupancyErr) {
+        logger.warn(
+          { err: occupancyErr, reservationId },
+          "No-show auto-cancel: occupancy update failed (non-fatal)",
+        );
+      }
+      try {
+        await syncReservationUserLifecycle({
+          status: "cancelled",
+          previousStatus: noShowPreviousStatus,
+          userId: reservation.userId?._id || reservation.userId,
+          roomId,
+          reservationId: reservation._id,
+        });
+      } catch (lifecycleErr) {
+        logger.warn(
+          { err: lifecycleErr, reservationId },
+          "No-show auto-cancel: lifecycle sync failed (non-fatal)",
+        );
+      }
+    }
+
     const successMessage =
       action === "approve_schedule"
         ? "Visit schedule approved. Tenant has been notified."
@@ -2637,7 +2665,7 @@ export const manageReservationVisit = async (req, res, next) => {
           : action === "mark_visited"
             ? "Visit marked as completed"
             : action === "mark_no_show"
-              ? "Visit marked as no-show"
+              ? "Visit marked as no-show. Reservation has been automatically cancelled."
               : action === "reschedule"
                 ? "Visit schedule updated"
                 : action === "allow_without_visit"

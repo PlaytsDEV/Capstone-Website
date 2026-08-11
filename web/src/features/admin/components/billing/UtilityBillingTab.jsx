@@ -1928,15 +1928,21 @@ const UtilityBillingTab = ({
                 return (
                   <button
                     key={room.id}
-                    className="w-full rounded-lg border px-3 py-2 text-left transition shrink-0"
+                    className="w-full rounded-lg border px-3 py-2 text-left transition shrink-0 focus:outline-none focus-visible:outline-none"
                     style={
                       isSelected
                         ? {
                             borderColor: "var(--primary)",
                             background:
-                              "color-mix(in srgb, var(--primary) 12%, var(--card))",
+                              "color-mix(in srgb, var(--primary) 10%, var(--card))",
+                            boxShadow: "none",
+                            outline: "none",
                           }
-                        : {}
+                        : {
+                            borderColor: "var(--border)",
+                            boxShadow: "none",
+                            outline: "none",
+                          }
                     }
                     onMouseEnter={(e) => {
                       if (!isSelected) {
