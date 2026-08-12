@@ -383,10 +383,12 @@ server/services/email/resendEmailService.js sends — do not rename them in
 the template.
 
 Before creating templates, first set \`LOGO_URL\` — replace the literal
-\`{{{LOGO_URL}}}\` placeholder in each HTML file with your actual logo URL
-(e.g. \`https://www.lilycrest.space/assets/LOGO-8Ay0b2-y.svg\`), or leave it
+\`{{{LOGO_URL}}}\` placeholder in each HTML file with the real Lilycrest
+logo URL: \`https://www.lilycrest.space/lilycrest-logo.png\` (matches
+PUBLIC_LOGO_URL's default — see server/config/publicUrls.js), or leave it
 as a merge tag and pass LOGO_URL as an extra variable if you'd rather not
-hardcode it.
+hardcode it. Do not use logo512.png/logo192.png — those are Create React
+App's generic placeholder icons, not Lilycrest branding.
 
 For each row below:
 1. Open the .html file, paste its contents into a new Resend Template.

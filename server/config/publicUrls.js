@@ -69,12 +69,14 @@ export const getPublicUrlConfig = (environment = process.env) => {
   );
 
   // Stable, non-build-hashed static asset — served directly from
-  // web/public/logo512.png, unlike bundler-hashed files under /assets/*
-  // whose filename changes between builds. Overridable for a rebrand
-  // without a code change.
+  // web/public/lilycrest-logo.png (the real Lilycrest mark, copied from
+  // web/src/assets/images/LOGO.png), unlike bundler-hashed files under
+  // /assets/* whose filename changes between builds. NOT logo512.png /
+  // logo192.png — those are Create React App's generic placeholder icons,
+  // not Lilycrest branding. Overridable for a rebrand without a code change.
   const publicLogoUrl = requireHttpUrl(
     "PUBLIC_LOGO_URL",
-    environment.PUBLIC_LOGO_URL || (publicFrontendUrl ? `${publicFrontendUrl}/logo512.png` : ""),
+    environment.PUBLIC_LOGO_URL || (publicFrontendUrl ? `${publicFrontendUrl}/lilycrest-logo.png` : ""),
     { production },
   );
 
