@@ -1577,6 +1577,13 @@ reservationSchema.pre("save", function guardPricingSnapshotImmutability(next) {
   // Only applies to updates (not new documents) and only when pricing is approved
   if (this.isNew) return next();
   if (!this.pricingApprovedAt) return next();
+  // pricingApprovedAt being modified on this very save means this is the
+  // initial approval (or a deliberate re-approval via the admin override
+  // workflow) establishing the snapshot — not a mutation of an
+  // already-approved one. Only guard saves where pricing was already
+  // approved before this save began and the caller is trying to slip a
+  // change past that without going through re-approval.
+  if (this.isModified("pricingApprovedAt")) return next();
 
   const violations = IMMUTABLE_PRICING_FIELDS.filter((path) =>
     this.isModified(path),

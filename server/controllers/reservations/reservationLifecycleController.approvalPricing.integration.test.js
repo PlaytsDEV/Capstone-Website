@@ -54,6 +54,7 @@ await jest.unstable_mockModule("../../services/occupancy/occupancyManager.js", (
   getRoomOccupancyStatus: jest.fn(),
   getBranchOccupancyStats: jest.fn(),
   releaseOrphanedBeds: jest.fn(),
+  getDisplayStatusForReservation: jest.fn(() => "locked"),
   default: {},
 }));
 

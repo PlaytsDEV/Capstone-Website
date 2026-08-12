@@ -47,16 +47,21 @@ export const classifyVerificationSession = ({ currentEmail, targetEmail, identit
     : "mismatch";
 };
 
-export const classifyFailedVerification = ({ firebaseErrorCode, accountState }) => {
+export const classifyFailedVerification = ({ firebaseErrorCode, accountState, identityUnconfirmed = false }) => {
   if (accountState === EMAIL_VERIFICATION_STATES.ALREADY_VERIFIED_ACCOUNT) {
     return EMAIL_VERIFICATION_STATES.ALREADY_USED_LINK_VERIFIED_USER;
   }
   if (accountState === EMAIL_VERIFICATION_STATES.USER_NOT_FOUND) {
     return EMAIL_VERIFICATION_STATES.USER_NOT_FOUND;
   }
+  // Firebase's own verdict is trusted for the expired/invalid distinction even
+  // without backend account-state confirmation when the custom exchange
+  // capability itself failed (e.g. it expired a moment before the oobCode
+  // did) — this only changes which error screen and resend affordance is
+  // shown, never whether Firebase/Mongo verification state is touched.
   if (
     firebaseErrorCode === "auth/expired-action-code" &&
-    accountState === EMAIL_VERIFICATION_STATES.VALID_UNUSED_LINK
+    (accountState === EMAIL_VERIFICATION_STATES.VALID_UNUSED_LINK || identityUnconfirmed)
   ) {
     return EMAIL_VERIFICATION_STATES.EXPIRED_LINK_UNVERIFIED_USER;
   }

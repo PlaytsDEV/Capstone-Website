@@ -172,14 +172,25 @@ function AuthAction() {
 
     const verify = async () => {
       let exchanged = false;
+      let exchangeFailed = false;
       let exchangedIdentityMatch = "none";
       let checkedEmail = "";
       try {
         if (exchangeToken) {
-          const exchange = await authApi.exchangeEmailVerificationToken(exchangeToken);
-          exchanged = true;
-          exchangedIdentityMatch = exchange.identityMatch;
-          applyServerDetails(exchange);
+          // A failed exchange (e.g. its own short-lived capability expired a
+          // moment before Firebase's oobCode) must not hide the real reason
+          // from the user. Fall through to checkActionCode so Firebase's own
+          // verdict — expired vs. invalid — still surfaces; this mirrors the
+          // already-supported "no exchange token" path below and never skips
+          // any verification/reconciliation gate.
+          try {
+            const exchange = await authApi.exchangeEmailVerificationToken(exchangeToken);
+            exchanged = true;
+            exchangedIdentityMatch = exchange.identityMatch;
+            applyServerDetails(exchange);
+          } catch {
+            exchangeFailed = true;
+          }
         }
 
         const info = await checkActionCode(auth, oobCode);
@@ -243,7 +254,11 @@ function AuthAction() {
           setState(EMAIL_VERIFICATION_STATES.RECONCILIATION_REQUIRED);
           return;
         }
-        setState(classifyFailedVerification({ firebaseErrorCode: error?.code, accountState }));
+        setState(classifyFailedVerification({
+          firebaseErrorCode: error?.code,
+          accountState,
+          identityUnconfirmed: exchangeFailed,
+        }));
       }
     };
     verify();
