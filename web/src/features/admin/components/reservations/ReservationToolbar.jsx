@@ -5,6 +5,7 @@ export default function ReservationToolbar({
  onSearchChange,
  onBranchChange,
  onSortChange,
+ isOwner,
 }) {
  return (
  <div className="ar-toolbar">
@@ -15,6 +16,7 @@ export default function ReservationToolbar({
  value={searchTerm}
  onChange={(e) => onSearchChange(e.target.value)}
  />
+ {isOwner && (
  <select
  className="ar-select"
  value={branchFilter}
@@ -24,6 +26,7 @@ export default function ReservationToolbar({
  <option value="gil puyat">Gil Puyat</option>
  <option value="guadalupe">Guadalupe</option>
  </select>
+ )}
  <select
  className="ar-select"
  value={sortBy}

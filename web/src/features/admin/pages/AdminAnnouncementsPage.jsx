@@ -829,6 +829,7 @@ export default function AdminAnnouncementsPage() {
           announcements={announcements}
           onEdit={handleEdit}
           onDelete={handleDeleteClick}
+          isOwner={isOwner}
         />
       </div>
     </div>
@@ -838,7 +839,7 @@ export default function AdminAnnouncementsPage() {
 /* ═══════════════════════════════════════════
    ALL ANNOUNCEMENTS MODAL
 ═══════════════════════════════════════════ */
-function AllAnnouncementsModal({ isOpen, onClose, announcements, onEdit, onDelete }) {
+function AllAnnouncementsModal({ isOpen, onClose, announcements, onEdit, onDelete, isOwner }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -932,10 +933,10 @@ function AllAnnouncementsModal({ isOpen, onClose, announcements, onEdit, onDelet
               { value: "all", label: "All categories" },
               ...ANNOUNCEMENT_CATEGORY_OPTIONS,
             ]},
-            { value: branchFilter, onChange: setBranchFilter, opts: [
+            ...(isOwner ? [{ value: branchFilter, onChange: setBranchFilter, opts: [
               { value: "all", label: "All branches" },
               ...BRANCH_OPTIONS,
-            ]},
+            ]}] : []),
             { value: typeFilter, onChange: setTypeFilter, opts: [
               { value: "all", label: "All types" },
               { value: "announcement", label: "Announcement" },

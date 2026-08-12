@@ -107,17 +107,21 @@ export function AdminRoutes() {
       <Route
         path="audit-logs"
         element={
-          <RouteShell name="AuditLogs" fallback={<AdminTablePageSkeleton />}>
-            <AuditLogsPage />
-          </RouteShell>
+          <ProtectedRoute requiredRole="owner">
+            <RouteShell name="AuditLogs" fallback={<AdminTablePageSkeleton />}>
+              <AuditLogsPage />
+            </RouteShell>
+          </ProtectedRoute>
         }
       />
       <Route
         path="users"
         element={
-          <RouteShell name="UserManagement" fallback={<AdminTablePageSkeleton />}>
-            <UserManagementPage />
-          </RouteShell>
+          <ProtectedRoute requiredRole="owner">
+            <RouteShell name="UserManagement" fallback={<AdminTablePageSkeleton />}>
+              <UserManagementPage />
+            </RouteShell>
+          </ProtectedRoute>
         }
       />
       <Route

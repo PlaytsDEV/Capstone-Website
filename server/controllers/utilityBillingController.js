@@ -80,9 +80,13 @@ const formatExportDate = (value) =>
 const buildUtilityExportRow = ({ utilityType, period, summary }) => {
   const room = period.roomId || {};
   const charge =
-    utilityType === "water"
-      ? summary.waterCharge ?? summary.amount ?? summary.totalCost ?? 0
-      : summary.electricityCharge ?? summary.amount ?? summary.totalCost ?? 0;
+    summary.billAmount ??
+    summary.waterCharge ??
+    summary.electricityCharge ??
+    summary.amount ??
+    summary.totalCost ??
+    period.computedTotalCost ??
+    0;
 
   return {
     utilityType,
@@ -105,7 +109,7 @@ const buildUtilityExportRow = ({ utilityType, period, summary }) => {
     bedId: summary.bedId || "",
     bedName: summary.bedName || summary.bedLabel || "",
     durationRange: summary.durationRange || "",
-    usage: summary.usage ?? summary.consumption ?? "",
+    usage: summary.totalUsage ?? summary.usage ?? summary.consumption ?? period.computedTotalUsage ?? "",
     amount: charge,
     billId: summary.billId ? String(summary.billId) : "",
   };
@@ -1729,11 +1733,18 @@ export const exportUtilityRows = async (req, res, next) => {
     }
 
     const branch = admin.isOwner ? req.query.branch || null : admin.branch;
-    const periods = await UtilityPeriod.find({
+    const roomId = req.query.roomId || null;
+
+    const filter = {
       utilityType,
       isArchived: false,
       status: { $in: ["closed", "revised"] },
-    })
+    };
+    if (roomId) {
+      filter.roomId = roomId;
+    }
+
+    const periods = await UtilityPeriod.find(filter)
       .populate("roomId", "name roomNumber branch type")
       .sort({ startDate: -1, createdAt: -1 })
       .lean();
@@ -1742,11 +1753,39 @@ export const exportUtilityRows = async (req, res, next) => {
       ? periods.filter((period) => period.roomId?.branch === branch)
       : periods;
 
-    const rows = scopedPeriods.flatMap((period) =>
-      (period.tenantSummaries || []).map((summary) =>
+    const rows = scopedPeriods.flatMap((period) => {
+      const summaries = period.tenantSummaries || [];
+      if (summaries.length === 0) {
+        return [{
+          utilityType,
+          branch: period.roomId?.branch || period.branch || "",
+          roomId: String(period.roomId?._id || period.roomId || ""),
+          roomName: getRoomLabel(period.roomId),
+          periodId: String(period._id || ""),
+          periodStatus: period.status || "",
+          startDate: formatExportDate(period.startDate),
+          endDate: formatExportDate(period.endDate),
+          startReading: period.startReading ?? "",
+          endReading: period.endReading ?? "",
+          totalUsage: period.computedTotalUsage ?? "",
+          ratePerUnit: period.ratePerUnit ?? "",
+          totalRoomCost: period.computedTotalCost ?? "",
+          tenantId: "",
+          tenantName: "-",
+          tenantEmail: "",
+          reservationId: "",
+          bedId: "",
+          bedName: "",
+          durationRange: "",
+          usage: period.computedTotalUsage ?? 0,
+          amount: period.computedTotalCost ?? 0,
+          billId: "",
+        }];
+      }
+      return summaries.map((summary) =>
         buildUtilityExportRow({ utilityType, period, summary }),
-      ),
-    );
+      );
+    });
 
     res.json({ success: true, rows });
   } catch (error) {

@@ -267,4 +267,11 @@ export const billingApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+
+  // ── Consolidated Billing & Payments Monitor ──
+  getConsolidatedBillingMonitor: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return authFetch(`/billing/consolidated-monitor${query ? `?${query}` : ""}`);
+  },
 };
+

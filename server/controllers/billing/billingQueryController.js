@@ -387,3 +387,147 @@ export const getMyUtilityBreakdownByBillId = async (req, res, next) => {
     next(error);
   }
 };
+
+export const getConsolidatedBillingMonitorAction = async (req, res, next) => {
+  try {
+    const admin = await getAdminInfo(req);
+    const branch = admin.isOwner && req.query.branch ? req.query.branch : (req.branchFilter || admin.branch);
+    const { month, status, search } = req.query;
+
+    const queryFilter = { isArchived: false, status: { $ne: "draft" } };
+    if (branch && ["gil-puyat", "guadalupe"].includes(branch)) {
+      queryFilter.branch = branch;
+    }
+
+    if (month) {
+      const parsedMonth = dayjs(month, ["YYYY-MM", "YYYY-MM-DD"]);
+      if (parsedMonth.isValid()) {
+        const startOfMonth = parsedMonth.startOf("month").toDate();
+        const endOfMonth = parsedMonth.endOf("month").toDate();
+        queryFilter.billingMonth = { $gte: startOfMonth, $lte: endOfMonth };
+      }
+    }
+
+    if (status && status !== "all") {
+      if (status === "overdue") {
+        queryFilter.$or = [
+          { status: "overdue" },
+          { dueDate: { $lt: new Date() }, status: { $in: ["sent", "generated", "partially_paid"] } },
+        ];
+      } else {
+        queryFilter.status = status;
+      }
+    }
+
+    const bills = await Bill.find(queryFilter)
+      .populate("userId", "firstName lastName email avatar profilePicture")
+      .populate("roomId", "name roomNumber branch type")
+      .populate("reservationId", "reservationCode")
+      .sort({ billingMonth: -1, createdAt: -1 })
+      .lean();
+
+    let records = bills.map((b) => {
+      const visible = getVisibleBillSnapshot(b);
+      const tenantName = b.userId
+        ? `${b.userId.firstName || ""} ${b.userId.lastName || ""}`.trim() || "Tenant"
+        : "Tenant";
+      const roomName = b.roomId
+        ? b.roomId.name || b.roomId.roomNumber || "-"
+        : "-";
+      const rentCharge = Number(b.charges?.rent || b.rentAmount || 0);
+      const electricityCharge = Number(b.charges?.electricity || b.electricityAmount || 0);
+      const waterCharge = Number(b.charges?.water || b.waterAmount || 0);
+      const penaltyCharge = Number(b.charges?.penalty || 0);
+      const applianceFees = Number(b.charges?.applianceFees || 0);
+      const corkageFees = Number(b.charges?.corkageFees || 0);
+      const totalAmount = Number(visible.totalAmount || b.totalAmount || 0);
+      const paidAmount = Number(b.paidAmount || 0);
+      const remainingBalance = Math.max(0, totalAmount - paidAmount);
+
+      let effectiveStatus = visible.status || b.status || "pending";
+      if (remainingBalance === 0 && totalAmount > 0) {
+        effectiveStatus = "paid";
+      } else if (paidAmount > 0 && remainingBalance > 0) {
+        effectiveStatus = "partially_paid";
+      } else if (b.dueDate && new Date(b.dueDate) < new Date() && effectiveStatus !== "paid") {
+        effectiveStatus = "overdue";
+      }
+
+      return {
+        id: b._id,
+        billReference: b.billReference || formatBillReference(b._id),
+        tenantId: b.userId?._id || null,
+        tenantName,
+        tenantEmail: b.userId?.email || "",
+        avatar: b.userId?.avatar || b.userId?.profilePicture || null,
+        roomId: b.roomId?._id || null,
+        roomName,
+        branch: b.branch || b.roomId?.branch || "-",
+        reservationCode: b.reservationId?.reservationCode || "-",
+        billingMonth: b.billingMonth ? dayjs(b.billingMonth).format("MMM YYYY") : "-",
+        rawMonth: b.billingMonth,
+        dueDate: b.dueDate,
+        billingCycleStart: b.billingCycleStart || null,
+        billingCycleEnd: b.billingCycleEnd || null,
+        rentCycleRange:
+          b.billingCycleStart && b.billingCycleEnd
+            ? `${dayjs(b.billingCycleStart).format("MMM DD")} – ${dayjs(b.billingCycleEnd).format("MMM DD, YYYY")}`
+            : (b.billingMonth ? dayjs(b.billingMonth).format("MMM YYYY") : "-"),
+        utilityCycleStart: b.utilityCycleStart || null,
+        utilityCycleEnd: b.utilityCycleEnd || null,
+        utilityCycleRange:
+          b.utilityCycleStart && b.utilityCycleEnd
+            ? `${dayjs(b.utilityCycleStart).format("MMM DD")} – ${dayjs(b.utilityCycleEnd).format("MMM DD")}`
+            : "-",
+        rent: rentCharge,
+        electricity: electricityCharge,
+        water: waterCharge,
+        penalty: penaltyCharge,
+        additionalCharges: applianceFees + corkageFees,
+        totalAmount,
+        paidAmount,
+        remainingBalance,
+        status: effectiveStatus,
+        sentAt: b.sentAt || null,
+        paymentDate: b.paymentDate || null,
+      };
+
+    });
+
+    if (search) {
+      const q = search.toLowerCase();
+      records = records.filter(
+        (r) =>
+          r.tenantName.toLowerCase().includes(q) ||
+          r.roomName.toLowerCase().includes(q) ||
+          r.tenantEmail.toLowerCase().includes(q) ||
+          r.billReference.toLowerCase().includes(q),
+      );
+    }
+
+    const totalBilled = records.reduce((sum, r) => sum + r.totalAmount, 0);
+    const totalCollected = records.reduce((sum, r) => sum + r.paidAmount, 0);
+    const totalOutstanding = records.reduce((sum, r) => sum + r.remainingBalance, 0);
+    const paidCount = records.filter((r) => r.status === "paid").length;
+    const partialCount = records.filter((r) => r.status === "partially_paid").length;
+    const overdueCount = records.filter((r) => r.status === "overdue").length;
+
+    res.json({
+      success: true,
+      kpis: {
+        totalRecords: records.length,
+        totalBilled,
+        totalCollected,
+        totalOutstanding,
+        paidCount,
+        partialCount,
+        overdueCount,
+        collectionRate: records.length ? Math.round((paidCount / records.length) * 100) : 0,
+      },
+      records,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+

@@ -19,6 +19,7 @@ import { reservationApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
 import ConfirmModal from "../../../shared/components/ConfirmModal";
 import { useReservations } from "../../../shared/hooks/queries/useReservations";
+import { useAuth } from "../../../shared/hooks/useAuth";
 import {
   StatGridSkeleton,
   TableSkeleton,
@@ -229,6 +230,8 @@ function VisitActionMenu({
 
 function VisitSchedulesTab() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isOwner = user?.role === "owner";
   const [actionLoading, setActionLoading] = useState(null);
   const [confirmModal, setConfirmModal] = useState({
     open: false,
@@ -240,7 +243,8 @@ function VisitSchedulesTab() {
   const [selectedSchedule, setSelectedSchedule] = useState(null);
   const [activeFilter, setActiveFilter] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
-  const [branchFilter, setBranchFilter] = useState("all");
+  // Branch admins see only their branch — owners can filter across all branches
+  const [branchFilter, setBranchFilter] = useState(isOwner ? "all" : (user?.branch || "all"));
   const [sortBy, setSortBy] = useState("recent");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
@@ -598,19 +602,21 @@ function VisitSchedulesTab() {
           </div>
 
           <div className="flex gap-2">
-            <select
-              value={branchFilter}
-              onChange={(event) => setBranchFilter(event.target.value)}
-              style={{
-                backgroundColor: "var(--input-background)",
-                borderColor: "var(--border-light)",
-              }}
-              className="px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            >
-              <option value="all">All Branches</option>
-              <option value="Gil Puyat">Gil Puyat</option>
-              <option value="Guadalupe">Guadalupe</option>
-            </select>
+            {isOwner && (
+              <select
+                value={branchFilter}
+                onChange={(event) => setBranchFilter(event.target.value)}
+                style={{
+                  backgroundColor: "var(--input-background)",
+                  borderColor: "var(--border-light)",
+                }}
+                className="px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="all">All Branches</option>
+                <option value="Gil Puyat">Gil Puyat</option>
+                <option value="Guadalupe">Guadalupe</option>
+              </select>
+            )}
 
             <select
               value={sortBy}

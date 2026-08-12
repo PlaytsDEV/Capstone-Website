@@ -56,6 +56,7 @@ export default function ActionBar({ search, filters = [], actions = [], children
  className={`action-bar__btn action-bar__btn--${action.variant || "ghost"}`}
  onClick={action.onClick}
  disabled={action.disabled}
+ title={action.title}
  >
  {action.icon && <action.icon size={15} />}
  {action.label}

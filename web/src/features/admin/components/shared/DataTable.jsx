@@ -98,7 +98,7 @@ export default function DataTable({
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col justify-between flex-1 gap-3">
       <div className="overflow-x-auto rounded-lg border border-border/60">
         <table className="w-full border-collapse">
           <thead>
@@ -185,7 +185,7 @@ export default function DataTable({
 
       {/* Pagination */}
       {pagination && (total > 0 || pageCount > 1) && (
-        <div className="flex flex-wrap items-center justify-between gap-3 px-2 py-1 text-xs text-muted-foreground">
+        <div className="mt-auto flex flex-wrap items-center justify-between gap-3 px-2 py-1 text-xs text-muted-foreground">
           <div className="flex items-center gap-3">
             <span>
               {total} result{total !== 1 ? "s" : ""}

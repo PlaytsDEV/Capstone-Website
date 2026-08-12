@@ -21,6 +21,7 @@ import PageShell from "../components/shared/PageShell";
 import { reservationApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
 import { useInquiries } from "../../../shared/hooks/queries/useInquiries";
+import { useAuth } from "../../../shared/hooks/useAuth";
 import InquiryDetailsModal from "../components/InquiryDetailsModal";
 
 const getAvatarColor = (initials = "") => {
@@ -59,13 +60,16 @@ const SUMMARY_FILTERS = ["", "pending", "resolved"];
 function InquiriesPage({ isEmbedded = false }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
+  const isOwner = user?.role === "owner";
   const showBackToDashboard = !isEmbedded && Boolean(
     location.state?.fromDashboard || window.history.state?.idx > 0
   );
   const [selectedInquiry, setSelectedInquiry] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [branchFilter, setBranchFilter] = useState("");
+  // Branch admins are scoped to their branch — owners can filter across all branches
+  const [branchFilter, setBranchFilter] = useState(isOwner ? "" : (user?.branch || ""));
   const [sortBy, setSortBy] = useState("recent");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
@@ -163,22 +167,24 @@ function InquiriesPage({ isEmbedded = false }) {
             </div>
 
             <div className="flex gap-2">
-              <select
-                value={branchFilter}
-                onChange={(event) => {
-                  setBranchFilter(event.target.value);
-                  setPage(1);
-                }}
-                style={{
-                  backgroundColor: "var(--input-background)",
-                  borderColor: "var(--border-light)",
-                }}
-                className="px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="">All Branches</option>
-                <option value="gil-puyat">Gil Puyat</option>
-                <option value="guadalupe">Guadalupe</option>
-              </select>
+              {isOwner && (
+                <select
+                  value={branchFilter}
+                  onChange={(event) => {
+                    setBranchFilter(event.target.value);
+                    setPage(1);
+                  }}
+                  style={{
+                    backgroundColor: "var(--input-background)",
+                    borderColor: "var(--border-light)",
+                  }}
+                  className="px-4 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="">All Branches</option>
+                  <option value="gil-puyat">Gil Puyat</option>
+                  <option value="guadalupe">Guadalupe</option>
+                </select>
+              )}
 
               <select
                 value={statusFilter}

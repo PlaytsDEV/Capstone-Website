@@ -1,5 +1,5 @@
 import { useMemo, useState, useRef, useEffect } from "react";
-import { Download, FileDown, Search, Filter, RotateCcw, ChevronDown, FileSpreadsheet, FileText } from "lucide-react";
+import { Download, FileDown, Search, Filter, RotateCcw, ChevronDown, FileSpreadsheet, FileText, LoaderCircle } from "lucide-react";
 import { exportToCSV } from "../../../shared/utils/exportUtils";
 import { exportReportPdf } from "../../../shared/utils/reportPdf";
 import { OWNER_BRANCH_FILTER_OPTIONS } from "../../../shared/utils/constants";
@@ -33,43 +33,39 @@ export function AnalyticsTableToolbar({
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder={searchPlaceholder}
-              className="w-full pl-9 pr-3 py-1.5 text-sm bg-background text-foreground border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all placeholder:text-muted-foreground"
+              className="w-full pl-9 pr-3 py-1.5 text-xs bg-card border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
           </div>
         )}
 
-        {filters.map((filter) => (
-          <div key={filter.key} className="flex items-center gap-2">
-            {filter.label && (
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
-                {filter.label}:
-              </span>
-            )}
-            <div className="relative">
-              <select
-                value={filter.value}
-                onChange={(e) => filter.onChange(e.target.value)}
-                className="appearance-none pl-3 pr-8 py-1.5 text-sm bg-background text-foreground border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all font-medium cursor-pointer"
-              >
-                {filter.options.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-              <Filter
-                size={12}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none opacity-60"
-              />
-            </div>
+        {filters.map((f, idx) => (
+          <div key={idx} className="min-w-[140px]">
+            <select
+              value={f.value}
+              onChange={(e) => f.onChange(e.target.value)}
+              className="w-full px-3 py-1.5 text-xs bg-card border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none"
+              style={{
+                backgroundImage: `url("data:image/svg+xml;charset=US-ASCII,%3Csvg xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' width%3D'16' height%3D'16' viewBox%3D'0 0 24 24' fill%3D'none' stroke%3D'%231e293b' stroke-width%3D'2' stroke-linecap%3D'round' stroke-linejoin%3D'round'%3E%3Cpolyline points%3D'6 9 12 15 18 9'%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E")`,
+                backgroundRepeat: "no-repeat",
+                backgroundPosition: "right 8px center",
+                backgroundSize: "12px 12px",
+                paddingRight: "28px",
+              }}
+            >
+              {f.options.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
           </div>
         ))}
 
         {hasActiveFilters && onResetFilters && (
           <button
+            type="button"
             onClick={onResetFilters}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground bg-background hover:bg-muted border border-border rounded-lg transition-colors"
-            title="Reset filters"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-card border border-border rounded-lg transition-colors cursor-pointer"
           >
             <RotateCcw size={13} />
             <span>Reset</span>
@@ -77,9 +73,7 @@ export function AnalyticsTableToolbar({
         )}
       </div>
 
-      {extraActions && (
-        <div className="flex items-center gap-2">{extraActions}</div>
-      )}
+      {extraActions && <div className="flex items-center gap-2">{extraActions}</div>}
     </div>
   );
 }
@@ -109,7 +103,7 @@ export const RANGE_OPTIONS_LONG = [
   { value: "12m", label: "Last 12 months" },
 ];
 
-export function ExportButtons({ onCsv, onPdf, className = "" }) {
+export function ExportButtons({ onCsv, onPdf, disabled = false, loading = false, className = "" }) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -143,20 +137,25 @@ export function ExportButtons({ onCsv, onPdf, className = "" }) {
     <div className={`relative inline-block ${className}`} ref={dropdownRef}>
       <button
         type="button"
+        disabled={disabled || loading}
         onClick={() => setIsOpen((prev) => !prev)}
-        className="flex items-center gap-2 px-3.5 py-2 text-sm font-semibold text-foreground bg-card border border-border rounded-xl hover:bg-muted/70 transition-all shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer"
+        className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50 transition-all cursor-pointer"
         aria-haspopup="true"
         aria-expanded={isOpen}
       >
-        <Download size={15} className="text-primary" />
-        <span>Export</span>
+        {loading ? (
+          <LoaderCircle size={13} className="animate-spin text-primary" />
+        ) : (
+          <Download size={13} />
+        )}
+        <span>{loading ? "Exporting..." : "Export"}</span>
         <ChevronDown
-          size={14}
+          size={13}
           className={`text-muted-foreground transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
         />
       </button>
 
-      {isOpen && (
+      {isOpen && !disabled && !loading && (
         <div
           className="absolute right-0 mt-1.5 w-44 rounded-xl bg-card border border-border shadow-lg p-1 z-50 animate-in fade-in-50 zoom-in-95 duration-100"
           role="menu"

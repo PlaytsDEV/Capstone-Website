@@ -1,53 +1,61 @@
+import React from "react";
 import { Activity, AlertCircle, Clock, Trash2 } from "lucide-react";
-import { formatTimestamp } from "../../utils/formatters";
 
-export default function AuditStatsBar({ stats }) {
- return (
- <div className="audit-stats">
- <div className="stat-card">
- <div className="stat-card-content">
- <div className="stat-card-info">
- <p>Total Logs</p>
- <h3 className="text-blue">{stats.total.toLocaleString()}</h3>
- </div>
- <div className="stat-card-icon blue">
- <Activity size={32} />
- </div>
- </div>
- </div>
- <div className="stat-card">
- <div className="stat-card-content">
- <div className="stat-card-info">
- <p>Critical Events</p>
- <h3 className="text-red">{stats.critical}</h3>
- </div>
- <div className="stat-card-icon red">
- <AlertCircle size={32} />
- </div>
- </div>
- </div>
- <div className="stat-card">
- <div className="stat-card-content">
- <div className="stat-card-info">
- <p>Today's Activity</p>
- <h3 className="text-green">{stats.today}</h3>
- </div>
- <div className="stat-card-icon green">
- <Clock size={32} />
- </div>
- </div>
- </div>
- <div className="stat-card">
- <div className="stat-card-content">
- <div className="stat-card-info">
- <p>Data Deletions</p>
- <h3 className="text-orange">{stats.deletions}</h3>
- </div>
- <div className="stat-card-icon orange">
- <Trash2 size={32} />
- </div>
- </div>
- </div>
- </div>
- );
+export default function AuditStatsBar({ stats = {} }) {
+  const total = Number(stats?.total || 0);
+  const critical = Number(stats?.critical || 0);
+  const today = Number(stats?.today || 0);
+  const deletions = Number(stats?.deletions || 0);
+
+  return (
+    <div className="audit-stats">
+      <div className="stat-card stat-card--blue">
+        <div className="stat-card-content">
+          <div className="stat-card-info">
+            <span className="stat-card-label">Total Logs</span>
+            <h3 className="stat-card-value text-blue">{total.toLocaleString()}</h3>
+          </div>
+          <div className="stat-card-icon blue">
+            <Activity size={24} />
+          </div>
+        </div>
+      </div>
+
+      <div className="stat-card stat-card--red">
+        <div className="stat-card-content">
+          <div className="stat-card-info">
+            <span className="stat-card-label">Critical Events</span>
+            <h3 className="stat-card-value text-red">{critical.toLocaleString()}</h3>
+          </div>
+          <div className="stat-card-icon red">
+            <AlertCircle size={24} />
+          </div>
+        </div>
+      </div>
+
+      <div className="stat-card stat-card--green">
+        <div className="stat-card-content">
+          <div className="stat-card-info">
+            <span className="stat-card-label">Today's Activity</span>
+            <h3 className="stat-card-value text-green">{today.toLocaleString()}</h3>
+          </div>
+          <div className="stat-card-icon green">
+            <Clock size={24} />
+          </div>
+        </div>
+      </div>
+
+      <div className="stat-card stat-card--orange">
+        <div className="stat-card-content">
+          <div className="stat-card-info">
+            <span className="stat-card-label">Data Deletions</span>
+            <h3 className="stat-card-value text-orange">{deletions.toLocaleString()}</h3>
+          </div>
+          <div className="stat-card-icon orange">
+            <Trash2 size={24} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
