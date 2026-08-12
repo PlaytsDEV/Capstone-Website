@@ -95,7 +95,7 @@ describe("moveIn transition — draft Contract repair backstop", () => {
   afterAll(async () => {
     await mongoose.disconnect();
     await mongo?.stop();
-  });
+  }, 120_000);
 
   beforeEach(async () => {
     await Promise.all([
