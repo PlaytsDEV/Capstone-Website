@@ -64,6 +64,7 @@ import backupRoutes from "./routes/backupRoutes.js";
 import serviceProviderRoutes from "./routes/serviceProviderRoutes.js";
 import contractRoutes from "./routes/contractRoutes.js";
 import mobileContractRoutes from "./routes/mobileContractRoutes.js";
+import mobileSurveyRoutes from "./routes/mobileSurveyRoutes.js";
 import surveyRoutes from "./routes/surveyRoutes.js";
 import tenantSurveyRoutes from "./routes/tenantSurveyRoutes.js";
 import { initSocket } from "./utils/socket.js";
@@ -273,6 +274,7 @@ app.use("/api/announcements", announcementRoutes);
 // by the web Firebase-token middleware. Web/admin maintenance routes still
 // fall through to the contract router below.
 app.use("/api/m", mobileContractRoutes);
+app.use("/api/m", mobileSurveyRoutes);
 app.use("/api/m", mobileRoutes);
 app.use("/api/m/maintenance", maintenanceRoutes);
 app.use("/api/maintenance", maintenanceRoutes);
