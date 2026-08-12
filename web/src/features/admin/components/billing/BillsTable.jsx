@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Eye, FileText, ArrowRight, Download, Loader } from "lucide-react";
 import { fmtCurrency, fmtDate, fmtMonth } from "../../utils/formatters";
-import { TableSkeleton } from "../../../../../shared/components/LoadingSkeletons";
-import { protectedFetch } from "../../../../../shared/api/httpClient";
+import { TableSkeleton } from "../../../../shared/components/LoadingSkeletons";
+import { protectedFetch } from "../../../../shared/api/httpClient";
 
 async function downloadTransferSettlementPdf(billId) {
   const res = await protectedFetch(`/billing/transfer-settlement/${billId}/pdf`);

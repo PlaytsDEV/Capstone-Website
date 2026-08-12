@@ -1,6 +1,6 @@
 import React from "react";
 import Navbar from "../../features/public/components/Navbar";
-import Footer from "../../features/public/components/Footer";
+import Footer from "../../features/public/components/ContactFooter";
 
 const PublicLayout = ({ children }) => {
   return (
