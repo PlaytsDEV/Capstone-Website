@@ -43,10 +43,13 @@ test("owners keep owner-only routes while branch admins stay on shared workspace
   assert.equal(branchAdminItems.some((item) => item.to === "/admin/roles"), false);
   assert.equal(branchAdminItems.some((item) => item.to === "/admin/branches"), false);
   assert.equal(branchAdminItems.some((item) => item.to === "/admin/settings"), false);
-  assert.equal(branchAdminItems.some((item) => item.to === "/admin/audit-logs"), true);
+  assert.equal(branchAdminItems.some((item) => item.to === "/admin/users"), false);
+  assert.equal(branchAdminItems.some((item) => item.to === "/admin/audit-logs"), false);
   assert.equal(ownerItems.some((item) => item.to === "/admin/roles"), true);
   assert.equal(ownerItems.some((item) => item.to === "/admin/branches"), true);
   assert.equal(ownerItems.some((item) => item.to === "/admin/settings"), true);
+  assert.equal(ownerItems.some((item) => item.to === "/admin/users"), true);
+  assert.equal(ownerItems.some((item) => item.to === "/admin/audit-logs"), true);
 });
 
 test("system navigation labels and ordering match the phase 1 IA", () => {
