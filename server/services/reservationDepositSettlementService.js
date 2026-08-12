@@ -542,7 +542,52 @@ export async function settleReservationDeposit({
       now: new Date(paidAt),
     });
   }
+  if (result?.settled) {
+    result.draftContract = await ensureDraftContractForSettledReservation({
+      reservation: result.reservation,
+      actorId: actor.id || result.reservation.userId,
+    });
+  }
   return result;
+}
+
+// The authoritative Contract must exist as soon as a reservation's initial
+// payment is verified — not only once an admin remembers to press "Create
+// Contract" — so the mobile app's draft-Contract card is never dependent on
+// a separate, forgettable manual step. This runs on every settlement call
+// (fresh settlement AND idempotent replay), so a prior crash between payment
+// confirmation and Contract creation self-heals on the next retry/webhook
+// redelivery instead of leaving the reservation "paid" with no Contract.
+//
+// Deliberately outside the settlement's own Mongo transaction (same pattern
+// as createStructuredInitialPaymentBill above): createDraftContract's own
+// unique-index-backed duplicate detection (see contractService.js) already
+// makes this safe to call more than once, and payment confirmation must
+// never be rolled back just because Contract drafting hit a transient error
+// — see the moveIn-time repair pass in reservationLifecycleController.js,
+// which follows the same "ensure, don't fail loudly" idiom for rent bills.
+async function ensureDraftContractForSettledReservation({ reservation, actorId }) {
+  try {
+    const { createDraftContract } = await import("./contractService.js");
+    return await createDraftContract({
+      reservationId: reservation._id,
+      stayId: reservation.currentStayId || null,
+      actorId,
+    });
+  } catch (error) {
+    if (error?.code === "DUPLICATE_CONTRACT") {
+      // Already exists (this settlement, an earlier retry, or a manual
+      // POST /api/contracts) — nothing to do, this is the steady state.
+      return null;
+    }
+    const logger = (await import("../middleware/logger.js")).default;
+    logger.error(
+      { err: error, reservationId: String(reservation._id) },
+      "Failed to auto-create draft Contract after reservation deposit settlement (non-fatal; " +
+        "will retry on the next settlement replay or moveIn repair pass)",
+    );
+    return null;
+  }
 }
 
 export default {

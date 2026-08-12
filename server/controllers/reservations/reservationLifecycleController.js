@@ -829,6 +829,35 @@ export const updateReservation = async (req, res, next) => {
           "Failed to ensure rent bill during moveIn (non-fatal)",
         );
       }
+
+      // Repair pass: the primary Contract-creation point is settlement
+      // (reservationDepositSettlementService.js, when the reservation first
+      // becomes "reserved"). This is only a backstop for a reservation that
+      // reached moveIn without one — e.g. the settlement-time attempt hit a
+      // transient error and was never retried. createDraftContract's own
+      // duplicate detection makes this a no-op in the normal case.
+      try {
+        const { createDraftContract } = await import("../../services/contractService.js");
+        const draftResult = await createDraftContract({
+          reservationId: updatedReservation._id,
+          stayId: updatedReservation.currentStayId || null,
+          actorId: req.adminId || updatedReservation.userId?._id || updatedReservation.userId,
+        }).catch((error) => {
+          if (error?.code === "DUPLICATE_CONTRACT") return null;
+          throw error;
+        });
+        if (draftResult) {
+          logger.info(
+            { contractId: draftResult._id, reservationId: updatedReservation._id },
+            "Repaired missing draft Contract during moveIn status update",
+          );
+        }
+      } catch (contractErr) {
+        logger.error(
+          { err: contractErr, requestId: req.id },
+          "Failed to repair missing draft Contract during moveIn (non-fatal)",
+        );
+      }
     }
 
     try {
