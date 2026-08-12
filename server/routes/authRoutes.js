@@ -204,14 +204,13 @@ router.post("/set-role", verifyToken, verifyOwner, validate(setRoleSchema), setR
  * @returns { message }
  */
 router.post("/log-password-reset", publicLimiter, logPasswordReset);
-router.post("/request-password-reset", publicLimiter, logPasswordReset);
 
 /**
  * POST /api/auth/request-password-reset
  *
  * Generates a Firebase Admin password-reset link and sends it through the
- * same Lilycrest-branded, SMTP-primary/Resend-fallback delivery pipeline as
- * email verification, instead of Firebase's client SDK sending its own
+ * same Lilycrest-branded Resend Template delivery pipeline as email
+ * verification, instead of Firebase's client SDK sending its own
  * generic-branded email directly.
  *
  * Public endpoint — no auth required (the caller is signed out by

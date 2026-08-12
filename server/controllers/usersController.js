@@ -335,15 +335,15 @@ export const createUser = async (req, res, next) => {
 
     await user.save();
 
-    // --- Generate password reset link ---
-    try {
-      const resetLink = await auth.generatePasswordResetLink(
-        email.toLowerCase(),
-      );
-      // The link is logged for now; could be emailed via your email service
-    } catch (resetErr) {
-      // Non-fatal — user can still use "Forgot Password" later
-    }
+    // Admin-created accounts do not receive a password-set email today —
+    // the account owner uses the standard "Forgot Password" flow to set an
+    // initial password. This is a deliberate scope decision, not an
+    // oversight: if that changes, generate the link here with Firebase
+    // Admin's generatePasswordResetLink(), rewrite it onto the canonical
+    // domain via buildCustomPasswordResetLink() (see passwordResetService.js),
+    // and deliver it through sendPasswordResetLinkEmail() — the same path
+    // Forgot Password itself uses — rather than re-adding an unsent,
+    // unused link generation call here.
 
     // --- Audit log ---
     await auditLogger.logModification(

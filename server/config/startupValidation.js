@@ -6,6 +6,7 @@ import {
   getResendCooldownSeconds,
   getSessionTtlSeconds,
 } from "../services/emailVerificationService.js";
+import { TEMPLATE_KEYS, getTemplateEnvKey } from "../services/email/templateRegistry.js";
 
 const ENV_GROUPS = Object.freeze({
   mongodb: ["MONGODB_URI"],
@@ -43,24 +44,25 @@ export function validateStartupConfig() {
     .filter(([, missing]) => missing.length > 0)
     .map(([group, missing]) => `${group}: ${missing.join(", ")}`);
 
-  const hasEmailCredentials = Boolean(
-    (String(process.env.EMAIL_USER || "").trim() &&
-      String(process.env.EMAIL_PASSWORD || "").trim()) ||
-      (String(process.env.SMTP_USER || "").trim() &&
-        String(process.env.SMTP_PASS || "").trim()),
-  );
-
-  if (!hasEmailCredentials) {
-    failures.push("email: EMAIL_USER/EMAIL_PASSWORD or SMTP_USER/SMTP_PASS");
-  }
-
+  // Resend is the only email provider. Every active user-facing email —
+  // auth and transactional — is delivered through it, so its credentials
+  // and every referenced Resend Template ID are required in production.
   const hasResendCredentials = Boolean(
     String(process.env.RESEND_API_KEY || "").trim() &&
     String(process.env.RESEND_FROM_EMAIL || "").trim(),
   );
 
   if (!hasResendCredentials) {
-    failures.push("resend: RESEND_API_KEY and RESEND_FROM_EMAIL required for OTP emails");
+    failures.push("resend: RESEND_API_KEY and RESEND_FROM_EMAIL are required — Resend is the only email provider");
+  }
+
+  if (isProduction) {
+    const missingTemplates = TEMPLATE_KEYS.filter((key) => !String(process.env[getTemplateEnvKey(key)] || "").trim());
+    if (missingTemplates.length > 0) {
+      failures.push(
+        `resend templates: ${missingTemplates.map((key) => getTemplateEnvKey(key)).join(", ")}`,
+      );
+    }
   }
 
   if (!String(process.env.MOBILE_OTP_SECRET || "").trim()) {
