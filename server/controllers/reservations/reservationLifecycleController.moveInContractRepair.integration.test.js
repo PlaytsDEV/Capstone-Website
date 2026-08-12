@@ -54,6 +54,7 @@ await jest.unstable_mockModule("../../services/occupancy/occupancyManager.js", (
   getRoomOccupancyStatus: jest.fn(),
   getBranchOccupancyStats: jest.fn(),
   releaseOrphanedBeds: jest.fn(),
+  getDisplayStatusForReservation: jest.fn((status) => status),
   default: {},
 }));
 
@@ -152,7 +153,7 @@ describe("moveIn transition — draft Contract repair backstop", () => {
     expect(contracts).toHaveLength(1);
     expect(contracts[0].status).toBe("draft");
     expect(String(contracts[0].tenantId)).toBe(String(tenant._id));
-  });
+  }, 20_000); // moveIn now also attempts a real (non-fatal) Firebase claims sync
 
   test("moveIn does not create a second Contract when settlement already created one", async () => {
     const { reservation, tenant } = await seedReservedReservation();
@@ -166,5 +167,5 @@ describe("moveIn transition — draft Contract repair backstop", () => {
     const contracts = await Contract.find({ reservationId: reservation._id });
     expect(contracts).toHaveLength(1);
     expect(String(contracts[0]._id)).toBe(String(existing._id));
-  });
+  }, 20_000);
 });
