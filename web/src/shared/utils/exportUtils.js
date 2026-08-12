@@ -31,23 +31,26 @@ export function exportToCSV(data, columns, filename = "export") {
   const rows = data.map((row) =>
     columns
       .map((col) => {
-        const value = col.formatter ? col.formatter(row[col.key], row) : row[col.key];
+        const rawValue = col.key ? row[col.key] : undefined;
+        const value = col.formatter ? col.formatter(rawValue, row) : rawValue;
         return escapeCSV(value);
       })
       .join(","),
   );
 
-  const csvContent = [header, ...rows].join("\n");
+  // Prepend UTF-8 BOM (\uFEFF) so Excel, Google Sheets, and LibreOffice render UTF-8 currency & dates cleanly
+  const csvContent = "\uFEFF" + [header, ...rows].join("\r\n");
   downloadFile(csvContent, `${filename}.csv`, "text/csv;charset=utf-8;");
 }
 
 /**
- * Escape a value for CSV (handles commas, quotes, newlines)
+ * Escape a value for CSV (handles commas, quotes, newlines, nulls)
  */
 function escapeCSV(value) {
   if (value === null || value === undefined) return "";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
   const str = String(value);
-  if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+  if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
     return `"${str.replace(/"/g, '""')}"`;
   }
   return str;

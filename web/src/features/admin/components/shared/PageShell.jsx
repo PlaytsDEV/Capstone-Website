@@ -32,26 +32,42 @@ function PageShell({ children, tabs, activeTab, onTabChange }) {
 
  return (
  <div className="flex flex-col gap-6 pb-8">
- {/* Tabs — always at top */}
- {tabs && tabs.length > 0 && (
- <div className="flex gap-2 overflow-x-auto border-b border-border pb-2" role="tablist" aria-label="Workspace sections">
- {tabs.map((tab) => (
- <button
- key={tab.key}
- id={`page-shell-tab-${tab.key}`}
- type="button"
- role="tab"
- aria-selected={activeTab === tab.key}
- aria-controls={`page-shell-panel-${tab.key}`}
- className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition ${activeTab === tab.key ? "border-border bg-card text-card-foreground shadow-[inset_0_-2px_0_var(--color-primary)]" : "border-transparent text-muted-foreground hover:border-border hover:bg-muted"}`}
- onClick={() => onTabChange?.(tab.key)}
- >
- {tab.icon && <tab.icon size={15} />}
- {tab.label}
- </button>
- ))}
- </div>
- )}
+      {/* Tabs — Premium Light Mode Segmented Control */}
+      {tabs && tabs.length > 0 && (
+        <div
+          className="inline-flex items-center gap-1.5 p-1.5 rounded-xl bg-slate-100 border border-slate-200/80 overflow-x-auto max-w-full self-start"
+          role="tablist"
+          aria-label="Workspace sections"
+        >
+          {tabs.map((tab) => {
+            const isActive = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                id={`page-shell-tab-${tab.key}`}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                aria-controls={`page-shell-panel-${tab.key}`}
+                className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all duration-150 select-none whitespace-nowrap ${
+                  isActive
+                    ? "bg-white text-[#0A1628] border border-slate-300/80 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60 border border-transparent"
+                }`}
+                onClick={() => onTabChange?.(tab.key)}
+              >
+                {tab.icon && (
+                  <tab.icon
+                    size={15}
+                    className={isActive ? "text-[#0A1628]" : "text-slate-400"}
+                  />
+                )}
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
  {/* Summary row — only renders if slot has actual content */}
  {hasSlot(slots.summary) && (

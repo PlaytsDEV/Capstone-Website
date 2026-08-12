@@ -576,17 +576,38 @@ export default function NewBillingPeriodModal({
           >
             Cancel
           </button>
-          <button
-            onClick={handleGenerateCycle}
-            disabled={isPending || isReadingLower || isDateInvalid || isRateInvalid || isFixedRateBranch}
-            className="rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50 transition-opacity"
-            style={{
-              background: "var(--primary)",
-              color: "var(--primary-foreground)",
-            }}
-          >
-            {isPending ? "Processing..." : "Generate Billing Cycle"}
-          </button>
+          <div className="relative inline-block group">
+            <button
+              onClick={handleGenerateCycle}
+              disabled={isPending || isReadingLower || isDateInvalid || isRateInvalid || isFixedRateBranch}
+              className="rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+              style={{
+                background: "var(--primary)",
+                color: "var(--primary-foreground)",
+              }}
+            >
+              {isPending ? "Processing..." : "Generate Billing Cycle"}
+            </button>
+            {(isFixedRateBranch || isReadingLower || isDateInvalid || isRateInvalid) && (
+              <div className="pointer-events-none absolute bottom-full right-0 mb-2 hidden group-hover:block z-50 w-72 rounded-lg bg-slate-900 p-2.5 text-xs text-white shadow-xl dark:bg-slate-800 dark:text-slate-100 border border-slate-700">
+                <div className="font-semibold text-amber-400 flex items-center gap-1.5 mb-1">
+                  <AlertCircle size={13} /> Action Disabled
+                </div>
+                <div>
+                  {isFixedRateBranch
+                    ? "Guadalupe uses fixed-rate billing. Separate utility cycles cannot be generated for this branch."
+                    : isReadingLower
+                    ? "Final meter reading cannot be lower than opening reading."
+                    : isDateInvalid
+                    ? "Cycle end date must be after cycle start date."
+                    : isRateInvalid
+                    ? "Rate cannot be a negative value."
+                    : "Please fill in all required fields."}
+                </div>
+                <div className="absolute top-full right-6 -mt-1 border-4 border-transparent border-t-slate-900 dark:border-t-slate-800" />
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

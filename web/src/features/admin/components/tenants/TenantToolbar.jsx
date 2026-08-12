@@ -5,6 +5,7 @@ export default function TenantToolbar({
  onBranchChange,
  statusFilter,
  onStatusChange,
+ isOwner,
 }) {
  return (
  <section className="admin-tenants-tools">
@@ -35,6 +36,7 @@ export default function TenantToolbar({
  />
  </div>
  <div className="admin-tenants-filters">
+ {isOwner && (
  <select
  className="admin-tenants-filter"
  value={branchFilter}
@@ -44,6 +46,7 @@ export default function TenantToolbar({
  <option value="gil puyat">Gil Puyat</option>
  <option value="guadalupe">Guadalupe</option>
  </select>
+ )}
  <select
  className="admin-tenants-filter"
  value={statusFilter}

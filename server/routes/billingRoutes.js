@@ -117,6 +117,19 @@ router.get(
 );
 
 /**
+ * GET /api/billing/consolidated-monitor
+ * Get unified statement matrix of rent + utilities per tenant per cycle (Admin only)
+ */
+router.get(
+  "/consolidated-monitor",
+  verifyAdmin,
+  requirePermission("manageBilling"),
+  filterByBranch,
+  billingController.getConsolidatedBillingMonitorAction,
+);
+
+
+/**
  * GET /api/billing/rooms
  * Get rooms with occupants for bill generation (Admin only)
  */

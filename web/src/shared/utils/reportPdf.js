@@ -545,13 +545,9 @@ export async function exportReportPdf({
   // ══════════════════════════════════════════════════════════
 
   sections.forEach((section, sIdx) => {
-    if (sIdx === 0) {
-      doc.addPage();
-      drawPageStripe();
-      y = Y_START;
-    } else {
-      ensureSpace(50);
-      y += S.XL + S.SM;
+    ensureSpace(35);
+    if (sIdx > 0) {
+      y += S.MD;
     }
 
     sectionTitle(section.title || "", C.BLUE_TEXT);
@@ -622,16 +618,30 @@ export async function exportReportPdf({
     const ROW_V_PAD = 3.0;
     const CELL_P    = 1.8;
 
-    // Header row
-    rect(M, ty, CW, ROW_H, C.BG_TERTIARY);
-    hline(M, ty,         W - M, C.BORDER, 0.3);
-    hline(M, ty + ROW_H, W - M, C.BORDER, 0.3);
-    hdrs.forEach((h, i) => {
-      txt(h, colX[i] + CELL_P, ty + ROW_V_PAD + capH(F.LABEL), {
-        size: F.LABEL, weight: "bold", color: C.TEXT_TERTIARY,
+    const isRightAligned = (headerName) =>
+      ["usage", "charge", "bill amount", "balance", "rate", "amount"].includes(
+        String(headerName || "").toLowerCase(),
+      );
+
+    const renderTableHeader = (yPos) => {
+      rect(M, yPos, CW, ROW_H, C.BG_TERTIARY);
+      hline(M, yPos, W - M, C.BORDER, 0.3);
+      hline(M, yPos + ROW_H, W - M, C.BORDER, 0.3);
+      hdrs.forEach((h, i) => {
+        const alignRight = isRightAligned(h);
+        const alignX = alignRight ? colX[i] + colWidths[i] - CELL_P : colX[i] + CELL_P;
+        txt(h, alignX, yPos + ROW_V_PAD + capH(F.LABEL), {
+          size: F.LABEL,
+          weight: "bold",
+          color: C.TEXT_TERTIARY,
+          align: alignRight ? "right" : "left",
+        });
       });
-    });
-    ty += ROW_H;
+      return yPos + ROW_H;
+    };
+
+    // Header row
+    ty = renderTableHeader(ty);
 
     rows.forEach((row, rIdx) => {
       const cellTexts = hdrs.map((h) => {
@@ -642,7 +652,12 @@ export async function exportReportPdf({
       const lineCount = Math.max(...wrapped.map((wc) => wc.length));
       const rowH      = Math.max(ROW_H, lineCount * LH.SMALL + ROW_V_PAD * 2);
 
+      const pageBefore = doc.internal.getNumberOfPages();
       ensureSpace(rowH + 2);
+      const pageAfter = doc.internal.getNumberOfPages();
+      if (pageAfter > pageBefore) {
+        ty = renderTableHeader(y);
+      }
 
       if (rIdx % 2 === 0) rect(M, ty, CW, rowH, C.BG_SECONDARY);
       hline(M, ty + rowH, W - M, C.BORDER, 0.2);
@@ -662,11 +677,11 @@ export async function exportReportPdf({
 
         if (h.toLowerCase() === "status" && typeof val === "string") {
           const vLow  = val.toLowerCase();
-          const pillC = vLow === "full" || vLow === "good"
+          const pillC = ["full", "good", "closed", "sent", "paid", "finalized"].includes(vLow)
                           ? [C.GREEN_BG, C.GREEN_TEXT]
-                      : vLow === "watch"
+                      : ["watch", "ready", "ready_to_send", "open", "active", "pending"].includes(vLow)
                           ? [C.AMBER_BG, C.AMBER_TEXT]
-                      : vLow === "low"
+                      : ["low", "revised", "overdue", "rejected", "canceled", "cancelled", "voided"].includes(vLow)
                           ? [C.RED_BG, C.RED_TEXT]
                           : [C.BG_TERTIARY, C.TEXT_SECONDARY];
 
@@ -684,11 +699,14 @@ export async function exportReportPdf({
         }
 
         const isFirst = i === 0;
+        const alignRight = isRightAligned(h);
+        const textX = alignRight ? colX[i] + colWidths[i] - CELL_P : cx;
         const lines   = wrap(val == null ? "—" : String(val), colWidths[i] - CELL_P * 2);
-        txt(lines, cx, cellBaseY, {
+        txt(lines, textX, cellBaseY, {
           size: F.SMALL,
           color: isFirst ? C.TEXT_PRIMARY : C.TEXT_SECONDARY,
           lh: LH.SMALL,
+          align: alignRight ? "right" : "left",
         });
       });
 

@@ -1,4 +1,18 @@
-import { X, Check, AlertTriangle, Download, LoaderCircle, Send } from "lucide-react";
+import {
+  X,
+  Check,
+  AlertTriangle,
+  LoaderCircle,
+  Send,
+  Droplets,
+  Zap,
+  Home,
+  Tag,
+  Layers,
+  User,
+  Calendar,
+  AlertCircle,
+} from "lucide-react";
 
 import { formatAdminPaymentMode } from "./paymentDisplay";
 
@@ -12,8 +26,6 @@ const BillingCycleDetailModal = ({
   isReadOnly,
   formatters,
   eventTypeLabels,
-  onExport,
-  onExportPDF,
   onSendReminder,
   activeNoticeKey,
 }) => {
@@ -39,134 +51,138 @@ const BillingCycleDetailModal = ({
   };
   const getPrimaryNoticeLabel = (tenant) =>
     tenant?.daysOverdue > 0 || tenant?.billStatus === "overdue"
-      ? "Send Overdue Notice"
-      : "Send Payment Reminder";
+      ? "Overdue Notice"
+      : "Remind";
 
   const unitLabel = utilityType === "electricity" ? "kWh" : "cu.m.";
+  const UtilityIcon = utilityType === "electricity" ? Zap : Droplets;
   const periodEnd = period.endDate || period.targetCloseDate;
   const rangeLabel = `${fmtShortDate(period.startDate)} - ${
     fmtShortDate(periodEnd) || "Ongoing"
   }`;
   const summaryTotalLabel =
     utilityType === "electricity" ? "TOTAL KWH" : "TOTAL CU.M.";
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm"
-      style={{ background: "color-mix(in srgb, var(--background) 60%, transparent)" }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm transition-opacity"
+      style={{ background: "color-mix(in srgb, var(--background) 70%, transparent)" }}
       role="dialog"
       aria-modal="true"
       onClick={onClose}
     >
       <div
-        className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-border bg-card shadow-xl"
+        className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-border bg-card shadow-xl transition-all"
         style={{ boxShadow: "var(--shadow-xl)" }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-start justify-between gap-4 border-b border-border px-6 py-4">
-          <div>
-            <h2 className="text-base font-semibold text-foreground">
-              Billing Cycle History
-            </h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {rangeLabel} {statusLabel ? `• ${statusLabel}` : ""}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
+        <div className="flex items-center justify-between gap-4 border-b border-border bg-card px-6 py-4 sticky top-0 z-10">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2.5">
+              <h2 className="text-lg font-bold tracking-tight text-foreground">
+                Billing Cycle History
+              </h2>
               {statusLabel && (
-                <span
-                  className="rounded-full px-3 py-1 text-[11px] font-medium"
-                  style={{
-                    background: "color-mix(in srgb, var(--info) 12%, var(--card))",
-                    color: "var(--info-dark)",
-                  }}
-                >
+                <span className="rounded-full bg-info-light px-2.5 py-0.5 text-[11px] font-semibold text-info-dark border border-info-dark/20 uppercase tracking-wide">
                   {statusLabel}
                 </span>
               )}
               {isReadOnly && (
-                <span className="rounded-full bg-muted px-3 py-1 text-[11px] font-medium text-muted-foreground">
+                <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground border border-border">
                   Read-only
                 </span>
               )}
             </div>
+            <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+              <Calendar size={13} className="text-muted-foreground" />
+              Period Range: <span className="font-semibold text-foreground">{rangeLabel}</span>
+            </p>
           </div>
+
           <button
             type="button"
-            className="rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-card-foreground"
+            className="rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             onClick={onClose}
             aria-label="Close billing cycle history"
           >
-            <X size={16} />
+            <X size={18} />
           </button>
         </div>
 
-        <div className="space-y-6 px-6 pb-6 pt-4">
-          {/* Summary cards */}
+        <div className="space-y-6 px-6 pb-6 pt-5">
+          {/* Summary KPI Cards */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[
               {
                 label: summaryTotalLabel,
                 value: result ? fmtNumber(result.computedTotalUsage, 2) : "-",
-                sub: null,
+                sub: unitLabel,
+                icon: UtilityIcon,
+                badgeBg: "bg-primary-light",
+                badgeText: "text-primary-dark",
               },
               {
                 label: "ROOM COST",
                 value: result
                   ? fmtCurrency(result.totalRoomCost || result.computedTotalCost)
                   : "-",
-                sub: null,
+                sub: "total for cycle",
+                icon: Home,
+                badgeBg: "bg-info-light",
+                badgeText: "text-info-dark",
               },
               {
                 label: "CURRENT RATE",
                 value: result ? fmtCurrency(result.ratePerUnit) : "-",
-                sub: `/${unitLabel}`,
+                sub: `per ${unitLabel}`,
+                icon: Tag,
+                badgeBg: "bg-warning-light",
+                badgeText: "text-warning-dark",
               },
               {
                 label: "SEGMENTS",
                 value: result?.segments?.length ?? 0,
-                sub: null,
+                sub: "active segments",
+                icon: Layers,
+                badgeBg: "bg-success-light",
+                badgeText: "text-success-dark",
               },
-            ].map(({ label, value, sub }) => (
+            ].map(({ label, value, sub, icon: Icon, badgeBg, badgeText }) => (
               <div
                 key={label}
-                className="rounded-xl border border-border bg-card px-4 py-3"
+                className="rounded-xl border border-border bg-card p-4 transition-colors hover:border-border/80"
               >
-                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                  {label}
-                </p>
-                <p className="mt-2 text-lg font-semibold text-foreground">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                    {label}
+                  </p>
+                  <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${badgeBg} ${badgeText}`}>
+                    <Icon size={14} />
+                  </div>
+                </div>
+                <p className="mt-2 text-xl font-bold text-foreground">
                   {value}
                 </p>
                 {sub && (
-                  <p className="text-[11px] text-muted-foreground">{sub}</p>
+                  <p className="mt-0.5 text-[11px] font-medium text-muted-foreground">{sub}</p>
                 )}
               </div>
             ))}
           </div>
 
           {/* Segment Breakdown */}
-          <div className="rounded-xl border border-border bg-card">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
-              <div className="flex items-center gap-2 text-sm font-semibold text-card-foreground">
-                Segment Breakdown
+          <div className="rounded-xl border border-border bg-card overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/30 px-5 py-3">
+              <div className="flex items-center gap-2 text-sm font-bold text-foreground">
+                <Layers size={15} className="text-muted-foreground" />
+                <span>Segment Breakdown</span>
                 {result?.verified ? (
-                  <span
-                    className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
-                    style={{
-                      background: "color-mix(in srgb, var(--success) 12%, var(--card))",
-                      color: "var(--success-dark)",
-                    }}
-                  >
+                  <span className="inline-flex items-center gap-1 rounded-full bg-success-light px-2.5 py-0.5 text-[11px] font-semibold text-success-dark border border-success-dark/20">
                     <Check size={12} /> Verified
                   </span>
                 ) : (
-                  <span
-                    className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
-                    style={{
-                      background: "color-mix(in srgb, var(--warning) 12%, var(--card))",
-                      color: "var(--warning-dark)",
-                    }}
-                  >
+                  <span className="inline-flex items-center gap-1 rounded-full bg-warning-light px-2.5 py-0.5 text-[11px] font-semibold text-warning-dark border border-warning-dark/20">
                     <AlertTriangle size={12} /> Unverified
                   </span>
                 )}
@@ -175,35 +191,37 @@ const BillingCycleDetailModal = ({
 
             <div className="space-y-4 p-4">
               {(result?.segments || []).length === 0 ? (
-                <div className="rounded-lg border border-dashed border-border bg-muted px-4 py-6 text-center text-sm text-muted-foreground">
-                  Segment details are not available for this billing cycle yet.
+                <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 px-4 py-8 text-center">
+                  <Layers size={18} className="text-muted-foreground mb-2" />
+                  <p className="text-sm font-medium text-muted-foreground">
+                    Segment details are not available for this billing cycle yet.
+                  </p>
                 </div>
               ) : (
                 (result?.segments || []).map((seg, index) => (
                   <div
                     key={`${period.id}-segment-${index}`}
-                    className="overflow-hidden rounded-lg border border-border"
+                    className="overflow-hidden rounded-lg border border-border bg-card"
                   >
                     {/* Segment header */}
-                    <div
-                      className="px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em]"
-                      style={{
-                        background: "color-mix(in srgb, var(--primary) 10%, var(--card))",
-                        color: "var(--primary-foreground)",
-                        borderBottom: "1px solid var(--border)",
-                      }}
-                    >
-                      No. of occupants in the room: {seg.activeTenantCount ?? 0}
+                    <div className="flex items-center justify-between border-b border-border bg-muted/20 px-4 py-2.5 text-xs font-semibold uppercase tracking-[0.06em] text-foreground">
+                      <div className="flex items-center gap-2">
+                        <User size={13} className="text-muted-foreground" />
+                        <span>Room Occupants:</span>
+                      </div>
+                      <span className="rounded-full bg-card px-2.5 py-0.5 font-bold text-foreground border border-border">
+                        {seg.activeTenantCount ?? 0} {seg.activeTenantCount === 1 ? "tenant" : "tenants"}
+                      </span>
                     </div>
 
-                    <div className="overflow-x-auto pb-1">
-                      <table className="min-w-[980px] text-sm">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
                         <thead>
-                          <tr className="bg-muted">
+                          <tr className="border-b border-border bg-muted/50">
                             {["Item", "Date", unitLabel].map((h, i) => (
                               <th
                                 key={h}
-                                className="px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+                                className="px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground"
                                 style={{
                                   textAlign:
                                     i === 0
@@ -218,12 +236,7 @@ const BillingCycleDetailModal = ({
                             ))}
                           </tr>
                         </thead>
-                        <tbody
-                          className="text-sm text-card-foreground"
-                          style={{
-                            "--divide-color": "var(--border)",
-                          }}
-                        >
+                        <tbody className="divide-y divide-border text-sm text-foreground">
                           {[
                             {
                               label: "1st reading",
@@ -231,7 +244,6 @@ const BillingCycleDetailModal = ({
                                 ? new Date(seg.startDate).toLocaleDateString()
                                 : (seg.periodLabel || "").split(/\s*[-–]\s*/)[0] || "-",
                               value: fmtNumber(seg.readingFrom, 2),
-                              colSpanValue: false,
                             },
                             {
                               label: "2nd reading",
@@ -239,26 +251,21 @@ const BillingCycleDetailModal = ({
                                 ? new Date(seg.endDate).toLocaleDateString()
                                 : (seg.periodLabel || "").split(/\s*[-–]\s*/)[1] || "-",
                               value: fmtNumber(seg.readingTo, 2),
-                              colSpanValue: false,
                             },
                           ].map((row) => (
-                            <tr
-                              key={row.label}
-                              style={{ borderTop: "1px solid var(--border)" }}
-                            >
-                              <td className="px-4 py-2 text-muted-foreground">
+                            <tr key={row.label} className="hover:bg-muted/30">
+                              <td className="px-4 py-2.5 font-medium text-muted-foreground">
                                 {row.label}
                               </td>
-                              <td className="px-4 py-2 text-center">
+                              <td className="px-4 py-2.5 text-center font-medium">
                                 {row.date}
                               </td>
-                              <td className="px-4 py-2 text-right">
+                              <td className="px-4 py-2.5 text-right font-medium">
                                 {row.value}
                               </td>
                             </tr>
                           ))}
 
-                          {/* Segment period — spans cols 2+3 */}
                           {[
                             {
                               label: "Segment period",
@@ -276,15 +283,12 @@ const BillingCycleDetailModal = ({
                                   "Regular"),
                             },
                           ].map((row) => (
-                            <tr
-                              key={row.label}
-                              style={{ borderTop: "1px solid var(--border)" }}
-                            >
-                              <td className="px-4 py-2 text-muted-foreground">
+                            <tr key={row.label} className="hover:bg-muted/30">
+                              <td className="px-4 py-2.5 font-medium text-muted-foreground">
                                 {row.label}
                               </td>
                               <td
-                                className="px-4 py-2 text-center"
+                                className="px-4 py-2.5 text-center font-medium"
                                 colSpan={2}
                               >
                                 {row.content}
@@ -292,13 +296,13 @@ const BillingCycleDetailModal = ({
                             </tr>
                           ))}
 
-                          <tr style={{ borderTop: "1px solid var(--border)" }}>
-                            <td className="px-4 py-2 text-muted-foreground">
+                          <tr className="hover:bg-muted/30">
+                            <td className="px-4 py-2.5 font-medium text-muted-foreground">
                               Total consumption
                             </td>
-                            <td className="px-4 py-2" />
-                            <td className="px-4 py-2 text-right">
-                              {fmtNumber(seg.unitsConsumed, 2)}
+                            <td className="px-4 py-2.5" />
+                            <td className="px-4 py-2.5 text-right font-semibold text-foreground">
+                              {fmtNumber(seg.unitsConsumed, 2)} {unitLabel}
                             </td>
                           </tr>
 
@@ -312,28 +316,25 @@ const BillingCycleDetailModal = ({
                               value: fmtCurrency(seg.sharePerTenantCost),
                             },
                           ].map((row) => (
-                            <tr
-                              key={row.label}
-                              style={{ borderTop: "1px solid var(--border)" }}
-                            >
+                            <tr key={row.label} className="hover:bg-muted/30">
                               <td
-                                className="px-4 py-2 text-muted-foreground"
+                                className="px-4 py-2.5 font-medium text-muted-foreground"
                                 colSpan={2}
                               >
                                 {row.label}
                               </td>
-                              <td className="px-4 py-2 text-right font-semibold">
+                              <td className="px-4 py-2.5 text-right font-bold text-foreground">
                                 {row.value}
                               </td>
                             </tr>
                           ))}
 
-                          <tr style={{ borderTop: "1px solid var(--border)" }}>
-                            <td className="px-4 py-2 text-muted-foreground">
+                          <tr className="hover:bg-muted/30">
+                            <td className="px-4 py-2.5 font-medium text-muted-foreground">
                               Covered tenants
                             </td>
                             <td
-                              className="px-4 py-2 text-center"
+                              className="px-4 py-2.5 text-center font-medium text-foreground"
                               colSpan={2}
                             >
                               {seg.coveredTenantNames?.length
@@ -351,16 +352,20 @@ const BillingCycleDetailModal = ({
           </div>
 
           {/* Covered Tenants */}
-          <div className="rounded-xl border border-border bg-card">
-            <div className="border-b border-border px-4 py-3">
-              <p className="text-sm font-semibold text-card-foreground">
-                Covered Tenants
+          <div className="rounded-xl border border-border bg-card overflow-hidden">
+            <div className="flex items-center justify-between border-b border-border bg-muted/30 px-5 py-3">
+              <p className="text-sm font-bold text-foreground flex items-center gap-2">
+                <User size={15} className="text-muted-foreground" />
+                <span>Covered Tenants</span>
               </p>
+              <span className="text-xs font-medium text-muted-foreground">
+                {(result?.tenantSummaries || []).length} tenant{(result?.tenantSummaries || []).length === 1 ? "" : "s"}
+              </span>
             </div>
-            <div className="overflow-x-auto pb-1">
-              <table className="min-w-[1120px] text-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-muted">
+                  <tr className="border-b border-border bg-muted/50">
                     {[
                       { label: "Tenant Name", align: "left" },
                       { label: "Duration Range", align: "left" },
@@ -369,14 +374,12 @@ const BillingCycleDetailModal = ({
                       { label: "Balance", align: "right" },
                       { label: "Status", align: "left" },
                       { label: "Due Date", align: "left" },
-                      { label: "Payment Method", align: "left" },
-                      { label: "Payment Ref", align: "left" },
-                      { label: "Paid / Processed", align: "left" },
-                      { label: "Action", align: "left" },
+                      { label: "Payment Info", align: "left" },
+                      { label: "Action", align: "right" },
                     ].map(({ label, align }) => (
                       <th
                         key={label}
-                        className="px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+                        className="px-4 py-2.5 text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground whitespace-nowrap"
                         style={{ textAlign: align }}
                       >
                         {label}
@@ -384,12 +387,12 @@ const BillingCycleDetailModal = ({
                     ))}
                   </tr>
                 </thead>
-                <tbody className="text-sm text-card-foreground">
+                <tbody className="divide-y divide-border text-sm text-foreground">
                   {(result?.tenantSummaries || []).length === 0 ? (
                     <tr>
                       <td
-                        className="px-4 py-6 text-center text-sm text-muted-foreground"
-                        colSpan={11}
+                        className="px-4 py-8 text-center text-sm font-medium text-muted-foreground"
+                        colSpan={9}
                       >
                         No covered tenants for this billing cycle.
                       </td>
@@ -398,46 +401,58 @@ const BillingCycleDetailModal = ({
                     (result?.tenantSummaries || []).map((tenant, index) => (
                       <tr
                         key={`${period.id}-tenant-${index}`}
-                        style={{ borderTop: "1px solid var(--border)" }}
+                        className="transition-colors hover:bg-muted/30"
                       >
-                        <td className="px-4 py-2">
-                          <div className="text-sm font-medium text-card-foreground">
-                            {tenant.tenantName || "-"}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
+                        {/* Tenant Name & Email */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <p className="font-semibold text-foreground">
+                            {tenant.tenantName || "Unknown Tenant"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
                             {tenant.tenantEmail || "-"}
-                          </div>
+                          </p>
                         </td>
-                        <td className="px-4 py-2 text-muted-foreground">
+
+                        {/* Duration Range */}
+                        <td className="px-4 py-3 text-muted-foreground font-medium whitespace-nowrap">
                           {tenant.durationRange || "Ongoing"}
                         </td>
-                        <td className="px-4 py-2 text-right text-muted-foreground">
-                          {fmtNumber(tenant.totalUsage, 4)}
+
+                        {/* Total Usage */}
+                        <td className="px-4 py-3 text-right font-medium text-foreground whitespace-nowrap">
+                          {fmtNumber(tenant.totalUsage, 2)}
                         </td>
-                        <td className="px-4 py-2 text-right font-semibold text-card-foreground">
+
+                        {/* Bill Amount */}
+                        <td className="px-4 py-3 text-right font-bold text-foreground whitespace-nowrap">
                           {fmtCurrency(tenant.billAmount)}
                         </td>
-                        <td className="px-4 py-2 text-right text-muted-foreground">
+
+                        {/* Balance */}
+                        <td className="px-4 py-3 text-right font-medium text-muted-foreground whitespace-nowrap">
                           {fmtCurrency(tenant.remainingAmount)}
                         </td>
-                        <td className="px-4 py-2">
+
+                        {/* Status Badge */}
+                        <td className="px-4 py-3 whitespace-nowrap">
                           {tenant.billStatus ? (
-                            <div className="space-y-1">
+                            <div className="space-y-0.5">
                               <span
-                                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                                className={`inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
                                   tenant.billStatus === "paid"
-                                    ? "bg-success-light text-success-dark"
+                                    ? "bg-success-light text-success-dark border border-success-dark/20"
                                     : tenant.daysOverdue > 0 || tenant.billStatus === "overdue"
-                                      ? "bg-danger-light text-danger-dark"
+                                      ? "bg-danger-light text-danger-dark border border-danger-dark/20"
                                       : tenant.billStatus === "partially-paid"
-                                        ? "bg-warning-light text-warning-dark"
-                                        : "bg-info-light text-info-dark"
+                                        ? "bg-warning-light text-warning-dark border border-warning-dark/20"
+                                        : "bg-info-light text-info-dark border border-info-dark/20"
                                 }`}
                               >
                                 {String(tenant.billStatus).replace(/-/g, " ")}
                               </span>
                               {tenant.daysOverdue > 0 && (
-                                <div className="text-[11px] font-medium text-danger-dark">
+                                <div className="text-[11px] font-semibold text-danger-dark flex items-center gap-1">
+                                  <AlertCircle size={10} />
                                   {tenant.daysOverdue} day{tenant.daysOverdue === 1 ? "" : "s"} overdue
                                 </div>
                               )}
@@ -446,28 +461,33 @@ const BillingCycleDetailModal = ({
                             <span className="text-xs text-muted-foreground">-</span>
                           )}
                         </td>
-                        <td className="px-4 py-2 text-muted-foreground">
+
+                        {/* Due Date */}
+                        <td className="px-4 py-3 text-muted-foreground font-medium whitespace-nowrap">
                           {tenant.dueDate ? fmtShortDate(tenant.dueDate) : "-"}
                         </td>
-                        <td className="px-4 py-2 text-muted-foreground">
-                          {tenant.paymentFallbackLabel || formatPaymentMethodLabel(tenant.paymentMethod)}
+
+                        {/* Payment Info */}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <p className="text-xs font-medium text-foreground">
+                            {tenant.paymentFallbackLabel || formatPaymentMethodLabel(tenant.paymentMethod)}
+                          </p>
+                          {tenant.paymentReference && (
+                            <p className="text-[11px] text-muted-foreground truncate max-w-[120px]" title={tenant.paymentReference}>
+                              Ref: {tenant.paymentReference}
+                            </p>
+                          )}
                         </td>
-                        <td className="px-4 py-2 text-muted-foreground">
-                          <div className="max-w-[170px] truncate" title={tenant.paymentReference || ""}>
-                            {tenant.paymentReference || "-"}
-                          </div>
-                        </td>
-                        <td className="px-4 py-2 text-muted-foreground">
-                          {formatDateTime(tenant.paymentRecordedAt)}
-                        </td>
-                        <td className="px-4 py-2">
+
+                        {/* Action Button - Compact with short text */}
+                        <td className="px-4 py-3 text-right whitespace-nowrap">
                           {tenant.billId && (tenant.canSendPenaltyNotice || tenant.canSendReminder) && onSendReminder ? (
                             <button
                               type="button"
-                              className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${
+                              className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap shrink-0 transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                                 tenant.canSendPenaltyNotice
-                                  ? "border-danger text-danger-dark hover:bg-danger-light"
-                                  : "border-border text-muted-foreground hover:bg-muted"
+                                  ? "border border-danger-dark/30 bg-danger-light text-danger-dark hover:bg-danger-light/80"
+                                  : "border border-info-dark/30 bg-info-light text-info-dark hover:bg-info-light/80"
                               }`}
                               onClick={() => onSendReminder(tenant.billId, tenant.canSendPenaltyNotice ? "penalty" : tenant.daysOverdue > 0 ? "overdue" : "reminder")}
                               disabled={activeNoticeKey?.startsWith(`${tenant.billId}:`)}
@@ -478,12 +498,14 @@ const BillingCycleDetailModal = ({
                               ) : (
                                 <Send size={11} />
                               )}
-                              {tenant.canSendPenaltyNotice
-                                ? "Send Penalty Notice"
-                                : getPrimaryNoticeLabel(tenant)}
+                              <span>
+                                {tenant.canSendPenaltyNotice
+                                  ? "Penalty Notice"
+                                  : getPrimaryNoticeLabel(tenant)}
+                              </span>
                             </button>
                           ) : (
-                            <span className="text-xs text-muted-foreground">
+                            <span className="text-xs font-semibold text-muted-foreground">
                               {tenant.billStatus === "paid" ? "Paid" : "-"}
                             </span>
                           )}
@@ -497,31 +519,14 @@ const BillingCycleDetailModal = ({
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between gap-3 border-t border-border px-6 py-4">
+        {/* Footer - Single clean close action */}
+        <div className="flex items-center justify-end border-t border-border bg-card px-6 py-3.5 sticky bottom-0 z-10">
           <button
             type="button"
-            className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-muted"
+            className="rounded-lg border border-border bg-card px-5 py-1.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
             onClick={onClose}
           >
             Close
-          </button>
-          {onExportPDF && (
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-card-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
-              onClick={onExportPDF}
-            >
-              <Download size={14} /> Export PDF
-            </button>
-          )}
-          <button
-            type="button"
-            className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-card-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
-            onClick={onExport}
-            disabled={!onExport}
-          >
-            <Download size={14} /> Export CSV
           </button>
         </div>
       </div>
@@ -530,3 +535,5 @@ const BillingCycleDetailModal = ({
 };
 
 export default BillingCycleDetailModal;
+
+

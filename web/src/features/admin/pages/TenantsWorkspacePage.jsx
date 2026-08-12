@@ -657,10 +657,10 @@ export default function TenantsWorkspacePage() {
     );
 
     const expiredStays = useMemo(() => {
-      return (workspaceRows || []).filter(
+      return (tenants || []).filter(
         (row) => row.stayStatus === "expired_occupancy_continuing" || row.isExpiredOccupancy
       );
-    }, [workspaceRows]);
+    }, [tenants]);
 
     return (
       <div className="space-y-6">

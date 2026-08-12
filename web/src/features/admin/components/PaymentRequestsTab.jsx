@@ -9,6 +9,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { readMoveInDate } from "../../../shared/utils/lifecycleNaming";
 import { exportToCSV } from "../../../shared/utils/exportUtils";
 import { exportReportPdf } from "../../../shared/utils/reportPdf";
+import { useAuth } from "../../../shared/hooks/useAuth";
 import {
  StatGridSkeleton,
  TableSkeleton,
@@ -27,8 +28,11 @@ function formatUpdatedAt(ts) {
 
 function PaymentRequestsTab() {
  const queryClient = useQueryClient();
+ const { user } = useAuth();
+ const isOwner = user?.role === "owner";
  const [actionLoading, setActionLoading] = useState(null);
- const [branchFilter, setBranchFilter] = useState("all");
+ // Branch admins are scoped to their branch — owners can filter across all branches
+ const [branchFilter, setBranchFilter] = useState(isOwner ? "all" : (user?.branch || "all"));
  const [confirmModal, setConfirmModal] = useState({
  open: false,
  title: "",
@@ -226,27 +230,27 @@ function PaymentRequestsTab() {
  {/* Branch filter + export */}
  <div style={{ display: "flex", gap: "8px", marginBottom: "20px", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }}>
   <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-  {["all", "Gil Puyat", "Guadalupe"].map((b) => (
-  <button
-   key={b}
-   onClick={() => setBranchFilter(b)}
-   style={{
-   padding: "6px 16px",
-   borderRadius: "20px",
-   border: "1px solid",
-   fontSize: "13px",
-   fontWeight: "500",
-   cursor: "pointer",
-   backgroundColor: branchFilter === b ? "#0A1628" : "white",
-   color: branchFilter === b ? "white" : "#374151",
-   borderColor: branchFilter === b ? "#0A1628" : "#D1D5DB",
-   transition: "all 0.15s",
-   }}
-  >
-   {b === "all" ? "All Branches" : b}
-  </button>
-  ))}
-  </div>
+   {isOwner && ["all", "Gil Puyat", "Guadalupe"].map((b) => (
+   <button
+    key={b}
+    onClick={() => setBranchFilter(b)}
+    style={{
+    padding: "6px 16px",
+    borderRadius: "20px",
+    border: "1px solid",
+    fontSize: "13px",
+    fontWeight: "500",
+    cursor: "pointer",
+    backgroundColor: branchFilter === b ? "#0A1628" : "white",
+    color: branchFilter === b ? "white" : "#374151",
+    borderColor: branchFilter === b ? "#0A1628" : "#D1D5DB",
+    transition: "all 0.15s",
+    }}
+   >
+    {b === "all" ? "All Branches" : b}
+   </button>
+   ))}
+   </div>
   <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
   {dataUpdatedAt > 0 && (
    <span style={{ fontSize: "12px", color: "#9CA3AF" }}>

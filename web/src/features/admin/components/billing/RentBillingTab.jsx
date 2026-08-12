@@ -12,7 +12,16 @@ import {
   Users,
   CheckCircle,
   Home,
-  Settings
+  Settings,
+  Search,
+  Sparkles,
+  TrendingUp,
+  User,
+  DollarSign,
+  Filter,
+  ArrowUpRight,
+  ShieldAlert,
+  X
 } from "lucide-react";
 import { billingApi } from "../../../../shared/api/apiClient";
 import { useAdminPayments } from "../../../../shared/hooks/queries/useBilling";
@@ -44,6 +53,13 @@ const TENANT_STATUS_LABELS = {
   partially_paid: "Partially paid",
   missing_data: "Action Required",
   already_billed: "Duplicate bill",
+};
+
+const getInitials = (name) => {
+  if (!name) return "TN";
+  const parts = name.trim().split(" ");
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
 };
 
 const getCurrentMonthInput = () => {
@@ -148,13 +164,13 @@ const getTenantStatus = (tenant, bill, paymentRecord = null) => {
 
 const getStatusStyles = (status) => {
   switch (status) {
-    case "paid": return "bg-emerald-50 text-emerald-700 border-emerald-200/50";
-    case "sent": return "bg-blue-50 text-blue-700 border-blue-200/50";
-    case "generated": return "bg-amber-50 text-amber-700 border-amber-200/50";
-    case "ready": return "bg-slate-50 text-slate-700 border-slate-200/50";
-    case "overdue": return "bg-red-50 text-red-700 border-red-200/50";
-    case "missing_data": return "bg-red-50 text-red-700 border-red-200/50";
-    default: return "bg-muted text-muted-foreground border-border";
+    case "paid": return "bg-emerald-50 text-emerald-800 border-emerald-200 font-bold shadow-xs";
+    case "sent": return "bg-blue-50 text-blue-800 border-blue-200 font-bold shadow-xs";
+    case "generated": return "bg-amber-50 text-amber-900 border-amber-200 font-bold shadow-xs";
+    case "ready": return "bg-slate-100 text-slate-800 border-slate-200 font-bold shadow-xs";
+    case "overdue": return "bg-red-50 text-red-800 border-red-200 font-bold shadow-xs";
+    case "missing_data": return "bg-red-100 text-red-900 border-red-200 font-bold shadow-xs";
+    default: return "bg-muted text-muted-foreground border-border font-semibold";
   }
 };
 
@@ -239,12 +255,21 @@ function PreviewModal({
 
         <div className="flex justify-end gap-3 border-t border-border bg-background px-6 py-4">
           <button
+            type="button"
+            onClick={onClose}
+            className="h-10 rounded-xl border border-border bg-card px-4 text-xs font-bold text-card-foreground shadow-sm transition hover:bg-muted active:scale-[0.98]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
             onClick={onGenerate}
             disabled={generateDisabled}
-            className="flex items-center gap-2 rounded-xl bg-[color:var(--color-accent,#D4AF37)] px-5 py-2.5 text-sm font-bold text-black shadow-md transition-transform hover:scale-[1.02] disabled:opacity-50 disabled:hover:scale-100"
+            title={generateDisabled ? "A bill for this cycle has already been generated" : "Generate and dispatch rent bill statement now"}
+            className="flex h-10 items-center gap-2 rounded-xl bg-[color:var(--color-primary,#0A1628)] px-5 text-xs font-bold text-white shadow-md transition-transform hover:bg-[#13243D] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent,#D4AF37)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-[color:var(--color-primary,#0A1628)] disabled:active:scale-100"
           >
-            {isGenerating ? <LoaderCircle className="animate-spin" size={16} /> : <Send size={16} />}
-            Generate & Send Now
+            {isGenerating ? <LoaderCircle className="animate-spin" size={15} /> : <Send size={15} className="text-[color:var(--color-accent,#D4AF37)]" />}
+            Generate & Send Statement
           </button>
         </div>
       </section>
@@ -265,6 +290,7 @@ export default function RentBillingTab({ isActive }) {
   const [amounts, setAmounts] = useState({});
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('all'); // all, upcoming, overdue, exceptions
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [previewLoadingId, setPreviewLoadingId] = useState(null);
   const [generatingId, setGeneratingId] = useState(null);
@@ -345,12 +371,21 @@ export default function RentBillingTab({ isActive }) {
   }, [tenants, billsById, paymentsByBillId, amounts]);
 
   const filteredRows = useMemo(() => {
-    if (activeTab === 'all') return tableRows;
-    if (activeTab === 'upcoming') return tableRows.filter(r => r.computedStatus === 'ready');
-    if (activeTab === 'overdue') return tableRows.filter(r => r.computedStatus === 'overdue');
-    if (activeTab === 'exceptions') return tableRows.filter(r => r.computedStatus === 'missing_data');
-    return tableRows;
-  }, [tableRows, activeTab]);
+    let rows = tableRows;
+    if (activeTab === 'upcoming') rows = rows.filter(r => r.computedStatus === 'ready');
+    else if (activeTab === 'overdue') rows = rows.filter(r => r.computedStatus === 'overdue');
+    else if (activeTab === 'exceptions') rows = rows.filter(r => r.computedStatus === 'missing_data');
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      rows = rows.filter(r =>
+        (r.tenantName && r.tenantName.toLowerCase().includes(q)) ||
+        (r.roomName && r.roomName.toLowerCase().includes(q)) ||
+        (r.branch && r.branch.toLowerCase().includes(q))
+      );
+    }
+    return rows;
+  }, [tableRows, activeTab, searchQuery]);
 
   const kpis = useMemo(() => {
     let expected = 0;
@@ -372,7 +407,9 @@ export default function RentBillingTab({ isActive }) {
       }
     });
 
-    return { expected, collected, outstanding, exceptions, upcoming };
+    const collectionPercent = expected > 0 ? Math.min(100, Math.round((collected / expected) * 100)) : 0;
+
+    return { expected, collected, outstanding, exceptions, upcoming, collectionPercent };
   }, [tableRows, amounts]);
 
   const sendableRows = useMemo(
@@ -493,20 +530,20 @@ export default function RentBillingTab({ isActive }) {
       {/* ── Dashboard Header & KPIs ────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="flex items-center gap-2 text-lg font-bold text-card-foreground">
-            <Settings className="text-[color:var(--color-accent,#D4AF37)]" size={22} />
+          <h2 className="flex items-center gap-2 text-base font-bold text-card-foreground">
+            <Settings className="text-slate-600 dark:text-slate-400" size={18} />
             Automated Rent Lifecycle
           </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="mt-0.5 text-xs text-muted-foreground">
             Monitor auto-generated rent bills. Bills generate automatically 5 days before their due date.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           {isOwner && (
             <select
               value={branch}
               onChange={(e) => setBranch(e.target.value)}
-              className="rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-medium text-card-foreground shadow-sm focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-100"
+              className="h-9 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-200"
             >
               {BRANCH_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -517,103 +554,199 @@ export default function RentBillingTab({ isActive }) {
             type="month"
             value={month}
             onChange={(e) => setMonth(e.target.value)}
-            className="rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-medium text-card-foreground shadow-sm focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-100"
+            className="h-9 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-200"
           />
           <button
+            type="button"
             onClick={loadData}
             disabled={loading}
-            className="flex h-[42px] w-[42px] items-center justify-center rounded-xl border border-border bg-card shadow-sm transition-colors hover:bg-muted"
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card shadow-xs transition-colors hover:bg-muted"
+            title="Refresh rent billing data"
           >
-            <RefreshCw size={18} className={loading ? "animate-spin text-muted-foreground" : "text-muted-foreground"} />
+            <RefreshCw size={15} className={loading ? "animate-spin text-muted-foreground" : "text-muted-foreground"} />
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="group relative overflow-hidden rounded-[20px] border border-border bg-card p-6 shadow-sm transition-shadow hover:shadow-md">
-          <div className="absolute right-0 top-0 h-full w-1 bg-muted/50 transition-colors group-hover:bg-slate-300" />
-          <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-muted-foreground">Expected Revenue</p>
-          <p className="mt-3 text-3xl font-black tracking-tight text-card-foreground">{fmtCurrency(kpis.expected)}</p>
-        </div>
-        <div className="group relative overflow-hidden rounded-[20px] border border-border bg-card p-6 shadow-sm transition-shadow hover:shadow-md">
-          <div className="absolute right-0 top-0 h-full w-1 bg-emerald-100 transition-colors group-hover:bg-emerald-400" />
-          <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-muted-foreground">Collected</p>
-          <p className="mt-3 text-3xl font-black tracking-tight text-emerald-600">{fmtCurrency(kpis.collected)}</p>
-        </div>
-        <div className="group relative overflow-hidden rounded-[20px] border border-border bg-card p-6 shadow-sm transition-shadow hover:shadow-md">
-          <div className="absolute right-0 top-0 h-full w-1 bg-[color:var(--color-accent,#D4AF37)]/30 transition-colors group-hover:bg-[color:var(--color-accent,#D4AF37)]" />
-          <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-muted-foreground">Outstanding</p>
-          <p className="mt-3 text-3xl font-black tracking-tight text-card-foreground">{fmtCurrency(kpis.outstanding)}</p>
-        </div>
-        <div className="relative overflow-hidden rounded-[20px] border border-border bg-gradient-to-br from-muted/30 to-muted/10 p-6 shadow-inner">
-          <div className="flex h-full flex-col justify-center">
-            <div className="flex items-center gap-2.5 text-sm font-semibold text-card-foreground">
-              <Clock3 size={18} className="text-muted-foreground" />
-              Cron Job Active
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs transition-shadow hover:shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Expected Revenue</p>
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              <DollarSign size={14} />
             </div>
-            <div className="mt-3 flex items-center gap-2 text-xs font-medium text-emerald-600">
+          </div>
+          <p className="mt-2 text-2xl font-bold tracking-tight text-card-foreground">{fmtCurrency(kpis.expected)}</p>
+          <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span className="font-semibold text-card-foreground">{tableRows.length}</span> billable tenant{tableRows.length !== 1 ? 's' : ''}
+          </div>
+        </div>
+
+        <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs transition-shadow hover:shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Collected</p>
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-emerald-100 text-emerald-800 font-extrabold text-[11px]">
+              {kpis.collectionPercent}%
+            </div>
+          </div>
+          <p className="mt-2 text-2xl font-bold tracking-tight text-emerald-700">{fmtCurrency(kpis.collected)}</p>
+          <div className="mt-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800 h-1.5 w-full">
+            <div className="h-full bg-emerald-600 rounded-full transition-all duration-500" style={{ width: `${kpis.collectionPercent}%` }} />
+          </div>
+        </div>
+
+        <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs transition-shadow hover:shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Outstanding</p>
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300">
+              <TrendingUp size={14} />
+            </div>
+          </div>
+          <p className="mt-2 text-2xl font-bold tracking-tight text-card-foreground">{fmtCurrency(kpis.outstanding)}</p>
+          <div className="mt-2 flex items-center gap-1 text-[11px] text-muted-foreground">
+            {kpis.exceptions > 0 ? (
+              <span className="font-bold text-red-600 flex items-center gap-1">
+                <AlertCircle size={12} /> {kpis.exceptions} missing rate data
+              </span>
+            ) : (
+              <span className="text-slate-500 font-medium">All tenant rates configured</span>
+            )}
+          </div>
+        </div>
+
+        <div className="relative overflow-hidden rounded-xl border border-border bg-card p-4 sm:p-5 shadow-xs">
+          <div className="flex h-full flex-col justify-between">
+            <div className="flex items-center justify-between text-card-foreground">
+              <div className="flex items-center gap-2 text-xs font-bold">
+                <Clock3 size={16} className="text-slate-600 dark:text-slate-400" />
+                Automated Cron System
+              </div>
+              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800 border border-emerald-200 uppercase">
+                Active
+              </span>
+            </div>
+            <p className="mt-1.5 text-[11px] text-muted-foreground">Generates bills 5 days before due date automatically.</p>
+            <div className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-emerald-700">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
               </span>
-              Next Run: 12:00 AM
+              Daily at 12:00 AM
             </div>
           </div>
         </div>
       </div>
 
       {/* ── Lifecycle Data Table ────────────────────────────────────────────── */}
-      <div className="rounded-[20px] border border-border bg-card shadow-sm overflow-hidden">
-        <div className="flex overflow-x-auto border-b border-border bg-muted/10 px-2 pt-2 scrollbar-none">
-          {[
-            { id: 'all', label: 'Lifecycle Overview', count: tableRows.length },
-            { id: 'upcoming', label: 'Upcoming Auto-Gen', count: kpis.upcoming },
-            { id: 'overdue', label: 'Overdue Rent', count: tableRows.filter(r => r.computedStatus === 'overdue').length },
-            { id: 'exceptions', label: 'Action Required', count: kpis.exceptions, isAlert: true },
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`relative whitespace-nowrap px-6 py-4 text-sm font-bold transition-colors ${
-                activeTab === tab.id ? "text-card-foreground" : "text-muted-foreground hover:text-card-foreground hover:bg-muted/30 rounded-t-xl"
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                {tab.label}
-                <span className={`rounded-full px-2 py-0.5 text-[11px] font-black tracking-wide ${
-                  tab.isAlert && tab.count > 0 
-                    ? "bg-red-100 text-red-700" 
-                    : activeTab === tab.id ? "bg-card text-card-foreground shadow-sm border border-border/50" : "bg-muted/50 text-muted-foreground"
-                }`}>
-                  {tab.count}
-                </span>
-              </div>
-              {activeTab === tab.id && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-t-full bg-[color:var(--color-accent,#D4AF37)]" />
-              )}
-            </button>
-          ))}
+      <div className="rounded-xl border border-border bg-card shadow-xs overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between border-b border-border bg-muted/20 px-3.5 py-2.5 gap-2.5">
+          <div className="flex overflow-x-auto items-center gap-1 scrollbar-none">
+            {[
+              { id: 'all', label: 'Lifecycle Overview', count: tableRows.length },
+              { id: 'upcoming', label: 'Upcoming Auto-Gen', count: kpis.upcoming },
+              { id: 'overdue', label: 'Overdue Rent', count: tableRows.filter(r => r.computedStatus === 'overdue').length },
+              { id: 'exceptions', label: 'Action Required', count: kpis.exceptions, isAlert: true },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`relative whitespace-nowrap px-3.5 py-1.5 text-xs font-semibold transition-all rounded-lg ${
+                  activeTab === tab.id 
+                    ? "bg-slate-900 text-white shadow-xs dark:bg-slate-100 dark:text-slate-950 font-bold" 
+                    : "text-muted-foreground hover:text-card-foreground hover:bg-card"
+                }`}
+              >
+                <div className="flex items-center gap-1.5">
+                  {tab.label}
+                  <span className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                    tab.isAlert && tab.count > 0 
+                      ? "bg-red-500 text-white" 
+                      : activeTab === tab.id 
+                        ? "bg-white/20 text-white dark:bg-slate-900/20 dark:text-slate-900" 
+                        : "bg-slate-200/70 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                  }`}>
+                    {tab.count}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          <div className="relative flex items-center shrink-0 w-full sm:w-60">
+            <Search size={14} className="absolute left-2.5 text-muted-foreground pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search tenant or room..."
+              className="w-full h-8 rounded-lg border border-border bg-card pl-8 pr-7 text-xs font-medium text-card-foreground shadow-xs focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-200"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 p-0.5 rounded-full text-muted-foreground hover:text-card-foreground"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+          <table className="w-full text-left text-xs">
             <thead className="bg-background">
               <tr>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-[0.12em] text-foreground/80 dark:text-slate-300">Tenant / Room</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-[0.12em] text-foreground/80 dark:text-slate-300">System Status</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-[0.12em] text-foreground/80 dark:text-slate-300">Cycle & Due Date</th>
-                <th className="px-6 py-4 text-xs font-bold uppercase tracking-[0.12em] text-foreground/80 dark:text-slate-300">Amount Tracker</th>
-                <th className="px-6 py-4 text-right text-xs font-bold uppercase tracking-[0.12em] text-foreground/80 dark:text-slate-300">Override Actions</th>
+                <th className="px-5 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Tenant / Room</th>
+                <th className="px-5 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">System Status</th>
+                <th className="px-5 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Cycle & Due Date</th>
+                <th className="px-5 py-3 text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Amount Tracker</th>
+                <th className="px-5 py-3 text-right text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">Override Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50 bg-card">
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-20 text-center">
-                    <div className="mx-auto flex max-w-[200px] flex-col items-center justify-center text-muted-foreground">
-                      <CheckCircle size={32} strokeWidth={1.5} className="mb-4 text-emerald-500/50" />
-                      <p className="text-sm font-semibold">All clear</p>
-                      <p className="text-xs">No records found for this view right now.</p>
+                  <td colSpan={5} className="py-12 text-center">
+                    <div className="mx-auto flex max-w-sm flex-col items-center justify-center text-muted-foreground">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 mb-2.5">
+                        <CheckCircle size={24} className="text-emerald-600" />
+                      </div>
+                      <p className="text-sm font-bold text-card-foreground">No rent statements found</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground text-center">
+                        {searchQuery
+                          ? `No records match your search "${searchQuery}".`
+                          : `No billable tenant records for ${fmtMonth(month)} in ${branch ? formatBranch(branch) : 'All Branches'}.`}
+                      </p>
+
+                      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                        {searchQuery && (
+                          <button
+                            type="button"
+                            onClick={() => setSearchQuery("")}
+                            className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-card px-2.5 text-xs font-semibold text-card-foreground shadow-xs hover:bg-muted active:scale-[0.98]"
+                          >
+                            <X size={12} /> Clear Search
+                          </button>
+                        )}
+                        {month !== getCurrentMonthInput() && (
+                          <button
+                            type="button"
+                            onClick={() => setMonth(getCurrentMonthInput())}
+                            className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-card px-2.5 text-xs font-semibold text-card-foreground shadow-xs hover:bg-muted active:scale-[0.98]"
+                          >
+                            <CalendarDays size={12} /> Current Month
+                          </button>
+                        )}
+                        {branch && isOwner && (
+                          <button
+                            type="button"
+                            onClick={() => setBranch("")}
+                            className="inline-flex h-7 items-center gap-1 rounded-md border border-border bg-card px-2.5 text-xs font-semibold text-card-foreground shadow-xs hover:bg-muted active:scale-[0.98]"
+                          >
+                            <Filter size={12} /> All Branches
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -623,62 +756,69 @@ export default function RentBillingTab({ isActive }) {
                   const isBusy = previewLoadingId === reservationId || generatingId === reservationId;
                   
                   return (
-                    <tr key={reservationId} className="group transition-colors hover:bg-muted/20">
-                      <td className="px-6 py-4">
-                        <p className="font-bold text-card-foreground">{row.tenantName}</p>
-                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                          <span className="inline-block rounded-md bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
-                            {row.roomName || "Unassigned"}
-                          </span>
-                          <span>•</span>
-                          <span className="uppercase tracking-wider opacity-75">{formatBranch(row.branch)}</span>
-                          {row.bill?.billType === "transfer_settlement" && row.bill?.transferSnapshot?.fromRoomName && (
-                            <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">
-                              <span>TRANSFER: {row.bill.transferSnapshot.fromRoomName}</span>
-                              <span>→</span>
-                              <span>{row.bill.transferSnapshot.toRoomName || row.roomName}</span>
-                            </span>
-                          )}
+                    <tr key={reservationId} className="group transition-colors hover:bg-muted/30">
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-800 border border-slate-200 text-[11px] font-bold shadow-xs dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700">
+                            {getInitials(row.tenantName)}
+                          </div>
+                          <div>
+                            <p className="font-bold text-card-foreground text-xs">{row.tenantName}</p>
+                            <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                              <span className="inline-block rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 dark:text-slate-300">
+                                {row.roomName || "Unassigned"}
+                              </span>
+                              <span>•</span>
+                              <span className="uppercase text-[10px] tracking-wider opacity-85 font-semibold">{formatBranch(row.branch)}</span>
+                              {row.bill?.billType === "transfer_settlement" && row.bill?.transferSnapshot?.fromRoomName && (
+                                <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-800 border border-blue-200">
+                                  <span>TRANSFER: {row.bill.transferSnapshot.fromRoomName}</span>
+                                  <span>→</span>
+                                  <span>{row.bill.transferSnapshot.toRoomName || row.roomName}</span>
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col items-start gap-1.5">
-                          <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider ${getStatusStyles(row.computedStatus)}`}>
-                            {row.computedStatus === 'missing_data' && <AlertCircle size={12} />}
+                      <td className="px-5 py-3">
+                        <div className="flex flex-col items-start gap-1">
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${getStatusStyles(row.computedStatus)}`}>
+                            {row.computedStatus === 'missing_data' && <AlertCircle size={11} />}
                             {TENANT_STATUS_LABELS[row.computedStatus] || row.computedStatus}
                           </span>
                           {row.daysOverdue > 0 && (
-                            <p className="text-[11px] font-bold text-danger">
+                            <p className="text-[10px] font-bold text-red-600">
                               {row.daysOverdue} DAYS OVERDUE
                             </p>
                           )}
                           {row.computedStatus === 'ready' && (
-                            <p className="text-[11px] font-medium text-muted-foreground">
+                            <p className="text-[10px] font-medium text-muted-foreground">
                               Generates {fmtDate(row.nextBillingDate || row.billingCycle?.generationDate)}
                             </p>
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <p className="text-sm font-medium text-card-foreground">
+                      <td className="px-5 py-3">
+                        <p className="text-xs font-medium text-card-foreground">
                           {formatCycle(row.billingCycleStart, row.billingCycleEnd)}
                         </p>
-                        <p className="mt-1 text-xs font-medium text-muted-foreground">
+                        <p className="mt-0.5 text-[11px] font-medium text-muted-foreground">
                           Due: <span className="font-bold text-card-foreground">{fmtDate(row.dueDate || row.billingCycle?.dueDate)}</span>
                         </p>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-5 py-3">
                         {row.bill ? (
                           <>
-                            <p className="text-sm font-bold text-card-foreground">{fmtCurrency(row.normalizedBill.balance)}</p>
-                            <p className="mt-1 text-xs font-medium text-muted-foreground">of {fmtCurrency(row.bill.totalAmount)} total</p>
+                            <p className="text-xs font-bold text-card-foreground">{fmtCurrency(row.normalizedBill.balance)}</p>
+                            <p className="mt-0.5 text-[11px] font-medium text-muted-foreground">of {fmtCurrency(row.bill.totalAmount)} total</p>
                           </>
                         ) : (
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5">
                             <input
                               type="number"
-                              className={`w-24 rounded-lg border bg-background px-2.5 py-1.5 text-sm font-semibold shadow-sm transition-colors ${
-                                row.computedStatus === 'missing_data' ? "border-danger focus:ring-danger" : "border-border focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                              className={`w-24 h-7 rounded border bg-background px-2 py-1 text-xs font-semibold shadow-xs transition-colors ${
+                                row.computedStatus === 'missing_data' ? "border-red-400 focus:ring-red-200" : "border-border focus:border-[color:var(--color-accent,#D4AF37)] focus:ring-1 focus:ring-amber-200"
                               }`}
                               value={amounts[reservationId] ?? row.monthlyRent ?? ""}
                               onChange={(e) => setAmounts(cur => ({ ...cur, [reservationId]: e.target.value }))}
@@ -688,40 +828,51 @@ export default function RentBillingTab({ isActive }) {
                           </div>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                      <td className="px-5 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
                           {!row.bill && (
                             <button
+                              type="button"
                               onClick={() => handlePreview(row)}
                               disabled={isBusy || row.computedStatus === 'missing_data'}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-xs font-bold text-card-foreground shadow-sm transition-colors hover:bg-muted disabled:opacity-50"
-                              title="Manually force generation before the scheduled date"
+                              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold text-card-foreground shadow-xs transition hover:bg-muted active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-card disabled:active:scale-100"
+                              title={row.computedStatus === 'missing_data' ? "Rent amount missing. Enter expected monthly rent to enable force generation." : "Manually force rent bill generation before the auto-scheduled date"}
                             >
-                              <Settings size={14} className="text-muted-foreground" /> Force
+                              {isBusy ? <LoaderCircle size={13} className="animate-spin text-muted-foreground" /> : <Settings size={13} className="text-[color:var(--color-accent,#D4AF37)]" />}
+                              Force Generate
                             </button>
                           )}
                           
                           {row.bill && (
                             <>
                               <button
+                                type="button"
                                 onClick={() => handleAction('download', row.bill)}
-                                className="inline-flex items-center justify-center rounded-lg border border-border bg-background p-2 text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-card-foreground"
-                                title="Download PDF"
+                                disabled={downloadingId === getId(row.bill?.id || row.bill?._id)}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground shadow-xs transition hover:bg-muted hover:text-card-foreground active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                                title="Download official rent bill PDF statement"
                               >
-                                <Download size={14} />
+                                {downloadingId === getId(row.bill?.id || row.bill?._id) ? <LoaderCircle size={13} className="animate-spin" /> : <Download size={13} />}
                               </button>
                               
                               {!row.normalizedBill.isPaid && (
                                 <button
+                                  type="button"
                                   onClick={() => handleAction('reminder', row.bill, canSendPenaltyNotice(row.bill, row.paymentRecord) ? 'penalty' : row.daysOverdue > 0 ? 'overdue' : 'reminder')}
-                                  className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold shadow-sm transition-colors ${
+                                  disabled={Boolean(activeNoticeKey)}
+                                  title={row.daysOverdue > 0 ? "Send overdue rent notice with late payment tracking" : "Send rent bill reminder notice"}
+                                  className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold shadow-xs transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${
                                     row.daysOverdue > 0 
-                                      ? "border-danger bg-danger-light text-danger-dark hover:bg-danger/20" 
-                                      : "border-border bg-background text-card-foreground hover:bg-muted"
+                                      ? "border-red-300 bg-red-50 text-red-800 hover:bg-red-100" 
+                                      : "border-border bg-card text-card-foreground hover:bg-muted"
                                   }`}
                                 >
-                                  <Send size={14} className={row.daysOverdue > 0 ? "text-danger" : "text-muted-foreground"} /> 
-                                  {row.daysOverdue > 0 ? "Notice" : "Remind"}
+                                  {activeNoticeKey?.startsWith(getId(row.bill?.id || row.bill?._id)) ? (
+                                    <LoaderCircle size={13} className="animate-spin" />
+                                  ) : (
+                                    <Send size={13} className={row.daysOverdue > 0 ? "text-red-600" : "text-[color:var(--color-accent,#D4AF37)]"} />
+                                  )}
+                                  {row.daysOverdue > 0 ? "Send Notice" : "Remind"}
                                 </button>
                               )}
                             </>
@@ -740,28 +891,32 @@ export default function RentBillingTab({ isActive }) {
       {/* Sticky Batch Send Dock — only visible when 2+ sendable bills exist */}
       {sendableRows.length >= 2 && (
         <div
-          className="sticky bottom-0 z-20 mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3"
-          style={{ boxShadow: "0 -2px 12px hsl(0 0% 0% / 0.06)" }}
+          className="sticky bottom-4 z-20 mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[color:var(--color-accent,#D4AF37)]/40 bg-[color:var(--color-primary,#0A1628)] px-5 py-3.5 text-white shadow-xl"
         >
-          <div className="flex items-center gap-2">
-            <CheckCircle size={16} className="shrink-0 text-success-dark" />
-            <p className="text-sm font-semibold text-card-foreground">
-              {sendableRows.length} bill{sendableRows.length !== 1 ? 's' : ''} ready to send
-            </p>
-            <span className="text-xs font-medium text-muted-foreground">
-              · Total: {new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(sendableTotalAmount)}
-            </span>
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[color:var(--color-accent,#D4AF37)]/20 text-[color:var(--color-accent,#D4AF37)]">
+              <CheckCircle size={18} />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-white">
+                {sendableRows.length} rent bill{sendableRows.length !== 1 ? 's' : ''} ready to dispatch
+              </p>
+              <p className="text-xs text-slate-300">
+                Total value: {new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(sendableTotalAmount)}
+              </p>
+            </div>
           </div>
           <button
             type="button"
             disabled={batchSending}
             onClick={handleSendAllReady}
-            className="inline-flex items-center gap-2 rounded-lg border border-border bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-[color:var(--color-accent,#D4AF37)] px-5 text-xs font-bold text-black shadow-md transition-all hover:bg-[color:var(--color-accent-hover,#B9921F)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+            title={batchSending ? "Sending bills..." : "Dispatch all generated rent statements to tenants"}
           >
             {batchSending
-              ? <LoaderCircle size={13} className="animate-spin" />
-              : <Send size={13} />}
-            {batchSending ? 'Sending…' : 'Send All Ready'}
+              ? <LoaderCircle size={15} className="animate-spin" />
+              : <Send size={15} />}
+            {batchSending ? 'Sending statements…' : 'Send All Ready Bills'}
           </button>
         </div>
       )}

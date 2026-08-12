@@ -1,9 +1,13 @@
 import React, { useMemo, useState } from "react";
 import {
   AlertTriangle,
+  Clock,
+  Database,
   Download,
   FileText,
+  Info,
   Shield,
+  ShieldAlert,
   Trash2,
 } from "lucide-react";
 import { useAuth } from "../../../shared/hooks/useAuth";
@@ -15,6 +19,7 @@ import {
   usePaginatedAuditLogs,
 } from "../../../shared/hooks/queries/useAuditLogs";
 import { showNotification } from "../../../shared/utils/notification";
+import ConfirmModal from "../../../shared/components/ConfirmModal";
 import {
   ActionBar,
   DataTable,
@@ -86,9 +91,14 @@ const AuditLogsPage = () => {
   const [activeTab, setActiveTab] = useState(AUDIT_TRAIL_TAB);
   const currentTab = normalizeAuditTab(activeTab, isOwner);
   const [currentPage, setCurrentPage] = useState(1);
+  const [suspiciousIpPage, setSuspiciousIpPage] = useState(1);
+  const [suspiciousIpPageSize, setSuspiciousIpPageSize] = useState(5);
+  const [failedLoginPage, setFailedLoginPage] = useState(1);
+  const [failedLoginPageSize, setFailedLoginPageSize] = useState(5);
   const [selectedLog, setSelectedLog] = useState(null);
   const [securityWindowHours, setSecurityWindowHours] = useState("24");
   const [cleanupDays, setCleanupDays] = useState(String(RETENTION_OPTIONS[0]));
+  const [isCleanupConfirmOpen, setIsCleanupConfirmOpen] = useState(false);
   const [filters, setFilters] = useState(() => createDefaultAuditFilters());
 
   const queryParams = useMemo(
@@ -155,17 +165,13 @@ const AuditLogsPage = () => {
     }
   };
 
-  const handleCleanup = async () => {
+  const handleConfirmCleanup = async () => {
     const daysToKeep = Number(cleanupDays);
     if (!daysToKeep) return;
 
-    const confirmed = window.confirm(
-      `Delete non-critical audit logs older than ${daysToKeep} days? This cannot be undone.`,
-    );
-    if (!confirmed) return;
-
     try {
       const result = await cleanupAuditLogs.mutateAsync(daysToKeep);
+      setIsCleanupConfirmOpen(false);
       showNotification(
         `Retention cleanup completed. ${result.deletedCount || 0} log(s) removed.`,
         "success",
@@ -181,31 +187,35 @@ const AuditLogsPage = () => {
   };
 
   const auditSummaryItems = [
-    { label: "Total Logs", value: stats.total || 0, color: "blue" },
-    { label: "Critical", value: stats.critical || 0, color: "red" },
-    { label: "Today", value: stats.today || 0, color: "green" },
-    { label: "Deletions", value: stats.deletions || 0, color: "orange" },
+    { label: "Total Logs", value: (stats.total || 0).toLocaleString(), icon: FileText, color: "blue" },
+    { label: "Critical", value: (stats.critical || 0).toLocaleString(), icon: AlertTriangle, color: "red" },
+    { label: "Today", value: (stats.today || 0).toLocaleString(), icon: Clock, color: "green" },
+    { label: "Deletions", value: (stats.deletions || 0).toLocaleString(), icon: Trash2, color: "orange" },
   ];
 
   const securitySummaryItems = [
     {
       label: "Failed Logins",
-      value: securitySignals?.totalFailedLogins || 0,
+      value: (securitySignals?.totalFailedLogins || 0).toLocaleString(),
+      icon: ShieldAlert,
       color: "orange",
     },
     {
       label: "Suspicious IPs",
       value: suspiciousIps.length,
+      icon: Shield,
       color: "red",
     },
     {
       label: "Recent Attempts",
       value: failedLogins.length,
+      icon: Clock,
       color: "blue",
     },
     {
       label: "Retention Default",
       value: `${cleanupDays}d`,
+      icon: Database,
       color: "green",
     },
   ];
@@ -292,30 +302,49 @@ const AuditLogsPage = () => {
     {
       key: "user",
       label: "User",
-      render: (row) => row.user || "Unknown",
+      render: (row) => {
+        const val = row.user || "Unknown";
+        if (val.startsWith("sha256:")) {
+          return (
+            <span
+              className="inline-flex items-center rounded border border-slate-200 bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-600"
+              title={val}
+            >
+              {val.slice(0, 16)}...
+            </span>
+          );
+        }
+        return <span className="font-semibold text-slate-900">{val}</span>;
+      },
     },
     {
       key: "ip",
       label: "IP",
-      width: "140px",
-      render: (row) => row.ip || "Unknown",
+      width: "120px",
+      render: (row) => (
+        <span className="font-mono text-xs text-slate-600">{row.ip || "Unknown"}</span>
+      ),
     },
     {
       key: "branch",
       label: "Branch",
-      width: "140px",
+      width: "130px",
       render: (row) => formatAuditBranch(row.branch),
     },
     {
       key: "timestamp",
       label: "Attempted",
-      width: "180px",
+      width: "160px",
       render: (row) => formatDateTime(row.timestamp),
     },
     {
       key: "details",
       label: "Details",
-      render: (row) => row.details || "No details recorded",
+      render: (row) => (
+        <span className="block max-w-[260px] text-xs leading-relaxed text-slate-600">
+          {row.details || "No details recorded"}
+        </span>
+      ),
     },
   ];
 
@@ -380,28 +409,31 @@ const AuditLogsPage = () => {
             filters={auditTrailFilters}
             actions={[
               {
-                label: "Export",
+                label: exportAuditLogs.isPending ? "Exporting..." : "Export",
                 icon: Download,
                 onClick: handleExport,
                 variant: "ghost",
                 disabled: exportAuditLogs.isPending,
+                title: exportAuditLogs.isPending
+                  ? "Preparing audit logs JSON export..."
+                  : "Export current audit logs matching active filters as JSON",
               },
             ]}
           >
             <div className="audit-logs__field-group">
               <label className="audit-logs__field">
-                <span>User Email</span>
+                <span>User:</span>
                 <input
                   type="text"
                   value={filters.user}
                   onChange={(event) =>
                     handleFilterChange("user", event.target.value)
                   }
-                  placeholder="Filter by user email"
+                  placeholder="Filter by email"
                 />
               </label>
               <label className="audit-logs__field audit-logs__field--date">
-                <span>Start Date</span>
+                <span>From:</span>
                 <input
                   type="date"
                   value={filters.startDate}
@@ -411,7 +443,7 @@ const AuditLogsPage = () => {
                 />
               </label>
               <label className="audit-logs__field audit-logs__field--date">
-                <span>End Date</span>
+                <span>To:</span>
                 <input
                   type="date"
                   value={filters.endDate}
@@ -429,10 +461,19 @@ const AuditLogsPage = () => {
                 key: "hours",
                 options: SECURITY_WINDOW_OPTIONS,
                 value: securityWindowHours,
-                onChange: setSecurityWindowHours,
+                onChange: (value) => {
+                  setSecurityWindowHours(value);
+                  setSuspiciousIpPage(1);
+                  setFailedLoginPage(1);
+                },
               },
             ]}
-          />
+          >
+            <div className="inline-flex items-center gap-2 rounded-lg border border-amber-200/90 bg-amber-50/90 px-3 py-1.5 text-xs font-medium text-amber-800">
+              <Info size={14} className="flex-shrink-0 text-amber-600" />
+              <span>Security signals monitor system-wide failed logins (Owner access required).</span>
+            </div>
+          </ActionBar>
         )}
       </PageShell.Actions>
 
@@ -459,26 +500,33 @@ const AuditLogsPage = () => {
           />
         ) : (
           <div className="audit-security">
-            <div className="audit-security__notice">
-              Security Signals are owner-only in this phase because failed-login
-              monitoring is not branch-scoped.
-            </div>
-
             <div className="audit-security__grid">
               <section className="audit-panel">
                 <div className="audit-panel__header">
-                  <div>
-                    <h3>Suspicious IPs</h3>
-                    <p>
-                      IPs with repeated failed login attempts in the selected
-                      window.
-                    </p>
+                  <div className="audit-panel__header-left">
+                    <div className="audit-panel__header-icon audit-panel__header-icon--orange">
+                      <ShieldAlert size={18} />
+                    </div>
+                    <div>
+                      <h3>Suspicious IPs</h3>
+                      <p>
+                        IPs with repeated failed login attempts in the selected
+                        window.
+                      </p>
+                    </div>
                   </div>
                 </div>
                 <DataTable
                   columns={suspiciousIpColumns}
                   data={suspiciousIps}
                   loading={securityLoading}
+                  pagination={{
+                    page: suspiciousIpPage,
+                    pageSize: suspiciousIpPageSize,
+                    total: suspiciousIps.length,
+                    onPageChange: setSuspiciousIpPage,
+                    onPageSizeChange: setSuspiciousIpPageSize,
+                  }}
                   emptyState={{
                     icon: Shield,
                     title: "No suspicious IPs",
@@ -490,18 +538,30 @@ const AuditLogsPage = () => {
 
               <section className="audit-panel">
                 <div className="audit-panel__header">
-                  <div>
-                    <h3>Recent Failed Logins</h3>
-                    <p>
-                      Latest warning-level login failures returned by the
-                      existing audit backend.
-                    </p>
+                  <div className="audit-panel__header-left">
+                    <div className="audit-panel__header-icon audit-panel__header-icon--red">
+                      <AlertTriangle size={18} />
+                    </div>
+                    <div>
+                      <h3>Recent Failed Logins</h3>
+                      <p>
+                        Latest warning-level login failures returned by the
+                        existing audit backend.
+                      </p>
+                    </div>
                   </div>
                 </div>
                 <DataTable
                   columns={failedLoginColumns}
                   data={failedLogins}
                   loading={securityLoading}
+                  pagination={{
+                    page: failedLoginPage,
+                    pageSize: failedLoginPageSize,
+                    total: failedLogins.length,
+                    onPageChange: setFailedLoginPage,
+                    onPageSizeChange: setFailedLoginPageSize,
+                  }}
                   emptyState={{
                     icon: AlertTriangle,
                     title: "No failed logins",
@@ -514,21 +574,33 @@ const AuditLogsPage = () => {
 
             <section className="audit-panel audit-panel--retention">
               <div className="audit-panel__header">
-                <div>
-                  <h3>Retention Cleanup</h3>
-                  <p>
-                    Delete non-critical audit logs older than the selected
-                    retention window. Critical logs are retained.
-                  </p>
+                <div className="audit-panel__header-left">
+                  <div className="audit-panel__header-icon audit-panel__header-icon--red">
+                    <Trash2 size={18} />
+                  </div>
+                  <div>
+                    <h3>Retention Cleanup</h3>
+                    <p>
+                      Delete non-critical audit logs older than the selected
+                      retention window. Critical logs are always retained.
+                    </p>
+                  </div>
                 </div>
+                <span className="audit-retention__danger-label">
+                  <AlertTriangle size={11} />
+                  Destructive
+                </span>
               </div>
 
-              <div className="audit-retention">
-                <label className="audit-logs__field audit-logs__field--date">
-                  <span>Days To Keep</span>
+              <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-rose-200/90 bg-white p-4 shadow-sm">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Retention Window:
+                  </span>
                   <select
                     value={cleanupDays}
                     onChange={(event) => setCleanupDays(event.target.value)}
+                    className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-900 transition-colors hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500"
                   >
                     {RETENTION_OPTIONS.map((days) => (
                       <option key={days} value={String(days)}>
@@ -536,21 +608,24 @@ const AuditLogsPage = () => {
                       </option>
                     ))}
                   </select>
-                </label>
-
-                <div className="audit-retention__copy">
-                  Safe defaults start at 90 days. Cleanup requires explicit
-                  confirmation before anything is deleted.
+                  <span className="hidden text-xs text-slate-500 sm:inline">
+                    • Safe defaults start at 90 days. Cleanup requires explicit confirmation.
+                  </span>
                 </div>
 
                 <button
                   type="button"
                   className="audit-retention__button"
-                  onClick={handleCleanup}
+                  onClick={() => setIsCleanupConfirmOpen(true)}
                   disabled={cleanupAuditLogs.isPending}
+                  title={
+                    cleanupAuditLogs.isPending
+                      ? "Retention cleanup job is currently executing..."
+                      : `Permanently delete non-critical audit logs older than ${cleanupDays} days`
+                  }
                 >
                   <Trash2 size={15} />
-                  Run Cleanup
+                  {cleanupAuditLogs.isPending ? "Cleaning up..." : "Run Retention Cleanup"}
                 </button>
               </div>
             </section>
@@ -630,6 +705,18 @@ const AuditLogsPage = () => {
           </>
         ) : null}
       </DetailDrawer>
+
+      <ConfirmModal
+        isOpen={isCleanupConfirmOpen}
+        onClose={() => setIsCleanupConfirmOpen(false)}
+        onConfirm={handleConfirmCleanup}
+        title="Confirm Retention Cleanup"
+        message={`Are you sure you want to delete non-critical audit logs older than ${cleanupDays} days? Critical logs are always retained. This action cannot be undone.`}
+        confirmText="Run Retention Cleanup"
+        cancelText="Cancel"
+        variant="danger"
+        loading={cleanupAuditLogs.isPending}
+      />
     </PageShell>
   );
 };

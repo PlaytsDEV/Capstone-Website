@@ -23,6 +23,10 @@ import {
   Eye,
   EyeOff,
   Info,
+  CheckCheck,
+  CheckCircle2,
+  AlertTriangle,
+  FileText,
 } from "lucide-react";
 import { useAuth } from "../../../../shared/hooks/useAuth";
 import ConfirmModal from "../../../../shared/components/ConfirmModal";
@@ -57,6 +61,7 @@ import {
 } from "../../../../shared/utils/lifecycleNaming";
 import { getRoomLabel } from "../../../../shared/utils/roomLabel.js";
 import { fmtDate } from "../../utils/formatters";
+import { ExportButtons } from "../../pages/analyticsTabShared";
 import useBillingNotifier from "./shared/useBillingNotifier";
 import "./shared/BillingDelta.css";
 import BillingCycleDetailModal from "./BillingCycleDetailModal";
@@ -69,6 +74,13 @@ import {
 } from "./paymentDisplay";
 
 const EMPTY_VALUE = "-";
+
+const getInitials = (name) => {
+  if (!name) return "TN";
+  const parts = String(name).trim().split(" ");
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return String(name).slice(0, 2).toUpperCase();
+};
 
 const getRoomFloor = (r) => {
   if (!r) return "1";
@@ -125,6 +137,28 @@ const getDisplayStatusLabel = (period) => {
   if (status === "no_active_cycle") return "No Active Bill";
   if (status === "open") return "Active";
   return status;
+};
+const getDisplayStatusIcon = (status) => {
+  const s = String(status || "").toLowerCase();
+  if (s === "sent" || s === "finalized") {
+    return <CheckCheck size={11} className="shrink-0 text-slate-500" />;
+  }
+  if (s === "ready_to_send" || s === "ready") {
+    return <Send size={11} className="shrink-0 text-blue-600" />;
+  }
+  if (s === "paid") {
+    return <CheckCircle2 size={11} className="shrink-0 text-emerald-600" />;
+  }
+  if (s === "overdue") {
+    return <AlertTriangle size={11} className="shrink-0 text-red-600" />;
+  }
+  if (s === "partially-paid" || s === "partially_paid") {
+    return <Clock3 size={11} className="shrink-0 text-amber-600" />;
+  }
+  if (s === "open") {
+    return <Zap size={11} className="shrink-0 text-emerald-600" />;
+  }
+  return <Info size={11} className="shrink-0 text-slate-400" />;
 };
 const getRoomBadgeLabel = (room) => {
   if (!room) return "No Active Bill";
@@ -227,17 +261,17 @@ const getHistoryStatusClasses = (status) => {
   switch (status) {
     case "sent":
     case "finalized":
-      return "bg-info-light text-info-dark";
+      return "bg-slate-100 text-slate-600 border border-slate-200/80 font-medium dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700";
     case "ready_to_send":
     case "ready":
-      return "bg-warning-light text-warning-dark";
+      return "bg-blue-50 text-blue-800 border border-blue-200 font-semibold dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800";
     case "open":
-      return "bg-success-light text-success-dark";
+      return "bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800";
     case "revised":
-      return ""; // handled via inline style
+      return "bg-amber-50 text-amber-900 border border-amber-200 font-semibold dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800";
     case "no_active_cycle":
     default:
-      return "bg-muted text-muted-foreground";
+      return "bg-slate-100 text-slate-500 border border-slate-200/60 font-normal dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700";
   }
 };
 const getTimelineDotClasses = (eventType) => {
@@ -551,10 +585,10 @@ const UtilityBillingTab = ({
   const utilityQueryOptions = useMemo(
     () => ({
       enabled: isActive,
-      refetchOnMount: false,
-      refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
-      staleTime: Number.POSITIVE_INFINITY,
+      refetchOnMount: true,
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
+      staleTime: 5000,
     }),
     [isActive],
   );
@@ -1686,30 +1720,386 @@ const UtilityBillingTab = ({
     }
   };
 
+  const getExportColumns = (type, isSingleRoom = false) => {
+    const unit = type === "electricity" ? "kWh" : "cu.m.";
+    const formatDateLabel = (dateStr) => {
+      if (!dateStr) return "—";
+      const d = new Date(dateStr);
+      if (Number.isNaN(d.getTime())) return String(dateStr);
+      return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    };
+
+    const baseColumns = [
+      { key: "tenantName", label: "Tenant Name", formatter: (v) => v || "Unassigned" },
+      {
+        key: "startDate",
+        label: "Billing Cycle",
+        formatter: (v, r) => {
+          if (r.startDate && r.endDate) {
+            return `${formatDateLabel(r.startDate)} - ${formatDateLabel(r.endDate)}`;
+          }
+          return r.durationRange || formatDateLabel(v);
+        },
+      },
+      {
+        key: "totalUsage",
+        label: `Total Usage (${unit})`,
+        formatter: (v, r) => {
+          const val = v ?? r.usage;
+          return val != null && val !== "" ? `${Number(val).toFixed(2)} ${unit}` : `0.00 ${unit}`;
+        },
+      },
+      {
+        key: "billAmount",
+        label: "Charge Amount",
+        formatter: (v, r) => {
+          const val = v ?? r.amount ?? 0;
+          return `PHP ${Number(val).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        },
+      },
+      {
+        key: "billStatus",
+        label: "Billing Status",
+        formatter: (v, r) => String(v || r.periodStatus || "Draft").toUpperCase(),
+      },
+    ];
+
+    if (isSingleRoom) {
+      return baseColumns;
+    }
+
+    return [
+      { key: "roomName", label: "Room" },
+      { key: "branch", label: "Branch", formatter: (v) => (v ? String(v).toUpperCase() : "—") },
+      ...baseColumns,
+    ];
+  };
+
   const handleExportRows = async () => {
     try {
       setIsExporting(true);
-      const response = await utilityApi.exportRows(utilityType, {
-        branch: branchFilter || undefined,
-      });
-      const rows = response?.rows || [];
+      const targetRoomId = selectedRoom?._id || selectedRoom?.id || selectedRoomId || undefined;
+      const params = { branch: branchFilter || undefined };
+      if (targetRoomId) {
+        params.roomId = targetRoomId;
+      }
+      const response = await utilityApi.exportRows(utilityType, params);
+      let rows = response?.rows || [];
+      if (targetRoomId) {
+        rows = rows.filter(
+          (r) =>
+            String(r.roomId || r.room?._id || r.room?.id || "") === String(targetRoomId),
+        );
+      }
       if (!rows.length) {
-        notify.warn(`No ${utilityType} billing rows available for export.`);
+        notify.warn(
+          selectedRoom
+            ? `No ${utilityType} billing rows found for ${getRoomLabel(selectedRoom)}.`
+            : `No ${utilityType} billing rows available for export.`,
+        );
         return;
       }
 
       exportToCSV(
         rows,
-        getExportColumns(utilityType),
-        `${utilityType}_billing_${branchFilter || "all"}_${getTodayInput()}`,
+        getExportColumns(utilityType, Boolean(selectedRoom)),
+        `${utilityType}_billing_${selectedRoom ? (selectedRoom.name || selectedRoom.roomNumber).replace(/\s+/g, "_") : branchFilter || "all"}_${getTodayInput()}`,
       );
       notify.success(
-        `Exported ${rows.length} ${utilityType} billing row${rows.length === 1 ? "" : "s"}.`,
+        `Exported ${rows.length} ${utilityType} billing row${rows.length === 1 ? "" : "s"}${selectedRoom ? ` for ${getRoomLabel(selectedRoom)}` : ""}.`,
       );
     } catch (error) {
       notify.error(error, `Failed to export ${utilityType} billing.`);
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const handleExportPdf = async () => {
+    try {
+      setIsExporting(true);
+      const targetRoomId = selectedRoom?._id || selectedRoom?.id || selectedRoomId || undefined;
+      const params = { branch: branchFilter || undefined };
+      if (targetRoomId) {
+        params.roomId = targetRoomId;
+      }
+      const response = await utilityApi.exportRows(utilityType, params);
+      let rows = response?.rows || [];
+      if (targetRoomId) {
+        rows = rows.filter(
+          (r) =>
+            String(r.roomId || r.room?._id || r.room?.id || "") === String(targetRoomId),
+        );
+      }
+      if (!rows.length) {
+        notify.warn(
+          selectedRoom
+            ? `No ${utilityType} billing rows found for ${getRoomLabel(selectedRoom)}.`
+            : `No ${utilityType} billing rows available for PDF export.`,
+        );
+        return;
+      }
+
+      const { exportReportPdf } = await import("../../../../shared/utils/reportPdf.js");
+
+      const totalUsage = rows.reduce(
+        (sum, r) => sum + (Number(r.totalUsage ?? r.usage) || 0),
+        0,
+      );
+      const totalCharge = rows.reduce(
+        (sum, r) => sum + (Number(r.billAmount ?? r.amount) || 0),
+        0,
+      );
+      const unit = utilityType === "electricity" ? "kWh" : "cu.m.";
+
+      const isSingleRoom = Boolean(selectedRoom);
+      const headers = isSingleRoom
+        ? ["Cycle / Period", "Tenant", "Usage", "Charge", "Status"]
+        : ["Room", "Branch", "Tenant", "Usage", "Charge", "Status"];
+
+      const colWidths = isSingleRoom
+        ? [45, 45, 30, 35, 19]
+        : [28, 25, 42, 25, 30, 24];
+
+      const tableRows = rows.map((r) => {
+        const usageVal = r.totalUsage ?? r.usage;
+        const chargeVal = r.billAmount ?? r.amount ?? 0;
+        const periodText = r.startDate && r.endDate
+          ? `${fmtShortDate(r.startDate)} - ${fmtShortDate(r.endDate)}`
+          : r.durationRange || "Cycle";
+
+        if (isSingleRoom) {
+          return {
+            "Cycle / Period": periodText,
+            Tenant: r.tenantName || "Unassigned",
+            Usage: `${usageVal != null ? Number(usageVal).toFixed(2) : "0.00"} ${unit}`,
+            Charge: `PHP ${Number(chargeVal || 0).toFixed(2)}`,
+            Status: String(r.billStatus || r.periodStatus || "Draft").toUpperCase(),
+          };
+        }
+
+        return {
+          Room: r.roomName || getRoomLabel(selectedRoom) || "Room",
+          Branch: r.branch ? String(r.branch).toUpperCase() : "—",
+          Tenant: r.tenantName || "Unassigned",
+          Usage: `${usageVal != null ? Number(usageVal).toFixed(2) : "0.00"} ${unit}`,
+          Charge: `PHP ${Number(chargeVal || 0).toFixed(2)}`,
+          Status: String(r.billStatus || r.periodStatus || "Draft").toUpperCase(),
+        };
+      });
+
+      await exportReportPdf({
+        title: `${utilityType === "electricity" ? "Electricity" : "Water"} Utility Billing Report`,
+        subtitle: selectedRoom
+          ? `Room: ${getRoomLabel(selectedRoom)} (${selectedRoom.branch ? selectedRoom.branch.toUpperCase() : ""}) • ${rows.length} Record${rows.length === 1 ? "" : "s"}`
+          : `Branch: ${branchFilter ? branchFilter.toUpperCase() : "All Branches"} • ${rows.length} Record${rows.length === 1 ? "" : "s"}`,
+        reportType: `${utilityType.toUpperCase()} Billing`,
+        filename: `${utilityType}_billing_${selectedRoom ? (selectedRoom.name || selectedRoom.roomNumber).replace(/\s+/g, "_") : branchFilter || "all"}_${getTodayInput()}.pdf`,
+        kpis: [
+          { label: "Billing Records", value: rows.length },
+          {
+            label: `Total Usage (${unit})`,
+            value: `${totalUsage.toFixed(2)} ${unit}`,
+          },
+          {
+            label: "Total Charges",
+            value: `PHP ${totalCharge.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          },
+        ],
+        sections: [
+          {
+            title: selectedRoom
+              ? `Billing Cycles for ${getRoomLabel(selectedRoom)}`
+              : "Billing Cycle Breakdown",
+            type: "table",
+            headers,
+            colWidths,
+            rows: tableRows,
+          },
+        ],
+      });
+
+      notify.success(
+        `Exported PDF report with ${rows.length} ${utilityType} billing row${rows.length === 1 ? "" : "s"}.`,
+      );
+    } catch (error) {
+      notify.error(error, `Failed to export ${utilityType} billing PDF.`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleExportTenantBillingCsv = () => {
+    const tenantSummaries = selectedMonitoringResult?.tenantSummaries || [];
+    if (!tenantSummaries.length) {
+      notify.warn("No tenant billing & payment records available to export.");
+      return;
+    }
+
+    const columns = [
+      { key: "tenantName", label: "Tenant Name" },
+      { key: "tenantEmail", label: "Tenant Email" },
+      {
+        key: "totalUsage",
+        label: `Usage (${utilityType === "electricity" ? "kWh" : "cu.m."})`,
+        formatter: (v) => (v != null ? Number(v).toFixed(2) : "0.00"),
+      },
+      {
+        key: "billAmount",
+        label: "Bill Amount (PHP)",
+        formatter: (v) => (v != null ? Number(v).toFixed(2) : "0.00"),
+      },
+      {
+        key: "balance",
+        label: "Balance (PHP)",
+        formatter: (v) => (v != null ? Number(v).toFixed(2) : "0.00"),
+      },
+      { key: "billStatus", label: "Status" },
+      {
+        key: "dueDate",
+        label: "Due Date",
+        formatter: (v) => (v ? fmtDate(v) : "—"),
+      },
+      {
+        key: "paymentMethod",
+        label: "Payment Method",
+        formatter: (v, r) =>
+          resolvePaymentDetails(r.bill, r.latestPayment).paymentMethod,
+      },
+      {
+        key: "paymentRecordedAt",
+        label: "Paid / Processed Date",
+        formatter: (v, r) =>
+          resolvePaymentDetails(r.bill, r.latestPayment).paymentRecordedAt || "—",
+      },
+    ];
+
+    exportToCSV(
+      tenantSummaries,
+      columns,
+      `tenant_billing_payments_${selectedRoom ? (selectedRoom.name || selectedRoom.roomNumber).replace(/\s+/g, "_") : "room"}_${getTodayInput()}`,
+    );
+    notify.success(
+      `Exported ${tenantSummaries.length} tenant payment record${tenantSummaries.length === 1 ? "" : "s"}.`,
+    );
+  };
+
+  const handleExportTenantBillingPdf = async () => {
+    const tenantSummaries = selectedMonitoringResult?.tenantSummaries || [];
+    if (!tenantSummaries.length) {
+      notify.warn("No tenant billing & payment records available to export.");
+      return;
+    }
+
+    try {
+      const { exportReportPdf } = await import("../../../../shared/utils/reportPdf.js");
+
+      const totalBill = tenantSummaries.reduce(
+        (s, t) => s + Number(t.billAmount || 0),
+        0,
+      );
+      const totalBalance = tenantSummaries.reduce(
+        (s, t) => s + Number(t.balance || 0),
+        0,
+      );
+      const unit = utilityType === "electricity" ? "kWh" : "cu.m.";
+
+      const headers = ["Tenant", "Usage", "Bill Amount", "Balance", "Status", "Method"];
+      const tableRows = tenantSummaries.map((t) => {
+        const paymentDetails = resolvePaymentDetails(t.bill, t.latestPayment);
+        return {
+          Tenant: t.tenantName || "Unassigned",
+          Usage: `${Number(t.totalUsage || 0).toFixed(2)} ${unit}`,
+          "Bill Amount": `PHP ${Number(t.billAmount || 0).toFixed(2)}`,
+          Balance: `PHP ${Number(t.balance || 0).toFixed(2)}`,
+          Status: String(t.billStatus || "Pending").toUpperCase(),
+          Method: paymentDetails.paymentMethod || "—",
+        };
+      });
+
+      await exportReportPdf({
+        title: "Tenant Billing & Payment Monitoring Report",
+        subtitle: `Room: ${getRoomLabel(selectedRoom)} • Cycle: ${selectedPeriodFromList ? getCycleLabel(selectedPeriodFromList) : "Active Period"}`,
+        reportType: "Billing & Payments",
+        filename: `tenant_payments_${selectedRoom ? (selectedRoom.name || selectedRoom.roomNumber).replace(/\s+/g, "_") : "room"}_${getTodayInput()}.pdf`,
+        kpis: [
+          { label: "Covered Tenants", value: tenantSummaries.length },
+          { label: "Total Billed", value: `PHP ${totalBill.toFixed(2)}` },
+          { label: "Total Outstanding Balance", value: `PHP ${totalBalance.toFixed(2)}` },
+        ],
+        sections: [
+          {
+            title: "Tenant Payments Breakdown",
+            type: "table",
+            headers,
+            colWidths: [45, 25, 30, 30, 24, 20],
+            rows: tableRows,
+          },
+        ],
+      });
+
+      notify.success(
+        `Exported PDF for ${tenantSummaries.length} tenant payment record${tenantSummaries.length === 1 ? "" : "s"}.`,
+      );
+    } catch (err) {
+      notify.error(err, "Failed to export tenant billing PDF.");
+    }
+  };
+
+  const handleExportTimelineCsv = () => {
+    if (!billingTimelineRows.length) {
+      notify.warn("No timeline events to export.");
+      return;
+    }
+    handleExportTimeline();
+  };
+
+  const handleExportTimelinePdf = async () => {
+    if (!billingTimelineRows.length) {
+      notify.warn("No timeline events to export.");
+      return;
+    }
+
+    try {
+      const { exportReportPdf } = await import("../../../../shared/utils/reportPdf.js");
+
+      const headers = ["Date", "Event", "Type", "Status", "Tenant / Subject"];
+      const tableRows = billingTimelineRows.map((row) => ({
+        Date: fmtDate(row.date),
+        Event: getEventTypeLabel(row.eventType),
+        Type: getTimelineRecordLabel(row),
+        Status: getTimelineStatusLabel(row),
+        "Tenant / Subject": isMoveLifecycleEvent(row.eventType)
+          ? row.tenantName || EMPTY_VALUE
+          : "Entire Room",
+      }));
+
+      await exportReportPdf({
+        title: "Utility Billing Timeline Report",
+        subtitle: `Room: ${getRoomLabel(selectedRoom)} • ${billingTimelineRows.length} Events Logged`,
+        reportType: "Billing Timeline",
+        filename: `billing_timeline_${selectedRoom ? (selectedRoom.name || selectedRoom.roomNumber).replace(/\s+/g, "_") : "room"}_${getTodayInput()}.pdf`,
+        kpis: [
+          { label: "Total Events", value: billingTimelineRows.length },
+          { label: "Target Room", value: getRoomLabel(selectedRoom) || "—" },
+          { label: "Active Utility", value: utilityType.toUpperCase() },
+        ],
+        sections: [
+          {
+            title: "Timeline Activity Log",
+            type: "table",
+            headers,
+            colWidths: [30, 45, 30, 30, 39],
+            rows: tableRows,
+          },
+        ],
+      });
+
+      notify.success(
+        `Exported PDF for ${billingTimelineRows.length} timeline event${billingTimelineRows.length === 1 ? "" : "s"}.`,
+      );
+    } catch (err) {
+      notify.error(err, "Failed to export timeline PDF.");
     }
   };
 
@@ -2155,31 +2545,35 @@ const UtilityBillingTab = ({
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
-                  style={{
-                    background: "var(--primary)",
-                    color: "var(--primary-foreground)",
-                  }}
-                  onClick={() => setIsNewPeriodModalOpen(true)}
-                  disabled={selectedRoom?.branch === "guadalupe"}
-                  title={
-                    selectedRoom?.branch === "guadalupe"
-                      ? "Guadalupe uses fixed-rate billing. Separate sub-metered utility cycles are not used for this branch."
-                      : undefined
-                  }
-                >
-                  <Plus size={12} /> {selectedRoom?.branch === "guadalupe" ? "Fixed-Rate Branch" : "New Billing Period"}
-                </button>
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50"
-                  onClick={handleExportRows}
-                  disabled={isExporting}
-                >
-                  <Download size={12} />
-                  {isExporting ? "Exporting..." : "Upload & Export"}
-                </button>
+                <div className="relative inline-block group">
+                  <button
+                    className="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{
+                      background: "var(--primary)",
+                      color: "var(--primary-foreground)",
+                    }}
+                    onClick={() => setIsNewPeriodModalOpen(true)}
+                    disabled={selectedRoom?.branch === "guadalupe"}
+                  >
+                    <Plus size={12} /> {selectedRoom?.branch === "guadalupe" ? "Fixed-Rate Branch" : "New Billing Period"}
+                  </button>
+                  {selectedRoom?.branch === "guadalupe" && (
+                    <div className="pointer-events-none absolute bottom-full right-0 mb-2 hidden group-hover:block z-50 w-64 rounded-lg bg-slate-900 p-2.5 text-xs text-white shadow-xl dark:bg-slate-800 dark:text-slate-100 border border-slate-700">
+                      <div className="font-semibold text-amber-400 flex items-center gap-1.5 mb-1">
+                        <Info size={13} /> Fixed-Rate Utility Branch
+                      </div>
+                      <div>
+                        Guadalupe uses fixed-rate billing. Separate sub-metered utility cycles are not used for this branch.
+                      </div>
+                      <div className="absolute top-full right-6 -mt-1 border-4 border-transparent border-t-slate-900 dark:border-t-slate-800" />
+                    </div>
+                  )}
+                </div>
+                <ExportButtons
+                  onCsv={handleExportRows}
+                  onPdf={handleExportPdf}
+                  loading={isExporting}
+                />
               </div>
             </div>
 
@@ -2358,8 +2752,9 @@ const UtilityBillingTab = ({
                           {fmtCurrency(p.ratePerUnit)}
                         </span>
                         <span
-                          className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${getHistoryStatusClasses(status)}`}
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${getHistoryStatusClasses(status)}`}
                         >
+                          {getDisplayStatusIcon(status)}
                           {getDisplayStatusLabel(p)}
                         </span>
                         {p.revised ? (
@@ -2455,25 +2850,32 @@ const UtilityBillingTab = ({
       <section className="rounded-xl border border-border bg-card p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-black dark:text-white">
-              <Check size={13} className="shrink-0 text-black dark:text-white" />
+            <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-900 dark:text-slate-100">
+              <Check size={13} className="shrink-0 text-slate-900 dark:text-slate-100" />
               Tenant Billing & Payments
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
               Payment monitoring stays attached to the selected room and billing cycle.
             </p>
           </div>
-          <div className="text-right text-xs text-muted-foreground">
-            <p>
-              {selectedPeriodFromList
-                ? getCycleLabel(selectedPeriodFromList)
-                : "No billing cycle selected"}
-            </p>
-            {selectedPeriodFromList ? (
-              <p className="mt-1">
-                {getDisplayStatusLabel(selectedPeriodFromList)}
-              </p>
-            ) : null}
+          <div className="flex flex-wrap items-center gap-2.5">
+            {selectedPeriodFromList && (
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2.5 py-1 text-xs font-semibold text-card-foreground shadow-xs">
+                  <Calendar size={13} className="text-slate-500 shrink-0" />
+                  {getCycleLabel(selectedPeriodFromList)}
+                </span>
+                <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${getHistoryStatusClasses(getDisplayStatus(selectedPeriodFromList))}`}>
+                  {getDisplayStatusIcon(getDisplayStatus(selectedPeriodFromList))}
+                  {getDisplayStatusLabel(selectedPeriodFromList)}
+                </span>
+              </div>
+            )}
+            <ExportButtons
+              onCsv={handleExportTenantBillingCsv}
+              onPdf={handleExportTenantBillingPdf}
+              disabled={!selectedMonitoringResult || (selectedMonitoringResult.tenantSummaries || []).length === 0}
+            />
           </div>
         </div>
 
@@ -2491,44 +2893,42 @@ const UtilityBillingTab = ({
           </div>
         ) : (
           <div className="mt-4 overflow-x-auto pb-1">
-            <table className="min-w-[1120px] text-left text-xs">
+            <table className="w-full min-w-[980px] text-left text-xs">
               <thead>
-                <tr className="border-b border-border">
-                  {[
-                    "Tenant",
-                    "Usage",
-                    "Bill Amount",
-                    "Balance",
-                    "Status",
-                    "Due Date",
-                    "Payment Method",
-                    "Paid / Processed",
-                    "Action",
-                  ].map((label) => (
-                    <th
-                      key={label}
-                      className="whitespace-nowrap py-2.5 pr-5 text-xs font-bold uppercase tracking-[0.1em] text-foreground/80 dark:text-slate-300"
-                    >
-                      {label}
-                    </th>
-                  ))}
+                <tr className="border-b border-border text-[11px] font-bold uppercase tracking-[0.10em] text-foreground/80 dark:text-slate-300">
+                  <th className="w-[22%] py-3 pr-4">Tenant</th>
+                  <th className="w-[11%] py-3 pr-4">Usage</th>
+                  <th className="w-[12%] py-3 pr-4">Bill Amount</th>
+                  <th className="w-[12%] py-3 pr-4">Balance</th>
+                  <th className="w-[11%] py-3 pr-4">Status</th>
+                  <th className="w-[10%] py-3 pr-4">Due Date</th>
+                  <th className="w-[11%] py-3 pr-4">Payment Method</th>
+                  <th className="w-[11%] py-3 pr-4">Paid / Processed</th>
+                  <th className="w-[10%] py-3 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
                 {(selectedMonitoringResult.tenantSummaries || []).map((tenant, index) => (
-                  <tr key={`${selectedPeriodFromList.id}-monitor-${index}`}>
-                    <td className="py-3 pr-4">
-                      <p className="font-semibold text-card-foreground">
-                        {tenant.tenantName || EMPTY_VALUE}
-                      </p>
-                      <p className="text-muted-foreground">
-                        {tenant.tenantEmail || EMPTY_VALUE}
-                      </p>
+                  <tr key={`${selectedPeriodFromList.id}-monitor-${index}`} className="group transition-colors hover:bg-muted/30">
+                    <td className="w-[22%] py-3 pr-4">
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-800 border border-slate-200 text-[11px] font-bold shadow-xs dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700">
+                          {getInitials(tenant.tenantName)}
+                        </div>
+                        <div>
+                          <p className="font-bold text-card-foreground text-xs">
+                            {tenant.tenantName || EMPTY_VALUE}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {tenant.tenantEmail || EMPTY_VALUE}
+                          </p>
+                        </div>
+                      </div>
                     </td>
-                    <td className="py-3 pr-4 text-muted-foreground">
-                      {fmtNumber(tenant.totalUsage, 4)}
+                    <td className="w-[11%] py-3 pr-4 text-xs font-semibold text-card-foreground">
+                      {fmtNumber(tenant.totalUsage, 2)} <span className="text-[10px] font-bold text-muted-foreground uppercase">{utilityType === "electricity" ? "kWh" : "cu.m."}</span>
                     </td>
-                    <td className="py-3 pr-4 font-semibold text-card-foreground">
+                    <td className="w-[12%] py-3 pr-4 font-bold text-card-foreground text-xs">
                       <span className="inline-flex items-center gap-1">
                         {fmtCurrency(tenant.billAmount)}
                         {(tenant.isProRata || tenant.daysInCycle != null) && (
@@ -2564,69 +2964,72 @@ const UtilityBillingTab = ({
                         )}
                       </span>
                     </td>
-                    <td className="py-3 pr-4 text-muted-foreground">
+                    <td className="w-[12%] py-3 pr-4 font-bold text-xs text-card-foreground">
                       {fmtCurrency(tenant.remainingAmount)}
                     </td>
-                    <td className="py-3 pr-4">
+                    <td className="w-[11%] py-3 pr-4">
                       <div className="space-y-1">
                         <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                          className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
                             tenant.billStatus === "paid"
-                              ? "bg-success-light text-success-dark"
+                              ? "bg-emerald-50 text-emerald-800 border-emerald-200"
                               : tenant.daysOverdue > 0 || tenant.billStatus === "overdue"
-                                ? "bg-danger-light text-danger-dark"
+                                ? "bg-red-50 text-red-800 border-red-200"
                                 : tenant.billStatus === "partially-paid"
-                                  ? "bg-warning-light text-warning-dark"
-                                  : "bg-info-light text-info-dark"
+                                  ? "bg-amber-50 text-amber-900 border-amber-200"
+                                  : "bg-blue-50 text-blue-800 border-blue-200"
                           }`}
                         >
+                          {getDisplayStatusIcon(tenant.billStatus)}
                           {tenant.billStatus
                             ? String(tenant.billStatus).replace(/-/g, " ")
-                            : "no bill"}
+                            : "ready"}
                         </span>
                         {tenant.daysOverdue > 0 ? (
-                          <div className="text-[11px] font-medium text-danger-dark">
+                          <div className="text-[10px] font-bold text-red-600">
                             {tenant.daysOverdue} day{tenant.daysOverdue === 1 ? "" : "s"} overdue
                           </div>
                         ) : null}
                       </div>
                     </td>
-                    <td className="py-3 pr-4 text-muted-foreground">
+                    <td className="w-[10%] py-3 pr-4 text-xs font-medium text-muted-foreground">
                       {tenant.dueDate ? fmtShortDate(tenant.dueDate) : EMPTY_VALUE}
                     </td>
-                    <td className="py-3 pr-4 text-muted-foreground">
+                    <td className="w-[11%] py-3 pr-4 text-xs font-medium text-muted-foreground">
                       {tenant.paymentFallbackLabel || formatPaymentMethodLabel(tenant.paymentMethod)}
                     </td>
-                    <td className="py-3 pr-4 text-muted-foreground">
+                    <td className="w-[11%] py-3 pr-4 text-xs font-medium text-muted-foreground">
                       {formatDateTime(tenant.paymentRecordedAt)}
                     </td>
-                    <td className="py-3 pr-4">
+                    <td className="w-[10%] py-3 text-right">
                       {tenant.billId && (tenant.canSendPenaltyNotice || tenant.canSendReminder) ? (
                         <button
                           type="button"
-                          className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${
+                          className={`inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-xs font-semibold shadow-xs transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 ${
                             tenant.canSendPenaltyNotice
-                              ? "border-danger text-danger-dark hover:bg-danger-light"
-                              : "border-border text-muted-foreground hover:bg-muted"
+                              ? "border-red-300 bg-red-50 text-red-800 hover:bg-red-100"
+                              : "border-border bg-card text-card-foreground hover:bg-muted"
                           }`}
                           onClick={() => handleSendReminder(tenant.billId, tenant.canSendPenaltyNotice ? "penalty" : tenant.daysOverdue > 0 ? "overdue" : "reminder")}
                           disabled={activeNoticeKey?.startsWith(`${tenant.billId}:`)}
-                          title={tenant.canSendPenaltyNotice ? (tenant.penaltyReason || "Send penalty notice") : undefined}
+                          title={tenant.canSendPenaltyNotice ? (tenant.penaltyReason || "Send penalty notice") : "Send payment reminder to tenant"}
                         >
                           {activeNoticeKey?.startsWith(`${tenant.billId}:`) ? (
-                            <LoaderCircle size={11} className="animate-spin" />
+                            <LoaderCircle size={12} className="animate-spin" />
                           ) : (
-                            <Send size={11} />
+                            <Send size={12} className={tenant.canSendPenaltyNotice ? "text-red-600" : "text-slate-600 dark:text-slate-400"} />
                           )}
                           {tenant.canSendPenaltyNotice
-                            ? "Send Penalty Notice"
+                            ? "Penalty Notice"
                             : tenant.daysOverdue > 0
-                              ? "Send Overdue Notice"
-                              : "Send Payment Reminder"}
+                              ? "Overdue Notice"
+                              : "Remind"}
                         </button>
                       ) : (
-                        <span className="text-xs text-muted-foreground">
-                          {tenant.billStatus === "paid" ? "Paid" : EMPTY_VALUE}
+                        <span className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-bold uppercase ${
+                          tenant.billStatus === "paid" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-blue-50 text-blue-800 border border-blue-200"
+                        }`} title={tenant.billStatus === "paid" ? "Statement fully settled" : "Bill statement ready for tenant review"}>
+                          {tenant.billStatus === "paid" ? "Paid" : "Statement Ready"}
                         </span>
                       )}
                     </td>
@@ -3003,24 +3406,11 @@ const UtilityBillingTab = ({
             <span className="text-xs text-muted-foreground">
               {billingTimelineRows.length} events
             </span>
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50"
-              onClick={handleTimelineRefresh}
-              disabled={isRefreshing || !selectedRoomId}
-              title="Refresh timeline to show recent move-in events"
-            >
-              <RefreshCw size={12} className={isRefreshing ? "animate-spin" : ""} />
-              {isRefreshing ? "Refreshing…" : "Refresh"}
-            </button>
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted disabled:opacity-50"
-              onClick={handleExportTimeline}
+            <ExportButtons
+              onCsv={handleExportTimelineCsv}
+              onPdf={handleExportTimelinePdf}
               disabled={billingTimelineRows.length === 0}
-            >
-              <Download size={12} /> Export
-            </button>
+            />
           </div>
         </div>
 
@@ -3147,16 +3537,6 @@ const UtilityBillingTab = ({
           getSegmentPeriodLabel,
         }}
         eventTypeLabels={EVENT_TYPE_LABELS}
-        onExport={
-          historyModalPeriod && resultWithBilling
-            ? () => handleExportTenantSummary(historyModalPeriod, resultWithBilling)
-            : null
-        }
-        onExportPDF={
-          historyModalPeriod && resultWithBilling
-            ? () => handleExportUtilityStatementPDF(historyModalPeriod, resultWithBilling)
-            : null
-        }
         onSendReminder={handleSendReminder}
         activeNoticeKey={activeNoticeKey}
       />
