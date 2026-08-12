@@ -103,6 +103,57 @@ describe("resident canonical Contract selection", () => {
     }))).toBe(false);
   });
 
+  test("draft/incomplete/ready_for_generation stay invisible by default (unchanged Web behavior)", () => {
+    for (const status of ["draft", "incomplete", "ready_for_generation"]) {
+      expect(isResidentContractEligible(contract({ status, publicationStatus: undefined }))).toBe(false);
+    }
+  });
+
+  test("includeEarlyStages surfaces a fresh draft Contract for the tenant that owns it (mobile-only opt-in)", () => {
+    for (const status of ["draft", "incomplete", "ready_for_generation"]) {
+      expect(isResidentContractEligible(
+        contract({ status, publicationStatus: undefined }),
+        { includeEarlyStages: true },
+      )).toBe(true);
+    }
+  });
+
+  test("includeEarlyStages does not weaken ownership/withdrawal/archival guards", () => {
+    expect(isResidentContractEligible(
+      contract({ status: "draft", archivedAt: new Date() }),
+      { includeEarlyStages: true },
+    )).toBe(false);
+    expect(isResidentContractEligible(
+      contract({ status: "draft", isCurrent: false }),
+      { includeEarlyStages: true },
+    )).toBe(false);
+    expect(isResidentContractEligible(
+      contract({ status: "draft", publicationStatus: "withdrawn" }),
+      { includeEarlyStages: true },
+    )).toBe(false);
+    expect(isResidentContractEligible(
+      contract({ status: "draft", duplicateOfContractId: "canonical" }),
+      { includeEarlyStages: true },
+    )).toBe(false);
+  });
+
+  test("selectCanonicalTenantContract with includeEarlyStages returns the tenant's own draft Contract", () => {
+    const selected = selectCanonicalTenantContract({
+      contracts: [contract({ _id: "draft-1", status: "draft", publicationStatus: undefined })],
+      activeStay,
+      includeEarlyStages: true,
+    });
+    expect(selected?._id).toBe("draft-1");
+  });
+
+  test("selectCanonicalTenantContract without includeEarlyStages still hides the same draft Contract (Web unaffected)", () => {
+    const selected = selectCanonicalTenantContract({
+      contracts: [contract({ _id: "draft-1", status: "draft", publicationStatus: undefined })],
+      activeStay,
+    });
+    expect(selected).toBeNull();
+  });
+
   test("archived metadata excludes a record even when its stale status is resident-visible", () => {
     expect(selectCanonicalTenantContract({
       contracts: [contract({ status: "generated", archivedAt: new Date() })],

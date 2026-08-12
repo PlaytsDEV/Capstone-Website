@@ -42,7 +42,12 @@ const mobileTenant = async (req, res, next) => {
   }
 };
 
-const ownedCurrentContract = (tenantId) => resolveTenantCanonicalContract(tenantId);
+// Mobile must show the tenant's authoritative Contract starting from draft,
+// not only once it reaches "generated"/signed/published — unlike the Web "My
+// Contract" page (contractController.js getMyCurrentContract), which keeps
+// the default (early-stage-excluded) behavior intentionally.
+const ownedCurrentContract = (tenantId) =>
+  resolveTenantCanonicalContract(tenantId, { includeEarlyStages: true });
 
 router.get("/contracts/current", mobileTenant, asyncRoute(async (req, res) => {
   const contract = await ownedCurrentContract(req.mobileTenant._id);

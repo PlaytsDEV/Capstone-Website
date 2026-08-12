@@ -16,7 +16,11 @@ describe("mobile Contract route safety", () => {
       'import { resolveTenantCanonicalContract } from "../services/tenantContractSelectionService.js"',
     );
     expect(routes).toContain(
-      "resolveTenantCanonicalContract(tenantId)",
+      // Mobile opts into includeEarlyStages so a draft Contract is visible
+      // (see tenantContractSelectionService.js), but ownership is still
+      // resolved exclusively through resolveTenantCanonicalContract(tenantId, ...)
+      // — never a raw, unscoped Contract lookup.
+      "resolveTenantCanonicalContract(tenantId, { includeEarlyStages: true })",
     );
     expect(routes).toContain(
       "String(contract._id) !== String(req.params.contractId)",
