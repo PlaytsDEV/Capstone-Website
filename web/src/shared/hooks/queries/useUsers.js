@@ -26,10 +26,10 @@ export function useUsers(filters) {
 }
 
 /** Fetch user statistics */
-export function useUserStats() {
+export function useUserStats(branch) {
   return useQuery({
-    queryKey: queryKeys.users.stats,
-    queryFn: () => userApi.getStats(),
+    queryKey: [...queryKeys.users.stats, branch || "all"],
+    queryFn: () => userApi.getStats(branch && branch !== "all" ? { branch } : {}),
   });
 }
 

@@ -107,7 +107,14 @@ router.get("/email-by-username", getEmailByUsername);
  *
  * Access: Owner only
  */
-router.post("/", verifyToken, verifyOwner, createUser);
+router.post(
+  "/",
+  verifyToken,
+  verifyAdmin,
+  requirePermission("manageUsers"),
+  filterByBranch,
+  createUser,
+);
 
 // ============================================================================
 // ACCOUNT STATUS MANAGEMENT

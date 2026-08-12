@@ -22,6 +22,7 @@ import { reservationApi } from "../../../shared/api/apiClient";
 import { showNotification } from "../../../shared/utils/notification";
 import { useInquiries } from "../../../shared/hooks/queries/useInquiries";
 import { useAuth } from "../../../shared/hooks/useAuth";
+import { ListSkeleton } from "../../../shared/components/LoadingSkeletons";
 import InquiryDetailsModal from "../components/InquiryDetailsModal";
 
 const getAvatarColor = (initials = "") => {

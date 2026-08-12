@@ -117,11 +117,11 @@ export function AdminRoutes() {
       <Route
         path="users"
         element={
-          <ProtectedRoute requiredRole="owner">
+          <RequirePermission permission="manageUsers">
             <RouteShell name="UserManagement" fallback={<AdminTablePageSkeleton />}>
               <UserManagementPage />
             </RouteShell>
-          </ProtectedRoute>
+          </RequirePermission>
         }
       />
       <Route

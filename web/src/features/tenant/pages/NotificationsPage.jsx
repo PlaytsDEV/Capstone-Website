@@ -12,10 +12,10 @@ import {
   FileSpreadsheet,
   Wrench,
   Lock,
-  Unlock,
   Megaphone,
   Info,
 } from "lucide-react";
+import { ListSkeleton } from "../../../shared/components/LoadingSkeletons";
 
 function NotificationIcon({ type }) {
   const iconProps = { size: 18, strokeWidth: 2 };

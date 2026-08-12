@@ -1,9 +1,16 @@
 import React, { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
+import { useAppNavigation } from "../../../shared/hooks/useAppNavigation";
 import { usePermissions } from "../../../shared/hooks/usePermissions";
 import LilycrestLogo from "../../../shared/components/LilycrestLogo";
-import { X, ChevronLeft, ChevronRight } from "lucide-react";
+import ConfirmModal from "../../../shared/components/ConfirmModal";
+import { showNotification } from "../../../shared/utils/notification";
+import {
+  AUTH_TOAST_DURATION,
+  SIGN_OUT_SUCCESS_MESSAGE,
+} from "../../../shared/utils/authToasts";
+import { X, ChevronLeft, ChevronRight, LogOut } from "lucide-react";
 import {
   NAV_GROUPS,
   getSidebarBrandMeta,
@@ -17,10 +24,37 @@ export default function AdminSidebar({
   collapsed,
   onToggleCollapse,
 }) {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const appNavigate = useAppNavigation();
   const { can } = usePermissions();
   const isOwner = user?.role === "owner";
   const [hoveredItem, setHoveredItem] = useState(null);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [logoutInProgress, setLogoutInProgress] = useState(false);
+
+  const handleLogout = async () => {
+    if (logoutInProgress) return;
+    setLogoutInProgress(true);
+    try {
+      const result = await logout();
+      if (result?.success) {
+        showNotification(
+          SIGN_OUT_SUCCESS_MESSAGE,
+          "success",
+          AUTH_TOAST_DURATION,
+        );
+        appNavigate("/signin", {
+          replace: true,
+        });
+      }
+    } catch (error) {
+      console.error("Admin logout error:", error);
+      showNotification("Sign out failed. Please try again.", "error");
+    } finally {
+      setLogoutInProgress(false);
+      setShowLogoutConfirm(false);
+    }
+  };
 
   const visibleItems = getVisibleNavItems({ isOwner, can });
   const groupedItems = visibleItems.reduce((acc, item) => {
@@ -163,6 +197,44 @@ export default function AdminSidebar({
             );
           })}
       </nav>
+
+      {/* Sidebar Footer with Sign Out */}
+      <div className="border-t border-[var(--border-subtle,var(--border-light))] p-2">
+        <button
+          type="button"
+          onClick={() => setShowLogoutConfirm(true)}
+          disabled={logoutInProgress}
+          className={`group relative flex w-full items-center gap-3 rounded-md text-sm font-medium transition-colors duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-outline)] text-[var(--status-error)] hover:bg-[rgba(239,68,68,0.1)] ${
+            collapsed ? "justify-center py-2 px-2" : "py-2.5 px-3"
+          }`}
+          title={collapsed ? "Sign Out" : undefined}
+          aria-label="Sign Out"
+          onMouseEnter={() => collapsed && setHoveredItem("__signout")}
+          onMouseLeave={() => setHoveredItem(null)}
+        >
+          <LogOut className={`${iconSizeClass} flex-shrink-0`} />
+          {!collapsed && (
+            <span className="truncate text-sm font-medium">Sign Out</span>
+          )}
+          {collapsed && hoveredItem === "__signout" && (
+            <span className="sb-tooltip">Sign Out</span>
+          )}
+        </button>
+      </div>
+
+      <ConfirmModal
+        isOpen={showLogoutConfirm}
+        onClose={() => {
+          if (!logoutInProgress) setShowLogoutConfirm(false);
+        }}
+        onConfirm={handleLogout}
+        title="Sign Out"
+        message="Are you sure you want to sign out of your account?"
+        variant="danger"
+        confirmText="Sign Out"
+        cancelText="Cancel"
+        loading={logoutInProgress}
+      />
     </aside>
   );
 }

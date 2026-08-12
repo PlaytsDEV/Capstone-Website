@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   ChevronRight,
   MoreVertical,
+  LogIn,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../../shared/hooks/useAuth";
@@ -29,6 +30,8 @@ import RestoreUserModal from "../components/users/RestoreUserModal";
 import AccountActionModal from "../components/users/AccountActionModal";
 import AccountRowActions from "../components/users/AccountRowActions";
 import AccountAccessDrawer from "../components/users/AccountAccessDrawer";
+import ToggleSwitch from "../../../shared/components/ToggleSwitch";
+import PhoneInput, { isValidPhoneNumber } from "../../../shared/components/PhoneInput";
 import {
   PageShell,
   SummaryBar,
@@ -114,7 +117,7 @@ function UserActionMenu({
   return (
     <div
       ref={menuRef}
-      className="relative flex items-center justify-end"
+      className="relative flex items-center justify-start gap-1"
       onClick={(e) => e.stopPropagation()}
     >
       {canEditAccount ? (
@@ -145,7 +148,7 @@ function UserActionMenu({
 
       {isOpen && (
         <div className="absolute right-0 top-10 z-50 min-w-[170px] rounded-lg border border-border bg-card p-1 shadow-lg animate-in fade-in zoom-in-95 duration-100">
-          {u.role === "branch_admin" && (
+          {isOwner && u.role === "branch_admin" && (
             <button
               className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-foreground hover:bg-muted"
               onClick={() => {
@@ -241,7 +244,7 @@ function UserManagementPage() {
   const { user, refreshUser } = useAuth();
   const { can, isOwner: permissionOwner } = usePermissions();
   const isOwner = permissionOwner || user?.role === "owner";
-  const canManageUsers = isOwner || can("manageUsers");
+  const canManageUsers = isOwner || user?.role === "branch_admin" || can("manageUsers");
   const canViewReports = isOwner || can("viewReports");
   const appNavigate = useAppNavigation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -343,6 +346,7 @@ function getAvatarColor(user) {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
+  const [editFormErrors, setEditFormErrors] = useState({});
   const [editForm, setEditForm] = useState({
     username: "",
     firstName: "",
@@ -374,53 +378,142 @@ function getAvatarColor(user) {
     email: "",
     phone: "",
     role: "applicant",
+    branch: "",
     password: "",
   });
   const [isCreating, setIsCreating] = useState(false);
   const [addFormErrors, setAddFormErrors] = useState({});
 
-  const validateAddField = (name, value) => {
+  const validatePHPhoneNumber = (value) => {
+    if (!value || !value.trim()) return "";
+    const raw = value.trim();
+    const digits = raw.replace(/\D/g, "");
+
+    if (raw.startsWith("+")) {
+      if (!/^\+639\d{9}$/.test(raw)) {
+        return "Must be in +639XXXXXXXXX format";
+      }
+      return "";
+    }
+
+    if (raw.startsWith("0")) {
+      if (!/^09\d{9}$/.test(digits)) {
+        return "Must be 11 digits starting with 09 (e.g. 09171234567)";
+      }
+      return "";
+    }
+
+    if (raw.startsWith("9") || digits.length > 0) {
+      if (!/^9\d{9}$/.test(digits)) {
+        return "Must be 10 digits starting with 9 (e.g. 9171234567)";
+      }
+      return "";
+    }
+
+    return "Must start with 09 or 9 (e.g. 09171234567 or 9171234567)";
+  };
+
+  const validateAddField = (name, value, currentRole = addForm.role) => {
     switch (name) {
       case "username":
-        return !value
-          ? "Username is required"
-          : value.length < 3
-            ? "Min 3 characters"
-            : "";
+        if (!value) return "Username is required";
+        if (value.length < 3) return "Min 3 characters";
+        if (value.length > 30) return "Max 30 characters";
+        if (!/^[a-zA-Z0-9_.-]+$/.test(value)) return "Only letters, numbers, underscores, hyphens, and dots";
+        return "";
       case "email":
-        return !value
-          ? "Email is required"
-          : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
-            ? "Invalid email"
-            : "";
+        if (!value) return "Email is required";
+        if (value.length > 100) return "Max 100 characters";
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return "Invalid email address";
+        return "";
       case "firstName":
-        return !value ? "First name is required" : "";
+        if (!value?.trim()) return "First name is required";
+        if (value.length > 50) return "Max 50 characters";
+        return "";
       case "lastName":
-        return !value ? "Last name is required" : "";
+        if (!value?.trim()) return "Last name is required";
+        if (value.length > 50) return "Max 50 characters";
+        return "";
+      case "phone":
+        return validatePHPhoneNumber(value);
       case "password":
-        return !value
-          ? "Password is required"
-          : value.length < 6
-            ? "Min 6 characters"
-            : "";
+        if (!value) return "Password is required";
+        if (value.length < 6) return "Min 6 characters";
+        if (value.length > 100) return "Max 100 characters";
+        return "";
+      case "branch":
+        if (currentRole === "branch_admin" && !value) {
+          return "Branch is required for branch admin";
+        }
+        return "";
       default:
         return "";
     }
   };
 
   const handleAddFormChange = (field, value) => {
-    setAddForm((prev) => ({ ...prev, [field]: value }));
+    setAddForm((prev) => {
+      const updated = { ...prev, [field]: value };
+      // Re-validate field and branch if role changed
+      if (field === "role" && value !== "branch_admin") {
+        setAddFormErrors((errs) => ({ ...errs, branch: "" }));
+      }
+      return updated;
+    });
     setAddFormErrors((prev) => ({
       ...prev,
-      [field]: validateAddField(field, value),
+      [field]: validateAddField(field, value, field === "role" ? value : addForm.role),
     }));
+  };
+
+  const validateEditField = (name, value) => {
+    switch (name) {
+      case "username":
+        if (!value) return "Username is required";
+        if (value.length < 3) return "Min 3 characters";
+        if (value.length > 30) return "Max 30 characters";
+        if (!/^[a-zA-Z0-9_.-]+$/.test(value)) return "Only letters, numbers, underscores, hyphens, and dots";
+        return "";
+      case "email":
+        if (!value) return "Email is required";
+        if (value.length > 100) return "Max 100 characters";
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return "Invalid email address";
+        return "";
+      case "firstName":
+        if (!value?.trim()) return "First name is required";
+        if (value.length > 50) return "Max 50 characters";
+        return "";
+      case "lastName":
+        if (!value?.trim()) return "Last name is required";
+        if (value.length > 50) return "Max 50 characters";
+        return "";
+      case "phone":
+        return validatePHPhoneNumber(value);
+      case "emergencyPhone":
+        return validatePHPhoneNumber(value);
+      default:
+        return "";
+    }
+  };
+
+  const handleEditFormChange = (updatedForm, fieldName, fieldValue) => {
+    setEditForm(updatedForm);
+    if (fieldName) {
+      setEditFormErrors((prev) => ({
+        ...prev,
+        [fieldName]: validateEditField(fieldName, fieldValue),
+      }));
+    }
   };
 
   const userFilters = useMemo(() => {
     const params = { page: currentPage, limit: ITEMS_PER_PAGE };
     if (debouncedSearchQuery) params.search = debouncedSearchQuery;
     if (roleFilter !== "all") params.role = roleFilter;
-    if (branchFilter !== "all") params.branch = branchFilter;
+    if (branchFilter !== "all") {
+      params.branch = branchFilter;
+      params.includeUnbranched = "false";
+    }
     if (statusFilter !== "all") {
       if (statusFilter === "restricted") {
         params.accountStatus = "suspended,banned";
@@ -444,7 +537,7 @@ function getAvatarColor(user) {
   ]);
 
   const { data: usersData, isLoading: loading } = useUsers(userFilters);
-  const { data: stats } = useUserStats();
+  const { data: stats } = useUserStats(branchFilter);
   const users = usersData?.users || [];
   const totalUsers =
     usersData?.pagination?.totalItems ||
@@ -501,11 +594,23 @@ function getAvatarColor(user) {
         userData.lifecycleManaged ??
         ["applicant", "tenant"].includes(userData.role),
     });
+    setEditFormErrors({});
     setIsEditModalOpen(true);
   };
 
   const handleUpdateUser = async (e) => {
     e.preventDefault();
+    const errors = {};
+    ["username", "email", "firstName", "lastName", "phone", "emergencyPhone"].forEach((f) => {
+      const err = validateEditField(f, editForm[f]);
+      if (err) errors[f] = err;
+    });
+    setEditFormErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      showNotification("Please fix the highlighted fields", "error", 3000);
+      return;
+    }
+
     try {
       await authFetch(`/users/${selectedUser._id}`, {
         method: "PUT",
@@ -522,7 +627,21 @@ function getAvatarColor(user) {
       setIsEditModalOpen(false);
       await refetchAll();
     } catch (error) {
-      showNotification(error.message || "Failed to update user", "error", 3000);
+      const msg = error.message || "";
+      const code = error.code || "";
+      if (msg.includes("Email already") || code === "EMAIL_TAKEN") {
+        setEditFormErrors((prev) => ({ ...prev, email: "This email address is already in use" }));
+        showNotification("Email is already in use.", "error", 4000);
+      } else if (msg.includes("Username already") || code === "USERNAME_TAKEN") {
+        setAddFormErrors((prev) => ({ ...prev, username: "This username is already taken" }));
+        setEditFormErrors((prev) => ({ ...prev, username: "This username is already taken" }));
+        showNotification("Username is taken.", "error", 4000);
+      } else if (code === "INVALID_BRANCH" || msg.includes("Invalid branch")) {
+        setEditFormErrors((prev) => ({ ...prev, branch: "Invalid branch selection" }));
+        showNotification("Invalid branch selected.", "error", 4000);
+      } else {
+        showNotification(msg || "Failed to update user", "error", 4000);
+      }
     }
   };
 
@@ -629,7 +748,7 @@ function getAvatarColor(user) {
   const handleCreateUser = async (e) => {
     e.preventDefault();
     const errors = {};
-    ["username", "email", "firstName", "lastName", "password"].forEach((f) => {
+    ["username", "email", "firstName", "lastName", "phone", "password", "branch"].forEach((f) => {
       const err = validateAddField(f, addForm[f]);
       if (err) errors[f] = err;
     });
@@ -652,36 +771,41 @@ function getAvatarColor(user) {
           email: addForm.email,
           phone: addForm.phone || undefined,
           role: addForm.role,
+          branch: addForm.branch || undefined,
           password: addForm.password,
         }),
       });
       showNotification(
-        `${createdUserLabel} was added successfully.`,
+        `${createdUserLabel} was added successfully. Welcome email sent.`,
         "success",
-        3000,
+        4000,
       );
       setIsAddModalOpen(false);
       refetchAll();
     } catch (error) {
       const msg = error.message || "";
-      if (msg.includes("Email already") || error.code === "EMAIL_TAKEN") {
-        showNotification("This email is already registered.", "error", 4000);
-      } else if (
-        msg.includes("Username already") ||
-        error.code === "USERNAME_TAKEN"
-      ) {
-        showNotification("This username is taken.", "error", 4000);
-      } else if (
-        msg.toLowerCase().includes("owner") ||
-        error.code === "ROLE_FORBIDDEN"
-      ) {
+      const code = error.code || "";
+
+      if (msg.includes("Email already") || code === "EMAIL_TAKEN") {
+        setAddFormErrors((prev) => ({ ...prev, email: "This email address is already registered" }));
+        showNotification("Email is already in use.", "error", 4000);
+      } else if (msg.includes("Username already") || code === "USERNAME_TAKEN") {
+        setAddFormErrors((prev) => ({ ...prev, username: "This username is already taken" }));
+        showNotification("Username is taken.", "error", 4000);
+      } else if (code === "BRANCH_REQUIRED" || msg.includes("Branch is required")) {
+        setAddFormErrors((prev) => ({ ...prev, branch: "Branch is required for branch admin" }));
+        showNotification("Branch is required.", "error", 4000);
+      } else if (code === "WEAK_PASSWORD" || msg.includes("6 characters")) {
+        setAddFormErrors((prev) => ({ ...prev, password: "Password must be at least 6 characters" }));
+        showNotification("Password is too weak.", "error", 4000);
+      } else if (msg.toLowerCase().includes("owner") || code === "ROLE_FORBIDDEN") {
         showNotification(
           "You don't have permission for this role.",
           "error",
           4000,
         );
       } else {
-        showNotification("Something went wrong.", "error", 4000);
+        showNotification(msg || "Something went wrong.", "error", 4000);
       }
     } finally {
       setIsCreating(false);
@@ -812,7 +936,7 @@ function getAvatarColor(user) {
         { value: "all", label: "All Status" },
         { value: "active", label: "Active" },
         { value: "restricted", label: "Blocked (All)" },
-        { value: "suspended", label: "Suspended" },
+        { value: "suspended", label: "Inactive" },
         { value: "banned", label: "Blocked account" },
         { value: "pending_verification", label: "Pending Verification" },
         { value: "archived", label: "Archived" },
@@ -860,17 +984,54 @@ function getAvatarColor(user) {
     {
       key: "accountStatus",
       label: "Status",
-      render: (row) => (
-        <StatusBadge
-          status={row.accountStatus || (row.isActive ? "active" : "suspended")}
-          label={
-            (row.accountStatus || (row.isActive ? "active" : "suspended")) ===
-            "banned"
-              ? "Blocked account"
-              : undefined
-          }
-        />
-      ),
+      render: (row) => {
+        const isCurrentUser = row._id === (user?._id || user?.uid);
+        const isArchived = row.isArchived === true;
+        const isPrivilegedAccount = ["branch_admin", "owner"].includes(row.role);
+        const effectiveStatus = row.accountStatus || (row.isActive ? "active" : "suspended");
+        const isActive = row.isActive !== false && effectiveStatus === "active";
+        const canToggle = canManageUsers && !isCurrentUser && !isArchived && (isOwner || !isPrivilegedAccount);
+
+        return (
+          <div className="flex items-center gap-2.5 shrink-0">
+            <ToggleSwitch
+              checked={isActive}
+              disabled={!canToggle}
+              size="sm"
+              ariaLabel={`Toggle status for ${row.firstName || row.username}`}
+              onChange={async (nextActive) => {
+                try {
+                  const userLabel = formatUserLabel(row);
+                  if (nextActive) {
+                    await authFetch(`/users/${row._id}/reactivate`, { method: "PATCH" });
+                    showNotification(`${userLabel} activated successfully`, "success", 2500);
+                  } else {
+                    await authFetch(`/users/${row._id}/suspend`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ reason: "Deactivated via status switch" }),
+                    });
+                    showNotification(`${userLabel} deactivated successfully`, "success", 2500);
+                  }
+                  refetchAll();
+                } catch (err) {
+                  showNotification(err.message || "Failed to update status", "error", 3000);
+                }
+              }}
+            />
+            <StatusBadge
+              status={effectiveStatus}
+              label={
+                effectiveStatus === "banned"
+                  ? "Blocked account"
+                  : effectiveStatus === "suspended"
+                  ? "Inactive"
+                  : undefined
+              }
+            />
+          </div>
+        );
+      },
     },
     {
       key: "actions",
@@ -947,6 +1108,7 @@ function getAvatarColor(user) {
               email: "",
               phone: "",
               role: "applicant",
+              branch: "",
               password: "",
             });
             setAddFormErrors({});
@@ -1032,10 +1194,22 @@ function getAvatarColor(user) {
 
           <div className="flex items-center gap-3">
             <button
+              id="btn-add-user"
               onClick={() => {
+                setAddForm({
+                  username: "",
+                  firstName: "",
+                  lastName: "",
+                  email: "",
+                  phone: "",
+                  role: "applicant",
+                  branch: "",
+                  password: "",
+                });
+                setAddFormErrors({});
                 setIsAddModalOpen(true);
               }}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-lg"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium"
               style={{
                 backgroundColor: "var(--primary)",
                 color: "var(--primary-foreground)",
@@ -1083,6 +1257,13 @@ function getAvatarColor(user) {
       >
         <div className="overflow-x-auto">
           <table className="w-full table-fixed">
+            <colgroup>
+              <col style={{ width: "28%" }} />
+              <col style={{ width: "17%" }} />
+              <col style={{ width: "17%" }} />
+              <col style={{ width: "23%" }} />
+              <col style={{ width: "15%" }} />
+            </colgroup>
             <thead>
               <tr
                 style={{
@@ -1168,11 +1349,21 @@ function getAvatarColor(user) {
                   </td>
                   <td className="px-6 py-4">
                     {(() => {
+                      const isCurrentUser = u._id === (user?._id || user?.uid);
+                      const isArchived = u.isArchived === true;
+                      const isPrivilegedAccount = ["branch_admin", "owner"].includes(u.role);
                       const status =
-                        u.isArchived === true
+                        isArchived
                           ? "archived"
                           : u.accountStatus ||
                             (u.isActive ? "active" : "suspended");
+                      const isActive = u.isActive !== false && status === "active";
+                      const canToggle =
+                        canManageUsers &&
+                        !isCurrentUser &&
+                        !isArchived &&
+                        (isOwner || !isPrivilegedAccount);
+
                       const statusMeta = {
                         active: {
                           label: "Active",
@@ -1183,7 +1374,7 @@ function getAvatarColor(user) {
                           color: "var(--color-warning)",
                         },
                         suspended: {
-                          label: "Suspended",
+                          label: "Inactive",
                           color: "var(--color-warning)",
                         },
                         banned: {
@@ -1202,35 +1393,64 @@ function getAvatarColor(user) {
                       };
 
                       return (
-                    <span className="inline-flex items-center gap-2 text-sm">
-                      <span
-                        className="w-2.5 h-2.5 rounded-full inline-block"
-                        style={{ backgroundColor: statusMeta.color }}
-                      />
-                      <span
-                        className="leading-none"
-                        style={{ color: statusMeta.color }}
-                      >
-                        {statusMeta.label}
-                      </span>
-                    </span>
+                        <div
+                          className="inline-flex items-center gap-2.5"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ToggleSwitch
+                            checked={isActive}
+                            disabled={!canToggle}
+                            size="sm"
+                            ariaLabel={`Toggle status for ${u.firstName || u.username}`}
+                            onChange={async (nextActive) => {
+                              try {
+                                const userLabel = formatUserLabel(u);
+                                if (nextActive) {
+                                  await authFetch(`/users/${u._id}/reactivate`, { method: "PATCH" });
+                                  showNotification(`${userLabel} activated successfully`, "success", 2500);
+                                } else {
+                                  await authFetch(`/users/${u._id}/suspend`, {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ reason: "Deactivated via status switch" }),
+                                  });
+                                  showNotification(`${userLabel} deactivated successfully`, "success", 2500);
+                                }
+                                refetchAll();
+                              } catch (err) {
+                                showNotification(err.message || "Failed to update status", "error", 3000);
+                              }
+                            }}
+                          />
+                          <span className="inline-flex items-center gap-1.5 text-sm">
+                            <span
+                              className="w-2 h-2 rounded-full inline-block flex-shrink-0"
+                              style={{ backgroundColor: statusMeta.color }}
+                            />
+                            <span style={{ color: statusMeta.color }}>
+                              {statusMeta.label}
+                            </span>
+                          </span>
+                        </div>
                       );
                     })()}
                   </td>
-                  <td className="px-6 py-4">
-                    <UserActionMenu
-                      u={u}
-                      user={user}
-                      setAccessDrawerUser={setAccessDrawerUser}
-                      handleOpenPermissions={handleOpenPermissions}
-                      handleEditClick={handleEditClick}
-                      setSelectedUser={setSelectedUser}
-                      setAccountAction={setAccountAction}
-                      handleArchiveClick={handleArchiveClick}
-                      handleHardDeleteClick={handleHardDeleteClick}
-                      canManageUsers={canManageUsers}
-                      isOwner={isOwner}
-                    />
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex items-center justify-end">
+                      <UserActionMenu
+                        u={u}
+                        user={user}
+                        setAccessDrawerUser={setAccessDrawerUser}
+                        handleOpenPermissions={handleOpenPermissions}
+                        handleEditClick={handleEditClick}
+                        setSelectedUser={setSelectedUser}
+                        setAccountAction={setAccountAction}
+                        handleArchiveClick={handleArchiveClick}
+                        handleHardDeleteClick={handleHardDeleteClick}
+                        canManageUsers={canManageUsers}
+                        isOwner={isOwner}
+                      />
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -1293,8 +1513,9 @@ function getAvatarColor(user) {
       {isEditModalOpen && (
         <EditUserModal
           editForm={editForm}
+          editFormErrors={editFormErrors}
           isOwner={isOwner}
-          onFormChange={setEditForm}
+          onFormChange={handleEditFormChange}
           onSubmit={handleUpdateUser}
           onClose={() => setIsEditModalOpen(false)}
         />

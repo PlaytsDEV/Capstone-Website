@@ -66,12 +66,13 @@ function RoomAvailabilityPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // State
+  const isOwner = user?.role === "owner";
   const [searchTerm, setSearchTerm] = useState("");
   const requestedBranch = searchParams.get("branch");
   const [branchFilter, setBranchFilter] = useState(() =>
     normalizeBranchFilterValue({
-      requestedBranch: user?.role === "owner" ? requestedBranch : null,
-      fallbackBranch: user?.role === "owner" ? null : user?.branch,
+      requestedBranch: isOwner ? requestedBranch : null,
+      fallbackBranch: isOwner ? null : user?.branch,
       allValue: "all",
     }),
   );
@@ -352,16 +353,16 @@ function RoomAvailabilityPage() {
   const activeFilterCount = useMemo(() => {
     let count = 0;
     if (searchTerm.trim() !== "") count++;
-    if (branchFilter !== "all") count++;
+    if (isOwner && branchFilter !== "all") count++;
     if (floorFilter !== "all") count++;
     if (roomTypeFilter !== "all") count++;
     if (roomStatusFilter !== "all") count++;
     return count;
-  }, [searchTerm, branchFilter, floorFilter, roomTypeFilter, roomStatusFilter]);
+  }, [searchTerm, isOwner, branchFilter, floorFilter, roomTypeFilter, roomStatusFilter]);
 
   const handleResetFilters = () => {
     setSearchTerm("");
-    setBranchFilter("all");
+    if (isOwner) setBranchFilter("all");
     setFloorFilter("all");
     setRoomTypeFilter("all");
     setRoomStatusFilter("all");
@@ -524,30 +525,20 @@ function RoomAvailabilityPage() {
   };
 
   const roomFilters = [
-    {
-      key: "status",
-      label: "Status",
-      options: [
-        { value: "all", label: "All Status" },
-        { value: "available", label: "Available" },
-        { value: "partial", label: "Partial" },
-        { value: "full", label: "Full" },
-        { value: "maintenance", label: "Maintenance" },
-        { value: "vacant_soon", label: "Vacant Soon (Forecast)" },
-      ],
-      value: roomStatusFilter,
-      onChange: setRoomStatusFilter,
-    },
-    {
-      key: "branch",
-      label: "Branch",
-      options: [
-        { value: "all", label: "All Branches" },
-        ...OWNER_BRANCH_FILTER_OPTIONS.filter((o) => o.value !== "all"),
-      ],
-      value: branchFilter,
-      onChange: setBranchFilter,
-    },
+    ...(isOwner
+      ? [
+          {
+            key: "branch",
+            label: "Branch",
+            options: [
+              { value: "all", label: "All Branches" },
+              ...OWNER_BRANCH_FILTER_OPTIONS.filter((o) => o.value !== "all"),
+            ],
+            value: branchFilter,
+            onChange: setBranchFilter,
+          },
+        ]
+      : []),
     {
       key: "floor",
       label: "Floor",

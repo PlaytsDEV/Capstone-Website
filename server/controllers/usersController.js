@@ -31,6 +31,9 @@ import {
 import { DELETED_ACCOUNT_LABEL } from "../utils/userReference.js";
 import { releaseOrphanedBeds } from "../services/occupancy/occupancyManager.js";
 import { invalidateUserSessions } from "../services/sessionInvalidationService.js";
+import { sendPasswordResetLinkEmail } from "../config/email.js";
+import { buildCustomPasswordResetLink } from "../services/passwordResetService.js";
+import { getPublicUrlConfig } from "../config/publicUrls.js";
 
 const VALID_BRANCHES = ROOM_BRANCHES;
 const VALID_TENANT_STATUSES = [
@@ -264,7 +267,10 @@ export const createUser = async (req, res, next) => {
       });
     }
 
-    const assignedBranch = branch ? String(branch).trim() : "";
+    let assignedBranch = branch ? String(branch).trim() : "";
+    if (!assignedBranch && !req.isOwner && req.authUser?.branch) {
+      assignedBranch = String(req.authUser.branch).trim();
+    }
     if (assignedBranch && !VALID_BRANCHES.includes(assignedBranch)) {
       return res.status(400).json({
         error: `Invalid branch. Must be one of: ${VALID_BRANCHES.join(", ")}`,
@@ -335,15 +341,28 @@ export const createUser = async (req, res, next) => {
 
     await user.save();
 
-    // Admin-created accounts do not receive a password-set email today —
-    // the account owner uses the standard "Forgot Password" flow to set an
-    // initial password. This is a deliberate scope decision, not an
-    // oversight: if that changes, generate the link here with Firebase
-    // Admin's generatePasswordResetLink(), rewrite it onto the canonical
-    // domain via buildCustomPasswordResetLink() (see passwordResetService.js),
-    // and deliver it through sendPasswordResetLinkEmail() — the same path
-    // Forgot Password itself uses — rather than re-adding an unsent,
-    // unused link generation call here.
+    // Deliver a password-set link so the new user can access their account
+    // without the admin communicating credentials out-of-band.
+    // Uses the identical Firebase link-generation + custom URL rewrite path
+    // as the Forgot Password controller — no new email infrastructure needed.
+    // Non-fatal: account is fully created regardless of email delivery outcome.
+    try {
+      const rawFirebaseLink = await auth.generatePasswordResetLink(
+        email.toLowerCase(),
+        { url: `${getPublicUrlConfig().publicFrontendUrl}/signin`, handleCodeInApp: false },
+      );
+      const resetLink = buildCustomPasswordResetLink(rawFirebaseLink);
+      await sendPasswordResetLinkEmail({
+        to: email.toLowerCase(),
+        name: `${firstName} ${lastName}`.trim(),
+        resetLink,
+      });
+      logger.info(`[createUser] Welcome/password-set email delivered to ${email}`);
+    } catch (emailError) {
+      // Non-fatal: the Firebase + MongoDB account is fully created and functional.
+      // If delivery fails the user can recover via Forgot Password on sign-in.
+      logger.warn(`[createUser] Welcome email delivery failed (non-fatal): ${emailError.message}`);
+    }
 
     // --- Audit log ---
     await auditLogger.logModification(
@@ -381,15 +400,36 @@ export const createUser = async (req, res, next) => {
 export const getUserStats = async (req, res, next) => {
   try {
     const matchQuery = {};
-    if (req.branchFilter) {
-      const branchRooms = await Room.find({ branch: req.branchFilter }).select("_id").lean();
+    const targetBranch = req.branchFilter || (req.query?.branch && req.query.branch !== "all" ? req.query.branch : null);
+    if (targetBranch) {
+      const branchRooms = await Room.find({ branch: targetBranch }).select("_id").lean();
       const branchRoomIds = branchRooms.map((r) => r._id);
       const branchUserIds = await Reservation.find({ roomId: { $in: branchRoomIds } }).distinct("userId");
 
-      matchQuery.$or = [
-        { branch: req.branchFilter },
-        { _id: { $in: branchUserIds } }
-      ];
+      if (req.query?.includeUnbranched !== "false") {
+        const otherBranchRooms = await Room.find({ branch: { $ne: targetBranch } }).select("_id").lean();
+        const otherBranchRoomIds = otherBranchRooms.map((r) => r._id);
+        const otherBranchUserIds = await Reservation.find({
+          roomId: { $in: otherBranchRoomIds },
+          status: { $in: ACTIVE_STAY_STATUS_QUERY },
+          isArchived: { $ne: true },
+        }).distinct("userId");
+
+        matchQuery.$or = [
+          { branch: targetBranch },
+          { _id: { $in: branchUserIds } },
+          {
+            branch: { $in: [null, ""] },
+            role: "applicant",
+            _id: { $nin: otherBranchUserIds },
+          },
+        ];
+      } else {
+        matchQuery.$or = [
+          { branch: targetBranch },
+          { _id: { $in: branchUserIds } },
+        ];
+      }
     }
 
     const [statsResult = {}] = await User.aggregate([
@@ -558,16 +598,36 @@ export const getUsers = async (req, res, next) => {
     // Build query with branch filter (exclude archived/soft-deleted users)
     const query = { isArchived: false };
 
-    const targetBranch = req.branchFilter || branch;
+    const targetBranch = req.branchFilter || (branch && branch !== "all" ? branch : null);
     if (targetBranch) {
       const branchRooms = await Room.find({ branch: targetBranch }).select("_id").lean();
       const branchRoomIds = branchRooms.map((r) => r._id);
       const branchUserIds = await Reservation.find({ roomId: { $in: branchRoomIds } }).distinct("userId");
 
-      query.$or = [
-        { branch: targetBranch },
-        { _id: { $in: branchUserIds } }
-      ];
+      if (req.query?.includeUnbranched !== "false") {
+        const otherBranchRooms = await Room.find({ branch: { $ne: targetBranch } }).select("_id").lean();
+        const otherBranchRoomIds = otherBranchRooms.map((r) => r._id);
+        const otherBranchUserIds = await Reservation.find({
+          roomId: { $in: otherBranchRoomIds },
+          status: { $in: ACTIVE_STAY_STATUS_QUERY },
+          isArchived: { $ne: true },
+        }).distinct("userId");
+
+        query.$or = [
+          { branch: targetBranch },
+          { _id: { $in: branchUserIds } },
+          {
+            branch: { $in: [null, ""] },
+            role: "applicant",
+            _id: { $nin: otherBranchUserIds },
+          },
+        ];
+      } else {
+        query.$or = [
+          { branch: targetBranch },
+          { _id: { $in: branchUserIds } },
+        ];
+      }
     }
 
     if (role) {

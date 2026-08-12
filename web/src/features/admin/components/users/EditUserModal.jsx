@@ -4,6 +4,7 @@ import useEscapeClose from "../../../../shared/hooks/useEscapeClose";
 
 export default function EditUserModal({
  editForm,
+ editFormErrors = {},
  isOwner,
  onFormChange,
  onSubmit,
@@ -24,6 +25,18 @@ export default function EditUserModal({
  const lifecycleGuidance = editForm.hasActiveStay
  ? "Use Tenant Actions or Reservations to move this user out before changing lifecycle state."
  : "Use Reservations or Tenant Actions to change applicant or tenant lifecycle state.";
+
+  const sanitizePhoneInput = (value) => {
+    let val = value;
+    if (val.startsWith("+")) {
+      return "+" + val.slice(1).replace(/\D/g, "").slice(0, 12);
+    }
+    val = val.replace(/\D/g, "");
+    if (val.startsWith("0")) {
+      return val.slice(0, 11);
+    }
+    return val.slice(0, 10);
+  };
 
  return createPortal(
  <div
@@ -51,67 +64,95 @@ export default function EditUserModal({
  className="modal-form"
  style={{ maxHeight: "70vh", overflowY: "auto" }}
  >
- <div className="form-row">
- <div className="form-group">
- <label>Username</label>
- <input
- type="text"
- value={editForm.username}
- onChange={(e) =>
- onFormChange({ ...editForm, username: e.target.value })
- }
- required
- />
- </div>
- <div className="form-group">
- <label>Email</label>
- <input
- type="email"
- value={editForm.email}
- onChange={(e) =>
- onFormChange({ ...editForm, email: e.target.value })
- }
- required
- />
- </div>
- </div>
+  <div className="form-row">
+  <div className={`form-group ${editFormErrors.username ? "has-error" : ""}`}>
+  <label>Username *</label>
+  <input
+  type="text"
+  value={editForm.username || ""}
+  onChange={(e) =>
+  onFormChange({ ...editForm, username: e.target.value }, "username", e.target.value)
+  }
+  required
+  maxLength={30}
+  />
+  {editFormErrors.username && (
+  <span className="field-error">{editFormErrors.username}</span>
+  )}
+  </div>
+  <div className={`form-group ${editFormErrors.email ? "has-error" : ""}`}>
+  <label>Email *</label>
+  <input
+  type="email"
+  value={editForm.email || ""}
+  onChange={(e) =>
+  onFormChange({ ...editForm, email: e.target.value }, "email", e.target.value)
+  }
+  required
+  maxLength={100}
+  />
+  {editFormErrors.email && (
+  <span className="field-error">{editFormErrors.email}</span>
+  )}
+  </div>
+  </div>
+
+  <div className="form-row">
+  <div className={`form-group ${editFormErrors.firstName ? "has-error" : ""}`}>
+  <label>First Name *</label>
+  <input
+  type="text"
+  value={editForm.firstName || ""}
+  onChange={(e) =>
+  onFormChange({ ...editForm, firstName: e.target.value }, "firstName", e.target.value)
+  }
+  required
+  maxLength={50}
+  />
+  {editFormErrors.firstName && (
+  <span className="field-error">{editFormErrors.firstName}</span>
+  )}
+  </div>
+  <div className={`form-group ${editFormErrors.lastName ? "has-error" : ""}`}>
+  <label>Last Name *</label>
+  <input
+  type="text"
+  value={editForm.lastName || ""}
+  onChange={(e) =>
+  onFormChange({ ...editForm, lastName: e.target.value }, "lastName", e.target.value)
+  }
+  required
+  maxLength={50}
+  />
+  {editFormErrors.lastName && (
+  <span className="field-error">{editFormErrors.lastName}</span>
+  )}
+  </div>
+  </div>
 
  <div className="form-row">
- <div className="form-group">
- <label>First Name</label>
- <input
- type="text"
- value={editForm.firstName}
- onChange={(e) =>
- onFormChange({ ...editForm, firstName: e.target.value })
- }
- required
- />
- </div>
- <div className="form-group">
- <label>Last Name</label>
- <input
- type="text"
- value={editForm.lastName}
- onChange={(e) =>
- onFormChange({ ...editForm, lastName: e.target.value })
- }
- required
- />
- </div>
- </div>
-
- <div className="form-row">
- <div className="form-group">
- <label>Phone</label>
- <input
- type="tel"
- value={editForm.phone}
- onChange={(e) =>
- onFormChange({ ...editForm, phone: e.target.value })
- }
- />
- </div>
+  <div className={`form-group ${editFormErrors.phone ? "has-error" : ""}`}>
+  <label>Phone</label>
+  <input
+  type="tel"
+  inputMode="numeric"
+  value={editForm.phone || ""}
+  onChange={(e) => {
+  const val = sanitizePhoneInput(e.target.value);
+  onFormChange({ ...editForm, phone: val }, "phone", val);
+  }}
+  placeholder="e.g. 09171234567 or 9171234567"
+  maxLength={editForm.phone?.startsWith("+") ? 13 : editForm.phone?.startsWith("0") ? 11 : 10}
+  />
+  {!editFormErrors.phone && (
+  <span style={{ fontSize: "11px", color: "#6b7280", marginTop: "3px", display: "block" }}>
+  Format: 10 digits starting with 9, or 11 digits starting with 09
+  </span>
+  )}
+  {editFormErrors.phone && (
+  <span className="field-error">{editFormErrors.phone}</span>
+  )}
+  </div>
  <div className="form-group">
  <label>Gender</label>
  <select
@@ -190,33 +231,21 @@ export default function EditUserModal({
  )}
 
  <div className="form-row">
- <div className="form-group">
+ <div className={`form-group ${editFormErrors.branch ? "has-error" : ""}`}>
  <label>Branch</label>
  <select
- value={editForm.branch}
+ value={editForm.branch || ""}
  onChange={(e) =>
- onFormChange({ ...editForm, branch: e.target.value })
+ onFormChange({ ...editForm, branch: e.target.value }, "branch", e.target.value)
  }
  >
  <option value="">No Branch</option>
  <option value="gil-puyat">Gil Puyat</option>
  <option value="guadalupe">Guadalupe</option>
  </select>
- </div>
- <div className="form-group">
- <label>Status</label>
- <select
- value={editForm.isActive ? "active" : "inactive"}
- onChange={(e) =>
- onFormChange({
- ...editForm,
- isActive: e.target.value === "active",
- })
- }
- >
- <option value="active">Active</option>
- <option value="inactive">Inactive</option>
- </select>
+ {editFormErrors.branch && (
+ <span className="field-error">{editFormErrors.branch}</span>
+ )}
  </div>
  </div>
 
@@ -275,56 +304,28 @@ export default function EditUserModal({
  maxLength={100}
  />
  </div>
- <div className="form-group">
- <label>Emergency Phone</label>
- <input
- type="tel"
- value={editForm.emergencyPhone || ""}
- onChange={(e) =>
- onFormChange({ ...editForm, emergencyPhone: e.target.value })
- }
- />
- </div>
- </div>
-
- <div className="form-row">
- <div className="form-group">
- <label>Student ID</label>
- <input
- type="text"
- value={editForm.studentId || ""}
- onChange={(e) =>
- onFormChange({ ...editForm, studentId: e.target.value })
- }
- maxLength={50}
- />
- </div>
- <div className="form-group">
- <label>School</label>
- <input
- type="text"
- value={editForm.school || ""}
- onChange={(e) =>
- onFormChange({ ...editForm, school: e.target.value })
- }
- maxLength={100}
- />
- </div>
- </div>
-
- <div className="form-row">
- <div className="form-group">
- <label>Year Level</label>
- <input
- type="text"
- value={editForm.yearLevel || ""}
- onChange={(e) =>
- onFormChange({ ...editForm, yearLevel: e.target.value })
- }
- maxLength={20}
- />
- </div>
- <div className="form-group" />
+  <div className={`form-group ${editFormErrors.emergencyPhone ? "has-error" : ""}`}>
+  <label>Emergency Phone</label>
+  <input
+  type="tel"
+  inputMode="numeric"
+  value={editForm.emergencyPhone || ""}
+  onChange={(e) => {
+  const val = sanitizePhoneInput(e.target.value);
+  onFormChange({ ...editForm, emergencyPhone: val }, "emergencyPhone", val);
+  }}
+  placeholder="e.g. 09171234567 or 9171234567"
+  maxLength={editForm.emergencyPhone?.startsWith("+") ? 13 : editForm.emergencyPhone?.startsWith("0") ? 11 : 10}
+  />
+  {!editFormErrors.emergencyPhone && (
+  <span style={{ fontSize: "11px", color: "#6b7280", marginTop: "3px", display: "block" }}>
+  Format: 10 digits starting with 9, or 11 digits starting with 09
+  </span>
+  )}
+  {editFormErrors.emergencyPhone && (
+  <span className="field-error">{editFormErrors.emergencyPhone}</span>
+  )}
+  </div>
  </div>
 
  <div className="modal-footer">

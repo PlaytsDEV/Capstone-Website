@@ -266,7 +266,7 @@ export default function TopBar({
                   style={{ color: "var(--status-error)" }}
                 >
                   <LogOut className="h-4 w-4" />
-                  {logoutInProgress ? "Signing out..." : "Logout"}
+                  {logoutInProgress ? "Signing out..." : "Sign Out"}
                 </button>
               </div>
             </>

@@ -22,7 +22,11 @@ export const userApi = {
   /**
    * Get user statistics (admin only)
    */
-  getStats: () => authFetch("/users/stats"),
+  getStats: (filters = {}) => {
+    const queryString = new URLSearchParams(filters).toString();
+    const url = queryString ? `/users/stats?${queryString}` : "/users/stats";
+    return authFetch(url);
+  },
 
   /**
    * Get current user's stay history and information
