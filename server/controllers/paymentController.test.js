@@ -178,7 +178,7 @@ describe("paymentController", () => {
       expect.objectContaining({
         successUrl:
           "http://localhost:3000/applicant/billing?payment=success&session_id={id}",
-        cancelUrl: "http://localhost:3000/applicant/billing?payment=cancelled",
+        cancelUrl: "http://localhost:3000/applicant/billing?payment=cancelled&session_id={id}",
       }),
     );
     expect(sendSuccess).toHaveBeenCalledWith(

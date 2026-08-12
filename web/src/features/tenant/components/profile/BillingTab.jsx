@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { billingApi } from "../../../../shared/api/apiClient";
+import { useAuth } from "../../../../shared/hooks/useAuth";
 import { formatPaymentMethod } from "../../../../shared/utils/formatPaymentMethod";
 import SkeletonPulse from "../../../../shared/components/SkeletonPulse";
 import StatusChip from "../../../../shared/components/StatusChip";
@@ -1128,46 +1129,64 @@ const WaterTabContent = ({
 /* ── Main Component ────────────────────────────────── */
 
 const BillingTab = () => {
- const [searchParams, setSearchParams] = useSearchParams();
- const [loading, setLoading] = useState(true);
- const [bills, setBills] = useState([]);
- const [subTab, setSubTab] = useState("monthly"); // monthly | electricity | water
- const [monthlyFilter, setMonthlyFilter] = useState("all");
- const [electricityFilter, setElectricityFilter] = useState("all");
- const [waterFilter, setWaterFilter] = useState("all");
- const [payingOnline, setPayingOnline] = useState(false);
- const [verifyingPayment, setVerifyingPayment] = useState(
- searchParams.get("payment") === "success" && Boolean(searchParams.get("session_id")),
- );
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { loading: authLoading } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [bills, setBills] = useState([]);
+  const [subTab, setSubTab] = useState("monthly"); // monthly | electricity | water
+  const [monthlyFilter, setMonthlyFilter] = useState("all");
+  const [electricityFilter, setElectricityFilter] = useState("all");
+  const [waterFilter, setWaterFilter] = useState("all");
+  const [payingOnline, setPayingOnline] = useState(false);
+  const [verifyingPayment, setVerifyingPayment] = useState(
+    searchParams.get("payment") === "success" && Boolean(searchParams.get("session_id")),
+  );
 
- // Handle PayMongo return
- useEffect(() => {
- const paymentStatus = searchParams.get("payment");
- const sessionId = searchParams.get("session_id");
+  // Handle PayMongo return — wait until Firebase auth is ready after full-page redirect
+  useEffect(() => {
+    if (authLoading) return; // Firebase not restored yet; wait for next render
 
- if (paymentStatus === "success" && sessionId) {
- billingApi
- .checkPaymentStatus(sessionId)
- .then((result) => {
- if (result.status === "paid") {
- showNotification("Payment successful! Your bill has been paid.", "success", 5000);
- loadBills();
- } else {
- showNotification("Payment is being processed.", "info", 5000);
- }
- })
- .catch(() => {
- showNotification("Could not verify payment status. Please refresh.", "warning", 5000);
- })
- .finally(() => {
- setVerifyingPayment(false);
- });
- setSearchParams({}, { replace: true });
- } else if (paymentStatus === "cancelled") {
- showNotification("Payment was cancelled.", "info", 3000);
- setSearchParams({}, { replace: true });
- }
- }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    const paymentStatus = searchParams.get("payment");
+    const rawUrlSessionId = searchParams.get("session_id");
+    const storedSessionId = sessionStorage.getItem("activeBillPaymongoSessionId");
+    // PayMongo sometimes fails to replace {id} in test mode — ignore the literal placeholder
+    const urlSessionId = rawUrlSessionId === "{id}" ? null : rawUrlSessionId;
+    const sessionId = urlSessionId || storedSessionId;
+
+    if (paymentStatus === "success" && sessionId) {
+      billingApi
+        .checkPaymentStatus(sessionId)
+        .then((result) => {
+          if (result?.status === "paid") {
+            showNotification("Payment successful! Your bill has been paid.", "success", 5000);
+            loadBills();
+          } else if (result?.status === "unpaid") {
+            showNotification("Payment was not completed. You can try again anytime.", "info", 4000);
+          } else {
+            showNotification("Payment is being processed.", "info", 5000);
+          }
+        })
+        .catch((err) => {
+          console.warn("[BILLING] Payment status check warning:", err);
+          showNotification("Could not verify payment status. Please refresh.", "warning", 5000);
+        })
+        .finally(() => {
+          sessionStorage.removeItem("activeBillPaymongoSessionId");
+          setVerifyingPayment(false);
+        });
+      setSearchParams({}, { replace: true });
+    } else {
+      // No valid session or cancelled — always clear verifyingPayment and params
+      sessionStorage.removeItem("activeBillPaymongoSessionId");
+      setVerifyingPayment(false);
+      if (paymentStatus === "cancelled") {
+        showNotification("Payment was cancelled.", "info", 3000);
+      }
+      if (paymentStatus) {
+        setSearchParams({}, { replace: true });
+      }
+    }
+  }, [authLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
  const loadBills = useCallback(async () => {
  try {
@@ -1240,34 +1259,44 @@ const BillingTab = () => {
  .map(({ bill }) => bill)
  .sort(sortBillsOldestFirst);
 
- const handlePay = async (type = "all") => {
- try {
- setPayingOnline(type);
- 
- let billsToPay = [];
- if (type === "rent") {
- billsToPay = payableRentBills;
- } else if (type === "utilities") {
- billsToPay = payableUtilityBills;
- } else {
- billsToPay = payableBills;
- }
+  const handlePay = async (type = "all") => {
+    try {
+      setPayingOnline(type);
 
- if (billsToPay.length === 0) {
- showNotification("No unpaid bills in this category.", "info");
- setPayingOnline(null);
- return;
- }
+      let billsToPay = [];
+      if (type === "rent") {
+        billsToPay = payableRentBills;
+      } else if (type === "utilities") {
+        billsToPay = payableUtilityBills;
+      } else {
+        billsToPay = payableBills;
+      }
 
- const firstUnpaid = billsToPay[0];
- const { checkoutUrl } = await billingApi.createCheckout(firstUnpaid.id || firstUnpaid._id);
- window.location.href = checkoutUrl;
- } catch (err) {
- console.error("Checkout error:", err);
- showNotification(err.message || "Failed to start online payment.", "error", 3000);
- setPayingOnline(null);
- }
- };
+      if (billsToPay.length === 0) {
+        showNotification("No unpaid bills in this category.", "info");
+        setPayingOnline(null);
+        return;
+      }
+
+      const firstUnpaid = billsToPay[0];
+      const { checkoutUrl, sessionId } = await billingApi.createCheckout(firstUnpaid.id || firstUnpaid._id);
+      if (sessionId) {
+        sessionStorage.setItem("activeBillPaymongoSessionId", sessionId);
+      }
+      window.location.href = checkoutUrl;
+    } catch (err) {
+      console.error("Checkout error:", err);
+      const errCode = err?.response?.data?.error?.code || err?.code;
+      if (errCode === "ALREADY_PAID") {
+        // Payment already went through — refresh bills to show settled state
+        showNotification("Your payment was already received! Refreshing your bills.", "success", 4000);
+        loadBills();
+      } else {
+        showNotification(err?.response?.data?.error || err.message || "Failed to start online payment.", "error", 3000);
+      }
+      setPayingOnline(null);
+    }
+  };
 
  if (loading || verifyingPayment) {
  return <BillingTabSkeleton />;

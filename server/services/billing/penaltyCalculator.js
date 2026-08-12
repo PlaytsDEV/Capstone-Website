@@ -4,6 +4,11 @@
  * ============================================================================
  *
  * Unified penalty calculation service for overdue bills.
+ *
+ * Plan 4 decisions applied:
+ *   D2 — Penalty cap uses contractRentAtMoveIn (contract rate locked at move-in),
+ *         not the current room charge (which may have changed).
+ *   D4 — No grace period. Penalties start accumulating immediately on Day 1 past due.
  */
 
 import dayjs from "dayjs";
@@ -35,11 +40,19 @@ export async function computePenalty(bill, settings = null, now = dayjs()) {
     configuredRate,
   );
 
-  // First day overdue is a grace day (no penalty). Penalty accrues starting
-  // the second day late, at ratePerDay per billable day.
-  const billableDays = Math.max(0, daysLate - 1);
+  // Plan 4 (D4): No grace period — penalties start on Day 1 past due.
+  // Every calendar day past the dueDate is a billable day.
+  const billableDays = daysLate;
   const rawPenalty = billableDays * ratePerDay;
-  const rentBase = bill.charges?.rent || 0;
+
+  // Plan 4 (D2): Use contractRentAtMoveIn (the rent rate locked at the tenant's
+  // move-in date) as the base for the cap ceiling. Falls back to charges.rent
+  // for bills that pre-date this field being populated.
+  const rentBase =
+    bill.contractRentAtMoveIn ||
+    bill.penaltyDetails?.contractRentAtMoveIn ||
+    bill.charges?.rent ||
+    0;
   const cap = rentBase > 0 ? (rentBase * maxCapPercent) / 100 : Infinity;
   const penalty = billableDays > 0 ? Math.min(rawPenalty, cap) : 0;
 

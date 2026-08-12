@@ -1,9 +1,14 @@
 /**
  * ============================================================================
- * PENALTY ENGINE & GRACE PERIOD SERVICE
+ * PENALTY ENGINE SERVICE
  * ============================================================================
- * Handles automated late fee calculations, 3-day grace period evaluations,
- * and immutable invoice versioning (`invoiceVersion`).
+ * Handles automated late fee calculations and invoice versioning.
+ *
+ * Plan 4 decisions applied:
+ *   D3 — Bills 14+ days overdue are flagged as critical_overdue. Admin alert only;
+ *         tenant portal stays open.
+ *   D4 — No grace period. evaluateGracePeriod reflects this: isPastDue is true
+ *         from Day 1 after the due date.
  */
 
 import dayjs from "dayjs";
@@ -13,10 +18,8 @@ import { computePenalty, fetchPenaltySettings } from "./billing/penaltyCalculato
 import { syncBillAmounts, resolveBillStatus } from "./billing/billingPolicy.js";
 
 /**
- * Evaluates whether a bill is within the grace period or past due, using the
- * same 1-day-grace policy as the canonical penalty calculator
- * (server/services/billing/penaltyCalculator.js). Kept for callers that only
- * need the boolean/day-count without a full penalty computation.
+ * Evaluates whether a bill is past due.
+ * Plan 4 (D4): No grace period — a bill is past due from Day 1 after dueDate.
  *
  * @param {Object|Date|string} dueDateInput - Bill due date
  * @param {Date} [evaluationDate] - Reference date (defaults to now)
@@ -28,18 +31,17 @@ export function evaluateGracePeriod(dueDateInput, evaluationDate = new Date()) {
   const dueDate = dayjs(dueDateInput).endOf("day");
   const now = dayjs(evaluationDate);
 
-  if (now.isBefore(dueDate)) {
+  if (now.isBefore(dueDate) || now.isSame(dueDate, "day")) {
     return { isPastDue: false, isWithinGracePeriod: false, daysOverdue: 0 };
   }
 
   const daysOverdue = now.diff(dueDate, "day");
-  const isWithinGracePeriod = daysOverdue <= 1;
-  const isPastDue = daysOverdue > 1;
 
+  // D4: No grace period. Any day past due = isPastDue: true, isWithinGracePeriod: false.
   return {
-    isPastDue,
-    isWithinGracePeriod,
-    daysOverdue
+    isPastDue: daysOverdue > 0,
+    isWithinGracePeriod: false, // grace period removed per D4
+    daysOverdue,
   };
 }
 
@@ -87,6 +89,26 @@ export async function executeLatePenaltyCron(evaluationDate = new Date()) {
 
     syncBillAmounts(bill);
     bill.status = resolveBillStatus(bill, now.toDate());
+
+    // Plan 4 (D3): Flag critical overdue bills (14+ days past due).
+    // Admin alert only — no automatic action taken on tenant portal.
+    if (daysLate >= 14) {
+      bill.penaltyDetails = {
+        ...bill.penaltyDetails,
+        criticalOverdue: true,
+        criticalOverdueSince: bill.penaltyDetails?.criticalOverdueSince || now.toDate(),
+      };
+      logger.warn(
+        {
+          billId: String(bill._id),
+          tenantId: String(bill.userId),
+          daysLate,
+          branch: bill.branch,
+          penalty: newPenalty,
+        },
+        `CRITICAL_OVERDUE: Bill is ${daysLate} days past due. Admin follow-up required.`,
+      );
+    }
 
     await bill.save();
     updatedBills.push(bill);

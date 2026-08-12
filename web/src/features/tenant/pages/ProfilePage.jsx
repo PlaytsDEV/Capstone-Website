@@ -147,11 +147,11 @@ const ProfilePage = () => {
  }, [activeTab, canViewAnnouncements]);
 
  useEffect(() => {
- const params = new URLSearchParams(location.search);
- const paymentStatus = params.get("payment");
- const rawSessionId = params.get("session_id");
+  const params = new URLSearchParams(location.search);
+  const paymentStatus = params.get("payment");
+  const rawSessionId = params.get("session_id");
 
- if (!paymentStatus) return;
+  if (!paymentStatus || params.get("tab") === "billing") return;
 
  const alreadyPaid = (Array.isArray(reservationsData) ? reservationsData : []).find(
  (reservation) =>

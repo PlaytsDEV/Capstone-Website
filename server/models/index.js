@@ -40,10 +40,14 @@ import BedHistory from "./BedHistory.js";
 import Stay from "./Stay.js";
 import Contract from "./Contract.js";
 import ContractCounter from "./ContractCounter.js";
+import BedCheckoutLock from "./BedCheckoutLock.js";
+import BedWaitlist from "./BedWaitlist.js";
+import WaitlistOffer from "./WaitlistOffer.js";
 
 // 3. Reservations & Visit Domain
 import Reservation from "./Reservation.js";
 import VisitAvailability from "./VisitAvailability.js";
+import LeaseRenewal from "./LeaseRenewal.js";
 
 // 4. Billing & Utility Domain (Active Modular System)
 import UtilityPeriod from "./UtilityPeriod.js";
@@ -65,9 +69,15 @@ import WaterBillingRecord from "./WaterBillingRecord.js";
 // 5. Operations & Services Domain
 import MaintenanceRequest from "./MaintenanceRequest.js";
 import Inquiry from "./Inquiry.js";
+import SupportInquiry from "./SupportInquiry.js";
 import Announcement from "./Announcement.js";
 import Notification from "./Notification.js";
 import ServiceProvider from "./ServiceProvider.js";
+import OverdueNotice from "./OverdueNotice.js";
+import TerminationReview from "./TerminationReview.js";
+import BillingDispute from "./BillingDispute.js";
+import TenantViolation from "./TenantViolation.js";
+import MoveOutClearance from "./MoveOutClearance.js";
 
 // 6. Communication Domain
 import ChatConversation from "./ChatConversation.js";
@@ -121,6 +131,7 @@ export {
   AcknowledgmentAccount,
   BusinessSettings,
   VisitAvailability,
+  LeaseRenewal,
   ChatConversation,
   ChatMessage,
   WaterBillingRecord,
@@ -130,9 +141,16 @@ export {
   Stay,
   Contract,
   ContractCounter,
+  BedCheckoutLock,
+  BedWaitlist,
+  WaitlistOffer,
   BackupConfig,
   BackupRecord,
   ServiceProvider,
+  OverdueNotice,
+  TerminationReview,
+  BillingDispute,
+  TenantViolation,
   SurveyTemplate,
   SurveySchedule,
   SurveyAssignment,
@@ -225,6 +243,7 @@ export default {
   Room,
   Reservation,
   Inquiry,
+  SupportInquiry,
   AuditLog,
   Bill,
   MeterReading,
@@ -235,6 +254,7 @@ export default {
   AcknowledgmentAccount,
   BusinessSettings,
   VisitAvailability,
+  LeaseRenewal,
   ChatConversation,
   ChatMessage,
   WaterBillingRecord,
@@ -247,6 +267,14 @@ export default {
   BackupConfig,
   BackupRecord,
   ServiceProvider,
+  BedCheckoutLock,
+  BedWaitlist,
+  WaitlistOffer,
+  OverdueNotice,
+  TerminationReview,
+  BillingDispute,
+  TenantViolation,
+  MoveOutClearance,
   Notification,
   Payment,
   LoginLog,

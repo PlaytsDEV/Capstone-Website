@@ -133,6 +133,31 @@ export const createBillCheckout = async (req, res, next) => {
         const existing = await getCheckoutSession(bill.paymongoSessionId);
         const existingUrl = existing?.attributes?.checkout_url;
         const existingPayments = existing?.attributes?.payments || [];
+        const existingPaidPayments = readPaidPayments(existing);
+
+        if (existingPaidPayments.length > 0) {
+          // The session was already paid — settle the bill and inform the frontend.
+          logger.info(
+            { billId: String(bill._id), sessionId: bill.paymongoSessionId },
+            "createBillCheckout: existing session already paid — settling",
+          );
+          const paymentReference = existingPaidPayments[0]?.id || bill.paymongoSessionId;
+          const paidAmount = Number(existingPaidPayments[0]?.attributes?.amount || 0) / 100;
+          const settledAmount = paidAmount > 0 ? paidAmount : Number(existing?.attributes?.metadata?.amountDue || 0);
+          await settlePaymongoBill({
+            bill,
+            paymentReference,
+            settledAmount,
+            source: "paymongo-polling",
+            metadata: {
+              sessionId: bill.paymongoSessionId,
+              sessionType: "bill",
+              currency: "PHP",
+            },
+          });
+          throw new AppError("Bill is already paid", 400, "ALREADY_PAID");
+        }
+
         if (existingUrl && existingPayments.length === 0) {
           return sendSuccess(res, {
             checkoutUrl: existingUrl,
@@ -140,8 +165,10 @@ export const createBillCheckout = async (req, res, next) => {
             reused: true,
           });
         }
-      } catch {
+      } catch (err) {
+        if (err?.code === "ALREADY_PAID") throw err;
         // Expired or invalid session: create a fresh one below.
+        logger.warn({ err: err.message, sessionId: bill.paymongoSessionId }, "Stale PayMongo session — creating fresh checkout");
       }
     }
 
@@ -169,7 +196,7 @@ export const createBillCheckout = async (req, res, next) => {
         amountDue: String(amountDue),
       },
       successUrl: `${FRONTEND_URL}${TENANT_BILLING_PATH}?payment=success&session_id={id}`,
-      cancelUrl: `${FRONTEND_URL}${TENANT_BILLING_PATH}?payment=cancelled`,
+      cancelUrl: `${FRONTEND_URL}${TENANT_BILLING_PATH}?payment=cancelled&session_id={id}`,
       idempotencyKey: checkoutIdempotencyKey,
     });
 
@@ -327,8 +354,19 @@ export const checkSessionStatus = async (req, res, next) => {
     if (!dbUser) throw new AppError("User not found", 404, "USER_NOT_FOUND");
 
     logger.info({ sessionId }, "checkSessionStatus called");
-    const session = await getCheckoutSession(sessionId);
-    const metadata = session.attributes.metadata || {};
+    let session;
+    try {
+      session = await getCheckoutSession(sessionId);
+    } catch (err) {
+      logger.warn({ err: err.message, sessionId }, "Failed to fetch PayMongo session");
+      return res.status(200).json({
+        success: true,
+        status: "unpaid",
+        message: err.message || "Could not retrieve checkout session",
+      });
+    }
+
+    const metadata = session.attributes?.metadata || {};
     const { bill: sessionBill, reservation: sessionReservation } =
       await resolveSessionResourceAccess(metadata, dbUser);
     const paidPayments = readPaidPayments(session);
@@ -415,11 +453,13 @@ export const checkSessionStatus = async (req, res, next) => {
                 await sendPaymentReceiptEmail({
                   to: tenant.email,
                   tenantName,
+                  billedTo: tenantName,
                   amount: settlement.appliedAmount,
                   description: `Monthly Bill - ${monthStr}`,
                   paymentMethod: paymentMethod || "Online Payment (PayMongo)",
                   paymentDate: dayjs().format("MMMM D, YYYY"),
                   referenceId: paymentReference,
+                  branch: bill.branch,
                 });
               }
             } catch (emailErr) {

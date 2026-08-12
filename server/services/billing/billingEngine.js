@@ -66,8 +66,21 @@ function getReservationOverlapDays(reservation, cycleStart, cycleEnd) {
     : cycleEndDay;
 
   if (!effectiveStart.isValid() || !effectiveEnd.isValid()) return 0;
-  if (!effectiveStart.isBefore(effectiveEnd)) return 0;
-  return effectiveEnd.diff(effectiveStart, "day");
+
+  const overlapDays = effectiveStart.isBefore(effectiveEnd)
+    ? effectiveEnd.diff(effectiveStart, "day")
+    : 0;
+
+  // Plan 2 (Lifecycle Edge Case): If a tenant checked in within this billing cycle
+  // but checked out the same day (0 overlap days), enforce a minimum of 1 billed day.
+  // This prevents a zero-charge same-day stay and matches the non-refundable minimum
+  // stay policy. Only applies when the move-in itself falls within the cycle window.
+  const moveInWithinCycle =
+    (moveInDay.isSame(cycleStartDay) || moveInDay.isAfter(cycleStartDay)) &&
+    moveInDay.isBefore(cycleEndDay);
+  if (overlapDays === 0 && moveInWithinCycle) return 1;
+
+  return overlapDays;
 }
 
 function buildWaterOccupancyBilling({
@@ -227,11 +240,17 @@ function buildWaterOccupancyBilling({
 
 export function sortReadings(readings) {
   const eventPriority = {
+    // Boundary/close events sort first within the same timestamp
     moveOut: 0,
+    // Plan 1: Meter boundary events sort like moveOut (they close the old segment)
+    meterReplacement: 0,
+    meterRollover: 0,
+    // Regular events in the middle
     regularBilling: 1,
     periodStart: 1,
     periodEnd: 1,
     manualAdjustment: 1,
+    // Move-in events sort last (they open a new segment after boundary is closed)
     moveIn: 2,
   };
   return [...readings].sort((a, b) => {
@@ -305,6 +324,8 @@ export function buildSegments(sortedReadings, tenantEvents) {
     );
   }
 
+  const METER_BOUNDARY_EVENTS = new Set(["meterReplacement", "meterRollover"]);
+
   const segments = [];
   for (let i = 0; i < sortedReadings.length - 1; i++) {
     const startReading = sortedReadings[i];
@@ -313,6 +334,15 @@ export function buildSegments(sortedReadings, tenantEvents) {
     const readingFrom = startReading.reading;
     const readingTo = endReading.reading;
     const unitsConsumed = readingTo - readingFrom;
+
+    // Plan 1 — Meter Boundary Skip:
+    // If the START of this segment is a meterReplacement or meterRollover event, the
+    // reading gap between the old meter's final value and the new meter's first value
+    // is physically meaningless. Skip this segment entirely — no consumption or cost
+    // is assigned across a meter boundary transition.
+    if (METER_BOUNDARY_EVENTS.has(startReading.eventType)) {
+      continue;
+    }
 
     if (unitsConsumed < 0) {
       throw new Error(
@@ -510,14 +540,18 @@ export function computeBilling({
 
     const allPeriodTenantIds = tenantEvents.map((t) => t.tenantId);
     const segmentExceptions = [];
+    // Plan 1 (D1): Segments with consumption but zero occupants across the entire
+    // billing period are routed to branch overhead — no tenant is billed for them.
+    const overheadSegments = [];
 
     const computedSegments = rawSegments.map((seg) => {
       let activeTenantIds = seg.activeTenantIds;
       let activeTenantCount = seg.activeTenantCount;
       let coveredTenantNames = seg.coveredTenantNames;
 
-      // Fallback for vacant/gap segments: if segment has consumption but 0 native active tenants,
-      // attribute consumption to the period's active occupants if available.
+      // Fallback for gap segments: if a segment has consumption but 0 native active
+      // tenants, attribute it to all tenants present in the period (e.g., tenant moved
+      // in between two readings without a dedicated move-in reading event).
       if (
         seg.unitsConsumed > 0 &&
         activeTenantCount === 0 &&
@@ -528,15 +562,30 @@ export function computeBilling({
         coveredTenantNames = tenantEvents.map((t) => t.tenantName);
       }
 
+      // Plan 1 (D1): Truly vacant segment — no tenants in this segment OR anywhere
+      // in the period. Route cost to branch overhead; exclude from tenant billing.
       if (seg.unitsConsumed > 0 && activeTenantCount === 0) {
-        // Phase 2: Zero occupancy with consumption — explicit exception.
-        const excDetail = `Segment ${seg.segmentIndex + 1}: ${seg.unitsConsumed} kWh consumed but no active tenants.`;
-        segmentExceptions.push({ code: "ZERO_OCCUPANCY_WITH_CONSUMPTION", detail: excDetail });
-        if (forceSegmented) {
-          throw new Error(
-            `ZERO_OCCUPANCY_WITH_CONSUMPTION: ${excDetail} Check occupancy and lifecycle meter events.`,
-          );
-        }
+        const overheadCost = truncate4(seg.unitsConsumed * ratePerUnit);
+        overheadSegments.push({
+          segmentIndex: seg.segmentIndex,
+          periodLabel: seg.periodLabel,
+          startDate: seg.startDate,
+          endDate: seg.endDate,
+          kwhConsumed: seg.unitsConsumed,
+          cost: overheadCost,
+          reason: "ZERO_OCCUPANCY_WITH_CONSUMPTION",
+        });
+        // Return a zeroed segment — excluded from tenant cost aggregation
+        return {
+          ...seg,
+          activeTenantIds: [],
+          activeTenantCount: 0,
+          sharePerTenantUnits: 0,
+          sharePerTenantCost: 0,
+          totalCost: 0,
+          ratePerUnit,
+          _routedToOverhead: true,
+        };
       }
 
       const segmentWithTenants = {
@@ -630,6 +679,8 @@ export function computeBilling({
       verified: reconciliation.valid && Math.abs(sumTenantKwh - totalUnits) <= 0.01,
       reconciliationDeltaCents: reconciliation.delta,
       exceptions: segmentExceptions,
+      // Plan 1 (D1): Segments routed to branch overhead due to zero occupancy
+      overheadSegments,
     };
   } else {
     const shareAmounts = buildProratedShareAmounts(

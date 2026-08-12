@@ -490,6 +490,7 @@ async function closePeriodAndGenerateDrafts({
   period.verified = computationResult.verified;
   period.segments = computationResult.segments;
   period.tenantSummaries = computationResult.tenantSummaries;
+  period.overheadSegments = computationResult.overheadSegments || [];
 
   period.tenantSummaries = await upsertDraftBillsForUtility({
     period: period.toObject(),
@@ -997,6 +998,7 @@ export const updateUtilityPeriod = async (req, res, next) => {
       period.verified = computationResult.verified;
       period.segments = computationResult.segments;
       period.tenantSummaries = computationResult.tenantSummaries;
+      period.overheadSegments = computationResult.overheadSegments || [];
       period.tenantSummaries = await upsertDraftBillsForUtility({
         period: period.toObject(),
         room,
@@ -1196,6 +1198,7 @@ export const reviseUtilityResult = async (req, res, next) => {
     period.verified = computationResult.verified;
     period.segments = computationResult.segments;
     period.tenantSummaries = computationResult.tenantSummaries;
+    period.overheadSegments = computationResult.overheadSegments || [];
 
     period.tenantSummaries = await upsertDraftBillsForUtility({
       period: period.toObject(),

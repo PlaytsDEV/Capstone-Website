@@ -71,12 +71,40 @@ describe("detectDuplicateTimestamps", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildSegments — negative delta", () => {
-  it("throws NEGATIVE_DELTA on meter rollback", () => {
+  it("throws NEGATIVE_DELTA on meter rollback (no boundary event)", () => {
     const readings = [
       makeReading(500, "2026-01-01"),
-      makeReading(300, "2026-01-15"), // negative delta
+      makeReading(300, "2026-01-15"), // negative delta, no boundary event
     ];
     expect(() => buildSegments(readings, [])).toThrow(/NEGATIVE_DELTA/);
+  });
+
+  it("skips segment silently when start is meterReplacement (no NEGATIVE_DELTA throw)", () => {
+    // Old meter final reading: 9800. New meter first reading: 50.
+    // The meterReplacement event is recorded at 9800 — the segment from 9800→50 is skipped.
+    const readings = [
+      makeReading(9000, "2026-01-01", "periodStart"),
+      makeReading(9800, "2026-01-15", "meterReplacement"), // old meter swapped out here
+      makeReading(50,   "2026-01-31", "periodEnd"),       // new meter first reading
+    ];
+    // Should NOT throw. The 9800→50 segment (spanning the boundary) is skipped.
+    expect(() => buildSegments(readings, [])).not.toThrow();
+    const segments = buildSegments(readings, []);
+    // Only segment 9000→9800 survives; the boundary segment is skipped
+    expect(segments).toHaveLength(1);
+    expect(segments[0].unitsConsumed).toBe(800);
+  });
+
+  it("skips segment silently when start is meterRollover", () => {
+    const readings = [
+      makeReading(9900, "2026-01-01", "periodStart"),
+      makeReading(9999, "2026-01-15", "meterRollover"), // analog meter rolled over here
+      makeReading(100,  "2026-01-31", "periodEnd"),
+    ];
+    expect(() => buildSegments(readings, [])).not.toThrow();
+    const segments = buildSegments(readings, []);
+    expect(segments).toHaveLength(1);
+    expect(segments[0].unitsConsumed).toBe(99); // 9900 → 9999
   });
 
   it("throws DUPLICATE_TIMESTAMP on duplicate readings", () => {
@@ -98,8 +126,11 @@ describe("buildSegments — negative delta", () => {
 // computeSegmentShares — zero-occupancy exception
 // ---------------------------------------------------------------------------
 
+// Plan 1 (D1): Zero-occupancy segments are now routed to overheadSegments,
+// not thrown as exceptions. computeSegmentShares still returns the exception
+// shape (it operates on a single segment level), but computeBilling() handles it.
 describe("computeSegmentShares — zero occupancy", () => {
-  it("returns ZERO_OCCUPANCY_WITH_CONSUMPTION exception when consumption > 0 and tenants = 0", () => {
+  it("still returns ZERO_OCCUPANCY_WITH_CONSUMPTION flag at the segment share level", () => {
     const segment = {
       unitsConsumed: 50,
       activeTenantCount: 0,
@@ -130,6 +161,38 @@ describe("computeSegmentShares — zero occupancy", () => {
     const result = computeSegmentShares(segment, 12.5);
     expect(result.exception).toBeUndefined();
     expect(result.totalCost).toBe(0);
+  });
+});
+
+// Plan 1 (D1): computeBilling overhead routing integration test
+describe("computeBilling — overhead routing for vacant segments", () => {
+  it("routes consumption to overheadSegments when no tenants exist in the period", () => {
+    const period = {
+      startDate: new Date("2026-01-01"),
+      endDate: new Date("2026-01-31"),
+      startReading: 1000,
+      endReading: 1100,
+      ratePerUnit: 12.5,
+    };
+    const readings = [
+      makeReading(1000, "2026-01-01", "periodStart"),
+      makeReading(1100, "2026-01-31", "periodEnd"),
+    ];
+    const result = computeBilling({
+      utilityPeriod: period,
+      readings,
+      reservations: [], // no tenants at all
+      tenantEvents: [],
+      utilityType: "electricity",
+      forceSegmented: true,
+    });
+    // No tenant is billed
+    expect(result.tenantSummaries).toHaveLength(0);
+    // Consumption is recorded in overheadSegments
+    expect(result.overheadSegments).toHaveLength(1);
+    expect(result.overheadSegments[0].reason).toBe("ZERO_OCCUPANCY_WITH_CONSUMPTION");
+    expect(result.overheadSegments[0].kwhConsumed).toBe(100);
+    expect(result.overheadSegments[0].cost).toBeCloseTo(1250, 1); // 100 kWh × ₱12.5
   });
 });
 

@@ -15,6 +15,10 @@ export const CANONICAL_RESERVATION_STATUSES = Object.freeze([
   "approved_for_payment",
   "payment_pending",
   "reserved",
+  // Spec §9.3: System sets this when move-in date passes with no action.
+  // This is a FLAG ONLY — it never releases the bed or forfeits the fee.
+  // An admin must make an explicit decision (reschedule, confirm, or cancel).
+  "move_in_overdue",
   "moveIn",
   "moveOut",
   "rejected",
@@ -85,6 +89,15 @@ export const ALLOWED_RESERVATION_STATUS_TRANSITIONS = Object.freeze({
   reserved: [
     "payment_pending",
     "approved_for_payment",
+    "move_in_overdue",
+    "moveIn",
+    "cancelled",
+    "archived",
+  ],
+  // Spec §9.3: From overdue, admin can reschedule (back to reserved),
+  // confirm move-in, or explicitly cancel. System never auto-transitions out.
+  move_in_overdue: [
+    "reserved",
     "moveIn",
     "cancelled",
     "archived",
@@ -106,6 +119,7 @@ const RESERVATION_STATUS_QUERY_MAP = Object.freeze({
   approved_for_payment: ["approved_for_payment"],
   payment_pending: ["payment_pending"],
   reserved: ["reserved"],
+  move_in_overdue: ["move_in_overdue"],
   moveIn: ["moveIn"],
   moveOut: ["moveOut"],
   rejected: ["rejected"],
@@ -120,6 +134,9 @@ export const CANONICAL_UTILITY_EVENT_TYPES = Object.freeze([
   "periodStart",
   "periodEnd",
   "manualAdjustment",
+  // Phase 3 — Meter boundary events (Plan 1: Meter Anomalies Hardening)
+  "meterReplacement", // Admin logs when a physical meter is swapped out
+  "meterRollover",   // Admin logs when an analog meter naturally rolls over (9999 → 0)
 ]);
 
 export const LEGACY_UTILITY_EVENT_TYPE_MAP = Object.freeze({});
@@ -131,6 +148,8 @@ const UTILITY_EVENT_QUERY_MAP = Object.freeze({
   periodStart: ["periodStart"],
   periodEnd: ["periodEnd"],
   manualAdjustment: ["manualAdjustment"],
+  meterReplacement: ["meterReplacement"],
+  meterRollover: ["meterRollover"],
 });
 
 export const normalizeReservationStatus = (status) => {

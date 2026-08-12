@@ -20,14 +20,18 @@ describe("computePenalty", () => {
     expect(result).toMatchObject({ penalty: 0, daysLate: 0 });
   });
 
-  test("applies no penalty during the one-day grace period", async () => {
+  // Plan 4 (D4): Grace period removed — penalty starts on Day 1 past due.
+  // The old "applies no penalty during the one-day grace period" test is now
+  // updated to assert that ₱50 IS charged on Day 1 past due.
+  test("charges ₱50 immediately on Day 1 past due (no grace period — D4)", async () => {
     const result = await computePenalty(bill(), settings, localDate(2026, 6, 11, 8));
-    expect(result.penalty).toBe(0);
+    expect(result.penalty).toBe(50); // Day 1 past due = 1 billable day × ₱50
+    expect(result.daysLate).toBe(1);
   });
 
-  test("charges PHP 50/day starting the day after the grace period", async () => {
+  test("charges PHP 50/day starting Day 1 (no longer Day 2 after grace)", async () => {
     const result = await computePenalty(bill(), settings, localDate(2026, 6, 12));
-    expect(result.penalty).toBe(50);
+    expect(result.penalty).toBe(100); // Day 2 past due = 2 billable days × ₱50
   });
 
   test("accrues per calendar day regardless of time-of-day (day-boundary normalization)", async () => {
@@ -40,15 +44,15 @@ describe("computePenalty", () => {
     );
     expect(sameCalendarDay.daysLate).toBe(0);
 
-    // Now is early in the morning three calendar days after the due date —
-    // a naive time-sensitive diff would undercount this by one day.
+    // Now is early in the morning three calendar days after the due date.
     const threeDaysLate = await computePenalty(
       bill(),
       settings,
       localDate(2026, 6, 13, 0, 5),
     );
     expect(threeDaysLate.daysLate).toBe(3);
-    expect(threeDaysLate.penalty).toBe(100); // 2 billable days after grace
+    // D4: no grace → 3 billable days × ₱50 = ₱150
+    expect(threeDaysLate.penalty).toBe(150);
   });
 
   test("caps the penalty at maxCapPercent of the rent charge", async () => {
@@ -59,5 +63,36 @@ describe("computePenalty", () => {
     );
     expect(result.capped).toBe(true);
     expect(result.penalty).toBe(63); // 1% of 6300
+  });
+
+  // Plan 4 (D2): Cap uses contractRentAtMoveIn, not charges.rent
+  test("uses contractRentAtMoveIn for penalty cap when provided (D2)", async () => {
+    const billWithContract = bill({
+      contractRentAtMoveIn: 5000, // locked contract rate at move-in
+      charges: { rent: 7000 },    // current room rate is different (room upgraded)
+    });
+
+    // 200 days past due × ₱50/day = ₱10,000 raw — exceeds both caps, but cap should be 5000
+    const result = await computePenalty(
+      billWithContract,
+      { penaltyRatePerDay: 50, maxCapPercent: 100 },
+      localDate(2027, 1, 26), // ~200 days past Jun 10 2026 due date
+    );
+
+    // Cap should be based on 5000 (contractRentAtMoveIn × 100%), not 7000 (charges.rent)
+    expect(result.capped).toBe(true);
+    expect(result.penalty).toBe(5000); // ≤ contractRentAtMoveIn cap, not 7000
+  });
+
+  // Plan 4 (D2): Falls back to charges.rent when contractRentAtMoveIn is not set
+  test("falls back to charges.rent for cap when contractRentAtMoveIn is absent (D2 backward compat)", async () => {
+    // 200 days past due × ₱50/day = ₱10,000 raw — exceeds the ₱6300 cap
+    const result = await computePenalty(
+      bill(), // no contractRentAtMoveIn field
+      { penaltyRatePerDay: 50, maxCapPercent: 100 },
+      localDate(2027, 1, 26), // ~200 days past Jun 10 2026 due date
+    );
+    expect(result.capped).toBe(true);
+    expect(result.penalty).toBe(6300); // falls back to charges.rent = 6300
   });
 });

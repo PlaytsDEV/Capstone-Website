@@ -113,6 +113,54 @@ const businessSettingsSchema = new mongoose.Schema(
       default: BUSINESS.ARCHIVE_CANCELLED_AFTER_DAYS,
       min: 0,
     },
+    // Spec §9.2: Duration of the bed checkout lock window.
+    // When an applicant reaches the payment step, their selected bed is held
+    // for this many minutes. If they don't complete payment, the lock is released.
+    // Default: 30 minutes. Range: 5–120 minutes.
+    checkoutLockDurationMinutes: {
+      type: Number,
+      default: 30,
+      min: 5,
+      max: 120,
+    },
+    // Spec §11.3: Hours a waitlisted tenant has to respond to a lower-bed offer.
+    // If the deadline passes with no response, the offer expires automatically
+    // and the tenant stays in the waitlist queue for the next available bed.
+    // Default: 48 hours. Range: 12–168 hours (half-day to one week).
+    waitlistOfferDeadlineHours: {
+      type: Number,
+      default: 48,
+      min: 12,
+      max: 168,
+    },
+    // Spec §24.2: Minimum calendar days of advance notice required before a
+    // rent increase takes effect. Validated against LeaseRenewal.effectiveFrom.
+    // Default: 30 days. Range: 7–60 days.
+    renewalNoticeRequiredDays: {
+      type: Number,
+      default: 30,
+      min: 7,
+      max: 60,
+    },
+    // Spec §26.1 & §13: RFID replacement charge applied when the tenant does
+    // not return their RFID card at move-out. Sourced from here — never
+    // hardcoded in the clearance controller.
+    // Default: ₱1,000. Range: ₱500–₱3,000.
+    rfidReplacementCharge: {
+      type: Number,
+      default: 1000,
+      min: 500,
+      max: 3000,
+    },
+    // Spec §26.4: Committed processing period for deposit refunds after
+    // clearance approval. Displayed on the tenant's portal so they know
+    // when to expect their refund. Default: 30 days. Range: 1–90 days.
+    depositRefundProcessingDays: {
+      type: Number,
+      default: 30,
+      min: 1,
+      max: 90,
+    },
     longTermLeaseMinMonths: {
       type: Number,
       default: BUSINESS.LONG_TERM_LEASE_MIN_MONTHS || 6,

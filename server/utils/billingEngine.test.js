@@ -81,15 +81,18 @@ describe("computeBilling - strict segmented mode", () => {
       },
     ];
 
-    expect(() =>
-      computeBilling({
-        utilityPeriod,
-        readings,
-        reservations: [],
-        tenantEvents: [],
-        forceSegmented: true,
-      }),
-    ).toThrow(/no active tenants/i);
+    // Plan 1 (D1): Zero-occupancy with consumption is now routed to overheadSegments
+    // instead of throwing. No tenant is billed; cost goes to branch overhead.
+    const result = computeBilling({
+      utilityPeriod,
+      readings,
+      reservations: [],
+      tenantEvents: [],
+      forceSegmented: true,
+    });
+    expect(result.tenantSummaries).toHaveLength(0);
+    expect(result.overheadSegments).toHaveLength(1);
+    expect(result.overheadSegments[0].reason).toBe("ZERO_OCCUPANCY_WITH_CONSUMPTION");
   });
 
   test("gracefully attributes vacant/gap segment consumption to active period occupants", () => {

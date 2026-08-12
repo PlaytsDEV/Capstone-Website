@@ -226,7 +226,9 @@ const billSchema = new mongoose.Schema(
     // Use syncBillAmounts() which reconciles all dimensions and updates this cache.
     status: {
       type: String,
-      enum: ["draft", "pending", "paid", "overdue", "partially-paid", "voided"],
+      // "waived"   — bill amount or penalty was cancelled by admin approval (Spec §15)
+      // "adjusted" — bill amount was changed by admin with a recorded reason (Spec §15)
+      enum: ["draft", "pending", "paid", "overdue", "partially-paid", "voided", "waived", "adjusted"],
       default: "pending",
       index: true,
     },
@@ -259,6 +261,52 @@ const billSchema = new mongoose.Schema(
       type: String,
       enum: ["current", "overdue"],
       default: "current",
+    },
+
+    /**
+     * Dispute state (Spec §20 — Billing Dispute Engine)
+     * Updated by the BillingDispute controller when a dispute is opened/resolved.
+     * When "disputed": late fee accumulation is FROZEN and overdue notices are PAUSED.
+     */
+    disputeState: {
+      type: String,
+      enum: [
+        "none",       // No active dispute
+        "disputed",   // Active dispute open — fees frozen, notices paused
+        "upheld",     // Dispute resolved in tenant's favour — bill was adjusted
+        "rejected",   // Dispute rejected — original bill stands, fees resume
+      ],
+      default: "none",
+      index: true,
+    },
+    // Reference to the active BillingDispute document (null when disputeState = "none").
+    activeDisputeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "BillingDispute",
+      default: null,
+    },
+
+    // --- Overdue Notice Tracking (Spec §21 — 3-Notice State Machine) ---
+    // Denormalized counter: updated by the notice controller after each issuance.
+    // Range: 0 (no notices sent) to 3 (all three notices sent).
+    // When overdueNoticeCount reaches 3, the next admin action must be a
+    // TerminationReview — no further notices can be issued.
+    overdueNoticeCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 3,
+    },
+    // Set when the bill's 3-notice process has been referred to a TerminationReview.
+    // After this is set, no further notices can be issued on this bill.
+    overdueEscalatedAt: {
+      type: Date,
+      default: null,
+    },
+    overdueEscalatedToReviewId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "TerminationReview",
+      default: null,
     },
 
     // --- Milestone & Sub-Invoice Extensions ---
@@ -314,6 +362,47 @@ const billSchema = new mongoose.Schema(
     isManuallyAdjusted: {
       type: Boolean,
       default: false,
+      // When true, at least one entry must exist in adjustmentHistory[].
+      // Never write to this field alone — always append to adjustmentHistory first.
+    },
+
+    // --- Adjustment Audit Log (Spec §15) ---
+    // Append-only. Every manual change to this bill's amount, status, or charges
+    // must add an entry here. Never overwrite or delete entries.
+    adjustmentHistory: {
+      type: [
+        new mongoose.Schema(
+          {
+            originalAmount:   { type: Number, required: true },
+            adjustedAmount:   { type: Number, required: true },
+            adjustedBy:       { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+            adjustedAt:       { type: Date, default: Date.now, required: true },
+            adjustmentReason: { type: String, required: true, trim: true, minlength: 1 },
+            changeType: {
+              type: String,
+              enum: ["manual_adjustment", "waiver", "correction", "admin_override"],
+              required: true,
+            },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
+
+    // --- Month-to-Month Flag (Spec §24.5, P4-04) ---
+    // True when this bill is generated after the lease has expired and the
+    // tenant is continuing month-to-month under explicit admin approval.
+    isMonthToMonth: {
+      type: Boolean,
+      default: false,
+    },
+    monthToMonthApprovalRef: {
+      // ObjectId of the Stay document whose monthToMonthApprovedAt confirms
+      // this bill's legal basis. Populated when isMonthToMonth is true.
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Stay",
+      default: null,
     },
     sentAt: {
       type: Date,
@@ -405,10 +494,16 @@ const billSchema = new mongoose.Schema(
 
     // --- Penalty Details ---
     penaltyDetails: {
-      daysLate: { type: Number, default: 0 },
-      // No default — always written explicitly when a penalty is applied.
+      daysLate:  { type: Number, default: 0 },
       ratePerDay: { type: Number, default: null },
-      appliedAt: { type: Date, default: null },
+      appliedAt:  { type: Date, default: null },
+
+      // Waiver audit fields (Spec §15) — populated only when a penalty is waived.
+      // waivedBy and waiverReason are required whenever waivedAt is set.
+      originalPenaltyAmount: { type: Number, default: null }, // penalty total before waiver
+      waivedBy:     { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+      waivedAt:     { type: Date, default: null },
+      waiverReason: { type: String, default: null, trim: true },
     },
 
     // --- Bill Type ---

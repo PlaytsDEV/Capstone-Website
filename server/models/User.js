@@ -242,7 +242,19 @@ const userSchema = new mongoose.Schema(
     // --- Account Status ---
     accountStatus: {
       type: String,
-      enum: ["active", "suspended", "banned", "pending_verification"],
+      enum: [
+        "active",
+        "suspended",
+        "banned",
+        "pending_verification",
+        // Post move-out statuses (Spec §26.4) — account is NEVER deleted.
+        // former_tenant: Move-out complete; read-only portal access retained.
+        // temporarily_inactive: Suspended for a recorded reason (e.g. pending investigation).
+        // deactivated: Access fully removed; records retained for history.
+        "former_tenant",
+        "temporarily_inactive",
+        "deactivated",
+      ],
       default: "active",
       index: true,
       // Lifecycle:
@@ -250,6 +262,9 @@ const userSchema = new mongoose.Schema(
       // - "suspended": temporarily disabled by admin
       // - "banned": permanently disabled by admin
       // - "pending_verification": awaiting email verification
+      // - "former_tenant": move-out complete; read-only access
+      // - "temporarily_inactive": suspended pending resolution
+      // - "deactivated": all access removed; records kept
     },
     statusChangedAt: {
       type: Date,

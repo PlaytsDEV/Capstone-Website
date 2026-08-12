@@ -13,6 +13,9 @@ export const PAYMENT_METHODS = Object.freeze([
   "grab_pay",
   "maya",
   "online",
+  // Plan 3 (D5): Offline payment methods for admin-recorded cash settlements
+  "offline_cash",          // Branch staff records a cash payment manually
+  "offline_bank_transfer", // Branch staff records a bank transfer payment manually
 ]);
 
 export const PROHIBITED_CASH_PAYMENT_METHODS = Object.freeze([

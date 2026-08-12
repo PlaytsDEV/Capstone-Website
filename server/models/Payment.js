@@ -184,6 +184,25 @@ const paymentSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+
+    // --- Plan 3 (D5): Audit Ledger Snapshot ---
+    // Captures the bill balance immediately before and after this payment.
+    // balanceAfter is always ₱0.00 for full settlements (exact payment only).
+    // recordedBy is "system" for PayMongo webhook settlements, or adminId for
+    // manually recorded offline (cash / bank transfer) payments.
+    balanceBefore: {
+      type: Number,
+      default: null,
+    },
+    balanceAfter: {
+      type: Number,
+      default: null,
+    },
+    recordedBy: {
+      type: String,
+      default: "system", // "system" | adminId string
+      index: true,
+    },
   },
   {
     timestamps: true,

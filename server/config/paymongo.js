@@ -24,6 +24,8 @@ function getAuthHeader() {
   return "Basic " + Buffer.from(`${key}:`).toString("base64");
 }
 
+const mockCheckoutSessions = new Map();
+
 /**
  * Create a PayMongo Checkout Session.
  *
@@ -43,6 +45,37 @@ export async function createCheckoutSession({
   cancelUrl,
   idempotencyKey = null,
 }) {
+  if (!process.env.PAYMONGO_SECRET_KEY && process.env.NODE_ENV !== "production") {
+    // Encode the metadata into the session ID (base64url) so it survives server restarts.
+    const encodedMeta = Buffer.from(JSON.stringify(metadata)).toString("base64url");
+    const mockSessionId = `cs_test_mock_${encodedMeta}`;
+    const checkoutUrl = successUrl.replace("{id}", mockSessionId);
+    const mockSession = {
+      id: mockSessionId,
+      type: "checkout_session",
+      attributes: {
+        status: "active",
+        checkout_url: checkoutUrl,
+        payments: [
+          {
+            id: `pay_mock_${Date.now()}`,
+            type: "payment",
+            attributes: {
+              status: "paid",
+              amount: Math.round(amount * 100),
+              currency: "PHP",
+              payment_method_type: "gcash",
+              source: { type: "gcash" },
+            },
+          },
+        ],
+        metadata,
+      },
+    };
+    mockCheckoutSessions.set(mockSessionId, mockSession);
+    return { checkoutUrl, sessionId: mockSessionId };
+  }
+
   const response = await fetch(`${PAYMONGO_API}/checkout_sessions`, {
     method: "POST",
     headers: {
@@ -95,12 +128,53 @@ export async function createCheckoutSession({
  * @returns {Object} Full session data from PayMongo
  */
 export async function getCheckoutSession(sessionId) {
+  if (mockCheckoutSessions.has(sessionId)) {
+    return mockCheckoutSessions.get(sessionId);
+  }
+  if (sessionId && String(sessionId).startsWith("cs_test_mock_")) {
+    // Decode metadata embedded in the session ID (survives server restarts).
+    let metadata = {};
+    try {
+      const encodedPart = String(sessionId).slice("cs_test_mock_".length);
+      metadata = JSON.parse(Buffer.from(encodedPart, "base64url").toString("utf8"));
+    } catch {
+      // If decoding fails, proceed with empty metadata (settlement skipped).
+    }
+    return {
+      id: sessionId,
+      type: "checkout_session",
+      attributes: {
+        status: "active",
+        payments: [
+          {
+            id: `pay_mock_${Date.now()}`,
+            type: "payment",
+            attributes: {
+              status: "paid",
+              amount: Number(metadata.amountDue || 0) * 100 || 500000,
+              currency: "PHP",
+              payment_method_type: "gcash",
+              source: { type: "gcash" },
+            },
+          },
+        ],
+        metadata,
+      },
+    };
+  }
+
+  if (!process.env.PAYMONGO_SECRET_KEY) {
+    throw new Error("PAYMONGO_SECRET_KEY is not configured in server environment");
+  }
+
   const response = await fetch(`${PAYMONGO_API}/checkout_sessions/${sessionId}`, {
     headers: { Authorization: getAuthHeader() },
   });
 
   if (!response.ok) {
-    throw new Error("Failed to retrieve checkout session");
+    const errPayload = await response.json().catch(() => null);
+    const detail = errPayload?.errors?.[0]?.detail || `HTTP ${response.status}`;
+    throw new Error(`Failed to retrieve checkout session (${detail})`);
   }
 
   const data = await response.json();

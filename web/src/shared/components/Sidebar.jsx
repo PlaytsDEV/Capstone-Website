@@ -44,30 +44,11 @@ const buildNavSections = (isTenant) => [
       },
     ],
   },
-  {
-    label: "Account",
-    items: [
-      {
-        id: "personal",
-        label: "My Profile",
-        icon: User,
-        path: "/applicant/profile",
-        tab: "personal",
-      },
-      ...(isTenant
-        ? [
-            {
-              id: "billing",
-              label: "My Bills",
-              icon: CreditCard,
-              path: "/applicant/billing",
-            },
-            {
-              id: "maintenance",
-              label: "Maintenance",
-              icon: Wrench,
-              path: "/applicant/maintenance",
-            },
+  ...(isTenant
+    ? [
+        {
+          label: "Community",
+          items: [
             {
               id: "announcements",
               label: "Announcements",
@@ -80,21 +61,19 @@ const buildNavSections = (isTenant) => [
               icon: MessageSquareText,
               path: "/applicant/surveys",
             },
-          ]
-        : []),
+          ],
+        },
+      ]
+    : []),
+  {
+    label: "My Stay",
+    items: [
       {
         id: "reservation",
         label: "My Reservation",
         icon: Bed,
         path: "/applicant/profile",
         tab: "reservation",
-      },
-      {
-        id: "history",
-        label: "My History",
-        icon: History,
-        path: "/applicant/profile",
-        tab: "history",
       },
       ...(isTenant
         ? [
@@ -104,13 +83,48 @@ const buildNavSections = (isTenant) => [
               icon: FileText,
               path: "/applicant/contracts",
             },
+            {
+              id: "maintenance",
+              label: "Maintenance",
+              icon: Wrench,
+              path: "/applicant/maintenance",
+            },
           ]
         : []),
     ],
   },
   {
-    label: "Preferences",
+    label: "Financials",
     items: [
+      ...(isTenant
+        ? [
+            {
+              id: "billing",
+              label: "My Bills",
+              icon: CreditCard,
+              path: "/applicant/billing",
+            },
+          ]
+        : []),
+      {
+        id: "history",
+        label: "My History",
+        icon: History,
+        path: "/applicant/profile",
+        tab: "history",
+      },
+    ],
+  },
+  {
+    label: "Account",
+    items: [
+      {
+        id: "personal",
+        label: "My Profile",
+        icon: User,
+        path: "/applicant/profile",
+        tab: "personal",
+      },
       {
         id: "notifications",
         label: "Notifications",

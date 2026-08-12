@@ -161,11 +161,36 @@ function buildRoomDiagnostic({
     );
   }
   if (missingAnchors.length > 0 && utilityType === "electricity") {
+    // Spec §18.6: A missing boundary reading must produce a "Manual Review Required"
+    // status — not a silent approximation. The system must say so rather than produce
+    // a confident wrong number from a guess.
+    //
+    // We upgrade this from a passive "warning" diagnostic to an active status write.
+    // If the open period is not already flagged, flag it now so it surfaces on the
+    // admin dashboard as blocked rather than indistinguishable from a normal open period.
+    if (openPeriod && openPeriod.status === "open") {
+      try {
+        openPeriod.status = "manual_review_required";
+        openPeriod.manualReviewReason = "missing_move_in_reading";
+        await openPeriod.save();
+        logger.warn(
+          { roomId: openPeriod.roomId, utilityType, missingAnchors },
+          "[UtilityDiagnostics] Period flagged as manual_review_required due to missing move-in reading(s). " +
+            "Admin must supply the reading before this period can be closed. " +
+            "Graceful Proration Fallback will NOT be used silently.",
+        );
+      } catch (flagErr) {
+        // Log but don't crash the diagnostics read — the admin can still see the issue data.
+        logger.error({ err: flagErr }, "[UtilityDiagnostics] Failed to flag period as manual_review_required");
+      }
+    }
+
     addIssue(
       issues,
       "electricity_missing_movein_anchor",
-      "warning",
-      "Missing move-in reading. System will use Graceful Proration Fallback instead of Segment-Based math.",
+      "manual_review_required",
+      "Missing move-in reading. This period has been flagged as Manual Review Required. " +
+        "Supply the missing reading before closing. The system will NOT approximate this value.",
       { reservations: missingAnchors.map((e) => e.reservationId) },
     );
   }

@@ -29,29 +29,39 @@ const MOBILE_BP = 768;
 
 /* ── Navigation structure ───────────────────────────────────────────────── */
 const NAV_SECTIONS = [
- {
- label: "Main",
- items: [{ id: "dashboard", label: "Dashboard", icon: LayoutDashboard }],
- },
- {
- label: "Account",
- items: [
- { id: "personal", label: "Personal Details", icon: User },
- { id: "billing", label: "My Bills", icon: CreditCard },
- { id: "maintenance", label: "Maintenance", icon: Wrench },
- { id: "announcements", label: "Announcements", icon: Megaphone },
- { id: "reservation", label: "My Reservation", icon: Bed },
- { id: "contract", label: "My Contract", icon: FileText },
- { id: "history", label: "My History", icon: History },
- ],
- },
- {
- label: "Preferences",
- items: [
- { id: "notifications", label: "Notifications", icon: Bell },
- { id: "settings", label: "Settings", icon: Settings },
- ],
- },
+  {
+    label: "Main",
+    items: [{ id: "dashboard", label: "Dashboard", icon: LayoutDashboard }],
+  },
+  {
+    label: "Community",
+    items: [
+      { id: "announcements", label: "Announcements", icon: Megaphone },
+    ],
+  },
+  {
+    label: "My Stay",
+    items: [
+      { id: "reservation", label: "My Reservation", icon: Bed },
+      { id: "contract", label: "My Contract", icon: FileText },
+      { id: "maintenance", label: "Maintenance", icon: Wrench },
+    ],
+  },
+  {
+    label: "Financials",
+    items: [
+      { id: "billing", label: "My Bills", icon: CreditCard },
+      { id: "history", label: "My History", icon: History },
+    ],
+  },
+  {
+    label: "Account",
+    items: [
+      { id: "personal", label: "My Profile", icon: User },
+      { id: "notifications", label: "Notifications", icon: Bell },
+      { id: "settings", label: "Settings", icon: Settings },
+    ],
+  },
 ];
 
 /* ── NavButton ──────────────────────────────────────────────────────────── */

@@ -106,6 +106,15 @@ meterReadingSchema.index({ roomId: 1, billingPeriodId: 1 });
 // For branch-scoped queries
 meterReadingSchema.index({ branch: 1, date: -1 });
 
+// Plan 1 (Meter Anomalies): Prevent duplicate readings for the same room at the
+// same timestamp and same event type (e.g., double-click or network retry).
+// Boundary events (meterReplacement, meterRollover) are included in the unique key
+// so they can safely coexist at the same timestamp as a regularBilling event.
+meterReadingSchema.index(
+  { roomId: 1, date: 1, eventType: 1 },
+  { unique: true, name: "unique_room_date_eventType" },
+);
+
 meterReadingSchema.pre("validate", function (next) {
   if (this.eventType) {
     this.eventType = normalizeUtilityEventType(this.eventType);

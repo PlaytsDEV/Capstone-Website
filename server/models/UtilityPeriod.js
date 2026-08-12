@@ -36,6 +36,19 @@ const segmentSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const overheadSegmentSchema = new mongoose.Schema(
+  {
+    segmentIndex: { type: Number },
+    periodLabel: { type: String },
+    startDate: { type: Date },
+    endDate: { type: Date },
+    kwhConsumed: { type: Number },
+    cost: { type: Number },
+    reason: { type: String, default: "ZERO_OCCUPANCY_WITH_CONSUMPTION" },
+  },
+  { _id: false },
+);
+
 const tenantSummarySchema = new mongoose.Schema(
   {
     tenantId: {
@@ -125,12 +138,37 @@ const utilityPeriodSchema = new mongoose.Schema(
     },
     segments: [segmentSchema],
     tenantSummaries: [tenantSummarySchema],
+    // Plan 1 (D1): Branch overhead segments for vacant room consumption
+    overheadSegments: [overheadSegmentSchema],
 
     status: {
       type: String,
-      enum: ["open", "closed", "revised"],
+      // "manual_review_required" — system has detected a data issue (e.g. missing
+      // intermediate meter reading) that prevents confident billing. An admin must
+      // review and resolve before the period can be closed. See Spec §18.6.
+      enum: ["open", "manual_review_required", "closed", "revised"],
       default: "open",
       index: true,
+    },
+
+    // --- Manual Review Fields (Spec §18.6) ---
+    // Populated when status transitions to "manual_review_required".
+    // Cleared (set back to null) when an admin resolves the issue and
+    // transitions the period back to "open" for a retry close.
+    manualReviewReason: {
+      type: String,
+      default: null,
+      // One of: "missing_move_in_reading", "missing_move_out_reading",
+      // "negative_consumption", "segment_date_overlap", "share_reconciliation_failure"
+    },
+    manualReviewResolvedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    manualReviewResolvedAt: {
+      type: Date,
+      default: null,
     },
 
     closedAt: {
@@ -183,5 +221,14 @@ utilityPeriodSchema.index(
   { unique: true, partialFilterExpression: { isArchived: false } },
 );
 utilityPeriodSchema.index({ branch: 1, status: 1 });
+
+// Exported so controllers and services can reference the status list
+// without hard-coding the strings.
+export const UTILITY_PERIOD_STATUSES = Object.freeze([
+  "open",
+  "manual_review_required",
+  "closed",
+  "revised",
+]);
 
 export default mongoose.model("UtilityPeriod", utilityPeriodSchema);
