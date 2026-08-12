@@ -52,6 +52,7 @@ import AnalyticsMonitoringTab from "./AnalyticsMonitoringTab";
 import AnalyticsDemographicsTab from "./AnalyticsDemographicsTab";
 import { SurveyAnalyticsTab } from "./SurveyAnalyticsPage";
 import MarketingSourceReport from "../components/MarketingSourceReport";
+import InquiryPipelineBoard from "../components/InquiryPipelineBoard";
 
 // Inline styles matching system design tokens
 const styles = `
@@ -978,7 +979,8 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
           )}
           {activeTab === "demographics" && <AnalyticsDemographicsTab {...detailSharedProps} />}
           {activeTab === "marketing-roi" && (
-            <div className="pt-2">
+            <div className="pt-2 flex flex-col gap-6">
+              <InquiryPipelineBoard />
               <MarketingSourceReport />
             </div>
           )}

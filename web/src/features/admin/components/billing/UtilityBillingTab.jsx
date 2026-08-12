@@ -1844,8 +1844,8 @@ const UtilityBillingTab = ({
       <div className="grid gap-4 lg:grid-cols-[360px_minmax(0,1fr)] xl:grid-cols-[380px_minmax(0,1fr)] items-start">
         <aside className="rounded-xl border border-border bg-card p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-foreground dark:text-amber-400">
-              <Search size={13} className="shrink-0 text-[color:var(--color-accent,#D4AF37)]" />
+            <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-black dark:text-white">
+              <Search size={13} className="shrink-0 text-black dark:text-white" />
               Room Selection
             </span>
             <span className="text-xs text-muted-foreground">
@@ -2145,8 +2145,8 @@ const UtilityBillingTab = ({
           <section className="rounded-xl border border-border bg-card p-4 flex-1 flex flex-col justify-between">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-foreground dark:text-amber-400">
-                  <History size={13} className="shrink-0 text-[color:var(--color-accent,#D4AF37)]" />
+                <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-black dark:text-white">
+                  <History size={13} className="shrink-0 text-black dark:text-white" />
                   Billing Cycle History
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -2455,8 +2455,8 @@ const UtilityBillingTab = ({
       <section className="rounded-xl border border-border bg-card p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-foreground dark:text-amber-400">
-              <Check size={13} className="shrink-0 text-[color:var(--color-accent,#D4AF37)]" />
+            <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-black dark:text-white">
+              <Check size={13} className="shrink-0 text-black dark:text-white" />
               Tenant Billing & Payments
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -2990,7 +2990,7 @@ const UtilityBillingTab = ({
       <section className="lg:col-span-2 flex max-h-[600px] flex-col rounded-xl border border-border bg-card p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--color-accent,#D4AF37)]">
+            <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-black dark:text-white">
               <Clock3 size={12} className="shrink-0" />
               Billing Timeline
             </p>

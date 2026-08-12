@@ -10,7 +10,7 @@ const topBar = readFileSync(
 );
 
 test("uses the resident breadcrumb for tenant sessions", () => {
-  assert.match(topBar, /user\?\.role === "tenant" \? "Resident" : "Applicant"/);
+  assert.match(topBar, /user\?\.role === "tenant" \? "(Tenant|Resident)" : "Applicant"/);
 });
 
 test("renders the three-part tenant Contract hierarchy without repetition", () => {

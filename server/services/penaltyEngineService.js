@@ -35,7 +35,7 @@ export function evaluateGracePeriod(dueDateInput, evaluationDate = new Date()) {
     return { isPastDue: false, isWithinGracePeriod: false, daysOverdue: 0 };
   }
 
-  const daysOverdue = now.diff(dueDate, "day");
+  const daysOverdue = now.startOf("day").diff(dayjs(dueDateInput).startOf("day"), "day");
 
   // D4: No grace period. Any day past due = isPastDue: true, isWithinGracePeriod: false.
   return {

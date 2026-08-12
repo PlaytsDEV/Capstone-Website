@@ -17,14 +17,14 @@ import dayjs from "dayjs";
 
 describe("Scenario 2: Payment Schedule Shifts, Penalties & Milestone Arrangements", () => {
 
-  it("should evaluate grace period boundaries correctly (1-day buffer)", () => {
+  it("should evaluate grace period boundaries correctly (Plan 4 D4: no grace period)", () => {
     const today = new Date("2026-07-10T12:00:00Z");
-    const dueDateWithinGrace = new Date("2026-07-09T00:00:00Z"); // 1 day ago -> within 1-day grace
-    const dueDatePastGrace = new Date("2026-07-05T00:00:00Z");   // 5 days ago -> past grace
+    const dueDateOneDayPast = new Date("2026-07-09T00:00:00Z"); // 1 day ago -> past due, no grace
+    const dueDatePastGrace = new Date("2026-07-05T00:00:00Z");   // 5 days ago -> past due
 
-    const evalWithin = evaluateGracePeriod(dueDateWithinGrace, today);
-    expect(evalWithin.isWithinGracePeriod).toBe(true);
-    expect(evalWithin.isPastDue).toBe(false);
+    const evalWithin = evaluateGracePeriod(dueDateOneDayPast, today);
+    expect(evalWithin.isWithinGracePeriod).toBe(false);
+    expect(evalWithin.isPastDue).toBe(true);
 
     const evalPast = evaluateGracePeriod(dueDatePastGrace, today);
     expect(evalPast.isWithinGracePeriod).toBe(false);

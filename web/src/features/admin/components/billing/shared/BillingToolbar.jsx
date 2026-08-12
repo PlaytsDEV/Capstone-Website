@@ -28,10 +28,10 @@ export default function BillingToolbar({
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
       <div className="flex min-w-0 items-center gap-2">
-        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[hsl(43_64%_52%/0.15)] text-[color:var(--color-accent,#D4AF37)]">
+        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-slate-100 text-black dark:bg-slate-800 dark:text-white">
           <Zap size={14} className="shrink-0" />
         </span>
-        <span className="text-xs font-bold uppercase tracking-[0.18em] text-[color:var(--color-accent,#D4AF37)]">
+        <span className="text-xs font-bold uppercase tracking-[0.18em] text-black dark:text-white">
           Billing Workspace
         </span>
       </div>
@@ -43,7 +43,7 @@ export default function BillingToolbar({
             <select
               value={branchFilter}
               onChange={(e) => onBranchChange?.(e.target.value)}
-              className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground focus:border-[color:var(--color-accent,#D4AF37)] focus:outline-none dark:bg-muted"
+              className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground focus:border-slate-800 focus:outline-none dark:bg-muted dark:focus:border-slate-200"
               aria-label="Filter billing workspace by branch"
             >
               <option value="">All branches</option>
@@ -81,7 +81,7 @@ export default function BillingToolbar({
                 onClick={() => onTabChange(tab.id)}
                 className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all duration-150 ${
                   isActive
-                    ? "bg-slate-900 text-amber-300 shadow-xs dark:bg-amber-400 dark:text-slate-950"
+                    ? "bg-slate-900 text-white shadow-xs dark:bg-white dark:text-slate-950"
                     : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
                 }`}
               >
@@ -89,7 +89,7 @@ export default function BillingToolbar({
                   size={13}
                   className={
                     isActive
-                      ? "text-[color:var(--color-accent,#D4AF37)] dark:text-slate-950"
+                      ? "text-white dark:text-slate-950"
                       : "text-muted-foreground"
                   }
                 />

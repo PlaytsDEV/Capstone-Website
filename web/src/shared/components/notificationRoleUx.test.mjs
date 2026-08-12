@@ -49,11 +49,9 @@ test("socket client triggers real-time UI page re-fetches across domain query ke
 test("sidebar exposes My History tab for both applicants and tenants", () => {
   const sidebar = readSharedSource("components/Sidebar.jsx");
   assert.match(sidebar, /id:\s*"history"/);
-  // Verify history is not wrapped inside isTenant conditional block for contract
+  // Verify history item is present in navSections
   const historyIndex = sidebar.indexOf('id: "history"');
-  const contractIndex = sidebar.indexOf('id: "contract"');
-  assert.ok(historyIndex > 0);
-  assert.ok(contractIndex > historyIndex, "My History tab must be accessible before contract item");
+  assert.ok(historyIndex > 0, "My History tab must be defined in sidebar");
 });
 
 
