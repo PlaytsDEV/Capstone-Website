@@ -1,28 +1,31 @@
 /**
  * =============================================================================
- * EMAIL SERVICE — RESEND TEMPLATES ONLY
+ * EMAIL SERVICE — HYBRID RESEND TEMPLATE + INLINE HTML, RESEND-ONLY DELIVERY
  * =============================================================================
  *
- * Every function in this file sends through the single authoritative Resend
- * service (server/services/email/resendEmailService.js) using a published
- * Resend Template. There is no HTML built here, no Nodemailer/SMTP, and no
- * SMTP-primary/Resend-fallback logic — Resend's accept/reject response is
- * the only delivery signal. Configure the sender and templates via:
+ * Every function in this file sends through the single authoritative router
+ * (server/services/email/lilycrestEmailService.js). For each email type it
+ * decides, purely from whether RESEND_TEMPLATE_<KEY> is configured, whether
+ * to send a Resend Dashboard Template or pre-rendered inline HTML (see
+ * server/services/email/builders/*.js) — either way, Resend is the only
+ * delivery provider. There is no Nodemailer/SMTP anywhere in this file.
  *
- *   RESEND_API_KEY
- *   RESEND_FROM_EMAIL
- *   RESEND_TEMPLATE_* (see server/services/email/templateRegistry.js)
+ *   RESEND_API_KEY          required
+ *   RESEND_FROM_EMAIL       required
+ *   RESEND_TEMPLATE_*       optional — overrides the inline HTML builder
+ *                           for that one email type when set
  *
  * Firebase Admin is still used elsewhere (emailVerificationController.js,
  * passwordResetController.js) to generate the secure verifyEmail/resetPassword
  * action links — this file only ever receives the finished link and hands it
- * to Resend as a template variable. Firebase is not an email provider.
+ * to Resend as a variable. Firebase is not an email provider.
  *
  * =============================================================================
  */
 
 import crypto from "crypto";
-import { sendTemplateEmail, emailFingerprint } from "../services/email/resendEmailService.js";
+import { sendLilycrestEmail } from "../services/email/lilycrestEmailService.js";
+import { emailFingerprint } from "../services/email/resendEmailService.js";
 
 /**
  * Safe peso formatter — avoids toLocaleString("en-PH") which garbles output
@@ -52,8 +55,7 @@ export const sendInquiryResponseEmail = async ({ to, customerName, inquirySubjec
   if (!cleanTo || !cleanTo.includes("@")) {
     return { success: false, provider: "resend", category: "invalid_recipient", code: "EMAIL_INVALID_RECIPIENT" };
   }
-  return sendTemplateEmail({
-    emailType: "INQUIRY_RESPONSE",
+  return sendLilycrestEmail({
     to: cleanTo,
     templateKey: "INQUIRY_RESPONSE",
     variables: {
@@ -78,8 +80,7 @@ export const sendReservationConfirmedEmail = async ({
   moveInDate,
   checkInDate,
 }) =>
-  sendTemplateEmail({
-    emailType: "RESERVATION_CONFIRMED",
+  sendLilycrestEmail({
     to,
     templateKey: "RESERVATION_CONFIRMED",
     variables: {
@@ -96,8 +97,7 @@ export const sendReservationConfirmedEmail = async ({
 // =============================================================================
 
 export const sendVisitApprovedEmail = async ({ to, tenantName, branchName }) =>
-  sendTemplateEmail({
-    emailType: "VISIT_APPROVED",
+  sendLilycrestEmail({
     to,
     templateKey: "VISIT_APPROVED",
     variables: { TENANT_NAME: tenantName, BRANCH_NAME: branchName },
@@ -159,8 +159,7 @@ export const sendPhysicalVisitStatusEmail = async ({
   status,
 }) => {
   const content = VISIT_STATUS_MAP[status] || VISIT_STATUS_MAP.scheduled;
-  return sendTemplateEmail({
-    emailType: "VISIT_STATUS",
+  return sendLilycrestEmail({
     to,
     templateKey: "VISIT_STATUS",
     variables: {
@@ -184,8 +183,7 @@ export const sendPhysicalVisitStatusEmail = async ({
 // =============================================================================
 
 export const sendDocumentsRejectedEmail = async ({ to, tenantName, rejectionReason, branchName = "Lilycrest" }) =>
-  sendTemplateEmail({
-    emailType: "DOCUMENTS_REJECTED",
+  sendLilycrestEmail({
     to,
     templateKey: "DOCUMENTS_REJECTED",
     variables: { TENANT_NAME: tenantName, REJECTION_REASON: rejectionReason, BRANCH_NAME: branchName },
@@ -212,8 +210,7 @@ export const sendBillGeneratedEmail = async ({
       : normalizedBillType === "initial_payment"
         ? "Initial Payment"
         : normalizedBillType.charAt(0).toUpperCase() + normalizedBillType.slice(1);
-  return sendTemplateEmail({
-    emailType: "BILL_GENERATED",
+  return sendLilycrestEmail({
     to,
     templateKey: "BILL_GENERATED",
     variables: {
@@ -243,8 +240,7 @@ export const sendUtilityChargeAvailableEmail = async ({
   branchName = "Lilycrest",
 }) => {
   const utilityLabel = utilityType === "water" ? "Water" : "Electricity";
-  return sendTemplateEmail({
-    emailType: "UTILITY_CHARGE",
+  return sendLilycrestEmail({
     to,
     templateKey: "UTILITY_CHARGE",
     variables: {
@@ -272,8 +268,7 @@ export const sendPaymentReminderEmail = async ({
   billType = "Bill",
   branchName = "Lilycrest",
 }) =>
-  sendTemplateEmail({
-    emailType: "PAYMENT_REMINDER",
+  sendLilycrestEmail({
     to,
     templateKey: "PAYMENT_REMINDER",
     variables: {
@@ -303,8 +298,7 @@ export const sendOverdueNoticeEmail = async ({
   noticeVariant = "overdue",
   branchName = "Lilycrest",
 }) =>
-  sendTemplateEmail({
-    emailType: "OVERDUE_NOTICE",
+  sendLilycrestEmail({
     to,
     templateKey: "OVERDUE_NOTICE",
     variables: {
@@ -326,8 +320,7 @@ export const sendOverdueNoticeEmail = async ({
 // =============================================================================
 
 export const sendPaymentApprovedEmail = async ({ to, tenantName, billingMonth, paidAmount, branchName = "Lilycrest" }) =>
-  sendTemplateEmail({
-    emailType: "PAYMENT_APPROVED",
+  sendLilycrestEmail({
     to,
     templateKey: "PAYMENT_APPROVED",
     variables: {
@@ -343,8 +336,7 @@ export const sendPaymentApprovedEmail = async ({ to, tenantName, billingMonth, p
 // =============================================================================
 
 export const sendPaymentRejectedEmail = async ({ to, tenantName, billingMonth, rejectionReason, branchName = "Lilycrest" }) =>
-  sendTemplateEmail({
-    emailType: "PAYMENT_REJECTED",
+  sendLilycrestEmail({
     to,
     templateKey: "PAYMENT_REJECTED",
     variables: {
@@ -380,8 +372,7 @@ export const sendPaymentReceiptEmail = async ({
   roomName,
   branch,
 }) =>
-  sendTemplateEmail({
-    emailType: "PAYMENT_RECEIPT",
+  sendLilycrestEmail({
     to,
     templateKey: "PAYMENT_RECEIPT",
     idempotencyKey: paymentReceiptIdempotencyKey(referenceId),
@@ -411,8 +402,7 @@ const verificationEmailIdempotencyKey = (to, verificationLink) =>
   crypto.createHash("sha256").update(`email-verification:${to}:${verificationLink}`).digest("hex");
 
 export const sendEmailVerificationLinkEmail = async ({ to, name, verificationLink }) =>
-  sendTemplateEmail({
-    emailType: "EMAIL_VERIFICATION",
+  sendLilycrestEmail({
     to,
     templateKey: "EMAIL_VERIFICATION",
     idempotencyKey: verificationEmailIdempotencyKey(to, verificationLink),
@@ -430,8 +420,7 @@ const passwordResetEmailIdempotencyKey = (to, resetLink) =>
   crypto.createHash("sha256").update(`password-reset:${to}:${resetLink}`).digest("hex");
 
 export const sendPasswordResetLinkEmail = async ({ to, name, resetLink }) =>
-  sendTemplateEmail({
-    emailType: "PASSWORD_RESET",
+  sendLilycrestEmail({
     to,
     templateKey: "PASSWORD_RESET",
     idempotencyKey: passwordResetEmailIdempotencyKey(to, resetLink),
@@ -446,8 +435,7 @@ export const sendPasswordResetLinkEmail = async ({ to, name, resetLink }) =>
 // =============================================================================
 
 export const sendLoginOtpEmail = async ({ to, name, otp, expiresInMinutes = 10 }) =>
-  sendTemplateEmail({
-    emailType: "LOGIN_OTP",
+  sendLilycrestEmail({
     to,
     templateKey: "LOGIN_OTP",
     variables: {

@@ -1,10 +1,16 @@
 /**
- * Central registry mapping every active Lilycrest email to its published
- * Resend Template. One key per email that is meaningfully distinct in
- * business purpose — not one giant generic template, and not a new
- * template per near-duplicate variant (e.g. every physical-visit status
- * change shares VISIT_STATUS; the differentiating copy is passed as
- * variables, same as the pre-migration single-function/multi-status design).
+ * Central registry mapping every active Lilycrest email to its OPTIONAL
+ * published Resend Template override. One key per email that is
+ * meaningfully distinct in business purpose — not one giant generic
+ * template, and not a new template per near-duplicate variant (e.g. every
+ * physical-visit status change shares VISIT_STATUS; the differentiating
+ * copy is passed as variables).
+ *
+ * None of these env vars are required: every key here also has a matching
+ * inline HTML builder in emailRegistry.js that server/services/email/
+ * lilycrestEmailService.js uses whenever the template ID below is unset.
+ * Setting one here only overrides that one email type onto a Resend
+ * Dashboard Template instead.
  *
  * Each template ID is resolved from an env var at call time (not cached at
  * import time) so tests and ops tooling can change it without a process

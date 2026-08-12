@@ -1,10 +1,16 @@
 /**
- * The one authoritative backend email service. Every active user-facing
- * Lilycrest email — auth and transactional, web and mobile — sends through
- * `sendTemplateEmail()` below, which calls `resend.emails.send()` with a
- * published Resend Template ID and explicit variables. There is no HTML
- * built here and no SMTP/Nodemailer fallback: Resend's accept/reject
- * response is the only delivery signal.
+ * Low-level Resend dispatch primitives. Two building blocks live here:
+ *
+ *   sendTemplateEmail()   — Path A: resend.emails.send({ template: {...} })
+ *   sendInlineHtmlEmail() — Path B: resend.emails.send({ subject, html })
+ *
+ * Both funnel through the same `dispatch()` (timeout/abort, error
+ * classification, safe logging) so the two paths can never drift in
+ * reliability behavior. Callers never build these payloads directly —
+ * lilycrestEmailService.js's sendLilycrestEmail() decides which path to use
+ * and is the only intended entry point for the rest of the app. There is no
+ * SMTP/Nodemailer fallback anywhere in this file: Resend's accept/reject
+ * response is the only delivery signal for either path.
  */
 import crypto from "crypto";
 import { getResendClient, getResendFromEmail, isResendConfigured } from "./resendClient.js";
@@ -93,52 +99,12 @@ const withTimeout = (promise, ms, onTimeout) =>
   });
 
 /**
- * Sends one email through Resend using a published Resend Template.
- *
- * @param {object} params
- * @param {string} params.emailType     Safe-to-log label, e.g. "PASSWORD_RESET".
- * @param {string|string[]} params.to   Recipient address(es).
- * @param {string} params.templateKey   Key into templateRegistry.js (e.g. "PASSWORD_RESET").
- * @param {object} [params.variables]   Template variables. Only pass values that truly exist.
- * @param {string} [params.from]        Overrides RESEND_FROM_EMAIL for this send.
- * @param {string} [params.replyTo]
- * @param {object[]} [params.tags]
- * @param {string} [params.idempotencyKey] Prevents an accidental duplicate send for the same event.
+ * Sends a fully-built Resend payload (either `{template}` or `{subject,html}`
+ * shaped — the caller decides which, this function never mixes them) through
+ * the shared timeout/abort/classification/logging path.
  */
-export const sendTemplateEmail = async ({
-  emailType,
-  to,
-  templateKey,
-  variables = {},
-  from,
-  replyTo,
-  tags,
-  idempotencyKey,
-}) => {
-  if (!isResendConfigured()) {
-    console.log("[Resend] email not sent — provider not configured", { emailType, templateKey });
-    return { success: false, provider: "resend", category: "configuration", code: "EMAIL_PROVIDER_NOT_CONFIGURED" };
-  }
-
+const dispatch = async ({ emailType, templateKey, to, payload, idempotencyKey }) => {
   const client = getResendClient();
-  const templateId = getTemplateId(templateKey);
-  if (!templateId) {
-    console.error("[Resend] email not sent — template not configured", {
-      emailType,
-      templateKey,
-      envVar: getTemplateEnvKey(templateKey),
-    });
-    return { success: false, provider: "resend", category: "configuration", code: "EMAIL_TEMPLATE_NOT_CONFIGURED" };
-  }
-
-  const payload = {
-    from: from || getResendFromEmail(),
-    to: [].concat(to),
-    template: { id: templateId, variables },
-  };
-  if (replyTo) payload.replyTo = replyTo;
-  if (tags) payload.tags = tags;
-
   const abortController = new AbortController();
   const sendOptions = { signal: abortController.signal };
   if (idempotencyKey) sendOptions.idempotencyKey = idempotencyKey;
@@ -188,6 +154,100 @@ export const sendTemplateEmail = async ({
     });
     return { success: false, provider: "resend", ...classification };
   }
+};
+
+/**
+ * Path A — sends one email through Resend using a published Resend
+ * Template. Never includes `subject`/`html` in the same request.
+ *
+ * @param {object} params
+ * @param {string} params.emailType     Safe-to-log label, e.g. "PASSWORD_RESET".
+ * @param {string|string[]} params.to   Recipient address(es).
+ * @param {string} params.templateKey   Key into templateRegistry.js (e.g. "PASSWORD_RESET").
+ * @param {object} [params.variables]   Template variables. Only pass values that truly exist.
+ * @param {string} [params.from]        Overrides RESEND_FROM_EMAIL for this send.
+ * @param {string} [params.replyTo]
+ * @param {object[]} [params.tags]
+ * @param {string} [params.idempotencyKey] Prevents an accidental duplicate send for the same event.
+ */
+export const sendTemplateEmail = async ({
+  emailType,
+  to,
+  templateKey,
+  variables = {},
+  from,
+  replyTo,
+  tags,
+  idempotencyKey,
+}) => {
+  if (!isResendConfigured()) {
+    console.log("[Resend] email not sent — provider not configured", { emailType, templateKey });
+    return { success: false, provider: "resend", category: "configuration", code: "EMAIL_PROVIDER_NOT_CONFIGURED" };
+  }
+
+  const templateId = getTemplateId(templateKey);
+  if (!templateId) {
+    console.error("[Resend] email not sent — template not configured", {
+      emailType,
+      templateKey,
+      envVar: getTemplateEnvKey(templateKey),
+    });
+    return { success: false, provider: "resend", category: "configuration", code: "EMAIL_TEMPLATE_NOT_CONFIGURED" };
+  }
+
+  const payload = {
+    from: from || getResendFromEmail(),
+    to: [].concat(to),
+    template: { id: templateId, variables },
+  };
+  if (replyTo) payload.replyTo = replyTo;
+  if (tags) payload.tags = tags;
+
+  return dispatch({ emailType, templateKey, to, payload, idempotencyKey });
+};
+
+/**
+ * Path B — sends one email through Resend using pre-rendered inline HTML
+ * (no dashboard template involved). Never includes `template` in the same
+ * request.
+ *
+ * @param {object} params
+ * @param {string} params.emailType
+ * @param {string} [params.templateKey] Safe-to-log label only — no template lookup happens here.
+ * @param {string|string[]} params.to
+ * @param {string} params.subject
+ * @param {string} params.html
+ * @param {string} [params.from]
+ * @param {string} [params.replyTo]
+ * @param {object[]} [params.tags]
+ * @param {string} [params.idempotencyKey]
+ */
+export const sendInlineHtmlEmail = async ({
+  emailType,
+  templateKey,
+  to,
+  subject,
+  html,
+  from,
+  replyTo,
+  tags,
+  idempotencyKey,
+}) => {
+  if (!isResendConfigured()) {
+    console.log("[Resend] email not sent — provider not configured", { emailType, templateKey });
+    return { success: false, provider: "resend", category: "configuration", code: "EMAIL_PROVIDER_NOT_CONFIGURED" };
+  }
+
+  const payload = {
+    from: from || getResendFromEmail(),
+    to: [].concat(to),
+    subject,
+    html,
+  };
+  if (replyTo) payload.replyTo = replyTo;
+  if (tags) payload.tags = tags;
+
+  return dispatch({ emailType, templateKey, to, payload, idempotencyKey });
 };
 
 export default sendTemplateEmail;

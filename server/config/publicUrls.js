@@ -68,12 +68,23 @@ export const getPublicUrlConfig = (environment = process.env) => {
     { production },
   );
 
+  // Stable, non-build-hashed static asset — served directly from
+  // web/public/logo512.png, unlike bundler-hashed files under /assets/*
+  // whose filename changes between builds. Overridable for a rebrand
+  // without a code change.
+  const publicLogoUrl = requireHttpUrl(
+    "PUBLIC_LOGO_URL",
+    environment.PUBLIC_LOGO_URL || (publicFrontendUrl ? `${publicFrontendUrl}/logo512.png` : ""),
+    { production },
+  );
+
   return {
     publicFrontendUrl,
     publicApiUrl,
     emailActionUrl,
     reservationContinuationUrl,
     mobileDeepLinkUrl,
+    publicLogoUrl,
   };
 };
 

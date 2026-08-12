@@ -6,7 +6,7 @@ import {
   getResendCooldownSeconds,
   getSessionTtlSeconds,
 } from "../services/emailVerificationService.js";
-import { TEMPLATE_KEYS, getTemplateEnvKey } from "../services/email/templateRegistry.js";
+import { describeEmailRouting } from "../services/email/emailRegistry.js";
 
 const ENV_GROUPS = Object.freeze({
   mongodb: ["MONGODB_URI"],
@@ -56,17 +56,30 @@ export function validateStartupConfig() {
     failures.push("resend: RESEND_API_KEY and RESEND_FROM_EMAIL are required — Resend is the only email provider");
   }
 
-  // A missing Resend Template ID only breaks the one email type that
-  // references it — sendTemplateEmail() already fails that single send
-  // closed with EMAIL_TEMPLATE_NOT_CONFIGURED. It must not be startup-fatal:
-  // Resend dashboard template creation is an operational step that lags a
-  // code deploy, and crashing the entire server over an unrelated missing
-  // template took down every other feature along with it. Warn instead.
-  const missingTemplates = TEMPLATE_KEYS.filter((key) => !String(process.env[getTemplateEnvKey(key)] || "").trim());
-  if (missingTemplates.length > 0) {
-    logger.warn(
-      { missingResendTemplates: missingTemplates.map((key) => getTemplateEnvKey(key)) },
-      "One or more Resend Template IDs are not configured — the corresponding email type(s) will fail to send until they are set.",
+  // A Resend Dashboard Template ID is an OPTIONAL override, not a system
+  // requirement: every email type has a first-class inline HTML builder
+  // (server/services/email/builders/*.js) it falls back to when no
+  // RESEND_TEMPLATE_<KEY> is set, so an unconfigured template must never be
+  // startup-fatal or read as an alarming warning. This just reports, per
+  // email type, which of the two content paths is currently active — useful
+  // for confirming a dashboard template rollout took effect, not a defect
+  // report. Only a type with NEITHER path available is a real problem.
+  const routing = describeEmailRouting();
+  logger.info(
+    {
+      emailRouting: Object.fromEntries(
+        routing.map(({ templateKey, path }) => [
+          templateKey,
+          path === "resend_template" ? "Resend Template" : path === "inline_html" ? "Inline HTML" : "UNAVAILABLE",
+        ]),
+      ),
+    },
+    "[Email] Resend configured — routing decided per email type",
+  );
+  const unavailable = routing.filter((entry) => entry.path === "unavailable").map((entry) => entry.templateKey);
+  if (unavailable.length > 0) {
+    failures.push(
+      `email: ${unavailable.join(", ")} have neither a configured Resend Template nor an inline HTML builder`,
     );
   }
 

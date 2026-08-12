@@ -1,10 +1,12 @@
 /**
  * LilyCrest Mobile Email Service
  *
- * Thin adapter over the single authoritative Resend service
- * (server/services/email/resendEmailService.js). Mobile controllers are
- * CommonJS, the shared service is ESM, so each call dynamically imports it —
- * this is the only difference from how the web/server side calls it.
+ * Thin adapter over the single authoritative Lilycrest email router
+ * (server/services/email/lilycrestEmailService.js) — the same hybrid
+ * Resend-Dashboard-Template-or-inline-HTML decision the web/server side
+ * uses. Mobile controllers are CommonJS, the shared service is ESM, so each
+ * call dynamically imports it — that's the only difference from how the
+ * web/server side calls it.
  *
  * All public functions keep their pre-migration signatures and non-throwing
  * boolean-return contract so mobile controllers do not need to change.
@@ -16,8 +18,8 @@ function emailFingerprint(value) {
   return crypto.createHash('sha256').update(String(value || '').trim().toLowerCase()).digest('hex').slice(0, 12);
 }
 
-async function loadResendEmailService() {
-  return import('../../services/email/resendEmailService.js');
+async function loadLilycrestEmailService() {
+  return import('../../services/email/lilycrestEmailService.js');
 }
 
 // ─── PASSWORD CHANGED EMAIL ─────────────────────────────────────────────────
@@ -31,12 +33,11 @@ async function loadResendEmailService() {
  * @returns {Promise<boolean>}
  */
 async function sendPasswordChangedEmail(toEmail, userName = 'Tenant', ip = 'Unknown') {
-  const { sendTemplateEmail } = await loadResendEmailService();
+  const { sendLilycrestEmail } = await loadLilycrestEmailService();
   const now = new Date();
   const timestamp = now.toLocaleString('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'long', timeStyle: 'short' });
 
-  const result = await sendTemplateEmail({
-    emailType: 'MOBILE_PASSWORD_CHANGED',
+  const result = await sendLilycrestEmail({
     to: toEmail,
     templateKey: 'PASSWORD_CHANGED',
     variables: {
@@ -64,9 +65,8 @@ async function sendPasswordChangedEmail(toEmail, userName = 'Tenant', ip = 'Unkn
  * @returns {Promise<boolean>}
  */
 async function sendLoginOtpEmail(toEmail, userName = 'Tenant', otpCode) {
-  const { sendTemplateEmail } = await loadResendEmailService();
-  const result = await sendTemplateEmail({
-    emailType: 'MOBILE_LOGIN_OTP',
+  const { sendLilycrestEmail } = await loadLilycrestEmailService();
+  const result = await sendLilycrestEmail({
     to: toEmail,
     templateKey: 'LOGIN_OTP',
     variables: {
@@ -94,7 +94,7 @@ async function sendLoginOtpEmail(toEmail, userName = 'Tenant', otpCode) {
  * @returns {Promise<boolean>}
  */
 async function sendPaymentReceiptEmail(toEmail, userName = 'Tenant', receipt = {}) {
-  const { sendTemplateEmail } = await loadResendEmailService();
+  const { sendLilycrestEmail } = await loadLilycrestEmailService();
 
   const billingId = receipt.billingId || 'N/A';
   const description = receipt.description || `Bill ${billingId}`;
@@ -114,8 +114,7 @@ async function sendPaymentReceiptEmail(toEmail, userName = 'Tenant', receipt = {
     ? crypto.createHash('sha256').update(`payment-receipt:${referenceNumber}`).digest('hex')
     : undefined;
 
-  const result = await sendTemplateEmail({
-    emailType: 'MOBILE_PAYMENT_RECEIPT',
+  const result = await sendLilycrestEmail({
     to: toEmail,
     templateKey: 'PAYMENT_RECEIPT',
     idempotencyKey,
@@ -152,9 +151,8 @@ async function sendPaymentReceiptEmail(toEmail, userName = 'Tenant', receipt = {
  * @returns {Promise<boolean>}
  */
 async function sendPasswordResetEmail(toEmail, userName = 'Tenant', resetLink) {
-  const { sendTemplateEmail } = await loadResendEmailService();
-  const result = await sendTemplateEmail({
-    emailType: 'MOBILE_PASSWORD_RESET',
+  const { sendLilycrestEmail } = await loadLilycrestEmailService();
+  const result = await sendLilycrestEmail({
     to: toEmail,
     templateKey: 'PASSWORD_RESET',
     variables: {

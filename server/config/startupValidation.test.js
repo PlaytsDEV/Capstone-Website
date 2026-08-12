@@ -58,21 +58,34 @@ describe("production startup validation", () => {
     expect(() => validateStartupConfig()).toThrow(/RESEND_API_KEY and RESEND_FROM_EMAIL are required/);
   });
 
-  test("a missing Resend template ID does not crash the server — it only warns, so unrelated features keep working", () => {
-    const warnSpy = jest.spyOn(logger, "warn").mockImplementation(() => {});
+  test("a missing Resend template ID does not crash the server — every email type has an inline HTML fallback", () => {
+    const infoSpy = jest.spyOn(logger, "info").mockImplementation(() => {});
     delete process.env.RESEND_TEMPLATE_PASSWORD_RESET;
     expect(() => validateStartupConfig()).not.toThrow();
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ missingResendTemplates: expect.arrayContaining(["RESEND_TEMPLATE_PASSWORD_RESET"]) }),
-      expect.stringContaining("Resend Template"),
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ emailRouting: expect.objectContaining({ PASSWORD_RESET: "Inline HTML" }) }),
+      expect.stringContaining("[Email]"),
     );
-    warnSpy.mockRestore();
+    infoSpy.mockRestore();
   });
 
-  test("every template missing still does not crash the server", () => {
-    const warnSpy = jest.spyOn(logger, "warn").mockImplementation(() => {});
+  test("every template missing still does not crash the server, and every type still resolves to Inline HTML", () => {
+    const infoSpy = jest.spyOn(logger, "info").mockImplementation(() => {});
     for (const key of TEMPLATE_KEYS) delete process.env[getTemplateEnvKey(key)];
     expect(() => validateStartupConfig()).not.toThrow();
-    warnSpy.mockRestore();
+    const [[loggedPayload]] = infoSpy.mock.calls.slice(-1);
+    expect(Object.values(loggedPayload.emailRouting)).not.toContain("UNAVAILABLE");
+    expect(Object.values(loggedPayload.emailRouting).every((v) => v === "Inline HTML")).toBe(true);
+    infoSpy.mockRestore();
+  });
+
+  test("a configured template ID is reported as routing via Resend Template, not Inline HTML", () => {
+    const infoSpy = jest.spyOn(logger, "info").mockImplementation(() => {});
+    expect(() => validateStartupConfig()).not.toThrow();
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ emailRouting: expect.objectContaining({ PASSWORD_RESET: "Resend Template" }) }),
+      expect.anything(),
+    );
+    infoSpy.mockRestore();
   });
 });
