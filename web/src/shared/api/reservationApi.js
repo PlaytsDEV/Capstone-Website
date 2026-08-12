@@ -432,4 +432,19 @@ export const reservationApi = {
       `/reservations/${reservationId}/payment-proof/${paymentId}/reject`,
       { method: "POST", body: JSON.stringify(data) },
     ),
+
+  // ── Checkout Lock (P2-01) ──
+  acquireBedLock: (roomId, bedId) =>
+    authFetch("/reservations/checkout-lock", {
+      method: "POST",
+      body: JSON.stringify({ roomId, bedId }),
+    }),
+
+  releaseBedLock: (lockId) =>
+    authFetch(`/reservations/checkout-lock/${lockId}`, { method: "DELETE" }),
+
+  approveExpiredOccupancyMonthToMonth: (stayId) =>
+    authFetch(`/reservations/expired-occupancy/${stayId}/approve-month-to-month`, {
+      method: "POST",
+    }),
 };

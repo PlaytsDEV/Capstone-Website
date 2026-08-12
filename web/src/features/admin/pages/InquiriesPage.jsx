@@ -23,6 +23,8 @@ import { showNotification } from "../../../shared/utils/notification";
 import { useInquiries } from "../../../shared/hooks/queries/useInquiries";
 import { ListSkeleton } from "../../../shared/components/LoadingSkeletons";
 import InquiryDetailsModal from "../components/InquiryDetailsModal";
+import InquiryPipelineBoard from "../components/InquiryPipelineBoard";
+import MarketingSourceReport from "../components/MarketingSourceReport";
 
 const getAvatarColor = (initials = "") => {
   const colors = [
@@ -64,6 +66,7 @@ function InquiriesPage({ isEmbedded = false }) {
     location.state?.fromDashboard || window.history.state?.idx > 0
   );
   const [selectedInquiry, setSelectedInquiry] = useState(null);
+  const [viewMode, setViewMode] = useState("list");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [branchFilter, setBranchFilter] = useState("");
@@ -134,18 +137,45 @@ function InquiriesPage({ isEmbedded = false }) {
             )}
             <div>
               <h1 className="text-2xl font-bold tracking-tight text-foreground">
-                Recent Inquiries
+                Inquiries & Lead Acquisition
               </h1>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Review, filter, and respond to applicant & tenant inquiries.
+                Review, filter, and respond to applicant & tenant inquiries across acquisition channels.
               </p>
             </div>
           </div>
         )}
 
-        <div className="flex flex-col gap-4 mb-6">
+        {/* View Mode Switcher */}
+        <div className="flex gap-2 border-b border-border pb-3 mb-4">
+          <button
+            type="button"
+            onClick={() => setViewMode("list")}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-md border transition-colors cursor-pointer ${
+              viewMode === "list"
+                ? "bg-slate-900 text-white border-slate-900 shadow-xs"
+                : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
+            }`}
+          >
+            Inquiries List
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("kanban")}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-md border transition-colors cursor-pointer ${
+              viewMode === "kanban"
+                ? "bg-slate-900 text-white border-slate-900 shadow-xs"
+                : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
+            }`}
+          >
+            Kanban Pipeline
+          </button>
+        </div>
 
-          <div className="flex flex-col md:flex-row gap-4">
+        {viewMode === "kanban" && <InquiryPipelineBoard />}
+        {viewMode === "list" && (
+          <div className="flex flex-col gap-4 mb-6">
+            <div className="flex flex-col md:flex-row gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input
@@ -395,6 +425,7 @@ function InquiriesPage({ isEmbedded = false }) {
             </div>
           )}
         </div>
+        )}
       </PageShell.Content>
 
       {selectedInquiry && (

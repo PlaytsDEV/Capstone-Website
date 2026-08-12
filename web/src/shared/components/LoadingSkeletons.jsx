@@ -46,3 +46,26 @@ export function DrawerSkeleton({ rows = 5, className = "", style }) {
 export function PageSkeleton() {
   return <InlineSpinner style={{ minHeight: 300, ...style }} />;
 }
+
+export function InquiryPipelineSkeleton() {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px", padding: "16px" }}>
+      <CardSkeleton height={280} />
+      <CardSkeleton height={280} />
+      <CardSkeleton height={280} />
+    </div>
+  );
+}
+
+export function MoveOutClearanceSkeleton() {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "12px", padding: "16px" }}>
+      <CardSkeleton height={140} />
+      <CardSkeleton height={200} />
+    </div>
+  );
+}
+
+export function DisputeModalSkeleton() {
+  return <InlineSpinner style={{ minHeight: 220 }} />;
+}

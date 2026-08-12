@@ -1,4 +1,4 @@
-import { CreditCard, Droplets, Zap, Home } from "lucide-react";
+import { CreditCard, Droplets, Zap, Home, AlertTriangle, ShieldAlert } from "lucide-react";
 
 const UTILITY_BRANCHES = [
   { value: "gil-puyat", label: "Gil Puyat" },
@@ -10,6 +10,8 @@ const TABS = [
   { id: "water",                label: "Water",                icon: Droplets },
   { id: "rent",                 label: "Rent",                 icon: Home },
   { id: "reservation-payments", label: "Reservation Payments", icon: CreditCard },
+  { id: "overdue-notices",      label: "Overdue Notices",      icon: AlertTriangle },
+  { id: "violations",           label: "Violations & Log",      icon: ShieldAlert },
 ];
 
 export default function BillingToolbar({

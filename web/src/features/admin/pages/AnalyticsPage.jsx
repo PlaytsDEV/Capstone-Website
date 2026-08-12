@@ -16,6 +16,7 @@ import {
   ClipboardList,
   Users,
   PanelsTopLeft,
+  Target,
 } from "lucide-react";
 import { useAuth } from "../../../shared/hooks/useAuth";
 import { usePermissions } from "../../../shared/hooks/usePermissions";
@@ -50,6 +51,7 @@ import AnalyticsFinancialsTab from "./AnalyticsFinancialsTab";
 import AnalyticsMonitoringTab from "./AnalyticsMonitoringTab";
 import AnalyticsDemographicsTab from "./AnalyticsDemographicsTab";
 import { SurveyAnalyticsTab } from "./SurveyAnalyticsPage";
+import MarketingSourceReport from "../components/MarketingSourceReport";
 
 // Inline styles matching system design tokens
 const styles = `
@@ -707,6 +709,13 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
             <Users className="analytics-tab-icon" />
             Demographics
           </button>
+          <button
+            className={`analytics-tab ${activeTab === "marketing-roi" ? "active" : ""}`}
+            onClick={() => handleTabChange("marketing-roi")}
+          >
+            <Target className="analytics-tab-icon" />
+            Marketing ROI
+          </button>
           {canViewSurveyAnalytics && (
             <button
               className={`analytics-tab ${activeTab === "surveys" || activeTab === "feedback-surveys" ? "active" : ""}`}
@@ -968,6 +977,11 @@ function AnalyticsFinalLayout({ clearLegacyOverview = false }) {
             <AnalyticsOperationsTab {...detailSharedProps} />
           )}
           {activeTab === "demographics" && <AnalyticsDemographicsTab {...detailSharedProps} />}
+          {activeTab === "marketing-roi" && (
+            <div className="pt-2">
+              <MarketingSourceReport />
+            </div>
+          )}
           {(activeTab === "surveys" || activeTab === "feedback-surveys") && (
             <SurveyAnalyticsTab />
           )}

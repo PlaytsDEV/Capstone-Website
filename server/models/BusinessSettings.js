@@ -123,16 +123,7 @@ const businessSettingsSchema = new mongoose.Schema(
       min: 5,
       max: 120,
     },
-    // Spec §11.3: Hours a waitlisted tenant has to respond to a lower-bed offer.
-    // If the deadline passes with no response, the offer expires automatically
-    // and the tenant stays in the waitlist queue for the next available bed.
-    // Default: 48 hours. Range: 12–168 hours (half-day to one week).
-    waitlistOfferDeadlineHours: {
-      type: Number,
-      default: 48,
-      min: 12,
-      max: 168,
-    },
+
     // Spec §24.2: Minimum calendar days of advance notice required before a
     // rent increase takes effect. Validated against LeaseRenewal.effectiveFrom.
     // Default: 30 days. Range: 7–60 days.

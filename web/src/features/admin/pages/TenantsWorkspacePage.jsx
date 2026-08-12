@@ -30,6 +30,8 @@ import {
   RenewLeaseModal,
   TransferTenantModal,
 } from "../components/TenantWorkspaceModals";
+import ExpiredOccupancyAlert from "../components/ExpiredOccupancyAlert";
+import MoveOutClearanceCalculator from "../components/MoveOutClearanceCalculator";
 import { formatBranch } from "../utils/formatters";
 import {
   getTenantActionMeta,
@@ -654,6 +656,12 @@ export default function TenantsWorkspacePage() {
         [isOwner],
     );
 
+    const expiredStays = useMemo(() => {
+      return (workspaceRows || []).filter(
+        (row) => row.stayStatus === "expired_occupancy_continuing" || row.isExpiredOccupancy
+      );
+    }, [workspaceRows]);
+
     return (
       <div className="space-y-6">
         <div>
@@ -665,6 +673,13 @@ export default function TenantsWorkspacePage() {
             visibility in one workspace.
           </p>
         </div>
+
+        {expiredStays.length > 0 && (
+          <ExpiredOccupancyAlert
+            expiredStays={expiredStays}
+            onApproved={() => invalidateWorkspace()}
+          />
+        )}
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-[var(--card)] border border-[var(--border-light)] rounded-lg p-4">

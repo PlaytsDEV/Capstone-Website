@@ -216,4 +216,55 @@ export const billingApi = {
 
   getPriorityQueue: () =>
     authFetch("/billing/priority-queue"),
+
+  // ── Billing Dispute Engine (P3-03) ──
+  submitDispute: (billId, payload) =>
+    authFetch(`/billing/${billId}/dispute`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  getDisputes: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return authFetch(`/billing/disputes${query ? `?${query}` : ""}`);
+  },
+
+  resolveDispute: (disputeId, payload) =>
+    authFetch(`/billing/disputes/${disputeId}/resolve`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  // ── Overdue 3-Notice Machine & Case Review (P3-01, P3-02) ──
+  getOverdueNotices: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return authFetch(`/billing/overdue-notices${query ? `?${query}` : ""}`);
+  },
+
+  sendOverdueNotice: (billId, noticeType) =>
+    authFetch(`/billing/${billId}/send-overdue-notice`, {
+      method: "POST",
+      body: JSON.stringify({ noticeType }),
+    }),
+
+  getTerminationCases: () =>
+    authFetch("/billing/termination-reviews"),
+
+  createTerminationCase: (payload) =>
+    authFetch("/billing/termination-reviews", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  // ── Tenant Violation & Warning Log (P4-01) ──
+  getViolations: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return authFetch(`/billing/violations${query ? `?${query}` : ""}`);
+  },
+
+  logViolation: (payload) =>
+    authFetch("/billing/violations", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
 };

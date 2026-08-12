@@ -32,6 +32,7 @@ import {
   isPhysicalVisitPreference,
 } from "../utils/physicalVisitFlow";
 import { fmtShortDate, APP_LOCALE } from "../../../shared/utils/dateFormat";
+import CheckoutLockBanner from "./CheckoutLockBanner";
 
 const getReservationStatus = (reservation) =>
   reservation?.reservationStatus || reservation?.status || "pending";
@@ -563,6 +564,14 @@ export default function ReservationDashboard({
 
   return (
     <div style={styles.card}>
+      {/* ── Checkout Lock Banner ── */}
+      {getReservationStatus(reservation) === "payment_pending" && (
+        <CheckoutLockBanner
+          roomId={roomName}
+          bedId={reservation.bedId || "1"}
+        />
+      )}
+
       {/* ── Header — full width ──────────────────────────────────────────── */}
       <div style={styles.header}>
         <div>

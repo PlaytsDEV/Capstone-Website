@@ -41,8 +41,6 @@ import Stay from "./Stay.js";
 import Contract from "./Contract.js";
 import ContractCounter from "./ContractCounter.js";
 import BedCheckoutLock from "./BedCheckoutLock.js";
-import BedWaitlist from "./BedWaitlist.js";
-import WaitlistOffer from "./WaitlistOffer.js";
 
 // 3. Reservations & Visit Domain
 import Reservation from "./Reservation.js";
@@ -142,8 +140,6 @@ export {
   Contract,
   ContractCounter,
   BedCheckoutLock,
-  BedWaitlist,
-  WaitlistOffer,
   BackupConfig,
   BackupRecord,
   ServiceProvider,
@@ -268,8 +264,6 @@ export default {
   BackupRecord,
   ServiceProvider,
   BedCheckoutLock,
-  BedWaitlist,
-  WaitlistOffer,
   OverdueNotice,
   TerminationReview,
   BillingDispute,

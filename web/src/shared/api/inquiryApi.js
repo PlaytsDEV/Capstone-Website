@@ -56,4 +56,35 @@ export const inquiryApi = {
       method: "PUT",
       body: JSON.stringify({ response }),
     }),
+
+  /**
+   * Get Kanban board categorized by status (admin only)
+   */
+  getKanbanBoard: (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return authFetch(`/inquiries/kanban${queryString ? `?${queryString}` : ""}`);
+  },
+
+  /**
+   * Schedule viewing for inquiry (admin only)
+   */
+  scheduleViewing: (inquiryId, viewingData) =>
+    authFetch(`/inquiries/${inquiryId}/viewing`, {
+      method: "POST",
+      body: JSON.stringify(viewingData),
+    }),
+
+  /**
+   * 1-Click convert inquiry to tenant application (admin only)
+   */
+  convertToApplication: (inquiryId, payload = {}) =>
+    authFetch(`/inquiries/${inquiryId}/convert`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+
+  /**
+   * Get Marketing Source ROI Report (admin only)
+   */
+  getMarketingRoi: () => authFetch("/inquiries/marketing-roi"),
 };

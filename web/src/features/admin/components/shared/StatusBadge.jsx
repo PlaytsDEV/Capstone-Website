@@ -9,10 +9,10 @@ import "./StatusBadge.css";
 
 export default function StatusBadge({ status, label: customLabel }) {
   const getStatusVariant = (s) => {
-    const successStatuses = ["month", "moveIn", "approved", "approved_for_payment", "completed", "resolved", "active", "paid", "confirmed"];
-    const warningStatuses = ["pending", "viewing_preference_selected", "visit_pending", "pending_application_review", "payment_pending", "partial", "aced-pending", "missed", "cancellation_requested"];
-    const errorStatuses = ["cancelled", "rejected", "needs_revision", "overdue", "no-show", "banned", "suspended"];
-    const infoStatuses = ["reserved", "visit_approved", "responded", "new"];
+    const successStatuses = ["month", "moveIn", "approved", "approved_for_payment", "completed", "resolved", "active", "paid", "confirmed", "settled", "cleared"];
+    const warningStatuses = ["pending", "viewing_preference_selected", "visit_pending", "pending_application_review", "payment_pending", "partial", "aced-pending", "missed", "cancellation_requested", "disputed", "manual_review_required", "expired_occupancy_continuing", "notice_1", "notice_2", "pending_clearance"];
+    const errorStatuses = ["cancelled", "rejected", "needs_revision", "overdue", "no-show", "banned", "suspended", "notice_3", "terminated"];
+    const infoStatuses = ["reserved", "visit_approved", "responded", "new", "former_tenant"];
 
     if (successStatuses.includes(s)) return "success";
     if (warningStatuses.includes(s)) return "warning";
@@ -34,6 +34,13 @@ export default function StatusBadge({ status, label: customLabel }) {
     if (s === "needs_revision") return "Needs Revision";
     if (s === "approved_for_payment") return "Approved for Payment";
     if (s === "partial") return "Proof Submitted";
+    if (s === "disputed") return "Disputed (Fees Paused)";
+    if (s === "manual_review_required") return "Manual Review Required";
+    if (s === "expired_occupancy_continuing") return "Expired Occupancy";
+    if (s === "former_tenant") return "Former Tenant";
+    if (s === "notice_1") return "Overdue Notice 1";
+    if (s === "notice_2") return "Overdue Notice 2";
+    if (s === "notice_3") return "Final Notice (3)";
     if (!s) return "Pending";
     
     // Convert to proper case: capitalize each word

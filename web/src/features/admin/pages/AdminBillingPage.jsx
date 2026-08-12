@@ -4,6 +4,9 @@ import UtilityBillingTab from "../components/billing/UtilityBillingTab";
 import RentBillingTab from "../components/billing/RentBillingTab";
 import ReservationPaymentReviewTab from "../components/billing/ReservationPaymentReviewTab";
 import BillingToolbar from "../components/billing/shared/BillingToolbar";
+import OverdueNoticeTracker from "../components/OverdueNoticeTracker";
+import TerminationReviewBoard from "../components/TerminationReviewBoard";
+import TenantViolationManager from "../components/TenantViolationManager";
 
 
 const AdminBillingPage = () => {
@@ -78,6 +81,25 @@ const AdminBillingPage = () => {
           className={activeTab === "reservation-payments" ? "block" : "hidden"}
         >
           <ReservationPaymentReviewTab isActive={activeTab === "reservation-payments"} />
+        </section>
+
+        <section
+          role="tabpanel"
+          id="billing-panel-overdue-notices"
+          aria-labelledby="billing-tab-overdue-notices"
+          className={activeTab === "overdue-notices" ? "block space-y-6" : "hidden"}
+        >
+          <OverdueNoticeTracker />
+          <TerminationReviewBoard />
+        </section>
+
+        <section
+          role="tabpanel"
+          id="billing-panel-violations"
+          aria-labelledby="billing-tab-violations"
+          className={activeTab === "violations" ? "block" : "hidden"}
+        >
+          <TenantViolationManager />
         </section>
       </div>
     </div>

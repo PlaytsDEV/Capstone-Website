@@ -169,20 +169,18 @@ function buildRoomDiagnostic({
     // If the open period is not already flagged, flag it now so it surfaces on the
     // admin dashboard as blocked rather than indistinguishable from a normal open period.
     if (openPeriod && openPeriod.status === "open") {
-      try {
-        openPeriod.status = "manual_review_required";
-        openPeriod.manualReviewReason = "missing_move_in_reading";
-        await openPeriod.save();
+      openPeriod.status = "manual_review_required";
+      openPeriod.manualReviewReason = "missing_move_in_reading";
+      openPeriod.save().then(() => {
         logger.warn(
           { roomId: openPeriod.roomId, utilityType, missingAnchors },
           "[UtilityDiagnostics] Period flagged as manual_review_required due to missing move-in reading(s). " +
             "Admin must supply the reading before this period can be closed. " +
             "Graceful Proration Fallback will NOT be used silently.",
         );
-      } catch (flagErr) {
-        // Log but don't crash the diagnostics read — the admin can still see the issue data.
+      }).catch((flagErr) => {
         logger.error({ err: flagErr }, "[UtilityDiagnostics] Failed to flag period as manual_review_required");
-      }
+      });
     }
 
     addIssue(
