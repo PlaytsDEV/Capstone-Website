@@ -56,13 +56,18 @@ export function validateStartupConfig() {
     failures.push("resend: RESEND_API_KEY and RESEND_FROM_EMAIL are required — Resend is the only email provider");
   }
 
-  if (isProduction) {
-    const missingTemplates = TEMPLATE_KEYS.filter((key) => !String(process.env[getTemplateEnvKey(key)] || "").trim());
-    if (missingTemplates.length > 0) {
-      failures.push(
-        `resend templates: ${missingTemplates.map((key) => getTemplateEnvKey(key)).join(", ")}`,
-      );
-    }
+  // A missing Resend Template ID only breaks the one email type that
+  // references it — sendTemplateEmail() already fails that single send
+  // closed with EMAIL_TEMPLATE_NOT_CONFIGURED. It must not be startup-fatal:
+  // Resend dashboard template creation is an operational step that lags a
+  // code deploy, and crashing the entire server over an unrelated missing
+  // template took down every other feature along with it. Warn instead.
+  const missingTemplates = TEMPLATE_KEYS.filter((key) => !String(process.env[getTemplateEnvKey(key)] || "").trim());
+  if (missingTemplates.length > 0) {
+    logger.warn(
+      { missingResendTemplates: missingTemplates.map((key) => getTemplateEnvKey(key)) },
+      "One or more Resend Template IDs are not configured — the corresponding email type(s) will fail to send until they are set.",
+    );
   }
 
   if (!String(process.env.MOBILE_OTP_SECRET || "").trim()) {

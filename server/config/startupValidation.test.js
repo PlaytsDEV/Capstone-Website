@@ -1,6 +1,7 @@
-import { afterEach, beforeEach, describe, expect, test } from "@jest/globals";
+import { afterEach, beforeEach, describe, expect, jest, test } from "@jest/globals";
 import { validateStartupConfig } from "./startupValidation.js";
 import { TEMPLATE_KEYS, getTemplateEnvKey } from "../services/email/templateRegistry.js";
+import logger from "../middleware/logger.js";
 
 const originalEnvironment = { ...process.env };
 
@@ -57,8 +58,21 @@ describe("production startup validation", () => {
     expect(() => validateStartupConfig()).toThrow(/RESEND_API_KEY and RESEND_FROM_EMAIL are required/);
   });
 
-  test("rejects a missing Resend template ID", () => {
+  test("a missing Resend template ID does not crash the server — it only warns, so unrelated features keep working", () => {
+    const warnSpy = jest.spyOn(logger, "warn").mockImplementation(() => {});
     delete process.env.RESEND_TEMPLATE_PASSWORD_RESET;
-    expect(() => validateStartupConfig()).toThrow(/RESEND_TEMPLATE_PASSWORD_RESET/);
+    expect(() => validateStartupConfig()).not.toThrow();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ missingResendTemplates: expect.arrayContaining(["RESEND_TEMPLATE_PASSWORD_RESET"]) }),
+      expect.stringContaining("Resend Template"),
+    );
+    warnSpy.mockRestore();
+  });
+
+  test("every template missing still does not crash the server", () => {
+    const warnSpy = jest.spyOn(logger, "warn").mockImplementation(() => {});
+    for (const key of TEMPLATE_KEYS) delete process.env[getTemplateEnvKey(key)];
+    expect(() => validateStartupConfig()).not.toThrow();
+    warnSpy.mockRestore();
   });
 });
